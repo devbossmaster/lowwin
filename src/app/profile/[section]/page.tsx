@@ -1,0 +1,4 @@
+import { notFound } from 'next/navigation';
+import { IdentityState } from '@/components/identity-state';
+const sections: Record<string, { title: string; text: string }> = { wins: { title: 'My wins', text: 'Your winning bids and fulfillment details will appear here once auctions are available.' }, favorites: { title: 'Favorites', text: 'Saving favorites will be available with the auction catalog.' }, alerts: { title: 'Alerts', text: 'Auction updates and notification preferences are coming in a later phase.' } };
+export default async function ProfileSection({ params }: { params: Promise<{ section: string }> }) { const { section } = await params; const data = sections[section]; if (!data) notFound(); return <section className="page-inset"><h1 className="page-title">{data.title}</h1><IdentityState/><div className="empty-state"><p>{data.text}</p></div></section>; }

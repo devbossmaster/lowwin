@@ -1,0 +1,223 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id                  String                 @id
+  name                String
+  email               String?                @unique
+  emailVerified       Boolean                @default(false)
+  image               String?
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+  telegramId          String?                @unique
+  telegramUsername    String?
+  telegramPhoneNumber String?
+  accounts            Account[]
+  sessions            Session[]
+  wallet              Wallet?
+  phoneIdentity       VerifiedPhoneIdentity?
+  operations          Operation[]
+  topups              TopUpIntent[]
+
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  telegramId            String?
+  telegramUsername      String?
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+model RateLimit {
+  id          String @id
+  key         String @unique
+  count       Int
+  lastRequest BigInt
+
+  @@map("rateLimit")
+}
+
+model VerifiedPhoneIdentity {
+  id             String   @id @default(uuid())
+  userId         String   @unique
+  user           User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  e164           String   @unique
+  verifiedAt     DateTime
+  proofReference String
+}
+
+model Wallet {
+  id        String          @id @default(uuid())
+  userId    String          @unique
+  user      User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  accounts  LedgerAccount[]
+  holds     AuctionHold[]
+  createdAt DateTime        @default(now())
+}
+
+model LedgerAccount {
+  id       String    @id @default(uuid())
+  name     String    @unique
+  kind     String
+  walletId String?
+  wallet   Wallet?   @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  balance  BigInt    @default(0)
+  postings Posting[]
+
+  @@unique([walletId, kind])
+}
+
+model Journal {
+  id            String    @id @default(uuid())
+  operationId   String    @unique
+  operation     Operation @relation(fields: [operationId], references: [id], onDelete: Restrict)
+  kind          String
+  reference     String
+  createdAt     DateTime  @default(now())
+  transactionId BigInt    @default(dbgenerated("txid_current()"))
+  postings      Posting[]
+}
+
+model Posting {
+  id        String        @id @default(uuid())
+  journalId String
+  journal   Journal       @relation(fields: [journalId], references: [id], onDelete: Restrict)
+  accountId String
+  account   LedgerAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  delta     BigInt
+
+  @@unique([journalId, accountId])
+  @@index([accountId])
+}
+
+model Operation {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  scope       String
+  key         String
+  requestHash String
+  result      Json
+  createdAt   DateTime @default(now())
+  journal     Journal?
+
+  @@unique([userId, scope, key])
+}
+
+// Auction terms/catalog arrive in Phase 2; this stable aggregate ID owns future holds.
+model Auction {
+  id    String        @id @default(uuid())
+  code  String        @unique
+  holds AuctionHold[]
+}
+
+model AuctionHold {
+  id        String   @id @default(uuid())
+  walletId  String
+  wallet    Wallet   @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  auctionId String
+  auction   Auction  @relation(fields: [auctionId], references: [id], onDelete: Restrict)
+  points    BigInt   @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@unique([walletId, auctionId])
+}
+
+model TopUpIntent {
+  id               String   @id @default(uuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  key              String
+  provider         String
+  providerIntentId String?
+  status           String   @default("PENDING")
+  points           BigInt
+  policyVersion    String
+  journalId        String?  @unique
+  createdAt        DateTime @default(now())
+
+  @@unique([userId, key])
+  @@unique([provider, providerIntentId])
+}
+
+model ExternalEvent {
+  id          String    @id @default(uuid())
+  provider    String
+  externalId  String
+  payloadHash String
+  verifiedAt  DateTime
+  processedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@unique([provider, externalId])
+}
+
+model BotUpdate {
+  updateId      BigInt    @id
+  payload       Json
+  receivedAt    DateTime  @default(now())
+  processedAt   DateTime?
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime  @default(now())
+  lastError     String?
+}
+
+model Outbox {
+  id        String    @id @default(uuid())
+  key       String    @unique
+  kind      String
+  payload   Json
+  createdAt DateTime  @default(now())
+  sentAt    DateTime?
+}

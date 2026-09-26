@@ -1,0 +1,20 @@
+# Pinned Telegram compatibility review
+
+Reviewed 2026-09-27 using the npm 2.0.1 tarball README, package metadata and `dist/index.js` source. Tarball shasum: `c72c20ce907325d4c55511dc7926ec2bd6b5671b`; lockfile records integrity.
+
+- Plugin peer dependency: `better-auth >=1.6.22 <1.7.0`. Pin: Better Auth **1.6.33**, plugin **2.0.1**. Do not update Better Auth alone to 1.7.x.
+- Published package engine says **Node >=24**, stricter than the README's Node >=22. Project uses Node 24.
+- `/telegram/miniapp/signin` verifies the WebAppData HMAC when `validateInitData=true`, looks up the provider/account ID, and creates an internal user/account/session. Local integration tests call this real endpoint against Prisma/PostgreSQL, not an auth mock.
+- Plugin default email is undefined because Telegram supplies no email. Prisma keeps email nullable + unique; `emailVerified` remains false. No synthetic verified email or ownership based on display names.
+- Plugin schema marks telegramId as nonunique; the migration tightens `user.telegramId` to unique and provider/account ID to a composite unique. Concurrent creates are serialized with a transaction-scoped advisory lock; plugin persistence uses that transaction's Prisma client. Failed plugin responses roll back creation.
+- Plugin age check alone does not explicitly reject future/NaN dates or duplicate URL fields. Lowin validates integer timestamps, maximum 300-second age, 30-second future skew, duplicate fields, positive safe integer user ID, size and constant-time HMAC before invoking the plugin. Raw user data remains part of the signed string.
+- Only explicitly allowed routes reach Better Auth. Plugin link/unlink, login widget, OIDC, auto account linking, user-update and sign-up endpoints are not public. Name/phone matching cannot merge accounts.
+- Session response token is stripped from sign-in JSON; cookies remain managed by Better Auth. HTTPS cookies are Secure/HttpOnly/SameSite=Lax. API sessions are checked server-side without a client-side navigation assumption.
+- Rate limiting uses the database for cross-instance state. Before production, add host-level request/body/rate limits in front of auth and webhook routes as well, since malformed launch requests are rejected before the plugin limiter.
+- Launch data is a short-lived bearer credential. Reuse within the five-minute window can issue another session for the same verified user; it never creates another wallet. Never log it or expose it to analytics. HTTPS is mandatory on hosted environments.
+
+Tests include valid data, changed hash, signed stale/future timestamps, absent data/user, invalid ID, wrong token, tampering, duplicate fields, repeated/concurrent identity mapping, real session lookup, Secure cookie behavior and forbidden origins/routes. These establish tested pair compatibility, not a claim that the full dependency ecosystem has no vulnerabilities.
+
+References: [plugin README/source](https://github.com/vcode-sh/better-auth-telegram), [Better Auth Next](https://better-auth.com/docs/integrations/next), [Telegram signed initData](https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app).
+
+Dependency audit: the Prisma 6 CLI's deepmerge-ts dependency was overridden to 8.0.0 to address its recursive-graph stack exhaustion advisory. Migration generation/application and Prisma generation are tested with this override; review it again when upgrading Prisma. Vitest is pinned to 4.1.11. The runtime uses the established Prisma 6 client rather than a Prisma 8 release candidate.

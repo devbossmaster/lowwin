@@ -1,0 +1,57 @@
+{
+  "name": "lowin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:ui": "playwright test",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
+    "db:seed": "tsx scripts/seed.ts",
+    "wallet:reconcile": "tsx scripts/reconcile.ts",
+    "bot:setup": "tsx scripts/setup-bot.ts",
+    "worker": "tsx scripts/worker.ts"
+  },
+  "dependencies": {
+    "@fontsource/dm-sans": "5.2.8",
+    "@prisma/client": "6.19.3",
+    "@radix-ui/react-slot": "1.2.4",
+    "better-auth": "1.6.33",
+    "better-auth-telegram": "2.0.1",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "dotenv": "17.3.1",
+    "grammy": "1.41.1",
+    "lucide-react": "0.577.0",
+    "next": "16.3.6",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "tailwind-merge": "3.5.0",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.58.2",
+    "@tailwindcss/postcss": "4.2.1",
+    "@types/node": "24.10.1",
+    "@types/pg": "8.18.0",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "pg": "8.20.0",
+    "prisma": "6.19.3",
+    "tailwindcss": "4.2.1",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vitest": "4.1.11"
+  },
+  "overrides": {
+    "deepmerge-ts": "8.0.0"
+  }
+}

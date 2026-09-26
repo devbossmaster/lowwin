@@ -1,0 +1,2 @@
+import { IdentityState } from '@/components/identity-state';
+export default function MyBids() { return <section className="page-inset"><h1 className="page-title">My bids</h1><p className="page-lead">Your choices, all in one place.</p><IdentityState/><div className="empty-state"><h2>Bidding hasn’t opened yet</h2><p>When bidding launches, your personal amounts and history will live here.</p></div></section>; }

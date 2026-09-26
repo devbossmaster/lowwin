@@ -1,0 +1,1 @@
+export default function Loading() { return <div className="loading-screen" role="status"><div className="wordmark">lowin<span>.</span></div><div className="loading-track"/><p>A little different wins.</p><span className="sr-only">Loading Lowin</span></div>; }
