@@ -1,7 +1,7 @@
 # Lowin
 
 ## Platform
-Mobile web inside Telegram, with public read-only browsing. This is an independent repository.
+Telegram Mini App only for players. Outside Telegram, the domain shows Continue with the bot; staff administration remains a separate interface. This is an independent repository.
 
 ## Stack
 Next.js App Router, strict TypeScript, Tailwind, shadcn/ui conventions, Prisma/PostgreSQL, Better Auth, grammY and a separate Node worker. Owner selected Vercel initially, with a possible later move to VPS; the worker needs a separate always-on host.
@@ -17,3 +17,7 @@ Better Auth opaque user IDs own domain data. Telegram IDs are unique verified ex
 
 ## Brand commitments
 Warm off-white, forest green, primary green and mint. Replaceable text wordmark; no supplied logo or licensed product images. Comfortable phone tap targets, visible focus and Telegram safe areas.
+
+Visual direction update (2026-09-27): the owner replaced the off-white canvas with pure white, flat surfaces and selected green gradients, using Check.et as a structural reference. The existing Mini App Home serves as the landing surface; no separate website is required. DESIGN.md records the implemented system. This update changes the visual direction, not the historical Phase 1 scope or the identity and funds boundaries above.
+
+Platform direction update (2026-09-27): the owner explicitly requires a Telegram-only player experience. The ordinary domain is a bot-entry surface, not public read-only browsing. This platform update leaves the historical phase and funds statements above as historical scope context.

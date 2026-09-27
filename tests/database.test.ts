@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { creditDevelopmentPoints, ensureWallet, reconcile } from '../src/modules/wallet/ledger';
 import { receiveUpdate } from '../src/modules/bot/webhook';
-import { signedLaunch, TEST_TOKEN } from './helpers';
+import { signedLaunch, TEST_TOKEN, LOCAL_ACCESS_KEY } from './helpers';
 
 const testUrl = process.env.TEST_DATABASE_URL;
 describe.skipIf(!testUrl)('isolated PostgreSQL foundation', () => {
@@ -14,6 +14,7 @@ describe.skipIf(!testUrl)('isolated PostgreSQL foundation', () => {
     const url = new URL(testUrl!);
     if (!['127.0.0.1','localhost'].includes(url.hostname) || !url.pathname.endsWith('_test')) throw new Error('Tests require an isolated loopback database ending in _test');
     Object.assign(process.env, { DATABASE_URL: testUrl, DIRECT_URL: testUrl, APP_ENV: 'local', NODE_ENV: 'test', DEV_POINTS_ENABLED: 'true', DEV_IDENTITY_ENABLED: 'true', BETTER_AUTH_URL:'http://localhost:3000', MINI_APP_URL:'http://localhost:3000', BETTER_AUTH_SECRET:'fixture-only-secret-at-least-thirty-two-characters', TELEGRAM_BOT_TOKEN:TEST_TOKEN, TELEGRAM_BOT_USERNAME:'lowin_fixture_bot', TELEGRAM_WEBHOOK_SECRET:'fixture-only-webhook-secret-thirty-two' });
+    process.env.DEV_IDENTITY_ACCESS_KEY = LOCAL_ACCESS_KEY;
     execFileSync(process.execPath,['node_modules/prisma/build/index.js','migrate','deploy'],{env:process.env,stdio:'pipe'});
     client = new PrismaClient();
     userId = randomUUID();
@@ -109,7 +110,7 @@ describe.skipIf(!testUrl)('isolated PostgreSQL foundation', () => {
   });
   it('reuses the explicit local identity and never assigns it a Telegram ID',async()=>{
     const {handleAuth}=await import('../src/modules/auth/handler');
-    const request=()=>new Request('http://localhost:3000/api/auth/lowin/dev-identity',{method:'POST',headers:{origin:'http://localhost:3000','content-type':'application/json'},body:'{}'});
+    const request=()=>new Request('http://localhost:3000/api/auth/lowin/dev-identity',{method:'POST',headers:{origin:'http://localhost:3000','content-type':'application/json'},body:JSON.stringify({accessKey:LOCAL_ACCESS_KEY})});
     expect((await handleAuth(request())).status).toBe(200);
     expect((await handleAuth(request())).status).toBe(200);
     const user=await client.user.findUniqueOrThrow({where:{email:'local-test@lowin.invalid'}});
@@ -141,6 +142,7 @@ describe.skipIf(!testUrl)('isolated PostgreSQL foundation', () => {
   it('issues Secure cookies over HTTPS and rejects dev identity on production',async()=>{
     const {handleAuth}=await import('../src/modules/auth/handler');
     process.env.BETTER_AUTH_URL='https://lowin.example';process.env.MINI_APP_URL='https://lowin.example';
+    process.env.DEV_IDENTITY_ENABLED='false';
     try {
       const response=await handleAuth(new Request('https://lowin.example/api/auth/telegram/miniapp/signin',{method:'POST',headers:{origin:'https://lowin.example','content-type':'application/json'},body:JSON.stringify({initData:signedLaunch()})}));
       expect(response.status).toBe(200);expect(response.headers.get('set-cookie')).toContain('Secure');

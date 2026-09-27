@@ -9,6 +9,9 @@ export async function processOneUpdate(client: PrismaClient, bot: Bot) {
       ORDER BY "updateId" FOR UPDATE SKIP LOCKED LIMIT 1`;
     const row = rows[0]; if (!row) return false;
     try {
+      const update=row.payload as Update;
+      const m='message' in update?update.message:undefined;
+      if(m?.chat.type==='private'&&m.from&&m.from.id===m.chat.id&&m.text?.match(/^\/start(?:@[a-zA-Z0-9_]+)?(?:\s|$)/)&&m.entities?.some(e=>e.type==='bot_command'&&e.offset===0))await tx.botChat.upsert({where:{telegramId:String(m.from.id)},create:{telegramId:String(m.from.id),chatId:String(m.chat.id)},update:{blocked:false}});
       await bot.handleUpdate(row.payload as Update);
       await tx.botUpdate.update({ where: { updateId: row.updateId }, data: { processedAt: new Date(), payload: {}, lastError: null } });
     } catch {

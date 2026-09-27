@@ -9,7 +9,7 @@ process.on('SIGTERM', () => { running = false; });
 process.on('SIGINT', () => { running = false; });
 try {
   await bot.init();
-  console.log('Lowin command worker started. Auction closing arrives in Phase 4.');
+  console.log('Lowin command worker started. Auction settlement runs separately with worker:auctions.');
   while (running) {
     try { if (!await processOneUpdate(db, bot)) await setTimeout(1000); }
     catch { console.error('Inbox unavailable; retrying shortly.'); await setTimeout(5000); }

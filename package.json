@@ -16,14 +16,21 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:seed": "tsx scripts/seed.ts",
+    "db:seed:catalog": "tsx scripts/seed-catalog.ts",
     "wallet:reconcile": "tsx scripts/reconcile.ts",
     "bot:setup": "tsx scripts/setup-bot.ts",
-    "worker": "tsx scripts/worker.ts"
+    "worker": "tsx scripts/worker.ts",
+    "worker:auctions": "tsx scripts/auction-worker.ts",
+    "admin:bootstrap": "tsx scripts/admin-bootstrap.ts",
+    "email:sink": "tsx scripts/email-sink.ts",
+    "worker:notifications": "tsx scripts/notification-worker.ts",
+    "admin:reissue": "tsx scripts/admin-reissue.ts"
   },
   "dependencies": {
     "@fontsource/dm-sans": "5.2.8",
     "@prisma/client": "6.19.3",
     "@radix-ui/react-slot": "1.2.4",
+    "@tesseract.js-data/eng": "1.0.0",
     "better-auth": "1.6.33",
     "better-auth-telegram": "2.0.1",
     "class-variance-authority": "0.7.1",
@@ -34,7 +41,9 @@
     "next": "16.3.6",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "sharp": "0.35.4",
     "tailwind-merge": "3.5.0",
+    "tesseract.js": "6.0.1",
     "zod": "4.3.6"
   },
   "devDependencies": {

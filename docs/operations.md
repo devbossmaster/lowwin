@@ -10,7 +10,11 @@ No deployment or real bot setup was performed during local implementation. Never
 
 ## Wallet proof
 
-Use `npm run wallet:reconcile` against the intended environment. A zero-drift report means every projection equals its journal posting sum at that SQL snapshot. Immutable correction journals, not edits, are required for future repair procedures. Reconciliation does not prove future auction rules or provider settlement that have not been implemented.
+Use `npm run wallet:reconcile` against the intended environment. A zero-drift report means every projection equals its journal posting sum **and** each wallet's HELD projection equals the sum of its auction holds in the same SQL snapshot. Drift entries identify `POSTING` or `HOLD`. Immutable correction journals, not edits, are required for future repair procedures. Reconciliation does not prove future auction rules or provider settlement that have not been implemented.
+
+Apply `202609270001_hold_integrity` in a controlled migration window. It locks the relevant tables while installing guards and checking existing totals; any pre-existing discrepancy aborts the migration. It adds the internal `WalletHoldGuard` table with RLS enabled and no anon/authenticated access. Runtime-role access to the new table/functions must be validated on production Supabase before release; local owner-role tests do not prove these grants. The trigger functions are invoker-rights functions.
+
+No public reserve/release/credit route exists. Internal hold commands include the auction and hold IDs in journal references, scope keys by user and `HOLD_ADJUST`, reject over-release/insufficient available points and keep all writes in one transaction. Callers composing Phase 3 must preserve auction-then-wallet lock order and retry entire transactions after serialization failures. The guard revision row is concurrency metadata, not a ledger account or source of points.
 
 Runtime DB credentials should not have DDL/TRUNCATE/superuser privileges. The table owner can bypass RLS and alter triggers, so use separate migration credentials. Stage and rehearse role grants, backups and restore before production. Supabase public anon/authenticated roles have no access to foundation tables.
 

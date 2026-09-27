@@ -25,6 +25,12 @@ model User {
   phoneIdentity       VerifiedPhoneIdentity?
   operations          Operation[]
   topups              TopUpIntent[]
+  bids                Bid[]
+  wonSettlements      AuctionSettlement[] @relation("SettlementWinner")
+  settlementMovements SettlementMovement[]
+  playerProfile       PlayerProfile?
+  favorites           AuctionFavorite[]
+  staffMember         StaffMember?
 
   @@map("user")
 }
@@ -39,6 +45,8 @@ model Session {
   userAgent String?
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  staffSession StaffSession?
+  telegramLaunchId String?
 
   @@index([userId])
   @@map("session")
@@ -98,12 +106,21 @@ model VerifiedPhoneIdentity {
 }
 
 model Wallet {
-  id        String          @id @default(uuid())
-  userId    String          @unique
-  user      User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  id        String           @id @default(uuid())
+  userId    String           @unique
+  user      User             @relation(fields: [userId], references: [id], onDelete: Restrict)
   accounts  LedgerAccount[]
   holds     AuctionHold[]
-  createdAt DateTime        @default(now())
+  holdGuard WalletHoldGuard?
+  settlementMovements SettlementMovement[]
+  createdAt DateTime         @default(now())
+}
+
+// Internal serialization row; maintained by the hold-integrity migration.
+model WalletHoldGuard {
+  walletId String @id
+  wallet   Wallet @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  revision BigInt @default(0)
 }
 
 model LedgerAccount {
@@ -151,15 +168,121 @@ model Operation {
   result      Json
   createdAt   DateTime @default(now())
   journal     Journal?
+  bid         Bid?
+  settlementCharges SettlementMovement[] @relation("SettlementCharge")
+  settlementReleases SettlementMovement[] @relation("SettlementRelease")
+  settlementRefunds SettlementMovement[] @relation("SettlementRefund")
 
   @@unique([userId, scope, key])
 }
 
-// Auction terms/catalog arrive in Phase 2; this stable aggregate ID owns future holds.
+model Category {
+  id String @id @default(uuid())
+  version Int @default(1)
+  slug String @unique
+  name String @unique
+  description String
+  sortOrder Int @default(0)
+  visible Boolean @default(true)
+  requiresEligibilityReview Boolean @default(false)
+  products Product[]
+  auctions Auction[]
+  @@index([visible, sortOrder])
+}
+
+model Product {
+  id String @id @default(uuid())
+  version Int @default(1)
+  slug String @unique
+  title String
+  description String
+  condition String
+  categoryId String
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  visible Boolean @default(true)
+  isDemo Boolean @default(false)
+  images ProductImage[]
+  auctions Auction[]
+  @@index([categoryId, visible])
+}
+
+model ProductImage {
+  id String @id @default(uuid())
+  productId String
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  path String
+  alt String
+  sourceType String @default("ORIGINAL")
+  sourceCredit String?
+  sortOrder Int @default(0)
+  @@unique([productId, sortOrder])
+}
+
+// Preserve the original id, code, and holds relationship from Phase 1.5.
 model Auction {
   id    String        @id @default(uuid())
   code  String        @unique
   holds AuctionHold[]
+  bids Bid[]
+  slug String? @unique
+  productId String?
+  product Product? @relation(fields: [productId], references: [id], onDelete: Restrict)
+  categoryId String?
+  category Category? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  status String @default("DRAFT")
+  startsAt DateTime?
+  endsAt DateTime?
+  publishedAt DateTime?
+  featured Boolean @default(false)
+  isDemo Boolean @default(false)
+  acceptedBidCount Int @default(0)
+  fulfillmentSummary String?
+  fulfillmentRegion String?
+  terms AuctionTerms?
+  result PublicAuctionResult?
+  settlement AuctionSettlement?
+  // Explicit opt-in for freshly scheduled local DEMO fixtures; old seeds stay false.
+  isSettlementFixture Boolean @default(false)
+  closeAttempts Int @default(0)
+  nextCloseAttemptAt DateTime?
+  closeErrorCode String?
+  favorites AuctionFavorite[]
+  draft AuctionDraft?
+  @@index([status, startsAt, endsAt])
+  @@index([categoryId, status])
+  @@index([publishedAt, endsAt])
+}
+
+// One immutable published snapshot per auction. A later policy change creates
+// a replacement auction; the version field defines the contract for readers.
+model AuctionTerms {
+  id String @id @default(uuid())
+  auctionId String @unique
+  auction Auction @relation(fields: [auctionId], references: [id], onDelete: Restrict)
+  version Int @default(1)
+  ruleVersion String @default("lowest-unique-v1")
+  minPoints BigInt
+  maxPoints BigInt
+  stepPoints BigInt
+  entryFeePoints BigInt @default(0)
+  maxDistinctBids Int @default(100)
+  noWinnerTerms String
+  cancellationTerms String
+  fulfillmentSnapshot String
+  createdAt DateTime @default(now())
+}
+
+model PublicAuctionResult {
+  id String @id @default(uuid())
+  auctionId String @unique
+  auction Auction @relation(fields: [auctionId], references: [id], onDelete: Restrict)
+  outcome String
+  winningPoints BigInt?
+  winnerLabel String?
+  explanation String
+  closedAt DateTime
+  isDemo Boolean @default(false)
+  publishedAt DateTime @default(now())
 }
 
 model AuctionHold {
@@ -174,6 +297,27 @@ model AuctionHold {
   @@unique([walletId, auctionId])
 }
 
+// Accepted bids are immutable audit facts. The database sets acceptedAt after
+// the auction row lock is acquired, never from client or application time.
+model Bid {
+  id           String    @id @default(uuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+  auctionId    String
+  auction      Auction   @relation(fields: [auctionId], references: [id], onDelete: Restrict)
+  amount       BigInt
+  acceptedAt   DateTime  @default(dbgenerated("(clock_timestamp() AT TIME ZONE 'UTC')")) @db.Timestamp(6)
+  termsVersion Int
+  feePoints    BigInt
+  operationId  String    @unique
+  operation    Operation @relation(fields: [operationId], references: [id], onDelete: NoAction)
+  winningSettlement AuctionSettlement?
+
+  @@unique([userId, auctionId, amount])
+  @@index([userId, auctionId, acceptedAt])
+  @@index([auctionId, amount])
+}
+
 model TopUpIntent {
   id               String   @id @default(uuid())
   userId           String
@@ -186,9 +330,86 @@ model TopUpIntent {
   policyVersion    String
   journalId        String?  @unique
   createdAt        DateTime @default(now())
+  channel          String?
+  expectedCents    BigInt?
+  receivingAccount String?
+  accountName      String?
+  quoteSnapshot    Json?
+  requestHash      String?
+  expiresAt        DateTime?
+  reference        String?
+  attempts         Int @default(0)
+  scanAttempts     Int @default(0)
+  nextAttemptAt    DateTime @default(now())
+  leaseToken       String?
+  leaseUntil       DateTime?
+  reasonCode       String?
+  caseState        String @default("OPEN")
+  assignedTo       String?
 
   @@unique([userId, key])
   @@unique([provider, providerIntentId])
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+}
+
+// Append-only account/quote versions. A new version never alters an intent.
+model PaymentPolicy {
+  id String @id @default(uuid())
+  channel String
+  version Int
+  enabled Boolean
+  account String
+  accountName String
+  pointsNumerator BigInt
+  centsDenominator BigInt
+  minCents BigInt
+  maxCents BigInt
+  terms String
+  reviewReference String
+  actorId String
+  createdAt DateTime @default(now())
+  @@unique([channel, version])
+}
+model PaymentClaim {
+  id String @id @default(uuid())
+  channel String
+  reference String
+  intentId String @unique
+  userId String
+  amountCents BigInt
+  points BigInt
+  receiverSuffix String
+  transferredAt DateTime
+  operationId String @unique
+  journalId String @unique
+  evidenceHash String
+  createdAt DateTime @default(now())
+  @@unique([channel, reference])
+}
+model PaymentAttempt {
+  id String @id @default(uuid())
+  intentId String
+  key String
+  requestHash String
+  code String
+  evidence Json
+  createdAt DateTime @default(now())
+  @@unique([intentId, key])
+}
+model PaymentStatementEntry {
+  id String @id @default(uuid())
+  channel String
+  reference String
+  amountCents BigInt
+  receiverSuffix String
+  transferredAt DateTime
+  evidenceReference String
+  status String
+  intentId String?
+  actorId String
+  createdAt DateTime @default(now())
+  @@index([status, createdAt])
 }
 
 model ExternalEvent {
@@ -220,4 +441,202 @@ model Outbox {
   payload   Json
   createdAt DateTime  @default(now())
   sentAt    DateTime?
+  state String @default("PENDING")
+  attempts Int @default(0)
+  nextAttemptAt DateTime @default(now())
+  lastError String?
+  settlementId String?
+  settlement AuctionSettlement? @relation(fields: [settlementId], references: [id], onDelete: Restrict)
+}
+
+// Private immutable decision and audit proof. PublicAuctionResult is the separate
+// Phase 2 illustrative catalog projection; closing never edits or adopts it.
+model AuctionSettlement {
+  id String @id @default(uuid())
+  auctionId String @unique
+  auction Auction @relation(fields: [auctionId], references: [id], onDelete: Restrict)
+  outcome String
+  ruleVersion String
+  termsVersion Int
+  cutoff DateTime @db.Timestamp(6)
+  completedAt DateTime @default(dbgenerated("(clock_timestamp() AT TIME ZONE 'UTC')")) @db.Timestamp(6)
+  transactionId BigInt @default(dbgenerated("txid_current()"))
+  acceptedCount Int
+  winnerUserId String?
+  winner User? @relation("SettlementWinner", fields: [winnerUserId], references: [id], onDelete: Restrict)
+  winningBidId String? @unique
+  winningBid Bid? @relation(fields: [winningBidId], references: [id], onDelete: Restrict)
+  winningPoints BigInt?
+  actorId String?
+  reason String?
+  key String?
+  requestHash String?
+  proof Json
+  movements SettlementMovement[]
+  outbox Outbox[]
+  @@unique([actorId, key])
+}
+
+model SettlementMovement {
+  id String @id @default(uuid())
+  settlementId String
+  settlement AuctionSettlement @relation(fields: [settlementId], references: [id], onDelete: Restrict)
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  walletId String
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  holdBefore BigInt
+  chargedPoints BigInt
+  releasedPoints BigInt
+  refundedFees BigInt
+  chargeOperationId String? @unique
+  chargeOperation Operation? @relation("SettlementCharge", fields: [chargeOperationId], references: [id], onDelete: Restrict)
+  releaseOperationId String? @unique
+  releaseOperation Operation? @relation("SettlementRelease", fields: [releaseOperationId], references: [id], onDelete: Restrict)
+  refundOperationId String? @unique
+  refundOperation Operation? @relation("SettlementRefund", fields: [refundOperationId], references: [id], onDelete: Restrict)
+  @@unique([settlementId, userId])
+}
+
+// Display-only settings are deliberately separate from Better Auth identity.
+model PlayerProfile {
+  userId String @id
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  displayName String
+  bio String @default("")
+  updatedAt DateTime @updatedAt
+}
+
+model AuctionFavorite {
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  auctionId String
+  auction Auction @relation(fields: [auctionId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now())
+  @@id([userId, auctionId])
+  @@index([userId, createdAt])
+  @@index([auctionId])
+}
+
+model StaffMember {
+  userId String @id
+  user User @relation(fields:[userId],references:[id],onDelete:Restrict)
+  role String @default("OWNER")
+  active Boolean @default(true)
+  secret String?
+  lastCounter BigInt @default(-1)
+  recoveryHashes String[]
+  createdAt DateTime @default(now())
+}
+model StaffSession {
+  sessionId String @id
+  session Session @relation(fields:[sessionId],references:[id],onDelete:Cascade)
+  credentialAt DateTime
+  mfaAt DateTime?
+  expiresAt DateTime
+  pendingSecret String?
+}
+model StaffToken {
+  tokenHash String @id
+  kind String
+  email String
+  role String @default("OWNER")
+  expiresAt DateTime
+  usedAt DateTime?
+  createdAt DateTime @default(now())
+  @@index([email,kind])
+}
+model OwnerBootstrap {
+  id String @id
+  createdAt DateTime @default(now())
+}
+model AdminAudit {
+  id String @id @default(uuid())
+  actorId String
+  action String
+  target String
+  details Json
+  operationKey String? @unique
+  requestHash String?
+  createdAt DateTime @default(now())
+  @@index([createdAt])
+}
+model AuctionDraft {
+  auctionId String @id
+  auction Auction @relation(fields:[auctionId],references:[id],onDelete:Restrict)
+  version Int @default(1)
+  body Json
+  updatedAt DateTime @updatedAt
+}
+model ManagedMedia {
+  id String @id @default(uuid())
+  bytes Bytes
+  mime String
+  sourceType String
+  sourceCredit String
+  createdAt DateTime @default(now())
+}
+model SiteContent {
+  id String @id
+  version Int @default(1)
+  body Json
+  updatedAt DateTime @updatedAt
+}
+
+model UserRestriction {
+  userId String @id
+  suspended Boolean @default(false)
+  reason String
+  updatedAt DateTime @updatedAt
+}
+model SupportCase {
+  id String @id @default(uuid())
+  userId String
+  subject String
+  message String
+  status String @default("OPEN")
+  resolution String @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([userId, createdAt])
+}
+model FulfillmentCase {
+  auctionId String @id
+  userId String
+  assignedTo String?
+  state String @default("PENDING")
+  contactCipher String?
+  tracking String @default("")
+  note String @default("")
+  version Int @default(1)
+  deliveredAt DateTime?
+  contactDeleteAt DateTime?
+  updatedAt DateTime @updatedAt
+}
+model NotificationPreference {
+  userId String @id
+  inApp Boolean @default(true)
+  telegram Boolean @default(false)
+  auctionStart Boolean @default(true)
+  favoriteEnding Boolean @default(true)
+  fulfillment Boolean @default(true)
+}
+model NotificationInbox {
+  id String @id @default(uuid())
+  key String @unique
+  userId String
+  kind String
+  title String
+  body String
+  href String
+  readAt DateTime?
+  createdAt DateTime @default(now())
+  @@index([userId, createdAt])
+}
+// Populated only from authenticated webhook /start updates, never a browser ID.
+model BotChat {
+  telegramId String @id
+  chatId String @unique
+  startedAt DateTime @default(now())
+  blocked Boolean @default(false)
 }

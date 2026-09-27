@@ -1,2 +1,0 @@
-import { Trophy } from 'lucide-react';
-export default function Winners() { return <section className="page-inset"><h1 className="page-title">A different kind<br/>of winning.</h1><div className="empty-state"><Trophy size={36} strokeWidth={1.3}/><h2>The first story is still ahead</h2><p>Results will appear here after auctions close. You’ll see the winning point amount and why it was the lowest unique bid.</p></div></section>; }

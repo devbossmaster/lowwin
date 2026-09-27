@@ -10,6 +10,7 @@ const schema = z.object({
   TELEGRAM_WEBHOOK_SECRET: z.string().regex(/^[A-Za-z0-9_-]{32,256}$/),
   MINI_APP_URL: z.string().url(),
   DEV_IDENTITY_ENABLED: z.enum(['true','false']).default('false'),
+  DEV_IDENTITY_ACCESS_KEY: z.string().optional(),
   DEV_POINTS_ENABLED: z.enum(['true','false']).default('false'),
 });
 export function parseEnv(raw: Record<string, string | undefined>) {
@@ -21,6 +22,7 @@ export function parseEnv(raw: Record<string, string | undefined>) {
   if (production && [env.BETTER_AUTH_SECRET, env.TELEGRAM_BOT_TOKEN, env.TELEGRAM_WEBHOOK_SECRET].some(value => /REPLACE|CHANGE_ME|fixture/i.test(value))) throw new Error('Example credentials forbidden in hosted deployments');
   if (production && (new URL(env.BETTER_AUTH_URL).protocol !== 'https:' || new URL(env.MINI_APP_URL).protocol !== 'https:')) throw new Error('HTTPS required');
   if (new URL(env.MINI_APP_URL).origin !== new URL(env.BETTER_AUTH_URL).origin) throw new Error('Mini App and auth origins must match');
+  if (env.DEV_IDENTITY_ENABLED === 'true') assertLocalDevelopment('identity', raw);
   return env;
 }
 export function getEnv() { return parseEnv(process.env); }
@@ -29,4 +31,16 @@ export function assertLocalDevelopment(feature: 'identity' | 'points', raw: Reco
   if (raw.NODE_ENV === 'production' || raw.APP_ENV !== 'local' || raw.VERCEL || !['localhost','127.0.0.1','[::1]'].includes(db.hostname) || raw[feature === 'points' ? 'DEV_POINTS_ENABLED' : 'DEV_IDENTITY_ENABLED'] !== 'true') {
     throw new Error('Development feature requires an explicit local environment and loopback database');
   }
+  if (feature === 'identity') {
+    const auth = localOrigin(raw.BETTER_AUTH_URL);
+    if (!auth || localOrigin(raw.MINI_APP_URL) !== auth) throw new Error('Local identity requires matching loopback app and auth origins');
+    if (!raw.DEV_IDENTITY_ACCESS_KEY || raw.DEV_IDENTITY_ACCESS_KEY.length < 32 || raw.DEV_IDENTITY_ACCESS_KEY.length > 256 || /REPLACE|CHANGE_ME/.test(raw.DEV_IDENTITY_ACCESS_KEY)) throw new Error('Local identity requires a private operator access key');
+  }
+}
+
+export function localOrigin(value: string | undefined): string | null {
+  try {
+    const url = new URL(value ?? '');
+    return ['http:', 'https:'].includes(url.protocol) && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) && !url.username && !url.password ? url.origin : null;
+  } catch { return null; }
 }

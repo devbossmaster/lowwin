@@ -1,2 +1,22 @@
 import { defineConfig } from '@playwright/test';
-export default defineConfig({ testDir: './tests/browser', use: { baseURL: 'http://localhost:3000', browserName: 'chromium' }, webServer: { command:'npm run dev', url:'http://localhost:3000', reuseExistingServer: true }, projects: [{name:'mobile-360',use:{viewport:{width:360,height:800}}},{name:'mobile-430',use:{viewport:{width:430,height:932}}}] });
+import { LOCAL_ACCESS_KEY, TEST_TOKEN } from './tests/helpers';
+const database = process.env.TEST_DATABASE_URL ?? 'postgresql://fixture@127.0.0.1:9/absent_test';
+if (process.env.TEST_DATABASE_URL) {
+  const url = new URL(database);
+  if (!['127.0.0.1','localhost'].includes(url.hostname) || !url.pathname.endsWith('_test')) throw new Error('Browser identity tests require a disposable loopback _test database');
+}
+const env = { APP_ENV:'local', DATABASE_URL:database, DIRECT_URL:database,
+  BETTER_AUTH_SECRET:'fixture-only-secret-at-least-thirty-two-characters', TELEGRAM_BOT_TOKEN:TEST_TOKEN,
+  TELEGRAM_BOT_USERNAME:'lowin_fixture_bot', TELEGRAM_WEBHOOK_SECRET:'fixture-only-webhook-secret-thirty-two',
+  DEV_IDENTITY_ENABLED:'true', DEV_IDENTITY_ACCESS_KEY:LOCAL_ACCESS_KEY, DEV_POINTS_ENABLED:'false',
+  WALLET_TEST_PREVIEW:'true',ADMIN_MFA_KEY:'b'.repeat(64),EMAIL_TRANSPORT:'local-sink',EMAIL_SINK_URL:'http://127.0.0.1:8027',
+};
+export default defineConfig({
+  testDir:'./tests/browser', workers:1, timeout:60000, use:{baseURL:'http://localhost:3107',browserName:'chromium'},
+  webServer:[
+    {command:'npm run email:sink',url:'http://127.0.0.1:8027/health',reuseExistingServer:false,timeout:30000},
+    {command:'npm run dev -- --hostname 127.0.0.1 --port 3107',url:'http://localhost:3107',reuseExistingServer:false,timeout:120000,env:{...env,LOWIN_UI_TEST_MODE:'local',BETTER_AUTH_URL:'http://localhost:3107',MINI_APP_URL:'http://localhost:3107'}},
+    {command:'npm run dev -- --hostname 127.0.0.1 --port 3108',url:'http://localhost:3108',reuseExistingServer:false,timeout:120000,env:{...env,LOWIN_UI_TEST_MODE:'tunnel',BETTER_AUTH_URL:'https://lowin.ngrok-free.app',MINI_APP_URL:'https://lowin.ngrok-free.app'}},
+  ],
+  projects:[{name:'mobile-360',testIgnore:'**/admin.spec.ts',use:{viewport:{width:360,height:800}}},{name:'mobile-430',testIgnore:'**/admin.spec.ts',use:{viewport:{width:430,height:932}}},{name:'admin-laptop',testMatch:'**/admin.spec.ts',use:{viewport:{width:1366,height:900}}},{name:'admin-tablet',testMatch:'**/admin.spec.ts',use:{viewport:{width:834,height:1112}}}],
+});

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-test('mobile shell, navigation and honest account states',async({page},testInfo)=>{
+test('catalog at mobile widths: header, carousel, cards, countdown and navigation',async({page},testInfo)=>{
   const hydrationErrors:string[]=[];
   page.on('console',message=>{if(message.type()==='error' && message.text().includes('hydrated')) hydrationErrors.push(message.text());});
   await page.goto('/');
@@ -8,15 +8,28 @@ test('mobile shell, navigation and honest account states',async({page},testInfo)
   await expect(page.getByText('Opening your Lowin…')).toBeHidden({timeout:20000});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
   expect(hydrationErrors).toEqual([]);
-  await page.screenshot({path:`docs/screenshots/home-${testInfo.project.name}.png`});
-  await page.screenshot({path:`docs/screenshots/home-full-${testInfo.project.name}.png`,fullPage:true});
-  await page.getByRole('link',{name:'Explore auctions'}).click();
-  await expect(page.getByRole('heading',{name:'The catalog is on its way'})).toBeVisible();
+  await expect(page.getByLabel('Featured auctions')).toBeVisible();
+  await expect(page.locator('.auction-card').first()).toBeVisible();
+  await page.screenshot({path:`docs/screenshots/catalog-home-${testInfo.project.name}.png`,fullPage:true});
+  await page.getByRole('navigation',{name:'Main navigation'}).getByRole('link',{name:'Auctions'}).click();
+  await expect(page.getByRole('heading',{name:'Auctions.'})).toBeVisible();
+  await expect(page.locator('.listing-count')).toContainText('auctions');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+  await page.screenshot({path:`docs/screenshots/catalog-auctions-${testInfo.project.name}.png`,fullPage:true});
+  await page.getByRole('link',{name:'Live',exact:true}).click();
+  await expect(page.locator('.listing-count')).toContainText('auctions');
+  await page.locator('.auction-card').first().click();
+  await expect(page.getByText('Ready when you are')).toBeVisible();
+  await expect(page.getByRole('timer')).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+  await page.screenshot({path:`docs/screenshots/catalog-detail-${testInfo.project.name}.png`,fullPage:true});
+  await page.getByRole('navigation',{name:'Main navigation'}).getByRole('link',{name:'Winners'}).click();
+  await expect(page.locator('.result-context')).toBeVisible();
+  await page.screenshot({path:`docs/screenshots/catalog-winners-${testInfo.project.name}.png`,fullPage:true});
   await page.getByRole('navigation').getByRole('link',{name:'Profile'}).click();
-  await expect(page.getByRole('heading',{name:'Your corner of Lowin.'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Your profile.'})).toBeVisible();
   await page.getByRole('link',{name:'Point wallet',exact:true}).click();
-  await expect(page.getByRole('heading',{name:'Top up coming later'})).toBeVisible();
-  await page.screenshot({path:`docs/screenshots/wallet-${testInfo.project.name}.png`});
+  await expect(page.getByRole('heading',{name:'Add points',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Submit for verification'})).toBeDisabled();
 });
 test('expired Telegram launch offers retry, never fake authentication',async({page})=>{
   await page.addInitScript(()=>{window.Telegram={WebApp:{initData:'tampered',ready(){},expand(){}}};});
@@ -25,4 +38,24 @@ test('expired Telegram launch offers retry, never fake authentication',async({pa
   await page.goto('/profile');
   await expect(page.getByRole('heading',{name:'Let’s reconnect'})).toBeVisible();
   await expect(page.getByRole('button',{name:'Retry connection'})).toBeVisible();
+});
+test('featured carousel supports manual control and reduced motion',async({page},testInfo)=>{
+  test.skip(testInfo.project.name!=='mobile-430');
+  await page.emulateMedia({reducedMotion:'reduce'});
+  await page.goto('/');
+  const carousel=page.getByLabel('Featured auctions');
+  await carousel.scrollIntoViewIfNeeded();
+  const current=()=>carousel.locator('.carousel-dots button[aria-current=true]').getAttribute('aria-label');
+  const first=await current();
+  await page.waitForTimeout(4300);
+  expect(await current()).toBe(first);
+  await carousel.getByRole('button',{name:'Next featured auction'}).click();
+  expect(await current()).not.toBe(first);
+  await page.emulateMedia({reducedMotion:'no-preference'});
+  await page.reload();
+  const active=page.getByLabel('Featured auctions');
+  await active.scrollIntoViewIfNeeded();
+  await page.mouse.move(0,0);
+  const initial=await active.locator('.carousel-dots button[aria-current=true]').getAttribute('aria-label');
+  await expect.poll(()=>active.locator('.carousel-dots button[aria-current=true]').getAttribute('aria-label'),{timeout:6500}).not.toBe(initial);
 });

@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "next-env.d.ts", "**/*.ts", "**/*.tsx",
+    ".next-ui-local/types/**/*.ts", ".next-ui-local/dev/types/**/*.ts",
+    ".next-ui-tunnel/types/**/*.ts", ".next-ui-tunnel/dev/types/**/*.ts"
+  ],
+  "exclude": ["node_modules", ".review", ".local"]
+}
