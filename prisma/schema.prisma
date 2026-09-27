@@ -23,6 +23,7 @@ model User {
   sessions            Session[]
   wallet              Wallet?
   phoneIdentity       VerifiedPhoneIdentity?
+  ownContact          TelegramOwnContact?
   operations          Operation[]
   topups              TopUpIntent[]
   bids                Bid[]
@@ -103,6 +104,30 @@ model VerifiedPhoneIdentity {
   e164           String   @unique
   verifiedAt     DateTime
   proofReference String
+}
+
+model TelegramOwnContact {
+  id String @id @default(uuid())
+  telegramId String
+  botId String
+  userId String? @unique
+  user User? @relation(fields:[userId],references:[id],onDelete:Restrict)
+  phoneHash String @unique
+  phoneCipher String
+  lastFour String
+  verifiedAt DateTime
+  sourceUpdateId BigInt @unique
+  revokedAt DateTime?
+  @@unique([botId,telegramId])
+}
+
+model ContactEvent {
+  id String @id @default(uuid())
+  botId String
+  telegramId String
+  updateId BigInt @unique
+  outcome String
+  createdAt DateTime @default(now())
 }
 
 model Wallet {
@@ -425,6 +450,7 @@ model ExternalEvent {
 }
 
 model BotUpdate {
+  botId String?
   updateId      BigInt    @id
   payload       Json
   receivedAt    DateTime  @default(now())
