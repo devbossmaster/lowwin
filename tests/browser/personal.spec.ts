@@ -1,3 +1,4 @@
+import {verifyFixtureContact} from '../contact-fixtures';
 import { test,expect } from '@playwright/test';
 import { PrismaClient } from '@prisma/client';
 import { randomInt,randomUUID } from 'node:crypto';
@@ -17,6 +18,7 @@ test('public results and private pages at mobile widths',async({page},testInfo)=
   try {
     const telegramId=randomInt(5000000000,6000000000),launch=signedLaunch({user:JSON.stringify({id:telegramId,first_name:'Mika'})});
     await page.route('https://telegram.org/**',route=>route.fulfill({body:''}));
+    await verifyFixtureContact(client,telegramId);
     const signin=await page.request.post('/api/auth/telegram/miniapp/signin',{headers:{origin:'http://localhost:3107'},data:{initData:launch}});expect(signin.status()).toBe(200);
     const user=await client.user.findUniqueOrThrow({where:{telegramId:String(telegramId)}});await creditDevelopmentPoints(client,user.id,'1000',randomUUID());
     const won=await bidAuction(client,{fee:2,endDelayMs:1800}),cancelled=await bidAuction(client,{fee:3}),live=await bidAuction(client,{fee:1}),pending=await bidAuction(client,{endDelayMs:-1000});
@@ -32,7 +34,7 @@ test('public results and private pages at mobile widths',async({page},testInfo)=
     await page.goto('/profile');const privateResponse=await page.request.get('/api/profile');expect(privateResponse.headers()['cache-control']).toContain('no-store');await expect(page.locator('.profile-heading h2')).toHaveText('Mika');await expect(page.locator('.profile-wallet')).toContainText('963');await page.getByRole('button',{name:'Edit',exact:true}).click();await page.getByLabel('Display name').fill('Mika’s corner');await page.getByLabel('About you').fill('Furniture, watches and small discoveries.');await page.getByRole('button',{name:'Save profile'}).click();await expect(page.locator('.profile-heading h2')).toHaveText('Mika’s corner');await capture('profile');
     await page.goto('/my-bids');await expect(page.locator('.personal-bid-row')).toHaveCount(1);await expect(page.locator('.personal-bid-row')).toContainText('30 pts');await capture('my-bids-live');await page.getByRole('button',{name:/History/}).click();await expect(page.locator('.personal-bid-row')).toHaveCount(3);await expect(page.getByText('Entry fee refunded: 3 pts')).toBeVisible();await capture('my-bids-history');
     await page.goto(`/auctions/${live.slug}`);await page.getByRole('button',{name:'Save to favorites'}).click();await expect(page.getByRole('button',{name:'Saved to favorites'})).toHaveAttribute('aria-pressed','true');
-    await page.goto('/profile/favorites');await expect(page.locator('.auction-card')).toHaveCount(1);await page.reload();await expect(page.locator('.auction-card')).toContainText('DEMO studio desk');await capture('favorites');await page.getByRole('button',{name:'Saved to favorites'}).click();await expect(page.getByRole('heading',{name:'Save something you like'})).toBeVisible();
+    await page.goto('/profile/favorites');await expect(page.locator('.auction-card')).toHaveCount(1);await page.reload();await expect(page.locator('.auction-card')).toContainText('DEMO studio desk');await capture('favorites');await page.getByRole('button',{name:'Remove from favorites'}).click();await expect(page.getByRole('heading',{name:'Save something you like'})).toBeVisible();
     await page.goto('/profile/wins');await expect(page.locator('.personal-win')).toHaveCount(1);await expect(page.locator('.personal-win')).toContainText('Fulfillment: PENDING');await capture('my-wins');
     await page.goto('/wallet');await expect(page.getByText('Cancelled auction fee refund')).toBeVisible();await expect(page.locator('.wallet-summary')).toContainText('30 pts');await capture('wallet');
     await page.context().clearCookies();await page.goto('/profile/favorites');await expect(page.getByRole('heading',{name:'Your Lowin starts in Telegram'})).toBeVisible();await expect(page.locator('.auction-card')).toHaveCount(0);expect(errors).toEqual([]);expect(await reconcile(client)).toEqual([]);

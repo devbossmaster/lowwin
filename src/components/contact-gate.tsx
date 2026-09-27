@@ -1,0 +1,16 @@
+'use client';
+import {useEffect,useRef,useState} from 'react';
+import {ShieldCheck} from 'lucide-react';
+import {useTelegram} from './telegram-provider';
+export function ContactGate(){
+ const {retry,botUrl}=useTelegram(),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),alive=useRef(true),cancelled=useRef(false),timer=useRef<ReturnType<typeof setTimeout>|null>(null);
+ useEffect(()=>{alive.current=true;return()=>{alive.current=false;if(timer.current)clearTimeout(timer.current)}},[]);
+ function cancel(){cancelled.current=true;if(timer.current)clearTimeout(timer.current);setBusy(false);window.Telegram?.WebApp?.close?.();setMessage('Contact sharing was cancelled. Reopen Lowin when you are ready.')}
+ async function poll(attempt=0){if(!alive.current||cancelled.current)return;try{const response=await fetch('/api/onboarding/contact',{cache:'no-store',signal:AbortSignal.timeout(6000)});if(!alive.current||cancelled.current)return;if(response.status===401)throw Error('Your session expired. Reopen Lowin from the bot.');if(response.ok&&(await response.json()).verified){if(alive.current)retry();return}if(attempt>=8)throw Error('The bot has not confirmed your contact yet. Check the bot, then retry.');if(alive.current)timer.current=setTimeout(()=>void poll(attempt+1),Math.min(4000,700*2**attempt))}catch(error){if(alive.current){setBusy(false);setMessage(error instanceof Error?error.message:'Connection interrupted. Please retry.')}}}
+ async function share(){cancelled.current=false;setMessage('');setBusy(true);const app=window.Telegram?.WebApp;
+  if(app?.requestContact&&(!app.isVersionAtLeast||app.isVersionAtLeast('6.9'))){try{app.requestContact(shared=>{if(!alive.current||cancelled.current)return;if(!shared){cancel();return}setMessage('Waiting for the bot to verify your own contact…');void poll()});return}catch{setBusy(false);setMessage('Native sharing is unavailable. Use the bot option below.');return}}
+  await fallback();
+ }
+ async function fallback(){cancelled.current=false;setBusy(true);setMessage('');try{const response=await fetch('/api/onboarding/contact',{method:'POST',cache:'no-store'});if(!response.ok)throw Error((await response.json()).error??'Could not request your contact.');setMessage('Open the bot and tap Share my contact, then return here.');void poll()}catch(error){setBusy(false);setMessage(error instanceof Error?error.message:'Connection interrupted.')}}
+ return <main id="main" className="telegram-entry contact-gate"><span className="wordmark">lowin<span>.</span></span><ShieldCheck className="contact-symbol" size={48}/><h1>One quick step.<br/>Then you’re in.</h1><p>Share your own Telegram contact to continue. Your phone stays private and won’t appear on auctions or results.</p><button className="primary-button" disabled={busy} onClick={()=>void share()}>{busy?'Checking your contact…':'Share my contact'}</button><button className="text-link" disabled={busy} onClick={()=>void fallback()}>Share through the bot instead</button>{botUrl&&<a className="text-link" href={botUrl}>Open the bot</a>}<button className="text-link" onClick={cancel}>Cancel & close</button>{message&&<p role="status">{message}</p>}<small>We verify the contact sent by Telegram. No points are added by sharing it.</small></main>
+}

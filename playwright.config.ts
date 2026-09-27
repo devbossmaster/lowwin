@@ -5,6 +5,7 @@ if (process.env.TEST_DATABASE_URL) {
   const url = new URL(database);
   if (!['127.0.0.1','localhost'].includes(url.hostname) || !url.pathname.endsWith('_test')) throw new Error('Browser identity tests require a disposable loopback _test database');
 }
+Object.assign(process.env,{DATABASE_URL:database,DIRECT_URL:database,APP_ENV:'local',TELEGRAM_BOT_TOKEN:TEST_TOKEN,TELEGRAM_WEBHOOK_SECRET:'fixture-only-webhook-secret-thirty-two',PHONE_CONTACT_KEY_ID:'local-fixture',PHONE_CONTACT_KEYS:JSON.stringify({'local-fixture':'e'.repeat(64)}),PHONE_CONTACT_HASH_KEY:'f'.repeat(64)});
 const env = { APP_ENV:'local', DATABASE_URL:database, DIRECT_URL:database,
   BETTER_AUTH_SECRET:'fixture-only-secret-at-least-thirty-two-characters', TELEGRAM_BOT_TOKEN:TEST_TOKEN,
   TELEGRAM_BOT_USERNAME:'lowin_fixture_bot', TELEGRAM_WEBHOOK_SECRET:'fixture-only-webhook-secret-thirty-two',

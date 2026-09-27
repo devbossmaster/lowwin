@@ -1,3 +1,4 @@
+import {verifyFixtureContact} from './contact-fixtures';
 import { afterAll,beforeAll,beforeEach,describe,expect,it } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { randomInt,randomUUID } from 'node:crypto';
@@ -33,6 +34,7 @@ describe.skipIf(!url)('authenticated point bids on disposable PostgreSQL',()=>{
     expect((await route.GET(new Request(url),context)).status).toBe(401);
     const {handleAuth}=await import('../src/modules/auth/handler');
     const telegramId=randomInt(3000000000,4000000000);
+    await verifyFixtureContact(client,telegramId);
     const signin=await handleAuth(new Request('http://localhost:3000/api/auth/telegram/miniapp/signin',{method:'POST',headers:{origin:'http://localhost:3000','content-type':'application/json'},body:JSON.stringify({initData:signedLaunch({user:JSON.stringify({id:telegramId,first_name:'Bid signer'})})})}));
     expect(signin.status).toBe(200);
     const cookie=signin.headers.get('set-cookie')!.split(';')[0];

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-27T18:42:49.729996+00:00",
+  "generatedAt": "2026-09-27T20:36:07.565309+00:00",
   "title": "Design System: Lowin mobile system",
   "extensions": {
     "shadows": [],
@@ -38,13 +38,13 @@
     "gradients": [
       {
         "name": "home-rule-demonstration",
-        "value": "linear-gradient(125deg,#072c1b 0%,#103c30 55%,#176344 100%)",
-        "purpose": "Selected Home example panel; no shadow."
+        "value": "linear-gradient(125deg,#f3f9ed,#e4f2d2)",
+        "purpose": "Six-number illustrative Home example; dark ink and lime winner."
       },
       {
         "name": "wallet-summary",
-        "value": "linear-gradient(130deg,#103c30,#157a55)",
-        "purpose": "Point balance panel; no payment-availability implication."
+        "value": "linear-gradient(125deg,#f4faee,#fff 70%)",
+        "purpose": "Mini App point balance; dark ink and a quiet #dce6d2 border."
       }
     ],
     "colorMeta": {
@@ -58,15 +58,20 @@
       },
       "primary": {
         "role": "primary",
-        "displayName": "Primary green"
+        "displayName": "Mini App lime action"
       },
       "forest": {
-        "role": "primary",
+        "role": "secondary",
         "displayName": "Forest green"
       },
       "mint": {
         "role": "primary",
         "displayName": "Mint selected state"
+      },
+      "support-green": {
+        "role": "secondary",
+        "displayName": "Incumbent supporting green",
+        "purpose": "Legacy global primary token; links, icons and shared Button utility. Mini App action overrides use lime."
       }
     },
     "phase6Review": {
@@ -76,16 +81,41 @@
       "validCaptures": 16,
       "source": "Finish-review handoff; docs/screenshots/phase6-*.png",
       "limitation": "Visual evidence only; no financial, provider, security or production-release assurance."
-    }
+    },
+    "focus": {
+      "mini": "2px solid #416c0d; outline-offset:3px",
+      "admin": "3px solid #bc8b34; outline-offset:3px"
+    },
+    "safeArea": {
+      "shell": "82px + max(env(safe-area-inset-bottom), var(--tg-content-safe-area-inset-bottom, 0px)); header also takes max browser/Telegram top inset",
+      "entry": "32px + env(safe-area-inset-bottom); standalone entry does not inherit shell Telegram inset calculation"
+    },
+    "assetProvenance": [
+      {
+        "source": "public/catalog/lowin-welcome.svg",
+        "output": "public/catalog/lowin-welcome.png",
+        "dimensions": "1200x720",
+        "process": "Original authored SVG rasterized with Sharp; no image-model generation",
+        "embeddedMetadataKey": "impeccable:prompt",
+        "embeddedMetadata": "Original Lowin welcome diagram, authored as public/catalog/lowin-welcome.svg and rasterized with Sharp: white canvas, lime green Lowin branding, six integer-point examples 1 1 2 3 3 4, smallest unique 2 highlighted. No third-party assets or payment claims."
+      },
+      {
+        "sources": [
+          "public/catalog/notebook.svg",
+          "public/catalog/tote.svg"
+        ],
+        "process": "Original flat DEMO illustrations matching notebook computer and tote item titles; not product photography."
+      }
+    ]
   },
   "components": [
     {
       "name": "Primary button",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "Existing primary action.",
+      "description": "Scoped Mini App lime action with dark ink, hover and disabled states.",
       "html": "<button class=\"ds-item\">Continue</button>",
-      "css": ".ds-item{font-family:var(--font-sans,'DM Sans',sans-serif);display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 20px;border:0;border-radius:12px;background:var(--color-primary,#157a55);color:#fff;font-size:14px;font-weight:600;cursor:pointer}.ds-item:hover{background:var(--color-forest,#103c30)}.ds-item:disabled{opacity:.5;pointer-events:none}.ds-item:focus-visible,.ds-item a:focus-visible,.ds-item button:focus-visible,.ds-item input:focus-visible{outline:2px solid var(--color-primary,#157a55);outline-offset:4px}"
+      "css": ".ds-item{font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:12px 20px;border:0;border-radius:12px;background:#a3e635;color:#172720;font-size:15px;font-weight:600;cursor:pointer}.ds-item:hover{background:#92d427}.ds-item:disabled{background:#e6ecdf;color:#53604c;cursor:not-allowed}.ds-item:focus-visible{outline:2px solid #416c0d;outline-offset:3px}"
     },
     {
       "name": "Outline button",
@@ -93,27 +123,27 @@
       "refersTo": "button-outline",
       "description": "Existing secondary action.",
       "html": "<button class=\"ds-item\">Browse auctions</button>",
-      "css": ".ds-item{font-family:var(--font-sans,'DM Sans',sans-serif);display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 20px;border:1px solid var(--color-border,#dbe7de);border-radius:12px;background:transparent;color:var(--color-foreground,#172720);font-size:14px;font-weight:600;cursor:pointer}.ds-item:hover{background:var(--color-mint,#e5f4eb)}.ds-item:disabled{opacity:.5;pointer-events:none}.ds-item:focus-visible,.ds-item a:focus-visible,.ds-item button:focus-visible,.ds-item input:focus-visible{outline:2px solid var(--color-primary,#157a55);outline-offset:4px}"
+      "css": ".ds-item{font-family:var(--font-sans,'DM Sans',sans-serif);display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 20px;border:1px solid var(--color-border,#dbe7de);border-radius:12px;background:transparent;color:var(--color-foreground,#172720);font-size:14px;font-weight:600;cursor:pointer}.ds-item:hover{background:var(--color-mint,#e5f4eb)}.ds-item:disabled{opacity:.5;pointer-events:none}.ds-item:focus-visible,.ds-item a:focus-visible,.ds-item button:focus-visible,.ds-item input:focus-visible{outline:2px solid #416c0d;outline-offset:3px}"
     },
     {
       "name": "Profile field",
       "kind": "input",
       "description": "Private display-profile editor; identity/contact fields are separate.",
       "html": "<label class=\"ds-item\">Display name<input autocomplete=\"nickname\" maxlength=\"60\" placeholder=\"Your display name\"></label>",
-      "css": ".ds-item{font-family:var(--font-sans,'DM Sans',sans-serif);display:block;font-size:12px;font-weight:700}.ds-item input{font-family:var(--font-sans,'DM Sans',sans-serif);display:block;width:calc(100% - 26px);margin-top:6px;border:1px solid #b7cbbd;border-radius:8px;padding:12px;background:#fafcf9;color:#103c30;font-size:16px}.ds-item:focus-visible,.ds-item a:focus-visible,.ds-item button:focus-visible,.ds-item input:focus-visible{outline:2px solid var(--color-primary,#157a55);outline-offset:4px}"
+      "css": ".ds-item{font-family:var(--font-sans,'DM Sans',sans-serif);display:block;font-size:12px;font-weight:700}.ds-item input{font-family:var(--font-sans,'DM Sans',sans-serif);display:block;width:calc(100% - 26px);margin-top:6px;border:1px solid #b7cbbd;border-radius:8px;padding:12px;background:#fafcf9;color:#103c30;font-size:16px}.ds-item:focus-visible,.ds-item a:focus-visible,.ds-item button:focus-visible,.ds-item input:focus-visible{outline:2px solid #416c0d;outline-offset:3px}"
     },
     {
       "name": "Result status navigation",
       "kind": "nav",
       "description": "Wrapping filters preserve explicit selected-route semantics.",
       "html": "<nav class=\"ds-item\" aria-label=\"Result status\"><a href=\"#all\" aria-current=\"page\">All</a><a href=\"#winners\">Winners</a><a href=\"#no-winner\">No winner</a><a href=\"#cancelled\">Cancelled</a><a href=\"#pending\">Pending</a></nav>",
-      "css": ".ds-item{font-family:var(--font-sans,'DM Sans',sans-serif);display:flex;flex-wrap:wrap;gap:4px}.ds-item a{display:flex;align-items:center;min-height:44px;padding:8px 10px;border-radius:10px;color:#5e7165;font-size:12px;font-weight:700;text-decoration:none}.ds-item a[aria-current=page]{background:#103c30;color:white}.ds-item:focus-visible,.ds-item a:focus-visible,.ds-item button:focus-visible,.ds-item input:focus-visible{outline:2px solid var(--color-primary,#157a55);outline-offset:4px}"
+      "css": ".ds-item{font-family:var(--font-sans,'DM Sans',sans-serif);display:flex;flex-wrap:wrap;gap:4px}.ds-item a{display:flex;align-items:center;min-height:44px;padding:8px 10px;border-radius:10px;color:#5e7165;font-size:12px;font-weight:700;text-decoration:none}.ds-item a[aria-current=page]{background:#a3e635;color:#172720}.ds-item:focus-visible,.ds-item a:focus-visible,.ds-item button:focus-visible,.ds-item input:focus-visible{outline:2px solid #416c0d;outline-offset:3px}"
     },
     {
       "name": "DEMO provenance label",
       "kind": "chip",
       "description": "Plain provenance text differentiates illustrative examples and settled tests.",
-      "html": "<span class=\"ds-item\">DEMO · settled test</span>",
+      "html": "<span class=\"ds-item\">DEMO Â· settled test</span>",
       "css": ".ds-item{font-family:var(--font-sans,'DM Sans',sans-serif);display:block;color:#71531e;font-size:11px;font-weight:700;line-height:1.5}"
     },
     {
@@ -121,8 +151,8 @@
       "kind": "card",
       "refersTo": "result-card",
       "description": "Public anonymous outcome row; thumbnail placeholder in this documentation preview only.",
-      "html": "<a class=\"ds-item\" href=\"#result\"><svg class=\"ds-art\" width=\"88\" height=\"112\" viewBox=\"0 0 88 112\" role=\"img\" aria-label=\"Catalog image placeholder\"><rect width=\"88\" height=\"112\" fill=\"#e8ece3\"/></svg><div class=\"ds-copy\"><small class=\"ds-demo\">DEMO example</small><h2>Example auction</h2><p>Closing / result pending</p><small>Scheduled end · EAT</small><span>View outcome →</span></div></a>",
-      "css": ".ds-item{font-family:var(--font-sans,'DM Sans',sans-serif);display:flex;gap:13px;padding:10px;border:1px solid var(--color-border,#dbe7de);border-radius:14px;background:white;color:var(--color-foreground,#172720);text-decoration:none}.ds-art{flex-shrink:0;border-radius:9px}.ds-copy{min-width:0;display:flex;flex-direction:column;justify-content:center}.ds-copy h2{margin:0;font-size:16px;line-height:1.35;font-weight:600;letter-spacing:-.025em;overflow-wrap:anywhere}.ds-copy p{margin:4px 0;color:#164436;font-size:11px;font-weight:700}.ds-copy small{font-size:11px;color:#66766a}.ds-copy .ds-demo{color:#71531e;font-weight:700}.ds-copy span{color:#157a55;font-size:11px;font-weight:700;margin-top:5px}.ds-item:focus-visible,.ds-item a:focus-visible,.ds-item button:focus-visible,.ds-item input:focus-visible{outline:2px solid var(--color-primary,#157a55);outline-offset:4px}"
+      "html": "<a class=\"ds-item\" href=\"#result\"><svg class=\"ds-art\" width=\"88\" height=\"112\" viewBox=\"0 0 88 112\" role=\"img\" aria-label=\"Catalog image placeholder\"><rect width=\"88\" height=\"112\" fill=\"#e8ece3\"/></svg><div class=\"ds-copy\"><small class=\"ds-demo\">DEMO example</small><h2>Example auction</h2><p>Closing / result pending</p><small>Scheduled end Â· EAT</small><span>View outcome â†’</span></div></a>",
+      "css": ".ds-item{font-family:var(--font-sans,'DM Sans',sans-serif);display:flex;gap:13px;padding:10px;border:1px solid var(--color-border,#dbe7de);border-radius:14px;background:white;color:var(--color-foreground,#172720);text-decoration:none}.ds-art{flex-shrink:0;border-radius:9px}.ds-copy{min-width:0;display:flex;flex-direction:column;justify-content:center}.ds-copy h2{margin:0;font-size:16px;line-height:1.4;font-weight:600;letter-spacing:-.025em;overflow-wrap:anywhere}.ds-copy p{margin:4px 0;color:#164436;font-size:11px;font-weight:700}.ds-copy small{font-size:11px;color:#66766a}.ds-copy .ds-demo{color:#71531e;font-weight:700}.ds-copy span{color:#157a55;font-size:11px;font-weight:700;margin-top:5px}.ds-item:focus-visible,.ds-item a:focus-visible,.ds-item button:focus-visible,.ds-item input:focus-visible{outline:2px solid #416c0d;outline-offset:3px}"
     },
     {
       "name": "Outcome summary",
@@ -138,7 +168,7 @@
       "refersTo": "favorite-saved",
       "description": "Persisted state has text, filled heart and aria-pressed; pending saves disable interaction.",
       "html": "<button class=\"ds-item\" aria-pressed=\"true\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78Z\"/></svg>Saved to favorites</button>",
-      "css": ".ds-item{font-family:var(--font-sans,'DM Sans',sans-serif);display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:46px;margin:15px 0;padding:9px 14px;border:1px solid #bcd0c1;border-radius:10px;background:transparent;color:#164436;font-size:12px;font-weight:700;cursor:pointer}.ds-item[aria-pressed=true]{background:var(--color-mint,#e5f4eb)}.ds-item:disabled{opacity:.65;cursor:wait}.ds-item:focus-visible,.ds-item a:focus-visible,.ds-item button:focus-visible,.ds-item input:focus-visible{outline:2px solid var(--color-primary,#157a55);outline-offset:4px}"
+      "css": ".ds-item{font-family:var(--font-sans,'DM Sans',sans-serif);display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:46px;margin:15px 0;padding:9px 14px;border:1px solid #bcd0c1;border-radius:10px;background:transparent;color:#164436;font-size:12px;font-weight:700;cursor:pointer}.ds-item[aria-pressed=true]{background:var(--color-mint,#e5f4eb)}.ds-item:disabled{opacity:.65;cursor:wait}.ds-item:focus-visible,.ds-item a:focus-visible,.ds-item button:focus-visible,.ds-item input:focus-visible{outline:2px solid #416c0d;outline-offset:3px}"
     },
     {
       "name": "Personal view tabs",
@@ -146,15 +176,15 @@
       "refersTo": "personal-tab-active",
       "description": "Live/History view switching with pressed-state semantics.",
       "html": "<div class=\"ds-item\" role=\"group\" aria-label=\"Bid history\"><button aria-pressed=\"true\">Live</button><button aria-pressed=\"false\">History</button></div>",
-      "css": ".ds-item{font-family:var(--font-sans,'DM Sans',sans-serif);display:flex;gap:8px;margin:20px 0}.ds-item button{font-family:var(--font-sans,'DM Sans',sans-serif);flex:1;min-height:46px;border:1px solid #cbdcd0;border-radius:10px;background:transparent;color:#103c30;font-size:13px;font-weight:700;cursor:pointer}.ds-item button[aria-pressed=true]{color:white;background:#103c30;border-color:#103c30}.ds-item:focus-visible,.ds-item a:focus-visible,.ds-item button:focus-visible,.ds-item input:focus-visible{outline:2px solid var(--color-primary,#157a55);outline-offset:4px}"
+      "css": ".ds-item{font-family:var(--font-sans,'DM Sans',sans-serif);display:flex;gap:8px;margin:20px 0}.ds-item button{font-family:var(--font-sans,'DM Sans',sans-serif);flex:1;min-height:46px;border:1px solid #cbdcd0;border-radius:10px;background:transparent;color:#103c30;font-size:13px;font-weight:700;cursor:pointer}.ds-item button[aria-pressed=true]{color:#172720;background:#a3e635;border-color:#103c30}.ds-item:focus-visible,.ds-item a:focus-visible,.ds-item button:focus-visible,.ds-item input:focus-visible{outline:2px solid #416c0d;outline-offset:3px}"
     },
     {
       "name": "Personal bid row",
       "kind": "card",
       "refersTo": "personal-bid-row",
       "description": "Private amount, acceptance and fee treatment remain separate from public result data.",
-      "html": "<a class=\"ds-item\" href=\"#auction\"><small>DEMO test bid · documentation example</small><strong>Example auction</strong><span class=\"ds-amount\">2 pts</span><b>Accepted · auction open</b><span>Example code</span><small>Entry fee: 1 pts</small></a>",
-      "css": ".ds-item{font-family:var(--font-sans,'DM Sans',sans-serif);display:flex;flex-direction:column;gap:3px;padding:15px;border:1px solid #dbe7de;border-radius:13px;background:white;color:#103c30;text-decoration:none}.ds-item strong{font-size:15px}.ds-item span{color:#4f6555;font-size:12px}.ds-item .ds-amount{color:#103c30;font-size:22px;font-weight:700}.ds-item b{font-size:12px;margin:3px 0}.ds-item small{color:#697a6d;font-size:11px}.ds-item:focus-visible,.ds-item a:focus-visible,.ds-item button:focus-visible,.ds-item input:focus-visible{outline:2px solid var(--color-primary,#157a55);outline-offset:4px}"
+      "html": "<a class=\"ds-item\" href=\"#auction\"><small>DEMO test bid Â· documentation example</small><strong>Example auction</strong><span class=\"ds-amount\">2 pts</span><b>Accepted Â· auction open</b><span>Example code</span><small>Entry fee: 1 pts</small></a>",
+      "css": ".ds-item{font-family:var(--font-sans,'DM Sans',sans-serif);display:flex;flex-direction:column;gap:3px;padding:15px;border:1px solid #dbe7de;border-radius:13px;background:white;color:#103c30;text-decoration:none}.ds-item strong{font-size:15px}.ds-item span{color:#4f6555;font-size:12px}.ds-item .ds-amount{color:#103c30;font-size:22px;font-weight:700}.ds-item b{font-size:12px;margin:3px 0}.ds-item small{color:#697a6d;font-size:11px}.ds-item:focus-visible,.ds-item a:focus-visible,.ds-item button:focus-visible,.ds-item input:focus-visible{outline:2px solid #416c0d;outline-offset:3px}"
     },
     {
       "name": "Administration action",
@@ -185,43 +215,57 @@
       "refersTo": "payment-method-selected",
       "description": "Shared selection in the disabled preview and enabled TEST ONLY flow; locked after a quote is accepted.",
       "html": "<button class=\"ds-method\" aria-pressed=\"true\"><span>CBE</span><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"m20 6-11 11-5-5\"/></svg></button>",
-      "css": ".ds-method{display:flex;justify-content:space-between;align-items:center;gap:24px;min-height:68px;padding:16px;border:1px solid var(--color-border,#dbe7de);border-radius:14px;background:white;font-family:var(--font-sans,\"DM Sans\",sans-serif);font-weight:600;box-shadow:none}.ds-method[aria-pressed=true]{border-color:var(--color-primary,#157a55);background:var(--color-mint,#e5f4eb);color:var(--color-forest,#103c30)}.ds-method:focus-visible{outline:2px solid var(--color-primary,#157a55);outline-offset:4px}"
+      "css": ".ds-method{display:flex;justify-content:space-between;align-items:center;gap:24px;min-height:68px;padding:16px;border:1px solid var(--color-border,#dbe7de);border-radius:14px;background:white;font-family:var(--font-sans,\"DM Sans\",sans-serif);font-weight:600;box-shadow:none}.ds-method[aria-pressed=true]{border-color:#157a55;background:var(--color-mint,#e5f4eb);color:var(--color-forest,#103c30)}.ds-method:focus-visible{outline:2px solid #416c0d;outline-offset:3px}"
     },
     {
       "name": "Synthetic account preview",
       "kind": "card",
       "refersTo": "payment-details",
       "description": "Disabled-funding fallback only; the enabled TEST ONLY flow displays its configured isolated account and saved quote.",
-      "html": "<section class=\"ds-reference\"><small>DEMO preview · not a payable account</small><h3>CBE</h3><span>Test account reference</span><strong>TEST-CBE-NOT-PAYABLE</strong><p>Payments and verification are not enabled. Do not send money.</p></section>",
+      "html": "<section class=\"ds-reference\"><small>DEMO preview Â· not a payable account</small><h3>CBE</h3><span>Test account reference</span><strong>TEST-CBE-NOT-PAYABLE</strong><p>Payments and verification are not enabled. Do not send money.</p></section>",
       "css": ".ds-reference{padding:20px;border:1px solid var(--color-border,#dbe7de);border-radius:14px;background:white;box-shadow:none;font-family:var(--font-sans,\"DM Sans\",sans-serif);color:var(--color-foreground,#172720)}.ds-reference h3{font-size:15px;margin:8px 0 20px;font-weight:600}.ds-reference>span,.ds-reference>small{font-size:12px;color:var(--muted,#54665c)}.ds-reference strong{display:block;font-size:15px;overflow-wrap:anywhere;margin:8px 0 20px}.ds-reference p{font-size:14px;line-height:1.65;color:var(--muted,#54665c);margin:0}"
     },
     {
       "name": "Wallet balance panel",
       "kind": "custom",
       "description": "Server-derived points in the app; this isolated documentation example does not show a balance.",
-      "html": "<section class=\"ds-wallet\"><span>Available points</span><strong>— <small>pts</small></strong><div>Documentation preview</div></section>",
-      "css": ".ds-wallet{padding:25px;border-radius:16px;background:linear-gradient(130deg,#103c30,#157a55);color:white;box-shadow:none;font-family:var(--font-sans,\"DM Sans\",sans-serif);line-height:1.6}.ds-wallet>span{font-size:13px;color:#c6ddce}.ds-wallet>strong{display:block;font-size:44px;font-weight:500;font-variant-numeric:tabular-nums}.ds-wallet small{font-size:15px;margin-left:10px}.ds-wallet>div{font-size:12px;border-top:1px solid #537467;margin-top:20px;padding-top:16px}"
+      "html": "<section class=\"ds-wallet\"><span>Available points</span><strong>â€” <small>pts</small></strong><div>Documentation preview</div></section>",
+      "css": ".ds-wallet{padding:25px;border-radius:16px;background:linear-gradient(125deg,#f4faee,#fff 70%);color:#172720;border:1px solid #dce6d2;box-shadow:none;font-family:var(--font-sans,\"DM Sans\",sans-serif);line-height:1.6}.ds-wallet>span{font-size:13px;color:#54665c}.ds-wallet>strong{display:block;font-size:48px;font-weight:650;font-variant-numeric:tabular-nums}.ds-wallet small{font-size:15px;margin-left:10px}.ds-wallet>div{font-size:12px;border-top:1px solid #dce6d2;margin-top:20px;padding-top:16px}"
     },
     {
       "name": "Private alert row",
       "kind": "custom",
       "description": "Dated inbox row with an explicit read action; content below is documentation-only.",
       "html": "<article class=\"ds-alert\"><small>Documentation example</small><h2><a href=\"#alert\">Auction update</a></h2><p>Only your server-derived updates appear in the inbox.</p><button>Mark read</button></article>",
-      "css": ".ds-alert{padding:22px 0;border-bottom:1px solid var(--color-border,#dbe7de);font-family:var(--font-sans,\"DM Sans\",sans-serif);color:var(--color-foreground,#172720);line-height:1.6}.ds-alert h2{font-size:18px;font-weight:600;line-height:1.35;margin:8px 0}.ds-alert a{color:inherit}.ds-alert p{font-size:14px;color:var(--muted,#54665c);margin:0}.ds-alert small{font-size:12px;color:var(--muted,#54665c)}.ds-alert button{display:inline-flex;align-items:center;min-height:44px;font:inherit;font-size:13px;color:var(--color-primary,#157a55);border:0;background:transparent;padding:0}.ds-alert a:focus-visible,.ds-alert button:focus-visible{outline:2px solid var(--color-primary,#157a55);outline-offset:4px}"
+      "css": ".ds-alert{padding:22px 0;border-bottom:1px solid var(--color-border,#dbe7de);font-family:var(--font-sans,\"DM Sans\",sans-serif);color:var(--color-foreground,#172720);line-height:1.6}.ds-alert h2{font-size:18px;font-weight:600;line-height:1.35;margin:8px 0}.ds-alert a{color:inherit}.ds-alert p{font-size:14px;color:var(--muted,#54665c);margin:0}.ds-alert small{font-size:12px;color:var(--muted,#54665c)}.ds-alert button{display:inline-flex;align-items:center;min-height:44px;font:inherit;font-size:13px;color:#157a55;border:0;background:transparent;padding:0}.ds-alert a:focus-visible,.ds-alert button:focus-visible{outline:2px solid #416c0d;outline-offset:3px}"
     },
     {
       "name": "Accepted test receipt",
       "kind": "custom",
       "description": "Read-only returned reference after a confirmed test response; the illustration makes no financial claim.",
-      "html": "<section class=\"ds-receipt\"><small>TEST ONLY · documentation example</small><label for=\"ds-reference\">Review extracted reference</label><textarea id=\"ds-reference\" disabled>EXAMPLE-REFERENCE</textarea><label class=\"ds-review\"><input type=\"checkbox\" checked disabled>I reviewed this reference and the saved quote.</label><button disabled>Submit for verification</button></section>",
-      "css": ".ds-receipt{font-family:var(--font-sans,\"DM Sans\",sans-serif);color:var(--color-foreground,#172720)}.ds-receipt>small{color:var(--muted,#54665c);font-size:12px}.ds-receipt>label{display:block;font-size:13px;font-weight:600;margin-top:16px}.ds-receipt textarea{display:block;width:100%;min-height:130px;padding:15px;border:1px solid var(--color-border,#dbe7de);border-radius:12px;background:white;margin:8px 0 16px;font:inherit}.ds-receipt .ds-review{display:flex;gap:10px;align-items:center;min-height:44px}.ds-review input{width:20px;height:20px;accent-color:#16764f}.ds-receipt button{width:100%;min-height:48px;padding:12px 20px;border:0;border-radius:12px;background:#dbe7de;color:#385547;font:inherit;font-weight:600;cursor:not-allowed}"
+      "html": "<section class=\"ds-receipt\"><small>TEST ONLY Â· documentation example</small><label for=\"ds-reference\">Review extracted reference</label><textarea id=\"ds-reference\" disabled>EXAMPLE-REFERENCE</textarea><label class=\"ds-review\"><input type=\"checkbox\" checked disabled>I reviewed this reference and the saved quote.</label><button disabled>Submit for verification</button></section>",
+      "css": ".ds-receipt{font-family:var(--font-sans,\"DM Sans\",sans-serif);color:var(--color-foreground,#172720)}.ds-receipt>small{color:var(--muted,#54665c);font-size:12px}.ds-receipt>label{display:block;font-size:13px;font-weight:600;margin-top:16px}.ds-receipt textarea{display:block;width:100%;min-height:130px;padding:15px;border:1px solid var(--color-border,#dbe7de);border-radius:12px;background:white;margin:8px 0 16px;font:inherit}.ds-receipt .ds-review{display:flex;gap:10px;align-items:center;min-height:44px}.ds-review input{width:20px;height:20px;accent-color:#16764f}.ds-receipt button{width:100%;min-height:48px;padding:12px 20px;border:0;border-radius:12px;background:#e6ecdf;color:#53604c;font:inherit;font-weight:600;cursor:not-allowed}"
+    },
+    {
+      "name": "Winners filters",
+      "kind": "custom",
+      "description": "GET-style Category and Sort controls; functional search/status preservation belongs to the application form.",
+      "html": "<form class=\"ds-filter\"><label>Category<select><option>All categories</option></select></label><label>Sort<select><option>Newest</option><option>Oldest</option><option>Item name</option></select></label><button type=\"button\">Apply</button></form>",
+      "css": ".ds-filter{display:flex;flex-wrap:wrap;align-items:flex-end;gap:7px;padding:11px;border:1px solid #dbe7de;border-radius:13px;background:white;font-family:\"DM Sans\",sans-serif}.ds-filter label{flex:1;min-width:105px;color:#647467;font-size:10px;font-weight:700}.ds-filter select{display:block;width:100%;border:0;border-bottom:1px solid #cbdcd0;background:white;color:#173b32;padding:4px 0;font:inherit;font-size:11px}.ds-filter button{border:0;background:#e5f4eb;border-radius:8px;color:#103c30;padding:8px 11px;font-size:11px;font-weight:700}.ds-filter :focus-visible{outline:2px solid #416c0d;outline-offset:3px}"
+    },
+    {
+      "name": "Contact gate",
+      "kind": "custom",
+      "description": "Standalone entry before Mini App content. This static preview documents the visual state; sharing and polling require Telegram and server verification.",
+      "html": "<main class=\"ds-contact\"><strong class=\"ds-brand\">lowin.</strong><h1>One quick step.<br>Then you’re in.</h1><p>Share your own Telegram contact to continue. Your phone stays private and won’t appear on auctions or results.</p><button>Share my contact</button><a href=\"#bot\">Share through the bot instead</a><small>We verify the contact sent by Telegram. No points are added by sharing it.</small></main>",
+      "css": ".ds-contact{box-sizing:border-box;display:flex;flex-direction:column;align-items:flex-start;max-width:440px;padding:32px 24px;background:#fff;color:#172720;font-family:\"DM Sans\",sans-serif;line-height:1.6}.ds-brand{font-size:32px;letter-spacing:-1.2px;color:#103c30}.ds-contact h1{font-size:32px;line-height:1.1;letter-spacing:-.04em;margin:40px 0 16px;font-weight:600}.ds-contact p{font-size:15px;color:#54665c;margin:0 0 24px}.ds-contact button{width:100%;min-height:48px;border:0;border-radius:12px;padding:12px 20px;background:#a3e635;color:#172720;font:inherit;font-weight:600}.ds-contact a{align-self:center;display:inline-flex;align-items:center;min-height:44px;color:#157a55;font-size:13px}.ds-contact small{font-size:12px;color:#54665c}.ds-contact :focus-visible{outline:2px solid #416c0d;outline-offset:3px}"
     }
   ],
   "narrative": {
-    "overview": "The current owner direction is pure white, flat surfaces, forest green, primary green and mint, with green gradients on selected feature panels. Check.et is a structural reference for clear sections and practical controls, not an additional palette or component source. This refresh records the implementation in the player and administration stylesheets; it supersedes the original off-white canvas direction.\n\nThe interface uses compact typography, restrained borders and clear account states. The lowercase text wordmark is replaceable. The Phase 1 foundation needed no product imagery; later catalog surfaces use their existing inventory imagery. No surface needs invented inventory or decorative live statistics.\n\n**Key characteristics:**\n- Pure-white canvas and flat, quietly bordered surfaces.\n- Green emphasis on actions, selected states and a small number of feature panels.\n- A phone-width player experience and a separate operational staff workspace.\n\nPhase 4B extends this incumbent system with public results and private account activity. It reuses catalog imagery and the existing mobile shell; it does not establish a new visual identity. The Phase 1 statements above remain historical foundation context.\n\nPhase 5A added a separate administration surface in Operate mode, with denser work queues and explicit forms. It now shares the pure-white canvas while retaining its scoped navigation, table and status colors. The mobile player guidance remains in force for player routes; the administration layout below is a scoped supplement, not a replacement identity. Its contract is `.impeccable/admin-brief.md`, with implementation in `src/app/admin/admin.css`, `admin-shell.tsx`, `admin-workspace.tsx` and `staff-login.tsx`. Phase 5B extended these patterns with a wallet funding preview, private alerts and operational tables. Phase 6 retains the same visual system for test-only funding and payment operations; its current behavior is recorded below.",
+    "overview": "The current Mini App direction is pure white, flat surfaces, lime primary actions with dark ink, and quiet pale-green gradients on selected feature panels. Forest and supporting green remain in text, links, status accents and selected account panels; administration retains its separate forest-green system. Check.et is a structural reference for clear sections and practical controls, not an additional palette or component source. This refresh records the implementation in the player and administration stylesheets; it supersedes the original off-white canvas direction.\n\nThe interface uses compact typography, restrained borders and clear account states. The lowercase text wordmark is replaceable. The Phase 1 foundation needed no product imagery; later catalog surfaces use inventory imagery and explicitly labelled original DEMO illustrations. No surface needs invented inventory or decorative live statistics.\n\n**Key characteristics:**\n- Pure-white canvas and flat, quietly bordered surfaces.\n- Lime actions with dark ink, pale selected states and restrained green supporting accents.\n- A phone-width player experience and a separate operational staff workspace.\n\nPhase 4B extends this incumbent system with public results and private account activity. It reuses catalog imagery and the existing mobile shell; it does not establish a new visual identity. The Phase 1 statements above remain historical foundation context.\n\nPhase 5A added a separate administration surface in Operate mode, with denser work queues and explicit forms. It now shares the pure-white canvas while retaining its scoped navigation, table and status colors. The mobile player guidance remains in force for player routes; the administration layout below is a scoped supplement, not a replacement identity. Its contract is `.impeccable/admin-brief.md`, with implementation in `src/app/admin/admin.css`, `admin-shell.tsx`, `admin-workspace.tsx` and `staff-login.tsx`. Phase 5B extended these patterns with a wallet funding preview, private alerts and operational tables. Phase 6 retains the same visual system for test-only funding and payment operations; its current behavior is recorded below.",
     "rules": [],
     "dos": [
-      "Do preserve the pure-white canvas, green palette, visible focus, comfortable tap targets and Telegram safe areas.",
+      "Do preserve pure white, lime Mini App actions with dark ink, visible focus and Telegram safe areas.",
       "Do use typography, spacing and borders to establish hierarchy.",
       "Do keep authenticated balance displays tied to server data.",
       "Do label examples clearly and keep account and feature states truthful.",
@@ -233,7 +277,9 @@
       "Do label saved previews, unsaved changes, immutable published terms and cancellation consequences explicitly.",
       "Do retain readable operational tables, labelled fields, persistent messages and visible administration keyboard focus.",
       "Do keep test-only funding labels, saved quotes, explicit reference review and accepted receipt states visible.",
-      "Do preserve the Telegram-only player entry and separate staff workspace."
+      "Do preserve the Telegram-only player entry and separate staff workspace.",
+      "Do keep own-contact gating ahead of all Mini App content.",
+      "Do retain original SVG sources and embedded welcome PNG provenance."
     ],
     "donts": [
       "Don't fabricate inventory, wallet activity or live counts to fill empty surfaces.",
@@ -241,12 +287,13 @@
       "Don't treat the temporary text wordmark as a supplied final logo.",
       "Don't imply shipment, prize fulfillment, notification delivery or point funding through decorative status copy.",
       "Don't describe a preview, scan result or recorded test receipt as production payment availability.",
-      "Don't imply production email delivery, financial success or fulfillment beyond the confirmed state."
+      "Don't imply production email delivery, financial success or fulfillment beyond the confirmed state.",
+      "Don't apply Mini App lime overrides to administration tokens or present DEMO artwork as product photography."
     ],
     "keyCharacteristics": [
       "Pure-white canvas and flat, quietly bordered surfaces.",
-      "Green emphasis on actions, selected states and a small number of feature panels.",
-      "A phone-width player experience and a separate operational staff workspace."
+      "Lime Mini App actions with dark ink and quiet pale-green gradients.",
+      "Contact verification before Mini App content; separate forest-green staff workspace."
     ]
   }
 }

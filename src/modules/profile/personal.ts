@@ -7,7 +7,7 @@ export const displayProfileSchema=z.object({displayName:z.string().trim().min(1)
 export const pageSchema=z.coerce.number().int().min(1).max(1000).default(1);
 export const personalQuerySchema=z.object({view:z.enum(['all','live','history']).default('all'),page:pageSchema}).strict();
 const liveWhere=(now:Date):Prisma.AuctionWhereInput=>({status:{in:['LIVE','SCHEDULED']},endsAt:{gt:now},settlement:{is:null}});
-const ownAuctionSelect={code:true,slug:true,status:true,endsAt:true,isDemo:true,product:{select:{title:true}},settlement:{select:{outcome:true,winningBidId:true,completedAt:true}}} satisfies Prisma.AuctionSelect;
+const ownAuctionSelect={code:true,slug:true,status:true,endsAt:true,isDemo:true,product:{select:{title:true,images:{orderBy:{sortOrder:'asc'},take:1,select:{path:true,alt:true}}}},settlement:{select:{outcome:true,winningBidId:true,completedAt:true}}} satisfies Prisma.AuctionSelect;
 export async function getPersonalBids(client:PrismaClient,userId:string,input:unknown={}) {
   const query=personalQuerySchema.parse(input);
   return client.$transaction(async tx=>{
@@ -19,7 +19,7 @@ export async function getPersonalBids(client:PrismaClient,userId:string,input:un
     return {items:rows.map(bid=>{
       const result=bid.auction.settlement;
       const outcome=result?(result.outcome==='WINNER'?(result.winningBidId===bid.id?'WON':'LOST'):result.outcome):bid.auction.endsAt&&bid.auction.endsAt<=now?'PENDING':'LIVE';
-      return {id:bid.id,amount:bid.amount.toString(),acceptedAt:bid.acceptedAt.toISOString(),feePoints:bid.feePoints.toString(),outcome,feeRefunded:result?.outcome==='CANCELLED'?bid.feePoints.toString():'0',closedAt:result?.completedAt.toISOString()??null,auction:{code:bid.auction.code,slug:bid.auction.slug,title:bid.auction.product?.title??bid.auction.code,endsAt:bid.auction.endsAt?.toISOString()??null,isDemo:bid.auction.isDemo}};
+      return {id:bid.id,amount:bid.amount.toString(),acceptedAt:bid.acceptedAt.toISOString(),feePoints:bid.feePoints.toString(),outcome,feeRefunded:result?.outcome==='CANCELLED'?bid.feePoints.toString():'0',closedAt:result?.completedAt.toISOString()??null,auction:{code:bid.auction.code,slug:bid.auction.slug,title:bid.auction.product?.title??bid.auction.code,image:bid.auction.product?.images[0]??null,endsAt:bid.auction.endsAt?.toISOString()??null,isDemo:bid.auction.isDemo}};
     }),page:query.page,total,totalPages:Math.ceil(total/20),counts:{live,history:all-live}};
   },{isolationLevel:Prisma.TransactionIsolationLevel.RepeatableRead});
 }

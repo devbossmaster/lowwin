@@ -1,3 +1,5 @@
+import {assertPlayerContact} from '../auth/own-contact';
+import {stagingDemoUser} from './staging-demo';
 import {enqueueAlert} from '../notifications/service';
 import { createHash, randomUUID } from 'node:crypto';
 import { Prisma, type PrismaClient } from '@prisma/client';
@@ -22,7 +24,7 @@ const receiptSchema=z.object({
 });
 export type BidReceipt=z.infer<typeof receiptSchema>;
 
-export type BidErrorCode='AUCTION_NOT_FOUND'|'AUCTION_CLOSED'|'DEMO_UNAVAILABLE'|'INVALID_AMOUNT'|'OWN_DUPLICATE'|'CAP_REACHED'|'INSUFFICIENT_POINTS'|'KEY_REUSED'|'RETRYABLE_CONFLICT'|'BIDDING_RESTRICTED';
+export type BidErrorCode='AUCTION_NOT_FOUND'|'AUCTION_CLOSED'|'DEMO_UNAVAILABLE'|'INVALID_AMOUNT'|'OWN_DUPLICATE'|'CAP_REACHED'|'INSUFFICIENT_POINTS'|'KEY_REUSED'|'RETRYABLE_CONFLICT'|'BIDDING_RESTRICTED'|'CONTACT_REQUIRED';
 export class BidError extends Error {
   constructor(public readonly code:BidErrorCode,public readonly status:number,message:string){super(message);this.name='BidError';}
 }
@@ -46,6 +48,7 @@ export async function submitBidInTransaction(tx:Prisma.TransactionClient,input:B
   const locked=await tx.$queryRaw<{id:string}[]>`SELECT id FROM "Auction" WHERE slug=${auctionSlug} FOR UPDATE`;
   if(!locked.length)fail('AUCTION_NOT_FOUND',404,'Auction not found.');
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`}, 0))`;
+  try{await assertPlayerContact(tx,userId)}catch{fail('CONTACT_REQUIRED',403,'Share your own contact in Telegram before bidding.')}
   const previous=await tx.operation.findUnique({where:{userId_scope_key:{userId,scope:'BID',key}}});
   if(previous){
     if(previous.requestHash!==requestHash)fail('KEY_REUSED',409,'This request key was already used with a different bid.');
@@ -59,7 +62,7 @@ export async function submitBidInTransaction(tx:Prisma.TransactionClient,input:B
     !['SCHEDULED','LIVE'].includes(auction.status)||now<auction.startsAt||now>=auction.endsAt||
     !auction.product?.visible||!auction.product.category.visible||!auction.category?.visible)
     fail('AUCTION_CLOSED',409,'This auction is not open for bids.');
-  if(auction.isDemo&&!demoBidAllowed(raw))fail('DEMO_UNAVAILABLE',403,'DEMO auctions accept test bids only on an isolated local database.');
+  if(auction.isDemo&&!demoBidAllowed(raw)&&!(auction.isSettlementFixture&&stagingDemoUser(userId,raw)))fail('DEMO_UNAVAILABLE',403,'DEMO bidding is limited to explicitly enrolled staging testers.');
   const terms=auction.terms;
   if(!terms)fail('AUCTION_CLOSED',409,'Published auction terms are unavailable.');
   if(amount<terms.minPoints||amount>terms.maxPoints||(amount-terms.minPoints)%terms.stepPoints!==0n)
@@ -134,7 +137,7 @@ export async function getOwnBidState(client:PrismaClient,userId:string,auctionSl
     ]);
     const terms=auction.terms,previousMax=wallet?.holds[0]?.points??0n;
     const restricted=!!await tx.staffMember.findUnique({where:{userId}})||(await tx.userRestriction.findUnique({where:{userId}}))?.suspended;
-    return {auctionCode:auction.code,open:!restricted&&['SCHEDULED','LIVE'].includes(auction.status)&&auction.publishedAt<=now&&!!auction.startsAt&&!!auction.endsAt&&auction.startsAt<=now&&now<auction.endsAt&&(!auction.isDemo||demoBidAllowed(raw)),
+    return {auctionCode:auction.code,open:!restricted&&['SCHEDULED','LIVE'].includes(auction.status)&&auction.publishedAt<=now&&!!auction.startsAt&&!!auction.endsAt&&auction.startsAt<=now&&now<auction.endsAt&&(!auction.isDemo||demoBidAllowed(raw)||auction.isSettlementFixture&&stagingDemoUser(userId,raw)),
       serverNow:now.toISOString(),isDemo:auction.isDemo,
       terms:{version:terms.version,minPoints:terms.minPoints.toString(),maxPoints:terms.maxPoints.toString(),stepPoints:terms.stepPoints.toString(),entryFeePoints:terms.entryFeePoints.toString(),maxDistinctBids:terms.maxDistinctBids},
       wallet:{available:(wallet?.accounts.find(account=>account.kind==='AVAILABLE')?.balance??0n).toString(),held:(wallet?.accounts.find(account=>account.kind==='HELD')?.balance??0n).toString()},

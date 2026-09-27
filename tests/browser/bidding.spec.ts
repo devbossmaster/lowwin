@@ -1,3 +1,4 @@
+import {verifyFixtureContact} from '../contact-fixtures';
 import { test,expect } from '@playwright/test';
 import { PrismaClient } from '@prisma/client';
 import { randomInt,randomUUID } from 'node:crypto';
@@ -16,6 +17,7 @@ test('signed mobile bid confirmation, receipt and wallet activity',async({page},
     const telegramId=randomInt(4000000000,5000000000),launch=signedLaunch({user:JSON.stringify({id:telegramId,first_name:'Browser bidder'})});
     await page.route('https://telegram.org/**',route=>route.fulfill({body:''}));
     await page.addInitScript(({data})=>{window.Telegram={WebApp:{initData:data,ready(){},expand(){},setHeaderColor(){},setBackgroundColor(){}}}}, {data:launch});
+    await verifyFixtureContact(client,telegramId);
     await page.goto('/profile');
     await expect(page.locator('.profile-heading h2')).toHaveText('Browser bidder',{timeout:20000});
     const user=await client.user.findUniqueOrThrow({where:{telegramId:String(telegramId)}});

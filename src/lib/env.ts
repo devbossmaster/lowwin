@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  APP_ENV: z.enum(['local', 'test', 'production']).default('local'),
+  APP_ENV: z.enum(['local', 'test', 'staging', 'production']).default('local'),
   DATABASE_URL: z.string().url(), DIRECT_URL: z.string().url(),
   BETTER_AUTH_URL: z.string().url(), BETTER_AUTH_SECRET: z.string().min(32),
   TELEGRAM_BOT_TOKEN: z.string().regex(/^\d+:[A-Za-z0-9_-]{20,}$/),
@@ -18,6 +18,7 @@ export function parseEnv(raw: Record<string, string | undefined>) {
   if (!result.success) throw new Error(`Invalid environment: ${result.error.issues.map(i => i.path.join('.')).join(', ')}`);
   const env = result.data;
   const production = env.NODE_ENV === 'production' || env.APP_ENV === 'production' || !!raw.VERCEL;
+  if(env.APP_ENV==='staging'&&(env.DEV_IDENTITY_ENABLED==='true'||env.DEV_POINTS_ENABLED==='true'))throw new Error('Development features forbidden on staging');
   if (production && (env.DEV_IDENTITY_ENABLED === 'true' || env.DEV_POINTS_ENABLED === 'true')) throw new Error('Development features forbidden in production or hosted deployments');
   if (production && [env.BETTER_AUTH_SECRET, env.TELEGRAM_BOT_TOKEN, env.TELEGRAM_WEBHOOK_SECRET].some(value => /REPLACE|CHANGE_ME|fixture/i.test(value))) throw new Error('Example credentials forbidden in hosted deployments');
   if (production && (new URL(env.BETTER_AUTH_URL).protocol !== 'https:' || new URL(env.MINI_APP_URL).protocol !== 'https:')) throw new Error('HTTPS required');

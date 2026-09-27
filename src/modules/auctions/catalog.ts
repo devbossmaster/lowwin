@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import {legacyTermsInEtb} from '@/lib/money';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 
@@ -16,7 +17,7 @@ export const publicAuctionSelect = {
 type AuctionRow = Prisma.AuctionGetPayload<{ select: typeof publicAuctionSelect }>;
 export const catalogQuerySchema = z.object({
   q: z.string().trim().max(80).optional().default(''),
-  status: z.enum(['all','live','upcoming','closed']).optional().default('all'),
+  status: z.enum(['all','live','upcoming','closing','closed']).optional().default('all'),
   category: z.preprocess(value=>value===''?undefined:value,z.string().regex(/^[a-z0-9-]{1,80}$/).optional()),
   sort: z.enum(['ending','newest','title']).optional().default('ending'),
   page: z.coerce.number().int().min(1).max(1000).optional().default(1),
@@ -42,7 +43,8 @@ export function publicWhere(now: Date): Prisma.AuctionWhereInput {
 function statusWhere(status: CatalogQuery['status'], now: Date): Prisma.AuctionWhereInput {
   if (status === 'live') return {status:{in:['SCHEDULED','LIVE']},startsAt:{lte:now},endsAt:{gt:now}};
   if (status === 'upcoming') return {status:{in:['SCHEDULED','LIVE']},startsAt:{gt:now}};
-  if (status === 'closed') return {OR:[{status:{in:['CLOSED','CANCELLED']}},{endsAt:{lte:now}}]};
+  if (status === 'closing') return {status:{in:['SCHEDULED','LIVE']},endsAt:{lte:now}};
+  if (status === 'closed') return {status:{in:['CLOSED','CANCELLED']}};
   return {};
 }
 export function toPublicAuction(row: AuctionRow, now: Date) {
@@ -50,12 +52,12 @@ export function toPublicAuction(row: AuctionRow, now: Date) {
   const settled=row.settlement;
   const result=settled&&['closed','cancelled'].includes(status)?{
     outcome:settled.outcome,winningPoints:settled.winningPoints?.toString()??null,
-    explanation:settled.outcome==='WINNER'?'The winning point amount was the smallest amount accepted exactly once. All other holds were released.':settled.outcome==='NO_WINNER'?'No accepted amount was unique. All holds were released; disclosed entry fees were retained.':'The auction was cancelled before settlement. All holds and charged entry fees were returned.',
+    explanation:settled.outcome==='WINNER'?'The winning ETB amount was the smallest amount accepted exactly once. All other holds were released.':settled.outcome==='NO_WINNER'?'No accepted amount was unique. All holds were released; disclosed entry fees were retained.':'The auction was cancelled before settlement. All holds and charged entry fees were returned.',
     isDemo:row.isDemo,closedAt:settled.completedAt.toISOString(),source:'SETTLED' as const,
     demoLabel:row.isDemo?'DEMO · settled test':null,winnerDisplay:settled.outcome==='WINNER'?'Anonymous winner':null,
   }:status==='closed'&&row.result&&row.result.publishedAt<=now?{
     outcome:row.result.outcome,winningPoints:row.result.winningPoints?.toString()??null,
-    explanation:row.result.explanation,isDemo:row.result.isDemo,closedAt:row.result.closedAt.toISOString(),source:'ILLUSTRATIVE' as const,
+    explanation:legacyTermsInEtb(row.result.explanation),isDemo:row.result.isDemo,closedAt:row.result.closedAt.toISOString(),source:'ILLUSTRATIVE' as const,
     demoLabel:'DEMO example',winnerDisplay:null,
   }:null;
   return {
@@ -65,7 +67,7 @@ export function toPublicAuction(row: AuctionRow, now: Date) {
       images:row.product!.images.map(image=>({path:image.path,alt:image.alt,sourceType:image.sourceType,sourceCredit:image.sourceCredit}))},
     category:{slug:row.category!.slug,name:row.category!.name},
     fulfillment:{summary:row.fulfillmentSummary!,region:row.fulfillmentRegion!},
-    terms:{version:row.terms!.version,ruleVersion:row.terms!.ruleVersion,minPoints:row.terms!.minPoints.toString(),maxPoints:row.terms!.maxPoints.toString(),stepPoints:row.terms!.stepPoints.toString(),entryFeePoints:row.terms!.entryFeePoints.toString(),maxDistinctBids:row.terms!.maxDistinctBids,noWinnerTerms:row.terms!.noWinnerTerms,cancellationTerms:row.terms!.cancellationTerms,fulfillmentSnapshot:row.terms!.fulfillmentSnapshot},
+    terms:{version:row.terms!.version,ruleVersion:row.terms!.ruleVersion,minPoints:row.terms!.minPoints.toString(),maxPoints:row.terms!.maxPoints.toString(),stepPoints:row.terms!.stepPoints.toString(),entryFeePoints:row.terms!.entryFeePoints.toString(),maxDistinctBids:row.terms!.maxDistinctBids,noWinnerTerms:legacyTermsInEtb(row.terms!.noWinnerTerms),cancellationTerms:legacyTermsInEtb(row.terms!.cancellationTerms),fulfillmentSnapshot:row.terms!.fulfillmentSnapshot},
     result,
   };
 }
@@ -115,7 +117,7 @@ export async function listCategories(now?: Date) {
     db.category.findMany({where:{visible:true},orderBy:[{sortOrder:'asc'},{name:'asc'}],select:{slug:true,name:true,description:true,requiresEligibilityReview:true,id:true}}),
     db.auction.findMany({where:publicWhere(now),select:{categoryId:true,status:true,startsAt:true,endsAt:true}}),
   ]);
-  return categories.map(({id,...category})=>({ ...category, counts:auctions.reduce((counts,row)=>{if(row.categoryId===id){const status=effectiveStatus(row,now);counts[status==='closing'||status==='cancelled'?'closed':status]++;counts.all++;}return counts;},{all:0,live:0,upcoming:0,closed:0}) }));
+  return categories.map(({id,...category})=>({ ...category, counts:auctions.reduce((counts,row)=>{if(row.categoryId===id){const status=effectiveStatus(row,now);if(status!=='closing')counts[status==='cancelled'?'closed':status]++;counts.all++;}return counts;},{all:0,live:0,upcoming:0,closed:0}) }));
 }
 export async function getCategory(slug: string, now?: Date) {
   now ??= await serverNow();

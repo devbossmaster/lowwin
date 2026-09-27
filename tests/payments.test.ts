@@ -1,3 +1,4 @@
+import {verifyFixtureContact} from './contact-fixtures';
 import {beforeAll,afterAll,describe,it,expect,vi} from 'vitest';
 import {PrismaClient} from '@prisma/client';
 import {randomUUID} from 'node:crypto';
@@ -32,7 +33,7 @@ describe.skipIf(!url)('Phase 6 verified transfers and payment operations',()=>{
  const okay=async(r:Response)=>{const b=await r.json();expect(r.status,JSON.stringify(b)).toBe(200);return b};
  const cookie=(r:Response)=>r.headers.get('set-cookie')!.split(';')[0];
  async function enroll(email:string){const token=new URLSearchParams(new URL(messages.findLast(m=>m.to===email)!.text.match(/http[^\s]+/)![0]).hash.slice(1)).get('invite')!,r=await staff('accept-invite',{token,password});await okay(r);const c=cookie(r),secret=(await okay(await staff('enroll',{},c))).secret,m=await staff('mfa',{code:totp(secret,BigInt(Math.floor(Date.now()/30000)))},c);await okay(m);return {id:(await db.user.findUniqueOrThrow({where:{email}})).id,cookie:cookie(m)}}
- async function sign(id:number){const r=await auth(request('auth/telegram/miniapp/signin',{initData:signedLaunch({user:JSON.stringify({id,first_name:'Payment fixture'})})}));await okay(r);return {id:(await db.user.findUniqueOrThrow({where:{telegramId:String(id)}})).id,cookie:cookie(r)}}
+ async function sign(id:number){await verifyFixtureContact(db,id);const r=await auth(request('auth/telegram/miniapp/signin',{initData:signedLaunch({user:JSON.stringify({id,first_name:'Payment fixture'})})}));await okay(r);return {id:(await db.user.findUniqueOrThrow({where:{telegramId:String(id)}})).id,cookie:cookie(r)}}
  async function intent(user=player.id,bank='telebirr',amount='10000'){return createIntent(db,user,{key:randomUUID(),channel:bank,policyId:policies[bank],amountCents:amount})}
  const ref=()=>`MP${randomUUID().replaceAll('-','').slice(0,18).toUpperCase()}`;
  beforeAll(async()=>{const u=new URL(url!);if(!['localhost','127.0.0.1'].includes(u.hostname)||!u.pathname.endsWith('_test'))throw Error('Disposable loopback only');sink=createServer(async(req,res)=>{let text='';for await(const b of req)text+=b;messages.push(JSON.parse(text));res.writeHead(204).end()});await new Promise<void>(r=>sink.listen(0,'127.0.0.1',r));

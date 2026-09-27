@@ -1,10 +1,17 @@
 ---
 name: Lowin mobile system
-description: A pure-white, flat Telegram interface with restrained green gradients.
+description: A pure-white Telegram Mini App with lime actions, dark ink and quiet green gradients.
 colors:
   background: "#FFFFFF"
   foreground: "#172720"
-  primary: "#157A55"
+  primary: "#A3E635"
+  primary-hover: "#92D427"
+  support-green: "#157A55"
+  mini-focus: "#416C0D"
+  mini-disabled: "#E6ECDF"
+  mini-disabled-ink: "#53604C"
+  mini-nav-selected: "#EFF8E4"
+  mini-nav-ink: "#315711"
   forest: "#103C30"
   mint: "#E5F4EB"
   border: "#DBE7DE"
@@ -28,7 +35,7 @@ colors:
 typography:
   display:
     fontFamily: "DM Sans, sans-serif"
-    fontSize: "clamp(34px, 9.6vw, 45px)"
+    fontSize: "36px"
     fontWeight: 600
     lineHeight: 1.13
     letterSpacing: "-0.035em"
@@ -68,10 +75,13 @@ spacing:
 components:
   button-primary:
     backgroundColor: "{colors.primary}"
-    textColor: "{colors.white}"
+    textColor: "{colors.foreground}"
     rounded: "{rounded.control}"
   button-primary-hover:
-    backgroundColor: "{colors.forest}"
+    backgroundColor: "{colors.primary-hover}"
+  button-primary-disabled:
+    backgroundColor: "{colors.mini-disabled}"
+    textColor: "{colors.mini-disabled-ink}"
   button-outline:
     backgroundColor: "transparent"
     textColor: "{colors.foreground}"
@@ -94,8 +104,8 @@ components:
     rounded: "{rounded.account-row}"
     padding: "15px"
   personal-tab-active:
-    backgroundColor: "{colors.forest}"
-    textColor: "{colors.white}"
+    backgroundColor: "{colors.primary}"
+    textColor: "{colors.foreground}"
     rounded: "{rounded.saved-control}"
   favorite-saved:
     backgroundColor: "{colors.mint}"
@@ -146,13 +156,13 @@ components:
 
 ## Overview
 
-The current owner direction is pure white, flat surfaces, forest green, primary green and mint, with green gradients on selected feature panels. Check.et is a structural reference for clear sections and practical controls, not an additional palette or component source. This refresh records the implementation in the player and administration stylesheets; it supersedes the original off-white canvas direction.
+The current Mini App direction is pure white, flat surfaces, lime primary actions with dark ink, and quiet pale-green gradients on selected feature panels. Forest and supporting green remain in text, links, status accents and selected account panels; administration retains its separate forest-green system. Check.et is a structural reference for clear sections and practical controls, not an additional palette or component source. This refresh records the implementation in the player and administration stylesheets; it supersedes the original off-white canvas direction.
 
-The interface uses compact typography, restrained borders and clear account states. The lowercase text wordmark is replaceable. The Phase 1 foundation needed no product imagery; later catalog surfaces use their existing inventory imagery. No surface needs invented inventory or decorative live statistics.
+The interface uses compact typography, restrained borders and clear account states. The lowercase text wordmark is replaceable. The Phase 1 foundation needed no product imagery; later catalog surfaces use inventory imagery and explicitly labelled original DEMO illustrations. No surface needs invented inventory or decorative live statistics.
 
 **Key characteristics:**
 - Pure-white canvas and flat, quietly bordered surfaces.
-- Green emphasis on actions, selected states and a small number of feature panels.
+- Lime actions with dark ink, pale selected states and restrained green supporting accents.
 - A phone-width player experience and a separate operational staff workspace.
 
 Phase 4B extends this incumbent system with public results and private account activity. It reuses catalog imagery and the existing mobile shell; it does not establish a new visual identity. The Phase 1 statements above remain historical foundation context.
@@ -163,21 +173,21 @@ Phase 5A added a separate administration surface in Operate mode, with denser wo
 
 ### Primary
 
-Primary green marks actions, icons and emphasis. Forest anchors the wordmark and dark feature surfaces. Mint distinguishes active navigation, verified identity, selected payment methods and the winning example. The home rule demonstration and wallet balance panel use the implemented green gradients recorded in the sidecar.
+Lime primary marks Mini App actions, selected catalog/personal tabs and the winning example; its label is dark ink. The semantic primary in this document maps to scoped `--mini-action`, not the legacy global `--color-primary`. Supporting green maps to that incumbent global token and remains on links, icons, payment selections and the shared Button utility. Forest anchors the wordmark, result summary and profile balance. Mint remains on verified identity, favorites and selected payment methods. Bottom navigation uses its distinct pale selected fill and darker green text. The home rule demonstration and wallet balance use the pale gradients recorded in the sidecar.
 
 ### Neutral
 
 Pure white is the application surface, bottom navigation and outer canvas. Ink is the main text color, muted green-gray supports secondary copy, and soft borders separate rows and containers. The phone layout remains centered on wider screens without a contrasting off-white surround.
 
-Keep the palette light. Dark mode is deferred. Do not introduce dominant lime or gold.
+Keep the palette light. Dark mode is deferred. Lime is an action and selected-state accent, not the page background; retain dark ink on it. Gold is not a new brand accent.
 
 Administration uses the admin-prefixed green and ink roles on the shared pure-white canvas. Pale green navigation and table headers separate operational areas; white panels and quiet borders retain the incumbent flat treatment. Rust identifies the cancellation action and errors, while restrained green notices report confirmed changes. Amber is reserved for the administration keyboard-focus outline, not a new brand accent. Status and consequence always have text labels.
 
 ## Typography
 
-Use self-hosted DM Sans with a sans-serif fallback throughout. The display role is for the home headline; other page titles use 34px. Section headings use the headline role, and compact item headings use 15px at weight 600.
+Use self-hosted DM Sans with a sans-serif fallback throughout. The 36px display role is for the home headline, limited to 13ch; other page titles use 34px. Standard section headings use the headline role, catalog headings use 22px and the How it works heading uses 25px. Auction titles use 19px at weight 600; compact item headings retain 15px.
 
-Body copy uses the body role. Supporting copy generally uses 13–14px; small labels use 10–12px. Home introductory copy is limited to 32ch with a 1.7 line height. Point amounts and balances use tabular numerals. The header wordmark is 32px, weight 700, with tight tracking and a green terminal dot.
+Body copy uses the body role. Supporting copy generally uses 13–14px; small labels use 10–12px. Home introductory copy is limited to 32ch with a 1.6 line height. Point amounts and balances use tabular numerals. The header wordmark is 29px, weight 700, with tight tracking and a supporting-green terminal dot; entry and generic wordmarks retain their own sizes.
 
 In the Phase 4B extension, result-row titles use 16px and outcome summaries use 27px. Profile names use 23px and wrap long values; available and held balances use 26px with tabular numerals. Personal bid amounts use 22px bold type, and linked account counts use 24px. These component roles supplement the existing hierarchy.
 
@@ -185,15 +195,15 @@ Administration uses the admin-title and admin-body roles. Section headings use 2
 
 ## Layout
 
-Center a single mobile canvas with a maximum width of 480px and minimum height of 100dvh. Preserve that phone layout on wide displays and profile subpages. Content normally has 24px horizontal insets; at widths up to 370px, primary sections use 20px. The top bar uses 22px, reducing to 18px at that breakpoint.
+Center a single mobile canvas with a maximum width of 480px and minimum height of 100dvh. Preserve that phone layout on wide displays and profile subpages. Page insets normally use 24px, reducing to 20px at widths up to 370px. Home intro and catalog sections use 20px; the top bar uses 18px.
 
 The existing Mini App Home is the in-Telegram landing surface. Keep its introductory content, catalog sections and actions within this shell. Outside Telegram, the domain presents the separate Continue with the bot entry screen; staff administration remains separate. Home section headings lead directly, without redundant decorative eyebrow labels.
 
-The top bar contains the home wordmark, wallet chip, alerts and profile. Persistent bottom navigation uses five equal columns and stays aligned with the canvas. Reserve 82px plus the bottom safe-area inset in the page so content can scroll clear of it. Top and bottom padding respect the larger of the browser safe-area inset and Telegram content-safe-area inset.
+The top bar contains the home wordmark, a compact Auctions link, wallet chip, alerts and profile. Persistent bottom navigation uses five equal columns and stays aligned with the canvas. Reserve 82px plus the bottom safe-area inset in the page so content can scroll clear of it. Top and bottom padding respect the larger of the browser safe-area inset and Telegram content-safe-area inset.
 
-Utility links and controls have at least 44px tap targets, including the wordmark, text links and the home shortcuts. Primary buttons and bottom-navigation targets have at least 48px height. The home shortcuts lead to How it works and Auctions; they are functional links rather than an eyebrow label. Mobile checks cover 360px and 430px widths; these are validation sizes, not CSS breakpoints.
+Utility links, pagination and icon targets generally use 44px, with explicit accessible labels on icon-only controls. Primary buttons and bottom-navigation targets have at least 48px height. Home starts with search, its short heading and rule example, followed by a full-width Browse auctions action and How it works link. Mobile checks cover 360px and 430px widths; these are validation sizes, not CSS breakpoints.
 
-Result status links wrap within the mobile canvas. Result rows pair a fixed thumbnail (88px by 112px) with a shrinking text column; rows are separated by 12px. Personal bid rows use a 10px gap, favorites use a single column with 20px gaps, and profile counts use three equal columns. The private Live/History controls and favorite toggle have a 46px minimum height; pagination retains 44px targets. Journal rows keep signed point deltas aligned to the right.
+Categories form a horizontal, scroll-snapping strip of 112px-wide illustrated tiles. Auction lists are a single column with 20px gaps and full-width 1.5-ratio artwork. Result status links wrap within the mobile canvas. Result rows pair a fixed thumbnail (88px by 112px) with a shrinking text column; rows are separated by 12px. Personal bid rows use a 10px gap, favorites use a single column with 20px gaps, and profile counts use three equal columns. The private Live/History controls and full favorite toggle have a 46px minimum height; compact card favorites use a 44px width with the inherited 46px minimum height; pagination retains 44px targets. Journal rows keep signed point deltas aligned to the right.
 
 ### Administration supplement
 
@@ -205,7 +215,7 @@ At 650px and below, navigation becomes a normal-flow two-column link grid, main 
 
 ## Elevation & Depth
 
-Surfaces are flat, without decorative shadows. Tonal contrast, thin borders and spacing define groups. The green gradients on the home rule demonstration and wallet summary provide the strongest visual emphasis; mint highlights a meaningful state. These selected gradients do not establish a gradient treatment for every card. Existing featured imagery retains its readability overlay. The illustrative winning tile rises by 5px to reinforce its distinction.
+Surfaces are flat, without decorative shadows. Tonal contrast, thin borders and spacing define groups. Pale green gradients on the home rule demonstration and wallet summary softly group content; lime identifies the winning example and key actions. These selected gradients do not establish a gradient treatment for every card. Featured auctions reuse the image-led catalog card, with carousel controls below. The illustrative winning tile rises by 5px to reinforce its distinction.
 
 Administration also stays flat: tinted navigation, table headers, thin borders and white panels provide separation without shadows. No additional motion vocabulary is established by the administration stylesheet.
 
@@ -217,15 +227,31 @@ Administration panels reuse the control radius, with smaller admin-control corne
 
 ## Components
 
-Buttons use a semibold 14px label, 20px horizontal padding and an 8px content gap. Primary buttons use green with white text and turn forest on hover. Outline buttons use the soft border, ink text and transparent fill, turning mint on hover. Disabled buttons reduce opacity and suppress pointer interaction.
+Mini App primary actions use lime with dark ink, a 48px minimum height, 12px radius, 12px by 20px padding, a semibold label and an 8px gap. Hover uses primary-hover; disabled actions use the muted disabled fill/ink and a not-allowed cursor. Bid actions retain their 11px radius and 13px bold label. Outline/shared Button variants retain soft borders, ink and mint hover; the shared Button utility still uses supporting green with white text for its default variant. This scoped distinction preserves existing identity and staff controls.
 
-Focus is visible with a 2px green outline offset by 4px. Preserve the skip link and accessible names on icon-only controls. Motion is restrained: the loading indicator alternates over 1.2 seconds, and reduced-motion preferences disable animation and transitions.
+Mini App and Telegram entry focus uses a 2px mini-focus outline offset by 3px; the legacy shared utility has its own 4px offset. Mini App inputs and textareas use a mini-focus caret. Preserve the skip link and accessible names on icon-only controls. Motion is restrained: the loading indicator alternates over 1.2 seconds, and reduced-motion preferences disable animation and transitions.
 
-The wallet chip shows a neutral Points label for guests and the authenticated available balance when present. Bottom navigation combines icons with labels: Home, Auctions, Winners, My Bids and Profile. The current route uses green text on mint and exposes its current-page state.
+The wallet chip shows a neutral Points label for guests and the authenticated available balance when present. Bottom navigation combines icons with labels: Home, Auctions, Winners, My Bids and Profile. The current route uses mini-nav-ink on mini-nav-selected and exposes its current-page state. Catalog and personal tabs use lime with dark ink for their selected states.
 
 Identity panels distinguish loading, guest, reconnect/error and unavailable launch configuration. Verified identity appears in a compact mint line. Retry and Telegram launch actions appear only when applicable. Features outside Phase 1 use honest not-open states rather than populated mock content.
 
-The home rule demonstration presents four amounts in equal columns and is explicitly labelled Example. The unique minimum has mint fill and a check; duplicated amounts have crosses. Supporting text explains the result so color alone does not convey the rule. This is an illustration, never a live auction statistic.
+The home rule demonstration presents six amounts, 1 / 1 / 2 / 3 / 3 / 4, in equal columns and is explicitly labelled EXAMPLE ONLY. The unique minimum, 2, has lime fill and a check; duplicated amounts have crosses, and 4 is marked unique but higher. Supporting text explains the result so color alone does not convey the rule. This is an illustration, never a live auction statistic.
+
+### Telegram onboarding and catalog refinement
+
+The contact gate precedes Mini App navigation and content. It uses the white 440px entry column, wordmark, shield, short heading, privacy explanation and full-width lime Share my contact action. Native Telegram contact sharing is preferred; Share through the bot instead and Open the bot provide the fallback. Pending verification disables share actions and announces status. Cancellation closes the Mini App when supported and leaves an explanatory state; no points are promised for sharing contact. Only a verified own-contact response continues into Home. The launch loader uses a restrained 1.2-second progress indicator and a static reduced-motion state.
+
+The app shell reserves the larger browser/Telegram top and bottom safe areas. The standalone entry/contact layout currently uses 32px vertical and 24px horizontal padding with the browser bottom safe-area inset; it does not inherit the shell's Telegram inset calculation.
+
+Catalog cards are semantic articles with separate image/title links, readable category/status, code, entry fee, favorite control and timing. Live cards expose Place a bid; upcoming, pending and final states have their corresponding review links. The bid form has a labelled 55px-high amount row, inline errors, available balance, and a review step disclosing the entry fee and highest-bid hold before confirmation. The accepted private receipt is distinct from a public result. Detail headings lead directly without decorative category/result eyebrows; meaningful DEMO and status labels remain.
+
+Auctions and Winners combine search, status tabs, labelled Category and Sort selects and Apply. Winners supports newest, oldest and item-name ordering, preserving search/status in its GET filter form. Fields wrap inside a quietly bordered 13px-radius filter group; outcomes retain anonymous identities, explicit pending/final status and truthful empty states. Search remains labelled independently of its placeholder. Forms and filters reuse white fields, readable labels and visible focus; do not infer authorization or successful financial execution from their appearance.
+
+### Artwork and raster provenance
+
+The catalog's local SVG illustrations are original Lowin DEMO assets, not product photography or evidence of prize ownership. `public/catalog/notebook.svg` depicts a notebook computer and `public/catalog/tote.svg` depicts a tote, matching the existing item titles. Category illustrations remain distinct from those product-specific images. Preserve DEMO labels and descriptive alt text; do not substitute unrelated art for an item's title.
+
+The welcome graphic is authored in `public/catalog/lowin-welcome.svg` and rasterized with Sharp into the 1200 by 720 `public/catalog/lowin-welcome.png`. Its embedded PNG `tEXt` key `impeccable:prompt` records the original SVG source, white/lime treatment, six-number example, lowest unique 2, and absence of third-party assets or payment claims. It is a deterministic vector-to-raster export, not an image-model output; retain that truthful provenance when replacing or exporting it. These files are illustration sources, not supplied licensed product photographs.
 
 ### Phase 4B results and account components
 
@@ -233,11 +259,11 @@ Result cards are white, quietly bordered rows with catalog imagery, title, expli
 
 The profile pairs a display name and optional bio with an Edit control, followed by a forest balance link and three linked counts. The white editor uses labelled fields with 16px input text and the profile-field radius; only private display name and bio are editable. Identity and contact information are separate. My Bids uses pressed-state Live/History controls and rows that distinguish the accepted amount, finality and fee treatment. My wins reuses result rows and states fulfillment pending; illustrative examples do not become personal wins.
 
-The favorite control combines a heart with explicit Save to favorites, Saved to favorites or Saving… text. Saved state uses mint fill and a filled heart with aria-pressed; guest users get a sign-in link. Disable the control while saving and show a retryable error when persistence fails. Favorites reuse the catalog card with a wider image crop.
+The full favorite control combines a heart with explicit Save to favorites, Saved to favorites or Saving… text. Catalog cards use a compact heart button with Save to favorites / Remove from favorites accessible names. Saved state uses mint fill and a filled heart with aria-pressed; guest users get a sign-in link. Disable the control while saving and show a retryable error when persistence fails. Favorites reuse the catalog card with a wider image crop.
 
 Private pages reuse identity, loading, empty and retry states. Personal query content is scoped to the current authenticated user and requested view; do not keep another user's content visible during identity or page changes. Empty states explain the next relevant action rather than inventing activity.
 
-The point wallet begins directly with its page title. Its green-gradient balance panel leads into paginated journal rows with available and held deltas, timestamps and refresh/error states. Funding availability is described by the Phase 6 state below. Account counts, bid histories, favorites and wallet entries are private, server-derived content; notification and fulfillment copy must describe the actual recorded, unavailable or pending state.
+The point wallet begins directly with its page title. Its pale-green-gradient balance panel with dark ink leads into paginated journal rows with available and held deltas, timestamps and refresh/error states. Funding availability is described by the Phase 6 state below. Account counts, bid histories, favorites and wallet entries are private, server-derived content; notification and fulfillment copy must describe the actual recorded, unavailable or pending state.
 
 ### Phase 6 wallet funding and Telegram entry
 
@@ -281,7 +307,7 @@ The payment finish-review handoff records a ship disposition, all three requeste
 
 ## Do's and Don'ts
 
-- Do preserve the pure-white canvas, green palette, visible focus, comfortable tap targets and Telegram safe areas.
+- Do preserve the pure-white canvas, lime Mini App actions with dark ink, visible focus, comfortable tap targets and Telegram safe areas.
 - Do use typography, spacing and borders to establish hierarchy.
 - Do keep authenticated balance displays tied to server data.
 - Do label examples clearly and keep account and feature states truthful.

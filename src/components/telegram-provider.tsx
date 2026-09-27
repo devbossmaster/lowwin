@@ -1,10 +1,10 @@
 'use client';
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import Script from 'next/script';
-type WebApp = { initData?: string; ready: () => void; expand: () => void; setHeaderColor?: (color: string) => void; setBackgroundColor?: (color: string) => void };
+type WebApp = { initData?: string; ready: () => void; expand: () => void; close?:()=>void; requestContact?:(callback:(shared:boolean)=>void)=>void; isVersionAtLeast?:(version:string)=>boolean; setHeaderColor?: (color: string) => void; setBackgroundColor?: (color: string) => void };
 declare global { interface Window { Telegram?: { WebApp?: WebApp } } }
-type Me = { user: { id: string; name: string }; wallet: { available: string; held: string } };
-type Status = 'loading' | 'guest' | 'authenticated' | 'error';
+type Me = { user: { id: string; name: string }; wallet: { available: string; held: string; demo?:boolean } };
+type Status = 'loading' | 'guest' | 'contact-required' | 'authenticated' | 'error';
 const Context = createContext<{ status: Status; me: Me | null; error: string; retry: () => void; refreshMe: () => Promise<void>; devLogin: (accessKey: string) => void; devEnabled: boolean; botUrl: string | null }>({ status: 'loading', me: null, error: '', retry: () => {}, refreshMe: async () => {}, devLogin: () => {}, devEnabled: false, botUrl: null });
 export const useTelegram = () => useContext(Context);
 export function TelegramProvider({ children, devEnabled, botUrl, requireLaunch=false }: { children: React.ReactNode; devEnabled: boolean; botUrl: string | null; requireLaunch?:boolean }) {
@@ -30,6 +30,10 @@ export function TelegramProvider({ children, devEnabled, botUrl, requireLaunch=f
         const response = await fetch(dev ? '/api/auth/lowin/dev-identity' : '/api/auth/telegram/miniapp/signin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dev ? { accessKey } : { initData: app!.initData }), signal: AbortSignal.timeout(12000) });
         if (!response.ok) throw new Error(dev ? 'Local test sign-in was denied. Check the operator key and localhost configuration.' : response.status === 503 ? 'Sign-in is not available yet. Please try again shortly.' : 'Your launch has expired or could not be verified. Reopen Lowin from the bot.');
       }
+      const contact=await fetch('/api/onboarding/contact',{cache:'no-store',signal:AbortSignal.timeout(12000)});
+      if(attempt!==attemptSequence.current)return;
+      if(contact.ok&&!(await contact.json()).verified){setMe(null);setStatus('contact-required');return}
+      if(!contact.ok&&contact.status!==401)throw new Error('Contact verification is temporarily unavailable. Please retry.');
       const response = await fetch('/api/me', { cache: 'no-store', signal: AbortSignal.timeout(12000) });
       if(attempt!==attemptSequence.current)return;
       if (response.status === 401 || (!app?.initData && !dev && response.status === 503)) { setMe(null); setStatus('guest'); return; }

@@ -1,3 +1,4 @@
+import {verifyFixtureContact} from './contact-fixtures';
 import { afterAll,beforeAll,describe,expect,it } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { execFileSync } from 'node:child_process';
@@ -18,6 +19,7 @@ describe.skipIf(!url)('Phase 4B public outcomes and private pages on PostgreSQL'
   let examples:string;
   const request=(path:string,cookie?:string,method='GET',body?:unknown,origin='http://localhost:3000')=>new Request(`http://localhost:3000${path}`,{method,headers:{...(cookie?{cookie}:{}),origin,'content-type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})});
   async function signIn(telegramId=randomInt(4000000000,5000000000)) {
+    await verifyFixtureContact(client,telegramId);
     const {handleAuth}=await import('../src/modules/auth/handler');
     const response=await handleAuth(request('/api/auth/telegram/miniapp/signin',undefined,'POST',{initData:signedLaunch({user:JSON.stringify({id:telegramId,first_name:'Private secret name'})})}));
     expect(response.status).toBe(200);
@@ -75,7 +77,11 @@ describe.skipIf(!url)('Phase 4B public outcomes and private pages on PostgreSQL'
     expect(firstPage.total).toBe(8);expect(firstPage.items).toHaveLength(6);expect(secondPage.items).toHaveLength(2);expect(new Set([...firstPage.items,...secondPage.items].map(a=>a.code)).size).toBe(8);
     for(const [status,code] of [['winner',winner.code],['no_winner',noWinner.code],['cancelled',cancelled.code]] as const)expect((await listPublicResults(client,{q:code,status})).items.map(a=>a.code)).toEqual([code]);
     const route=await import('../src/app/api/results/route');expect((await route.GET(request('/api/results?page=-1'))).status).toBe(422);
-    expect((await listPublicResults(client,{q:'nothing-matches'})).total).toBe(0);
+      expect((await listPublicResults(client,{q:'nothing-matches'})).total).toBe(0);
+      const filtered=await listPublicResults(client,{category:'accessories',sort:'title'});
+      expect(filtered.items.length).toBeGreaterThan(0);expect(filtered.items.every(a=>a.category.slug==='accessories')).toBe(true);
+      expect((await listPublicResults(client,{category:'animals'})).total).toBe(0);
+      const oldest=await listPublicResults(client,{sort:'oldest'});expect(oldest.items.map(a=>a.endsAt)).toEqual(oldest.items.map(a=>a.endsAt).sort());
   });
   it('isolates two users own bid histories and exposes only their final outcomes',async()=>{
     const a=await getPersonalBids(client,first.id),b=await getPersonalBids(client,second.id);

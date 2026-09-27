@@ -7,7 +7,7 @@ import { useTelegram } from '@/components/telegram-provider';
 import { IdentityState } from '@/components/identity-state';
 import { PersonalPagination } from '@/components/private-query';
 type WalletView={page:number;total:number;totalPages:number;wallet:{available:string;held:string};activity:{id:string;kind:string;at:string;availableDelta:string;heldDelta:string}[]};
-const names:Record<string,string>={TOPUP_CREDIT:'Verified transfer points',TOPUP_REVERSAL:'Reviewed top-up correction',DEV_CREDIT:'Development points',HOLD_RESERVE:'Auction points reserved',HOLD_RELEASE:'Auction points released',BID_FEE:'Auction entry fee',AUCTION_WIN_CHARGE:'Winning point amount charged',AUCTION_FEE_REFUND:'Cancelled auction fee refund'};
+const names:Record<string,string>={TOPUP_CREDIT:'Verified transfer points',TOPUP_REVERSAL:'Reviewed top-up correction',DEMO_CREDIT:'DEMO points credit',DEV_CREDIT:'Development points',HOLD_RESERVE:'Auction points reserved',HOLD_RELEASE:'Auction points released',BID_FEE:'Auction entry fee',AUCTION_WIN_CHARGE:'Winning point amount charged',AUCTION_FEE_REFUND:'Cancelled auction fee refund'};
 export default function Wallet() {
   const {status,me}=useTelegram();const userId=me?.user.id;const [result,setResult]=useState<{userId:string;view:WalletView}|null>(null),[loading,setLoading]=useState(false),[error,setError]=useState('');
   const [page,setPage]=useState(1);
@@ -32,6 +32,6 @@ export default function Wallet() {
       <div className="activity-list">{view?.activity.map(item=><div className="activity-row" key={item.id}><span className="activity-icon"><Clock3 size={17}/></span><div><strong>{names[item.kind]??'Point journal entry'}</strong><small>{new Date(item.at).toLocaleString('en',{dateStyle:'medium',timeStyle:'short'})}</small></div><span className="activity-deltas"><b>{BigInt(item.availableDelta)>0n?'+':''}{item.availableDelta} available</b>{BigInt(item.heldDelta)!==0n&&<small>{BigInt(item.heldDelta)>0n?'+':''}{item.heldDelta} held</small>}</span></div>)}</div>
       <PersonalPagination page={page} totalPages={view?.totalPages??0} setPage={setPage}/>
     </section>}
-    <p className="quiet-note">Point balances are separate from ETB transfers. Only a verified, matching receipt can add points.</p>
+    <p className="quiet-note">Point balances are separate from ETB transfers. Real funding requires a verified, matching receipt. DEMO points credits are synthetic test grants, not payments.</p>
   </section>;
 }

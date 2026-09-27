@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
-import { ChevronRight,Wallet,Trophy,Heart,CircleHelp } from 'lucide-react';
+import { ChevronRight,Wallet,Trophy,Heart,CircleHelp,Bell,Layers,MessageCircle } from 'lucide-react';
 import { usePrivateQuery,PrivateState } from '@/components/private-query';
 import { useTelegram } from '@/components/telegram-provider';
 import { OfflineRetry } from '@/components/offline-retry';
@@ -21,6 +21,6 @@ export default function Profile() {
     <div className="profile-counts"><Link href="/my-bids"><strong>{data.counts.bids}</strong><span>Accepted bids</span></Link><Link href="/profile/wins"><strong>{data.counts.wins}</strong><span>Wins</span></Link><Link href="/profile/favorites"><strong>{data.counts.favorites}</strong><span>Favorites</span></Link></div>
     <p className="profile-caption">{data.counts.liveBids} live bids · {data.counts.historyBids} in history</p>
   </>}
-    <div className="profile-links">{[{href:'/wallet',label:'Point wallet',icon:Wallet},{href:'/profile/wins',label:'My wins',icon:Trophy},{href:'/profile/favorites',label:'Favorites',icon:Heart},{href:'/faq',label:'How it works & help',icon:CircleHelp}].map(({href,label,icon:Icon})=><Link key={href} href={href}><Icon size={20}/><span>{label}</span><ChevronRight size={18}/></Link>)}</div><p className="profile-caption">The notification inbox is coming later. No alerts or delivery updates are available yet.</p>
+    <div className="profile-links">{[{href:'/my-bids',label:'My bids',icon:Layers},{href:'/wallet',label:'Point wallet',icon:Wallet},{href:'/profile/wins',label:'My wins',icon:Trophy},{href:'/profile/favorites',label:'Favorites',icon:Heart},{href:'/profile/alerts',label:'Alerts',icon:Bell},{href:'/profile/support',label:'Support',icon:MessageCircle},{href:'/faq',label:'How it works & help',icon:CircleHelp}].map(({href,label,icon:Icon})=><Link key={href} href={href}><Icon size={20}/><span>{label}</span><ChevronRight size={18}/></Link>)}</div><p className="profile-caption">Manage your saved auctions, private alerts and support requests here.</p>
   </section></>;
 }

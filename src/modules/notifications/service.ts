@@ -1,3 +1,4 @@
+import {stagingDemoEnabled} from '../auctions/staging-demo';
 import type {Prisma,PrismaClient,Outbox} from '@prisma/client';
 import type {Bot} from 'grammy';
 import {demoBidAllowed} from '../auctions/bids';
@@ -7,7 +8,7 @@ const words:Record<string,[string,string]>={BID_ACCEPTED:['Bid accepted','Your a
 export async function notificationContent(tx:DB,row:Pick<Outbox,'kind'|'payload'>){
  const p=row.payload as {auctionId?:string;recipientUserId?:string};if(!p.recipientUserId||!p.auctionId)return null;
  const a=await tx.auction.findUnique({where:{id:p.auctionId},select:{slug:true,code:true,isDemo:true,isSettlementFixture:true,result:{select:{id:true}},settlement:{select:{outcome:true,winnerUserId:true}}}});
- if(!a||a.result||a.isDemo&&(!a.isSettlementFixture||!demoBidAllowed()))return null;
+ if(!a||a.result||a.isDemo&&(!a.isSettlementFixture||!(demoBidAllowed()||stagingDemoEnabled())))return null;
  const kind=row.kind==='AUCTION_CLOSED'?(a.settlement?.winnerUserId===p.recipientUserId?'AUCTION_WON':a.settlement?.outcome==='NO_WINNER'?'AUCTION_NO_WINNER':row.kind):row.kind;
  const copy=words[kind];if(!copy)return null;
  const href=kind==='BID_ACCEPTED'?'/my-bids':kind==='FULFILLMENT_UPDATED'||kind==='AUCTION_WON'?'/profile/wins':a.settlement?`/winners/${a.code}`:`/auctions/${a.slug}`;
@@ -32,7 +33,7 @@ export async function scheduleAlerts(client:PrismaClient){
  const horizon=new Date(now.getTime()+86400000);
  const favorites=await client.auctionFavorite.findMany({where:{auction:{publishedAt:{not:null},status:{in:['LIVE','SCHEDULED']},endsAt:{gt:now},OR:[{startsAt:{gt:now,lte:horizon}},{endsAt:{lte:horizon}}],result:{is:null},settlement:{is:null}}},orderBy:[{userId:'asc'},{auctionId:'asc'}],take:500,...(cursor?{cursor:{userId_auctionId:cursor},skip:1}:{}),include:{auction:{select:{id:true,startsAt:true,endsAt:true,isDemo:true,isSettlementFixture:true}}}});
  const data:Prisma.OutboxCreateManyInput[]=[];
- for(const f of favorites){const a=f.auction;if(a.isDemo&&(!a.isSettlementFixture||!demoBidAllowed()))continue;
+ for(const f of favorites){const a=f.auction;if(a.isDemo&&(!a.isSettlementFixture||!(demoBidAllowed()||stagingDemoEnabled())))continue;
   for(const [kind,at] of [['AUCTION_START',a.startsAt],['FAVORITE_ENDING',a.endsAt?new Date(a.endsAt.getTime()-3600000):null]] as const){
    if(!at||kind==='AUCTION_START'&&(at<=now||f.createdAt>at))continue;
    const key=`scheduled:${f.userId}:${a.id}:${kind}`;

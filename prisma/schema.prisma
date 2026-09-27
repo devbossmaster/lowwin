@@ -141,6 +141,18 @@ model Wallet {
   createdAt DateTime         @default(now())
 }
 
+// Audited display/accounting unit transition. Existing integer ledger rows are
+// preserved; all accepted amounts map to whole ETB at 1:1.
+model CurrencyConversion {
+  id String @id
+  fromUnit String
+  toUnit String
+  numerator BigInt
+  denominator BigInt
+  effectiveAt DateTime @default(dbgenerated("(clock_timestamp() AT TIME ZONE 'UTC')")) @db.Timestamp(6)
+  reason String
+}
+
 // Internal serialization row; maintained by the hold-integrity migration.
 model WalletHoldGuard {
   walletId String @id

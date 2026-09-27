@@ -3,6 +3,7 @@ import { createHash,randomUUID } from 'node:crypto';
 import { Prisma,type PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { demoBidAllowed } from './bids';
+import {stagingDemoEnabled} from './staging-demo';
 import { seedPlatformAccounts } from '@/modules/wallet/ledger';
 import { settleWalletInTransaction } from '@/modules/wallet/settlement';
 
@@ -34,7 +35,7 @@ async function completeLocked(tx:Prisma.TransactionClient,auctionId:string,cance
   const auction=await tx.auction.findUniqueOrThrow({where:{id:auctionId},include:{terms:true,result:true}});
   if(auction.result)throw new SettlementError('ILLUSTRATIVE_RESULT_PRESERVED');
   if(!auction.publishedAt||auction.publishedAt>now||!['LIVE','SCHEDULED'].includes(auction.status)||!auction.endsAt||!auction.terms)throw new SettlementError('AUCTION_NOT_SETTLEABLE');
-  if(auction.isDemo&&(!auction.isSettlementFixture||!demoBidAllowed(raw)))throw new SettlementError('DEMO_SETTLEMENT_FORBIDDEN');
+  if(auction.isDemo&&(!auction.isSettlementFixture||!(demoBidAllowed(raw)||stagingDemoEnabled(raw))))throw new SettlementError('DEMO_SETTLEMENT_FORBIDDEN');
   if(!cancellation&&auction.endsAt>now)throw new SettlementError('NOT_DUE');
   if(auction.terms.ruleVersion!=='lowest-unique-v1')throw new SettlementError('UNSUPPORTED_RULE');
 
@@ -104,7 +105,7 @@ export async function processDueAuction(client:PrismaClient,raw:Record<string,st
   let attempted:string|null=null;
   try{
     return await client.$transaction(async tx=>{
-      const allowDemo=demoBidAllowed(raw);
+      const allowDemo=demoBidAllowed(raw)||stagingDemoEnabled(raw);
       const rows=await tx.$queryRaw<{id:string}[]>`SELECT a.id FROM "Auction" a
         WHERE a.status IN ('LIVE','SCHEDULED') AND a."publishedAt"<=clock_timestamp() AT TIME ZONE 'UTC'
           AND a."endsAt"<=clock_timestamp() AT TIME ZONE 'UTC'

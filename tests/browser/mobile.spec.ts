@@ -3,7 +3,7 @@ test('catalog at mobile widths: header, carousel, cards, countdown and navigatio
   const hydrationErrors:string[]=[];
   page.on('console',message=>{if(message.type()==='error' && message.text().includes('hydrated')) hydrationErrors.push(message.text());});
   await page.goto('/');
-  await expect(page.getByRole('heading',{name:'Small is good. Unique is better.'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'A little different wins.'})).toBeVisible();
   await expect(page.getByRole('navigation',{name:'Main navigation'})).toBeVisible();
   await expect(page.getByText('Opening your Lowin…')).toBeHidden({timeout:20000});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
@@ -18,7 +18,7 @@ test('catalog at mobile widths: header, carousel, cards, countdown and navigatio
   await page.screenshot({path:`docs/screenshots/catalog-auctions-${testInfo.project.name}.png`,fullPage:true});
   await page.getByRole('link',{name:'Live',exact:true}).click();
   await expect(page.locator('.listing-count')).toContainText('auctions');
-  await page.locator('.auction-card').first().click();
+  await page.locator('.auction-card').first().getByRole('link').first().click();
   await expect(page.getByText('Ready when you are')).toBeVisible();
   await expect(page.getByRole('timer')).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);

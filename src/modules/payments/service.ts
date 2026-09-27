@@ -1,3 +1,4 @@
+import {assertPlayerContact} from '../auth/own-contact';
 import {randomUUID} from 'node:crypto';
 import {Prisma,type PrismaClient,type TopUpIntent} from '@prisma/client';
 import {z} from 'zod';
@@ -12,10 +13,10 @@ export function paymentHealth(){
 }
 function requireEnabled(){if(!paymentHealth().enabled)throw new PaymentError(503,paymentHealth().reason)}
 async function clock(tx:Tx){return (await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`)[0].now}
-async function eligibility(tx:Tx,userId:string){if(await tx.staffMember.findUnique({where:{userId}})||await tx.userRestriction.findFirst({where:{userId,suspended:true}}))throw new PaymentError(403,'Adding points is unavailable for this account.')}
+async function eligibility(tx:Tx,userId:string){try{await assertPlayerContact(tx,userId)}catch{throw new PaymentError(403,'Share your own contact in Telegram first.')}if(await tx.staffMember.findUnique({where:{userId}})||await tx.userRestriction.findFirst({where:{userId,suspended:true}}))throw new PaymentError(403,'Adding points is unavailable for this account.')}
 const int=z.string().regex(/^[1-9]\d{0,10}$/);
 const createSchema=z.object({key:z.string().uuid(),channel:bankSchema,policyId:z.string().uuid(),amountCents:int}).strict();
-export function ownIntent(t:TopUpIntent){return {id:t.id,channel:t.channel,status:t.status,amountCents:t.expectedCents?.toString(),points:t.points.toString(),policyVersion:t.policyVersion,quote:t.quoteSnapshot,account:t.receivingAccount,accountName:t.accountName,createdAt:t.createdAt.toISOString(),expiresAt:t.expiresAt?.toISOString(),reference:t.reference,reason:t.reasonCode,attempts:t.attempts,nextAttemptAt:t.nextAttemptAt.toISOString(),caseState:t.caseState};}
+export function ownIntent(t:TopUpIntent){return {id:t.id,demo:t.provider==='DEMO_PREVIEW',channel:t.channel,status:t.status,amountCents:t.expectedCents?.toString(),points:t.points.toString(),policyVersion:t.policyVersion,quote:t.quoteSnapshot,account:t.receivingAccount,accountName:t.accountName,createdAt:t.createdAt.toISOString(),expiresAt:t.expiresAt?.toISOString(),reference:t.reference,reason:t.reasonCode,attempts:t.attempts,nextAttemptAt:t.nextAttemptAt.toISOString(),caseState:t.caseState};}
 export async function fundingOptions(client:PrismaClient){const policies=await Promise.all((['telebirr','cbe'] as const).map(channel=>client.paymentPolicy.findFirst({where:{channel},orderBy:{version:'desc'}})));return {...paymentHealth(),accounts:policies.filter(p=>p?.enabled).map(p=>({id:p!.channel,policyId:p!.id,version:p!.version,name:p!.channel==='telebirr'?'Telebirr':'CBE',number:p!.account,holder:p!.accountName,numerator:p!.pointsNumerator.toString(),denominator:p!.centsDenominator.toString(),minCents:p!.minCents.toString(),maxCents:p!.maxCents.toString(),terms:p!.terms}))}}
 export async function createIntent(client:PrismaClient,userId:string,raw:unknown){requireEnabled();const body=createSchema.parse(raw),fingerprint=hash(JSON.stringify(body));return client.$transaction(async tx=>{
  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`},0))`;await eligibility(tx,userId);
@@ -29,7 +30,7 @@ const verifySchema=z.object({id:z.string().uuid(),key:z.string().uuid(),input:z.
 export async function verifyIntent(client:PrismaClient,userId:string,raw:unknown,transport:VerifyTransport=checkEt,reauthorize?:(tx:Tx)=>Promise<void>){
  requireEnabled();const body=verifySchema.parse(raw);
  const lease=await client.$transaction(async tx=>{
-  await tx.$queryRaw`SELECT id FROM "TopUpIntent" WHERE id=${body.id} FOR UPDATE`;const t=await tx.topUpIntent.findFirst({where:{id:body.id,userId}});if(!t||!t.channel)throw new PaymentError(404,'Funding request not found.');
+  await tx.$queryRaw`SELECT id FROM "TopUpIntent" WHERE id=${body.id} FOR UPDATE`;const t=await tx.topUpIntent.findFirst({where:{id:body.id,userId}});if(!t||!t.channel||t.provider!=='CHECK_ET')throw new PaymentError(404,'Funding request not found.');
   const reference=candidate(bankSchema.parse(t.channel),body.input),fingerprint=hash(reference),prior=await tx.paymentAttempt.findUnique({where:{intentId_key:{intentId:t.id,key:body.key}}});
   if(t.reference&&t.reference!==reference)throw new PaymentError(409,'This intent is bound to another reference.');if(prior){if(prior.requestHash!==fingerprint)throw new PaymentError(409,'Idempotency key changed.');return {receipt:ownIntent(t)}}
   if(t.status==='CREDITED')return {receipt:ownIntent(t)};
@@ -57,5 +58,5 @@ export async function verifyIntent(client:PrismaClient,userId:string,raw:unknown
   return ownIntent(await tx.topUpIntent.update({where:{id:t.id},data:{status,journalId,reasonCode:code,leaseToken:null,leaseUntil:null,nextAttemptAt:new Date(now.getTime()+Math.max(verified.retrySeconds??0,Math.min(900,30*2**current.attempts))*1000)}}));
  },{timeout:15000});
 }
-export async function listOwnTopups(client:PrismaClient,userId:string,page=1){const [rows,total]=await client.$transaction([client.topUpIntent.findMany({where:{userId,provider:'CHECK_ET'},orderBy:[{createdAt:'desc'},{id:'desc'}],take:20,skip:(page-1)*20}),client.topUpIntent.count({where:{userId,provider:'CHECK_ET'}})]);return {items:rows.map(ownIntent),page,total,totalPages:Math.ceil(total/20)}}
+export async function listOwnTopups(client:PrismaClient,userId:string,page=1){const [rows,total]=await client.$transaction([client.topUpIntent.findMany({where:{userId,provider:{in:['CHECK_ET','DEMO_PREVIEW']}},orderBy:[{createdAt:'desc'},{id:'desc'}],take:20,skip:(page-1)*20}),client.topUpIntent.count({where:{userId,provider:{in:['CHECK_ET','DEMO_PREVIEW']}}})]);return {items:rows.map(ownIntent),page,total,totalPages:Math.ceil(total/20)}}
 export async function reconcilePayments(client:PrismaClient|Tx){return client.$queryRaw<{id:string}[]>`SELECT t.id FROM "TopUpIntent" t LEFT JOIN "PaymentClaim" c ON c."intentId"=t.id WHERE (t.status='CREDITED') IS DISTINCT FROM (c.id IS NOT NULL) OR c.id IS NOT NULL AND (c.points<>t.points OR c."journalId" IS DISTINCT FROM t."journalId" OR c."amountCents"<>t."expectedCents" OR c."userId"<>t."userId") UNION ALL SELECT j.id FROM "Journal" j LEFT JOIN "PaymentClaim" c ON c."journalId"=j.id WHERE j.kind='TOPUP_CREDIT' AND c.id IS NULL`}

@@ -1,6 +1,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import type { PrismaClient, Prisma } from '@prisma/client';
+import {contactBotId,protectContactPayload} from '../auth/own-contact';
 export function validWebhookSecret(received: string | null, expected: string) {
   if (!received) return false;
   const a = Buffer.from(received), b = Buffer.from(expected);
@@ -13,6 +14,8 @@ export async function receiveUpdate(request: Request, client: PrismaClient, secr
   let payload;
   try { payload = z.object({ update_id: z.number().int().nonnegative().safe() }).passthrough().parse(JSON.parse(text)); }
   catch { return new Response(null, { status: 400 }); }
-  await client.botUpdate.createMany({ data: [{ updateId: BigInt(payload.update_id), payload: payload as Prisma.InputJsonValue }], skipDuplicates: true });
+  const botId=contactBotId();
+  const protectedPayload=protectContactPayload(payload,botId);
+  await client.botUpdate.createMany({ data: [{ updateId: BigInt(payload.update_id),botId, payload: protectedPayload as Prisma.InputJsonValue }], skipDuplicates: true });
   return Response.json({ ok: true });
 }

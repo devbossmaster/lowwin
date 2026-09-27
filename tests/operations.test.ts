@@ -1,3 +1,4 @@
+import {verifyFixtureContact} from './contact-fixtures';
 import {beforeAll,afterAll,describe,it,expect} from 'vitest';
 import {PrismaClient} from '@prisma/client';
 import {createServer,type Server} from 'node:http';
@@ -25,7 +26,7 @@ describe.skipIf(!url)('Phase 5B scoped operations and private alerts',()=>{
  const cookie=(r:Response)=>r.headers.get('set-cookie')!.split(';')[0];
  const invitation=(email:string)=>new URLSearchParams(new URL(messages.filter(m=>m.to===email).at(-1)!.text.match(/http[^\s]+/)![0]).hash.slice(1)).get('invite')!;
  async function enroll(email:string){const c=cookie(await staff('accept-invite',{token:invitation(email),password},'')),secret=(await okay(await staff('enroll',{},c))).secret,r=await staff('mfa',{code:totp(secret,BigInt(Math.floor(Date.now()/30000)))},c);await okay(r);return {cookie:cookie(r),id:(await db.user.findUniqueOrThrow({where:{email}})).id}}
- async function sign(id:number){const r=await auth(req('auth/telegram/miniapp/signin',{initData:signedLaunch({user:JSON.stringify({id,first_name:'Private test player'})})},''));await okay(r);return {cookie:cookie(r),id:(await db.user.findUniqueOrThrow({where:{telegramId:String(id)}})).id}}
+ async function sign(id:number){await verifyFixtureContact(db,id);const r=await auth(req('auth/telegram/miniapp/signin',{initData:signedLaunch({user:JSON.stringify({id,first_name:'Private test player'})})},''));await okay(r);return {cookie:cookie(r),id:(await db.user.findUniqueOrThrow({where:{telegramId:String(id)}})).id}}
  beforeAll(async()=>{
   const target=new URL(url!);if(!['localhost','127.0.0.1'].includes(target.hostname)||!target.pathname.endsWith('_test'))throw Error('Disposable loopback DB required');
   sink=createServer(async(req,res)=>{let body='';for await(const b of req)body+=b;messages.push(JSON.parse(body));res.writeHead(204).end()});await new Promise<void>(resolve=>sink.listen(0,'127.0.0.1',resolve));

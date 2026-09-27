@@ -5,6 +5,7 @@ import { createAuth } from './server';
 import { miniAppBody, validateTelegramInitData } from './telegram-validation';
 import { staffActions } from './staff-plugin';
 import { staffRateLimit } from '../admin/rate-limit';
+import {bindOwnContact} from './own-contact';
 
 export async function handleAuth(request: Request) {
   const path = new URL(request.url).pathname.replace('/api/auth', '');
@@ -47,6 +48,7 @@ export async function handleAuth(request: Request) {
           const linked=await tx.user.findUnique({where:{id:current.user.id},select:{telegramId:true}});
           if(linked?.telegramId!==identity)throw new Error('Launch identity mismatch');
           await tx.session.update({where:{id:current.session.id},data:{telegramLaunchId:identity}});
+          await bindOwnContact(tx,current.user.id,identity);
         }
         // Do not return the plugin's session token in a browser-readable JSON body.
         const headers = new Headers(response.headers);

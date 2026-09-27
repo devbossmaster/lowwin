@@ -1,3 +1,4 @@
+import {verifyFixtureContact} from './contact-fixtures';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
@@ -80,6 +81,7 @@ describe.skipIf(!testUrl)('isolated PostgreSQL foundation', () => {
   it('uses the real pinned plugin, returns secure session semantics and one stable opaque user',async()=>{
     const { handleAuth } = await import('../src/modules/auth/handler');
     const telegramId = 4000000000 + Math.floor(Math.random()*1000000000);
+    await verifyFixtureContact(client,telegramId);
     const launch = signedLaunch({user:JSON.stringify({id:telegramId,first_name:'Verified fixture'})});
     const req=()=>new Request('http://localhost:3000/api/auth/telegram/miniapp/signin',{method:'POST',headers:{origin:'http://localhost:3000','content-type':'application/json'},body:JSON.stringify({initData:launch})});
     const responses = await Promise.all([handleAuth(req()),handleAuth(req()),handleAuth(req())]);
@@ -129,8 +131,8 @@ describe.skipIf(!testUrl)('isolated PostgreSQL foundation', () => {
     const updateId=Date.now();
     await client.botUpdate.create({data:{updateId,payload:{update_id:updateId,message:{message_id:1,date:Math.floor(Date.now()/1000),chat:{id:1,type:'private'},from:{id:1,is_bot:false,first_name:'Fixture'},text:'/start',entities:[{type:'bot_command',offset:0,length:6}]}}}});
     await Promise.all([processOneUpdate(client,bot),processOneUpdate(client,bot)]);
-    expect(sent).toHaveLength(1);expect(sent[0].method).toBe('sendMessage');
-    expect(JSON.stringify(sent[0].payload)).toContain('Launch Lowin');
+    expect(sent).toHaveLength(1);expect(sent[0].method).toBe('sendPhoto');
+    expect(JSON.stringify(sent[0].payload.reply_markup)).toContain('Launch Lowin');
     expect((await client.botUpdate.findUniqueOrThrow({where:{updateId}})).processedAt).not.toBeNull();
     const failureId=updateId+1;
     await client.botUpdate.create({data:{updateId:failureId,payload:{update_id:failureId}}});

@@ -33,10 +33,10 @@ const items: DemoItem[] = [
   { slug:'portrait-phone',code:'DEMO-PHO-002',category:'phones',title:'Portrait smartphone',description:'An illustrated handset shown for upcoming catalog layout.',condition:'DEMO · Condition to be verified',art:'phone',status:'SCHEDULED',startHours:24,endHours:96 },
   { slug:'archive-watch',code:'DEMO-WAT-002',category:'watches',title:'Archive watch',description:'An illustrative closed watch listing and result.',condition:'DEMO · Condition to be verified',art:'watch',status:'CLOSED',startHours:-120,endHours:-48,outcome:'WINNER',winningPoints:7 },
   { slug:'ceramic-vase',code:'DEMO-HFU-002',category:'home-furnishings',title:'Ceramic vase',description:'An illustrative closed home listing with no unique result.',condition:'DEMO · New condition illustration',art:'furnishing',status:'CLOSED',startHours:-96,endHours:-24,outcome:'NO_WINNER' },
-  { slug:'everyday-tote',code:'DEMO-ACC-002',category:'accessories',title:'Everyday tote',description:'An illustrative closed accessory listing.',condition:'DEMO · New condition illustration',art:'accessory',status:'CLOSED',startHours:-72,endHours:-2,outcome:'WINNER',winningPoints:3 },
+  { slug:'everyday-tote',code:'DEMO-ACC-002',category:'accessories',title:'Everyday tote',description:'An illustrative closed accessory listing.',condition:'DEMO · New condition illustration',art:'tote',status:'CLOSED',startHours:-72,endHours:-2,outcome:'WINNER',winningPoints:3 },
 ];
 
-export async function seedCatalog(client: PrismaClient, now = new Date()) {
+export async function seedCatalog(client: PrismaClient, now = new Date(), timeout=30000) {
   await client.$transaction(async tx => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('lowin:demo-catalog', 0))`;
     const categoryIds = new Map<string,string>();
@@ -53,7 +53,7 @@ export async function seedCatalog(client: PrismaClient, now = new Date()) {
       await tx.auctionTerms.upsert({where:{auctionId:auction.id},update:{},create:{auctionId:auction.id,version:1,ruleVersion:'lowest-unique-v1',minPoints:1n,maxPoints:100n,stepPoints:1n,entryFeePoints:BigInt(item.fee??0),maxDistinctBids:100,noWinnerTerms:'If no point amount is unique, there is no winner and all holds are released.',cancellationTerms:'If Lowin cancels an auction, all holds and charged entry fees are returned.',fulfillmentSnapshot:'DEMO only. No item will be dispatched. Eligibility and delivery must be confirmed before a real auction opens.'}});
       if (item.outcome) await tx.publicAuctionResult.upsert({where:{auctionId:auction.id},update:{},create:{auctionId:auction.id,outcome:item.outcome,winningPoints:item.winningPoints?BigInt(item.winningPoints):null,winnerLabel:item.outcome==='WINNER'?'DEMO illustrative outcome':null,explanation:item.outcome==='WINNER'?`DEMO example: ${item.winningPoints} points is the lowest unique amount in an illustrative result. No real bids or winner are recorded.`:'DEMO example: no amount was unique. No real bids or winner are recorded.',closedAt:at(item.endHours),isDemo:true,publishedAt:now}});
     }
-  },{timeout:30000});
+  },{timeout});
   return {categories:demoCategories.length,auctions:items.length};
 }
 

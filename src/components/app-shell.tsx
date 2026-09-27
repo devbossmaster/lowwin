@@ -5,15 +5,16 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Bell, CircleUserRound, House, LayoutGrid, Trophy, Layers, ArrowUpRight, Wallet } from 'lucide-react';
 import { useTelegram } from './telegram-provider';
-const nav = [{ href: '/', text: 'Home', icon: House }, { href: '/auctions', text: 'Auctions', icon: LayoutGrid }, { href: '/winners', text: 'Winners', icon: Trophy }, { href: '/my-bids', text: 'My Bids', icon: Layers }, { href: '/profile', text: 'Profile', icon: CircleUserRound }];
+import {formatEtb} from '@/lib/money';
+const nav = [{ href: '/', text: 'Home', icon: House }, { href: '/auctions', text: 'Auctions', icon: LayoutGrid }, { href: '/winners', text: 'Winners', icon: Trophy }, { href: '/my-bids', text: 'My Bids', icon: Layers }, { href: '/wallet', text: 'Wallet', icon: Wallet }, { href: '/profile', text: 'Profile', icon: CircleUserRound }];
 export function AppShell({ children, requireLaunch=false }: { children: React.ReactNode; requireLaunch?:boolean }) {
   const path = usePathname(); const { me, status } = useTelegram();
   if(requireLaunch&&status!=='authenticated')return <TelegramEntry/>;
   return <div className="app-frame">
     <header className="topbar">
-      <Link href="/" aria-label="Lowin home" className="wordmark">lowin<span>.</span></Link>
+      <div className="header-brand"><Link href="/" aria-label="Lowin home" className="wordmark">lowin<span>.</span></Link><Link className="header-auctions" href="/auctions">Auctions</Link></div>
       <div className="header-actions">
-        <Link className="balance-chip" href="/wallet" aria-label={me ? `${me.wallet.available} available points, open wallet` : 'Open point wallet'}><Wallet size={15}/><span>{me ? `${me.wallet.available} pts` : 'Points'}</span></Link>
+        <Link className="balance-chip" href="/wallet" aria-label={me ? `${me.wallet.demo?'DEMO ':''}${formatEtb(me.wallet.available)} available, open wallet` : 'Open ETB wallet'}><Wallet size={15}/><span>{me?.wallet.demo?'DEMO ETB':me?formatEtb(me.wallet.available):'ETB'}</span></Link>
         <AlertBell/>
         <Link href="/profile" className="avatar" aria-label="Profile">{me?.user.name.slice(0,1) || <CircleUserRound size={23}/>}</Link>
       </div>

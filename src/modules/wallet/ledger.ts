@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { assertLocalDevelopment } from '@/lib/env';
+import {stagingDemoUser} from '../auctions/staging-demo';
 
 export const pointsSchema = z.string().regex(/^(0|[1-9]\d{0,15})$/).transform(BigInt);
 export async function ensureWallet(tx: Prisma.TransactionClient, userId: string) {
@@ -15,19 +16,27 @@ export async function seedPlatformAccounts(tx: Prisma.TransactionClient) {
 }
 export async function creditDevelopmentPoints(client: PrismaClient, userId: string, amount: string, key: string) {
   assertLocalDevelopment('points');
+  return issuePoints(client,userId,amount,key,'DEV_CREDIT');
+}
+export async function creditDemoPoints(client:PrismaClient,userId:string,amount:string,key:string){
+  if(!stagingDemoUser(userId)){assertLocalDevelopment('points')}
+  if(BigInt(amount)>5000n||!key.startsWith('demo-showcase:'))throw Error('Bounded explicit DEMO grant required');
+  return issuePoints(client,userId,amount,key,'DEMO_CREDIT');
+}
+async function issuePoints(client:PrismaClient,userId:string,amount:string,key:string,scope:'DEV_CREDIT'|'DEMO_CREDIT'){
   const points = pointsSchema.parse(amount);
   if (points <= 0n || key.length < 8 || key.length > 128) throw new Error('Invalid seed request');
   const requestHash = createHash('sha256').update(amount).digest('hex');
   return client.$transaction(async tx => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`}, 0))`;
-    const previous = await tx.operation.findUnique({ where: { userId_scope_key: { userId, scope: 'DEV_CREDIT', key } } });
+    const previous = await tx.operation.findUnique({ where: { userId_scope_key: { userId, scope, key } } });
     if (previous) { if (previous.requestHash !== requestHash) throw new Error('Idempotency key reused with different request'); return previous.result; }
     await ensureWallet(tx, userId); await seedPlatformAccounts(tx);
     const available = await tx.ledgerAccount.findUniqueOrThrow({ where: { name: `user:${userId}:available` } });
     const funding = await tx.ledgerAccount.findUniqueOrThrow({ where: { name: 'platform:issuance' } });
     const result = { available: (available.balance + points).toString(), credited: points.toString() };
-    const operation = await tx.operation.create({ data: { userId, scope: 'DEV_CREDIT', key, requestHash, result } });
-    await tx.journal.create({ data: { operationId: operation.id, kind: 'DEV_CREDIT', reference: `development:${key}`, postings: { create: [
+    const operation = await tx.operation.create({ data: { userId, scope, key, requestHash, result } });
+    await tx.journal.create({ data: { operationId: operation.id, kind: scope, reference: `${scope==='DEMO_CREDIT'?'demo':'development'}:${key}`, postings: { create: [
       { accountId: funding.id, delta: -points }, { accountId: available.id, delta: points },
     ] } } });
     return result;
