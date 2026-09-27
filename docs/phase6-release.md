@@ -2,7 +2,7 @@
 
 **Release decision: NO GO for real-money funding or deployment.** The application has an explicit production credit interlock. Only an opted-in, disposable loopback `_test` environment can create or verify funding intents. No remote migration, live transfer, production activation or deployment was performed.
 
-The existing Mini App Home remains the landing page. White surfaces, flat controls, selected green gradients, integer-point wallets and the five-item bottom navigation are retained.
+The existing Mini App Home remains the landing page inside Telegram. Ordinary browser visits receive only a Continue with the bot entry screen; staff login remains separate. White surfaces, flat controls, selected green gradients, integer-point wallets and the five-item bottom navigation are retained.
 
 ## Provider contract reviewed
 
@@ -18,6 +18,7 @@ New migrations:
 
 - `202609280001_verified_topups`: extends the existing `TopUpIntent`, adds append-only `PaymentPolicy`, `PaymentClaim`, `PaymentAttempt`, and `PaymentStatementEntry`; freezes intent identity/quote/reference; enforces commit-time credit/claim/journal matching; globally unique `(channel, reference)`; private-table RLS and anon/authenticated revocation.
 - `202609280002_scheduler_indexes`: reverse favorite lookup plus partial due-outbox and pending-auction indexes. The preceding ten migrations are unchanged.
+- `202609280003_telegram_launch_boundary`: nullable exact-session Telegram launch provenance. Existing sessions are not retroactively trusted; reopen through the bot.
 
 Policies are immutable versions with receiving account, holder, rational points-per-ETB-cents quote, bounds, terms and review reference. New versions affect only new intents. Intent creation validates the latest version, converts integer cents exactly, and rejects fractions of a point. Requests expire after 30 minutes. A user may create eight requests per hour; a request permits six verification attempts and three scans. Staff and suspended accounts cannot create funding requests.
 
@@ -83,7 +84,7 @@ Database migrations use the migration owner via the direct URL. Runtime must use
 | Production email | Local HTTP sink only. Need chosen provider credentials, verified sender/domain, delivery/recovery test inbox and bounce/failure monitoring. |
 | Telegram clients/delivery | Browser signatures and intercepted bot transport only. Need real Android/iOS accounts/devices, HTTPS bot launch and opt-in private bot delivery checks. |
 | Supabase roles/RLS | No remote access changes. Need staging Supabase project, migration/runtime roles, grants and RLS/trigger privileges reviewed and exercised. |
-| Production HTML headers | Local build is not hosted HTTP evidence. Need HTTPS staging ingress/hosting access and authenticated/guest cache/security-header captures. |
+| Production HTML headers | Local production-mode HTTP checks passed for guest redirects, bot entry, private API rejection and staff login (no-store, nosniff, no-referrer). Hosted HTTPS ingress and authenticated HTML remain unverified; need staging hosting access and authenticated/guest captures. |
 | Load/capacity | Isolated baseline only; test target-concurrency/auction-participant volumes with staging-equivalent CPU, memory, PostgreSQL pool/roles and worker count before release. |
 | Backups/keys | Disposable local dump/restore drill only. Need actual encrypted backup retention, restoration access, off-host keys and production recovery objectives. |
 | Independent staff-auth review | Implementation/regression tests are not independent review. Need reviewer sign-off for credential/MFA/session binding, recovery and new capabilities. |
@@ -91,10 +92,65 @@ Database migrations use the migration owner via the direct URL. Runtime must use
 
 ## Concrete owner-reviewed rollout step
 
-After the above artifacts and decisions exist, prepare one reviewed release change to the production interlock, approved settings and runtime role grants. In a separate staging project: restore a sanitized database, apply the twelve migrations using the migration role, run the entire opt-in suite with the runtime role where appropriate, verify no anon/authenticated access to private tables, run real staff-email and Telegram smoke tests, and capture production HTTP headers. Drill stopping/restarting all workers and interrupted verification leases; reconcile before and after. Check statement matching against small, owner-approved real transfers before any wider activation. No such transfer is authorized or performed by this implementation prompt.
+After the above artifacts and decisions exist, prepare one reviewed release change to the production interlock, approved settings and runtime role grants. In a separate staging project: restore a sanitized database, apply the thirteen migrations using the migration role, run the entire opt-in suite with the runtime role where appropriate, verify no anon/authenticated access to private tables, run real staff-email and Telegram smoke tests, and capture production HTTP headers. Drill stopping/restarting all workers and interrupted verification leases; reconcile before and after. Check statement matching against small, owner-approved real transfers before any wider activation. No such transfer is authorized or performed by this implementation prompt.
 
 Monitor failed/stale settlements, outbox age/terminal delivery codes, Check.et 401/402/429/outages, pending requests over one hour, duplicate claims, statement mismatches and any reconciliation drift. Any drift is a stop condition. Pause new channel versions, preserve existing intent/receipt history, disable the release interlock and investigate; do not roll back financial history or replay bank credits manually. Start with a small, capped cohort and a named payment operator watching the first reconciliation cycle. Owner approval of this concrete release packet is the final step, not implied by passing tests.
 
 ## Validation results
 
-Final commands, exact test counts, screenshots, load/restore evidence and remaining limitations are appended after the clean regression completes.
+All database names below are disposable loopback targets at `127.0.0.1:55439`, user `lowin_test`; no password or live credentials were used. The configured remote `.env` Supabase target was not migrated, seeded or changed.
+
+- Combined `npm test`: **14 files, 189 passed, zero skipped**, 108.47 seconds (`.local/phase6-full-complete.log`). Core, bid, settlement, personal, admin, operations, payment and Telegram-bound-session coverage ran with all opt-in variables.
+- Payment/entry browser regression: **6 passed, zero skipped**, 56.6 seconds (`npx playwright test --config playwright.payments.config.ts`, `.local/phase6-payment-browser-complete.log`). Covers 360/430px wallet and bot entry, 1366/834px admin queue/detail/settings/statements; blocked direct page/API access, visible bot link, and staff entry separation.
+- Final earlier-feature Playwright regression: **19 passed, one intentional duplicate 360px carousel skip**, 2.4 minutes (`.local/phase6-browser-regression-complete.log`). Total distinct browser cases: **25 passed, one skipped**. Entry-only recapture after waiting for launch-check completion: 2 passed, 15.7 seconds.
+- `npm run typecheck`: passed. `npx next build`: passed; production compilation 12.6 seconds, TypeScript 12.9 seconds. Final `npx prisma generate`, `npm run typecheck` and post-entry-fragment `npx next build` also passed. Prisma generation initially hit Windows DLL locking from the running development server; it passed after a brief server stop, then the development server was restored.
+- **13 migrations actually applied** to each of seven `lowin_6_complete_{core,bid,settlement,personal,admin,ops,payments}_test` databases, and the final isolated browser databases. No remote application.
+- Final reconciliation across seven database snapshots: **66 wallets, 343 journals, 29 settlements, 6 verified test credits; zero posting/projection, hold, fee/refund, settlement or payment drift** (`.local/phase6-reconciliation.log`).
+- Load baseline: **100 participants/bids**, bid batch 3.802 seconds, scheduler 16.29 ms, atomic settlement **1.867 seconds** against the 120-second transaction limit, 301 outbox rows processed in 1.457 seconds. **200 mocked sends, zero network sends, zero drift** (`.local/phase6-load.log`). The small-fixture EXPLAIN used the partial `Outbox_pending_due_idx`; this is not production-scale capacity or query-plan proof.
+- PostgreSQL 17 `pg_dump --format=custom` of `lowin_6_load2_test`, `pg_restore --no-owner --exit-on-error` into `lowin_6_restore_test`: restored reconciliation passed, zero drift (`.local/phase6-backup.dump`, `.local/phase6-restore.log`). Those load/restore databases predate only the nonfinancial session-provenance migration.
+- Contact key rotation: one old-key encrypted local contact re-encrypted and verified with the new independent test key (`.local/phase6-key-rotation.log`). Production rotation/recovery is still blocked on owner key custody and staging.
+- `npx tsx scripts/staging-http-check.ts`: **five local production-mode HTTP checks passed**, using disposable DB and generated nonsecret configuration; `/` and `/wallet` redirect, `/telegram` and `/admin/login` render, `/api/me` rejects. Each returned no-store, nosniff and no-referrer. No hosted TLS/authenticated cache claim (`.local/phase6-production-headers.log`).
+- OCR uses real local Tesseract in database/browser tests; Check.et transport remains mocked. Tests include ambiguous/blank fallback, duplicate image/reference, static magic-byte/dimension/size validation, and memory-only input cleanup.
+- Crash/retry evidence is from transaction/lease/outbox tests and subprocess settlement crash tests. An actual production worker supervisor stop/restart drill remains unverified.
+- Independent UI verdict: **ship for the three scored payment fixes** (header balance, immutable accepted receipt presentation, statement empty state). All 16 payment captures reviewed. Telegram entry and security were outside that review; entry has separate browser assertions and builder inspection. No independent staff-auth security review is claimed.
+
+Reproduce the database run with these variables set before `npm test`:
+
+```powershell
+$base = 'postgresql://lowin_test@127.0.0.1:55439/'
+$env:TEST_DATABASE_URL = $base + 'lowin_6_complete_core_test'
+$env:BID_TEST_DATABASE_URL = $base + 'lowin_6_complete_bid_test'
+$env:SETTLEMENT_TEST_DATABASE_URL = $base + 'lowin_6_complete_settlement_test'
+$env:PERSONAL_TEST_DATABASE_URL = $base + 'lowin_6_complete_personal_test'
+$env:ADMIN_TEST_DATABASE_URL = $base + 'lowin_6_complete_admin_test'
+$env:OPS_TEST_DATABASE_URL = $base + 'lowin_6_complete_ops_test'
+$env:PAYMENT_TEST_DATABASE_URL = $base + 'lowin_6_complete_payments_test'
+$env:DATABASE_URL = $env:TEST_DATABASE_URL
+$env:DIRECT_URL = $env:DATABASE_URL
+npm test
+```
+
+Create fresh `_test` databases for a clean rerun; immutable fixtures intentionally are not all reusable. Browser runs likewise require their own freshly migrated/seeded disposable database. The payment browser tests create their own policy fixtures.
+
+The original development server was restored with the unchanged `.env`. Its remote-backed Telegram sign-in returned HTTP 503 during the final check. No remote diagnostic/migration was performed to attribute that failure; this is not a verified live Telegram environment. The new migrations are applied only to disposable databases.
+
+## Telegram-only boundary
+
+`src/proxy.ts` gates player pages and APIs before rendering; the Mini App layout and private data helpers repeat session authorization. Only the signed Telegram login handler can stamp `session.telegramLaunchId` after matching the issued session's stored Telegram identity. Guest, old unbound, mismatched, expired/revoked and staff sessions cannot open player APIs. No user-agent, host, forwarded header, `initDataUnsafe` or ordinary website credential cookie grants Telegram proof. The client also requires Telegram launch data before showing the Mini App shell. The launch fragment stays in the browser when continuing to Home.
+
+The only development preview exception requires the existing explicit local identity configuration, a loopback database and matching localhost-only URLs; its actual test login still requires the private operator key. Public/ngrok/production configuration cannot use that exception. Session cookies remain bearer credentials: neither the browser SDK nor HTTP can cryptographically attest a physical Telegram client against theft/replay of an already valid session. Protect session cookies and verify real client lifecycle behavior before release.
+
+## Changed files and capture inventory
+
+This working tree contains earlier uncommitted phases. Phase 6 changes are concentrated in:
+
+- Schema/migrations: `prisma/schema.prisma`, the three `20260928000*` migration directories above.
+- Payment domain: `src/modules/payments/{provider,service,admin,correction,ocr}.ts`; `scripts/receipt-ocr.cjs`.
+- HTTP and auth: `src/app/api/wallet/{top-ups,scan}/route.ts`, `src/app/api/admin/payments/[[...path]]/route.ts`, `src/modules/auth/{handler,mini-access,private-api}.ts`, `src/app/api/me/route.ts`, bid route session guard, top-up transaction session recheck, `src/proxy.ts`.
+- Player UI: `src/components/{wallet-funding,wallet-funding-preview,telegram-provider,telegram-entry,app-shell}.tsx`, `src/app/(mini)/{layout,wallet/page}.tsx`, `src/app/telegram/page.tsx`, `src/app/globals.css`.
+- Staff UI/routing: `src/components/{admin-payments,admin-shell,staff-login}.tsx`, admin catch-all and `src/app/admin/admin.css`.
+- Operations: `src/modules/fulfillment/crypto.ts`, fulfillment contact API/admin operations, `src/modules/notifications/service.ts`, `scripts/{reconcile,rotate-delivery-keys,staging-load,staging-http-check,payment-test-sink}.ts`.
+- Configuration/tests: `next.config.ts`, `package.json`, lockfile, `.env.example`, `playwright.payments.config.ts`, `tests/payments.test.ts`, `tests/telegram-entry.test.ts`, `tests/payments-browser/{mobile,admin}.spec.ts`.
+- Documentation: this report, `docs/phase6-role-review.sql`, `docs/phase6-smoke-plan.md`, Owner runbook supplement, `DESIGN.md`, `PRODUCT.md`, `.impeccable/design.json`.
+
+18 new screenshots in `docs/screenshots`: `phase6-wallet-{quote,scan,receipt,fallback}-mobile-{360,430}.png`; `phase6-{top-ups,payment-detail,payment-settings,payment-statements}-admin-{laptop,tablet}.png`; `phase6-telegram-entry-mobile-{360,430}.png`. They use nonsecret, non-payable DEMO fixtures. Existing regression screenshots were refreshed separately.

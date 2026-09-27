@@ -79,3 +79,14 @@ Review `/admin/jobs` and `/admin/notifications` for FAILED/PENDING delivery. 429
 `WALLET_TEST_PREVIEW=true` reveals only synthetic, explicitly non-payable Telebirr/CBE references on isolated local `_test` databases. Production shows accounts unconfigured. Do not request transfers; no conversion policy, screenshot intake, OCR or payment verification exists until Phase 6.
 
 Production email, real Telegram clients/delivery, remote Supabase runtime roles/RLS, production HTML headers, independent auth security review, load testing, monitoring and backup/restore remain release checks. The remote `.env` database is unchanged.
+
+
+## Phase 6 supplement: verified funding and Telegram-only entry
+
+See [the Phase 6 release decision](phase6-release.md) for exact evidence and blocked owner inputs. Ordinary domain visits now open **Continue with the bot**. The player app requires an exact session issued from verified Telegram launch data; `/admin/login` remains the separate staff entry. Apply the new session migration only through the reviewed release process; old sessions must reopen through the bot. No remote migration was performed here.
+
+The Phase 5B preview-only paragraph above is historical. Phase 6 implements private OCR/reference verification and payment investigation on explicitly opted-in disposable local/test databases. **Production crediting remains disabled. Do not send real funds.** Only reviewed versioned settings can enable test channels. Owner changes receiving accounts/quotes at `/admin/settings/payments` with fresh MFA and exact-change review. Saved intents retain their original account and quote.
+
+Payments operators review `/admin/top-ups`, notes, bounded verification retries and incidents. Case notes/resolution never mint points. Record independently reviewed daily bank evidence at `/admin/top-ups/statements`; unmatched/mismatched entries require investigation, not manual credit. Inspect any duplicate claim, outage/quota failure, aged pending request or reconciliation drift before continuing. The exact-credit reversal command is internal only, requires fresh Owner MFA and evidence, and refuses to consume held/spent points or overdraw. There is no generic balance editor.
+
+Use `npm run wallet:reconcile` under the explicitly selected runtime database. Run contact key rotation only with recoverable old/new keys and a reviewed maintenance plan; `scripts/rotate-delivery-keys.ts` is intentionally limited to disposable loopback tests. The provider/receiver/quote/policy/legal review, production email, Telegram Android/iOS, Supabase runtime roles, hosted headers, independent staff-auth review and production-volume recovery/load exercises remain release gates. No deployment was authorized or performed.
