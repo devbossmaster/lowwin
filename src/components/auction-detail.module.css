@@ -1,4 +1,4 @@
-.page{padding:24px var(--auction-card-gutters,24px) 40px;color:#172720}
+.page{padding:24px var(--auction-card-gutters,24px) 40px;background:linear-gradient(to bottom,#91c83e 0 242px,#fff 242px);color:#172720}
 .top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px;font-size:12px}
 .back{display:inline-flex;align-items:center;gap:5px;min-height:44px;color:#172720;font-weight:600}
 .status{padding:6px 10px;border-radius:9px;background:#fff;color:#315711;font-size:11px;font-weight:700;text-transform:capitalize}

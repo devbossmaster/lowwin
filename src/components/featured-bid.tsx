@@ -5,6 +5,7 @@ import {formatEtb} from '@/lib/money';
 import {useTelegram} from './telegram-provider';
 import {useMiniLocale} from './mini-locale';
 import {useMiniNotice} from './mini-notice';
+import {useCelebration} from './celebration';
 import styles from './featured-carousel.module.css';
 
 type OwnBid={id:string;amount:string;acceptedAt:string};
@@ -22,6 +23,7 @@ function FeaturedBidForIdentity({slug,title,onInteractionChange}:Props){
   const {language}=useMiniLocale();
   const am=language==='am';
   const notify=useMiniNotice();
+  const celebrate=useCelebration();
   const dialog=useRef<HTMLDialogElement>(null);
   const titleId=useId();
   const inFlight=useRef(false);
@@ -85,6 +87,7 @@ function FeaturedBidForIdentity({slug,title,onInteractionChange}:Props){
       const accepted=body as Receipt;
       setReceipt(accepted);setState(previous=>previous?{...previous,wallet:accepted.wallet,previousMax:accepted.hold.newMax,remainingSubmissions:accepted.remainingSubmissions,ownBids:accepted.ownBids}:previous);
       setConfirm(false);setAmount('');setKey(null);setAgreed(false);
+      celebrate();
       notify(am?`${formatEtb(accepted.bid.amount)} ጨረታዎ ተቀብሏል።`:`${formatEtb(accepted.bid.amount)} bid accepted. Your wallet has been updated.`,'success');
       void refreshMe().catch(()=>{});
     }catch{
@@ -92,7 +95,7 @@ function FeaturedBidForIdentity({slug,title,onInteractionChange}:Props){
       const message=am?'ግንኙነቱ ተቋርጧል። በተመሳሳይ ጥያቄ እንደገና ይሞክሩ።':'Connection interrupted. Retry safely with the same request.';
       setError(message);notify(message,'error');
     }finally{inFlight.current=false;if(mounted.current)setSubmitting(false)}
-  },[valid,submitting,agreed,preview,key,slug,notify,am,refreshMe]);
+  },[valid,submitting,agreed,preview,key,slug,notify,am,refreshMe,celebrate]);
 
   return <div className={styles.bidBox}>
     <div className={styles.amountControl}>

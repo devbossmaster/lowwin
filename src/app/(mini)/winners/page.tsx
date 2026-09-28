@@ -4,6 +4,7 @@ import {db} from '@/lib/db';
 import {OfflineRetry} from '@/components/offline-retry';
 import {WinnerResultCard} from '@/components/winner-result-card';
 import {WinnersFilters} from '@/components/winners-filters';
+import {WinnerCelebration} from '@/components/celebration';
 import {listPublicResults,resultQuerySchema} from '@/modules/auctions/results';
 import {MiniPhrase} from '@/components/mini-locale';
 import styles from '@/components/winners-page.module.css';
@@ -20,6 +21,7 @@ export default async function Winners({searchParams}:{searchParams:Promise<Recor
   const pages=Array.from(new Set([1,query.page-1,query.page,query.page+1,results.totalPages].filter(page=>page>=1&&page<=results.totalPages))).sort((a,b)=>a-b);
   const start=results.total?(query.page-1)*query.pageSize+1:0,end=Math.min(query.page*query.pageSize,results.total);
   return <><OfflineRetry/>
+    {results.items.some(auction=>auction.result?.outcome==='WINNER')&&<WinnerCelebration id="winners"/>}
     <section className={styles.hero}>
       <h1><Trophy size={34} aria-hidden="true"/><MiniPhrase en="Winners" am="አሸናፊዎች"/></h1>
       <p><MiniPhrase en="Congratulations to all our winners! You can view the winning bids below." am="ለሁሉም አሸናፊዎቻችን እንኳን ደስ አላችሁ! ያሸነፉትን ጨረታዎች ከታች ይመልከቱ።"/></p>

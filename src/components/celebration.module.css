@@ -1,0 +1,2 @@
+.canvas{position:fixed;z-index:150;inset:0 auto 0 50%;width:min(100%,480px);height:100dvh;transform:translateX(-50%);pointer-events:none}
+@media(prefers-reduced-motion:reduce){.canvas{display:none}}

@@ -14,7 +14,7 @@ const nav=[
  {href:'/',en:'Home',am:'መነሻ',icon:House},
  {href:'/my-bids',en:'My Bids',am:'የእኔ ጨረታዎች',icon:Layers},
  {href:'/profile/wins',en:'Winning Bids',am:'ያሸነፉ ጨረታዎች',icon:Trophy},
- {href:'/wallet',en:'Deposit',am:'ገንዘብ ያስገቡ',icon:Wallet},
+ {href:'/wallet',en:'Deposit',am:'አስገባ',icon:Wallet},
  {href:'/profile/alerts',en:'My Alerts',am:'ማሳወቂያዎቼ',icon:Bell},
  {href:'/profile/favorites',en:'My Favorites',am:'ተወዳጆቼ',icon:Heart},
  {href:'/profile',en:'Profile',am:'መገለጫ',icon:CircleUserRound},
