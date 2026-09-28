@@ -18,6 +18,8 @@ export function createBot({contactVerified}:{contactVerified?:(telegramId:string
     try{await ctx.replyWithPhoto(new InputFile(resolve('public/banner1.png')),{caption,reply_markup})}
     catch(error){if(!(error instanceof GrammyError&&error.error_code===400)&&!(error instanceof Error&&'code' in error&&error.code==='ENOENT'))throw error;await ctx.reply(caption,{reply_markup})}
   });
-  bot.command('help', async ctx => { await ctx.reply('The smallest ETB amount placed exactly once wins. If none is unique, there is no winner.\n\nUp to 100 different amounts per auction. Your largest bid is held, plus any disclosed entry fees. No transfers or withdrawals.\n\nUse /start to open Lowwin.'); });
+  bot.command('help', async ctx => { await ctx.reply(ctx.from?.language_code?.startsWith('am')?
+    'አዲስ የv2 ጨረታዎች፦ ቢያንስ ሁለት መስፈርቱን የሚያሟሉ ሰዎች ጨረታቸው መቀበል አለበት። ከሁለት ያነሱ ከሆኑ፣ ወይም ጨረታ ካልቀረበ፣ በመዝጊያ ሰዓቱ ጨረታው ይሰረዛል፤ የመግቢያ ክፍያዎች እና የተያዘው ገንዘብ ሁሉ ይመለሳሉ።\n\nአንድ ጊዜ ብቻ ከቀረቡት መጠኖች ዝቅተኛው ያሸንፋል። ልዩ መጠን ከሌለ ብቻ፣ ዝቅተኛውን መጠን ያቀረቡት መካከል ጨረታው በመረጃ ቋቱ መጀመሪያ የተቀበለለት ሰው ያሸንፋል። አሮጌ የv1 ጨረታዎች የቀድሞ ደንባቸውን ይከተላሉ፤ ልዩ መጠን ከሌለ አሸናፊ የላቸውም።\n\nእስከ 100 የተለያዩ መጠኖችን ማቅረብ ይችላሉ። ትልቁ ጨረታዎ ይያዛል፤ የተገለጸው የመግቢያ ክፍያ በተለየ ይከፈላል። ከማረጋገጥዎ በፊት የጨረታውን ውሎች ያንብቡ። /start በመጠቀም ይክፈቱ።':
+    'New v2 auctions require accepted bids from at least two different eligible people. Fewer than two, including no bids, cancels the auction at its deadline: every entry fee is refunded and all holds released.\n\nThe lowest amount accepted exactly once wins. Only if none is unique, the lowest submitted amount wins for the person whose bid at that amount the database accepted first. Original v1 auctions retain their old no-unique/no-winner rule.\n\nUp to 100 different amounts per person per auction. Your largest bid is held and disclosed entry fees are charged separately. Read the frozen terms before confirmation. Use /start to open Lowwin.'); });
   return bot;
 }

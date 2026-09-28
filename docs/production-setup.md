@@ -82,9 +82,9 @@ npm run admin:bootstrap -- --email owner@your-domain.example
 
 Disable bootstrap immediately afterward. The database permanently records bootstrap consumption. Verify the actual mailbox, accept the one-time 24-hour invitation, set a unique password, enroll TOTP and save the once-displayed recovery codes. Follow [the admin guide](admin-guide.md). Bootstrap, invitations, resets and email delivery must be rehearsed with a staging mailbox before production.
 
-## 6. Funding stays closed
+## 6. Controlled funding activation
 
-Check.et verifies an existing transfer; it does not collect payment. `CHECK_ET_MODE`, test/live keys and payment policy settings cannot bypass the code interlock. Do not configure a real account as a DEMO account or ask a tester to send money. Tests use mock provider responses on disposable loopback databases only.
+Check.et verifies an existing transfer; it does not collect payment. Live funding stays off by default. Activation requires the server-only `PAYMENTS_LIVE_ENABLED=true` switch, production mode, HTTPS origins, a live Check.et key, enabled reviewed receiver policies and all development/test/DEMO switches off. See [the v2 release packet](frozen-auction-v2-release.md) for the concrete Owner transfer approval gate. Do not configure a real account as a DEMO account or ask a tester to send money. Tests use mock provider responses on disposable loopback databases only.
 
 Before a controlled activation, supply exact authorized Telebirr/CBE receiver details and official evidence. Verify reference, completed transfer type, exact cents, ETB currency, receiver, timezone-bearing transfer date and official verification method. Provider `duplicate=true` requires investigation; local unique claims remain the independent ownership guard. OCR/SMS merely extract a candidate reference. Case resolution is not credit approval.
 
@@ -100,9 +100,8 @@ npm run typecheck
 npm run build
 npx playwright install chromium
 node scripts/run-db-tests.mjs smoke
-# Optional full follow-up matrix:
-# node scripts/run-db-tests.mjs browser
-# node scripts/run-db-tests.mjs payments
+node scripts/run-db-tests.mjs browser
+node scripts/run-db-tests.mjs payments
 npm audit --audit-level=low
 ```
 
@@ -110,6 +109,11 @@ Run `scripts/benchmark-catalog.ts` with explicit `DATABASE_URL`/`DIRECT_URL` for
 
 On Android and iOS Telegram record device/OS/Telegram version, network, release SHA, cold launch, warm reopen, Home, Results, bid review/receipt, wallet, notifications and navigation. Capture 360px/430px EN/AM layouts and large text. Record five runs per case, p50/p95, errors and bytes; never include signed initData, cookie, contact or private bid contents in shared traces. Test offline/retry, double submit, background/foreground and reduced motion. The Owner will supply these real-device results through ngrok; absent results remain unverified.
 
-## 8. Deferred infrastructure gates
+## 8. Infrastructure validation
 
 TLS proxy limits, public ingress rate limits, Hostinger isolation, process supervision, backup scheduling/restore drill and operational alerts are **not deployed or verified** in this work because VPS/SSH was deferred. Application body limits do not replace edge limits. Before production, cap ordinary JSON requests, allow only the documented 5 MiB receipt route and bounded admin image route, overwrite untrusted forwarding headers, restrict direct app ingress, and validate 413/429 behavior over actual TLS. Monitor pool timeouts, authentication failures, stale settlements, queue age, provider failures and reconciliation drift. Any financial drift stops activation.
+
+
+## 9. Frozen v2 rollout and service templates
+
+Follow [the versioned rollout order](frozen-auction-v2-release.md) and [isolated deployment](deployment.md). New production publications use v2; old auctions retain v1. Do not run an older worker after a v2 auction is published. Deployment templates are prepared, not proof of installation on Hostinger.

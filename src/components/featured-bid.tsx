@@ -1,4 +1,5 @@
 'use client';
+import {AuctionRule} from './auction-rule';
 import {LoadingSpinner} from './loading-spinner';
 import {useCallback,useEffect,useId,useMemo,useRef,useState} from 'react';
 import {CheckCircle2,Gavel,Minus,Plus,X} from 'lucide-react';
@@ -10,7 +11,7 @@ import {useCelebration} from './celebration';
 import styles from './featured-carousel.module.css';
 
 type OwnBid={id:string;amount:string;acceptedAt:string};
-type BidState={open:boolean;terms:{minPoints:string;maxPoints:string;stepPoints:string;entryFeePoints:string;maxDistinctBids:number};wallet:{available:string;held:string};previousMax:string;remainingSubmissions:number;ownBids:OwnBid[]};
+type BidState={open:boolean;terms:{ruleVersion:string;minParticipants:number;minPoints:string;maxPoints:string;stepPoints:string;entryFeePoints:string;maxDistinctBids:number};wallet:{available:string;held:string};previousMax:string;remainingSubmissions:number;ownBids:OwnBid[]};
 type Receipt={bid:{amount:string;acceptedAt:string};hold:{newMax:string;extraReserved:string};charge:{feePoints:string;newlyUnavailable:string};wallet:{available:string;held:string};remainingSubmissions:number;ownBids:OwnBid[]};
 const whole=/^[1-9]\d{0,15}$/;
 
@@ -113,7 +114,7 @@ function FeaturedBidForIdentity({slug,title,onInteractionChange}:Props){
     <dialog ref={dialog} className={styles.dialog} onCancel={event=>{if(submitting)event.preventDefault();else setConfirm(false)}} onClose={()=>setConfirm(false)} aria-labelledby={titleId}>
       {preview&&state&&<><header><span className={styles.dialogIcon}><Gavel size={19}/></span><h2 id={titleId}>{am?'ጨረታዎን ያረጋግጡ':'Confirm your bid'}</h2><button type="button" onClick={()=>setConfirm(false)} disabled={submitting} aria-label={am?'ዝጋ':'Close'}><X size={19}/></button></header>
       <div className={styles.dialogBody}><dl><div><dt>{am?'ዕቃ':'Item'}</dt><dd>{title}</dd></div><div><dt>{am?'የጨረታ መጠን':'Your bid'}</dt><dd>{formatEtb(preview.bid)}</dd></div><div><dt>{am?'የቀድሞ ከፍተኛ የተያዘ':'Previous maximum hold'}</dt><dd>{formatEtb(preview.previous)}</dd></div><div><dt>{am?'አዲስ ከፍተኛ የተያዘ':'New maximum hold'}</dt><dd>{formatEtb(preview.newMax)}</dd></div><div><dt>{am?'ተጨማሪ የሚያዝ':'Extra reserved'}</dt><dd>{formatEtb(preview.extra)}</dd></div><div><dt>{am?'የመግቢያ ክፍያ':'Entry fee'}</dt><dd>{formatEtb(preview.fee)}</dd></div><div className={styles.dialogTotal}><dt>{am?'አሁን የማይገኝ ጠቅላላ':'Total newly unavailable'}</dt><dd>{formatEtb(preview.total)}</dd></div><div><dt>{am?'ከዚህ በኋላ ያለ ቀሪ':'Available after acceptance'}</dt><dd>{formatEtb(preview.after)}</dd></div><div><dt>{am?'የሚቀሩ ጨረታዎች':'Submissions left'}</dt><dd>{state.remainingSubmissions-1}</dd></div></dl>
-      <p className={styles.dialogNote}>{am?'የጨረታው መጠን አሁን ይያዛል፤ አሸናፊው ሲወሰን ብቻ ይከፈላል። ሕጋዊ ጨረታ ሲያበቃ የመግቢያ ክፍያ ይቀራል፤ ከተሰረዘ ይመለሳል።':'The bid amount is held now and charged only if it wins at settlement. The entry fee is retained after a valid close and refunded if the auction is cancelled.'} {am?'ሰርቨሩ ቀሪዎን፣ የመዝጊያ ሰዓትንና ውሎቹን እንደገና ያረጋግጣል።':'The server rechecks your balance, closing time and terms before acceptance.'}</p></div>
+      <AuctionRule ruleVersion={state.terms.ruleVersion}/><p className={styles.dialogNote}>{am?'የጨረታው መጠን አሁን ይያዛል፤ አሸናፊው ሲወሰን ብቻ ይከፈላል። ሕጋዊ ጨረታ ሲያበቃ የመግቢያ ክፍያ ይቀራል፤ ከተሰረዘ ይመለሳል።':'The bid amount is held now and charged only if it wins at settlement. The entry fee is retained after a valid close and refunded if the auction is cancelled.'} {am?'ሰርቨሩ ቀሪዎን፣ የመዝጊያ ሰዓትንና ውሎቹን እንደገና ያረጋግጣል።':'The server rechecks your balance, closing time and terms before acceptance.'}</p></div>
       <label className={styles.agreement}><input type="checkbox" checked={agreed} onChange={event=>setAgreed(event.target.checked)}/><span>{am?'ውሎቹንና ክፍያውን ተረድቻለሁ':'I understand the hold and fee'}</span></label>
       {error&&<p className={styles.bidError} role="alert">{error}</p>}
       <button type="button" className={styles.confirmButton} disabled={!agreed||submitting||!valid} onClick={()=>void submit()}>{submitting?<LoadingSpinner/>:(am?'አረጋግጥና ጨረታ አቅርብ':'Confirm & submit bid')}</button></>}

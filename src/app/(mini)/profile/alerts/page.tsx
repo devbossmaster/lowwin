@@ -1,4 +1,5 @@
 'use client';
+import {useWalletCopy} from '@/components/wallet-copy';
 import {useState} from 'react';
 import Link from 'next/link';
 import {Bell,Check,CheckCheck,Clock3,Settings2} from 'lucide-react';
@@ -18,6 +19,7 @@ function age(date:string){
   return new Date(date).toLocaleDateString('en',{month:'short',day:'numeric'});
 }
 export default function Alerts(){
+ const w=useWalletCopy();
   const [page,setPage]=useState(1),[revision,setRevision]=useState(0),[error,setError]=useState(''),[busy,setBusy]=useState(false);
   const [pendingPreferences,setPendingPreferences]=useState<Partial<Preferences>>({});
   const query=usePrivateQuery<Data>(`/api/alerts?page=${page}&v=${revision}`),data=query.data;
@@ -33,29 +35,29 @@ export default function Alerts(){
   return <section className={styles.page}>
     <div className={styles.notifications}>
       <header className={styles.hero}>
-        <div className={styles.heroTitle}><Bell size={25} aria-hidden="true"/><div><h1>Notifications</h1><p>Stay updated with your latest activities.</p></div></div>
-        <button type="button" className={styles.markAll} aria-label="Mark all notifications as read" title="Mark all as read" disabled={busy||!data?.unread} onClick={()=>void update({action:'read'})}><CheckCheck size={22}/></button>
+        <div className={styles.heroTitle}><Bell size={25} aria-hidden="true"/><div><h1>{w("Notifications")}</h1><p>{w("Stay updated with your latest activities.")}</p></div></div>
+        <button type="button" className={styles.markAll} aria-label={w("Mark all notifications as read")} title="Mark all as read" disabled={busy||!data?.unread} onClick={()=>void update({action:'read'})}><CheckCheck size={22}/></button>
         <div className={styles.stats} aria-label="Notification counts">
-          <span><strong>{data?.total??'—'}</strong><small>Total</small></span>
-          <span><strong>{data?.unread??'—'}</strong><small>Unread</small></span>
-          <span><strong>{data?data.total-data.unread:'—'}</strong><small>Read</small></span>
+          <span><strong>{data?.total??'—'}</strong><small>{w("Total")}</small></span>
+          <span><strong>{data?.unread??'—'}</strong><small>{w("Unread")}</small></span>
+          <span><strong>{data?data.total-data.unread:'—'}</strong><small>{w("Read")}</small></span>
         </div>
       </header>
       <PrivateState query={query}/>
       {error&&<p role="alert" className="notice-card">{error}</p>}
-      {data&&!data.items.length&&<p className={styles.empty}>No notifications yet.</p>}
+      {data&&!data.items.length&&<p className={styles.empty}>{w("No notifications yet.")}</p>}
       {data?.items.map(item=><article key={item.id} className={styles.alert}>
         <span className={styles.alertIcon}><Bell size={19} aria-hidden="true"/></span>
         <div className={styles.alertContent}>
-          <header><h2><Link href={item.href} prefetch={false} onClick={()=>{if(!item.readAt)void update({action:'read',id:item.id})}}>{item.title}</Link></h2><time dateTime={item.createdAt} title={new Date(item.createdAt).toLocaleString()}><Clock3 size={11} aria-hidden="true"/>{age(item.createdAt)}</time></header>
-          <p>{item.body}</p>
-          {item.readAt?<span className={styles.read}><Check size={12} aria-hidden="true"/>Read</span>:<button type="button" className={styles.markRead} disabled={busy} onClick={()=>void update({action:'read',id:item.id})}><Check size={12} aria-hidden="true"/>Mark read</button>}
+          <header><h2><Link href={item.href} prefetch={false} onClick={()=>{if(!item.readAt)void update({action:'read',id:item.id})}}>{w(item.title)}</Link></h2><time dateTime={item.createdAt} title={new Date(item.createdAt).toLocaleString()}><Clock3 size={11} aria-hidden="true"/>{age(item.createdAt)}</time></header>
+          <p>{w(item.body)}</p>
+          {item.readAt?<span className={styles.read}><Check size={12} aria-hidden="true"/>{w("Read")}</span>:<button type="button" className={styles.markRead} disabled={busy} onClick={()=>void update({action:'read',id:item.id})}><Check size={12} aria-hidden="true"/>{w("Mark read")}</button>}
         </div>
       </article>)}
     </div>
     {data&&<><PersonalPagination page={page} totalPages={data.totalPages} setPage={setPage}/>
-      <details className={styles.preferences}><summary><Settings2 size={16}/>Notification preferences</summary><p>Choose which updates you receive.</p>
-        {([['inApp','In-app alerts'],['telegram','Private Telegram bot messages'],['auctionStart','Saved auction starts'],['favoriteEnding','Saved auctions ending soon'],['fulfillment','Delivery updates']] as const).map(([key,label])=><label key={key}><input type="checkbox" checked={pendingPreferences[key]??data.preferences[key]} disabled={busy} onChange={event=>{setPendingPreferences(previous=>({...previous,[key]:event.target.checked}));void update({action:'preferences',...data.preferences,...pendingPreferences,[key]:event.target.checked})}}/>{label}</label>)}
+      <details className={styles.preferences}><summary><Settings2 size={16}/>{w("Notification preferences")}</summary><p>{w("Choose which updates you receive.")}</p>
+        {([['inApp','In-app alerts'],['telegram','Private Telegram bot messages'],['auctionStart','Saved auction starts'],['favoriteEnding','Saved auctions ending soon'],['fulfillment','Delivery updates']] as const).map(([key,label])=><label key={key}><input type="checkbox" checked={pendingPreferences[key]??data.preferences[key]} disabled={busy} onChange={event=>{setPendingPreferences(previous=>({...previous,[key]:event.target.checked}));void update({action:'preferences',...data.preferences,...pendingPreferences,[key]:event.target.checked})}}/>{w(label)}</label>)}
       </details>
     </>}
   </section>;

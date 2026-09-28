@@ -1,4 +1,5 @@
 import {assertPlayerContact} from '../auth/own-contact';
+import {liveFundingConfigured} from './activation';
 import {randomUUID} from 'node:crypto';
 import {Prisma,type PrismaClient,type TopUpIntent} from '@prisma/client';
 import {z} from 'zod';
@@ -7,9 +8,9 @@ import {ensureWallet,seedPlatformAccounts} from '../wallet/ledger';
 import {bankSchema,candidate,checkEt,hash,PaymentError,type VerifyTransport,type Bank} from './provider';
 type Tx=Prisma.TransactionClient;
 export function paymentHealth(){
- // Release interlock: this implementation cannot activate production crediting.
- const isolated=demoBidAllowed(),configured=isolated&&process.env.CHECK_ET_MODE==='test'&&!!process.env.CHECK_ET_TEST_API_KEY&&process.env.PAYMENTS_TEST_ENABLED==='true';
- return {enabled:configured,productionEnabled:false,ocr:configured&&process.env.RECEIPT_OCR==='tesseract',reason:configured?'Isolated test verification only. Do not send real funds.':'Adding ETB is unavailable until receiving accounts and verification are reviewed.'};
+ const productionEnabled=liveFundingConfigured();
+ const isolated=demoBidAllowed(),configured=productionEnabled||isolated&&process.env.CHECK_ET_MODE==='test'&&!!process.env.CHECK_ET_TEST_API_KEY&&process.env.PAYMENTS_TEST_ENABLED==='true';
+ return {enabled:configured,productionEnabled,ocr:configured&&process.env.RECEIPT_OCR==='tesseract',reason:productionEnabled?'Only exact provider-verified transfers can credit your wallet.':configured?'Isolated test verification only. Do not send real funds.':'Adding ETB is unavailable until receiving accounts and verification are reviewed.'};
 }
 function requireEnabled(){if(!paymentHealth().enabled)throw new PaymentError(503,paymentHealth().reason)}
 async function clock(tx:Tx){return (await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`)[0].now}

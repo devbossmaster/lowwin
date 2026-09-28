@@ -90,3 +90,10 @@ Winners submit a separate delivery contact in **Winning Bids**. Owner assigns th
 Reference captures: [payment queue](screenshots/phase6-top-ups-admin-laptop.png), [payment settings](screenshots/phase6-payment-settings-admin-laptop.png), [statements](screenshots/phase6-payment-statements-admin-laptop.png). They are historical fixture captures, not proof of current production state; route/control names above are the authoritative guide.
 
 Publication, cancellation, accepted bids, posted journals, transfer claims, settlement proofs, immutable policy versions and audit records cannot be rewritten through the application. Invitations/recovery codes are one-time; the last Owner is protected. Back up database **and** encryption key versions, perform a separate restore/reconciliation drill, and record the reviewed release SHA. See the current release packet for verified checks and outstanding GO/NO-GO gates.
+
+
+## New publications: frozen rule v2
+
+Publication preflight now displays the two-person minimum and first-accepted fallback. Two bids by one user do not meet the minimum. Below two eligible participants at the deadline, the worker cancels and refunds every fee and hold; staff do not need to issue manual credits. Otherwise the lowest unique amount wins. Only without any unique amount does the earliest database-accepted bid at the lowest amount win. Staff cannot select or replace a winner.
+
+Results review records `decision`, `participantCount`, `acceptanceCutoff`, amount frequencies, selected acceptance order and financial journal references. Use the immutable proof to investigate; use retry only for failed closing work. `FIRST_ACCEPTED_LOWEST` is not a unique bid. `MINIMUM_PARTICIPANTS` is a cancelled auction with all fees refunded. Existing v1 terms and outcomes remain unchanged. See the [release/Owner review packet](frozen-auction-v2-release.md) for examples, rollout and rollback limits.

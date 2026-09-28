@@ -275,6 +275,7 @@ model Auction {
   featured Boolean @default(false)
   isDemo Boolean @default(false)
   acceptedBidCount Int @default(0)
+  bidSequence BigInt @default(0)
   // Aggregate public impressions only. Viewer identity is never stored.
   publicViewCount BigInt @default(0)
   fulfillmentSummary String?
@@ -302,6 +303,7 @@ model AuctionTerms {
   auction Auction @relation(fields: [auctionId], references: [id], onDelete: Restrict)
   version Int @default(1)
   ruleVersion String @default("lowest-unique-v1")
+  minParticipants Int @default(0)
   minPoints BigInt
   maxPoints BigInt
   stepPoints BigInt
@@ -348,6 +350,7 @@ model Bid {
   auction      Auction   @relation(fields: [auctionId], references: [id], onDelete: Restrict)
   amount       BigInt
   acceptedAt   DateTime  @default(dbgenerated("(clock_timestamp() AT TIME ZONE 'UTC')")) @db.Timestamp(6)
+  acceptanceOrder BigInt?
   termsVersion Int
   feePoints    BigInt
   operationId  String    @unique
@@ -355,6 +358,7 @@ model Bid {
   winningSettlement AuctionSettlement?
 
   @@unique([userId, auctionId, amount])
+  @@unique([auctionId, acceptanceOrder])
   @@index([userId, auctionId, acceptedAt])
   @@index([auctionId, amount])
 }
@@ -504,6 +508,9 @@ model AuctionSettlement {
   completedAt DateTime @default(dbgenerated("(clock_timestamp() AT TIME ZONE 'UTC')")) @db.Timestamp(6)
   transactionId BigInt @default(dbgenerated("txid_current()"))
   acceptedCount Int
+  decision String?
+  participantCount Int?
+  acceptanceCutoff BigInt?
   winnerUserId String?
   winner User? @relation("SettlementWinner", fields: [winnerUserId], references: [id], onDelete: Restrict)
   winningBidId String? @unique

@@ -63,7 +63,7 @@ describe.skipIf(!url)('Phase 4B public outcomes and private pages on PostgreSQL'
     const response=await route.GET(request(`/api/results/${publicCode(winner)}`),{params:Promise.resolve({auctionCode:publicCode(winner)})});
     expect(response.status).toBe(200);expect(response.headers.get('cache-control')).toContain('no-store');const body=await response.json();
     expect(Object.keys(body).sort()).toEqual(['slug','code','status','featured','isDemo','startsAt','endsAt','bidCount','viewCount','product','category','fulfillment','terms','result'].sort());
-    expect(Object.keys(body.result).sort()).toEqual(['outcome','winningPoints','explanation','isDemo','closedAt','source','demoLabel','winnerDisplay','acceptedBidCount'].sort());
+    expect(Object.keys(body.result).sort()).toEqual(['decision','outcome','winningPoints','explanation','isDemo','closedAt','source','demoLabel','winnerDisplay','acceptedBidCount'].sort());
     const settlement=await client.auctionSettlement.findUniqueOrThrow({where:{auctionId:winner.id},include:{movements:true}});
     expect(settlement.proof).toHaveProperty('amountFrequencies');
     const serialized=JSON.stringify(body);

@@ -1,3 +1,4 @@
+import {RULE_V2,V2_MIN_PARTICIPANTS,V2_FALLBACK_TERMS,V2_CANCELLATION_TERMS} from '../auctions/rules';
 import { randomUUID } from 'node:crypto';
 import { Prisma,type PrismaClient } from '@prisma/client';
 import sharp from 'sharp';
@@ -104,7 +105,7 @@ export async function adminMutation(client:PrismaClient,headers:Headers,action:A
       await tx.$queryRaw`SELECT id FROM "Product" WHERE id=${body.productId} FOR UPDATE`;
       const item=await tx.product.findUniqueOrThrow({where:{id:body.productId}});await tx.$queryRaw`SELECT id FROM "Category" WHERE id=${item.categoryId} FOR UPDATE`;
       const checked=await publicationPreflight(tx,data.auctionId);if(checked.auction.draft?.version!==data.version)throw new AdminError(409,'Draft changed. Repeat preflight.');if(checked.errors.length)throw new AdminError(422,checked.errors.join(' '));const p=checked.product!;
-      await tx.auctionTerms.create({data:{auctionId:data.auctionId,minPoints:BigInt(body.minPoints),maxPoints:BigInt(body.maxPoints),stepPoints:BigInt(body.stepPoints),entryFeePoints:BigInt(body.entryFeePoints),maxDistinctBids:100,noWinnerTerms:'No unique accepted amount means no winner. All holds are released; disclosed entry fees are retained.',cancellationTerms:'Cancellation releases all holds and refunds every charged entry fee.',fulfillmentSnapshot:body.fulfillmentSummary}});
+      await tx.auctionTerms.create({data:{auctionId:data.auctionId,ruleVersion:RULE_V2,minParticipants:V2_MIN_PARTICIPANTS,minPoints:BigInt(body.minPoints),maxPoints:BigInt(body.maxPoints),stepPoints:BigInt(body.stepPoints),entryFeePoints:BigInt(body.entryFeePoints),maxDistinctBids:100,noWinnerTerms:V2_FALLBACK_TERMS,cancellationTerms:V2_CANCELLATION_TERMS,fulfillmentSnapshot:body.fulfillmentSummary}});
       const auction=await tx.auction.update({where:{id:data.auctionId},data:{productId:p.id,categoryId:p.categoryId,isDemo:p.isDemo,isSettlementFixture:p.isDemo&&demoBidAllowed(process.env),startsAt:new Date(body.startsAt),endsAt:new Date(body.endsAt),publishedAt:checked.now,status:'SCHEDULED',featured:body.featured,fulfillmentSummary:body.fulfillmentSummary,fulfillmentRegion:body.fulfillmentRegion}});target=auction.id;receipt={auctionId:target,code:auction.code,status:auction.status,isDemo:auction.isDemo};
     }else if(action==='cancel'){
       const data=schemas.cancel.parse(input),impact=await cancellationImpact(tx,data.auctionId);

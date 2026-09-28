@@ -1,3 +1,4 @@
+import {resultExplanation} from './rules';
 import { Prisma } from '@prisma/client';
 import {legacyTermsInEtb} from '@/lib/money';
 import { z } from 'zod';
@@ -10,9 +11,9 @@ export const publicAuctionSelect = {
   fulfillmentSummary:true,fulfillmentRegion:true,
   product:{select:{title:true,description:true,condition:true,images:{orderBy:{sortOrder:'asc'},select:{path:true,alt:true,sourceType:true,sourceCredit:true}}}},
   category:{select:{slug:true,name:true}},
-  terms:{select:{version:true,ruleVersion:true,minPoints:true,maxPoints:true,stepPoints:true,entryFeePoints:true,maxDistinctBids:true,noWinnerTerms:true,cancellationTerms:true,fulfillmentSnapshot:true}},
+  terms:{select:{version:true,ruleVersion:true,minParticipants:true,minPoints:true,maxPoints:true,stepPoints:true,entryFeePoints:true,maxDistinctBids:true,noWinnerTerms:true,cancellationTerms:true,fulfillmentSnapshot:true}},
   result:{select:{outcome:true,winningPoints:true,explanation:true,isDemo:true,closedAt:true,publishedAt:true}},
-  settlement:{select:{outcome:true,winningPoints:true,completedAt:true}},
+  settlement:{select:{decision:true,outcome:true,winningPoints:true,completedAt:true}},
 } satisfies Prisma.AuctionSelect;
 type AuctionRow = Prisma.AuctionGetPayload<{ select: typeof publicAuctionSelect }>;
 export const catalogQuerySchema = z.object({
@@ -52,13 +53,13 @@ export function toPublicAuction(row: AuctionRow, now: Date) {
   const settled=row.settlement;
   const result=settled&&['closed','cancelled'].includes(status)?{
     outcome:settled.outcome,winningPoints:settled.winningPoints?.toString()??null,
-    explanation:settled.outcome==='WINNER'?'The winning ETB amount was the smallest amount accepted exactly once. All other holds were released.':settled.outcome==='NO_WINNER'?'No accepted amount was unique. All holds were released; disclosed entry fees were retained.':'The auction was cancelled before settlement. All holds and charged entry fees were returned.',
+    decision:settled.decision,explanation:resultExplanation(settled.outcome,settled.decision),
     isDemo:row.isDemo,closedAt:settled.completedAt.toISOString(),source:'SETTLED' as const,
     demoLabel:row.isDemo?'DEMO · settled test':null,winnerDisplay:settled.outcome==='WINNER'?'Anonymous winner':null,
     acceptedBidCount:row.acceptedBidCount,
   }:status==='closed'&&row.result&&row.result.publishedAt<=now?{
     outcome:row.result.outcome,winningPoints:row.result.winningPoints?.toString()??null,
-    explanation:legacyTermsInEtb(row.result.explanation),isDemo:row.result.isDemo,closedAt:row.result.closedAt.toISOString(),source:'ILLUSTRATIVE' as const,
+    decision:null,explanation:legacyTermsInEtb(row.result.explanation),isDemo:row.result.isDemo,closedAt:row.result.closedAt.toISOString(),source:'ILLUSTRATIVE' as const,
     demoLabel:'DEMO example',winnerDisplay:row.result.outcome==='WINNER'?'Anonymous winner':null,
     acceptedBidCount:null,
   }:null;
@@ -70,7 +71,7 @@ export function toPublicAuction(row: AuctionRow, now: Date) {
       images:row.product!.images.map(image=>({path:image.path,alt:image.alt,sourceType:image.sourceType,sourceCredit:image.sourceCredit}))},
     category:{slug:row.category!.slug,name:row.category!.name},
     fulfillment:{summary:row.fulfillmentSummary!,region:row.fulfillmentRegion!},
-    terms:{version:row.terms!.version,ruleVersion:row.terms!.ruleVersion,minPoints:row.terms!.minPoints.toString(),maxPoints:row.terms!.maxPoints.toString(),stepPoints:row.terms!.stepPoints.toString(),entryFeePoints:row.terms!.entryFeePoints.toString(),maxDistinctBids:row.terms!.maxDistinctBids,noWinnerTerms:legacyTermsInEtb(row.terms!.noWinnerTerms),cancellationTerms:legacyTermsInEtb(row.terms!.cancellationTerms),fulfillmentSnapshot:row.terms!.fulfillmentSnapshot},
+    terms:{version:row.terms!.version,ruleVersion:row.terms!.ruleVersion,minParticipants:row.terms!.minParticipants,minPoints:row.terms!.minPoints.toString(),maxPoints:row.terms!.maxPoints.toString(),stepPoints:row.terms!.stepPoints.toString(),entryFeePoints:row.terms!.entryFeePoints.toString(),maxDistinctBids:row.terms!.maxDistinctBids,noWinnerTerms:legacyTermsInEtb(row.terms!.noWinnerTerms),cancellationTerms:legacyTermsInEtb(row.terms!.cancellationTerms),fulfillmentSnapshot:row.terms!.fulfillmentSnapshot},
     result,
   };
 }

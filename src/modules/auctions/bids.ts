@@ -139,7 +139,7 @@ export async function getOwnBidState(client:PrismaClient,userId:string,auctionSl
     const restricted=!!await tx.staffMember.findUnique({where:{userId}})||(await tx.userRestriction.findUnique({where:{userId}}))?.suspended;
     return {auctionCode:auction.code,open:!restricted&&['SCHEDULED','LIVE'].includes(auction.status)&&auction.publishedAt<=now&&!!auction.startsAt&&!!auction.endsAt&&auction.startsAt<=now&&now<auction.endsAt&&(!auction.isDemo||demoBidAllowed(raw)||auction.isSettlementFixture&&stagingDemoUser(userId,raw)),
       serverNow:now.toISOString(),isDemo:auction.isDemo,
-      terms:{version:terms.version,minPoints:terms.minPoints.toString(),maxPoints:terms.maxPoints.toString(),stepPoints:terms.stepPoints.toString(),entryFeePoints:terms.entryFeePoints.toString(),maxDistinctBids:terms.maxDistinctBids},
+      terms:{version:terms.version,ruleVersion:terms.ruleVersion,minParticipants:terms.minParticipants,minPoints:terms.minPoints.toString(),maxPoints:terms.maxPoints.toString(),stepPoints:terms.stepPoints.toString(),entryFeePoints:terms.entryFeePoints.toString(),maxDistinctBids:terms.maxDistinctBids},
       wallet:{available:(wallet?.accounts.find(account=>account.kind==='AVAILABLE')?.balance??0n).toString(),held:(wallet?.accounts.find(account=>account.kind==='HELD')?.balance??0n).toString()},
       previousMax:previousMax.toString(),remainingSubmissions:Math.max(0,terms.maxDistinctBids-bids.length),
       ownBids:bids.map(bid=>({id:bid.id,amount:bid.amount.toString(),acceptedAt:bid.acceptedAt.toISOString()}))};
