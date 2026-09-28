@@ -1,4 +1,6 @@
 import { db } from '@/lib/db';
+import {readRequestText,RequestBodyError} from '@/lib/request-body';
+import {allowIdentityRequest} from '@/lib/rate-limit';
 import { getEnv } from '@/lib/env';
 import { assertLocalIdentityAccess } from './local-identity';
 import { createAuth } from './server';
@@ -16,9 +18,12 @@ export async function handleAuth(request: Request) {
   let env;
   try { env = getEnv(); } catch { return Response.json({ error: 'Authentication is not configured yet.' }, { status: 503 }); }
   if (request.method === 'POST' && request.headers.get('origin') !== new URL(env.BETTER_AUTH_URL).origin) return Response.json({ error: 'Invalid origin' }, { status: 403 });
+  if(request.method==='POST') {
+    try {const body=await readRequestText(request,staffAction?4096:20000);request=new Request(request.url,{method:request.method,headers:request.headers,body})}
+    catch(error){return Response.json({error:error instanceof RequestBodyError?error.message:'Invalid request.'},{status:error instanceof RequestBodyError?error.status:400,headers:{'Cache-Control':'private, no-store'}})}
+  }
   if(staffAction){
     const headers={'Cache-Control':'private, no-store, max-age=0','Vary':'Cookie'};
-    if((await request.clone().text()).length>4096)return Response.json({error:'Request is too large.'},{status:413,headers});
     try{
       if(!await staffRateLimit(db,staffAction,request))return Response.json({error:'Too many attempts. Try again later.'},{status:429,headers});
       return await db.$transaction(async tx=>{const response=await createAuth(tx).handler(request);if(!response.ok)throw response;const h=new Headers(response.headers);for(const [key,value] of Object.entries(headers))h.set(key,value);return new Response(response.body,{status:response.status,headers:h})},{timeout:20000});
@@ -40,6 +45,7 @@ export async function handleAuth(request: Request) {
     } catch { return Response.json({ error: 'Launch could not be verified. Reopen Lowwin from Telegram.' }, { status: 401,headers:responseHeaders }); }
     try {
       // A fresh signed launch may reuse only a live, Telegram-bound session for
+      if(!await allowIdentityRequest(db,'launch',identity,20))return Response.json({error:'Too many sign-in attempts. Wait a minute and reopen Lowwin.'},{status:429,headers:{...responseHeaders,'Retry-After':'60'}});
       // that exact identity. Website, staff, revoked and other-user cookies fail.
       if(path==='/telegram/miniapp/signin'&&request.headers.has('cookie')) {
         const current=await getLaunchSession(request.headers);

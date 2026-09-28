@@ -1,1 +1,1 @@
-export function CatalogSkeleton(){return <div className="page-loading-backdrop" role="status" aria-label="Loading"><div className="page-loading-indicator"><span aria-hidden="true"/>Loading…</div></div>}
+export {PageLoading as CatalogSkeleton} from './loading-spinner';

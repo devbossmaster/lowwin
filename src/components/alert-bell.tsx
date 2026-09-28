@@ -1,4 +1,6 @@
 'use client';
+import {LoadingSpinner} from '@/components/loading-spinner';
+
 import {useCallback,useEffect,useId,useRef,useState} from 'react';
 import Link from 'next/link';
 import {usePathname} from 'next/navigation';
@@ -74,7 +76,7 @@ function PlayerAlerts({userId,className}:{userId?:string;className?:string}){
    <header className={styles.heading}><h2><MiniPhrase en="Notifications" am="ማሳወቂያዎች"/></h2><div className={styles.headingActions}><span className={styles.unread}>{count??'—'} <MiniPhrase en="Unread" am="ያልተነበቡ"/></span><button type="button" className={styles.iconButton} disabled={busy||!count} onClick={()=>void markRead()} aria-label="Mark all notifications as read"><CheckCheck size={20}/></button><button type="button" className={styles.iconButton} aria-label="Close notifications" onClick={()=>{setOpen(false);trigger.current?.focus()}}><X size={18}/></button></div></header>
    <div className={styles.scroll}>
     {error&&<div className={styles.message} role="alert">{error}<button className={styles.retry} onClick={()=>setRevision(value=>value+1)}><MiniPhrase en="Retry" am="እንደገና ይሞክሩ"/></button></div>}
-    {!userId?<p className={styles.message}>Sign in to see your notifications.</p>:!data&&!error?<p className={styles.message} role="status"><MiniPhrase en="Loading notifications…" am="ማሳወቂያዎች በመጫን ላይ…"/></p>:data?.items.length===0?<p className={styles.message}><MiniPhrase en="No notifications yet." am="እስካሁን ማሳወቂያዎች የሉም።"/></p>:null}
+    {!userId?<p className={styles.message}>Sign in to see your notifications.</p>:!data&&!error?<p className={styles.message} role="status"><LoadingSpinner/></p>:data?.items.length===0?<p className={styles.message}><MiniPhrase en="No notifications yet." am="እስካሁን ማሳወቂያዎች የሉም።"/></p>:null}
     {data?.items.map(item=><article key={item.id} className={styles.notification} data-unread={!item.readAt}><span className={styles.notificationIcon}><Bell size={16} aria-hidden="true"/></span><div><h3>{item.title}</h3><p className={expanded===item.id?undefined:styles.preview}>{item.body}</p><button type="button" className={styles.readMore} aria-expanded={expanded===item.id} onClick={()=>{setExpanded(value=>value===item.id?null:item.id);if(!item.readAt)void markRead(item.id)}}><MiniPhrase en={expanded===item.id?'Show less':'Read more'} am={expanded===item.id?'ያሳንሱ':'ተጨማሪ ያንብቡ'}/></button>{expanded===item.id&&<div><Link prefetch={false} href={item.href} onClick={()=>setOpen(false)}><MiniPhrase en="View details" am="ዝርዝር ይመልከቱ"/><ArrowRight size={14}/></Link></div>}<time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleString(am?'am-ET':'en',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</time></div></article>)}
    </div>
    <Link className={styles.viewAll} href="/profile/alerts" prefetch={false} onClick={()=>setOpen(false)}><MiniPhrase en="View all" am="ሁሉንም ይመልከቱ"/><ArrowRight size={16}/></Link>

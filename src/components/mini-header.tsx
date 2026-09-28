@@ -1,4 +1,5 @@
 'use client';
+import {LoadingSpinner} from './loading-spinner';
 import Link from 'next/link';
 import {useEffect,useRef,useState} from 'react';
 import {Check,ChevronDown,Globe2,UserRound} from 'lucide-react';
@@ -34,7 +35,7 @@ export function MiniHeader(){
   <Button asChild variant="outline" className={styles.avatar}><Link href="/profile" aria-label={t('openProfile')}><UserRound size={22} aria-hidden="true"/>{photo&&<img key={photo} src={photo} alt="" width={40} height={40} referrerPolicy="no-referrer" onError={event=>{event.currentTarget.style.display='none'}}/>}</Link></Button>
   <Button asChild variant="outline" className={styles.balance}><Link href="/wallet" title={amount??label} aria-label={amount?`${demo?'DEMO ':''}${amount} ${t('available')}, ${t('openWallet')}`:`${label}, ${t('openWallet')}`} aria-busy={status==='loading'}>
    <span className={styles.balanceLabel}>{demo?'DEMO · ':''}{t('available')}</span>
-   <span className={styles.amount}>{amount&&<small>ETB </small>}{amount?amount.replace('ETB ',''):label}</span>
+   <span className={styles.amount}>{amount&&<small>ETB </small>}{status==='loading'?<LoadingSpinner/>:amount?amount.replace('ETB ',''):label}</span>
   </Link></Button>
   <AlertBell className={styles.icon}/>
   <AuctionQuickList className={styles.icon}/>

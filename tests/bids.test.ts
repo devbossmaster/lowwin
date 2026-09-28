@@ -29,7 +29,7 @@ describe.skipIf(!url)('authenticated point bids on disposable PostgreSQL',()=>{
     const route=await import('../src/app/api/auctions/[slug]/bids/route');
     const context={params:Promise.resolve({slug:auction.slug!})};
     const url=`http://localhost:3000/api/auctions/${auction.slug}/bids`;
-    const request=(cookie?:string)=>new Request(url,{method:'POST',headers:{'content-type':'application/json',...(cookie?{cookie}:{})},body:JSON.stringify({amount:'12',key:randomUUID()})});
+    const request=(cookie?:string)=>new Request(url,{method:'POST',headers:{origin:'http://localhost:3000','content-type':'application/json',...(cookie?{cookie}:{})},body:JSON.stringify({amount:'12',key:randomUUID()})});
     expect((await route.POST(request(),context)).status).toBe(401);
     expect((await route.GET(new Request(url),context)).status).toBe(401);
     const {handleAuth}=await import('../src/modules/auth/handler');
@@ -41,7 +41,8 @@ describe.skipIf(!url)('authenticated point bids on disposable PostgreSQL',()=>{
     const signedUser=await client.user.findUniqueOrThrow({where:{telegramId:String(telegramId)}});
     const {creditDevelopmentPoints}=await import('../src/modules/wallet/ledger');
     await creditDevelopmentPoints(client,signedUser.id,'100',`signed-bid-${randomUUID()}`);
-    const forged=await route.POST(new Request(url,{method:'POST',headers:{cookie,'content-type':'application/json'},body:JSON.stringify({amount:'12',key:randomUUID(),feePoints:'0',balance:'99999',acceptedAt:'2000-01-01'})}),context);
+    const forged=await route.POST(new Request(url,{method:'POST',headers:{cookie,origin:'http://localhost:3000','content-type':'application/json'},body:JSON.stringify({amount:'12',key:randomUUID(),feePoints:'0',balance:'99999',acceptedAt:'2000-01-01'})}),context);
+    expect((await route.POST(new Request(url,{method:'POST',headers:{cookie,origin:'https://other.invalid'},body:'{}'}),context)).status).toBe(403);
     expect(forged.status).toBe(422);
     const response=await route.POST(request(cookie),context);
     expect(response.status).toBe(201);

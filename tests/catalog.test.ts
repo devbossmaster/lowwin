@@ -24,6 +24,17 @@ describe.skipIf(!testUrl)('public catalog on disposable PostgreSQL',()=>{
     expect(await client.productImage.count()).toBe(14);
     expect(await client.auctionTerms.count()).toBe(14);
   });
+  it('returns a small public-only live header list with numeric detail codes',async()=>{
+    const result=await catalog.listQuickLiveAuctions(1);
+    expect(result.total).toBe(8);expect(result.items).toHaveLength(6);
+    for(const item of result.items){
+      expect(item.code).toMatch(/^[1-9]\d*$/);
+      expect(Object.keys(item).sort()).toEqual(['bidCount','code','endsAt','isDemo','product','slug']);
+      expect(Object.keys(item.product).sort()).toEqual(['images','title']);
+      expect(item.product.images.length).toBeLessThanOrEqual(1);
+    }
+    expect(JSON.stringify(result)).not.toContain('winningUserId');
+  });
   it('derives live, upcoming and closed status and never shows a live animal listing',async()=>{
     const now=await catalog.serverNow();
     const categories=await catalog.listCategories(now);

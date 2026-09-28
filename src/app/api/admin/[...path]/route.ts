@@ -1,5 +1,6 @@
 import {opsMutation,type OpsAction} from '@/modules/admin/ops';
 import {z} from 'zod';
+import {readRequestText,RequestBodyError} from '@/lib/request-body';
 import {db} from '@/lib/db';
 import {adminHeaders} from '@/modules/admin/boundary';
 import {AdminError} from '@/modules/admin/errors';
@@ -11,7 +12,7 @@ function failure(error:unknown){const status=error instanceof AdminError||error 
 export async function GET(request:Request,{params}:{params:Promise<{path:string[]}>}){try{return json(await adminRead(db,request.headers,(await params).path,new URL(request.url).searchParams))}catch(error){return failure(error)}}
 export async function POST(request:Request,{params}:{params:Promise<{path:string[]}>}){try{
   requireMutationOrigin(request);if((await params).path.join('/')!=='command')throw new AdminError(404,'Admin command not found.');
-  const raw=await request.text();if(raw.length>2900000)throw new AdminError(413,'Request is too large.');
+  let raw:string;try{raw=await readRequestText(request,2900000)}catch(error){if(error instanceof RequestBodyError)throw new AdminError(error.status,error.message);throw error}
   const body=z.object({action:z.enum(['category','product','media','content','draft','publish','cancel','replace','invite','staff','suspend','support','fulfillment','retry']),input:z.unknown()}).strict().parse(JSON.parse(raw));
   return json(['invite','staff','suspend','support','fulfillment','retry'].includes(body.action)?await opsMutation(db,request.headers,body.action as OpsAction,body.input):await adminMutation(db,request.headers,body.action as Parameters<typeof adminMutation>[2],body.input));
 }catch(error){return failure(error)}}

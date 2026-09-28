@@ -1,15 +1,17 @@
 'use client';
+import {LoadingSpinner} from '@/components/loading-spinner';
+
 import {useEffect,useId,useRef,useState} from 'react';
 import Link from 'next/link';
 import {usePathname} from 'next/navigation';
 import {Clock3,Gavel,RefreshCw,X} from 'lucide-react';
-import type {CatalogAuction} from '@/modules/auctions/catalog';
+import type {listQuickLiveAuctions} from '@/modules/auctions/catalog';
 import {AuctionCountdown} from './auction-countdown';
 import {CatalogImage} from './catalog-image';
 import {MiniPhrase,useMiniLocale} from './mini-locale';
 import styles from './header-panels.module.css';
 
-type AuctionList={items:CatalogAuction[];total:number;page:number;totalPages:number;serverNow:string};
+type AuctionList=Awaited<ReturnType<typeof listQuickLiveAuctions>>;
 export function AuctionQuickList({className}:{className?:string}){
  const {language}=useMiniLocale(),am=language==='am',path=usePathname(),id=useId();
  const [open,setOpen]=useState(false),[page,setPage]=useState(1),[revision,setRevision]=useState(0),[data,setData]=useState<AuctionList|null>(null),[loading,setLoading]=useState(false),[error,setError]=useState('');
@@ -26,7 +28,7 @@ export function AuctionQuickList({className}:{className?:string}){
   if(!open)return;
   const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),10000);
   let disposed=false;setLoading(true);setError('');
-  fetch(`/api/catalog/auctions?status=live&sort=newest&page=${page}`,{cache:'no-store',signal:controller.signal}).then(async response=>{
+  fetch(`/api/catalog/auctions?view=quick&status=live&sort=newest&page=${page}`,{cache:'no-store',signal:controller.signal}).then(async response=>{
    if(!response.ok)throw Error('Auctions unavailable');
    const result=await response.json() as AuctionList;
    if(!disposed)setData(previous=>page===1||!previous?result:{...result,items:[...previous.items,...result.items.filter(item=>!previous.items.some(existing=>existing.slug===item.slug))]});
@@ -41,7 +43,7 @@ export function AuctionQuickList({className}:{className?:string}){
    <div className={styles.scroll}>
     {data&&data.items.length===0&&<p className={styles.message}><MiniPhrase en="No live auctions right now." am="በአሁኑ ጊዜ በሂደት ላይ ያሉ ጨረታዎች የሉም።"/></p>}
     {!!data?.items.length&&<div className={styles.auctionList}>{data.items.map(item=><article className={styles.auction} key={item.slug}><Link href={`/auctions/${item.code}`} prefetch={false} className={styles.auctionImage} onClick={()=>setOpen(false)} aria-label={item.product.title}><CatalogImage src={item.product.images[0]?.path} alt=""/><span>#{item.code}</span></Link><div className={styles.auctionContent}><h3><Link href={`/auctions/${item.code}`} prefetch={false} onClick={()=>setOpen(false)}>{item.product.title}</Link></h3><p className={styles.auctionMeta}><Gavel size={13} aria-hidden="true"/>{item.bidCount.toLocaleString()} <MiniPhrase en="bids" am="ጨረታዎች"/>{item.isDemo?' · DEMO':''}</p><div className={styles.auctionBottom}><span className={styles.timer}><Clock3 size={13} aria-hidden="true"/><AuctionCountdown target={item.endsAt} serverNow={data.serverNow} label="Ends"/></span><Link className={styles.bidLink} href={`/auctions/${item.code}`} prefetch={false} onClick={()=>setOpen(false)}><Gavel size={13} aria-hidden="true"/><MiniPhrase en="Bid now" am="አሁን ይጫረቱ"/></Link></div></div></article>)}</div>}
-    {loading&&<p className={styles.message} role="status"><MiniPhrase en="Loading auctions…" am="ጨረታዎች በመጫን ላይ…"/></p>}
+    {loading&&<p className={styles.message} role="status"><LoadingSpinner/></p>}
     {error&&<div className={styles.message} role="alert">{error}<button type="button" className={styles.retry} onClick={()=>setRevision(value=>value+1)}><MiniPhrase en="Retry" am="እንደገና ይሞክሩ"/></button></div>}
     {data&&data.page<data.totalPages&&!error&&<button type="button" className={`${styles.retry} ${styles.loadMore}`} disabled={loading} onClick={()=>setPage(value=>value+1)}><MiniPhrase en="Show more auctions" am="ተጨማሪ ጨረታዎችን ያሳዩ"/></button>}
    </div>
