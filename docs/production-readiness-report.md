@@ -54,3 +54,9 @@ No permanent remedy for an unreachable Supabase server is claimed. Reduced queri
 ## Review checkout
 
 Branch `release/production-readiness-20260928` is pushed for review; main is unchanged. The Owner checkout can run the same commit on `review/production-preview-20260929` for ngrok testing. A local preview restart is not production traffic activation.
+
+## Final local follow-up
+
+The Owner checkout is now on `review/production-preview-20260929` at `fa35f0b`; its local Next server restarted on port 3000 and reported ready in 5.2s. Prisma generated the updated JavaScript but could not replace a Windows-locked native DLL. The existing DLL hash exactly matched the successfully tested review engine, and the generated client was verified to include relation joins; the preview safely reused it. The existing worker was not restarted: automatic approval rejected a worker restart because it could execute financial/notification jobs. No bypass or new worker was started.
+
+The final local Windows/Webpack follow-up passed 3 of 4 mobile tests: both viewport navigation/locale/blur/account-toggle cases and the 430px bid flow. The 360px receipt assertion timed out; this remains an unresolved local regression-test result, despite all four mobile tests passing in the hosted run on 46d73b2 and earlier local signed-bid runs passing at both widths. The final follow-up head must pass its own hosted checks before merge. `loading-mobile-360.png` was visually inspected: header, page and bottom navigation are blurred behind a centered spinner.
