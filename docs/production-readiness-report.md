@@ -18,17 +18,17 @@ The prior main [CI run 36482816274](https://github.com/devbossmaster/lowwin/acti
 
 | Check | Evidence in this pass |
 |---|---|
-| All opt-in database/unit suites | **274 passed, 26 files, zero skipped** on fresh loopback PostgreSQL 17 databases. Includes Telegram/contact, bid races, wallet/holds/journals, settlement, personal access, staff MFA, operations and funding tests. |
+| All opt-in database/unit suites | **275 passed, 26 files, zero skipped** on fresh loopback PostgreSQL 17 databases. Includes Telegram/contact, bid races, wallet/holds/journals, settlement, personal access, staff MFA, operations and funding tests. |
 | Header catalog projection follow-up | **6 catalog tests passed**, including public-only small header DTO. |
 | Typecheck | `tsc --noEmit` passed after application changes. |
 | Production build | `next build` passed. No production database was needed or mutated. |
 | Dependency audit | `npm audit --audit-level=low`: **0 vulnerabilities** (295 resolved dependencies). |
-| Static security | Semgrep `p/ci` and `p/secrets`, 65 rules: **0 findings** in the initial branch scan; final staged scan recorded below. This is not a penetration test. |
-| Mobile Chromium 360px / 430px | Signed contact/authentication, accepted bid confirmation and receipt, public DTO privacy and private wallet balance passed at both widths. Navigation/locale/loading/account-toggle rerun is pending at this revision after fixing a browser-discovered CSS prefix issue. |
-| GitHub branch CI | Consult the branch's latest Checks run; local passing commands are not a substitute for a completed hosted run. |
+| Static security | Semgrep `p/ci` and `p/secrets`, 65 rules: **0 findings** in the final local scan; the hosted security job also passed. This is not a penetration test. |
+| Mobile Chromium 360px / 430px | Signed contact/authentication, accepted bid confirmation and receipt, public DTO privacy and private wallet balance passed at both widths. All four hosted mobile tests passed, including navigation, centered Deposit, persistent language, full-page blur/inert background and Wallet account-detail toggles. Local Windows dev compilation was slower and initially unstable; this is not a real-device performance result. |
+| GitHub branch CI | **GREEN** on implementation commit `46d73b2`: [Checks 36487332478](https://github.com/devbossmaster/lowwin/actions/runs/36487332478), foundation and security successful. Follow-up footer/test-harness/documentation changes trigger a new run; its result must be checked separately. |
 | Real Telegram Android/iOS | **Unverified**. The Owner will test via ngrok. Browser viewport emulation is not a Telegram-device result. |
 
-Build/test output and screenshots are under ignored `test-results/release/` and `.local/` in the review checkout; CI uploads sanitized fixture test artifacts for seven days. Test traces use fake identities, test bot credentials and disposable databases only. No existing bids, holds, settlements, journals or migration files were deleted or rewritten.
+Build/test output and screenshots are under ignored `test-results/release/` and `.local/` in the review checkout; CI uploads sanitized fixture test artifacts for seven days. Test traces use fake identities, test bot credentials and disposable databases only. No existing bids, holds, settlements, journals or migration files were deleted or rewritten. The shared footer now renders only on Home, as requested.
 
 ## Read-only staging performance
 
@@ -50,3 +50,7 @@ Observed SQL statements fell from 33–35 to 20 per Home sample and 13–14 to 7
 5. Keep real crediting disabled. After all release gates pass, present an exact receiver, tiny amount, reference/evidence capture, expected ledger changes and rollback/reconciliation plan for the Owner's **explicit transfer approval**. Approval has not been given. Real auctions and traffic switching also remain approval gates.
 
 No permanent remedy for an unreachable Supabase server is claimed. Reduced queries lower pressure; network/provider outages still require operational handling and must fail closed.
+
+## Review checkout
+
+Branch `release/production-readiness-20260928` is pushed for review; main is unchanged. The Owner checkout can run the same commit on `review/production-preview-20260929` for ngrok testing. A local preview restart is not production traffic activation.

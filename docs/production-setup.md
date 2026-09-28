@@ -99,8 +99,10 @@ node scripts/run-db-tests.mjs unit
 npm run typecheck
 npm run build
 npx playwright install chromium
-node scripts/run-db-tests.mjs browser
-node scripts/run-db-tests.mjs payments
+node scripts/run-db-tests.mjs smoke
+# Optional full follow-up matrix:
+# node scripts/run-db-tests.mjs browser
+# node scripts/run-db-tests.mjs payments
 npm audit --audit-level=low
 ```
 

@@ -22,9 +22,11 @@ test('navigation, centered deposit, locale persistence and blurred page loading'
  await page.evaluate(()=>{localStorage.setItem('lowwin-language','en');document.cookie='lowwin-language=en; path=/'});await page.reload();
  let release!:()=>void;const held=new Promise<void>(resolve=>release=resolve);
  await page.route('**/api/profile/wins?*',async route=>{await held;await route.fulfill({json:{items:[],page:1,total:0,totalPages:0}})});
- await nav.getByRole('link',{name:'Winning Bids'}).click();
+ const requested=page.waitForRequest(request=>request.url().includes('/api/profile/wins?'));
+ await nav.getByRole('link',{name:'Winning Bids'}).click();await requested;
+ await page.waitForURL('**/profile/wins');
  await expect(page.locator('.page-loading-backdrop')).toBeVisible();
- expect(await page.locator('.page-loading-backdrop').evaluate(node=>getComputedStyle(node).backdropFilter)).toContain('blur');
+ await expect.poll(()=>page.locator('.page-loading-backdrop').evaluate(node=>getComputedStyle(node).backdropFilter)).toContain('blur');
  await expect(page.locator('.app-frame')).toHaveAttribute('inert','');
  await page.screenshot({path:`test-results/release/loading-${info.project.name}.png`});release();
  await expect(page.locator('.page-loading-backdrop')).toHaveCount(0);
