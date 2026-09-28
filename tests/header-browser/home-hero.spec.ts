@@ -8,6 +8,7 @@ test('banner leads directly into nine unDraw categories',async({page},info)=>{
  await page.goto('/');
  const banner=page.getByRole('link',{name:'Explore Lowwin auctions',exact:true});
  await expect(banner.locator('img')).toHaveAttribute('src','/banner1.png');
+ await expect(banner.getByText('Start bidding')).toBeVisible();
  await expect.poll(()=>banner.locator('img').evaluate((img:HTMLImageElement)=>img.complete&&img.naturalWidth>0)).toBe(true);
  await expect(page.getByLabel('Lowest unique bid example')).toHaveCount(0);
  await expect(page.getByText('Welcome to Lowwin',{exact:true})).toHaveCount(0);
@@ -33,6 +34,7 @@ test('401 retry is compact and never opens protected content',async({page},info)
  await page.route('**/api/auth/telegram/miniapp/signin',r=>{attempts++;return r.fulfill({status:401,json:{error:'Launch could not be verified'}})});
  await page.goto('/telegram');
  await expect(page.getByRole('heading',{name:'Let’s try again'})).toBeVisible();
+ await expect(page.locator('main')).toHaveCSS('background-color','rgb(109, 148, 16)');
  await expect(page.getByRole('img',{name:'Lowwin'})).toBeVisible();await expect.poll(()=>page.getByRole('img',{name:'Lowwin'}).evaluate((img:HTMLImageElement)=>img.complete&&img.naturalWidth>0)).toBe(true);
  await expect(page.locator('main [role="alert"]')).toHaveText('Reopen Lowwin from the bot to verify your launch.');
  await expect(page.getByText('Your Mini App.')).toHaveCount(0);

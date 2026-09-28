@@ -25,20 +25,43 @@ test('real-response balance, unread state, five links, funding restrictions and 
  await expect(header(page).getByRole('link',{name:'Alerts, 3 unread'})).toBeVisible();
  await expect(header(page).locator('img')).toHaveCount(0);
  await geometry(page);
+ expect((await header(page).getByRole('link',{name:'ETB 1,234.00 available, open wallet'}).boundingBox())!.width).toBeLessThanOrEqual(94);
+ const language=await header(page).getByRole('button',{name:'Language'}).boundingBox();expect(language!.width).toBeGreaterThanOrEqual(44);expect(language!.height).toBeGreaterThanOrEqual(44);
  expect(await header(page).getByRole('link').evaluateAll(a=>a.map(el=>el.getAttribute('href')))).toEqual(['/profile','/wallet','/wallet#add-etb','/profile/alerts','/auctions']);
  await header(page).screenshot({path:`docs/screenshots/header-${info.project.name}.png`});
  await page.screenshot({path:`docs/screenshots/header-context-${info.project.name}.png`});
  await header(page).getByRole('link',{name:'Open your profile'}).focus();
- for(const name of ['available, open wallet','Wallet funding and details','Alerts','Browse auctions']){await page.keyboard.press('Tab');await expect(header(page).getByRole('link',{name:new RegExp(name)})).toBeFocused()}
+ for(const name of ['available, open wallet','Wallet funding and details','Alerts','Browse auctions']){await page.keyboard.press('Tab');await expect(header(page).getByRole('link',{name:new RegExp(name,'i')})).toBeFocused()}
  await header(page).getByRole('link',{name:'Open your profile'}).click();await expect(page).toHaveURL(/\/profile$/);
  await header(page).getByRole('link',{name:'Browse auctions'}).click();await expect(page).toHaveURL(/\/auctions$/);
- await header(page).getByRole('link',{name:/available, open wallet/}).click();await expect(page).toHaveURL(/\/wallet$/);
+ await header(page).getByRole('link',{name:/available, open wallet/i}).click();await expect(page).toHaveURL(/\/wallet$/);
  await header(page).getByRole('link',{name:'Wallet funding and details'}).click();await expect(page).toHaveURL(/\/wallet#add-etb$/);
  await expect(page.locator('#add-etb')).toBeVisible();await expect(page.getByRole('button',{name:'Submit for verification'})).toBeDisabled();
  await header(page).getByRole('link',{name:/Alerts/}).click();await expect(page).toHaveURL(/\/profile\/alerts$/);
  await page.route('**/api/alerts',r=>r.fulfill({json:{unread:0,items:[],total:0,page:1,totalPages:0,preferences:{}}}));
  await page.evaluate(()=>window.dispatchEvent(new Event('lowin-alerts')));await expect(header(page).locator('[data-unread-indicator]')).toHaveCount(0);
  await page.route('**/api/alerts',r=>r.fulfill({status:503,json:{}}));await page.evaluate(()=>window.dispatchEvent(new Event('lowin-alerts')));await expect(header(page).getByRole('link',{name:'Alerts',exact:true})).toBeVisible();
+});
+test('AM and EN change navigation and Home copy and persist after reload',async({page},info)=>{
+ await fixture(page);await page.goto('/');
+ const language=header(page).getByRole('button',{name:'Language'});
+ await expect(language).toHaveAttribute('aria-expanded','false');
+ await expect(page.getByText('Start bidding',{exact:true})).toBeVisible();
+ await language.click();
+ await header(page).getByRole('menuitemradio',{name:'አማ'}).click();
+ await expect(page.locator('html')).toHaveAttribute('lang','am');
+ await expect(header(page).getByRole('button',{name:'ቋንቋ'})).toContainText('አማ');
+ await expect(page.getByText('ጨረታ ጀምር',{exact:true})).toBeVisible();
+ await expect(page.getByRole('navigation',{name:'Main navigation'}).getByRole('link',{name:'ጨረታዎች',exact:true})).toBeVisible();
+ await geometry(page);
+ await header(page).screenshot({path:`docs/screenshots/header-am-${info.project.name}.png`});
+ await page.reload();
+ await expect(header(page).getByRole('button',{name:'ቋንቋ'})).toContainText('አማ');
+ await expect(page.getByText('ጨረታ ጀምር',{exact:true})).toBeVisible();
+ await header(page).getByRole('button',{name:'ቋንቋ'}).click();
+ await header(page).getByRole('menuitemradio',{name:'En'}).click();
+ await expect(page.locator('html')).toHaveAttribute('lang','en');
+ await expect(page.getByText('Start bidding',{exact:true})).toBeVisible();
 });
 test('signed-in profile photo appears in the avatar; unsupported URL keeps the icon',async({page})=>{
  await fixture(page,{photo:'https://example.test/avatar.png'});

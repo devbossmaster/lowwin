@@ -1,7 +1,7 @@
 'use client';
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import Script from 'next/script';
-type WebApp = { initData?: string; ready: () => void; close?:()=>void; requestContact?:(callback:(shared:boolean)=>void)=>void; isVersionAtLeast?:(version:string)=>boolean; setHeaderColor?: (color: string) => void; setBackgroundColor?: (color: string) => void };
+type WebApp = { initData?: string; platform?:string; ready: () => void; expand?:()=>void; requestFullscreen?:()=>void; close?:()=>void; requestContact?:(callback:(shared:boolean)=>void)=>void; isVersionAtLeast?:(version:string)=>boolean; setHeaderColor?: (color: string) => void; setBackgroundColor?: (color: string) => void };
 declare global { interface Window { Telegram?: { WebApp?: WebApp } } }
 type Me = { user: { id: string; name: string; image?: string | null }; wallet: { available: string; held: string; demo?:boolean } };
 type Status = 'loading' | 'guest' | 'contact-required' | 'authenticated' | 'error';
@@ -65,10 +65,10 @@ export function TelegramProvider({ children, devEnabled, botUrl, requireLaunch=f
   },[]);
   const autoAuthenticate=useCallback(()=>{const launch=window.Telegram?.WebApp?.initData??'';if(launchAttempt.current===launch)return;launchAttempt.current=launch;void authenticate()},[authenticate]);
   useEffect(() => {
-    const color=status==='loading'&&verifyingTelegram?'#6d9410':'#FFFFFF';
+    const color=(status==='loading'&&verifyingTelegram)||status==='error'||(requireLaunch&&status==='guest')?'#6d9410':'#FFFFFF';
     window.Telegram?.WebApp?.setHeaderColor?.(color);
     window.Telegram?.WebApp?.setBackgroundColor?.(color);
-  },[status,verifyingTelegram]);
+  },[status,verifyingTelegram,requireLaunch]);
   useEffect(() => {
     // Visibility only, never authentication proof. This also hides the action
     // when a proxy has rewritten all server-visible headers to localhost.

@@ -2,13 +2,13 @@ import Link from 'next/link';
 import { ArrowRight,ArrowUpRight,LockKeyhole } from 'lucide-react';
 import styles from '@/components/home-banner.module.css';
 import {HomeCategories} from '@/components/home-categories';
-import {MiniText} from '@/components/mini-locale';
+import {MiniPhrase,MiniText} from '@/components/mini-locale';
 import { db } from '@/lib/db';
 import { listPublicResults } from '@/modules/auctions/results';
-import { ResultCard } from '@/components/result-card';
 import { IdentityState } from '@/components/identity-state';
-import { AuctionCard } from '@/components/auction-card';
 import { FeaturedCarousel } from '@/components/featured-carousel';
+import { ClosedAuctionCarousel } from '@/components/closed-auction-carousel';
+import { HomeFinish } from '@/components/home-finish';
 import { OfflineRetry } from '@/components/offline-retry';
 import { listAuctions,listCategories,serverNow } from '@/modules/auctions/catalog';
 export default async function Home() {
@@ -23,11 +23,11 @@ async function HomeWithCatalog() {
   const [categories,live,closed]=await Promise.all([listCategories(now),listAuctions({q:'',status:'live',sort:'ending',page:1},now,20),listPublicResults(db)]);
   const featured=live.items.filter(item=>item.featured).slice(0,5);
   const ending=live.items.filter(item=>new Date(item.endsAt).getTime()-now.getTime()<=86400000).slice(0,3);
-  return <><OfflineRetry/><h1 className="sr-only">Lowwin auctions</h1><Link href="/auctions" className={styles.banner} aria-label="Explore Lowwin auctions"><img src="/banner1.png" alt="Lowwin — bid low to win" width={1024} height={572} fetchPriority="high"/><span className={styles.bannerAction}><MiniText id="startBidding"/> <ArrowRight size={15} aria-hidden="true"/></span></Link>
+  return <><OfflineRetry/><h1 className="sr-only">Lowwin auctions</h1><section className={styles.hero}><Link href="/auctions" className={styles.banner} aria-label="Explore Lowwin auctions"><img src="/banner1.png" alt="Lowwin — bid low to win" width={1024} height={572} fetchPriority="high"/><span className={styles.bannerAction}><MiniText id="startBidding"/> <ArrowRight size={15} aria-hidden="true"/></span></Link></section>
   <HomeCategories categories={categories}/>
-  {featured.length>0&&<section className="catalog-section"><div className="section-heading"><div><h2><MiniText id="featured"/></h2></div><Link href="/auctions?status=live" className="see-all"><MiniText id="seeAll"/> <ArrowUpRight size={16}/></Link></div><FeaturedCarousel items={featured} serverNow={now.toISOString()}/></section>}
-  <section className="catalog-section"><div className="section-heading"><div><h2><MiniText id="ending"/></h2></div><Link href="/auctions?status=live&sort=ending" className="see-all"><MiniText id="seeAll"/> <ArrowUpRight size={16}/></Link></div><div className="card-grid">{ending.map(item=><AuctionCard key={item.code} auction={item} serverNow={now.toISOString()}/>)}</div>{ending.length===0&&<p className="inline-empty"><MiniText id="nothingEnding"/></p>}</section>
-  <section className="catalog-section"><div className="section-heading"><div><h2><MiniText id="results"/></h2></div><Link href="/winners" className="see-all"><MiniText id="seeAll"/> <ArrowUpRight size={16}/></Link></div><div className="result-list">{closed.items.slice(0,3).map(item=><ResultCard key={item.code} auction={item}/>)}</div>{closed.total===0&&<p className="inline-empty"><MiniText id="noResults"/></p>}</section>
+  {featured.length>0&&<section className={`${styles.featuredSection} catalog-section`}><div className="section-heading"><div><h2><MiniText id="featured"/></h2><p><MiniPhrase en="The lowest unique ETB bid wins. Check the fee and closing time before you bid." am="ዝቅተኛው ልዩ ETB ጨረታ ያሸንፋል። ከመጫረትዎ በፊት ክፍያውን እና የመዘጊያ ጊዜውን ይመልከቱ።"/></p></div></div><FeaturedCarousel items={featured} serverNow={now.toISOString()}/><Link href="/auctions?status=live" className={styles.featuredAll}><MiniPhrase en="See all auctions" am="ሁሉንም ጨረታዎች ይመልከቱ"/> <ArrowRight size={16}/></Link></section>}
+  <section className={`${styles.featuredSection} ${styles.endingSection} catalog-section`}><div className="section-heading"><div><h2><MiniPhrase en="Ending soon auctions" am="በቅርቡ የሚያበቁ ጨረታዎች"/></h2><p><MiniPhrase en="These auctions close within 24 hours. Place your bid before time runs out." am="እነዚህ ጨረታዎች በ24 ሰዓት ውስጥ ያበቃሉ። ጊዜው ከማለቁ በፊት ጨረታዎን ያቅርቡ።"/></p></div></div>{ending.length>0?<><FeaturedCarousel items={ending} serverNow={now.toISOString()} variant="ending"/><Link href="/auctions?status=live&sort=ending" className={styles.featuredAll}><MiniPhrase en="View ending auctions" am="በቅርቡ የሚያበቁትን ይመልከቱ"/> <ArrowRight size={16}/></Link></>:<p className="inline-empty"><MiniText id="nothingEnding"/></p>}</section>
+  <section className={`${styles.featuredSection} ${styles.closedSection} catalog-section`}><div className="section-heading"><div><h2><MiniPhrase en="Closed auctions" am="የተዘጉ ጨረታዎች"/></h2><p><MiniPhrase en="See final outcomes after closing. A passed end time alone never declares a winner." am="ጨረታው ከተዘጋ በኋላ የመጨረሻ ውጤቱን ይመልከቱ። የመዝጊያ ጊዜ ማለፍ ብቻ አሸናፊ አያረጋግጥም።"/></p></div></div>{closed.items.length>0?<><ClosedAuctionCarousel items={closed.items.slice(0,5)}/><Link href="/winners" className={styles.featuredAll}><MiniPhrase en="See all results" am="ሁሉንም ውጤቶች ይመልከቱ"/> <ArrowRight size={16}/></Link></>:<p className="inline-empty"><MiniText id="noResults"/></p>}</section>
   <section className="home-how"><div className="section-heading"><h2><MiniText id="questions"/></h2><Link href="/faq" aria-label="Read all frequently asked questions"><ArrowUpRight size={21}/></Link></div><p className="section-copy"><MiniText id="faqBlurb"/></p><Link className="text-link" href="/faq"><MiniText id="readFaq"/> <ArrowRight size={16}/></Link></section>
-  <div className="page-inset"><IdentityState/><div className="quiet-note"><LockKeyhole size={16}/><p><MiniText id="privateBids"/></p></div></div></>;
+  <div className="page-inset"><IdentityState/><div className="quiet-note"><LockKeyhole size={16}/><p><MiniText id="privateBids"/></p></div></div><HomeFinish/></>;
 }

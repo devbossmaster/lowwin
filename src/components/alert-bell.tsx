@@ -4,11 +4,9 @@ import Link from 'next/link';
 import {Bell} from 'lucide-react';
 import {useTelegram} from './telegram-provider';
 import {Button} from './ui/button';
-import {useMiniLocale} from './mini-locale';
 
 export function AlertBell({className,indicatorClassName}:{className?:string;indicatorClassName?:string}){
  const {me,status}=useTelegram();
- const {t}=useMiniLocale();
  const userId=status==='authenticated'?me?.user.id:undefined;
  const [result,setResult]=useState<{userId:string;unread:number}|null>(null);
  useEffect(()=>{
@@ -29,5 +27,5 @@ export function AlertBell({className,indicatorClassName}:{className?:string;indi
   return()=>{controller.abort();clearInterval(timer);window.removeEventListener('lowin-alerts',refresh)};
  },[userId]);
  const count=userId&&result?.userId===userId?result.unread:null;
- return <Button asChild variant="outline" className={className}><Link href="/profile/alerts" aria-label={`${t('alerts')}${count?`, ${count} ${t('unread')}`:''}`}><Bell size={21} aria-hidden="true"/>{count!==null&&count>0&&<span className={indicatorClassName} data-unread-indicator aria-hidden="true"/>}</Link></Button>;
+ return <Button asChild variant="outline" className={className}><Link href="/profile/alerts" aria-label={`Alerts${count?`, ${count} unread`:''}`}><Bell size={21} aria-hidden="true"/>{count!==null&&count>0&&<span className={indicatorClassName} data-unread-indicator aria-hidden="true"/>}</Link></Button>;
 }

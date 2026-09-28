@@ -5,6 +5,7 @@ import { ArrowRight,LockKeyhole,RefreshCw,ShieldCheck } from 'lucide-react';
 import { useTelegram } from './telegram-provider';
 import { IdentityState } from './identity-state';
 import { formatEtb } from '@/lib/money';
+import {useMiniNotice} from './mini-notice';
 type OwnBid={id:string;amount:string;acceptedAt:string};
 type BidState={auctionCode:string;open:boolean;serverNow:string;isDemo:boolean;terms:{version:number;minPoints:string;maxPoints:string;stepPoints:string;entryFeePoints:string;maxDistinctBids:number};wallet:{available:string;held:string};previousMax:string;remainingSubmissions:number;ownBids:OwnBid[]};
 type Receipt={bid:{id:string;auctionCode:string;auctionSlug:string;amount:string;acceptedAt:string;termsVersion:number;feePoints:string};hold:{previousMax:string;newMax:string;extraReserved:string};charge:{feePoints:string;newlyUnavailable:string};wallet:{available:string;held:string};remainingSubmissions:number;ownBids:OwnBid[]};
@@ -16,6 +17,7 @@ export function BidForm(props:BidFormProps) {
 }
 function BidFormForIdentity({slug,status,isDemo}:BidFormProps) {
   const {status:authStatus,refreshMe}=useTelegram();
+  const notify=useMiniNotice();
   const [state,setState]=useState<BidState|null>(null),[loading,setLoading]=useState(false),[amount,setAmount]=useState(''),[key,setKey]=useState<string|null>(null),[confirm,setConfirm]=useState(false),[submitting,setSubmitting]=useState(false),[error,setError]=useState(''),[receipt,setReceipt]=useState<Receipt|null>(null);
   const refresh=useCallback(async(signal?:AbortSignal)=>{
     setLoading(true);setError('');
@@ -42,8 +44,8 @@ function BidFormForIdentity({slug,status,isDemo}:BidFormProps) {
   const submit=async()=>{
     if(!valid||submitting)return;
     const requestKey=key??crypto.randomUUID();setKey(requestKey);setSubmitting(true);setError('');
-    try {const response=await fetch(`/api/auctions/${slug}/bids`,{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount,key:requestKey})});const body=await response.json();if(!response.ok){setError(body.error??'Bid was not accepted.');if(body.code==='AUCTION_CLOSED')void refresh();return}const accepted=body as Receipt;setReceipt(accepted);setState(previous=>previous?{...previous,wallet:accepted.wallet,previousMax:accepted.hold.newMax,remainingSubmissions:accepted.remainingSubmissions,ownBids:accepted.ownBids}:previous);void refreshMe().catch(()=>{});}
-    catch {setError('Connection interrupted. Retry this same request; it cannot debit you twice.')}
+    try {const response=await fetch(`/api/auctions/${slug}/bids`,{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount,key:requestKey})});const body=await response.json();if(!response.ok){setError(body.error??'Bid was not accepted.');notify(body.error??'Bid was not accepted.','error');if(body.code==='AUCTION_CLOSED')void refresh();return}const accepted=body as Receipt;setReceipt(accepted);notify(`${formatEtb(accepted.bid.amount)} bid accepted.`,'success');setState(previous=>previous?{...previous,wallet:accepted.wallet,previousMax:accepted.hold.newMax,remainingSubmissions:accepted.remainingSubmissions,ownBids:accepted.ownBids}:previous);void refreshMe().catch(()=>{});}
+    catch {const message='Connection interrupted. Retry this same request; it cannot debit you twice.';setError(message);notify(message,'error')}
     finally {setSubmitting(false)}
   };
   return <section className="bid-panel"><h2>Choose an ETB amount</h2><p>From {formatEtb(state.terms.minPoints)} to {formatEtb(state.terms.maxPoints)}, in steps of {formatEtb(state.terms.stepPoints)}. You have {state.remainingSubmissions} of {state.terms.maxDistinctBids} submissions left.</p>

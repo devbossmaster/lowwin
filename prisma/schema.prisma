@@ -273,6 +273,8 @@ model Auction {
   featured Boolean @default(false)
   isDemo Boolean @default(false)
   acceptedBidCount Int @default(0)
+  // Aggregate public impressions only. Viewer identity is never stored.
+  publicViewCount BigInt @default(0)
   fulfillmentSummary String?
   fulfillmentRegion String?
   terms AuctionTerms?

@@ -54,15 +54,15 @@ describe.skipIf(!url)('Phase 4B public outcomes and private pages on PostgreSQL'
   });
   it('retains illustrative records unchanged and distinguishes both DEMO sources',async()=>{
     const row=await client.publicAuctionResult.findFirstOrThrow({include:{auction:{select:{code:true}}}});
-    expect((await getPublicResult(client,row.auction.code))?.result).toMatchObject({source:'ILLUSTRATIVE',demoLabel:'DEMO example',winnerDisplay:null});
+    expect((await getPublicResult(client,row.auction.code))?.result).toMatchObject({source:'ILLUSTRATIVE',demoLabel:'DEMO example',winnerDisplay:'Anonymous winner'});
     expect(JSON.stringify(await client.publicAuctionResult.findMany({orderBy:{auctionId:'asc'}}),(_key,value)=>typeof value==='bigint'?value.toString():value)).toBe(examples);
   });
   it('uses an exact public response allowlist and never leaks private proof or identities',async()=>{
     const route=await import('../src/app/api/results/[auctionCode]/route');
     const response=await route.GET(request(`/api/results/${winner.code}`),{params:Promise.resolve({auctionCode:winner.code})});
     expect(response.status).toBe(200);expect(response.headers.get('cache-control')).toContain('no-store');const body=await response.json();
-    expect(Object.keys(body).sort()).toEqual(['slug','code','status','featured','isDemo','startsAt','endsAt','product','category','fulfillment','terms','result'].sort());
-    expect(Object.keys(body.result).sort()).toEqual(['outcome','winningPoints','explanation','isDemo','closedAt','source','demoLabel','winnerDisplay'].sort());
+    expect(Object.keys(body).sort()).toEqual(['slug','code','status','featured','isDemo','startsAt','endsAt','bidCount','viewCount','product','category','fulfillment','terms','result'].sort());
+    expect(Object.keys(body.result).sort()).toEqual(['outcome','winningPoints','explanation','isDemo','closedAt','source','demoLabel','winnerDisplay','acceptedBidCount'].sort());
     const settlement=await client.auctionSettlement.findUniqueOrThrow({where:{auctionId:winner.id},include:{movements:true}});
     expect(settlement.proof).toHaveProperty('amountFrequencies');
     const serialized=JSON.stringify(body);
@@ -70,6 +70,15 @@ describe.skipIf(!url)('Phase 4B public outcomes and private pages on PostgreSQL'
     expect(serialized).not.toMatch(/amountFrequencies|acceptedCount|winnerUserId|winningBidId|proof|transactionId|settlementId|telegramId|phone|contact|operationId|journalId|movements/);
     const catalog=await import('../src/modules/auctions/catalog');
     expect(JSON.stringify(await catalog.getAuction(winner.slug!))).not.toMatch(/amountFrequencies|winnerUserId|winningBidId|proof|movements/);
+  });
+  it('records aggregate views without accepting or storing viewer identity',async()=>{
+    const route=await import('../src/app/api/catalog/auctions/[slug]/view/route');
+    const before=await client.auction.findUniqueOrThrow({where:{id:winner.id},select:{publicViewCount:true}});
+    const response=await route.POST(request(`/api/catalog/auctions/${winner.slug}/view`,undefined,'POST',{viewer:'ignored'}),{params:Promise.resolve({slug:winner.slug!})});
+    expect(response.status).toBe(200);expect(response.headers.get('cache-control')).toContain('no-store');
+    expect(await response.json()).toEqual({views:(before.publicViewCount+1n).toString()});
+    const after=await client.auction.findUniqueOrThrow({where:{id:winner.id},select:{publicViewCount:true}});
+    expect(after.publicViewCount).toBe(before.publicViewCount+1n);
   });
   it('searches, filters and paginates outcomes deterministically',async()=>{
     for(let i=0;i<7;i++)await bidAuction(client,{endDelayMs:-1000});
@@ -124,10 +133,10 @@ describe.skipIf(!url)('Phase 4B public outcomes and private pages on PostgreSQL'
     await route.PUT(request(`/api/favorites/${live.slug}`,first.cookie,'PUT',{saved:false}),context);expect(await client.auctionFavorite.count({where:{userId:first.id}})).toBe(0);
   });
   it('edits only separate display fields and preserves verified identity and other profiles',async()=>{
-    const route=await import('../src/app/api/profile/route');const identity=await client.user.findUniqueOrThrow({where:{id:first.id}});
+    const route=await import('../src/app/api/profile/route');const identity=await client.user.findUniqueOrThrow({where:{id:first.id}}),secondBefore=await getPlayerProfile(client,second.id);
     const response=await route.PATCH(request('/api/profile',first.cookie,'PATCH',{displayName:'My display name',bio:'I like furniture.'}));expect(response.status).toBe(200);expect(response.headers.get('cache-control')).toContain('no-store');
     expect(await client.user.findUniqueOrThrow({where:{id:first.id}})).toEqual(identity);
-    expect(await getPlayerProfile(client,first.id)).toMatchObject({displayName:'My display name',bio:'I like furniture.'});expect((await getPlayerProfile(client,second.id)).displayName).toBe('Private secret name');
+    expect(await getPlayerProfile(client,first.id)).toMatchObject({displayName:'My display name',bio:'I like furniture.'});expect((await getPlayerProfile(client,second.id)).displayName).toBe(secondBefore.displayName);
     for(const extra of [{telegramId:'1'},{email:'other@example.com'},{phone:'123'},{userId:second.id},{name:'Changed identity'},{accountId:'other'}])expect((await route.PATCH(request('/api/profile',first.cookie,'PATCH',{displayName:'Safe',bio:'',...extra}))).status).toBe(422);
     for(const displayName of ['', 'a'.repeat(61),'Hidden\u202ename','Line\nname'])expect((await route.PATCH(request('/api/profile',first.cookie,'PATCH',{displayName,bio:''}))).status).toBe(422);
     expect((await route.PATCH(request('/api/profile',first.cookie,'PATCH',{displayName:'Safe',bio:''},'https://evil.invalid'))).status).toBe(403);

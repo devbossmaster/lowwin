@@ -17,3 +17,6 @@ export function MiniLocaleProvider({children}:{children:React.ReactNode}){
 }
 export const useMiniLocale=()=>useContext(MiniLocaleContext);
 export function MiniText({id}:{id:MiniCopyKey}){const {t}=useMiniLocale();return <>{t(id)}</>}
+export function MiniPhrase({en,am}:{en:string;am:string}){const {language}=useMiniLocale();return <>{language==='am'?am:en}</>}
+const categoryKeys:Record<string,MiniCopyKey>={'home-furniture':'homeFurniture',vehicles:'vehicles',accessories:'accessories','computer-office-equipment':'computerOffice','home-furnishings':'homeFurnishings',jewelry:'jewelry',watches:'watches',phones:'phones',animals:'animals'};
+export function MiniCategoryName({slug,name}:{slug:string;name:string}){const {t}=useMiniLocale();return <>{categoryKeys[slug]?t(categoryKeys[slug]):name}</>}

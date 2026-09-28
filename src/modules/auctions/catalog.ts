@@ -6,7 +6,7 @@ import { db } from '@/lib/db';
 // SQL selection and DTO mapping are independent allowlists. Never select the
 // settlement proof, participant movements, winning user/bid IDs or raw bids here.
 export const publicAuctionSelect = {
-  slug:true,code:true,status:true,startsAt:true,endsAt:true,featured:true,isDemo:true,
+  slug:true,code:true,status:true,startsAt:true,endsAt:true,featured:true,isDemo:true,acceptedBidCount:true,publicViewCount:true,
   fulfillmentSummary:true,fulfillmentRegion:true,
   product:{select:{title:true,description:true,condition:true,images:{orderBy:{sortOrder:'asc'},select:{path:true,alt:true,sourceType:true,sourceCredit:true}}}},
   category:{select:{slug:true,name:true}},
@@ -55,13 +55,16 @@ export function toPublicAuction(row: AuctionRow, now: Date) {
     explanation:settled.outcome==='WINNER'?'The winning ETB amount was the smallest amount accepted exactly once. All other holds were released.':settled.outcome==='NO_WINNER'?'No accepted amount was unique. All holds were released; disclosed entry fees were retained.':'The auction was cancelled before settlement. All holds and charged entry fees were returned.',
     isDemo:row.isDemo,closedAt:settled.completedAt.toISOString(),source:'SETTLED' as const,
     demoLabel:row.isDemo?'DEMO · settled test':null,winnerDisplay:settled.outcome==='WINNER'?'Anonymous winner':null,
+    acceptedBidCount:row.acceptedBidCount,
   }:status==='closed'&&row.result&&row.result.publishedAt<=now?{
     outcome:row.result.outcome,winningPoints:row.result.winningPoints?.toString()??null,
     explanation:legacyTermsInEtb(row.result.explanation),isDemo:row.result.isDemo,closedAt:row.result.closedAt.toISOString(),source:'ILLUSTRATIVE' as const,
-    demoLabel:'DEMO example',winnerDisplay:null,
+    demoLabel:'DEMO example',winnerDisplay:row.result.outcome==='WINNER'?'Anonymous winner':null,
+    acceptedBidCount:null,
   }:null;
   return {
-    slug:row.slug!,code:row.code,status,featured:row.featured,isDemo:row.isDemo,
+    slug:row.slug!,code:row.code,status,featured:row.featured,isDemo:row.isDemo,bidCount:row.acceptedBidCount,
+    viewCount:row.publicViewCount.toString(),
     startsAt:row.startsAt!.toISOString(),endsAt:row.endsAt!.toISOString(),
     product:{title:row.product!.title,description:row.product!.description,condition:row.product!.condition,
       images:row.product!.images.map(image=>({path:image.path,alt:image.alt,sourceType:image.sourceType,sourceCredit:image.sourceCredit}))},
