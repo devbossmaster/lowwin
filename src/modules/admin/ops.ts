@@ -39,7 +39,7 @@ export async function opsMutation(client:PrismaClient,headers:Headers,action:Ops
    const mail=emailAdapter(),invitation=token();await tx.staffToken.updateMany({where:{email:d.email,kind:'INVITE',usedAt:null},data:{usedAt:owner.now}});
    await tx.staffToken.create({data:{tokenHash:digest(invitation),kind:'INVITE',email:d.email,role:d.role,expiresAt:new Date(owner.now.getTime()+86400000)}});
    const link=new URL('/admin/login',process.env.BETTER_AUTH_URL);link.hash=new URLSearchParams({invite:invitation}).toString();
-   await mail.send({to:d.email,subject:'Your Lowin staff invitation',text:`Accept within 24 hours: ${link}\nYour role is ${d.role}. Authenticator enrollment is required.`});receipt={invited:true,role:d.role};target='staff-invitation';
+   await mail.send({to:d.email,subject:'Your Lowwin staff invitation',text:`Accept within 24 hours: ${link}\nYour role is ${d.role}. Authenticator enrollment is required.`});receipt={invited:true,role:d.role};target='staff-invitation';
   }else if(action==='staff'){
    const d=schemas.staff.parse(input);if(d.userId===owner.id)throw new AdminError(403,'You cannot change your own grants.');
    const member=await tx.staffMember.findUniqueOrThrow({where:{userId:d.userId}});

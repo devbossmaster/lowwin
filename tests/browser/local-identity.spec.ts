@@ -20,7 +20,7 @@ test('localhost action requires the operator key, which is never embedded in the
 });
 test('public tunnel configuration hides identity and rejects fully rewritten local requests',async({page,request},testInfo)=>{
   await page.goto('http://localhost:3108/profile');
-  await expect(page.getByText('Opening your Lowin…')).toBeHidden();
+  await expect(page.getByText('Opening your Lowwin…')).toBeHidden();
   await expect(page.getByRole('button',{name:'Use local test identity'})).toHaveCount(0);
   await expect(page.getByLabel('Local operator key')).toHaveCount(0);
   expect(await page.content()).not.toContain(LOCAL_ACCESS_KEY);

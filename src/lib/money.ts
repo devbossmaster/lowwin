@@ -8,5 +8,6 @@ export function formatEtb(value:string|bigint):string{
 export function legacyTermsInEtb(value:string):string{
   return value.replace(/\b(\d+)\s+points?\b/gi,(_match,amount:string)=>formatEtb(amount))
     .replace(/\bpoint amounts?\b/gi,'ETB amounts')
-    .replace(/\bpoints?\b/gi,'ETB');
+    .replace(/\bpoints?\b/gi,'ETB')
+    .replace(/\bLowin\b/g,'Lowwin');
 }

@@ -55,7 +55,7 @@ export async function publicationPreflight(tx:Prisma.TransactionClient,auctionId
   if(start.getTime()<now.getTime()+60000)errors.push('Schedule the start at least one minute in the future.');
   if(end<=start||end.getTime()-start.getTime()>30*86400000)errors.push('End must follow start, within 30 days.');
   const min=BigInt(body.minPoints),max=BigInt(body.maxPoints),step=BigInt(body.stepPoints);
-  if(min<1n||max<min||step<1n||(step>0n&&(max-min)%step!==0n))errors.push('Point range must be positive and align with the step.');
+  if(min<1n||max<min||step<1n||(step>0n&&(max-min)%step!==0n))errors.push('ETB range must be positive and align with the step.');
   return {auction,body,product,errors,now};
 }
 export async function adminMutation(client:PrismaClient,headers:Headers,action:AdminAction,raw:unknown) {

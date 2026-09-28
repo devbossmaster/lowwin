@@ -22,6 +22,14 @@ describe.skipIf(!testUrl)('isolated PostgreSQL foundation', () => {
     await client.user.create({data:{id:userId,name:'Ledger test'}});
   },60000);
   afterAll(async()=>{await client?.$disconnect(); const { db } = await import('../src/lib/db'); await db.$disconnect();});
+  it('records an immutable 1:1 ETB conversion without rewriting wallet postings',async()=>{
+    const rows=await client.$queryRaw<{id:string;numerator:bigint;denominator:bigint}[]>`SELECT id,numerator,denominator FROM "CurrencyConversion"`;
+    expect(rows).toEqual([{id:'legacy-points-etb-v1',numerator:1n,denominator:1n}]);
+    const before=await client.journal.count();
+    await expect(client.$executeRaw`UPDATE "CurrencyConversion" SET "reason"='changed' WHERE id='legacy-points-etb-v1'`).rejects.toThrow();
+    expect(await client.journal.count()).toBe(before);
+    expect(await reconcile(client)).toEqual([]);
+  });
   it('credits once, returns the original result, rejects changed-key reuse',async()=>{
     const first = await creditDevelopmentPoints(client,userId,'1000','same-seed-key');
     expect(await creditDevelopmentPoints(client,userId,'1000','same-seed-key')).toEqual(first);
@@ -124,15 +132,15 @@ describe.skipIf(!testUrl)('isolated PostgreSQL foundation', () => {
     const {createBot}=await import('../src/modules/bot/bot');
     // Ignore leftover fixture-only inbox entries from earlier tests in this disposable DB.
     await client.botUpdate.updateMany({where:{processedAt:null},data:{processedAt:new Date(),payload:{}}});
-    const bot=createBot();
-    bot.botInfo={id:123456789,is_bot:true,first_name:'Lowin test',username:'lowin_fixture_bot',can_join_groups:false,can_read_all_group_messages:false,supports_inline_queries:false,can_connect_to_business:false,has_main_web_app:true,has_topics_enabled:false,allows_users_to_create_topics:false};
+    const bot=createBot({contactVerified:async()=>true});
+    bot.botInfo={id:123456789,is_bot:true,first_name:'Lowwin test',username:'lowin_fixture_bot',can_join_groups:false,can_read_all_group_messages:false,supports_inline_queries:false,can_connect_to_business:false,has_main_web_app:true,has_topics_enabled:false,allows_users_to_create_topics:false};
     const sent:Array<{method:string,payload:Record<string,unknown>}>=[];
     bot.api.config.use(async(_prev,method,payload)=>{sent.push({method,payload:payload as unknown as Record<string,unknown>});return {ok:true,result:{message_id:1}} as never;});
     const updateId=Date.now();
     await client.botUpdate.create({data:{updateId,payload:{update_id:updateId,message:{message_id:1,date:Math.floor(Date.now()/1000),chat:{id:1,type:'private'},from:{id:1,is_bot:false,first_name:'Fixture'},text:'/start',entities:[{type:'bot_command',offset:0,length:6}]}}}});
     await Promise.all([processOneUpdate(client,bot),processOneUpdate(client,bot)]);
     expect(sent).toHaveLength(1);expect(sent[0].method).toBe('sendPhoto');
-    expect(JSON.stringify(sent[0].payload.reply_markup)).toContain('Launch Lowin');
+    expect(JSON.stringify(sent[0].payload.reply_markup)).toContain('🎯 Lowwin ክፈት');
     expect((await client.botUpdate.findUniqueOrThrow({where:{updateId}})).processedAt).not.toBeNull();
     const failureId=updateId+1;
     await client.botUpdate.create({data:{updateId:failureId,payload:{update_id:failureId}}});

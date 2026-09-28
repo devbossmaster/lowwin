@@ -12,7 +12,7 @@ import { staffPlugin } from './staff-plugin';
 export function createAuth(client: PrismaClient | Prisma.TransactionClient = db) {
   const env = getEnv();
   return betterAuth({
-    appName: 'Lowin', baseURL: env.BETTER_AUTH_URL, secret: env.BETTER_AUTH_SECRET,
+    appName: 'Lowwin', baseURL: env.BETTER_AUTH_URL, secret: env.BETTER_AUTH_SECRET,
     database: prismaAdapter(client, { provider: 'postgresql' }),
     trustedOrigins: [new URL(env.BETTER_AUTH_URL).origin],
     emailAndPassword: { enabled: true, disableSignUp: true, requireEmailVerification:true, revokeSessionsOnPasswordReset:true },

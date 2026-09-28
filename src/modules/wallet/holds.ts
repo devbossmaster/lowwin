@@ -37,7 +37,7 @@ export async function adjustAuctionHoldInTransaction(tx: Prisma.TransactionClien
   const held = accounts.find(account => account.kind === 'HELD')!;
   const hold = await tx.auctionHold.findUnique({ where: { walletId_auctionId: { walletId: wallet.id, auctionId } } });
   const current = hold?.points ?? 0n;
-  if (direction === 'RESERVE' && available.balance < points) throw new Error('Insufficient available points');
+  if (direction === 'RESERVE' && available.balance < points) throw new Error('Insufficient available ETB');
   if (direction === 'RELEASE' && current < points) throw new Error('Cannot release more than this auction holds');
   const delta = direction === 'RESERVE' ? points : -points;
   const operationId = crypto.randomUUID();

@@ -14,7 +14,7 @@ test('closing and cancelled states stay truthful at mobile widths',async({page},
     await page.goto(`/auctions/${closing.slug}`);
     await expect(page.locator('.countdown-panel')).toContainText('Closing / result pending');
     await expect(page.locator('.result-box')).toHaveCount(0);
-    await expect(page.getByText('Opening your Lowin…')).toBeHidden({timeout:20000});
+    await expect(page.getByText('Opening your Lowwin…')).toBeHidden({timeout:20000});
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
     await page.screenshot({path:`docs/screenshots/settlement-closing-${testInfo.project.name}.png`,fullPage:true});
     await closeAuction(client,closing.id,raw);
@@ -23,7 +23,7 @@ test('closing and cancelled states stay truthful at mobile widths',async({page},
     await page.goto(`/auctions/${cancelled.slug}`);
     await expect(page.locator('.countdown-panel')).toContainText('Holds and entry fees returned');
     await expect(page.locator('.result-box')).toContainText('Cancelled');
-    await expect(page.getByText('Opening your Lowin…')).toBeHidden({timeout:20000});
+    await expect(page.getByText('Opening your Lowwin…')).toBeHidden({timeout:20000});
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
     await page.screenshot({path:`docs/screenshots/settlement-cancelled-${testInfo.project.name}.png`,fullPage:true});
   }finally {await client.$disconnect()}

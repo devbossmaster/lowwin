@@ -53,7 +53,7 @@ export function staffPlugin(tx:Prisma.TransactionClient|PrismaClient) {
         if(user?.staffMember?.active&&user.emailVerified){
           const reset=token();await tx.staffToken.create({data:{tokenHash:digest(reset),kind:'RESET',email:body.email,expiresAt:new Date(now.getTime()+30*60000)}});
           const link=new URL('/admin/login',process.env.BETTER_AUTH_URL);link.hash=new URLSearchParams({reset}).toString();
-          await mail.send({to:body.email,subject:'Reset your Lowin staff password',text:`Reset your password within 30 minutes: ${link}\nExisting sessions will be revoked. Your authenticator is still required.`});await audit(user.id,'PASSWORD_RESET_REQUESTED');
+          await mail.send({to:body.email,subject:'Reset your Lowwin staff password',text:`Reset your password within 30 minutes: ${link}\nExisting sessions will be revoked. Your authenticator is still required.`});await audit(user.id,'PASSWORD_RESET_REQUESTED');
         }
         return ctx.json({message:'If this address belongs to an active staff account, reset instructions will be sent.'});
       }
@@ -83,7 +83,7 @@ export function staffPlugin(tx:Prisma.TransactionClient|PrismaClient) {
         z.object({}).strict().parse(ctx.body);if(member.secret||grant.mfaAt)throw new AdminError(409,'Authenticator is already enrolled.');
         const secret=grant.pendingSecret?unseal(grant.pendingSecret):newTotpSecret();
         if(!grant.pendingSecret){await tx.staffSession.update({where:{sessionId:grant.sessionId},data:{pendingSecret:seal(secret)}});await audit(member.userId,'MFA_ENROLLMENT_STARTED')}
-        return ctx.json({secret,uri:`otpauth://totp/${encodeURIComponent(`Lowin:${current.user.email}`)}?secret=${secret}&issuer=Lowin&algorithm=SHA1&digits=6&period=30`});
+        return ctx.json({secret,uri:`otpauth://totp/${encodeURIComponent(`Lowwin:${current.user.email}`)}?secret=${secret}&issuer=Lowwin&algorithm=SHA1&digits=6&period=30`});
       }
       const {code}=z.object({code:z.string().trim().min(6).max(64)}).strict().parse(ctx.body);
       if(action==='step-up'&&!grant.mfaAt)throw new AdminError(403,'Complete MFA before requesting fresh assurance.');

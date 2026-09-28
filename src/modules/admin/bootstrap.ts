@@ -14,7 +14,7 @@ export async function bootstrapOwner(client:PrismaClient,email:string) {
     await tx.staffToken.create({data:{tokenHash:digest(invitation),kind:'INVITE',email,expiresAt:new Date(now.getTime()+86400000)}});
     await tx.adminAudit.create({data:{actorId:'bootstrap',action:'OWNER_INVITED',target:'owner',details:{email}}});
     const link=new URL('/admin/login',process.env.BETTER_AUTH_URL);link.hash=new URLSearchParams({invite:invitation}).toString();
-    await mail.send({to:email,subject:'Your Lowin Owner invitation',text:`Accept your one-time Owner invitation within 24 hours: ${link}\nYou must enroll an authenticator before any admin access.`});
+    await mail.send({to:email,subject:'Your Lowwin Owner invitation',text:`Accept your one-time Owner invitation within 24 hours: ${link}\nYou must enroll an authenticator before any admin access.`});
     return {invited:true};
   },{timeout:15000});
 }
@@ -35,7 +35,7 @@ export async function reissueInitialOwner(client:PrismaClient,reason:string) {
     await tx.staffToken.create({data:{tokenHash:digest(invitation),kind:'INVITE',role:'OWNER',email,expiresAt:new Date(now.getTime()+86400000)}});
     await tx.adminAudit.create({data:{actorId:'bootstrap',action:'OWNER_INVITE_REISSUED',target:'owner',details:{reason}}});
     const link=new URL('/admin/login',process.env.BETTER_AUTH_URL);link.hash=new URLSearchParams({invite:invitation}).toString();
-    await mail.send({to:email,subject:'Replacement Lowin Owner invitation',text:`The expired invitation was revoked. Enroll MFA after accepting within 24 hours: ${link}`});
+    await mail.send({to:email,subject:'Replacement Lowwin Owner invitation',text:`The expired invitation was revoked. Enroll MFA after accepting within 24 hours: ${link}`});
     return {reissued:true};
   },{timeout:15000});
 }

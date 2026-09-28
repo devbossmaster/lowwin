@@ -5,7 +5,7 @@ test('catalog at mobile widths: header, carousel, cards, countdown and navigatio
   await page.goto('/');
   await expect(page.getByRole('heading',{name:'A little different wins.'})).toBeVisible();
   await expect(page.getByRole('navigation',{name:'Main navigation'})).toBeVisible();
-  await expect(page.getByText('Opening your Lowin…')).toBeHidden({timeout:20000});
+  await expect(page.getByText('Opening your Lowwin…')).toBeHidden({timeout:20000});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
   expect(hydrationErrors).toEqual([]);
   await expect(page.getByLabel('Featured auctions')).toBeVisible();
@@ -26,10 +26,15 @@ test('catalog at mobile widths: header, carousel, cards, countdown and navigatio
   await page.getByRole('navigation',{name:'Main navigation'}).getByRole('link',{name:'Winners'}).click();
   await expect(page.locator('.result-context')).toBeVisible();
   await page.screenshot({path:`docs/screenshots/catalog-winners-${testInfo.project.name}.png`,fullPage:true});
+  await page.getByRole('navigation',{name:'Main navigation'}).getByRole('link',{name:'Wallet'}).click();
+  await expect(page.getByRole('heading',{name:'ETB wallet.'})).toBeVisible();
+  await expect(page.getByRole('navigation',{name:'Main navigation'}).getByRole('link',{name:'Wallet'})).toHaveAttribute('aria-current','page');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+  await page.screenshot({path:`docs/screenshots/etb-wallet-nav-${testInfo.project.name}.png`,fullPage:true});
   await page.getByRole('navigation').getByRole('link',{name:'Profile'}).click();
   await expect(page.getByRole('heading',{name:'Your profile.'})).toBeVisible();
-  await page.getByRole('link',{name:'Point wallet',exact:true}).click();
-  await expect(page.getByRole('heading',{name:'Add points',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Submit for verification'})).toBeDisabled();
+  await page.getByRole('link',{name:'ETB wallet',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Add ETB',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Submit for verification'})).toBeDisabled();
 });
 test('expired Telegram launch offers retry, never fake authentication',async({page})=>{
   await page.addInitScript(()=>{window.Telegram={WebApp:{initData:'tampered',ready(){},expand(){}}};});

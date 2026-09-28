@@ -33,7 +33,7 @@ export async function handleAuth(request: Request) {
         const body = miniAppBody.parse(await request.clone().json());
         identity = String(validateTelegramInitData(body.initData, env.TELEGRAM_BOT_TOKEN).id);
       }
-    } catch { return Response.json({ error: 'Launch could not be verified. Reopen Lowin from Telegram.' }, { status: 401 }); }
+    } catch { return Response.json({ error: 'Launch could not be verified. Reopen Lowwin from Telegram.' }, { status: 401 }); }
     try {
       // Transaction-scoped locks work with Supavisor transaction pooling. Plugin creation
       // and cookie/session issuance share the transaction, preventing orphan identities.
@@ -56,7 +56,7 @@ export async function handleAuth(request: Request) {
         return Response.json({ ok: true }, { headers });
       }, { timeout: 15000 });
     } catch (error) {
-      if (error instanceof Response) return Response.json({ error: 'Sign-in could not be completed. Reopen Lowin or retry.' }, { status: error.status });
+      if (error instanceof Response) return Response.json({ error: 'Sign-in could not be completed. Reopen Lowwin or retry.' }, { status: error.status });
       return Response.json({ error: 'Sign-in unavailable. Please retry.' }, { status: 503 });
     }
   }

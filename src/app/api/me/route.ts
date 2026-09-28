@@ -16,6 +16,6 @@ export async function GET(request: Request) {
       return tx.ledgerAccount.findMany({ where: { walletId: wallet.id } });
     },{maxWait:10000,timeout:20000});
     const profile=await db.playerProfile.findUnique({where:{userId:session.user.id},select:{displayName:true}});
-    return Response.json({ user: { id: session.user.id, name: profile?.displayName??session.user.name }, wallet: { available: accounts.find(a=>a.kind==='AVAILABLE')!.balance.toString(), held: accounts.find(a=>a.kind==='HELD')!.balance.toString(), demo:['staging','local','test'].includes(process.env.APP_ENV??'') } }, { headers:privateHeaders });
+    return Response.json({ user: { id: session.user.id, name: profile?.displayName??session.user.name, image: session.user.image ?? null }, wallet: { available: accounts.find(a=>a.kind==='AVAILABLE')!.balance.toString(), held: accounts.find(a=>a.kind==='HELD')!.balance.toString(), demo:['staging','local','test'].includes(process.env.APP_ENV??'') } }, { headers:privateHeaders });
   } catch { return Response.json({ error: 'Account is temporarily unavailable.' }, { status: 503,headers:privateHeaders }); }
 }

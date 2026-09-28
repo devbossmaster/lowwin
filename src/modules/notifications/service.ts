@@ -68,7 +68,7 @@ export async function dispatchOne(client:PrismaClient,bot:Pick<Bot,'api'>){
   if(link.protocol!=='https:'){await skip();return true}
   try{
    // Fixed templates only: no bid values, wallet balances, contacts, names or proof.
-   await bot.api.sendMessage(chat.chatId,`${content.title}\n${content.body}`,{reply_markup:{inline_keyboard:[[{text:'Open Lowin',web_app:{url:link.href}}]]}});
+   await bot.api.sendMessage(chat.chatId,`${content.title}\n${content.body}`,{reply_markup:{inline_keyboard:[[{text:'Open Lowwin',web_app:{url:link.href}}]]}});
    await tx.outbox.update({where:{id:row.id},data:{state:'SENT',sentAt:new Date(),attempts:{increment:1},lastError:null}});
   }catch(error){
    const e=error as {error_code?:number;parameters?:{retry_after?:number}},attempts=row.attempts+1;

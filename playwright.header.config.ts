@@ -1,0 +1,3 @@
+import {defineConfig} from '@playwright/test';
+// Start the isolated local preview on 3112 before running this focused suite.
+export default defineConfig({testDir:'./tests/header-browser',workers:1,timeout:60000,reporter:'list',use:{baseURL:'http://localhost:3112',browserName:'chromium',channel:'chrome'},projects:[{name:'360',use:{viewport:{width:360,height:800}}},{name:'430',use:{viewport:{width:430,height:932}}}]});

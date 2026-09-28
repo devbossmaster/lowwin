@@ -9,10 +9,10 @@ process.on('SIGTERM', () => { running = false; });
 process.on('SIGINT', () => { running = false; });
 try {
   await bot.init();
-  console.log('Lowin command worker started. Auction settlement runs separately with worker:auctions.');
+  console.log('Lowwin command worker started. Auction settlement runs separately with worker:auctions.');
   while (running) {
     try { if (!await processOneUpdate(db, bot)) await setTimeout(1000); }
-    catch { console.error('Inbox unavailable; retrying shortly.'); await setTimeout(5000); }
+    catch (error) { const code=(error as {code?:string}).code??'unknown'; console.error(`Inbox unavailable (${code}); retrying shortly.`); await setTimeout(5000); }
   }
 } catch { console.error('Worker could not initialize. Check configuration.'); process.exitCode = 1; }
 finally { await db.$disconnect(); }

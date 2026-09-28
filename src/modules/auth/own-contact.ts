@@ -1,4 +1,4 @@
-import {createCipheriv,createDecipheriv,createHmac,randomBytes} from 'node:crypto';
+import {createCipheriv,createDecipheriv,createHmac,randomBytes,randomUUID} from 'node:crypto';
 import type {Prisma,PrismaClient} from '@prisma/client';
 import {stagingDemoUser} from '../auctions/staging-demo';
 type DB=Prisma.TransactionClient|PrismaClient;
@@ -16,17 +16,33 @@ export function protectContactPayload(payload:Record<string,unknown>,botId:strin
  return {...payload,message:{...m,contact:{user_id:c.user_id??null,phoneCipher:phone?encryptPhone(phone,botId):null}}};
 }
 export async function acceptOwnContact(tx:DB,payload:unknown,botId:string|null,updateId:bigint){
- const m=(payload as {message?:{chat?:{id?:number;type?:string};from?:{id?:number};forward_origin?:unknown;forward_from?:unknown;contact?:{user_id?:number;phoneCipher?:string}}}).message;
+ const m=(payload as {message?:{chat?:{id?:number;type?:string};from?:{id?:number;is_bot?:boolean;first_name?:string;last_name?:string;username?:string};forward_origin?:unknown;forward_from?:unknown;contact?:{user_id?:number;phoneCipher?:string}}}).message;
  if(!m?.contact)return null;const tid=String(m.from?.id??'unknown');
  const record=async(outcome:string)=>{await tx.contactEvent.createMany({data:[{botId:botId??'unbound',telegramId:tid,updateId,outcome}],skipDuplicates:true});return outcome};
- if(botId!==contactBotId()||m.chat?.type!=='private'||!Number.isSafeInteger(m.from?.id)||(m.from?.id??0)<=0||m.from!.id!==m.chat.id||m.contact.user_id!==m.from!.id||m.forward_origin||m.forward_from||!m.contact.phoneCipher)return record('REJECTED_IDENTITY');
+ if(botId!==contactBotId()||m.chat?.type!=='private'||m.from?.is_bot||!Number.isSafeInteger(m.from?.id)||(m.from?.id??0)<=0||m.from!.id!==m.chat.id||m.contact.user_id!==m.from!.id||m.forward_origin||m.forward_from||!m.contact.phoneCipher)return record('REJECTED_IDENTITY');
+ // Match signed Mini App sign-in: Telegram identity first, then own-contact.
+ // A concurrent bot registration and signed launch must create the same user.
+ await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`telegram:${tid}`},0))`;
  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`own-contact:${botId}:${tid}`},0))`;
  let phone:string;try{phone=normalizePhone(decryptPhone(m.contact.phoneCipher,botId))}catch{return record('REJECTED_PAYLOAD')}const hash=phoneHash(phone);
  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`phone:${hash}`},0))`;
  const existing=await tx.telegramOwnContact.findUnique({where:{botId_telegramId:{botId,telegramId:tid}}}),owner=await tx.telegramOwnContact.findUnique({where:{phoneHash:hash}});
  if(owner&&(owner.telegramId!==tid||owner.botId!==botId)||existing&&(existing.phoneHash!==hash||existing.revokedAt))return record('CONFLICT_REQUIRES_SUPPORT');
- if(!existing){const user=await tx.user.findUnique({where:{telegramId:tid},select:{id:true}});await tx.telegramOwnContact.create({data:{telegramId:tid,botId,userId:user?.id,phoneHash:hash,phoneCipher:encryptPhone(phone,botId),lastFour:phone.slice(-4),verifiedAt:new Date(),sourceUpdateId:updateId}})}
+ // Only authenticated, same-user Telegram contact updates can register here.
+ // No session, credentials, credit or account linkage is issued by the bot.
+ let user=await tx.user.findUnique({where:{telegramId:tid},select:{id:true}});
+ if(existing?.userId&&existing.userId!==user?.id)return record('CONFLICT_REQUIRES_SUPPORT');
+ if(!user){
+  const name=[m.from?.first_name,m.from?.last_name].filter((part):part is string=>typeof part==='string').join(' ').trim().slice(0,200)||'Lowwin player';
+  user=await tx.user.create({data:{id:randomUUID(),name,telegramId:tid,telegramUsername:typeof m.from?.username==='string'?m.from.username.slice(0,64):null},select:{id:true}});
+ }
+ if(!existing)await tx.telegramOwnContact.create({data:{telegramId:tid,botId,userId:user.id,phoneHash:hash,phoneCipher:encryptPhone(phone,botId),lastFour:phone.slice(-4),verifiedAt:new Date(),sourceUpdateId:updateId}});
+ else if(!existing.userId)await tx.telegramOwnContact.update({where:{id:existing.id},data:{userId:user.id}});
  return record(existing?'ALREADY_VERIFIED':'VERIFIED');
+}
+export async function isRegisteredTelegramUser(tx:DB,telegramId:string,botId=contactBotId()){
+ const contact=await tx.telegramOwnContact.findUnique({where:{botId_telegramId:{botId,telegramId}},select:{revokedAt:true,user:{select:{telegramId:true}}}});
+ return !!contact&&!contact.revokedAt&&contact.user?.telegramId===telegramId;
 }
 export async function bindOwnContact(tx:DB,userId:string,telegramId:string){await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`own-contact:${contactBotId()}:${telegramId}`},0))`;const row=await tx.telegramOwnContact.findUnique({where:{botId_telegramId:{botId:contactBotId(),telegramId}}});if(row&&!row.userId&&!row.revokedAt)await tx.telegramOwnContact.updateMany({where:{id:row.id,userId:null},data:{userId}})}
 export async function contactStatus(tx:DB,userId:string,telegramId?:string|null){const row=await tx.telegramOwnContact.findUnique({where:{userId},select:{telegramId:true,botId:true,revokedAt:true,lastFour:true,user:{select:{telegramId:true}}}});return row&&row.telegramId===row.user?.telegramId&&!row.revokedAt&&row.botId===contactBotId()&&(!telegramId||row.telegramId===telegramId)?{verified:true,masked:`•••• ${row.lastFour}`}:{verified:false,masked:null}}

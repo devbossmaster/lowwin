@@ -1,0 +1,35 @@
+'use client';
+import {useEffect,useRef,useState} from 'react';
+import Link from 'next/link';
+import {ArrowUpRight,Pause,Play} from 'lucide-react';
+import {CatalogImage} from './catalog-image';
+import styles from './home-banner.module.css';
+import {useMiniLocale,type MiniCopyKey} from './mini-locale';
+
+const names:Record<string,MiniCopyKey>={'home-furniture':'homeFurniture',vehicles:'vehicles',accessories:'accessories','computer-office-equipment':'computerOffice','home-furnishings':'homeFurnishings',jewelry:'jewelry',watches:'watches',phones:'phones',animals:'animals'};
+type Category={slug:string;name:string;counts:{all:number}};
+export function HomeCategories({categories}:{categories:Category[]}){
+ const {t}=useMiniLocale();
+ const rail=useRef<HTMLDivElement>(null),interacting=useRef(false),resumeAt=useRef(0);
+ const [paused,setPaused]=useState(false),[reduced,setReduced]=useState(true);
+ useEffect(()=>{const media=matchMedia('(prefers-reduced-motion: reduce)');const update=()=>setReduced(media.matches);update();media.addEventListener('change',update);return()=>media.removeEventListener('change',update)},[]);
+ useEffect(()=>{
+  const element=rail.current;if(!element||paused||reduced||categories.length<2)return;
+  let visible=false;const observer=new IntersectionObserver(([entry])=>{visible=entry.isIntersecting},{threshold:.5});observer.observe(element);
+  const interval=setInterval(()=>{
+   if(document.hidden||!visible||interacting.current||Date.now()<resumeAt.current||element.contains(document.activeElement))return;
+   const step=(element.firstElementChild?.getBoundingClientRect().width??100)+10;
+   const end=element.scrollWidth-element.clientWidth;if(end<=1)return;
+   element.scrollTo({left:element.scrollLeft>=end-2?0:Math.min(end,element.scrollLeft+step),behavior:'smooth'});
+  },3000);
+  return()=>{clearInterval(interval);observer.disconnect()};
+ },[paused,reduced,categories.length]);
+ const release=()=>{interacting.current=false;resumeAt.current=Date.now()+5000};
+ return <section className={styles.categories} aria-label={t('categories')}>
+  <div className={styles.heading}><h2>{t('categories')}</h2><div className={styles.categoryActions}>{!reduced&&categories.length>1&&<button onClick={()=>setPaused(value=>!value)} aria-label={paused?t('resumeCategories'):t('pauseCategories')} aria-pressed={paused}>{paused?<Play size={15} aria-hidden="true"/>:<Pause size={15} aria-hidden="true"/>}</button>}<Link href="/auctions">{t('seeAll')} <ArrowUpRight size={16} aria-hidden="true"/></Link></div></div>
+  <div ref={rail} className={styles.grid} aria-label={t('swipeCategories')} tabIndex={0} onPointerDown={()=>{interacting.current=true}} onPointerUp={release} onPointerCancel={release} onMouseEnter={()=>{interacting.current=true}} onMouseLeave={release} onWheel={()=>{resumeAt.current=Date.now()+5000}} onFocus={()=>{interacting.current=true}} onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget))release()}}>
+   {categories.map(category=><Link key={category.slug} className={styles.category} href={`/categories/${category.slug}`}><span className={styles.art}><CatalogImage src={`/catalog/undraw/${category.slug}.svg`} alt=""/></span><span>{names[category.slug]?t(names[category.slug]):category.name}</span><small>{category.counts.all} {t(category.counts.all===1?'auction':'auctionsCount')}</small></Link>)}
+  </div>
+  {categories.length===0&&<p className={styles.empty}>{t('categoriesPrepared')}</p>}
+ </section>;
+}

@@ -11,5 +11,6 @@ async function content(id:'home'|'faq'){
   throw error;
  }
 }
-export async function publicHomeContent(){const row=await content('home');const parsed=home.safeParse(row?.body);return parsed.success?parsed.data:null}
-export async function publicFaqContent(){const row=await content('faq');const parsed=faq.safeParse(row?.body);return parsed.success?parsed.data.items:[]}
+const brandCopy=(value:string)=>value.replace(/\bLowin\b/g,'Lowwin');
+export async function publicHomeContent(){const row=await content('home');const parsed=home.safeParse(row?.body);return parsed.success?{headline:brandCopy(parsed.data.headline),lead:brandCopy(parsed.data.lead)}:null}
+export async function publicFaqContent(){const row=await content('faq');const parsed=faq.safeParse(row?.body);return parsed.success?parsed.data.items.map(item=>({question:brandCopy(item.question),answer:brandCopy(item.answer)})):[]}

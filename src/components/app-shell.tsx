@@ -1,27 +1,26 @@
 'use client';
+import {useCallback,useState} from 'react';
 import {TelegramEntry} from './telegram-entry';
-import {AlertBell} from './alert-bell';
+import {MiniHeader} from './mini-header';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Bell, CircleUserRound, House, LayoutGrid, Trophy, Layers, ArrowUpRight, Wallet } from 'lucide-react';
+import { CircleUserRound, House, LayoutGrid, Trophy, Layers, ArrowUpRight, Wallet } from 'lucide-react';
 import { useTelegram } from './telegram-provider';
-import {formatEtb} from '@/lib/money';
-const nav = [{ href: '/', text: 'Home', icon: House }, { href: '/auctions', text: 'Auctions', icon: LayoutGrid }, { href: '/winners', text: 'Winners', icon: Trophy }, { href: '/my-bids', text: 'My Bids', icon: Layers }, { href: '/wallet', text: 'Wallet', icon: Wallet }, { href: '/profile', text: 'Profile', icon: CircleUserRound }];
+import {useMiniLocale,type MiniCopyKey} from './mini-locale';
+import {CatalogSkeleton} from './catalog-skeleton';
+const nav: {href:string;text:MiniCopyKey;icon:typeof House}[] = [{ href: '/', text: 'home', icon: House }, { href: '/auctions', text: 'auctions', icon: LayoutGrid }, { href: '/winners', text: 'winners', icon: Trophy }, { href: '/my-bids', text: 'myBids', icon: Layers }, { href: '/wallet', text: 'wallet', icon: Wallet }, { href: '/profile', text: 'profile', icon: CircleUserRound }];
 export function AppShell({ children, requireLaunch=false }: { children: React.ReactNode; requireLaunch?:boolean }) {
-  const path = usePathname(); const { me, status } = useTelegram();
-  if(requireLaunch&&status!=='authenticated')return <TelegramEntry/>;
+  const path = usePathname(); const { status } = useTelegram();
+  const {t}=useMiniLocale();
+  const [launchOpened,setLaunchOpened]=useState(false);
+  const completeLaunch=useCallback(()=>{delete document.documentElement.dataset.lowwinHandoff;setLaunchOpened(true)},[]);
+  if(requireLaunch&&!launchOpened)return <TelegramEntry onComplete={completeLaunch}/>;
+  if(requireLaunch&&(status==='guest'||status==='error'||status==='contact-required'))return <TelegramEntry onComplete={completeLaunch}/>;
   return <div className="app-frame">
-    <header className="topbar">
-      <div className="header-brand"><Link href="/" aria-label="Lowin home" className="wordmark">lowin<span>.</span></Link><Link className="header-auctions" href="/auctions">Auctions</Link></div>
-      <div className="header-actions">
-        <Link className="balance-chip" href="/wallet" aria-label={me ? `${me.wallet.demo?'DEMO ':''}${formatEtb(me.wallet.available)} available, open wallet` : 'Open ETB wallet'}><Wallet size={15}/><span>{me?.wallet.demo?'DEMO ETB':me?formatEtb(me.wallet.available):'ETB'}</span></Link>
-        <AlertBell/>
-        <Link href="/profile" className="avatar" aria-label="Profile">{me?.user.name.slice(0,1) || <CircleUserRound size={23}/>}</Link>
-      </div>
-    </header>
-    {status === 'loading' && <div className="connection-line" role="status">Opening your Lowin…</div>}
-    <main id="main">{children}</main>
-    <footer className="page-footer"><span className="wordmark">lowin<span>.</span></span><p>A little different wins.</p><Link href="/faq">Understand the rules <ArrowUpRight size={14}/></Link></footer>
-    <nav className="bottom-nav" aria-label="Main navigation">{nav.map(({ href, text, icon: Icon }) => <Link key={href} href={href} aria-current={(href === '/' ? path === '/' : path.startsWith(href)) ? 'page' : undefined}><Icon size={21}/><span>{text}</span></Link>)}</nav>
+    <MiniHeader/>
+    {status === 'loading' && <div className="connection-line" role="status">Opening your Lowwin…</div>}
+    <main id="main">{status==='loading'?<CatalogSkeleton/>:children}</main>
+    <footer className="page-footer"><span className="wordmark">lowwin<span>.</span></span><p>A little different wins.</p><Link href="/faq">Understand the rules <ArrowUpRight size={14}/></Link></footer>
+    <nav className="bottom-nav" aria-label="Main navigation">{nav.map(({ href, text, icon: Icon }) => <Link key={href} href={href} aria-current={(href === '/' ? path === '/' : path.startsWith(href)) ? 'page' : undefined}><Icon size={21}/><span>{t(text)}</span></Link>)}</nav>
   </div>;
 }

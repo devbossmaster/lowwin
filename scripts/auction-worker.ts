@@ -6,7 +6,7 @@ import { processDueAuction } from '../src/modules/auctions/settlement';
 let running=true;
 process.on('SIGTERM',()=>{running=false});process.on('SIGINT',()=>{running=false});
 const once=process.argv.includes('--once');
-console.log('Lowin auction settlement worker started. External notification delivery is disabled.');
+console.log('Lowwin auction settlement worker started. External notification delivery is disabled.');
 try {
   do {
     try {

@@ -66,10 +66,10 @@ export async function submitBidInTransaction(tx:Prisma.TransactionClient,input:B
   const terms=auction.terms;
   if(!terms)fail('AUCTION_CLOSED',409,'Published auction terms are unavailable.');
   if(amount<terms.minPoints||amount>terms.maxPoints||(amount-terms.minPoints)%terms.stepPoints!==0n)
-    fail('INVALID_AMOUNT',422,`Choose a point amount from ${terms.minPoints} to ${terms.maxPoints} in steps of ${terms.stepPoints}.`);
+    fail('INVALID_AMOUNT',422,`Choose a whole ETB amount from ${terms.minPoints} to ${terms.maxPoints} in steps of ${terms.stepPoints}.`);
 
   const own=await tx.bid.findMany({where:{userId,auctionId:auction.id},orderBy:[{acceptedAt:'asc'},{id:'asc'}],select:{id:true,amount:true,acceptedAt:true}});
-  if(own.some(bid=>bid.amount===amount))fail('OWN_DUPLICATE',409,'You already submitted this point amount for this auction.');
+  if(own.some(bid=>bid.amount===amount))fail('OWN_DUPLICATE',409,'You already submitted this ETB amount for this auction.');
   if(own.length>=terms.maxDistinctBids)fail('CAP_REACHED',409,'You have reached the 100 distinct-bid limit for this auction.');
 
   const wallet=await ensureWallet(tx,userId);
@@ -80,7 +80,7 @@ export async function submitBidInTransaction(tx:Prisma.TransactionClient,input:B
   const previousMax=hold?.points??0n;
   const extraReserved=amount>previousMax?amount-previousMax:0n;
   const newlyUnavailable=extraReserved+terms.entryFeePoints;
-  if(available.balance<newlyUnavailable)fail('INSUFFICIENT_POINTS',409,`You need ${newlyUnavailable} available points for this bid and fee.`);
+  if(available.balance<newlyUnavailable)fail('INSUFFICIENT_POINTS',409,`You need ETB ${newlyUnavailable}.00 available for this bid and fee.`);
 
   const bidId=randomUUID(),operationId=randomUUID();
   // This FK is deferred: the immutable BID operation can include the exact
@@ -118,7 +118,7 @@ export async function submitBid(client:PrismaClient,input:BidInput,raw:Record<st
     const message=error instanceof Error?error.message:'';
     if(message.includes('Auction is not open for bids'))fail('AUCTION_CLOSED',409,'This auction closed before your bid was accepted.');
     if(message.includes('Distinct bid limit reached'))fail('CAP_REACHED',409,'You have reached the 100 distinct-bid limit for this auction.');
-    if(message.includes('Bid does not match published terms'))fail('INVALID_AMOUNT',422,'The published point terms changed or this amount is invalid.');
+    if(message.includes('Bid does not match published terms'))fail('INVALID_AMOUNT',422,'The published ETB terms changed or this amount is invalid.');
     if(error instanceof Prisma.PrismaClientKnownRequestError&&['P2034','P2028'].includes(error.code))
       fail('RETRYABLE_CONFLICT',409,'This auction is busy. Retry the same request key.');
     throw error;

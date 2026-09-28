@@ -3,4 +3,31 @@ import {useEffect,useState} from 'react';
 import Link from 'next/link';
 import {Bell} from 'lucide-react';
 import {useTelegram} from './telegram-provider';
-export function AlertBell(){const {me,status}=useTelegram(),[count,setCount]=useState(0);useEffect(()=>{setCount(0);if(status!=='authenticated')return;let live=true;const refresh=async()=>{try{const r=await fetch('/api/alerts',{cache:'no-store'});if(r.ok&&live)setCount((await r.json()).unread)}catch{}};void refresh();const timer=setInterval(()=>{if(!document.hidden)void refresh()},30000);window.addEventListener('lowin-alerts',refresh);return()=>{live=false;clearInterval(timer);window.removeEventListener('lowin-alerts',refresh)}},[status,me?.user.id]);return <Link href="/profile/alerts" className="icon-button alert-bell" aria-label={`Alerts${count?`, ${count} unread`:''}`}><Bell size={20}/>{count>0&&<span>{count>99?'99+':count}</span>}</Link>}
+import {Button} from './ui/button';
+import {useMiniLocale} from './mini-locale';
+
+export function AlertBell({className,indicatorClassName}:{className?:string;indicatorClassName?:string}){
+ const {me,status}=useTelegram();
+ const {t}=useMiniLocale();
+ const userId=status==='authenticated'?me?.user.id:undefined;
+ const [result,setResult]=useState<{userId:string;unread:number}|null>(null);
+ useEffect(()=>{
+  if(!userId)return;
+  const controller=new AbortController();let request=0;
+  const refresh=async()=>{
+   const current=++request;
+   try{
+    const response=await fetch('/api/alerts',{cache:'no-store',signal:controller.signal});
+    if(!response.ok)throw Error('Alerts unavailable');
+    const {unread}=await response.json();
+    if(!controller.signal.aborted&&current===request)setResult(Number.isSafeInteger(unread)&&unread>=0?{userId,unread}:null);
+   }catch{if(!controller.signal.aborted&&current===request)setResult(null)}
+  };
+  void refresh();
+  const timer=setInterval(()=>{if(!document.hidden)void refresh()},30000);
+  window.addEventListener('lowin-alerts',refresh);
+  return()=>{controller.abort();clearInterval(timer);window.removeEventListener('lowin-alerts',refresh)};
+ },[userId]);
+ const count=userId&&result?.userId===userId?result.unread:null;
+ return <Button asChild variant="outline" className={className}><Link href="/profile/alerts" aria-label={`${t('alerts')}${count?`, ${count} ${t('unread')}`:''}`}><Bell size={21} aria-hidden="true"/>{count!==null&&count>0&&<span className={indicatorClassName} data-unread-indicator aria-hidden="true"/>}</Link></Button>;
+}

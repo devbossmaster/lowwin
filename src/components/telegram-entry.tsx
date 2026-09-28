@@ -1,11 +1,39 @@
 'use client';
 import {useEffect} from 'react';
+import {useRouter} from 'next/navigation';
+import {usePathname} from 'next/navigation';
 import {useTelegram} from './telegram-provider';
 import {ContactGate} from './contact-gate';
-export function TelegramEntry(){
+import {LaunchSplash} from './launch-splash';
+import {RotateCcw,ArrowUpRight} from 'lucide-react';
+import {Button} from './ui/button';
+import styles from './telegram-entry.module.css';
+export function TelegramEntry({onComplete}:{onComplete?:()=>void}={}){
+  const router=useRouter();
+  const pathname=usePathname();
   const {status,botUrl,error,retry}=useTelegram();
-  useEffect(()=>{if(status==='authenticated'&&window.Telegram?.WebApp?.initData)window.location.replace('/'+window.location.hash)},[status]);
+  const telegramLaunch=typeof window!=='undefined'&&Boolean(window.Telegram?.WebApp?.initData);
+  useEffect(()=>{
+    if(status!=='authenticated'||!telegramLaunch)return;
+    // Keep the verified splash visible for a painted frame before opening Home.
+    let frame=0,paintFrame=0;
+    frame=window.requestAnimationFrame(()=>{paintFrame=window.requestAnimationFrame(()=>{
+      if(pathname==='/telegram'){
+        document.documentElement.dataset.lowwinHandoff='true';
+        router.replace('/'+window.location.hash);
+      }else onComplete?.();
+    })});
+    return()=>{window.cancelAnimationFrame(frame);window.cancelAnimationFrame(paintFrame)};
+  },[status,telegramLaunch,router,pathname,onComplete]);
   if(status==='contact-required')return <ContactGate/>;
-  if(status==='loading'||status==='authenticated')return <main id="main" className="telegram-entry launch-loader"><span className="wordmark">lowin<span>.</span></span><div className="launch-progress"/><p role="status">Checking your Telegram launch…</p></main>;
-  return <main id="main" className="telegram-entry"><span className="wordmark">lowin<span>.</span></span><h1>Your Mini App.<br/>Inside Telegram.</h1><p>Open the Lowin bot to browse auctions, place point bids and manage your wallet.</p>{botUrl?<a className="primary-button" href={botUrl}>Continue with the bot</a>:<p role="status">The bot link is not configured yet. Please try again later.</p>}{error&&<><p role="alert">{error}</p><button className="text-link" onClick={retry}>Retry connection</button></>}</main>
+  if(status==='loading'||(status==='authenticated'&&telegramLaunch))return <LaunchSplash complete={status==='authenticated'}/>;
+  return <main id="main" className={`telegram-entry ${styles.screen}`}>
+    <img src="/logo.png" alt="Lowwin" width={112} height={112} className={styles.logo}/>
+    <h1>{error?'Let’s try again':'Open Lowwin'}</h1>
+    <p role={error?'alert':undefined}>{error||'Continue through our Telegram bot.'}</p>
+    <div className={styles.actions}>
+      {error&&<Button onClick={retry} className={styles.retry}><RotateCcw size={17} aria-hidden="true"/>Retry connection</Button>}
+      {botUrl?<Button asChild variant="outline" className={error?styles.bot:styles.retry}><a href={botUrl}>{error?'Reopen from the bot':'Continue with the bot'}<ArrowUpRight size={17} aria-hidden="true"/></a></Button>:<p role="status">The bot is unavailable. Please try again later.</p>}
+    </div>
+  </main>;
 }

@@ -1,0 +1,45 @@
+import {test,expect} from '@playwright/test';
+test('banner leads directly into nine unDraw categories',async({page},info)=>{
+ await page.route('https://telegram.org/**',r=>r.fulfill({body:''}));
+ await page.route('**/api/onboarding/contact',r=>r.fulfill({json:{verified:true}}));
+ await page.route('**/api/me',r=>r.fulfill({json:{user:{id:'home-fixture',name:'Miki'},wallet:{available:'750',held:'25',demo:true}}}));
+ await page.route('**/api/alerts',r=>r.fulfill({json:{unread:0}}));
+ const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto('/');
+ const banner=page.getByRole('link',{name:'Explore Lowwin auctions',exact:true});
+ await expect(banner.locator('img')).toHaveAttribute('src','/banner1.png');
+ await expect.poll(()=>banner.locator('img').evaluate((img:HTMLImageElement)=>img.complete&&img.naturalWidth>0)).toBe(true);
+ await expect(page.getByLabel('Lowest unique bid example')).toHaveCount(0);
+ await expect(page.getByText('Welcome to Lowwin',{exact:true})).toHaveCount(0);
+ const categories=page.getByRole('region',{name:'Auction categories'});
+ const images=categories.locator('img');await expect(images).toHaveCount(9);
+ await categories.scrollIntoViewIfNeeded();
+ await expect.poll(()=>images.evaluateAll(list=>list.every(img=>(img as HTMLImageElement).complete&&(img as HTMLImageElement).naturalWidth>0))).toBe(true);
+ expect(await images.evaluateAll(list=>list.every(img=>img.getAttribute('src')?.startsWith('/catalog/undraw/')))).toBe(true);
+ const categoryLinks=categories.locator('a[href^="/categories/"]');await expect(categoryLinks).toHaveCount(9);
+ const paths=await categoryLinks.evaluateAll(links=>links.map(a=>a.getAttribute('href')!));
+ expect(paths).toEqual(expect.arrayContaining(['/categories/home-furniture','/categories/vehicles','/categories/accessories','/categories/computer-office-equipment','/categories/home-furnishings','/categories/jewelry','/categories/watches','/categories/phones','/categories/animals']));
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:`docs/screenshots/home-banner-${info.project.name}.png`});
+ await categories.screenshot({path:`docs/screenshots/home-categories-${info.project.name}.png`});
+ await banner.click();await expect(page).toHaveURL(/\/auctions$/);
+ for(const path of paths){await page.goto('/');await page.locator(`a[href="${path}"]`).first().click();await expect(page).toHaveURL('http://localhost:3112'+path);await expect(page.getByRole('heading',{level:1})).toBeVisible()}
+ expect(errors).toEqual([]);
+});
+test('401 retry is compact and never opens protected content',async({page},info)=>{
+ await page.route('https://telegram.org/**',r=>r.fulfill({body:''}));
+ await page.addInitScript(()=>{window.Telegram={WebApp:{initData:'invalid-test-launch',ready(){},expand(){}}}});
+ let attempts=0;
+ await page.route('**/api/auth/telegram/miniapp/signin',r=>{attempts++;return r.fulfill({status:401,json:{error:'Launch could not be verified'}})});
+ await page.goto('/telegram');
+ await expect(page.getByRole('heading',{name:'Let’s try again'})).toBeVisible();
+ await expect(page.getByRole('img',{name:'Lowwin'})).toBeVisible();await expect.poll(()=>page.getByRole('img',{name:'Lowwin'}).evaluate((img:HTMLImageElement)=>img.complete&&img.naturalWidth>0)).toBe(true);
+ await expect(page.locator('main [role="alert"]')).toHaveText('Reopen Lowwin from the bot to verify your launch.');
+ await expect(page.getByText('Your Mini App.')).toHaveCount(0);
+ await expect(page.getByRole('navigation',{name:'Main navigation'})).toHaveCount(0);
+ await page.getByRole('button',{name:'Retry connection'}).click();await expect.poll(()=>attempts).toBe(2);
+ await expect(page.getByRole('heading',{name:'Let’s try again'})).toBeVisible();
+ await expect(page.getByRole('link',{name:'Reopen from the bot'})).toHaveAttribute('href',/https:\/\/t.me\/lowin_fixture_bot/);
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await page.screenshot({path:`docs/screenshots/telegram-retry-simple-${info.project.name}.png`});
+});
