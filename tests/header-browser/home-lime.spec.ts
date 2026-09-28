@@ -22,7 +22,14 @@ test('shared header and Home hero use the lime surface without mobile overflow',
   await page.screenshot({path:`docs/screenshots/home-lime-${info.project.name}.png`});
   const footer=page.locator('.page-footer');
   await footer.scrollIntoViewIfNeeded();
-  await expect(footer).toHaveCSS('background-color','rgb(163, 230, 53)');
+  await expect(footer).toHaveCSS('background-color','rgb(145, 200, 62)');
   await expect(footer).toHaveCSS('color','rgb(23, 39, 32)');
+  await expect(footer.getByRole('img',{name:'Lowwin'})).toHaveAttribute('src','/logo.png');
+  await expect(page.getByText(/signed in/i)).toHaveCount(0);
+  await expect(page.locator('#player-stories')).toHaveText('ጨረታ ቀላል ሆነ');
+  await expect(page.getByText('ግልጽ ደረጃዎች፣ ፈጣን ፍለጋ እና ቀላል ጨረታ።')).toBeAttached();
+  await expect(page.getByText('These are not real customer reviews.')).toHaveCount(0);
+  const stories=page.locator('section').filter({has:page.locator('#player-stories')});
+  await stories.screenshot({path:`docs/screenshots/player-stories-${info.project.name}.png`});
   await footer.screenshot({path:`docs/screenshots/footer-lime-${info.project.name}.png`});
 });

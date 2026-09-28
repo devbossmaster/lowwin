@@ -14,7 +14,8 @@ export async function listPublicResults(client:PrismaClient,input:Partial<Result
   const query=resultQuerySchema.parse(input);
   return client.$transaction(async tx=>{
     const [{now}]=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`;
-    const base:Prisma.AuctionWhereInput={AND:[publicWhere(now),query.q?{OR:[{code:{contains:query.q,mode:'insensitive'}},{product:{is:{title:{contains:query.q,mode:'insensitive'}}}}]}:{}]};
+    const searchedPublicCode=/^[1-9]\d*$/.test(query.q)&&Number.isSafeInteger(Number(query.q))?Number(query.q):null;
+    const base:Prisma.AuctionWhereInput={AND:[publicWhere(now),query.q?{OR:[{code:{contains:query.q,mode:'insensitive'}},{product:{is:{title:{contains:query.q,mode:'insensitive'}}}},...(searchedPublicCode?[{publicCode:searchedPublicCode}]:[])]}:{}]};
     if(query.category)(base.AND as Prisma.AuctionWhereInput[]).push({category:{is:{slug:query.category}}});
     const where={AND:[base,outcomeWhere(query.status,now)]};
     const [rows,total]=await Promise.all([
@@ -27,6 +28,7 @@ export async function listPublicResults(client:PrismaClient,input:Partial<Result
 export async function getPublicResult(client:PrismaClient,code:string) {
   if(!/^[A-Za-z0-9-]{1,120}$/.test(code))return null;
   const [{now}]=await client.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`;
-  const row=await client.auction.findFirst({where:{AND:[publicWhere(now),outcomeWhere('all',now),{code}]},select:publicAuctionSelect});
+  const publicCode=/^[1-9]\d*$/.test(code)&&Number.isSafeInteger(Number(code))?Number(code):null;
+  const row=await client.auction.findFirst({where:{AND:[publicWhere(now),outcomeWhere('all',now),{OR:[{code},...(publicCode?[{publicCode}]:[])]}]},select:publicAuctionSelect});
   return row?toPublicAuction(row,now):null;
 }

@@ -1,5 +1,5 @@
 import {test,expect} from '@playwright/test';
-test('banner leads directly into nine unDraw categories',async({page},info)=>{
+test('banner leads directly into the seamless unDraw category rail',async({page},info)=>{
  await page.route('https://telegram.org/**',r=>r.fulfill({body:''}));
  await page.route('**/api/onboarding/contact',r=>r.fulfill({json:{verified:true}}));
  await page.route('**/api/me',r=>r.fulfill({json:{user:{id:'home-fixture',name:'Miki'},wallet:{available:'750',held:'25',demo:true}}}));
@@ -12,19 +12,24 @@ test('banner leads directly into nine unDraw categories',async({page},info)=>{
  await expect.poll(()=>banner.locator('img').evaluate((img:HTMLImageElement)=>img.complete&&img.naturalWidth>0)).toBe(true);
  await expect(page.getByLabel('Lowest unique bid example')).toHaveCount(0);
  await expect(page.getByText('Welcome to Lowwin',{exact:true})).toHaveCount(0);
- const categories=page.getByRole('region',{name:'Auction categories'});
- const images=categories.locator('img');await expect(images).toHaveCount(9);
+ const rail=page.locator('[data-category-rail]');await expect(rail).toHaveCount(1);
+ const categories=rail.locator('..');
+ const categoryLinks=rail.locator('a[href^="/categories/"]'),categoryCount=await categoryLinks.count();expect(categoryCount).toBeGreaterThan(1);
+ const images=categoryLinks.locator('img');await expect(images).toHaveCount(categoryCount);
  await categories.scrollIntoViewIfNeeded();
- await expect.poll(()=>images.evaluateAll(list=>list.every(img=>(img as HTMLImageElement).complete&&(img as HTMLImageElement).naturalWidth>0))).toBe(true);
- expect(await images.evaluateAll(list=>list.every(img=>img.getAttribute('src')?.startsWith('/catalog/undraw/')))).toBe(true);
- const categoryLinks=categories.locator('a[href^="/categories/"]');await expect(categoryLinks).toHaveCount(9);
+ await expect.poll(()=>images.evaluateAll(list=>list.slice(0,3).every(img=>(img as HTMLImageElement).complete&&(img as HTMLImageElement).naturalWidth>0))).toBe(true);
+ expect(await images.evaluateAll(list=>list.every(img=>img.getAttribute('src')?.startsWith('/catalog/')))).toBe(true);
+ await expect(rail.locator('[data-loop-copy]')).toHaveCount(1);
+ const loop=await rail.evaluate(async element=>{const first=element.firstElementChild as HTMLElement,copy=element.querySelector<HTMLElement>('[data-loop-copy]')!;const span=copy.offsetLeft-first.offsetLeft;element.scrollLeft=span+5;await new Promise(resolve=>requestAnimationFrame(()=>resolve(null)));return {left:element.scrollLeft,span}});
+ expect(loop.left).toBeLessThan(loop.span);
  const paths=await categoryLinks.evaluateAll(links=>links.map(a=>a.getAttribute('href')!));
- expect(paths).toEqual(expect.arrayContaining(['/categories/home-furniture','/categories/vehicles','/categories/accessories','/categories/computer-office-equipment','/categories/home-furnishings','/categories/jewelry','/categories/watches','/categories/phones','/categories/animals']));
+ const expectedPaths=['/categories/home-furniture','/categories/vehicles','/categories/accessories','/categories/computer-office-equipment','/categories/home-furnishings','/categories/jewelry','/categories/watches','/categories/phones','/categories/animals'];
+ expect(paths).toEqual(expect.arrayContaining(expectedPaths));
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:`docs/screenshots/home-banner-${info.project.name}.png`});
  await categories.screenshot({path:`docs/screenshots/home-categories-${info.project.name}.png`});
  await banner.click();await expect(page).toHaveURL(/\/auctions$/);
- for(const path of paths){await page.goto('/');await page.locator(`a[href="${path}"]`).first().click();await expect(page).toHaveURL('http://localhost:3112'+path);await expect(page.getByRole('heading',{level:1})).toBeVisible()}
+ for(const path of expectedPaths){await page.goto('/');await page.locator(`a[href="${path}"]`).first().click();await expect(page).toHaveURL('http://localhost:3112'+path);await expect(page.getByRole('heading',{level:1})).toBeVisible()}
  expect(errors).toEqual([]);
 });
 test('401 retry is compact and never opens protected content',async({page},info)=>{

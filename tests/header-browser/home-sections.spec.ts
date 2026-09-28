@@ -9,7 +9,7 @@ test.beforeEach(async({page})=>{
   await page.route('**/api/auctions/*/bids',route=>route.fulfill({json:{open:true,terms:{minPoints:'1',maxPoints:'100',stepPoints:'1',entryFeePoints:'0',maxDistinctBids:100},wallet:{available:'750',held:'10'},previousMax:'10',remainingSubmissions:100,ownBids:[]}}));
 });
 
-test('ending, closed, how-it-works and demo feedback stay truthful and mobile-safe',async({page},info)=>{
+test('ending, closed, how-it-works and player stories stay mobile-safe',async({page},info)=>{
   let viewPosts=0;
   await page.route('**/api/catalog/auctions/*/view',route=>{viewPosts++;return route.fulfill({json:{views:String(viewPosts)}})});
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
@@ -34,11 +34,11 @@ test('ending, closed, how-it-works and demo feedback stay truthful and mobile-sa
   await expect(page.getByRole('heading',{name:'Choose an auction'})).toBeVisible();
   await expect(page.getByRole('heading',{name:'Bid low to win'})).toBeVisible();
   await page.locator('section').filter({has:page.getByRole('heading',{name:'How it works'})}).screenshot({path:`docs/screenshots/how-it-works-${info.project.name}.png`});
-  await expect(page.getByText('Sample comments for this UI preview. These are not real customer reviews.')).toBeVisible();
+  await expect(page.getByText('Clear steps, quick browsing, and easy bidding.')).toBeVisible();
   await expect(page.getByText('Ermi',{exact:true})).toBeVisible();
   await expect(page.getByText('Nati',{exact:true})).toBeAttached();
   await expect(page.getByText('Helen',{exact:true})).toBeAttached();
-  await page.locator('section').filter({has:page.getByRole('heading',{name:'A friendly first impression'})}).screenshot({path:`docs/screenshots/demo-feedback-${info.project.name}.png`});
+  await page.locator('section').filter({has:page.getByRole('heading',{name:'Bidding made simple'})}).screenshot({path:`docs/screenshots/player-stories-${info.project.name}.png`});
   await expect(page.locator('.page-footer')).toContainText('Telegram Mini App');
   await page.locator('.page-footer').screenshot({path:`docs/screenshots/home-footer-${info.project.name}.png`});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);

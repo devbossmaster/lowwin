@@ -1,21 +1,48 @@
-import Link from 'next/link';
-import { Search,SlidersHorizontal } from 'lucide-react';
-import { AuctionCard } from '@/components/auction-card';
-import { OfflineRetry } from '@/components/offline-retry';
-import { catalogQuerySchema,listAuctions,listCategories,serverNow } from '@/modules/auctions/catalog';
-import {MiniCategoryName,MiniPhrase} from '@/components/mini-locale';
-export default async function Auctions({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}) {
-  const params=await searchParams;
-  const query=catalogQuerySchema.parse(Object.fromEntries(Object.entries(params).map(([key,value])=>[key,Array.isArray(value)?value[0]:value])));
-  const now=await serverNow();const [result,categories]=await Promise.all([listAuctions(query,now),listCategories(now)]);
-  const url=(patch:Record<string,string|number|undefined>)=>{const p=new URLSearchParams({status:query.status,sort:query.sort,...query.q?{q:query.q}:{},...query.category?{category:query.category}:{}});for(const [key,value] of Object.entries(patch))value===undefined?p.delete(key):p.set(key,String(value));return `/auctions?${p}`};
-  return <><OfflineRetry/><section className="page-inset catalog-page"><h1 className="page-title"><MiniPhrase en="Auctions" am="ጨረታዎች"/><span className="title-dot">.</span></h1><p className="page-lead"><MiniPhrase en="Browse published listings. DEMO items are test inventory. Review the fee and terms before bidding." am="የታተሙ ጨረታዎችን ይመልከቱ። DEMO ዕቃዎች ለሙከራ ብቻ ናቸው። ከመጫረትዎ በፊት ክፍያውን እና ውሎቹን ያንብቡ።"/></p>
-    <form action="/auctions" className="catalog-search"><Search size={18}/><input name="q" defaultValue={query.q} placeholder="Search item or code / ዕቃ ወይም ኮድ ፈልግ" aria-label="Search item or code"/><input type="hidden" name="status" value={query.status}/>{query.category&&<input type="hidden" name="category" value={query.category}/>}<button type="submit" aria-label="Submit search"><Search size={18}/></button></form>
-    <div className="catalog-tabs" role="navigation" aria-label="Auction status">{(['all','live','upcoming','closing','closed'] as const).map(status=><Link key={status} href={url({status,page:1})} aria-current={query.status===status?'page':undefined}><MiniPhrase en={status[0].toUpperCase()+status.slice(1)} am={{all:'ሁሉም',live:'በሂደት ላይ',upcoming:'የሚመጡ',closing:'በመዘጋት ላይ',closed:'የተዘጉ'}[status]}/></Link>)}</div>
-    <form action="/auctions" className="filter-row"><SlidersHorizontal size={17}/><input type="hidden" name="status" value={query.status}/>{query.q&&<input type="hidden" name="q" value={query.q}/>}<label><MiniPhrase en="Category" am="ምድብ"/> <select name="category" defaultValue={query.category??''}><option value=""><MiniPhrase en="All categories" am="ሁሉም ምድቦች"/></option>{categories.map(category=><option key={category.slug} value={category.slug}><MiniCategoryName slug={category.slug} name={category.name}/></option>)}</select></label><label><MiniPhrase en="Sort" am="ቅደም ተከተል"/> <select name="sort" defaultValue={query.sort}><option value="ending"><MiniPhrase en="Ending soon" am="በቅርቡ የሚያበቁ"/></option><option value="newest"><MiniPhrase en="Newest" am="አዲስ"/></option><option value="title"><MiniPhrase en="Title" am="ስም"/></option></select></label><button type="submit"><MiniPhrase en="Apply" am="ተግብር"/></button></form>
-    <div className="listing-count">{result.total} <MiniPhrase en={result.total===1?'auction':'auctions'} am={result.total===1?'ጨረታ':'ጨረታዎች'}/> <span>· <MiniPhrase en={`Page ${query.page} of ${Math.max(1,result.totalPages)}`} am={`ገጽ ${query.page} ከ ${Math.max(1,result.totalPages)}`}/></span></div>
-    <div className="card-grid">{result.items.map(item=><AuctionCard key={item.code} auction={item} serverNow={result.serverNow}/>)}</div>
-    {result.total===0&&<div className="empty-state"><h2><MiniPhrase en="No auctions found" am="ጨረታ አልተገኘም"/></h2><p><MiniPhrase en="Try another category or search term. Animals have no live demo auction." am="ሌላ ምድብ ወይም የፍለጋ ቃል ይሞክሩ። የእንስሳት ምድብ በሂደት ላይ ያለ DEMO ጨረታ የለውም።"/></p><Link className="text-link" href="/auctions"><MiniPhrase en="Clear filters" am="ማጣሪያዎችን አጽዳ"/></Link></div>}
-    <nav className="pagination" aria-label="Auction pages">{query.page>1&&<Link href={url({page:query.page-1})}><MiniPhrase en="Previous" am="ቀዳሚ"/></Link>}{query.page<result.totalPages&&<Link href={url({page:query.page+1})}><MiniPhrase en="Next page" am="ቀጣይ ገጽ"/></Link>}</nav>
-  </section></>;
+import {CheckCircle2,Clock3,Flame,Sparkles} from 'lucide-react';
+import {ClosedAuctionCarousel} from '@/components/closed-auction-carousel';
+import {FeaturedCarousel} from '@/components/featured-carousel';
+import {MiniPhrase} from '@/components/mini-locale';
+import {OfflineRetry} from '@/components/offline-retry';
+import {listAuctions,serverNow} from '@/modules/auctions/catalog';
+import styles from './auctions-page.module.css';
+
+function Count({value}:{value:number}){
+ return <span className={styles.count}>{value} <MiniPhrase en={value===1?'auction':'auctions'} am="ጨረታዎች"/></span>;
+}
+
+export default async function Auctions(){
+ const now=await serverNow();
+ const [live,upcoming,closing,closed]=await Promise.all([
+  listAuctions({q:'',status:'live',sort:'ending',page:1},now,50),
+  listAuctions({q:'',status:'upcoming',sort:'ending',page:1},now,50),
+  listAuctions({q:'',status:'closing',sort:'ending',page:1},now,50),
+  listAuctions({q:'',status:'closed',sort:'ending',page:1},now,50),
+ ]);
+ const featured=live.items.filter(item=>item.featured),completed=[...closing.items,...closed.items],serverTime=now.toISOString();
+ return <main className={styles.page}><OfflineRetry/>
+  <header className={styles.hero}>
+   <div><span><Sparkles size={15}/><MiniPhrase en="Explore Lowwin" am="Lowwinን ያስሱ"/></span><h1><MiniPhrase en="All auctions" am="ሁሉም ጨረታዎች"/></h1><p><MiniPhrase en="Swipe through every auction and place your lowest unique bid." am="ሁሉንም ጨረታዎች ይመልከቱ እና ዝቅተኛውን ልዩ ጨረታዎን ያስገቡ።"/></p></div>
+   <div className={styles.summary}><span><strong>{live.total}</strong><MiniPhrase en="Live" am="ቀጥታ"/></span><span><strong>{upcoming.total}</strong><MiniPhrase en="Upcoming" am="የሚመጡ"/></span><span><strong>{closing.total+closed.total}</strong><MiniPhrase en="Closed" am="የተዘጉ"/></span></div>
+  </header>
+
+  <section className={`${styles.section} ${styles.featured}`} id="featured" aria-labelledby="featured-heading">
+   <div className={styles.heading}><div className={styles.featuredIcon}><Sparkles size={20}/></div><div><h2 id="featured-heading"><MiniPhrase en="Featured auctions" am="ተለይተው የቀረቡ ጨረታዎች"/></h2><Count value={featured.length}/></div></div>
+   {featured.length?<FeaturedCarousel items={featured} serverNow={serverTime}/>:<p className={styles.empty}><MiniPhrase en="No featured auctions right now." am="አሁን ተለይቶ የቀረበ ጨረታ የለም።"/></p>}
+  </section>
+
+  <section className={styles.section} id="active" aria-labelledby="active-heading">
+   <div className={styles.heading}><div className={styles.liveIcon}><Flame size={21}/></div><div><h2 id="active-heading"><MiniPhrase en="Active auctions" am="በሂደት ላይ ያሉ ጨረታዎች"/></h2><Count value={live.total}/></div></div>
+   {live.items.length?<FeaturedCarousel items={live.items} serverNow={serverTime} variant="live"/>:<p className={styles.empty}><MiniPhrase en="No active auctions right now." am="አሁን በሂደት ላይ ያለ ጨረታ የለም።"/></p>}
+  </section>
+
+  <section className={`${styles.section} ${styles.soft}`} id="upcoming" aria-labelledby="upcoming-heading">
+   <div className={styles.heading}><div className={styles.upcomingIcon}><Clock3 size={21}/></div><div><h2 id="upcoming-heading"><MiniPhrase en="Upcoming auctions" am="የሚመጡ ጨረታዎች"/></h2><Count value={upcoming.total}/></div></div>
+   {upcoming.items.length?<FeaturedCarousel items={upcoming.items} serverNow={serverTime} variant="upcoming"/>:<p className={styles.empty}><MiniPhrase en="No upcoming auctions right now." am="አሁን የሚመጣ ጨረታ የለም።"/></p>}
+  </section>
+
+  <section className={styles.section} id="closed" aria-labelledby="closed-heading">
+   <div className={styles.heading}><div className={styles.closedIcon}><CheckCircle2 size={21}/></div><div><h2 id="closed-heading"><MiniPhrase en="Closed auctions" am="የተዘጉ ጨረታዎች"/></h2><Count value={closing.total+closed.total}/></div></div>
+   {completed.length?<ClosedAuctionCarousel items={completed}/>:<p className={styles.empty}><MiniPhrase en="No closed auctions yet." am="እስካሁን የተዘጋ ጨረታ የለም።"/></p>}
+  </section>
+ </main>;
 }

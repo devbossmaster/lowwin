@@ -6,7 +6,7 @@ import { db } from '@/lib/db';
 // SQL selection and DTO mapping are independent allowlists. Never select the
 // settlement proof, participant movements, winning user/bid IDs or raw bids here.
 export const publicAuctionSelect = {
-  slug:true,code:true,status:true,startsAt:true,endsAt:true,featured:true,isDemo:true,acceptedBidCount:true,publicViewCount:true,
+  slug:true,code:true,publicCode:true,status:true,startsAt:true,endsAt:true,featured:true,isDemo:true,acceptedBidCount:true,publicViewCount:true,
   fulfillmentSummary:true,fulfillmentRegion:true,
   product:{select:{title:true,description:true,condition:true,images:{orderBy:{sortOrder:'asc'},select:{path:true,alt:true,sourceType:true,sourceCredit:true}}}},
   category:{select:{slug:true,name:true}},
@@ -63,7 +63,7 @@ export function toPublicAuction(row: AuctionRow, now: Date) {
     acceptedBidCount:null,
   }:null;
   return {
-    slug:row.slug!,code:row.code,status,featured:row.featured,isDemo:row.isDemo,bidCount:row.acceptedBidCount,
+    slug:row.slug!,code:row.publicCode.toString(),status,featured:row.featured,isDemo:row.isDemo,bidCount:row.acceptedBidCount,
     viewCount:row.publicViewCount.toString(),
     startsAt:row.startsAt!.toISOString(),endsAt:row.endsAt!.toISOString(),
     product:{title:row.product!.title,description:row.product!.description,condition:row.product!.condition,
@@ -77,16 +77,17 @@ export function toPublicAuction(row: AuctionRow, now: Date) {
 export async function listAuctions(input: CatalogQuery, now?: Date, pageSize = 6) {
   now ??= await serverNow();
   const query = catalogQuerySchema.parse(input);
+  const searchedPublicCode=/^[1-9]\d*$/.test(query.q)&&Number.isSafeInteger(Number(query.q))?Number(query.q):null;
   const where: Prisma.AuctionWhereInput = {AND:[publicWhere(now),statusWhere(query.status,now),
     query.category?{category:{is:{slug:query.category}}}:{},
-    query.q?{OR:[{code:{contains:query.q,mode:'insensitive'}},{product:{is:{title:{contains:query.q,mode:'insensitive'}}}}]}:{}]};
+    query.q?{OR:[{code:{contains:query.q,mode:'insensitive'}},{product:{is:{title:{contains:query.q,mode:'insensitive'}}}},...(searchedPublicCode?[{publicCode:searchedPublicCode}]:[])]}:{}]};
   const orderBy: Prisma.AuctionOrderByWithRelationInput[] = query.sort==='newest' ? [{publishedAt:'desc'},{id:'asc'}] : query.sort==='title' ? [{product:{title:'asc'}},{id:'asc'}] : query.status==='closed' ? [{endsAt:'desc'},{id:'asc'}] : query.status==='upcoming' ? [{startsAt:'asc'},{id:'asc'}] : [{endsAt:'asc'},{id:'asc'}];
   let rows: AuctionRow[];
   let total: number;
   if (query.status==='all' && query.sort==='ending') {
     // One database-ordered page: active end times, future start times, then recent closes.
     const categoryFilter=query.category?Prisma.sql`AND c.slug = ${query.category}`:Prisma.empty;
-    const searchFilter=query.q?Prisma.sql`AND (p.title ILIKE ${`%${query.q}%`} OR a.code ILIKE ${`%${query.q}%`})`:Prisma.empty;
+    const searchFilter=query.q?Prisma.sql`AND (p.title ILIKE ${`%${query.q}%`} OR a.code ILIKE ${`%${query.q}%`} OR a."publicCode"::text = ${query.q})`:Prisma.empty;
     const ids=await db.$queryRaw<{id:string}[]>`
       SELECT a.id FROM "Auction" a
       JOIN "Product" p ON p.id = a."productId"

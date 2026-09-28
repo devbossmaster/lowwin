@@ -27,6 +27,7 @@ describe.skipIf(!url)('Phase 4B public outcomes and private pages on PostgreSQL'
     return {id:user.id,cookie:response.headers.get('set-cookie')!.split(';')[0],telegramId};
   }
   const bid=(userId:string,auction:typeof winner,amount:number)=>submitBid(client,{userId,auctionSlug:auction.slug!,amount:String(amount),key:randomUUID()});
+  const publicCode=(auction:typeof winner)=>auction.publicCode.toString();
   beforeAll(async()=>{
     const target=new URL(url!);if(!['127.0.0.1','localhost'].includes(target.hostname)||!target.pathname.endsWith('_test'))throw new Error('Disposable loopback _test database required');
     Object.assign(process.env,{DATABASE_URL:url,DIRECT_URL:url,NODE_ENV:'test',APP_ENV:'local',DEV_POINTS_ENABLED:'true',DEV_IDENTITY_ENABLED:'false',BETTER_AUTH_URL:'http://localhost:3000',MINI_APP_URL:'http://localhost:3000',BETTER_AUTH_SECRET:'fixture-only-secret-at-least-thirty-two-characters',TELEGRAM_BOT_TOKEN:TEST_TOKEN,TELEGRAM_BOT_USERNAME:'lowin_fixture_bot',TELEGRAM_WEBHOOK_SECRET:'fixture-only-webhook-secret-thirty-two'});
@@ -46,7 +47,7 @@ describe.skipIf(!url)('Phase 4B public outcomes and private pages on PostgreSQL'
   },60000);
   afterAll(async()=>{await client?.$disconnect();const {db}=await import('../src/lib/db');await db.$disconnect()});
   it('projects settled, cancelled, no-winner and pending outcomes without guessing',async()=>{
-    expect((await getPublicResult(client,winner.code))?.result).toMatchObject({outcome:'WINNER',winningPoints:'2',source:'SETTLED',winnerDisplay:'Anonymous winner',demoLabel:'DEMO · settled test'});
+    expect((await getPublicResult(client,publicCode(winner)))?.result).toMatchObject({outcome:'WINNER',winningPoints:'2',source:'SETTLED',winnerDisplay:'Anonymous winner',demoLabel:'DEMO · settled test'});
     expect((await getPublicResult(client,noWinner.code))?.result).toMatchObject({outcome:'NO_WINNER',winningPoints:null});
     expect((await getPublicResult(client,cancelled.code))?.result).toMatchObject({outcome:'CANCELLED',winningPoints:null});
     expect(await getPublicResult(client,pending.code)).toMatchObject({status:'closing',result:null});
@@ -59,7 +60,7 @@ describe.skipIf(!url)('Phase 4B public outcomes and private pages on PostgreSQL'
   });
   it('uses an exact public response allowlist and never leaks private proof or identities',async()=>{
     const route=await import('../src/app/api/results/[auctionCode]/route');
-    const response=await route.GET(request(`/api/results/${winner.code}`),{params:Promise.resolve({auctionCode:winner.code})});
+    const response=await route.GET(request(`/api/results/${publicCode(winner)}`),{params:Promise.resolve({auctionCode:publicCode(winner)})});
     expect(response.status).toBe(200);expect(response.headers.get('cache-control')).toContain('no-store');const body=await response.json();
     expect(Object.keys(body).sort()).toEqual(['slug','code','status','featured','isDemo','startsAt','endsAt','bidCount','viewCount','product','category','fulfillment','terms','result'].sort());
     expect(Object.keys(body.result).sort()).toEqual(['outcome','winningPoints','explanation','isDemo','closedAt','source','demoLabel','winnerDisplay','acceptedBidCount'].sort());
@@ -84,7 +85,7 @@ describe.skipIf(!url)('Phase 4B public outcomes and private pages on PostgreSQL'
     for(let i=0;i<7;i++)await bidAuction(client,{endDelayMs:-1000});
     const firstPage=await listPublicResults(client,{q:'TEST-BID-',status:'pending'}),secondPage=await listPublicResults(client,{q:'TEST-BID-',status:'pending',page:2});
     expect(firstPage.total).toBe(8);expect(firstPage.items).toHaveLength(6);expect(secondPage.items).toHaveLength(2);expect(new Set([...firstPage.items,...secondPage.items].map(a=>a.code)).size).toBe(8);
-    for(const [status,code] of [['winner',winner.code],['no_winner',noWinner.code],['cancelled',cancelled.code]] as const)expect((await listPublicResults(client,{q:code,status})).items.map(a=>a.code)).toEqual([code]);
+    for(const [status,auction] of [['winner',winner],['no_winner',noWinner],['cancelled',cancelled]] as const)expect((await listPublicResults(client,{q:publicCode(auction),status})).items.map(a=>a.code)).toEqual([publicCode(auction)]);
     const route=await import('../src/app/api/results/route');expect((await route.GET(request('/api/results?page=-1'))).status).toBe(422);
       expect((await listPublicResults(client,{q:'nothing-matches'})).total).toBe(0);
       const filtered=await listPublicResults(client,{category:'accessories',sort:'title'});
@@ -95,9 +96,9 @@ describe.skipIf(!url)('Phase 4B public outcomes and private pages on PostgreSQL'
   it('isolates two users own bid histories and exposes only their final outcomes',async()=>{
     const a=await getPersonalBids(client,first.id),b=await getPersonalBids(client,second.id);
     expect(a.total).toBe(5);expect(b.total).toBe(3);expect(a.counts).toEqual({live:1,history:4});
-    expect(a.items.filter(row=>row.auction.code===winner.code).map(row=>[row.amount,row.outcome]).sort()).toEqual([['2','WON'],['20','LOST']]);
-    expect(b.items.find(row=>row.auction.code===winner.code)?.outcome).toBe('LOST');
-    expect(a.items.find(row=>row.auction.code===cancelled.code)).toMatchObject({feePoints:'4',feeRefunded:'4',outcome:'CANCELLED'});
+    expect(a.items.filter(row=>row.auction.code===publicCode(winner)).map(row=>[row.amount,row.outcome]).sort()).toEqual([['2','WON'],['20','LOST']]);
+    expect(b.items.find(row=>row.auction.code===publicCode(winner))?.outcome).toBe('LOST');
+    expect(a.items.find(row=>row.auction.code===publicCode(cancelled))).toMatchObject({feePoints:'4',feeRefunded:'4',outcome:'CANCELLED'});
     expect((await getPersonalBids(client,first.id,{view:'live'})).items.map(row=>row.amount)).toEqual(['30']);
     expect((await getPersonalBids(client,first.id,{view:'history'})).total).toBe(4);
     expect(JSON.stringify(a)).not.toContain(second.id);expect(a.items.every(row=>!b.items.some(other=>other.id===row.id))).toBe(true);
@@ -107,7 +108,7 @@ describe.skipIf(!url)('Phase 4B public outcomes and private pages on PostgreSQL'
   });
   it('returns real profile, wins and reconciled wallet counts with pending fulfillment',async()=>{
     expect(await getPlayerProfile(client,first.id)).toMatchObject({counts:{bids:5,liveBids:1,historyBids:4,wins:1,favorites:0},wallet:{available:'960',held:'30'}});
-    const wins=await getPersonalWins(client,first.id);expect(wins.total).toBe(1);expect(wins.items[0]).toMatchObject({code:winner.code,winningPoints:'2',fulfillment:'Pending',isDemo:true});expect((await getPersonalWins(client,second.id)).total).toBe(0);
+    const wins=await getPersonalWins(client,first.id);expect(wins.total).toBe(1);expect(wins.items[0]).toMatchObject({code:publicCode(winner),winningPoints:'2',fulfillment:'Pending',isDemo:true});expect((await getPersonalWins(client,second.id)).total).toBe(0);
     const route=await import('../src/app/api/wallet/route');const response=await route.GET(request('/api/wallet',first.cookie)),wallet=await response.json();expect(wallet.wallet).toEqual({available:'960',held:'30'});expect(wallet.activity.find((row:{kind:string})=>row.kind==='AUCTION_FEE_REFUND')).toMatchObject({availableDelta:'4',heldDelta:'0'});
     expect(await reconcile(client)).toEqual([]);
   });
@@ -126,7 +127,7 @@ describe.skipIf(!url)('Phase 4B public outcomes and private pages on PostgreSQL'
     for(let i=0;i<2;i++)expect((await route.PUT(request(`/api/favorites/${live.slug}`,first.cookie,'PUT',{saved:true}),context)).status).toBe(200);
     expect(await client.auctionFavorite.count({where:{userId:first.id}})).toBe(1);
     const renewed=await signIn(first.telegramId);expect((await (await route.GET(request(`/api/favorites/${live.slug}`,renewed.cookie),context)).json()).saved).toBe(true);
-    expect((await (await list.GET(request('/api/favorites',renewed.cookie))).json()).items[0].code).toBe(live.code);
+    expect((await (await list.GET(request('/api/favorites',renewed.cookie))).json()).items[0].code).toBe(publicCode(live));
     expect((await (await list.GET(request('/api/favorites',second.cookie))).json()).total).toBe(0);
     await route.PUT(request(`/api/favorites/${live.slug}`,second.cookie,'PUT',{saved:false}),context);expect(await client.auctionFavorite.count({where:{userId:first.id}})).toBe(1);
     expect((await route.PUT(request(`/api/favorites/${live.slug}`,first.cookie,'PUT',{saved:true},'https://evil.invalid'),context)).status).toBe(403);

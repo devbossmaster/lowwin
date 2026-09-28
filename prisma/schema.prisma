@@ -259,6 +259,7 @@ model ProductImage {
 model Auction {
   id    String        @id @default(uuid())
   code  String        @unique
+  publicCode Int      @unique @default(autoincrement())
   holds AuctionHold[]
   bids Bid[]
   slug String? @unique

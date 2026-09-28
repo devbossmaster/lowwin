@@ -67,8 +67,10 @@ test('signed-in profile photo appears in the avatar; unsupported URL keeps the i
  await fixture(page,{photo:'https://example.test/avatar.png'});
  await page.route('https://example.test/avatar.png',route=>route.fulfill({contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL/nwAAAABJRU5ErkJggg==','base64')}));
  await page.goto('/profile');
- await expect(header(page).getByRole('link',{name:'Open your profile'}).locator('img')).toHaveAttribute('src','https://example.test/avatar.png');
- await expect.poll(()=>header(page).locator('img').evaluate((img:HTMLImageElement)=>img.complete&&img.naturalWidth>0)).toBe(true);
+ const photo=header(page).getByRole('link',{name:'Open your profile'}).locator('img');
+ await expect(photo).toHaveAttribute('src','https://example.test/avatar.png');
+ await expect.poll(()=>photo.evaluate((img:HTMLImageElement)=>img.complete&&img.naturalWidth>0)).toBe(true);
+ expect(await photo.evaluate(img=>({width:getComputedStyle(img).width,height:getComputedStyle(img).height,inset:getComputedStyle(img).inset}))).toEqual({width:'44px',height:'44px',inset:'0px'});
  await page.route('**/api/me',route=>route.fulfill({json:{user:{id:'header-fixture',name:'Header fixture',image:'javascript:alert(1)'},wallet:{available:'1234',held:'999'}}}));
  await page.reload();
  await expect(header(page).locator('img')).toHaveCount(0);

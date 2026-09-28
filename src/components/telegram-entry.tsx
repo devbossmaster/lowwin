@@ -1,6 +1,5 @@
 'use client';
 import {useEffect} from 'react';
-import {useRouter} from 'next/navigation';
 import {usePathname} from 'next/navigation';
 import {useTelegram} from './telegram-provider';
 import {ContactGate} from './contact-gate';
@@ -9,7 +8,6 @@ import {RotateCcw,ArrowUpRight} from 'lucide-react';
 import {Button} from './ui/button';
 import styles from './telegram-entry.module.css';
 export function TelegramEntry({onComplete}:{onComplete?:()=>void}={}){
-  const router=useRouter();
   const pathname=usePathname();
   const {status,botUrl,error,retry}=useTelegram();
   const telegramLaunch=typeof window!=='undefined'&&Boolean(window.Telegram?.WebApp?.initData);
@@ -20,11 +18,11 @@ export function TelegramEntry({onComplete}:{onComplete?:()=>void}={}){
     frame=window.requestAnimationFrame(()=>{paintFrame=window.requestAnimationFrame(()=>{
       if(pathname==='/telegram'){
         document.documentElement.dataset.lowwinHandoff='true';
-        router.replace('/'+window.location.hash);
+        window.location.replace('/'+window.location.hash);
       }else onComplete?.();
     })});
     return()=>{window.cancelAnimationFrame(frame);window.cancelAnimationFrame(paintFrame)};
-  },[status,telegramLaunch,router,pathname,onComplete]);
+  },[status,telegramLaunch,pathname,onComplete]);
   if(status==='contact-required')return <ContactGate/>;
   if(status==='loading'||(status==='authenticated'&&telegramLaunch))return <LaunchSplash complete={status==='authenticated'}/>;
   return <main id="main" className={`telegram-entry ${styles.screen}`}>

@@ -1,14 +1,27 @@
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
-import { ArrowLeft,ArrowUpRight } from 'lucide-react';
-import { AuctionCard } from '@/components/auction-card';
-import { OfflineRetry } from '@/components/offline-retry';
-import { getCategory,listAuctions,serverNow } from '@/modules/auctions/catalog';
+import {notFound} from 'next/navigation';
+import {ArrowLeft,ArrowUpRight,CheckCircle2,Clock3,Flame} from 'lucide-react';
+import {ClosedAuctionCarousel} from '@/components/closed-auction-carousel';
+import {FeaturedCarousel} from '@/components/featured-carousel';
 import {MiniCategoryName,MiniPhrase} from '@/components/mini-locale';
-export default async function CategoryPage({params}:{params:Promise<{slug:string}>}) {
-  const {slug}=await params,now=await serverNow(),category=await getCategory(slug,now);if(!category)notFound();
-  const groups=await Promise.all((['live','upcoming','closing','closed'] as const).map(status=>listAuctions({q:'',status,sort:'ending',category:slug,page:1},now,3)));
-  return <><OfflineRetry/><section className="page-inset"><Link className="back-link" href="/auctions"><ArrowLeft size={16}/> <MiniPhrase en="All auctions" am="ሁሉም ጨረታዎች"/></Link><h1 className="page-title"><MiniCategoryName slug={slug} name={category.name}/><span className="title-dot">.</span></h1><p className="page-lead">{category.description}</p><div className="category-counts"><span><strong>{category.counts.all}</strong> <MiniPhrase en="all" am="ሁሉም"/></span><span><strong>{category.counts.live}</strong> <MiniPhrase en="live" am="በሂደት ላይ"/></span><span><strong>{category.counts.upcoming}</strong> <MiniPhrase en="upcoming" am="የሚመጡ"/></span><span><strong>{category.counts.closed}</strong> <MiniPhrase en="closed" am="የተዘጉ"/></span></div>
-    {category.requiresEligibilityReview&&<p className="notice-card"><MiniPhrase en="Animal listings require eligibility and welfare review. There is no live Animals auction." am="የእንስሳት ዝርዝሮች የብቁነት እና የደህንነት ግምገማ ይፈልጋሉ። በሂደት ላይ ያለ የእንስሳት ጨረታ የለም።"/></p>}
-  </section>{(['live','upcoming','closing','closed'] as const).map((status,index)=><section className="catalog-section" key={status}><div className="section-heading"><h2><MiniPhrase en={status[0].toUpperCase()+status.slice(1)} am={{live:'በሂደት ላይ',upcoming:'የሚመጡ',closing:'በመዘጋት ላይ',closed:'የተዘጉ'}[status]}/></h2><Link className="see-all" href={`/auctions?status=${status}&category=${slug}`}><MiniPhrase en="See all" am="ሁሉንም ይመልከቱ"/> <ArrowUpRight size={16}/></Link></div><div className="card-grid">{groups[index].items.map(item=><AuctionCard key={item.code} auction={item} serverNow={now.toISOString()}/>)}</div>{groups[index].total===0&&<p className="inline-empty"><MiniPhrase en={`No ${status} auctions in ${category.name.toLowerCase()} right now.`} am="በዚህ ምድብ ለአሁኑ ጊዜ ተዛማጅ ጨረታዎች የሉም።"/></p>}</section>)}</>;
+import {OfflineRetry} from '@/components/offline-retry';
+import {getCategory,listAuctions,serverNow} from '@/modules/auctions/catalog';
+import styles from './category-page.module.css';
+
+export default async function CategoryPage({params}:{params:Promise<{slug:string}>}){
+ const {slug}=await params,now=await serverNow(),category=await getCategory(slug,now);if(!category)notFound();
+ const [live,upcoming,closing,closed]=await Promise.all([
+  listAuctions({q:'',status:'live',sort:'ending',category:slug,page:1},now,20),
+  listAuctions({q:'',status:'upcoming',sort:'ending',category:slug,page:1},now,20),
+  listAuctions({q:'',status:'closing',sort:'ending',category:slug,page:1},now,20),
+  listAuctions({q:'',status:'closed',sort:'ending',category:slug,page:1},now,20),
+ ]);
+ const completed=[...closing.items,...closed.items],closedTotal=closing.total+closed.total,serverTime=now.toISOString();
+ return <div className={styles.page}><OfflineRetry/>
+  <div className={styles.heroBand}><section className={styles.hero} aria-labelledby="category-title"><Link className={styles.back} href="/"><ArrowLeft size={16}/><MiniPhrase en="Categories" am="ምድቦች"/></Link><h1 id="category-title"><MiniCategoryName slug={slug} name={category.name}/></h1><p><MiniPhrase en="Explore auctions in this category" am="በዚህ ምድብ ያሉ ጨረታዎችን ይመልከቱ"/></p><div className={styles.counts} aria-label="Auction status counts"><span><Flame size={17}/><strong>{live.total}</strong><MiniPhrase en="live" am="ቀጥታ"/></span><span><Clock3 size={17}/><strong>{upcoming.total}</strong><MiniPhrase en="upcoming" am="የሚመጣ"/></span><span><CheckCircle2 size={17}/><strong>{closedTotal}</strong><MiniPhrase en="closed" am="የተዘጋ"/></span></div></section></div>
+  {category.requiresEligibilityReview&&<p className={styles.notice}><MiniPhrase en="Listings in this category require eligibility review before they can open." am="በዚህ ምድብ ያሉ ዝርዝሮች ከመከፈታቸው በፊት የብቁነት ግምገማ ያስፈልጋቸዋል።"/></p>}
+  <section className={styles.section} aria-labelledby="live-auctions"><div className={styles.sectionHeading}><div className={`${styles.sectionIcon} ${styles.liveIcon}`}><Flame size={21}/></div><div><h2 id="live-auctions"><MiniPhrase en="Live auctions" am="በሂደት ላይ ያሉ ጨረታዎች"/></h2><span>{live.total} <MiniPhrase en={live.total===1?'auction':'auctions'} am="ጨረታዎች"/></span></div><Link href="/auctions/all#active" aria-label="See all live auctions"><ArrowUpRight size={19}/></Link></div>{live.items.length?<FeaturedCarousel items={live.items} serverNow={serverTime} variant="live"/>:<p className={styles.empty}><MiniPhrase en="No live auctions in this category right now." am="በዚህ ምድብ አሁን ቀጥታ ጨረታ የለም።"/></p>}</section>
+  <section className={`${styles.section} ${styles.alt}`} aria-labelledby="upcoming-auctions"><div className={styles.sectionHeading}><div className={`${styles.sectionIcon} ${styles.upcomingIcon}`}><Clock3 size={21}/></div><div><h2 id="upcoming-auctions"><MiniPhrase en="Upcoming auctions" am="የሚመጡ ጨረታዎች"/></h2><span>{upcoming.total} <MiniPhrase en={upcoming.total===1?'auction':'auctions'} am="ጨረታዎች"/></span></div><Link href="/auctions/all#upcoming" aria-label="See all upcoming auctions"><ArrowUpRight size={19}/></Link></div>{upcoming.items.length?<FeaturedCarousel items={upcoming.items} serverNow={serverTime} variant="upcoming"/>:<p className={styles.empty}><MiniPhrase en="No upcoming auctions in this category right now." am="በዚህ ምድብ አሁን የሚመጣ ጨረታ የለም።"/></p>}</section>
+  <section className={styles.section} aria-labelledby="closed-auctions"><div className={styles.sectionHeading}><div className={`${styles.sectionIcon} ${styles.closedIcon}`}><CheckCircle2 size={21}/></div><div><h2 id="closed-auctions"><MiniPhrase en="Closed auctions" am="የተዘጉ ጨረታዎች"/></h2><span>{closedTotal} <MiniPhrase en={closedTotal===1?'auction':'auctions'} am="ጨረታዎች"/></span></div><Link href="/auctions/all#closed" aria-label="See all closed auctions"><ArrowUpRight size={19}/></Link></div>{completed.length?<ClosedAuctionCarousel items={completed}/>:<p className={styles.empty}><MiniPhrase en="No closed auctions in this category yet." am="በዚህ ምድብ እስካሁን የተዘጋ ጨረታ የለም።"/></p>}</section>
+ </div>;
 }

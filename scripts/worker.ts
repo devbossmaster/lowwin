@@ -1,8 +1,9 @@
 import 'dotenv/config';
 import { setTimeout } from 'node:timers/promises';
-import { createBot } from '../src/modules/bot/bot';
-import { processOneUpdate } from '../src/modules/bot/worker';
-import { db } from '../src/lib/db';
+// The bot consumes one update at a time. Keep it on one database connection so
+// the Mini App retains enough of the small Supabase session pool for sign-in.
+if(process.env.DATABASE_URL){const url=new URL(process.env.DATABASE_URL);url.searchParams.set('connection_limit','1');url.searchParams.set('pool_timeout','20');process.env.DATABASE_URL=url.toString()}
+const [{createBot},{processOneUpdate},{db}]=await Promise.all([import('../src/modules/bot/bot'),import('../src/modules/bot/worker'),import('../src/lib/db')]);
 const bot = createBot();
 let running = true;
 process.on('SIGTERM', () => { running = false; });

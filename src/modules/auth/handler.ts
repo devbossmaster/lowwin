@@ -54,7 +54,7 @@ export async function handleAuth(request: Request) {
         const headers = new Headers(response.headers);
         headers.delete('content-length'); headers.set('cache-control', 'no-store');
         return Response.json({ ok: true }, { headers });
-      }, { timeout: 15000 });
+      }, { maxWait:10000,timeout:30000 });
     } catch (error) {
       if (error instanceof Response) return Response.json({ error: 'Sign-in could not be completed. Reopen Lowwin or retry.' }, { status: error.status });
       return Response.json({ error: 'Sign-in unavailable. Please retry.' }, { status: 503 });

@@ -42,7 +42,9 @@ describe.skipIf(!testUrl)('public catalog on disposable PostgreSQL',()=>{
     expect(new Set([...first.items,...second.items].map(item=>item.code)).size).toBe(12);
     const phones=await catalog.listAuctions({...query,category:'phones'});
     expect(phones.total).toBe(2);expect(phones.items.every(item=>item.category.slug==='phones')).toBe(true);
-    expect((await catalog.listAuctions({...query,q:'DEMO-WAT-002'})).items.map(item=>item.code)).toEqual(['DEMO-WAT-002']);
+    const watch=await client.auction.findUniqueOrThrow({where:{code:'DEMO-WAT-002'},select:{publicCode:true}});
+    expect((await catalog.listAuctions({...query,q:'DEMO-WAT-002'})).items.map(item=>item.code)).toEqual([watch.publicCode.toString()]);
+    expect((await catalog.listAuctions({...query,q:watch.publicCode.toString()})).items.map(item=>item.code)).toEqual([watch.publicCode.toString()]);
   });
   it('allowlists public response data and hides unpublished inventory and future results',async()=>{
     const {GET}=await import('../src/app/api/catalog/auctions/route');

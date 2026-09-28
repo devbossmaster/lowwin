@@ -59,7 +59,13 @@ body { font-family: 'Poppins', 'Lowwin Ethiopic', sans-serif; }
 }
 
 .app-frame,.telegram-entry { --mini-safe-top:max(env(safe-area-inset-top, 0px),var(--tg-safe-area-inset-top, 0px)); --mini-safe-bottom:max(env(safe-area-inset-bottom, 0px),var(--tg-safe-area-inset-bottom, 0px)); }
-.app-frame { max-width:480px; min-height:100dvh; margin:auto; background:var(--color-background); padding-bottom:calc(82px + var(--mini-safe-bottom) + var(--tg-content-safe-area-inset-bottom, 0px)); }
+.app-frame { max-width:480px; min-height:100dvh; margin:auto; background:linear-gradient(to bottom,#91c83e 0 360px,var(--color-background) 360px); padding-bottom:calc(82px + var(--mini-safe-bottom) + var(--tg-content-safe-area-inset-bottom, 0px)); }
+.app-frame>#main{position:relative;min-height:calc(100dvh - 80px)}
+.app-frame-loading>header,.app-frame-loading>#main>:not(.page-loading-backdrop),.app-frame-loading>.page-footer,.app-frame-loading>.bottom-nav,.app-frame:has(.page-loading-backdrop)>header,.app-frame:has(.page-loading-backdrop)>#main>:not(.page-loading-backdrop),.app-frame:has(.page-loading-backdrop)>.page-footer,.app-frame:has(.page-loading-backdrop)>.bottom-nav{filter:blur(9px);pointer-events:none;user-select:none}
+.page-loading-backdrop{position:fixed;z-index:100;inset:0 auto 0 50%;width:min(100%,480px);min-height:100dvh;transform:translateX(-50%);display:grid;place-items:center;padding:24px;background:rgb(255 255 255 / 34%);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)}
+.page-loading-indicator{display:inline-flex;align-items:center;gap:10px;min-height:48px;padding:0 18px;border:1px solid rgb(255 255 255 / 80%);border-radius:999px;background:#fff;color:#172720;font-size:12px;font-weight:700;box-shadow:0 8px 24px rgb(6 61 50 / 18%)}
+.page-loading-indicator>span{width:19px;height:19px;border:2px solid #cce5a4;border-top-color:#416c0d;border-radius:50%;animation:page-loader-spin .8s linear infinite}
+@keyframes page-loader-spin{to{transform:rotate(1turn)}}
 .topbar { display:flex; justify-content:space-between; align-items:center; padding:calc(16px + var(--mini-safe-top) + var(--tg-content-safe-area-inset-top, 0px)) 22px 16px; gap:12px; }
 .wordmark { font-size:32px; font-weight:700; letter-spacing:-1.2px; line-height:1; color:#103c30; text-decoration:none; }
 .wordmark>span { color:#157a55; }
@@ -117,6 +123,7 @@ h3 { font-size:15px; font-weight:600; }
 .page-footer { margin-top:0; padding:38px 24px 34px; border-radius:28px 28px 0 0; background:#063d32; color:#fff; text-align:center; }
 .page-footer .wordmark { color:#fff; font-size:27px; }
 .page-footer .wordmark span { color:#a3e635; }
+.footer-logo { display:block; width:92px; height:92px; margin:0 auto; object-fit:contain; }
 .page-footer p { color:#d8ebe2; font-size:12px; margin-top:10px; }
 .footer-links { display:flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:4px 18px; margin-top:18px; }
 .footer-links a,.page-footer .footer-rules { display:inline-flex; align-items:center; gap:5px; min-height:44px; color:#fff; font-size:11px; font-weight:600; }
@@ -353,7 +360,11 @@ h3 { font-size:15px; font-weight:600; }
 .rule-demonstration .bid-amount,.rule-demonstration .bid-amount span,.rule-demonstration .example-mark{color:#405733}.rule-demonstration .winning-example .bid-amount,.rule-demonstration .winning-example .bid-amount span{color:#172720}
 
 /* Player Mini App lime surfaces. Keep dark green as readable ink. */
-.app-frame .page-footer,
+.app-frame .page-footer {
+  border: 1px solid #7eaf34;
+  background: #91c83e;
+  color: #172720;
+}
 .app-frame .countdown-panel,
 .app-frame .result-summary,
 .app-frame .profile-wallet {
@@ -376,3 +387,4 @@ h3 { font-size:15px; font-weight:600; }
 .app-frame .profile-wallet strong {
   color: #172720;
 }
+.retry-screen{display:grid;min-height:100dvh;place-items:center;padding:24px;background:#91c83e;color:#063d32;text-align:center}.retry-screen section{display:flex;width:min(100%,340px);flex-direction:column;align-items:center}.retry-screen img{width:106px;height:106px;object-fit:contain;margin-bottom:16px}.retry-screen h1{margin:0;font-size:34px;line-height:1.1}.retry-screen p{margin:10px 0 24px;color:#174c3e}.retry-screen button{display:inline-flex;min-width:150px;min-height:48px;align-items:center;justify-content:center;gap:8px;border:0;border-radius:999px;background:#063d32;color:#fff;font-weight:800;box-shadow:0 7px 0 rgb(2 35 28 / 24%)}
