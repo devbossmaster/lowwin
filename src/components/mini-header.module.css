@@ -1,9 +1,11 @@
 .header {
+  position: relative;
+  z-index: 40;
   --header-primary: #087f5b;
   --header-dark: #063d32;
   --header-highlight: #37c58b;
   display: grid;
-  grid-template-columns: 44px minmax(0, 94px) repeat(3, 44px) 62px;
+  grid-template-columns: 44px minmax(0, 110px) repeat(2, 44px) 62px;
   justify-content: space-between;
   align-items: center;
   gap: 6px;
@@ -12,7 +14,7 @@
   color: var(--header-dark);
   border-bottom: 1px solid #7eaf34;
 }
-.header a { min-height: 44px; min-width: 44px; padding: 0; text-decoration: none; border: 0; box-shadow: none; transition: background-color 140ms ease, color 140ms ease; }
+.header > a { min-height: 44px; min-width: 44px; padding: 0; text-decoration: none; border: 0; box-shadow: none; transition: background-color 140ms ease, color 140ms ease; }
   .header .avatar { position: relative; width: 44px; height: 44px; border-radius: 50%; background: #fff; color: var(--header-primary); display: grid; place-items: center; overflow: hidden; }
 .avatar img { position: absolute; inset: 0; width: 44px; height: 44px; border-radius: 50%; object-fit: cover; }
   .header .balance { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; padding: 5px 8px; border-radius: 24px; background: #fff; color: var(--header-dark); }
@@ -37,6 +39,6 @@
 .header .add:active>span { background: #eff8e4; }
 .header .icon:active, .header .balance:active { background: #d9f2e7; }
 @media (hover: hover) { .header .add:hover { background: transparent; } .header .add:hover>span { background: #eff8e4; } .header .icon:hover, .header .balance:hover { background: #f4fbdf; } }
-@media (max-width: 370px) { .header { grid-template-columns:44px minmax(0,76px) repeat(3,44px) 54px; gap:6px; padding-inline:max(12px,env(safe-area-inset-left,0px),var(--tg-content-safe-area-inset-left,0px),var(--tg-content-safe-area-inset-right,0px)); } }
+@media (max-width: 370px) { .header { grid-template-columns:44px minmax(0,90px) repeat(2,44px) 54px; gap:6px; padding-inline:max(12px,env(safe-area-inset-left,0px),var(--tg-content-safe-area-inset-left,0px),var(--tg-content-safe-area-inset-right,0px)); } }
 @media (hover:hover) { .languageButton:hover { background: rgb(255 255 255 / 24%); } .languageOption:hover { background: #f4f9ef; } }
 @media (prefers-reduced-motion: reduce) { .header a,.languageChevron { transition: none; } }

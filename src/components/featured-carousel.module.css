@@ -3,7 +3,7 @@
 .toolbar>div { display: flex; gap: 8px; }
 .toolbar button { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 14px; border: 1px solid #d5e6dd; background: #fff; color: #063d32; }
 .toolbar button:last-child { border-color: #087f5b; background: #087f5b; color: #fff; }
-.card { overflow: hidden; border: 1px solid #e3eee9; border-radius: 18px; background: #fff; box-shadow: 0 12px 28px rgb(6 61 50 / 13%); }
+.card { width: min(var(--auction-card-width), calc(100% - var(--auction-card-gutters))); min-width: 0; margin-inline: auto; overflow: hidden; border: 0; border-radius: var(--auction-card-radius); background: #fff; box-shadow: var(--auction-card-shadow); }
 .visual { position: relative; height: clamp(185px, 56vw, 255px); margin: 10px 10px 0; overflow: hidden; border-radius: 13px; background: #eef7f2; }
 .visual>a { display: block; width: 100%; height: 100%; }
 .visual img { display: block; width: 100%; height: 100%; object-fit: contain; }
@@ -23,7 +23,7 @@
 .facts>div+div { padding-left: 11px; border-left: 1px solid #e4eee9; }
 .facts span { min-width: 0; color: #526e64; font-size: 10px; line-height: 1.35; }
 .facts strong { display: block; overflow: hidden; text-overflow: ellipsis; color: #063d32; font-size: 13px; font-weight: 700; white-space: nowrap; }
-.timing { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 48px; color: #b54420; }
+.timing { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 10px; min-height: 48px; color: #b54420; }
 .timing>span { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .timing :global(.countdown) { padding: 0; background: none; color: #b54420; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.5; }
 .bidCount { flex: none; color: #087f5b; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }

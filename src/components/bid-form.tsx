@@ -10,12 +10,12 @@ type OwnBid={id:string;amount:string;acceptedAt:string};
 type BidState={auctionCode:string;open:boolean;serverNow:string;isDemo:boolean;terms:{version:number;minPoints:string;maxPoints:string;stepPoints:string;entryFeePoints:string;maxDistinctBids:number};wallet:{available:string;held:string};previousMax:string;remainingSubmissions:number;ownBids:OwnBid[]};
 type Receipt={bid:{id:string;auctionCode:string;auctionSlug:string;amount:string;acceptedAt:string;termsVersion:number;feePoints:string};hold:{previousMax:string;newMax:string;extraReserved:string};charge:{feePoints:string;newlyUnavailable:string};wallet:{available:string;held:string};remainingSubmissions:number;ownBids:OwnBid[]};
 const integer=/^[1-9]\d{0,15}$/;
-type BidFormProps={slug:string;status:'live'|'upcoming'|'closing'|'closed'|'cancelled';isDemo:boolean};
+type BidFormProps={slug:string;status:'live'|'upcoming'|'closing'|'closed'|'cancelled';isDemo:boolean;compact?:boolean};
 export function BidForm(props:BidFormProps) {
   const {me}=useTelegram();
   return <div id="bid-review"><BidFormForIdentity key={me?.user.id??'guest'} {...props}/></div>;
 }
-function BidFormForIdentity({slug,status,isDemo}:BidFormProps) {
+function BidFormForIdentity({slug,status,isDemo,compact=false}:BidFormProps) {
   const {status:authStatus,refreshMe}=useTelegram();
   const notify=useMiniNotice();
   const [state,setState]=useState<BidState|null>(null),[loading,setLoading]=useState(false),[amount,setAmount]=useState(''),[key,setKey]=useState<string|null>(null),[confirm,setConfirm]=useState(false),[submitting,setSubmitting]=useState(false),[error,setError]=useState(''),[receipt,setReceipt]=useState<Receipt|null>(null);
@@ -41,6 +41,11 @@ function BidFormForIdentity({slug,status,isDemo}:BidFormProps) {
   if(!state.open||status!=='live')return <><div className="bid-unavailable"><LockKeyhole size={19}/><div><strong>{status==='closing'?'Closing / result pending':status==='cancelled'?'Auction cancelled':status==='upcoming'?'Bidding has not opened':status==='closed'?'Bidding has closed':isDemo?'DEMO bids unavailable here':'Bidding unavailable'}</strong><p>{status==='closing'?'Bidding has ended. Settlement is pending.':status==='cancelled'?'Auction holds and charged entry fees have been returned.':isDemo?'DEMO bidding requires an enrolled staging tester or isolated local test account.':'Your existing bids remain private to you.'}</p></div></div>{state.ownBids.length>0&&<div className="own-bids"><h3>Your accepted amounts</h3><div>{state.ownBids.map(bid=><span key={bid.id}>{formatEtb(bid.amount)}</span>)}</div></div>}</>;
   const valid=!!preview&&!preview.duplicate&&preview.enough&&state.remainingSubmissions>0;
   const change=(value:string)=>{setAmount(value);setKey(null);setConfirm(false);setError('')};
+  const stepAmount=(direction:1|-1)=>{
+    const minimum=BigInt(state.terms.minPoints),maximum=BigInt(state.terms.maxPoints),step=BigInt(state.terms.stepPoints);
+    const next=preview?BigInt(preview.amount)+BigInt(direction)*step:minimum;
+    change((next<minimum?minimum:next>maximum?maximum:next).toString());
+  };
   const submit=async()=>{
     if(!valid||submitting)return;
     const requestKey=key??crypto.randomUUID();setKey(requestKey);setSubmitting(true);setError('');
@@ -48,8 +53,8 @@ function BidFormForIdentity({slug,status,isDemo}:BidFormProps) {
     catch {const message='Connection interrupted. Retry this same request; it cannot debit you twice.';setError(message);notify(message,'error')}
     finally {setSubmitting(false)}
   };
-  return <section className="bid-panel"><h2>Choose an ETB amount</h2><p>From {formatEtb(state.terms.minPoints)} to {formatEtb(state.terms.maxPoints)}, in steps of {formatEtb(state.terms.stepPoints)}. You have {state.remainingSubmissions} of {state.terms.maxDistinctBids} submissions left.</p>
-    <label className="bid-input-label" htmlFor="etb-bid">ETB amount</label><div className="bid-input-wrap"><input id="etb-bid" inputMode="numeric" autoComplete="off" pattern="[1-9][0-9]*" maxLength={16} value={amount} onChange={event=>change(event.target.value)} placeholder="Whole ETB"/><span>ETB</span></div>
+  return <section className={`bid-panel${compact?' bid-panel-compact':''}`}>{!compact&&<h2>Choose an ETB amount</h2>}<p>{compact?`${formatEtb(state.terms.minPoints)} – ${formatEtb(state.terms.maxPoints)} · ${state.remainingSubmissions} bids left`:`From ${formatEtb(state.terms.minPoints)} to ${formatEtb(state.terms.maxPoints)}, in steps of ${formatEtb(state.terms.stepPoints)}. You have ${state.remainingSubmissions} of ${state.terms.maxDistinctBids} submissions left.`}</p>
+    <label className={compact?'sr-only':'bid-input-label'} htmlFor="etb-bid">ETB amount</label><div className="bid-input-wrap">{compact&&<button type="button" className="bid-step" aria-label="Decrease bid amount" disabled={submitting||!!preview&&BigInt(preview.amount)<=BigInt(state.terms.minPoints)} onClick={()=>stepAmount(-1)}>−</button>}<input id="etb-bid" inputMode="numeric" autoComplete="off" pattern="[1-9][0-9]*" maxLength={16} value={amount} disabled={submitting} onChange={event=>change(event.target.value)} placeholder={compact?'Bid amount (ETB)':'Whole ETB'}/>{compact?<button type="button" className="bid-step" aria-label="Increase bid amount" disabled={submitting||!!preview&&BigInt(preview.amount)>=BigInt(state.terms.maxPoints)} onClick={()=>stepAmount(1)}>+</button>:<span>ETB</span>}</div>
     {amount&&!preview&&<p className="field-error">Choose a whole ETB amount that matches the range and step.</p>}{preview?.duplicate&&<p className="field-error">You already submitted this amount.</p>}{preview&&!preview.enough&&<p className="field-error">You need {formatEtb(preview.total)} available for the added hold and fee.</p>}{state.remainingSubmissions===0&&<p className="field-error">You have reached the 100 distinct-bid limit.</p>}
     <div className="bid-balance-line"><span>Available {formatEtb(state.wallet.available)}</span><span>Held {formatEtb(state.wallet.held)}</span></div>
     {!confirm?<button className="primary-bid-button" disabled={!valid} onClick={()=>setConfirm(true)}>Review ETB bid <ArrowRight size={18}/></button>:<div className="bid-confirm" aria-labelledby="bid-confirm-title"><h3 id="bid-confirm-title">Confirm {formatEtb(preview!.amount)} bid</h3><dl className="bid-preview-list"><div><dt>Previous maximum hold</dt><dd>{formatEtb(preview!.previous)}</dd></div><div><dt>New maximum hold</dt><dd>{formatEtb(preview!.newMax)}</dd></div><div><dt>Extra ETB reserved</dt><dd>{formatEtb(preview!.extra)}</dd></div><div><dt>Entry fee</dt><dd>{formatEtb(preview!.fee)}</dd></div><div className="preview-total"><dt>Total newly unavailable</dt><dd>{formatEtb(preview!.total)}</dd></div><div><dt>Submissions after this</dt><dd>{state.remainingSubmissions-1}</dd></div></dl><p>These values are a preview. The server rechecks your balance, the auction clock and frozen terms before acceptance.</p><div className="bid-confirm-actions"><button className="secondary-button" onClick={()=>setConfirm(false)} disabled={submitting}>Edit</button><button className="primary-bid-button" onClick={()=>void submit()} disabled={submitting||!valid}>{submitting?'Submitting…':'Confirm bid'}</button></div></div>}

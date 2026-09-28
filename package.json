@@ -14,6 +14,7 @@
     "test": "vitest run",
     "test:ui": "playwright test",
     "db:generate": "prisma generate",
+    "db:check": "tsx scripts/check-database.ts",
     "db:migrate": "prisma migrate deploy",
     "db:seed": "tsx scripts/seed.ts",
     "db:seed:catalog": "tsx scripts/seed-catalog.ts",
@@ -33,6 +34,7 @@
     "@tesseract.js-data/eng": "1.0.0",
     "better-auth": "1.6.33",
     "better-auth-telegram": "2.0.1",
+    "canvas-confetti": "^1.9.4",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "dotenv": "17.3.1",
@@ -50,6 +52,7 @@
   "devDependencies": {
     "@playwright/test": "1.58.2",
     "@tailwindcss/postcss": "4.2.1",
+    "@types/canvas-confetti": "^1.9.0",
     "@types/node": "24.10.1",
     "@types/pg": "8.18.0",
     "@types/react": "19.2.14",

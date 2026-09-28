@@ -17,7 +17,6 @@ export function TelegramEntry({onComplete}:{onComplete?:()=>void}={}){
     let frame=0,paintFrame=0;
     frame=window.requestAnimationFrame(()=>{paintFrame=window.requestAnimationFrame(()=>{
       if(pathname==='/telegram'){
-        document.documentElement.dataset.lowwinHandoff='true';
         window.location.replace('/'+window.location.hash);
       }else onComplete?.();
     })});

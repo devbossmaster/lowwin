@@ -1,9 +1,10 @@
 'use client';
 import Link from 'next/link';
 import {useEffect,useRef,useState} from 'react';
-import {Check,ChevronDown,Gavel,Globe2,Plus,UserRound} from 'lucide-react';
+import {Check,ChevronDown,Globe2,UserRound} from 'lucide-react';
 import {Button} from './ui/button';
 import {AlertBell} from './alert-bell';
+import {AuctionQuickList} from './auction-quick-list';
 import {useTelegram} from './telegram-provider';
 import {formatEtb} from '@/lib/money';
 import {useMiniLocale,type MiniLanguage} from './mini-locale';
@@ -35,9 +36,8 @@ export function MiniHeader(){
    <span className={styles.balanceLabel}>{demo?'DEMO · ':''}{t('available')}</span>
    <span className={styles.amount}>{amount&&<small>ETB </small>}{amount?amount.replace('ETB ',''):label}</span>
   </Link></Button>
-  <Button asChild className={styles.add}><Link href="/wallet#add-etb" aria-label={t('funding')}><span><Plus size={17} aria-hidden="true"/></span></Link></Button>
-  <AlertBell className={styles.icon} indicatorClassName={styles.unread}/>
-  <Button asChild variant="outline" className={`${styles.icon} ${styles.auction}`}><Link href="/auctions/all" aria-label={t('browseAuctions')}><Gavel size={21} aria-hidden="true"/></Link></Button>
+  <AlertBell className={styles.icon}/>
+  <AuctionQuickList className={styles.icon}/>
   <div className={styles.language} ref={languageRef}>
    <button ref={languageButtonRef} type="button" className={styles.languageButton} aria-label={t('language')} aria-haspopup="menu" aria-expanded={languageOpen} onClick={()=>setLanguageOpen(open=>!open)}><Globe2 size={16} aria-hidden="true"/><span aria-hidden="true">{language==='en'?'En':'አማ'}</span><ChevronDown className={styles.languageChevron} data-open={languageOpen} size={12} aria-hidden="true"/></button>
    {languageOpen&&<div className={styles.languageMenu} role="menu" aria-label={t('language')}>{([['en','En'],['am','አማ']] as const).map(([value,label])=><button type="button" role="menuitemradio" aria-checked={language===value} className={styles.languageOption} key={value} onClick={()=>{setLanguage(value as MiniLanguage);setLanguageOpen(false);languageButtonRef.current?.focus()}}><span>{label}</span>{language===value&&<Check size={14} aria-hidden="true"/>}</button>)}</div>}

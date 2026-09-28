@@ -1,20 +1,36 @@
 import Link from 'next/link';
-import {Search,SlidersHorizontal,Trophy} from 'lucide-react';
+import {Trophy} from 'lucide-react';
 import {db} from '@/lib/db';
 import {OfflineRetry} from '@/components/offline-retry';
 import {WinnerResultCard} from '@/components/winner-result-card';
+import {WinnersFilters} from '@/components/winners-filters';
 import {listPublicResults,resultQuerySchema} from '@/modules/auctions/results';
-import {MiniCategoryName,MiniPhrase} from '@/components/mini-locale';
+import {MiniPhrase} from '@/components/mini-locale';
 import styles from '@/components/winners-page.module.css';
 
 export default async function Winners({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}){
-  const parsed=resultQuerySchema.safeParse(await searchParams),query=parsed.success?parsed.data:resultQuerySchema.parse({});
-  const [results,winnerTotals,categories]=await Promise.all([listPublicResults(db,query),listPublicResults(db,{status:'winner'}),db.category.findMany({where:{visible:true},select:{name:true,slug:true},orderBy:{sortOrder:'asc'}})]);
-  const href=(values:Partial<typeof query>)=>`/winners?${new URLSearchParams({...query,...values,page:String(values.page??query.page)})}`;
+  const supplied=await searchParams;
+  const parsed=resultQuerySchema.safeParse({...supplied,status:'winner',pageSize:supplied.pageSize??12});
+  const query=parsed.success?parsed.data:resultQuerySchema.parse({status:'winner',pageSize:12});
+  const [results,categories]=await Promise.all([
+    listPublicResults(db,query),
+    db.category.findMany({where:{visible:true},select:{name:true,slug:true},orderBy:{sortOrder:'asc'}}),
+  ]);
+  const href=(page:number)=>`/winners/all?${new URLSearchParams({q:query.q,category:query.category,sort:query.sort,pageSize:String(query.pageSize),page:String(page)})}`;
   const pages=Array.from(new Set([1,query.page-1,query.page,query.page+1,results.totalPages].filter(page=>page>=1&&page<=results.totalPages))).sort((a,b)=>a-b);
-  return <><OfflineRetry/><section className={styles.hero}><div className={styles.trophy}><Trophy size={31}/></div><h1><MiniPhrase en="Winners & results" am="አሸናፊዎች እና ውጤቶች"/></h1><p><MiniPhrase en="Final auction outcomes with private bidder identities and clearly labelled DEMO examples." am="የተሳታፊዎች ማንነት በሚስጥር የተጠበቀበት የመጨረሻ የጨረታ ውጤት።"/></p><div className={styles.total}><strong>{winnerTotals.total}</strong><span><MiniPhrase en="Winner outcomes" am="የአሸናፊ ውጤቶች"/></span></div></section>
-  <section className={styles.content}><div className={styles.controls}><form className={styles.search} action="/winners"><Search size={18}/><input aria-label="Search results" name="q" defaultValue={query.q} placeholder="Search item or auction code" maxLength={80}/><input type="hidden" name="status" value={query.status}/><input type="hidden" name="category" value={query.category}/><input type="hidden" name="sort" value={query.sort}/><button type="submit" aria-label="Submit result search"><Search size={18}/></button></form><nav className={styles.tabs} aria-label="Result status">{(['all','winner','no_winner','cancelled','pending'] as const).map(status=><Link key={status} href={href({status,page:1})} aria-current={query.status===status?'page':undefined}><MiniPhrase en={{all:'All results',winner:'Winners',no_winner:'No winner',cancelled:'Cancelled',pending:'Pending'}[status]} am={{all:'ሁሉም ውጤቶች',winner:'አሸናፊዎች',no_winner:'አሸናፊ የለም',cancelled:'የተሰረዙ',pending:'በመጠባበቅ ላይ'}[status]}/></Link>)}</nav><form action="/winners" className={styles.filters}><input type="hidden" name="q" value={query.q}/><input type="hidden" name="status" value={query.status}/><label><span className="sr-only"><MiniPhrase en="Category" am="ምድብ"/></span><select name="category" defaultValue={query.category}><option value=""><MiniPhrase en="All categories" am="ሁሉም ምድቦች"/></option>{categories.map(category=><option key={category.slug} value={category.slug}><MiniCategoryName slug={category.slug} name={category.name}/></option>)}</select></label><label><span className="sr-only"><MiniPhrase en="Sort" am="ቅደም ተከተል"/></span><select name="sort" defaultValue={query.sort}><option value="newest"><MiniPhrase en="Newest first" am="አዲስ በቅድሚያ"/></option><option value="oldest"><MiniPhrase en="Oldest first" am="የቆየ በቅድሚያ"/></option><option value="title"><MiniPhrase en="Item name" am="የዕቃ ስም"/></option></select></label><button type="submit" aria-label="Apply result filters"><SlidersHorizontal size={18}/></button></form></div>
-  <p className={styles.context}><MiniPhrase en="Winners stay anonymous. “DEMO example” is illustrative only; “DEMO · settled test” comes from accepted local test bids." am="አሸናፊዎች ስማቸው አይገለጽም። “DEMO example” ማሳያ ብቻ ሲሆን “DEMO · settled test” ከተቀበሉ የአካባቢ ሙከራ ጨረታዎች የተገኘ ነው።"/></p><div className={styles.listing}><strong>{results.total} <MiniPhrase en={results.total===1?'outcome':'outcomes'} am="ውጤቶች"/></strong><span><MiniPhrase en={`Page ${query.page}${results.totalPages?` of ${results.totalPages}`:''}`} am={`ገጽ ${query.page}${results.totalPages?` ከ ${results.totalPages}`:''}`}/></span></div><div className={styles.list}>{results.items.map(auction=><WinnerResultCard key={auction.code} auction={auction}/>)}</div>
-  {!results.items.length&&<div className="empty-state"><h2><MiniPhrase en="No matching outcomes" am="ተዛማጅ ውጤት አልተገኘም"/></h2><p><MiniPhrase en="Try another search or check back after an auction closes." am="ሌላ ፍለጋ ይሞክሩ ወይም ጨረታ ከተዘጋ በኋላ ይመለሱ።"/></p><Link className="text-link" href="/winners"><MiniPhrase en="Clear filters" am="ማጣሪያዎችን አጽዳ"/></Link></div>}
-  {results.totalPages>1&&<nav className={styles.pagination} aria-label="Result pages">{query.page>1&&<Link href={href({page:query.page-1})} aria-label="Previous result page">‹</Link>}{pages.map((page,index)=><span key={page}>{index>0&&page-pages[index-1]>1?'…':null}<Link href={href({page})} aria-current={query.page===page?'page':undefined}>{page}</Link></span>)}{query.page<results.totalPages&&<Link href={href({page:query.page+1})} aria-label="Next result page">›</Link>}</nav>}</section></>;
+  const start=results.total?(query.page-1)*query.pageSize+1:0,end=Math.min(query.page*query.pageSize,results.total);
+  return <><OfflineRetry/>
+    <section className={styles.hero}>
+      <h1><Trophy size={34} aria-hidden="true"/><MiniPhrase en="Winners" am="አሸናፊዎች"/></h1>
+      <p><MiniPhrase en="Congratulations to all our winners! You can view the winning bids below." am="ለሁሉም አሸናፊዎቻችን እንኳን ደስ አላችሁ! ያሸነፉትን ጨረታዎች ከታች ይመልከቱ።"/></p>
+      <div className={styles.total}><strong>{results.total}</strong><span><MiniPhrase en="Total winners" am="ጠቅላላ አሸናፊዎች"/></span></div>
+    </section>
+    <section className={styles.content}>
+      <WinnersFilters query={query} categories={categories}/>
+      <p className={styles.listing}><MiniPhrase en={`Showing ${start}–${end} of ${results.total} winners`} am={`ከ ${results.total} አሸናፊዎች ${start}–${end} እየታዩ ነው`}/></p>
+      <div className={styles.list}>{results.items.map(auction=><WinnerResultCard key={auction.code} auction={auction}/>)}</div>
+      {!results.items.length&&<p className={styles.empty}><MiniPhrase en="No winners found. Try another search or category." am="አሸናፊዎች አልተገኙም። ሌላ ፍለጋ ወይም ምድብ ይሞክሩ።"/></p>}
+      {results.totalPages>1&&<nav className={styles.pagination} aria-label="Winner pages"><p><MiniPhrase en={`Page ${query.page} of ${results.totalPages}`} am={`ገጽ ${query.page} ከ ${results.totalPages}`}/></p><div>{query.page>1&&<Link href={href(query.page-1)} aria-label="Previous page">‹</Link>}{pages.map((page,index)=><span key={page}>{index>0&&page-pages[index-1]>1?'…':null}<Link href={href(page)} aria-current={query.page===page?'page':undefined}>{page}</Link></span>)}{query.page<results.totalPages&&<Link href={href(query.page+1)} aria-label="Next page">›</Link>}</div></nav>}
+    </section>
+  </>;
 }

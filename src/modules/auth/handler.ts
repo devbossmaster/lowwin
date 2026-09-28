@@ -6,6 +6,8 @@ import { miniAppBody, validateTelegramInitData } from './telegram-validation';
 import { staffActions } from './staff-plugin';
 import { staffRateLimit } from '../admin/rate-limit';
 import {bindOwnContact} from './own-contact';
+import {getLaunchSession} from './mini-access';
+import {telegramBootstrap} from './mini-account';
 
 export async function handleAuth(request: Request) {
   const path = new URL(request.url).pathname.replace('/api/auth', '');
@@ -23,6 +25,8 @@ export async function handleAuth(request: Request) {
     }catch(error){if(error instanceof Response){const body=await error.json().catch(()=>({message:'Staff sign-in failed.'}));return Response.json({error:body.message??'Staff sign-in failed.'},{status:error.status,headers})}return Response.json({error:'Staff authentication is temporarily unavailable.'},{status:503,headers})}
   }
   if (path === '/telegram/miniapp/signin' || path === '/lowin/dev-identity') {
+    const started=performance.now();
+    const responseHeaders={'Cache-Control':'private, no-store, max-age=0','Vary':'Cookie'};
     let identity: string;
     try {
       if (path === '/lowin/dev-identity') {
@@ -33,31 +37,47 @@ export async function handleAuth(request: Request) {
         const body = miniAppBody.parse(await request.clone().json());
         identity = String(validateTelegramInitData(body.initData, env.TELEGRAM_BOT_TOKEN).id);
       }
-    } catch { return Response.json({ error: 'Launch could not be verified. Reopen Lowwin from Telegram.' }, { status: 401 }); }
+    } catch { return Response.json({ error: 'Launch could not be verified. Reopen Lowwin from Telegram.' }, { status: 401,headers:responseHeaders }); }
     try {
+      // A fresh signed launch may reuse only a live, Telegram-bound session for
+      // that exact identity. Website, staff, revoked and other-user cookies fail.
+      if(path==='/telegram/miniapp/signin'&&request.headers.has('cookie')) {
+        const current=await getLaunchSession(request.headers);
+        if(current?.telegramId===identity) {
+          const result=await telegramBootstrap(db,current.user,identity);
+          return Response.json(result,{headers:{...responseHeaders,'Server-Timing':`auth;dur=${Math.round(performance.now()-started)}`}});
+        }
+      }
       // Transaction-scoped locks work with Supavisor transaction pooling. Plugin creation
       // and cookie/session issuance share the transaction, preventing orphan identities.
       return await db.$transaction(async tx => {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`telegram:${identity}`}, 0))`;
         const response = await createAuth(tx).handler(request);
         if (!response.ok) throw response;
+        let result:Awaited<ReturnType<typeof telegramBootstrap>>|{ok:true}={ok:true};
         if(path==='/telegram/miniapp/signin') {
-          const cookie=response.headers.getSetCookie().map(value=>value.split(';')[0]).join('; ');
-          const current=await createAuth(tx).api.getSession({headers:new Headers({cookie})});
-          if(!current)throw new Error('Missing issued session');
-          const linked=await tx.user.findUnique({where:{id:current.user.id},select:{telegramId:true}});
-          if(linked?.telegramId!==identity)throw new Error('Launch identity mismatch');
-          await tx.session.update({where:{id:current.session.id},data:{telegramLaunchId:identity}});
-          await bindOwnContact(tx,current.user.id,identity);
+          // This is the server-side plugin response, never data supplied by the
+          // browser. Bind the issued session atomically without reading it back
+          // through another Better Auth request.
+          const issued=await response.json() as {session:{id:string;userId:string};user:{id:string;name:string;image?:string|null}};
+          if(!issued.session?.id||!issued.user?.id||issued.session.userId!==issued.user.id)throw new Error('Missing issued session');
+          const bound=await tx.session.updateMany({where:{id:issued.session.id,userId:issued.user.id,user:{telegramId:identity,staffMember:null}},data:{telegramLaunchId:identity}});
+          if(bound.count!==1)throw new Error('Launch identity mismatch');
+          await bindOwnContact(tx,issued.user.id,identity);
+          result=await telegramBootstrap(tx,issued.user,identity);
         }
         // Do not return the plugin's session token in a browser-readable JSON body.
         const headers = new Headers(response.headers);
-        headers.delete('content-length'); headers.set('cache-control', 'no-store');
-        return Response.json({ ok: true }, { headers });
+        headers.delete('content-length');
+        for(const [name,value] of Object.entries(responseHeaders))headers.set(name,value);
+        headers.set('Server-Timing',`auth;dur=${Math.round(performance.now()-started)}`);
+        return Response.json(result, { headers });
       }, { maxWait:10000,timeout:30000 });
     } catch (error) {
-      if (error instanceof Response) return Response.json({ error: 'Sign-in could not be completed. Reopen Lowwin or retry.' }, { status: error.status });
-      return Response.json({ error: 'Sign-in unavailable. Please retry.' }, { status: 503 });
+      if (error instanceof Response) return Response.json({ error: 'Sign-in could not be completed. Reopen Lowwin or retry.' }, { status: error.status,headers:responseHeaders });
+      // Safe diagnostics: no launch data, cookies, user IDs or database URLs.
+      console.warn('Telegram sign-in unavailable',{code:(error as {code?:string})?.code??'AUTH_BOOTSTRAP_FAILED',elapsedMs:Math.round(performance.now()-started)});
+      return Response.json({ error: 'Connection interrupted. Please retry.' }, { status: 503,headers:responseHeaders });
     }
   }
   return createAuth().handler(request);

@@ -18,6 +18,7 @@ describe.skipIf(!testUrl)('isolated PostgreSQL foundation', () => {
     process.env.DEV_IDENTITY_ACCESS_KEY = LOCAL_ACCESS_KEY;
     execFileSync(process.execPath,['node_modules/prisma/build/index.js','migrate','deploy'],{env:process.env,stdio:'pipe'});
     client = new PrismaClient();
+    await client.rateLimit.deleteMany();
     userId = randomUUID();
     await client.user.create({data:{id:userId,name:'Ledger test'}});
   },60000);
@@ -95,7 +96,10 @@ describe.skipIf(!testUrl)('isolated PostgreSQL foundation', () => {
     const responses = await Promise.all([handleAuth(req()),handleAuth(req()),handleAuth(req())]);
     for (const response of responses) {
       expect(response.status).toBe(200);
-      expect(await response.clone().json()).toEqual({ok:true});
+      const body=await response.clone().json();
+      expect(body).toMatchObject({ok:true,status:'authenticated',me:{user:{name:'Lowwin player'}}});
+      expect(body).not.toHaveProperty('session');
+      expect(body).not.toHaveProperty('token');
       expect(response.headers.get('set-cookie')).toContain('HttpOnly');
       expect(response.headers.get('set-cookie')).toContain('SameSite=Lax');
     }

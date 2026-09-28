@@ -112,7 +112,9 @@ export async function listAuctions(input: CatalogQuery, now?: Date, pageSize = 6
 }
 export async function getAuction(slug: string, now?: Date) {
   now ??= await serverNow();
-  const row = await db.auction.findFirst({where:{AND:[publicWhere(now),{slug}]},select:publicAuctionSelect});
+  const code=/^[1-9]\d{0,9}$/.test(slug)?Number(slug):null;
+  const identifier=code!==null&&code<=2147483647?{publicCode:code}:{slug};
+  const row = await db.auction.findFirst({where:{AND:[publicWhere(now),identifier]},select:publicAuctionSelect});
   return row?toPublicAuction(row,now):null;
 }
 export async function listCategories(now?: Date) {
