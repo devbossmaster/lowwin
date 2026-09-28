@@ -1,6 +1,27 @@
 'use client';
 import Link from 'next/link';
 import {useState} from 'react';
-import {Check,Copy,Upload,ArrowUpRight} from 'lucide-react';
+import {Upload,ArrowUpRight} from 'lucide-react';
 import {usePrivateQuery} from './private-query';
-export function WalletFundingPreview(){const {data}=usePrivateQuery<{enabled:boolean;accounts:{id:string;name:string;number:string;holder:string}[]}>('/api/wallet/preview'),[selected,setSelected]=useState<string|null>(null),[copied,setCopied]=useState('');const account=data?.accounts.find(a=>a.id===selected);return <section className="funding-preview" id="add-etb"><div className="section-heading"><h2>Add ETB</h2><span>Unavailable</span></div><p>Payments and verification are not enabled. Do not send money.</p><fieldset className="payment-methods"><legend>Payment account</legend>{[['telebirr','Telebirr'],['cbe','CBE']].map(([id,name])=><button type="button" aria-pressed={selected===id} key={id} onClick={()=>{setSelected(id);setCopied('')}}><span>{name}</span>{selected===id&&<Check size={18}/>}</button>)}</fieldset>{selected&&<div className="payment-details" aria-live="polite"><small>{account?'DEMO preview · not a payable account':'Account not configured'}</small><h3>{selected==='telebirr'?'Telebirr':'CBE'}</h3>{account?<><span>Test account reference</span><div className="copy-account"><strong>{account.number}</strong><button aria-label="Copy test account reference" onClick={async()=>{try{await navigator.clipboard.writeText(account.number);setCopied('Copied test reference')}catch{setCopied('Copy unavailable. Select the reference to copy.')}}}><Copy size={16}/>Copy</button></div><span>Account holder</span><p>{account.holder}</p><small role="status">{copied}</small></>:<p>Receiving accounts and the ETB funding policy are not available yet.</p>}</div>}<div className="payment-confirmation"><h3>Payment confirmation</h3><label htmlFor="payment-reference">Transaction reference, official receipt link or payment SMS</label><textarea id="payment-reference" disabled placeholder="Receipt entry opens when verification is enabled." aria-describedby="verification-disabled"/><div className="upload-divider">or upload a screenshot</div><label className="receipt-upload"><Upload size={25}/><strong>Upload receipt image</strong><span>Scanning opens when verification is configured.</span><input type="file" accept="image/png,image/jpeg,image/webp" disabled aria-label="Upload receipt image"/></label><button className="primary-button" disabled>Submit for verification</button><p id="verification-disabled">No receipt is collected and no ETB can be credited in this preview.</p></div><Link className="payment-help" href="/profile/support"><span><strong>Need help with a payment?</strong><small>Contact Lowwin support</small></span><ArrowUpRight size={21}/></Link></section>}
+import {PaymentAccounts,type PaymentAccount} from './payment-accounts';
+import styles from './wallet-page.module.css';
+
+export function WalletFundingPreview(){
+ const {data,error,reload}=usePrivateQuery<{enabled:boolean;accounts:PaymentAccount[]}>('/api/wallet/preview');
+ const [selected,setSelected]=useState<string|null>(null);
+ return <section className={styles.funding} id="add-etb">
+  <h2>Add money</h2>
+  <PaymentAccounts accounts={data?.accounts??[]} selected={selected} onSelect={setSelected} preview/>
+  {error&&<p className={styles.error} role="alert">Account details could not load.<button type="button" onClick={reload}>Retry</button></p>}
+  <div className={styles.confirmation}>
+   <div className={styles.sectionHeading}><h3>Payment confirmation</h3><span>Paste message or upload</span></div>
+   <label className={styles.fieldLabel} htmlFor="payment-reference">Telebirr or CBE message/link</label>
+   <textarea className={styles.textarea} id="payment-reference" disabled placeholder="Paste the payment SMS, including its receipt link" aria-describedby="verification-disabled"/>
+   <div className={styles.divider}>Or upload a screenshot</div>
+   <label className={styles.upload} aria-disabled="true"><Upload size={23}/><strong>Upload receipt image</strong><span>JPEG, PNG or WebP · up to 5 MB</span><input type="file" accept="image/png,image/jpeg,image/webp" disabled aria-label="Upload receipt image"/></label>
+   <button type="button" className={styles.submit} disabled>Submit deposit</button>
+   <p id="verification-disabled" className={styles.footnote}>Deposits are unavailable. Do not send money.</p>
+  </div>
+  <Link className={styles.help} href="/profile/support">Need help with a payment?<ArrowUpRight size={16}/></Link>
+ </section>;
+}
