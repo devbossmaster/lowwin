@@ -15,9 +15,9 @@ describe('private Telegram welcome',()=>{
   await bot.handleUpdate({update_id:1,message:{message_id:1,date:1,chat:{id:7,type:'private'},from:{id:7,is_bot:false,first_name:'Fixture'},text:'/start',entities:[{type:'bot_command',offset:0,length:6}],...change}} as Update);
   return sent;
  }
- it('uploads banner1 with the exact Amharic caption and inline Mini App button',async()=>{
+ it('uploads banner2 with the exact Amharic caption and inline Mini App button',async()=>{
   const sent=await send({},true);expect(sent).toHaveLength(1);expect(sent[0].method).toBe('sendPhoto');
-  expect(sent[0].payload.photo).toBeInstanceOf(InputFile);expect((sent[0].payload.photo as InputFile).filename).toBe('banner1.png');
+  expect(sent[0].payload.photo).toBeInstanceOf(InputFile);expect((sent[0].payload.photo as InputFile).filename).toBe('banner2.png');
   expect(sent[0].payload.caption).toBe('👋 እንኳን ወደ Lowwin በደህና መጡ! በአንድ ሰው ብቻ የቀረበው ዝቅተኛው የጨረታ መጠን ያሸንፋል። ጨረታዎችን ለማየት ሚኒ አፑን ይክፈቱ።');
   expect(sent[0].payload.reply_markup).toEqual({inline_keyboard:[[{text:'🎯 ጨረታ ይጀምሩ',web_app:{url:'http://localhost:3000'}}]]});
  });

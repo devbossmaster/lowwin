@@ -15,7 +15,7 @@ export function createBot({contactVerified}:{contactVerified?:(telegramId:string
     if(!await isVerified(String(ctx.from.id))){await ctx.reply(CONTACT_REQUEST_MESSAGE,{reply_markup:CONTACT_REPLY_KEYBOARD});return}
     const caption=WELCOME_CAPTION;
     const reply_markup=new InlineKeyboard().webApp(START_BIDDING_ACTION,env.MINI_APP_URL);
-    try{await ctx.replyWithPhoto(new InputFile(resolve('public/banner1.png')),{caption,reply_markup})}
+    try{await ctx.replyWithPhoto(new InputFile(resolve('public/banner2.png')),{caption,reply_markup})}
     catch(error){if(!(error instanceof GrammyError&&error.error_code===400)&&!(error instanceof Error&&'code' in error&&error.code==='ENOENT'))throw error;await ctx.reply(caption,{reply_markup})}
   });
   bot.command('help', async ctx => { await ctx.reply('The smallest ETB amount placed exactly once wins. If none is unique, there is no winner.\n\nUp to 100 different amounts per auction. Your largest bid is held, plus any disclosed entry fees. No transfers or withdrawals.\n\nUse /start to open Lowwin.'); });
