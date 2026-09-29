@@ -117,13 +117,36 @@ export async function getAuction(slug: string, now?: Date) {
   const row = await db.auction.findFirst({where:{AND:[publicWhere(now),identifier]},select:publicAuctionSelect});
   return row?toPublicAuction(row,now):null;
 }
+// The header needs only public summary fields, not descriptions or rule snapshots.
+export async function listQuickLiveAuctions(page=1) {
+  const now=await serverNow(),pageSize=6;
+  const where:Prisma.AuctionWhereInput={AND:[publicWhere(now),statusWhere('live',now)]};
+  const [rows,total]=await Promise.all([
+    db.auction.findMany({where,orderBy:[{publishedAt:'desc'},{id:'asc'}],skip:(page-1)*pageSize,take:pageSize,
+      select:{slug:true,publicCode:true,endsAt:true,isDemo:true,acceptedBidCount:true,product:{select:{title:true,images:{orderBy:{sortOrder:'asc'},take:1,select:{path:true}}}}}}),
+    db.auction.count({where})
+  ]);
+  return {items:rows.map(row=>({slug:row.slug!,code:String(row.publicCode),endsAt:row.endsAt!.toISOString(),isDemo:row.isDemo,bidCount:row.acceptedBidCount,product:row.product!})),total,page,totalPages:Math.ceil(total/pageSize),serverNow:now.toISOString()};
+}
 export async function listCategories(now?: Date) {
   now ??= await serverNow();
-  const [categories,auctions] = await db.$transaction([
-    db.category.findMany({where:{visible:true},orderBy:[{sortOrder:'asc'},{name:'asc'}],select:{slug:true,name:true,description:true,requiresEligibilityReview:true,id:true}}),
-    db.auction.findMany({where:publicWhere(now),select:{categoryId:true,status:true,startsAt:true,endsAt:true}}),
-  ]);
-  return categories.map(({id,...category})=>({ ...category, counts:auctions.reduce((counts,row)=>{if(row.categoryId===id){const status=effectiveStatus(row,now);if(status!=='closing')counts[status==='cancelled'?'closed':status]++;counts.all++;}return counts;},{all:0,live:0,upcoming:0,closed:0}) }));
+  // Aggregate in PostgreSQL instead of transferring every auction for each page.
+  // Visibility matches publicWhere, including the product's own category.
+  const rows=await db.$queryRaw<{slug:string;name:string;description:string;requiresEligibilityReview:boolean;all:number;live:number;upcoming:number;closed:number}[]>`
+    SELECT c.slug,c.name,c.description,c."requiresEligibilityReview",
+      count(a.id)::int AS all,
+      count(a.id) FILTER (WHERE a.status IN ('SCHEDULED','LIVE') AND a."startsAt"<=${now} AND a."endsAt">${now})::int AS live,
+      count(a.id) FILTER (WHERE a.status IN ('SCHEDULED','LIVE') AND a."startsAt">${now} AND a."endsAt">${now})::int AS upcoming,
+      count(a.id) FILTER (WHERE a.status IN ('CLOSED','CANCELLED'))::int AS closed
+    FROM "Category" c
+    LEFT JOIN ("Auction" a
+      JOIN "Product" p ON p.id=a."productId" AND p.visible
+      JOIN "Category" pc ON pc.id=p."categoryId" AND pc.visible
+      JOIN "AuctionTerms" t ON t."auctionId"=a.id)
+      ON a."categoryId"=c.id AND a."publishedAt"<=${now}
+        AND a.slug IS NOT NULL AND a.status IN ('SCHEDULED','LIVE','CLOSED','CANCELLED')
+    WHERE c.visible GROUP BY c.id ORDER BY c."sortOrder",c.name`;
+  return rows.map(({all,live,upcoming,closed,...category})=>({...category,counts:{all,live,upcoming,closed}}));
 }
 export async function getCategory(slug: string, now?: Date) {
   now ??= await serverNow();

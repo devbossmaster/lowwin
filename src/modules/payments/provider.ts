@@ -20,7 +20,7 @@ export function candidate(bank:Bank,raw:string){
  const found=bank==='cbe'?text.toUpperCase().match(/\bFT[A-Z0-9]{6,30}\b/g):[...text.toUpperCase().matchAll(/(?:TRANSACTION\s*(?:NUMBER|ID|NO\.?|REFERENCE)?|REFERENCE|RECEIPT)\s*[:#-]?\s*([A-Z][A-Z0-9]{7,31})\b/g)].map(m=>m[1]);
  const values=[...new Set(found??[])];if(values.length!==1)throw new PaymentError(422,'A single clear reference could not be found. Enter it manually.');return canonical(bank,values[0]);
 }
-const envelope=z.object({success:z.boolean(),exists:z.boolean(),data:z.object({bank:bankSchema,transaction_number:z.string(),verification_method:z.string(),receipt:z.object({status:z.string(),transaction_type:z.string().optional(),amount:z.union([z.number(),z.string()]),currency:z.string(),transaction_date:z.string(),receiver_account:z.string().optional()})})});
+const envelope=z.object({success:z.boolean(),exists:z.boolean(),duplicate:z.boolean(),data:z.object({bank:bankSchema,transaction_number:z.string(),verification_method:z.string(),receipt:z.object({status:z.string(),transaction_type:z.string(),amount:z.union([z.number(),z.string()]),currency:z.string(),transaction_date:z.string(),receiver_account:z.string().optional()})})});
 export type VerificationInput={bank:Bank;reference:string;account:string;expectedCents:bigint;createdAt:Date;expiresAt:Date};
 export type Verification={code:string;retrySeconds?:number;evidence:{amountCents?:string;receiverSuffix?:string;date?:string;method?:string;hash?:string};matched:boolean};
 export function assess(raw:unknown,input:VerificationInput,now=new Date()):Verification{
@@ -28,6 +28,9 @@ export function assess(raw:unknown,input:VerificationInput,now=new Date()):Verif
  const {success,exists,data}=parsed.data,r=data.receipt;let amount:bigint;try{amount=cents(r.amount)}catch{return {code:'INVALID_AMOUNT',evidence:{},matched:false}}
  const date=new Date(r.transaction_date),evidence={amountCents:amount.toString(),receiverSuffix:r.receiver_account?.slice(-4),date:Number.isFinite(date.getTime())?date.toISOString():undefined,method:data.verification_method,hash:hash(JSON.stringify({bank:data.bank,reference:data.transaction_number,amount:amount.toString(),receiver:r.receiver_account,date:r.transaction_date,status:r.status,method:data.verification_method}))};
  const fail=(code:string):Verification=>({code,evidence,matched:false});
+ // Provider duplicates are investigation evidence, never permission to issue credit.
+ // Existing local claims are checked independently under the transfer lock.
+ if(parsed.data.duplicate)return fail('DUPLICATE_REVIEW');
  if(!success||!exists)return fail('UNCONFIRMED');if(r.status!=='completed'||r.transaction_type&&r.transaction_type!=='transfer')return fail('INCOMPLETE_TRANSFER');
  if(data.bank!==input.bank||data.transaction_number.toUpperCase()!==input.reference)return fail('REFERENCE_MISMATCH');
  if(data.verification_method!=='official')return fail('UNSUPPORTED_METHOD');if(r.currency!=='ETB')return fail('CURRENCY_MISMATCH');if(amount!==input.expectedCents)return fail('AMOUNT_MISMATCH');

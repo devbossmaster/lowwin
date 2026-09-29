@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import {smallJson,PrivateApiError,requireMutationOrigin,limitUserMutation} from '@/modules/auth/private-api';
 import { db } from '@/lib/db';
 import {getMiniSession} from '@/modules/auth/mini-access';
 import { BidError, getOwnBidState, submitBid } from '@/modules/auctions/bids';
@@ -11,6 +12,7 @@ async function userId(request:Request) {
   return session?.user.id??null;
 }
 function errorResponse(error:unknown) {
+  if(error instanceof PrivateApiError)return Response.json({error:error.message,code:'INVALID_INPUT'},{status:error.status,headers:privateHeaders});
   if(error instanceof BidError)return Response.json({error:error.message,code:error.code},{status:error.status,headers:privateHeaders});
   if(error instanceof z.ZodError)return Response.json({error:'Enter a valid whole ETB amount and request key.',code:'INVALID_INPUT'},{status:422,headers:privateHeaders});
   if(error instanceof SyntaxError)return Response.json({error:'Send a valid JSON bid request.',code:'INVALID_INPUT'},{status:400,headers:privateHeaders});
@@ -28,8 +30,10 @@ export async function POST(request:Request,{params}:{params:Promise<{slug:string
   try {
     const id=await userId(request);
     if(!id)return Response.json({error:'Sign in through Telegram.',code:'UNAUTHENTICATED'},{status:401,headers:privateHeaders});
+    requireMutationOrigin(request);
+    await limitUserMutation(request,id);
     if(Number(request.headers.get('content-length')??0)>4096)return Response.json({error:'Request is too large.',code:'INVALID_INPUT'},{status:413,headers:privateHeaders});
-    const body=bodySchema.parse(await request.json());
+    const body=bodySchema.parse(await smallJson(request));
     const {slug}=await params;
     return Response.json(await submitBid(db,{userId:id,auctionSlug:slug,amount:body.amount,key:body.key}),{status:201,headers:privateHeaders});
   } catch(error){return errorResponse(error)}

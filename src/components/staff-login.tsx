@@ -1,4 +1,6 @@
 'use client';
+import {LoadingSpinner} from '@/components/loading-spinner';
+
 import {useEffect,useState} from 'react';
 import {useRouter} from 'next/navigation';
 import {LockKeyhole} from 'lucide-react';
@@ -22,7 +24,7 @@ export function StaffLogin(){const router=useRouter(),[mode,setMode]=useState('l
     {(mode==='login'||mode==='forgot')&&<label>Staff email<input name="email" type="email" autoComplete="username" required/></label>}
     {['login','invite','reset'].includes(mode)&&<label>Password<input name="password" aria-label="Password" aria-describedby="staff-password-hint" type="password" minLength={12} maxLength={128} autoComplete={mode==='login'?'current-password':'new-password'} required/><small id="staff-password-hint">At least 12 characters.</small></label>}
     {['challenge','enroll'].includes(mode)&&<label>Authenticator or recovery code<input name="code" autoComplete="one-time-code" inputMode={mode==='enroll'?'numeric':'text'} required minLength={6}/></label>}
-    <button disabled={!ready||busy}>{busy?'Verifying…':mode==='forgot'?'Send reset instructions':mode==='login'?'Continue':mode==='enroll'||mode==='challenge'?'Verify authenticator':'Save password'}</button></form>}
+    <button disabled={!ready||busy}>{busy?<LoadingSpinner/>:mode==='forgot'?'Send reset instructions':mode==='login'?'Continue':mode==='enroll'||mode==='challenge'?'Verify authenticator':'Save password'}</button></form>}
     {mode==='login'&&<button className="admin-text-button" onClick={()=>{setMode('forgot');setMessage('');setError('')}}>Forgot password?</button>}{mode==='forgot'&&<button className="admin-text-button" onClick={()=>setMode('login')}>Back to sign in</button>}
     <p className="admin-access-note">No public staff registration. Production email delivery remains unavailable until a provider is configured.</p></section></main>;
 }

@@ -144,7 +144,7 @@ describe.skipIf(!testUrl)('isolated PostgreSQL foundation', () => {
     await client.botUpdate.create({data:{updateId,payload:{update_id:updateId,message:{message_id:1,date:Math.floor(Date.now()/1000),chat:{id:1,type:'private'},from:{id:1,is_bot:false,first_name:'Fixture'},text:'/start',entities:[{type:'bot_command',offset:0,length:6}]}}}});
     await Promise.all([processOneUpdate(client,bot),processOneUpdate(client,bot)]);
     expect(sent).toHaveLength(1);expect(sent[0].method).toBe('sendPhoto');
-    expect(JSON.stringify(sent[0].payload.reply_markup)).toContain('🎯 Lowwin ክፈት');
+    expect(sent[0].payload.reply_markup).toMatchObject({inline_keyboard:expect.arrayContaining([expect.arrayContaining([expect.objectContaining({web_app:{url:process.env.MINI_APP_URL}})])])});
     expect((await client.botUpdate.findUniqueOrThrow({where:{updateId}})).processedAt).not.toBeNull();
     const failureId=updateId+1;
     await client.botUpdate.create({data:{updateId:failureId,payload:{update_id:failureId}}});

@@ -1,7 +1,10 @@
 'use client';
+import {PageLoading} from '@/components/loading-spinner';
+
 import { useEffect,useState } from 'react';
 import { useTelegram } from './telegram-provider';
 import { IdentityState } from './identity-state';
+import {MiniPhrase} from './mini-locale';
 export function usePrivateQuery<T>(url:string) {
   const {status,me}=useTelegram(),userId=me?.user.id;
   const [result,setResult]=useState<{userId:string;url:string;data:T}|null>(null),[error,setError]=useState(''),[retry,setRetry]=useState(0);
@@ -15,10 +18,10 @@ export function usePrivateQuery<T>(url:string) {
 }
 export function PrivateState({query}:{query:{status:string;data:unknown;error:string;reload:()=>void}}) {
   if(query.status!=='authenticated')return <IdentityState/>;
-  if(query.error)return <div className="notice-card" role="alert">{query.error}<button className="retry-action" onClick={query.reload}>Retry</button></div>;
-  if(!query.data)return <p className="inline-empty" role="status">Loading your account…</p>;
+  if(query.error)return <div className="notice-card" role="alert"><MiniPhrase en="Could not load this page. Please retry." am="ገጹን ማምጣት አልተቻለም። እንደገና ይሞክሩ።"/><button className="retry-action" onClick={query.reload}><MiniPhrase en="Retry" am="እንደገና ይሞክሩ"/></button></div>;
+  if(!query.data)return <PageLoading/>;
   return null;
 }
 export function PersonalPagination({page,totalPages,setPage}:{page:number;totalPages:number;setPage:(page:number)=>void}) {
-  return <nav className="pagination" aria-label="Your pages">{page>1&&<button onClick={()=>setPage(page-1)}>Previous</button>}{page<totalPages&&<button onClick={()=>setPage(page+1)}>Next page</button>}</nav>;
+  return <nav className="pagination" aria-label="Your pages">{page>1&&<button onClick={()=>setPage(page-1)}><MiniPhrase en="Previous" am="ወደ ኋላ"/></button>}{page<totalPages&&<button onClick={()=>setPage(page+1)}><MiniPhrase en="Next page" am="ቀጣይ ገጽ"/></button>}</nav>;
 }

@@ -1,4 +1,5 @@
 'use client';
+import {LoadingSpinner} from './loading-spinner';
 import {useCallback,useEffect,useId,useMemo,useRef,useState} from 'react';
 import {CheckCircle2,Gavel,Minus,Plus,X} from 'lucide-react';
 import {formatEtb} from '@/lib/money';
@@ -106,7 +107,7 @@ function FeaturedBidForIdentity({slug,title,onInteractionChange}:Props){
     {status==='authenticated'&&state?.open&&<p className={styles.range}>{am?'ከ':'From'} {formatEtb(state.terms.minPoints)} {am?'እስከ':'to'} {formatEtb(state.terms.maxPoints)} · {am?'እርምጃ':'Step'} {formatEtb(state.terms.stepPoints)}</p>}
     {amount&&state&&(!preview||preview.duplicate||!preview.enough)&&<p className={styles.bidError} role="alert">{!preview?(am?'በተፈቀደው ክልልና እርምጃ ያለ ሙሉ ETB ይምረጡ።':'Choose a whole ETB amount within the range and step.'):preview.duplicate?(am?'ይህን መጠን አስቀድመው አቅርበዋል።':'You already submitted this amount.'):(am?'ለተጨማሪ የተያዘ መጠንና ክፍያ በቂ ያለ ቀሪ የለዎትም።':`You need ${formatEtb(preview.total)} available for the hold and fee.`)}</p>}
     {status==='authenticated'&&state?.open&&state.remainingSubmissions===0&&<p className={styles.bidError}>{am?'የ100 የተለያዩ ጨረታዎች ገደብ ደርሰዋል።':'You have reached the 100 distinct-bid limit.'}</p>}
-    <button type="button" className={styles.submitBid} disabled={!valid} onClick={()=>{setAgreed(false);setConfirm(true)}}>{loading?(am?'በመጫን ላይ…':'Loading bid details…'):status!=='authenticated'?(am?'ለመጫረት ይግቡ':'Sign in to bid'):state&&!state.open?(am?'ጨረታ አይገኝም':'Bidding unavailable'):(am?'የጨረታ መጠን ያስገቡ':'Submit a bid amount')}</button>
+    <button type="button" className={styles.submitBid} disabled={!valid} onClick={()=>{setAgreed(false);setConfirm(true)}}>{loading?<LoadingSpinner/>:status!=='authenticated'?(am?'ለመጫረት ይግቡ':'Sign in to bid'):state&&!state.open?(am?'ጨረታ አይገኝም':'Bidding unavailable'):(am?'የጨረታ መጠን ያስገቡ':'Submit a bid amount')}</button>
     {loadError&&<p className={styles.bidError} role="alert">{loadError} <button type="button" onClick={()=>setReload(value=>value+1)}>{am?'እንደገና ይሞክሩ':'Retry'}</button></p>}
     {receipt&&<p className={styles.accepted} role="status"><CheckCircle2 size={17}/>{am?'ተቀብሏል':'Accepted'} {formatEtb(receipt.bid.amount)} · {am?'ያለ ቀሪ':'Available'} {formatEtb(receipt.wallet.available)}. {am?'ይህ የድል ዋስትና አይደለም።':'This does not predict a winner.'}</p>}
     <dialog ref={dialog} className={styles.dialog} onCancel={event=>{if(submitting)event.preventDefault();else setConfirm(false)}} onClose={()=>setConfirm(false)} aria-labelledby={titleId}>
@@ -115,7 +116,7 @@ function FeaturedBidForIdentity({slug,title,onInteractionChange}:Props){
       <p className={styles.dialogNote}>{am?'የጨረታው መጠን አሁን ይያዛል፤ አሸናፊው ሲወሰን ብቻ ይከፈላል። ሕጋዊ ጨረታ ሲያበቃ የመግቢያ ክፍያ ይቀራል፤ ከተሰረዘ ይመለሳል።':'The bid amount is held now and charged only if it wins at settlement. The entry fee is retained after a valid close and refunded if the auction is cancelled.'} {am?'ሰርቨሩ ቀሪዎን፣ የመዝጊያ ሰዓትንና ውሎቹን እንደገና ያረጋግጣል።':'The server rechecks your balance, closing time and terms before acceptance.'}</p></div>
       <label className={styles.agreement}><input type="checkbox" checked={agreed} onChange={event=>setAgreed(event.target.checked)}/><span>{am?'ውሎቹንና ክፍያውን ተረድቻለሁ':'I understand the hold and fee'}</span></label>
       {error&&<p className={styles.bidError} role="alert">{error}</p>}
-      <button type="button" className={styles.confirmButton} disabled={!agreed||submitting||!valid} onClick={()=>void submit()}>{submitting?(am?'በመላክ ላይ…':'Submitting…'):(am?'አረጋግጥና ጨረታ አቅርብ':'Confirm & submit bid')}</button></>}
+      <button type="button" className={styles.confirmButton} disabled={!agreed||submitting||!valid} onClick={()=>void submit()}>{submitting?<LoadingSpinner/>:(am?'አረጋግጥና ጨረታ አቅርብ':'Confirm & submit bid')}</button></>}
     </dialog>
   </div>;
 }

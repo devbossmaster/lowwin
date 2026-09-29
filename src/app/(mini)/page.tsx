@@ -1,3 +1,6 @@
+import Image from 'next/image';
+import {resolveHomeCopy} from '@/components/home-copy';
+import {publicHomeContent} from '@/modules/admin/public-content';
 import Link from 'next/link';
 import { ArrowRight,ArrowUpRight,LockKeyhole } from 'lucide-react';
 import styles from '@/components/home-banner.module.css';
@@ -19,10 +22,11 @@ export default async function Home() {
 }
 async function HomeWithCatalog() {
   const now=await serverNow();
-  const [categories,live,closed]=await Promise.all([listCategories(now),listAuctions({q:'',status:'live',sort:'ending',page:1},now,20),listPublicResults(db)]);
+  const [categories,live,closed,managed]=await Promise.all([listCategories(now),listAuctions({q:'',status:'live',sort:'ending',page:1},now,20),listPublicResults(db),publicHomeContent()]);
+  const heroCopy=resolveHomeCopy(managed);
   const featured=live.items.filter(item=>item.featured).slice(0,5);
   const ending=live.items.filter(item=>new Date(item.endsAt).getTime()-now.getTime()<=86400000).slice(0,3);
-  return <><OfflineRetry/><h1 className="sr-only">Lowwin auctions</h1><section className={styles.hero}><Link href="/auctions/all" className={styles.banner} aria-label="Explore Lowwin auctions"><img src="/banner1.png" alt="Lowwin — bid low to win" width={1024} height={572} fetchPriority="high"/><span className={styles.bannerAction}><MiniText id="startBidding"/> <ArrowRight size={15} aria-hidden="true"/></span></Link></section>
+  return <><OfflineRetry/><section className="managed-home-copy"><h1><MiniPhrase en={heroCopy.headline} am={heroCopy.headlineAm}/></h1><p><MiniPhrase en={heroCopy.lead} am={heroCopy.leadAm}/></p></section><section className={styles.hero}><Link href="/auctions/all" className={styles.banner} aria-label="Explore Lowwin auctions"><Image src="/banner1.png" alt="Lowwin — bid low to win" width={1024} height={572} sizes="(max-width: 480px) 100vw, 480px" preload/><span className={styles.bannerAction}><MiniText id="startBidding"/> <ArrowRight size={15} aria-hidden="true"/></span></Link></section>
   <HomeCategories categories={categories}/>
   {featured.length>0&&<section className={`${styles.featuredSection} catalog-section`}><div className="section-heading"><div><h2><MiniText id="featured"/></h2><p><MiniPhrase en="The lowest unique ETB bid wins. Check the fee and closing time before you bid." am="ዝቅተኛው ልዩ ETB ጨረታ ያሸንፋል። ከመጫረትዎ በፊት ክፍያውን እና የመዘጊያ ጊዜውን ይመልከቱ።"/></p></div></div><FeaturedCarousel items={featured} serverNow={now.toISOString()}/><Link href="/auctions/all#active" className={styles.featuredAll}><MiniPhrase en="See all auctions" am="ሁሉንም ጨረታዎች ይመልከቱ"/> <ArrowRight size={16}/></Link></section>}
   <section className={`${styles.featuredSection} ${styles.endingSection} catalog-section`}><div className="section-heading"><div><h2><MiniPhrase en="Ending soon auctions" am="በቅርቡ የሚያበቁ ጨረታዎች"/></h2><p><MiniPhrase en="These auctions close within 24 hours. Place your bid before time runs out." am="እነዚህ ጨረታዎች በ24 ሰዓት ውስጥ ያበቃሉ። ጊዜው ከማለቁ በፊት ጨረታዎን ያቅርቡ።"/></p></div></div>{ending.length>0?<><FeaturedCarousel items={ending} serverNow={now.toISOString()} variant="ending"/><Link href="/auctions?status=live&sort=ending" className={styles.featuredAll}><MiniPhrase en="View ending auctions" am="በቅርቡ የሚያበቁትን ይመልከቱ"/> <ArrowRight size={16}/></Link></>:<p className="inline-empty"><MiniText id="nothingEnding"/></p>}</section>

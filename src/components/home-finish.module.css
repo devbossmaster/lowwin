@@ -1,5 +1,5 @@
 .how,.feedback { padding: 42px 20px; }
-.how { background: #f3f7ef; }
+.how { background: #f3fadf; }
 .heading { max-width: 430px; margin: 0 auto 24px; text-align: center; }
 .heading>span { display: inline-flex; align-items: center; gap: 6px; color: #087f5b; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .heading h2 { margin-top: 9px; color: #063d32; font-size: 27px; }

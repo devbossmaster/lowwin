@@ -25,7 +25,7 @@ const schemas={
   replace:z.object({key,auctionId:id}).strict(),
 };
 export type AdminAction=keyof typeof schemas;
-export const homeContentSchema=z.object({headline:text(90),lead:text(350)}).strict();
+export const homeContentSchema=z.object({headline:text(90),lead:text(350),headlineAm:text(90).optional(),leadAm:text(350).optional()}).strict();
 export const faqContentSchema=z.object({items:z.array(z.object({question:text(160),answer:text(1500)}).strict()).max(30)}).strict();
 const asJson=(value:unknown)=>JSON.parse(JSON.stringify(value,(_key,item)=>typeof item==='bigint'?item.toString():item)) as Prisma.InputJsonValue;
 async function lockAuction(tx:Prisma.TransactionClient,auctionId:string){const rows=await tx.$queryRaw<{id:string}[]>`SELECT id FROM "Auction" WHERE id=${auctionId} FOR UPDATE`;if(!rows.length)throw new AdminError(404,'Auction not found.')}

@@ -8,15 +8,16 @@ const copy={
 } as const;
 export type MiniCopyKey=keyof typeof copy.en;
 const MiniLocaleContext=createContext<{language:MiniLanguage;setLanguage:(value:MiniLanguage)=>void;t:(key:MiniCopyKey)=>string}>({language:'en',setLanguage:()=>{},t:key=>copy.en[key]});
-export function MiniLocaleProvider({children}:{children:React.ReactNode}){
- const [language,setCurrent]=useState<MiniLanguage>('en');
+export function MiniLocaleProvider({children,initialLanguage='en'}:{children:React.ReactNode;initialLanguage?:MiniLanguage}){
+ const [language,setCurrent]=useState<MiniLanguage>(initialLanguage);
  useEffect(()=>{try{if(localStorage.getItem('lowwin-language')==='am')setCurrent('am')}catch{}},[]);
  useEffect(()=>{document.documentElement.lang=language;return()=>{document.documentElement.lang='en'}},[language]);
- const setLanguage=(value:MiniLanguage)=>{setCurrent(value);try{localStorage.setItem('lowwin-language',value)}catch{}};
+ const setLanguage=(value:MiniLanguage)=>{setCurrent(value);try{localStorage.setItem('lowwin-language',value);document.cookie=`lowwin-language=${value}; Path=/; Max-Age=31536000; SameSite=Lax${location.protocol==='https:'?'; Secure':''}`}catch{}};
  return <MiniLocaleContext.Provider value={{language,setLanguage,t:key=>copy[language][key]}}>{children}</MiniLocaleContext.Provider>;
 }
 export const useMiniLocale=()=>useContext(MiniLocaleContext);
 export function MiniText({id}:{id:MiniCopyKey}){const {t}=useMiniLocale();return <>{t(id)}</>}
 export function MiniPhrase({en,am}:{en:string;am:string}){const {language}=useMiniLocale();return <>{language==='am'?am:en}</>}
+export function LanguageSwitch(){const {language,setLanguage}=useMiniLocale();return <div className="language-switch" role="group" aria-label="Language / ቋንቋ"><button type="button" lang="en" aria-pressed={language==='en'} onClick={()=>setLanguage('en')}>English</button><button type="button" lang="am" aria-pressed={language==='am'} onClick={()=>setLanguage('am')}>አማርኛ</button></div>}
 const categoryKeys:Record<string,MiniCopyKey>={'home-furniture':'homeFurniture',vehicles:'vehicles',accessories:'accessories','computer-office-equipment':'computerOffice','home-furnishings':'homeFurnishings',jewelry:'jewelry',watches:'watches',phones:'phones',animals:'animals'};
 export function MiniCategoryName({slug,name}:{slug:string;name:string}){const {t}=useMiniLocale();return <>{categoryKeys[slug]?t(categoryKeys[slug]):name}</>}
