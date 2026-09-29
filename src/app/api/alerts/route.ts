@@ -5,7 +5,7 @@ import {defaultPreferences} from '@/modules/notifications/service';
 export const dynamic='force-dynamic';
 async function preview(userId:string){
  const [items,unread]=await Promise.all([
-  db.notificationInbox.findMany({where:{userId},select:{id:true,title:true,body:true,href:true,readAt:true,createdAt:true},orderBy:[{createdAt:'desc'},{id:'asc'}],take:8}),
+  db.notificationInbox.findMany({where:{userId},select:{id:true,kind:true,title:true,body:true,href:true,readAt:true,createdAt:true},orderBy:[{createdAt:'desc'},{id:'asc'}],take:8}),
   db.notificationInbox.count({where:{userId,readAt:null}}),
  ]);
  return Response.json({items,unread},{headers:privateHeaders});

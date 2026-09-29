@@ -22,8 +22,8 @@
 .banner:focus-visible,.categories a:focus-visible { outline: 2px solid #087f5b; outline-offset: 3px; }
 @media(hover:hover){.category:hover{box-shadow:0 5px 18px rgb(6 61 50 / 17%)}.heading a:hover{text-decoration:underline}}
 .featuredSection { padding-top: 34px; padding-bottom: 34px; background: #fff; }
-.endingSection { background: #f9f7fc; }
-.closedSection { background: #f8fafc; }
+.endingSection { background: #f3fadf; }
+.closedSection { background: #f3fadf; }
 .featuredSection :global(.section-heading) { justify-content: center; text-align: center; }
 .featuredSection :global(.section-heading) h2 { font-size: 25px; color: #063d32; }
 .featuredSection :global(.section-heading) p { max-width: 34ch; margin: 8px auto 0; color: #526e64; font-size: 13px; line-height: 1.5; }

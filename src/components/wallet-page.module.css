@@ -1,4 +1,4 @@
-.page{padding:12px 14px 30px;background:#f3f3f8;color:#101510}
+.page{padding:12px 14px 30px;background:#f3fadf;color:#101510}
 .balance{padding:22px 20px;border:1px solid #dfe4da;border-radius:16px;background:linear-gradient(115deg,#f5fbef,#fff 70%);box-shadow:0 2px 4px rgb(23 39 32 / 5%)}
 .balanceLabel{display:flex;align-items:center;justify-content:space-between;gap:8px;color:#657062;font-size:12px;font-weight:500}.balanceLabel small{font-size:9px}
 .amount{display:block;margin-top:7px;font-size:36px;line-height:1.3;font-weight:700;letter-spacing:-.035em;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
