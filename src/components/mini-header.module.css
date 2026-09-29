@@ -3,7 +3,7 @@
   z-index: 40;
   --header-primary: #15803d;
   --header-dark: #14532d;
-  --header-highlight: #37c58b;
+  --header-highlight: #15803d;
   display: grid;
   grid-template-columns: 44px minmax(0, 110px) repeat(2, 44px) 62px;
   justify-content: space-between;
@@ -29,15 +29,15 @@
 .languageButton { display: inline-flex; align-items: center; justify-content: center; gap: 3px; width: 100%; height: 44px; padding: 0; border: 0; border-radius: 10px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
 .languageChevron { transition: transform 140ms ease; }
 .languageChevron[data-open='true'] { transform: rotate(180deg); }
-.languageMenu { position: absolute; z-index: 80; top: calc(100% + 7px); right: 0; display: grid; width: 76px; padding: 4px; border: 1px solid #d8e5dd; border-radius: 10px; background: #fff; box-shadow: 0 12px 28px rgb(6 61 50 / 20%); }
+.languageMenu { position: absolute; z-index: 80; top: calc(100% + 7px); right: 0; display: grid; width: 76px; padding: 4px; border: 1px solid #d8e5dd; border-radius: 10px; background: #fff; box-shadow: 0 12px 28px rgb(20 83 45 / 20%); }
 .languageMenu::before { content: ''; position: absolute; top: -5px; right: 12px; width: 9px; height: 9px; border-top: 1px solid #d8e5dd; border-left: 1px solid #d8e5dd; background: #fff; transform: rotate(45deg); }
-.languageOption { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 44px; padding: 0 10px; border: 0; border-radius: 7px; background: #fff; color: #29493d; font: inherit; cursor: pointer; }
+.languageOption { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 44px; padding: 0 10px; border: 0; border-radius: 7px; background: #fff; color: #14532d; font: inherit; cursor: pointer; }
 .languageOption[aria-checked='true'] { background: #f0fdf4; color: #14532d; }
 .languageButton:focus-visible,.languageOption:focus-visible { outline: 2px solid var(--header-primary); outline-offset: 2px; }
 .unread { position: absolute; width: 8px; height: 8px; top: 7px; right: 8px; border-radius: 50%; background: var(--header-primary); outline: 2px solid #fff; }
 .header a:focus-visible { outline: 2px solid var(--header-primary); outline-offset: 2px; }
 .header .add:active>span { background: #f0fdf4; }
-.header .icon:active, .header .balance:active { background: #d9f2e7; }
+.header .icon:active, .header .balance:active { background: #dcfce7; }
 @media (hover: hover) { .header .add:hover { background: transparent; } .header .add:hover>span { background: #f0fdf4; } .header .icon:hover, .header .balance:hover { background: #f0fdf4; } }
 @media (max-width: 370px) { .header { grid-template-columns:44px minmax(0,90px) repeat(2,44px) 54px; gap:6px; padding-inline:max(12px,env(safe-area-inset-left,0px),var(--tg-content-safe-area-inset-left,0px),var(--tg-content-safe-area-inset-right,0px)); } }
 @media (hover:hover) { .languageButton:hover { background: rgb(255 255 255 / 24%); } .languageOption:hover { background: #f0fdf4; } }

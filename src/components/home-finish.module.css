@@ -5,7 +5,7 @@
 .heading h2 { margin-top: 9px; color: #14532d; font-size: 27px; }
 .heading p { max-width: 35ch; margin: 8px auto 0; color: #526e64; font-size: 13px; line-height: 1.6; }
 .how ol { display: grid; gap: 14px; max-width: 430px; margin: 0 auto; padding: 0; list-style: none; }
-.how li { position: relative; overflow: hidden; padding: 18px; border: 1px solid #dce9df; border-radius: 18px; background: #fff; box-shadow: 0 8px 20px rgb(6 61 50 / 7%); text-align: center; }
+.how li { position: relative; overflow: hidden; padding: 18px; border: 1px solid #dce9df; border-radius: 18px; background: #fff; box-shadow: 0 8px 20px rgb(20 83 45 / 7%); text-align: center; }
 .stepNumber { position: absolute; top: 14px; left: 14px; color: #15803d; font-size: 11px; font-weight: 700; }
 .illustration { position: relative; display: grid; place-items: center; width: 132px; height: 112px; margin: 0 auto 6px; color: #15803d; }
 .illustration span { position: absolute; width: 94px; height: 78px; border-radius: 44% 56% 64% 36% / 46% 44% 56% 54%; background: #dcfce7; transform: rotate(-8deg); }
@@ -17,7 +17,7 @@
 .feedback { background: #fff; }
 .feedbackRow { display: flex; gap: 12px; max-width: 430px; margin: 0 auto; padding: 2px 2px 12px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
 .feedbackRow::-webkit-scrollbar { display: none; }
-.feedback article { flex: 0 0 calc(100% - 24px); min-height: 190px; padding: 19px; border: 1px solid #e2ece6; border-radius: 18px; background: #fff; box-shadow: 0 8px 20px rgb(6 61 50 / 8%); scroll-snap-align: center; }
+.feedback article { flex: 0 0 calc(100% - 24px); min-height: 190px; padding: 19px; border: 1px solid #e2ece6; border-radius: 18px; background: #fff; box-shadow: 0 8px 20px rgb(20 83 45 / 8%); scroll-snap-align: center; }
 .quote { height: 34px; color: #15803d; font: 700 48px/1 Georgia,serif; }
 .feedback article>p { min-height: 62px; margin: 5px 0 18px; color: #334f43; font-size: 14px; line-height: 1.6; }
 .feedback article footer { display: grid; grid-template-columns: 42px 1fr; align-items: center; column-gap: 10px; border-top: 1px solid #e6eee9; padding-top: 14px; }

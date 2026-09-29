@@ -14,7 +14,7 @@
 .sectionHeading>div:nth-child(2) { min-width:0; }
 .sectionHeading h2 { color:#11241d; font-size:21px; line-height:1.2; }
 .sectionHeading span { display:inline-block; margin-top:4px; padding:4px 9px; border-radius:18px; background:#edf2f8; color:#607166; font-size:10px; }
-.sectionHeading>a { display:grid; place-items:center; width:44px; height:44px; border-radius:50%; background:#fff; color:#14532d; box-shadow:0 3px 10px rgb(6 61 50 / 9%); }
+.sectionHeading>a { display:grid; place-items:center; width:44px; height:44px; border-radius:50%; background:#fff; color:#14532d; box-shadow:0 3px 10px rgb(20 83 45 / 9%); }
 .sectionIcon { display:grid; place-items:center; width:48px; height:48px; border-radius:15px; color:#172720; box-shadow:0 4px 0 rgb(60 95 19 / 28%); }
 .liveIcon { background:#15803d; color:#fff; }
 .upcomingIcon { background:#dcfce7; }

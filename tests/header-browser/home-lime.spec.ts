@@ -24,7 +24,7 @@ test('shared header and Home hero use the forest-green surface without mobile ov
   await footer.scrollIntoViewIfNeeded();
   await expect(footer).toHaveCSS('background-color','rgb(21, 128, 61)');
   await expect(footer).toHaveCSS('color','rgb(255, 255, 255)');
-  await expect(footer.getByRole('img',{name:'Lowwin'})).toHaveAttribute('src','/logo.png');
+  await expect(footer.getByRole('img',{name:'Lowwin'})).toHaveAttribute('src','/logo.png?v=forest-1');
   await expect(page.getByText(/signed in/i)).toHaveCount(0);
   await expect(page.locator('#player-stories')).toHaveText('ጨረታ ቀላል ሆነ');
   await expect(page.getByText('ግልጽ ደረጃዎች፣ ፈጣን ፍለጋ እና ቀላል ጨረታ።')).toBeAttached();

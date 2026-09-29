@@ -173,7 +173,7 @@ Phase 5A added a separate administration surface in Operate mode, with denser wo
 
 ### Primary
 
-Forest green primary marks Mini App actions, selected catalog/personal tabs and the winning example; its label is white. The semantic primary in this document maps to scoped `--mini-action`, not the legacy global `--color-primary`. Supporting green maps to that incumbent global token and remains on links, icons, payment selections and the shared Button utility. Forest anchors the wordmark, result summary and profile balance. Mint remains on verified identity, favorites and selected payment methods. Bottom navigation uses its distinct pale selected fill and darker green text. The home rule demonstration and wallet balance use the pale gradients recorded in the sidecar.
+Forest green primary marks Mini App actions, selected catalog/personal tabs and the winning example; its label is white. Both scoped `--mini-action` and Tailwind `--color-primary` use #15803D. Shared buttons, links, icons and payment selections use the same forest green palette. Forest anchors the wordmark, result summary and profile balance. Mint remains on verified identity, favorites and selected payment methods. Bottom navigation uses its distinct pale selected fill and darker green text. The home rule demonstration and wallet balance use the pale gradients recorded in the sidecar.
 
 ### Neutral
 

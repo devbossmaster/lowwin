@@ -7,13 +7,13 @@
 .visual { position: relative; height: clamp(185px, 56vw, 255px); margin: 10px 10px 0; overflow: hidden; border-radius: 13px; background: #eef7f2; }
 .visual>a { display: block; width: 100%; height: 100%; }
 .visual img { display: block; width: 100%; height: 100%; object-fit: contain; }
-.live,.demo { position: absolute; top: 11px; left: 11px; display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 0 9px; border-radius: 7px; background: #15803d; color: #fff; font-size: 11px; font-weight: 700; box-shadow: 0 2px 8px rgb(6 61 50 / 18%); }
+.live,.demo { position: absolute; top: 11px; left: 11px; display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 0 9px; border-radius: 7px; background: #15803d; color: #fff; font-size: 11px; font-weight: 700; box-shadow: 0 2px 8px rgb(20 83 45 / 18%); }
 .live>span { width: 6px; height: 6px; border-radius: 50%; background: #15803d; }
-.upcoming { border:1px solid #dbe7de; background:#fff; color:#14532d; box-shadow:0 2px 8px rgb(6 61 50 / 12%); }
+.upcoming { border:1px solid #dbe7de; background:#fff; color:#14532d; box-shadow:0 2px 8px rgb(20 83 45 / 12%); }
 .upcoming>span { background:#15803d; }
 .demo { left: auto; right: 11px; background: #fff; color: #14532d; }
 .favorite { position: absolute; right: 10px; bottom: 10px; }
-.favorite :global(.favorite-button) { width: 44px; height: 44px; min-height: 44px; margin: 0; padding: 0; border-radius: 50%; border: 1px solid #e1e9e3; background: #fff; color: #15803d; box-shadow: 0 3px 9px rgb(6 61 50 / 16%); }
+.favorite :global(.favorite-button) { width: 44px; height: 44px; min-height: 44px; margin: 0; padding: 0; border-radius: 50%; border: 1px solid #e1e9e3; background: #fff; color: #15803d; box-shadow: 0 3px 9px rgb(20 83 45 / 16%); }
 .body { padding: 14px 17px 17px; }
 .category { display: block; color: #15803d; font-size: 11px; font-weight: 700; }
 .body h3 { margin: 5px 0 15px; color: #14532d; font-size: 21px; line-height: 1.2; }
@@ -69,7 +69,7 @@
 
 .toolbar button:disabled,.dots button:disabled { opacity: .45; cursor: not-allowed; }
 .closedCard { border-top: 4px solid #f2a900; }
-.closedBadge,.views { position: absolute; top: 11px; left: 11px; display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 0 9px; border-radius: 7px; background: #14532d; color: #fff; font-size: 10px; font-weight: 700; box-shadow: 0 2px 8px rgb(6 61 50 / 18%); }
+.closedBadge,.views { position: absolute; top: 11px; left: 11px; display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 0 9px; border-radius: 7px; background: #14532d; color: #fff; font-size: 10px; font-weight: 700; box-shadow: 0 2px 8px rgb(20 83 45 / 18%); }
 .views { left: auto; right: 11px; background: #fff; color: #b54420; }
 .closedCard .demo { top: 48px; right: 11px; max-width: 150px; text-align: center; }
 .closedTitle { margin-top: 0!important; text-align: center; }

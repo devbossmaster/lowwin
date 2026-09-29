@@ -25,7 +25,7 @@ export function TelegramEntry({onComplete}:{onComplete?:()=>void}={}){
   if(status==='contact-required')return <ContactGate/>;
   if(status==='loading'||(status==='authenticated'&&telegramLaunch))return <LaunchSplash complete={status==='authenticated'}/>;
   return <main id="main" className={`telegram-entry ${styles.screen}`}>
-    <img src="/logo.png" alt="Lowwin" width={112} height={112} className={styles.logo}/>
+    <img src="/logo.png?v=forest-1" alt="Lowwin" width={112} height={112} className={styles.logo}/>
     <h1>{error?'Let’s try again':'Open Lowwin'}</h1>
     <p role={error?'alert':undefined}>{error||'Continue through our Telegram bot.'}</p>
     <div className={styles.actions}>

@@ -22,7 +22,7 @@ export function AppShell({children,requireLaunch=false}:{children:React.ReactNod
   <MiniHeader/>
   <MiniNavigation/>
   <main id="main" className={status==='loading'?'app-main-loading':undefined}>{children}{status==='loading'&&<CatalogSkeleton/>}</main>
-  {path==='/'&&<footer className="page-footer"><img className="footer-logo" src="/logo.png" alt="Lowwin" width="92" height="92"/><p><MiniPhrase en="Bid low. Win differently." am="በዝቅተኛ ዋጋ ተጫረቱ፣ በተለየ መንገድ ያሸንፉ።"/></p><div className="footer-links"><Link href="/auctions/all"><MiniPhrase en="Auctions" am="ጨረታዎች"/></Link><Link href="/winners/all"><MiniPhrase en="Results" am="ውጤቶች"/></Link><Link href="/faq"><MiniPhrase en="How it works" am="እንዴት ይሰራል?"/></Link></div><small>Telegram Mini App · © 2026 Lowwin</small><Link className="footer-rules" href="/faq"><MiniPhrase en="Understand the rules" am="ደንቦቹን ይረዱ"/> <ArrowUpRight size={14}/></Link></footer>}
+  {path==='/'&&<footer className="page-footer"><img className="footer-logo" src="/logo.png?v=forest-1" alt="Lowwin" width="92" height="92"/><p><MiniPhrase en="Bid low. Win differently." am="በዝቅተኛ ዋጋ ተጫረቱ፣ በተለየ መንገድ ያሸንፉ።"/></p><div className="footer-links"><Link href="/auctions/all"><MiniPhrase en="Auctions" am="ጨረታዎች"/></Link><Link href="/winners/all"><MiniPhrase en="Results" am="ውጤቶች"/></Link><Link href="/faq"><MiniPhrase en="How it works" am="እንዴት ይሰራል?"/></Link></div><small>Telegram Mini App · © 2026 Lowwin</small><Link className="footer-rules" href="/faq"><MiniPhrase en="Understand the rules" am="ደንቦቹን ይረዱ"/> <ArrowUpRight size={14}/></Link></footer>}
   <BottomNavigation/>
  </div>;
 }
