@@ -1,11 +1,11 @@
-.page{min-height:100%;overflow-x:hidden;background:transparent;color:#063d32}
-.hero{padding:30px 20px 36px;background:#047857;color:#fff;border-bottom-right-radius:34px;border-bottom-left-radius:34px}
+.page{min-height:100%;overflow-x:hidden;background:transparent;color:#14532d}
+.hero{padding:30px 20px 36px;background:#15803d;color:#fff;border-bottom-right-radius:34px;border-bottom-left-radius:34px}
 .hero>div{max-width:440px;margin-inline:auto}
 .hero>div:first-child>span{display:inline-flex;align-items:center;gap:6px;margin-bottom:8px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.08em}
 .hero h1{margin:0;font-size:34px;line-height:1.1;letter-spacing:-.04em;color:#fff}
-.hero p{max-width:360px;margin:10px 0 22px;color:#d1fae5;font-size:13px;line-height:1.6}
+.hero p{max-width:360px;margin:10px 0 22px;color:#dcfce7;font-size:13px;line-height:1.6}
 .summary{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-.summary span{display:flex;min-width:0;min-height:62px;flex-direction:column;align-items:center;justify-content:center;border:1px solid rgb(255 255 255 / 28%);border-radius:17px;background:#065f46;backdrop-filter:blur(5px);color:#fff;font-size:10px;font-weight:700}
+.summary span{display:flex;min-width:0;min-height:62px;flex-direction:column;align-items:center;justify-content:center;border:1px solid rgb(255 255 255 / 28%);border-radius:17px;background:#166534;backdrop-filter:blur(5px);color:#fff;font-size:10px;font-weight:700}
 .summary strong{font-size:21px;font-variant-numeric:tabular-nums}
 .section{padding:32px 16px 42px;background:#fff;scroll-margin-top:90px}
 .featured{background:#fff}
@@ -15,7 +15,7 @@
 .heading>div:last-child{min-width:0}
 .heading h2{margin:0;color:#11241d;font-size:22px;line-height:1.15;letter-spacing:-.025em}
 .featured .heading h2{color:#0b0b0b}
-.featuredIcon,.liveIcon,.closedIcon{background:#047857;color:#fff}.heading .upcomingIcon{background:#d1fae5;color:#065f46}
+.featuredIcon,.liveIcon,.closedIcon{background:#15803d;color:#fff}.heading .upcomingIcon{background:#dcfce7;color:#166534}
 .count{display:inline-flex;margin-top:5px;padding:4px 9px;border-radius:999px;background:#edf2f8;color:#607166;font-size:10px;font-weight:700}
 .featured .count{background:rgb(255 255 255 / 30%);color:#0b0b0b}
 .empty{display:grid;place-items:center;width:min(100%,440px);min-height:128px;margin:0 auto;padding:22px;border:1px dashed #c9d8ce;border-radius:18px;background:#fff;color:#63766b;text-align:center;font-size:12px}

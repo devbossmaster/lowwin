@@ -1,11 +1,11 @@
-.screen.screen { align-items: center; justify-content: center; text-align: center; gap: 0; width: 100%; max-width: none; background: #047857; padding-inline: 28px; }
+.screen.screen { align-items: center; justify-content: center; text-align: center; gap: 0; width: 100%; max-width: none; background: #15803d; padding-inline: 28px; }
 .logo { display: block; width: 112px; height: 112px; object-fit: contain; margin-bottom: 20px; }
 .screen.screen h1 { color: #fff; font-size: 22px; line-height: 1.3; letter-spacing: -.02em; font-weight: 650; margin: 0 0 10px; }
-.screen.screen p { color: #d1fae5; max-width: 29ch; font-size: 14px; line-height: 1.6; margin: 0 0 24px; }
+.screen.screen p { color: #dcfce7; max-width: 29ch; font-size: 14px; line-height: 1.6; margin: 0 0 24px; }
 .actions { display: grid; gap: 8px; width: 100%; max-width: 280px; }
-.actions .retry { min-height: 48px; background: #087f5b; color: #fff; border: 0; border-radius: 12px; }
-.actions .bot { min-height: 48px; background: #fff; color: #087f5b; border: 1px solid #dce9e2; border-radius: 12px; }
-.screen :focus-visible { outline: 2px solid #087f5b; outline-offset: 3px; }
-@media(hover:hover){.actions .retry:hover{background:#063d32}.actions .bot:hover{background:#edf8f3}}
-.actions .retry { background: #065f46; color: #fff; }
-@media(hover:hover){.actions .retry:hover{background:#064e3b}}
+.actions .retry { min-height: 48px; background: #15803d; color: #fff; border: 0; border-radius: 12px; }
+.actions .bot { min-height: 48px; background: #fff; color: #15803d; border: 1px solid #dce9e2; border-radius: 12px; }
+.screen :focus-visible { outline: 2px solid #15803d; outline-offset: 3px; }
+@media(hover:hover){.actions .retry:hover{background:#14532d}.actions .bot:hover{background:#edf8f3}}
+.actions .retry { background: #166534; color: #fff; }
+@media(hover:hover){.actions .retry:hover{background:#14532d}}

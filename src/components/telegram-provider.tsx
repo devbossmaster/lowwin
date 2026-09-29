@@ -31,7 +31,7 @@ export function TelegramProvider({ children, devEnabled, botUrl, requireLaunch=f
     const app = window.Telegram?.WebApp;
     // The spinner is presentation only. Access still requires signed initData and server contact verification.
     setVerifyingTelegram(Boolean(app?.initData && !dev));
-    app?.ready(); app?.setHeaderColor?.('#047857'); app?.setBackgroundColor?.('#047857');
+    app?.ready(); app?.setHeaderColor?.('#15803d'); app?.setBackgroundColor?.('#15803d');
     try {
       if(requireLaunch&&!app?.initData&&!dev){setMe(null);setStatus('guest');return}
       if(app?.initData&&!dev) {
@@ -68,7 +68,7 @@ export function TelegramProvider({ children, devEnabled, botUrl, requireLaunch=f
   },[]);
   const autoAuthenticate=useCallback(()=>{const launch=window.Telegram?.WebApp?.initData??'';if(launchAttempt.current===launch)return;launchAttempt.current=launch;void authenticate()},[authenticate]);
   useEffect(() => {
-    const color=(status==='loading'&&verifyingTelegram)||status==='error'||(requireLaunch&&status==='guest')?'#047857':'#FFFFFF';
+    const color=(status==='loading'&&verifyingTelegram)||status==='error'||(requireLaunch&&status==='guest')?'#15803d':'#FFFFFF';
     window.Telegram?.WebApp?.setHeaderColor?.(color);
     window.Telegram?.WebApp?.setBackgroundColor?.(color);
   },[status,verifyingTelegram,requireLaunch]);

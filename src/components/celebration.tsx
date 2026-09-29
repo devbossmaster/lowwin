@@ -32,7 +32,7 @@ export function CelebrationProvider({children}:{children:ReactNode}){
    const burst=()=>{
     const left=end-Date.now();
     if(left<=0){if(timer.current!==null)clearInterval(timer.current);timer.current=null;finish.current=setTimeout(stop,1200);return}
-    const options={startVelocity:30,spread:360,ticks:60,particleCount:Math.ceil(24*left/duration),colors:['#047857','#10b981','#34d399','#fff8dc'],disableForReducedMotion:true};
+    const options={startVelocity:30,spread:360,ticks:60,particleCount:Math.ceil(24*left/duration),colors:['#15803d','#16a34a','#4ade80','#fff8dc'],disableForReducedMotion:true};
     void instance.current?.({...options,origin:{x:.1+Math.random()*.2,y:.05+Math.random()*.2}});
     void instance.current?.({...options,origin:{x:.7+Math.random()*.2,y:.05+Math.random()*.2}});
    };

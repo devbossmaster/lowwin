@@ -1,16 +1,16 @@
 import {expect,test} from '@playwright/test';
 
-test('shared header and Home hero use the emerald surface without mobile overflow',async({page},info)=>{
+test('shared header and Home hero use the forest-green surface without mobile overflow',async({page},info)=>{
   await page.route('https://telegram.org/**',route=>route.fulfill({body:''}));
   await page.route('**/api/onboarding/contact',route=>route.fulfill({json:{verified:true}}));
-  await page.route('**/api/me',route=>route.fulfill({json:{user:{id:'emerald-fixture',name:'Tester'},wallet:{available:'750',held:'10',demo:true}}}));
+  await page.route('**/api/me',route=>route.fulfill({json:{user:{id:'forest-green-fixture',name:'Tester'},wallet:{available:'750',held:'10',demo:true}}}));
   await page.route('**/api/alerts',route=>route.fulfill({json:{unread:0}}));
   await page.goto('/');
   const header=page.getByRole('banner',{name:'Mini App header'});
   const banner=page.getByRole('link',{name:'Explore Lowwin auctions',exact:true});
-  await expect(header).toHaveCSS('background-color','rgb(4, 120, 87)');
+  await expect(header).toHaveCSS('background-color','rgb(21, 128, 61)');
   await expect(banner).toBeVisible();
-  expect(await banner.evaluate(node=>getComputedStyle(node.parentElement!).backgroundColor)).toBe('rgb(4, 120, 87)');
+  expect(await banner.evaluate(node=>getComputedStyle(node.parentElement!).backgroundColor)).toBe('rgb(21, 128, 61)');
   const language=header.getByRole('button',{name:'Language'});
   await language.click();
   await expect(header.getByRole('menuitemradio')).toHaveText(['En','አማ']);
@@ -19,10 +19,10 @@ test('shared header and Home hero use the emerald surface without mobile overflo
   await header.getByRole('button',{name:'ቋንቋ'}).click();
   await expect(header.getByRole('menu')).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-  await page.screenshot({path:`docs/screenshots/home-emerald-${info.project.name}.png`});
+  await page.screenshot({path:`docs/screenshots/home-forest-green-${info.project.name}.png`});
   const footer=page.locator('.page-footer');
   await footer.scrollIntoViewIfNeeded();
-  await expect(footer).toHaveCSS('background-color','rgb(4, 120, 87)');
+  await expect(footer).toHaveCSS('background-color','rgb(21, 128, 61)');
   await expect(footer).toHaveCSS('color','rgb(255, 255, 255)');
   await expect(footer.getByRole('img',{name:'Lowwin'})).toHaveAttribute('src','/logo.png');
   await expect(page.getByText(/signed in/i)).toHaveCount(0);
@@ -31,5 +31,5 @@ test('shared header and Home hero use the emerald surface without mobile overflo
   await expect(page.getByText('These are not real customer reviews.')).toHaveCount(0);
   const stories=page.locator('section').filter({has:page.locator('#player-stories')});
   await stories.screenshot({path:`docs/screenshots/player-stories-${info.project.name}.png`});
-  await footer.screenshot({path:`docs/screenshots/footer-emerald-${info.project.name}.png`});
+  await footer.screenshot({path:`docs/screenshots/footer-forest-green-${info.project.name}.png`});
 });

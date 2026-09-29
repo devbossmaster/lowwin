@@ -39,7 +39,7 @@ test('401 retry is compact and never opens protected content',async({page},info)
  await page.route('**/api/auth/telegram/miniapp/signin',r=>{attempts++;return r.fulfill({status:401,json:{error:'Launch could not be verified'}})});
  await page.goto('/telegram');
  await expect(page.getByRole('heading',{name:'Let’s try again'})).toBeVisible();
- await expect(page.locator('main')).toHaveCSS('background-color','rgb(4, 120, 87)');
+ await expect(page.locator('main')).toHaveCSS('background-color','rgb(21, 128, 61)');
  await expect(page.getByRole('img',{name:'Lowwin'})).toBeVisible();await expect.poll(()=>page.getByRole('img',{name:'Lowwin'}).evaluate((img:HTMLImageElement)=>img.complete&&img.naturalWidth>0)).toBe(true);
  await expect(page.locator('main [role="alert"]')).toHaveText('Reopen Lowwin from the bot to verify your launch.');
  await expect(page.getByText('Your Mini App.')).toHaveCount(0);
