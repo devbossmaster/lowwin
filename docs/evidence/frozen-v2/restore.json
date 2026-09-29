@@ -1,0 +1,46 @@
+{
+  "at": "2026-09-29T06:23:44.704Z",
+  "scope": "Local PostgreSQL custom-format restore; DEMO fixtures only; no encrypted or remote backup claim",
+  "source": "lowwin_perf_ebd1cd4987_test",
+  "restored": "lowwin_restore_678544bbbb_test",
+  "backupSha256": "ef4e7f6853548e9b71ddf30cccc9fdb1bd7b85ddcd2cb32bd88b4c39d2122c1d",
+  "matchingTables": {
+    "Bid": {
+      "count": 200,
+      "hash": "2790d32bd4f27739ca2a407454599832bf39b91acec54f64c5059b2f16273988"
+    },
+    "AuctionTerms": {
+      "count": 16,
+      "hash": "8cb28ec91ac59edac8485a58e88adbc343121c94b1294e64bad847e9793b5def"
+    },
+    "AuctionSettlement": {
+      "count": 2,
+      "hash": "2d6d2e6738f9e967d8062c26ea2e07123d6113a5d1fd101d0689efb8e6b7720e"
+    },
+    "Journal": {
+      "count": 800,
+      "hash": "810810d97e8b840c8aaf83ccf558ef472efd0b9c49cd2d6685732837debfab26"
+    },
+    "Posting": {
+      "count": 1600,
+      "hash": "01860b75be0129c2a1a929590500fe96859f63c7b50bf43d9b141d9f659fa41d"
+    },
+    "AuctionHold": {
+      "count": 200,
+      "hash": "5bd5b7f198ef0c128c036e8eec23f86c3a2262d48ce5bb3952154f29307c3ad8"
+    },
+    "LedgerAccount": {
+      "count": 403,
+      "hash": "b30e4a446fb5d610833225d687f29af762d7b04f94c2ef7efd9d63c600aea671"
+    },
+    "Operation": {
+      "count": 800,
+      "hash": "56307c29fa87eef454bebc627e8845c081dbf65d83ef77ea729d034f6a3ccc47"
+    },
+    "_prisma_migrations": {
+      "count": 18,
+      "hash": "2dbf43ce6a70a17c0205715336ef979132b913601af09f345259630098d064c5"
+    }
+  },
+  "balancePostingDrift": 0
+}

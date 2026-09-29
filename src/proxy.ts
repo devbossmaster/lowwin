@@ -8,6 +8,7 @@ const publicAssets=new Set(['/logo.png','/banner1.png','/fonts/NotoSansEthiopic-
 
 export async function proxy(request:NextRequest) {
   const path=request.nextUrl.pathname;
+  if(path==='/api/health/live')return NextResponse.next();
   // Public onboarding artwork must load before a Telegram session exists.
   // Keep this exact allowlist separate from all protected Mini App data.
   if(publicAssets.has(path))return NextResponse.next();

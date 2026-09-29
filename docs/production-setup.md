@@ -1,6 +1,6 @@
 # Lowwin setup and release procedure
 
-Real credits are disabled in `paymentHealth()` regardless of environment values. Do not send a real transfer, publish a real auction, or switch traffic until the release packet is approved. SSH/VPS deployment is deferred at the Owner's request; this guide covers application configuration and the ngrok staging rehearsal.
+Real credits are disabled by default through `PAYMENTS_LIVE_ENABLED=false`. Do not send a real transfer, publish a real auction, or switch traffic until the release packet is approved. For the Owner's manual Coolify deployment, follow [the dashboard setup](coolify-setup.md). This guide covers service credentials and the staging rehearsal.
 
 ## 1. Obtain the inputs
 
@@ -38,6 +38,8 @@ Back up keyrings alongside—but separately protected from—the database backup
 
 `DATABASE_URL` is used by Next and each worker. On Supabase use the **transaction pooler** URL copied from Connect, usually port 6543, with `sslmode=require&pgbouncer=true&connection_limit=5&connect_timeout=15&pool_timeout=20`. Replace its login with the reviewed restricted server role, using the project-specific username format provided by Supabase. Do not guess the project or use the browser anon/service-role keys.
 
+Set `LOWWIN_MEDIA_CACHE_DIR` to an absolute persistent path mounted into the web container, such as `/srv/lowwin/shared/media-cache`. It is mandatory when `APP_ENV=production`; image delivery fails closed if it is omitted rather than repeatedly streaming image bytes from Supabase. In Coolify, attach a persistent volume to that exact path and give only the web service write access. Published media is immutable: the first request copies its bytes from PostgreSQL into this cache, and later requests do not query Supabase. Warm each published image once before switching traffic, and alert on `Published media cache` errors. Never share this volume with the bot or workers.
+
 `DIRECT_URL` is used by Prisma migrations: direct or session-pool connection (usually 5432), with the schema-owning migration login. Do not use transaction pooling for migrations. Runtime environment validation currently requires this variable to exist; **set it equal to the runtime URL in web/worker processes**, and inject the privileged migration URL only into the reviewed migration job. A normal application process should not possess migration credentials.
 
 Runtime must not be a superuser, table owner, BYPASSRLS role, schema creator, or member of the migration role. Review `docs/phase6-role-review.sql`; do not grant broad anon/authenticated policies. Trigger-enforced journal/hold protections must still reject direct financial changes. Actual Supabase role/RLS checks are separate from superuser-backed fixture tests.
@@ -63,7 +65,7 @@ npm run wallet:reconcile
 2. Start the app and the bot worker against the intended staging database. For performance measurements use `npm run build` then `npm start`, not development compilation. Start ngrok against that application's port. Never expose the email sink or PostgreSQL through ngrok.
 3. In BotFather configure the bot's Mini App/menu URL to the same HTTPS `/telegram` URL. Run `npm run bot:setup` with this bot's token and webhook secret to set the menu and authenticated `/api/bot/webhook` endpoint. This changes that bot's configuration; inspect the selected bot/origin first.
 4. Verify `getMe`, `getWebhookInfo` and `getChatMenuButton` through a local server-side script that prints only username, configured URL, pending update count and error description. Do not paste token-containing Bot API URLs into a browser or logs. Telegram must report the expected bot and exact origin, no repeated webhook errors.
-5. Run `npm run worker` for authenticated webhook inbox processing, `npm run worker:auctions` for settlement, and `npm run worker:notifications` for opted-in notifications. They are independent processes. Do not run duplicate unsupervised workers accidentally. Notification tests must use fixture transports until actual test delivery is authorized.
+5. Run `npm run worker` for authenticated webhook inbox processing, `npm run worker:auctions` for settlement, and `npm run worker:notifications` for automatic alerts and Owner broadcasts to initiated private bot chats. They are independent processes. Do not run duplicate unsupervised workers accidentally. Notification tests must use fixture transports until actual test delivery is authorized.
 6. Open the bot in a **private** chat, `/start`, share the account's own contact using Telegram's button, and open the Mini App. Manual contact text, forwarded contact, another Telegram identity, expired/forged initData and ordinary website cookies must not grant access. Never use `initDataUnsafe` as proof.
 
 Changing ngrok origin requires updating both app origins and the bot menu/webhook. Restart the configured app/workers. Reopen the Mini App to obtain fresh signed launch data. Do not remove launch/contact verification to fix timeouts.
@@ -82,9 +84,9 @@ npm run admin:bootstrap -- --email owner@your-domain.example
 
 Disable bootstrap immediately afterward. The database permanently records bootstrap consumption. Verify the actual mailbox, accept the one-time 24-hour invitation, set a unique password, enroll TOTP and save the once-displayed recovery codes. Follow [the admin guide](admin-guide.md). Bootstrap, invitations, resets and email delivery must be rehearsed with a staging mailbox before production.
 
-## 6. Funding stays closed
+## 6. Controlled funding activation
 
-Check.et verifies an existing transfer; it does not collect payment. `CHECK_ET_MODE`, test/live keys and payment policy settings cannot bypass the code interlock. Do not configure a real account as a DEMO account or ask a tester to send money. Tests use mock provider responses on disposable loopback databases only.
+Check.et verifies an existing transfer; it does not collect payment. Live funding stays off by default. Activation requires the server-only `PAYMENTS_LIVE_ENABLED=true` switch, production mode, HTTPS origins, a live Check.et key, enabled reviewed receiver policies and all development/test/DEMO switches off. See [the v2 release packet](frozen-auction-v2-release.md) for the concrete Owner transfer approval gate. Do not configure a real account as a DEMO account or ask a tester to send money. Tests use mock provider responses on disposable loopback databases only.
 
 Before a controlled activation, supply exact authorized Telebirr/CBE receiver details and official evidence. Verify reference, completed transfer type, exact cents, ETB currency, receiver, timezone-bearing transfer date and official verification method. Provider `duplicate=true` requires investigation; local unique claims remain the independent ownership guard. OCR/SMS merely extract a candidate reference. Case resolution is not credit approval.
 
@@ -100,9 +102,8 @@ npm run typecheck
 npm run build
 npx playwright install chromium
 node scripts/run-db-tests.mjs smoke
-# Optional full follow-up matrix:
-# node scripts/run-db-tests.mjs browser
-# node scripts/run-db-tests.mjs payments
+node scripts/run-db-tests.mjs browser
+node scripts/run-db-tests.mjs payments
 npm audit --audit-level=low
 ```
 
@@ -110,6 +111,11 @@ Run `scripts/benchmark-catalog.ts` with explicit `DATABASE_URL`/`DIRECT_URL` for
 
 On Android and iOS Telegram record device/OS/Telegram version, network, release SHA, cold launch, warm reopen, Home, Results, bid review/receipt, wallet, notifications and navigation. Capture 360px/430px EN/AM layouts and large text. Record five runs per case, p50/p95, errors and bytes; never include signed initData, cookie, contact or private bid contents in shared traces. Test offline/retry, double submit, background/foreground and reduced motion. The Owner will supply these real-device results through ngrok; absent results remain unverified.
 
-## 8. Deferred infrastructure gates
+## 8. Infrastructure validation
 
 TLS proxy limits, public ingress rate limits, Hostinger isolation, process supervision, backup scheduling/restore drill and operational alerts are **not deployed or verified** in this work because VPS/SSH was deferred. Application body limits do not replace edge limits. Before production, cap ordinary JSON requests, allow only the documented 5 MiB receipt route and bounded admin image route, overwrite untrusted forwarding headers, restrict direct app ingress, and validate 413/429 behavior over actual TLS. Monitor pool timeouts, authentication failures, stale settlements, queue age, provider failures and reconciliation drift. Any financial drift stops activation.
+
+
+## 9. Frozen rules and service templates
+
+Follow [the versioned rollout order](frozen-auction-v2-release.md) and [isolated deployment](deployment.md). New publications use v3 after the additive cent-money migration; existing auctions retain their v1/v2 rules. Follow the [cent-money rollout and rollback limits](cent-money-v3-release.md). Stop all writers during the migration and deploy matching decimal-aware web and workers together; never run an older integer client against new fractional values. Deployment templates are prepared, not proof of installation on Hostinger.

@@ -167,7 +167,7 @@ model LedgerAccount {
   kind     String
   walletId String?
   wallet   Wallet?   @relation(fields: [walletId], references: [id], onDelete: Restrict)
-  balance  BigInt    @default(0)
+  balance  Decimal    @default(0) @db.Decimal
   postings Posting[]
 
   @@unique([walletId, kind])
@@ -190,7 +190,7 @@ model Posting {
   journal   Journal       @relation(fields: [journalId], references: [id], onDelete: Restrict)
   accountId String
   account   LedgerAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
-  delta     BigInt
+  delta     Decimal @db.Decimal
 
   @@unique([journalId, accountId])
   @@index([accountId])
@@ -275,6 +275,7 @@ model Auction {
   featured Boolean @default(false)
   isDemo Boolean @default(false)
   acceptedBidCount Int @default(0)
+  bidSequence BigInt @default(0)
   // Aggregate public impressions only. Viewer identity is never stored.
   publicViewCount BigInt @default(0)
   fulfillmentSummary String?
@@ -302,10 +303,11 @@ model AuctionTerms {
   auction Auction @relation(fields: [auctionId], references: [id], onDelete: Restrict)
   version Int @default(1)
   ruleVersion String @default("lowest-unique-v1")
-  minPoints BigInt
-  maxPoints BigInt
-  stepPoints BigInt
-  entryFeePoints BigInt @default(0)
+  minParticipants Int @default(0)
+  minPoints Decimal @db.Decimal
+  maxPoints Decimal @db.Decimal
+  stepPoints Decimal @db.Decimal
+  entryFeePoints Decimal @default(0) @db.Decimal
   maxDistinctBids Int @default(100)
   noWinnerTerms String
   cancellationTerms String
@@ -318,7 +320,7 @@ model PublicAuctionResult {
   auctionId String @unique
   auction Auction @relation(fields: [auctionId], references: [id], onDelete: Restrict)
   outcome String
-  winningPoints BigInt?
+  winningPoints Decimal? @db.Decimal
   winnerLabel String?
   explanation String
   closedAt DateTime
@@ -332,7 +334,7 @@ model AuctionHold {
   wallet    Wallet   @relation(fields: [walletId], references: [id], onDelete: Restrict)
   auctionId String
   auction   Auction  @relation(fields: [auctionId], references: [id], onDelete: Restrict)
-  points    BigInt   @default(0)
+  points    Decimal   @default(0) @db.Decimal
   updatedAt DateTime @updatedAt
 
   @@unique([walletId, auctionId])
@@ -346,15 +348,17 @@ model Bid {
   user         User      @relation(fields: [userId], references: [id], onDelete: Restrict)
   auctionId    String
   auction      Auction   @relation(fields: [auctionId], references: [id], onDelete: Restrict)
-  amount       BigInt
+  amount       Decimal @db.Decimal
   acceptedAt   DateTime  @default(dbgenerated("(clock_timestamp() AT TIME ZONE 'UTC')")) @db.Timestamp(6)
+  acceptanceOrder BigInt?
   termsVersion Int
-  feePoints    BigInt
+  feePoints    Decimal @db.Decimal
   operationId  String    @unique
   operation    Operation @relation(fields: [operationId], references: [id], onDelete: NoAction)
   winningSettlement AuctionSettlement?
 
   @@unique([userId, auctionId, amount])
+  @@unique([auctionId, acceptanceOrder])
   @@index([userId, auctionId, acceptedAt])
   @@index([auctionId, amount])
 }
@@ -367,7 +371,7 @@ model TopUpIntent {
   provider         String
   providerIntentId String?
   status           String   @default("PENDING")
-  points           BigInt
+  points           Decimal @db.Decimal
   policyVersion    String
   journalId        String?  @unique
   createdAt        DateTime @default(now())
@@ -419,7 +423,7 @@ model PaymentClaim {
   intentId String @unique
   userId String
   amountCents BigInt
-  points BigInt
+  points Decimal @db.Decimal
   receiverSuffix String
   transferredAt DateTime
   operationId String @unique
@@ -504,11 +508,14 @@ model AuctionSettlement {
   completedAt DateTime @default(dbgenerated("(clock_timestamp() AT TIME ZONE 'UTC')")) @db.Timestamp(6)
   transactionId BigInt @default(dbgenerated("txid_current()"))
   acceptedCount Int
+  decision String?
+  participantCount Int?
+  acceptanceCutoff BigInt?
   winnerUserId String?
   winner User? @relation("SettlementWinner", fields: [winnerUserId], references: [id], onDelete: Restrict)
   winningBidId String? @unique
   winningBid Bid? @relation(fields: [winningBidId], references: [id], onDelete: Restrict)
-  winningPoints BigInt?
+  winningPoints Decimal? @db.Decimal
   actorId String?
   reason String?
   key String?
@@ -527,10 +534,10 @@ model SettlementMovement {
   user User @relation(fields: [userId], references: [id], onDelete: Restrict)
   walletId String
   wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Restrict)
-  holdBefore BigInt
-  chargedPoints BigInt
-  releasedPoints BigInt
-  refundedFees BigInt
+  holdBefore Decimal @db.Decimal
+  chargedPoints Decimal @db.Decimal
+  releasedPoints Decimal @db.Decimal
+  refundedFees Decimal @db.Decimal
   chargeOperationId String? @unique
   chargeOperation Operation? @relation("SettlementCharge", fields: [chargeOperationId], references: [id], onDelete: Restrict)
   releaseOperationId String? @unique

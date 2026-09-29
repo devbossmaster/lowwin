@@ -12,12 +12,12 @@ const env = { APP_ENV:'local', DATABASE_URL:database, DIRECT_URL:database,
   DEV_IDENTITY_ENABLED:'true', DEV_IDENTITY_ACCESS_KEY:LOCAL_ACCESS_KEY, DEV_POINTS_ENABLED:'false',
   WALLET_TEST_PREVIEW:'true',ADMIN_MFA_KEY:'b'.repeat(64),EMAIL_TRANSPORT:'local-sink',EMAIL_SINK_URL:'http://127.0.0.1:8027',
 };
-export default defineConfig({
-  testDir:'./tests/browser', workers:1, timeout:60000, use:{baseURL:'http://localhost:3107',browserName:'chromium'},
+export default defineConfig({outputDir:'test-results/full-browser',
+  testDir:'./tests/browser', workers:1, expect:{timeout:20000}, timeout:120000, use:{baseURL:'http://localhost:3107',browserName:'chromium'},
   webServer:[
-    {command:'npm run email:sink',url:'http://127.0.0.1:8027/health',reuseExistingServer:false,timeout:30000},
-    {command:'npm run dev -- --hostname 127.0.0.1 --port 3107',url:'http://localhost:3107',reuseExistingServer:false,timeout:120000,env:{...env,LOWIN_UI_TEST_MODE:'local',BETTER_AUTH_URL:'http://localhost:3107',MINI_APP_URL:'http://localhost:3107'}},
-    {command:'npm run dev -- --hostname 127.0.0.1 --port 3108',url:'http://localhost:3108',reuseExistingServer:false,timeout:120000,env:{...env,LOWIN_UI_TEST_MODE:'tunnel',BETTER_AUTH_URL:'https://lowin.ngrok-free.app',MINI_APP_URL:'https://lowin.ngrok-free.app'}},
+    {command:'node --import tsx scripts/email-sink.ts',url:'http://127.0.0.1:8027/health',reuseExistingServer:false,timeout:30000},
+    {command:'node node_modules/next/dist/bin/next dev --hostname 127.0.0.1 --port 3107',url:'http://localhost:3107/api/health/live',reuseExistingServer:false,timeout:120000,env:{...env,LOWIN_UI_TEST_MODE:'local',BETTER_AUTH_URL:'http://localhost:3107',MINI_APP_URL:'http://localhost:3107'}},
+    {command:'node node_modules/next/dist/bin/next dev --hostname 127.0.0.1 --port 3108',url:'http://localhost:3108/api/health/live',reuseExistingServer:false,timeout:120000,env:{...env,LOWIN_UI_TEST_MODE:'tunnel',BETTER_AUTH_URL:'https://lowin.ngrok-free.app',MINI_APP_URL:'https://lowin.ngrok-free.app'}},
   ],
   projects:[{name:'mobile-360',testIgnore:'**/admin.spec.ts',use:{viewport:{width:360,height:800}}},{name:'mobile-430',testIgnore:'**/admin.spec.ts',use:{viewport:{width:430,height:932}}},{name:'admin-laptop',testMatch:'**/admin.spec.ts',use:{viewport:{width:1366,height:900}}},{name:'admin-tablet',testMatch:'**/admin.spec.ts',use:{viewport:{width:834,height:1112}}}],
 });

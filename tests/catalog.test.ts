@@ -1,3 +1,4 @@
+import {Prisma as MoneyPrisma} from '@prisma/client';
 import { afterAll,beforeAll,describe,expect,it } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { execFileSync } from 'node:child_process';
@@ -73,7 +74,7 @@ describe.skipIf(!testUrl)('public catalog on disposable PostgreSQL',()=>{
   });
   it('keeps published terms immutable and demo results explicit',async()=>{
     const row=await client.auction.findUniqueOrThrow({where:{code:'DEMO-FUR-001'},include:{terms:true}});
-    await expect(client.auctionTerms.update({where:{id:row.terms!.id},data:{entryFeePoints:1n}})).rejects.toThrow();
+    await expect(client.auctionTerms.update({where:{id:row.terms!.id},data:{entryFeePoints:new MoneyPrisma.Decimal("1")}})).rejects.toThrow();
     const results=await catalog.listResults();
     expect(results.total).toBe(3);
     expect(results.items.every(item=>item.result?.isDemo&&item.result.explanation.includes('DEMO'))).toBe(true);

@@ -1,3 +1,4 @@
+import {Prisma as MoneyPrisma} from '@prisma/client';
 import {verifyFixtureContact} from './contact-fixtures';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '@prisma/client';
@@ -40,7 +41,7 @@ describe.skipIf(!testUrl)('isolated PostgreSQL foundation', () => {
   });
   it('serializes concurrent wallet operations without lost projection updates',async()=>{
     await Promise.all(Array.from({length:6},(_,i)=>creditDevelopmentPoints(client,userId,'10',`parallel-seed-${i}`)));
-    expect((await client.ledgerAccount.findUniqueOrThrow({where:{name:`user:${userId}:available`}})).balance).toBe(1060n);
+    expect((await client.ledgerAccount.findUniqueOrThrow({where:{name:`user:${userId}:available`}})).balance?.toString()).toBe("1060");
     expect(await reconcile(client)).toEqual([]);
   });
   it('serializes concurrent retries into one journal',async()=>{
@@ -53,7 +54,7 @@ describe.skipIf(!testUrl)('isolated PostgreSQL foundation', () => {
       const op = await tx.operation.create({data:{userId,scope:'TEST',key:randomUUID(),requestHash:'test',result:{}}});
       const available = await tx.ledgerAccount.findUniqueOrThrow({where:{name:`user:${userId}:available`}});
       const issuance = await tx.ledgerAccount.findUniqueOrThrow({where:{name:'platform:issuance'}});
-      return tx.journal.create({data:{operationId:op.id,kind:'TEST',reference:'invariant-test',postings:{create:deltas.map((delta,i)=>({accountId:i===0?available.id:issuance.id,delta}))}}});
+      return tx.journal.create({data:{operationId:op.id,kind:'TEST',reference:'invariant-test',postings:{create:deltas.map((delta,i)=>({accountId:i===0?available.id:issuance.id,delta:delta.toString()}))}}});
     });
   }
   it('rejects an unbalanced journal, including an empty journal',async()=>{
@@ -66,19 +67,19 @@ describe.skipIf(!testUrl)('isolated PostgreSQL foundation', () => {
     const op = await client.operation.findFirstOrThrow({where:{userId}});
     const journal = await client.journal.findUniqueOrThrow({where:{operationId:op.id}});
     const posting = await client.posting.findFirstOrThrow({where:{journalId:journal.id}});
-    await expect(client.posting.update({where:{id:posting.id},data:{delta:99n}})).rejects.toThrow();
+    await expect(client.posting.update({where:{id:posting.id},data:{delta:new MoneyPrisma.Decimal("99")}})).rejects.toThrow();
     await expect(client.posting.delete({where:{id:posting.id}})).rejects.toThrow();
     await expect(client.journal.update({where:{id:journal.id},data:{reference:'edited'}})).rejects.toThrow();
     await expect(client.operation.update({where:{id:op.id},data:{result:{changed:true}}})).rejects.toThrow();
-    await expect(client.ledgerAccount.update({where:{id:posting.accountId},data:{balance:99999n}})).rejects.toThrow();
+    await expect(client.ledgerAccount.update({where:{id:posting.accountId},data:{balance:new MoneyPrisma.Decimal("99999")}})).rejects.toThrow();
     const held = await client.ledgerAccount.findUniqueOrThrow({where:{name:`user:${userId}:held`}});
-    await expect(client.posting.create({data:{journalId:journal.id,accountId:held.id,delta:1n}})).rejects.toThrow();
+    await expect(client.posting.create({data:{journalId:journal.id,accountId:held.id,delta:new MoneyPrisma.Decimal("1")}})).rejects.toThrow();
   });
   it('enforces wallet ownership and nonnegative holds',async()=>{
     const wallet = await client.$transaction(tx=>ensureWallet(tx,userId));
     await expect(client.wallet.create({data:{userId}})).rejects.toThrow();
     const auction = await client.auction.create({data:{code:randomUUID()}});
-    await expect(client.auctionHold.create({data:{walletId:wallet.id,auctionId:auction.id,points:-1n}})).rejects.toThrow();
+    await expect(client.auctionHold.create({data:{walletId:wallet.id,auctionId:auction.id,points:new MoneyPrisma.Decimal("-1")}})).rejects.toThrow();
   });
   it('accepts duplicate webhook retries once and rejects a wrong secret',async()=>{
     const updateId = Math.floor(Math.random()*1000000000);

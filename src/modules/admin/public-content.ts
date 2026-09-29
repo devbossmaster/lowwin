@@ -1,7 +1,7 @@
 import {z} from 'zod';
 import {db} from '@/lib/db';
 const home=z.object({headline:z.string().max(90),lead:z.string().max(350),headlineAm:z.string().max(90).optional(),leadAm:z.string().max(350).optional()});
-const faq=z.object({items:z.array(z.object({question:z.string().max(160),answer:z.string().max(1500)})).max(30)});
+const faq=z.object({items:z.array(z.object({question:z.string().max(160),answer:z.string().max(1500),questionAm:z.string().max(160).optional(),answerAm:z.string().max(1500).optional()})).max(30)});
 async function content(id:'home'|'faq'){
  try{return await db.siteContent.findUnique({where:{id},select:{body:true}})}catch(error){
   // Public browsing must remain compatible with a database that has not received
@@ -13,4 +13,4 @@ async function content(id:'home'|'faq'){
 }
 const brandCopy=(value:string)=>value.replace(/\bLowin\b/g,'Lowwin');
 export async function publicHomeContent(){const row=await content('home');const parsed=home.safeParse(row?.body);return parsed.success?{...parsed.data,headline:brandCopy(parsed.data.headline),lead:brandCopy(parsed.data.lead)}:null}
-export async function publicFaqContent(){const row=await content('faq');const parsed=faq.safeParse(row?.body);return parsed.success?parsed.data.items.map(item=>({question:brandCopy(item.question),answer:brandCopy(item.answer)})):[]}
+export async function publicFaqContent(){const row=await content('faq');const parsed=faq.safeParse(row?.body);return parsed.success?parsed.data.items.map(item=>({...item,question:brandCopy(item.question),answer:brandCopy(item.answer)})):[]}

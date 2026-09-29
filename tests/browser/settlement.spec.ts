@@ -12,8 +12,8 @@ test('closing and cancelled states stay truthful at mobile widths',async({page},
   try {
     const closing=await bidAuction(client,{endDelayMs:-1000});
     await page.goto(`/auctions/${closing.slug}`);
-    await expect(page.locator('.countdown-panel')).toContainText('Closing / result pending');
-    await expect(page.locator('.result-box')).toHaveCount(0);
+    await expect(page.getByRole('region',{name:'Auction activity'})).toContainText('Result pending');
+    await expect(page.getByRole('link',{name:'View result',exact:true})).toHaveCount(0);
     await expect(page.getByText('Opening your Lowwin…')).toBeHidden({timeout:20000});
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
     await page.screenshot({path:`docs/screenshots/settlement-closing-${testInfo.project.name}.png`,fullPage:true});
@@ -21,8 +21,8 @@ test('closing and cancelled states stay truthful at mobile widths',async({page},
     const cancelled=await bidAuction(client);
     await cancelAuction(client,{auctionId:cancelled.id,actor:{id:'browser-test-owner',permission:'auction:cancel'},reason:'DEMO mobile fixture',key:randomUUID()},raw);
     await page.goto(`/auctions/${cancelled.slug}`);
-    await expect(page.locator('.countdown-panel')).toContainText('Holds and entry fees returned');
-    await expect(page.locator('.result-box')).toContainText('Cancelled');
+    await expect(page.getByRole('region',{name:'Auction activity'})).toContainText('Auction cancelled');await expect(page.getByText(/all.*entry fees|entry fees.*refund/i).first()).toBeVisible();
+    await expect(page.getByRole('heading',{name:'Cancelled',exact:true})).toBeVisible();
     await expect(page.getByText('Opening your Lowwin…')).toBeHidden({timeout:20000});
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
     await page.screenshot({path:`docs/screenshots/settlement-cancelled-${testInfo.project.name}.png`,fullPage:true});

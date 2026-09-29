@@ -68,7 +68,7 @@ Winners submit a separate delivery contact in **Winning Bids**. Owner assigns th
 
 ## Notifications and jobs
 
-`/admin/notifications` and `/admin/jobs` expose durable delivery state and failures. Players choose notification preferences; Telegram delivery requires their opt-in and a private chat they initiated. Owner retry requires an investigation reason. Retry delivery only, never the associated bid/settlement command. Telegram may duplicate a message after a crash between send and commit, while financial facts remain idempotent. Do not send broadcasts as a connectivity test.
+`/admin/notifications` and `/admin/jobs` expose durable delivery state and failures. Telegram delivery requires a private bot chat the player initiated. Player notification switches have been removed; blocked chats are respected. Owner retry requires an investigation reason. Retry delivery only, never the associated bid/settlement command. Telegram may duplicate a message after a crash between send and commit, while financial facts remain idempotent. Do not send broadcasts as a connectivity test.
 
 ## Common errors and response
 
@@ -90,3 +90,19 @@ Winners submit a separate delivery contact in **Winning Bids**. Owner assigns th
 Reference captures: [payment queue](screenshots/phase6-top-ups-admin-laptop.png), [payment settings](screenshots/phase6-payment-settings-admin-laptop.png), [statements](screenshots/phase6-payment-statements-admin-laptop.png). They are historical fixture captures, not proof of current production state; route/control names above are the authoritative guide.
 
 Publication, cancellation, accepted bids, posted journals, transfer claims, settlement proofs, immutable policy versions and audit records cannot be rewritten through the application. Invitations/recovery codes are one-time; the last Owner is protected. Back up database **and** encryption key versions, perform a separate restore/reconciliation drill, and record the reviewed release SHA. See the current release packet for verified checks and outstanding GO/NO-GO gates.
+
+
+## New publications: frozen rule v3
+
+Publication preflight now displays the two-person minimum and first-accepted fallback. Two bids by one user do not meet the minimum. Below two eligible participants at the deadline, the worker cancels and refunds every fee and hold; staff do not need to issue manual credits. Otherwise the lowest unique amount wins. Only without any unique amount does the earliest database-accepted bid at the lowest amount win. Staff cannot select or replace a winner.
+
+Results review records `decision`, `participantCount`, `acceptanceCutoff`, amount frequencies, selected acceptance order and financial journal references. Use the immutable proof to investigate; use retry only for failed closing work. `FIRST_ACCEPTED_LOWEST` is not a unique bid. `MINIMUM_PARTICIPANTS` is a cancelled auction with all fees refunded. Existing v1/v2 terms and outcomes remain unchanged. New v3 publications additionally require a minimum bid of ETB 1.00, a step of ETB 0.01, and at most three adjacent cent amounts per participant. The database rejects a fourth adjacent amount, even when submitted out of order. See the [release/Owner review packet](frozen-auction-v2-release.md) for examples, rollout and rollback limits.
+
+
+## Automatic alerts and Owner broadcasts
+
+There are four automatic Telegram events: a published auction (draft products send nothing), less than 24 hours remaining (once per auction), auction completion/result including cancellation, and a verified credited deposit (only its depositor). Auction events reach all linked player accounts with an available private bot chat; staff are excluded. Private bid/fulfillment receipts remain in the in-app inbox, without additional Telegram messages. Every Telegram message includes the player's name and a **Bid** button. Auction messages link to that auction; deposit/general messages link to all auctions. Result messages also include the public result link. No active bid amounts or private proofs are broadcast.
+
+At `/admin/notifications`, the Owner can compose an informative message, optionally use `{name}`, upload a JPEG/PNG/WebP image up to 2 MiB with confirmed usage rights, and optionally enter an active public auction code. Preview, then choose **Queue broadcast**. This requires fresh MFA and is audited; reusing the same request safely returns the same queue receipt. The audience count is linked accounts, not guaranteed delivery: unstarted or blocked chats are skipped. Queued delivery is performed by the notification worker. Delivered messages cannot be recalled. Recheck the private job queue before retrying failures. Never use a real broadcast to test connectivity.
+
+See [cent-money v3 rollout](cent-money-v3-release.md) before deploying this version. Do not mix old integer clients with decimal-aware processes.

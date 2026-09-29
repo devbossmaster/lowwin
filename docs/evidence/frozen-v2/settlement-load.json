@@ -1,0 +1,30 @@
+{
+  "at": "2026-09-29T06:18:35.454Z",
+  "target": "loopback PostgreSQL; DEMO fixtures; service calls, not HTTP or Telegram",
+  "results": [
+    {
+      "ruleVersion": "lowest-unique-v1",
+      "participants": 100,
+      "concurrency": 5,
+      "poolLimit": 5,
+      "bidWallMs": 6300,
+      "bidP50Ms": 285.23,
+      "bidP95Ms": 520.62,
+      "settlementMs": 3822,
+      "idempotentRetryMs": 15,
+      "drift": 0
+    },
+    {
+      "ruleVersion": "lowest-unique-v2",
+      "participants": 100,
+      "concurrency": 5,
+      "poolLimit": 5,
+      "bidWallMs": 5908,
+      "bidP50Ms": 258.78,
+      "bidP95Ms": 494.62,
+      "settlementMs": 5956,
+      "idempotentRetryMs": 18,
+      "drift": 0
+    }
+  ]
+}

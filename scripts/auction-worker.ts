@@ -1,7 +1,8 @@
 import 'dotenv/config';
 import { setTimeout } from 'node:timers/promises';
-import { db } from '../src/lib/db';
-import { processDueAuction } from '../src/modules/auctions/settlement';
+// Serial worker: reserve one pool connection, leaving capacity for web sign-in.
+if(process.env.DATABASE_URL){const url=new URL(process.env.DATABASE_URL);url.searchParams.set('connection_limit','1');url.searchParams.set('pool_timeout','20');process.env.DATABASE_URL=url.toString()}
+const [{db},{processDueAuction}]=await Promise.all([import('../src/lib/db'),import('../src/modules/auctions/settlement')]);
 
 let running=true;
 process.on('SIGTERM',()=>{running=false});process.on('SIGINT',()=>{running=false});

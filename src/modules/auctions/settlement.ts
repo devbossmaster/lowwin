@@ -1,3 +1,4 @@
+import {RULE_V1,RULE_V2,RULE_V3} from './rules';
 import {materializeAlert} from '../notifications/service';
 import { createHash,randomUUID } from 'node:crypto';
 import { Prisma,type PrismaClient } from '@prisma/client';
@@ -37,29 +38,35 @@ async function completeLocked(tx:Prisma.TransactionClient,auctionId:string,cance
   if(!auction.publishedAt||auction.publishedAt>now||!['LIVE','SCHEDULED'].includes(auction.status)||!auction.endsAt||!auction.terms)throw new SettlementError('AUCTION_NOT_SETTLEABLE');
   if(auction.isDemo&&(!auction.isSettlementFixture||!(demoBidAllowed(raw)||stagingDemoEnabled(raw))))throw new SettlementError('DEMO_SETTLEMENT_FORBIDDEN');
   if(!cancellation&&auction.endsAt>now)throw new SettlementError('NOT_DUE');
-  if(auction.terms.ruleVersion!=='lowest-unique-v1')throw new SettlementError('UNSUPPORTED_RULE');
+  if(![RULE_V1,RULE_V2,RULE_V3].includes(auction.terms.ruleVersion))throw new SettlementError('UNSUPPORTED_RULE');
 
-  const bids=await tx.bid.findMany({where:{auctionId,acceptedAt:{lt:auction.endsAt}},orderBy:[{amount:'asc'},{id:'asc'}],include:{operation:{include:{journal:{include:{postings:{include:{account:true}}}}}}}});
+  const bids=await tx.bid.findMany({where:{auctionId,acceptedAt:{lt:auction.endsAt}},orderBy:[{amount:'asc'},{acceptanceOrder:'asc'},{id:'asc'}],include:{operation:{include:{journal:{include:{postings:{include:{account:true}}}}}}}});
   if(bids.length!==auction.acceptedBidCount)throw new SettlementError('ACCEPTED_COUNT_MISMATCH');
   const frequencies:{amount:string;count:number}[]=[];
   const amounts=new Map<string,typeof bids>();
-  const feesByUser=new Map<string,{points:bigint;journalIds:string[]}>();
+  const feesByUser=new Map<string,{points:Prisma.Decimal;journalIds:string[]}>();
   for(const bid of bids){
     const amount=bid.amount.toString(),same=amounts.get(amount)??[];same.push(bid);amounts.set(amount,same);
-    if(bid.termsVersion!==auction.terms.version||bid.feePoints!==auction.terms.entryFeePoints)throw new SettlementError('BID_TERMS_MISMATCH');
+    if(bid.termsVersion!==auction.terms.version||!bid.feePoints.eq(auction.terms.entryFeePoints))throw new SettlementError('BID_TERMS_MISMATCH');
     const journal=bid.operation.journal;
     if(bid.operation.userId!==bid.userId||bid.operation.scope!=='BID')throw new SettlementError('BID_OPERATION_MISMATCH');
-    if(bid.feePoints>0n){
+    if(bid.feePoints.gt(0)){
       if(!journal||journal.kind!=='BID_FEE'||journal.postings.length!==2
-        ||!journal.postings.some(p=>p.account.name==='platform:fees'&&p.delta===bid.feePoints)
-        ||!journal.postings.some(p=>p.account.name===`user:${bid.userId}:available`&&p.delta===-bid.feePoints))throw new SettlementError('BID_FEE_MISMATCH');
+        ||!journal.postings.some(p=>p.account.name==='platform:fees'&&p.delta.eq(bid.feePoints))
+        ||!journal.postings.some(p=>p.account.name===`user:${bid.userId}:available`&&p.delta.eq(bid.feePoints.negated())))throw new SettlementError('BID_FEE_MISMATCH');
     }else if(journal)throw new SettlementError('BID_FEE_MISMATCH');
-    const fees=feesByUser.get(bid.userId)??{points:0n,journalIds:[]};fees.points+=bid.feePoints;if(journal)fees.journalIds.push(journal.id);feesByUser.set(bid.userId,fees);
+    const fees=feesByUser.get(bid.userId)??{points:new Prisma.Decimal(0),journalIds:[]};fees.points=fees.points.add(bid.feePoints);if(journal)fees.journalIds.push(journal.id);feesByUser.set(bid.userId,fees);
   }
   for(const [amount,rows] of amounts)frequencies.push({amount,count:rows.length});
   const unique=frequencies.find(item=>item.count===1);
-  const winner=!cancellation&&unique?amounts.get(unique.amount)![0]:null;
-  const outcome=cancellation?'CANCELLED':winner?'WINNER':'NO_WINNER';
+  const v2=[RULE_V2,RULE_V3].includes(auction.terms.ruleVersion);
+  const participantCount=new Set(bids.map(bid=>bid.userId)).size;
+  const minimumCancellation=v2&&!cancellation&&participantCount<auction.terms.minParticipants;
+  const cancelled=!!cancellation||minimumCancellation;
+  if(v2&&(auction.terms.minParticipants!==2||bids.some(bid=>bid.acceptanceOrder===null)||auction.bidSequence!==BigInt(bids.length)))throw new SettlementError('ACCEPTANCE_ORDER_MISMATCH');
+  const winner=cancelled?null:unique?amounts.get(unique.amount)![0]:v2?bids[0]??null:null;
+  const decision=cancellation?'OWNER_CANCELLED':minimumCancellation?'MINIMUM_PARTICIPANTS':unique?'LOWEST_UNIQUE':'FIRST_ACCEPTED_LOWEST';
+  const outcome=cancelled?'CANCELLED':winner?'WINNER':'NO_WINNER';
   const holds=await tx.auctionHold.findMany({where:{auctionId},include:{wallet:true}});
   const userIds=[...new Set([...bids.map(b=>b.userId),...holds.map(h=>h.wallet.userId)])].sort();
   for(const userId of userIds)await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`},0))`;
@@ -70,22 +77,27 @@ async function completeLocked(tx:Prisma.TransactionClient,auctionId:string,cance
   await seedPlatformAccounts(tx);
   const settlementId=randomUUID(),movements=[];
   for(const userId of userIds){
-    const fees=feesByUser.get(userId)??{points:0n,journalIds:[]};
-    movements.push(await settleWalletInTransaction(tx,{settlementId,auctionId,userId,charge:winner?.userId===userId?winner.amount:0n,refund:cancellation?fees.points:0n,feeJournalIds:fees.journalIds}));
+    const fees=feesByUser.get(userId)??{points:new Prisma.Decimal(0),journalIds:[]};
+    movements.push(await settleWalletInTransaction(tx,{settlementId,auctionId,userId,charge:winner?.userId===userId?winner.amount:new Prisma.Decimal(0),refund:cancelled?fees.points:new Prisma.Decimal(0),feeJournalIds:fees.journalIds}));
   }
-  const references=movements.map(m=>({...m,holdBefore:m.holdBefore.toString(),chargedPoints:m.chargedPoints.toString(),releasedPoints:m.releasedPoints.toString(),refundedFees:m.refundedFees.toString(),feeJournalIds:feesByUser.get(m.userId)?.journalIds??[]}));
+  const journalRows=v2?await tx.journal.findMany({where:{operationId:{in:movements.flatMap(m=>[m.chargeOperationId,m.releaseOperationId,m.refundOperationId].filter((id):id is string=>!!id))}},select:{id:true,operationId:true}}):[];
+  const journals=new Map(journalRows.map(j=>[j.operationId,j.id]));
+  const references=movements.map(m=>({...m,holdBefore:m.holdBefore.toString(),chargedPoints:m.chargedPoints.toString(),releasedPoints:m.releasedPoints.toString(),refundedFees:m.refundedFees.toString(),feeJournalIds:v2?[...(feesByUser.get(m.userId)?.journalIds??[])].sort():(feesByUser.get(m.userId)?.journalIds??[]),...(v2?{chargeJournalId:journals.get(m.chargeOperationId!)??null,releaseJournalId:journals.get(m.releaseOperationId!)??null,refundJournalId:journals.get(m.refundOperationId!)??null}:{})}));
   const proof={ruleVersion:auction.terms.ruleVersion,termsVersion:auction.terms.version,cutoff:auction.endsAt.toISOString(),acceptedCount:bids.length,amountFrequencies:frequencies,outcome,
-    winner:winner?{userId:winner.userId,bidId:winner.id,amount:winner.amount.toString()}:null,
-    feePolicy:cancellation?'REFUND_ALL_ENTRY_FEES':'KEEP_DISCLOSED_ENTRY_FEES',settlementId,references,
+    winner:winner?{userId:winner.userId,bidId:winner.id,amount:winner.amount.toString(),...(v2?{acceptanceOrder:winner.acceptanceOrder!.toString()}:{})}:null,
+    ...(v2?{minParticipants:auction.terms.minParticipants,participantCount,acceptanceCutoff:auction.bidSequence.toString(),decision}:{}),
+    ...(auction.terms.ruleVersion===RULE_V3?{amountPolicy:{currency:'ETB',minimum:'1',step:'0.01',maxDecimalPlaces:2,maxConsecutive:3}}:{}),
+    feePolicy:cancelled?'REFUND_ALL_ENTRY_FEES':'KEEP_DISCLOSED_ENTRY_FEES',settlementId,references,
     cancellation:cancellation?{actorId:cancellation.actor.id,reason:cancellation.reason,key:cancellation.key}:null};
-  await tx.auction.update({where:{id:auctionId},data:{status:cancellation?'CANCELLED':'CLOSED',nextCloseAttemptAt:null,closeErrorCode:null}});
+  await tx.auction.update({where:{id:auctionId},data:{status:cancelled?'CANCELLED':'CLOSED',nextCloseAttemptAt:null,closeErrorCode:null}});
   const settled=await tx.auctionSettlement.create({data:{id:settlementId,auctionId,outcome,ruleVersion:auction.terms.ruleVersion,termsVersion:auction.terms.version,cutoff:auction.endsAt,acceptedCount:bids.length,
     winnerUserId:winner?.userId,winningBidId:winner?.id,winningPoints:winner?.amount,
-    actorId:cancellation?.actor.id,reason:cancellation?.reason,key:cancellation?.key,requestHash,proof,
+    ...(v2?{decision,participantCount,acceptanceCutoff:auction.bidSequence}:{}),
+    actorId:cancellation?.actor.id,reason:minimumCancellation?'MINIMUM_PARTICIPANTS':cancellation?.reason,key:cancellation?.key,requestHash,proof,
     movements:{create:movements},
     // No amounts, frequencies, names, Telegram IDs or winning guesses in intents.
     // Phase 5 resolves recipient preferences and performs external delivery.
-    outbox:{create:[{key:`settlement:${settlementId}:completed`,kind:'AUCTION_FINALIZED',payload:{auctionId,settlementId,outcome}},...userIds.map(userId=>({key:`settlement:${settlementId}:user:${userId}`,kind:cancellation?'AUCTION_CANCELLED':'AUCTION_CLOSED',payload:{auctionId,settlementId,recipientUserId:userId}}))]},
+    outbox:{create:[{key:`settlement:${settlementId}:completed`,kind:'AUCTION_FINALIZED',payload:{auctionId,settlementId,outcome}},...userIds.map(userId=>({key:`settlement:${settlementId}:user:${userId}`,kind:cancelled?'AUCTION_CANCELLED':'AUCTION_CLOSED',payload:{auctionId,settlementId,recipientUserId:userId}}))]},
   },include:settlementInclude});
   for(const row of await tx.outbox.findMany({where:{settlementId:settled.id}}))await materializeAlert(tx,row);
   return settled;

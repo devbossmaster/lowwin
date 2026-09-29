@@ -1,5 +1,6 @@
 import type { NextConfig } from 'next';
 const config: NextConfig = {
+  async redirects(){return [{source:'/:path*',has:[{type:'host' as const,value:'www.lowwin.shop'}],destination:'https://lowwin.shop/:path*',permanent:true}]},
   allowedDevOrigins: ['unpurged-nickolas-unlevelly.ngrok-free.dev'],
   // Isolate browser-test servers from the owner's running development app.
   distDir: process.env.LOWIN_UI_TEST_MODE === 'payments' ? '.next-ui-payments' : process.env.LOWIN_UI_TEST_MODE === 'local' ? '.next-ui-local' : process.env.LOWIN_UI_TEST_MODE === 'tunnel' ? '.next-ui-tunnel' : '.next',

@@ -1,2 +1,14 @@
-export const AUCTION_RULES = { version: 'lowest-unique-v1', maxDistinctBids: 100, defaultEntryFeePoints: 0 } as const;
-// Actual mutation and settlement commands are intentionally deferred to Phases 3 and 4.
+export const RULE_V1='lowest-unique-v1';
+export const RULE_V2='lowest-unique-v2';
+export const RULE_V3='lowest-unique-v3';
+export const V3_AMOUNT_TERMS='Minimum bid ETB 1.00. Amounts accept at most two decimal places. A participant cannot hold four adjacent cent amounts in the same auction, regardless of submission order: after 1.01, 1.02 and 1.03, skip 1.04; 1.05 is allowed. The 100 distinct-bid limit applies.';
+export const V2_MIN_PARTICIPANTS=2;
+export const V2_FALLBACK_TERMS='At least two distinct eligible participants must have accepted bids. The lowest unique accepted amount wins. Only if no amount is unique, the lowest submitted amount wins for the participant whose bid at that amount PostgreSQL accepted first, using immutable per-auction acceptance order.';
+export const V2_CANCELLATION_TERMS='If fewer than two distinct eligible participants have accepted bids at the published deadline, including no bids, the auction is automatically cancelled. Every charged entry fee is refunded and every hold is released. Any other cancellation also refunds all entry fees and releases all holds.';
+export function resultExplanation(outcome:string,decision?:string|null){
+ if(decision==='MINIMUM_PARTICIPANTS')return 'Fewer than two distinct eligible participants had accepted bids at the deadline. The auction was automatically cancelled; all entry fees were refunded and all holds released.';
+ if(decision==='FIRST_ACCEPTED_LOWEST')return 'No accepted amount was unique. The lowest submitted amount won for the participant whose bid at that amount PostgreSQL accepted first. Unused holds were released; disclosed entry fees were retained.';
+ if(outcome==='WINNER')return 'The winning ETB amount was the smallest amount accepted exactly once. All other holds were released.';
+ if(outcome==='NO_WINNER')return 'No accepted amount was unique. All holds were released; disclosed entry fees were retained.';
+ return 'The auction was cancelled before settlement. All holds and charged entry fees were returned.';
+}

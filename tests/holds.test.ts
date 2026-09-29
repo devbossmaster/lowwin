@@ -1,3 +1,4 @@
+import {Prisma as MoneyPrisma} from '@prisma/client';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
@@ -31,17 +32,17 @@ describe.skipIf(!url)('database-enforced auction holds', () => {
   const command = (direction: 'RESERVE' | 'RELEASE', points: string, key = randomUUID(), auction = auctionId) => ({ userId, auctionId: auction, direction, points, key, reference: 'phase-1.5-fixture' });
   async function balances() {
     const accounts = await db.ledgerAccount.findMany({ where: { walletId } });
-    return { available: accounts.find(a=>a.kind==='AVAILABLE')!.balance, held: accounts.find(a=>a.kind==='HELD')!.balance };
+    return { available: BigInt(accounts.find(a=>a.kind==='AVAILABLE')!.balance.toString()), held: BigInt(accounts.find(a=>a.kind==='HELD')!.balance.toString()) };
   }
   async function rawTransfer(tx: Prisma.TransactionClient, delta: bigint) {
     const op = await tx.operation.create({ data: { userId, scope: 'RAW_HOLD_TEST', key: randomUUID(), requestHash: 'fixture', result: {} } });
-    await tx.journal.create({ data: { operationId: op.id, kind: 'HOLD_TEST', reference: auctionId, postings: { create: [{ accountId: availableId, delta: -delta }, { accountId: heldId, delta }] } } });
+    await tx.journal.create({ data: { operationId: op.id, kind: 'HOLD_TEST', reference: auctionId, postings: { create: [{ accountId: availableId, delta: (-delta).toString() }, { accountId: heldId, delta:delta.toString() }] } } });
   }
 
   it('rejects an unmatched positive hold at commit', async () => {
     let reachedCommit = false;
     await expect(db.$transaction(async tx => {
-      await tx.auctionHold.create({ data: { walletId, auctionId, points: 10n } });
+      await tx.auctionHold.create({ data: { walletId, auctionId, points: new MoneyPrisma.Decimal("10") } });
       reachedCommit = true;
     })).rejects.toThrow(/HELD balance/);
     expect(reachedCommit).toBe(true);
@@ -56,21 +57,21 @@ describe.skipIf(!url)('database-enforced auction holds', () => {
     expect(await db.operation.count({ where: { userId, scope: 'RAW_HOLD_TEST' } })).toBe(0);
   });
   it('keeps zero holds valid, but checks later changes in the same transaction', async () => {
-    const zero = await db.auctionHold.create({ data: { walletId, auctionId, points: 0n } });
+    const zero = await db.auctionHold.create({ data: { walletId, auctionId, points: new MoneyPrisma.Decimal("0") } });
     await expect(db.$transaction(async tx => {
-      await tx.auctionHold.update({ where: { id: zero.id }, data: { points: 0n } });
-      await tx.auctionHold.update({ where: { id: zero.id }, data: { points: 1n } });
+      await tx.auctionHold.update({ where: { id: zero.id }, data: { points: new MoneyPrisma.Decimal("0") } });
+      await tx.auctionHold.update({ where: { id: zero.id }, data: { points: new MoneyPrisma.Decimal("1") } });
     })).rejects.toThrow(/HELD balance/);
     await expect(db.$transaction(async tx => {
-      const hold = await tx.auctionHold.create({ data: { walletId, auctionId: otherAuctionId, points: 0n } });
-      await tx.auctionHold.update({ where: { id: hold.id }, data: { points: 1n } });
+      const hold = await tx.auctionHold.create({ data: { walletId, auctionId: otherAuctionId, points: new MoneyPrisma.Decimal("0") } });
+      await tx.auctionHold.update({ where: { id: hold.id }, data: { points: new MoneyPrisma.Decimal("1") } });
     })).rejects.toThrow(/HELD balance/);
     expect(await reconcile(db)).toEqual([]);
   });
   it.each(['hold-first','posting-first'])('allows matching transfers in either order: %s', async order => {
     await db.$transaction(async tx => {
       if (order === 'posting-first') await rawTransfer(tx, 50n);
-      await tx.auctionHold.create({ data: { walletId, auctionId, points: 50n } });
+      await tx.auctionHold.create({ data: { walletId, auctionId, points: new MoneyPrisma.Decimal("50") } });
       if (order === 'hold-first') await rawTransfer(tx, 50n);
     });
     expect(await balances()).toEqual({ available: 950n, held: 50n });
@@ -86,8 +87,8 @@ describe.skipIf(!url)('database-enforced auction holds', () => {
     expect(await balances()).toEqual({ available: 1000n, held: 0n });
     const ops = await db.operation.findMany({ where: { userId, scope: 'HOLD_ADJUST' }, include: { journal: { include: { postings: true } } } });
     expect(ops).toHaveLength(5);
-    for (const op of ops) { expect(op.journal?.postings).toHaveLength(2); expect(op.journal!.postings.reduce((sum,p)=>sum+p.delta,0n)).toBe(0n); expect(op.journal!.reference).toContain('holdId'); }
-    expect(await db.auctionHold.count({ where: { walletId, points: 0n } })).toBe(2);
+    for (const op of ops) { expect(op.journal?.postings).toHaveLength(2); expect(op.journal!.postings.reduce((sum,p)=>sum+BigInt(p.delta.toString()),0n)).toBe(0n); expect(op.journal!.reference).toContain('holdId'); }
+    expect(await db.auctionHold.count({ where: { walletId, points: new MoneyPrisma.Decimal("0") } })).toBe(2);
     expect(await reconcile(db)).toEqual([]);
   });
   it('rolls back the operation and journal if the outer transaction fails', async () => {
@@ -116,10 +117,10 @@ describe.skipIf(!url)('database-enforced auction holds', () => {
     const total = await balances(); expect(total.available + total.held).toBe(1000n); expect(total.available).toBeGreaterThanOrEqual(0n);
     expect(await reconcile(db)).toEqual([]);
   });
-  it('rejects over-release, zero/fractional movements and hold reassignment', async () => {
+  it('rejects over-release, zero/excess-precision movements and hold reassignment', async () => {
     await adjustAuctionHold(db,command('RESERVE','10'));
     await expect(adjustAuctionHold(db,command('RELEASE','11'))).rejects.toThrow('Cannot release');
-    for (const amount of ['0','1.5','-1']) await expect(adjustAuctionHold(db,command('RESERVE',amount))).rejects.toThrow();
+    for (const amount of ['0','1.005','-1']) await expect(adjustAuctionHold(db,command('RESERVE',amount))).rejects.toThrow();
     const hold = await db.auctionHold.findFirstOrThrow({ where: { walletId } });
     await expect(db.auctionHold.update({ where: { id: hold.id }, data: { auctionId: otherAuctionId } })).rejects.toThrow('immutable');
     await expect(db.auctionHold.delete({ where: { id: hold.id } })).rejects.toThrow(/HELD balance/);
@@ -128,15 +129,15 @@ describe.skipIf(!url)('database-enforced auction holds', () => {
   });
   it('reports hold drift inside a controlled uncommitted fixture, without disabling constraints', async () => {
     await expect(db.$transaction(async tx => {
-      await tx.auctionHold.create({ data: { walletId, auctionId, points: 7n } });
-      expect(await reconcile(tx)).toContainEqual({ kind:'HOLD', name:`wallet:${walletId}`, projected:0n, actual:7n });
+      await tx.auctionHold.create({ data: { walletId, auctionId, points: new MoneyPrisma.Decimal("7") } });
+      expect(await reconcile(tx)).toContainEqual({ kind:'HOLD', name:`wallet:${walletId}`, projected:new MoneyPrisma.Decimal(0), actual:new MoneyPrisma.Decimal(7) });
       throw new Error('rollback drift fixture');
     })).rejects.toThrow('rollback drift fixture');
     expect(await reconcile(db)).toEqual([]);
   });
   it('serializes raw SQL writers even without the application advisory lock', async () => {
     await Promise.all([auctionId, otherAuctionId].map(auction => db.$transaction(async tx => {
-      await tx.auctionHold.create({ data: { walletId, auctionId: auction, points: 35n } });
+      await tx.auctionHold.create({ data: { walletId, auctionId: auction, points: new MoneyPrisma.Decimal("35") } });
       await rawTransfer(tx,35n);
     })));
     expect(await balances()).toEqual({ available:930n, held:70n });
@@ -149,7 +150,7 @@ describe.skipIf(!url)('database-enforced auction holds', () => {
     const stale = db.$transaction(async tx => {
       await tx.ledgerAccount.findUniqueOrThrow({where:{id:heldId}});
       snapshotReady(); await gate;
-      await tx.auctionHold.create({data:{walletId,auctionId:otherAuctionId,points:10n}});
+      await tx.auctionHold.create({data:{walletId,auctionId:otherAuctionId,points:new MoneyPrisma.Decimal("10")}});
       await rawTransfer(tx,10n);
     },{isolationLevel:Prisma.TransactionIsolationLevel.RepeatableRead});
     const rejection = expect(stale).rejects.toThrow();
