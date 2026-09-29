@@ -122,7 +122,7 @@ export async function adminMutation(client:PrismaClient,headers:Headers,action:A
     }
     await tx.adminAudit.create({data:{actorId:actor.id,action:action.toUpperCase(),target,operationKey,requestHash:hash,details:{receipt:asJson(receipt)}}});return receipt;
   },{timeout:120000,maxWait:15000,isolationLevel:Prisma.TransactionIsolationLevel.ReadCommitted});
-  if(['category','product','content','publish','cancel'].includes(action))clearPublicDataCache();
+  if(['category','product','content','publish','cancel'].includes(action))await clearPublicDataCache();
   return receipt;
 }
 export async function adminRead(client:PrismaClient,headers:Headers,path:string[],params=new URLSearchParams()) {

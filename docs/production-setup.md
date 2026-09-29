@@ -1,6 +1,6 @@
 # Lowwin setup and release procedure
 
-Real credits are disabled in `paymentHealth()` regardless of environment values. Do not send a real transfer, publish a real auction, or switch traffic until the release packet is approved. SSH/VPS deployment is deferred at the Owner's request; this guide covers application configuration and the ngrok staging rehearsal.
+Real credits are disabled by default through `PAYMENTS_LIVE_ENABLED=false`. Do not send a real transfer, publish a real auction, or switch traffic until the release packet is approved. For the Owner's manual Coolify deployment, follow [the dashboard setup](coolify-setup.md). This guide covers service credentials and the staging rehearsal.
 
 ## 1. Obtain the inputs
 

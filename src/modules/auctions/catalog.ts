@@ -28,10 +28,11 @@ export type CatalogQuery = z.infer<typeof catalogQuerySchema>;
 export type CatalogAuction = ReturnType<typeof toPublicAuction>;
 
 export async function serverNow() {
-  return cachedPublicData('public-clock',1000,async()=>{
+  const timestamp=await cachedPublicData('public-clock',1000,async()=>{
     const rows = await db.$queryRaw<{now: Date}[]>`SELECT now() AS now`;
-    return rows[0].now;
+    return rows[0].now.toISOString();
   });
+  return new Date(timestamp);
 }
 export function effectiveStatus(row: Pick<AuctionRow,'status'|'startsAt'|'endsAt'>, now: Date) {
   if (row.status === 'CANCELLED') return 'cancelled' as const;
