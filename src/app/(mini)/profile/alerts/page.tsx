@@ -1,5 +1,6 @@
 'use client';
 import {useWalletCopy} from '@/components/wallet-copy';
+import {useMiniLocale} from '@/components/mini-locale';
 import {useState} from 'react';
 import Link from 'next/link';
 import {Bell,Check,CheckCheck,Clock3,Settings2} from 'lucide-react';
@@ -8,18 +9,18 @@ import styles from '@/components/personal-pages.module.css';
 
 type Preferences={inApp:boolean;telegram:boolean;auctionStart:boolean;favoriteEnding:boolean;fulfillment:boolean};
 type Data={items:{id:string;title:string;body:string;href:string;readAt:string|null;createdAt:string}[];page:number;total:number;totalPages:number;unread:number;preferences:Preferences};
-const relative=new Intl.RelativeTimeFormat('en',{numeric:'auto'});
-function age(date:string){
+function age(date:string,language:string){
+  const locale=language==='am'?'am-ET':'en',relative=new Intl.RelativeTimeFormat(locale,{numeric:'auto'});
   const seconds=Math.max(0,(Date.now()-new Date(date).getTime())/1000);
-  if(seconds<60)return 'Just now';
+  if(seconds<60)return language==='am'?'አሁን':'Just now';
   if(seconds<3600)return relative.format(-Math.floor(seconds/60),'minute');
   if(seconds<86400)return relative.format(-Math.floor(seconds/3600),'hour');
   if(seconds<604800)return relative.format(-Math.floor(seconds/86400),'day');
   if(seconds<2592000)return relative.format(-Math.floor(seconds/604800),'week');
-  return new Date(date).toLocaleDateString('en',{month:'short',day:'numeric'});
+  return new Date(date).toLocaleDateString(locale,{month:'short',day:'numeric'});
 }
 export default function Alerts(){
- const w=useWalletCopy();
+ const w=useWalletCopy(),{language}=useMiniLocale();
   const [page,setPage]=useState(1),[revision,setRevision]=useState(0),[error,setError]=useState(''),[busy,setBusy]=useState(false);
   const [pendingPreferences,setPendingPreferences]=useState<Partial<Preferences>>({});
   const query=usePrivateQuery<Data>(`/api/alerts?page=${page}&v=${revision}`),data=query.data;
@@ -27,7 +28,7 @@ export default function Alerts(){
     setBusy(true);setError('');
     try{
       const response=await fetch('/api/alerts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-      if(!response.ok)throw new Error('Could not save alerts. Retry.');
+      if(!response.ok)throw new Error(w('Could not save alerts. Retry.'));
       if((body as {action:string}).action!=='preferences')setRevision(value=>value+1);
       window.dispatchEvent(new Event('lowin-alerts'));
     }catch(cause){setPendingPreferences({});setError((cause as Error).message)}finally{setBusy(false)}
@@ -36,8 +37,8 @@ export default function Alerts(){
     <div className={styles.notifications}>
       <header className={styles.hero}>
         <div className={styles.heroTitle}><Bell size={25} aria-hidden="true"/><div><h1>{w("Notifications")}</h1><p>{w("Stay updated with your latest activities.")}</p></div></div>
-        <button type="button" className={styles.markAll} aria-label={w("Mark all notifications as read")} title="Mark all as read" disabled={busy||!data?.unread} onClick={()=>void update({action:'read'})}><CheckCheck size={22}/></button>
-        <div className={styles.stats} aria-label="Notification counts">
+        <button type="button" className={styles.markAll} aria-label={w("Mark all notifications as read")} title={w("Mark all notifications as read")} disabled={busy||!data?.unread} onClick={()=>void update({action:'read'})}><CheckCheck size={22}/></button>
+        <div className={styles.stats} aria-label={language==='am'?'የማሳወቂያ ብዛት':'Notification counts'}>
           <span><strong>{data?.total??'—'}</strong><small>{w("Total")}</small></span>
           <span><strong>{data?.unread??'—'}</strong><small>{w("Unread")}</small></span>
           <span><strong>{data?data.total-data.unread:'—'}</strong><small>{w("Read")}</small></span>
@@ -49,7 +50,7 @@ export default function Alerts(){
       {data?.items.map(item=><article key={item.id} className={styles.alert}>
         <span className={styles.alertIcon}><Bell size={19} aria-hidden="true"/></span>
         <div className={styles.alertContent}>
-          <header><h2><Link href={item.href} prefetch={false} onClick={()=>{if(!item.readAt)void update({action:'read',id:item.id})}}>{w(item.title)}</Link></h2><time dateTime={item.createdAt} title={new Date(item.createdAt).toLocaleString()}><Clock3 size={11} aria-hidden="true"/>{age(item.createdAt)}</time></header>
+          <header><h2><Link href={item.href} prefetch={false} onClick={()=>{if(!item.readAt)void update({action:'read',id:item.id})}}>{w(item.title)}</Link></h2><time dateTime={item.createdAt} title={new Date(item.createdAt).toLocaleString(language==='am'?'am-ET':'en')}><Clock3 size={11} aria-hidden="true"/>{age(item.createdAt,language)}</time></header>
           <p>{w(item.body)}</p>
           {item.readAt?<span className={styles.read}><Check size={12} aria-hidden="true"/>{w("Read")}</span>:<button type="button" className={styles.markRead} disabled={busy} onClick={()=>void update({action:'read',id:item.id})}><Check size={12} aria-hidden="true"/>{w("Mark read")}</button>}
         </div>

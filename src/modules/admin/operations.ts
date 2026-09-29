@@ -11,6 +11,7 @@ import { digest } from './crypto';
 import { cancelAuctionInTransaction } from '../auctions/settlement';
 import { demoBidAllowed } from '../auctions/bids';
 import { reconcile } from '../wallet/ledger';
+import {clearPublicDataCache} from '../cache/public-data';
 
 const id=z.string().uuid(),key=z.string().uuid(),version=z.number().int().min(0),text=(n:number)=>z.string().trim().min(1).max(n);
 const points=z.string().regex(/^(0|[1-9]\d{0,8})$/);
@@ -64,7 +65,7 @@ export async function adminMutation(client:PrismaClient,headers:Headers,action:A
   const input=schemas[action].parse(raw),owner=await requireAdmin(client,headers,{permission:action==='cancel'||action==='publish'?'cancel':'catalog'}),hash=digest(JSON.stringify({action,input}));
   // All auction writes acquire the auction row BEFORE staff/idempotency and wallet
   // locks. The unchanged cancellation command then locks wallet keys in stable order.
-  return client.$transaction(async tx=>{
+  const receipt=await client.$transaction(async tx=>{
     if('auctionId' in input&&input.auctionId)await lockAuction(tx,input.auctionId);
     const operationKey=`${owner.id}:${input.key}`;await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`admin:${operationKey}`},0))`;
     const actor=await requireAdmin(tx,headers,{lock:true,fresh:action==='cancel',permission:action==='cancel'||action==='publish'?'cancel':'catalog'});
@@ -121,6 +122,8 @@ export async function adminMutation(client:PrismaClient,headers:Headers,action:A
     }
     await tx.adminAudit.create({data:{actorId:actor.id,action:action.toUpperCase(),target,operationKey,requestHash:hash,details:{receipt:asJson(receipt)}}});return receipt;
   },{timeout:120000,maxWait:15000,isolationLevel:Prisma.TransactionIsolationLevel.ReadCommitted});
+  if(['category','product','content','publish','cancel'].includes(action))clearPublicDataCache();
+  return receipt;
 }
 export async function adminRead(client:PrismaClient,headers:Headers,path:string[],params=new URLSearchParams()) {
   if(sectionPermission[path[0]])return opsRead(client,headers,path,params);
