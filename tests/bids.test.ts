@@ -1,3 +1,4 @@
+import {Prisma as MoneyPrisma} from '@prisma/client';
 import {verifyFixtureContact} from './contact-fixtures';
 import { afterAll,beforeAll,beforeEach,describe,expect,it } from 'vitest';
 import { PrismaClient } from '@prisma/client';
@@ -68,8 +69,8 @@ describe.skipIf(!url)('authenticated point bids on disposable PostgreSQL',()=>{
     for(const amount of ['0','-5','5.5','26','6'])await expect(submitBid(client,command(amount,randomUUID(),userId,stepped.slug!))).rejects.toThrow();
     const receipt=await submitBid(client,command('10',randomUUID(),userId,stepped.slug!));
     const row=await client.bid.findUniqueOrThrow({where:{id:receipt.bid.id}});
-    expect(row.amount).toBe(10n);expect(row.termsVersion).toBe(1);expect(row.feePoints).toBe(0n);
-    await expect(client.bid.update({where:{id:row.id},data:{amount:15n}})).rejects.toThrow();
+    expect(row.amount?.toString()).toBe("10");expect(row.termsVersion).toBe(1);expect(row.feePoints.toString()).toBe('0');
+    await expect(client.bid.update({where:{id:row.id},data:{amount:new MoneyPrisma.Decimal("15")}})).rejects.toThrow();
     await expect(client.bid.delete({where:{id:row.id}})).rejects.toThrow();
   });
   it('rejects own duplicate but allows the same amount from another user',async()=>{
@@ -134,8 +135,8 @@ describe.skipIf(!url)('authenticated point bids on disposable PostgreSQL',()=>{
     expect(distinct).toHaveLength(2);
     expect((await counts()).bids).toBe(3);
     const wallet=await client.wallet.findUniqueOrThrow({where:{userId},include:{accounts:true,holds:{where:{auctionId:auction.id}}}});
-    expect(wallet.holds[0].points).toBe(60n);
-    expect(wallet.accounts.find(item=>item.kind==='AVAILABLE')?.balance).toBe(940n);
+    expect(wallet.holds[0].points?.toString()).toBe("60");
+    expect(wallet.accounts.find(item=>item.kind==='AVAILABLE')?.balance?.toString()).toBe("940");
     expect(await reconcile(client)).toEqual([]);
   },45000);
   it('rolls back a bid, reserve and immutable operation if its outer transaction fails',async()=>{

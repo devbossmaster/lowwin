@@ -9,7 +9,7 @@ export async function getWalletView(client:PrismaClient,userId:string,page=1) {
   const held=wallet?.accounts.find(account=>account.kind==='HELD')?.balance??0n;
   return {page,total,totalPages:Math.ceil(total/20),wallet:{available:available.toString(),held:held.toString()},activity:journals.map(journal=>({
     id:journal.id,kind:journal.kind,at:journal.createdAt.toISOString(),
-    availableDelta:journal.postings.filter(posting=>posting.account.walletId===wallet?.id&&posting.account.kind==='AVAILABLE').reduce((sum,posting)=>sum+posting.delta,0n).toString(),
-    heldDelta:journal.postings.filter(posting=>posting.account.walletId===wallet?.id&&posting.account.kind==='HELD').reduce((sum,posting)=>sum+posting.delta,0n).toString(),
+    availableDelta:journal.postings.filter(posting=>posting.account.walletId===wallet?.id&&posting.account.kind==='AVAILABLE').reduce((sum,posting)=>sum.add(posting.delta),new Prisma.Decimal(0)).toString(),
+    heldDelta:journal.postings.filter(posting=>posting.account.walletId===wallet?.id&&posting.account.kind==='HELD').reduce((sum,posting)=>sum.add(posting.delta),new Prisma.Decimal(0)).toString(),
   }))};
 }

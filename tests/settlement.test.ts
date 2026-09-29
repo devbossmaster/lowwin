@@ -1,3 +1,4 @@
+import {Prisma as MoneyPrisma} from '@prisma/client';
 import { afterAll,beforeAll,describe,expect,it } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { execFile,execFileSync } from 'node:child_process';
@@ -27,7 +28,7 @@ describe.skipIf(!url)('atomic closing and cancellation on disposable PostgreSQL'
   const waitDue=async(a:{endsAt:Date|null})=>{const [{now}]=await client.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AT TIME ZONE 'UTC' AS now`;await new Promise(resolve=>setTimeout(resolve,Math.max(0,a.endsAt!.getTime()-now.getTime()+25)))};
   const bid=(userId:string,auctionSlug:string,amount:number)=>submitBid(client,{userId,auctionSlug,amount:String(amount),key:randomUUID()});
   const cancel=(auctionId:string,override:Partial<CancelInput>={}):CancelInput=>({auctionId,actor:{id:'test-owner',permission:'auction:cancel'},reason:'DEMO cancellation test',key:randomUUID(),...override});
-  const balance=async(userId:string)=>{const w=await client.wallet.findUniqueOrThrow({where:{userId},include:{accounts:true}});return Object.fromEntries(w.accounts.map(a=>[a.kind,a.balance]))};
+  const balance=async(userId:string)=>{const w=await client.wallet.findUniqueOrThrow({where:{userId},include:{accounts:true}});return Object.fromEntries(w.accounts.map(a=>[a.kind,BigInt(a.balance.toString())]))};
   const snapshot=async(auctionId:string)=>({settlements:await client.auctionSettlement.count({where:{auctionId}}),journals:await client.journal.count(),operations:await client.operation.count(),outbox:await client.outbox.count(),holds:(await client.auctionHold.findMany({where:{auctionId},orderBy:{walletId:'asc'}})).map(h=>h.points)});
 
   it('1 twice / 2 once / 3 twice / 4 once selects 2, charges only 2 and keeps nonzero fees',async()=>{
@@ -35,10 +36,10 @@ describe.skipIf(!url)('atomic closing and cancellation on disposable PostgreSQL'
     for(const amount of [1,2,3,4])await bid(u,a.slug!,amount);
     for(const amount of [1,3])await bid(v,a.slug!,amount);
     await waitDue(a);const result=await closeAuction(client,a.id);
-    expect(result.outcome).toBe('WINNER');expect(result.winnerUserId).toBe(u);expect(result.winningPoints).toBe(2n);
+    expect(result.outcome).toBe('WINNER');expect(result.winnerUserId).toBe(u);expect(result.winningPoints?.toString()).toBe("2");
     expect(result.proof).toMatchObject({ruleVersion:'lowest-unique-v1',cutoff:a.endsAt!.toISOString(),acceptedCount:6,amountFrequencies:[{amount:'1',count:2},{amount:'2',count:1},{amount:'3',count:2},{amount:'4',count:1}],winner:{userId:u,amount:'2'},feePolicy:'KEEP_DISCLOSED_ENTRY_FEES'});
     expect(await balance(u)).toMatchObject({AVAILABLE:990n,HELD:0n});expect(await balance(v)).toMatchObject({AVAILABLE:996n,HELD:0n});
-    expect(result.movements.find(m=>m.userId===u)).toMatchObject({holdBefore:4n,chargedPoints:2n,releasedPoints:2n,refundedFees:0n});
+    expect(result.movements.find(m=>m.userId===u)).toMatchObject({holdBefore:new MoneyPrisma.Decimal("4"),chargedPoints:new MoneyPrisma.Decimal("2"),releasedPoints:new MoneyPrisma.Decimal("2"),refundedFees:new MoneyPrisma.Decimal("0")});
     expect(await reconcile(client)).toEqual([]);
   });
   it('all amounts duplicated records NO_WINNER and releases all holds while retaining fees',async()=>{
@@ -61,14 +62,14 @@ describe.skipIf(!url)('atomic closing and cancellation on disposable PostgreSQL'
     for(const amount of [100,10,2])await bid(user,a.slug!,amount);
     await bid(user,single.slug!,7);await waitDue(single);
     const multi=await closeAuction(client,a.id),one=await closeAuction(client,single.id);
-    expect(multi.winningPoints).toBe(2n);expect(one.winningPoints).toBe(7n);
+    expect(multi.winningPoints?.toString()).toBe("2");expect(one.winningPoints?.toString()).toBe("7");
     expect(await balance(user)).toMatchObject({AVAILABLE:991n,HELD:0n});expect(await reconcile(client)).toEqual([]);
   });
   it('cancellation releases all holds and refunds every charged fee through compensating journals',async()=>{
     const a=await bidAuction(client,{fee:4}),users=[await bidUser(client),await bidUser(client)];
     for(const user of users)for(const amount of [5,20])await bid(user,a.slug!,amount);
     const input=cancel(a.id),result=await cancelAuction(client,input);
-    expect(result.outcome).toBe('CANCELLED');expect(result.movements.map(m=>m.refundedFees)).toEqual([8n,8n]);
+    expect(result.outcome).toBe('CANCELLED');expect(result.movements.map(m=>m.refundedFees.toString())).toEqual(['8','8']);
     for(const user of users)expect(await balance(user)).toMatchObject({AVAILABLE:1000n,HELD:0n});
     const before=await snapshot(a.id);expect((await cancelAuction(client,input)).id).toBe(result.id);expect(await snapshot(a.id)).toEqual(before);
     await expect(cancelAuction(client,{...input,reason:'changed reason'})).rejects.toMatchObject({code:'KEY_REUSED'});
@@ -119,13 +120,13 @@ describe.skipIf(!url)('atomic closing and cancellation on disposable PostgreSQL'
     const before=await snapshot(a.id);
     await expect(promisify(execFile)(process.execPath,['node_modules/tsx/dist/cli.mjs','tests/settlement-crash-worker.ts','before',a.id],{env:process.env})).rejects.toMatchObject({code:79});
     expect(await snapshot(a.id)).toEqual(before);
-    const result=await closeAuction(client,a.id);expect(result.winningPoints).toBe(12n);expect(await reconcile(client)).toEqual([]);
+    const result=await closeAuction(client,a.id);expect(result.winningPoints?.toString()).toBe("12");expect(await reconcile(client)).toEqual([]);
   },30000);
   it('process crash after commit loses the acknowledgement without duplicating settlement',async()=>{
     const a=await bidAuction(client,{fee:2,endDelayMs:700}),user=await bidUser(client);await bid(user,a.slug!,12);await waitDue(a);
     await expect(promisify(execFile)(process.execPath,['node_modules/tsx/dist/cli.mjs','tests/settlement-crash-worker.ts','after',a.id],{env:process.env})).rejects.toMatchObject({code:79});
     const before=await snapshot(a.id),result=await closeAuction(client,a.id);
-    expect(result.winningPoints).toBe(12n);expect(await snapshot(a.id)).toEqual(before);expect(await balance(user)).toMatchObject({AVAILABLE:986n,HELD:0n});expect(await reconcile(client)).toEqual([]);
+    expect(result.winningPoints?.toString()).toBe("12");expect(await snapshot(a.id)).toEqual(before);expect(await balance(user)).toMatchObject({AVAILABLE:986n,HELD:0n});expect(await reconcile(client)).toEqual([]);
   },30000);
   it('forced failure midway through multiple wallets rolls back winner charge, releases and proof',async()=>{
     const a=await bidAuction(client,{fee:2,endDelayMs:1500}),users=[await bidUser(client),await bidUser(client),await bidUser(client)].sort();
@@ -174,9 +175,9 @@ describe.skipIf(!url)('atomic closing and cancellation on disposable PostgreSQL'
     const result=await closeAuction(client,a.id);
     await expect(client.auctionSettlement.update({where:{id:result.id},data:{proof:{tampered:true}}})).rejects.toThrow();
     await expect(client.auctionSettlement.delete({where:{id:result.id}})).rejects.toThrow();
-    await expect(client.settlementMovement.update({where:{id:result.movements[0].id},data:{releasedPoints:99n}})).rejects.toThrow();
+    await expect(client.settlementMovement.update({where:{id:result.movements[0].id},data:{releasedPoints:new MoneyPrisma.Decimal("99")}})).rejects.toThrow();
     const other=await bidUser(client),wallet=await client.wallet.findUniqueOrThrow({where:{userId:other}});
-    await expect(client.settlementMovement.create({data:{settlementId:result.id,userId:other,walletId:wallet.id,holdBefore:0n,chargedPoints:0n,releasedPoints:0n,refundedFees:0n}})).rejects.toThrow('Cannot append movements');
+    await expect(client.settlementMovement.create({data:{settlementId:result.id,userId:other,walletId:wallet.id,holdBefore:new MoneyPrisma.Decimal("0"),chargedPoints:new MoneyPrisma.Decimal("0"),releasedPoints:new MoneyPrisma.Decimal("0"),refundedFees:new MoneyPrisma.Decimal("0")}})).rejects.toThrow('Cannot append movements');
     const intents=await client.outbox.findMany({where:{settlementId:result.id}});expect(JSON.stringify(intents)).not.toMatch(/amount|winningPoints|frequency|telegramId|winnerUserId/);
     await expect(client.outbox.update({where:{id:intents[0].id},data:{payload:{changed:true}}})).rejects.toThrow();
     expect(JSON.stringify(await getAuction(a.slug!))).not.toMatch(/amountFrequencies|winnerUserId|winningBidId|recipientUserId|requestHash|proof/);

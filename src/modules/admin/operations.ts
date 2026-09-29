@@ -1,4 +1,5 @@
-import {RULE_V2,V2_MIN_PARTICIPANTS,V2_FALLBACK_TERMS,V2_CANCELLATION_TERMS} from '../auctions/rules';
+import {queueGlobal} from '../notifications/campaigns';
+import {RULE_V3,V3_AMOUNT_TERMS,V2_MIN_PARTICIPANTS,V2_FALLBACK_TERMS,V2_CANCELLATION_TERMS} from '../auctions/rules';
 import { randomUUID } from 'node:crypto';
 import { Prisma,type PrismaClient } from '@prisma/client';
 import sharp from 'sharp';
@@ -14,7 +15,7 @@ import { reconcile } from '../wallet/ledger';
 import {clearPublicDataCache} from '../cache/public-data';
 
 const id=z.string().uuid(),key=z.string().uuid(),version=z.number().int().min(0),text=(n:number)=>z.string().trim().min(1).max(n);
-const points=z.string().regex(/^(0|[1-9]\d{0,8})$/);
+const points=z.string().regex(/^(0|[1-9]\d{0,8})(?:\.\d{1,2})?$/);
 export const draftBodySchema=z.object({productId:id,startsAt:z.iso.datetime(),endsAt:z.iso.datetime(),minPoints:points,maxPoints:points,stepPoints:points,entryFeePoints:points,fulfillmentSummary:text(500),fulfillmentRegion:text(160),featured:z.boolean().default(false)}).strict();
 const schemas={
   category:z.object({key,id:id.optional(),version,name:text(80),slug:text(80).regex(/^[a-z0-9-]+$/),description:text(600),visible:z.boolean(),requiresEligibilityReview:z.boolean()}).strict(),
@@ -39,7 +40,7 @@ export async function cancellationImpact(tx:Prisma.TransactionClient,auctionId:s
   for(const row of fees)participants.set(row.userId,{userId:row.userId,heldPoints:'0',feeRefund:(row._sum.feePoints??0n).toString(),acceptedBids:row._count.id});
   for(const hold of holds){const previous=participants.get(hold.wallet.userId)??{userId:hold.wallet.userId,heldPoints:'0',feeRefund:'0',acceptedBids:0};previous.heldPoints=hold.points.toString();participants.set(previous.userId,previous)}
   const rows=[...participants.values()].sort((a,b)=>a.userId<b.userId?-1:a.userId>b.userId?1:0);
-  const impact={auctionId,code:auction.code,affectedBidders:fees.length,acceptedBids:auction.acceptedBidCount,heldPoints:rows.reduce((sum,row)=>sum+BigInt(row.heldPoints),0n).toString(),feeRefund:rows.reduce((sum,row)=>sum+BigInt(row.feeRefund),0n).toString(),participants:rows};
+  const impact={auctionId,code:auction.code,affectedBidders:fees.length,acceptedBids:auction.acceptedBidCount,heldPoints:rows.reduce((sum,row)=>sum.add(row.heldPoints),new Prisma.Decimal(0)).toString(),feeRefund:rows.reduce((sum,row)=>sum.add(row.feeRefund),new Prisma.Decimal(0)).toString(),participants:rows};
   return {...impact,impactHash:digest(JSON.stringify(impact))};
 }
 export async function publicationPreflight(tx:Prisma.TransactionClient,auctionId:string) {
@@ -56,8 +57,8 @@ export async function publicationPreflight(tx:Prisma.TransactionClient,auctionId
   const start=new Date(body.startsAt),end=new Date(body.endsAt);
   if(start.getTime()<now.getTime()+60000)errors.push('Schedule the start at least one minute in the future.');
   if(end<=start||end.getTime()-start.getTime()>30*86400000)errors.push('End must follow start, within 30 days.');
-  const min=BigInt(body.minPoints),max=BigInt(body.maxPoints),step=BigInt(body.stepPoints);
-  if(min<1n||max<min||step<1n||(step>0n&&(max-min)%step!==0n))errors.push('ETB range must be positive and align with the step.');
+  const min=new Prisma.Decimal(body.minPoints),max=new Prisma.Decimal(body.maxPoints),step=new Prisma.Decimal(body.stepPoints);
+  if(!min.eq(1)||max.lt(min)||!step.eq('0.01')||!max.sub(min).mod(step).isZero())errors.push('Minimum bid must be ETB 1.00 and step ETB 0.01. Maximum must align with the step.');
   return {auction,body,product,errors,now};
 }
 export async function adminMutation(client:PrismaClient,headers:Headers,action:AdminAction,raw:unknown) {
@@ -106,8 +107,9 @@ export async function adminMutation(client:PrismaClient,headers:Headers,action:A
       await tx.$queryRaw`SELECT id FROM "Product" WHERE id=${body.productId} FOR UPDATE`;
       const item=await tx.product.findUniqueOrThrow({where:{id:body.productId}});await tx.$queryRaw`SELECT id FROM "Category" WHERE id=${item.categoryId} FOR UPDATE`;
       const checked=await publicationPreflight(tx,data.auctionId);if(checked.auction.draft?.version!==data.version)throw new AdminError(409,'Draft changed. Repeat preflight.');if(checked.errors.length)throw new AdminError(422,checked.errors.join(' '));const p=checked.product!;
-      await tx.auctionTerms.create({data:{auctionId:data.auctionId,ruleVersion:RULE_V2,minParticipants:V2_MIN_PARTICIPANTS,minPoints:BigInt(body.minPoints),maxPoints:BigInt(body.maxPoints),stepPoints:BigInt(body.stepPoints),entryFeePoints:BigInt(body.entryFeePoints),maxDistinctBids:100,noWinnerTerms:V2_FALLBACK_TERMS,cancellationTerms:V2_CANCELLATION_TERMS,fulfillmentSnapshot:body.fulfillmentSummary}});
-      const auction=await tx.auction.update({where:{id:data.auctionId},data:{productId:p.id,categoryId:p.categoryId,isDemo:p.isDemo,isSettlementFixture:p.isDemo&&demoBidAllowed(process.env),startsAt:new Date(body.startsAt),endsAt:new Date(body.endsAt),publishedAt:checked.now,status:'SCHEDULED',featured:body.featured,fulfillmentSummary:body.fulfillmentSummary,fulfillmentRegion:body.fulfillmentRegion}});target=auction.id;receipt={auctionId:target,code:auction.code,status:auction.status,isDemo:auction.isDemo};
+      await tx.auctionTerms.create({data:{auctionId:data.auctionId,ruleVersion:RULE_V3,minParticipants:V2_MIN_PARTICIPANTS,minPoints:new Prisma.Decimal(body.minPoints),maxPoints:new Prisma.Decimal(body.maxPoints),stepPoints:new Prisma.Decimal(body.stepPoints),entryFeePoints:new Prisma.Decimal(body.entryFeePoints),maxDistinctBids:100,noWinnerTerms:V2_FALLBACK_TERMS+" "+V3_AMOUNT_TERMS,cancellationTerms:V2_CANCELLATION_TERMS,fulfillmentSnapshot:body.fulfillmentSummary}});
+      const auction=await tx.auction.update({where:{id:data.auctionId},data:{productId:p.id,categoryId:p.categoryId,isDemo:p.isDemo,isSettlementFixture:p.isDemo&&demoBidAllowed(process.env),startsAt:new Date(body.startsAt),endsAt:new Date(body.endsAt),publishedAt:checked.now,status:'SCHEDULED',featured:body.featured,fulfillmentSummary:body.fulfillmentSummary,fulfillmentRegion:body.fulfillmentRegion}});target=auction.id;await queueGlobal(tx,`global:published:${data.auctionId}`,'AUCTION_PUBLISHED',{auctionId:data.auctionId});
+      receipt={auctionId:target,code:auction.code,status:auction.status,isDemo:auction.isDemo};
     }else if(action==='cancel'){
       const data=schemas.cancel.parse(input),impact=await cancellationImpact(tx,data.auctionId);
       if(data.confirmation!==impact.code)throw new AdminError(422,'Type the exact auction code to confirm cancellation.');

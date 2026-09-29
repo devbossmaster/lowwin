@@ -5,7 +5,7 @@ import { ensureWallet, pointsSchema } from './ledger';
 
 const inputSchema = z.object({
   userId: z.string().min(1).max(128), auctionId: z.string().min(1).max(128),
-  direction: z.enum(['RESERVE', 'RELEASE']), points: pointsSchema.refine(value => value > 0n),
+  direction: z.enum(['RESERVE', 'RELEASE']), points: pointsSchema.refine(value => value.gt(0)),
   key: z.string().min(8).max(128), reference: z.string().min(1).max(200),
 }).strict();
 const resultSchema = z.object({
@@ -36,20 +36,20 @@ export async function adjustAuctionHoldInTransaction(tx: Prisma.TransactionClien
   const available = accounts.find(account => account.kind === 'AVAILABLE')!;
   const held = accounts.find(account => account.kind === 'HELD')!;
   const hold = await tx.auctionHold.findUnique({ where: { walletId_auctionId: { walletId: wallet.id, auctionId } } });
-  const current = hold?.points ?? 0n;
-  if (direction === 'RESERVE' && available.balance < points) throw new Error('Insufficient available ETB');
-  if (direction === 'RELEASE' && current < points) throw new Error('Cannot release more than this auction holds');
-  const delta = direction === 'RESERVE' ? points : -points;
+  const current = hold?.points ?? new Prisma.Decimal(0);
+  if (direction === 'RESERVE' && available.balance.lt(points)) throw new Error('Insufficient available ETB');
+  if (direction === 'RELEASE' && current.lt(points)) throw new Error('Cannot release more than this auction holds');
+  const delta = direction === 'RESERVE' ? points : points.negated();
   const operationId = crypto.randomUUID();
-  const result = { operationId, auctionId, direction, points: points.toString(), auctionHeld: (current + delta).toString(), available: (available.balance - delta).toString(), held: (held.balance + delta).toString() };
+  const result = { operationId, auctionId, direction, points: points.toString(), auctionHeld: current.add(delta).toString(), available: available.balance.sub(delta).toString(), held: held.balance.add(delta).toString() };
   await tx.operation.create({ data: { id: operationId, userId, scope: 'HOLD_ADJUST', key, requestHash, result } });
   const updatedHold = await tx.auctionHold.upsert({
     where: { walletId_auctionId: { walletId: wallet.id, auctionId } },
-    create: { walletId: wallet.id, auctionId, points: current + delta }, update: { points: current + delta },
+    create: { walletId: wallet.id, auctionId, points: current.add(delta) }, update: { points: current.add(delta) },
   });
   await tx.journal.create({ data: {
     operationId, kind: `HOLD_${direction}`, reference: JSON.stringify({ holdId: updatedHold.id, auctionId, reference }),
-    postings: { create: [{ accountId: available.id, delta: -delta }, { accountId: held.id, delta }] },
+    postings: { create: [{ accountId: available.id, delta: delta.negated() }, { accountId: held.id, delta }] },
   } });
   return result;
 }

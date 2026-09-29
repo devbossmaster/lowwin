@@ -1,28 +1,26 @@
 'use client';
 import {useState} from 'react';
 import Link from 'next/link';
-import {Bell,Check,CheckCheck,Clock3,Settings2} from 'lucide-react';
+import {Bell,Check,CheckCheck,Clock3} from 'lucide-react';
 import {usePrivateQuery,PrivateState,PersonalPagination} from '@/components/private-query';
 import {useMiniLocale} from '@/components/mini-locale';
 import {notificationCopy,notificationAge} from '@/components/notification-copy';
 import styles from '@/components/personal-pages.module.css';
 
-type Preferences={inApp:boolean;telegram:boolean;auctionStart:boolean;favoriteEnding:boolean;fulfillment:boolean};
-type Data={items:{id:string;kind?:string;title:string;body:string;href:string;readAt:string|null;createdAt:string}[];page:number;total:number;totalPages:number;unread:number;preferences:Preferences};
+type Data={items:{id:string;kind?:string;title:string;body:string;href:string;readAt:string|null;createdAt:string}[];page:number;total:number;totalPages:number;unread:number};
 export default function Alerts(){
   const {language}=useMiniLocale(),am=language==='am',locale=am?'am-ET':'en';
   const text=(en:string,amharic:string)=>am?amharic:en;
   const [page,setPage]=useState(1),[revision,setRevision]=useState(0),[error,setError]=useState(false),[busy,setBusy]=useState(false);
-  const [pendingPreferences,setPendingPreferences]=useState<Partial<Preferences>>({});
   const query=usePrivateQuery<Data>(`/api/alerts?page=${page}&v=${revision}`),data=query.data;
   async function update(body:unknown){
     setBusy(true);setError(false);
     try{
       const response=await fetch('/api/alerts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
       if(!response.ok)throw new Error('Could not save alerts. Retry.');
-      if((body as {action:string}).action!=='preferences')setRevision(value=>value+1);
+      setRevision(value=>value+1);
       window.dispatchEvent(new Event('lowin-alerts'));
-    }catch{setPendingPreferences({});setError(true)}finally{setBusy(false)}
+    }catch{setError(true)}finally{setBusy(false)}
   }
   return <section className={styles.page}>
     <div className={styles.notifications}>
@@ -35,17 +33,7 @@ export default function Alerts(){
           <span><strong>{data?data.total-data.unread:'—'}</strong><small>{text('Read','የተነበቡ')}</small></span>
         </div>
       </header>
-      {data&&<section className={styles.preferences} aria-labelledby="notification-preferences-title">
-        <h2 id="notification-preferences-title"><Settings2 size={18} aria-hidden="true"/>{text('Notification preferences','የማሳወቂያ ቅንብሮች')}</h2>
-        <p>{text('Choose which updates you receive. Changes save automatically.','የሚደርሱዎትን ማሳወቂያዎች ይምረጡ። ለውጦችዎ ወዲያውኑ ይቀመጣሉ።')}</p>
-        {([
-          ['inApp','In-app alerts','በመተግበሪያው ውስጥ የሚታዩ ማሳወቂያዎች'],
-          ['telegram','Private Telegram bot messages','በቴሌግራም ቦት የሚላኩ የግል መልዕክቶች'],
-          ['auctionStart','Saved auction starts','ያስቀመጥኩት ጨረታ ሲጀምር'],
-          ['favoriteEnding','Saved auctions ending soon','ያስቀመጥኳቸው ጨረታዎች ሊያበቁ ሲቃረቡ'],
-          ['fulfillment','Delivery updates','የሽልማት ማድረስ መረጃዎች'],
-        ] as const).map(([key,en,amharic])=><label key={key}><input type="checkbox" checked={pendingPreferences[key]??data.preferences[key]} disabled={busy} onChange={event=>{setPendingPreferences(previous=>({...previous,[key]:event.target.checked}));void update({action:'preferences',...data.preferences,...pendingPreferences,[key]:event.target.checked})}}/><span>{text(en,amharic)}</span></label>)}
-      </section>}
+
       <PrivateState query={query}/>
       {error&&<p role="alert" className="notice-card">{text('Could not save alerts. Retry.','ለውጦቹን ማስቀመጥ አልተቻለም። እንደገና ይሞክሩ።')}</p>}
       {data&&!data.items.length&&<p className={styles.empty}>{text('No notifications yet.','እስካሁን ማሳወቂያዎች የሉም።')}</p>}

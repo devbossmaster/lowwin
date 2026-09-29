@@ -1,3 +1,4 @@
+import {queueGlobal} from '../notifications/campaigns';
 import {Prisma,type PrismaClient} from '@prisma/client';
 import {z} from 'zod';
 import {requireAdmin} from './boundary';
@@ -10,6 +11,7 @@ import {enqueueAlert} from '../notifications/service';
 import {reconcile} from '../wallet/ledger';
 const key=z.string().uuid(),reason=z.string().trim().min(5).max(500),uid=z.string().min(1).max(128);
 const schemas={
+ broadcast:z.object({key,reason,text:z.string().trim().min(1).max(700),auctionCode:z.string().regex(/^[1-9]\d{0,8}$/).optional(),imageId:z.string().uuid().optional(),confirmation:z.literal('SEND')}).strict(),
  invite:z.object({key,email:z.email().max(254).transform(s=>s.toLowerCase()),role:z.enum(staffRoles),reason}).strict(),
  staff:z.object({key,userId:uid,role:z.enum(staffRoles),active:z.boolean(),reason}).strict(),
  suspend:z.object({key,userId:uid,suspended:z.boolean(),reason}).strict(),
@@ -18,7 +20,7 @@ const schemas={
  retry:z.object({key,id:z.string().uuid(),reason}).strict(),
 };
 export type OpsAction=keyof typeof schemas;
-const commandPermission:Record<OpsAction,Permission>={invite:'team',staff:'team',suspend:'support',support:'support',fulfillment:'fulfillment',retry:'jobs'};
+const commandPermission:Record<OpsAction,Permission>={broadcast:'jobs',invite:'team',staff:'team',suspend:'support',support:'support',fulfillment:'fulfillment',retry:'jobs'};
 export const sectionPermission:Record<string,Permission>={users:'support',support:'support',results:'audit',fulfillment:'fulfillment',wallets:'wallets',notifications:'jobs',jobs:'jobs',analytics:'audit',audit:'audit',team:'team',settings:'settings'};
 export const serialize=(v:unknown)=>JSON.parse(JSON.stringify(v,(_,x)=>typeof x==='bigint'?x.toString():x));
 export function pageInput(params:URLSearchParams){return z.object({page:z.coerce.number().int().min(1).max(100000).default(1),q:z.string().trim().max(100).default(''),status:z.string().max(40).default('')}).parse(Object.fromEntries(params))}
@@ -30,11 +32,19 @@ export async function opsMutation(client:PrismaClient,headers:Headers,action:Ops
   if(action==='fulfillment')await tx.$queryRaw`SELECT id FROM "Auction" WHERE id=${schemas.fulfillment.parse(input).auctionId} FOR UPDATE`;
   if(action==='invite'||action==='staff')await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('admin:team',0))`;
   if('userId' in input)await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${input.userId}`},0))`;
-  const owner=await requireAdmin(tx,headers,{permission:commandPermission[action],lock:true,fresh:action==='invite'||action==='staff'});
+  const owner=await requireAdmin(tx,headers,{permission:commandPermission[action],lock:true,fresh:action==='invite'||action==='staff'||action==='broadcast'});
   const operationKey=`${actor.id}:${input.key}`;await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`admin:${operationKey}`},0))`;
   const old=await tx.adminAudit.findUnique({where:{operationKey}});if(old){if(old.requestHash!==hash)throw new AdminError(409,'Idempotency key changed.');return (old.details as {receipt:unknown}).receipt}
   let receipt:Record<string,unknown>={},target='';
-  if(action==='invite'){
+  if(action==='broadcast'){
+   const d=schemas.broadcast.parse(input);if(owner.role!=='OWNER')throw new AdminError(403,'Only the Owner can broadcast.');
+   let href='/auctions/all';
+   if(d.auctionCode){const a=await tx.auction.findUnique({where:{publicCode:Number(d.auctionCode)},select:{slug:true,publishedAt:true,status:true,endsAt:true,isDemo:true}});if(!a?.slug||!a.publishedAt||!['LIVE','SCHEDULED'].includes(a.status)||!a.endsAt||a.endsAt<=owner.now||a.isDemo&&process.env.APP_ENV==='production')throw new AdminError(422,'Choose a published active auction code.');href=`/auctions/${a.slug}`}
+   if(d.imageId&&!await tx.managedMedia.findUnique({where:{id:d.imageId},select:{id:true}}))throw new AdminError(422,'Upload a validated image first.');
+   const audience=await tx.user.count({where:{telegramId:{not:null},staffMember:{is:null}}});
+   const job=await queueGlobal(tx,`broadcast:${owner.id}:${d.key}`,'BROADCAST',{body:d.text,href,...(d.imageId?{imageId:d.imageId}:{})});
+   receipt={id:job.id,audience,state:'PENDING'};target=job.id;
+  }else if(action==='invite'){
    const d=schemas.invite.parse(input);if(await tx.user.findUnique({where:{email:d.email}}))throw new AdminError(409,'Use a separate staff identity.');
    const mail=emailAdapter(),invitation=token();await tx.staffToken.updateMany({where:{email:d.email,kind:'INVITE',usedAt:null},data:{usedAt:owner.now}});
    await tx.staffToken.create({data:{tokenHash:digest(invitation),kind:'INVITE',email:d.email,role:d.role,expiresAt:new Date(owner.now.getTime()+86400000)}});

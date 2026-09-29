@@ -3,6 +3,13 @@ import {notificationCopy,notificationAge} from '../src/components/notification-c
 import {defaultHomeCopy,resolveHomeCopy} from '../src/components/home-copy';
 
 describe('notification display language',()=>{
+ it('selects one language for new campaigns while keeping item and result links',()=>{
+  const item={kind:'AUCTION_RESULT',title:'Auction finished · ጨረታው ተጠናቋል',body:'Item #42\nA winner has been announced.\nአሸናፊው ታውቋል።\nhttps://example.test/winners/42'};
+  expect(notificationCopy(item,'en').body).toBe('Item #42\nA winner has been announced.\nhttps://example.test/winners/42');
+  expect(notificationCopy(item,'am').body).toBe('Item #42\nአሸናፊው ታውቋል።\nhttps://example.test/winners/42');
+  expect(notificationCopy({kind:'DEPOSIT_CREDITED',title:'',body:'ETB 1.97 credited\n1.97 ብር ገብቷል'},'am').body).toBe('1.97 ብር ገብቷል');
+  expect(notificationCopy({kind:'BROADCAST',title:'',body:'Owner supplied\nmessage'},'am').body).toBe('Owner supplied\nmessage');
+ });
  it('switches known alerts without changing the stored English message',()=>{
   const item={kind:'BID_ACCEPTED',title:'Bid accepted',body:'Your accepted receipt is ready in My Bids.'};
   expect(notificationCopy(item,'am').title).toBe('ጨረታዎ ተቀብሏል');

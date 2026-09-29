@@ -1,6 +1,10 @@
 'use client';
 import {useMiniLocale} from './mini-locale';
 export const walletAm:Record<string,string>={
+ 'ETB, up to 2 decimals':'ብር፣ እስከ ሁለት የአስርዮሽ ቦታዎች',
+ 'Choose an ETB amount that matches the range and step.':'በተፈቀደው ክልልና የጭማሪ ደረጃ ያለ የብር መጠን ይምረጡ።',
+ 'Choose an ETB amount with up to two decimals.':'እስከ ሁለት የአስርዮሽ ቦታዎች ያለውን የብር መጠን ይምረጡ።',
+ 'Leave a gap after three consecutive cent amounts.':'በአንድ ሳንቲም ልዩነት የሚከታተሉ ሦስት መጠኖችን ካቀረቡ በኋላ የሚቀጥለውን ሳንቲም ይዝለሉ።',
  'Step':'የጭማሪ ደረጃ',
  'Required available balance for the added hold and fee':'ለተጨማሪ መያዣውና ክፍያው የሚያስፈልግ ቀሪ ሂሳብ',
  'Bidding has ended. Settlement is pending.':'ጨረታው አብቅቷል። ሂሳቡ እስኪጠናቀቅ በመጠባበቅ ላይ ነው።',

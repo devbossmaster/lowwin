@@ -1,3 +1,4 @@
+import {materializeAlert} from '../notifications/service';
 import {assertPlayerContact} from '../auth/own-contact';
 import {liveFundingConfigured} from './activation';
 import {randomUUID} from 'node:crypto';
@@ -25,7 +26,7 @@ export async function createIntent(client:PrismaClient,userId:string,raw:unknown
  const now=await clock(tx);if(await tx.topUpIntent.count({where:{userId,createdAt:{gte:new Date(now.getTime()-3600000)}}})>=8)throw new PaymentError(429,'Too many funding requests. Try later.');
  const policy=await tx.paymentPolicy.findFirst({where:{channel:body.channel},orderBy:{version:'desc'}});if(!policy?.enabled||policy.id!==body.policyId)throw new PaymentError(409,'The quote changed or channel is paused. Review the latest terms.');
  if(policy.pointsNumerator*100n!==policy.centsDenominator)throw new PaymentError(409,'This quote uses an old conversion rate. Ask an Owner to publish the ETB 1:1 quote.');
- const amount=BigInt(body.amountCents),product=amount*policy.pointsNumerator;if(amount<policy.minCents||amount>policy.maxCents||product%policy.centsDenominator!==0n)throw new PaymentError(422,'Choose an amount within the published range that converts to whole ETB.');const points=product/policy.centsDenominator;if(points>1000000000n)throw new PaymentError(422,'ETB amount is too large.');
+ const amount=BigInt(body.amountCents);if(amount<policy.minCents||amount>policy.maxCents)throw new PaymentError(422,'Choose an amount within the published range.');const points=new Prisma.Decimal(amount.toString()).div(100);if(points.gt(1000000000))throw new PaymentError(422,'ETB amount is too large.');
  const t=await tx.topUpIntent.create({data:{userId,key:body.key,provider:'CHECK_ET',channel:body.channel,policyVersion:policy.id,requestHash:fingerprint,points,expectedCents:amount,receivingAccount:policy.account,accountName:policy.accountName,quoteSnapshot:{version:policy.version,numerator:policy.pointsNumerator.toString(),denominator:policy.centsDenominator.toString(),terms:policy.terms},createdAt:now,expiresAt:new Date(now.getTime()+30*60000)}});return ownIntent(t);
  })}
 const verifySchema=z.object({id:z.string().uuid(),key:z.string().uuid(),input:z.string().min(1).max(4000)}).strict();
@@ -52,12 +53,14 @@ export async function verifyIntent(client:PrismaClient,userId:string,raw:unknown
   if(matched){
    await ensureWallet(tx,userId);await seedPlatformAccounts(tx);const available=await tx.ledgerAccount.findUniqueOrThrow({where:{name:`user:${userId}:available`}}),issuance=await tx.ledgerAccount.findUniqueOrThrow({where:{name:'platform:issuance'}});
    const operation=await tx.operation.create({data:{userId,scope:'TOPUP_CREDIT',key:t.id,requestHash:hash(`${t.id}:${reference}:${t.points}`),result:{intentId:t.id,credited:t.points.toString(),amountCents:t.expectedCents!.toString(),policyVersion:t.policyVersion}}});
-   const journal=await tx.journal.create({data:{operationId:operation.id,kind:'TOPUP_CREDIT',reference:`topup:${t.id}`,postings:{create:[{accountId:issuance.id,delta:-t.points},{accountId:available.id,delta:t.points}]}}});journalId=journal.id;
+   const journal=await tx.journal.create({data:{operationId:operation.id,kind:'TOPUP_CREDIT',reference:`topup:${t.id}`,postings:{create:[{accountId:issuance.id,delta:t.points.negated()},{accountId:available.id,delta:t.points}]}}});journalId=journal.id;
    await tx.paymentClaim.create({data:{channel:t.channel!,reference,intentId:t.id,userId,amountCents:t.expectedCents!,points:t.points,receiverSuffix:verified.evidence.receiverSuffix!,transferredAt:new Date(verified.evidence.date!),operationId:operation.id,journalId,evidenceHash:verified.evidence.hash!}});
   }
   await tx.paymentAttempt.create({data:{intentId:t.id,key:body.key,requestHash:fingerprint,code,evidence:JSON.parse(JSON.stringify(verified.evidence)) as Prisma.InputJsonValue}});
   const status=matched?'CREDITED':code==='DUPLICATE_CONFLICT'?code:code.startsWith('PROVIDER_')?'PROVIDER_OUTAGE':['NOT_FOUND','UNCONFIRMED'].includes(code)?'PENDING':code==='INVALID_RECEIPT'?'REJECTED':'NEEDS_REVIEW';
-  return ownIntent(await tx.topUpIntent.update({where:{id:t.id},data:{status,journalId,reasonCode:code,leaseToken:null,leaseUntil:null,nextAttemptAt:new Date(now.getTime()+Math.max(verified.retrySeconds??0,Math.min(900,30*2**current.attempts))*1000)}}));
+  const updated=await tx.topUpIntent.update({where:{id:t.id},data:{status,journalId,reasonCode:code,leaseToken:null,leaseUntil:null,nextAttemptAt:new Date(now.getTime()+Math.max(verified.retrySeconds??0,Math.min(900,30*2**current.attempts))*1000)}});
+  if(matched){const row=await tx.outbox.create({data:{key:`deposit:${t.id}:credited`,kind:'DEPOSIT_CREDITED',payload:{intentId:t.id,recipientUserId:userId}}});await materializeAlert(tx,row)}
+  return ownIntent(updated);
  },{timeout:15000});
 }
 export async function listOwnTopups(client:PrismaClient,userId:string,page=1){const [rows,total]=await client.$transaction([client.topUpIntent.findMany({where:{userId,provider:{in:['CHECK_ET','DEMO_PREVIEW']}},orderBy:[{createdAt:'desc'},{id:'desc'}],take:20,skip:(page-1)*20}),client.topUpIntent.count({where:{userId,provider:{in:['CHECK_ET','DEMO_PREVIEW']}}})]);return {items:rows.map(ownIntent),page,total,totalPages:Math.ceil(total/20)}}

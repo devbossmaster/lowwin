@@ -13,6 +13,13 @@ const messages:Record<string,[string,string,string]>={
 };
 // Translate the display only; stored messages and financial records stay intact.
 export function notificationCopy(item:AlertCopy,language:'en'|'am'){
+ const campaigns:Record<string,[string,string]>={AUCTION_PUBLISHED:['New auction','አዲስ ጨረታ'],AUCTION_ENDING:['Less than one day left','ከአንድ ቀን ያነሰ ጊዜ ቀርቷል'],AUCTION_RESULT:['Auction finished','ጨረታው ተጠናቋል'],DEPOSIT_CREDITED:['Deposit successful','ገንዘቡ ገብቷል'],BROADCAST:['Lowwin update','የLowwin መረጃ']};
+ const campaign=item.kind?campaigns[item.kind]:undefined;
+ if(campaign){
+  const lines=item.body.split('\n'),am=language==='am';
+  const body=item.kind==='BROADCAST'?item.body:item.kind==='DEPOSIT_CREDITED'?(lines[am?1:0]??item.body):[lines[0],lines[am?2:1],...lines.slice(3)].filter(Boolean).join('\n');
+  return {title:`${item.title.startsWith('DEMO · ')?'DEMO · ':''}${campaign[am?1:0]}`,body};
+ }
  if(language!=='am')return {title:item.title,body:item.body};
  const demo=item.title.startsWith('DEMO · '),title=demo?item.title.slice(7):item.title;
  const copy=(item.kind?messages[item.kind]:undefined)??Object.values(messages).find(value=>value[0]===title);

@@ -1,3 +1,4 @@
+import {Prisma as MoneyPrisma} from '@prisma/client';
 import {afterAll,beforeAll,describe,expect,it} from 'vitest';
 import {PrismaClient} from '@prisma/client';
 import {execFileSync} from 'node:child_process';
@@ -20,7 +21,7 @@ describe.skipIf(!url)('frozen v2 on disposable PostgreSQL',()=>{
  const auction=(options:Parameters<typeof bidAuction>[1]={})=>bidAuction(db,{ruleVersion:'lowest-unique-v2',fee:2,endDelayMs:2000,...options});
  const bid=(userId:string,slug:string,amount=1,key=randomUUID())=>submitBid(db,{userId,auctionSlug:slug,amount:String(amount),key});
  const due=async(a:{endsAt:Date|null})=>{await new Promise(r=>setTimeout(r,Math.max(0,a.endsAt!.getTime()-Date.now()+25)))};
- const balance=async(userId:string)=>Object.fromEntries((await db.ledgerAccount.findMany({where:{wallet:{userId}}})).map(a=>[a.kind,a.balance]));
+ const balance=async(userId:string)=>Object.fromEntries((await db.ledgerAccount.findMany({where:{wallet:{userId}}})).map(a=>[a.kind,BigInt(a.balance.toString())]));
  it('zero participants cancels automatically with a durable empty proof',async()=>{
   const a=await auction({endDelayMs:200});await due(a);const s=await closeAuction(db,a.id);
   expect(s).toMatchObject({outcome:'CANCELLED',decision:'MINIMUM_PARTICIPANTS',participantCount:0,acceptanceCutoff:0n,actorId:null});
@@ -29,22 +30,22 @@ describe.skipIf(!url)('frozen v2 on disposable PostgreSQL',()=>{
  it('multiple accepted amounts from one user count once and refund EVERY fee/hold',async()=>{
   const u=await bidUser(db),a=await auction();for(const amount of [1,2,7])await bid(u,a.slug!,amount);await due(a);
   const s=await closeAuction(db,a.id);expect(s).toMatchObject({outcome:'CANCELLED',participantCount:1,acceptedCount:3});
-  expect(s.movements[0]).toMatchObject({refundedFees:6n,releasedPoints:7n,chargedPoints:0n});expect(await balance(u)).toMatchObject({AVAILABLE:1000n,HELD:0n});
+  expect(s.movements[0]).toMatchObject({refundedFees:new MoneyPrisma.Decimal("6"),releasedPoints:new MoneyPrisma.Decimal("7"),chargedPoints:new MoneyPrisma.Decimal("0")});expect(await balance(u)).toMatchObject({AVAILABLE:1000n,HELD:0n});
   const count=await db.journal.count();expect((await closeAuction(db,a.id)).id).toBe(s.id);expect(await db.journal.count()).toBe(count);expect(await reconcile(db)).toEqual([]);
  });
  it('two users sharing the lowest amount select its first DATABASE acceptance',async()=>{
   const u=await bidUser(db),v=await bidUser(db),a=await auction();const first=await bid(u,a.slug!),second=await bid(v,a.slug!);await due(a);
-  const s=await closeAuction(db,a.id);expect(s).toMatchObject({outcome:'WINNER',decision:'FIRST_ACCEPTED_LOWEST',winningBidId:first.bid.id,winningPoints:1n});
+  const s=await closeAuction(db,a.id);expect(s).toMatchObject({outcome:'WINNER',decision:'FIRST_ACCEPTED_LOWEST',winningBidId:first.bid.id,winningPoints:new MoneyPrisma.Decimal("1")});
   expect(s.proof).toMatchObject({winner:{bidId:first.bid.id,acceptanceOrder:'1'},acceptanceCutoff:'2',amountFrequencies:[{amount:'1',count:2}]});
   expect(await balance(u)).toMatchObject({AVAILABLE:997n,HELD:0n});expect(await balance(v)).toMatchObject({AVAILABLE:998n,HELD:0n});expect(second.bid.id).not.toBe(first.bid.id);expect(await reconcile(db)).toEqual([]);
  });
  it('a higher unique amount always takes priority over a duplicated lower amount',async()=>{
   const u=await bidUser(db),v=await bidUser(db),a=await auction();await bid(u,a.slug!,1);await bid(v,a.slug!,1);const chosen=await bid(v,a.slug!,10);await due(a);
-  const s=await closeAuction(db,a.id);expect(s).toMatchObject({decision:'LOWEST_UNIQUE',winningBidId:chosen.bid.id,winningPoints:10n});expect(await reconcile(db)).toEqual([]);
+  const s=await closeAuction(db,a.id);expect(s).toMatchObject({decision:'LOWEST_UNIQUE',winningBidId:chosen.bid.id,winningPoints:new MoneyPrisma.Decimal("10")});expect(await reconcile(db)).toEqual([]);
  });
  it('fallback chooses the lowest amount even when a higher amount was accepted earlier',async()=>{
   const u=await bidUser(db),v=await bidUser(db),a=await auction();await bid(u,a.slug!,10);await bid(v,a.slug!,10);const chosen=await bid(v,a.slug!,2);await bid(u,a.slug!,2);await due(a);
-  const s=await closeAuction(db,a.id);expect(s).toMatchObject({decision:'FIRST_ACCEPTED_LOWEST',winningBidId:chosen.bid.id,winningPoints:2n});expect(s.movements.find(m=>m.userId===v)).toMatchObject({chargedPoints:2n,releasedPoints:8n,refundedFees:0n});
+  const s=await closeAuction(db,a.id);expect(s).toMatchObject({decision:'FIRST_ACCEPTED_LOWEST',winningBidId:chosen.bid.id,winningPoints:new MoneyPrisma.Decimal("2")});expect(s.movements.find(m=>m.userId===v)).toMatchObject({chargedPoints:new MoneyPrisma.Decimal("2"),releasedPoints:new MoneyPrisma.Decimal("8"),refundedFees:new MoneyPrisma.Decimal("0")});
  });
  it('equal DB timestamps are resolved by the immutable per-auction sequence',async()=>{
   const u=await bidUser(db),v=await bidUser(db),a=await auction();
@@ -85,7 +86,7 @@ describe.skipIf(!url)('frozen v2 on disposable PostgreSQL',()=>{
   const u=await bidUser(db),v=await bidUser(db),a=await auction();const first=await bid(u,a.slug!),other=await bid(v,a.slug!);
   await expect(db.auctionTerms.update({where:{auctionId:a.id},data:{minParticipants:1}})).rejects.toThrow();await expect(db.auction.update({where:{id:a.id},data:{bidSequence:99n}})).rejects.toThrow();
   await expect(db.bid.update({where:{id:first.bid.id},data:{acceptanceOrder:9n}})).rejects.toThrow();await due(a);
-  await expect(db.$transaction(async tx=>{await tx.auction.update({where:{id:a.id},data:{status:'CLOSED'}});await tx.auctionSettlement.create({data:{auctionId:a.id,ruleVersion:'lowest-unique-v2',termsVersion:1,cutoff:a.endsAt!,acceptedCount:2,participantCount:2,acceptanceCutoff:2n,decision:'FIRST_ACCEPTED_LOWEST',outcome:'WINNER',winningBidId:other.bid.id,winnerUserId:v,winningPoints:1n,proof:{}}})})).rejects.toThrow(/frozen v2 decision/);
+  await expect(db.$transaction(async tx=>{await tx.auction.update({where:{id:a.id},data:{status:'CLOSED'}});await tx.auctionSettlement.create({data:{auctionId:a.id,ruleVersion:'lowest-unique-v2',termsVersion:1,cutoff:a.endsAt!,acceptedCount:2,participantCount:2,acceptanceCutoff:2n,decision:'FIRST_ACCEPTED_LOWEST',outcome:'WINNER',winningBidId:other.bid.id,winnerUserId:v,winningPoints:new MoneyPrisma.Decimal("1"),proof:{}}})})).rejects.toThrow(/frozen v2 decision/);
   const s=await closeAuction(db,a.id);await expect(db.auctionSettlement.update({where:{id:s.id},data:{proof:{}}})).rejects.toThrow();expect(await reconcile(db)).toEqual([]);
  });
  it('owner cancellation before the deadline refunds all fees and cannot pick a winner',async()=>{
@@ -100,7 +101,7 @@ describe.skipIf(!url)('frozen v2 on disposable PostgreSQL',()=>{
   const u=await bidUser(db),a=await auction();const receipt=await bid(u,a.slug!,4);await due(a);
   await expect(db.$transaction(async tx=>{
    await tx.auction.update({where:{id:a.id},data:{status:'CLOSED'}});
-   await tx.auctionSettlement.create({data:{auctionId:a.id,ruleVersion:'lowest-unique-v2',termsVersion:1,cutoff:a.endsAt!,acceptedCount:1,participantCount:1,acceptanceCutoff:1n,decision:'LOWEST_UNIQUE',outcome:'WINNER',winningBidId:receipt.bid.id,winnerUserId:u,winningPoints:4n,proof:{}}});
+   await tx.auctionSettlement.create({data:{auctionId:a.id,ruleVersion:'lowest-unique-v2',termsVersion:1,cutoff:a.endsAt!,acceptedCount:1,participantCount:1,acceptanceCutoff:1n,decision:'LOWEST_UNIQUE',outcome:'WINNER',winningBidId:receipt.bid.id,winnerUserId:u,winningPoints:new MoneyPrisma.Decimal("4"),proof:{}}});
   })).rejects.toThrow(/minimum requires cancellation/);
   const s=await closeAuction(db,a.id);expect(s).toMatchObject({decision:'MINIMUM_PARTICIPANTS',winningBidId:null});expect(await balance(u)).toMatchObject({AVAILABLE:1000n,HELD:0n});
  });

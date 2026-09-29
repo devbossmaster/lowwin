@@ -26,7 +26,7 @@ try{
   const closing=performance.now();await closeAuction(db,auction.id);const settlementMs=performance.now()-closing;
   const replay=performance.now();await closeAuction(db,auction.id);const retryMs=performance.now()-replay;
   const settlement=await db.auctionSettlement.findUniqueOrThrow({where:{auctionId:auction.id}}),drift=await reconcile(db);
-  if(drift.length||settlement.outcome!=='WINNER'||settlement.winningPoints!==1n)throw Error('Load outcome or reconciliation mismatch');
+  if(drift.length||settlement.outcome!=='WINNER'||settlement.winningPoints?.toString()!=='1')throw Error('Load outcome or reconciliation mismatch');
   results.push({ruleVersion,participants:100,concurrency:5,poolLimit:5,bidWallMs:Math.round(bidWallMs),bidP50Ms:percentile(times,.5),bidP95Ms:percentile(times,.95),settlementMs:Math.round(settlementMs),idempotentRetryMs:Math.round(retryMs),drift:drift.length});
  }
  const report={at:new Date().toISOString(),target:'loopback PostgreSQL; DEMO fixtures; service calls, not HTTP or Telegram',results};

@@ -1,3 +1,4 @@
+import {Prisma as MoneyPrisma} from '@prisma/client';
 import {beforeAll,afterAll,describe,it,expect} from 'vitest';
 import {PrismaClient} from '@prisma/client';
 import {createServer,type Server} from 'node:http';
@@ -54,11 +55,11 @@ describe.skipIf(!url)('Phase 5A invite-only Owner operations',()=>{
   const product=await okay(await cmd('product',{key:randomUUID(),version:0,title:'DEMO admin item',slug:`admin-${randomUUID()}`,description:'Isolated test inventory',condition:'New',categoryId:category.id,isDemo:true,visible:true,imageIds:[image.id]}));productId=product.id;
  });
  it('saves draft terms and serializes concurrent publication exactly once',async()=>{
-  const draft=await okay(await cmd('draft',{key:randomUUID(),version:0,body:{productId,startsAt:new Date(Date.now()+3600000).toISOString(),endsAt:new Date(Date.now()+86400000).toISOString(),minPoints:'1',maxPoints:'100',stepPoints:'1',entryFeePoints:'2',fulfillmentSummary:'DEMO only',fulfillmentRegion:'Local',featured:false}}));draftId=draft.auctionId;
+  const draft=await okay(await cmd('draft',{key:randomUUID(),version:0,body:{productId,startsAt:new Date(Date.now()+3600000).toISOString(),endsAt:new Date(Date.now()+86400000).toISOString(),minPoints:'1',maxPoints:'100',stepPoints:'0.01',entryFeePoints:'2',fulfillmentSummary:'DEMO only',fulfillmentRegion:'Local',featured:false}}));draftId=draft.auctionId;
   const preview=await okay(await get(`auctions/${draftId}/preflight`));expect(preview.ready).toBe(true);const input={key:randomUUID(),auctionId:draftId,version:1};const results=await Promise.all([cmd('publish',input),cmd('publish',input)]);expect(await okay(results[0])).toEqual(await okay(results[1]));expect(await client.auctionTerms.count({where:{auctionId:draftId}})).toBe(1);expect(await client.adminAudit.count({where:{action:'PUBLISH',target:draftId}})).toBe(1);
  });
  it('preserves frozen published terms, inventory and DEMO identity',async()=>{
-  await expect(client.auction.update({where:{id:draftId},data:{endsAt:new Date(Date.now()+200000)}})).rejects.toThrow();await expect(client.auctionTerms.update({where:{auctionId:draftId},data:{entryFeePoints:99n}})).rejects.toThrow();await expect(client.auctionDraft.update({where:{auctionId:draftId},data:{version:99}})).rejects.toThrow();
+  await expect(client.auction.update({where:{id:draftId},data:{endsAt:new Date(Date.now()+200000)}})).rejects.toThrow();await expect(client.auctionTerms.update({where:{auctionId:draftId},data:{entryFeePoints:new MoneyPrisma.Decimal("99")}})).rejects.toThrow();await expect(client.auctionDraft.update({where:{auctionId:draftId},data:{version:99}})).rejects.toThrow();
   const p=await client.product.findUniqueOrThrow({where:{id:productId}});expect((await cmd('product',{key:randomUUID(),id:p.id,version:p.version,title:p.title,slug:p.slug,description:p.description,condition:p.condition,categoryId:p.categoryId,isDemo:false,visible:true,imageIds:[]})).status).toBe(409);
  });
  it('reports exact cancellation impact, rejects stale impact and requires fresh MFA',async()=>{

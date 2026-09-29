@@ -5,9 +5,9 @@ import {faqAm} from '@/components/faq-am';
 import {publicFaqContent} from '@/modules/admin/public-content';
 import {legacyTermsInEtb} from '@/lib/money';
 const faq = [
-  ['What does “lowest unique” mean?', 'At close, we count accepted bids at every whole ETB amount. The smallest amount chosen exactly once wins. For example: ETB 1.00 twice, ETB 2.00 once, ETB 3.00 twice and ETB 4.00 once — ETB 2.00 wins. The smallest submitted bid does not automatically win.'],
+  ['What does “lowest unique” mean?', 'At close, we count accepted bids at every accepted ETB amount. The smallest amount chosen exactly once wins. For example: ETB 1.00 twice, ETB 2.00 once, ETB 3.00 twice and ETB 4.00 once — ETB 2.00 wins. The smallest submitted bid does not automatically win.'],
   ['Can I bid now?', 'Open Lowwin in Telegram, verify your own contact and check that the auction is live. Your wallet must cover the additional hold and disclosed entry fee. DEMO auctions are restricted to enrolled staging testers and are never real prizes.'],
-  ['How many bids can I place?', 'Each auction permits at most 100 distinct whole ETB amounts per person. The allowed range and step are shown on its detail page. Repeating your own amount is rejected without another fee; another person may choose the same amount.'],
+  ['How many bids can I place?', 'Each auction permits at most 100 distinct ETB amounts per person. The allowed range and step are shown on its detail page. Repeating your own amount is rejected without another fee; another person may choose the same amount.'],
   ['What happens to ETB holds?', 'Your largest accepted bid in each auction is reserved from AVAILABLE to HELD. A higher bid increases that hold only by the difference; a lower bid adds no hold. Browsing alone moves no ETB.'],
   ['What is an entry fee?', 'Each auction shows its ETB fee per accepted bid. A configured fee is charged separately from the maximum bid hold and shown before confirmation.'],
   ['What happens when an original v1 auction ends?', 'Bidding stops at the deadline. Until settlement completes, the outcome is “Closing / result pending.” Settlement selects the lowest unique amount, charges that winning amount from the winner’s hold, and releases every unused hold. With no unique amount, there is no winner and all holds are released. Disclosed per-bid fees are retained for a valid completed auction, including a no-winner close.'],
@@ -24,7 +24,7 @@ export default async function FAQ() {
  return <section className="page-inset">
   <h1 className="page-title"><MiniPhrase en="Simple idea." am="ቀላል ሐሳብ።"/><br/><em><MiniPhrase en="Clear rules." am="ግልጽ ደንቦች።"/></em></h1>
   <p className="page-lead"><MiniPhrase en="A little understanding before your first bid." am="ከመጀመሪያው ጨረታዎ በፊት ማወቅ ያለብዎት።"/></p>
-  <section className="detail-section"><h2><MiniPhrase en="New auctions: frozen v2 rules" am="አዲስ ጨረታዎች፦ የማይለወጡ የv2 ደንቦች"/></h2><AuctionRule ruleVersion="lowest-unique-v2"/></section>
+  <section className="detail-section"><h2><MiniPhrase en="New auctions: frozen v3 rules" am="አዲስ ጨረታዎች፦ የማይለወጡ የv3 ደንቦች"/></h2><AuctionRule ruleVersion="lowest-unique-v3"/></section>
   <div className="faq-list" id="terms">{faq.map(([question,answer], i)=><details key={`${i}-${question}`} open={i===0}><summary><MiniPhrase en={question} am={faqAm[i]?.[0]??question}/></summary><p><MiniPhrase en={answer} am={faqAm[i]?.[1]??answer}/></p></details>)}<AdditionalFaq items={additional.map(item=>({...item,answer:legacyTermsInEtb(item.answer)}))}/></div>
  </section>;
 }
