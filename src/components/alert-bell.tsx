@@ -35,7 +35,7 @@ function PlayerAlerts({userId,className}:{userId?:string;className?:string}){
    }catch{if(!disposed)setCount(null)}finally{clearTimeout(timeout);controller=null}
   };
   void refresh();
-  const timer=setInterval(()=>{if(!document.hidden)void refresh()},60000);
+  const timer=setInterval(()=>{if(!document.hidden)void refresh()},300000);
   const visible=()=>{if(!document.hidden)void refresh()};
   document.addEventListener('visibilitychange',visible);window.addEventListener('lowin-alerts',refresh);
   return()=>{disposed=true;controller?.abort();clearInterval(timer);window.removeEventListener('lowin-alerts',refresh);document.removeEventListener('visibilitychange',visible)};
