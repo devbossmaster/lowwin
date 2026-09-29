@@ -1,3 +1,4 @@
+import {AdditionalFaq} from '@/components/additional-faq';
 import {AuctionRule} from '@/components/auction-rule';
 import {MiniPhrase} from '@/components/mini-locale';
 import {faqAm} from '@/components/faq-am';
@@ -24,6 +25,6 @@ export default async function FAQ() {
   <h1 className="page-title"><MiniPhrase en="Simple idea." am="ቀላል ሐሳብ።"/><br/><em><MiniPhrase en="Clear rules." am="ግልጽ ደንቦች።"/></em></h1>
   <p className="page-lead"><MiniPhrase en="A little understanding before your first bid." am="ከመጀመሪያው ጨረታዎ በፊት ማወቅ ያለብዎት።"/></p>
   <section className="detail-section"><h2><MiniPhrase en="New auctions: frozen v2 rules" am="አዲስ ጨረታዎች፦ የማይለወጡ የv2 ደንቦች"/></h2><AuctionRule ruleVersion="lowest-unique-v2"/></section>
-  <div className="faq-list" id="terms">{[...faq,...additional.map(item=>[item.question,legacyTermsInEtb(item.answer)])].map(([question,answer], i)=><details key={`${i}-${question}`} open={i===0}><summary><MiniPhrase en={question} am={faqAm[i]?.[0]??question}/></summary><p><MiniPhrase en={answer} am={faqAm[i]?.[1]??answer}/></p></details>)}</div>
+  <div className="faq-list" id="terms">{faq.map(([question,answer], i)=><details key={`${i}-${question}`} open={i===0}><summary><MiniPhrase en={question} am={faqAm[i]?.[0]??question}/></summary><p><MiniPhrase en={answer} am={faqAm[i]?.[1]??answer}/></p></details>)}<AdditionalFaq items={additional.map(item=>({...item,answer:legacyTermsInEtb(item.answer)}))}/></div>
  </section>;
 }

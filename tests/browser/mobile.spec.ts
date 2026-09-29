@@ -51,7 +51,7 @@ test('featured carousel supports manual control and reduced motion',async({page}
   await page.emulateMedia({reducedMotion:'reduce'});
   await page.goto('/');
   const carousel=page.getByLabel('Featured auctions');
-  await carousel.scrollIntoViewIfNeeded();
+  await expect(async()=>{await expect(carousel).toBeVisible();await carousel.scrollIntoViewIfNeeded()}).toPass({timeout:20000});
   const current=()=>carousel.locator('button[aria-current=true]').getAttribute('aria-label');
   const first=await current();
   await page.waitForTimeout(4300);
@@ -61,7 +61,7 @@ test('featured carousel supports manual control and reduced motion',async({page}
   await page.emulateMedia({reducedMotion:'no-preference'});
   await page.reload();
   const active=page.getByLabel('Featured auctions');
-  await active.scrollIntoViewIfNeeded();
+  await expect(async()=>{await expect(active).toBeVisible();await active.scrollIntoViewIfNeeded()}).toPass({timeout:20000});
   await page.mouse.move(0,0);
   const initial=await active.locator('button[aria-current=true]').getAttribute('aria-label');
   await expect.poll(()=>active.locator('button[aria-current=true]').getAttribute('aria-label'),{timeout:6500}).not.toBe(initial);
