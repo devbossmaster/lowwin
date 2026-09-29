@@ -5,7 +5,7 @@ test('catalog at mobile widths: header, carousel, cards, countdown and navigatio
   const hydrationErrors:string[]=[];
   page.on('console',message=>{if(message.type()==='error' && message.text().includes('hydrated')) hydrationErrors.push(message.text());});
   await page.goto('/');
-  await expect(page.getByRole('link',{name:'Start bidding',exact:true})).toBeVisible();
+  await expect(page.getByRole('link',{name:'Explore Lowwin auctions',exact:true})).toBeVisible();
   await expect(page.getByRole('navigation',{name:'Your navigation'})).toBeVisible();
   await expect(page.getByText('Opening your Lowwin…')).toBeHidden({timeout:20000});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
@@ -18,7 +18,7 @@ test('catalog at mobile widths: header, carousel, cards, countdown and navigatio
   await expect(page.getByRole('heading',{name:'Active auctions',exact:true})).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
   await page.screenshot({path:`docs/screenshots/catalog-auctions-${testInfo.project.name}.png`,fullPage:true});
-  
+
   await expect(page.getByRole('heading',{name:'Active auctions',exact:true})).toBeVisible();
   await page.getByLabel('Live auctions',{exact:true}).getByRole('link',{name:'View auction details',exact:false}).click();
   await expect(page.getByLabel('ETB amount',{exact:true})).toBeVisible();
