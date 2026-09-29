@@ -8,9 +8,9 @@
 .visual>a { display: block; width: 100%; height: 100%; }
 .visual img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .live,.demo { position: absolute; top: 11px; left: 11px; display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 0 9px; border-radius: 7px; background: #087f5b; color: #fff; font-size: 11px; font-weight: 700; box-shadow: 0 2px 8px rgb(6 61 50 / 18%); }
-.live>span { width: 6px; height: 6px; border-radius: 50%; background: #a3e635; }
+.live>span { width: 6px; height: 6px; border-radius: 50%; background: #047857; }
 .upcoming { border:1px solid #dbe7de; background:#fff; color:#063d32; box-shadow:0 2px 8px rgb(6 61 50 / 12%); }
-.upcoming>span { background:#91c83e; }
+.upcoming>span { background:#047857; }
 .demo { left: auto; right: 11px; background: #fff; color: #063d32; }
 .favorite { position: absolute; right: 10px; bottom: 10px; }
 .favorite :global(.favorite-button) { width: 44px; height: 44px; min-height: 44px; margin: 0; padding: 0; border-radius: 50%; border: 1px solid #e1e9e3; background: #fff; color: #087f5b; box-shadow: 0 3px 9px rgb(6 61 50 / 16%); }
@@ -27,9 +27,9 @@
 .timing>span { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .timing :global(.countdown) { padding: 0; background: none; color: #b54420; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.5; }
 .bidCount { flex: none; color: #087f5b; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.action { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; margin-top: 8px; border: 0; border-radius: 10px; background: var(--mini-action, #a3e635); color: var(--mini-action-ink, #172720); text-decoration: none; font-size: 12px; font-weight: 700; }
+.action { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; margin-top: 8px; border: 0; border-radius: 10px; background: var(--mini-action, #047857); color: var(--mini-action-ink, #fff); text-decoration: none; font-size: 12px; font-weight: 700; }
 .note { margin: 13px 0 0; color: #60756b; text-align: center; font-size: 10px; line-height: 1.4; }
-.upcomingNotice { margin-top:4px; padding:13px; border-radius:10px; background:#f1f7e8; color:#405733; text-align:center; font-size:11px; line-height:1.5; }
+.upcomingNotice { margin-top:4px; padding:13px; border-radius:10px; background:#ecfdf5; color:#3d6658; text-align:center; font-size:11px; line-height:1.5; }
 .bidBox { margin-top: 4px; }
 .amountControl { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: center; min-height: 48px; border: 1px solid #d6e4dd; border-radius: 10px; background: #f7faf8; }
 .amountControl button { display: grid; place-items: center; width: 44px; height: 46px; border: 0; background: transparent; color: #063d32; cursor: pointer; }
@@ -38,7 +38,7 @@
 .amountControl input { display: block; width: 100%; height: 46px; padding: 0 3px; border: 0; outline: 0; background: transparent; color: #063d32; font: inherit; font-size: 14px; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; }
 .amountControl input::placeholder { color: #75877e; font-size: 12px; font-weight: 500; }
 .range { margin: 6px 2px 0; color: #63776d; font-size: 10px; line-height: 1.4; }
-.submitBid,.confirmButton { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 48px; margin-top: 8px; padding: 8px 12px; border: 0; border-radius: 10px; background: var(--mini-action, #a3e635); color: var(--mini-action-ink, #172720); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.submitBid,.confirmButton { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 48px; margin-top: 8px; padding: 8px 12px; border: 0; border-radius: 10px; background: var(--mini-action, #047857); color: var(--mini-action-ink, #fff); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
 .submitBid:disabled,.confirmButton:disabled { background: #dce9e1; color: #62756a; cursor: not-allowed; }
 .bidError { margin: 8px 0; color: #9f3330; font-size: 11px; line-height: 1.5; }
 .bidError button { border: 0; background: none; color: #087f5b; font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
@@ -84,5 +84,5 @@
 .resultStats span { display: grid; min-width: 0; }
 .resultStats strong { color: #063d32; font-size: 10px; line-height: 1.35; }
 .resultStats small { margin-top: 3px; color: #6a7c73; font-size: 8px; text-transform: uppercase; letter-spacing: .04em; }
-.resultAction { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; border-radius: 12px; background: var(--mini-action, #a3e635); color: var(--mini-action-ink, #172720); font-size: 13px; font-weight: 700; text-decoration: none; box-shadow: 0 5px 0 #6f970d; }
-.toolbar button:last-child,.closedBadge { border-color: #a3e635; background: #a3e635; color: #172720; }
+.resultAction { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; border-radius: 12px; background: var(--mini-action, #047857); color: var(--mini-action-ink, #fff); font-size: 13px; font-weight: 700; text-decoration: none; box-shadow: 0 5px 0 #064e3b; }
+.toolbar button:last-child,.closedBadge { border-color: #047857; background: #047857; color: #fff; }

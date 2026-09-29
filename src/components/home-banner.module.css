@@ -1,4 +1,4 @@
-.hero { padding: 12px 16px 20px; background: #91c83e; }
+.hero { padding: 12px 16px 20px; background: #047857; }
 .banner { position: relative; display: block; border-radius: 12px; overflow: hidden; }
 .banner img { display: block; width: 100%; height: auto; aspect-ratio: 1024 / 572; object-fit: contain; }
 .bannerAction { position: absolute; left: 12px; bottom: 12px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 0 13px; border-radius: 9px; background: #fff; box-shadow: 0 4px 12px rgb(6 61 50 / 22%); color: #063d32; font-size: 12px; font-weight: 700; }
@@ -22,10 +22,10 @@
 .banner:focus-visible,.categories a:focus-visible { outline: 2px solid #087f5b; outline-offset: 3px; }
 @media(hover:hover){.category:hover{box-shadow:0 5px 18px rgb(6 61 50 / 17%)}.heading a:hover{text-decoration:underline}}
 .featuredSection { padding-top: 34px; padding-bottom: 34px; background: #fff; }
-.endingSection { background: #f3fadf; }
-.closedSection { background: #f3fadf; }
+.endingSection { background: #ecfdf5; }
+.closedSection { background: #ecfdf5; }
 .featuredSection :global(.section-heading) { justify-content: center; text-align: center; }
 .featuredSection :global(.section-heading) h2 { font-size: 25px; color: #063d32; }
 .featuredSection :global(.section-heading) p { max-width: 34ch; margin: 8px auto 0; color: #526e64; font-size: 13px; line-height: 1.5; }
-.featuredAll { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; width: fit-content; margin: 20px auto 0; padding: 0 20px; border-radius: 24px; background: var(--mini-action, #a3e635); color: var(--mini-action-ink, #172720); font-size: 13px; font-weight: 700; text-decoration: none; box-shadow: 0 5px 12px rgb(6 61 50 / 12%); }
+.featuredAll { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; width: fit-content; margin: 20px auto 0; padding: 0 20px; border-radius: 24px; background: var(--mini-action, #047857); color: var(--mini-action-ink, #fff); font-size: 13px; font-weight: 700; text-decoration: none; box-shadow: 0 5px 12px rgb(6 61 50 / 12%); }
 .featuredAll:focus-visible { outline: 2px solid #063d32; outline-offset: 4px; }

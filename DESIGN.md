@@ -1,17 +1,17 @@
 ---
 name: Lowin mobile system
-description: A pure-white Telegram Mini App with lime actions, dark ink and quiet green gradients.
+description: A pure-white Telegram Mini App with emerald actions, white labels and quiet green gradients.
 colors:
   background: "#FFFFFF"
   foreground: "#172720"
-  primary: "#A3E635"
-  primary-hover: "#92D427"
+  primary: "#047857"
+  primary-hover: "#065F46"
   support-green: "#157A55"
-  mini-focus: "#416C0D"
-  mini-disabled: "#E6ECDF"
+  mini-focus: "#047857"
+  mini-disabled: "#D1FAE5"
   mini-disabled-ink: "#53604C"
-  mini-nav-selected: "#EFF8E4"
-  mini-nav-ink: "#315711"
+  mini-nav-selected: "#ECFDF5"
+  mini-nav-ink: "#065F46"
   forest: "#103C30"
   mint: "#E5F4EB"
   border: "#DBE7DE"
@@ -75,7 +75,7 @@ spacing:
 components:
   button-primary:
     backgroundColor: "{colors.primary}"
-    textColor: "{colors.foreground}"
+    textColor: "{colors.white}"
     rounded: "{rounded.control}"
   button-primary-hover:
     backgroundColor: "{colors.primary-hover}"
@@ -156,13 +156,13 @@ components:
 
 ## Overview
 
-The current Mini App direction is pure white, flat surfaces, lime primary actions with dark ink, and quiet pale-green gradients on selected feature panels. Forest and supporting green remain in text, links, status accents and selected account panels; administration retains its separate forest-green system. Check.et is a structural reference for clear sections and practical controls, not an additional palette or component source. This refresh records the implementation in the player and administration stylesheets; it supersedes the original off-white canvas direction.
+The current Mini App direction is pure white, flat surfaces, emerald primary actions with white labels, and quiet pale-green gradients on selected feature panels. Forest and supporting green remain in text, links, status accents and selected account panels; administration retains its separate forest-green system. Check.et is a structural reference for clear sections and practical controls, not an additional palette or component source. This refresh records the implementation in the player and administration stylesheets; it supersedes the original off-white canvas direction.
 
 The interface uses compact typography, restrained borders and clear account states. The lowercase text wordmark is replaceable. The Phase 1 foundation needed no product imagery; later catalog surfaces use inventory imagery and explicitly labelled original DEMO illustrations. No surface needs invented inventory or decorative live statistics.
 
 **Key characteristics:**
 - Pure-white canvas and flat, quietly bordered surfaces.
-- Lime actions with dark ink, pale selected states and restrained green supporting accents.
+- Emerald actions with white labels, pale selected states and restrained green supporting accents.
 - A phone-width player experience and a separate operational staff workspace.
 
 Phase 4B extends this incumbent system with public results and private account activity. It reuses catalog imagery and the existing mobile shell; it does not establish a new visual identity. The Phase 1 statements above remain historical foundation context.
@@ -173,13 +173,13 @@ Phase 5A added a separate administration surface in Operate mode, with denser wo
 
 ### Primary
 
-Lime primary marks Mini App actions, selected catalog/personal tabs and the winning example; its label is dark ink. The semantic primary in this document maps to scoped `--mini-action`, not the legacy global `--color-primary`. Supporting green maps to that incumbent global token and remains on links, icons, payment selections and the shared Button utility. Forest anchors the wordmark, result summary and profile balance. Mint remains on verified identity, favorites and selected payment methods. Bottom navigation uses its distinct pale selected fill and darker green text. The home rule demonstration and wallet balance use the pale gradients recorded in the sidecar.
+Emerald primary marks Mini App actions, selected catalog/personal tabs and the winning example; its label is white. The semantic primary in this document maps to scoped `--mini-action`, not the legacy global `--color-primary`. Supporting green maps to that incumbent global token and remains on links, icons, payment selections and the shared Button utility. Forest anchors the wordmark, result summary and profile balance. Mint remains on verified identity, favorites and selected payment methods. Bottom navigation uses its distinct pale selected fill and darker green text. The home rule demonstration and wallet balance use the pale gradients recorded in the sidecar.
 
 ### Neutral
 
 Pure white is the application surface, bottom navigation and outer canvas. Ink is the main text color, muted green-gray supports secondary copy, and soft borders separate rows and containers. The phone layout remains centered on wider screens without a contrasting off-white surround.
 
-Keep the palette light. Dark mode is deferred. Lime is an action and selected-state accent, not the page background; retain dark ink on it. Gold is not a new brand accent.
+Keep the palette light. Dark mode is deferred. Emerald fills the header, hero, primary actions and selected states; use white text on solid emerald and dark emerald text on pale mint. Gold is not a new brand accent.
 
 Administration uses the admin-prefixed green and ink roles on the shared pure-white canvas. Pale green navigation and table headers separate operational areas; white panels and quiet borders retain the incumbent flat treatment. Rust identifies the cancellation action and errors, while restrained green notices report confirmed changes. Amber is reserved for the administration keyboard-focus outline, not a new brand accent. Status and consequence always have text labels.
 
@@ -215,7 +215,7 @@ At 650px and below, navigation becomes a normal-flow two-column link grid, main 
 
 ## Elevation & Depth
 
-Surfaces are flat, without decorative shadows. Tonal contrast, thin borders and spacing define groups. Pale green gradients on the home rule demonstration and wallet summary softly group content; lime identifies the winning example and key actions. These selected gradients do not establish a gradient treatment for every card. Featured auctions reuse the image-led catalog card, with carousel controls below. The illustrative winning tile rises by 5px to reinforce its distinction.
+Surfaces are flat, without decorative shadows. Tonal contrast, thin borders and spacing define groups. Pale green gradients on the home rule demonstration and wallet summary softly group content; emerald identifies the winning example and key actions. These selected gradients do not establish a gradient treatment for every card. Featured auctions reuse the image-led catalog card, with carousel controls below. The illustrative winning tile rises by 5px to reinforce its distinction.
 
 Administration also stays flat: tinted navigation, table headers, thin borders and white panels provide separation without shadows. No additional motion vocabulary is established by the administration stylesheet.
 
@@ -227,19 +227,19 @@ Administration panels reuse the control radius, with smaller admin-control corne
 
 ## Components
 
-Mini App primary actions use lime with dark ink, a 48px minimum height, 12px radius, 12px by 20px padding, a semibold label and an 8px gap. Hover uses primary-hover; disabled actions use the muted disabled fill/ink and a not-allowed cursor. Bid actions retain their 11px radius and 13px bold label. Outline/shared Button variants retain soft borders, ink and mint hover; the shared Button utility still uses supporting green with white text for its default variant. This scoped distinction preserves existing identity and staff controls.
+Mini App primary actions use emerald with white labels, a 48px minimum height, 12px radius, 12px by 20px padding, a semibold label and an 8px gap. Hover uses primary-hover; disabled actions use the muted disabled fill/ink and a not-allowed cursor. Bid actions retain their 11px radius and 13px bold label. Outline/shared Button variants retain soft borders, ink and mint hover; the shared Button utility still uses supporting green with white text for its default variant. This scoped distinction preserves existing identity and staff controls.
 
 Mini App and Telegram entry focus uses a 2px mini-focus outline offset by 3px; the legacy shared utility has its own 4px offset. Mini App inputs and textareas use a mini-focus caret. Preserve the skip link and accessible names on icon-only controls. Motion is restrained: the loading indicator alternates over 1.2 seconds, and reduced-motion preferences disable animation and transitions.
 
-The wallet chip shows ETB for guests and the authenticated available balance when present; staging labels it DEMO. Bottom navigation combines icons with labels: Home, Auctions, Winners, My Bids, Wallet and Profile. The current route uses mini-nav-ink on mini-nav-selected and exposes its current-page state. Catalog and personal tabs use lime with dark ink for their selected states.
+The wallet chip shows ETB for guests and the authenticated available balance when present; staging labels it DEMO. Bottom navigation combines icons with labels: Home, Auctions, Winners, My Bids, Wallet and Profile. The current route uses mini-nav-ink on mini-nav-selected and exposes its current-page state. Catalog and personal tabs use emerald with white labels for their selected states.
 
 Identity panels distinguish loading, guest, reconnect/error and unavailable launch configuration. Verified identity appears in a compact mint line. Retry and Telegram launch actions appear only when applicable. Features outside Phase 1 use honest not-open states rather than populated mock content.
 
-The home rule demonstration presents six amounts, 1 / 1 / 2 / 3 / 3 / 4, in equal columns and is explicitly labelled EXAMPLE ONLY. The unique minimum, 2, has lime fill and a check; duplicated amounts have crosses, and 4 is marked unique but higher. Supporting text explains the result so color alone does not convey the rule. This is an illustration, never a live auction statistic.
+The home rule demonstration presents six amounts, 1 / 1 / 2 / 3 / 3 / 4, in equal columns and is explicitly labelled EXAMPLE ONLY. The unique minimum, 2, has emerald fill and a check; duplicated amounts have crosses, and 4 is marked unique but higher. Supporting text explains the result so color alone does not convey the rule. This is an illustration, never a live auction statistic.
 
 ### Telegram onboarding and catalog refinement
 
-The contact gate precedes Mini App navigation and content. It uses the white 440px entry column, wordmark, shield, short heading, privacy explanation and full-width lime Share my contact action. Native Telegram contact sharing is preferred; Share through the bot instead and Open the bot provide the fallback. Pending verification disables share actions and announces status. Cancellation closes the Mini App when supported and leaves an explanatory state; no ETB is promised for sharing contact. Only a verified own-contact response continues into Home. The launch loader uses a restrained 1.2-second progress indicator and a static reduced-motion state.
+The contact gate precedes Mini App navigation and content. It uses the white 440px entry column, wordmark, shield, short heading, privacy explanation and full-width emerald Share my contact action. Native Telegram contact sharing is preferred; Share through the bot instead and Open the bot provide the fallback. Pending verification disables share actions and announces status. Cancellation closes the Mini App when supported and leaves an explanatory state; no ETB is promised for sharing contact. Only a verified own-contact response continues into Home. The launch loader uses a restrained 1.2-second progress indicator and a static reduced-motion state.
 
 The app shell reserves the larger browser/Telegram top and bottom safe areas. The standalone entry/contact layout currently uses 32px vertical and 24px horizontal padding with the browser bottom safe-area inset; it does not inherit the shell's Telegram inset calculation.
 
@@ -307,7 +307,7 @@ The payment finish-review handoff records a ship disposition, all three requeste
 
 ## Do's and Don'ts
 
-- Do preserve the pure-white canvas, lime Mini App actions with dark ink, visible focus, comfortable tap targets and Telegram safe areas.
+- Do preserve the pure-white canvas, emerald Mini App actions with white labels, visible focus, comfortable tap targets and Telegram safe areas.
 - Do use typography, spacing and borders to establish hierarchy.
 - Do keep authenticated balance displays tied to server data.
 - Do label examples clearly and keep account and feature states truthful.
