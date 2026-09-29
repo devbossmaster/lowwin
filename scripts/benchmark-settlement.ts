@@ -16,7 +16,7 @@ const percentile=(values:number[],fraction:number)=>Math.round([...values].sort(
 const results=[];
 try{
  for(const ruleVersion of ['lowest-unique-v1','lowest-unique-v2']){
-  const users=[];for(let i=0;i<100;i++)users.push(await bidUser(db,'1000'));
+  const users:string[]=[];for(let i=0;i<100;i++)users.push(await bidUser(db,'1000'));
   const auction=await bidAuction(db,{ruleVersion,fee:1,max:1000,endDelayMs:30000});
   let next=0;const times:number[]=[],started=performance.now();
   await Promise.all(Array.from({length:5},async()=>{while(next<users.length){const index=next++,at=performance.now();await submitBid(db,{userId:users[index],auctionSlug:auction.slug!,amount:String(index+1),key:randomUUID()});times.push(performance.now()-at)}}));
