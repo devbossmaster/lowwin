@@ -1,0 +1,39 @@
+{
+  "at": "2026-09-29T06:33:34.419Z",
+  "scope": "Local production build over loopback HTTP with proxy HTTPS headers; DEMO data; no real Telegram/network/TLS measurement",
+  "signInMs": 428,
+  "rows": [
+    {
+      "route": "/",
+      "samples": 30,
+      "concurrency": 5,
+      "p50Ms": 126,
+      "p95Ms": 226,
+      "decodedBytes": 50835
+    },
+    {
+      "route": "/api/catalog/auctions",
+      "samples": 30,
+      "concurrency": 5,
+      "p50Ms": 37,
+      "p95Ms": 152,
+      "decodedBytes": 7697
+    },
+    {
+      "route": "/api/results",
+      "samples": 30,
+      "concurrency": 5,
+      "p50Ms": 56,
+      "p95Ms": 66,
+      "decodedBytes": 7474
+    },
+    {
+      "route": "/winners/15",
+      "samples": 30,
+      "concurrency": 5,
+      "p50Ms": 75,
+      "p95Ms": 101,
+      "decodedBytes": 21085
+    }
+  ]
+}

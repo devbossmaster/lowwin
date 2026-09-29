@@ -24,10 +24,41 @@ Settlement records the version, minimum, participant count, deadline, accepted-b
 
 ## Evidence currently recorded
 
-- Fresh PostgreSQL 17: all 290 tests in 27 files passed, no skipped tests, including 15 v2 tests and the original v1 settlement suite. Log: `.local/v2-unit-final.log`.
-- Additional funding activation/evidence unit checks: 5 passed. No provider network call or real credit occurred.
-- Typecheck passed; production build passed. Logs: `.local/v2-typecheck.log`, `.local/v2-build.log`.
-- Full browser matrix, performance load, final security scan and external audit are being recorded separately. An earlier PR #1 result is not a pass for this branch.
+- [PR #2](https://github.com/devbossmaster/lowwin/pull/2), stacked on PR #1, contains the reviewable implementation. No merge or production switch has occurred.
+- Fresh PostgreSQL 17: **293 tests in 28 files passed**, zero skips, including **16 v2 cases**, v1 preservation, contact/auth, funding evidence/idempotency and the restricted-runtime role check. Typecheck, production build, four core browser checks, dependency audit and security scan passed at `9bb3419`. [CI evidence](https://github.com/devbossmaster/lowwin/actions/runs/36530766762).
+- The full payment browser suite passed at `25b1183`: **16 tests**, covering mobile 360/430, real local OCR extraction, test-provider credit, admin payment review, contact gating and retry/loading. No real provider payment or production credit occurred. [CI evidence](https://github.com/devbossmaster/lowwin/actions/runs/36531362693).
+- General browser selectors were updated for the existing redesigned navigation, wallet, winners and carousel. Earlier failures remain in CI history; final head results are recorded below rather than treated as green by assumption.
+- Latest local production build and strict typecheck passed. An added v2 browser case verifies English/Amharic disclosure and fallback labels at both widths; its final CI result is pending.
+
+### Measured performance and restore
+
+Committed raw measurements are in [evidence/frozen-v2](evidence/frozen-v2). These are local measurements, not real Telegram or VPS results. The production-build HTTP test uses loopback HTTP with simulated HTTPS proxy headers, signed synthetic Telegram launch and verified DEMO contact; it does not measure TLS or mobile network overhead.
+
+| Query/service | PR #1 / v1 | v2 | Conditions |
+|---|---:|---:|---|
+| Home catalog p50 / p95 | 23.61 / 29.07 ms | 25.31 / 29.75 ms | same local data, 20 warm samples |
+| Results p50 / p95 | 12.03 / 13.58 ms | 11.91 / 13.68 ms | same local data, 20 warm samples |
+| Accepted bid p50 / p95 | 285.23 / 520.62 ms | 258.78 / 494.62 ms | 100 participants, concurrency 5, pool 5 |
+| Settlement | 3,822 ms | 5,956 ms | 100 participants, one run per version |
+| Idempotent close retry | 15 ms | 18 ms | same completed settlement |
+
+No significant catalog speedup is claimed. Additional v2 proof verification increases closing cost; both runs completed within the existing 120-second transaction bound with zero reconciliation drift. Larger populations and remote database latency still need target-environment measurement.
+
+Production-build HTTP, 30 warm requests per route at concurrency 5: Home **126/226 ms**, catalog API **37/152 ms**, results API **56/66 ms**, winner detail **75/101 ms** (p50/p95). One signed launch measured **428 ms**. Decoded responses were 50,835 / 7,697 / 7,474 / 21,085 bytes respectively; these are response sizes, not total page assets or transferred compressed bytes.
+
+Local PostgreSQL custom-format dump/restore passed: hashes matched for 200 bids, 16 frozen terms, 2 settlements, 800 journals, 1,600 postings, holds, accounts, operations and all 18 migration records. Balance/posting drift was zero. `scripts/rehearse-restore.mjs` creates a fresh database and never drops/resets retained data. This does **not** certify encrypted off-host backups, Supabase restore or scheduled VPS backups.
+
+### External findings and remaining work
+
+Read-only audit of the connected staging environment found runtime login `postgres` with `BYPASSRLS` and ownership of private tables; RLS being enabled does not constrain that login. `deploy/runtime-role.sql` and a local positive/negative permission test are provided, but the remote login has **not** been changed. The remote connection took 3,489 ms; the snapshot showed 8 idle connections. The v2 migration has not been applied remotely.
+
+The configured Telegram test bot responded to read-only API checks; webhook backlog was zero. Actual `/start`, contact and Mini App behavior on Android/iOS remain Owner checks. No live Telegram messages were sent during this verification.
+
+The connected environment reports email transport unavailable, provider mode disabled and no live Check.et key. Required Owner values: separate production restricted runtime/migration URLs; HTTPS hostname and deployment access location; verified email sender/API credential; Check.et live credential; exact approved Telebirr/CBE account holders/numbers and policy; backup recipient/off-host destination; monitoring recipient. Supply secrets through protected environment configuration, never a PR or chat.
+
+EN/AM rule, wallet, bid and result copy has been extended; Owner FAQ editing now includes Amharic fields. Existing English-only custom FAQ entries are retained and omitted from the Amharic view until translated. Native review is **not yet approved**. A complete translation audit of profile/support, all bot messages and operational admin labels is still outstanding. Uploaded receipt images are currently memory-only OCR inputs, not a retained reviewer image store; only a candidate reference is extracted, and a screenshot never credits money. Reviewable private receipt retention remains a separate unfinished requirement.
+
+Hostinger isolation, real TLS/proxy limits, email delivery, worker supervision, off-host encrypted restore, alerts and real production transfer verification remain unperformed. Deployment files are templates, not proof of a running deployment.
 
 ## Native Amharic review — Owner
 
