@@ -23,7 +23,7 @@ export function AdminPaymentDetail({data,write,reload}:{data:PaymentDetail;write
    <label>Action<select value={action} onChange={e=>{setAction(e.target.value);m.clear()}}><option value="note">Add investigation note</option><option value="case">Update investigation state</option><option value="retry" disabled={!data.reference||data.status==='CREDITED'}>Retry eligible verification</option><option value="recover" disabled={!recoverable}>Recover a timed-out verification</option></select></label>
    {action==='case'&&<label>Investigation state<select name="state" defaultValue={data.caseState}>{['INVESTIGATING','ESCALATED','RESOLVED','REVERSAL_REVIEW'].map(s=><option value={s} key={s}>{statusLabel(s)}</option>)}</select></label>}
    <label>Reason<textarea name="reason" required minLength={8} maxLength={500}/></label>
-   <p>{action==='recover'?'Requires fresh MFA. Lowwin checks the original Check.et API record and exact receipt before any credit; a mismatch remains under review.':action==='retry'?'Retry asks the provider to verify the saved reference; the existing funding guards still apply.':'Resolving a case or recording a note does not credit the wallet.'}</p>
+   <p>{action==='recover'?'Requires fresh MFA. Lowwin rechecks the saved transfer with Verify.et; incomplete evidence remains under review.':action==='retry'?'Retry asks Verify.et to check the saved reference; a pending request resumes automatically.':'Resolving a case or recording a note does not credit the wallet.'}</p>
    <button disabled={m.busy}>Record action</button>
   </form>}
   {write&&action==='recover'&&<MfaStepUp/>}

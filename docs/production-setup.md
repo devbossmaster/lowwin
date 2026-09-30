@@ -14,7 +14,7 @@ Use different staging and production values. Store secrets in a password manager
 | Verified email sender domain and Resend sending key | Resend dashboard; verify its DNS records | Owner invitation/reset |
 | Owner's separate staff email | A mailbox the Owner controls, distinct from player identity | Bootstrap |
 | Authenticator and offline recovery-code storage | Owner/staff device and password manager | Staff access |
-| Check.et test/live keys, bank agreement and official receiver evidence | Check.et dashboard and authorized Telebirr/CBE account holder | Funding review only |
+| Verify.et API key, webhook secret, bank agreement and official receiver evidence | Verify.et dashboard and authorized Telebirr/CBE account holder | Funding review only |
 | Exact receiver account, holder, ETB bounds, terms and review reference | Independently verify with the account holder/bank | Versioned payment policy |
 | Independent encryption/HMAC secrets | Generate locally below; retain historic key versions | Contact/MFA/fulfillment |
 | Backup destination, retention, alert recipient, recovery owner | Owner-controlled protected storage | Production GO |
@@ -86,7 +86,7 @@ Disable bootstrap immediately afterward. The database permanently records bootst
 
 ## 6. Controlled funding activation
 
-Check.et verifies an existing transfer; it does not collect payment. Live funding stays off by default. Activation requires the server-only `PAYMENTS_LIVE_ENABLED=true` switch, production mode, HTTPS origins, a live Check.et key, enabled reviewed receiver policies and all development/test/DEMO switches off. See [the v2 release packet](frozen-auction-v2-release.md) for the concrete Owner transfer approval gate. Do not configure a real account as a DEMO account or ask a tester to send money. Tests use mock provider responses on disposable loopback databases only.
+Verify.et verifies an existing transfer; it does not collect payment. Live funding stays off by default. Activation requires the server-only `PAYMENTS_LIVE_ENABLED=true` switch, production mode, HTTPS origins, a server-only Verify.et key and webhook secret, enabled reviewed receiver policies and all development/test/DEMO switches off. The key needs `verification:read` and `verification:write`. See [the Verify.et migration packet](verify-et-migration.md) for rollout and the documented receiver-proof gap. Do not configure a real account as a DEMO account or ask a tester to send money. Tests use mock provider responses on disposable loopback databases only.
 
 Before a controlled activation, supply exact authorized Telebirr/CBE receiver details and official evidence. Verify reference, completed transfer type, exact cents, ETB currency, receiver, timezone-bearing transfer date and official verification method. Provider `duplicate=true` requires investigation; local unique claims remain the independent ownership guard. OCR/SMS merely extract a candidate reference. Case resolution is not credit approval.
 

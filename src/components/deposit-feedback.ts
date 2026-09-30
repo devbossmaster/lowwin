@@ -3,13 +3,13 @@ export function depositFeedback(receipt:{status:string;reason?:string|null;point
  if(receipt.status==='CREDITED')return {kind:'success' as const,message:receipt.reused?t('This transaction is already credited. No second credit was added.'):`${receipt.points} ${t('ETB credited. Receipt recorded.')}`};
  if(receipt.status==='NEEDS_REVIEW'){
   const reasons:Record<string,string>={
-   DUPLICATE_REVIEW:'The provider has checked this reference before. We need evidence linking that check to this deposit. You can check again.',
+   INCOMPLETE_EVIDENCE:'The verification needs more evidence. Your wallet was not credited.',
    DATE_MISMATCH:'The payment date could not be matched. Admin review is needed; your wallet is not credited.',
    AMOUNT_MISMATCH:'The amount does not match the deposit requirements. Admin review is needed.',
    RECEIVER_MISMATCH:'The receiving account does not match. Admin review is needed.',
    RECEIVER_UNPROVEN:'The receiving account could not be confirmed. Admin review is needed.',
    STALE_INTENT:'This deposit expired before verification finished. Contact support.',
-   RECOVERY_REVIEW:'The earlier verification could not be recovered. Admin review is needed.',
+   PROVIDER_UNAVAILABLE:'Verification did not finish. Contact support with your deposit ID.',
   };
   return {kind:'info' as const,message:t(reasons[receipt.reason??'']??'Payment needs more evidence — you can check again.')};
  }

@@ -1,53 +1,30 @@
 import {describe,it,expect} from 'vitest';
-import {assess,recoverProviderDuplicate,type VerificationInput} from '../src/modules/payments/provider';
-const now=new Date('2026-09-29T10:10:00Z');
-const input:VerificationInput={bank:'telebirr',reference:'DEL889NG4S',account:'0911111111',expectedCents:10000n,createdAt:new Date('2026-09-29T10:00:00Z'),expiresAt:new Date('2026-09-29T10:30:00Z')};
-function evidence(){return {success:true,exists:true,duplicate:false,data:{bank:'telebirr',transaction_number:input.reference,verification_method:'official',receipt:{status:'completed',transaction_type:'transfer',amount:'100.00',currency:'ETB',transaction_date:now.toISOString(),receiver_account:input.account}}}}
-describe('official payment evidence',()=>{
- it('accepts only the complete exact evidence',()=>{expect(assess(evidence(),input,now).matched).toBe(true)});
- it('derives the amount only inside frozen receipt limits and still verifies all evidence',()=>{
-  const automatic={...input,expectedCents:null,minCents:100n,maxCents:20000n};
-  expect(assess(evidence(),automatic,now)).toMatchObject({matched:true,evidence:{amountCents:'10000'}});
-  expect(assess(evidence(),{...automatic,minCents:10001n},now).matched).toBe(false);
-  expect(assess(evidence(),{...automatic,maxCents:9999n},now).matched).toBe(false);
-  expect(assess(evidence(),{...automatic,minCents:undefined},now).matched).toBe(false);
-  for(const change of [{receiver_account:'0999999999'},{currency:'USD'},{transaction_type:''},{transaction_date:'2026-09-29T11:00:00Z'},{amount:'1.001'}]){
-   const body=evidence();Object.assign(body.data.receipt,change);expect(assess(body,automatic,now).matched).toBe(false);
-  }
- });
- it('routes provider duplicates to review even with matching official evidence',()=>{expect(assess({...evidence(),duplicate:true},input,now)).toMatchObject({matched:false,code:'DUPLICATE_REVIEW'})});
- it('fails closed when duplicate or transfer type is unknown',()=>{
-  const raw:Record<string,unknown>=evidence();delete raw.duplicate;expect(assess(raw,input,now).matched).toBe(false);
-  const other=evidence();delete (other.data.receipt as Partial<typeof other.data.receipt>).transaction_type;expect(assess(other,input,now).matched).toBe(false);
- });
- it('recovers only the exact original API verification after a recorded timeout',async()=>{
-  const prior=new Date('2026-09-29T10:09:30Z');
-  const candidate={...evidence(),duplicate:true,existing_verification_id:42,verified_at:'2026-09-29T10:09:40Z'};
-  const original={verification:{id:42,bank:'telebirr',transaction_number:input.reference,account_number:null,success:true,exists:true,status:'completed',transaction_type:'transfer',amount:'100.00',currency:'ETB',transaction_date:now.toISOString(),created_at:'2026-09-29T10:09:35Z',source:{type:'api',label:'Lowwin'}}};
-  const check=(body:unknown=candidate,record:unknown=original,options:VerificationInput={...input,outageAttemptAt:prior})=>recoverProviderDuplicate(body,options,async()=>record,now);
-  expect(await check()).toMatchObject({code:'VERIFIED_RECOVERED',matched:true,evidence:{originalVerificationId:42,recoveryCheck:'MATCHED',receiverSuffix:'1111'}});
-  expect(await check(candidate,original,input)).toMatchObject({code:'DUPLICATE_REVIEW',matched:false});
-  for(const record of [
-   {verification:{...original.verification,source:{type:'app'}}},
-   {verification:{...original.verification,transaction_number:'OTHERREF123'}},
-   {verification:{...original.verification,amount:'99.00'}},
-   {verification:{...original.verification,created_at:'2026-09-29T09:00:00Z'}},
-   {verification:{...original.verification,account_number:'0999999999'}}
-  ])expect((await check(candidate,record)).matched).toBe(false);
-  expect((await check({...candidate,data:{...candidate.data,receipt:{...candidate.data.receipt,receiver_account:'0999999999'}}})).matched).toBe(false);
-  expect((await recoverProviderDuplicate(candidate,{...input,outageAttemptAt:prior},async()=>{throw Error('Unavailable')},now)).matched).toBe(false);
- });
- it('correlates an ordinary earlier attempt but refuses unrelated or incomplete duplicate evidence',async()=>{
-  const at=new Date('2026-09-29T10:09:35Z'),window={startedAt:new Date('2026-09-29T10:09:30Z'),endedAt:new Date('2026-09-29T10:10:50Z')};
-  const raw={...evidence(),duplicate:true,existing_verification_id:42,verified_at:at.toISOString()};
-  const record={verification:{id:42,bank:'telebirr',transaction_number:input.reference,account_number:null,success:true,exists:true,status:'completed',transaction_type:'transfer',amount:100,currency:'ETB',transaction_date:now.toISOString(),created_at:at.toISOString(),source:{type:'api'}}};
-  const options={...input,priorAttempts:[window]};
-  expect(await recoverProviderDuplicate(raw,options,async()=>record,now)).toMatchObject({matched:true,code:'VERIFIED_RECOVERED'});
-  expect((await recoverProviderDuplicate(raw,{...options,otherAttempts:[window]},async()=>record,now)).matched).toBe(false);
-  expect((await recoverProviderDuplicate(raw,{...input,priorAttempts:[{startedAt:now,endedAt:now}]},async()=>record,now)).matched).toBe(false);
-  const masked={...raw,data:{...raw.data,receipt:{...raw.data.receipt,receiver_account:'***1111'}}};
-  expect((await recoverProviderDuplicate(masked,options,async()=>record,now)).matched).toBe(false);
-  expect((await recoverProviderDuplicate({duplicate:true,existing_verification_id:42,verified_at:at.toISOString()},options,async()=>record,now)).matched).toBe(false);
- });
+import {assess,candidate,type VerificationInput} from '../src/modules/payments/provider';
 
+const at=new Date('2026-09-29T10:10:00Z');
+const requestId='550e8400-e29b-41d4-a716-446655440000';
+const input:VerificationInput={bank:'telebirr',reference:'DEL889NG4S',account:'0911111111',expectedCents:null,minCents:100n,maxCents:20000n,createdAt:new Date('2026-09-29T10:00:00Z'),expiresAt:new Date('2026-09-29T10:30:00Z'),attemptKey:'attempt-1'};
+function completed(overrides:Record<string,unknown>={}){return {success:true,requestId,verification:{processingStatus:'completed',status:'success',verified:true},data:[{bank:'telebirr',status:'success',verified:true,amount:'100.00',currency:'ETB',receiverAccount:'251911111111',referenceNumber:input.reference,timestamp:at.toISOString(),...overrides}]}}
+
+describe('Verify.et authoritative evidence',()=>{
+ it('credits only complete exact evidence and derives ETB cents',()=>expect(assess(completed(),input,at)).toMatchObject({matched:true,code:'VERIFIED',evidence:{amountCents:'10000'}}));
+ it('never credits queued responses',()=>expect(assess({success:true,requestId,verification:{processingStatus:'queued',status:'pending',verified:false},data:[]},input,at)).toMatchObject({matched:false,processing:true,code:'PROCESSING'}));
+ it.each([
+  [{receiverAccount:'2519****1111'},'RECEIVER_UNPROVEN'],
+  [{receiverAccount:undefined},'RECEIVER_UNPROVEN'],
+  [{receiverAccount:'251922222222'},'RECEIVER_MISMATCH'],
+  [{amount:'0.99'},'AMOUNT_MISMATCH'],
+  [{amount:'200.01'},'AMOUNT_MISMATCH'],
+  [{amount:'1.001'},'INVALID_AMOUNT'],
+  [{currency:'USD'},'CURRENCY_MISMATCH'],
+  [{timestamp:'2026-09-28T10:10:00Z'},'DATE_MISMATCH'],
+  [{timestamp:undefined},'DATE_MISMATCH'],
+  [{referenceNumber:'OTHERREF123'},'REFERENCE_MISMATCH'],
+ ] as const)('rejects unproven evidence: %j', (change,code)=>expect(assess(completed(change),input,at)).toMatchObject({matched:false,code}));
+ it('preserves CBE Receipt ID case and normalizes only legacy FT',()=>{
+  expect(candidate('cbe','https://mbreciept.cbe.com.et/fHCxyExampleRcpt1')).toBe('fHCxyExampleRcpt1');
+  expect(candidate('cbe','ft26example1')).toBe('FT26EXAMPLE1');
+  expect(candidate('telebirr','transaction number: del889ng4s')).toBe('DEL889NG4S');
+ });
+ it('does not guess ambiguous identifiers',()=>expect(()=>candidate('cbe','Receipt ID: fHCxyExampleRcpt1; Receipt ID: fHCxyExampleRcpt2')).toThrow());
 });

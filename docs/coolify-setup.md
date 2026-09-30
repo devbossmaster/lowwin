@@ -15,7 +15,7 @@ Choose **Add Resource → Git Repository**, select the existing GitHub connectio
 | Field | Value |
 |---|---|
 | Repository | `devbossmaster/lowwin` |
-| Branch | `release/frozen-auction-v2-20260929` (PR #2; latest release work is here) |
+| Branch | `main` after this review PR is approved and merged |
 | Base Directory | `/` |
 | Build Pack | `Railpack` if available in this Coolify version |
 | Install Command | `npm ci --include=dev` |
@@ -50,7 +50,7 @@ Enter values privately in Coolify. The local `.env` is ignored by Git and is not
 
 All four applications need `NODE_ENV=production`, `APP_ENV=production`, the restricted `DATABASE_URL`, and `DIRECT_URL` set equal to that runtime URL. Use Supabase's transaction pool URL with `sslmode=require&pgbouncer=true&connection_limit=5&connect_timeout=15&pool_timeout=20`. Each worker caps its own connection pool at one; budget eight runtime connections plus deployment/migration headroom.
 
-Web and bot need: `BETTER_AUTH_URL=https://lowwin.shop`, `MINI_APP_URL=https://lowwin.shop/telegram`, `BETTER_AUTH_SECRET`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME` (without @), `TELEGRAM_WEBHOOK_SECRET`, `PHONE_CONTACT_KEY_ID`, `PHONE_CONTACT_KEYS`, `PHONE_CONTACT_HASH_KEY`. Notification worker also needs `TELEGRAM_BOT_TOKEN`. Auction worker needs no provider, email or Redis credentials.
+Web and bot need: `BETTER_AUTH_URL=https://lowwin.shop`, `MINI_APP_URL=https://lowwin.shop/telegram`, `BETTER_AUTH_SECRET`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME` (without @), `TELEGRAM_WEBHOOK_SECRET`, `PHONE_CONTACT_KEY_ID`, `PHONE_CONTACT_KEYS`, `PHONE_CONTACT_HASH_KEY`. Notification worker also needs `TELEGRAM_BOT_TOKEN`, `VERIFY_ET_API_KEY`, `VERIFY_ET_WEBHOOK_SECRET`, `PAYMENTS_LIVE_ENABLED`, `BETTER_AUTH_URL`, and `MINI_APP_URL` to finish queued verifications. Auction worker needs no provider, email or Redis credentials.
 
 Web additionally needs:
 
@@ -64,8 +64,8 @@ DELIVERY_CONTACT_KEYS={"delivery-v1":"<separate 64-hex key>"}
 EMAIL_TRANSPORT=resend
 EMAIL_FROM=<verified sender email>
 RESEND_API_KEY=<sending key>
-CHECK_ET_MODE=live
-CHECK_ET_LIVE_API_KEY=<provider live key>
+VERIFY_ET_API_KEY=<Verify.et verification read/write key>
+VERIFY_ET_WEBHOOK_SECRET=<dashboard endpoint whsec_ secret>
 PAYMENTS_LIVE_ENABLED=false
 RECEIPT_OCR=tesseract
 ADMIN_BOOTSTRAP_ENABLED=false
@@ -77,6 +77,8 @@ WALLET_TEST_PREVIEW=false
 ```
 
 For new installations, generate each independent key with `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"`; use `base64url` instead for auth/webhook secrets. PHONE_CONTACT_KEYS uses the same JSON format as the delivery keyring, with its own different key and matching key ID. For retained data, preserve the existing contact/MFA/delivery keys and IDs. Never regenerate them casually. Exact receiver account/holder policies belong in the reviewed admin funding configuration.
+
+Verify.et requires an API key with `verification:write` and `verification:read`. Register `https://lowwin.shop/api/payments/verify-et/webhook` in the Verify.et dashboard for `verification.completed`, copy its one-time `whsec_` secret privately, and send a signed test event. The endpoint returns 204 for a valid test. Put the same API key and current webhook secret in the web and notification-worker resources. Keep `PAYMENTS_LIVE_ENABLED=false` during migration and validation. Lowwin performs its own OCR and sends only JSON identifiers to Verify.et; do not enable Verify.et Image Processing or buy image credits for this flow. See `docs/verify-et-migration.md` for the contract gap and rollout sequence.
 
 ## 5. Start in order
 

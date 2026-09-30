@@ -17,7 +17,7 @@ export async function cleanReceipt(bytes:Buffer,mime:string){
 }
 let active=false;
 type OcrResult={text:string;confidence:number;words?:{text:string;confidence:number}[]};
-function literalReferences(text:string,bank:Bank){return [...new Set(text.toUpperCase().match(/\b[A-Z][A-Z0-9]{7,31}\b/g)??[])].filter(token=>/\d/.test(token)).filter(token=>{try{canonical(bank,token);return true}catch{return false}})}
+function literalReferences(text:string,bank:Bank){return [...new Set(text.match(/\b[A-Za-z][A-Za-z0-9]{7,63}\b/g)??[])].filter(token=>/\d/.test(token)).filter(token=>{try{canonical(bank,token);return true}catch{return false}})}
 export class ReceiptScanError extends PaymentError{
  constructor(error:PaymentError,public diagnostics:{pass:number;characters:number;candidateCount:number;confidence:number|null}[]){super(error.status,error.message)}
 }
@@ -36,7 +36,7 @@ export function extractedReference(result:OcrResult,bank:Bank){
  const literalCodes=literalReferences(result.text,bank);
  if(literalCodes.length>1)throw new PaymentError(422,'A single clear reference could not be found. Enter it manually.');
  // Unrelated artwork and Amharic text must not outweigh a clearly read reference.
- const words=Array.isArray(result.words)?result.words.filter(w=>typeof w.text==='string'&&w.text.toUpperCase().split(/[^A-Z0-9]+/).includes(reference)):[];
+ const words=Array.isArray(result.words)?result.words.filter(w=>typeof w.text==='string'&&w.text.split(/[^A-Za-z0-9]+/).some(token=>token===reference||bank==='telebirr'&&token.toUpperCase()===reference)):[];
  const confidence=words.length?Math.max(...words.map(w=>Number.isFinite(w.confidence)?w.confidence:0)):result.confidence;
  if(confidence<35)throw new PaymentError(422,'Scan is uncertain. Enter the reference manually.');
  // This is an editable extraction, never payment evidence or an automatic credit.
@@ -47,7 +47,7 @@ export function combineExtractions(passes:OcrResult[],bank:Bank){
  try{
  const results=passes.map(pass=>{try{return extractedReference(pass,bank)}catch(error){
   // Multiple plausible references remain ambiguous even if the other pass reads one.
-  const codes=[...new Set(pass.text?.toUpperCase().match(/\b[A-Z][A-Z0-9]{7,31}\b/g)??[])].filter(v=>/\d/.test(v));
+  const codes=literalReferences(pass.text??'',bank);
   if(codes.length>1||error instanceof PaymentError&&error.message==='Receipt bank does not match the selected account.')throw error;
   return null;
  }}).filter((value):value is ReturnType<typeof extractedReference>=>!!value);

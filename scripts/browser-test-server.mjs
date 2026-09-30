@@ -5,7 +5,8 @@ if(process.env.APP_ENV!=='local'||!['127.0.0.1','localhost'].includes(db.hostnam
 const [kind,port]=process.argv.slice(2);
 let stop;
 if(kind==='next'){
- process.env.TURBOPACK='1';
+ if(process.env.LOWWIN_BROWSER_WEBPACK==='1')delete process.env.TURBOPACK;
+ else process.env.TURBOPACK='1';
  process.env.__NEXT_DEV_SERVER='1';
  const {startServer}=await import('next/dist/server/lib/start-server.js');
  await startServer({dir:process.cwd(),hostname:'127.0.0.1',port:Number(port),isDev:true,allowRetry:false});
