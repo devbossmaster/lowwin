@@ -14,7 +14,7 @@ async function userId(request:Request) {
 function errorResponse(error:unknown) {
   if(error instanceof PrivateApiError)return Response.json({error:error.message,code:'INVALID_INPUT'},{status:error.status,headers:privateHeaders});
   if(error instanceof BidError)return Response.json({error:error.message,code:error.code},{status:error.status,headers:privateHeaders});
-  if(error instanceof z.ZodError)return Response.json({error:'Enter a valid whole ETB amount and request key.',code:'INVALID_INPUT'},{status:422,headers:privateHeaders});
+  if(error instanceof z.ZodError)return Response.json({error:'Enter a valid ETB amount, fee version and request key.',code:'INVALID_INPUT'},{status:422,headers:privateHeaders});
   if(error instanceof SyntaxError)return Response.json({error:'Send a valid JSON bid request.',code:'INVALID_INPUT'},{status:400,headers:privateHeaders});
   return Response.json({error:'Bid could not be processed. Retry with the same request key.',code:'UNAVAILABLE'},{status:503,headers:privateHeaders});
 }

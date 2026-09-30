@@ -17,6 +17,29 @@ DO $$ DECLARE t text; BEGIN
   END IF;
  END LOOP;
 END $$;
+-- These tables were added after the original runtime-role inventory. Keep the
+-- role useful when it is created after migrations, without granting mutations
+-- on immutable revision and transfer-alias rows.
+DO $$ DECLARE t text; BEGIN
+ FOREACH t IN ARRAY ARRAY['AuctionFeeRevision','AuctionControlRevision','PaymentTransferAlias'] LOOP
+  IF EXISTS(SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename=t) THEN
+   EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',t);
+   EXECUTE format('GRANT SELECT,INSERT ON public.%I TO lowwin_runtime',t);
+   IF NOT EXISTS(SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename=t AND policyname='lowwin_server_access') THEN
+    EXECUTE format('CREATE POLICY lowwin_server_access ON public.%I TO lowwin_runtime USING (true) WITH CHECK (true)',t);
+   END IF;
+  END IF;
+ END LOOP;
+ FOREACH t IN ARRAY ARRAY['VerifyRequest','VerifyWebhookEvent'] LOOP
+  IF EXISTS(SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename=t) THEN
+   EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',t);
+   EXECUTE format('GRANT SELECT,INSERT,UPDATE ON public.%I TO lowwin_runtime',t);
+   IF NOT EXISTS(SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename=t AND policyname='lowwin_server_access') THEN
+    EXECUTE format('CREATE POLICY lowwin_server_access ON public.%I TO lowwin_runtime USING (true) WITH CHECK (true)',t);
+   END IF;
+  END IF;
+ END LOOP;
+END $$;
 GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA public TO lowwin_runtime;
 REVOKE ALL ON TABLE public."_prisma_migrations" FROM lowwin_runtime;
 COMMIT;
