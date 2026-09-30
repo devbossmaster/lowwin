@@ -1,0 +1,33 @@
+{
+  "scope": "local disposable fixtures; not production",
+  "unit": {
+    "passed": 340,
+    "files": 37,
+    "skipped": 0,
+    "seconds": 245.59,
+    "exit": 0
+  },
+  "browser": {
+    "passed_scenarios": 19,
+    "skipped": 1,
+    "seconds_rounded": 240,
+    "exit": 0,
+    "note": "One fresh full matrix; duplicate 360px carousel skipped. All three server ports released."
+  },
+  "payments": {
+    "passed_mobile": 14,
+    "passed_admin": 2,
+    "exit": 0,
+    "seconds_rounded": 96,
+    "note": "One fresh matrix; all three server ports released."
+  },
+  "typecheck": "passed",
+  "build": "passed",
+  "audit_vulnerabilities": 0,
+  "visual_review": "ship for scored fixes",
+  "deployment": "not performed",
+  "runner_regressions": {
+    "passed": 3,
+    "included_in_unit": true
+  }
+}

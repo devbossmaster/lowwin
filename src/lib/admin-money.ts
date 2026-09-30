@@ -1,0 +1,2 @@
+export function centsToEtb(value:string|number|bigint|null|undefined){if(value==null)return '—';const n=BigInt(value),abs=n<0n?-n:n;return `${n<0n?'-':''}${abs/100n}.${String(abs%100n).padStart(2,'0')}`;}
+export function etbToCents(value:string){if(!/^\d{1,9}(\.\d{1,2})?$/.test(value))throw Error('Enter an ETB amount with at most two decimal places.');const [whole,fraction='']=value.split('.');return (BigInt(whole)*100n+BigInt(fraction.padEnd(2,'0'))).toString();}

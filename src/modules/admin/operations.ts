@@ -1,3 +1,4 @@
+import {readOverview,auctionList,displayAuctionStatus} from './workspace-read';
 import {queueGlobal} from '../notifications/campaigns';
 import {RULE_V3,V3_AMOUNT_TERMS,V2_MIN_PARTICIPANTS,V2_FALLBACK_TERMS,V2_CANCELLATION_TERMS} from '../auctions/rules';
 import { randomUUID } from 'node:crypto';
@@ -132,17 +133,13 @@ export async function adminRead(client:PrismaClient,headers:Headers,path:string[
   const actor=await requireAdmin(client,headers);
   if(path[0]==='me')return {role:actor.role,permissions:permissions(actor.role),expiresAt:actor.expiresAt,mfaAt:actor.mfaAt};
   if(path[0]!=='dashboard'){const permission=path[0]==='reconciliation'||path[2]==='proof'?'audit':path[2]==='impact'?'cancel':'catalog';assertPermission(actor.role,permission)}
-  if(path[0]==='dashboard'){
-    if(actor.role!=='OWNER'&&actor.role!=='AUDITOR')return {counts:{},incidents:[],reconciliation:null,permissions:permissions(actor.role)}
-    const [drafts,scheduled,due,closed,incidents,drift]=await Promise.all([client.auction.count({where:{status:'DRAFT'}}),client.auction.count({where:{status:{in:['LIVE','SCHEDULED']},endsAt:{gt:actor.now}}}),client.auction.count({where:{status:{in:['LIVE','SCHEDULED']},endsAt:{lte:actor.now},result:{is:null},settlement:{is:null}}}),client.auctionSettlement.count(),client.auction.findMany({where:{closeErrorCode:{not:null},settlement:{is:null}},select:{id:true,code:true,closeAttempts:true,closeErrorCode:true,nextCloseAttemptAt:true},take:20,orderBy:{endsAt:'asc'}}),reconcile(client)]);
-    return {counts:{drafts,scheduled,due,closed},incidents,reconciliation:{healthy:drift.length===0,issues:drift.length}};
-  }
+  if(path[0]==='dashboard')return readOverview(client,actor);
   if(path[0]==='categories')return client.category.findMany({orderBy:{name:'asc'}});
   if(path[0]==='products'&&path[1])return client.product.findUniqueOrThrow({where:{id:id.parse(path[1])},include:{images:true,category:{select:{name:true}}}});
   if(path[0]==='products'){const {page,q,status}=pageInput(params),where={...(q?{title:{contains:q,mode:'insensitive' as const}}:{}),...(status==='VISIBLE'?{visible:true}:status==='HIDDEN'?{visible:false}:{})},total=await client.product.count({where});return {items:await client.product.findMany({where,include:{images:true,category:{select:{name:true}},_count:{select:{auctions:{where:{publishedAt:{not:null}}}}}},orderBy:[{title:'asc'},{id:'asc'}],take:25,skip:(page-1)*25}),total,page,totalPages:Math.ceil(total/25)}}
   if(path[0]==='content')return client.siteContent.findMany();
-  if(path[0]==='reconciliation')return {drift:asJson(await reconcile(client))};
-  if(path[0]==='auctions'&&!path[1]){const {page,q,status}=pageInput(params),where:Prisma.AuctionWhereInput={...(q?{OR:[{code:{contains:q,mode:'insensitive'}},{product:{title:{contains:q,mode:'insensitive'}}}]}:{}),...(status==='PENDING'?{status:{in:['LIVE','SCHEDULED']},endsAt:{lte:actor.now},settlement:{is:null}}:status?{status}: {})},total=await client.auction.count({where});return {items:await client.auction.findMany({where,select:{id:true,code:true,slug:true,status:true,startsAt:true,endsAt:true,publishedAt:true,isDemo:true,settlement:{select:{outcome:true}},product:{select:{title:true}},draft:{select:{version:true}},closeErrorCode:true},orderBy:[{publishedAt:'desc'},{id:'asc'}],take:25,skip:(page-1)*25}),total,page,totalPages:Math.ceil(total/25)}}
+  if(path[0]==='reconciliation')return {drift:asJson(await reconcile(client)),checkedAt:actor.now.toISOString()};
+  if(path[0]==='auctions'&&!path[1])return auctionList(client,actor.now,pageInput(params));
   if(path[0]==='auctions'&&path[1]){
     const auctionId=id.parse(path[1]);
     if(path[2]==='impact')return client.$transaction(async tx=>{await lockAuction(tx,auctionId);await requireAdmin(tx,headers);return cancellationImpact(tx,auctionId)});
@@ -155,7 +152,7 @@ export async function adminRead(client:PrismaClient,headers:Headers,path:string[
       return asJson({settlement,journals,holds,wallets});
     }
     if(path[2])throw new AdminError(404,'Admin resource not found.');
-    const auction=await client.auction.findUniqueOrThrow({where:{id:auctionId},select:{id:true,code:true,slug:true,status:true,isDemo:true,startsAt:true,endsAt:true,publishedAt:true,fulfillmentSummary:true,fulfillmentRegion:true,closeErrorCode:true,closeAttempts:true,nextCloseAttemptAt:true,product:{include:{images:true,category:true}},terms:true,draft:true,settlement:{select:{outcome:true,completedAt:true,winningPoints:true}},result:{select:{outcome:true,isDemo:true}}}});return asJson(auction);
+    const auction=await client.auction.findUniqueOrThrow({where:{id:auctionId},select:{id:true,code:true,slug:true,status:true,isDemo:true,startsAt:true,endsAt:true,publishedAt:true,fulfillmentSummary:true,fulfillmentRegion:true,closeErrorCode:true,closeAttempts:true,nextCloseAttemptAt:true,product:{include:{images:true,category:true}},terms:true,draft:true,settlement:{select:{outcome:true,completedAt:true,winningPoints:true,decision:true}},result:{select:{outcome:true,isDemo:true}}}});const counts=await client.$queryRaw<{participants:bigint;bids:bigint}[]>`SELECT COUNT(DISTINCT "userId") AS participants, COUNT(*) AS bids FROM "Bid" WHERE "auctionId"=${auctionId}`;return asJson({...auction,displayStatus:displayAuctionStatus(auction,actor.now),participants:Number(counts[0].participants),acceptedBids:Number(counts[0].bids),serverNow:actor.now.toISOString()});
   }
   throw new AdminError(404,'Admin resource not found.');
 }

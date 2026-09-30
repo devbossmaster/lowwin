@@ -11,7 +11,7 @@ test('localhost action requires the operator key, which is never embedded in the
   await page.getByLabel('Local operator key').fill('incorrect-operator-key-with-enough-length');
   await page.getByRole('button',{name:'Use local test identity'}).click();
   await expect(page.getByText('Local test sign-in was denied.',{exact:false})).toBeVisible();
-  await page.screenshot({path:`docs/screenshots/hardening-local-${testInfo.project.name}.png`,fullPage:true});
+  await expect(page.locator('.page-loading-backdrop')).toHaveCount(0);await page.screenshot({caret:'initial',path:`docs/screenshots/hardening-local-${testInfo.project.name}.png`,fullPage:true});
   if (process.env.TEST_DATABASE_URL) {
     await page.getByLabel('Local operator key').fill(LOCAL_ACCESS_KEY);
     await page.getByRole('button',{name:'Use local test identity'}).click();
@@ -26,5 +26,5 @@ test('public tunnel configuration hides identity and rejects fully rewritten loc
   expect(await page.content()).not.toContain(LOCAL_ACCESS_KEY);
   const response=await request.post('http://localhost:3108/api/auth/lowin/dev-identity',{headers:{origin:'http://localhost:3108','x-forwarded-host':'localhost:3108','x-forwarded-for':'127.0.0.1'},data:{accessKey:LOCAL_ACCESS_KEY}});
   expect(response.status()).toBe(503);expect(response.headers()['set-cookie']).toBeUndefined();
-  await page.screenshot({path:`docs/screenshots/hardening-tunnel-${testInfo.project.name}.png`});
+  await expect(page.locator('.page-loading-backdrop')).toHaveCount(0);await page.screenshot({caret:'initial',path:`docs/screenshots/hardening-tunnel-${testInfo.project.name}.png`});
 });

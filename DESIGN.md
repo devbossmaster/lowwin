@@ -1,37 +1,39 @@
 ---
-name: Lowin mobile system
-description: A pure-white Telegram Mini App with forest green actions, white labels and quiet green gradients.
+name: Lowwin player and administration system
+description: Separate player and staff layouts with black text on light surfaces and white text on solid forest green.
 colors:
   background: "#FFFFFF"
-  foreground: "#172720"
+  foreground: "#000000"
   primary: "#15803d"
   primary-hover: "#166534"
   support-green: "#15803d"
   mini-focus: "#15803d"
   mini-disabled: "#dcfce7"
-  mini-disabled-ink: "#53604C"
+  mini-disabled-ink: "#000000"
   mini-nav-selected: "#f0fdf4"
-  mini-nav-ink: "#166534"
+  mini-nav-ink: "#000000"
   forest: "#14532d"
   mint: "#E5F4EB"
   border: "#DBE7DE"
-  muted: "#54665C"
+  muted: "#000000"
   outer-canvas: "#FFFFFF"
   white: "#FFFFFF"
   admin-green: "#184D3A"
-  admin-ink: "#20392E"
-  admin-muted: "#526257"
-  admin-line: "#DCE2D9"
-  admin-field-border: "#A5B5A8"
-  admin-sidebar: "#EAF0E7"
-  admin-nav-hover: "#DBE6D7"
-  admin-table-head: "#EDF2E9"
-  admin-focus: "#BC8B34"
+  admin-ink: "#000000"
+  admin-muted: "#000000"
+  admin-line: "#E1E8E4"
+  admin-canvas: "#F6F8F7"
+  admin-selected: "#EAF3EE"
+  admin-field-border: "#B7C7BE"
+  admin-sidebar: "#FFFFFF"
+  admin-nav-hover: "#F4F8F5"
+  admin-table-head: "#F9FBFA"
+  admin-focus: "#184D3A"
   admin-danger: "#953C30"
-  admin-error-bg: "#FFF3ED"
-  admin-error-text: "#7E3025"
-  admin-notice-bg: "#EEF4E8"
-  admin-notice-text: "#284A32"
+  admin-error-bg: "#FFF1EE"
+  admin-error-text: "#000000"
+  admin-notice-bg: "#EAF3EE"
+  admin-notice-text: "#000000"
 typography:
   display:
     fontFamily: "DM Sans, sans-serif"
@@ -52,15 +54,15 @@ typography:
   admin-title:
     fontFamily: "DM Sans, sans-serif"
     fontSize: "32px"
-    lineHeight: 1.15
+    lineHeight: 1.2
     letterSpacing: "-0.03em"
   admin-body:
     fontFamily: "DM Sans, sans-serif"
     fontSize: "15px"
     lineHeight: 1.55
 rounded:
-  admin-control: "8px"
-  admin-field: "7px"
+  admin-control: "9px"
+  admin-field: "8px"
   control: "12px"
   identity: "14px"
   feature: "16px"
@@ -100,12 +102,12 @@ components:
     padding: "23px"
   personal-bid-row:
     backgroundColor: "{colors.white}"
-    textColor: "{colors.forest}"
+    textColor: "{colors.foreground}"
     rounded: "{rounded.account-row}"
     padding: "15px"
   personal-tab-active:
     backgroundColor: "{colors.primary}"
-    textColor: "{colors.foreground}"
+    textColor: "{colors.white}"
     rounded: "{rounded.saved-control}"
   favorite-saved:
     backgroundColor: "{colors.mint}"
@@ -117,8 +119,8 @@ components:
     rounded: "{rounded.admin-control}"
     padding: "10px 18px"
   admin-button-secondary:
-    backgroundColor: "transparent"
-    textColor: "{colors.admin-green}"
+    backgroundColor: "{colors.white}"
+    textColor: "{colors.admin-ink}"
     rounded: "{rounded.admin-control}"
     padding: "10px 18px"
   admin-button-danger:
@@ -130,12 +132,12 @@ components:
     backgroundColor: "{colors.white}"
     textColor: "{colors.admin-ink}"
     rounded: "{rounded.control}"
-    padding: "25px"
+    padding: "24px"
   admin-field:
     backgroundColor: "{colors.white}"
     textColor: "{colors.admin-ink}"
     rounded: "{rounded.admin-field}"
-    padding: "11px 12px"
+    padding: "10px 12px"
   profile-wallet:
     backgroundColor: "{colors.forest}"
     textColor: "{colors.white}"
@@ -143,7 +145,7 @@ components:
     padding: "22px 20px"
   payment-method-selected:
     backgroundColor: "{colors.mint}"
-    textColor: "{colors.forest}"
+    textColor: "{colors.foreground}"
     rounded: "{rounded.identity}"
     padding: "16px"
   payment-details:
@@ -152,11 +154,11 @@ components:
     padding: "20px"
 ---
 
-# Design System: Lowin mobile system
+# Design System: Lowwin player and administration system
 
 ## Overview
 
-The current Mini App direction is pure white, flat surfaces, forest green primary actions with white labels, and quiet pale-green gradients on selected feature panels. Forest and supporting green remain in text, links, status accents and selected account panels; administration retains its separate forest green system. Check.et is a structural reference for clear sections and practical controls, not an additional palette or component source. This refresh records the implementation in the player and administration stylesheets; it supersedes the original off-white canvas direction.
+The current Mini App direction is pure white, flat surfaces, forest green primary actions with white labels, and quiet pale-green gradients on selected feature panels. Black text applies to white and pale surfaces, including links, metadata and status labels; white text applies to solid forest surfaces. Player primary stays #15803d and administration keeps its separate #184d3a. Check.et is a structural reference for clear sections and practical controls, not an additional palette or component source. This refresh records the implementation in the player and administration stylesheets; it supersedes the original off-white canvas direction.
 
 The interface uses compact typography, restrained borders and clear account states. The lowercase text wordmark is replaceable. The Phase 1 foundation needed no product imagery; later catalog surfaces use inventory imagery and explicitly labelled original DEMO illustrations. No surface needs invented inventory or decorative live statistics.
 
@@ -167,21 +169,21 @@ The interface uses compact typography, restrained borders and clear account stat
 
 Phase 4B extends this incumbent system with public results and private account activity. It reuses catalog imagery and the existing mobile shell; it does not establish a new visual identity. The Phase 1 statements above remain historical foundation context.
 
-Phase 5A added a separate administration surface in Operate mode, with denser work queues and explicit forms. It now shares the pure-white canvas while retaining its scoped navigation, table and status colors. The mobile player guidance remains in force for player routes; the administration layout below is a scoped supplement, not a replacement identity. Its contract is `.impeccable/admin-brief.md`, with implementation in `src/app/admin/admin.css`, `admin-shell.tsx`, `admin-workspace.tsx` and `staff-login.tsx`. Phase 5B extended these patterns with a wallet funding preview, private alerts and operational tables. Phase 6 retains the same visual system for test-only funding and payment operations; its current behavior is recorded below.
+The full administration redesign implements the supplied `Lowwin_Admin_Dashboard_Concept.png` as a separate operational workspace. Its contract is `docs/admin-redesign-plan.md`; the scoped brief is `.impeccable/admin-brief.md`. White panels sit on a pale green canvas, with five primary business areas and separate Settings. Source, authorized records and current access determine content; the reference image supplies direction, never sample business data. Historical phase notes below retain their original scope and are not current release assurances.
 
 ## Colors
 
 ### Primary
 
-Forest green primary marks Mini App actions, selected catalog/personal tabs and the winning example; its label is white. Both scoped `--mini-action` and Tailwind `--color-primary` use #15803D. Shared buttons, links, icons and payment selections use the same forest green palette. Forest anchors the wordmark, result summary and profile balance. Mint remains on verified identity, favorites and selected payment methods. Bottom navigation uses its distinct pale selected fill and darker green text. The home rule demonstration and wallet balance use the pale gradients recorded in the sidecar.
+Forest green primary marks Mini App actions, selected catalog/personal tabs and the winning example; its label is white. Both scoped `--mini-action` and Tailwind `--color-primary` use #15803D. Shared buttons, links, icons and payment selections use the same forest green palette. Forest anchors the wordmark, result summary and profile balance. Mint remains on verified identity, favorites and selected payment methods. Bottom navigation uses its distinct pale selected fill with black text. The home rule demonstration and wallet balance use the pale gradients recorded in the sidecar.
 
 ### Neutral
 
-Pure white is the application surface, bottom navigation and outer canvas. Ink is the main text color, muted green-gray supports secondary copy, and soft borders separate rows and containers. The phone layout remains centered on wider screens without a contrasting off-white surround.
+Pure white is the application surface, bottom navigation and outer canvas. Black is the text color on white and pale surfaces, including secondary copy; hierarchy comes from size, weight and spacing. Soft borders separate rows and containers. The phone layout remains centered on wider screens without a contrasting off-white surround.
 
-Keep the palette light. Dark mode is deferred. Forest green fills the header, hero, primary actions and selected states; use white text on solid forest green and dark forest green text on pale mint. Gold is not a new brand accent.
+Keep the palette light. Dark mode is deferred. Forest green fills the header, hero, primary actions and selected states; use white text on solid forest green and black text on pale mint. Gold is not a new brand accent.
 
-Administration uses the admin-prefixed green and ink roles on the shared pure-white canvas. Pale green navigation and table headers separate operational areas; white panels and quiet borders retain the incumbent flat treatment. Rust identifies the cancellation action and errors, while restrained green notices report confirmed changes. Amber is reserved for the administration keyboard-focus outline, not a new brand accent. Status and consequence always have text labels.
+Administration uses its own forest action token, white sidebar and panels, pale canvas and selected navigation. Black text remains legible on every pale status and notice surface; white labels remain on forest and destructive solid actions. Focus uses the administration green. Status and consequence always have text labels.
 
 ## Typography
 
@@ -191,7 +193,7 @@ Body copy uses the body role. Supporting copy generally uses 13–14px; small la
 
 In the Phase 4B extension, result-row titles use 16px and outcome summaries use 27px. Profile names use 23px and wrap long values; available and held balances use 26px with tabular numerals. Personal bid amounts use 22px bold type, and linked account counts use 24px. These component roles supplement the existing hierarchy.
 
-Administration uses the admin-title and admin-body roles. Section headings use 21px with 1.3 line height; table cells use 14px, headers and metadata 12px. Work-queue counts use 24px and tabular numerals; tables also use tabular numerals. The sidebar wordmark is 42px, while the desktop sign-in wordmark is 72px. Admin page titles reduce to 27px at the compact breakpoint.
+Administration uses DM Sans with Lowwin Ethiopic and sans-serif fallbacks. Titles are 32px/1.2, reducing to 28px at 700px. Section headings are 20px/1.35; body is 15px/1.55; buttons are 14px semibold; table cells are 13px, with 12px headers and metadata. Main metrics use 34px tabular numerals, reducing to 30px at 1200px. Sidebar wordmark is 40px and desktop sign-in wordmark is 64px.
 
 ## Layout
 
@@ -199,7 +201,7 @@ Center a single mobile canvas with a maximum width of 480px and minimum height o
 
 The existing Mini App Home is the in-Telegram landing surface. Keep its introductory content, catalog sections and actions within this shell. Outside Telegram, the domain presents the separate Continue with the bot entry screen; staff administration remains separate. Home section headings lead directly, without redundant decorative eyebrow labels.
 
-The top bar contains the home wordmark, a compact Auctions link, wallet chip, alerts and profile. Persistent bottom navigation uses five equal columns and stays aligned with the canvas. Reserve 82px plus the bottom safe-area inset in the page so content can scroll clear of it. Top and bottom padding respect the larger of the browser safe-area inset and Telegram content-safe-area inset.
+The top bar contains the home wordmark, a compact Auctions link, wallet chip, alerts and profile. Persistent bottom navigation uses six equal columns and stays aligned with the canvas. Reserve the implemented 104px plus browser/Telegram bottom safe-area clearance. Home sets its app-frame bottom padding to zero and places that clearance inside the green footer, so no extra white gap follows the footer. Top and bottom padding respect the larger of the browser safe-area inset and Telegram content-safe-area inset.
 
 Utility links, pagination and icon targets generally use 44px, with explicit accessible labels on icon-only controls. Primary buttons and bottom-navigation targets have at least 48px height. Home starts with search, its short heading and rule example, followed by a full-width Browse auctions action and How it works link. Mobile checks cover 360px and 430px widths; these are validation sizes, not CSS breakpoints.
 
@@ -207,23 +209,23 @@ Categories form a horizontal, scroll-snapping strip of 112px-wide illustrated ti
 
 ### Administration supplement
 
-The desktop shell is a two-column grid with a sticky, full-height navigation rail (226px) and a shrinking content column. Main content is centered within a maximum width of 1480px, with 42px top, 40px horizontal and 72px bottom padding. Panels group forms and reports; table containers scroll horizontally when needed. Forms use an 18px field gap and a 720px maximum width.
+The desktop shell uses a 236px sticky, full-height white sidebar and a shrinking workspace. The 72px top bar contains breadcrumbs; contextual task tabs follow on white. Main content has a 1384px maximum width and 32px/32px/56px padding. The four-column metric row leads into a 1.75:1 overview queue and attention layout. Forms have an 800px maximum width and 20px field gaps. The editor uses a 1.5:1 form/preview split with a 24px gap.
 
-The saved draft editor places its form beside a 280–390px preview column with a 28px gap. At 1100px and below, the rail becomes 190px, main padding becomes 30px by 24px, and preview stacks below the editor. The preview itself remains at most 390px wide; it represents the saved draft and keeps bidding disabled.
+At 1200px the overview columns stack and main padding becomes 28px by 24px. At 1000px the sidebar is 210px, metrics become two columns, and editor/preview stack; the preview is then at most 460px. At 700px the sidebar becomes a fixed drawer up to min(300px,88vw), metrics and paired forms stack, and main padding becomes 24px/16px/40px. The drawer moves focus inside, traps Tab, closes on Escape, close button, backdrop or route change, and restores trigger focus for explicit dismissal. It locks body scrolling while open.
 
-At 650px and below, navigation becomes a normal-flow two-column link grid, main padding becomes 24px by 16px, paired fields and MFA step-up forms stack, and the sidebar footer is hidden. This is a compact fallback, not the player bottom-navigation shell. Sign-in uses a separate two-column composition up to 1100px wide, then collapses to one column at 650px. Administration controls generally have 44px minimum heights; inline text buttons have a 36px minimum height.
+Tables scroll inside their bordered container. At 700px and below they retain a 640px minimum width, normal cell wrapping and unbroken action labels; long first-column identifiers may wrap anywhere within a 170px minimum cell. Context tabs scroll horizontally. Controls, inline text actions and language buttons have at least 44px targets. The compact top bar reserves 155px for language controls. The independent sign-in composition collapses at 700px. None of these staff layouts replaces the player phone shell.
 
 ## Elevation & Depth
 
 Surfaces are flat, without decorative shadows. Tonal contrast, thin borders and spacing define groups. Pale green gradients on the home rule demonstration and wallet summary softly group content; forest green identifies the winning example and key actions. These selected gradients do not establish a gradient treatment for every card. Featured auctions reuse the image-led catalog card, with carousel controls below. The illustrative winning tile rises by 5px to reinforce its distinction.
 
-Administration also stays flat: tinted navigation, table headers, thin borders and white panels provide separation without shadows. No additional motion vocabulary is established by the administration stylesheet.
+Administration also stays flat: tinted navigation, table headers, thin borders and white panels provide separation without shadows. The mobile drawer uses a 160ms ease transform; reduced-motion preferences disable transitions.
 
 ## Shapes
 
 Controls and active navigation use gently rounded corners from the control token. Identity panels use the identity radius, while feature and wallet panels use the feature radius. Small demonstration tiles use 10px corners. Wallet chips are pill-shaped; avatar and icon targets are circular. Borders are thin and quiet.
 
-Administration panels reuse the control radius, with smaller admin-control corners for buttons, navigation and notices and admin-field corners for fields. Table containers use 10px corners and saved player previews use 16px. These scoped control proportions support the denser operational shell.
+Administration panels reuse the control radius, with smaller admin-control corners for buttons, navigation and notices and admin-field corners for fields. Table containers use 10px corners and saved player previews use 12px. These scoped control proportions support the denser operational shell.
 
 ## Components
 
@@ -241,7 +243,7 @@ The home rule demonstration presents six amounts, 1 / 1 / 2 / 3 / 3 / 4, in equa
 
 The contact gate precedes Mini App navigation and content. It uses the white 440px entry column, wordmark, shield, short heading, privacy explanation and full-width forest green Share my contact action. Native Telegram contact sharing is preferred; Share through the bot instead and Open the bot provide the fallback. Pending verification disables share actions and announces status. Cancellation closes the Mini App when supported and leaves an explanatory state; no ETB is promised for sharing contact. Only a verified own-contact response continues into Home. The launch loader uses a restrained 1.2-second progress indicator and a static reduced-motion state.
 
-The app shell reserves the larger browser/Telegram top and bottom safe areas. The standalone entry/contact layout currently uses 32px vertical and 24px horizontal padding with the browser bottom safe-area inset; it does not inherit the shell's Telegram inset calculation.
+The app shell and standalone entry/contact layout preserve browser and Telegram safe-area clearance. Entry/contact uses 32px base vertical and 24px horizontal padding plus the current safe-area variables.
 
 Catalog cards are semantic articles with separate image/title links, readable category/status, code, entry fee, favorite control and timing. Live cards expose Place a bid; upcoming, pending and final states have their corresponding review links. The bid form has a labelled 55px-high amount row, inline errors, available balance, and a review step disclosing the entry fee and highest-bid hold before confirmation. The accepted private receipt is distinct from a public result. Detail headings lead directly without decorative category/result eyebrows; meaningful DEMO and status labels remain.
 
@@ -281,11 +283,14 @@ The ordinary-domain entry is a white, vertically centered column, at most 440px 
 
 Your alerts uses dated, separated inbox rows with linked titles, bodies and explicit Mark read actions. Read titles use lighter weight; unread count and Mark all read remain separate from the list. Empty, loading and retryable error states use the existing private-page patterns. Notification preferences use labelled green checkboxes with comfortable row targets. The bell combines an accessible unread count with a compact badge, capped visually at 99+. Bot-message preferences explain the opt-in and private-chat requirement; a visual inbox does not prove external delivery.
 
-### Phase 5A administration components
+### Administration workspace components
 
-Navigation exposes Overview, Auctions, Products, Categories, Home & FAQ and Reconciliation, extended in Phase 5B with Users, Support, Results, Fulfillment, Wallets, Notifications, Jobs, Analytics, Audit, Team and Settings. The rail scrolls when its links exceed the viewport. The active route uses solid administration green with white text and `aria-current`; inactive links gain a pale green hover background. Sign-in and workspace are independent from the player shell. The sign-in form presents credentials, authenticator enrollment/challenge, recovery codes and reset states with visible labels and persistent inline messages. Its copy states that production email delivery is unavailable until configured.
+Navigation has five primary areas: Overview, Auctions, Payments, People and Reports. Settings sits separately above staff identity and Sign out. Each area links to its first authorized task; permitted contextual tabs expose the detailed workflows. Auctions groups auctions, products/images, categories, Home & FAQ and results. Payments groups deposits, bank statements, player balances and receiving accounts. People groups support, players, deliveries and messages. Reports groups business summary, balance checks, staff activity and message delivery. Settings groups workspace information and team access. Longest matching task metadata supplies breadcrumbs and active state; selected rail links use pale green, black text and `aria-current`. The secure layout provides access context, while server operations independently reauthorize.
 
-Administration buttons use the admin-body size with semibold labels. Secondary actions have a quiet border and transparent background; destructive cancellation uses rust. Disabled actions reduce opacity and use a not-allowed cursor. Keyboard focus uses a 3px amber outline offset by 3px. The source establishes no distinct button hover color or animated button state. Inputs use white fill, a visible border and green caret; errors use `role="alert"` and confirmed notices use `role="status"`.
+Overview uses independently available auction, deposit, delivery and support projections with database time. Unauthorized sections are omitted and failed reads remain explicitly unavailable. Compact metrics, auction summaries, attention rows and disclosure-based help display authorized server data. Balance checks remain a deliberate read-only task.
+
+Buttons use 9px corners, 44px minimum height, 14px semibold labels and 10px by 18px padding. Primary forest actions and their #166534 hover state have white labels. Secondary controls are white with black labels and pale selected hover; destructive actions use rust with white labels. Disabled actions reduce opacity. Focus is a 3px administration-green outline offset by 3px. Fields use 8px corners, white fill, black text and a green caret. Errors and confirmed notices retain persistent alert/status semantics. Sign-in retains separate credential, authenticator, recovery and reset forms; appearance does not establish external email delivery.
+
 
 Work queues use semantic tables, explicit headings and a truthful empty state. Product and category editors pair inventory tables with labelled forms. Image attachment explains validation and attribution; Home & FAQ uses plain text fields and additional FAQ fieldsets. Reconciliation remains a read-only table, not a balance editor. These surfaces display server-derived data rather than decorative statistics.
 
@@ -295,7 +300,9 @@ Cancellation first exposes affected participants, held ETB and fee refunds in a 
 
 Phase 5B operational lists retain semantic tables with explicit status/scope, details and actions, plus search, relevant status filters, record counts, pagination and truthful empty states. Filters wrap at smaller widths and table containers scroll horizontally. Team pairs its table with a labelled role/reason form and fresh-MFA control. Point-wallet inspection remains read-only, with journal links. Phase 6 payment investigation is a separate workspace described below. Private contacts, actions and notices must reflect server-authorized state.
 
-This supplement records the implemented visual system and interaction labels. The Phase 5A visual review's ship disposition is limited to its scored fix scope, including the dirty-draft publication guard. Its ten baseline laptop/tablet captures and two dirty-editor captures are stored as `.impeccable/review/phase5a-*.png`. Phase 5B visual references are `docs/screenshots/phase5b-home-viewport-mobile-360.png`, `phase5b-home-viewport-mobile-430.png`, `phase5b-wallet-cbe-mobile-430.png`, `phase5b-alerts-mobile-360.png`, `phase5b-team-admin-laptop.png` and `phase5b-wallets-admin-tablet.png` in the same directory. Screenshots are visual evidence, not proof of production authentication, external delivery, receipt intake or financial execution. PRODUCT.md retains the historical Phase 1 scope with dated visual-direction and Telegram-only platform updates.
+The current redesign documents shared navigation, Overview, auction queues/editors, deposits and payment review, deliveries, people/support, reporting, team/settings and existing staff forms. This is source coverage, not a claim that every route has a new screenshot. Current checks and limitations belong to `docs/admin-redesign-report.md`; the final visual review is recorded in `.impeccable/review/admin-finish-review.md` with a ship disposition limited to its scored fixes.
+
+The following earlier review evidence is historical, not validation of this redesign. This supplement records the implemented visual system and interaction labels. The Phase 5A visual review's ship disposition is limited to its scored fix scope, including the dirty-draft publication guard. Its ten baseline laptop/tablet captures and two dirty-editor captures are stored as `.impeccable/review/phase5a-*.png`. Phase 5B visual references are `docs/screenshots/phase5b-home-viewport-mobile-360.png`, `phase5b-home-viewport-mobile-430.png`, `phase5b-wallet-cbe-mobile-430.png`, `phase5b-alerts-mobile-360.png`, `phase5b-team-admin-laptop.png` and `phase5b-wallets-admin-tablet.png` in the same directory. Screenshots are visual evidence, not proof of production authentication, external delivery, receipt intake or financial execution. PRODUCT.md retains the historical Phase 1 scope with dated visual-direction and Telegram-only platform updates.
 
 ### Phase 6 payment administration
 
@@ -307,7 +314,10 @@ The payment finish-review handoff records a ship disposition, all three requeste
 
 ## Do's and Don'ts
 
-- Do preserve the pure-white canvas, forest green Mini App actions with white labels, visible focus, comfortable tap targets and Telegram safe areas.
+- Do use black text on white/pale surfaces and white text on forest solid surfaces across both layouts.
+- Do preserve the player #15803d and separate staff #184d3a action tokens, visible focus, comfortable targets and Telegram safe areas.
+- Do keep Home ending in its green footer with only fixed-navigation clearance inside it.
+- Do preserve the exact allowed `?v=forest-1` query on `/logo.png` and `/banner1.png`; arbitrary image queries are not allowed.
 - Do use typography, spacing and borders to establish hierarchy.
 - Do keep authenticated balance displays tied to server data.
 - Do label examples clearly and keep account and feature states truthful.
@@ -327,6 +337,6 @@ The payment finish-review handoff records a ship disposition, all three requeste
 - Do retain readable operational tables, labelled fields, persistent messages and visible administration keyboard focus.
 - Don't imply production email delivery, financial success or fulfillment beyond the confirmed state.
 
-## ETB unit transition (2026-09-28)
+### Historical ETB unit transition (2026-09-28)
 
 One immutable historical point maps to ETB 1.00. The ledger, hold, bid, fee and settlement integers remain unchanged; the migration records the 1:1 conversion rather than rewriting journals or frozen terms. New bids use whole ETB increments. Legacy public terms are translated on display. The six-tab player navigation includes Wallet. DEMO ETB credits are synthetic test grants with no cash value and are never presented as verified Telebirr, CBE or Check.et payments. Funding quote publication and creation require ETB 1.00 per ETB 1.00 transferred; production funding stays disabled until reviewed.
