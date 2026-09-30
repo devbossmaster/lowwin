@@ -1,5 +1,12 @@
 import type { NextConfig } from 'next';
 const config: NextConfig = {
+  images: {
+    localPatterns: [
+      { pathname: '/**', search: '' },
+      { pathname: '/logo.png', search: '?v=forest-1' },
+      { pathname: '/banner1.png', search: '?v=forest-1' },
+    ],
+  },
   allowedDevOrigins: ['unpurged-nickolas-unlevelly.ngrok-free.dev'],
   // Isolate browser-test servers from the owner's running development app.
   distDir: process.env.LOWIN_UI_TEST_MODE === 'payments' ? '.next-ui-payments' : process.env.LOWIN_UI_TEST_MODE === 'local' ? '.next-ui-local' : process.env.LOWIN_UI_TEST_MODE === 'tunnel' ? '.next-ui-tunnel' : '.next',

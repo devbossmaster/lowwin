@@ -1,11 +1,11 @@
-.screen.screen { align-items: center; justify-content: center; text-align: center; gap: 0; width: 100%; max-width: none; background: #6d9410; padding-inline: 28px; }
+.screen.screen { align-items: center; justify-content: center; text-align: center; gap: 0; width: 100%; max-width: none; background: #6d9410; padding-inline: 28px; --surface-ink: #000; color: var(--surface-ink, #000); }
 .logo { display: block; width: 112px; height: 112px; object-fit: contain; margin-bottom: 20px; }
-.screen.screen h1 { color: #122607; font-size: 22px; line-height: 1.3; letter-spacing: -.02em; font-weight: 650; margin: 0 0 10px; }
-.screen.screen p { color: #122607; max-width: 29ch; font-size: 14px; line-height: 1.6; margin: 0 0 24px; }
+.screen.screen h1 { color: var(--surface-ink, #000); font-size: 22px; line-height: 1.3; letter-spacing: -.02em; font-weight: 650; margin: 0 0 10px; }
+.screen.screen p { color: var(--surface-ink, #000); max-width: 29ch; font-size: 14px; line-height: 1.6; margin: 0 0 24px; }
 .actions { display: grid; gap: 8px; width: 100%; max-width: 280px; }
-.actions .retry { min-height: 48px; background: #087f5b; color: #fff; border: 0; border-radius: 12px; }
-.actions .bot { min-height: 48px; background: #fff; color: #087f5b; border: 1px solid #dce9e2; border-radius: 12px; }
+.actions .retry { min-height: 48px; background: #087f5b; color: var(--surface-ink, #000); border: 0; border-radius: 12px; --surface-ink: #000; }
+.actions .bot { min-height: 48px; background: #fff; color: var(--surface-ink, #000); border: 1px solid #dce9e2; border-radius: 12px; --surface-ink: #000; }
 .screen :focus-visible { outline: 2px solid #087f5b; outline-offset: 3px; }
-@media(hover:hover){.actions .retry:hover{background:#063d32}.actions .bot:hover{background:#edf8f3}}
-.actions .retry { background: #a3e635; color: #172720; }
-@media(hover:hover){.actions .retry:hover{background:#92d427}}
+@media(hover:hover){.actions .retry:hover{background:#063d32;--surface-ink: #000;color: var(--surface-ink, #000)}.actions .bot:hover{background:#edf8f3;--surface-ink: #000;color: var(--surface-ink, #000)}}
+.actions .retry { background: #a3e635; color: var(--surface-ink, #000); --surface-ink: #000; }
+@media(hover:hover){.actions .retry:hover{background:#92d427;--surface-ink: #000;color: var(--surface-ink, #000)}}
