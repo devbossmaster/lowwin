@@ -14,8 +14,18 @@ it('reports missing versus ambiguous OCR candidates without receipt contents',()
   expect(failure).toBeInstanceOf(ReceiptScanError);
   const diagnostics=(failure as ReceiptScanError).diagnostics;
   expect(diagnostics).toEqual([{pass:1,characters:text.length,candidateCount,confidence:93},{pass:2,characters:text.length,candidateCount,confidence:91}]);
+  expect((failure as ReceiptScanError).referencesAgree).toBe(false);
   for(const secret of [text,'DEL889NG4S','DEL889NG4T','0912345678'])expect(JSON.stringify(diagnostics)).not.toContain(secret);
  }
+});
+
+it('reports whether both OCR passes read the same reference',()=>{
+ const agreed=combineExtractions([{text:'Reference: DEL889NG4S',confidence:96},{text:'Reference: DEL889NG4S',confidence:93}],'telebirr');
+ expect(agreed).toMatchObject({reference:'DEL889NG4S',referencesAgree:true,uncertain:false,reviewRequired:true});
+ const single=combineExtractions([{text:'Reference: DEL889NG4S',confidence:96},{text:'No readable transaction code',confidence:80}],'telebirr');
+ expect(single).toMatchObject({reference:'DEL889NG4S',referencesAgree:false,uncertain:true,reviewRequired:true});
+ expect(()=>combineExtractions([{text:'Reference: DEL889NG4S',confidence:96},{text:'Reference: DEL889NG4T',confidence:95}],'telebirr')).toThrow(ReceiptScanError);
+ try{combineExtractions([{text:'Reference: DEL889NG4S',confidence:96},{text:'Reference: DEL889NG4T',confidence:95}],'telebirr')}catch(error){expect((error as ReceiptScanError).referencesAgree).toBe(false)}
 });
 
 it('extracts one unlabelled OCR code, flags uncertainty and refuses ambiguity',()=>{

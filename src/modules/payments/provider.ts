@@ -35,12 +35,25 @@ export function candidate(bank:Bank,raw:string){
  const unique=[...new Set(found)];if(unique.length!==1)throw new PaymentError(422,'A single clear reference could not be found. Enter it manually.');return unique[0];
 }
 export type VerificationInput={bank:Bank;reference:string;account:string;expectedCents:bigint|null;minCents?:bigint;maxCents?:bigint;createdAt:Date;expiresAt:Date;attemptKey:string};
-type EvidenceFieldIssue={field:string;issue:string;received:string};
+type SafeValueType='missing'|'null'|'string'|'number'|'boolean'|'array'|'object';
+type EvidenceFieldIssue={field:string;issue:string;received:SafeValueType};
 export type Verification={code:string;matched:boolean;requestId?:string;processing?:boolean;retrySeconds?:number;evidence:{amountCents?:string;receiverSuffix?:string;date?:string;hash?:string;aliases?:string[];invalidFields?:EvidenceFieldIssue[]}};
 export type VerifyTransport=(input:VerificationInput)=>Promise<Verification>;
 const requestIdSchema=z.string().uuid();
 const itemSchema=z.object({bank:bankSchema,status:z.string(),verified:z.boolean(),amount:z.union([z.string(),z.number()]),currency:z.string(),receiverAccount:z.string().optional(),referenceNumber:z.string().optional(),receiptNumber:z.string().optional(),transactionNumber:z.string().optional(),timestamp:z.string().optional(),settlementAccountMatch:z.object({matched:z.boolean(),matchType:z.string().optional(),matchConfidence:z.string().optional(),candidateCount:z.number().int().nonnegative().optional(),matchedSettlementAccount:z.string().optional(),bank:bankSchema.optional(),ambiguous:z.boolean().optional()}).optional()}).passthrough();
 const envelopeSchema=z.object({success:z.boolean(),requestId:requestIdSchema,verification:z.object({processingStatus:z.string(),status:z.string().optional(),verified:z.boolean().optional()}).optional(),data:z.union([z.array(z.unknown()),z.record(z.string(),z.unknown())]).optional()}).passthrough();
+function safeValueType(raw:unknown,path:PropertyKey[]):SafeValueType{
+ let value=raw;
+ for(const key of path){
+  if(value===null||typeof value!=='object'||!Object.hasOwn(value,key))return 'missing';
+  value=(value as Record<PropertyKey,unknown>)[key];
+ }
+ if(value===undefined)return 'missing';
+ if(value===null)return 'null';
+ if(Array.isArray(value))return 'array';
+ const type=typeof value;
+ return type==='string'||type==='number'||type==='boolean'?type:'object';
+}
 function normalizedAccount(bank:Bank,value:string){
  if(!/^\d+$/.test(value))return null;
  if(bank==='telebirr'){
@@ -52,14 +65,14 @@ function normalizedAccount(bank:Bank,value:string){
  return value.replace(/^0+(?=\d)/,'');
 }
 export function assess(raw:unknown,input:VerificationInput,now=new Date()):Verification{
- const envelope=envelopeSchema.safeParse(raw);if(!envelope.success)return {code:'INCOMPLETE_EVIDENCE',matched:false,evidence:{invalidFields:envelope.error.issues.slice(0,12).map(issue=>({field:issue.path.join('.')||'response',issue:issue.code,received:'invalid'}))}};
+ const envelope=envelopeSchema.safeParse(raw);if(!envelope.success)return {code:'INCOMPLETE_EVIDENCE',matched:false,evidence:{invalidFields:envelope.error.issues.slice(0,12).map(issue=>({field:issue.path.join('.')||'response',issue:issue.code,received:safeValueType(raw,issue.path)}))}};
  const requestId=envelope.data.requestId;
  if(envelope.data.verification?.processingStatus==='failed')return {code:'UNCONFIRMED',requestId,matched:false,evidence:{}};
  if(envelope.data.verification?.processingStatus!=='completed')return {code:'PROCESSING',processing:true,requestId,matched:false,evidence:{}};
  if(!envelope.data.success||envelope.data.verification.verified!==true||envelope.data.verification.status!=='success')return {code:'UNCONFIRMED',requestId,matched:false,evidence:{}};
  const list=Array.isArray(envelope.data.data)?envelope.data.data:[];
  if(list.length!==1)return {code:'INCOMPLETE_EVIDENCE',requestId,matched:false,evidence:{}};
- const parsed=itemSchema.safeParse(list[0]);if(!parsed.success)return {code:'INCOMPLETE_EVIDENCE',requestId,matched:false,evidence:{invalidFields:parsed.error.issues.slice(0,12).map(issue=>({field:`data.0.${issue.path.join('.')}`,issue:issue.code,received:'invalid'}))}};
+ const parsed=itemSchema.safeParse(list[0]);if(!parsed.success)return {code:parsed.error.issues.some(issue=>issue.path.length===1&&issue.path[0]==='currency')?'CURRENCY_UNPROVEN':'INCOMPLETE_EVIDENCE',requestId,matched:false,evidence:{invalidFields:parsed.error.issues.slice(0,12).map(issue=>({field:`data.0.${issue.path.join('.')}`,issue:issue.code,received:safeValueType(list[0],issue.path)}))}};
  const item=parsed.data,rawAliases=[item.referenceNumber,item.receiptNumber,item.transactionNumber].filter((value):value is string=>typeof value==='string'&&value.length>0);
  let aliases:string[];try{aliases=[...new Set(rawAliases.map(value=>canonical(input.bank,value)))]}catch{return {code:'INCOMPLETE_EVIDENCE',requestId,matched:false,evidence:{}}}
  const base={requestId,matched:false,evidence:{aliases}};

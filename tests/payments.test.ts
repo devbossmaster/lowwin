@@ -40,6 +40,38 @@ describe.skipIf(!url)('Verify.et funding on disposable PostgreSQL',()=>{
   await db.topUpIntent.update({where:{id:intent.id},data:{nextAttemptAt:new Date(0)}});
   expect((await verifyIntent(db,user,{id:intent.id,key:randomUUID(),input:ref},async input=>assess(body(input,{receiverAccount:'2519****1111',settlementAccountMatch:{matched:true,matchType:'masked_pattern',ambiguous:false,matchedSettlementAccount:input.account,bank:'telebirr'}}),input))).status).toBe('CREDITED');expect(await db.outbox.count({where:{key:`deposit:${intent.id}:credited`}})).toBe(1);
  });
+ it('keeps missing currency in review, then resolves that case on one proven ETB recheck',async()=>{
+  const intent=await newIntent(),ref=reference();
+  const first=await verifyIntent(db,user,{id:intent.id,key:randomUUID(),input:ref},async input=>assess(body(input,{currency:null}),input));
+  expect(first).toMatchObject({status:'NEEDS_REVIEW',reason:'CURRENCY_UNPROVEN'});
+  expect(await db.paymentClaim.count({where:{intentId:intent.id}})).toBe(0);
+  const firstAttempt=await db.paymentAttempt.findFirstOrThrow({where:{intentId:intent.id}});
+  expect(firstAttempt.evidence).toMatchObject({invalidFields:[{field:'data.0.currency',received:'null'}]});
+  await db.topUpIntent.update({where:{id:intent.id},data:{caseState:'INVESTIGATING',assignedTo:user,nextAttemptAt:new Date(0)}});
+  const rechecked=await verifyIntent(db,user,{id:intent.id,key:randomUUID(),input:ref},good);
+  expect(rechecked).toMatchObject({status:'CREDITED',reason:'VERIFIED',caseState:'RESOLVED',amountCents:'3027'});
+  const saved=await db.topUpIntent.findUniqueOrThrow({where:{id:intent.id}});
+  expect(saved).toMatchObject({status:'CREDITED',caseState:'RESOLVED',assignedTo:null});
+  expect(await db.paymentClaim.count({where:{intentId:intent.id}})).toBe(1);
+  expect(await db.operation.count({where:{scope:'TOPUP_CREDIT',key:intent.id}})).toBe(1);
+  expect(await db.outbox.count({where:{key:`deposit:${intent.id}:credited`}})).toBe(1);
+  expect(await db.verifyRequest.count({where:{intentId:intent.id,state:'DONE'}})).toBe(2);
+  expect((await verifyIntent(db,user,{id:intent.id,key:randomUUID(),input:ref},good)).status).toBe('CREDITED');
+  expect(await db.paymentClaim.count({where:{intentId:intent.id}})).toBe(1);
+  expect(await reconcilePayments(db)).toEqual([]);
+ });
+ it('coalesces concurrent verification retries into one provider call and one credit',async()=>{
+  const intent=await newIntent(),ref=reference();let calls=0;
+  const transport=async(input:VerificationInput)=>{calls++;await new Promise(resolve=>setTimeout(resolve,50));return good(input)};
+  const results=await Promise.all([verifyIntent(db,user,{id:intent.id,key:randomUUID(),input:ref},transport),verifyIntent(db,user,{id:intent.id,key:randomUUID(),input:ref},transport)]);
+  expect(results.every(result=>['VERIFYING','CREDITED'].includes(result.status))).toBe(true);
+  expect(calls).toBe(1);
+  expect((await db.topUpIntent.findUniqueOrThrow({where:{id:intent.id}})).status).toBe('CREDITED');
+  expect(await db.paymentClaim.count({where:{intentId:intent.id}})).toBe(1);
+  expect(await db.operation.count({where:{scope:'TOPUP_CREDIT',key:intent.id}})).toBe(1);
+  expect(await db.outbox.count({where:{key:`deposit:${intent.id}:credited`}})).toBe(1);
+  expect(await reconcilePayments(db)).toEqual([]);
+ });
  it('blocks another user and an alternate CBE alias from a second credit',async()=>{
   const first=await newIntent(user,'cbe'),receipt='fHCxyExampleRcpt1',ft=reference().replace(/^DEMO/,'FT');
   const result=await verifyIntent(db,user,{id:first.id,key:randomUUID(),input:receipt},async input=>assess(body(input,{referenceNumber:ft,receiptNumber:receipt}),input));expect(result.status).toBe('CREDITED');

@@ -8,6 +8,24 @@ function completed(overrides:Record<string,unknown>={}){return {success:true,req
 
 describe('Verify.et authoritative evidence',()=>{
  it('credits only complete exact evidence and derives ETB cents',()=>expect(assess(completed(),input,at)).toMatchObject({matched:true,code:'VERIFIED',evidence:{amountCents:'10000'}}));
+ it.each([
+  ['missing',undefined,'missing'],
+  ['null',null,'null'],
+  ['number',1,'number'],
+  ['boolean',true,'boolean'],
+  ['array',['ETB'],'array'],
+  ['object',{value:'ETB'},'object'],
+ ] as const)('keeps %s currency unresolved and reports only its type',(_label,currency,received)=>{
+  const result=assess(completed({currency}),input,at);
+  expect(result).toMatchObject({matched:false,code:'CURRENCY_UNPROVEN',evidence:{invalidFields:[{field:'data.0.currency',issue:'invalid_type',received}]}});
+  expect(JSON.stringify(result)).not.toContain('DEL889NG4S');
+  expect(JSON.stringify(result)).not.toContain('0911111111');
+ });
+ it('reports nested malformed fields by type, without exposing values',()=>{
+  const result=assess(completed({settlementAccountMatch:{matched:'secret-receiver'}}),input,at);
+  expect(result).toMatchObject({matched:false,code:'INCOMPLETE_EVIDENCE',evidence:{invalidFields:[{field:'data.0.settlementAccountMatch.matched',issue:'invalid_type',received:'string'}]}});
+  expect(JSON.stringify(result)).not.toContain('secret-receiver');
+ });
  it('never credits queued responses',()=>expect(assess({success:true,requestId,verification:{processingStatus:'queued',status:'pending',verified:false},data:[]},input,at)).toMatchObject({matched:false,processing:true,code:'PROCESSING'}));
  it('treats a failed provider status as terminal, without retrying it as queued',()=>expect(assess({success:false,requestId,verification:{processingStatus:'failed',status:'failed',verified:false},data:[]},input,at)).toMatchObject({matched:false,code:'UNCONFIRMED'}));
  it('accepts Verify.et approval of a masked match to the frozen account',()=>expect(assess(completed({receiverAccount:'2519****1111',settlementAccountMatch:{matched:true,matchType:'masked_pattern',ambiguous:false,matchedSettlementAccount:input.account,bank:'telebirr'}}),input,at)).toMatchObject({matched:true,code:'VERIFIED',evidence:{amountCents:'10000',receiverSuffix:'1111'}}));

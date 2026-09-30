@@ -19,7 +19,7 @@ let active=false;
 type OcrResult={text:string;confidence:number;words?:{text:string;confidence:number}[]};
 function literalReferences(text:string,bank:Bank){return [...new Set(text.match(/\b[A-Za-z][A-Za-z0-9]{7,63}\b/g)??[])].filter(token=>/\d/.test(token)).filter(token=>{try{canonical(bank,token);return true}catch{return false}})}
 export class ReceiptScanError extends PaymentError{
- constructor(error:PaymentError,public diagnostics:{pass:number;characters:number;candidateCount:number;confidence:number|null}[]){super(error.status,error.message)}
+ constructor(error:PaymentError,public diagnostics:{pass:number;characters:number;candidateCount:number;confidence:number|null}[],public referencesAgree:boolean){super(error.status,error.message)}
 }
 export function extractedReference(result:OcrResult,bank:Bank){
  if(typeof result.text!=='string'||typeof result.confidence!=='number'||!Number.isFinite(result.confidence))throw new PaymentError(422,'Scan is uncertain. Enter the reference manually.');
@@ -44,6 +44,7 @@ export function extractedReference(result:OcrResult,bank:Bank){
 }
 export function combineExtractions(passes:OcrResult[],bank:Bank){
  if(passes.length!==2)throw new PaymentError(422,'Scan is uncertain. Enter the reference manually.');
+ let referencesAgree=false;
  try{
  const results=passes.map(pass=>{try{return extractedReference(pass,bank)}catch(error){
   // Multiple plausible references remain ambiguous even if the other pass reads one.
@@ -52,11 +53,12 @@ export function combineExtractions(passes:OcrResult[],bank:Bank){
   return null;
  }}).filter((value):value is ReturnType<typeof extractedReference>=>!!value);
  if(!results.length)throw new PaymentError(422,'Could not read the screenshot. Paste the payment SMS or transaction reference.');
+ referencesAgree=results.length===2&&results[0].reference===results[1].reference;
  if(new Set(results.map(r=>r.reference)).size!==1)throw new PaymentError(422,'Scan is uncertain. Enter the reference manually.');
- return {...results[0],uncertain:results.length<2||results.some(r=>r.uncertain)};
+ return {...results[0],referencesAgree,uncertain:!referencesAgree||results.some(r=>r.uncertain)};
  }catch(error){
   if(!(error instanceof PaymentError))throw error;
-  throw new ReceiptScanError(error,passes.map((pass,index)=>({pass:index+1,characters:typeof pass.text==='string'?pass.text.length:0,candidateCount:typeof pass.text==='string'?literalReferences(pass.text,bank).length:0,confidence:Number.isFinite(pass.confidence)?Math.round(Math.max(0,Math.min(100,pass.confidence))):null})));
+  throw new ReceiptScanError(error,passes.map((pass,index)=>({pass:index+1,characters:typeof pass.text==='string'?pass.text.length:0,candidateCount:typeof pass.text==='string'?literalReferences(pass.text,bank).length:0,confidence:Number.isFinite(pass.confidence)?Math.round(Math.max(0,Math.min(100,pass.confidence))):null})),referencesAgree);
  }
 }
 export async function scanReceipt(bytes:Buffer,mime:string,bank:Bank){

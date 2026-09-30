@@ -134,7 +134,7 @@ async function completeVerifyRequest(client:PrismaClient,id:string,verified:Veri
   }
   const status=matched?'CREDITED':code==='DUPLICATE_CONFLICT'?code:['UNCONFIRMED','NOT_FOUND'].includes(code)?'PENDING':'NEEDS_REVIEW';
   const updated=await tx.topUpIntent.update({where:{id:t.id},data:{status,journalId,...(matched?{caseState:'RESOLVED',assignedTo:null}:{}),...(matched&&t.amountFromReceipt?{expectedCents:amount,points}:{}),reasonCode:code,leaseToken:null,leaseUntil:null,nextAttemptAt:new Date(now.getTime()+Math.min(900,30*2**t.attempts)*1000)}});
-  await tx.paymentAttempt.create({data:{intentId:t.id,key:request.key,requestHash:hash(request.reference),code,evidence:{amountCents:verified.evidence.amountCents??null,receiverSuffix:verified.evidence.receiverSuffix??null,date:verified.evidence.date??null,hash:verified.evidence.hash??null,aliasCount:aliases.length,result:attemptResult(ownIntent(updated))}}});
+  await tx.paymentAttempt.create({data:{intentId:t.id,key:request.key,requestHash:hash(request.reference),code,evidence:{amountCents:verified.evidence.amountCents??null,receiverSuffix:verified.evidence.receiverSuffix??null,date:verified.evidence.date??null,hash:verified.evidence.hash??null,aliasCount:aliases.length,invalidFields:verified.evidence.invalidFields??[],result:attemptResult(ownIntent(updated))}}});
   await tx.verifyRequest.update({where:{id},data:{state:'DONE',code}});
   if(providerId)await tx.verifyWebhookEvent.updateMany({where:{requestId:providerId,processedAt:null},data:{processedAt:now}});
   if(matched){const row=await tx.outbox.create({data:{key:`deposit:${t.id}:credited`,kind:'DEPOSIT_CREDITED',payload:{intentId:t.id,recipientUserId:t.userId}}});await materializeAlert(tx,row)}
