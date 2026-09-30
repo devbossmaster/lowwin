@@ -34,11 +34,11 @@ describe.skipIf(!url)('Verify.et funding on disposable PostgreSQL',()=>{
   const fetcher=vi.fn(async(path:string,options:RequestInit)=>String(options.method)==='POST'?Response.json(body({bank:'telebirr',reference:ref,account:account.telebirr,expectedCents:null,minCents:100n,maxCents:100000n,createdAt:new Date(intent.createdAt),expiresAt:new Date(intent.expiresAt!),attemptKey:input.key},{},id)):Response.json({success:true,data:{requestId:id,processingStatus:'completed',status:'success',verified:true}}));vi.stubGlobal('fetch',fetcher);
   try{expect(await processOneVerifyRequest(db)).toBe(true);expect((await db.topUpIntent.findUniqueOrThrow({where:{id:intent.id}})).status).toBe('CREDITED');expect(fetcher).toHaveBeenCalledTimes(2)}finally{vi.unstubAllGlobals()}
  });
- it('keeps masked receivers in review, then credits an eligible exact retry',async()=>{
+ it('keeps unsupported masked receivers in review, then credits a provider-approved match',async()=>{
   const intent=await newIntent(),ref=reference();const first=await verifyIntent(db,user,{id:intent.id,key:randomUUID(),input:ref},async input=>assess(body(input,{receiverAccount:'2519****1111'}),input));
   expect(first).toMatchObject({status:'NEEDS_REVIEW',reason:'RECEIVER_UNPROVEN'});expect(await db.paymentClaim.count({where:{intentId:intent.id}})).toBe(0);
   await db.topUpIntent.update({where:{id:intent.id},data:{nextAttemptAt:new Date(0)}});
-  expect((await verifyIntent(db,user,{id:intent.id,key:randomUUID(),input:ref},good)).status).toBe('CREDITED');expect(await db.outbox.count({where:{key:`deposit:${intent.id}:credited`}})).toBe(1);
+  expect((await verifyIntent(db,user,{id:intent.id,key:randomUUID(),input:ref},async input=>assess(body(input,{receiverAccount:'2519****1111',settlementAccountMatch:{matched:true,matchType:'masked_pattern',ambiguous:false,matchedSettlementAccount:input.account,bank:'telebirr'}}),input))).status).toBe('CREDITED');expect(await db.outbox.count({where:{key:`deposit:${intent.id}:credited`}})).toBe(1);
  });
  it('blocks another user and an alternate CBE alias from a second credit',async()=>{
   const first=await newIntent(user,'cbe'),receipt='fHCxyExampleRcpt1',ft=reference().replace(/^DEMO/,'FT');

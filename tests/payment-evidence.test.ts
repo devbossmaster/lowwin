@@ -10,8 +10,18 @@ describe('Verify.et authoritative evidence',()=>{
  it('credits only complete exact evidence and derives ETB cents',()=>expect(assess(completed(),input,at)).toMatchObject({matched:true,code:'VERIFIED',evidence:{amountCents:'10000'}}));
  it('never credits queued responses',()=>expect(assess({success:true,requestId,verification:{processingStatus:'queued',status:'pending',verified:false},data:[]},input,at)).toMatchObject({matched:false,processing:true,code:'PROCESSING'}));
  it('treats a failed provider status as terminal, without retrying it as queued',()=>expect(assess({success:false,requestId,verification:{processingStatus:'failed',status:'failed',verified:false},data:[]},input,at)).toMatchObject({matched:false,code:'UNCONFIRMED'}));
+ it('accepts Verify.et approval of a masked match to the frozen account',()=>expect(assess(completed({receiverAccount:'2519****1111',settlementAccountMatch:{matched:true,matchType:'masked_pattern',ambiguous:false,matchedSettlementAccount:input.account,bank:'telebirr'}}),input,at)).toMatchObject({matched:true,code:'VERIFIED',evidence:{amountCents:'10000',receiverSuffix:'1111'}}));
+ it('accepts the one-day boundary and rejects an older transfer',()=>{
+  const oneDayInput={...input,createdAt:new Date(at.getTime()-86400000)};
+  expect(assess(completed({timestamp:oneDayInput.createdAt.toISOString()}),oneDayInput,at).matched).toBe(true);
+  expect(assess(completed({timestamp:new Date(oneDayInput.createdAt.getTime()-1000).toISOString()}),oneDayInput,at)).toMatchObject({matched:false,code:'DATE_MISMATCH'});
+ });
  it.each([
   [{receiverAccount:'2519****1111'},'RECEIVER_UNPROVEN'],
+  [{receiverAccount:'2519****1111',settlementAccountMatch:{matched:false,matchType:'unmatched',ambiguous:false,matchedSettlementAccount:input.account}},'RECEIVER_UNPROVEN'],
+  [{receiverAccount:'2519****1111',settlementAccountMatch:{matched:true,matchType:'masked_pattern',ambiguous:true,matchedSettlementAccount:input.account}},'RECEIVER_UNPROVEN'],
+  [{receiverAccount:'2519****2222',settlementAccountMatch:{matched:true,matchType:'masked_pattern',ambiguous:false,matchedSettlementAccount:input.account}},'RECEIVER_UNPROVEN'],
+  [{receiverAccount:'2519****1111',settlementAccountMatch:{matched:true,matchType:'masked_pattern',ambiguous:false,matchedSettlementAccount:'0999999999'}},'RECEIVER_UNPROVEN'],
   [{receiverAccount:undefined},'RECEIVER_UNPROVEN'],
   [{receiverAccount:'251922222222'},'RECEIVER_MISMATCH'],
   [{amount:'0.99'},'AMOUNT_MISMATCH'],

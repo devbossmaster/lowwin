@@ -39,7 +39,7 @@ type EvidenceFieldIssue={field:string;issue:string;received:string};
 export type Verification={code:string;matched:boolean;requestId?:string;processing?:boolean;retrySeconds?:number;evidence:{amountCents?:string;receiverSuffix?:string;date?:string;hash?:string;aliases?:string[];invalidFields?:EvidenceFieldIssue[]}};
 export type VerifyTransport=(input:VerificationInput)=>Promise<Verification>;
 const requestIdSchema=z.string().uuid();
-const itemSchema=z.object({bank:bankSchema,status:z.string(),verified:z.boolean(),amount:z.union([z.string(),z.number()]),currency:z.string(),receiverAccount:z.string().optional(),referenceNumber:z.string().optional(),receiptNumber:z.string().optional(),transactionNumber:z.string().optional(),timestamp:z.string().optional(),settlementAccountMatch:z.object({matched:z.boolean(),matchType:z.string().optional(),ambiguous:z.boolean().optional()}).optional()}).passthrough();
+const itemSchema=z.object({bank:bankSchema,status:z.string(),verified:z.boolean(),amount:z.union([z.string(),z.number()]),currency:z.string(),receiverAccount:z.string().optional(),referenceNumber:z.string().optional(),receiptNumber:z.string().optional(),transactionNumber:z.string().optional(),timestamp:z.string().optional(),settlementAccountMatch:z.object({matched:z.boolean(),matchType:z.string().optional(),matchConfidence:z.string().optional(),candidateCount:z.number().int().nonnegative().optional(),matchedSettlementAccount:z.string().optional(),bank:bankSchema.optional(),ambiguous:z.boolean().optional()}).optional()}).passthrough();
 const envelopeSchema=z.object({success:z.boolean(),requestId:requestIdSchema,verification:z.object({processingStatus:z.string(),status:z.string().optional(),verified:z.boolean().optional()}).optional(),data:z.union([z.array(z.unknown()),z.record(z.string(),z.unknown())]).optional()}).passthrough();
 function normalizedAccount(bank:Bank,value:string){
  if(!/^\d+$/.test(value))return null;
@@ -69,13 +69,20 @@ export function assess(raw:unknown,input:VerificationInput,now=new Date()):Verif
  if(item.currency!=='ETB')return fail('CURRENCY_MISMATCH');
  let amount:bigint;try{amount=cents(item.amount)}catch{return fail('INVALID_AMOUNT')}
  if(input.expectedCents!==null?amount!==input.expectedCents:input.minCents===undefined||input.maxCents===undefined||amount<input.minCents||amount>input.maxCents)return fail('AMOUNT_MISMATCH');
- // Verify.et can report a high-confidence masked match. Only a complete receiver value authorizes credit.
- if(!item.receiverAccount||item.receiverAccount.includes('*')||item.settlementAccountMatch?.ambiguous||item.settlementAccountMatch?.matched===false)return fail('RECEIVER_UNPROVEN');
- const receiver=normalizedAccount(input.bank,item.receiverAccount),expected=normalizedAccount(input.bank,input.account);
- if(!receiver||!expected||receiver!==expected)return fail('RECEIVER_MISMATCH');
+ const match=item.settlementAccountMatch,expected=normalizedAccount(input.bank,input.account);
+ if(!item.receiverAccount||!expected||match?.ambiguous||match?.matched===false)return fail('RECEIVER_UNPROVEN');
+ let receiver=normalizedAccount(input.bank,item.receiverAccount);
+ if(item.receiverAccount.includes('*')){
+  // Verify.et's documented result masks the receiver. Use its explicit match
+  // decision for our frozen account, and check the visible digits too.
+  const mask=/^(\d+)\*+(\d{4,})$/.exec(item.receiverAccount);
+  if(!mask||match?.matched!==true||match.ambiguous===true||match.bank&&match.bank!==input.bank||normalizedAccount(input.bank,match.matchedSettlementAccount??'')!==expected||!expected.startsWith(mask[1])||!expected.endsWith(mask[2])||mask[1].length+mask[2].length>=expected.length)return fail('RECEIVER_UNPROVEN');
+  receiver=expected;
+ }
+ if(receiver!==expected)return fail('RECEIVER_MISMATCH');
  const date=item.timestamp?new Date(item.timestamp):null;
  if(!date||!/(Z|[+-]\d{2}:\d{2})$/.test(item.timestamp!)||!Number.isFinite(date.getTime())||date<input.createdAt||date>input.expiresAt||date.getTime()>now.getTime()+60000)return fail('DATE_MISMATCH');
- const evidence={amountCents:amount.toString(),receiverSuffix:item.receiverAccount.slice(-4),date:date.toISOString(),aliases,hash:hash(JSON.stringify({bank:item.bank,aliases:aliases.slice().sort(),amount:amount.toString(),receiver,date:date.toISOString(),requestId}))};
+ const evidence={amountCents:amount.toString(),receiverSuffix:item.receiverAccount.slice(-4),date:date.toISOString(),aliases,hash:hash(JSON.stringify({bank:item.bank,aliases:aliases.slice().sort(),amount:amount.toString(),receiver,receiverEvidence:item.receiverAccount,matchType:match?.matchType,matchConfidence:match?.matchConfidence,date:date.toISOString(),requestId}))};
  return {code:'VERIFIED',matched:true,requestId,evidence};
 }
 async function boundedJson(response:Response){const reader=response.body?.getReader();if(!reader)throw Error('Empty provider response');let size=0;const chunks:Uint8Array[]=[];for(;;){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>65536){await reader.cancel();throw Error('Provider response too large')}chunks.push(value)}return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown}
