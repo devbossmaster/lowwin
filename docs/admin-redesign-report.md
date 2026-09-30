@@ -68,3 +68,11 @@ The earlier interrupted recapture is superseded by the managed-server verificati
 ## Application rollback
 
 Before deployment, record the deployed application SHA and retain its image. Deploy the reviewed application revision to the existing web resource through the normal process; verify staff sign-in/MFA, Overview, Settings, deposit review and mobile navigation. If any regress, redeploy that recorded prior application image/SHA. This change adds no migrations and requires no database reset, reversal or restoration. Existing journals, bids, holds and payment activation configuration stay intact. The review base is `0d82f9b`; it is not claimed to be the current production revision.
+
+## PR #3 Winners search follow-up
+
+The first GitHub general-browser job failed at mobile Winners search while the foundation, security and payment jobs passed. With client scripts deliberately held back, the regression reproduces the cause: text entered into the server-rendered field does not update the not-yet-hydrated React state. After hydration, the old handler navigates with `q=DEMO` instead of the visible auction code.
+
+The search now uses a DOM-owned input and Next Form GET navigation, preserving pre-hydration input and submitting its current value. Hidden fields preserve category, sort and page size. Dropdown navigation also reads the input's actual value, and the input resets when the committed query changes. The browser test checks the value before and after hydration, focuses the actionable field after page loading, asserts the submitted query URL, verifies exactly one result, and follows the exact public result URL. It uses a unique fixture auction code so substring search cannot accidentally match another fixture.
+
+Follow-up verification: the strengthened regression fails against the old component by navigating with `q=DEMO`; the fixed component passes both 360px and 430px scenarios (`2 passed (1.2m)`, exit 0, all fixture ports released). Typecheck and diff checks pass. Fresh GitHub CI is triggered by the follow-up commit; consult the PR checks for its final status. This change does not alter result selection, settlement, payment or access-control logic.

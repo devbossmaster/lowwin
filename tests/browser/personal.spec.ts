@@ -26,8 +26,16 @@ test('public results and private pages at mobile widths',async({page},testInfo)=
     for(const [auction,amount] of [[won,2],[won,20],[cancelled,8],[live,30]] as const)await submitBid(client,{userId:user.id,auctionSlug:auction.slug!,amount:String(amount),key:randomUUID()});
     await cancelAuction(client,{auctionId:cancelled.id,actor:{id:'browser-owner',permission:'auction:cancel'},reason:'DEMO UI fixture',key:randomUUID()});
     const [{now}]=await client.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`;await new Promise(resolve=>setTimeout(resolve,Math.max(0,won.endsAt!.getTime()-now.getTime()+30)));await closeAuction(client,won.id);
-    await page.goto('/winners?q=DEMO');await expect(page.getByRole('heading',{name:'Winners',exact:true})).toBeVisible();await expect(page.locator('main')).toContainText('DEMO · settled test');await capture('winners');
-    await page.getByRole('textbox',{name:'Search auctions',exact:true}).fill(won.code);await page.getByRole('textbox',{name:'Search auctions',exact:true}).press('Enter');await expect(page.getByRole('link',{name:'View Results',exact:true})).toHaveCount(1);await page.getByRole('link',{name:'View Results',exact:true}).click();await expect(page.locator('.result-summary')).toContainText('ETB 2.00');await expect(page.getByText('Anonymous winner',{exact:true})).toBeVisible();await capture('result');
+    const winningCode=won.code,winningPath=`/winners/${won.publicCode}`;
+    // Slow client chunks reproduce typing into server HTML before hydration.
+    let releaseScripts!:()=>void;const scriptsReady=new Promise<void>(resolve=>{releaseScripts=resolve});
+    const delayScripts=async(route:import('@playwright/test').Route)=>{if(route.request().resourceType()==='script')await scriptsReady;await route.continue()};
+    await page.route('**/_next/**',delayScripts);
+    const search=page.getByRole('textbox',{name:'Search auctions',exact:true});
+    try{await page.goto('/winners?q=DEMO',{waitUntil:'commit'});await search.fill(winningCode);await expect(search).toHaveValue(winningCode)}finally{releaseScripts()}
+    await page.waitForLoadState('load');await page.unroute('**/_next/**',delayScripts);
+    await expect(page.getByRole('heading',{name:'Winners',exact:true})).toBeVisible();await expect(page.locator('main')).toContainText('DEMO · settled test');await capture('winners');
+    await expect(search).toHaveValue(winningCode);await search.click();await expect(search).toBeFocused();await search.press('Enter');await expect(page).toHaveURL(url=>url.pathname==='/winners/all'&&url.searchParams.get('q')===winningCode);await expect(search).toHaveValue(winningCode);await expect(page.getByRole('link',{name:'View Results',exact:true})).toHaveCount(1);await expect(page.getByRole('link',{name:'View Results',exact:true})).toHaveAttribute('href',winningPath);await page.getByRole('link',{name:'View Results',exact:true}).click();await expect(page).toHaveURL(url=>url.pathname===winningPath);await expect(page.locator('.result-summary')).toContainText('ETB 2.00');await expect(page.getByText('Anonymous winner',{exact:true})).toBeVisible();await capture('result');
     expect(await page.locator('article').innerText()).not.toContain(user.id);expect(await page.content()).not.toMatch(/amountFrequencies|winnerUserId|winningBidId|transactionId|settlementId/);
     await page.goto(`/winners/${pending.code}`);await expect(page.locator('.result-summary')).toContainText('Closing / result pending');await capture('pending');
     await page.goto(`/winners/${cancelled.code}`);await expect(page.locator('.result-summary')).toContainText('Cancelled');await capture('cancelled');
