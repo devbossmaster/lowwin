@@ -54,6 +54,7 @@ function normalizedAccount(bank:Bank,value:string){
 export function assess(raw:unknown,input:VerificationInput,now=new Date()):Verification{
  const envelope=envelopeSchema.safeParse(raw);if(!envelope.success)return {code:'INCOMPLETE_EVIDENCE',matched:false,evidence:{invalidFields:envelope.error.issues.slice(0,12).map(issue=>({field:issue.path.join('.')||'response',issue:issue.code,received:'invalid'}))}};
  const requestId=envelope.data.requestId;
+ if(envelope.data.verification?.processingStatus==='failed')return {code:'UNCONFIRMED',requestId,matched:false,evidence:{}};
  if(envelope.data.verification?.processingStatus!=='completed')return {code:'PROCESSING',processing:true,requestId,matched:false,evidence:{}};
  if(!envelope.data.success||envelope.data.verification.verified!==true||envelope.data.verification.status!=='success')return {code:'UNCONFIRMED',requestId,matched:false,evidence:{}};
  const list=Array.isArray(envelope.data.data)?envelope.data.data:[];

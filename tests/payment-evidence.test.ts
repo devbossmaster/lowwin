@@ -9,6 +9,7 @@ function completed(overrides:Record<string,unknown>={}){return {success:true,req
 describe('Verify.et authoritative evidence',()=>{
  it('credits only complete exact evidence and derives ETB cents',()=>expect(assess(completed(),input,at)).toMatchObject({matched:true,code:'VERIFIED',evidence:{amountCents:'10000'}}));
  it('never credits queued responses',()=>expect(assess({success:true,requestId,verification:{processingStatus:'queued',status:'pending',verified:false},data:[]},input,at)).toMatchObject({matched:false,processing:true,code:'PROCESSING'}));
+ it('treats a failed provider status as terminal, without retrying it as queued',()=>expect(assess({success:false,requestId,verification:{processingStatus:'failed',status:'failed',verified:false},data:[]},input,at)).toMatchObject({matched:false,code:'UNCONFIRMED'}));
  it.each([
   [{receiverAccount:'2519****1111'},'RECEIVER_UNPROVEN'],
   [{receiverAccount:undefined},'RECEIVER_UNPROVEN'],
