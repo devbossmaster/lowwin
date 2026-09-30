@@ -6,14 +6,14 @@ import {proxy} from '../src/proxy';
 beforeEach(()=>{vi.clearAllMocks();access.getMiniSession.mockReset()});
 describe('private access during database outages',()=>{
   it('does not run database auth for known public assets or already guarded APIs',async()=>{
-    for(const path of ['/banner1.png','/fonts/poppins-latin-400.woff2','/api/favorites','/api/favorites/phone','/api/my-bids','/api/alerts?summary=1','/api/auctions/phone/bids']){
+    for(const path of ['/banner1.png','/fonts/poppins-latin-400.woff2','/api/favorites','/api/favorites/phone','/api/my-bids','/api/alerts?summary=1','/api/auctions/phone/bids','/api/payments/verify-et/webhook']){
       expect((await proxy(new NextRequest(`http://localhost${path}`))).headers.get('x-middleware-next')).toBe('1');
     }
     expect(access.getMiniSession).not.toHaveBeenCalled();
   });
   it('keeps unmatched API paths and private media protected',async()=>{
     access.getMiniSession.mockResolvedValue(null);
-    for(const path of ['/api/favorites/phone/private','/api/media/123','/private.png','/api/catalog/auctions'])expect((await proxy(new NextRequest(`http://localhost${path}`))).status).toBe(path.startsWith('/api/')?401:307);
+    for(const path of ['/api/favorites/phone/private','/api/media/123','/private.png','/api/catalog/auctions','/api/payments/verify-et/webhook/extra'])expect((await proxy(new NextRequest(`http://localhost${path}`))).status).toBe(path.startsWith('/api/')?401:307);
   });
   it('keeps an unavailable session check closed and tells APIs to retry',async()=>{
     access.getMiniSession.mockRejectedValue({code:'P1001'});
