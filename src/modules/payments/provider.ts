@@ -22,9 +22,13 @@ export function candidate(bank:Bank,raw:string){
  const values=[...new Set(found??[])];if(values.length!==1)throw new PaymentError(422,'A single clear reference could not be found. Enter it manually.');return canonical(bank,values[0]);
 }
 const envelope=z.object({success:z.boolean(),exists:z.boolean(),duplicate:z.boolean(),data:z.object({bank:bankSchema,transaction_number:z.string(),verification_method:z.string(),receipt:z.object({status:z.string(),transaction_type:z.string(),amount:z.union([z.number(),z.string()]),currency:z.string(),transaction_date:z.string(),receiver_account:z.string().optional()})})});
-export type VerificationInput={bank:Bank;reference:string;account:string;expectedCents:bigint|null;minCents?:bigint;maxCents?:bigint;createdAt:Date;expiresAt:Date;outageAttemptAt?:Date};
-export type Verification={code:string;retrySeconds?:number;evidence:{amountCents?:string;receiverSuffix?:string;date?:string;method?:string;hash?:string;originalVerificationId?:number;recoveryCheck?:string};matched:boolean};
+export type AttemptWindow={startedAt:Date;endedAt:Date;attemptKey?:string};
+export type VerificationInput={priorAttempts?:AttemptWindow[];otherAttempts?:AttemptWindow[];bank:Bank;reference:string;account:string;expectedCents:bigint|null;minCents?:bigint;maxCents?:bigint;createdAt:Date;expiresAt:Date;outageAttemptAt?:Date};
+export type Verification={code:string;retrySeconds?:number;evidence:{amountCents?:string;receiverSuffix?:string;date?:string;method?:string;hash?:string;originalVerificationId?:number;providerVerifiedAt?:string;correlatedAttemptKey?:string;recoveryCheck?:string};matched:boolean};
 export function assess(raw:unknown,input:VerificationInput,now=new Date()):Verification{
+ const flags=z.object({success:z.boolean(),exists:z.boolean(),duplicate:z.boolean()}).safeParse(raw);
+ if(flags.success&&flags.data.duplicate&&!envelope.safeParse(raw).success)return {code:'DUPLICATE_REVIEW',evidence:{},matched:false};
+ if(flags.success&&(!flags.data.success||!flags.data.exists))return {code:'UNCONFIRMED',evidence:{},matched:false};
  const parsed=envelope.safeParse(raw);if(!parsed.success)return {code:'INCOMPLETE_EVIDENCE',evidence:{},matched:false};
  const {success,exists,data}=parsed.data,r=data.receipt;let amount:bigint;try{amount=cents(r.amount)}catch{return {code:'INVALID_AMOUNT',evidence:{},matched:false}}
  const date=new Date(r.transaction_date),evidence={amountCents:amount.toString(),receiverSuffix:r.receiver_account?.slice(-4),date:Number.isFinite(date.getTime())?date.toISOString():undefined,method:data.verification_method,hash:hash(JSON.stringify({bank:data.bank,reference:data.transaction_number,amount:amount.toString(),receiver:r.receiver_account,date:r.transaction_date,status:r.status,method:data.verification_method}))};
@@ -45,28 +49,34 @@ export type VerifyTransport=(input:VerificationInput)=>Promise<Verification>;
 const duplicateEnvelope=z.object({duplicate:z.literal(true),existing_verification_id:z.number().int().positive(),verified_at:z.iso.datetime({offset:true})});
 const storedVerification=z.object({verification:z.object({id:z.number().int().positive(),bank:bankSchema,transaction_number:z.string(),account_number:z.string().nullable().optional(),success:z.literal(true),exists:z.literal(true),status:z.literal('completed'),transaction_type:z.literal('transfer'),amount:z.union([z.number(),z.string()]),currency:z.literal('ETB'),transaction_date:z.iso.datetime({offset:true}),created_at:z.iso.datetime({offset:true}),source:z.object({type:z.literal('api')})})});
 async function boundedJson(response:Response){const reader=response.body?.getReader();if(!reader)throw Error('Empty provider response');let size=0;const chunks:Uint8Array[]=[];for(;;){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>65536){await reader.cancel();throw Error('Provider response too large')}chunks.push(value)}return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown}
-/** A duplicate is recoverable only when an earlier Lowwin timeout matches the original API verification. */
+/** Recover only an original API record correlated to an immutable local attempt. */
 export async function recoverProviderDuplicate(raw:unknown,input:VerificationInput,load:(id:number)=>Promise<unknown>,now=new Date()):Promise<Verification>{
- const fallback=assess(raw,input,now),duplicate=duplicateEnvelope.safeParse(raw);
- if(!duplicate.success||!input.outageAttemptAt)return fallback;
+ const ordinary=assess(raw,input,now),duplicate=duplicateEnvelope.safeParse(raw);
+ if(!duplicate.success)return ordinary;
+ const fallback={...ordinary,evidence:{...ordinary.evidence,originalVerificationId:duplicate.data.existing_verification_id,providerVerifiedAt:duplicate.data.verified_at}};
+ if(!input.outageAttemptAt&&!input.priorAttempts?.length)return {...fallback,evidence:{...fallback.evidence,recoveryCheck:'NO_PRIOR_ATTEMPT'}};
  try{
   const record=storedVerification.parse(await load(duplicate.data.existing_verification_id)).verification;
-  const originalAt=new Date(record.created_at),verifiedAt=new Date(duplicate.data.verified_at),outageAt=input.outageAttemptAt;
+  const originalAt=new Date(record.created_at),verifiedAt=new Date(duplicate.data.verified_at);
+  const inside=(at:Date,w:AttemptWindow)=>at.getTime()>=w.startedAt.getTime()-5000&&at.getTime()<=w.endedAt.getTime()+5000;
+  const correlated=input.priorAttempts?.find(w=>inside(originalAt,w)&&inside(verifiedAt,w));
+  const localMatch=!!correlated||input.outageAttemptAt&&Math.abs(originalAt.getTime()-input.outageAttemptAt.getTime())<=120000&&Math.abs(verifiedAt.getTime()-input.outageAttemptAt.getTime())<=120000;
+  const otherMatch=input.otherAttempts?.some(w=>inside(originalAt,w)||inside(verifiedAt,w));
   if(record.id!==duplicate.data.existing_verification_id||record.bank!==input.bank||record.transaction_number.toUpperCase()!==input.reference||record.account_number&&record.account_number!==input.account||
-   Math.abs(originalAt.getTime()-outageAt.getTime())>120000||Math.abs(verifiedAt.getTime()-outageAt.getTime())>120000||originalAt>input.expiresAt||
+   !localMatch||otherMatch||Math.abs(originalAt.getTime()-verifiedAt.getTime())>5000||
    !Number.isFinite(originalAt.getTime())||!Number.isFinite(verifiedAt.getTime()))return {...fallback,evidence:{...fallback.evidence,recoveryCheck:'ORIGINAL_NOT_CORRELATED'}};
   const receipt=z.object({success:z.literal(true),exists:z.literal(true),data:z.object({bank:bankSchema,transaction_number:z.string(),verification_method:z.literal('official'),receipt:z.object({amount:z.union([z.number(),z.string()]),currency:z.string(),status:z.string(),transaction_type:z.string(),transaction_date:z.string(),receiver_account:z.string()})})}).parse(raw);
   if(cents(record.amount)!==cents(receipt.data.receipt.amount)||record.currency!==receipt.data.receipt.currency||record.status!==receipt.data.receipt.status||record.transaction_type!==receipt.data.receipt.transaction_type||
    Math.abs(new Date(record.transaction_date).getTime()-new Date(receipt.data.receipt.transaction_date).getTime())>1000)return {...fallback,evidence:{...fallback.evidence,recoveryCheck:'ORIGINAL_MISMATCH'}};
   const exact=assess({...receipt,duplicate:false},input,now);
   if(!exact.matched)return {...exact,evidence:{...exact.evidence,recoveryCheck:exact.code}};
-  return {code:'VERIFIED_RECOVERED',matched:true,evidence:{...exact.evidence,originalVerificationId:record.id,recoveryCheck:'MATCHED',hash:hash(`${exact.evidence.hash}:${record.id}:${record.created_at}:${record.source.type}`)}};
+  return {code:'VERIFIED_RECOVERED',matched:true,evidence:{...exact.evidence,originalVerificationId:record.id,providerVerifiedAt:duplicate.data.verified_at,correlatedAttemptKey:correlated?.attemptKey,recoveryCheck:'MATCHED',hash:hash(`${exact.evidence.hash}:${record.id}:${record.created_at}:${record.source.type}`)}};
  }catch{return {...fallback,evidence:{...fallback.evidence,recoveryCheck:'ORIGINAL_UNAVAILABLE'}}}
 }
 export async function checkEt(input:VerificationInput):Promise<Verification>{
  const started=performance.now();let httpStatus:number|undefined;
  const finish=(result:Verification,failure?:string):Verification=>{
-  const entry=JSON.stringify({event:'payment_provider_verification',bank:input.bank,code:result.code,httpStatus,elapsedMs:Math.round(performance.now()-started),failure,recoveryCheck:result.evidence.recoveryCheck??(result.code==='DUPLICATE_REVIEW'&&!input.outageAttemptAt?'NO_PRIOR_OUTAGE':undefined)});
+  const entry=JSON.stringify({event:'payment_provider_verification',bank:input.bank,code:result.code,httpStatus,elapsedMs:Math.round(performance.now()-started),failure,recoveryCheck:result.evidence.recoveryCheck??(result.code==='DUPLICATE_REVIEW'&&!input.outageAttemptAt&&!input.priorAttempts?.length?'NO_PRIOR_OUTAGE':undefined)});
   if(result.matched)console.info(entry);else console.warn(entry);
   return result;
  };
@@ -76,9 +86,9 @@ export async function checkEt(input:VerificationInput):Promise<Verification>{
   let endpoint='https://api.check.et/api/v1/verify';if(process.env.CHECK_ET_TEST_ENDPOINT){const url=new URL(process.env.CHECK_ET_TEST_ENDPOINT);if(!demoBidAllowed()||process.env.CHECK_ET_MODE!=='test'||url.protocol!=='http:'||!['127.0.0.1','localhost'].includes(url.hostname))throw Error();endpoint=url.href;}
   const response=await fetch(endpoint,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({bank:input.bank,transaction_number:input.reference,...(input.bank==='cbe'?{account_number:input.account}:{})}),signal:AbortSignal.timeout(PROVIDER_TIMEOUT_MS),redirect:'error',cache:'no-store'});
   httpStatus=response.status;
-  if(!response.ok){const code=({401:'PROVIDER_AUTH',402:'PROVIDER_QUOTA',404:'NOT_FOUND',422:'INVALID_RECEIPT',429:'PROVIDER_RATE_LIMIT'} as Record<number,string>)[response.status]??'PROVIDER_OUTAGE';return finish({code,matched:false,evidence:{},retrySeconds:Math.min(3600,Math.max(30,Number(response.headers.get('retry-after'))||60))});}
+  if(!response.ok){const code=({400:'INVALID_RECEIPT',401:'PROVIDER_AUTH',403:'PROVIDER_AUTH',402:'PROVIDER_QUOTA',404:'NOT_FOUND',422:'INVALID_RECEIPT',429:'PROVIDER_RATE_LIMIT'} as Record<number,string>)[response.status]??'PROVIDER_OUTAGE';return finish({code,matched:false,evidence:{},retrySeconds:Math.min(3600,Math.max(30,Number(response.headers.get('retry-after'))||60))});}
   const raw=await boundedJson(response),ordinary=assess(raw,input);
-  if(ordinary.code!=='DUPLICATE_REVIEW'||!input.outageAttemptAt)return finish(ordinary);
+  if(ordinary.code!=='DUPLICATE_REVIEW')return finish(ordinary);
   return finish(await recoverProviderDuplicate(raw,input,async id=>{
    const url=new URL(endpoint);url.pathname=url.pathname.replace(/\/verify$/,'/verifications/'+id);
    const original=await fetch(url,{headers:{Authorization:`Bearer ${key}`},signal:AbortSignal.timeout(PROVIDER_RECOVERY_TIMEOUT_MS),redirect:'error',cache:'no-store'});

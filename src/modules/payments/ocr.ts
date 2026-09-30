@@ -23,26 +23,41 @@ export function extractedReference(result:OcrResult,bank:Bank){
   if(tokens.length!==1)throw error;
   reference=tokens[0];
  }
+ const literalCodes=[...new Set(result.text.toUpperCase().match(/\b[A-Z][A-Z0-9]{7,31}\b/g)??[])].filter(token=>/\d/.test(token)).filter(token=>{try{canonical(bank,token);return true}catch{return false}});
+ if(literalCodes.length>1)throw new PaymentError(422,'A single clear reference could not be found. Enter it manually.');
  // Unrelated artwork and Amharic text must not outweigh a clearly read reference.
  const words=Array.isArray(result.words)?result.words.filter(w=>typeof w.text==='string'&&w.text.toUpperCase().split(/[^A-Z0-9]+/).includes(reference)):[];
  const confidence=words.length?Math.max(...words.map(w=>Number.isFinite(w.confidence)?w.confidence:0)):result.confidence;
+ if(confidence<35)throw new PaymentError(422,'Scan is uncertain. Enter the reference manually.');
  // This is an editable extraction, never payment evidence or an automatic credit.
  return {reference,reviewRequired:true,uncertain:confidence<75};
+}
+export function combineExtractions(passes:OcrResult[],bank:Bank){
+ if(passes.length!==2)throw new PaymentError(422,'Scan is uncertain. Enter the reference manually.');
+ const results=passes.map(pass=>{try{return extractedReference(pass,bank)}catch(error){
+  // Multiple plausible references remain ambiguous even if the other pass reads one.
+  const codes=[...new Set(pass.text?.toUpperCase().match(/\b[A-Z][A-Z0-9]{7,31}\b/g)??[])].filter(v=>/\d/.test(v));
+  if(codes.length>1||error instanceof PaymentError&&error.message==='Receipt bank does not match the selected account.')throw error;
+  return null;
+ }}).filter((value):value is ReturnType<typeof extractedReference>=>!!value);
+ if(!results.length)throw new PaymentError(422,'Could not read the screenshot. Paste the payment SMS or transaction reference.');
+ if(new Set(results.map(r=>r.reference)).size!==1)throw new PaymentError(422,'Scan is uncertain. Enter the reference manually.');
+ return {...results[0],uncertain:results.length<2||results.some(r=>r.uncertain)};
 }
 export async function scanReceipt(bytes:Buffer,mime:string,bank:Bank){
  if(process.env.RECEIPT_OCR!=='tesseract')throw new PaymentError(503,'Scanning is unavailable. Enter the reference manually.');
  if(active)throw new PaymentError(429,'Scanner is busy. Try again shortly.');active=true;let clean:Buffer|undefined;
  try{clean=await cleanReceipt(bytes,mime);
-  const result=await new Promise<OcrResult>((resolve,reject)=>{
+  const result=await new Promise<{passes:OcrResult[]}>((resolve,reject)=>{
    // A separate bounded process avoids bundler path rewriting, and can be killed
    // during initialization too. It receives no database/provider/auth secrets.
-   const child=spawn(process.execPath,[join(process.cwd(),'scripts/receipt-ocr.cjs')],{windowsHide:true,stdio:['pipe','pipe','ignore'],env:{NODE_ENV:'production',SystemRoot:process.env.SystemRoot,PATH:process.env.PATH}});let output='',timedOut=false;
+   const child=spawn(process.execPath,['--max-old-space-size=256',join(process.cwd(),'scripts/receipt-ocr.cjs')],{windowsHide:true,stdio:['pipe','pipe','ignore'],env:{NODE_ENV:'production',OMP_THREAD_LIMIT:'1',SystemRoot:process.env.SystemRoot,PATH:process.env.PATH}});let output='',timedOut=false;
    const timer=setTimeout(()=>{timedOut=true;child.kill();},20000);
-   child.stdout.on('data',chunk=>{output+=chunk;if(output.length>12000)child.kill()});child.stdin.on('error',()=>{});
+   child.stdout.on('data',chunk=>{output+=chunk;if(output.length>24000)child.kill()});child.stdin.on('error',()=>{});
    child.on('error',()=>{clearTimeout(timer);reject(new PaymentError(503,'Scanning is unavailable. Enter the reference manually.'))});
    child.on('close',code=>{clearTimeout(timer);if(code!==0||timedOut){reject(new PaymentError(503,'Scan failed or timed out. Enter the reference manually.'));return}try{resolve(JSON.parse(output))}catch{reject(new PaymentError(422,'Scan was unclear. Enter the reference manually.'))}});child.stdin.end(clean);
   });
-  return extractedReference(result,bank);
+  return combineExtractions(result.passes,bank);
  }finally{clean?.fill(0);bytes.fill(0);active=false}
 }
 // Images are memory-only, metadata stripped, never written or returned. The worker

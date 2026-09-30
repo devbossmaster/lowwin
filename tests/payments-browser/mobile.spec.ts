@@ -91,24 +91,34 @@ test('declining native contact closes the app and never grants access',async({pa
  await page.goto('/telegram');await expect.poll(()=>page.evaluate(()=>(window as unknown as {closedForTest?:boolean}).closedForTest??false)).toBe(true);expect(botRequested).toBe(1);await expect(page.getByRole('navigation',{name:'Your navigation'})).toHaveCount(0);expect((await context.request.get('/api/wallet')).status()).toBe(401);await expect(page.locator('.page-loading-backdrop')).toHaveCount(0);await page.screenshot({caret:'initial',path:`docs/screenshots/onboarding-after/contact-cancelled-${info.project.name}.png`});
 });
 
-test('shows immediate progress and review outcomes, then reuses the same deposit',async({page},info)=>{
+test('reopens review, retries the same deposit and updates the wallet once',async({page},info)=>{
  const db=new PrismaClient({datasourceUrl:process.env.TEST_DATABASE_URL});let release!:()=>void;
- const gate=new Promise<void>(r=>release=r),reference='DEMO'+randomUUID().replaceAll('-','').slice(0,16).toUpperCase();let calls=0;
+ const gate=new Promise<void>(r=>release=r),reference='REVIEW'+randomUUID().replaceAll('-','').slice(0,16).toUpperCase();
  try{
-  const id=randomInt(9600000000,9700000000),launch=signedLaunch({user:JSON.stringify({id,first_name:'Deposit feedback'})});await verifyFixtureContact(db,id);
+  const id=randomInt(9600000000,9700000000),launch=signedLaunch({user:JSON.stringify({id,first_name:'Deposit retry fixture'})});await verifyFixtureContact(db,id);
   await page.route('https://telegram.org/**',r=>r.fulfill({body:''}));await page.addInitScript(raw=>{window.Telegram={WebApp:{initData:raw,ready(){},expand(){}}}},launch);
   expect((await page.request.post('/api/auth/telegram/miniapp/signin',{headers:{origin:'http://localhost:3110'},data:{initData:launch}})).status()).toBe(200);
-  await page.route('**/api/wallet/top-ups',async route=>{
-   const body=route.request().postDataJSON();if(body.action!=='verify'){await route.continue();return}calls++;await gate;
-   const t=await db.topUpIntent.update({where:{id:body.input.id},data:{status:'NEEDS_REVIEW',reasonCode:'DUPLICATE_REVIEW'}});
-   const {ownIntent}=await import('../../src/modules/payments/service');await route.fulfill({json:ownIntent(t)});
-  });
+  await page.route('**/api/wallet/top-ups',async route=>{if(route.request().method()==='POST'&&route.request().postDataJSON().action==='verify')await gate;await route.continue()});
   await page.goto('/wallet');await page.getByRole('button',{name:'Telebirr',exact:true}).click();await page.getByLabel('Telebirr or CBE message/link').fill(reference);
-  await page.getByRole('button',{name:'Submit deposit',exact:true}).click();await expect(page.locator('[data-sonner-toast]').filter({hasText:'Verifying request…'})).toBeVisible();await expect(page.locator('[data-sonner-toaster]')).toHaveAttribute('data-y-position','top');await expect(page.locator('[data-sonner-toaster]')).toHaveAttribute('data-x-position','right');release();
-  await expect(page.locator('[data-sonner-toast]').filter({hasText:'An admin must review it before crediting.'})).toBeVisible();await expect(page.getByRole('button',{name:'Under admin review',exact:true})).toBeDisabled();
-  const user=await db.user.findUniqueOrThrow({where:{telegramId:String(id)}});expect(await db.paymentClaim.count({where:{userId:user.id}})).toBe(0);
-  await page.unroute('**/api/wallet/top-ups');await page.getByRole('button',{name:'Start another deposit'}).click();await page.getByLabel('Telebirr or CBE message/link').fill(reference);await page.getByRole('button',{name:'Submit deposit',exact:true}).click();
-  await expect(page.locator('[data-sonner-toast]').filter({hasText:'It was not submitted again.'})).toBeVisible();expect(await db.topUpIntent.count({where:{userId:user.id}})).toBe(1);expect(calls).toBe(1);
-  await page.screenshot({path:`docs/screenshots/deposit-feedback-${info.project.name}.png`,fullPage:true});
+  await page.getByRole('button',{name:'Submit deposit',exact:true}).click();await expect(page.locator('[data-sonner-toast]').filter({hasText:'Checking payment…'})).toBeVisible();await expect(page.locator('[data-sonner-toaster]')).toHaveAttribute('data-y-position','top');await expect(page.locator('[data-sonner-toaster]')).toHaveAttribute('data-x-position','right');release();
+  await expect(page.locator('[data-sonner-toast]').filter({hasText:'receiving account could not be confirmed'})).toBeVisible();
+  await expect(page.locator('#add-etb').getByRole('button',{name:'Check payment again',exact:true})).toBeDisabled();
+  await expect(page.getByText(/Retry after:/)).toBeVisible();
+  const user=await db.user.findUniqueOrThrow({where:{telegramId:String(id)}}),t=await db.topUpIntent.findFirstOrThrow({where:{userId:user.id}});
+  expect(await db.paymentClaim.count({where:{userId:user.id}})).toBe(0);
+  await page.screenshot({path:`docs/screenshots/deposit-recovery-review-${info.project.name}.png`,fullPage:true});
+  // Move only fixture cooldown time; frozen account, amount and transfer window remain unchanged.
+  await db.topUpIntent.update({where:{id:t.id},data:{nextAttemptAt:new Date(0),caseState:'INVESTIGATING',assignedTo:'fixture:operator'}});
+  await page.unroute('**/api/wallet/top-ups');await page.reload();await page.getByText('Deposit history',{exact:true}).click();
+  await page.locator('details').getByRole('button',{name:'Check payment again',exact:true}).click();
+  await expect(page.getByLabel('Telebirr or CBE message/link')).toHaveValue(reference);await expect(page.getByLabel('Telebirr or CBE message/link')).toHaveAttribute('readonly','');
+  await page.locator('#add-etb').getByRole('button',{name:'Check payment again',exact:true}).click();
+  await expect(page.locator('[data-sonner-toast]').filter({hasText:'100 ETB credited. Receipt recorded.'})).toBeVisible();
+  await expect(page.getByRole('link',{name:/ETB 100\.00 Available, open wallet/})).toBeVisible();
+  expect(await db.topUpIntent.count({where:{userId:user.id}})).toBe(1);expect(await db.paymentClaim.count({where:{intentId:t.id}})).toBe(1);expect(await db.outbox.count({where:{key:`deposit:${t.id}:credited`}})).toBe(1);
+  expect(await db.topUpIntent.findUnique({where:{id:t.id}})).toMatchObject({status:'CREDITED',caseState:'RESOLVED',assignedTo:null});
+  const {depositAttentionWhere}=await import('../../src/modules/payments/review-filter');expect(await db.topUpIntent.count({where:{id:t.id,...depositAttentionWhere(new Date())}})).toBe(0);
+  const {reconcile}=await import('../../src/modules/wallet/ledger');const {reconcilePayments}=await import('../../src/modules/payments/service');expect(await reconcile(db)).toEqual([]);expect(await reconcilePayments(db)).toEqual([]);
+  await page.screenshot({path:`docs/screenshots/deposit-recovery-credited-${info.project.name}.png`,fullPage:true});
  }finally{release();await db.$disconnect()}
 });

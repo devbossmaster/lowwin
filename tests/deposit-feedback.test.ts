@@ -7,6 +7,6 @@ it('announces credit only for a committed credit and translates every outcome',(
   expect(en.kind==='success').toBe(status==='CREDITED');expect(am.message).not.toBe(en.message);
  }
  expect(depositFeedback({status:'CREDITED',points:'30.27',reused:true},s=>s).message).toContain('No second credit');
- expect(depositFeedback({status:'NEEDS_REVIEW',points:'0',reused:true},s=>s).message).toContain('not submitted again');
+ expect(depositFeedback({status:'NEEDS_REVIEW',points:'0',reused:true},s=>s).message).toContain('check again');
  expect(depositFeedback({status:'REJECTED',points:'0',reason:'ADMIN_REJECTED'},s=>s).message).toContain('admin rejected');
 });

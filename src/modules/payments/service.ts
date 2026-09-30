@@ -8,6 +8,7 @@ import {demoBidAllowed} from '../auctions/bids';
 import {ensureWallet,seedPlatformAccounts} from '../wallet/ledger';
 import {bankSchema,candidate,checkEt,hash,PaymentError,type VerifyTransport,type Bank} from './provider';
 import {VERIFICATION_LEASE_MS} from './timing';
+import {CUSTOMER_ATTEMPTS,STAFF_ATTEMPTS,RECOVERY_WINDOW_MS,protectedPayment,retryDetails} from './retry';
 type Tx=Prisma.TransactionClient;
 export function paymentHealth(){
  const productionEnabled=liveFundingConfigured();
@@ -25,7 +26,9 @@ async function existingDeposit(tx:Tx,userId:string,channel:string,reference:stri
  if(claim?.userId===userId)return tx.topUpIntent.findUnique({where:{id:claim.intentId}});
  return tx.topUpIntent.findFirst({where:{userId,provider:'CHECK_ET',channel,reference},orderBy:[{createdAt:'asc'},{id:'asc'}]});
 }
-export function ownIntent(t:TopUpIntent){return {id:t.id,demo:t.provider==='DEMO_PREVIEW',channel:t.channel,status:t.status,amountCents:t.expectedCents?.toString(),points:t.points.toString(),policyVersion:t.policyVersion,quote:t.quoteSnapshot,account:t.receivingAccount,accountName:t.accountName,createdAt:t.createdAt.toISOString(),expiresAt:t.expiresAt?.toISOString(),reference:t.reference,reason:t.reasonCode,attempts:t.attempts,nextAttemptAt:t.nextAttemptAt.toISOString(),caseState:t.caseState};}
+export function ownIntent(t:TopUpIntent){return {id:t.id,demo:t.provider==='DEMO_PREVIEW',channel:t.channel,status:t.status,amountCents:t.expectedCents?.toString(),points:t.points.toString(),policyVersion:t.policyVersion,quote:t.quoteSnapshot,account:t.receivingAccount,accountName:t.accountName,createdAt:t.createdAt.toISOString(),expiresAt:t.expiresAt?.toISOString(),reference:t.reference,reason:t.reasonCode,attempts:t.attempts,caseState:t.caseState,...retryDetails(t)};}
+// Store only customer outcome fields in redacted immutable attempt evidence.
+function attemptResult(t:ReturnType<typeof ownIntent>){const {status,points,amountCents,reason,attempts,nextAttemptAt,caseState,canRetry,retryBlocked,retryUntil}=t;return JSON.parse(JSON.stringify({status,points,amountCents,reason,attempts,nextAttemptAt,caseState,canRetry,retryBlocked,retryUntil})) as Prisma.InputJsonObject;}
 export async function fundingOptions(client:PrismaClient){const policies=await Promise.all((['telebirr','cbe'] as const).map(channel=>client.paymentPolicy.findFirst({where:{channel},orderBy:{version:'desc'}})));return {...paymentHealth(),accounts:policies.filter(p=>p?.enabled&&p.pointsNumerator*100n===p.centsDenominator).map(p=>({id:p!.channel,policyId:p!.id,version:p!.version,name:p!.channel==='telebirr'?'Telebirr':'CBE',number:p!.account,holder:p!.accountName,numerator:p!.pointsNumerator.toString(),denominator:p!.centsDenominator.toString(),minCents:p!.minCents.toString(),maxCents:p!.maxCents.toString(),terms:p!.terms}))}}
 export async function createIntent(client:PrismaClient,userId:string,raw:unknown,fromReceipt=false){requireEnabled();const body=fromReceipt?receiptCreateSchema.parse(raw):createSchema.parse(raw),fingerprint=hash(JSON.stringify({...body,...(fromReceipt?{amountFromReceipt:true}:{})}));return client.$transaction(async tx=>{
  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`},0))`;await eligibility(tx,userId);
@@ -47,7 +50,7 @@ export async function verifyIntent(client:PrismaClient,userId:string,raw:unknown
  const lease=await client.$transaction(async tx=>{
   await tx.$queryRaw`SELECT id FROM "TopUpIntent" WHERE id=${body.id} FOR UPDATE`;const t=await tx.topUpIntent.findFirst({where:{id:body.id,userId}});if(!t||!t.channel||t.provider!=='CHECK_ET')throw new PaymentError(404,'Funding request not found.');
   const reference=candidate(bankSchema.parse(t.channel),body.input),fingerprint=hash(reference),prior=await tx.paymentAttempt.findUnique({where:{intentId_key:{intentId:t.id,key:body.key}}});
-  if(t.reference&&t.reference!==reference)throw new PaymentError(409,'This intent is bound to another reference.');if(prior){if(prior.requestHash!==fingerprint)throw new PaymentError(409,'Idempotency key changed.');return {receipt:ownIntent(t)}}
+  if(t.reference&&t.reference!==reference)throw new PaymentError(409,'This intent is bound to another reference.');if(prior){if(prior.requestHash!==fingerprint)throw new PaymentError(409,'Idempotency key changed.');const snapshot=(prior.evidence as {result?:Record<string,unknown>}).result;return {receipt:snapshot?{...ownIntent(t),...snapshot}:ownIntent(t)}}
   if(t.status==='CREDITED')return {receipt:{...ownIntent(t),reused:true}};
   if(!adminRecovery&&!staffRetry){
    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`payment-submit:${userId}:${t.channel}:${reference}`},0))`;
@@ -56,26 +59,56 @@ export async function verifyIntent(client:PrismaClient,userId:string,raw:unknown
     if(!t.reference&&t.attempts===0)await tx.topUpIntent.update({where:{id:t.id},data:{status:'REJECTED',reasonCode:'DUPLICATE_REQUEST',caseState:'ARCHIVED'}});
     return {receipt:{...ownIntent(existing),reused:true}};
    }
-   if(['NEEDS_REVIEW','REJECTED','DUPLICATE_CONFLICT'].includes(t.status))return {receipt:{...ownIntent(t),reused:true}};
+
   }
-  const now=await clock(tx);if(!t.expiresAt||t.expiresAt<=now&&!adminRecovery)throw new PaymentError(409,'This funding request expired. Contact support if you sent funds.');
-  const outage=t.expiresAt?await tx.paymentAttempt.findFirst({where:{intentId:t.id,requestHash:fingerprint,code:'PROVIDER_OUTAGE',createdAt:{gte:t.createdAt,lte:t.expiresAt}},orderBy:{createdAt:'asc'}}):null;
-  if(adminRecovery&&(!outage||t.expiresAt.getTime()+7*86400000<now.getTime()))throw new PaymentError(409,'Only a timed-out verification from the past seven days can be recovered.');
-  if(t.attempts>=6||['REJECTED','DUPLICATE_CONFLICT'].includes(t.status))throw new PaymentError(409,'Verification needs operator review.');if(t.nextAttemptAt>now||t.leaseUntil&&t.leaseUntil>now)throw new PaymentError(429,'Verification is pending. Wait before retrying.');
-  await eligibility(tx,userId);const token=randomUUID();const current=await tx.topUpIntent.update({where:{id:t.id},data:{status:'VERIFYING',reference,attempts:{increment:1},leaseToken:token,leaseUntil:new Date(now.getTime()+VERIFICATION_LEASE_MS)}});return {t:current,token,fingerprint,reference,outageAttemptAt:outage?.createdAt};
+  const now=await clock(tx);
+  if(protectedPayment(t))throw new PaymentError(409,'This deposit is protected or rejected. Contact support.');
+  if(!t.expiresAt||now.getTime()>t.expiresAt.getTime()+RECOVERY_WINDOW_MS)throw new PaymentError(409,'The recovery window ended. Contact support with this deposit ID.');
+  const startHash=hash(`${t.channel}:${reference}`),scope='PAYMENT_VERIFY_START';
+  const priorStart=await tx.operation.findUnique({where:{userId_scope_key:{userId,scope,key:body.key}}});
+  if(priorStart){
+   if(priorStart.requestHash!==startHash||(priorStart.result as {intentId:string}).intentId!==t.id)throw new PaymentError(409,'Idempotency key changed.');
+   if(t.leaseUntil&&t.leaseUntil>now)return {receipt:ownIntent(t)};
+   // The process may have died after sending the provider request. Seal this
+   // attempt as uncertain; a new key can recover against its immutable start.
+   const interrupted=await tx.topUpIntent.update({where:{id:t.id},data:{status:'PROVIDER_OUTAGE',reasonCode:'PROVIDER_INTERRUPTED',leaseToken:null,leaseUntil:null}});
+   const receipt=ownIntent(interrupted);
+   await tx.paymentAttempt.create({data:{intentId:t.id,key:body.key,requestHash:fingerprint,code:'PROVIDER_INTERRUPTED',evidence:{result:attemptResult(receipt)}}});
+   return {receipt};
+  }
+  if(t.attempts>=(adminRecovery||staffRetry?STAFF_ATTEMPTS:CUSTOMER_ATTEMPTS))throw new PaymentError(409,'Verification needs operator review. Contact support with this deposit ID.');
+  if(t.nextAttemptAt>now||t.leaseUntil&&t.leaseUntil>now)throw new PaymentError(429,'Verification is pending. Wait before retrying.');
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`transfer:${t.channel}:${reference}`},0))`;
+  const claim=await tx.paymentClaim.findUnique({where:{channel_reference:{channel:t.channel,reference}}});
+  if(claim){
+   if(claim.userId===userId)return {receipt:{...ownIntent(await tx.topUpIntent.findUniqueOrThrow({where:{id:claim.intentId}})),reused:true}};
+   return {receipt:ownIntent(await tx.topUpIntent.update({where:{id:t.id},data:{status:'DUPLICATE_CONFLICT',reasonCode:'DUPLICATE_CONFLICT',reference}}))};
+  }
+  if(await tx.topUpIntent.findFirst({where:{id:{not:t.id},channel:t.channel,reference,leaseUntil:{gt:now}}}))throw new PaymentError(429,'Verification is pending. Wait before retrying.');
+  // All starts for this reference are considered: another deposit's concurrent
+  // or historical verification must never become this customer's evidence.
+  const starts=await tx.operation.findMany({where:{scope,requestHash:startHash},orderBy:{createdAt:'asc'},take:100});
+  const completed=await tx.paymentAttempt.findMany({where:{intentId:t.id,requestHash:fingerprint},take:STAFF_ATTEMPTS,orderBy:{createdAt:'asc'}});
+  const priorAttempts=starts.filter(s=>(s.result as {intentId:string}).intentId===t.id).map(s=>{const attempt=completed.find(a=>a.key===s.key),until=new Date((s.result as {until:string}).until);return {attemptKey:s.key,startedAt:s.createdAt,endedAt:attempt&&!['PROVIDER_OUTAGE','PROVIDER_INTERRUPTED'].includes(attempt.code)?new Date(Math.min(until.getTime(),attempt.createdAt.getTime())):until}});
+  const otherAttempts=starts.filter(s=>(s.result as {intentId:string}).intentId!==t.id).map(s=>({startedAt:s.createdAt,endedAt:new Date((s.result as {until:string}).until)}));
+  const outage=await tx.paymentAttempt.findFirst({where:{intentId:t.id,requestHash:fingerprint,code:'PROVIDER_OUTAGE'},orderBy:{createdAt:'asc'}});
+  await eligibility(tx,userId);const token=randomUUID(),until=new Date(now.getTime()+VERIFICATION_LEASE_MS);
+  await tx.operation.create({data:{userId,scope,key:body.key,requestHash:startHash,result:{intentId:t.id,until:until.toISOString()}}});
+  const current=await tx.topUpIntent.update({where:{id:t.id},data:{status:'VERIFYING',reference,attempts:{increment:1},leaseToken:token,leaseUntil:until}});
+  return {t:current,token,fingerprint,reference,priorAttempts,otherAttempts,outageAttemptAt:outage&&!starts.some(s=>s.key===outage.key&&s.userId===userId)?outage.createdAt:undefined};
  });if('receipt' in lease)return lease.receipt!;
  // Deliberately outside any DB transaction. Only a short lease survives a crash.
- const {t,token,fingerprint,reference,outageAttemptAt}=lease;
+ const {t,token,fingerprint,reference,outageAttemptAt,priorAttempts,otherAttempts}=lease;
  const quote=t.quoteSnapshot as {minCents?:string;maxCents?:string;earliestTransferAt?:string};
- const verified=await transport({bank:t.channel as Bank,reference,account:t.receivingAccount!,expectedCents:t.expectedCents,createdAt:t.amountFromReceipt?new Date(quote.earliestTransferAt!):t.createdAt,expiresAt:t.expiresAt!,...(t.amountFromReceipt?{minCents:BigInt(quote.minCents!),maxCents:BigInt(quote.maxCents!)}:{}),...(outageAttemptAt?{outageAttemptAt}:{})});
+ const verified=await transport({priorAttempts,otherAttempts,bank:t.channel as Bank,reference,account:t.receivingAccount!,expectedCents:t.expectedCents,createdAt:t.amountFromReceipt?new Date(quote.earliestTransferAt!):t.createdAt,expiresAt:t.expiresAt!,...(t.amountFromReceipt?{minCents:BigInt(quote.minCents!),maxCents:BigInt(quote.maxCents!)}:{}),...(outageAttemptAt?{outageAttemptAt}:{})});
  return client.$transaction(async tx=>{
   await tx.$queryRaw`SELECT id FROM "TopUpIntent" WHERE id=${t.id} FOR UPDATE`;const current=await tx.topUpIntent.findUniqueOrThrow({where:{id:t.id}});if(current.status==='CREDITED')return ownIntent(current);if(current.leaseToken!==token)throw new PaymentError(409,'Verification was superseded. Refresh the request.');
   const now=await clock(tx);await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`transfer:${t.channel}:${reference}`},0))`;
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`},0))`;await eligibility(tx,userId);if(reauthorize)await reauthorize(tx);requireEnabled();
   let code=verified.code,matched=verified.matched;
-  if(code==='VERIFIED_RECOVERED'&&!outageAttemptAt){code='RECOVERY_REVIEW';matched=false}
-  if(adminRecovery&&code!=='VERIFIED_RECOVERED'){code='RECOVERY_REVIEW';matched=false}
-  if(now>t.expiresAt!&&!(adminRecovery&&code==='VERIFIED_RECOVERED')){code='STALE_INTENT';matched=false}
+  if(code==='VERIFIED_RECOVERED'&&!outageAttemptAt&&!priorAttempts.length){code='RECOVERY_REVIEW';matched=false}
+  if(protectedPayment(current))throw new PaymentError(409,'This deposit is protected or rejected. Contact support.');
+  if(now.getTime()>t.expiresAt!.getTime()+RECOVERY_WINDOW_MS){code='STALE_INTENT';matched=false}
   const amount=t.amountFromReceipt&&verified.evidence.amountCents?BigInt(verified.evidence.amountCents):t.expectedCents;
   const points=t.amountFromReceipt?new Prisma.Decimal(amount?.toString()??'0').div(100):t.points;
   if(matched&&(!amount||points.lte(0)||points.gt(1000000000)||t.amountFromReceipt&&(amount<BigInt(quote.minCents!)||amount>BigInt(quote.maxCents!)))){code='AMOUNT_MISMATCH';matched=false}
@@ -87,9 +120,9 @@ export async function verifyIntent(client:PrismaClient,userId:string,raw:unknown
    const journal=await tx.journal.create({data:{operationId:operation.id,kind:'TOPUP_CREDIT',reference:`topup:${t.id}`,postings:{create:[{accountId:issuance.id,delta:points.negated()},{accountId:available.id,delta:points}]}}});journalId=journal.id;
    await tx.paymentClaim.create({data:{channel:t.channel!,reference,intentId:t.id,userId,amountCents:amount!,points,receiverSuffix:verified.evidence.receiverSuffix!,transferredAt:new Date(verified.evidence.date!),operationId:operation.id,journalId,evidenceHash:verified.evidence.hash!}});
   }
-  await tx.paymentAttempt.create({data:{intentId:t.id,key:body.key,requestHash:fingerprint,code,evidence:JSON.parse(JSON.stringify(verified.evidence)) as Prisma.InputJsonValue}});
-  const status=matched?'CREDITED':code==='DUPLICATE_CONFLICT'?code:code.startsWith('PROVIDER_')?'PROVIDER_OUTAGE':['NOT_FOUND','UNCONFIRMED'].includes(code)?'PENDING':code==='INVALID_RECEIPT'?'REJECTED':'NEEDS_REVIEW';
-  const updated=await tx.topUpIntent.update({where:{id:t.id},data:{status,journalId,...(matched&&t.amountFromReceipt?{expectedCents:amount,points}:{}),reasonCode:code,leaseToken:null,leaseUntil:null,nextAttemptAt:new Date(now.getTime()+Math.max(verified.retrySeconds??0,Math.min(900,30*2**current.attempts))*1000)}});
+  const status=matched?'CREDITED':code==='DUPLICATE_CONFLICT'?code:code.startsWith('PROVIDER_')?'PROVIDER_OUTAGE':['NOT_FOUND','UNCONFIRMED'].includes(code)?'PENDING':'NEEDS_REVIEW';
+  const updated=await tx.topUpIntent.update({where:{id:t.id},data:{status,journalId,...(matched?{caseState:'RESOLVED',assignedTo:null}:{}),...(matched&&t.amountFromReceipt?{expectedCents:amount,points}:{}),reasonCode:code,leaseToken:null,leaseUntil:null,nextAttemptAt:new Date(now.getTime()+Math.max(verified.retrySeconds??0,Math.min(900,30*2**current.attempts))*1000)}});
+  await tx.paymentAttempt.create({data:{intentId:t.id,key:body.key,requestHash:fingerprint,code,evidence:JSON.parse(JSON.stringify({...verified.evidence,result:attemptResult(ownIntent(updated))})) as Prisma.InputJsonValue}});
   if(matched){const row=await tx.outbox.create({data:{key:`deposit:${t.id}:credited`,kind:'DEPOSIT_CREDITED',payload:{intentId:t.id,recipientUserId:userId}}});await materializeAlert(tx,row)}
   return ownIntent(updated);
  },{timeout:15000});

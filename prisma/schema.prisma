@@ -212,6 +212,7 @@ model Operation {
   settlementRefunds SettlementMovement[] @relation("SettlementRefund")
 
   @@unique([userId, scope, key])
+  @@index([scope, requestHash, createdAt])
 }
 
 model Category {

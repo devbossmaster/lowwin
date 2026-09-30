@@ -37,4 +37,17 @@ describe('official payment evidence',()=>{
   expect((await check({...candidate,data:{...candidate.data,receipt:{...candidate.data.receipt,receiver_account:'0999999999'}}})).matched).toBe(false);
   expect((await recoverProviderDuplicate(candidate,{...input,outageAttemptAt:prior},async()=>{throw Error('Unavailable')},now)).matched).toBe(false);
  });
+ it('correlates an ordinary earlier attempt but refuses unrelated or incomplete duplicate evidence',async()=>{
+  const at=new Date('2026-09-29T10:09:35Z'),window={startedAt:new Date('2026-09-29T10:09:30Z'),endedAt:new Date('2026-09-29T10:10:50Z')};
+  const raw={...evidence(),duplicate:true,existing_verification_id:42,verified_at:at.toISOString()};
+  const record={verification:{id:42,bank:'telebirr',transaction_number:input.reference,account_number:null,success:true,exists:true,status:'completed',transaction_type:'transfer',amount:100,currency:'ETB',transaction_date:now.toISOString(),created_at:at.toISOString(),source:{type:'api'}}};
+  const options={...input,priorAttempts:[window]};
+  expect(await recoverProviderDuplicate(raw,options,async()=>record,now)).toMatchObject({matched:true,code:'VERIFIED_RECOVERED'});
+  expect((await recoverProviderDuplicate(raw,{...options,otherAttempts:[window]},async()=>record,now)).matched).toBe(false);
+  expect((await recoverProviderDuplicate(raw,{...input,priorAttempts:[{startedAt:now,endedAt:now}]},async()=>record,now)).matched).toBe(false);
+  const masked={...raw,data:{...raw.data,receipt:{...raw.data.receipt,receiver_account:'***1111'}}};
+  expect((await recoverProviderDuplicate(masked,options,async()=>record,now)).matched).toBe(false);
+  expect((await recoverProviderDuplicate({duplicate:true,existing_verification_id:42,verified_at:at.toISOString()},options,async()=>record,now)).matched).toBe(false);
+ });
+
 });

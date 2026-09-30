@@ -1,5 +1,23 @@
-// Private stdin/stdout protocol. No files, network language downloads or logs.
+// Private stdin/stdout protocol. Packaged language data, no network or receipt files.
 const {createWorker,PSM}=require('tesseract.js');
+const sharp=require('sharp');
 const {join}=require('node:path');
 const eng=require('@tesseract.js-data/eng');
-(async()=>{const chunks=[];let size=0;for await(const c of process.stdin){size+=c.length;if(size>20*1024*1024)throw Error();chunks.push(c)}let worker;try{worker=await createWorker('eng',1,{langPath:join(eng.langPath,'..','4.0.0_best_int'),cacheMethod:'none',logger:()=>{},errorHandler:()=>{}});await worker.setParameters({tessedit_pageseg_mode:PSM.SPARSE_TEXT});const {data}=await worker.recognize(Buffer.concat(chunks),{},{blocks:true});const words=(data.blocks??[]).flatMap(b=>b.paragraphs.flatMap(p=>p.lines.flatMap(l=>l.words))).filter(w=>/[0-9]/.test(w.text)).slice(0,50).map(w=>({text:w.text.slice(0,100),confidence:w.confidence}));process.stdout.write(JSON.stringify({text:data.text.slice(0,4000),confidence:data.confidence,words}))}finally{for(const c of chunks)c.fill(0);if(worker)await worker.terminate()}})().catch(()=>{process.exitCode=1});
+(async()=>{
+ const chunks=[];let size=0,worker,image,contrast;
+ try{
+  for await(const c of process.stdin){size+=c.length;if(size>20*1024*1024)throw Error();chunks.push(c)}
+  image=Buffer.concat(chunks);
+  worker=await createWorker('eng',1,{langPath:join(eng.langPath,'..','4.0.0_best_int'),cacheMethod:'none',logger:()=>{},errorHandler:()=>{}});
+  const read=async(bytes,mode)=>{
+   await worker.setParameters({tessedit_pageseg_mode:mode});
+   const {data}=await worker.recognize(bytes,{},{blocks:true});
+   const words=(data.blocks??[]).flatMap(b=>b.paragraphs.flatMap(p=>p.lines.flatMap(l=>l.words))).filter(w=>/[0-9]/.test(w.text)).slice(0,50).map(w=>({text:w.text.slice(0,100),confidence:w.confidence}));
+   return {text:data.text.slice(0,4000),confidence:data.confidence,words};
+  };
+  const first=await read(image,PSM.SPARSE_TEXT);
+  contrast=await sharp(image,{limitInputPixels:12000000}).normalise().sharpen().png().toBuffer();
+  const second=await read(contrast,PSM.AUTO);
+  process.stdout.write(JSON.stringify({passes:[first,second]}));
+ }finally{image?.fill(0);contrast?.fill(0);for(const c of chunks)c.fill(0);if(worker)await worker.terminate()}
+})().catch(()=>{process.exitCode=1});
