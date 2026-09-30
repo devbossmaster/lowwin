@@ -1,13 +1,13 @@
 .select{position:relative;min-width:0}
-.trigger{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:50px;padding:10px 15px;border:1px solid #dce4ec;border-radius:26px;background:#fff;color:#273b43;font:inherit;font-size:13px;text-align:left;cursor:pointer}
+.trigger{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:50px;padding:10px 15px;border:1px solid #dce4ec;border-radius:26px;background:#fff;color:var(--surface-ink, #000);font:inherit;font-size:13px;text-align:left;cursor:pointer;--surface-ink:#000}
 .trigger>span{min-width:0;overflow-wrap:anywhere}
-.trigger svg{flex:none;color:#62737e;transition:transform .15s ease-out}
+.trigger svg{flex:none;color:var(--surface-ink, #000);transition:transform .15s ease-out}
 .trigger[aria-expanded=true]{border-color:#16a34a;outline:2px solid rgb(16 185 129 / 18%)}
 .trigger[aria-expanded=true] svg{transform:rotate(180deg)}
 .trigger:disabled{cursor:wait;opacity:.65}
-.options{position:absolute;z-index:30;inset:calc(100% + 5px) 0 auto;max-height:280px;overflow-y:auto;overscroll-behavior:contain;padding:5px;border:1px solid #dce4ec;border-radius:14px;background:#fff;box-shadow:0 10px 24px rgb(25 31 45 / 16%);scrollbar-width:thin;scrollbar-color:#15803d #f1f5ee}
-.options button{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:44px;padding:10px;border:0;border-radius:8px;background:#fff;color:#273b43;font:inherit;font-size:13px;text-align:left;cursor:pointer}
-.options button[aria-selected=true]{background:#15803d;color:#fff;font-weight:600}
+.options{position:absolute;z-index:30;inset:calc(100% + 5px) 0 auto;max-height:280px;overflow-y:auto;overscroll-behavior:contain;padding:5px;border:1px solid #dce4ec;border-radius:14px;background:#fff;box-shadow:0 10px 24px rgb(25 31 45 / 16%);scrollbar-width:thin;scrollbar-color:#15803d #f1f5ee;--surface-ink:#000;color:var(--surface-ink, #000)}
+.options button{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:44px;padding:10px;border:0;border-radius:8px;background:#fff;color:var(--surface-ink, #000);font:inherit;font-size:13px;text-align:left;cursor:pointer;--surface-ink:#000}
+.options button[aria-selected=true]{background:#15803d;color:var(--surface-ink, #000);font-weight:600;--surface-ink:#fff}
 .options button:focus-visible,.trigger:focus-visible{outline:2px solid #15803d;outline-offset:2px}
-@media(hover:hover){.options button:hover{background:#f0fdf4}.options button[aria-selected=true]:hover{background:#15803d}}
+@media(hover:hover){.options button:hover{background:#f0fdf4;--surface-ink:#000;color:var(--surface-ink, #000)}.options button[aria-selected=true]:hover{background:#15803d;--surface-ink:#fff;color:var(--surface-ink, #000)}}
 @media(prefers-reduced-motion:reduce){.trigger svg{transition:none}}

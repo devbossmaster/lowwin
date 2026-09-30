@@ -1,6 +1,8 @@
-# Lowin Owner runbook - Phases 5A and 5B
+# Lowwin Owner operations runbook
 
 This workspace is invite-only. There is no public staff registration, balance editor, winner override, generic point credit or hard-delete endpoint. Phase 5B adds scoped delegation, support, fulfillment and opt-in notifications; see the operations supplement below. Production release checks remain open.
+
+Use [the current admin guide](admin-guide.md) for the five-area navigation, current v3 auction workflow and screen references. Older phase labels below identify the origin of operational controls, not a separate admin interface. [The redesign report](admin-redesign-report.md) records local verification and rollout scope.
 
 ## Before using a database
 
@@ -17,7 +19,7 @@ Migration `202609270007_admin_foundation` adds staff/session assurance, hashed i
 5. Open the invitation from the local sink within 24 hours. Set a password of 12–128 characters. The one-time email link verifies control of that mailbox; the verified staff identity is never linked to a Telegram player identity. An expired invitation fails closed; there is no automatic bootstrap bypass or manual role-edit recovery flow in this release.
 6. Enter the displayed setup key into a compatible TOTP authenticator: SHA-1, six digits, 30-second period, issuer Lowin. Confirm a code. Save all ten recovery codes securely; they are displayed once. Only after successful enrollment does the rotated credential session gain admin assurance.
 
-The email adapter interface is provider-neutral (`ServerEmailAdapter.send`). Only the local sink implementation exists. Production, hosted, remote-database and missing-provider configurations report email unavailable. Real production invitations/resets require a reviewed provider implementation and delivery verification first; no simulated success is returned.
+The email adapter interface is provider-neutral (`ServerEmailAdapter.send`). The current implementation supports Resend for production (`EMAIL_TRANSPORT=resend`, `RESEND_API_KEY`, verified `EMAIL_FROM`) and a guarded loopback sink for disposable local tests. Configured credentials do not prove delivery; verify the production sender and invitation delivery separately. No simulated success is returned.
 
 ## Authentication and recovery
 
@@ -33,13 +35,13 @@ Forgot-password responses are identical for known and unknown accounts when mail
 
 Use Categories and Products to create or edit unpublished inventory. Hide unused inventory using its Visible checkbox. Referenced published products/categories cannot be changed by admin commands; create replacements. DEMO inventory cannot become real inventory. New images must be PNG, JPEG or WebP, at most 2 MiB, with source credit and explicit usage rights. The server checks magic bytes, decodes at most 16 million pixels, strips metadata and re-encodes PNG. It does not fetch arbitrary external URLs. SVG/script uploads fail. Prior original catalog SVG placeholders remain unchanged.
 
-Create an auction draft, choose inventory, enter future dates, integer range/step/fee and fulfillment terms, then save. The phone preview shows saved values; it cannot bid. Run publication preflight. It requires visible inventory/category, an image, a start at least one minute ahead, an end within 30 days, aligned positive point terms and a supported category. Eligibility-review categories are blocked until their workflow exists. DEMO publication is isolated to local/test databases.
+Create an auction draft, choose inventory, enter future dates, ETB values with at most two decimals; new v3 publications fix minimum 1.00 and step 0.01, with a configurable maximum/fee and fulfillment terms, then save. The phone preview shows saved values; it cannot bid. Run publication preflight. It requires visible inventory/category, an image, a start at least one minute ahead, an end within 30 days, aligned positive point terms and a supported category. Eligibility-review categories are blocked until their workflow exists. DEMO publication is isolated to local/test databases.
 
 Publishing is atomic and freezes inventory identity, times, point terms and fulfillment snapshot. The published auction stays scheduled until its server-authoritative time window. A schedule expiring does not imply a winner: it remains Closing / result pending until the separate settlement worker commits. The worker command remains `npm run worker:auctions`; no deployment or external delivery is part of this runbook.
 
 ## Cancellation and financial evidence
 
-Open an unsettled published auction and choose Review cancellation impact. The server locks the auction and lists every participant's held points and entry-fee refund, plus exact totals. It exposes no live amount-frequency distribution. Enter a reason and type the full auction code. Confirm a fresh authenticator code if needed, then submit cancellation. If bids changed the impact, refresh and review again.
+Open an unsettled published auction and expand Cancel this auction and choose Review cancellation impact. The server locks the auction and lists every participant's held points and entry-fee refund, plus exact totals. It exposes no live amount-frequency distribution. Enter a reason and type the full auction code. Confirm a fresh authenticator code if needed, then submit cancellation. If bids changed the impact, refresh and review again.
 
 Actor and OWNER permission are derived from the session. The browser supplies no trusted actor/role. The auction row is locked first; the unchanged Phase 4A command then takes wallet advisory locks in stable order. Cancellation, all hold releases and fee refunds, result/outbox intents and immutable admin audit commit in one transaction. A failed audit rolls everything back. Idempotency retries return the prior receipt; changed input with the same key fails. The screen shows success only after database confirmation.
 
@@ -56,13 +58,13 @@ Home remains the Mini App landing page. The current visual direction is pure whi
 
 ## Team and recovery
 
-Use `/admin/team` with fresh MFA to invite a separate staff credential identity. Email ownership is verified through the one-time invitation. Catalog Manager can prepare inventory and propose publication; only Owner publishes/cancels. Support reads cases and proposes suspension/restoration; only Owner applies bidding restrictions. Fulfillment sees only assigned delivery contacts. Auditor reads evidence without mutations. Payments Operator has read-only wallet access; actual payment operations remain Phase 6. All grants are server-derived, and changing grants/revoking staff deletes existing sessions immediately. No staff identity can bid. You cannot alter your own grants or remove the last active Owner.
+Use `/admin/team` with fresh MFA to invite a separate staff credential identity. Email ownership is verified through the one-time invitation. Catalog Manager can prepare inventory and propose publication; only Owner publishes/cancels. Support reads cases and proposes suspension/restoration; only Owner applies bidding restrictions. Fulfillment sees only assigned delivery contacts. Auditor reads evidence without mutations. Payments Operator has read-only wallet balances and can investigate deposits through Payments. Investigation cannot arbitrarily credit a wallet; credits still require provider verification and the ledger command. All grants are server-derived, and changing grants/revoking staff deletes existing sessions immediately. No staff identity can bid. You cannot alter your own grants or remove the last active Owner.
 
 If the initial Owner invitation expired unclaimed, temporarily enable `ADMIN_BOOTSTRAP_ENABLED` and run `npm run admin:reissue -- "reason for recovery"`. This can be used exactly once before any staff account exists. It revokes the old token, emails a replacement to the original email and records immutable audit. It does not bypass enrollment. Disable bootstrap afterward. Production email currently reports unavailable; do not use local sink transport outside an isolated test environment. Password reset revokes all sessions but still requires MFA. A recovery code revokes sessions and requires authenticator re-enrollment.
 
 ## Daily operations
 
-Review reconciliation before operating auctions; never edit a balance or journal to hide drift. `/admin/wallets` links real wallets to immutable operation/journal evidence. Top-ups have no active controls. Use the paginated auction/product queues and draft inventory search; published schedules and terms remain frozen. Correct published mistakes through existing reviewed cancellation/replacement.
+Review reconciliation before operating auctions; never edit a balance or journal to hide drift. `/admin/wallets` links real wallets to immutable operation/journal evidence. Payments → Deposits offers investigation notes, case-state updates and bounded provider verification retries; it has no arbitrary balance-credit control. Use the paginated auction/product queues and draft inventory search; published schedules and terms remain frozen. Correct published mistakes through existing reviewed cancellation/replacement.
 
 Support cases require a reason and are audited. Support may propose a suspension in a case; Owner applies it from Users. A suspension stops new bids only. Accepted bids, fees, holds and deterministic outcomes remain valid. Players can continue viewing their wallet/history and contact support.
 
@@ -76,7 +78,7 @@ Run `npm run worker:notifications` as a separate supervised service alongside th
 
 Review `/admin/jobs` and `/admin/notifications` for FAILED/PENDING delivery. 429 honors retry timing; bounded retries stop after eight attempts. A blocked user must restart the private bot chat before Owner retries. Record an investigation reason for every retry. Retry only notification delivery, never a financial command. After a crash between external send and database commit, Telegram may show a duplicate message; this does not duplicate an inbox entry, fee, hold or settlement.
 
-`WALLET_TEST_PREVIEW=true` reveals only synthetic, explicitly non-payable Telebirr/CBE references on isolated local `_test` databases. Production shows accounts unconfigured. Do not request transfers; no conversion policy, screenshot intake, OCR or payment verification exists until Phase 6.
+`WALLET_TEST_PREVIEW=true` reveals only synthetic, explicitly non-payable Telebirr/CBE references on isolated local `_test` databases. Receiving-account configuration, conversion policy, screenshot intake, OCR reference extraction and provider verification are implemented. Settings displays the active payment-health reason; production funding still requires reviewed receiver configuration and the explicit activation gates. A screenshot or OCR result alone never credits a wallet.
 
 Production email, real Telegram clients/delivery, remote Supabase runtime roles/RLS, production HTML headers, independent auth security review, load testing, monitoring and backup/restore remain release checks. The remote `.env` database is unchanged.
 
@@ -85,7 +87,7 @@ Production email, real Telegram clients/delivery, remote Supabase runtime roles/
 
 See [the Phase 6 release decision](phase6-release.md) for exact evidence and blocked owner inputs. Ordinary domain visits now open **Continue with the bot**. The player app requires an exact session issued from verified Telegram launch data; `/admin/login` remains the separate staff entry. Apply the new session migration only through the reviewed release process; old sessions must reopen through the bot. No remote migration was performed here.
 
-The Phase 5B preview-only paragraph above is historical. Phase 6 implements private OCR/reference verification and payment investigation on explicitly opted-in disposable local/test databases. **Production crediting remains disabled. Do not send real funds.** Only reviewed versioned settings can enable test channels. Owner changes receiving accounts/quotes at `/admin/settings/payments` with fresh MFA and exact-change review. Saved intents retain their original account and quote.
+The implemented funding path uses OCR to extract a candidate reference and independent provider verification to validate it. Live availability depends on protected production configuration and the release gate; this UI change neither activates funding nor verifies an external transfer. Follow the approved activation packet before sending real funds. Receiving accounts require reviewed versioned settings. Owner changes receiving accounts/quotes at `/admin/settings/payments` with fresh MFA and exact-change review. Saved intents retain their original account and quote.
 
 Payments operators review `/admin/top-ups`, notes, bounded verification retries and incidents. Case notes/resolution never mint points. Record independently reviewed daily bank evidence at `/admin/top-ups/statements`; unmatched/mismatched entries require investigation, not manual credit. Inspect any duplicate claim, outage/quota failure, aged pending request or reconciliation drift before continuing. The exact-credit reversal command is internal only, requires fresh Owner MFA and evidence, and refuses to consume held/spent points or overdraw. There is no generic balance editor.
 

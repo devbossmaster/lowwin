@@ -16,7 +16,7 @@ test('closing and cancelled states stay truthful at mobile widths',async({page},
     await expect(page.getByRole('link',{name:'View result',exact:true})).toHaveCount(0);
     await expect(page.getByText('Opening your Lowwin…')).toBeHidden({timeout:20000});
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-    await page.screenshot({path:`docs/screenshots/settlement-closing-${testInfo.project.name}.png`,fullPage:true});
+    await expect(page.locator('.page-loading-backdrop')).toHaveCount(0);await page.screenshot({caret:'initial',path:`docs/screenshots/settlement-closing-${testInfo.project.name}.png`,fullPage:true});
     await closeAuction(client,closing.id,raw);
     const cancelled=await bidAuction(client);
     await cancelAuction(client,{auctionId:cancelled.id,actor:{id:'browser-test-owner',permission:'auction:cancel'},reason:'DEMO mobile fixture',key:randomUUID()},raw);
@@ -25,6 +25,6 @@ test('closing and cancelled states stay truthful at mobile widths',async({page},
     await expect(page.getByRole('heading',{name:'Cancelled',exact:true})).toBeVisible();
     await expect(page.getByText('Opening your Lowwin…')).toBeHidden({timeout:20000});
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-    await page.screenshot({path:`docs/screenshots/settlement-cancelled-${testInfo.project.name}.png`,fullPage:true});
+    await expect(page.locator('.page-loading-backdrop')).toHaveCount(0);await page.screenshot({caret:'initial',path:`docs/screenshots/settlement-cancelled-${testInfo.project.name}.png`,fullPage:true});
   }finally {await client.$disconnect()}
 });
