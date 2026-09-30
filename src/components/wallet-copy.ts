@@ -39,9 +39,39 @@ export const walletAm:Record<string,string>={
  'Winning Bids':'ያሸነፍኩባቸው ጨረታዎች','No winning bids found.':'ያሸነፉበት ጨረታ አልተገኘም።','Read result':'ውጤቱን ይመልከቱ','· winning amount':'· ያሸነፈው መጠን','DEMO · settled test':'የሙከራ ጨረታ · ተጠናቋል'
 };
 Object.assign(walletAm,{
+ 'Under admin review':'በአስተዳዳሪ ግምገማ ላይ',
+ 'Deposit rejected':'የገቢ ጥያቄው ውድቅ ተደርጓል',
+ 'This transaction is already credited. No second credit was added.':'ይህ ዝውውር አስቀድሞ ወደ ሂሳብዎ ገብቷል። ሁለተኛ ጊዜ አልተጨመረም።',
+ 'This receipt was already verified by the provider. An admin must review it before crediting.':'ይህ ደረሰኝ በአገልግሎት ሰጪው አስቀድሞ ተረጋግጧል። ገንዘቡ ከመግባቱ በፊት የአስተዳዳሪ ግምገማ ያስፈልጋል።',
+ 'The payment date could not be matched. Admin review is needed; your wallet is not credited.':'የክፍያው ቀን ማዛመድ አልተቻለም። የአስተዳዳሪ ግምገማ ያስፈልጋል፤ ገንዘቡ ወደ ሂሳብዎ አልገባም።',
+ 'The amount does not match the deposit requirements. Admin review is needed.':'መጠኑ ከገቢ መስፈርቶቹ ጋር አይዛመድም። የአስተዳዳሪ ግምገማ ያስፈልጋል።',
+ 'The receiving account does not match. Admin review is needed.':'የመቀበያ ሂሳቡ አይዛመድም። የአስተዳዳሪ ግምገማ ያስፈልጋል።',
+ 'The receiving account could not be confirmed. Admin review is needed.':'የመቀበያ ሂሳቡን ማረጋገጥ አልተቻለም። የአስተዳዳሪ ግምገማ ያስፈልጋል።',
+ 'This deposit expired before verification finished. Contact support.':'ይህ የገቢ ጥያቄ ማረጋገጫው ከመጠናቀቁ በፊት ጊዜው አልፏል። ድጋፍ ያግኙ።',
+ 'The earlier verification could not be recovered. Admin review is needed.':'የቀድሞውን ማረጋገጫ መመለስ አልተቻለም። የአስተዳዳሪ ግምገማ ያስፈልጋል።',
+ 'This transaction is already under admin review. It was not submitted again.':'ይህ ዝውውር አስቀድሞ በአስተዳዳሪ ግምገማ ላይ ነው። እንደገና አልተላከም።',
+ 'Deposit needs admin review. Your wallet has not been credited.':'የገቢ ጥያቄው የአስተዳዳሪ ግምገማ ይፈልጋል። ገንዘቡ ወደ ሂሳብዎ አልገባም።',
+ 'Verification is unavailable. Your wallet has not been credited. Try again shortly.':'ማረጋገጫ በአሁኑ ጊዜ አይገኝም። ገንዘቡ ወደ ሂሳብዎ አልገባም። ትንሽ ቆይተው ይሞክሩ።',
+ 'This transaction has already been claimed. Contact support.':'ይህ ዝውውር አስቀድሞ ጥቅም ላይ ውሏል። ድጋፍ ያግኙ።',
+ 'Payment could not be verified. Check the receipt or contact support.':'ክፍያውን ማረጋገጥ አልተቻለም። ደረሰኙን ያረጋግጡ ወይም ድጋፍ ያግኙ።',
+ 'This deposit is being checked. Please wait.':'ይህ የገቢ ጥያቄ እየተረጋገጠ ነው። እባክዎ ይጠብቁ።',
+ 'Payment is not confirmed yet. Your wallet has not been credited.':'ክፍያው ገና አልተረጋገጠም። ገንዘቡ ወደ ሂሳብዎ አልገባም።',
+ 'Scanning is unavailable.':'ምስል መቃኘት በአሁኑ ጊዜ አይገኝም።',
+ 'Scanning is unavailable. Enter the reference manually.':'ምስል መቃኘት አይገኝም። የዝውውር ቁጥሩን በእጅ ያስገቡ።',
+ 'Scanner is busy. Try again shortly.':'ስካነሩ በስራ ላይ ነው። ትንሽ ቆይተው ይሞክሩ።',
+ 'Scan failed or timed out. Enter the reference manually.':'ምስሉን መቃኘት አልተሳካም ወይም ጊዜው አልቋል። የዝውውር ቁጥሩን በእጅ ያስገቡ።',
+ 'Scan was unclear. Enter the reference manually.':'ምስሉ ግልጽ አልነበረም። የዝውውር ቁጥሩን በእጅ ያስገቡ።',
+ 'Scan is uncertain. Enter the reference manually.':'የተነበበው ቁጥር እርግጠኛ አይደለም። የዝውውር ቁጥሩን በእጅ ያስገቡ።',
+ 'Scanning is unavailable for this request. Enter the reference manually.':'ለዚህ ጥያቄ ምስል መቃኘት አይቻልም። የዝውውር ቁጥሩን በእጅ ያስገቡ።',
+ 'A single clear reference could not be found. Enter it manually.':'አንድ ግልጽ የዝውውር ቁጥር አልተገኘም። በእጅ ያስገቡት።',
  'Choose a payment account first.':'መጀመሪያ የክፍያ ሂሳብ ይምረጡ።',
  'Your verified transfer amount is added automatically.':'የተረጋገጠው የዝውውር መጠን በራስ-ሰር ወደ ሂሳብዎ ይገባል።',
  'Could not read the screenshot. Paste the payment SMS or transaction reference.':'ምስሉን ማንበብ አልተቻለም። የክፍያ ኤስኤምኤሱን ወይም የዝውውር ቁጥሩን ይለጥፉ።',
  'Amount awaiting verification':'መጠኑ ማረጋገጫ እየጠበቀ ነው',
 });
 export function useWalletCopy(){const {language}=useMiniLocale();return (text:string)=>language==='am'?(text.startsWith('DEMO · ')?`DEMO · ${walletAm[text.slice(7)]??text.slice(7)}`:walletAm[text]??text):text}
+
+Object.assign(walletAm,{
+ 'An admin rejected this deposit. Contact support if you sent funds.':'አስተዳዳሪው ይህን ተቀማጭ ውድቅ አድርጎታል። ገንዘብ ከላኩ ድጋፍን ያነጋግሩ።',
+ 'Your wallet is credited automatically when all payment details match.':'ሁሉም የክፍያ ዝርዝሮች ሲዛመዱ ገንዘቡ ወዲያውኑ ወደ ቦርሳዎ ይጨመራል።',
+});

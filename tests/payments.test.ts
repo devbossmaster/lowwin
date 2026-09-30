@@ -60,6 +60,47 @@ describe.skipIf(!url)('Phase 6 verified transfers and payment operations',()=>{
   await expect(db.topUpIntent.update({where:{id:t.id},data:{expectedCents:9999n}})).rejects.toThrow();
   expect(await reconcile(db)).toEqual([]);expect(await reconcilePayments(db)).toEqual([]);
  });
+ it('reuses concurrent preparations and reviewed references without another provider request',async()=>{
+  const user=await db.user.create({data:{id:randomUUID(),name:'DEMO duplicate submission'}}),reference=ref(),prepare=()=>createIntent(db,user.id,{key:randomUUID(),channel:'telebirr',policyId:policies.telebirr,input:reference},true);
+  const [a,b]=await Promise.all([prepare(),prepare()]);expect(a.id).toBe(b.id);
+  const provider=vi.fn(async()=>({code:'DUPLICATE_REVIEW',matched:false,evidence:{}}));
+  expect((await verifyIntent(db,user.id,{id:a.id,key:randomUUID(),input:reference},provider)).status).toBe('NEEDS_REVIEW');
+  expect(await verifyIntent(db,user.id,{id:b.id,key:randomUUID(),input:reference},provider)).toMatchObject({id:a.id,status:'NEEDS_REVIEW',reused:true});
+  expect(await prepare()).toMatchObject({id:a.id,reused:true});expect(provider).toHaveBeenCalledTimes(1);
+  expect(await db.topUpIntent.count({where:{userId:user.id}})).toBe(1);expect(await db.paymentAttempt.count({where:{intentId:a.id}})).toBe(1);expect(await db.paymentClaim.count({where:{userId:user.id}})).toBe(0);
+  const stranger=await db.user.create({data:{id:randomUUID(),name:'DEMO other depositor'}});
+  expect((await createIntent(db,stranger.id,{key:randomUUID(),channel:'telebirr',policyId:policies.telebirr,input:reference},true)).id).not.toBe(a.id);
+ });
+ it('serializes competing screenshot submissions and credits one wallet receipt automatically',async()=>{
+  const user=await db.user.create({data:{id:randomUUID(),name:'DEMO parallel screenshot'}}),reference=ref(),a=await intent(user.id),b=await intent(user.id);
+  let release!:()=>void,started!:()=>void;const gate=new Promise<void>(r=>release=r),entered=new Promise<void>(r=>started=r);
+  const provider=vi.fn(async(v:VerificationInput)=>{started();await gate;return good(v)});
+  const first=verifyIntent(db,user.id,{id:a.id,key:randomUUID(),input:reference},provider);
+  await entered;
+  try{expect(await verifyIntent(db,user.id,{id:b.id,key:randomUUID(),input:reference},provider)).toMatchObject({id:a.id,status:'VERIFYING',reused:true})}finally{release()}
+  expect((await first).status).toBe('CREDITED');expect(provider).toHaveBeenCalledTimes(1);
+  expect((await listOwnTopups(db,user.id)).items.map(t=>t.id)).toEqual([a.id]);
+  expect(await createIntent(db,user.id,{key:randomUUID(),channel:'telebirr',policyId:policies.telebirr,input:reference},true)).toMatchObject({id:a.id,status:'CREDITED',reused:true});
+  expect(await db.paymentClaim.count({where:{userId:user.id}})).toBe(1);expect((await db.ledgerAccount.findUniqueOrThrow({where:{name:`user:${user.id}:available`}})).balance.toString()).toBe('100');
+ });
+ it('rejects and archives with permissions and audits while preserving financial evidence',async()=>{
+  const user=await db.user.create({data:{id:randomUUID(),name:'DEMO queue actions'}}),t=await intent(user.id),reference=ref();
+  await verifyIntent(db,user.id,{id:t.id,key:randomUUID(),input:reference},async()=>({code:'DUPLICATE_REVIEW',matched:false,evidence:{}}));
+  const command=(action:string,id=t.id,cookie=roles.PAYMENTS_OPERATOR.cookie)=>paymentAdminCommand(db,headers(cookie),action,{id,key:randomUUID(),reason:'Isolated queue action verification'});
+  await expect(command('archive')).rejects.toThrow('Finish or reject');
+  for(const role of ['SUPPORT','AUDITOR'])await expect(command('reject',t.id,roles[role].cookie)).rejects.toThrow('not granted');
+  await command('reject');const provider=vi.fn(good);
+  expect(await verifyIntent(db,user.id,{id:t.id,key:randomUUID(),input:reference},provider)).toMatchObject({status:'REJECTED',reason:'ADMIN_REJECTED'});expect(provider).not.toHaveBeenCalled();
+  await command('archive');expect(await db.adminAudit.count({where:{target:t.id,action:{in:['PAYMENT_REJECT','PAYMENT_ARCHIVE']}}})).toBe(2);
+  expect((await paymentAdminRead(db,headers(owner.cookie),[],new URLSearchParams({view:'all',q:t.id})) as any).total).toBe(0);
+  expect((await paymentAdminRead(db,headers(owner.cookie),[],new URLSearchParams({view:'all',q:t.id,caseState:'ARCHIVED'})) as any).total).toBe(1);
+  expect(await db.paymentAttempt.count({where:{intentId:t.id}})).toBe(1);expect(await db.paymentClaim.count({where:{intentId:t.id}})).toBe(0);
+  const credited=await intent(user.id);await verifyIntent(db,user.id,{id:credited.id,key:randomUUID(),input:ref()},good);
+  await expect(command('reject',credited.id)).rejects.toThrow('credited deposit');await command('archive',credited.id);
+  expect(await db.paymentClaim.count({where:{intentId:credited.id}})).toBe(1);expect(await reconcilePayments(db)).toEqual([]);
+  const active=await intent(user.id);await db.topUpIntent.update({where:{id:active.id},data:{status:'VERIFYING',leaseUntil:new Date(Date.now()+30000)}});
+  await expect(command('reject',active.id)).rejects.toThrow('Verification is running');
+ });
  it('does not fill an automatic amount on provider failure, mismatch or duplicate',async()=>{
   for(const kind of ['outage','duplicate','amount','receiver']){
    const user=await db.user.create({data:{id:randomUUID(),name:'DEMO fail closed'}}),t=await createIntent(db,user.id,{key:randomUUID(),channel:'telebirr',policyId:policies.telebirr},true);

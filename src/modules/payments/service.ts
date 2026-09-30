@@ -18,12 +18,19 @@ async function clock(tx:Tx){return (await tx.$queryRaw<{now:Date}[]>`SELECT cloc
 async function eligibility(tx:Tx,userId:string){try{await assertPlayerContact(tx,userId)}catch{throw new PaymentError(403,'Share your own contact in Telegram first.')}if(await tx.staffMember.findUnique({where:{userId}})||await tx.userRestriction.findFirst({where:{userId,suspended:true}}))throw new PaymentError(403,'Adding ETB is unavailable for this account.')}
 const int=z.string().regex(/^[1-9]\d{0,10}$/);
 const createSchema=z.object({key:z.string().uuid(),channel:bankSchema,policyId:z.string().uuid(),amountCents:int}).strict();
-const receiptCreateSchema=z.object({key:z.string().uuid(),channel:bankSchema,policyId:z.string().uuid()}).strict();
+const receiptCreateSchema=z.object({key:z.string().uuid(),channel:bankSchema,policyId:z.string().uuid(),input:z.string().min(1).max(4000).optional()}).strict();
+async function existingDeposit(tx:Tx,userId:string,channel:string,reference:string){
+ const claim=await tx.paymentClaim.findUnique({where:{channel_reference:{channel,reference}}});
+ if(claim?.userId===userId)return tx.topUpIntent.findUnique({where:{id:claim.intentId}});
+ return tx.topUpIntent.findFirst({where:{userId,provider:'CHECK_ET',channel,reference},orderBy:[{createdAt:'asc'},{id:'asc'}]});
+}
 export function ownIntent(t:TopUpIntent){return {id:t.id,demo:t.provider==='DEMO_PREVIEW',channel:t.channel,status:t.status,amountCents:t.expectedCents?.toString(),points:t.points.toString(),policyVersion:t.policyVersion,quote:t.quoteSnapshot,account:t.receivingAccount,accountName:t.accountName,createdAt:t.createdAt.toISOString(),expiresAt:t.expiresAt?.toISOString(),reference:t.reference,reason:t.reasonCode,attempts:t.attempts,nextAttemptAt:t.nextAttemptAt.toISOString(),caseState:t.caseState};}
 export async function fundingOptions(client:PrismaClient){const policies=await Promise.all((['telebirr','cbe'] as const).map(channel=>client.paymentPolicy.findFirst({where:{channel},orderBy:{version:'desc'}})));return {...paymentHealth(),accounts:policies.filter(p=>p?.enabled&&p.pointsNumerator*100n===p.centsDenominator).map(p=>({id:p!.channel,policyId:p!.id,version:p!.version,name:p!.channel==='telebirr'?'Telebirr':'CBE',number:p!.account,holder:p!.accountName,numerator:p!.pointsNumerator.toString(),denominator:p!.centsDenominator.toString(),minCents:p!.minCents.toString(),maxCents:p!.maxCents.toString(),terms:p!.terms}))}}
 export async function createIntent(client:PrismaClient,userId:string,raw:unknown,fromReceipt=false){requireEnabled();const body=fromReceipt?receiptCreateSchema.parse(raw):createSchema.parse(raw),fingerprint=hash(JSON.stringify({...body,...(fromReceipt?{amountFromReceipt:true}:{})}));return client.$transaction(async tx=>{
  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`},0))`;await eligibility(tx,userId);
  const prior=await tx.topUpIntent.findUnique({where:{userId_key:{userId,key:body.key}}});if(prior){if(prior.requestHash!==fingerprint)throw new PaymentError(409,'Idempotency key changed.');return ownIntent(prior)}
+ const reference=fromReceipt&&'input' in body&&body.input?candidate(body.channel,body.input):undefined;
+ if(reference){await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`payment-submit:${userId}:${body.channel}:${reference}`},0))`;const existing=await existingDeposit(tx,userId,body.channel,reference);if(existing)return {...ownIntent(existing),reused:true}}
  const now=await clock(tx);if(await tx.topUpIntent.count({where:{userId,createdAt:{gte:new Date(now.getTime()-3600000)}}})>=8)throw new PaymentError(429,'Too many funding requests. Try later.');
  const policy=await tx.paymentPolicy.findFirst({where:{channel:body.channel},orderBy:{version:'desc'}});if(!policy?.enabled||policy.id!==body.policyId)throw new PaymentError(409,'The quote changed or channel is paused. Review the latest terms.');
  if(policy.pointsNumerator*100n!==policy.centsDenominator)throw new PaymentError(409,'This quote uses an old conversion rate. Ask an Owner to publish the ETB 1:1 quote.');
@@ -31,16 +38,25 @@ export async function createIntent(client:PrismaClient,userId:string,raw:unknown
  if(amount!==null&&(amount<policy.minCents||amount>policy.maxCents))throw new PaymentError(422,'Choose an amount within the published range.');const points=new Prisma.Decimal(amount?.toString()??'0').div(100);if(points.gt(1000000000))throw new PaymentError(422,'ETB amount is too large.');
  // Freeze a bounded receipt submission window, never before this policy existed.
  const earliestTransferAt=new Date(Math.max(policy.createdAt.getTime(),now.getTime()-86400000));
- const t=await tx.topUpIntent.create({data:{userId,key:body.key,provider:'CHECK_ET',channel:body.channel,policyVersion:policy.id,requestHash:fingerprint,points,expectedCents:amount,amountFromReceipt:fromReceipt,receivingAccount:policy.account,accountName:policy.accountName,quoteSnapshot:{version:policy.version,numerator:policy.pointsNumerator.toString(),denominator:policy.centsDenominator.toString(),terms:policy.terms,...(fromReceipt?{minCents:policy.minCents.toString(),maxCents:policy.maxCents.toString(),earliestTransferAt:earliestTransferAt.toISOString()}:{})},createdAt:now,expiresAt:new Date(now.getTime()+30*60000)}});return ownIntent(t);
+ const t=await tx.topUpIntent.create({data:{userId,key:body.key,provider:'CHECK_ET',channel:body.channel,reference,policyVersion:policy.id,requestHash:fingerprint,points,expectedCents:amount,amountFromReceipt:fromReceipt,receivingAccount:policy.account,accountName:policy.accountName,quoteSnapshot:{version:policy.version,numerator:policy.pointsNumerator.toString(),denominator:policy.centsDenominator.toString(),terms:policy.terms,...(fromReceipt?{minCents:policy.minCents.toString(),maxCents:policy.maxCents.toString(),earliestTransferAt:earliestTransferAt.toISOString()}:{})},createdAt:now,expiresAt:new Date(now.getTime()+30*60000)}});return ownIntent(t);
  })}
 const verifySchema=z.object({id:z.string().uuid(),key:z.string().uuid(),input:z.string().min(1).max(4000)}).strict();
-export async function verifyIntent(client:PrismaClient,userId:string,raw:unknown,transport:VerifyTransport=checkEt,reauthorize?:(tx:Tx)=>Promise<void>,adminRecovery=false){
+export async function verifyIntent(client:PrismaClient,userId:string,raw:unknown,transport:VerifyTransport=checkEt,reauthorize?:(tx:Tx)=>Promise<void>,adminRecovery=false,staffRetry=false){
  requireEnabled();const body=verifySchema.parse(raw);
  const lease=await client.$transaction(async tx=>{
   await tx.$queryRaw`SELECT id FROM "TopUpIntent" WHERE id=${body.id} FOR UPDATE`;const t=await tx.topUpIntent.findFirst({where:{id:body.id,userId}});if(!t||!t.channel||t.provider!=='CHECK_ET')throw new PaymentError(404,'Funding request not found.');
   const reference=candidate(bankSchema.parse(t.channel),body.input),fingerprint=hash(reference),prior=await tx.paymentAttempt.findUnique({where:{intentId_key:{intentId:t.id,key:body.key}}});
   if(t.reference&&t.reference!==reference)throw new PaymentError(409,'This intent is bound to another reference.');if(prior){if(prior.requestHash!==fingerprint)throw new PaymentError(409,'Idempotency key changed.');return {receipt:ownIntent(t)}}
-  if(t.status==='CREDITED')return {receipt:ownIntent(t)};
+  if(t.status==='CREDITED')return {receipt:{...ownIntent(t),reused:true}};
+  if(!adminRecovery&&!staffRetry){
+   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`payment-submit:${userId}:${t.channel}:${reference}`},0))`;
+   const existing=await existingDeposit(tx,userId,t.channel,reference);
+   if(existing&&existing.id!==t.id){
+    if(!t.reference&&t.attempts===0)await tx.topUpIntent.update({where:{id:t.id},data:{status:'REJECTED',reasonCode:'DUPLICATE_REQUEST',caseState:'ARCHIVED'}});
+    return {receipt:{...ownIntent(existing),reused:true}};
+   }
+   if(['NEEDS_REVIEW','REJECTED','DUPLICATE_CONFLICT'].includes(t.status))return {receipt:{...ownIntent(t),reused:true}};
+  }
   const now=await clock(tx);if(!t.expiresAt||t.expiresAt<=now&&!adminRecovery)throw new PaymentError(409,'This funding request expired. Contact support if you sent funds.');
   const outage=t.expiresAt?await tx.paymentAttempt.findFirst({where:{intentId:t.id,requestHash:fingerprint,code:'PROVIDER_OUTAGE',createdAt:{gte:t.createdAt,lte:t.expiresAt}},orderBy:{createdAt:'asc'}}):null;
   if(adminRecovery&&(!outage||t.expiresAt.getTime()+7*86400000<now.getTime()))throw new PaymentError(409,'Only a timed-out verification from the past seven days can be recovered.');
@@ -77,5 +93,5 @@ export async function verifyIntent(client:PrismaClient,userId:string,raw:unknown
   return ownIntent(updated);
  },{timeout:15000});
 }
-export async function listOwnTopups(client:PrismaClient,userId:string,page=1){const [rows,total]=await client.$transaction([client.topUpIntent.findMany({where:{userId,provider:{in:['CHECK_ET','DEMO_PREVIEW']}},orderBy:[{createdAt:'desc'},{id:'desc'}],take:20,skip:(page-1)*20}),client.topUpIntent.count({where:{userId,provider:{in:['CHECK_ET','DEMO_PREVIEW']}}})]);return {items:rows.map(ownIntent),page,total,totalPages:Math.ceil(total/20)}}
+export async function listOwnTopups(client:PrismaClient,userId:string,page=1){const [rows,total]=await client.$transaction([client.topUpIntent.findMany({where:{userId,provider:{in:['CHECK_ET','DEMO_PREVIEW']},OR:[{reasonCode:null},{reasonCode:{not:'DUPLICATE_REQUEST'}}]},orderBy:[{createdAt:'desc'},{id:'desc'}],take:20,skip:(page-1)*20}),client.topUpIntent.count({where:{userId,provider:{in:['CHECK_ET','DEMO_PREVIEW']},OR:[{reasonCode:null},{reasonCode:{not:'DUPLICATE_REQUEST'}}]}})]);return {items:rows.map(ownIntent),page,total,totalPages:Math.ceil(total/20)}}
 export async function reconcilePayments(client:PrismaClient|Tx){return client.$queryRaw<{id:string}[]>`SELECT t.id FROM "TopUpIntent" t LEFT JOIN "PaymentClaim" c ON c."intentId"=t.id WHERE (t.status='CREDITED') IS DISTINCT FROM (c.id IS NOT NULL) OR c.id IS NOT NULL AND (c.points<>t.points OR c."journalId" IS DISTINCT FROM t."journalId" OR c."amountCents"<>t."expectedCents" OR c."userId"<>t."userId") UNION ALL SELECT j.id FROM "Journal" j LEFT JOIN "PaymentClaim" c ON c."journalId"=j.id WHERE j.kind='TOPUP_CREDIT' AND c.id IS NULL`}

@@ -1,7 +1,7 @@
 import sharp from 'sharp';
 import {spawn} from 'node:child_process';
 import {join} from 'node:path';
-import {candidate,PaymentError,type Bank} from './provider';
+import {candidate,canonical,PaymentError,type Bank} from './provider';
 export const RECEIPT_LIMIT=5*1024*1024;
 export async function cleanReceipt(bytes:Buffer,mime:string){
  if(!bytes.length||bytes.length>RECEIPT_LIMIT)throw new PaymentError(413,'Use a receipt image smaller than 5 MB.');
@@ -13,7 +13,16 @@ let active=false;
 type OcrResult={text:string;confidence:number;words?:{text:string;confidence:number}[]};
 export function extractedReference(result:OcrResult,bank:Bank){
  if(typeof result.text!=='string'||typeof result.confidence!=='number'||!Number.isFinite(result.confidence))throw new PaymentError(422,'Scan is uncertain. Enter the reference manually.');
- const reference=candidate(bank,result.text);
+ if(!result.text.trim())throw new PaymentError(422,'Could not read the screenshot. Paste the payment SMS or transaction reference.');
+ let reference:string;
+ try{reference=candidate(bank,result.text)}catch(error){
+  if(!(error instanceof PaymentError)||error.message!=='A single clear reference could not be found. Enter it manually.')throw error;
+  // OCR may lose an Amharic or stylized label while reading its code clearly.
+  // Accept only one mixed letter/number candidate; the provider still verifies it.
+  const tokens=[...new Set(result.text.toUpperCase().match(/\b[A-Z][A-Z0-9]{7,31}\b/g)??[])].filter(token=>/\d/.test(token)).filter(token=>{try{canonical(bank,token);return true}catch{return false}});
+  if(tokens.length!==1||!result.words?.some(word=>word.text.toUpperCase().split(/[^A-Z0-9]+/).includes(tokens[0])&&word.confidence>=85))throw error;
+  reference=tokens[0];
+ }
  // Unrelated artwork and Amharic text must not outweigh a clearly read reference.
  const words=Array.isArray(result.words)?result.words.filter(w=>typeof w.text==='string'&&w.text.toUpperCase().split(/[^A-Z0-9]+/).includes(reference)):[];
  const confidence=Math.max(result.confidence,...words.map(w=>Number.isFinite(w.confidence)?w.confidence:0));
