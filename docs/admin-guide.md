@@ -33,27 +33,32 @@ The desktop sidebar has five business areas, with Settings at the bottom. On a p
 
 | Area | Tasks and screen references |
 |---|---|
-| Overview | `/admin`: current work counts, active/upcoming auctions and Needs attention |
+| Overview | `/admin`: current work counts and Needs attention; Auctions; Business summary |
 | Auctions | Auctions, Products & images, Categories, Home & FAQ, Results |
-| Payments | Deposits, Bank statements, Player balances, Receiving accounts (Owner only) |
+| Money | Deposits, Bank statements, Player balances, Balance checks, Receiving accounts (Owner only) |
 | People | Support, Players, Deliveries, Messages |
-| Reports | Business summary, Balance checks, Staff activity, Message delivery |
-| Settings | Workspace information, Team access |
+| Settings | Workspace information, Team access, Staff activity, Message delivery |
 
 ## Daily opening checklist
 
 1. Open **Overview**. Counts use database time and include labelled DEMO records. Live means published, started, not ended and not settled. Upcoming has not started; Closing has ended but awaits settlement. People counts distinct participants; accepted bids counts submissions.
 2. Follow **Needs attention**: failed closing jobs, deposits, deliveries and support. Deposit reviews count each request once even if it has several review reasons: verification review/duplicate/outage, escalated/reversal review, or pending/verifying for more than an hour. Recent automatic verification is not an incident. Deliveries include winners who have not yet submitted their details; Fulfillment staff see their assignments only. Support counts Open and Investigating, excluding Resolved.
-3. Open **Reports → Balance checks** before financial operations. Overview does not run reconciliation and never represents an unchecked balance as healthy. A failed or partial read says Unavailable; it does not mean zero. Check the last successful timestamp.
-4. Review **Message delivery**, then reconcile independent bank evidence in **Payments → Bank statements**. A statement record is evidence, not a command to credit money.
+3. Open **Money → Balance checks** before financial operations. Overview does not run reconciliation and never represents an unchecked balance as healthy. A failed or partial read says Unavailable; it does not mean zero. Check the last successful timestamp.
+4. Review **Settings → Message delivery**, then reconcile independent bank evidence in **Money → Bank statements**. A statement record is evidence, not a command to credit money.
 
 ## Catalog, drafts and Home copy
 
 `/admin/categories`: name, slug, description, visibility and eligibility review. Hidden categories/products are excluded from the player catalog. Eligibility-review categories cannot be published without their required workflow.
 
-`/admin/products`: title, description, condition, category, DEMO marker and images. Upload original/licensed/supplied PNG/JPEG/WebP up to 2 MiB, enter source credit and confirm usage rights. The server validates bytes, bounds dimensions, strips metadata and re-encodes. SVG/script and arbitrary remote-URL uploads are rejected. Attach validated images before saving. Referenced published inventory is immutable; create replacements instead.
+`/admin/products`: title, description, condition, category, DEMO marker and images. Upload original/licensed/supplied PNG/JPEG/WebP up to 2 MiB, enter source credit and confirm usage rights. The server validates bytes, bounds dimensions, strips metadata and re-encodes. SVG/script and arbitrary remote-URL uploads are rejected. Attach validated images before saving. An unused draft product may be deleted with the exact confirmation. A product that was ever attached to an auction remains evidence and cannot be deleted.
 
-`/admin/auctions`: create a draft, choose inventory, future start/end, maximum ETB amount, per-accepted-bid fee, delivery region and fulfillment terms. New v3 drafts use a fixed ETB 1.00 minimum and ETB 0.01 step. Complete the three form groups, Save draft, inspect Saved preview, then choose Review for publishing. Only the Owner can Publish scheduled auction. Editing invalidates the review; save and review again. Add a product opens a separate tab to preserve your draft, then Find products refreshes the inventory choices. Starts must be at least one minute ahead and the duration within the allowed 30-day window. Preflight does not publish. Publishing freezes identity, schedule, terms and fulfillment snapshot. Published items cannot be edited into different promises.
+`/admin/auctions`: create a draft, choose inventory, future start/end, maximum ETB amount, per-accepted-bid fee, deadline-change policy, delivery region and fulfillment terms. New v3 drafts use a fixed ETB 1.00 minimum and ETB 0.01 step. Complete the three form groups, Save draft, inspect Saved preview, then choose Review for publishing. Only the Owner can Publish scheduled auction. Editing invalidates the review; save and review again. Add a product opens a separate tab to preserve your draft, then Find products refreshes the inventory choices. Starts must be at least one minute ahead and the duration within the allowed 30-day window. Preflight does not publish. Publication freezes product identity, core bid rules and fulfillment terms. Owner corrections described below are versioned, prospective and audited.
+
+An unused auction draft may be deleted with its exact code. After publication, use the auction page's **Details**, **Manage** and **History** sections. The Owner may change the fee for future bids, adjust a deadline within its published extension/shortening policy, or correct presentation copy and validated images. Every action requires fresh MFA, a reason and the current control version. Existing bids retain the fee revision accepted with them; settlement and refunds use those exact historical fees. A stale bid confirmation is rejected and must display the latest fee before the player confirms again. Presentation changes cannot replace the product identity or bid rules.
+
+Cancellation still performs the reviewed atomic refund/release command. After that committed result, **Remove cancelled page** removes its public slug and pending promotional inbox jobs while preserving the auction, journals, result proof, audit and message-delivery evidence. The notification worker attempts to delete tracked Telegram promotion messages only while Telegram may still permit deletion; expired, blocked or unavailable messages are recorded honestly rather than claimed deleted. Create a replacement draft for a new offer.
+
+In Settings, an Owner may run the private **Test auction** Create → Finish → Clean up flow only in the permitted local/staging environment. It creates tagged disposable identities, balances, bids, inbox notices and delivery rows under one run ID; no public catalog item, real payment, fulfillment or Telegram send is allowed. Finish uses the normal settlement path. Clean up requires the exact phrase and deletes only the tagged finished run while preserving its staff audit record. Never enable this control in production.
 
 `/admin/content`: Home introduction and additional FAQ entries. Saving changes their managed display content; it never changes auction rules. Supply both language versions and verify Home/FAQ on a phone. Permanent rules must continue to explain holds, fees, no-winner and cancellation outcomes accurately.
 
@@ -91,7 +96,7 @@ Winners submit a separate delivery contact in **Winning Bids**. Owner assigns th
 
 ## Notifications and jobs
 
-`/admin/notifications` and `/admin/jobs` expose durable delivery state and failures. Telegram delivery requires a private bot chat the player initiated. Player notification switches have been removed; blocked chats are respected. Owner retry requires an investigation reason. Retry delivery only, never the associated bid/settlement command. Telegram may duplicate a message after a crash between send and commit, while financial facts remain idempotent. Do not send broadcasts as a connectivity test.
+`/admin/notifications` and `/admin/jobs` expose durable delivery state and failures. Telegram delivery requires a private bot chat the player initiated. Player notification switches have been removed; blocked chats are respected. Owner retry requires an investigation reason. Retry delivery only, never the associated bid/settlement command. Sent Telegram message IDs are recorded for eligible auction-promotion cleanup. A cancellation or deadline replacement queues best-effort deletion while Telegram may still allow it; the recorded state distinguishes deleted, retrying and unavailable. Telegram may duplicate a message after a crash between send and commit, while financial facts remain idempotent. Do not send broadcasts as a connectivity test.
 
 ## Common errors and response
 
@@ -126,13 +131,13 @@ Results review records `decision`, `participantCount`, `acceptanceCutoff`, amoun
 
 There are four automatic Telegram events: a published auction (draft products send nothing), less than 24 hours remaining (once per auction), auction completion/result including cancellation, and a verified credited deposit (only its depositor). Auction events reach all linked player accounts with an available private bot chat; staff are excluded. Private bid/fulfillment receipts remain in the in-app inbox, without additional Telegram messages. Every Telegram message includes the player's name and a **Bid** button. Auction messages link to that auction; deposit/general messages link to all auctions. Result messages also include the public result link. No active bid amounts or private proofs are broadcast.
 
-At `/admin/notifications`, the Owner can compose an informative message, optionally use `{name}`, upload a JPEG/PNG/WebP image up to 2 MiB with confirmed usage rights, and optionally enter an active public auction code. Preview, then choose **Queue broadcast**. This requires fresh MFA and is audited; reusing the same request safely returns the same queue receipt. The audience count is linked accounts, not guaranteed delivery: unstarted or blocked chats are skipped. Queued delivery is performed by the notification worker. Delivered messages cannot be recalled. Recheck the private job queue before retrying failures. Never use a real broadcast to test connectivity.
+At `/admin/notifications`, the Owner can compose an informative message, optionally use `{name}`, upload a JPEG/PNG/WebP image up to 2 MiB with confirmed usage rights, and optionally enter an active public auction code. Preview, then choose **Queue broadcast**. This requires fresh MFA and is audited; reusing the same request safely returns the same queue receipt. The audience count is linked accounts, not guaranteed delivery: unstarted or blocked chats are skipped. Queued delivery is performed by the notification worker. General broadcasts are retained delivery records and have no recall control. Auction-promotion cleanup follows the limited tracked deletion process above. Recheck the private job queue before retrying failures. Never use a real broadcast to test connectivity.
 
 See [cent-money v3 rollout](cent-money-v3-release.md) before deploying this version. Do not mix old integer clients with decimal-aware processes.
 
 ## Reading reports and delivery states
 
-Business summary filters activity by UTC day, explicitly labelled on the form. Auction deadlines elsewhere display EAT. Current account balances are all-time and do not change when activity dates change. Available, held and platform account balances are not profit. Open Balance checks to run an explicit read-only reconciliation; inspect its timestamp and any discrepancies.
+**Overview → Business summary** filters activity by UTC day, explicitly labelled on the form. Auction deadlines elsewhere display EAT. Current account balances are all-time and do not change when activity dates change. Available, held and platform account balances are not profit. Open **Money → Balance checks** to run an explicit read-only reconciliation; inspect its timestamp and any discrepancies.
 
 Deliveries use Awaiting winner details (PENDING), Ready to pack (CLAIMED), Packing, Shipped, Delivered and Needs attention (DISPUTED). Ready to pack does not mean packed. Only the Owner assigns an active eligible staff member using the searchable selector. Contact reads remain audited and restricted to the Owner or assigned specialist. Shipment references are required for Shipped. Staff cannot bypass the winner claim step.
 

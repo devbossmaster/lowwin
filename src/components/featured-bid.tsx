@@ -13,7 +13,7 @@ import {useCelebration} from './celebration';
 import styles from './featured-carousel.module.css';
 
 type OwnBid={id:string;amount:string;acceptedAt:string};
-type BidState={open:boolean;terms:{ruleVersion:string;minParticipants:number;minPoints:string;maxPoints:string;stepPoints:string;entryFeePoints:string;maxDistinctBids:number};wallet:{available:string;held:string};previousMax:string;remainingSubmissions:number;ownBids:OwnBid[]};
+type BidState={open:boolean;terms:{version:number;ruleVersion:string;minParticipants:number;minPoints:string;maxPoints:string;stepPoints:string;entryFeePoints:string;maxDistinctBids:number};wallet:{available:string;held:string};previousMax:string;remainingSubmissions:number;ownBids:OwnBid[]};
 type Receipt={bid:{amount:string;acceptedAt:string};hold:{newMax:string;extraReserved:string};charge:{feePoints:string;newlyUnavailable:string};wallet:{available:string;held:string};remainingSubmissions:number;ownBids:OwnBid[]};
 const whole=/^[1-9]\d{0,15}(?:\.\d{1,2})?$/;
 
@@ -84,10 +84,10 @@ function FeaturedBidForIdentity({slug,title,onInteractionChange}:Props){
     inFlight.current=true;
     const requestKey=key??crypto.randomUUID();setKey(requestKey);setSubmitting(true);setError('');
     try{
-      const response=await fetch(`/api/auctions/${slug}/bids`,{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount:preview.bid,key:requestKey}),signal:AbortSignal.timeout(20000)});
+      const response=await fetch(`/api/auctions/${slug}/bids`,{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount:preview.bid,key:requestKey,feeVersion:state?.terms.version}),signal:AbortSignal.timeout(20000)});
       const body=await response.json();
       if(!mounted.current)return;
-      if(!response.ok){const message=body.error??'Bid was not accepted.';setError(message);notify(message,'error');if(body.code==='AUCTION_CLOSED')setReload(value=>value+1);return}
+      if(!response.ok){const message=body.error??'Bid was not accepted.';setError(message);notify(message,'error');if(body.code==='AUCTION_CLOSED'||body.code==='RETRYABLE_CONFLICT'){setConfirm(false);setAgreed(false);setKey(null);setReload(value=>value+1)}return}
       const accepted=body as Receipt;
       setReceipt(accepted);setState(previous=>previous?{...previous,wallet:accepted.wallet,previousMax:accepted.hold.newMax,remainingSubmissions:accepted.remainingSubmissions,ownBids:accepted.ownBids}:previous);
       setConfirm(false);setAmount('');setKey(null);setAgreed(false);
@@ -99,7 +99,7 @@ function FeaturedBidForIdentity({slug,title,onInteractionChange}:Props){
       const message=am?'ግንኙነቱ ተቋርጧል። በተመሳሳይ ጥያቄ እንደገና ይሞክሩ።':'Connection interrupted. Retry safely with the same request.';
       setError(message);notify(message,'error');
     }finally{inFlight.current=false;if(mounted.current)setSubmitting(false)}
-  },[valid,submitting,agreed,preview,key,slug,notify,am,refreshMe,celebrate]);
+  },[valid,submitting,agreed,preview,key,slug,notify,am,refreshMe,celebrate,state?.terms.version]);
 
   return <div className={styles.bidBox}>
     <div className={styles.amountControl}>

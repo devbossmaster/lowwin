@@ -40,14 +40,16 @@ async function completeLocked(tx:Prisma.TransactionClient,auctionId:string,cance
   if(!cancellation&&auction.endsAt>now)throw new SettlementError('NOT_DUE');
   if(![RULE_V1,RULE_V2,RULE_V3].includes(auction.terms.ruleVersion))throw new SettlementError('UNSUPPORTED_RULE');
 
-  const bids=await tx.bid.findMany({where:{auctionId,acceptedAt:{lt:auction.endsAt}},orderBy:[{amount:'asc'},{acceptanceOrder:'asc'},{id:'asc'}],include:{operation:{include:{journal:{include:{postings:{include:{account:true}}}}}}}});
+  const bids=await tx.bid.findMany({where:{auctionId,acceptedAt:{lt:auction.endsAt}},orderBy:[{amount:'asc'},{acceptanceOrder:'asc'},{id:'asc'}],include:{feeRevision:true,operation:{include:{journal:{include:{postings:{include:{account:true}}}}}}}});
   if(bids.length!==auction.acceptedBidCount)throw new SettlementError('ACCEPTED_COUNT_MISMATCH');
   const frequencies:{amount:string;count:number}[]=[];
   const amounts=new Map<string,typeof bids>();
   const feesByUser=new Map<string,{points:Prisma.Decimal;journalIds:string[]}>();
+  const feeRevisions=new Map<number,{version:number;feePoints:string;acceptedCount:number}>();
   for(const bid of bids){
     const amount=bid.amount.toString(),same=amounts.get(amount)??[];same.push(bid);amounts.set(amount,same);
-    if(bid.termsVersion!==auction.terms.version||!bid.feePoints.eq(auction.terms.entryFeePoints))throw new SettlementError('BID_TERMS_MISMATCH');
+    if(!bid.feeRevision||bid.feeRevision.auctionId!==auction.id||bid.termsVersion!==bid.feeRevision.version||!bid.feePoints.eq(bid.feeRevision.feePoints)||bid.feeRevision.effectiveAt>bid.acceptedAt)throw new SettlementError('BID_TERMS_MISMATCH');
+    const revision=feeRevisions.get(bid.feeRevision.version)??{version:bid.feeRevision.version,feePoints:bid.feeRevision.feePoints.toString(),acceptedCount:0};revision.acceptedCount+=1;feeRevisions.set(revision.version,revision);
     const journal=bid.operation.journal;
     if(bid.operation.userId!==bid.userId||bid.operation.scope!=='BID')throw new SettlementError('BID_OPERATION_MISMATCH');
     if(bid.feePoints.gt(0)){
@@ -87,7 +89,7 @@ async function completeLocked(tx:Prisma.TransactionClient,auctionId:string,cance
     winner:winner?{userId:winner.userId,bidId:winner.id,amount:winner.amount.toString(),...(v2?{acceptanceOrder:winner.acceptanceOrder!.toString()}:{})}:null,
     ...(v2?{minParticipants:auction.terms.minParticipants,participantCount,acceptanceCutoff:auction.bidSequence.toString(),decision}:{}),
     ...(auction.terms.ruleVersion===RULE_V3?{amountPolicy:{currency:'ETB',minimum:'1',step:'0.01',maxDecimalPlaces:2,maxConsecutive:3}}:{}),
-    feePolicy:cancelled?'REFUND_ALL_ENTRY_FEES':'KEEP_DISCLOSED_ENTRY_FEES',settlementId,references,
+    feePolicy:cancelled?'REFUND_ALL_ENTRY_FEES':'KEEP_DISCLOSED_ENTRY_FEES',feeRevisions:[...feeRevisions.values()].sort((a,b)=>a.version-b.version),settlementId,references,
     cancellation:cancellation?{actorId:cancellation.actor.id,reason:cancellation.reason,key:cancellation.key}:null};
   await tx.auction.update({where:{id:auctionId},data:{status:cancelled?'CANCELLED':'CLOSED',nextCloseAttemptAt:null,closeErrorCode:null}});
   const settled=await tx.auctionSettlement.create({data:{id:settlementId,auctionId,outcome,ruleVersion:auction.terms.ruleVersion,termsVersion:auction.terms.version,cutoff:auction.endsAt,acceptedCount:bids.length,
@@ -97,7 +99,7 @@ async function completeLocked(tx:Prisma.TransactionClient,auctionId:string,cance
     movements:{create:movements},
     // No amounts, frequencies, names, Telegram IDs or winning guesses in intents.
     // Phase 5 resolves recipient preferences and performs external delivery.
-    outbox:{create:[{key:`settlement:${settlementId}:completed`,kind:'AUCTION_FINALIZED',payload:{auctionId,settlementId,outcome}},...userIds.map(userId=>({key:`settlement:${settlementId}:user:${userId}`,kind:cancelled?'AUCTION_CANCELLED':'AUCTION_CLOSED',payload:{auctionId,settlementId,recipientUserId:userId}}))]},
+    outbox:{create:[{key:`settlement:${settlementId}:completed`,kind:'AUCTION_FINALIZED',payload:{auctionId,settlementId,outcome},testRunId:auction.testRunId},...userIds.map(userId=>({key:`settlement:${settlementId}:user:${userId}`,kind:cancelled?'AUCTION_CANCELLED':'AUCTION_CLOSED',payload:{auctionId,settlementId,recipientUserId:userId},testRunId:auction.testRunId}))]},
   },include:settlementInclude});
   for(const row of await tx.outbox.findMany({where:{settlementId:settled.id}}))await materializeAlert(tx,row);
   return settled;

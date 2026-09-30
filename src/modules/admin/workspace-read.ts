@@ -4,16 +4,16 @@ import {AdminError} from './errors';
 import {depositAttentionWhere} from '../payments/review-filter';
 
 export function auctionStatusWhere(status:string,now:Date):Prisma.AuctionWhereInput {
- const running:Prisma.AuctionWhereInput={publishedAt:{not:null},status:{in:['SCHEDULED','LIVE']},settlement:{is:null}};
+ const running:Prisma.AuctionWhereInput={testRunId:null,publishedAt:{not:null},status:{in:['SCHEDULED','LIVE']},settlement:{is:null}};
  switch(status){
   case 'LIVE':return {...running,startsAt:{lte:now},endsAt:{gt:now}};
   case 'UPCOMING':case 'SCHEDULED':return {...running,startsAt:{gt:now},endsAt:{gt:now}};
   case 'CLOSING':case 'PENDING':return {...running,endsAt:{lte:now}};
   case 'FAILED':return {...running,endsAt:{lte:now},closeErrorCode:{not:null}};
-  case 'COMPLETED':case 'CLOSED':return {status:'CLOSED',settlement:{isNot:null}};
-  case 'CANCELLED':return {status:'CANCELLED'};
-  case 'DRAFT':return {status:'DRAFT'};
-  case '':return {};
+  case 'COMPLETED':case 'CLOSED':return {testRunId:null,status:'CLOSED',settlement:{isNot:null}};
+  case 'CANCELLED':return {testRunId:null,status:'CANCELLED'};
+  case 'DRAFT':return {testRunId:null,status:'DRAFT'};
+  case '':return {testRunId:null};
   default:throw new AdminError(422,'Choose a valid auction status.');
  }
 }
@@ -29,7 +29,7 @@ export async function auctionList(client:PrismaClient,now:Date,{page=1,q='',stat
 }
 export async function deliveryQueue(client:PrismaClient,actor:{id:string;role:StaffRole},{page=1,q='',status=''}={}){
  if(!['','INCOMPLETE','PENDING','CLAIMED','PACKING','SHIPPED','DELIVERED','DISPUTED'].includes(status))throw new AdminError(422,'Choose a valid delivery status.');
- const where=Prisma.sql`s.outcome='WINNER' ${actor.role==='OWNER'?Prisma.empty:Prisma.sql`AND f."assignedTo"=${actor.id}`} ${q?Prisma.sql`AND (a.code ILIKE ${'%'+q+'%'} OR p.title ILIKE ${'%'+q+'%'})`:Prisma.empty} ${status==='INCOMPLETE'?Prisma.sql`AND (f.state IS NULL OR f.state<>'DELIVERED')`:status?Prisma.sql`AND COALESCE(f.state,'PENDING')=${status}`:Prisma.empty}`;
+ const where=Prisma.sql`s.outcome='WINNER' AND a."testRunId" IS NULL ${actor.role==='OWNER'?Prisma.empty:Prisma.sql`AND f."assignedTo"=${actor.id}`} ${q?Prisma.sql`AND (a.code ILIKE ${'%'+q+'%'} OR p.title ILIKE ${'%'+q+'%'})`:Prisma.empty} ${status==='INCOMPLETE'?Prisma.sql`AND (f.state IS NULL OR f.state<>'DELIVERED')`:status?Prisma.sql`AND COALESCE(f.state,'PENDING')=${status}`:Prisma.empty}`;
  const from=Prisma.sql`FROM "AuctionSettlement" s JOIN "Auction" a ON a.id=s."auctionId" LEFT JOIN "Product" p ON p.id=a."productId" LEFT JOIN "FulfillmentCase" f ON f."auctionId"=a.id`;
  const [count,rows]=await Promise.all([client.$queryRaw<{count:bigint}[]>(Prisma.sql`SELECT COUNT(*) AS count ${from} WHERE ${where}`),client.$queryRaw<{auctionId:string;completedAt:Date;code:string;isDemo:boolean;title:string|null;state:string;version:number;assignedTo:string|null;tracking:string;winnerLabel:string|null;assigneeLabel:string|null}[]>(Prisma.sql`SELECT a.id AS "auctionId",s."completedAt",a.code,a."isDemo",p.title,COALESCE(f.state,'PENDING') AS state,COALESCE(f.version,0) AS version,f."assignedTo",COALESCE(f.tracking,'') AS tracking,u.name AS "winnerLabel",staff.email AS "assigneeLabel" ${from} LEFT JOIN "user" u ON u.id=s."winnerUserId" LEFT JOIN "user" staff ON staff.id=f."assignedTo" WHERE ${where} ORDER BY s."completedAt" DESC,a.id LIMIT 25 OFFSET ${(page-1)*25}`)]);
  return {items:rows.map(r=>({...r,auction:{code:r.code,isDemo:r.isDemo,product:{title:r.title}}})),total:Number(count[0].count),page,totalPages:Math.ceil(Number(count[0].count)/25)};

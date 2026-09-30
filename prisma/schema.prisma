@@ -1,5 +1,5 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
   previewFeatures = ["relationJoins"]
 }
 
@@ -28,26 +28,27 @@ model User {
   operations          Operation[]
   topups              TopUpIntent[]
   bids                Bid[]
-  wonSettlements      AuctionSettlement[] @relation("SettlementWinner")
+  wonSettlements      AuctionSettlement[]    @relation("SettlementWinner")
   settlementMovements SettlementMovement[]
   playerProfile       PlayerProfile?
   favorites           AuctionFavorite[]
   staffMember         StaffMember?
+  testRunActors       TestRunActor[]
 
   @@map("user")
 }
 
 model Session {
-  id        String   @id
-  token     String   @unique
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  ipAddress String?
-  userAgent String?
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  staffSession StaffSession?
+  id               String        @id
+  token            String        @unique
+  expiresAt        DateTime
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  ipAddress        String?
+  userAgent        String?
+  userId           String
+  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  staffSession     StaffSession?
   telegramLaunchId String?
 
   @@index([userId])
@@ -108,50 +109,51 @@ model VerifiedPhoneIdentity {
 }
 
 model TelegramOwnContact {
-  id String @id @default(uuid())
-  telegramId String
-  botId String
-  userId String? @unique
-  user User? @relation(fields:[userId],references:[id],onDelete:Restrict)
-  phoneHash String @unique
-  phoneCipher String
-  lastFour String
-  verifiedAt DateTime
-  sourceUpdateId BigInt @unique
-  revokedAt DateTime?
-  @@unique([botId,telegramId])
+  id             String    @id @default(uuid())
+  telegramId     String
+  botId          String
+  userId         String?   @unique
+  user           User?     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  phoneHash      String    @unique
+  phoneCipher    String
+  lastFour       String
+  verifiedAt     DateTime
+  sourceUpdateId BigInt    @unique
+  revokedAt      DateTime?
+
+  @@unique([botId, telegramId])
 }
 
 model ContactEvent {
-  id String @id @default(uuid())
-  botId String
+  id         String   @id @default(uuid())
+  botId      String
   telegramId String
-  updateId BigInt @unique
-  outcome String
-  createdAt DateTime @default(now())
+  updateId   BigInt   @unique
+  outcome    String
+  createdAt  DateTime @default(now())
 }
 
 model Wallet {
-  id        String           @id @default(uuid())
-  userId    String           @unique
-  user      User             @relation(fields: [userId], references: [id], onDelete: Restrict)
-  accounts  LedgerAccount[]
-  holds     AuctionHold[]
-  holdGuard WalletHoldGuard?
+  id                  String               @id @default(uuid())
+  userId              String               @unique
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+  accounts            LedgerAccount[]
+  holds               AuctionHold[]
+  holdGuard           WalletHoldGuard?
   settlementMovements SettlementMovement[]
-  createdAt DateTime         @default(now())
+  createdAt           DateTime             @default(now())
 }
 
 // Audited display/accounting unit transition. Existing integer ledger rows are
 // preserved; all accepted amounts map to whole ETB at 1:1.
 model CurrencyConversion {
-  id String @id
-  fromUnit String
-  toUnit String
-  numerator BigInt
+  id          String   @id
+  fromUnit    String
+  toUnit      String
+  numerator   BigInt
   denominator BigInt
   effectiveAt DateTime @default(dbgenerated("(clock_timestamp() AT TIME ZONE 'UTC')")) @db.Timestamp(6)
-  reason String
+  reason      String
 }
 
 // Internal serialization row; maintained by the hold-integrity migration.
@@ -167,7 +169,7 @@ model LedgerAccount {
   kind     String
   walletId String?
   wallet   Wallet?   @relation(fields: [walletId], references: [id], onDelete: Restrict)
-  balance  Decimal    @default(0) @db.Decimal
+  balance  Decimal   @default(0) @db.Decimal
   postings Posting[]
 
   @@unique([walletId, kind])
@@ -190,143 +192,199 @@ model Posting {
   journal   Journal       @relation(fields: [journalId], references: [id], onDelete: Restrict)
   accountId String
   account   LedgerAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
-  delta     Decimal @db.Decimal
+  delta     Decimal       @db.Decimal
 
   @@unique([journalId, accountId])
   @@index([accountId])
 }
 
 model Operation {
-  id          String   @id @default(uuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Restrict)
-  scope       String
-  key         String
-  requestHash String
-  result      Json
-  createdAt   DateTime @default(now())
-  journal     Journal?
-  bid         Bid?
-  settlementCharges SettlementMovement[] @relation("SettlementCharge")
+  id                 String               @id @default(uuid())
+  userId             String
+  user               User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+  scope              String
+  key                String
+  requestHash        String
+  result             Json
+  createdAt          DateTime             @default(now())
+  journal            Journal?
+  bid                Bid?
+  settlementCharges  SettlementMovement[] @relation("SettlementCharge")
   settlementReleases SettlementMovement[] @relation("SettlementRelease")
-  settlementRefunds SettlementMovement[] @relation("SettlementRefund")
+  settlementRefunds  SettlementMovement[] @relation("SettlementRefund")
 
   @@unique([userId, scope, key])
   @@index([scope, requestHash, createdAt])
 }
 
 model Category {
-  id String @id @default(uuid())
-  version Int @default(1)
-  slug String @unique
-  name String @unique
-  description String
-  sortOrder Int @default(0)
-  visible Boolean @default(true)
-  requiresEligibilityReview Boolean @default(false)
-  products Product[]
-  auctions Auction[]
+  id                        String    @id @default(uuid())
+  version                   Int       @default(1)
+  slug                      String    @unique
+  name                      String    @unique
+  description               String
+  sortOrder                 Int       @default(0)
+  visible                   Boolean   @default(true)
+  requiresEligibilityReview Boolean   @default(false)
+  products                  Product[]
+  auctions                  Auction[]
+
   @@index([visible, sortOrder])
 }
 
 model Product {
-  id String @id @default(uuid())
-  version Int @default(1)
-  slug String @unique
-  title String
+  id          String         @id @default(uuid())
+  version     Int            @default(1)
+  slug        String         @unique
+  title       String
   description String
-  condition String
-  categoryId String
-  category Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  visible Boolean @default(true)
-  isDemo Boolean @default(false)
-  images ProductImage[]
-  auctions Auction[]
+  condition   String
+  categoryId  String
+  category    Category       @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  visible     Boolean        @default(true)
+  isDemo      Boolean        @default(false)
+  testRunId   String?
+  testRun     TestRun?       @relation(fields: [testRunId], references: [id], onDelete: Restrict)
+  images      ProductImage[]
+  auctions    Auction[]
+
   @@index([categoryId, visible])
+  @@index([testRunId])
 }
 
 model ProductImage {
-  id String @id @default(uuid())
-  productId String
-  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
-  path String
-  alt String
-  sourceType String @default("ORIGINAL")
+  id           String  @id @default(uuid())
+  productId    String
+  product      Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  path         String
+  alt          String
+  sourceType   String  @default("ORIGINAL")
   sourceCredit String?
-  sortOrder Int @default(0)
+  sortOrder    Int     @default(0)
+
   @@unique([productId, sortOrder])
 }
 
 // Preserve the original id, code, and holds relationship from Phase 1.5.
 model Auction {
-  id    String        @id @default(uuid())
-  code  String        @unique
-  publicCode Int      @unique @default(autoincrement())
-  holds AuctionHold[]
-  bids Bid[]
-  slug String? @unique
-  productId String?
-  product Product? @relation(fields: [productId], references: [id], onDelete: Restrict)
-  categoryId String?
-  category Category? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  status String @default("DRAFT")
-  startsAt DateTime?
-  endsAt DateTime?
-  publishedAt DateTime?
-  featured Boolean @default(false)
-  isDemo Boolean @default(false)
-  acceptedBidCount Int @default(0)
-  bidSequence BigInt @default(0)
+  id                  String                   @id @default(uuid())
+  code                String                   @unique
+  publicCode          Int                      @unique @default(autoincrement())
+  holds               AuctionHold[]
+  bids                Bid[]
+  slug                String?                  @unique
+  productId           String?
+  product             Product?                 @relation(fields: [productId], references: [id], onDelete: Restrict)
+  categoryId          String?
+  category            Category?                @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  status              String                   @default("DRAFT")
+  startsAt            DateTime?
+  endsAt              DateTime?
+  publishedAt         DateTime?
+  featured            Boolean                  @default(false)
+  isDemo              Boolean                  @default(false)
+  testRunId           String?
+  testRun             TestRun?                 @relation(fields: [testRunId], references: [id], onDelete: Restrict)
+  controlVersion      Int                      @default(0)
+  // Per-auction public copy and images. This lets staff correct presentation
+  // mistakes without changing the promised product or frozen bidding rules.
+  presentation        Json?
+  acceptedBidCount    Int                      @default(0)
+  bidSequence         BigInt                   @default(0)
   // Aggregate public impressions only. Viewer identity is never stored.
-  publicViewCount BigInt @default(0)
-  fulfillmentSummary String?
-  fulfillmentRegion String?
-  terms AuctionTerms?
-  result PublicAuctionResult?
-  settlement AuctionSettlement?
+  publicViewCount     BigInt                   @default(0)
+  fulfillmentSummary  String?
+  fulfillmentRegion   String?
+  terms               AuctionTerms?
+  result              PublicAuctionResult?
+  settlement          AuctionSettlement?
   // Explicit opt-in for freshly scheduled local DEMO fixtures; old seeds stay false.
-  isSettlementFixture Boolean @default(false)
-  closeAttempts Int @default(0)
-  nextCloseAttemptAt DateTime?
-  closeErrorCode String?
-  favorites AuctionFavorite[]
-  draft AuctionDraft?
+  isSettlementFixture Boolean                  @default(false)
+  closeAttempts       Int                      @default(0)
+  nextCloseAttemptAt  DateTime?
+  closeErrorCode      String?
+  favorites           AuctionFavorite[]
+  draft               AuctionDraft?
+  feeRevisions        AuctionFeeRevision[]
+  controlRevisions    AuctionControlRevision[]
+
   @@index([status, startsAt, endsAt])
   @@index([categoryId, status])
   @@index([publishedAt, endsAt])
+  @@index([testRunId, status])
 }
 
 // One immutable published snapshot per auction. A later policy change creates
 // a replacement auction; the version field defines the contract for readers.
 model AuctionTerms {
-  id String @id @default(uuid())
-  auctionId String @unique
-  auction Auction @relation(fields: [auctionId], references: [id], onDelete: Restrict)
-  version Int @default(1)
-  ruleVersion String @default("lowest-unique-v1")
-  minParticipants Int @default(0)
-  minPoints Decimal @db.Decimal
-  maxPoints Decimal @db.Decimal
-  stepPoints Decimal @db.Decimal
-  entryFeePoints Decimal @default(0) @db.Decimal
-  maxDistinctBids Int @default(100)
-  noWinnerTerms String
-  cancellationTerms String
-  fulfillmentSnapshot String
-  createdAt DateTime @default(now())
+  id                   String    @id @default(uuid())
+  auctionId            String    @unique
+  auction              Auction   @relation(fields: [auctionId], references: [id], onDelete: Restrict)
+  version              Int       @default(1)
+  ruleVersion          String    @default("lowest-unique-v1")
+  minParticipants      Int       @default(0)
+  minPoints            Decimal   @db.Decimal
+  maxPoints            Decimal   @db.Decimal
+  stepPoints           Decimal   @db.Decimal
+  entryFeePoints       Decimal   @default(0) @db.Decimal
+  maxDistinctBids      Int       @default(100)
+  noWinnerTerms        String
+  cancellationTerms    String
+  fulfillmentSnapshot  String
+  publishedEndsAt      DateTime?
+  maxExtensionMinutes  Int       @default(10080)
+  allowPaidShortening  Boolean   @default(false)
+  shortenNoticeMinutes Int       @default(1440)
+  createdAt            DateTime  @default(now())
+}
+
+// Immutable fee schedule. Existing bids retain the revision and exact fee that
+// were accepted; changing a live fee only appends a revision for future bids.
+model AuctionFeeRevision {
+  id           String   @id @default(uuid())
+  auctionId    String
+  auction      Auction  @relation(fields: [auctionId], references: [id], onDelete: Restrict)
+  version      Int
+  feePoints    Decimal  @db.Decimal
+  effectiveAt  DateTime @default(dbgenerated("(clock_timestamp() AT TIME ZONE 'UTC')")) @db.Timestamp(6)
+  actorId      String?
+  reason       String
+  operationKey String?  @unique
+  bids         Bid[]
+
+  @@unique([auctionId, version])
+  @@index([auctionId, effectiveAt])
+}
+
+// Append-only administrative history for live presentation and schedule edits.
+model AuctionControlRevision {
+  id           String   @id @default(uuid())
+  auctionId    String
+  auction      Auction  @relation(fields: [auctionId], references: [id], onDelete: Restrict)
+  version      Int
+  kind         String
+  before       Json
+  after        Json
+  actorId      String
+  reason       String
+  operationKey String   @unique
+  createdAt    DateTime @default(dbgenerated("(clock_timestamp() AT TIME ZONE 'UTC')")) @db.Timestamp(6)
+
+  @@unique([auctionId, version])
+  @@index([auctionId, createdAt])
 }
 
 model PublicAuctionResult {
-  id String @id @default(uuid())
-  auctionId String @unique
-  auction Auction @relation(fields: [auctionId], references: [id], onDelete: Restrict)
-  outcome String
+  id            String   @id @default(uuid())
+  auctionId     String   @unique
+  auction       Auction  @relation(fields: [auctionId], references: [id], onDelete: Restrict)
+  outcome       String
   winningPoints Decimal? @db.Decimal
-  winnerLabel String?
-  explanation String
-  closedAt DateTime
-  isDemo Boolean @default(false)
-  publishedAt DateTime @default(now())
+  winnerLabel   String?
+  explanation   String
+  closedAt      DateTime
+  isDemo        Boolean  @default(false)
+  publishedAt   DateTime @default(now())
 }
 
 model AuctionHold {
@@ -335,7 +393,7 @@ model AuctionHold {
   wallet    Wallet   @relation(fields: [walletId], references: [id], onDelete: Restrict)
   auctionId String
   auction   Auction  @relation(fields: [auctionId], references: [id], onDelete: Restrict)
-  points    Decimal   @default(0) @db.Decimal
+  points    Decimal  @default(0) @db.Decimal
   updatedAt DateTime @updatedAt
 
   @@unique([walletId, auctionId])
@@ -344,55 +402,58 @@ model AuctionHold {
 // Accepted bids are immutable audit facts. The database sets acceptedAt after
 // the auction row lock is acquired, never from client or application time.
 model Bid {
-  id           String    @id @default(uuid())
-  userId       String
-  user         User      @relation(fields: [userId], references: [id], onDelete: Restrict)
-  auctionId    String
-  auction      Auction   @relation(fields: [auctionId], references: [id], onDelete: Restrict)
-  amount       Decimal @db.Decimal
-  acceptedAt   DateTime  @default(dbgenerated("(clock_timestamp() AT TIME ZONE 'UTC')")) @db.Timestamp(6)
-  acceptanceOrder BigInt?
-  termsVersion Int
-  feePoints    Decimal @db.Decimal
-  operationId  String    @unique
-  operation    Operation @relation(fields: [operationId], references: [id], onDelete: NoAction)
+  id                String              @id @default(uuid())
+  userId            String
+  user              User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  auctionId         String
+  auction           Auction             @relation(fields: [auctionId], references: [id], onDelete: Restrict)
+  amount            Decimal             @db.Decimal
+  acceptedAt        DateTime            @default(dbgenerated("(clock_timestamp() AT TIME ZONE 'UTC')")) @db.Timestamp(6)
+  acceptanceOrder   BigInt?
+  termsVersion      Int
+  feePoints         Decimal             @db.Decimal
+  feeRevisionId     String?
+  feeRevision       AuctionFeeRevision? @relation(fields: [feeRevisionId], references: [id], onDelete: Restrict)
+  operationId       String              @unique
+  operation         Operation           @relation(fields: [operationId], references: [id], onDelete: NoAction)
   winningSettlement AuctionSettlement?
 
   @@unique([userId, auctionId, amount])
   @@unique([auctionId, acceptanceOrder])
   @@index([userId, auctionId, acceptedAt])
   @@index([auctionId, amount])
+  @@index([feeRevisionId])
 }
 
 model TopUpIntent {
-  id               String   @id @default(uuid())
-  userId           String
-  user             User     @relation(fields: [userId], references: [id], onDelete: Restrict)
-  key              String
-  provider         String
-  providerIntentId String?
-  status           String   @default("PENDING")
-  points           Decimal @db.Decimal
-  policyVersion    String
-  journalId        String?  @unique
-  createdAt        DateTime @default(now())
-  channel          String?
-  expectedCents    BigInt?
-  amountFromReceipt Boolean @default(false)
-  receivingAccount String?
-  accountName      String?
-  quoteSnapshot    Json?
-  requestHash      String?
-  expiresAt        DateTime?
-  reference        String?
-  attempts         Int @default(0)
-  scanAttempts     Int @default(0)
-  nextAttemptAt    DateTime @default(now())
-  leaseToken       String?
-  leaseUntil       DateTime?
-  reasonCode       String?
-  caseState        String @default("OPEN")
-  assignedTo       String?
+  id                String    @id @default(uuid())
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+  key               String
+  provider          String
+  providerIntentId  String?
+  status            String    @default("PENDING")
+  points            Decimal   @db.Decimal
+  policyVersion     String
+  journalId         String?   @unique
+  createdAt         DateTime  @default(now())
+  channel           String?
+  expectedCents     BigInt?
+  amountFromReceipt Boolean   @default(false)
+  receivingAccount  String?
+  accountName       String?
+  quoteSnapshot     Json?
+  requestHash       String?
+  expiresAt         DateTime?
+  reference         String?
+  attempts          Int       @default(0)
+  scanAttempts      Int       @default(0)
+  nextAttemptAt     DateTime  @default(now())
+  leaseToken        String?
+  leaseUntil        DateTime?
+  reasonCode        String?
+  caseState         String    @default("OPEN")
+  assignedTo        String?
 
   @@unique([userId, key])
   @@unique([provider, providerIntentId])
@@ -402,60 +463,67 @@ model TopUpIntent {
 
 // Append-only account/quote versions. A new version never alters an intent.
 model PaymentPolicy {
-  id String @id @default(uuid())
-  channel String
-  version Int
-  enabled Boolean
-  account String
-  accountName String
-  pointsNumerator BigInt
+  id               String   @id @default(uuid())
+  channel          String
+  version          Int
+  enabled          Boolean
+  account          String
+  accountName      String
+  pointsNumerator  BigInt
   centsDenominator BigInt
-  minCents BigInt
-  maxCents BigInt
-  terms String
-  reviewReference String
-  actorId String
-  createdAt DateTime @default(now())
+  minCents         BigInt
+  maxCents         BigInt
+  terms            String
+  reviewReference  String
+  actorId          String
+  createdAt        DateTime @default(now())
+
   @@unique([channel, version])
 }
+
 model PaymentClaim {
-  id String @id @default(uuid())
-  channel String
-  reference String
-  intentId String @unique
-  userId String
-  amountCents BigInt
-  points Decimal @db.Decimal
+  id             String   @id @default(uuid())
+  channel        String
+  reference      String
+  intentId       String   @unique
+  userId         String
+  amountCents    BigInt
+  points         Decimal  @db.Decimal
   receiverSuffix String
-  transferredAt DateTime
-  operationId String @unique
-  journalId String @unique
-  evidenceHash String
-  createdAt DateTime @default(now())
+  transferredAt  DateTime
+  operationId    String   @unique
+  journalId      String   @unique
+  evidenceHash   String
+  createdAt      DateTime @default(now())
+
   @@unique([channel, reference])
 }
+
 model PaymentAttempt {
-  id String @id @default(uuid())
-  intentId String
-  key String
+  id          String   @id @default(uuid())
+  intentId    String
+  key         String
   requestHash String
-  code String
-  evidence Json
-  createdAt DateTime @default(now())
+  code        String
+  evidence    Json
+  createdAt   DateTime @default(now())
+
   @@unique([intentId, key])
 }
+
 model PaymentStatementEntry {
-  id String @id @default(uuid())
-  channel String
-  reference String
-  amountCents BigInt
-  receiverSuffix String
-  transferredAt DateTime
+  id                String   @id @default(uuid())
+  channel           String
+  reference         String
+  amountCents       BigInt
+  receiverSuffix    String
+  transferredAt     DateTime
   evidenceReference String
-  status String
-  intentId String?
-  actorId String
-  createdAt DateTime @default(now())
+  status            String
+  intentId          String?
+  actorId           String
+  createdAt         DateTime @default(now())
+
   @@index([status, createdAt])
 }
 
@@ -472,7 +540,7 @@ model ExternalEvent {
 }
 
 model BotUpdate {
-  botId String?
+  botId         String?
   updateId      BigInt    @id
   payload       Json
   receivedAt    DateTime  @default(now())
@@ -483,223 +551,305 @@ model BotUpdate {
 }
 
 model Outbox {
-  id        String    @id @default(uuid())
-  key       String    @unique
-  kind      String
-  payload   Json
-  createdAt DateTime  @default(now())
-  sentAt    DateTime?
-  state String @default("PENDING")
-  attempts Int @default(0)
-  nextAttemptAt DateTime @default(now())
-  lastError String?
-  settlementId String?
-  settlement AuctionSettlement? @relation(fields: [settlementId], references: [id], onDelete: Restrict)
+  id              String             @id @default(uuid())
+  key             String             @unique
+  kind            String
+  payload         Json
+  createdAt       DateTime           @default(now())
+  sentAt          DateTime?
+  state           String             @default("PENDING")
+  attempts        Int                @default(0)
+  nextAttemptAt   DateTime           @default(now())
+  lastError       String?
+  settlementId    String?
+  settlement      AuctionSettlement? @relation(fields: [settlementId], references: [id], onDelete: Restrict)
+  testRunId       String?
+  testRun         TestRun?           @relation(fields: [testRunId], references: [id], onDelete: Restrict)
+  telegramMessage TelegramMessage?
+
+  @@index([testRunId, state])
 }
 
 // Private immutable decision and audit proof. PublicAuctionResult is the separate
 // Phase 2 illustrative catalog projection; closing never edits or adopts it.
 model AuctionSettlement {
-  id String @id @default(uuid())
-  auctionId String @unique
-  auction Auction @relation(fields: [auctionId], references: [id], onDelete: Restrict)
-  outcome String
-  ruleVersion String
-  termsVersion Int
-  cutoff DateTime @db.Timestamp(6)
-  completedAt DateTime @default(dbgenerated("(clock_timestamp() AT TIME ZONE 'UTC')")) @db.Timestamp(6)
-  transactionId BigInt @default(dbgenerated("txid_current()"))
-  acceptedCount Int
-  decision String?
+  id               String               @id @default(uuid())
+  auctionId        String               @unique
+  auction          Auction              @relation(fields: [auctionId], references: [id], onDelete: Restrict)
+  outcome          String
+  ruleVersion      String
+  termsVersion     Int
+  cutoff           DateTime             @db.Timestamp(6)
+  completedAt      DateTime             @default(dbgenerated("(clock_timestamp() AT TIME ZONE 'UTC')")) @db.Timestamp(6)
+  transactionId    BigInt               @default(dbgenerated("txid_current()"))
+  acceptedCount    Int
+  decision         String?
   participantCount Int?
   acceptanceCutoff BigInt?
-  winnerUserId String?
-  winner User? @relation("SettlementWinner", fields: [winnerUserId], references: [id], onDelete: Restrict)
-  winningBidId String? @unique
-  winningBid Bid? @relation(fields: [winningBidId], references: [id], onDelete: Restrict)
-  winningPoints Decimal? @db.Decimal
-  actorId String?
-  reason String?
-  key String?
-  requestHash String?
-  proof Json
-  movements SettlementMovement[]
-  outbox Outbox[]
+  winnerUserId     String?
+  winner           User?                @relation("SettlementWinner", fields: [winnerUserId], references: [id], onDelete: Restrict)
+  winningBidId     String?              @unique
+  winningBid       Bid?                 @relation(fields: [winningBidId], references: [id], onDelete: Restrict)
+  winningPoints    Decimal?             @db.Decimal
+  actorId          String?
+  reason           String?
+  key              String?
+  requestHash      String?
+  proof            Json
+  movements        SettlementMovement[]
+  outbox           Outbox[]
+
   @@unique([actorId, key])
 }
 
 model SettlementMovement {
-  id String @id @default(uuid())
-  settlementId String
-  settlement AuctionSettlement @relation(fields: [settlementId], references: [id], onDelete: Restrict)
-  userId String
-  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
-  walletId String
-  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Restrict)
-  holdBefore Decimal @db.Decimal
-  chargedPoints Decimal @db.Decimal
-  releasedPoints Decimal @db.Decimal
-  refundedFees Decimal @db.Decimal
-  chargeOperationId String? @unique
-  chargeOperation Operation? @relation("SettlementCharge", fields: [chargeOperationId], references: [id], onDelete: Restrict)
-  releaseOperationId String? @unique
-  releaseOperation Operation? @relation("SettlementRelease", fields: [releaseOperationId], references: [id], onDelete: Restrict)
-  refundOperationId String? @unique
-  refundOperation Operation? @relation("SettlementRefund", fields: [refundOperationId], references: [id], onDelete: Restrict)
+  id                 String            @id @default(uuid())
+  settlementId       String
+  settlement         AuctionSettlement @relation(fields: [settlementId], references: [id], onDelete: Restrict)
+  userId             String
+  user               User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  walletId           String
+  wallet             Wallet            @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  holdBefore         Decimal           @db.Decimal
+  chargedPoints      Decimal           @db.Decimal
+  releasedPoints     Decimal           @db.Decimal
+  refundedFees       Decimal           @db.Decimal
+  chargeOperationId  String?           @unique
+  chargeOperation    Operation?        @relation("SettlementCharge", fields: [chargeOperationId], references: [id], onDelete: Restrict)
+  releaseOperationId String?           @unique
+  releaseOperation   Operation?        @relation("SettlementRelease", fields: [releaseOperationId], references: [id], onDelete: Restrict)
+  refundOperationId  String?           @unique
+  refundOperation    Operation?        @relation("SettlementRefund", fields: [refundOperationId], references: [id], onDelete: Restrict)
+
   @@unique([settlementId, userId])
 }
 
 // Display-only settings are deliberately separate from Better Auth identity.
 model PlayerProfile {
-  userId String @id
-  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  userId      String   @id
+  user        User     @relation(fields: [userId], references: [id], onDelete: Restrict)
   displayName String
-  bio String @default("")
-  updatedAt DateTime @updatedAt
+  bio         String   @default("")
+  updatedAt   DateTime @updatedAt
 }
 
 model AuctionFavorite {
-  userId String
-  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Restrict)
   auctionId String
-  auction Auction @relation(fields: [auctionId], references: [id], onDelete: Restrict)
+  auction   Auction  @relation(fields: [auctionId], references: [id], onDelete: Restrict)
   createdAt DateTime @default(now())
+
   @@id([userId, auctionId])
   @@index([userId, createdAt])
   @@index([auctionId])
 }
 
 model StaffMember {
-  userId String @id
-  user User @relation(fields:[userId],references:[id],onDelete:Restrict)
-  role String @default("OWNER")
-  active Boolean @default(true)
-  secret String?
-  lastCounter BigInt @default(-1)
+  userId         String               @id
+  user           User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+  role           String               @default("OWNER")
+  active         Boolean              @default(true)
+  secret         String?
+  lastCounter    BigInt               @default(-1)
   recoveryHashes String[]
-  createdAt DateTime @default(now())
+  createdAt      DateTime             @default(now())
   trustedDevices StaffTrustedDevice[]
 }
+
 model StaffTrustedDevice {
-  tokenHash String @id
-  userId String
-  member StaffMember @relation(fields:[userId],references:[userId],onDelete:Cascade)
-  createdAt DateTime @default(now())
+  tokenHash String         @id
+  userId    String
+  member    StaffMember    @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  createdAt DateTime       @default(now())
   expiresAt DateTime
-  sessions StaffSession[]
+  sessions  StaffSession[]
+
   @@index([userId])
 }
+
 model StaffSession {
-  sessionId String @id
-  session Session @relation(fields:[sessionId],references:[id],onDelete:Cascade)
-  credentialAt DateTime
-  mfaAt DateTime?
-  expiresAt DateTime
-  pendingSecret String?
+  sessionId         String              @id
+  session           Session             @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  credentialAt      DateTime
+  mfaAt             DateTime?
+  expiresAt         DateTime
+  pendingSecret     String?
   trustedDeviceHash String?
-  trustedDevice StaffTrustedDevice? @relation(fields:[trustedDeviceHash],references:[tokenHash],onDelete:SetNull)
+  trustedDevice     StaffTrustedDevice? @relation(fields: [trustedDeviceHash], references: [tokenHash], onDelete: SetNull)
 }
+
 model StaffToken {
-  tokenHash String @id
-  kind String
-  email String
-  role String @default("OWNER")
+  tokenHash String    @id
+  kind      String
+  email     String
+  role      String    @default("OWNER")
   expiresAt DateTime
-  usedAt DateTime?
-  createdAt DateTime @default(now())
-  @@index([email,kind])
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([email, kind])
 }
+
 model OwnerBootstrap {
-  id String @id
+  id        String   @id
   createdAt DateTime @default(now())
 }
+
 model AdminAudit {
-  id String @id @default(uuid())
-  actorId String
-  action String
-  target String
-  details Json
-  operationKey String? @unique
-  requestHash String?
-  createdAt DateTime @default(now())
+  id           String   @id @default(uuid())
+  actorId      String
+  action       String
+  target       String
+  details      Json
+  operationKey String?  @unique
+  requestHash  String?
+  createdAt    DateTime @default(now())
+
   @@index([createdAt])
 }
+
 model AuctionDraft {
-  auctionId String @id
-  auction Auction @relation(fields:[auctionId],references:[id],onDelete:Restrict)
-  version Int @default(1)
-  body Json
+  auctionId String   @id
+  auction   Auction  @relation(fields: [auctionId], references: [id], onDelete: Restrict)
+  version   Int      @default(1)
+  body      Json
   updatedAt DateTime @updatedAt
 }
+
 model ManagedMedia {
-  id String @id @default(uuid())
-  bytes Bytes
-  mime String
-  sourceType String
+  id           String   @id @default(uuid())
+  bytes        Bytes
+  mime         String
+  sourceType   String
   sourceCredit String
-  createdAt DateTime @default(now())
+  createdAt    DateTime @default(now())
 }
+
 model SiteContent {
-  id String @id
-  version Int @default(1)
-  body Json
+  id        String   @id
+  version   Int      @default(1)
+  body      Json
   updatedAt DateTime @updatedAt
 }
 
 model UserRestriction {
-  userId String @id
-  suspended Boolean @default(false)
-  reason String
+  userId    String   @id
+  suspended Boolean  @default(false)
+  reason    String
   updatedAt DateTime @updatedAt
 }
+
 model SupportCase {
-  id String @id @default(uuid())
-  userId String
-  subject String
-  message String
-  status String @default("OPEN")
-  resolution String @default("")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id @default(uuid())
+  userId     String
+  subject    String
+  message    String
+  status     String   @default("OPEN")
+  resolution String   @default("")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
   @@index([userId, createdAt])
 }
+
 model FulfillmentCase {
-  auctionId String @id
-  userId String
-  assignedTo String?
-  state String @default("PENDING")
-  contactCipher String?
-  tracking String @default("")
-  note String @default("")
-  version Int @default(1)
-  deliveredAt DateTime?
+  auctionId       String    @id
+  userId          String
+  assignedTo      String?
+  state           String    @default("PENDING")
+  contactCipher   String?
+  tracking        String    @default("")
+  note            String    @default("")
+  version         Int       @default(1)
+  deliveredAt     DateTime?
   contactDeleteAt DateTime?
-  updatedAt DateTime @updatedAt
+  testRunId       String?
+  testRun         TestRun?  @relation(fields: [testRunId], references: [id], onDelete: Restrict)
+  updatedAt       DateTime  @updatedAt
+
+  @@index([testRunId])
 }
+
 model NotificationPreference {
-  userId String @id
-  inApp Boolean @default(true)
-  telegram Boolean @default(false)
-  auctionStart Boolean @default(true)
+  userId         String  @id
+  inApp          Boolean @default(true)
+  telegram       Boolean @default(false)
+  auctionStart   Boolean @default(true)
   favoriteEnding Boolean @default(true)
-  fulfillment Boolean @default(true)
+  fulfillment    Boolean @default(true)
 }
+
 model NotificationInbox {
-  id String @id @default(uuid())
-  key String @unique
-  userId String
-  kind String
-  title String
-  body String
-  href String
-  readAt DateTime?
-  createdAt DateTime @default(now())
+  id        String    @id @default(uuid())
+  key       String    @unique
+  userId    String
+  kind      String
+  title     String
+  body      String
+  href      String
+  readAt    DateTime?
+  testRunId String?
+  testRun   TestRun?  @relation(fields: [testRunId], references: [id], onDelete: Restrict)
+  createdAt DateTime  @default(now())
+
   @@index([userId, createdAt])
+  @@index([testRunId])
 }
+
 // Populated only from authenticated webhook /start updates, never a browser ID.
 model BotChat {
-  telegramId String @id
-  chatId String @unique
-  startedAt DateTime @default(now())
-  blocked Boolean @default(false)
+  telegramId String   @id
+  chatId     String   @unique
+  startedAt  DateTime @default(now())
+  blocked    Boolean  @default(false)
+}
+
+model TelegramMessage {
+  id                  String    @id @default(uuid())
+  outboxId            String    @unique
+  outbox              Outbox    @relation(fields: [outboxId], references: [id], onDelete: Restrict)
+  auctionId           String?
+  testRunId           String?
+  chatId              String
+  messageId           BigInt
+  sentAt              DateTime  @default(now())
+  deletionState       String    @default("DELIVERED")
+  deletionRequestedAt DateTime?
+  deletionAttemptedAt DateTime?
+  deletionError       String?
+
+  @@index([auctionId, deletionState])
+  @@index([testRunId, deletionState])
+}
+
+model TestRun {
+  id               String              @id @default(uuid())
+  state            String              @default("DRAFT")
+  label            String
+  actorId          String
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  finishedAt       DateTime?
+  cleanupStartedAt DateTime?
+  cleanedAt        DateTime?
+  auctions         Auction[]
+  products         Product[]
+  actors           TestRunActor[]
+  outbox           Outbox[]
+  inbox            NotificationInbox[]
+  fulfillment      FulfillmentCase[]
+
+  @@index([state, createdAt])
+}
+
+model TestRunActor {
+  testRunId String
+  testRun   TestRun @relation(fields: [testRunId], references: [id], onDelete: Restrict)
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  label     String
+
+  @@id([testRunId, userId])
+  @@index([userId])
 }

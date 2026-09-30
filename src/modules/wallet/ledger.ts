@@ -25,23 +25,29 @@ export async function creditDemoPoints(client:PrismaClient,userId:string,amount:
   return issuePoints(client,userId,amount,key,'DEMO_CREDIT');
 }
 async function issuePoints(client:PrismaClient,userId:string,amount:string,key:string,scope:'DEV_CREDIT'|'DEMO_CREDIT'){
+  return client.$transaction(tx=>issuePointsInTransaction(tx,userId,amount,key,scope));
+}
+async function issuePointsInTransaction(tx:Prisma.TransactionClient,userId:string,amount:string,key:string,scope:'DEV_CREDIT'|'DEMO_CREDIT'){
   const points = pointsSchema.parse(amount);
   if (points.lte(0) || key.length < 8 || key.length > 128) throw new Error('Invalid seed request');
   const requestHash = createHash('sha256').update(amount).digest('hex');
-  return client.$transaction(async tx => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`}, 0))`;
-    const previous = await tx.operation.findUnique({ where: { userId_scope_key: { userId, scope, key } } });
-    if (previous) { if (previous.requestHash !== requestHash) throw new Error('Idempotency key reused with different request'); return previous.result; }
-    await ensureWallet(tx, userId); await seedPlatformAccounts(tx);
-    const available = await tx.ledgerAccount.findUniqueOrThrow({ where: { name: `user:${userId}:available` } });
-    const funding = await tx.ledgerAccount.findUniqueOrThrow({ where: { name: 'platform:issuance' } });
-    const result = { available: available.balance.add(points).toString(), credited: points.toString() };
-    const operation = await tx.operation.create({ data: { userId, scope, key, requestHash, result } });
-    await tx.journal.create({ data: { operationId: operation.id, kind: scope, reference: `${scope==='DEMO_CREDIT'?'demo':'development'}:${key}`, postings: { create: [
-      { accountId: funding.id, delta: points.negated() }, { accountId: available.id, delta: points },
-    ] } } });
-    return result;
-  });
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`}, 0))`;
+  const previous = await tx.operation.findUnique({ where: { userId_scope_key: { userId, scope, key } } });
+  if (previous) { if (previous.requestHash !== requestHash) throw new Error('Idempotency key reused with different request'); return previous.result; }
+  await ensureWallet(tx, userId); await seedPlatformAccounts(tx);
+  const available = await tx.ledgerAccount.findUniqueOrThrow({ where: { name: `user:${userId}:available` } });
+  const funding = await tx.ledgerAccount.findUniqueOrThrow({ where: { name: 'platform:issuance' } });
+  const result = { available: available.balance.add(points).toString(), credited: points.toString() };
+  const operation = await tx.operation.create({ data: { userId, scope, key, requestHash, result } });
+  await tx.journal.create({ data: { operationId: operation.id, kind: scope, reference: `${scope==='DEMO_CREDIT'?'demo':'development'}:${key}`, postings: { create: [
+    { accountId: funding.id, delta: points.negated() }, { accountId: available.id, delta: points },
+  ] } } });
+  return result;
+}
+export async function creditTestRunPoints(tx:Prisma.TransactionClient,userId:string,amount:string,key:string){
+  if(!stagingDemoUser(userId)){assertLocalDevelopment('points')}
+  if(pointsSchema.parse(amount).gt(5000)||!key.startsWith('demo-showcase:'))throw Error('Bounded explicit DEMO grant required');
+  return issuePointsInTransaction(tx,userId,amount,key,'DEMO_CREDIT');
 }
 export async function reconcile(client: PrismaClient | Prisma.TransactionClient) {
   // One statement gives both comparisons the same MVCC snapshot.

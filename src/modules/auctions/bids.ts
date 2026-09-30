@@ -15,6 +15,7 @@ const bidInputSchema = z.object({
   auctionSlug:z.string().regex(/^[a-z0-9-]{1,120}$/),
   amount:pointsSchema.refine(value=>value.gt(0)),
   key:z.string().uuid(),
+  feeVersion:z.number().int().min(1).optional(),
 }).strict();
 export type BidInput=z.input<typeof bidInputSchema>;
 const ownBidSchema=z.object({id:z.string(),amount:z.string(),acceptedAt:z.string()});
@@ -42,8 +43,8 @@ export function demoBidAllowed(raw:Record<string,string|undefined>=process.env) 
 }
 export async function submitBidInTransaction(tx:Prisma.TransactionClient,input:BidInput,raw:Record<string,string|undefined>=process.env):Promise<BidReceipt> {
   const command=bidInputSchema.parse(input);
-  const {userId,auctionSlug,amount,key}=command;
-  const requestHash=createHash('sha256').update(JSON.stringify({auctionSlug,amount:amount.toString()})).digest('hex');
+  const {userId,auctionSlug,amount,key,feeVersion}=command;
+  const requestHash=createHash('sha256').update(JSON.stringify({auctionSlug,amount:amount.toString(),feeVersion})).digest('hex');
 
   // Global order for writers: auction row -> wallet advisory key -> wallet hold
   // guard/projections. The SQL Bid trigger re-locks the auction row and stamps
@@ -60,7 +61,7 @@ export async function submitBidInTransaction(tx:Prisma.TransactionClient,input:B
   if(await tx.staffMember.findUnique({where:{userId}})|| (await tx.userRestriction.findUnique({where:{userId}}))?.suspended)fail('BIDDING_RESTRICTED',403,'Bidding is unavailable for staff or suspended accounts. Existing bids remain valid.');
   const clock=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AT TIME ZONE 'UTC' AS now`;
   const now=clock[0].now;
-  const auction=await tx.auction.findUniqueOrThrow({where:{id:locked[0].id},include:{terms:true,product:{include:{category:true}},category:true}});
+  const auction=await tx.auction.findUniqueOrThrow({where:{id:locked[0].id},include:{terms:true,feeRevisions:{orderBy:[{effectiveAt:'desc'},{version:'desc'}],take:1},product:{include:{category:true}},category:true}});
   if(!auction.publishedAt||auction.publishedAt>now||!auction.startsAt||!auction.endsAt||
     !['SCHEDULED','LIVE'].includes(auction.status)||now<auction.startsAt||now>=auction.endsAt||
     !auction.product?.visible||!auction.product.category.visible||!auction.category?.visible)
@@ -68,6 +69,8 @@ export async function submitBidInTransaction(tx:Prisma.TransactionClient,input:B
   if(auction.isDemo&&!demoBidAllowed(raw)&&!(auction.isSettlementFixture&&stagingDemoUser(userId,raw)))fail('DEMO_UNAVAILABLE',403,'DEMO bidding is limited to explicitly enrolled staging testers.');
   const terms=auction.terms;
   if(!terms)fail('AUCTION_CLOSED',409,'Published auction terms are unavailable.');
+  const fee=auction.feeRevisions[0];
+  if(!fee||feeVersion!==undefined&&fee.version!==feeVersion)fail('RETRYABLE_CONFLICT',409,'The bid fee changed. Review the current fee and confirm again.');
   if((terms.ruleVersion===RULE_V3&&amount.lt(1))||amount.lt(terms.minPoints)||amount.gt(terms.maxPoints)||!amount.sub(terms.minPoints).mod(terms.stepPoints).isZero())
     fail('INVALID_AMOUNT',422,`Choose an ETB amount from ${terms.minPoints} to ${terms.maxPoints} in steps of ${terms.stepPoints}.`);
 
@@ -83,29 +86,29 @@ export async function submitBidInTransaction(tx:Prisma.TransactionClient,input:B
   const hold=await tx.auctionHold.findUnique({where:{walletId_auctionId:{walletId:wallet.id,auctionId:auction.id}}});
   const previousMax=hold?.points??new Prisma.Decimal(0);
   const extraReserved=Prisma.Decimal.max(amount.sub(previousMax),0);
-  const newlyUnavailable=extraReserved.add(terms.entryFeePoints);
+  const newlyUnavailable=extraReserved.add(fee.feePoints);
   if(available.balance.lt(newlyUnavailable))fail('INSUFFICIENT_POINTS',409,`You need ${formatEtb(newlyUnavailable)} available for this bid and fee.`);
 
   const bidId=randomUUID(),operationId=randomUUID();
   // This FK is deferred: the immutable BID operation can include the exact
   // database-stamped acceptedAt in its original receipt when inserted below.
-  const bid=await tx.bid.create({data:{id:bidId,userId,auctionId:auction.id,amount,termsVersion:terms.version,feePoints:terms.entryFeePoints,operationId}});
+  const bid=await tx.bid.create({data:{id:bidId,userId,auctionId:auction.id,amount,termsVersion:fee.version,feePoints:fee.feePoints,feeRevisionId:fee.id,operationId}});
   await tx.auction.update({where:{id:auction.id},data:{acceptedBidCount:{increment:1}}});
   if(extraReserved.gt(0))await adjustAuctionHoldInTransaction(tx,{userId,auctionId:auction.id,direction:'RESERVE',points:extraReserved.toString(),key:`bid-hold:${createHash('sha256').update(`${userId}:${key}`).digest('hex')}`,reference:`bid:${bid.id}`});
-  if(terms.entryFeePoints.gt(0))await seedPlatformAccounts(tx);
+  if(fee.feePoints.gt(0))await seedPlatformAccounts(tx);
   const receipt:BidReceipt={
-    bid:{id:bid.id,auctionCode:auction.code,auctionSlug,amount:amount.toString(),acceptedAt:bid.acceptedAt.toISOString(),termsVersion:terms.version,feePoints:terms.entryFeePoints.toString()},
+    bid:{id:bid.id,auctionCode:auction.code,auctionSlug,amount:amount.toString(),acceptedAt:bid.acceptedAt.toISOString(),termsVersion:fee.version,feePoints:fee.feePoints.toString()},
     hold:{previousMax:previousMax.toString(),newMax:previousMax.add(extraReserved).toString(),extraReserved:extraReserved.toString()},
-    charge:{feePoints:terms.entryFeePoints.toString(),newlyUnavailable:newlyUnavailable.toString()},
+    charge:{feePoints:fee.feePoints.toString(),newlyUnavailable:newlyUnavailable.toString()},
     wallet:{available:available.balance.sub(newlyUnavailable).toString(),held:held.balance.add(extraReserved).toString()},
     remainingSubmissions:terms.maxDistinctBids-own.length-1,
     ownBids:[...own.map(item=>({id:item.id,amount:item.amount.toString(),acceptedAt:item.acceptedAt.toISOString()})),{id:bid.id,amount:amount.toString(),acceptedAt:bid.acceptedAt.toISOString()}],
   };
   await tx.operation.create({data:{id:operationId,userId,scope:'BID',key,requestHash,result:receipt}});
-  if(terms.entryFeePoints.gt(0)){
+  if(fee.feePoints.gt(0)){
     const fees=await tx.ledgerAccount.findUniqueOrThrow({where:{name:'platform:fees'}});
     await tx.journal.create({data:{operationId,kind:'BID_FEE',reference:`bid:${bid.id}`,postings:{create:[
-      {accountId:available.id,delta:terms.entryFeePoints.negated()},{accountId:fees.id,delta:terms.entryFeePoints},
+      {accountId:available.id,delta:fee.feePoints.negated()},{accountId:fees.id,delta:fee.feePoints},
     ]}}});
   }
   await enqueueAlert(tx,{key:`bid:${bid.id}:accepted`,kind:'BID_ACCEPTED',auctionId:auction.id,userId});
@@ -123,6 +126,7 @@ export async function submitBid(client:PrismaClient,input:BidInput,raw:Record<st
     if(message.includes('Auction is not open for bids'))fail('AUCTION_CLOSED',409,'This auction closed before your bid was accepted.');
     if(message.includes('Four consecutive cent amounts'))fail('CONSECUTIVE_LIMIT',422,'Leave a gap after three consecutive cent amounts.');
     if(message.includes('Distinct bid limit reached'))fail('CAP_REACHED',409,'You have reached the 100 distinct-bid limit for this auction.');
+    if(message.includes('stale')||message.includes('current fee revision'))fail('RETRYABLE_CONFLICT',409,'The bid fee changed. Review the current fee and confirm again.');
     if(message.includes('Bid does not match published terms'))fail('INVALID_AMOUNT',422,'The published ETB terms changed or this amount is invalid.');
     if(error instanceof Prisma.PrismaClientKnownRequestError&&['P2034','P2028'].includes(error.code))
       fail('RETRYABLE_CONFLICT',409,'This auction is busy. Retry the same request key.');
@@ -132,7 +136,7 @@ export async function submitBid(client:PrismaClient,input:BidInput,raw:Record<st
 
 export async function getOwnBidState(client:PrismaClient,userId:string,auctionSlug:string,raw:Record<string,string|undefined>=process.env) {
   return client.$transaction(async tx=>{
-    const auction=await tx.auction.findUnique({where:{slug:auctionSlug},include:{terms:true}});
+    const auction=await tx.auction.findUnique({where:{slug:auctionSlug},include:{terms:true,feeRevisions:{orderBy:[{effectiveAt:'desc'},{version:'desc'}],take:1}}});
     if(!auction||!auction.publishedAt||!auction.terms)fail('AUCTION_NOT_FOUND',404,'Auction not found.');
     const clock=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AT TIME ZONE 'UTC' AS now`;
     const now=clock[0].now;
@@ -140,11 +144,12 @@ export async function getOwnBidState(client:PrismaClient,userId:string,auctionSl
       tx.wallet.findUnique({where:{userId},include:{accounts:true,holds:{where:{auctionId:auction.id}}}}),
       tx.bid.findMany({where:{userId,auctionId:auction.id},orderBy:[{acceptedAt:'asc'},{id:'asc'}],select:{id:true,amount:true,acceptedAt:true}}),
     ]);
-    const terms=auction.terms,previousMax=wallet?.holds[0]?.points??0n;
+    const terms=auction.terms,fee=auction.feeRevisions[0],previousMax=wallet?.holds[0]?.points??0n;
+    if(!fee)fail('AUCTION_CLOSED',409,'Published auction fee is unavailable.');
     const restricted=!!await tx.staffMember.findUnique({where:{userId}})||(await tx.userRestriction.findUnique({where:{userId}}))?.suspended;
     return {auctionCode:auction.code,open:!restricted&&['SCHEDULED','LIVE'].includes(auction.status)&&auction.publishedAt<=now&&!!auction.startsAt&&!!auction.endsAt&&auction.startsAt<=now&&now<auction.endsAt&&(!auction.isDemo||demoBidAllowed(raw)||auction.isSettlementFixture&&stagingDemoUser(userId,raw)),
       serverNow:now.toISOString(),isDemo:auction.isDemo,
-      terms:{version:terms.version,ruleVersion:terms.ruleVersion,minParticipants:terms.minParticipants,minPoints:terms.minPoints.toString(),maxPoints:terms.maxPoints.toString(),stepPoints:terms.stepPoints.toString(),entryFeePoints:terms.entryFeePoints.toString(),maxDistinctBids:terms.maxDistinctBids},
+      terms:{version:fee.version,ruleVersion:terms.ruleVersion,minParticipants:terms.minParticipants,minPoints:terms.minPoints.toString(),maxPoints:terms.maxPoints.toString(),stepPoints:terms.stepPoints.toString(),entryFeePoints:fee.feePoints.toString(),maxDistinctBids:terms.maxDistinctBids},
       wallet:{available:(wallet?.accounts.find(account=>account.kind==='AVAILABLE')?.balance??0n).toString(),held:(wallet?.accounts.find(account=>account.kind==='HELD')?.balance??0n).toString()},
       previousMax:previousMax.toString(),remainingSubmissions:Math.max(0,terms.maxDistinctBids-bids.length),
       ownBids:bids.map(bid=>({id:bid.id,amount:bid.amount.toString(),acceptedAt:bid.acceptedAt.toISOString()}))};

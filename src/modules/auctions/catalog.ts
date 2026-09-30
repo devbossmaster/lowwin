@@ -8,15 +8,17 @@ import {cachedPublicData} from '@/modules/cache/public-data';
 // SQL selection and DTO mapping are independent allowlists. Never select the
 // settlement proof, participant movements, winning user/bid IDs or raw bids here.
 export const publicAuctionSelect = {
-  slug:true,code:true,publicCode:true,status:true,startsAt:true,endsAt:true,featured:true,isDemo:true,acceptedBidCount:true,publicViewCount:true,
+  slug:true,code:true,publicCode:true,status:true,startsAt:true,endsAt:true,featured:true,isDemo:true,acceptedBidCount:true,publicViewCount:true,presentation:true,
   fulfillmentSummary:true,fulfillmentRegion:true,
   product:{select:{title:true,description:true,condition:true,images:{orderBy:{sortOrder:'asc'},select:{path:true,alt:true,sourceType:true,sourceCredit:true}}}},
   category:{select:{slug:true,name:true}},
   terms:{select:{version:true,ruleVersion:true,minParticipants:true,minPoints:true,maxPoints:true,stepPoints:true,entryFeePoints:true,maxDistinctBids:true,noWinnerTerms:true,cancellationTerms:true,fulfillmentSnapshot:true}},
+  feeRevisions:{orderBy:[{effectiveAt:'desc' as const},{version:'desc' as const}],take:1,select:{version:true,feePoints:true}},
   result:{select:{outcome:true,winningPoints:true,explanation:true,isDemo:true,closedAt:true,publishedAt:true}},
   settlement:{select:{decision:true,outcome:true,winningPoints:true,completedAt:true}},
 } satisfies Prisma.AuctionSelect;
 type AuctionRow = Prisma.AuctionGetPayload<{ select: typeof publicAuctionSelect }>;
+const presentationSchema=z.object({title:z.string(),description:z.string(),condition:z.string(),images:z.array(z.object({path:z.string(),alt:z.string(),sourceType:z.string(),sourceCredit:z.string().nullable().optional()}))}).strict();
 export const catalogQuerySchema = z.object({
   q: z.string().trim().max(80).optional().default(''),
   status: z.enum(['all','live','upcoming','closing','closed']).optional().default('all'),
@@ -42,7 +44,7 @@ export function effectiveStatus(row: Pick<AuctionRow,'status'|'startsAt'|'endsAt
   return 'live' as const;
 }
 export function publicWhere(now: Date): Prisma.AuctionWhereInput {
-  return { publishedAt: { lte: now }, status: { in: ['SCHEDULED','LIVE','CLOSED','CANCELLED'] }, slug: { not: null },
+  return { publishedAt: { lte: now }, status: { in: ['SCHEDULED','LIVE','CLOSED','CANCELLED'] }, slug: { not: null },testRunId:null,
     product: { is: { visible: true, category: { visible: true } } }, category: { is: { visible: true } }, terms: { isNot: null } };
 }
 function statusWhere(status: CatalogQuery['status'], now: Date): Prisma.AuctionWhereInput {
@@ -54,6 +56,8 @@ function statusWhere(status: CatalogQuery['status'], now: Date): Prisma.AuctionW
 }
 export function toPublicAuction(row: AuctionRow, now: Date) {
   const status = effectiveStatus(row,now);
+  const presentation=presentationSchema.safeParse(row.presentation);
+  const product=presentation.success?presentation.data:row.product!;
   const settled=row.settlement;
   const result=settled&&['closed','cancelled'].includes(status)?{
     outcome:settled.outcome,winningPoints:settled.winningPoints?.toString()??null,
@@ -71,11 +75,11 @@ export function toPublicAuction(row: AuctionRow, now: Date) {
     slug:row.slug!,code:row.publicCode.toString(),status,featured:row.featured,isDemo:row.isDemo,bidCount:row.acceptedBidCount,
     viewCount:row.publicViewCount.toString(),
     startsAt:row.startsAt!.toISOString(),endsAt:row.endsAt!.toISOString(),
-    product:{title:row.product!.title,description:row.product!.description,condition:row.product!.condition,
-      images:row.product!.images.map(image=>({path:image.path,alt:image.alt,sourceType:image.sourceType,sourceCredit:image.sourceCredit}))},
+    product:{title:product.title,description:product.description,condition:product.condition,
+      images:product.images.map(image=>({path:image.path,alt:image.alt,sourceType:image.sourceType,sourceCredit:image.sourceCredit??null}))},
     category:{slug:row.category!.slug,name:row.category!.name},
     fulfillment:{summary:row.fulfillmentSummary!,region:row.fulfillmentRegion!},
-    terms:{version:row.terms!.version,ruleVersion:row.terms!.ruleVersion,minParticipants:row.terms!.minParticipants,minPoints:row.terms!.minPoints.toString(),maxPoints:row.terms!.maxPoints.toString(),stepPoints:row.terms!.stepPoints.toString(),entryFeePoints:row.terms!.entryFeePoints.toString(),maxDistinctBids:row.terms!.maxDistinctBids,noWinnerTerms:legacyTermsInEtb(row.terms!.noWinnerTerms),cancellationTerms:legacyTermsInEtb(row.terms!.cancellationTerms),fulfillmentSnapshot:row.terms!.fulfillmentSnapshot},
+    terms:{version:row.feeRevisions[0]?.version??row.terms!.version,ruleVersion:row.terms!.ruleVersion,minParticipants:row.terms!.minParticipants,minPoints:row.terms!.minPoints.toString(),maxPoints:row.terms!.maxPoints.toString(),stepPoints:row.terms!.stepPoints.toString(),entryFeePoints:(row.feeRevisions[0]?.feePoints??row.terms!.entryFeePoints).toString(),maxDistinctBids:row.terms!.maxDistinctBids,noWinnerTerms:legacyTermsInEtb(row.terms!.noWinnerTerms),cancellationTerms:legacyTermsInEtb(row.terms!.cancellationTerms),fulfillmentSnapshot:row.terms!.fulfillmentSnapshot},
     result,
   };
 }
@@ -84,23 +88,23 @@ export async function listAuctions(input: CatalogQuery, now?: Date, pageSize = 6
   return cachedPublicData(`auctions:${pageSize}:${JSON.stringify(query)}:${now?.toISOString()??'current'}`,3000,async()=>{
   const at=now??await serverNow();
   const searchedPublicCode=/^[1-9]\d*$/.test(query.q)&&Number.isSafeInteger(Number(query.q))?Number(query.q):null;
-  const where: Prisma.AuctionWhereInput = {AND:[publicWhere(at),statusWhere(query.status,at),
+  const where: Prisma.AuctionWhereInput = {AND:[publicWhere(at),{status:{not:'CANCELLED'}},statusWhere(query.status,at),
     query.category?{category:{is:{slug:query.category}}}:{},
-    query.q?{OR:[{code:{contains:query.q,mode:'insensitive'}},{product:{is:{title:{contains:query.q,mode:'insensitive'}}}},...(searchedPublicCode?[{publicCode:searchedPublicCode}]:[])]}:{}]};
+    query.q?{OR:[{code:{contains:query.q,mode:'insensitive'}},{product:{is:{title:{contains:query.q,mode:'insensitive'}}}},{presentation:{path:['title'],string_contains:query.q}},...(searchedPublicCode?[{publicCode:searchedPublicCode}]:[])]}:{}]};
   const orderBy: Prisma.AuctionOrderByWithRelationInput[] = query.sort==='newest' ? [{publishedAt:'desc'},{id:'asc'}] : query.sort==='title' ? [{product:{title:'asc'}},{id:'asc'}] : query.status==='closed' ? [{endsAt:'desc'},{id:'asc'}] : query.status==='upcoming' ? [{startsAt:'asc'},{id:'asc'}] : [{endsAt:'asc'},{id:'asc'}];
   let rows: AuctionRow[];
   let total: number;
   if (query.status==='all' && query.sort==='ending') {
     // One database-ordered page: active end times, future start times, then recent closes.
     const categoryFilter=query.category?Prisma.sql`AND c.slug = ${query.category}`:Prisma.empty;
-    const searchFilter=query.q?Prisma.sql`AND (p.title ILIKE ${`%${query.q}%`} OR a.code ILIKE ${`%${query.q}%`} OR a."publicCode"::text = ${query.q})`:Prisma.empty;
+    const searchFilter=query.q?Prisma.sql`AND (COALESCE(a.presentation->>'title',p.title) ILIKE ${`%${query.q}%`} OR a.code ILIKE ${`%${query.q}%`} OR a."publicCode"::text = ${query.q})`:Prisma.empty;
     const ids=await db.$queryRaw<{id:string}[]>`
       SELECT a.id FROM "Auction" a
       JOIN "Product" p ON p.id = a."productId"
       JOIN "Category" pc ON pc.id = p."categoryId"
       JOIN "Category" c ON c.id = a."categoryId"
       JOIN "AuctionTerms" t ON t."auctionId" = a.id
-      WHERE a."publishedAt" <= ${at} AND a.status IN ('SCHEDULED','LIVE','CLOSED','CANCELLED')
+      WHERE a."publishedAt" <= ${at} AND a.status IN ('SCHEDULED','LIVE','CLOSED') AND a."testRunId" IS NULL
         AND a.slug IS NOT NULL AND p.visible AND pc.visible AND c.visible ${categoryFilter} ${searchFilter}
       ORDER BY CASE WHEN a.status IN ('CLOSED','CANCELLED') OR a."endsAt" <= ${at} THEN 2
                     WHEN a."startsAt" > ${at} THEN 1 ELSE 0 END,
@@ -133,10 +137,10 @@ export async function listQuickLiveAuctions(page=1) {
   const where:Prisma.AuctionWhereInput={AND:[publicWhere(now),statusWhere('live',now)]};
   const [rows,total]=await Promise.all([
     db.auction.findMany({where,orderBy:[{publishedAt:'desc'},{id:'asc'}],skip:(page-1)*pageSize,take:pageSize,
-      select:{slug:true,publicCode:true,endsAt:true,isDemo:true,acceptedBidCount:true,product:{select:{title:true,images:{orderBy:{sortOrder:'asc'},take:1,select:{path:true}}}}}}),
+      select:{slug:true,publicCode:true,endsAt:true,isDemo:true,acceptedBidCount:true,presentation:true,product:{select:{title:true,images:{orderBy:{sortOrder:'asc'},take:1,select:{path:true}}}}}}),
     db.auction.count({where})
   ]);
-  return {items:rows.map(row=>({slug:row.slug!,code:String(row.publicCode),endsAt:row.endsAt!.toISOString(),isDemo:row.isDemo,bidCount:row.acceptedBidCount,product:row.product!})),total,page,totalPages:Math.ceil(total/pageSize),serverNow:now.toISOString()};
+  return {items:rows.map(row=>{const override=presentationSchema.safeParse(row.presentation);return {slug:row.slug!,code:String(row.publicCode),endsAt:row.endsAt!.toISOString(),isDemo:row.isDemo,bidCount:row.acceptedBidCount,product:override.success?{title:override.data.title,images:override.data.images.slice(0,1).map(image=>({path:image.path}))}:row.product!}}),total,page,totalPages:Math.ceil(total/pageSize),serverNow:now.toISOString()};
   });
 }
 export async function listCategories(now?: Date) {
@@ -155,7 +159,7 @@ export async function listCategories(now?: Date) {
       JOIN "Product" p ON p.id=a."productId" AND p.visible
       JOIN "Category" pc ON pc.id=p."categoryId" AND pc.visible
       JOIN "AuctionTerms" t ON t."auctionId"=a.id)
-      ON a."categoryId"=c.id AND a."publishedAt"<=${now}
+      ON a."categoryId"=c.id AND a."publishedAt"<=${now} AND a."testRunId" IS NULL
         AND a.slug IS NOT NULL AND a.status IN ('SCHEDULED','LIVE','CLOSED','CANCELLED')
     WHERE c.visible GROUP BY c.id ORDER BY c."sortOrder",c.name`;
   return rows.map(({all,live,upcoming,closed,...category})=>({...category,counts:{all,live,upcoming,closed}}));

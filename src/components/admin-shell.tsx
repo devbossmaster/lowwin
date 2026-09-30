@@ -2,11 +2,11 @@
 import {createContext,useContext,useEffect,useRef,useState} from 'react';
 import Link from 'next/link';
 import {usePathname,useRouter} from 'next/navigation';
-import {LayoutDashboard,Gavel,Wallet,Users,ChartNoAxesCombined,Settings,LogOut,Menu,X,ChevronRight,ShieldCheck} from 'lucide-react';
+import {LayoutDashboard,Gavel,Wallet,Users,Settings,LogOut,Menu,X,ChevronRight,ShieldCheck} from 'lucide-react';
 import {activeTask,adminAreas,allowedTasks,areaLanding,roleLabels,type AdminAccess} from '@/modules/admin/navigation';
 const AccessContext=createContext<AdminAccess|null>(null);
 export function useAdminAccess(){const access=useContext(AccessContext);if(!access)throw Error('Admin access context is required.');return access;}
-const icons={Overview:LayoutDashboard,Auctions:Gavel,Payments:Wallet,People:Users,Reports:ChartNoAxesCombined,Settings};
+const icons={Overview:LayoutDashboard,Auctions:Gavel,Money:Wallet,People:Users,Settings};
 export function AdminShell({children,access}:{children:React.ReactNode;access:AdminAccess}){
  const path=usePathname(),router=useRouter(),task=activeTask(path),tasks=allowedTasks(access.role).filter(t=>t.area===task.area),[open,setOpen]=useState(false),[error,setError]=useState('');const drawer=useRef<HTMLElement>(null),trigger=useRef<HTMLButtonElement>(null);
  useEffect(()=>setOpen(false),[path]);

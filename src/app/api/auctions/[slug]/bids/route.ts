@@ -6,7 +6,7 @@ import { BidError, getOwnBidState, submitBid } from '@/modules/auctions/bids';
 
 export const runtime='nodejs';
 const privateHeaders={'Cache-Control':'private, no-store, max-age=0'};
-const bodySchema=z.object({amount:z.string(),key:z.string().uuid()}).strict();
+const bodySchema=z.object({amount:z.string(),key:z.string().uuid(),feeVersion:z.number().int().min(1)}).strict();
 async function userId(request:Request) {
   const session=await getMiniSession(request.headers);
   return session?.user.id??null;
@@ -35,6 +35,6 @@ export async function POST(request:Request,{params}:{params:Promise<{slug:string
     if(Number(request.headers.get('content-length')??0)>4096)return Response.json({error:'Request is too large.',code:'INVALID_INPUT'},{status:413,headers:privateHeaders});
     const body=bodySchema.parse(await smallJson(request));
     const {slug}=await params;
-    return Response.json(await submitBid(db,{userId:id,auctionSlug:slug,amount:body.amount,key:body.key}),{status:201,headers:privateHeaders});
+    return Response.json(await submitBid(db,{userId:id,auctionSlug:slug,amount:body.amount,key:body.key,feeVersion:body.feeVersion}),{status:201,headers:privateHeaders});
   } catch(error){return errorResponse(error)}
 }

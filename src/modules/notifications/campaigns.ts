@@ -8,7 +8,8 @@ export const telegramKinds=['AUCTION_PUBLISHED','AUCTION_ENDING','AUCTION_RESULT
 export type CampaignPayload={auctionId?:string;recipientUserId?:string;intentId?:string;body?:string;imageId?:string;href?:string;cursor?:string;audienceBefore?:string;rootKey?:string;deliveryKind?:string};
 export async function queueGlobal(tx:Tx,key:string,kind:string,payload:CampaignPayload){
  const [{now}]=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`;
- return tx.outbox.upsert({where:{key},create:{key,kind:'GLOBAL_CAMPAIGN',payload:{...payload,deliveryKind:kind,audienceBefore:now.toISOString(),rootKey:key}},update:{}});
+ const auction=payload.auctionId?await tx.auction.findUnique({where:{id:payload.auctionId},select:{testRunId:true}}):null;
+ return tx.outbox.upsert({where:{key},create:{key,kind:'GLOBAL_CAMPAIGN',payload:{...payload,deliveryKind:kind,audienceBefore:now.toISOString(),rootKey:key},testRunId:auction?.testRunId},update:{}});
 }
 /** Each immutable batch records its cursor in a NEW intent. Recipients are
  * bounded by the event time; retrying a page cannot add duplicate deliveries. */
@@ -19,8 +20,8 @@ export async function expandCampaign(tx:Tx,row:Outbox){
  const kind=row.kind==='AUCTION_FINALIZED'?'AUCTION_RESULT':p.deliveryKind;
  if(!kind||!telegramKinds.includes(kind))throw Error('Unknown campaign kind');
  const {cursor:_cursor,audienceBefore:_before,rootKey:_root,deliveryKind:_kind,...content}=p;
- if(users.length)await tx.outbox.createMany({data:users.map(user=>({key:`${rootKey}:user:${user.id}`,kind,payload:{...content,recipientUserId:user.id}})),skipDuplicates:true});
- if(users.length===250){const cursor=users.at(-1)!.id;await tx.outbox.upsert({where:{key:`${rootKey}:after:${cursor}`},create:{key:`${rootKey}:after:${cursor}`,kind:'GLOBAL_CAMPAIGN',payload:{...p,deliveryKind:kind,rootKey,audienceBefore:before.toISOString(),cursor}},update:{}})}
+ if(users.length)await tx.outbox.createMany({data:users.map(user=>({key:`${rootKey}:user:${user.id}`,kind,payload:{...content,recipientUserId:user.id},testRunId:row.testRunId})),skipDuplicates:true});
+ if(users.length===250){const cursor=users.at(-1)!.id;await tx.outbox.upsert({where:{key:`${rootKey}:after:${cursor}`},create:{key:`${rootKey}:after:${cursor}`,kind:'GLOBAL_CAMPAIGN',payload:{...p,deliveryKind:kind,rootKey,audienceBefore:before.toISOString(),cursor},testRunId:row.testRunId},update:{}})}
  await tx.outbox.update({where:{id:row.id},data:{state:'SENT',sentAt:new Date()}});
  return users.length;
 }
@@ -28,9 +29,9 @@ export async function scheduleGlobalAlerts(client:PrismaClient){
  const [{now}]=await client.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`;
  let cursor:string|undefined,created=0;
  for(;;){
-  const auctions=await client.auction.findMany({where:{publishedAt:{lte:now},status:{in:['LIVE','SCHEDULED']},startsAt:{lte:now},endsAt:{gt:now,lt:new Date(now.getTime()+86400000)},settlement:{is:null},result:{is:null},...(cursor?{id:{gt:cursor}}:{})},select:{id:true,isDemo:true,isSettlementFixture:true},orderBy:{id:'asc'},take:100});
+  const auctions=await client.auction.findMany({where:{testRunId:null,publishedAt:{lte:now},status:{in:['LIVE','SCHEDULED']},startsAt:{lte:now},endsAt:{gt:now,lt:new Date(now.getTime()+86400000)},settlement:{is:null},result:{is:null},...(cursor?{id:{gt:cursor}}:{})},select:{id:true,isDemo:true,isSettlementFixture:true,controlVersion:true},orderBy:{id:'asc'},take:100});
   const allowed=auctions.filter(a=>!a.isDemo||a.isSettlementFixture&&(demoBidAllowed()||stagingDemoEnabled()));
-  if(allowed.length)created+=(await client.outbox.createMany({data:allowed.map(a=>({key:`global:ending:${a.id}`,kind:'GLOBAL_CAMPAIGN',payload:{auctionId:a.id,deliveryKind:'AUCTION_ENDING',rootKey:`global:ending:${a.id}`,audienceBefore:now.toISOString()}})),skipDuplicates:true})).count;
+  if(allowed.length)created+=(await client.outbox.createMany({data:allowed.map(a=>({key:`global:ending:${a.id}:v${a.controlVersion}`,kind:'GLOBAL_CAMPAIGN',payload:{auctionId:a.id,deliveryKind:'AUCTION_ENDING',rootKey:`global:ending:${a.id}:v${a.controlVersion}`,audienceBefore:now.toISOString()}})),skipDuplicates:true})).count;
   if(auctions.length<100)break;cursor=auctions.at(-1)!.id;
  }
  return created;
@@ -49,9 +50,10 @@ export async function campaignContent(tx:Tx,row:Pick<Outbox,'kind'|'payload'>){
   return {...base,title:'Deposit successful · ገንዘቡ ገብቷል',body:`${formatEtb(t.points)} has been added to your wallet.\n${formatEtb(t.points)} ወደ ሂሳብዎ ገብቷል።`,href:'/auctions/all'};
  }
  if(!p.auctionId)return null;
- const a=await tx.auction.findUnique({where:{id:p.auctionId},select:{slug:true,publicCode:true,publishedAt:true,startsAt:true,endsAt:true,status:true,isDemo:true,isSettlementFixture:true,product:{select:{title:true,visible:true}},result:{select:{id:true}},settlement:{select:{outcome:true,decision:true}}}});
- if(!a?.publishedAt||!a.slug||a.result||a.isDemo&&(!a.isSettlementFixture||!(demoBidAllowed()||stagingDemoEnabled())))return null;
- const prefix=a.isDemo?'DEMO · ':'',item=`${a.product?.title??'Auction'} · #${a.publicCode}`;
+ const a=await tx.auction.findUnique({where:{id:p.auctionId},select:{slug:true,publicCode:true,publishedAt:true,startsAt:true,endsAt:true,status:true,isDemo:true,isSettlementFixture:true,testRunId:true,presentation:true,product:{select:{title:true,visible:true}},result:{select:{id:true}},settlement:{select:{outcome:true,decision:true}}}});
+ if(!a?.publishedAt||!a.slug||a.result||a.testRunId||a.isDemo&&(!a.isSettlementFixture||!(demoBidAllowed()||stagingDemoEnabled())))return null;
+ const presentation=a.presentation as {title?:unknown}|null;const title=typeof presentation?.title==='string'?presentation.title:a.product?.title;
+ const prefix=a.isDemo?'DEMO · ':'',item=`${title??'Auction'} · #${a.publicCode}`;
  if(row.kind==='AUCTION_RESULT'){
   if(!a.settlement)return null;
   const outcome=a.settlement.outcome==='WINNER'?'A winner has been announced. See the final result.\nአሸናፊው ታውቋል። የመጨረሻ ውጤቱን ይመልከቱ።':a.settlement.outcome==='CANCELLED'?'The auction was cancelled. Entry fees and holds were returned.\nጨረታው ተሰርዟል። ክፍያዎችና የተያዘው ገንዘብ ተመልሰዋል።':'The auction closed without a winner.\nጨረታው ያለ አሸናፊ ተዘግቷል።';

@@ -15,13 +15,14 @@ export async function notificationContent(tx:DB,row:Pick<Outbox,'kind'|'payload'
  const href=kind==='BID_ACCEPTED'?'/my-bids':kind==='FULFILLMENT_UPDATED'||kind==='AUCTION_WON'||kind==='AUCTION_FALLBACK_WON'?'/profile/wins':a.settlement?`/winners/${a.code}`:`/auctions/${a.slug}`;
  return {userId:p.recipientUserId,kind,title:`${a.isDemo?'DEMO · ':''}${copy[0]}`,body:copy[1],href};
 }
-export async function materializeAlert(tx:DB,row:Pick<Outbox,'key'|'kind'|'payload'>){
+export async function materializeAlert(tx:DB,row:Pick<Outbox,'key'|'kind'|'payload'>&Partial<Pick<Outbox,'testRunId'>>){
  const content=await notificationContent(tx,row);if(!content)return;
 
- await tx.notificationInbox.upsert({where:{key:row.key},create:{key:row.key,userId:content.userId,kind:content.kind,title:content.title,body:content.body,href:content.href},update:{}});
+ await tx.notificationInbox.upsert({where:{key:row.key},create:{key:row.key,userId:content.userId,kind:content.kind,title:content.title,body:content.body,href:content.href,testRunId:row.testRunId},update:{}});
 }
 export async function enqueueAlert(tx:DB,input:{key:string;kind:string;auctionId:string;userId:string}){
- const row=await tx.outbox.create({data:{key:input.key,kind:input.kind,payload:{auctionId:input.auctionId,recipientUserId:input.userId}}});
+ const auction=await tx.auction.findUnique({where:{id:input.auctionId},select:{testRunId:true}});
+ const row=await tx.outbox.create({data:{key:input.key,kind:input.kind,payload:{auctionId:input.auctionId,recipientUserId:input.userId},testRunId:auction?.testRunId}});
  await materializeAlert(tx,row);return row;
 }
 export const scheduleAlerts=scheduleGlobalAlerts;
@@ -32,10 +33,21 @@ export async function dispatchOne(client:PrismaClient,bot:Pick<Bot,'api'>){
   const rows=await tx.$queryRaw<Outbox[]>`SELECT * FROM "Outbox" WHERE state='PENDING' AND "nextAttemptAt"<=clock_timestamp() ORDER BY "nextAttemptAt",id FOR UPDATE SKIP LOCKED LIMIT 1`;
   const row=rows[0];if(!row)return false;
   const skip=()=>tx.outbox.update({where:{id:row.id},data:{state:'SKIPPED',lastError:null}});
+  if(row.kind==='TELEGRAM_DELETE'){
+   const payload=row.payload as {telegramMessageId?:string};const record=payload.telegramMessageId?await tx.telegramMessage.findUnique({where:{id:payload.telegramMessageId}}):null;
+   if(!record||!['QUEUED','FAILED'].includes(record.deletionState)){await skip();return true}
+   try{
+    await bot.api.deleteMessage(record.chatId,Number(record.messageId));
+    await tx.telegramMessage.update({where:{id:record.id},data:{deletionState:'DELETED',deletionAttemptedAt:new Date(),deletionError:null}});
+    await tx.outbox.update({where:{id:row.id},data:{state:'SENT',sentAt:new Date(),attempts:{increment:1},lastError:null}});
+   }catch(error){const code=(error as {error_code?:number}).error_code,attempts=row.attempts+1,terminal=code===400||code===403||attempts>=4;await tx.telegramMessage.update({where:{id:record.id},data:{deletionState:terminal?'UNAVAILABLE':'FAILED',deletionAttemptedAt:new Date(),deletionError:code===400?'DELETE_WINDOW_OR_MESSAGE_UNAVAILABLE':code===403?'CHAT_BLOCKED':'DELETE_RETRY'}});await tx.outbox.update({where:{id:row.id},data:{state:terminal?'FAILED':'PENDING',attempts,lastError:'TELEGRAM_DELETE_FAILED',nextAttemptAt:new Date(Date.now()+Math.min(3600,2**attempts*5)*1000)}})}
+   return true;
+  }
   if(row.kind==='GLOBAL_CAMPAIGN'||row.kind==='AUCTION_FINALIZED'){await expandCampaign(tx,row);return true}
   const content=await notificationContent(tx,row);
   if(!content){await skip();return true}
   await materializeAlert(tx,row);
+  if(row.testRunId){await skip();return true}
   // These are the only automatic Telegram categories. Legacy private inbox
   // receipts remain readable, but their jobs no longer send Telegram messages.
   if(!telegramKinds.includes(row.kind)){await skip();return true}
@@ -48,11 +60,14 @@ export async function dispatchOne(client:PrismaClient,bot:Pick<Bot,'api'>){
    const body=content.body.includes('{name}')?content.body.replaceAll('{name}',name):`${name},\n${content.body}`;
    const text=`${content.title}\n${body}`.slice(0,1000);
    const options={reply_markup:{inline_keyboard:[[{text:'Bid',web_app:{url:link.href}}]]}};
+   let sent:{message_id:number};
    if('imageId' in content&&content.imageId){
     // The validated image is stored once; our media endpoint caches its bytes.
     const photo=new URL(`/api/media/${content.imageId}`,process.env.MINI_APP_URL);
-    await bot.api.sendPhoto(chat.chatId,photo.href,{...options,caption:text});
-   }else await bot.api.sendMessage(chat.chatId,text,options);
+    sent=await bot.api.sendPhoto(chat.chatId,photo.href,{...options,caption:text});
+   }else sent=await bot.api.sendMessage(chat.chatId,text,options);
+   const payload=row.payload as {auctionId?:string};
+   await tx.telegramMessage.create({data:{outboxId:row.id,auctionId:payload.auctionId,testRunId:row.testRunId,chatId:chat.chatId,messageId:BigInt(sent.message_id)}});
    await tx.outbox.update({where:{id:row.id},data:{state:'SENT',sentAt:new Date(),attempts:{increment:1},lastError:null}});
   }catch(error){
    const e=error as {error_code?:number;parameters?:{retry_after?:number}},attempts=row.attempts+1;
@@ -63,4 +78,28 @@ export async function dispatchOne(client:PrismaClient,bot:Pick<Bot,'api'>){
   }
   return true;
  },{timeout:30000,maxWait:5000});
+}
+
+export async function retireAuctionPromotions(tx:DB,auctionId:string,now:Date){
+ const promotional=['AUCTION_PUBLISHED','AUCTION_ENDING','GLOBAL_CAMPAIGN'];
+ const jobs=await tx.outbox.findMany({where:{kind:{in:promotional},payload:{path:['auctionId'],equals:auctionId}},select:{id:true,key:true,state:true}});
+ if(jobs.length)await tx.notificationInbox.deleteMany({where:{key:{in:jobs.map(job=>job.key)}}});
+ const pending=jobs.filter(job=>job.state==='PENDING');
+ if(pending.length)await tx.outbox.updateMany({where:{id:{in:pending.map(job=>job.id)}},data:{state:'SKIPPED',lastError:'AUCTION_RETIRED'}});
+ const messages=await tx.telegramMessage.findMany({where:{auctionId,deletionState:'DELIVERED'}});let queued=0,unavailable=0;
+ for(const message of messages){
+  if(now.getTime()-message.sentAt.getTime()>=47*3600000){await tx.telegramMessage.update({where:{id:message.id},data:{deletionState:'UNAVAILABLE',deletionRequestedAt:now,deletionError:'TELEGRAM_DELETE_WINDOW_EXPIRED'}});unavailable++;continue}
+  await tx.outbox.create({data:{key:`telegram-delete:${message.id}`,kind:'TELEGRAM_DELETE',payload:{telegramMessageId:message.id},testRunId:message.testRunId}});
+  await tx.telegramMessage.update({where:{id:message.id},data:{deletionState:'QUEUED',deletionRequestedAt:now}});queued++;
+ }
+ return {pendingSkipped:pending.length,telegramDeletesQueued:queued,telegramDeletesUnavailable:unavailable};
+}
+
+export async function retireAuctionEndingAlerts(tx:DB,auctionId:string,now:Date){
+ const candidates=await tx.outbox.findMany({where:{kind:{in:['GLOBAL_CAMPAIGN','AUCTION_ENDING']},payload:{path:['auctionId'],equals:auctionId}},select:{id:true,key:true,kind:true,state:true,payload:true}});
+ const jobs=candidates.filter(row=>row.kind==='AUCTION_ENDING'||(row.payload as {deliveryKind?:string}).deliveryKind==='AUCTION_ENDING');if(!jobs.length)return {endingAlertsRetired:0,telegramDeletesQueued:0,telegramDeletesUnavailable:0};
+ await tx.notificationInbox.deleteMany({where:{key:{in:jobs.map(row=>row.key)}}});const pending=jobs.filter(row=>row.state==='PENDING');if(pending.length)await tx.outbox.updateMany({where:{id:{in:pending.map(row=>row.id)}},data:{state:'SKIPPED',lastError:'SUPERSEDED_BY_DEADLINE_CHANGE'}});
+ const messages=await tx.telegramMessage.findMany({where:{outboxId:{in:jobs.map(row=>row.id)},deletionState:'DELIVERED'}});let queued=0,unavailable=0;
+ for(const message of messages){if(now.getTime()-message.sentAt.getTime()>=47*3600000){await tx.telegramMessage.update({where:{id:message.id},data:{deletionState:'UNAVAILABLE',deletionRequestedAt:now,deletionError:'TELEGRAM_DELETE_WINDOW_EXPIRED'}});unavailable++;continue}await tx.outbox.create({data:{key:`telegram-delete:${message.id}`,kind:'TELEGRAM_DELETE',payload:{telegramMessageId:message.id},testRunId:message.testRunId}});await tx.telegramMessage.update({where:{id:message.id},data:{deletionState:'QUEUED',deletionRequestedAt:now}});queued++}
+ return {endingAlertsRetired:jobs.length,telegramDeletesQueued:queued,telegramDeletesUnavailable:unavailable};
 }

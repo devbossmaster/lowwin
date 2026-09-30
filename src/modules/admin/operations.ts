@@ -14,10 +14,11 @@ import { cancelAuctionInTransaction } from '../auctions/settlement';
 import { demoBidAllowed } from '../auctions/bids';
 import { reconcile } from '../wallet/ledger';
 import {clearPublicDataCache} from '../cache/public-data';
+import {retireAuctionEndingAlerts,retireAuctionPromotions} from '../notifications/service';
 
 const id=z.string().uuid(),key=z.string().uuid(),version=z.number().int().min(0),text=(n:number)=>z.string().trim().min(1).max(n);
 const points=z.string().regex(/^(0|[1-9]\d{0,8})(?:\.\d{1,2})?$/);
-export const draftBodySchema=z.object({productId:id,startsAt:z.iso.datetime(),endsAt:z.iso.datetime(),minPoints:points,maxPoints:points,stepPoints:points,entryFeePoints:points,fulfillmentSummary:text(500),fulfillmentRegion:text(160),featured:z.boolean().default(false)}).strict();
+export const draftBodySchema=z.object({productId:id,startsAt:z.iso.datetime(),endsAt:z.iso.datetime(),minPoints:points,maxPoints:points,stepPoints:points,entryFeePoints:points,fulfillmentSummary:text(500),fulfillmentRegion:text(160),featured:z.boolean().default(false),maxExtensionMinutes:z.number().int().min(0).max(43200).default(10080),allowPaidShortening:z.boolean().default(false),shortenNoticeMinutes:z.number().int().min(5).max(10080).default(1440)}).strict();
 const schemas={
   category:z.object({key,id:id.optional(),version,name:text(80),slug:text(80).regex(/^[a-z0-9-]+$/),description:text(600),visible:z.boolean(),requiresEligibilityReview:z.boolean()}).strict(),
   product:z.object({key,id:id.optional(),version,title:text(120),slug:text(100).regex(/^[a-z0-9-]+$/),description:text(1500),condition:text(100),categoryId:id,isDemo:z.boolean(),visible:z.boolean(),imageIds:z.array(id).max(8)}).strict(),
@@ -25,6 +26,12 @@ const schemas={
   content:z.object({key,id:z.enum(['home','faq']),version,body:z.unknown()}).strict(),
   draft:z.object({key,auctionId:id.optional(),version,body:draftBodySchema}).strict(),
   publish:z.object({key,auctionId:id,version}).strict(),
+  fee:z.object({key,auctionId:id,version,feePoints:points,reason:text(1000)}).strict(),
+  deadline:z.object({key,auctionId:id,version,endsAt:z.iso.datetime(),reason:text(1000)}).strict(),
+  presentation:z.object({key,auctionId:id,version,title:text(120),description:text(1500),condition:text(100),imageIds:z.array(id).min(1).max(8),reason:text(1000)}).strict(),
+  deleteDraft:z.object({key,auctionId:id,confirmation:text(100),reason:text(1000)}).strict(),
+  deleteProduct:z.object({key,id,version,confirmation:text(120),reason:text(1000)}).strict(),
+  removeCancelled:z.object({key,auctionId:id,version,confirmation:text(100),reason:text(1000)}).strict(),
   cancel:z.object({key,auctionId:id,reason:text(1000),confirmation:text(100),impactHash:z.string().regex(/^[a-f0-9]{64}$/)}).strict(),
   replace:z.object({key,auctionId:id}).strict(),
 };
@@ -64,13 +71,14 @@ export async function publicationPreflight(tx:Prisma.TransactionClient,auctionId
 }
 export async function adminMutation(client:PrismaClient,headers:Headers,action:AdminAction,raw:unknown) {
   if(!Object.hasOwn(schemas,action))throw new AdminError(404,'Unknown admin command.');
-  const input=schemas[action].parse(raw),owner=await requireAdmin(client,headers,{permission:action==='cancel'||action==='publish'?'cancel':'catalog'}),hash=digest(JSON.stringify({action,input}));
+  const highRisk=['cancel','publish','fee','deadline','presentation','removeCancelled'].includes(action);
+  const input=schemas[action].parse(raw),owner=await requireAdmin(client,headers,{permission:highRisk?'cancel':'catalog'}),hash=digest(JSON.stringify({action,input}));
   // All auction writes acquire the auction row BEFORE staff/idempotency and wallet
   // locks. The unchanged cancellation command then locks wallet keys in stable order.
   const receipt=await client.$transaction(async tx=>{
     if('auctionId' in input&&input.auctionId)await lockAuction(tx,input.auctionId);
     const operationKey=`${owner.id}:${input.key}`;await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`admin:${operationKey}`},0))`;
-    const actor=await requireAdmin(tx,headers,{lock:true,fresh:action==='cancel',permission:action==='cancel'||action==='publish'?'cancel':'catalog'});
+    const actor=await requireAdmin(tx,headers,{lock:true,fresh:highRisk,permission:highRisk?'cancel':'catalog'});
     const previous=await tx.adminAudit.findUnique({where:{operationKey}});
     if(previous){if(previous.requestHash!==hash)throw new AdminError(409,'Idempotency key was used with different input.');return (previous.details as {receipt:unknown}).receipt}
     let receipt:unknown,target='';
@@ -108,24 +116,75 @@ export async function adminMutation(client:PrismaClient,headers:Headers,action:A
       await tx.$queryRaw`SELECT id FROM "Product" WHERE id=${body.productId} FOR UPDATE`;
       const item=await tx.product.findUniqueOrThrow({where:{id:body.productId}});await tx.$queryRaw`SELECT id FROM "Category" WHERE id=${item.categoryId} FOR UPDATE`;
       const checked=await publicationPreflight(tx,data.auctionId);if(checked.auction.draft?.version!==data.version)throw new AdminError(409,'Draft changed. Repeat preflight.');if(checked.errors.length)throw new AdminError(422,checked.errors.join(' '));const p=checked.product!;
-      await tx.auctionTerms.create({data:{auctionId:data.auctionId,ruleVersion:RULE_V3,minParticipants:V2_MIN_PARTICIPANTS,minPoints:new Prisma.Decimal(body.minPoints),maxPoints:new Prisma.Decimal(body.maxPoints),stepPoints:new Prisma.Decimal(body.stepPoints),entryFeePoints:new Prisma.Decimal(body.entryFeePoints),maxDistinctBids:100,noWinnerTerms:V2_FALLBACK_TERMS+" "+V3_AMOUNT_TERMS,cancellationTerms:V2_CANCELLATION_TERMS,fulfillmentSnapshot:body.fulfillmentSummary}});
-      const auction=await tx.auction.update({where:{id:data.auctionId},data:{productId:p.id,categoryId:p.categoryId,isDemo:p.isDemo,isSettlementFixture:p.isDemo&&demoBidAllowed(process.env),startsAt:new Date(body.startsAt),endsAt:new Date(body.endsAt),publishedAt:checked.now,status:'SCHEDULED',featured:body.featured,fulfillmentSummary:body.fulfillmentSummary,fulfillmentRegion:body.fulfillmentRegion}});target=auction.id;await queueGlobal(tx,`global:published:${data.auctionId}`,'AUCTION_PUBLISHED',{auctionId:data.auctionId});
+      const endsAt=new Date(body.endsAt);
+      await tx.auctionTerms.create({data:{auctionId:data.auctionId,ruleVersion:RULE_V3,minParticipants:V2_MIN_PARTICIPANTS,minPoints:new Prisma.Decimal(body.minPoints),maxPoints:new Prisma.Decimal(body.maxPoints),stepPoints:new Prisma.Decimal(body.stepPoints),entryFeePoints:new Prisma.Decimal(body.entryFeePoints),maxDistinctBids:100,noWinnerTerms:V2_FALLBACK_TERMS+" "+V3_AMOUNT_TERMS,cancellationTerms:V2_CANCELLATION_TERMS,fulfillmentSnapshot:body.fulfillmentSummary,publishedEndsAt:endsAt,maxExtensionMinutes:body.maxExtensionMinutes,allowPaidShortening:body.allowPaidShortening,shortenNoticeMinutes:body.shortenNoticeMinutes}});
+      await tx.auctionFeeRevision.create({data:{auctionId:data.auctionId,version:1,feePoints:new Prisma.Decimal(body.entryFeePoints),effectiveAt:checked.now,actorId:actor.id,reason:'Initial published fee',operationKey:`${operationKey}:fee`}});
+      const presentation={title:p.title,description:p.description,condition:p.condition,images:p.images.map(image=>({path:image.path,alt:image.alt,sourceType:image.sourceType,sourceCredit:image.sourceCredit}))};
+      const auction=await tx.auction.update({where:{id:data.auctionId},data:{productId:p.id,categoryId:p.categoryId,isDemo:p.isDemo,isSettlementFixture:p.isDemo&&demoBidAllowed(process.env),startsAt:new Date(body.startsAt),endsAt,publishedAt:checked.now,status:'SCHEDULED',featured:body.featured,fulfillmentSummary:body.fulfillmentSummary,fulfillmentRegion:body.fulfillmentRegion,presentation:asJson(presentation)}});target=auction.id;await queueGlobal(tx,`global:published:${data.auctionId}`,'AUCTION_PUBLISHED',{auctionId:data.auctionId});
       receipt={auctionId:target,code:auction.code,status:auction.status,isDemo:auction.isDemo};
+    }else if(action==='fee'){
+      const data=schemas.fee.parse(input),auction=await tx.auction.findUniqueOrThrow({where:{id:data.auctionId},include:{terms:true,feeRevisions:{orderBy:[{effectiveAt:'desc'},{version:'desc'}],take:1},settlement:{select:{id:true}},result:{select:{id:true}}}});
+      if(auction.controlVersion!==data.version)throw new AdminError(409,'Auction controls changed. Reload before saving.');
+      if(!auction.terms||!auction.publishedAt||!auction.endsAt||auction.endsAt<=actor.now||!['LIVE','SCHEDULED'].includes(auction.status)||auction.settlement||auction.result)throw new AdminError(409,'Fees can change only for an open, unsettled published auction.');
+      const current=auction.feeRevisions[0];if(!current)throw new AdminError(409,'The published fee schedule is missing.');
+      const nextFee=new Prisma.Decimal(data.feePoints);if(nextFee.eq(current.feePoints))throw new AdminError(422,'Enter a different future bid fee.');
+      const nextVersion=current.version+1,controlVersion=auction.controlVersion+1;
+      const revision=await tx.auctionFeeRevision.create({data:{auctionId:auction.id,version:nextVersion,feePoints:nextFee,effectiveAt:actor.now,actorId:actor.id,reason:data.reason,operationKey}});
+      await tx.auctionControlRevision.create({data:{auctionId:auction.id,version:controlVersion,kind:'FEE',before:{version:current.version,feePoints:current.feePoints.toString()},after:{version:revision.version,feePoints:revision.feePoints.toString(),effectiveAt:actor.now.toISOString()},actorId:actor.id,reason:data.reason,operationKey}});
+      await tx.auction.update({where:{id:auction.id},data:{controlVersion}});target=auction.id;receipt={auctionId:auction.id,controlVersion,feeVersion:revision.version,feePoints:revision.feePoints.toString(),effectiveAt:actor.now.toISOString()};
+    }else if(action==='deadline'){
+      const data=schemas.deadline.parse(input),auction=await tx.auction.findUniqueOrThrow({where:{id:data.auctionId},include:{terms:true,settlement:{select:{id:true}},result:{select:{id:true}}}});
+      if(auction.controlVersion!==data.version)throw new AdminError(409,'Auction controls changed. Reload before saving.');
+      if(!auction.terms||!auction.publishedAt||!auction.endsAt||auction.endsAt<=actor.now||!['LIVE','SCHEDULED'].includes(auction.status)||auction.settlement||auction.result)throw new AdminError(409,'The deadline can change only for an open, unsettled published auction.');
+      const next=new Date(data.endsAt),previous=auction.endsAt;if(next.getTime()===previous.getTime())throw new AdminError(422,'Enter a different deadline.');
+      if(next.getTime()<actor.now.getTime()+5*60000)throw new AdminError(422,'The new deadline must be at least five minutes in the future.');
+      const publishedEnd=auction.terms.publishedEndsAt??previous,maxEnd=new Date(publishedEnd.getTime()+auction.terms.maxExtensionMinutes*60000);
+      if(next>maxEnd)throw new AdminError(422,`The published policy permits extension only until ${maxEnd.toISOString()}.`);
+      if(next<previous&&auction.acceptedBidCount>0){if(!auction.terms.allowPaidShortening)throw new AdminError(422,'The published policy does not permit shortening after bids.');const notice=auction.terms.shortenNoticeMinutes*60000;if(next.getTime()<actor.now.getTime()+notice)throw new AdminError(422,`Bidders must retain at least ${auction.terms.shortenNoticeMinutes} minutes of notice.`)}
+      const controlVersion=auction.controlVersion+1;
+      const retired=await retireAuctionEndingAlerts(tx,auction.id,actor.now);
+      await tx.auctionControlRevision.create({data:{auctionId:auction.id,version:controlVersion,kind:'DEADLINE',before:{endsAt:previous.toISOString()},after:{endsAt:next.toISOString()},actorId:actor.id,reason:data.reason,operationKey}});
+      await tx.auction.update({where:{id:auction.id},data:{endsAt:next,controlVersion,nextCloseAttemptAt:null,closeErrorCode:null}});target=auction.id;receipt={auctionId:auction.id,controlVersion,endsAt:next.toISOString(),...retired};
+    }else if(action==='presentation'){
+      const data=schemas.presentation.parse(input),auction=await tx.auction.findUniqueOrThrow({where:{id:data.auctionId},include:{product:{include:{images:{orderBy:{sortOrder:'asc'}}}},settlement:{select:{id:true}},result:{select:{id:true}}}});
+      if(auction.controlVersion!==data.version)throw new AdminError(409,'Auction controls changed. Reload before saving.');
+      if(!auction.publishedAt||!['LIVE','SCHEDULED'].includes(auction.status)||auction.settlement||auction.result||!auction.product)throw new AdminError(409,'Presentation can change only for an open, unsettled published auction.');
+      if(new Set(data.imageIds).size!==data.imageIds.length)throw new AdminError(422,'Duplicate images are not allowed.');
+      const media=await tx.managedMedia.findMany({where:{id:{in:data.imageIds}},select:{id:true,sourceType:true,sourceCredit:true}});if(media.length!==data.imageIds.length)throw new AdminError(422,'Use uploaded validated images.');
+      const current=auction.presentation??{title:auction.product.title,description:auction.product.description,condition:auction.product.condition,images:auction.product.images.map(image=>({path:image.path,alt:image.alt,sourceType:image.sourceType,sourceCredit:image.sourceCredit}))};
+      const presentation={title:data.title,description:data.description,condition:data.condition,images:data.imageIds.map(mediaId=>{const image=media.find(item=>item.id===mediaId)!;return {path:`/api/media/${image.id}`,alt:data.title,sourceType:image.sourceType,sourceCredit:image.sourceCredit}})};
+      const controlVersion=auction.controlVersion+1;
+      await tx.auctionControlRevision.create({data:{auctionId:auction.id,version:controlVersion,kind:'PRESENTATION',before:asJson(current),after:asJson(presentation),actorId:actor.id,reason:data.reason,operationKey}});
+      await tx.auction.update({where:{id:auction.id},data:{presentation:asJson(presentation),controlVersion}});target=auction.id;receipt={auctionId:auction.id,controlVersion,presentation};
+    }else if(action==='deleteDraft'){
+      const data=schemas.deleteDraft.parse(input),auction=await tx.auction.findUniqueOrThrow({where:{id:data.auctionId},include:{draft:true,_count:{select:{bids:true,holds:true,feeRevisions:true,controlRevisions:true}}}});
+      if(data.confirmation!==auction.code)throw new AdminError(422,'Type the exact auction code to delete this draft.');
+      if(auction.status!=='DRAFT'||auction.publishedAt||!auction.draft||auction._count.bids||auction._count.holds||auction._count.feeRevisions||auction._count.controlRevisions)throw new AdminError(409,'Only an unused unpublished draft can be deleted.');
+      await tx.auctionDraft.delete({where:{auctionId:auction.id}});await tx.auction.delete({where:{id:auction.id}});target=auction.id;receipt={auctionId:auction.id,deleted:true,reason:data.reason};
+    }else if(action==='deleteProduct'){
+      const data=schemas.deleteProduct.parse(input);await tx.$queryRaw`SELECT id FROM "Product" WHERE id=${data.id} FOR UPDATE`;const product=await tx.product.findUniqueOrThrow({where:{id:data.id},include:{_count:{select:{auctions:true}}}});
+      if(product.version!==data.version)throw new AdminError(409,'Product changed. Reload before deleting.');if(data.confirmation!==product.title)throw new AdminError(422,'Type the exact product title to delete it.');if(product._count.auctions)throw new AdminError(409,'Products linked to any auction remain as audit evidence. Hide the product or create a replacement.');
+      await tx.productImage.deleteMany({where:{productId:product.id}});await tx.product.delete({where:{id:product.id}});target=product.id;receipt={productId:product.id,deleted:true,reason:data.reason};
+    }else if(action==='removeCancelled'){
+      const data=schemas.removeCancelled.parse(input),auction=await tx.auction.findUniqueOrThrow({where:{id:data.auctionId},include:{settlement:{select:{outcome:true}}}});
+      if(auction.controlVersion!==data.version)throw new AdminError(409,'Auction controls changed. Reload before saving.');if(data.confirmation!==auction.code)throw new AdminError(422,'Type the exact auction code to remove its public page.');if(auction.status!=='CANCELLED'||auction.settlement?.outcome!=='CANCELLED')throw new AdminError(409,'Only a committed cancelled auction can be removed from public discovery.');
+      const controlVersion=auction.controlVersion+1;await tx.auctionControlRevision.create({data:{auctionId:auction.id,version:controlVersion,kind:'PRESENTATION',before:{publicSlug:auction.slug,featured:auction.featured},after:{publicSlug:null,featured:false},actorId:actor.id,reason:data.reason,operationKey}});await tx.auction.update({where:{id:auction.id},data:{slug:null,featured:false,controlVersion}});target=auction.id;receipt={auctionId:auction.id,removedFromPublic:true,reason:data.reason};
     }else if(action==='cancel'){
       const data=schemas.cancel.parse(input),impact=await cancellationImpact(tx,data.auctionId);
       if(data.confirmation!==impact.code)throw new AdminError(422,'Type the exact auction code to confirm cancellation.');
       if(data.impactHash!==impact.impactHash)throw new AdminError(409,'Cancellation impact changed. Review the new preview before confirming.');
       const settled=await cancelAuctionInTransaction(tx,{auctionId:data.auctionId,actor:{id:actor.id,permission:'auction:cancel'},reason:data.reason,key:data.key});
-      target=data.auctionId;receipt={auctionId:target,code:impact.code,status:settled.outcome,heldReleased:impact.heldPoints,feesRefunded:impact.feeRefund,affectedBidders:impact.affectedBidders};
+      const retired=await retireAuctionPromotions(tx,data.auctionId,actor.now);
+      target=data.auctionId;receipt={auctionId:target,code:impact.code,status:settled.outcome,heldReleased:impact.heldPoints,feesRefunded:impact.feeRefund,affectedBidders:impact.affectedBidders,...retired};
     }else if(action==='replace'){
       const data=schemas.replace.parse(input),original=await tx.auction.findUniqueOrThrow({where:{id:data.auctionId},include:{terms:true,draft:true}});
       if(original.status!=='CANCELLED'||!original.terms||!original.productId)throw new AdminError(409,'Cancel the published auction before creating its replacement.');
-      const suffix=randomUUID().slice(0,12),now=actor.now,body={productId:original.productId,startsAt:new Date(now.getTime()+3600000).toISOString(),endsAt:new Date(now.getTime()+86400000).toISOString(),minPoints:original.terms.minPoints.toString(),maxPoints:original.terms.maxPoints.toString(),stepPoints:original.terms.stepPoints.toString(),entryFeePoints:original.terms.entryFeePoints.toString(),fulfillmentSummary:original.fulfillmentSummary!,fulfillmentRegion:original.fulfillmentRegion!,featured:original.featured};
+      const suffix=randomUUID().slice(0,12),now=actor.now,body={productId:original.productId,startsAt:new Date(now.getTime()+3600000).toISOString(),endsAt:new Date(now.getTime()+86400000).toISOString(),minPoints:original.terms.minPoints.toString(),maxPoints:original.terms.maxPoints.toString(),stepPoints:original.terms.stepPoints.toString(),entryFeePoints:original.terms.entryFeePoints.toString(),fulfillmentSummary:original.fulfillmentSummary!,fulfillmentRegion:original.fulfillmentRegion!,featured:original.featured,maxExtensionMinutes:original.terms.maxExtensionMinutes,allowPaidShortening:original.terms.allowPaidShortening,shortenNoticeMinutes:original.terms.shortenNoticeMinutes};
       const replacement=await tx.auction.create({data:{code:`LW-${suffix.toUpperCase()}`,slug:`lowin-${suffix}`,isDemo:original.isDemo,draft:{create:{body}}}});target=replacement.id;receipt={auctionId:target,replaces:original.id};
     }
     await tx.adminAudit.create({data:{actorId:actor.id,action:action.toUpperCase(),target,operationKey,requestHash:hash,details:{receipt:asJson(receipt)}}});return receipt;
   },{timeout:120000,maxWait:15000,isolationLevel:Prisma.TransactionIsolationLevel.ReadCommitted});
-  if(['category','product','content','publish','cancel'].includes(action))await clearPublicDataCache();
+  if(['category','product','deleteProduct','content','publish','fee','deadline','presentation','removeCancelled','cancel'].includes(action))await clearPublicDataCache();
   return receipt;
 }
 export async function adminRead(client:PrismaClient,headers:Headers,path:string[],params=new URLSearchParams()) {
@@ -152,7 +211,7 @@ export async function adminRead(client:PrismaClient,headers:Headers,path:string[
       return asJson({settlement,journals,holds,wallets});
     }
     if(path[2])throw new AdminError(404,'Admin resource not found.');
-    const auction=await client.auction.findUniqueOrThrow({where:{id:auctionId},select:{id:true,code:true,slug:true,status:true,isDemo:true,startsAt:true,endsAt:true,publishedAt:true,fulfillmentSummary:true,fulfillmentRegion:true,closeErrorCode:true,closeAttempts:true,nextCloseAttemptAt:true,product:{include:{images:true,category:true}},terms:true,draft:true,settlement:{select:{outcome:true,completedAt:true,winningPoints:true,decision:true}},result:{select:{outcome:true,isDemo:true}}}});const counts=await client.$queryRaw<{participants:bigint;bids:bigint}[]>`SELECT COUNT(DISTINCT "userId") AS participants, COUNT(*) AS bids FROM "Bid" WHERE "auctionId"=${auctionId}`;return asJson({...auction,displayStatus:displayAuctionStatus(auction,actor.now),participants:Number(counts[0].participants),acceptedBids:Number(counts[0].bids),serverNow:actor.now.toISOString()});
+    const auction=await client.auction.findUniqueOrThrow({where:{id:auctionId},select:{id:true,code:true,slug:true,status:true,isDemo:true,startsAt:true,endsAt:true,publishedAt:true,featured:true,controlVersion:true,presentation:true,fulfillmentSummary:true,fulfillmentRegion:true,closeErrorCode:true,closeAttempts:true,nextCloseAttemptAt:true,product:{include:{images:true,category:true}},terms:true,feeRevisions:{orderBy:[{effectiveAt:'desc'},{version:'desc'}]},controlRevisions:{orderBy:[{createdAt:'desc'},{version:'desc'}]},draft:true,settlement:{select:{outcome:true,completedAt:true,winningPoints:true,decision:true}},result:{select:{outcome:true,isDemo:true}}}});const counts=await client.$queryRaw<{participants:bigint;bids:bigint}[]>`SELECT COUNT(DISTINCT "userId") AS participants, COUNT(*) AS bids FROM "Bid" WHERE "auctionId"=${auctionId}`;return asJson({...auction,displayStatus:displayAuctionStatus(auction,actor.now),participants:Number(counts[0].participants),acceptedBids:Number(counts[0].bids),serverNow:actor.now.toISOString()});
   }
   throw new AdminError(404,'Admin resource not found.');
 }
