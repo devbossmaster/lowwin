@@ -38,4 +38,10 @@ export const walletAm:Record<string,string>={
  'Pending verification':'ማረጋገጫ በመጠባበቅ ላይ','Verifying':'በማረጋገጥ ላይ','Credited':'ወደ ሂሳብ ገብቷል','Needs review':'ግምገማ ያስፈልጋል','Rejected':'ውድቅ ተደርጓል','Duplicate claim — contact support':'ደረሰኙ ተደግሟል፤ የድጋፍ ቡድኑን ያነጋግሩ','Provider unavailable — retry pending':'የማረጋገጫ አገልግሎቱ አይገኝም፤ ዳግም ሙከራ በመጠባበቅ ላይ','Verifying request…':'ጥያቄው በመረጋገጥ ላይ…','Uploading and scanning receipt…':'ደረሰኙ በመጫንና በመቃኘት ላይ…','Reference extracted. Review it against your receipt before submitting.':'የዝውውር ቁጥሩ ተገኝቷል። ከመላክዎ በፊት ከደረሰኙ ጋር ያዛምዱት።','Try again.':'እንደገና ይሞክሩ።','Scan failed.':'ደረሰኙን መቃኘት አልተቻለም።',' You can enter the reference manually.':' የዝውውር ቁጥሩን በእጅ ማስገባት ይችላሉ።',
  'Winning Bids':'ያሸነፍኩባቸው ጨረታዎች','No winning bids found.':'ያሸነፉበት ጨረታ አልተገኘም።','Read result':'ውጤቱን ይመልከቱ','· winning amount':'· ያሸነፈው መጠን','DEMO · settled test':'የሙከራ ጨረታ · ተጠናቋል'
 };
+Object.assign(walletAm,{
+ 'Choose a payment account first.':'መጀመሪያ የክፍያ ሂሳብ ይምረጡ።',
+ 'Your verified transfer amount is added automatically.':'የተረጋገጠው የዝውውር መጠን በራስ-ሰር ወደ ሂሳብዎ ይገባል።',
+ 'Could not read the screenshot. Paste the payment SMS or transaction reference.':'ምስሉን ማንበብ አልተቻለም። የክፍያ ኤስኤምኤሱን ወይም የዝውውር ቁጥሩን ይለጥፉ።',
+ 'Amount awaiting verification':'መጠኑ ማረጋገጫ እየጠበቀ ነው',
+});
 export function useWalletCopy(){const {language}=useMiniLocale();return (text:string)=>language==='am'?(text.startsWith('DEMO · ')?`DEMO · ${walletAm[text.slice(7)]??text.slice(7)}`:walletAm[text]??text):text}

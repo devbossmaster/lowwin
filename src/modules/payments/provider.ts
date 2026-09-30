@@ -21,7 +21,7 @@ export function candidate(bank:Bank,raw:string){
  const values=[...new Set(found??[])];if(values.length!==1)throw new PaymentError(422,'A single clear reference could not be found. Enter it manually.');return canonical(bank,values[0]);
 }
 const envelope=z.object({success:z.boolean(),exists:z.boolean(),duplicate:z.boolean(),data:z.object({bank:bankSchema,transaction_number:z.string(),verification_method:z.string(),receipt:z.object({status:z.string(),transaction_type:z.string(),amount:z.union([z.number(),z.string()]),currency:z.string(),transaction_date:z.string(),receiver_account:z.string().optional()})})});
-export type VerificationInput={bank:Bank;reference:string;account:string;expectedCents:bigint;createdAt:Date;expiresAt:Date};
+export type VerificationInput={bank:Bank;reference:string;account:string;expectedCents:bigint|null;minCents?:bigint;maxCents?:bigint;createdAt:Date;expiresAt:Date};
 export type Verification={code:string;retrySeconds?:number;evidence:{amountCents?:string;receiverSuffix?:string;date?:string;method?:string;hash?:string};matched:boolean};
 export function assess(raw:unknown,input:VerificationInput,now=new Date()):Verification{
  const parsed=envelope.safeParse(raw);if(!parsed.success)return {code:'INCOMPLETE_EVIDENCE',evidence:{},matched:false};
@@ -31,9 +31,10 @@ export function assess(raw:unknown,input:VerificationInput,now=new Date()):Verif
  // Provider duplicates are investigation evidence, never permission to issue credit.
  // Existing local claims are checked independently under the transfer lock.
  if(parsed.data.duplicate)return fail('DUPLICATE_REVIEW');
- if(!success||!exists)return fail('UNCONFIRMED');if(r.status!=='completed'||r.transaction_type&&r.transaction_type!=='transfer')return fail('INCOMPLETE_TRANSFER');
+ if(!success||!exists)return fail('UNCONFIRMED');if(r.status!=='completed'||r.transaction_type!=='transfer')return fail('INCOMPLETE_TRANSFER');
  if(data.bank!==input.bank||data.transaction_number.toUpperCase()!==input.reference)return fail('REFERENCE_MISMATCH');
- if(data.verification_method!=='official')return fail('UNSUPPORTED_METHOD');if(r.currency!=='ETB')return fail('CURRENCY_MISMATCH');if(amount!==input.expectedCents)return fail('AMOUNT_MISMATCH');
+ if(data.verification_method!=='official')return fail('UNSUPPORTED_METHOD');if(r.currency!=='ETB')return fail('CURRENCY_MISMATCH');
+ if(input.expectedCents!==null?amount!==input.expectedCents:!input.minCents||!input.maxCents||amount<input.minCents||amount>input.maxCents)return fail('AMOUNT_MISMATCH');
  // Never accept masked accounts or infer a receiver from a name or success flag.
  if(!r.receiver_account)return fail('RECEIVER_UNPROVEN');if(r.receiver_account!==input.account)return fail('RECEIVER_MISMATCH');
  if(!/(Z|[+-]\d{2}:\d{2})$/.test(r.transaction_date)||!Number.isFinite(date.getTime())||date<input.createdAt||date>input.expiresAt||date.getTime()>now.getTime()+60000)return fail('DATE_MISMATCH');
