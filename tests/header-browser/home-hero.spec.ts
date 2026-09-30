@@ -32,20 +32,21 @@ test('banner leads directly into the seamless unDraw category rail',async({page}
  for(const path of expectedPaths){await page.goto('/');await page.locator(`a[href="${path}"]`).first().click();await expect(page).toHaveURL('http://localhost:3112'+path);await expect(page.getByRole('heading',{level:1})).toBeVisible()}
  expect(errors).toEqual([]);
 });
-test('401 retry is compact and never opens protected content',async({page},info)=>{
+test('401 recovery requires a fresh launch and never opens protected content',async({page},info)=>{
  await page.route('https://telegram.org/**',r=>r.fulfill({body:''}));
  await page.addInitScript(()=>{window.Telegram={WebApp:{initData:'invalid-test-launch',ready(){},expand(){}}}});
  let attempts=0;
  await page.route('**/api/auth/telegram/miniapp/signin',r=>{attempts++;return r.fulfill({status:401,json:{error:'Launch could not be verified'}})});
  await page.goto('/telegram');
- await expect(page.getByRole('heading',{name:'Let’s try again'})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Reopen Lowwin'})).toBeVisible();
  await expect(page.locator('main')).toHaveCSS('background-color','rgb(21, 128, 61)');
  await expect(page.getByRole('img',{name:'Lowwin'})).toBeVisible();await expect.poll(()=>page.getByRole('img',{name:'Lowwin'}).evaluate((img:HTMLImageElement)=>img.complete&&img.naturalWidth>0)).toBe(true);
- await expect(page.locator('main [role="alert"]')).toHaveText('Reopen Lowwin from the bot to verify your launch.');
+ await expect(page.locator('main [role="alert"]')).toHaveText('Your Telegram launch could not be verified. Open the bot, then tap Open Lowwin to start again.');
  await expect(page.getByText('Your Mini App.')).toHaveCount(0);
  await expect(page.getByRole('navigation',{name:'Main navigation'})).toHaveCount(0);
- await page.getByRole('button',{name:'Retry connection'}).click();await expect.poll(()=>attempts).toBe(2);
- await expect(page.getByRole('heading',{name:'Let’s try again'})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Retry connection'})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Reload app'})).toHaveCount(0);
+ expect(attempts).toBe(1);
  await expect(page.getByRole('link',{name:'Reopen from the bot'})).toHaveAttribute('href',/https:\/\/t.me\/lowin_fixture_bot/);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.screenshot({path:`docs/screenshots/telegram-retry-simple-${info.project.name}.png`});

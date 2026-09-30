@@ -3,6 +3,7 @@ import {useEffect,useRef,useState} from 'react';
 import {useTelegram} from './telegram-provider';
 import {LaunchSplash} from './launch-splash';
 import {CONTACT_ACTION} from '@/modules/bot/onboarding-copy';
+import {TelegramBotLink} from './telegram-bot-link';
 
 export function ContactGate(){
  const {finishContact,botUrl}=useTelegram();
@@ -49,5 +50,5 @@ export function ContactGate(){
   await promptBotAndClose();
  }
  if(!error)return <LaunchSplash/>;
- return <main id="main" className="telegram-entry contact-gate"><p role="alert">{error}</p><button className="primary-button" onClick={()=>void (retryBotPrompt?promptBotAndClose():requestPermission())}>Try again</button>{botUrl&&<a className="text-link" href={botUrl}>Open the bot</a>}<button className="text-link" onClick={close}>Cancel & close</button></main>;
+ return <main id="main" className="telegram-entry contact-gate"><p role="alert">{error}</p><button className="primary-button" onClick={()=>void (retryBotPrompt?promptBotAndClose():requestPermission())}>Try again</button>{botUrl&&<TelegramBotLink className="text-link" href={botUrl}>Open the bot</TelegramBotLink>}<button className="text-link" onClick={close}>Cancel & close</button></main>;
 }

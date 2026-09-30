@@ -40,13 +40,14 @@ test('catalog at mobile widths: header, carousel, cards, countdown and navigatio
   await page.getByRole('link',{name:'ETB wallet',exact:true}).click();
   await expect(page.getByRole('heading',{name:'Add money',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Submit deposit'})).toBeDisabled();
 });
-test('expired Telegram launch offers retry, never fake authentication',async({page})=>{
+test('expired Telegram launch offers reopening, never fake authentication',async({page})=>{
   await page.addInitScript(()=>{window.Telegram={WebApp:{initData:'tampered',ready(){},expand(){}}};});
   await page.route('https://telegram.org/**',route=>route.fulfill({body:''}));
   await page.route('**/api/auth/telegram/miniapp/signin',route=>route.fulfill({status:401,json:{error:'Invalid launch'}}));
   await page.goto('/profile');
   await expect(page.getByRole('heading',{name:'Let’s reconnect'})).toBeVisible();
-  await expect(page.getByRole('button',{name:'Retry connection'})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Retry connection'})).toHaveCount(0);
+  await expect(page.getByRole('link',{name:'Open in Telegram'})).toBeVisible();
 });
 test('featured carousel supports manual control and reduced motion',async({page},testInfo)=>{
   test.skip(testInfo.project.name!=='mobile-430');

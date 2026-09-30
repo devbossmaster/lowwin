@@ -1,18 +1,19 @@
 'use client';
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import Script from 'next/script';
-import {MINI_AUTH_TIMEOUT_MS,miniAuthError,signInTelegram,type MiniAccount} from '@/lib/mini-auth-client';
-type WebApp = { initData?: string; platform?:string; ready: () => void; expand?:()=>void; requestFullscreen?:()=>void; close?:()=>void; requestContact?:(callback:(shared:boolean)=>void)=>void; isVersionAtLeast?:(version:string)=>boolean; setHeaderColor?: (color: string) => void; setBackgroundColor?: (color: string) => void };
+import {MINI_AUTH_TIMEOUT_MS,TelegramLaunchError,miniAuthError,signInTelegram,type MiniAccount} from '@/lib/mini-auth-client';
+type WebApp = { initData?: string; platform?:string; ready: () => void; expand?:()=>void; requestFullscreen?:()=>void; close?:()=>void; openTelegramLink?:(url:string)=>void; requestContact?:(callback:(shared:boolean)=>void)=>void; isVersionAtLeast?:(version:string)=>boolean; setHeaderColor?: (color: string) => void; setBackgroundColor?: (color: string) => void };
 declare global { interface Window { Telegram?: { WebApp?: WebApp } } }
 type Me = MiniAccount;
 type Status = 'loading' | 'guest' | 'contact-required' | 'authenticated' | 'error';
-const Context = createContext<{ status: Status; verifyingTelegram: boolean; me: Me | null; error: string; retry: () => void; finishContact: () => Promise<void>; refreshMe: () => Promise<void>; devLogin: (accessKey: string) => void; devEnabled: boolean; botUrl: string | null }>({ status: 'loading', verifyingTelegram: false, me: null, error: '', retry: () => {}, finishContact: async () => {}, refreshMe: async () => {}, devLogin: () => {}, devEnabled: false, botUrl: null });
+const Context = createContext<{ status: Status; verifyingTelegram: boolean; me: Me | null; error: string; needsReopen: boolean; retry: () => void; finishContact: () => Promise<void>; refreshMe: () => Promise<void>; devLogin: (accessKey: string) => void; devEnabled: boolean; botUrl: string | null }>({ status: 'loading', verifyingTelegram: false, me: null, error: '', needsReopen: false, retry: () => {}, finishContact: async () => {}, refreshMe: async () => {}, devLogin: () => {}, devEnabled: false, botUrl: null });
 export const useTelegram = () => useContext(Context);
 export function TelegramProvider({ children, devEnabled, botUrl, requireLaunch=false }: { children: React.ReactNode; devEnabled: boolean; botUrl: string | null; requireLaunch?:boolean }) {
   const [status, setStatus] = useState<Status>('loading');
   const [verifyingTelegram, setVerifyingTelegram] = useState(false);
   const [me, setMe] = useState<Me | null>(null);
   const [error, setError] = useState('');
+  const [needsReopen, setNeedsReopen] = useState(false);
   const [localBrowser, setLocalBrowser] = useState(false);
   const launchAttempt=useRef<string|null>(null);
   const attemptSequence=useRef(0);
@@ -27,12 +28,14 @@ export function TelegramProvider({ children, devEnabled, botUrl, requireLaunch=f
     if(authenticating.current)return;
     authenticating.current=true;
     const attempt=++attemptSequence.current;
-    setStatus('loading'); setError('');
+    setStatus('loading'); setError(''); setNeedsReopen(false);
     const app = window.Telegram?.WebApp;
+    launchAttempt.current=app?.initData??'';
     // The spinner is presentation only. Access still requires signed initData and server contact verification.
     setVerifyingTelegram(Boolean(app?.initData && !dev));
-    app?.ready(); app?.setHeaderColor?.('#15803d'); app?.setBackgroundColor?.('#15803d');
     try {
+      // A presentation-only SDK failure must not strand the authentication lock.
+      try { app?.ready(); } catch { /* Authentication still runs. */ }
       if(requireLaunch&&!app?.initData&&!dev){setMe(null);setStatus('guest');return}
       if(app?.initData&&!dev) {
         const result=await signInTelegram(app.initData);
@@ -49,29 +52,33 @@ export function TelegramProvider({ children, devEnabled, botUrl, requireLaunch=f
       if (response.status === 401 || (!app?.initData && !dev && response.status === 503)) { setMe(null); setStatus('guest'); return; }
       if (!response.ok) throw new Error('Your account could not be loaded. Please retry.');
       const account=await response.json();if(attempt!==attemptSequence.current)return;setMe(account); setStatus('authenticated');
-    } catch (err) { if(attempt!==attemptSequence.current)return;setMe(null); setError(miniAuthError(err)); setStatus('error'); }
+    } catch (err) { if(attempt!==attemptSequence.current)return;setMe(null); setNeedsReopen(err instanceof TelegramLaunchError); setError(miniAuthError(err)); setStatus('error'); }
     finally { authenticating.current=false;if(attempt===attemptSequence.current)setVerifyingTelegram(false); }
   }, [requireLaunch]);
   const finishContact=useCallback(async()=>{
     const attempt=++attemptSequence.current;
-    setStatus('loading');setError('');setVerifyingTelegram(true);
+    setStatus('loading');setError('');setNeedsReopen(false);setVerifyingTelegram(true);
     try{
       // /api/me requires the stored Telegram-bound session and verified contact.
       // Reusing that session avoids a second Mini App sign-in after the bot confirms contact.
       const response=await fetch('/api/me',{cache:'no-store',signal:AbortSignal.timeout(MINI_AUTH_TIMEOUT_MS)});
       if(attempt!==attemptSequence.current)return;
-      if(!response.ok)throw new Error('Contact was shared, but your account is not ready. Reopen Lowwin from the bot.');
+      if(response.status===401||response.status===403)throw new TelegramLaunchError();
+      if(!response.ok)throw new Error('Contact was shared, but your account could not load. Tap Retry.');
       const account=await response.json();if(attempt!==attemptSequence.current)return;
       setMe(account);setStatus('authenticated');
-    }catch(cause){if(attempt!==attemptSequence.current)return;setMe(null);setError(miniAuthError(cause));setStatus('error')}
+    }catch(cause){if(attempt!==attemptSequence.current)return;setMe(null);setNeedsReopen(cause instanceof TelegramLaunchError);setError(miniAuthError(cause));setStatus('error')}
     finally{if(attempt===attemptSequence.current)setVerifyingTelegram(false)}
   },[]);
-  const autoAuthenticate=useCallback(()=>{const launch=window.Telegram?.WebApp?.initData??'';if(launchAttempt.current===launch)return;launchAttempt.current=launch;void authenticate()},[authenticate]);
+  const autoAuthenticate=useCallback(()=>{const launch=window.Telegram?.WebApp?.initData??'';if(launchAttempt.current===launch)return;void authenticate()},[authenticate]);
   useEffect(() => {
     const color=(status==='loading'&&verifyingTelegram)||status==='error'||(requireLaunch&&status==='guest')?'#15803d':'#FFFFFF';
-    window.Telegram?.WebApp?.setHeaderColor?.(color);
-    window.Telegram?.WebApp?.setBackgroundColor?.(color);
+    try { window.Telegram?.WebApp?.setHeaderColor?.(color); } catch { /* Older Telegram clients may reject custom colors. */ }
+    try { window.Telegram?.WebApp?.setBackgroundColor?.(color); } catch { /* Keep recovery controls usable. */ }
   },[status,verifyingTelegram,requireLaunch]);
+  // A late SDK load can arrive during a previous request. Retry only a changed
+  // launch once that request settles, never loop on the same failed launch.
+  useEffect(()=>{if(status!=='loading')autoAuthenticate()},[status,autoAuthenticate]);
   useEffect(() => {
     // Visibility only, never authentication proof. This also hides the action
     // when a proxy has rewritten all server-visible headers to localhost.
@@ -79,7 +86,7 @@ export function TelegramProvider({ children, devEnabled, botUrl, requireLaunch=f
     if(window.Telegram?.WebApp?.initData){autoAuthenticate();return}
     const timer = setTimeout(autoAuthenticate, 800); return () => clearTimeout(timer);
   }, [autoAuthenticate]);
-  return <Context.Provider value={{ status, verifyingTelegram, me, error, retry: () => void authenticate(), finishContact, refreshMe, devLogin: accessKey => void authenticate(true, accessKey), devEnabled: devEnabled && localBrowser, botUrl }}>
+  return <Context.Provider value={{ status, verifyingTelegram, me, error, needsReopen, retry: () => {if(!needsReopen)void authenticate()}, finishContact, refreshMe, devLogin: accessKey => void authenticate(true, accessKey), devEnabled: devEnabled && localBrowser, botUrl }}>
     <Script src="https://telegram.org/js/telegram-web-app.js" strategy="afterInteractive" onReady={autoAuthenticate}/>
     {children}
   </Context.Provider>;

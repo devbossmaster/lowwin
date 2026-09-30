@@ -94,15 +94,19 @@ function Funding(){
    <PaymentAccounts accounts={intent&&account?[account]:options.accounts} selected={selected} onSelect={id=>{setSelected(id);setInput('');setMessage('');createKey.current='';verifyKey.current=''}} locked={!!intent} busy={!!busy} preview={!options.productionEnabled}/>
    {account&&<p className={styles.hint}>{w('Allowed:')} {money(account.minCents)}–{money(account.maxCents)} ETB. {w('Your verified transfer amount is added automatically.')}</p>}
    <div className={styles.confirmation}>
-    <label className={styles.fieldLabel} htmlFor="verified-reference">{w('Telebirr or CBE message/link')}</label>
+    <div className={styles.referenceHeader}>
+     <label className={styles.fieldLabel} htmlFor="verified-reference">{w('Telebirr or CBE message/link')}</label>
+     {intent&&<div className={styles.referenceActions}>
+      {bound&&!credited&&<button type="button" className={styles.secondary} disabled={!!busy} onClick={()=>{reset();inform(w('Paste the corrected reference. The previous deposit and its review history are kept.'))}}>{w('Correct a mistaken reference')}</button>}
+      <button type="button" className={styles.secondary} disabled={!!busy} onClick={reset}>{w('Start another deposit')}</button>
+     </div>}
+    </div>
     <textarea className={styles.textarea} id="verified-reference" maxLength={4000} value={credited?(intent.reference??input):input} disabled={!account||!!busy||credited||underReview} readOnly={bound} onChange={event=>{setInput(event.target.value);verifyKey.current=''}} placeholder={w('Paste a transaction ID, payment SMS or official receipt link')}/>
     <div className={styles.divider}>{w('Or upload a screenshot')}</div>
     <label className={styles.upload} aria-disabled={!account||!options.ocr||!!busy||credited||underReview}><Upload size={23}/><strong>{w('Upload receipt image')}</strong><span>{w('JPEG, PNG or WebP - up to 5 MB')}</span><input aria-label={w('Upload receipt image')} type="file" accept="image/png,image/jpeg,image/webp" disabled={!account||!options.ocr||!!busy||credited||underReview} onChange={event=>{void scan(event.target.files?.[0]);event.target.value=''}}/></label>
     <button type="button" className={styles.submit} disabled={!account||!input.trim()||!!busy||credited||underReview||waiting} onClick={()=>void submit()}>{busy?<LoadingSpinner/>:credited?w('Deposit credited'):underReview?w(intent?.status==='REJECTED'?'Deposit rejected':'Under admin review'):w(intent?.attempts?'Check payment again':'Submit deposit')}</button>
     <p className={styles.footnote}>{!account?w('Choose a payment account first.'):options.ocr?w('Confirmed transfers to our account are credited automatically in ETB, once.'):w('Paste your receipt message. Image scanning is unavailable.')}</p>
     {intent&&!credited&&<p className={styles.hint}>{intent.canRetry===false?w('Contact support with this deposit ID:'):waiting?w('Retry after:'):w('You can check this payment again.')} {intent.canRetry===false?intent.id:waiting&&intent.nextAttemptAt?new Date(intent.nextAttemptAt).toLocaleString():''}</p>}
-    {bound&&!credited&&<button type="button" className={styles.secondary} disabled={!!busy} onClick={()=>{reset();inform(w('Paste the corrected reference. The previous deposit and its review history are kept.'))}}>{w('Correct a mistaken reference')}</button>}
-    {intent&&<button type="button" className={styles.secondary} disabled={!!busy} onClick={reset}>{w('Start another deposit')}</button>}
     {busy&&<LoadingSpinner label={busy}/>}{message&&<p className={styles.hint} role="status">{message}</p>}
    </div>
    <Link className={styles.help} href="/profile/support">{w('Need help with a payment?')}<ArrowUpRight size={16}/></Link>

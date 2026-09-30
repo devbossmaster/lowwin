@@ -12,3 +12,11 @@ Raw initData signature, freshness, origin, stored Telegram identity, staff exclu
 - The pinned-plugin concurrency case in `tests/database.test.ts` passed; the other 13 cases were deliberately excluded from this focused run.
 
 No real Telegram WebView launch or production latency measurement is included in these results. Database and tunnel connectivity remain external prerequisites.
+
+## Recovery controls — 2026-10-01
+
+Rejected launches now explain that reopening from the bot is required, without offering another sign-in using the same rejected launch. Temporary failures retain Retry connection and add Reload app, which reloads the document while preserving its query and Telegram launch fragment. Reloading cannot renew expired signed launch data. Server authentication and session rules are unchanged.
+
+Bot links use Telegram's `openTelegramLink` followed by `close` from the user click. [Telegram's API](https://core.telegram.org/bots/webapps#initializing-mini-apps) no longer closes Mini Apps when opening a Telegram link. Ordinary browsers retain the normal link; the recovery screen explains manual closing if the native client leaves it visible. SDK presentation failures cannot leave sign-in locked, and a late SDK launch is checked after an earlier request finishes.
+
+Focused regression commands: `node node_modules/vitest/vitest.mjs run tests/mini-auth-client.test.ts tests/telegram-recovery.test.ts` and `node node_modules/@playwright/test/cli.js test --config=playwright.recovery.config.ts`. The browser suite uses mocked Telegram/auth responses and an unavailable loopback test database; it makes no real bot requests. Native Android/iOS handoff still requires a device check after deployment.

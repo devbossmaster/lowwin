@@ -6,6 +6,13 @@ export type MiniAccount = {
 };
 type Bootstrap = {status:'authenticated';me:MiniAccount}|{status:'contact-required';me:null};
 
+export class TelegramLaunchError extends Error {
+  constructor() {
+    super('Your Telegram launch could not be verified. Open the bot, then tap Open Lowwin to start again.');
+    this.name = 'TelegramLaunchError';
+  }
+}
+
 export async function signInTelegram(initData:string):Promise<Bootstrap> {
   const response=await fetch('/api/auth/telegram/miniapp/signin',{
     method:'POST',credentials:'same-origin',cache:'no-store',
@@ -14,7 +21,7 @@ export async function signInTelegram(initData:string):Promise<Bootstrap> {
   });
   if(!response.ok) {
     if(response.status===429)throw new Error('Too many attempts. Try again shortly.');
-    if(response.status===401||response.status===403)throw new Error('Reopen Lowwin from the bot.');
+    if(response.status===401||response.status===403)throw new TelegramLaunchError();
     throw new Error('Connection interrupted. Tap Retry.');
   }
   const result=await response.json() as Bootstrap;

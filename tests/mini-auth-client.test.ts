@@ -1,5 +1,5 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
-import {miniAuthError,signInTelegram} from '../src/lib/mini-auth-client';
+import {miniAuthError,signInTelegram,TelegramLaunchError} from '../src/lib/mini-auth-client';
 
 afterEach(()=>{vi.unstubAllGlobals();vi.restoreAllMocks();vi.useRealTimers()});
 describe('Telegram startup request',()=>{
@@ -22,9 +22,26 @@ describe('Telegram startup request',()=>{
     const request=vi.fn(async()=>Response.json({status:'contact-required',me:null}));vi.stubGlobal('fetch',request);
     expect(await signInTelegram('signed-launch')).toEqual({status:'contact-required',me:null});expect(request).toHaveBeenCalledTimes(1);
   });
-  it.each([401,403,429,503])('handles %s without an automatic sign-in retry',async status=>{
+  it.each([401,403])('marks %s as a rejected launch without an automatic sign-in retry',async status=>{
     const request=vi.fn(async()=>Response.json({}, {status}));vi.stubGlobal('fetch',request);
-    await expect(signInTelegram('signed-launch')).rejects.toThrow();expect(request).toHaveBeenCalledTimes(1);
+    await expect(signInTelegram('signed-launch')).rejects.toBeInstanceOf(TelegramLaunchError);expect(request).toHaveBeenCalledTimes(1);
+  });
+  it.each([
+    [429,'Too many attempts. Try again shortly.'],
+    [503,'Connection interrupted. Tap Retry.'],
+  ])('keeps %s retryable without an automatic sign-in retry',async(status,message)=>{
+    const request=vi.fn(async()=>Response.json({}, {status:Number(status)}));vi.stubGlobal('fetch',request);
+    const error=await signInTelegram('signed-launch').catch(error=>error);
+    expect(error).toBeInstanceOf(Error);expect(error).not.toBeInstanceOf(TelegramLaunchError);
+    expect(miniAuthError(error)).toBe(message);expect(request).toHaveBeenCalledTimes(1);
+  });
+  it.each([
+    new DOMException('raw timeout','TimeoutError'),
+    new TypeError('Failed to fetch'),
+  ])('keeps a transport failure retryable without an automatic retry',async failure=>{
+    const request=vi.fn(async()=>{throw failure});vi.stubGlobal('fetch',request);
+    await expect(signInTelegram('signed-launch')).rejects.toBe(failure);
+    expect(failure).not.toBeInstanceOf(TelegramLaunchError);expect(request).toHaveBeenCalledTimes(1);
   });
   it('provides short retry instructions for browser timeouts and network failures',()=>{
     expect(miniAuthError(new DOMException('raw timeout','TimeoutError'))).toBe('Connection took too long. Tap Retry.');
