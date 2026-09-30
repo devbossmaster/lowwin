@@ -18,7 +18,8 @@ describe.skipIf(!url)('Phase 5A invite-only Owner operations',()=>{
  const messages:{to:string;text:string}[]=[],password='Fixture-only-password-12345',email='owner@lowin.test';
  const request=(path:string,body?:unknown,session=cookie)=>new Request(`http://localhost:3000${path}`,{method:body===undefined?'GET':'POST',headers:{origin:'http://localhost:3000','content-type':'application/json',...(session?{cookie:session}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});
  async function auth(action:string,body:unknown,session=cookie){return handleAuth(request(`/api/auth/lowin/staff/${action}`,body,session))}
- function takeCookie(r:Response){return r.headers.get('set-cookie')!.split(';')[0]}
+ let deviceCookie='';
+ function takeCookie(r:Response){return r.headers.getSetCookie().find(c=>c.includes('session_token='))!.split(';')[0]}
  async function get(path:string,session=cookie){return admin.GET(request(`/api/admin/${path}`,undefined,session),{params:Promise.resolve({path:path.split('/')})})}
  async function cmd(action:string,input:unknown,session=cookie){return admin.POST(request('/api/admin/command',{action,input},session),{params:Promise.resolve({path:['command']})})}
  async function okay(response:Response){const body=await response.json();expect(response.status,JSON.stringify(body)).toBe(200);return body}
@@ -99,12 +100,31 @@ describe.skipIf(!url)('Phase 5A invite-only Owner operations',()=>{
   const grant=await client.staffSession.findFirstOrThrow({where:{mfaAt:{not:null},session:{userId:ownerId}}});await client.staffSession.update({where:{sessionId:grant.sessionId},data:{expiresAt:new Date(Date.now()-1000)}});expect((await get('dashboard')).status).toBe(403);
   const login=await auth('login',{email,password},'');await okay(login);cookie=takeCookie(login);const member=await client.staffMember.findUniqueOrThrow({where:{userId:ownerId}});const next=member.lastCounter+1n;
   const wait=Math.max(0,(Number(next)-1)*30000-Date.now()+100);if(wait)await new Promise(resolve=>setTimeout(resolve,wait));
-  const response=await auth('mfa',{code:totp(secret,next)});await okay(response);cookie=takeCookie(response);expect((await get('dashboard')).status).toBe(200);
+  const response=await auth('mfa',{code:totp(secret,next),rememberDevice:true});await okay(response);cookie=takeCookie(response);expect((await get('dashboard')).status).toBe(200);
+  const remembered=response.headers.getSetCookie().find(c=>c.startsWith('lowwin_staff_device='))!;expect(remembered).toContain('HttpOnly');expect(remembered).toContain('SameSite=Strict');expect(remembered).toContain('Max-Age=2592000');deviceCookie=remembered.split(';')[0];
  },40000);
+ it('remembers a device for 30 days, rotates its token, and still requires fresh MFA',async()=>{
+  const before=await client.staffTrustedDevice.findUniqueOrThrow({where:{tokenHash:digest(deviceCookie.split('=')[1])}});
+  expect(before.expiresAt.getTime()-before.createdAt.getTime()).toBe(30*86400000);
+  const login=await auth('login',{email,password},deviceCookie);expect(await okay(login)).toEqual({mode:'authenticated'});cookie=takeCookie(login);
+  const rotated=login.headers.getSetCookie().find(c=>c.startsWith('lowwin_staff_device='))!.split(';')[0];expect(rotated).not.toBe(deviceCookie);
+  expect(await client.staffTrustedDevice.findUnique({where:{tokenHash:before.tokenHash}})).toBeNull();
+  const next=await client.staffTrustedDevice.findUniqueOrThrow({where:{tokenHash:digest(rotated.split('=')[1])}});expect(next.expiresAt).toEqual(before.expiresAt);
+  expect((await get('dashboard')).status).toBe(200);
+  const {requireAdmin}=await import('../src/modules/admin/boundary');
+  await expect(requireAdmin(client,new Headers({cookie}),{fresh:true})).rejects.toThrow('Fresh MFA');
+  expect(await okay(await auth('login',{email,password},deviceCookie))).toEqual({mode:'challenge'});
+  expect(await okay(await auth('login',{email,password},'lowwin_staff_device=forged'))).toEqual({mode:'challenge'});
+  await client.staffTrustedDevice.update({where:{tokenHash:next.tokenHash},data:{createdAt:new Date(Date.now()-31*86400000),expiresAt:new Date(Date.now()-86400000)}});
+  expect((await get('dashboard')).status).toBe(403);
+  expect(await okay(await auth('login',{email,password},rotated))).toEqual({mode:'challenge'});
+  deviceCookie=rotated;
+ });
  it('uses generic forgot responses, one-time reset tokens and revokes all sessions',async()=>{
   const known=await okay(await auth('forgot',{email},'')),unknown=await okay(await auth('forgot',{email:'missing@lowin.test'},''));expect(known).toEqual(unknown);
   const link=messages.at(-1)!.text.match(/http[^\s]+/)![0],reset=new URLSearchParams(new URL(link).hash.slice(1)).get('reset')!;
   await okay(await auth('reset',{token:reset,password:'Replacement-password-12345'},''));expect((await get('dashboard')).status).toBe(401);expect(await client.session.count({where:{userId:ownerId}})).toBe(0);expect((await auth('reset',{token:reset,password},'')).status).toBe(400);expect((await auth('login',{email,password},'')).status).toBe(401);
+  expect(await client.staffTrustedDevice.count({where:{userId:ownerId}})).toBe(0);
  });
  it('recovery codes revoke sessions and require enrollment again before any permission',async()=>{
   const login=await auth('login',{email,password:'Replacement-password-12345'},'');await okay(login);cookie=takeCookie(login);const recovery=await auth('mfa',{code:codes[0]});expect(await okay(recovery)).toMatchObject({mode:'enroll'});cookie=takeCookie(recovery);expect((await get('dashboard')).status).toBe(403);expect((await client.staffMember.findUniqueOrThrow({where:{userId:ownerId}})).recoveryHashes).toEqual([]);expect((await auth('mfa',{code:codes[0]})).status).not.toBe(200);

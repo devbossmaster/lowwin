@@ -44,6 +44,32 @@ describe.skipIf(!url)('Phase 6 verified transfers and payment operations',()=>{
  },60000);
  afterAll(async()=>{vi.unstubAllGlobals();await db?.$disconnect();await (await import('../src/lib/db')).db.$disconnect();await new Promise<void>(r=>sink?.close(()=>r()))});
  it('requires signed sessions and denies role/password-only spoofing',async()=>{expect((await paymentRoute.GET(request('wallet/top-ups'))).status).toBe(401);expect((await paymentRoute.GET(request('wallet/top-ups',undefined,player.cookie))).headers.get('cache-control')).toContain('no-store');for(const c of [player.cookie,roles.CATALOG_MANAGER.cookie])expect((await adminRoute.GET(request('admin/payments',undefined,c),{params:Promise.resolve({})})).status).toBe(403);const login=await staff('login',{email:'payment-owner@lowin.test',password});await okay(login);expect((await adminRoute.GET(request('admin/payments',undefined,cookie(login)),{params:Promise.resolve({})})).status).toBe(403);expect((await paymentRoute.POST(request('wallet/top-ups',{action:'create',input:{key:randomUUID(),channel:'cbe',policyId:policies.cbe,amountCents:'100',receiver:'spoof'}},player.cookie))).status).toBe(422)});
+ it.each(['telebirr','cbe'])('credits provider-derived %s amounts once without a client amount',async channel=>{
+  const user=await db.user.create({data:{id:randomUUID(),name:'DEMO automatic amount'}}),body={key:randomUUID(),channel,policyId:policies[channel]};
+  const t=await createIntent(db,user.id,body,true);expect(t.amountCents).toBeUndefined();expect(t.points).toBe('0');
+  expect((await createIntent(db,user.id,body,true)).id).toBe(t.id);
+  await expect(createIntent(db,user.id,{...body,amountCents:'999999'},true)).rejects.toThrow();
+  await expect(db.topUpIntent.update({where:{id:t.id},data:{points:new MoneyPrisma.Decimal('30'),expectedCents:3000n}})).rejects.toThrow();
+  const input={id:t.id,key:randomUUID(),input:channel==='cbe'?'FT'+ref():ref()};
+  const provider=async(v:VerificationInput)=>{const b=providerBody(v);b.data.receipt.amount=30.27;return assess(b,v)};
+  const result=await verifyIntent(db,user.id,input,provider);expect(result).toMatchObject({status:'CREDITED',points:'30.27',amountCents:'3027'});
+  expect(await verifyIntent(db,user.id,input,provider)).toEqual(result);
+  expect(await db.paymentClaim.count({where:{intentId:t.id}})).toBe(1);
+  expect(await db.outbox.count({where:{key:`deposit:${t.id}:credited`}})).toBe(1);
+  expect(await db.notificationInbox.count({where:{key:`deposit:${t.id}:credited`}})).toBe(1);
+  await expect(db.topUpIntent.update({where:{id:t.id},data:{expectedCents:9999n}})).rejects.toThrow();
+  expect(await reconcile(db)).toEqual([]);expect(await reconcilePayments(db)).toEqual([]);
+ });
+ it('does not fill an automatic amount on provider failure, mismatch or duplicate',async()=>{
+  for(const kind of ['outage','duplicate','amount','receiver']){
+   const user=await db.user.create({data:{id:randomUUID(),name:'DEMO fail closed'}}),t=await createIntent(db,user.id,{key:randomUUID(),channel:'telebirr',policyId:policies.telebirr},true);
+   const result=await verifyIntent(db,user.id,{id:t.id,key:randomUUID(),input:ref()},async v=>{
+    if(kind==='outage')return {code:'PROVIDER_OUTAGE',matched:false,evidence:{}};
+    const b=providerBody(v);b.data.receipt.amount=kind==='amount'?99999:30;b.duplicate=kind==='duplicate';if(kind==='receiver')b.data.receipt.receiver_account='0999999999';return assess(b,v);
+   });
+   expect(result.status).not.toBe('CREDITED');expect(result.amountCents).toBeUndefined();expect(result.points).toBe('0');expect(await db.paymentClaim.count({where:{intentId:t.id}})).toBe(0);
+  }
+ });
  it.each(['telebirr','cbe'])('credits exact cents through verified %s evidence once',async channel=>{
   const user=await db.user.create({data:{id:randomUUID(),name:'DEMO cent funding fixture'}});
   const t=await intent(user.id,channel,'197');expect(t.points).toBe('1.97');

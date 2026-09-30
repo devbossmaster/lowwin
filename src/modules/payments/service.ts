@@ -18,16 +18,20 @@ async function clock(tx:Tx){return (await tx.$queryRaw<{now:Date}[]>`SELECT cloc
 async function eligibility(tx:Tx,userId:string){try{await assertPlayerContact(tx,userId)}catch{throw new PaymentError(403,'Share your own contact in Telegram first.')}if(await tx.staffMember.findUnique({where:{userId}})||await tx.userRestriction.findFirst({where:{userId,suspended:true}}))throw new PaymentError(403,'Adding ETB is unavailable for this account.')}
 const int=z.string().regex(/^[1-9]\d{0,10}$/);
 const createSchema=z.object({key:z.string().uuid(),channel:bankSchema,policyId:z.string().uuid(),amountCents:int}).strict();
+const receiptCreateSchema=z.object({key:z.string().uuid(),channel:bankSchema,policyId:z.string().uuid()}).strict();
 export function ownIntent(t:TopUpIntent){return {id:t.id,demo:t.provider==='DEMO_PREVIEW',channel:t.channel,status:t.status,amountCents:t.expectedCents?.toString(),points:t.points.toString(),policyVersion:t.policyVersion,quote:t.quoteSnapshot,account:t.receivingAccount,accountName:t.accountName,createdAt:t.createdAt.toISOString(),expiresAt:t.expiresAt?.toISOString(),reference:t.reference,reason:t.reasonCode,attempts:t.attempts,nextAttemptAt:t.nextAttemptAt.toISOString(),caseState:t.caseState};}
 export async function fundingOptions(client:PrismaClient){const policies=await Promise.all((['telebirr','cbe'] as const).map(channel=>client.paymentPolicy.findFirst({where:{channel},orderBy:{version:'desc'}})));return {...paymentHealth(),accounts:policies.filter(p=>p?.enabled&&p.pointsNumerator*100n===p.centsDenominator).map(p=>({id:p!.channel,policyId:p!.id,version:p!.version,name:p!.channel==='telebirr'?'Telebirr':'CBE',number:p!.account,holder:p!.accountName,numerator:p!.pointsNumerator.toString(),denominator:p!.centsDenominator.toString(),minCents:p!.minCents.toString(),maxCents:p!.maxCents.toString(),terms:p!.terms}))}}
-export async function createIntent(client:PrismaClient,userId:string,raw:unknown){requireEnabled();const body=createSchema.parse(raw),fingerprint=hash(JSON.stringify(body));return client.$transaction(async tx=>{
+export async function createIntent(client:PrismaClient,userId:string,raw:unknown,fromReceipt=false){requireEnabled();const body=fromReceipt?receiptCreateSchema.parse(raw):createSchema.parse(raw),fingerprint=hash(JSON.stringify({...body,...(fromReceipt?{amountFromReceipt:true}:{})}));return client.$transaction(async tx=>{
  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`},0))`;await eligibility(tx,userId);
  const prior=await tx.topUpIntent.findUnique({where:{userId_key:{userId,key:body.key}}});if(prior){if(prior.requestHash!==fingerprint)throw new PaymentError(409,'Idempotency key changed.');return ownIntent(prior)}
  const now=await clock(tx);if(await tx.topUpIntent.count({where:{userId,createdAt:{gte:new Date(now.getTime()-3600000)}}})>=8)throw new PaymentError(429,'Too many funding requests. Try later.');
  const policy=await tx.paymentPolicy.findFirst({where:{channel:body.channel},orderBy:{version:'desc'}});if(!policy?.enabled||policy.id!==body.policyId)throw new PaymentError(409,'The quote changed or channel is paused. Review the latest terms.');
  if(policy.pointsNumerator*100n!==policy.centsDenominator)throw new PaymentError(409,'This quote uses an old conversion rate. Ask an Owner to publish the ETB 1:1 quote.');
- const amount=BigInt(body.amountCents);if(amount<policy.minCents||amount>policy.maxCents)throw new PaymentError(422,'Choose an amount within the published range.');const points=new Prisma.Decimal(amount.toString()).div(100);if(points.gt(1000000000))throw new PaymentError(422,'ETB amount is too large.');
- const t=await tx.topUpIntent.create({data:{userId,key:body.key,provider:'CHECK_ET',channel:body.channel,policyVersion:policy.id,requestHash:fingerprint,points,expectedCents:amount,receivingAccount:policy.account,accountName:policy.accountName,quoteSnapshot:{version:policy.version,numerator:policy.pointsNumerator.toString(),denominator:policy.centsDenominator.toString(),terms:policy.terms},createdAt:now,expiresAt:new Date(now.getTime()+30*60000)}});return ownIntent(t);
+ const amount=fromReceipt?null:BigInt(createSchema.parse(raw).amountCents);
+ if(amount!==null&&(amount<policy.minCents||amount>policy.maxCents))throw new PaymentError(422,'Choose an amount within the published range.');const points=new Prisma.Decimal(amount?.toString()??'0').div(100);if(points.gt(1000000000))throw new PaymentError(422,'ETB amount is too large.');
+ // Freeze a bounded receipt submission window, never before this policy existed.
+ const earliestTransferAt=new Date(Math.max(policy.createdAt.getTime(),now.getTime()-86400000));
+ const t=await tx.topUpIntent.create({data:{userId,key:body.key,provider:'CHECK_ET',channel:body.channel,policyVersion:policy.id,requestHash:fingerprint,points,expectedCents:amount,amountFromReceipt:fromReceipt,receivingAccount:policy.account,accountName:policy.accountName,quoteSnapshot:{version:policy.version,numerator:policy.pointsNumerator.toString(),denominator:policy.centsDenominator.toString(),terms:policy.terms,...(fromReceipt?{minCents:policy.minCents.toString(),maxCents:policy.maxCents.toString(),earliestTransferAt:earliestTransferAt.toISOString()}:{})},createdAt:now,expiresAt:new Date(now.getTime()+30*60000)}});return ownIntent(t);
  })}
 const verifySchema=z.object({id:z.string().uuid(),key:z.string().uuid(),input:z.string().min(1).max(4000)}).strict();
 export async function verifyIntent(client:PrismaClient,userId:string,raw:unknown,transport:VerifyTransport=checkEt,reauthorize?:(tx:Tx)=>Promise<void>){
@@ -42,23 +46,28 @@ export async function verifyIntent(client:PrismaClient,userId:string,raw:unknown
   await eligibility(tx,userId);const token=randomUUID();const current=await tx.topUpIntent.update({where:{id:t.id},data:{status:'VERIFYING',reference,attempts:{increment:1},leaseToken:token,leaseUntil:new Date(now.getTime()+30000)}});return {t:current,token,fingerprint,reference};
  });if('receipt' in lease)return lease.receipt!;
  // Deliberately outside any DB transaction. Only a short lease survives a crash.
- const {t,token,fingerprint,reference}=lease;const verified=await transport({bank:t.channel as Bank,reference,account:t.receivingAccount!,expectedCents:t.expectedCents!,createdAt:t.createdAt,expiresAt:t.expiresAt!});
+ const {t,token,fingerprint,reference}=lease;
+ const quote=t.quoteSnapshot as {minCents?:string;maxCents?:string;earliestTransferAt?:string};
+ const verified=await transport({bank:t.channel as Bank,reference,account:t.receivingAccount!,expectedCents:t.expectedCents,createdAt:t.amountFromReceipt?new Date(quote.earliestTransferAt!):t.createdAt,expiresAt:t.expiresAt!,...(t.amountFromReceipt?{minCents:BigInt(quote.minCents!),maxCents:BigInt(quote.maxCents!)}:{})});
  return client.$transaction(async tx=>{
   await tx.$queryRaw`SELECT id FROM "TopUpIntent" WHERE id=${t.id} FOR UPDATE`;const current=await tx.topUpIntent.findUniqueOrThrow({where:{id:t.id}});if(current.status==='CREDITED')return ownIntent(current);if(current.leaseToken!==token)throw new PaymentError(409,'Verification was superseded. Refresh the request.');
   const now=await clock(tx);await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`transfer:${t.channel}:${reference}`},0))`;
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`},0))`;await eligibility(tx,userId);if(reauthorize)await reauthorize(tx);requireEnabled();
   let code=verified.code,matched=verified.matched;if(now>t.expiresAt!){code='STALE_INTENT';matched=false}
+  const amount=t.amountFromReceipt&&verified.evidence.amountCents?BigInt(verified.evidence.amountCents):t.expectedCents;
+  const points=t.amountFromReceipt?new Prisma.Decimal(amount?.toString()??'0').div(100):t.points;
+  if(matched&&(!amount||points.lte(0)||points.gt(1000000000)||t.amountFromReceipt&&(amount<BigInt(quote.minCents!)||amount>BigInt(quote.maxCents!)))){code='AMOUNT_MISMATCH';matched=false}
   const conflict=await tx.paymentClaim.findUnique({where:{channel_reference:{channel:t.channel!,reference}}});if(conflict){code='DUPLICATE_CONFLICT';matched=false}
   let journalId:string|undefined;
   if(matched){
    await ensureWallet(tx,userId);await seedPlatformAccounts(tx);const available=await tx.ledgerAccount.findUniqueOrThrow({where:{name:`user:${userId}:available`}}),issuance=await tx.ledgerAccount.findUniqueOrThrow({where:{name:'platform:issuance'}});
-   const operation=await tx.operation.create({data:{userId,scope:'TOPUP_CREDIT',key:t.id,requestHash:hash(`${t.id}:${reference}:${t.points}`),result:{intentId:t.id,credited:t.points.toString(),amountCents:t.expectedCents!.toString(),policyVersion:t.policyVersion}}});
-   const journal=await tx.journal.create({data:{operationId:operation.id,kind:'TOPUP_CREDIT',reference:`topup:${t.id}`,postings:{create:[{accountId:issuance.id,delta:t.points.negated()},{accountId:available.id,delta:t.points}]}}});journalId=journal.id;
-   await tx.paymentClaim.create({data:{channel:t.channel!,reference,intentId:t.id,userId,amountCents:t.expectedCents!,points:t.points,receiverSuffix:verified.evidence.receiverSuffix!,transferredAt:new Date(verified.evidence.date!),operationId:operation.id,journalId,evidenceHash:verified.evidence.hash!}});
+   const operation=await tx.operation.create({data:{userId,scope:'TOPUP_CREDIT',key:t.id,requestHash:hash(`${t.id}:${reference}:${points}`),result:{intentId:t.id,credited:points.toString(),amountCents:amount!.toString(),policyVersion:t.policyVersion}}});
+   const journal=await tx.journal.create({data:{operationId:operation.id,kind:'TOPUP_CREDIT',reference:`topup:${t.id}`,postings:{create:[{accountId:issuance.id,delta:points.negated()},{accountId:available.id,delta:points}]}}});journalId=journal.id;
+   await tx.paymentClaim.create({data:{channel:t.channel!,reference,intentId:t.id,userId,amountCents:amount!,points,receiverSuffix:verified.evidence.receiverSuffix!,transferredAt:new Date(verified.evidence.date!),operationId:operation.id,journalId,evidenceHash:verified.evidence.hash!}});
   }
   await tx.paymentAttempt.create({data:{intentId:t.id,key:body.key,requestHash:fingerprint,code,evidence:JSON.parse(JSON.stringify(verified.evidence)) as Prisma.InputJsonValue}});
   const status=matched?'CREDITED':code==='DUPLICATE_CONFLICT'?code:code.startsWith('PROVIDER_')?'PROVIDER_OUTAGE':['NOT_FOUND','UNCONFIRMED'].includes(code)?'PENDING':code==='INVALID_RECEIPT'?'REJECTED':'NEEDS_REVIEW';
-  const updated=await tx.topUpIntent.update({where:{id:t.id},data:{status,journalId,reasonCode:code,leaseToken:null,leaseUntil:null,nextAttemptAt:new Date(now.getTime()+Math.max(verified.retrySeconds??0,Math.min(900,30*2**current.attempts))*1000)}});
+  const updated=await tx.topUpIntent.update({where:{id:t.id},data:{status,journalId,...(matched&&t.amountFromReceipt?{expectedCents:amount,points}:{}),reasonCode:code,leaseToken:null,leaseUntil:null,nextAttemptAt:new Date(now.getTime()+Math.max(verified.retrySeconds??0,Math.min(900,30*2**current.attempts))*1000)}});
   if(matched){const row=await tx.outbox.create({data:{key:`deposit:${t.id}:credited`,kind:'DEPOSIT_CREDITED',payload:{intentId:t.id,recipientUserId:userId}}});await materializeAlert(tx,row)}
   return ownIntent(updated);
  },{timeout:15000});

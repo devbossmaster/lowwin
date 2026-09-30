@@ -9,7 +9,7 @@ export function StaffLogin(){const router=useRouter(),[mode,setMode]=useState('l
   useEffect(()=>{setReady(true);const acceptLink=()=>{const hash=new URLSearchParams(location.hash.slice(1));for(const kind of ['invite','reset'])if(hash.has(kind)){setMode(kind);setToken(hash.get(kind)!);history.replaceState(null,'',location.pathname)}};acceptLink();window.addEventListener('hashchange',acceptLink);return()=>window.removeEventListener('hashchange',acceptLink)},[]);
   async function submit(event:React.FormEvent<HTMLFormElement>){event.preventDefault();setBusy(true);setError('');const form=new FormData(event.currentTarget);try{
     const action=mode==='invite'?'accept-invite':mode==='challenge'||mode==='enroll'?'mfa':mode;
-    const body=mode==='invite'||mode==='reset'?{token,password:form.get('password')}:mode==='login'?{email:form.get('email'),password:form.get('password')}:mode==='forgot'?{email:form.get('email')}:{code:form.get('code')};
+    const body=mode==='invite'||mode==='reset'?{token,password:form.get('password')}:mode==='login'?{email:form.get('email'),password:form.get('password')}:mode==='forgot'?{email:form.get('email')}:{code:form.get('code'),rememberDevice:form.get('rememberDevice')==='on'};
     const result=await staffRequest(action,body);setMessage(result.message??'');
     if(result.mode==='enroll'){const enrollment=await staffRequest('enroll',{});setSecret(enrollment.secret);setMode('enroll')}
     else if(result.recoveryCodes){setCodes(result.recoveryCodes);setMode('recovery')}
@@ -24,6 +24,7 @@ export function StaffLogin(){const router=useRouter(),[mode,setMode]=useState('l
     {(mode==='login'||mode==='forgot')&&<label>Staff email<input name="email" type="email" autoComplete="username" required/></label>}
     {['login','invite','reset'].includes(mode)&&<label>Password<input name="password" aria-label="Password" aria-describedby="staff-password-hint" type="password" minLength={12} maxLength={128} autoComplete={mode==='login'?'current-password':'new-password'} required/><small id="staff-password-hint">At least 12 characters.</small></label>}
     {['challenge','enroll'].includes(mode)&&<label>Authenticator or recovery code<input name="code" autoComplete="one-time-code" inputMode={mode==='enroll'?'numeric':'text'} required minLength={6}/></label>}
+    {['challenge','enroll'].includes(mode)&&<label className="admin-remember-device"><input type="checkbox" name="rememberDevice"/> Don’t ask me for 30 days on this device<small>Use only on your own device. Sensitive actions still require a fresh code. Signing out forgets this device.</small></label>}
     <button disabled={!ready||busy}>{busy?<LoadingSpinner/>:mode==='forgot'?'Send reset instructions':mode==='login'?'Continue':mode==='enroll'||mode==='challenge'?'Verify authenticator':'Save password'}</button></form>}
     {mode==='login'&&<button className="admin-text-button" onClick={()=>{setMode('forgot');setMessage('');setError('')}}>Forgot password?</button>}{mode==='forgot'&&<button className="admin-text-button" onClick={()=>setMode('login')}>Back to sign in</button>}
     <p className="admin-access-note">No public staff registration. Production email delivery remains unavailable until a provider is configured.</p></section></main>;
