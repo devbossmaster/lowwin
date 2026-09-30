@@ -66,6 +66,7 @@ EMAIL_FROM=<verified sender email>
 RESEND_API_KEY=<sending key>
 VERIFY_ET_API_KEY=<Verify.et verification read/write key>
 VERIFY_ET_WEBHOOK_SECRET=<dashboard endpoint whsec_ secret>
+VERIFY_ET_SCHEMA_READY=false
 PAYMENTS_LIVE_ENABLED=false
 RECEIPT_OCR=tesseract
 ADMIN_BOOTSTRAP_ENABLED=false
@@ -78,7 +79,7 @@ WALLET_TEST_PREVIEW=false
 
 For new installations, generate each independent key with `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"`; use `base64url` instead for auth/webhook secrets. PHONE_CONTACT_KEYS uses the same JSON format as the delivery keyring, with its own different key and matching key ID. For retained data, preserve the existing contact/MFA/delivery keys and IDs. Never regenerate them casually. Exact receiver account/holder policies belong in the reviewed admin funding configuration.
 
-Verify.et requires an API key with `verification:write` and `verification:read`. Register `https://lowwin.shop/api/payments/verify-et/webhook` in the Verify.et dashboard for `verification.completed`, copy its one-time `whsec_` secret privately, and send a signed test event. The endpoint returns 204 for a valid test. Put the same API key and current webhook secret in the web and notification-worker resources. Keep `PAYMENTS_LIVE_ENABLED=false` during migration and validation. Lowwin performs its own OCR and sends only JSON identifiers to Verify.et; do not enable Verify.et Image Processing or buy image credits for this flow. See `docs/verify-et-migration.md` for the contract gap and rollout sequence.
+Verify.et requires an API key with `verification:write` and `verification:read`. Register `https://lowwin.shop/api/payments/verify-et/webhook` in the Verify.et dashboard for `verification.completed`, copy its one-time `whsec_` secret privately, and send a signed test event. The endpoint returns 204 for a valid test. Put the same API key and current webhook secret in the web and notification-worker resources. `VERIFY_ET_SCHEMA_READY` defaults to false: keep it false on both web and notification worker until the additive migration is applied and checked. This prevents an automatic main-branch deployment from querying missing Verify.et tables even if the older `PAYMENTS_LIVE_ENABLED` is still true. Keep live funding off during validation. Lowwin performs its own OCR and sends only JSON identifiers to Verify.et; do not enable Verify.et Image Processing or buy image credits for this flow. See `docs/verify-et-migration.md` for the contract gap and rollout sequence.
 
 ## 5. Start in order
 
