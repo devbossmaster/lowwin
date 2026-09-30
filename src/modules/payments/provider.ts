@@ -24,12 +24,22 @@ export function candidate(bank:Bank,raw:string){
 const envelope=z.object({success:z.boolean(),exists:z.boolean(),duplicate:z.boolean(),data:z.object({bank:bankSchema,transaction_number:z.string(),verification_method:z.string(),receipt:z.object({status:z.string(),transaction_type:z.string(),amount:z.union([z.number(),z.string()]),currency:z.string(),transaction_date:z.string(),receiver_account:z.string().optional()})})});
 export type AttemptWindow={startedAt:Date;endedAt:Date;attemptKey?:string};
 export type VerificationInput={priorAttempts?:AttemptWindow[];otherAttempts?:AttemptWindow[];bank:Bank;reference:string;account:string;expectedCents:bigint|null;minCents?:bigint;maxCents?:bigint;createdAt:Date;expiresAt:Date;outageAttemptAt?:Date};
-export type Verification={code:string;retrySeconds?:number;evidence:{amountCents?:string;receiverSuffix?:string;date?:string;method?:string;hash?:string;originalVerificationId?:number;providerVerifiedAt?:string;correlatedAttemptKey?:string;recoveryCheck?:string};matched:boolean};
+type EvidenceFieldIssue={field:string;issue:string;received:string};
+export type Verification={code:string;retrySeconds?:number;evidence:{amountCents?:string;receiverSuffix?:string;date?:string;method?:string;hash?:string;originalVerificationId?:number;providerVerifiedAt?:string;correlatedAttemptKey?:string;recoveryCheck?:string;invalidFields?:EvidenceFieldIssue[]};matched:boolean};
+function evidenceFieldIssues(raw:unknown,error:z.ZodError):EvidenceFieldIssue[]{
+ // Only schema-owned field paths and value types are recorded, never values or
+ // provider messages. This distinguishes missing evidence from contract drift.
+ return error.issues.slice(0,20).map(issue=>{
+  let value:unknown=raw;
+  for(const part of issue.path)value=value!==null&&typeof value==='object'?Object.prototype.hasOwnProperty.call(value,part)?(value as Record<PropertyKey,unknown>)[part]:undefined:undefined;
+  return {field:issue.path.join('.')||'response',issue:issue.code,received:value===undefined?'missing':value===null?'null':Array.isArray(value)?'array':typeof value};
+ });
+}
 export function assess(raw:unknown,input:VerificationInput,now=new Date()):Verification{
  const flags=z.object({success:z.boolean(),exists:z.boolean(),duplicate:z.boolean()}).safeParse(raw);
  if(flags.success&&flags.data.duplicate&&!envelope.safeParse(raw).success)return {code:'DUPLICATE_REVIEW',evidence:{},matched:false};
  if(flags.success&&(!flags.data.success||!flags.data.exists))return {code:'UNCONFIRMED',evidence:{},matched:false};
- const parsed=envelope.safeParse(raw);if(!parsed.success)return {code:'INCOMPLETE_EVIDENCE',evidence:{},matched:false};
+ const parsed=envelope.safeParse(raw);if(!parsed.success)return {code:'INCOMPLETE_EVIDENCE',evidence:{invalidFields:evidenceFieldIssues(raw,parsed.error)},matched:false};
  const {success,exists,data}=parsed.data,r=data.receipt;let amount:bigint;try{amount=cents(r.amount)}catch{return {code:'INVALID_AMOUNT',evidence:{},matched:false}}
  const date=new Date(r.transaction_date),evidence={amountCents:amount.toString(),receiverSuffix:r.receiver_account?.slice(-4),date:Number.isFinite(date.getTime())?date.toISOString():undefined,method:data.verification_method,hash:hash(JSON.stringify({bank:data.bank,reference:data.transaction_number,amount:amount.toString(),receiver:r.receiver_account,date:r.transaction_date,status:r.status,method:data.verification_method}))};
  const fail=(code:string):Verification=>({code,evidence,matched:false});
@@ -76,7 +86,7 @@ export async function recoverProviderDuplicate(raw:unknown,input:VerificationInp
 export async function checkEt(input:VerificationInput):Promise<Verification>{
  const started=performance.now();let httpStatus:number|undefined;
  const finish=(result:Verification,failure?:string):Verification=>{
-  const entry=JSON.stringify({event:'payment_provider_verification',bank:input.bank,code:result.code,httpStatus,elapsedMs:Math.round(performance.now()-started),failure,recoveryCheck:result.evidence.recoveryCheck??(result.code==='DUPLICATE_REVIEW'&&!input.outageAttemptAt&&!input.priorAttempts?.length?'NO_PRIOR_OUTAGE':undefined)});
+  const entry=JSON.stringify({event:'payment_provider_verification',bank:input.bank,transferTag:hash(`${input.bank}:${input.reference}`).slice(0,16),code:result.code,httpStatus,elapsedMs:Math.round(performance.now()-started),failure,invalidFields:result.evidence.invalidFields,priorAttemptCount:input.priorAttempts?.length??0,legacyOutageRecorded:!!input.outageAttemptAt,recoveryCheck:result.evidence.recoveryCheck??(result.code==='DUPLICATE_REVIEW'&&!input.outageAttemptAt&&!input.priorAttempts?.length?'NO_PRIOR_ATTEMPT':undefined)});
   if(result.matched)console.info(entry);else console.warn(entry);
   return result;
  };

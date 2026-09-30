@@ -26,7 +26,7 @@ The 45-second provider timeout and 80-second lease are preserved. Auth/configura
 
 ## OCR boundaries
 
-Tall-image width preservation and bounded small-text enlargement remain. Two bounded local passes (sparse layout and normalized-contrast automatic layout) compare literal references. Disagreements, multiple plausible references and very low code confidence require manual entry. Moderate confidence remains visibly uncertain and requires customer confirmation; no O/0, I/1, B/8 substitution is made. A low-contrast DIU89YSKT8 fixture exposed a real misread and now fails safely. Known Telebirr/CBE fixture references are read by the real packaged Tesseract engine.
+Original-quality follow-up: screenshots are uploaded unchanged. Server decoding preserves their resolution and colours in a lossless PNG, with orientation correction and metadata removal. Resizing, grayscale conversion, contrast normalization and sharpening are removed. Two bounded local passes (sparse layout and automatic layout) inspect the same image and compare literal references. Disagreements, multiple plausible references and very low code confidence require manual entry. Moderate confidence remains visibly uncertain and requires customer confirmation; no O/0, I/1, B/8 substitution is made. Small text can still be misread at native resolution and must remain flagged for checking. The low-contrast DIU89YSKT8 fixture now reads correctly but remains flagged as uncertain.
 
 Static format signatures, 5 MB input, 12-million-pixel decoding, animation checks, orientation and metadata stripping remain. One scan runs per app process; the child is limited to 20 seconds, bounded input/output, a 256 MiB V8 heap and one OCR thread. This heap cap is not a total process/WASM memory measurement. Images are memory-only, buffers are cleared and the worker is terminated; no language data downloads occur at runtime. Perfect OCR or production latency is not claimed.
 
@@ -45,7 +45,9 @@ All mutable tests use disposable loopback `_test` databases and local email/prov
 | Production build, `npm run build` | Passed, including Prisma generation and Next TypeScript checks |
 | `git diff --check` | Passed |
 
-The first regression run exposed the low-contrast reference misread. The final scanner rejects that very low-confidence candidate; the full rerun above passed. The legacy crash test was updated to assert an interrupted outcome for its original key and a new key for explicit recovery. A provider metadata-only follow-up additionally records correlation identifiers; its focused tests passed. Mobile captures show real local server/provider-fixture results, not mocked success UI. OCR fixtures are generated test images, not customers' private receipts.
+The first regression run exposed the low-contrast reference misread. The scanner rejected that very low-confidence candidate; the full rerun above passed before the original-quality follow-up. The legacy crash test was updated to assert an interrupted outcome for its original key and a new key for explicit recovery. A provider metadata-only follow-up additionally records correlation identifiers; its focused tests passed. Mobile captures show real local server/provider-fixture results, not mocked success UI. OCR fixtures are generated test images, not customers' private receipts.
+
+Original-quality follow-up verification: 10 focused OCR/extraction tests passed, including exact decoded-pixel equality at 720 px and 3000 px, real Telebirr/CBE extraction, small-text uncertainty and ambiguous-image rejection. Typecheck and diff checks passed. The internal lossless PNG input limit is 50 MiB to accommodate validated 12 MP RGBA images; the customer upload limit remains 5 MB. The full database/browser/build results above are the preceding deposit-recovery baseline and were not rerun for this narrow follow-up. No production deployment is included.
 
 ## Review captures
 

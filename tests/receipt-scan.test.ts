@@ -6,16 +6,28 @@ it('preserves the width and text size of a tall phone screenshot',async()=>{
  const bytes=await sharp({create:{width:1080,height:4000,channels:3,background:'white'}}).png().toBuffer();
  const meta=await sharp(await cleanReceipt(bytes,'image/png')).metadata();expect(meta.width).toBe(1080);expect(meta.height).toBe(4000);
 });
-it.each(['telebirr','cbe'] as const)('extracts a %s code from a receipt layout using the real scanner',async bank=>{
+it.each([720,3000])('preserves all original pixels and colours at width %i',async width=>{
+ const bytes=await sharp(Buffer.from(`<svg width="${width}" height="240"><rect width="100%" height="100%" fill="#12a65c"/><rect x="30" y="40" width="250" height="80" fill="#ee4367"/><text x="35" y="180" font-family="Arial" font-size="24" fill="#1245ac">Reference: DEL889NG4S</text></svg>`)).png().toBuffer();
+ const original=await sharp(bytes).raw().toBuffer({resolveWithObject:true});
+ const cleaned=await sharp(await cleanReceipt(bytes,'image/png')).raw().toBuffer({resolveWithObject:true});
+ expect(cleaned.info).toEqual(original.info);expect(cleaned.data.equals(original.data)).toBe(true);
+});
+it.each(['telebirr','cbe'] as const)('extracts a %s code at original resolution using the real scanner',async bank=>{
  vi.stubEnv('RECEIPT_OCR','tesseract');const reference=bank==='cbe'?'FT1234567893':'DEL889NG4S';
- const bytes=await sharp(Buffer.from(`<svg width="720" height="2400"><rect width="100%" height="100%" fill="white"/><g font-family="Arial" fill="black"><text x="35" y="90" font-size="30">${bank}</text><text x="35" y="240" font-size="26">Payment completed</text><text x="35" y="520" font-size="24">Transaction reference:</text><text x="35" y="565" font-size="24">${reference}</text><text x="35" y="960" font-size="24">Amount</text><text x="510" y="960" font-size="24">100.00 ETB</text></g></svg>`)).png().toBuffer();
+ const bytes=await sharp(Buffer.from(`<svg width="720" height="2400"><rect width="100%" height="100%" fill="white"/><g font-family="Arial" fill="black"><text x="35" y="90" font-size="30">${bank}</text><text x="35" y="240" font-size="26">Payment completed</text><text x="35" y="520" font-size="24">Transaction reference:</text><text x="35" y="565" font-size="36">${reference}</text><text x="35" y="960" font-size="24">Amount</text><text x="510" y="960" font-size="24">100.00 ETB</text></g></svg>`)).png().toBuffer();
  const start=performance.now(),result=await scanReceipt(bytes,'image/png',bank);expect(result.reference).toBe(reference);expect(result.reviewRequired).toBe(true);console.info(`${bank} local receipt scan: ${Math.round(performance.now()-start)}ms`);
 },30000);
 
-it('requires manual fallback for a low contrast reference both passes misread',async()=>{
+it('flags a small-text reference for manual checking without enlarging the image',async()=>{
+ vi.stubEnv('RECEIPT_OCR','tesseract');
+ const bytes=await sharp(Buffer.from('<svg width="720" height="2400"><rect width="100%" height="100%" fill="white"/><g font-family="Arial" fill="black"><text x="35" y="90" font-size="30">telebirr</text><text x="35" y="240" font-size="26">Payment completed</text><text x="35" y="520" font-size="24">Transaction reference:</text><text x="35" y="565" font-size="24">DEL889NG4S</text><text x="35" y="960" font-size="24">Amount</text><text x="510" y="960" font-size="24">100.00 ETB</text></g></svg>')).png().toBuffer();
+ // At native size this fixture is misread; it must never appear confidently read.
+ expect(await scanReceipt(bytes,'image/png','telebirr')).toMatchObject({uncertain:true,reviewRequired:true});
+},30000);
+it('reads the low contrast fixture without changing contrast and flags uncertainty',async()=>{
  vi.stubEnv('RECEIPT_OCR','tesseract');
  const bytes=await sharp(Buffer.from('<svg width="720" height="1600"><rect width="100%" height="100%" fill="#eeeeee"/><g font-family="Arial" fill="#999999" font-size="24"><text x="35" y="140">Telebirr</text><text x="35" y="300">Reference: DIU89YSKT8</text></g></svg>')).png().toBuffer();
- await expect(scanReceipt(bytes,'image/png','telebirr')).rejects.toThrow();
+ expect(await scanReceipt(bytes,'image/png','telebirr')).toMatchObject({reference:'DIU89YSKT8',uncertain:true,reviewRequired:true});
 },30000);
 it('rejects an image containing multiple transaction references',async()=>{
  vi.stubEnv('RECEIPT_OCR','tesseract');

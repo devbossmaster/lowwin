@@ -1,12 +1,12 @@
 // Private stdin/stdout protocol. Packaged language data, no network or receipt files.
 const {createWorker,PSM}=require('tesseract.js');
-const sharp=require('sharp');
 const {join}=require('node:path');
 const eng=require('@tesseract.js-data/eng');
 (async()=>{
- const chunks=[];let size=0,worker,image,contrast;
+ const chunks=[];let size=0,worker,image;
  try{
-  for await(const c of process.stdin){size+=c.length;if(size>20*1024*1024)throw Error();chunks.push(c)}
+  // A validated 12 MP image can expand to a 48 MB RGBA PNG at original quality.
+  for await(const c of process.stdin){size+=c.length;if(size>50*1024*1024)throw Error();chunks.push(c)}
   image=Buffer.concat(chunks);
   worker=await createWorker('eng',1,{langPath:join(eng.langPath,'..','4.0.0_best_int'),cacheMethod:'none',logger:()=>{},errorHandler:()=>{}});
   const read=async(bytes,mode)=>{
@@ -16,8 +16,7 @@ const eng=require('@tesseract.js-data/eng');
    return {text:data.text.slice(0,4000),confidence:data.confidence,words};
   };
   const first=await read(image,PSM.SPARSE_TEXT);
-  contrast=await sharp(image,{limitInputPixels:12000000}).normalise().sharpen().png().toBuffer();
-  const second=await read(contrast,PSM.AUTO);
+  const second=await read(image,PSM.AUTO);
   process.stdout.write(JSON.stringify({passes:[first,second]}));
- }finally{image?.fill(0);contrast?.fill(0);for(const c of chunks)c.fill(0);if(worker)await worker.terminate()}
+ }finally{image?.fill(0);for(const c of chunks)c.fill(0);if(worker)await worker.terminate()}
 })().catch(()=>{process.exitCode=1});
