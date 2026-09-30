@@ -1,6 +1,7 @@
 import {createHash} from 'node:crypto';
 import {z} from 'zod';
 import {demoBidAllowed} from '../auctions/bids';
+import {PROVIDER_TIMEOUT_MS,PROVIDER_RECOVERY_TIMEOUT_MS} from './timing';
 export const bankSchema=z.enum(['telebirr','cbe']);
 export type Bank=z.infer<typeof bankSchema>;
 export const hash=(v:string)=>createHash('sha256').update(v).digest('hex');
@@ -65,7 +66,7 @@ export async function recoverProviderDuplicate(raw:unknown,input:VerificationInp
 export async function checkEt(input:VerificationInput):Promise<Verification>{
  const started=performance.now();let httpStatus:number|undefined;
  const finish=(result:Verification,failure?:string):Verification=>{
-  const entry=JSON.stringify({event:'payment_provider_verification',bank:input.bank,code:result.code,httpStatus,elapsedMs:Math.round(performance.now()-started),failure});
+  const entry=JSON.stringify({event:'payment_provider_verification',bank:input.bank,code:result.code,httpStatus,elapsedMs:Math.round(performance.now()-started),failure,recoveryCheck:result.evidence.recoveryCheck??(result.code==='DUPLICATE_REVIEW'&&!input.outageAttemptAt?'NO_PRIOR_OUTAGE':undefined)});
   if(result.matched)console.info(entry);else console.warn(entry);
   return result;
  };
@@ -73,14 +74,14 @@ export async function checkEt(input:VerificationInput):Promise<Verification>{
  if(!key)return finish({code:'PROVIDER_UNCONFIGURED',evidence:{},matched:false});
  try{
   let endpoint='https://api.check.et/api/v1/verify';if(process.env.CHECK_ET_TEST_ENDPOINT){const url=new URL(process.env.CHECK_ET_TEST_ENDPOINT);if(!demoBidAllowed()||process.env.CHECK_ET_MODE!=='test'||url.protocol!=='http:'||!['127.0.0.1','localhost'].includes(url.hostname))throw Error();endpoint=url.href;}
-  const response=await fetch(endpoint,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({bank:input.bank,transaction_number:input.reference,...(input.bank==='cbe'?{account_number:input.account}:{})}),signal:AbortSignal.timeout(12000),redirect:'error',cache:'no-store'});
+  const response=await fetch(endpoint,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({bank:input.bank,transaction_number:input.reference,...(input.bank==='cbe'?{account_number:input.account}:{})}),signal:AbortSignal.timeout(PROVIDER_TIMEOUT_MS),redirect:'error',cache:'no-store'});
   httpStatus=response.status;
   if(!response.ok){const code=({401:'PROVIDER_AUTH',402:'PROVIDER_QUOTA',404:'NOT_FOUND',422:'INVALID_RECEIPT',429:'PROVIDER_RATE_LIMIT'} as Record<number,string>)[response.status]??'PROVIDER_OUTAGE';return finish({code,matched:false,evidence:{},retrySeconds:Math.min(3600,Math.max(30,Number(response.headers.get('retry-after'))||60))});}
   const raw=await boundedJson(response),ordinary=assess(raw,input);
   if(ordinary.code!=='DUPLICATE_REVIEW'||!input.outageAttemptAt)return finish(ordinary);
   return finish(await recoverProviderDuplicate(raw,input,async id=>{
    const url=new URL(endpoint);url.pathname=url.pathname.replace(/\/verify$/,'/verifications/'+id);
-   const original=await fetch(url,{headers:{Authorization:`Bearer ${key}`},signal:AbortSignal.timeout(5000),redirect:'error',cache:'no-store'});
+   const original=await fetch(url,{headers:{Authorization:`Bearer ${key}`},signal:AbortSignal.timeout(PROVIDER_RECOVERY_TIMEOUT_MS),redirect:'error',cache:'no-store'});
    if(!original.ok)throw Error('Original provider verification unavailable');return boundedJson(original);
   }));
  }catch(error){

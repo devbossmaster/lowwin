@@ -7,6 +7,7 @@ import {z} from 'zod';
 import {demoBidAllowed} from '../auctions/bids';
 import {ensureWallet,seedPlatformAccounts} from '../wallet/ledger';
 import {bankSchema,candidate,checkEt,hash,PaymentError,type VerifyTransport,type Bank} from './provider';
+import {VERIFICATION_LEASE_MS} from './timing';
 type Tx=Prisma.TransactionClient;
 export function paymentHealth(){
  const productionEnabled=liveFundingConfigured();
@@ -61,7 +62,7 @@ export async function verifyIntent(client:PrismaClient,userId:string,raw:unknown
   const outage=t.expiresAt?await tx.paymentAttempt.findFirst({where:{intentId:t.id,requestHash:fingerprint,code:'PROVIDER_OUTAGE',createdAt:{gte:t.createdAt,lte:t.expiresAt}},orderBy:{createdAt:'asc'}}):null;
   if(adminRecovery&&(!outage||t.expiresAt.getTime()+7*86400000<now.getTime()))throw new PaymentError(409,'Only a timed-out verification from the past seven days can be recovered.');
   if(t.attempts>=6||['REJECTED','DUPLICATE_CONFLICT'].includes(t.status))throw new PaymentError(409,'Verification needs operator review.');if(t.nextAttemptAt>now||t.leaseUntil&&t.leaseUntil>now)throw new PaymentError(429,'Verification is pending. Wait before retrying.');
-  await eligibility(tx,userId);const token=randomUUID();const current=await tx.topUpIntent.update({where:{id:t.id},data:{status:'VERIFYING',reference,attempts:{increment:1},leaseToken:token,leaseUntil:new Date(now.getTime()+30000)}});return {t:current,token,fingerprint,reference,outageAttemptAt:outage?.createdAt};
+  await eligibility(tx,userId);const token=randomUUID();const current=await tx.topUpIntent.update({where:{id:t.id},data:{status:'VERIFYING',reference,attempts:{increment:1},leaseToken:token,leaseUntil:new Date(now.getTime()+VERIFICATION_LEASE_MS)}});return {t:current,token,fingerprint,reference,outageAttemptAt:outage?.createdAt};
  });if('receipt' in lease)return lease.receipt!;
  // Deliberately outside any DB transaction. Only a short lease survives a crash.
  const {t,token,fingerprint,reference,outageAttemptAt}=lease;
