@@ -39,6 +39,18 @@ describe('Verify.et terminal and queued contract',()=>{
   vi.stubGlobal('fetch',vi.fn().mockResolvedValue(Response.json({success:true,requestId,verification:{processingStatus:'queued'},data:[]},{status:202})));
   expect(await submitVerify(input)).toMatchObject({code:'PROCESSING',processing:true,matched:false,requestId});
  });
+ it('never credits contradictory terminal success carried by HTTP 202',async()=>{
+  vi.stubGlobal('fetch',vi.fn().mockResolvedValue(Response.json({success:true,requestId,verification:{processingStatus:'completed',status:'success',verified:true},data:[{bank:'telebirr',status:'success',verified:true,amount:'10',receiverAccount:input.account,referenceNumber:input.reference,timestamp:now.toISOString()}]},{status:202})));
+  const result=await submitVerify(input);
+  expect(result).toMatchObject({code:'INCOMPLETE_EVIDENCE',matched:false});
+  expect(result.processing).not.toBe(true);
+ });
+ it('does not replace a terminal error carried by HTTP 202 with PROCESSING',async()=>{
+  vi.stubGlobal('fetch',vi.fn().mockResolvedValue(Response.json({success:true,requestId,error:{code:'parse_error',retryable:false}},{status:202})));
+  const result=await submitVerify(input);
+  expect(result).toMatchObject({code:'INCOMPLETE_EVIDENCE',matched:false});
+  expect(result.processing).not.toBe(true);
+ });
  it.each([undefined,'not-a-uuid'])('holds HTTP 202 without a valid request identity: %s',async id=>{
   vi.stubGlobal('fetch',vi.fn().mockResolvedValue(Response.json({success:true,requestId:id,verification:{processingStatus:'queued'},data:[]},{status:202})));
   const result=await submitVerify(input);

@@ -21,12 +21,15 @@ describe('Verify.et authoritative evidence',()=>{
   ['boolean',true],
   ['array',['ETB']],
   ['object',{value:'ETB'}],
-  ['non-ETB string','USD'],
-  ['empty string',''],
+ ['non-ETB string','USD'],
+ ['empty string',''],
  ] as const)('ignores provider %s currency under the explicit ETB application policy',(_label,currency)=>{
-  const result=assess(completed({currency}),input,at);
-  expect(result).toMatchObject({matched:true,code:'VERIFIED',evidence:{amountCents:'10000',currency:'ETB',currencySource:'channel_policy'}});
-  expect(result.evidence).not.toHaveProperty('invalidFields');
+  for(const bank of ['telebirr','cbe'] as const){
+   const request={...input,bank,account:bank==='telebirr'?input.account:'1000303997441',reference:bank==='telebirr'?input.reference:'fHCxyExampleRcpt1'};
+   const result=assess(completed({bank,currency,receiverAccount:request.account,referenceNumber:request.reference}),request,at);
+   expect(result).toMatchObject({matched:true,code:'VERIFIED',evidence:{amountCents:'10000',currency:'ETB',currencySource:'channel_policy'}});
+   expect(result.evidence).not.toHaveProperty('invalidFields');
+  }
  });
  it('reports nested malformed fields by type, without exposing values',()=>{
   const result=assess(completed({settlementAccountMatch:{matched:'secret-receiver'}}),input,at);
