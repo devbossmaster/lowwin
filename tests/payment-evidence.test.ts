@@ -7,19 +7,26 @@ const input:VerificationInput={bank:'telebirr',reference:'DEL889NG4S',account:'0
 function completed(overrides:Record<string,unknown>={}){return {success:true,requestId,verification:{processingStatus:'completed',status:'success',verified:true},data:[{bank:'telebirr',status:'success',verified:true,amount:'100.00',currency:'ETB',receiverAccount:'251911111111',referenceNumber:input.reference,timestamp:at.toISOString(),...overrides}]}}
 
 describe('Verify.et authoritative evidence',()=>{
- it('credits only complete exact evidence and derives ETB cents',()=>expect(assess(completed(),input,at)).toMatchObject({matched:true,code:'VERIFIED',evidence:{amountCents:'10000'}}));
+ it('credits completed evidence in the ETB unit fixed by the channel policy',()=>expect(assess(completed(),input,at)).toMatchObject({matched:true,code:'VERIFIED',evidence:{amountCents:'10000',currency:'ETB',currencySource:'channel_policy'}}));
+ it.each(['telebirr','cbe'] as const)('uses the ETB channel policy for omitted %s currency',bank=>{
+  const request={...input,bank,account:bank==='telebirr'?input.account:'1000303997441',reference:bank==='telebirr'?input.reference:'fHCxyExampleRcpt1'};
+  const payload=completed({bank,receiverAccount:request.account,referenceNumber:request.reference});
+  Reflect.deleteProperty(payload.data[0],'currency');
+  expect(assess(payload,request,at)).toMatchObject({matched:true,code:'VERIFIED',evidence:{amountCents:'10000',currency:'ETB',currencySource:'channel_policy'}});
+ });
+ it('treats an undefined currency field as omitted',()=>expect(assess(completed({currency:undefined}),input,at)).toMatchObject({matched:true,code:'VERIFIED',evidence:{currency:'ETB',currencySource:'channel_policy'}}));
  it.each([
-  ['missing',undefined,'missing'],
-  ['null',null,'null'],
-  ['number',1,'number'],
-  ['boolean',true,'boolean'],
-  ['array',['ETB'],'array'],
-  ['object',{value:'ETB'},'object'],
- ] as const)('keeps %s currency unresolved and reports only its type',(_label,currency,received)=>{
+  ['null',null],
+  ['number',1],
+  ['boolean',true],
+  ['array',['ETB']],
+  ['object',{value:'ETB'}],
+  ['non-ETB string','USD'],
+  ['empty string',''],
+ ] as const)('ignores provider %s currency under the explicit ETB application policy',(_label,currency)=>{
   const result=assess(completed({currency}),input,at);
-  expect(result).toMatchObject({matched:false,code:'CURRENCY_UNPROVEN',evidence:{invalidFields:[{field:'data.0.currency',issue:'invalid_type',received}]}});
-  expect(JSON.stringify(result)).not.toContain('DEL889NG4S');
-  expect(JSON.stringify(result)).not.toContain('0911111111');
+  expect(result).toMatchObject({matched:true,code:'VERIFIED',evidence:{amountCents:'10000',currency:'ETB',currencySource:'channel_policy'}});
+  expect(result.evidence).not.toHaveProperty('invalidFields');
  });
  it('reports nested malformed fields by type, without exposing values',()=>{
   const result=assess(completed({settlementAccountMatch:{matched:'secret-receiver'}}),input,at);
@@ -45,11 +52,21 @@ describe('Verify.et authoritative evidence',()=>{
   [{amount:'0.99'},'AMOUNT_MISMATCH'],
   [{amount:'200.01'},'AMOUNT_MISMATCH'],
   [{amount:'1.001'},'INVALID_AMOUNT'],
-  [{currency:'USD'},'CURRENCY_MISMATCH'],
   [{timestamp:'2026-09-28T10:10:00Z'},'DATE_MISMATCH'],
   [{timestamp:undefined},'DATE_MISMATCH'],
   [{referenceNumber:'OTHERREF123'},'REFERENCE_MISMATCH'],
  ] as const)('rejects unproven evidence: %j', (change,code)=>expect(assess(completed(change),input,at)).toMatchObject({matched:false,code}));
+ it.each([
+  [{receiverAccount:'251922222222'},'RECEIVER_MISMATCH'],
+  [{receiverAccount:'2519****1111'},'RECEIVER_UNPROVEN'],
+  [{referenceNumber:'OTHERREF123'},'REFERENCE_MISMATCH'],
+  [{amount:'0.99'},'AMOUNT_MISMATCH'],
+  [{amount:'1.001'},'INVALID_AMOUNT'],
+  [{timestamp:'2026-09-28T10:10:00Z'},'DATE_MISMATCH'],
+  [{timestamp:undefined},'DATE_MISMATCH'],
+  [{verified:false},'UNCONFIRMED'],
+ ] as const)('fixed ETB currency does not bypass other evidence checks: %j',(change,code)=>expect(assess(completed({currency:'USD',...change}),input,at)).toMatchObject({matched:false,code}));
+ it('does not apply the ETB policy to unsupported banks',()=>expect(assess(completed({bank:'unsupported',currency:undefined}),input,at)).toMatchObject({matched:false,code:'INCOMPLETE_EVIDENCE'}));
  it('preserves CBE Receipt ID case and normalizes only legacy FT',()=>{
   expect(candidate('cbe','https://mbreciept.cbe.com.et/fHCxyExampleRcpt1')).toBe('fHCxyExampleRcpt1');
   expect(candidate('cbe','ft26example1')).toBe('FT26EXAMPLE1');

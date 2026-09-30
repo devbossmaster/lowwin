@@ -1,5 +1,29 @@
 import {expect,it} from 'vitest';
 import {combineExtractions,extractedReference,ReceiptScanError} from '../src/modules/payments/ocr';
+import {candidate,canonical} from '../src/modules/payments/reference';
+
+it('accepts documented CBE Receipt IDs without changing case or truncating tokens',()=>{
+ for(const reference of ['fHCxyTVljBclm6Yk4C','Rcpt_1-AbCdEf','a'.repeat(127)+'9']){
+  expect(canonical('cbe',reference)).toBe(reference);
+  expect(candidate('cbe',reference)).toBe(reference);
+  expect(candidate('cbe',`Receipt ID: ${reference}`)).toBe(reference);
+  expect(candidate('cbe',`https://mbreciept.cbe.com.et/${reference}`)).toBe(reference);
+ }
+ expect(candidate('cbe','https://mbreciept.cbe.com.et/receipt/Rcpt_1-AbCdEf/')).toBe('Rcpt_1-AbCdEf');
+ expect(canonical('cbe','ft25356ll011')).toBe('FT25356LL011');
+ for(const reference of ['short12345','a'.repeat(128)+'9']){
+  expect(()=>candidate('cbe',reference)).toThrow();
+  expect(()=>candidate('cbe',`Receipt ID: ${reference}`)).toThrow();
+ }
+ expect(()=>candidate('telebirr',`Reference: ${'A'.repeat(32)}9`)).toThrow();
+ expect(()=>candidate('cbe','Receipt ID: Rcpt_1-AbCdEf Receipt ID: Rcpt_2-AbCdEf')).toThrow();
+});
+
+it('extracts Telebirr official receipt links locally and rejects lookalike or cross-bank URLs',()=>{
+ for(const host of ['transactioninfo.ethiotelecom.et','apps.ethiotelecom.et'])expect(candidate('telebirr',`https://${host}/receipt/DEL889NG4S`)).toBe('DEL889NG4S');
+ for(const url of ['https://transactioninfo.ethiotelecom.et.evil.example/receipt/DEL889NG4S','https://evil.example/receipt/DEL889NG4S','http://transactioninfo.ethiotelecom.et/receipt/DEL889NG4S','https://transactioninfo.ethiotelecom.et/receipt/DEL889NG4S?next=other'])expect(()=>candidate('telebirr',url)).toThrow();
+ expect(()=>candidate('cbe','https://transactioninfo.ethiotelecom.et/receipt/DEL889NG4S')).toThrow();
+});
 it('uses clear reference confidence even when the surrounding receipt is hard to read',()=>{
  expect(extractedReference({text:'Reference: DEL889NG4S',confidence:40,words:[{text:'DEL889NG4S',confidence:94}]},'telebirr').reference).toBe('DEL889NG4S');
  expect(extractedReference({text:'Reference: DEL889NG4S',confidence:99,words:[{text:'DEL889NG4S',confidence:40}]},'telebirr')).toMatchObject({reference:'DEL889NG4S',uncertain:true,reviewRequired:true});

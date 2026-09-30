@@ -102,7 +102,7 @@ async function completeVerifyRequest(client:PrismaClient,id:string,verified:Veri
   }
   const now=await clock(tx);
   if(verified.processing||['PROVIDER_OUTAGE','PROVIDER_RATE_LIMIT'].includes(verified.code)){
-   const delay=verified.retrySeconds??(verified.processing?5:30);
+   const delay=verified.retrySeconds??(verified.processing?Math.min(30,5*2**Math.floor(request.attempts/3)):Math.min(900,30*2**Math.min(request.attempts,5)));
    await tx.verifyRequest.update({where:{id},data:{state:providerId?'PROCESSING':'SUBMITTING',nextCheckAt:new Date(now.getTime()+delay*1000),code:verified.code}});
    const updated=await tx.topUpIntent.update({where:{id:t.id},data:{status:'VERIFYING',reasonCode:verified.code,nextAttemptAt:new Date(now.getTime()+delay*1000)}});
    return ownIntent(updated);
@@ -132,9 +132,9 @@ async function completeVerifyRequest(client:PrismaClient,id:string,verified:Veri
    const claim=await tx.paymentClaim.create({data:{channel,reference:request.reference,intentId:t.id,userId:t.userId,amountCents:amount!,points,receiverSuffix:verified.evidence.receiverSuffix!,transferredAt:new Date(verified.evidence.date!),operationId:operation.id,journalId,evidenceHash:verified.evidence.hash!}});
    await tx.paymentTransferAlias.createMany({data:aliases.map(alias=>({channel,alias,claimId:claim.id}))});
   }
-  const status=matched?'CREDITED':code==='DUPLICATE_CONFLICT'?code:['UNCONFIRMED','NOT_FOUND'].includes(code)?'PENDING':'NEEDS_REVIEW';
+  const status=matched?'CREDITED':code==='DUPLICATE_CONFLICT'?code:['UNCONFIRMED','NOT_FOUND'].includes(code)?'PENDING':['PROVIDER_AUTH','PROVIDER_UNCONFIGURED','PROVIDER_QUOTA','PROVIDER_FAILED','PROVIDER_UNAVAILABLE','PROVIDER_REQUEST_NOT_FOUND'].includes(code)?'PROVIDER_OUTAGE':'NEEDS_REVIEW';
   const updated=await tx.topUpIntent.update({where:{id:t.id},data:{status,journalId,...(matched?{caseState:'RESOLVED',assignedTo:null}:{}),...(matched&&t.amountFromReceipt?{expectedCents:amount,points}:{}),reasonCode:code,leaseToken:null,leaseUntil:null,nextAttemptAt:new Date(now.getTime()+Math.min(900,30*2**t.attempts)*1000)}});
-  await tx.paymentAttempt.create({data:{intentId:t.id,key:request.key,requestHash:hash(request.reference),code,evidence:{amountCents:verified.evidence.amountCents??null,receiverSuffix:verified.evidence.receiverSuffix??null,date:verified.evidence.date??null,hash:verified.evidence.hash??null,aliasCount:aliases.length,invalidFields:verified.evidence.invalidFields??[],result:attemptResult(ownIntent(updated))}}});
+  await tx.paymentAttempt.create({data:{intentId:t.id,key:request.key,requestHash:hash(request.reference),code,evidence:{currency:verified.evidence.currency??null,currencySource:verified.evidence.currencySource??null,confirmedBefore:verified.evidence.confirmedBefore??null,amountCents:verified.evidence.amountCents??null,receiverSuffix:verified.evidence.receiverSuffix??null,date:verified.evidence.date??null,hash:verified.evidence.hash??null,aliasCount:aliases.length,invalidFields:verified.evidence.invalidFields??[],result:attemptResult(ownIntent(updated))}}});
   await tx.verifyRequest.update({where:{id},data:{state:'DONE',code}});
   if(providerId)await tx.verifyWebhookEvent.updateMany({where:{requestId:providerId,processedAt:null},data:{processedAt:now}});
   if(matched){const row=await tx.outbox.create({data:{key:`deposit:${t.id}:credited`,kind:'DEPOSIT_CREDITED',payload:{intentId:t.id,recipientUserId:t.userId}}});await materializeAlert(tx,row)}
@@ -153,8 +153,8 @@ export async function processOneVerifyRequest(client:PrismaClient){
  const t=await client.topUpIntent.findUniqueOrThrow({where:{id:row.intentId}});
  if(t.status==='CREDITED'){await client.verifyRequest.update({where:{id:row.id},data:{state:'DONE',code:'ALREADY_CREDITED'}});return true}
  if(row.attempts>30){await completeVerifyRequest(client,row.id,{code:'PROVIDER_UNAVAILABLE',matched:false,requestId:row.requestId??undefined,evidence:{}});return true}
- let result:Verification|undefined;
- if(row.requestId){try{const status=await readVerifyStatus(row.requestId) as {data?:{processingStatus?:string}};if(status.data?.processingStatus==='queued'||status.data?.processingStatus==='running')result={code:'PROCESSING',matched:false,processing:true,requestId:row.requestId,evidence:{}}}catch{/* Replay the same immutable key. */}}
+ let result:Verification|null|undefined;
+ if(row.requestId)result=await readVerifyStatus(row.requestId);
  if(!result)result=await submitVerify(inputFor(t,row.key));
  await completeVerifyRequest(client,row.id,result);return true;
 }

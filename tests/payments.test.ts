@@ -32,7 +32,7 @@ describe.skipIf(!url)('Verify.et funding on disposable PostgreSQL',()=>{
   const queued=await verifyIntent(db,user,input,async()=>({code:'PROCESSING',matched:false,processing:true,requestId:id,evidence:{}}));expect(queued.status).toBe('VERIFYING');
   const row=await db.verifyRequest.findFirstOrThrow({where:{intentId:intent.id}});await db.verifyRequest.update({where:{id:row.id},data:{nextCheckAt:new Date(0)}});
   const fetcher=vi.fn(async(path:string,options:RequestInit)=>String(options.method)==='POST'?Response.json(body({bank:'telebirr',reference:ref,account:account.telebirr,expectedCents:null,minCents:100n,maxCents:100000n,createdAt:new Date(intent.createdAt),expiresAt:new Date(intent.expiresAt!),attemptKey:input.key},{},id)):Response.json({success:true,data:{requestId:id,processingStatus:'completed',status:'success',verified:true}}));vi.stubGlobal('fetch',fetcher);
-  try{expect(await processOneVerifyRequest(db)).toBe(true);expect((await db.topUpIntent.findUniqueOrThrow({where:{id:intent.id}})).status).toBe('CREDITED');expect(fetcher).toHaveBeenCalledTimes(2)}finally{vi.unstubAllGlobals()}
+  try{expect(await processOneVerifyRequest(db)).toBe(true);expect((await db.topUpIntent.findUniqueOrThrow({where:{id:intent.id}})).status).toBe('CREDITED');expect(fetcher).toHaveBeenCalledTimes(2);expect(fetcher.mock.calls[1][1].headers).toMatchObject({'Idempotency-Key':input.key});expect(JSON.parse(String(fetcher.mock.calls[1][1].body))).toMatchObject({transactionNumber:ref,settlementAccount:account.telebirr})}finally{vi.unstubAllGlobals()}
  });
  it('keeps unsupported masked receivers in review, then credits a provider-approved match',async()=>{
   const intent=await newIntent(),ref=reference();const first=await verifyIntent(db,user,{id:intent.id,key:randomUUID(),input:ref},async input=>assess(body(input,{receiverAccount:'2519****1111'}),input));
@@ -40,13 +40,27 @@ describe.skipIf(!url)('Verify.et funding on disposable PostgreSQL',()=>{
   await db.topUpIntent.update({where:{id:intent.id},data:{nextAttemptAt:new Date(0)}});
   expect((await verifyIntent(db,user,{id:intent.id,key:randomUUID(),input:ref},async input=>assess(body(input,{receiverAccount:'2519****1111',settlementAccountMatch:{matched:true,matchType:'masked_pattern',ambiguous:false,matchedSettlementAccount:input.account,bank:'telebirr'}}),input))).status).toBe('CREDITED');expect(await db.outbox.count({where:{key:`deposit:${intent.id}:credited`}})).toBe(1);
  });
- it('keeps missing currency in review, then resolves that case on one proven ETB recheck',async()=>{
+ it('credits omitted currency once under the ETB policy and retains that audit evidence',async()=>{
   const intent=await newIntent(),ref=reference();
-  const first=await verifyIntent(db,user,{id:intent.id,key:randomUUID(),input:ref},async input=>assess(body(input,{currency:null}),input));
-  expect(first).toMatchObject({status:'NEEDS_REVIEW',reason:'CURRENCY_UNPROVEN'});
+  const transport=vi.fn(async(input:VerificationInput)=>assess(body(input,{currency:undefined}),input));
+  const first=await verifyIntent(db,user,{id:intent.id,key:randomUUID(),input:ref},transport);
+  expect(first).toMatchObject({status:'CREDITED',reason:'VERIFIED',caseState:'RESOLVED',amountCents:'3027'});
+  const attempt=await db.paymentAttempt.findFirstOrThrow({where:{intentId:intent.id}});
+  expect(attempt.evidence).toMatchObject({currency:'ETB',currencySource:'channel_policy'});
+  expect((await verifyIntent(db,user,{id:intent.id,key:randomUUID(),input:ref},transport)).status).toBe('CREDITED');
+  expect(transport).toHaveBeenCalledTimes(1);
+  expect(await db.paymentClaim.count({where:{intentId:intent.id}})).toBe(1);
+  expect(await db.operation.count({where:{scope:'TOPUP_CREDIT',key:intent.id}})).toBe(1);
+  expect(await db.outbox.count({where:{key:`deposit:${intent.id}:credited`}})).toBe(1);
+  expect(await reconcilePayments(db)).toEqual([]);
+ });
+ it('keeps a missing receiver in review, then atomically resolves the case on one valid recheck',async()=>{
+  const intent=await newIntent(),ref=reference();
+  const first=await verifyIntent(db,user,{id:intent.id,key:randomUUID(),input:ref},async input=>assess(body(input,{receiverAccount:undefined}),input));
+  expect(first).toMatchObject({status:'NEEDS_REVIEW',reason:'RECEIVER_UNPROVEN'});
   expect(await db.paymentClaim.count({where:{intentId:intent.id}})).toBe(0);
   const firstAttempt=await db.paymentAttempt.findFirstOrThrow({where:{intentId:intent.id}});
-  expect(firstAttempt.evidence).toMatchObject({invalidFields:[{field:'data.0.currency',received:'null'}]});
+  expect(firstAttempt.code).toBe('RECEIVER_UNPROVEN');
   await db.topUpIntent.update({where:{id:intent.id},data:{caseState:'INVESTIGATING',assignedTo:user,nextAttemptAt:new Date(0)}});
   const rechecked=await verifyIntent(db,user,{id:intent.id,key:randomUUID(),input:ref},good);
   expect(rechecked).toMatchObject({status:'CREDITED',reason:'VERIFIED',caseState:'RESOLVED',amountCents:'3027'});
@@ -81,5 +95,58 @@ describe.skipIf(!url)('Verify.et funding on disposable PostgreSQL',()=>{
   const ref=reference(),legacy=await db.topUpIntent.create({data:{userId:user,key:randomUUID(),provider:'CHECK_ET',channel:'telebirr',status:'NEEDS_REVIEW',reference:ref,points:new Prisma.Decimal('10'),expectedCents:1000n,policyVersion:policy.telebirr,receivingAccount:account.telebirr,expiresAt:new Date(Date.now()+1800000)}});
   expect((await listOwnTopups(db,user)).items.some(item=>item.id===legacy.id)).toBe(true);
   expect((await verifyIntent(db,user,{id:legacy.id,key:randomUUID(),input:ref},good)).status).toBe('CREDITED');expect(await reconcilePayments(db)).toEqual([]);
+ });
+ it('finishes a failed status poll without posting another paid verification',async()=>{
+  const owner=(await db.user.create({data:{id:randomUUID(),name:'Failed poll fixture'}})).id;
+  const intent=await newIntent(owner),id=requestId(),key=randomUUID();
+  await verifyIntent(db,owner,{id:intent.id,key,input:reference()},async()=>({code:'PROCESSING',matched:false,processing:true,requestId:id,evidence:{}}));
+  const row=await db.verifyRequest.findFirstOrThrow({where:{intentId:intent.id}});
+  await db.verifyRequest.update({where:{id:row.id},data:{nextCheckAt:new Date(0)}});
+  const fetcher=vi.fn().mockResolvedValue(Response.json({success:true,data:{requestId:id,processingStatus:'failed',status:'failed',verified:false,error:{code:'parse_error',retryable:false}}}));
+  vi.stubGlobal('fetch',fetcher);
+  try{
+   expect(await processOneVerifyRequest(db)).toBe(true);
+   expect(fetcher).toHaveBeenCalledTimes(1);
+   expect(fetcher.mock.calls[0][1]?.method??'GET').toBe('GET');
+   expect(await db.verifyRequest.findUniqueOrThrow({where:{id:row.id}})).toMatchObject({state:'DONE',code:'INCOMPLETE_EVIDENCE'});
+   expect(await db.topUpIntent.findUniqueOrThrow({where:{id:intent.id}})).toMatchObject({status:'NEEDS_REVIEW',reasonCode:'INCOMPLETE_EVIDENCE'});
+   expect(await db.paymentClaim.count({where:{intentId:intent.id}})).toBe(0);
+  }finally{vi.unstubAllGlobals()}
+ });
+ it('honors a status-poll cooldown without posting or crediting',async()=>{
+  const owner=(await db.user.create({data:{id:randomUUID(),name:'Rate-limited poll fixture'}})).id;
+  const intent=await newIntent(owner),id=requestId(),key=randomUUID();
+  await verifyIntent(db,owner,{id:intent.id,key,input:reference()},async()=>({code:'PROCESSING',matched:false,processing:true,requestId:id,evidence:{}}));
+  const row=await db.verifyRequest.findFirstOrThrow({where:{intentId:intent.id}});
+  await db.verifyRequest.update({where:{id:row.id},data:{nextCheckAt:new Date(0)}});
+  const fetcher=vi.fn().mockResolvedValue(Response.json({success:false,requestId:id,error:{code:'upstream_rate_limited',retryable:true}},{status:429,headers:{'Retry-After':'180'}}));
+  vi.stubGlobal('fetch',fetcher);
+  const started=Date.now();
+  try{
+   expect(await processOneVerifyRequest(db)).toBe(true);
+   expect(fetcher).toHaveBeenCalledTimes(1);
+   expect(fetcher.mock.calls[0][1]?.method??'GET').toBe('GET');
+   const saved=await db.verifyRequest.findUniqueOrThrow({where:{id:row.id}});
+   expect(saved).toMatchObject({state:'PROCESSING',key,requestId:id,code:'PROVIDER_RATE_LIMIT'});
+   expect(saved.nextCheckAt.getTime()).toBeGreaterThanOrEqual(started+179000);
+   expect(await db.topUpIntent.findUniqueOrThrow({where:{id:intent.id}})).toMatchObject({status:'VERIFYING',reasonCode:'PROVIDER_RATE_LIMIT'});
+   expect(await db.paymentClaim.count({where:{intentId:intent.id}})).toBe(0);
+  }finally{vi.unstubAllGlobals()}
+ });
+ it('applies local one-time credit policy to provider repeat confirmations',async()=>{
+  const owner=(await db.user.create({data:{id:randomUUID(),name:'Repeated confirmation fixture'}})).id;
+  const claimant=(await db.user.create({data:{id:randomUUID(),name:'Duplicate confirmation fixture'}})).id;
+  const intent=await newIntent(owner,'cbe'),receipt=`RepeatedRcpt${randomUUID().replaceAll('-','').slice(0,16)}`,ft=reference().replace(/^DEMO/,'FT');
+  const transport=vi.fn(async(input:VerificationInput)=>assess(body(input,{referenceNumber:ft,receiptNumber:receipt,confirmationHistory:{confirmedBefore:true}}),input));
+  expect(await verifyIntent(db,owner,{id:intent.id,key:randomUUID(),input:receipt},transport)).toMatchObject({status:'CREDITED',caseState:'RESOLVED'});
+  expect((await db.paymentAttempt.findFirstOrThrow({where:{intentId:intent.id}})).evidence).toMatchObject({confirmedBefore:true});
+  expect((await verifyIntent(db,owner,{id:intent.id,key:randomUUID(),input:receipt},transport)).status).toBe('CREDITED');
+  expect(transport).toHaveBeenCalledTimes(1);
+  const duplicate=await newIntent(claimant,'cbe');
+  expect((await verifyIntent(db,claimant,{id:duplicate.id,key:randomUUID(),input:ft},transport)).status).toBe('DUPLICATE_CONFLICT');
+  expect(await db.paymentClaim.count({where:{intentId:{in:[intent.id,duplicate.id]}}})).toBe(1);
+  expect(await db.operation.count({where:{scope:'TOPUP_CREDIT',key:intent.id}})).toBe(1);
+  expect(await db.outbox.count({where:{key:`deposit:${intent.id}:credited`}})).toBe(1);
+  expect(await reconcilePayments(db)).toEqual([]);
  });
 });

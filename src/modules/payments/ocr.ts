@@ -1,7 +1,8 @@
 import sharp from 'sharp';
 import {spawn} from 'node:child_process';
 import {join} from 'node:path';
-import {candidate,canonical,PaymentError,type Bank} from './provider';
+import type {Bank} from './provider';
+import {candidate,canonical,PaymentError} from './reference';
 export const RECEIPT_LIMIT=5*1024*1024;
 export async function cleanReceipt(bytes:Buffer,mime:string){
  if(!bytes.length||bytes.length>RECEIPT_LIMIT)throw new PaymentError(413,'Use a receipt image smaller than 5 MB.');
@@ -17,7 +18,7 @@ export async function cleanReceipt(bytes:Buffer,mime:string){
 }
 let active=false;
 type OcrResult={text:string;confidence:number;words?:{text:string;confidence:number}[]};
-function literalReferences(text:string,bank:Bank){return [...new Set(text.match(/\b[A-Za-z][A-Za-z0-9]{7,63}\b/g)??[])].filter(token=>/\d/.test(token)).filter(token=>{try{canonical(bank,token);return true}catch{return false}})}
+function literalReferences(text:string,bank:Bank){return [...new Set((text.match(/[A-Za-z0-9_-]+/g)??[]).filter(token=>/\d/.test(token)&&/[A-Za-z]/.test(token)).flatMap(token=>{try{return [canonical(bank,token)]}catch{return []}}))]}
 export class ReceiptScanError extends PaymentError{
  constructor(error:PaymentError,public diagnostics:{pass:number;characters:number;candidateCount:number;confidence:number|null}[],public referencesAgree:boolean){super(error.status,error.message)}
 }
@@ -36,7 +37,7 @@ export function extractedReference(result:OcrResult,bank:Bank){
  const literalCodes=literalReferences(result.text,bank);
  if(literalCodes.length>1)throw new PaymentError(422,'A single clear reference could not be found. Enter it manually.');
  // Unrelated artwork and Amharic text must not outweigh a clearly read reference.
- const words=Array.isArray(result.words)?result.words.filter(w=>typeof w.text==='string'&&w.text.split(/[^A-Za-z0-9]+/).some(token=>token===reference||bank==='telebirr'&&token.toUpperCase()===reference)):[];
+ const words=Array.isArray(result.words)?result.words.filter(w=>typeof w.text==='string'&&(w.text.match(/[A-Za-z0-9_-]+/g)??[]).some(token=>token===reference||bank==='telebirr'&&token.toUpperCase()===reference)):[];
  const confidence=words.length?Math.max(...words.map(w=>Number.isFinite(w.confidence)?w.confidence:0)):result.confidence;
  if(confidence<35)throw new PaymentError(422,'Scan is uncertain. Enter the reference manually.');
  // This is an editable extraction, never payment evidence or an automatic credit.

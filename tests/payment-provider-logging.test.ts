@@ -18,13 +18,33 @@ describe('Verify.et JSON transport',()=>{
   vi.stubEnv('VERIFY_ET_API_KEY','private-key');vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response('private-provider-body',{status})));const log=vi.spyOn(console,'warn').mockImplementation(()=>{});
   expect(await submitVerify(input)).toMatchObject({code,matched:false});const line=log.mock.calls[0][0];expect(JSON.parse(line)).toMatchObject({event:'payment_provider_verification',httpStatus:status,code});for(const secret of [input.reference,input.account,'private-key','private-provider-body'])expect(line).not.toContain(secret);
  });
- it('holds a completed HTTP 200 result with omitted currency and logs only its missing type',async()=>{
+ it('accepts omitted currency under the ETB channel policy and logs its source without private data',async()=>{
   vi.stubEnv('VERIFY_ET_API_KEY','private-key');
   vi.stubGlobal('fetch',vi.fn().mockResolvedValue(Response.json({success:true,requestId,verification:{processingStatus:'completed',status:'success',verified:true},data:[{bank:'telebirr',status:'success',verified:true,amount:10,referenceNumber:input.reference,receiverAccount:input.account,timestamp:new Date().toISOString(),senderName:'private-sender'}]})));
-  const log=vi.spyOn(console,'warn').mockImplementation(()=>{});
-  expect(await submitVerify(input)).toMatchObject({code:'CURRENCY_UNPROVEN',matched:false});
+  const log=vi.spyOn(console,'info').mockImplementation(()=>{});
+  expect(await submitVerify(input)).toMatchObject({code:'VERIFIED',matched:true,evidence:{currency:'ETB',currencySource:'channel_policy'}});
   const line=log.mock.calls[0][0];
-  expect(JSON.parse(line)).toMatchObject({event:'payment_provider_verification',httpStatus:200,code:'CURRENCY_UNPROVEN',invalidFields:[{field:'data.0.currency',issue:'invalid_type',received:'missing'}]});
+  expect(JSON.parse(line)).toMatchObject({event:'payment_provider_verification',httpStatus:200,code:'VERIFIED',currencySource:'channel_policy'});
+  expect(JSON.parse(line)).not.toHaveProperty('invalidFields');
+  for(const secret of [input.reference,input.account,'private-key','private-sender',requestId])expect(line).not.toContain(secret);
+ });
+ it.each([[null],[1],[true],[['ETB']],[{value:'ETB'}],['USD']] as const)('ignores provider currency %j and records only the application unit',async currency=>{
+  vi.stubEnv('VERIFY_ET_API_KEY','private-key');
+  vi.stubGlobal('fetch',vi.fn().mockResolvedValue(Response.json({success:true,requestId,verification:{processingStatus:'completed',status:'success',verified:true},data:[{bank:'telebirr',status:'success',verified:true,amount:10,currency,referenceNumber:input.reference,receiverAccount:input.account,timestamp:new Date().toISOString(),senderName:'private-sender'}]})));
+  const log=vi.spyOn(console,'info').mockImplementation(()=>{});
+  expect(await submitVerify(input)).toMatchObject({code:'VERIFIED',matched:true,evidence:{currency:'ETB',currencySource:'channel_policy'}});
+  const line=log.mock.calls[0][0];
+  expect(JSON.parse(line)).toMatchObject({event:'payment_provider_verification',httpStatus:200,code:'VERIFIED',currencySource:'channel_policy'});
+  expect(JSON.parse(line)).not.toHaveProperty('invalidFields');
+  for(const secret of [input.reference,input.account,'private-key','private-sender',requestId])expect(line).not.toContain(secret);
+ });
+ it('still rejects malformed receiving-account evidence and logs only its safe type',async()=>{
+  vi.stubEnv('VERIFY_ET_API_KEY','private-key');
+  vi.stubGlobal('fetch',vi.fn().mockResolvedValue(Response.json({success:true,requestId,verification:{processingStatus:'completed',status:'success',verified:true},data:[{bank:'telebirr',status:'success',verified:true,amount:10,referenceNumber:input.reference,receiverAccount:null,timestamp:new Date().toISOString(),senderName:'private-sender'}]})));
+  const log=vi.spyOn(console,'warn').mockImplementation(()=>{});
+  expect(await submitVerify(input)).toMatchObject({code:'INCOMPLETE_EVIDENCE',matched:false});
+  const line=log.mock.calls[0][0];
+  expect(JSON.parse(line)).toMatchObject({event:'payment_provider_verification',httpStatus:200,code:'INCOMPLETE_EVIDENCE',invalidFields:[{field:'data.0.receiverAccount',issue:'invalid_type',received:'null'}]});
   for(const secret of [input.reference,input.account,'private-key','private-sender',requestId])expect(line).not.toContain(secret);
  });
  it('does not log exception contents on timeout',async()=>{vi.stubEnv('VERIFY_ET_API_KEY','private-key');vi.stubGlobal('fetch',vi.fn().mockRejectedValue(new DOMException('sensitive-url','TimeoutError')));const log=vi.spyOn(console,'warn').mockImplementation(()=>{});expect(await submitVerify(input)).toMatchObject({code:'PROVIDER_OUTAGE',matched:false});expect(log.mock.calls[0][0]).not.toContain('sensitive-url')});
