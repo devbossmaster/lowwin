@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {assess,type VerificationInput} from '../src/modules/payments/provider';
+import {assess,recoverProviderDuplicate,type VerificationInput} from '../src/modules/payments/provider';
 const now=new Date('2026-09-29T10:10:00Z');
 const input:VerificationInput={bank:'telebirr',reference:'DEL889NG4S',account:'0911111111',expectedCents:10000n,createdAt:new Date('2026-09-29T10:00:00Z'),expiresAt:new Date('2026-09-29T10:30:00Z')};
 function evidence(){return {success:true,exists:true,duplicate:false,data:{bank:'telebirr',transaction_number:input.reference,verification_method:'official',receipt:{status:'completed',transaction_type:'transfer',amount:'100.00',currency:'ETB',transaction_date:now.toISOString(),receiver_account:input.account}}}}
@@ -19,5 +19,22 @@ describe('official payment evidence',()=>{
  it('fails closed when duplicate or transfer type is unknown',()=>{
   const raw:Record<string,unknown>=evidence();delete raw.duplicate;expect(assess(raw,input,now).matched).toBe(false);
   const other=evidence();delete (other.data.receipt as Partial<typeof other.data.receipt>).transaction_type;expect(assess(other,input,now).matched).toBe(false);
+ });
+ it('recovers only the exact original API verification after a recorded timeout',async()=>{
+  const prior=new Date('2026-09-29T10:09:30Z');
+  const candidate={...evidence(),duplicate:true,existing_verification_id:42,verified_at:'2026-09-29T10:09:40Z'};
+  const original={verification:{id:42,bank:'telebirr',transaction_number:input.reference,account_number:null,success:true,exists:true,status:'completed',transaction_type:'transfer',amount:'100.00',currency:'ETB',transaction_date:now.toISOString(),created_at:'2026-09-29T10:09:35Z',source:{type:'api',label:'Lowwin'}}};
+  const check=(body:unknown=candidate,record:unknown=original,options:VerificationInput={...input,outageAttemptAt:prior})=>recoverProviderDuplicate(body,options,async()=>record,now);
+  expect(await check()).toMatchObject({code:'VERIFIED_RECOVERED',matched:true,evidence:{originalVerificationId:42,recoveryCheck:'MATCHED',receiverSuffix:'1111'}});
+  expect(await check(candidate,original,input)).toMatchObject({code:'DUPLICATE_REVIEW',matched:false});
+  for(const record of [
+   {verification:{...original.verification,source:{type:'app'}}},
+   {verification:{...original.verification,transaction_number:'OTHERREF123'}},
+   {verification:{...original.verification,amount:'99.00'}},
+   {verification:{...original.verification,created_at:'2026-09-29T09:00:00Z'}},
+   {verification:{...original.verification,account_number:'0999999999'}}
+  ])expect((await check(candidate,record)).matched).toBe(false);
+  expect((await check({...candidate,data:{...candidate.data,receipt:{...candidate.data.receipt,receiver_account:'0999999999'}}})).matched).toBe(false);
+  expect((await recoverProviderDuplicate(candidate,{...input,outageAttemptAt:prior},async()=>{throw Error('Unavailable')},now)).matched).toBe(false);
  });
 });
