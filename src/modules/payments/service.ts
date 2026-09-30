@@ -34,26 +34,31 @@ export async function createIntent(client:PrismaClient,userId:string,raw:unknown
  const t=await tx.topUpIntent.create({data:{userId,key:body.key,provider:'CHECK_ET',channel:body.channel,policyVersion:policy.id,requestHash:fingerprint,points,expectedCents:amount,amountFromReceipt:fromReceipt,receivingAccount:policy.account,accountName:policy.accountName,quoteSnapshot:{version:policy.version,numerator:policy.pointsNumerator.toString(),denominator:policy.centsDenominator.toString(),terms:policy.terms,...(fromReceipt?{minCents:policy.minCents.toString(),maxCents:policy.maxCents.toString(),earliestTransferAt:earliestTransferAt.toISOString()}:{})},createdAt:now,expiresAt:new Date(now.getTime()+30*60000)}});return ownIntent(t);
  })}
 const verifySchema=z.object({id:z.string().uuid(),key:z.string().uuid(),input:z.string().min(1).max(4000)}).strict();
-export async function verifyIntent(client:PrismaClient,userId:string,raw:unknown,transport:VerifyTransport=checkEt,reauthorize?:(tx:Tx)=>Promise<void>){
+export async function verifyIntent(client:PrismaClient,userId:string,raw:unknown,transport:VerifyTransport=checkEt,reauthorize?:(tx:Tx)=>Promise<void>,adminRecovery=false){
  requireEnabled();const body=verifySchema.parse(raw);
  const lease=await client.$transaction(async tx=>{
   await tx.$queryRaw`SELECT id FROM "TopUpIntent" WHERE id=${body.id} FOR UPDATE`;const t=await tx.topUpIntent.findFirst({where:{id:body.id,userId}});if(!t||!t.channel||t.provider!=='CHECK_ET')throw new PaymentError(404,'Funding request not found.');
   const reference=candidate(bankSchema.parse(t.channel),body.input),fingerprint=hash(reference),prior=await tx.paymentAttempt.findUnique({where:{intentId_key:{intentId:t.id,key:body.key}}});
   if(t.reference&&t.reference!==reference)throw new PaymentError(409,'This intent is bound to another reference.');if(prior){if(prior.requestHash!==fingerprint)throw new PaymentError(409,'Idempotency key changed.');return {receipt:ownIntent(t)}}
   if(t.status==='CREDITED')return {receipt:ownIntent(t)};
-  const now=await clock(tx);if(!t.expiresAt||t.expiresAt<=now)throw new PaymentError(409,'This funding request expired. Contact support if you sent funds.');
+  const now=await clock(tx);if(!t.expiresAt||t.expiresAt<=now&&!adminRecovery)throw new PaymentError(409,'This funding request expired. Contact support if you sent funds.');
+  const outage=t.expiresAt?await tx.paymentAttempt.findFirst({where:{intentId:t.id,requestHash:fingerprint,code:'PROVIDER_OUTAGE',createdAt:{gte:t.createdAt,lte:t.expiresAt}},orderBy:{createdAt:'asc'}}):null;
+  if(adminRecovery&&(!outage||t.expiresAt.getTime()+7*86400000<now.getTime()))throw new PaymentError(409,'Only a timed-out verification from the past seven days can be recovered.');
   if(t.attempts>=6||['REJECTED','DUPLICATE_CONFLICT'].includes(t.status))throw new PaymentError(409,'Verification needs operator review.');if(t.nextAttemptAt>now||t.leaseUntil&&t.leaseUntil>now)throw new PaymentError(429,'Verification is pending. Wait before retrying.');
-  await eligibility(tx,userId);const token=randomUUID();const current=await tx.topUpIntent.update({where:{id:t.id},data:{status:'VERIFYING',reference,attempts:{increment:1},leaseToken:token,leaseUntil:new Date(now.getTime()+30000)}});return {t:current,token,fingerprint,reference};
+  await eligibility(tx,userId);const token=randomUUID();const current=await tx.topUpIntent.update({where:{id:t.id},data:{status:'VERIFYING',reference,attempts:{increment:1},leaseToken:token,leaseUntil:new Date(now.getTime()+30000)}});return {t:current,token,fingerprint,reference,outageAttemptAt:outage?.createdAt};
  });if('receipt' in lease)return lease.receipt!;
  // Deliberately outside any DB transaction. Only a short lease survives a crash.
- const {t,token,fingerprint,reference}=lease;
+ const {t,token,fingerprint,reference,outageAttemptAt}=lease;
  const quote=t.quoteSnapshot as {minCents?:string;maxCents?:string;earliestTransferAt?:string};
- const verified=await transport({bank:t.channel as Bank,reference,account:t.receivingAccount!,expectedCents:t.expectedCents,createdAt:t.amountFromReceipt?new Date(quote.earliestTransferAt!):t.createdAt,expiresAt:t.expiresAt!,...(t.amountFromReceipt?{minCents:BigInt(quote.minCents!),maxCents:BigInt(quote.maxCents!)}:{})});
+ const verified=await transport({bank:t.channel as Bank,reference,account:t.receivingAccount!,expectedCents:t.expectedCents,createdAt:t.amountFromReceipt?new Date(quote.earliestTransferAt!):t.createdAt,expiresAt:t.expiresAt!,...(t.amountFromReceipt?{minCents:BigInt(quote.minCents!),maxCents:BigInt(quote.maxCents!)}:{}),...(outageAttemptAt?{outageAttemptAt}:{})});
  return client.$transaction(async tx=>{
   await tx.$queryRaw`SELECT id FROM "TopUpIntent" WHERE id=${t.id} FOR UPDATE`;const current=await tx.topUpIntent.findUniqueOrThrow({where:{id:t.id}});if(current.status==='CREDITED')return ownIntent(current);if(current.leaseToken!==token)throw new PaymentError(409,'Verification was superseded. Refresh the request.');
   const now=await clock(tx);await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`transfer:${t.channel}:${reference}`},0))`;
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`},0))`;await eligibility(tx,userId);if(reauthorize)await reauthorize(tx);requireEnabled();
-  let code=verified.code,matched=verified.matched;if(now>t.expiresAt!){code='STALE_INTENT';matched=false}
+  let code=verified.code,matched=verified.matched;
+  if(code==='VERIFIED_RECOVERED'&&!outageAttemptAt){code='RECOVERY_REVIEW';matched=false}
+  if(adminRecovery&&code!=='VERIFIED_RECOVERED'){code='RECOVERY_REVIEW';matched=false}
+  if(now>t.expiresAt!&&!(adminRecovery&&code==='VERIFIED_RECOVERED')){code='STALE_INTENT';matched=false}
   const amount=t.amountFromReceipt&&verified.evidence.amountCents?BigInt(verified.evidence.amountCents):t.expectedCents;
   const points=t.amountFromReceipt?new Prisma.Decimal(amount?.toString()??'0').div(100):t.points;
   if(matched&&(!amount||points.lte(0)||points.gt(1000000000)||t.amountFromReceipt&&(amount<BigInt(quote.minCents!)||amount>BigInt(quote.maxCents!)))){code='AMOUNT_MISMATCH';matched=false}

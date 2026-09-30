@@ -34,11 +34,14 @@ export async function paymentAdminCommand(client:PrismaClient,headers:Headers,ac
   });
  }
  const body=z.object({key,id:z.string().uuid(),reason,state:z.enum(['OPEN','INVESTIGATING','ESCALATED','RESOLVED','REVERSAL_REVIEW']).optional()}).strict().parse(raw);
- if(!['note','retry','case'].includes(action))throw new PaymentError(422,'Unknown payment command.');
+ if(!['note','retry','recover','case'].includes(action))throw new PaymentError(422,'Unknown payment command.');
+ if(action==='recover')await requireAdmin(client,headers,{fresh:true});
  const t=await client.$transaction(async tx=>{await tx.$queryRaw`SELECT id FROM "TopUpIntent" WHERE id=${body.id} FOR UPDATE`;const actor=await requireAdmin(tx,headers,{lock:true});allow(actor.role,true);const t=await tx.topUpIntent.findUnique({where:{id:body.id}});if(!t)throw new PaymentError(404,'Top-up not found.');const fingerprint=hash(JSON.stringify({action,...body})),prior=await tx.adminAudit.findUnique({where:{operationKey:body.key}});if(prior){if(prior.requestHash!==fingerprint)throw new PaymentError(409,'Idempotency key changed.');return t}
+  if(action==='recover')await requireAdmin(tx,headers,{fresh:true,lock:true});
   if(action==='case')await tx.topUpIntent.update({where:{id:t.id},data:{caseState:body.state??'INVESTIGATING',assignedTo:actor.id}});
   await tx.adminAudit.create({data:{actorId:actor.id,action:`PAYMENT_${action.toUpperCase()}`,target:t.id,operationKey:body.key,requestHash:fingerprint,details:{sessionId:actor.sessionId,reason:body.reason,...(body.state?{state:body.state}:{})}}});return t});
  if(action==='retry'){if(!t.reference)throw new PaymentError(409,'The user must submit a reference first.');return verifyIntent(client,t.userId,{id:t.id,key:body.key,input:t.reference},undefined,async tx=>{const actor=await requireAdmin(tx,headers,{lock:true});allow(actor.role,true)})}
+ if(action==='recover'){if(!t.reference)throw new PaymentError(409,'The user must submit a reference first.');return verifyIntent(client,t.userId,{id:t.id,key:body.key,input:t.reference},undefined,async tx=>{const actor=await requireAdmin(tx,headers,{fresh:true,lock:true});allow(actor.role,true)},true)}
  return {recorded:true};
 }
 export async function recordStatement(client:PrismaClient,headers:Headers,raw:unknown){const b=z.object({key,channel:bankSchema,reference:z.string().max(40),amountCents:integer,account:z.string().regex(/^\d{10,16}$/),transferredAt:z.iso.datetime({offset:true}),evidenceReference:reason,reason}).strict().parse(raw);return client.$transaction(async tx=>{const actor=await requireAdmin(tx,headers,{lock:true});allow(actor.role,true);const fingerprint=hash(JSON.stringify(b)),prior=await tx.adminAudit.findUnique({where:{operationKey:b.key}});if(prior){if(prior.requestHash!==fingerprint)throw new PaymentError(409,'Idempotency key changed.');return {recorded:true}}
