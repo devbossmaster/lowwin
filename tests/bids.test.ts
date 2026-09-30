@@ -30,7 +30,7 @@ describe.skipIf(!url)('authenticated point bids on disposable PostgreSQL',()=>{
     const route=await import('../src/app/api/auctions/[slug]/bids/route');
     const context={params:Promise.resolve({slug:auction.slug!})};
     const url=`http://localhost:3000/api/auctions/${auction.slug}/bids`;
-    const request=(cookie?:string)=>new Request(url,{method:'POST',headers:{origin:'http://localhost:3000','content-type':'application/json',...(cookie?{cookie}:{})},body:JSON.stringify({amount:'12',key:randomUUID()})});
+    const request=(cookie?:string)=>new Request(url,{method:'POST',headers:{origin:'http://localhost:3000','content-type':'application/json',...(cookie?{cookie}:{})},body:JSON.stringify({amount:'12',key:randomUUID(),feeVersion:1})});
     expect((await route.POST(request(),context)).status).toBe(401);
     expect((await route.GET(new Request(url),context)).status).toBe(401);
     const {handleAuth}=await import('../src/modules/auth/handler');

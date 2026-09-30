@@ -26,6 +26,21 @@ function Funding(){
  const options=query.data?.options;
  const account:Account|undefined=intent?{id:intent.channel,policyId:'',version:intent.quote.version,name:intent.channel==='cbe'?'CBE':'Telebirr',number:intent.account,holder:intent.accountName,numerator:intent.quote.numerator,denominator:intent.quote.denominator,minCents:intent.quote.minCents??intent.amountCents??'0',maxCents:intent.quote.maxCents??intent.amountCents??'0',terms:intent.quote.terms}:options?.accounts.find(a=>a.id===selected);
  const credited=intent?.status==='CREDITED';
+ useEffect(()=>{
+  if(!intent||intent.status!=='VERIFYING')return;
+  let cancelled=false;
+  const poll=async()=>{try{
+   const response=await fetch('/api/wallet/top-ups?page=1',{cache:'no-store'});if(!response.ok)return;
+   const data=await response.json() as Data,updated=data.items.find(item=>item.id===intent.id);
+   if(cancelled||!updated||updated.status===intent.status)return;
+   setIntent(updated);query.reload();
+   const feedback=depositFeedback(updated,w);inform(feedback.message,feedback.kind);
+   if(updated.status==='CREDITED'){window.dispatchEvent(new Event('lowin-wallet-updated'));window.dispatchEvent(new Event('lowin-alerts'));void refreshMe()}
+  }catch{/* The next poll can recover a transient network failure. */}};
+  const timer=setInterval(()=>void poll(),5000);return()=>{cancelled=true;clearInterval(timer)};
+ // Polling is tied to the selected deposit, not to query refreshes.
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ },[intent?.id,intent?.status]);
  const [now,setNow]=useState(0);
  useEffect(()=>{setNow(Date.now());const timer=setInterval(()=>setNow(Date.now()),1000);return ()=>clearInterval(timer)},[]);
  const underReview=!!intent&&(intent.canRetry===false||['DUPLICATE_CONFLICT','REJECTED','REVERSED'].includes(intent.status));

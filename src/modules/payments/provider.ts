@@ -1,111 +1,100 @@
 import {createHash} from 'node:crypto';
 import {z} from 'zod';
 import {demoBidAllowed} from '../auctions/bids';
-import {PROVIDER_TIMEOUT_MS,PROVIDER_RECOVERY_TIMEOUT_MS} from './timing';
+import {PROVIDER_TIMEOUT_MS} from './timing';
+
 export const bankSchema=z.enum(['telebirr','cbe']);
 export type Bank=z.infer<typeof bankSchema>;
-export const hash=(v:string)=>createHash('sha256').update(v).digest('hex');
+export const hash=(value:string)=>createHash('sha256').update(value).digest('hex');
 export class PaymentError extends Error{constructor(public status:number,message:string){super(message)}}
-export function cents(value:string|number):bigint {
- const s=String(value);if(!/^(0|[1-9]\d{0,8})(\.\d{1,2})?$/.test(s))throw new PaymentError(422,'Use an exact ETB amount with at most two decimal places.');
- const [whole,fraction='']=s.split('.');return BigInt(whole)*100n+BigInt(fraction.padEnd(2,'0'));
+export function cents(value:string|number):bigint{
+ const text=String(value);if(!/^(0|[1-9]\d{0,8})(\.\d{1,2})?$/.test(text))throw new PaymentError(422,'Use an exact ETB amount with at most two decimal places.');
+ const [whole,fraction='']=text.split('.');return BigInt(whole)*100n+BigInt(fraction.padEnd(2,'0'));
 }
-export function canonical(bank:Bank,raw:string){const s=raw.trim().toUpperCase();if(!(bank==='cbe'?/^FT[A-Z0-9]{6,30}$/:/^[A-Z][A-Z0-9]{7,31}$/).test(s))throw new PaymentError(422,'Enter a supported transaction reference.');return s}
-// URLs are parsed, never fetched. Only exact official host/path shapes are accepted.
+export function canonical(bank:Bank,raw:string){
+ const value=raw.trim();
+ if(bank==='telebirr'){const upper=value.toUpperCase();if(!/^[A-Z][A-Z0-9]{7,31}$/.test(upper))throw new PaymentError(422,'Enter a supported transaction number.');return upper}
+ if(!/^[A-Za-z0-9]{8,64}$/.test(value))throw new PaymentError(422,'Enter a CBE Receipt ID or legacy FT reference.');
+ return /^FT[A-Z0-9]{6,30}$/i.test(value)?value.toUpperCase():value;
+}
+// Parse only known receipt shapes. A URL is never fetched by Lowwin.
 export function candidate(bank:Bank,raw:string){
  const text=raw.trim();if(!text||text.length>4000)throw new PaymentError(422,'Enter one transaction reference or receipt.');
  const urls=text.match(/https?:\/\/[^\s<>"']+/g)??[];
- if(urls.length){if(urls.length!==1)throw new PaymentError(422,'More than one receipt was found. Enter one reference.');const u=new URL(urls[0]);const host=bank==='cbe'?'cbe.com.et':'apps.ethiotelecom.et';if(u.protocol!=='https:'||u.hostname!==host||u.username||u.password||u.port||u.search||u.hash||!/^\/receipt\/[a-z0-9]+\/?$/i.test(u.pathname))throw new PaymentError(422,'Use an official supported receipt link or enter the reference.');return canonical(bank,u.pathname.split('/')[2]);}
- if(/^[a-z0-9]+$/i.test(text))return canonical(bank,text);
+ if(urls.length){
+  if(urls.length!==1)throw new PaymentError(422,'More than one receipt was found. Enter one reference.');
+  const url=new URL(urls[0]);if(url.protocol!=='https:'||url.username||url.password||url.port||url.hash||url.search)throw new PaymentError(422,'Use an official supported receipt link or enter the reference.');
+  if(bank==='cbe'&&url.hostname==='mbreciept.cbe.com.et'&&/^\/[A-Za-z0-9]{8,64}\/?$/.test(url.pathname))return canonical(bank,url.pathname.split('/')[1]);
+  if(bank==='telebirr'&&url.hostname==='apps.ethiotelecom.et'&&/^\/receipt\/[A-Za-z0-9]{8,32}\/?$/.test(url.pathname))return canonical(bank,url.pathname.split('/')[2]);
+  throw new PaymentError(422,'Use an official supported receipt link or enter the reference.');
+ }
+ if(/^[A-Za-z0-9]+$/.test(text))return canonical(bank,text);
  if(bank==='cbe'&&/telebirr/i.test(text)||bank==='telebirr'&&/\bCBE\b|Commercial Bank/i.test(text))throw new PaymentError(422,'Receipt bank does not match the selected account.');
- const found=bank==='cbe'?text.toUpperCase().match(/\bFT[A-Z0-9]{6,30}\b/g):[...text.toUpperCase().matchAll(/(?:TRANSACTION\s*(?:NUMBER|ID|NO\.?|REFERENCE)?|REFERENCE|RECEIPT)\s*[:#-]?\s*([A-Z][A-Z0-9]{7,31})\b/g)].map(m=>m[1]);
- const values=[...new Set(found??[])];if(values.length!==1)throw new PaymentError(422,'A single clear reference could not be found. Enter it manually.');return canonical(bank,values[0]);
+ const pattern=bank==='cbe'?/(?:receipt\s*id|reference(?:\s*(?:number|no\.?))?)\s*[:#-]?\s*([A-Za-z0-9]{8,64})/gi:/(?:transaction\s*(?:number|id|no\.?|reference)?|reference|receipt)\s*[:#-]?\s*([A-Za-z][A-Za-z0-9]{7,31})/gi;
+ const found=[...text.matchAll(pattern)].map(match=>canonical(bank,match[1]));
+ const unique=[...new Set(found)];if(unique.length!==1)throw new PaymentError(422,'A single clear reference could not be found. Enter it manually.');return unique[0];
 }
-const envelope=z.object({success:z.boolean(),exists:z.boolean(),duplicate:z.boolean(),data:z.object({bank:bankSchema,transaction_number:z.string(),verification_method:z.string(),receipt:z.object({status:z.string(),transaction_type:z.string(),amount:z.union([z.number(),z.string()]),currency:z.string(),transaction_date:z.string(),receiver_account:z.string().optional()})})});
-export type AttemptWindow={startedAt:Date;endedAt:Date;attemptKey?:string};
-export type VerificationInput={priorAttempts?:AttemptWindow[];otherAttempts?:AttemptWindow[];bank:Bank;reference:string;account:string;expectedCents:bigint|null;minCents?:bigint;maxCents?:bigint;createdAt:Date;expiresAt:Date;outageAttemptAt?:Date};
+export type VerificationInput={bank:Bank;reference:string;account:string;expectedCents:bigint|null;minCents?:bigint;maxCents?:bigint;createdAt:Date;expiresAt:Date;attemptKey:string};
 type EvidenceFieldIssue={field:string;issue:string;received:string};
-export type Verification={code:string;retrySeconds?:number;evidence:{amountCents?:string;receiverSuffix?:string;date?:string;method?:string;hash?:string;originalVerificationId?:number;providerVerifiedAt?:string;correlatedAttemptKey?:string;recoveryCheck?:string;invalidFields?:EvidenceFieldIssue[]};matched:boolean};
-function evidenceFieldIssues(raw:unknown,error:z.ZodError):EvidenceFieldIssue[]{
- // Only schema-owned field paths and value types are recorded, never values or
- // provider messages. This distinguishes missing evidence from contract drift.
- return error.issues.slice(0,20).map(issue=>{
-  let value:unknown=raw;
-  for(const part of issue.path)value=value!==null&&typeof value==='object'?Object.prototype.hasOwnProperty.call(value,part)?(value as Record<PropertyKey,unknown>)[part]:undefined:undefined;
-  return {field:issue.path.join('.')||'response',issue:issue.code,received:value===undefined?'missing':value===null?'null':Array.isArray(value)?'array':typeof value};
- });
+export type Verification={code:string;matched:boolean;requestId?:string;processing?:boolean;retrySeconds?:number;evidence:{amountCents?:string;receiverSuffix?:string;date?:string;hash?:string;aliases?:string[];invalidFields?:EvidenceFieldIssue[]}};
+export type VerifyTransport=(input:VerificationInput)=>Promise<Verification>;
+const requestIdSchema=z.string().uuid();
+const itemSchema=z.object({bank:bankSchema,status:z.string(),verified:z.boolean(),amount:z.union([z.string(),z.number()]),currency:z.string(),receiverAccount:z.string().optional(),referenceNumber:z.string().optional(),receiptNumber:z.string().optional(),transactionNumber:z.string().optional(),timestamp:z.string().optional(),settlementAccountMatch:z.object({matched:z.boolean(),matchType:z.string().optional(),ambiguous:z.boolean().optional()}).optional()}).passthrough();
+const envelopeSchema=z.object({success:z.boolean(),requestId:requestIdSchema,verification:z.object({processingStatus:z.string(),status:z.string().optional(),verified:z.boolean().optional()}).optional(),data:z.union([z.array(z.unknown()),z.record(z.string(),z.unknown())]).optional()}).passthrough();
+function normalizedAccount(bank:Bank,value:string){
+ if(!/^\d+$/.test(value))return null;
+ if(bank==='telebirr'){
+  if(/^09\d{8}$/.test(value))return `251${value.slice(1)}`;
+  if(/^9\d{8}$/.test(value))return `251${value}`;
+  if(/^2519\d{8}$/.test(value))return value;
+  return null;
+ }
+ return value.replace(/^0+(?=\d)/,'');
 }
 export function assess(raw:unknown,input:VerificationInput,now=new Date()):Verification{
- const flags=z.object({success:z.boolean(),exists:z.boolean(),duplicate:z.boolean()}).safeParse(raw);
- if(flags.success&&flags.data.duplicate&&!envelope.safeParse(raw).success)return {code:'DUPLICATE_REVIEW',evidence:{},matched:false};
- if(flags.success&&(!flags.data.success||!flags.data.exists))return {code:'UNCONFIRMED',evidence:{},matched:false};
- const parsed=envelope.safeParse(raw);if(!parsed.success)return {code:'INCOMPLETE_EVIDENCE',evidence:{invalidFields:evidenceFieldIssues(raw,parsed.error)},matched:false};
- const {success,exists,data}=parsed.data,r=data.receipt;let amount:bigint;try{amount=cents(r.amount)}catch{return {code:'INVALID_AMOUNT',evidence:{},matched:false}}
- const date=new Date(r.transaction_date),evidence={amountCents:amount.toString(),receiverSuffix:r.receiver_account?.slice(-4),date:Number.isFinite(date.getTime())?date.toISOString():undefined,method:data.verification_method,hash:hash(JSON.stringify({bank:data.bank,reference:data.transaction_number,amount:amount.toString(),receiver:r.receiver_account,date:r.transaction_date,status:r.status,method:data.verification_method}))};
- const fail=(code:string):Verification=>({code,evidence,matched:false});
- // Provider duplicates are investigation evidence, never permission to issue credit.
- // Existing local claims are checked independently under the transfer lock.
- if(parsed.data.duplicate)return fail('DUPLICATE_REVIEW');
- if(!success||!exists)return fail('UNCONFIRMED');if(r.status!=='completed'||r.transaction_type!=='transfer')return fail('INCOMPLETE_TRANSFER');
- if(data.bank!==input.bank||data.transaction_number.toUpperCase()!==input.reference)return fail('REFERENCE_MISMATCH');
- if(data.verification_method!=='official')return fail('UNSUPPORTED_METHOD');if(r.currency!=='ETB')return fail('CURRENCY_MISMATCH');
- if(input.expectedCents!==null?amount!==input.expectedCents:!input.minCents||!input.maxCents||amount<input.minCents||amount>input.maxCents)return fail('AMOUNT_MISMATCH');
- // Never accept masked accounts or infer a receiver from a name or success flag.
- if(!r.receiver_account)return fail('RECEIVER_UNPROVEN');if(r.receiver_account!==input.account)return fail('RECEIVER_MISMATCH');
- if(!/(Z|[+-]\d{2}:\d{2})$/.test(r.transaction_date)||!Number.isFinite(date.getTime())||date<input.createdAt||date>input.expiresAt||date.getTime()>now.getTime()+60000)return fail('DATE_MISMATCH');
- return {code:'VERIFIED',evidence,matched:true};
+ const envelope=envelopeSchema.safeParse(raw);if(!envelope.success)return {code:'INCOMPLETE_EVIDENCE',matched:false,evidence:{invalidFields:envelope.error.issues.slice(0,12).map(issue=>({field:issue.path.join('.')||'response',issue:issue.code,received:'invalid'}))}};
+ const requestId=envelope.data.requestId;
+ if(envelope.data.verification?.processingStatus==='failed')return {code:'UNCONFIRMED',requestId,matched:false,evidence:{}};
+ if(envelope.data.verification?.processingStatus!=='completed')return {code:'PROCESSING',processing:true,requestId,matched:false,evidence:{}};
+ if(!envelope.data.success||envelope.data.verification.verified!==true||envelope.data.verification.status!=='success')return {code:'UNCONFIRMED',requestId,matched:false,evidence:{}};
+ const list=Array.isArray(envelope.data.data)?envelope.data.data:[];
+ if(list.length!==1)return {code:'INCOMPLETE_EVIDENCE',requestId,matched:false,evidence:{}};
+ const parsed=itemSchema.safeParse(list[0]);if(!parsed.success)return {code:'INCOMPLETE_EVIDENCE',requestId,matched:false,evidence:{invalidFields:parsed.error.issues.slice(0,12).map(issue=>({field:`data.0.${issue.path.join('.')}`,issue:issue.code,received:'invalid'}))}};
+ const item=parsed.data,rawAliases=[item.referenceNumber,item.receiptNumber,item.transactionNumber].filter((value):value is string=>typeof value==='string'&&value.length>0);
+ let aliases:string[];try{aliases=[...new Set(rawAliases.map(value=>canonical(input.bank,value)))]}catch{return {code:'INCOMPLETE_EVIDENCE',requestId,matched:false,evidence:{}}}
+ const base={requestId,matched:false,evidence:{aliases}};
+ const fail=(code:string):Verification=>({...base,code});
+ if(item.bank!==input.bank||item.status!=='success'||!item.verified)return fail('UNCONFIRMED');
+ if(!aliases.includes(input.reference))return fail('REFERENCE_MISMATCH');
+ if(item.currency!=='ETB')return fail('CURRENCY_MISMATCH');
+ let amount:bigint;try{amount=cents(item.amount)}catch{return fail('INVALID_AMOUNT')}
+ if(input.expectedCents!==null?amount!==input.expectedCents:input.minCents===undefined||input.maxCents===undefined||amount<input.minCents||amount>input.maxCents)return fail('AMOUNT_MISMATCH');
+ // Verify.et can report a high-confidence masked match. Only a complete receiver value authorizes credit.
+ if(!item.receiverAccount||item.receiverAccount.includes('*')||item.settlementAccountMatch?.ambiguous||item.settlementAccountMatch?.matched===false)return fail('RECEIVER_UNPROVEN');
+ const receiver=normalizedAccount(input.bank,item.receiverAccount),expected=normalizedAccount(input.bank,input.account);
+ if(!receiver||!expected||receiver!==expected)return fail('RECEIVER_MISMATCH');
+ const date=item.timestamp?new Date(item.timestamp):null;
+ if(!date||!/(Z|[+-]\d{2}:\d{2})$/.test(item.timestamp!)||!Number.isFinite(date.getTime())||date<input.createdAt||date>input.expiresAt||date.getTime()>now.getTime()+60000)return fail('DATE_MISMATCH');
+ const evidence={amountCents:amount.toString(),receiverSuffix:item.receiverAccount.slice(-4),date:date.toISOString(),aliases,hash:hash(JSON.stringify({bank:item.bank,aliases:aliases.slice().sort(),amount:amount.toString(),receiver,date:date.toISOString(),requestId}))};
+ return {code:'VERIFIED',matched:true,requestId,evidence};
 }
-export type VerifyTransport=(input:VerificationInput)=>Promise<Verification>;
-const duplicateEnvelope=z.object({duplicate:z.literal(true),existing_verification_id:z.number().int().positive(),verified_at:z.iso.datetime({offset:true})});
-const storedVerification=z.object({verification:z.object({id:z.number().int().positive(),bank:bankSchema,transaction_number:z.string(),account_number:z.string().nullable().optional(),success:z.literal(true),exists:z.literal(true),status:z.literal('completed'),transaction_type:z.literal('transfer'),amount:z.union([z.number(),z.string()]),currency:z.literal('ETB'),transaction_date:z.iso.datetime({offset:true}),created_at:z.iso.datetime({offset:true}),source:z.object({type:z.literal('api')})})});
 async function boundedJson(response:Response){const reader=response.body?.getReader();if(!reader)throw Error('Empty provider response');let size=0;const chunks:Uint8Array[]=[];for(;;){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>65536){await reader.cancel();throw Error('Provider response too large')}chunks.push(value)}return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown}
-/** Recover only an original API record correlated to an immutable local attempt. */
-export async function recoverProviderDuplicate(raw:unknown,input:VerificationInput,load:(id:number)=>Promise<unknown>,now=new Date()):Promise<Verification>{
- const ordinary=assess(raw,input,now),duplicate=duplicateEnvelope.safeParse(raw);
- if(!duplicate.success)return ordinary;
- const fallback={...ordinary,evidence:{...ordinary.evidence,originalVerificationId:duplicate.data.existing_verification_id,providerVerifiedAt:duplicate.data.verified_at}};
- if(!input.outageAttemptAt&&!input.priorAttempts?.length)return {...fallback,evidence:{...fallback.evidence,recoveryCheck:'NO_PRIOR_ATTEMPT'}};
+function endpoint(){const local=process.env.VERIFY_ET_TEST_ENDPOINT;if(!local)return 'https://verify.et/api/verify';const url=new URL(local);if(!demoBidAllowed()||process.env.PAYMENTS_TEST_ENABLED!=='true'||url.protocol!=='http:'||!['127.0.0.1','localhost'].includes(url.hostname)||url.pathname!=='/api/verify')throw Error('Invalid isolated Verify.et fixture endpoint');return url.href}
+function key(){return process.env.VERIFY_ET_API_KEY??''}
+function log(input:VerificationInput,result:Verification,httpStatus?:number,failure?:string,elapsedMs?:number){const entry={event:'payment_provider_verification',bank:input.bank,code:result.code,httpStatus,elapsedMs,failure,invalidFields:result.evidence.invalidFields,requestTag:result.requestId?hash(result.requestId).slice(0,12):undefined};(result.matched?console.info:console.warn)(JSON.stringify(entry))}
+export async function submitVerify(input:VerificationInput):Promise<Verification>{
+ const started=performance.now();let status:number|undefined;const finish=(result:Verification,failure?:string)=>{log(input,result,status,failure,Math.round(performance.now()-started));return result};
+ if(!key())return finish({code:'PROVIDER_UNCONFIGURED',matched:false,evidence:{}});
  try{
-  const record=storedVerification.parse(await load(duplicate.data.existing_verification_id)).verification;
-  const originalAt=new Date(record.created_at),verifiedAt=new Date(duplicate.data.verified_at);
-  const inside=(at:Date,w:AttemptWindow)=>at.getTime()>=w.startedAt.getTime()-5000&&at.getTime()<=w.endedAt.getTime()+5000;
-  const correlated=input.priorAttempts?.find(w=>inside(originalAt,w)&&inside(verifiedAt,w));
-  const localMatch=!!correlated||input.outageAttemptAt&&Math.abs(originalAt.getTime()-input.outageAttemptAt.getTime())<=120000&&Math.abs(verifiedAt.getTime()-input.outageAttemptAt.getTime())<=120000;
-  const otherMatch=input.otherAttempts?.some(w=>inside(originalAt,w)||inside(verifiedAt,w));
-  if(record.id!==duplicate.data.existing_verification_id||record.bank!==input.bank||record.transaction_number.toUpperCase()!==input.reference||record.account_number&&record.account_number!==input.account||
-   !localMatch||otherMatch||Math.abs(originalAt.getTime()-verifiedAt.getTime())>5000||
-   !Number.isFinite(originalAt.getTime())||!Number.isFinite(verifiedAt.getTime()))return {...fallback,evidence:{...fallback.evidence,recoveryCheck:'ORIGINAL_NOT_CORRELATED'}};
-  const receipt=z.object({success:z.literal(true),exists:z.literal(true),data:z.object({bank:bankSchema,transaction_number:z.string(),verification_method:z.literal('official'),receipt:z.object({amount:z.union([z.number(),z.string()]),currency:z.string(),status:z.string(),transaction_type:z.string(),transaction_date:z.string(),receiver_account:z.string()})})}).parse(raw);
-  if(cents(record.amount)!==cents(receipt.data.receipt.amount)||record.currency!==receipt.data.receipt.currency||record.status!==receipt.data.receipt.status||record.transaction_type!==receipt.data.receipt.transaction_type||
-   Math.abs(new Date(record.transaction_date).getTime()-new Date(receipt.data.receipt.transaction_date).getTime())>1000)return {...fallback,evidence:{...fallback.evidence,recoveryCheck:'ORIGINAL_MISMATCH'}};
-  const exact=assess({...receipt,duplicate:false},input,now);
-  if(!exact.matched)return {...exact,evidence:{...exact.evidence,recoveryCheck:exact.code}};
-  return {code:'VERIFIED_RECOVERED',matched:true,evidence:{...exact.evidence,originalVerificationId:record.id,providerVerifiedAt:duplicate.data.verified_at,correlatedAttemptKey:correlated?.attemptKey,recoveryCheck:'MATCHED',hash:hash(`${exact.evidence.hash}:${record.id}:${record.created_at}:${record.source.type}`)}};
- }catch{return {...fallback,evidence:{...fallback.evidence,recoveryCheck:'ORIGINAL_UNAVAILABLE'}}}
+  const body=input.bank==='telebirr'?{bank:input.bank,transactionNumber:input.reference,settlementAccount:input.account}:{bank:input.bank,reference:input.reference,...(/^FT[A-Z0-9]{6,30}$/.test(input.reference)?{suffix:input.account.slice(-8)}:{}),settlementAccount:input.account};
+  const response=await fetch(`${endpoint()}?waitMs=5000`,{method:'POST',headers:{'x-api-key':key(),'Idempotency-Key':input.attemptKey,'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(PROVIDER_TIMEOUT_MS),redirect:'error',cache:'no-store'});status=response.status;
+  if(!response.ok&&status!==202)return finish({code:status===401||status===403?'PROVIDER_AUTH':status===402?'PROVIDER_QUOTA':status===409?'IDEMPOTENCY_CONFLICT':status===429?'PROVIDER_RATE_LIMIT':status===422?'INVALID_RECEIPT':'PROVIDER_OUTAGE',matched:false,retrySeconds:Math.min(3600,Math.max(30,Number(response.headers.get('retry-after'))||60)),evidence:{}});
+  const raw=await boundedJson(response);const result=assess(raw,input);
+  return finish(status===202?{...result,code:'PROCESSING',processing:true,matched:false,evidence:{}}:result);
+ }catch(error){return finish({code:'PROVIDER_OUTAGE',matched:false,retrySeconds:60,evidence:{}},error instanceof Error&&['TimeoutError','AbortError'].includes(error.name)?'TIMEOUT':status?'RESPONSE_UNREADABLE':'REQUEST_FAILED')}
 }
-export async function checkEt(input:VerificationInput):Promise<Verification>{
- const started=performance.now();let httpStatus:number|undefined;
- const finish=(result:Verification,failure?:string):Verification=>{
-  const entry=JSON.stringify({event:'payment_provider_verification',bank:input.bank,transferTag:hash(`${input.bank}:${input.reference}`).slice(0,16),code:result.code,httpStatus,elapsedMs:Math.round(performance.now()-started),failure,invalidFields:result.evidence.invalidFields,priorAttemptCount:input.priorAttempts?.length??0,legacyOutageRecorded:!!input.outageAttemptAt,recoveryCheck:result.evidence.recoveryCheck??(result.code==='DUPLICATE_REVIEW'&&!input.outageAttemptAt&&!input.priorAttempts?.length?'NO_PRIOR_ATTEMPT':undefined)});
-  if(result.matched)console.info(entry);else console.warn(entry);
-  return result;
- };
- const key=process.env.CHECK_ET_MODE==='test'?process.env.CHECK_ET_TEST_API_KEY:process.env.CHECK_ET_LIVE_API_KEY;
- if(!key)return finish({code:'PROVIDER_UNCONFIGURED',evidence:{},matched:false});
- try{
-  let endpoint='https://api.check.et/api/v1/verify';if(process.env.CHECK_ET_TEST_ENDPOINT){const url=new URL(process.env.CHECK_ET_TEST_ENDPOINT);if(!demoBidAllowed()||process.env.CHECK_ET_MODE!=='test'||url.protocol!=='http:'||!['127.0.0.1','localhost'].includes(url.hostname))throw Error();endpoint=url.href;}
-  const response=await fetch(endpoint,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({bank:input.bank,transaction_number:input.reference,...(input.bank==='cbe'?{account_number:input.account}:{})}),signal:AbortSignal.timeout(PROVIDER_TIMEOUT_MS),redirect:'error',cache:'no-store'});
-  httpStatus=response.status;
-  if(!response.ok){const code=({400:'INVALID_RECEIPT',401:'PROVIDER_AUTH',403:'PROVIDER_AUTH',402:'PROVIDER_QUOTA',404:'NOT_FOUND',422:'INVALID_RECEIPT',429:'PROVIDER_RATE_LIMIT'} as Record<number,string>)[response.status]??'PROVIDER_OUTAGE';return finish({code,matched:false,evidence:{},retrySeconds:Math.min(3600,Math.max(30,Number(response.headers.get('retry-after'))||60))});}
-  const raw=await boundedJson(response),ordinary=assess(raw,input);
-  if(ordinary.code!=='DUPLICATE_REVIEW')return finish(ordinary);
-  return finish(await recoverProviderDuplicate(raw,input,async id=>{
-   const url=new URL(endpoint);url.pathname=url.pathname.replace(/\/verify$/,'/verifications/'+id);
-   const original=await fetch(url,{headers:{Authorization:`Bearer ${key}`},signal:AbortSignal.timeout(PROVIDER_RECOVERY_TIMEOUT_MS),redirect:'error',cache:'no-store'});
-   if(!original.ok)throw Error('Original provider verification unavailable');return boundedJson(original);
-  }));
- }catch(error){
-  const failure=error instanceof Error&&['TimeoutError','AbortError'].includes(error.name)?'TIMEOUT':httpStatus!==undefined?'RESPONSE_UNREADABLE':'REQUEST_FAILED';
-  return finish({code:'PROVIDER_OUTAGE',retrySeconds:60,evidence:{},matched:false},failure);
- }
+export async function readVerifyStatus(requestId:string){
+ const id=requestIdSchema.parse(requestId);if(!key())throw new PaymentError(503,'Verification is temporarily unavailable.');
+ const response=await fetch(`${endpoint()}/${encodeURIComponent(id)}`,{headers:{'x-api-key':key()},signal:AbortSignal.timeout(5000),redirect:'error',cache:'no-store'});
+ if(!response.ok)throw new PaymentError(503,'Verification is temporarily unavailable.');return boundedJson(response);
 }

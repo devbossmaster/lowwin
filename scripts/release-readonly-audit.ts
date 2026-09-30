@@ -7,7 +7,7 @@ const source=process.argv[2];if(!source)throw Error('Pass the existing environme
 const env=parse(readFileSync(resolve(source))),url=new URL(env.DATABASE_URL??'');
 url.searchParams.set('connection_limit','1');url.searchParams.set('connect_timeout','10');url.searchParams.set('pool_timeout','10');
 const client=new PrismaClient({datasourceUrl:url.href});
-const report:Record<string,unknown>={at:new Date().toISOString(),targetHost:url.hostname,environment:env.APP_ENV??'unset',liveFundingFlag:env.PAYMENTS_LIVE_ENABLED==='true',services:{emailTransport:env.EMAIL_TRANSPORT??'unavailable',providerMode:env.CHECK_ET_MODE??'disabled',liveProviderKeyPresent:!!env.CHECK_ET_LIVE_API_KEY}};
+const report:Record<string,unknown>={at:new Date().toISOString(),targetHost:url.hostname,environment:env.APP_ENV??'unset',liveFundingFlag:env.PAYMENTS_LIVE_ENABLED==='true',verifyEtSchemaReady:env.VERIFY_ET_SCHEMA_READY==='true',services:{emailTransport:env.EMAIL_TRANSPORT??'unavailable',verifyEtKeyPresent:!!env.VERIFY_ET_API_KEY,verifyEtWebhookSecretPresent:!!env.VERIFY_ET_WEBHOOK_SECRET}};
 const deadline=setTimeout(()=>{console.error('Read-only audit exceeded 45 seconds; external checks remain unverified.');process.exit(1)},45000);
 try{
  const started=performance.now();

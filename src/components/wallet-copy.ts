@@ -95,4 +95,6 @@ export function useWalletCopy(){const {language}=useMiniLocale();return (text:st
 Object.assign(walletAm,{
  'An admin rejected this deposit. Contact support if you sent funds.':'አስተዳዳሪው ይህን ተቀማጭ ውድቅ አድርጎታል። ገንዘብ ከላኩ ድጋፍን ያነጋግሩ።',
  'Your wallet is credited automatically when all payment details match.':'ሁሉም የክፍያ ዝርዝሮች ሲዛመዱ ገንዘቡ ወዲያውኑ ወደ ቦርሳዎ ይጨመራል።',
+ 'The verification needs more evidence. Your wallet was not credited.':'ማረጋገጫው ተጨማሪ ማስረጃ ይፈልጋል። ገንዘቡ ወደ ሂሳብዎ አልገባም።',
+ 'Verification did not finish. Contact support with your deposit ID.':'ማረጋገጫው አልተጠናቀቀም። የገቢ መለያዎን ይዘው ድጋፍን ያነጋግሩ።',
 });

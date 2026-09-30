@@ -454,6 +454,7 @@ model TopUpIntent {
   reasonCode        String?
   caseState         String    @default("OPEN")
   assignedTo        String?
+  verifyRequests    VerifyRequest[]
 
   @@unique([userId, key])
   @@unique([provider, providerIntentId])
@@ -495,6 +496,7 @@ model PaymentClaim {
   journalId      String   @unique
   evidenceHash   String
   createdAt      DateTime @default(now())
+  aliases        PaymentTransferAlias[]
 
   @@unique([channel, reference])
 }
@@ -509,6 +511,50 @@ model PaymentAttempt {
   createdAt   DateTime @default(now())
 
   @@unique([intentId, key])
+}
+
+model PaymentTransferAlias {
+  id        String       @id @default(uuid())
+  channel   String
+  alias     String
+  claimId   String
+  claim     PaymentClaim @relation(fields: [claimId], references: [id], onDelete: Restrict)
+  createdAt DateTime     @default(now())
+
+  @@unique([channel, alias])
+  @@index([claimId])
+}
+
+// A provider submission survives browser closure, timeout, and worker restart.
+model VerifyRequest {
+  id             String      @id @default(uuid())
+  intentId       String
+  intent         TopUpIntent @relation(fields: [intentId], references: [id], onDelete: Restrict)
+  key            String      @unique
+  reference      String
+  requestId      String?     @unique
+  state          String      @default("SUBMITTING")
+  nextCheckAt    DateTime    @default(now())
+  attempts       Int         @default(0)
+  code           String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@index([state, nextCheckAt])
+  @@index([intentId, createdAt])
+}
+
+// Signed webhook events are stored before acknowledgment and processed by a worker.
+model VerifyWebhookEvent {
+  id          String   @id
+  requestId   String
+  event       String
+  payloadHash String
+  processingStatus String?
+  createdAt   DateTime @default(now())
+  processedAt DateTime?
+
+  @@index([requestId, processedAt])
 }
 
 model PaymentStatementEntry {

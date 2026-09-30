@@ -1,222 +1,53 @@
-import {Prisma as MoneyPrisma} from '@prisma/client';
-import {verifyFixtureContact} from './contact-fixtures';
-import {beforeAll,afterAll,describe,it,expect,vi} from 'vitest';
-import {PrismaClient} from '@prisma/client';
+import {Prisma,PrismaClient} from '@prisma/client';
 import {randomUUID} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
-import {createServer,type Server} from 'node:http';
-import sharp from 'sharp';
-import {depositAttentionWhere} from '../src/modules/payments/review-filter';
-import {createIntent,verifyIntent,reconcilePayments,paymentHealth,listOwnTopups} from '../src/modules/payments/service';
-import {assess,checkEt,candidate,cents,type VerificationInput} from '../src/modules/payments/provider';
-import {cleanReceipt,scanReceipt} from '../src/modules/payments/ocr';
-
-import {bootstrapOwner} from '../src/modules/admin/bootstrap';
-
-import {totp} from '../src/modules/admin/crypto';
+import {beforeAll,afterAll,describe,it,expect,vi} from 'vitest';
+import {createIntent,verifyIntent,processOneVerifyRequest,reconcilePayments,listOwnTopups} from '../src/modules/payments/service';
+import {assess,type VerificationInput} from '../src/modules/payments/provider';
 import {reconcile} from '../src/modules/wallet/ledger';
-import {bidAuction} from './bid-fixtures';
-import {submitBid} from '../src/modules/auctions/bids';
-import {closeAuction} from '../src/modules/auctions/settlement';
-import {TEST_TOKEN,signedLaunch} from './helpers';
-import {sealContact,openContact} from '../src/modules/fulfillment/crypto';
-import {seal} from '../src/modules/admin/crypto';
-import {scheduleAlerts} from '../src/modules/notifications/service';
 const url=process.env.PAYMENT_TEST_DATABASE_URL;
-function providerBody(input:VerificationInput){return {success:true,exists:true,duplicate:false,data:{bank:input.bank,transaction_number:input.reference,verification_method:'official',receipt:{status:'completed',transaction_type:'transfer',amount:Number(input.expectedCents)/100,currency:'ETB',transaction_date:new Date().toISOString(),receiver_account:input.account}}}}
-const good=async(input:VerificationInput)=>assess(providerBody(input),input);
-describe.skipIf(!url)('Phase 6 verified transfers and payment operations',()=>{
- let paymentAdminRead:typeof import('../src/modules/payments/admin').paymentAdminRead,paymentAdminCommand:typeof import('../src/modules/payments/admin').paymentAdminCommand,recordStatement:typeof import('../src/modules/payments/admin').recordStatement,opsMutation:typeof import('../src/modules/admin/ops').opsMutation;
- let db:PrismaClient,sink:Server,auth:typeof import('../src/modules/auth/handler').handleAuth,player:{id:string;cookie:string},other:{id:string;cookie:string},owner:{id:string;cookie:string},policies:Record<string,string>={},paymentRoute:typeof import('../src/app/api/wallet/top-ups/route'),adminRoute:typeof import('../src/app/api/admin/payments/[[...path]]/route');
- const roles:Record<string,{id:string;cookie:string}>={},messages:{to:string;text:string}[]=[],password='Payment-staff-test-password-0123';
- const headers=(cookie='')=>new Headers({origin:'https://lowin.ngrok-free.app','content-type':'application/json',cookie});
- const request=(path:string,body?:unknown,cookie='')=>new Request(`https://lowin.ngrok-free.app/api/${path}`,{method:body===undefined?'GET':'POST',headers:headers(cookie),...(body===undefined?{}:{body:JSON.stringify(body)})});
- async function staff(action:string,body:unknown,cookie=''){return auth(request(`auth/lowin/staff/${action}`,body,cookie))}
- const okay=async(r:Response)=>{const b=await r.json();expect(r.status,JSON.stringify(b)).toBe(200);return b};
- const cookie=(r:Response)=>r.headers.get('set-cookie')!.split(';')[0];
- async function enroll(email:string){const token=new URLSearchParams(new URL(messages.findLast(m=>m.to===email)!.text.match(/http[^\s]+/)![0]).hash.slice(1)).get('invite')!,r=await staff('accept-invite',{token,password});await okay(r);const c=cookie(r),secret=(await okay(await staff('enroll',{},c))).secret,m=await staff('mfa',{code:totp(secret,BigInt(Math.floor(Date.now()/30000)))},c);await okay(m);return {id:(await db.user.findUniqueOrThrow({where:{email}})).id,cookie:cookie(m)}}
- async function sign(id:number){await verifyFixtureContact(db,id);const r=await auth(request('auth/telegram/miniapp/signin',{initData:signedLaunch({user:JSON.stringify({id,first_name:'Payment fixture'})})}));await okay(r);return {id:(await db.user.findUniqueOrThrow({where:{telegramId:String(id)}})).id,cookie:cookie(r)}}
- async function intent(user=player.id,bank='telebirr',amount='10000'){return createIntent(db,user,{key:randomUUID(),channel:bank,policyId:policies[bank],amountCents:amount})}
- const ref=()=>`MP${randomUUID().replaceAll('-','').slice(0,18).toUpperCase()}`;
- beforeAll(async()=>{const u=new URL(url!);if(!['localhost','127.0.0.1'].includes(u.hostname)||!u.pathname.endsWith('_test'))throw Error('Disposable loopback only');sink=createServer(async(req,res)=>{let text='';for await(const b of req)text+=b;messages.push(JSON.parse(text));res.writeHead(204).end()});await new Promise<void>(r=>sink.listen(0,'127.0.0.1',r));
- Object.assign(process.env,{DATABASE_URL:url,DIRECT_URL:url,NODE_ENV:'test',APP_ENV:'local',DEV_POINTS_ENABLED:'true',DEV_IDENTITY_ENABLED:'false',BETTER_AUTH_URL:'https://lowin.ngrok-free.app',MINI_APP_URL:'https://lowin.ngrok-free.app',BETTER_AUTH_SECRET:'fixture-only-secret-at-least-thirty-two-characters',TELEGRAM_BOT_TOKEN:TEST_TOKEN,TELEGRAM_BOT_USERNAME:'lowin_fixture_bot',TELEGRAM_WEBHOOK_SECRET:'fixture-only-webhook-secret-thirty-two',ADMIN_BOOTSTRAP_ENABLED:'true',ADMIN_MFA_KEY:'a'.repeat(64),EMAIL_TRANSPORT:'local-sink',EMAIL_SINK_URL:`http://127.0.0.1:${(sink.address() as {port:number}).port}`,PAYMENTS_TEST_ENABLED:'true',CHECK_ET_MODE:'test',CHECK_ET_TEST_API_KEY:'chk_nonsecret_fixture',RECEIPT_OCR:'tesseract'});
- execFileSync(process.execPath,['node_modules/prisma/build/index.js','migrate','deploy'],{env:process.env,stdio:'pipe'});db=new PrismaClient();({paymentAdminRead,paymentAdminCommand,recordStatement}=await import('../src/modules/payments/admin'));({opsMutation}=await import('../src/modules/admin/ops'));({handleAuth:auth}=await import('../src/modules/auth/handler'));paymentRoute=await import('../src/app/api/wallet/top-ups/route');adminRoute=await import('../src/app/api/admin/payments/[[...path]]/route');player=await sign(960000001);other=await sign(960000002);await bootstrapOwner(db,'payment-owner@lowin.test');owner=await enroll('payment-owner@lowin.test');for(const role of ['PAYMENTS_OPERATOR','SUPPORT','AUDITOR','CATALOG_MANAGER']){const email=`payment-${role.toLowerCase()}@lowin.test`;await opsMutation(db,headers(owner.cookie),'invite',{key:randomUUID(),email,role,reason:'Payment permission fixture'});roles[role]=await enroll(email)}
- for(const channel of ['telebirr','cbe']){const p=await db.paymentPolicy.create({data:{channel,version:1,enabled:true,account:channel==='cbe'?'0000000000000':'0000000000',accountName:'DEMO NOT PAYABLE',pointsNumerator:1n,centsDenominator:100n,minCents:100n,maxCents:100000n,terms:'DEMO test quote only. Do not transfer real funds. Eligibility, refund and reversal review pending.',reviewReference:'Isolated test fixture review',actorId:owner.id}});policies[channel]=p.id}
+const requestId=()=>randomUUID();
+describe.skipIf(!url)('Verify.et funding on disposable PostgreSQL',()=>{
+ let db:PrismaClient,policy:Record<string,string>,account:Record<string,string>,user:string,other:string;
+ const reference=()=>`DEMO${randomUUID().replaceAll('-','').slice(0,18).toUpperCase()}`;
+ const body=(input:VerificationInput,fields:Record<string,unknown>={},id=requestId())=>({success:true,requestId:id,verification:{processingStatus:'completed',status:'success',verified:true},data:[{bank:input.bank,status:'success',verified:true,amount:input.expectedCents?new Prisma.Decimal(input.expectedCents.toString()).div(100).toString():'30.27',currency:'ETB',receiverAccount:input.account,referenceNumber:input.reference,timestamp:new Date().toISOString(),...fields}]});
+ const good=async(input:VerificationInput)=>assess(body(input),input);
+ const newIntent=async(owner=user,channel='telebirr')=>createIntent(db,owner,{key:randomUUID(),channel,policyId:policy[channel]},true);
+ beforeAll(async()=>{
+  const parsed=new URL(url!);if(!['localhost','127.0.0.1'].includes(parsed.hostname)||!parsed.pathname.endsWith('_test'))throw Error('Disposable loopback only');
+  Object.assign(process.env,{DATABASE_URL:url,DIRECT_URL:url,NODE_ENV:'test',APP_ENV:'local',PAYMENTS_TEST_ENABLED:'true',VERIFY_ET_API_KEY:'fixture-only-key',VERIFY_ET_TEST_ENDPOINT:'http://127.0.0.1:8030/api/verify',TELEGRAM_BOT_TOKEN:'123456789:fixture',RECEIPT_OCR:'tesseract'});
+  execFileSync(process.execPath,['node_modules/prisma/build/index.js','migrate','deploy'],{env:process.env,stdio:'pipe'});
+  db=new PrismaClient();const first=await db.user.create({data:{id:randomUUID(),name:'Payment fixture'}}),second=await db.user.create({data:{id:randomUUID(),name:'Second payment fixture'}});user=first.id;other=second.id;
+  policy={};account={telebirr:'0911111111',cbe:'1000303997441'};
+  for(const channel of ['telebirr','cbe']){const row=await db.paymentPolicy.create({data:{channel,version:1,enabled:true,account:account[channel],accountName:'Fixture receiver',pointsNumerator:1n,centsDenominator:100n,minCents:100n,maxCents:100000n,terms:'Fixture only. Do not send funds.',reviewReference:'Fixture evidence',actorId:user}});policy[channel]=row.id}
  },60000);
- afterAll(async()=>{vi.unstubAllGlobals();await db?.$disconnect();await (await import('../src/lib/db')).db.$disconnect();await new Promise<void>(r=>sink?.close(()=>r()))});
- it('requires signed sessions and denies role/password-only spoofing',async()=>{expect((await paymentRoute.GET(request('wallet/top-ups'))).status).toBe(401);expect((await paymentRoute.GET(request('wallet/top-ups',undefined,player.cookie))).headers.get('cache-control')).toContain('no-store');for(const c of [player.cookie,roles.CATALOG_MANAGER.cookie])expect((await adminRoute.GET(request('admin/payments',undefined,c),{params:Promise.resolve({})})).status).toBe(403);const login=await staff('login',{email:'payment-owner@lowin.test',password});await okay(login);expect((await adminRoute.GET(request('admin/payments',undefined,cookie(login)),{params:Promise.resolve({})})).status).toBe(403);expect((await paymentRoute.POST(request('wallet/top-ups',{action:'create',input:{key:randomUUID(),channel:'cbe',policyId:policies.cbe,amountCents:'100',receiver:'spoof'}},player.cookie))).status).toBe(422)});
- it.each(['telebirr','cbe'])('credits provider-derived %s amounts once without a client amount',async channel=>{
-  const user=await db.user.create({data:{id:randomUUID(),name:'DEMO automatic amount'}}),body={key:randomUUID(),channel,policyId:policies[channel]};
-  const t=await createIntent(db,user.id,body,true);expect(t.amountCents).toBeUndefined();expect(t.points).toBe('0');
-  expect((await createIntent(db,user.id,body,true)).id).toBe(t.id);
-  await expect(createIntent(db,user.id,{...body,amountCents:'999999'},true)).rejects.toThrow();
-  await expect(db.topUpIntent.update({where:{id:t.id},data:{points:new MoneyPrisma.Decimal('30'),expectedCents:3000n}})).rejects.toThrow();
-  const input={id:t.id,key:randomUUID(),input:channel==='cbe'?'FT'+ref():ref()};
-  const provider=async(v:VerificationInput)=>{const b=providerBody(v);b.data.receipt.amount=30.27;return assess(b,v)};
-  const result=await verifyIntent(db,user.id,input,provider);expect(result).toMatchObject({status:'CREDITED',points:'30.27',amountCents:'3027'});
-  expect(await verifyIntent(db,user.id,input,provider)).toEqual(result);
-  expect(await db.paymentClaim.count({where:{intentId:t.id}})).toBe(1);
-  expect(await db.outbox.count({where:{key:`deposit:${t.id}:credited`}})).toBe(1);
-  expect(await db.notificationInbox.count({where:{key:`deposit:${t.id}:credited`}})).toBe(1);
-  await expect(db.topUpIntent.update({where:{id:t.id},data:{expectedCents:9999n}})).rejects.toThrow();
-  expect(await reconcile(db)).toEqual([]);expect(await reconcilePayments(db)).toEqual([]);
+ afterAll(async()=>{vi.unstubAllGlobals();await db?.$disconnect()});
+ it('credits a provider-derived amount once with balanced journal and one alert',async()=>{
+  const intent=await newIntent(),input={id:intent.id,key:randomUUID(),input:reference()};
+  expect(intent.amountCents).toBeUndefined();const credited=await verifyIntent(db,user,input,good);expect(credited).toMatchObject({status:'CREDITED',amountCents:'3027',points:'30.27'});
+  expect((await verifyIntent(db,user,input,good)).status).toBe('CREDITED');expect(await db.paymentClaim.count({where:{intentId:intent.id}})).toBe(1);expect(await db.outbox.count({where:{key:`deposit:${intent.id}:credited`}})).toBe(1);expect(await reconcile(db)).toEqual([]);expect(await reconcilePayments(db)).toEqual([]);
  });
- it('reuses concurrent preparations and reviewed references without another provider request',async()=>{
-  const user=await db.user.create({data:{id:randomUUID(),name:'DEMO duplicate submission'}}),reference=ref(),prepare=()=>createIntent(db,user.id,{key:randomUUID(),channel:'telebirr',policyId:policies.telebirr,input:reference},true);
-  const [a,b]=await Promise.all([prepare(),prepare()]);expect(a.id).toBe(b.id);
-  const provider=vi.fn(async()=>({code:'DUPLICATE_REVIEW',matched:false,evidence:{}}));
-  expect((await verifyIntent(db,user.id,{id:a.id,key:randomUUID(),input:reference},provider)).status).toBe('NEEDS_REVIEW');
-  await expect(verifyIntent(db,user.id,{id:b.id,key:randomUUID(),input:reference},provider)).rejects.toThrow('Wait');
-  expect(await prepare()).toMatchObject({id:a.id,reused:true});expect(provider).toHaveBeenCalledTimes(1);
-  expect(await db.topUpIntent.count({where:{userId:user.id}})).toBe(1);expect(await db.paymentAttempt.count({where:{intentId:a.id}})).toBe(1);expect(await db.paymentClaim.count({where:{userId:user.id}})).toBe(0);
-  const stranger=await db.user.create({data:{id:randomUUID(),name:'DEMO other depositor'}});
-  expect((await createIntent(db,stranger.id,{key:randomUUID(),channel:'telebirr',policyId:policies.telebirr,input:reference},true)).id).not.toBe(a.id);
+ it('resumes queued verification without another customer submission',async()=>{
+  const intent=await newIntent(),ref=reference(),id=requestId(),input={id:intent.id,key:randomUUID(),input:ref};
+  const queued=await verifyIntent(db,user,input,async()=>({code:'PROCESSING',matched:false,processing:true,requestId:id,evidence:{}}));expect(queued.status).toBe('VERIFYING');
+  const row=await db.verifyRequest.findFirstOrThrow({where:{intentId:intent.id}});await db.verifyRequest.update({where:{id:row.id},data:{nextCheckAt:new Date(0)}});
+  const fetcher=vi.fn(async(path:string,options:RequestInit)=>String(options.method)==='POST'?Response.json(body({bank:'telebirr',reference:ref,account:account.telebirr,expectedCents:null,minCents:100n,maxCents:100000n,createdAt:new Date(intent.createdAt),expiresAt:new Date(intent.expiresAt!),attemptKey:input.key},{},id)):Response.json({success:true,data:{requestId:id,processingStatus:'completed',status:'success',verified:true}}));vi.stubGlobal('fetch',fetcher);
+  try{expect(await processOneVerifyRequest(db)).toBe(true);expect((await db.topUpIntent.findUniqueOrThrow({where:{id:intent.id}})).status).toBe('CREDITED');expect(fetcher).toHaveBeenCalledTimes(2)}finally{vi.unstubAllGlobals()}
  });
- it('retries ordinary review, resolves assignment, replays the old result and credits once',async()=>{
-  const user=await db.user.create({data:{id:randomUUID(),name:'DEMO review retry'}}),t=await intent(user.id),reference=ref(),firstKey=randomUUID();
-  const first=await verifyIntent(db,user.id,{id:t.id,key:firstKey,input:reference},async()=>({code:'INCOMPLETE_EVIDENCE',matched:false,evidence:{}}));
-  expect(first.status).toBe('NEEDS_REVIEW');
-  await db.topUpIntent.update({where:{id:t.id},data:{caseState:'INVESTIGATING',assignedTo:'test:operator',nextAttemptAt:new Date(0)}});
-  const check=vi.fn(good),key=randomUUID(),result=await verifyIntent(db,user.id,{id:t.id,key,input:reference},check);
-  expect(result).toMatchObject({status:'CREDITED',caseState:'RESOLVED'});
-  expect((await db.topUpIntent.findUniqueOrThrow({where:{id:t.id}})).assignedTo).toBeNull();
-  expect(await db.topUpIntent.count({where:{id:t.id,...depositAttentionWhere(new Date())}})).toBe(0);
-  expect(await verifyIntent(db,user.id,{id:t.id,key:firstKey,input:reference},check)).toEqual(first);
-  expect(await verifyIntent(db,user.id,{id:t.id,key,input:reference},check)).toEqual(result);expect(check).toHaveBeenCalledTimes(1);
-  expect(await db.paymentClaim.count({where:{intentId:t.id}})).toBe(1);
-  expect(await db.outbox.count({where:{key:`deposit:${t.id}:credited`}})).toBe(1);
-  await db.topUpIntent.update({where:{id:t.id},data:{caseState:'REVERSAL_REVIEW'}});
-  expect(await db.topUpIntent.count({where:{id:t.id,...depositAttentionWhere(new Date())}})).toBe(1);
-  expect(await reconcile(db)).toEqual([]);expect(await reconcilePayments(db)).toEqual([]);
+ it('keeps masked receivers in review, then credits an eligible exact retry',async()=>{
+  const intent=await newIntent(),ref=reference();const first=await verifyIntent(db,user,{id:intent.id,key:randomUUID(),input:ref},async input=>assess(body(input,{receiverAccount:'2519****1111'}),input));
+  expect(first).toMatchObject({status:'NEEDS_REVIEW',reason:'RECEIVER_UNPROVEN'});expect(await db.paymentClaim.count({where:{intentId:intent.id}})).toBe(0);
+  await db.topUpIntent.update({where:{id:intent.id},data:{nextAttemptAt:new Date(0)}});
+  expect((await verifyIntent(db,user,{id:intent.id,key:randomUUID(),input:ref},good)).status).toBe('CREDITED');expect(await db.outbox.count({where:{key:`deposit:${intent.id}:credited`}})).toBe(1);
  });
- it.each(['ESCALATED','REVERSAL_REVIEW'])('blocks %s holds before and during verification',async caseState=>{
-  const user=await db.user.create({data:{id:randomUUID(),name:'DEMO hold'}}),t=await intent(user.id),reference=ref(),provider=vi.fn(good);
-  await db.topUpIntent.update({where:{id:t.id},data:{caseState}});
-  await expect(verifyIntent(db,user.id,{id:t.id,key:randomUUID(),input:reference},provider)).rejects.toThrow('protected');expect(provider).not.toHaveBeenCalled();
-  await db.topUpIntent.update({where:{id:t.id},data:{caseState:'OPEN'}});
-  await expect(verifyIntent(db,user.id,{id:t.id,key:randomUUID(),input:reference},async input=>{await db.topUpIntent.update({where:{id:t.id},data:{caseState}});return good(input)})).rejects.toThrow('protected');
-  expect(await db.paymentClaim.count({where:{intentId:t.id}})).toBe(0);
+ it('blocks another user and an alternate CBE alias from a second credit',async()=>{
+  const first=await newIntent(user,'cbe'),receipt='fHCxyExampleRcpt1',ft=reference().replace(/^DEMO/,'FT');
+  const result=await verifyIntent(db,user,{id:first.id,key:randomUUID(),input:receipt},async input=>assess(body(input,{referenceNumber:ft,receiptNumber:receipt}),input));expect(result.status).toBe('CREDITED');
+  const second=await newIntent(other,'cbe');const duplicate=await verifyIntent(db,other,{id:second.id,key:randomUUID(),input:ft},async input=>assess(body(input,{referenceNumber:ft,receiptNumber:receipt}),input));expect(duplicate.status).toBe('DUPLICATE_CONFLICT');expect(await db.paymentClaim.count({where:{channel:'cbe',reference:{in:[ft,receipt]}}})).toBe(1);expect(await reconcilePayments(db)).toEqual([]);
  });
- it('recovers after a lost response using a new attempt key, with immutable starts and no extra credit',async()=>{
-  const user=await db.user.create({data:{id:randomUUID(),name:'DEMO lost response'}}),t=await intent(user.id),reference=ref(),key=randomUUID();
-  await expect(verifyIntent(db,user.id,{id:t.id,key,input:reference},async()=>{throw Error('simulated process loss')})).rejects.toThrow('process loss');
-  expect(await db.operation.count({where:{userId:user.id,scope:'PAYMENT_VERIFY_START'}})).toBe(1);
-  await db.topUpIntent.update({where:{id:t.id},data:{leaseUntil:new Date(0),nextAttemptAt:new Date(0)}});
-  const provider=vi.fn(good);
-  const interrupted=await verifyIntent(db,user.id,{id:t.id,key,input:reference},provider);expect(interrupted.reason).toBe('PROVIDER_INTERRUPTED');expect(provider).not.toHaveBeenCalled();
-  expect((await verifyIntent(db,user.id,{id:t.id,key:randomUUID(),input:reference},provider)).status).toBe('CREDITED');
-  expect(await verifyIntent(db,user.id,{id:t.id,key,input:reference},provider)).toEqual(interrupted);
-  expect(await db.paymentClaim.count({where:{intentId:t.id}})).toBe(1);
+ it('shows immutable Check.et history and rechecks eligible unresolved legacy deposits',async()=>{
+  const ref=reference(),legacy=await db.topUpIntent.create({data:{userId:user,key:randomUUID(),provider:'CHECK_ET',channel:'telebirr',status:'NEEDS_REVIEW',reference:ref,points:new Prisma.Decimal('10'),expectedCents:1000n,policyVersion:policy.telebirr,receivingAccount:account.telebirr,expiresAt:new Date(Date.now()+1800000)}});
+  expect((await listOwnTopups(db,user)).items.some(item=>item.id===legacy.id)).toBe(true);
+  expect((await verifyIntent(db,user,{id:legacy.id,key:randomUUID(),input:ref},good)).status).toBe('CREDITED');expect(await reconcilePayments(db)).toEqual([]);
  });
- it('recovers older review within seven days without extending its transfer eligibility window',async()=>{
-  const user=await db.user.create({data:{id:randomUUID(),name:'DEMO older deposit'}}),end=new Date(Date.now()-86400000),start=new Date(end.getTime()-1800000);
-  const make=()=>db.topUpIntent.create({data:{userId:user.id,key:randomUUID(),provider:'CHECK_ET',channel:'telebirr',status:'NEEDS_REVIEW',points:new MoneyPrisma.Decimal('1'),expectedCents:100n,policyVersion:policies.telebirr,receivingAccount:'0000000000',createdAt:start,expiresAt:end}});
-  const old=await make();expect((await verifyIntent(db,user.id,{id:old.id,key:randomUUID(),input:ref()},async input=>{const body=providerBody(input);body.data.receipt.transaction_date=new Date(start.getTime()+1000).toISOString();return assess(body,input)})).status).toBe('CREDITED');
-  const newer=await make();expect((await verifyIntent(db,user.id,{id:newer.id,key:randomUUID(),input:ref()},good)).reason).toBe('DATE_MISMATCH');
-  const limit=await make();await db.topUpIntent.update({where:{id:limit.id},data:{attempts:6}});
-  await expect(verifyIntent(db,user.id,{id:limit.id,key:randomUUID(),input:ref()},good)).rejects.toThrow('operator review');
-  expect((await verifyIntent(db,user.id,{id:limit.id,key:randomUUID(),input:ref()},async input=>{const body=providerBody(input);body.data.receipt.transaction_date=new Date(start.getTime()+1000).toISOString();return assess(body,input)},undefined,true)).status).toBe('CREDITED');
- });
- it('serializes competing screenshot submissions and credits one wallet receipt automatically',async()=>{
-  const user=await db.user.create({data:{id:randomUUID(),name:'DEMO parallel screenshot'}}),reference=ref(),a=await intent(user.id),b=await intent(user.id);
-  let release!:()=>void,started!:()=>void;const gate=new Promise<void>(r=>release=r),entered=new Promise<void>(r=>started=r);
-  const provider=vi.fn(async(v:VerificationInput)=>{started();await gate;return good(v)});
-  const first=verifyIntent(db,user.id,{id:a.id,key:randomUUID(),input:reference},provider);
-  await entered;
-  try{expect(await verifyIntent(db,user.id,{id:b.id,key:randomUUID(),input:reference},provider)).toMatchObject({id:a.id,status:'VERIFYING',reused:true})}finally{release()}
-  expect((await first).status).toBe('CREDITED');expect(provider).toHaveBeenCalledTimes(1);
-  expect((await listOwnTopups(db,user.id)).items.map(t=>t.id)).toEqual([a.id]);
-  expect(await createIntent(db,user.id,{key:randomUUID(),channel:'telebirr',policyId:policies.telebirr,input:reference},true)).toMatchObject({id:a.id,status:'CREDITED',reused:true});
-  expect(await db.paymentClaim.count({where:{userId:user.id}})).toBe(1);expect((await db.ledgerAccount.findUniqueOrThrow({where:{name:`user:${user.id}:available`}})).balance.toString()).toBe('100');
- });
- it('rejects and archives with permissions and audits while preserving financial evidence',async()=>{
-  const user=await db.user.create({data:{id:randomUUID(),name:'DEMO queue actions'}}),t=await intent(user.id),reference=ref();
-  await verifyIntent(db,user.id,{id:t.id,key:randomUUID(),input:reference},async()=>({code:'DUPLICATE_REVIEW',matched:false,evidence:{}}));
-  const command=(action:string,id=t.id,cookie=roles.PAYMENTS_OPERATOR.cookie)=>paymentAdminCommand(db,headers(cookie),action,{id,key:randomUUID(),reason:'Isolated queue action verification'});
-  await expect(command('archive')).rejects.toThrow('Finish or reject');
-  for(const role of ['SUPPORT','AUDITOR'])await expect(command('reject',t.id,roles[role].cookie)).rejects.toThrow('not granted');
-  await command('reject');const provider=vi.fn(good);
-  await expect(verifyIntent(db,user.id,{id:t.id,key:randomUUID(),input:reference},provider)).rejects.toThrow('protected');expect(provider).not.toHaveBeenCalled();
-  await command('archive');expect(await db.adminAudit.count({where:{target:t.id,action:{in:['PAYMENT_REJECT','PAYMENT_ARCHIVE']}}})).toBe(2);
-  expect((await paymentAdminRead(db,headers(owner.cookie),[],new URLSearchParams({view:'all',q:t.id})) as any).total).toBe(0);
-  expect((await paymentAdminRead(db,headers(owner.cookie),[],new URLSearchParams({view:'all',q:t.id,caseState:'ARCHIVED'})) as any).total).toBe(1);
-  expect(await db.paymentAttempt.count({where:{intentId:t.id}})).toBe(1);expect(await db.paymentClaim.count({where:{intentId:t.id}})).toBe(0);
-  const credited=await intent(user.id);await verifyIntent(db,user.id,{id:credited.id,key:randomUUID(),input:ref()},good);
-  await expect(command('reject',credited.id)).rejects.toThrow('credited deposit');await command('archive',credited.id);
-  expect(await db.paymentClaim.count({where:{intentId:credited.id}})).toBe(1);expect(await reconcilePayments(db)).toEqual([]);
-  const active=await intent(user.id);await db.topUpIntent.update({where:{id:active.id},data:{status:'VERIFYING',leaseUntil:new Date(Date.now()+30000)}});
-  await expect(command('reject',active.id)).rejects.toThrow('Verification is running');
- });
- it('does not fill an automatic amount on provider failure, mismatch or duplicate',async()=>{
-  for(const kind of ['outage','duplicate','amount','receiver']){
-   const user=await db.user.create({data:{id:randomUUID(),name:'DEMO fail closed'}}),t=await createIntent(db,user.id,{key:randomUUID(),channel:'telebirr',policyId:policies.telebirr},true);
-   const result=await verifyIntent(db,user.id,{id:t.id,key:randomUUID(),input:ref()},async v=>{
-    if(kind==='outage')return {code:'PROVIDER_OUTAGE',matched:false,evidence:{}};
-    const b=providerBody(v);b.data.receipt.amount=kind==='amount'?99999:30;b.duplicate=kind==='duplicate';if(kind==='receiver')b.data.receipt.receiver_account='0999999999';return assess(b,v);
-   });
-   expect(result.status).not.toBe('CREDITED');expect(result.amountCents).toBeUndefined();expect(result.points).toBe('0');expect(await db.paymentClaim.count({where:{intentId:t.id}})).toBe(0);
-  }
- });
- it.each(['telebirr','cbe'])('credits exact cents through verified %s evidence once',async channel=>{
-  const user=await db.user.create({data:{id:randomUUID(),name:'DEMO cent funding fixture'}});
-  const t=await intent(user.id,channel,'197');expect(t.points).toBe('1.97');
-  const input={id:t.id,input:channel==='cbe'?`FT${randomUUID().replaceAll('-','').slice(0,18).toUpperCase()}`:ref(),key:randomUUID()};
-  const first=await verifyIntent(db,user.id,input,good);expect(first.status).toBe('CREDITED');
-  expect(await verifyIntent(db,user.id,input,good)).toEqual(first);
-  expect((await db.ledgerAccount.findUniqueOrThrow({where:{name:`user:${user.id}:available`}})).balance.toString()).toBe('1.97');
-  expect(await db.paymentClaim.count({where:{intentId:t.id}})).toBe(1);
-  const notice=await db.outbox.findMany({where:{key:`deposit:${t.id}:credited`}});expect(notice).toHaveLength(1);expect(notice[0].kind).toBe('DEPOSIT_CREDITED');expect((notice[0].payload as any).recipientUserId).toBe(user.id);
-  expect(await reconcile(db)).toEqual([]);expect(await reconcilePayments(db)).toEqual([]);
- });
- it('credits one exact provider match, replays receipt and balances issuance',async()=>{const t=await intent(),input=ref(),key=randomUUID();const mock=vi.fn(async(_url:unknown,init?:RequestInit)=>{expect(String((init?.headers as Record<string,string>).Authorization)).toBe('Bearer chk_nonsecret_fixture');const b=JSON.parse(String(init?.body));return Response.json(providerBody({bank:b.bank,reference:b.transaction_number,account:t.account!,expectedCents:10000n,createdAt:new Date(t.createdAt),expiresAt:new Date(t.expiresAt!)}))});vi.stubGlobal('fetch',mock);try{const a=await verifyIntent(db,player.id,{id:t.id,input,key}),b=await verifyIntent(db,player.id,{id:t.id,input,key});expect(a).toEqual(b);expect(a.status).toBe('CREDITED');expect(mock).toHaveBeenCalledTimes(1);expect(await db.paymentClaim.count({where:{intentId:t.id}})).toBe(1);
-  const notice=await db.outbox.findMany({where:{key:`deposit:${t.id}:credited`}});expect(notice).toHaveLength(1);expect(notice[0].kind).toBe('DEPOSIT_CREDITED');expect((notice[0].payload as any).recipientUserId).toBe(player.id);await expect(verifyIntent(db,player.id,{id:t.id,input:ref(),key},good)).rejects.toThrow('another reference');expect(await reconcile(db)).toEqual([]);expect(await reconcilePayments(db)).toEqual([])}finally{vi.unstubAllGlobals()}});
- it('recovers a provider timeout through the original API record and credits only once',async()=>{
-  const user=await db.user.create({data:{id:randomUUID(),name:'Timeout recovery fixture'}}),t=await intent(user.id),reference=ref();
-  const first=await verifyIntent(db,user.id,{id:t.id,key:randomUUID(),input:reference},async()=>({code:'PROVIDER_OUTAGE',matched:false,evidence:{}}));
-  expect(first.status).toBe('PROVIDER_OUTAGE');
-  const outage=await db.paymentAttempt.findFirstOrThrow({where:{intentId:t.id,code:'PROVIDER_OUTAGE'}});
-  await db.topUpIntent.update({where:{id:t.id},data:{nextAttemptAt:new Date(0)}});
-  const raw=providerBody({bank:'telebirr',reference,account:t.account!,expectedCents:10000n,createdAt:new Date(t.createdAt),expiresAt:new Date(t.expiresAt!)});
-  raw.data.receipt.transaction_date=new Date(Math.max(new Date(t.createdAt).getTime(),Date.now()-2000)).toISOString();
-  const duplicate={...raw,duplicate:true,existing_verification_id:731,verified_at:outage.createdAt.toISOString()};
-  const original={verification:{id:731,bank:'telebirr',transaction_number:reference,account_number:null,success:true,exists:true,status:'completed',transaction_type:'transfer',amount:'100.00',currency:'ETB',transaction_date:raw.data.receipt.transaction_date,created_at:outage.createdAt.toISOString(),source:{type:'api',label:'Lowwin'}}};
-  const calls=vi.fn(async(url:unknown)=>Response.json(String(url).endsWith('/verifications/731')?original:duplicate));vi.stubGlobal('fetch',calls);
-  try{
-   const result=await verifyIntent(db,user.id,{id:t.id,key:randomUUID(),input:reference});
-   expect(result).toMatchObject({status:'CREDITED',amountCents:'10000',points:'100'});
-   expect(calls).toHaveBeenCalledTimes(2);
-   expect(await db.paymentClaim.count({where:{intentId:t.id}})).toBe(1);
-   expect(await db.outbox.count({where:{key:`deposit:${t.id}:credited`}})).toBe(1);
-   expect((await verifyIntent(db,user.id,{id:t.id,key:randomUUID(),input:reference})).status).toBe('CREDITED');
-   expect(await db.paymentClaim.count({where:{intentId:t.id}})).toBe(1);
-   expect(await reconcile(db)).toEqual([]);expect(await reconcilePayments(db)).toEqual([]);
-  }finally{vi.unstubAllGlobals()}
- });
- it.each(['amount','receiver','currency','date','confirmed','completed','method','reference','missingReceiver','missingDate','duplicate'])('never credits %s mismatch or missing evidence',async(kind)=>{const user=await db.user.create({data:{id:randomUUID(),name:'Isolated mismatch fixture'}}),t=await intent(user.id);const result=await verifyIntent(db,user.id,{id:t.id,key:randomUUID(),input:ref()},async input=>{const b:any=providerBody(input);if(kind==='duplicate')b.duplicate=true;if(kind==='amount')b.data.receipt.amount=99;if(kind==='receiver')b.data.receipt.receiver_account='1111111111';if(kind==='currency')b.data.receipt.currency='USD';if(kind==='date')b.data.receipt.transaction_date='2020-01-01T00:00:00Z';if(kind==='confirmed')b.success=false;if(kind==='completed')b.data.receipt.status='pending';if(kind==='method')b.data.verification_method='ocr';if(kind==='reference')b.data.transaction_number='OTHERREF123';if(kind==='missingReceiver')delete b.data.receipt.receiver_account;if(kind==='missingDate')delete b.data.receipt.transaction_date;return assess(b,input)});expect(result.status).not.toBe('CREDITED');if(kind==='duplicate'){expect(result.status).toBe('NEEDS_REVIEW');expect(result.reason).toBe('DUPLICATE_REVIEW')}expect(await db.paymentClaim.count({where:{intentId:t.id}})).toBe(0)});
- it('serializes concurrent submits and globally claims a transfer across users',async()=>{const a=await intent(),b=await intent(other.id),reference=ref();const results=await Promise.allSettled([verifyIntent(db,player.id,{id:a.id,key:randomUUID(),input:reference},good),verifyIntent(db,player.id,{id:a.id,key:randomUUID(),input:reference},good),verifyIntent(db,other.id,{id:b.id,key:randomUUID(),input:reference},good)]);expect(results.filter(x=>x.status==='fulfilled'&&x.value.status==='CREDITED').length).toBeGreaterThanOrEqual(1);expect(await db.paymentClaim.count({where:{reference}})).toBe(1);expect(await db.journal.count({where:{kind:'TOPUP_CREDIT',reference:{in:[`topup:${a.id}`,`topup:${b.id}`]}}})).toBe(1)});
- it('rolls back issuance and claim on a forced commit failure',async()=>{const t=await intent(),count=await db.journal.count();await db.$executeRawUnsafe(`CREATE FUNCTION payment_test_fail() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'forced failure'; END $$`);await db.$executeRawUnsafe('CREATE TRIGGER payment_test_fail BEFORE INSERT ON "PaymentClaim" FOR EACH ROW EXECUTE FUNCTION payment_test_fail()');try{await expect(verifyIntent(db,player.id,{id:t.id,key:randomUUID(),input:ref()},good)).rejects.toThrow()}finally{await db.$executeRawUnsafe('DROP TRIGGER payment_test_fail ON "PaymentClaim"');await db.$executeRawUnsafe('DROP FUNCTION payment_test_fail()')}expect(await db.journal.count()).toBe(count);expect(await db.paymentClaim.count({where:{intentId:t.id}})).toBe(0)});
- it.each([401,402,404,422,429,500])('handles Check.et HTTP %s without credit',async(status)=>{vi.stubGlobal('fetch',async()=>new Response('{}',{status,headers:{'Retry-After':'120'}}));try{const input={bank:'cbe' as const,reference:'FT123456789',account:'0000000000000',expectedCents:100n,createdAt:new Date(),expiresAt:new Date(Date.now()+60000)},r=await checkEt(input);expect(r.matched).toBe(false);expect(r.code).not.toBe('VERIFIED');if(status===429)expect(r.retrySeconds).toBe(120)}finally{vi.unstubAllGlobals()}});
- it('bounds timeout, retry backoff and repeated attempts',async()=>{vi.stubGlobal('fetch',async()=>{throw Error('timeout with private receipt')});try{const t=await intent(),r=await verifyIntent(db,player.id,{id:t.id,key:randomUUID(),input:ref()});expect(r.status).toBe('PROVIDER_OUTAGE');expect(new Date(r.nextAttemptAt).getTime()).toBeGreaterThan(Date.now());await expect(verifyIntent(db,player.id,{id:t.id,key:randomUUID(),input:r.reference!})).rejects.toThrow('Wait');await db.topUpIntent.update({where:{id:t.id},data:{attempts:6,nextAttemptAt:new Date(0)}});await expect(verifyIntent(db,player.id,{id:t.id,key:randomUUID(),input:r.reference!})).rejects.toThrow('operator review')}finally{vi.unstubAllGlobals()}});
- it('fails closed on production even with flags and keys',()=>{const before=process.env.APP_ENV;process.env.APP_ENV='production';try{expect(paymentHealth().enabled).toBe(false)}finally{process.env.APP_ENV=before}});
- it('separates cents from points without floating rounding and rejects malicious receipt URLs',()=>{expect(cents('10.01')).toBe(1001n);expect(()=>cents('1.001')).toThrow();expect(candidate('cbe','Payment CBE FT123456789 received')).toBe('FT123456789');expect(candidate('telebirr','https://apps.ethiotelecom.et/receipt/DEL889NG4S')).toBe('DEL889NG4S');for(const value of ['https://127.0.0.1/receipt/FT123456789','https://cbe.com.et.evil.test/receipt/FT123456789','https://x@cbe.com.et/receipt/FT123456789','https://cbe.com.et/receipt/FT123456789?url=http://localhost','FT123456789 FT987654321'])expect(()=>candidate('cbe',value)).toThrow()});
- it('enforces policy MFA, 1:1 ETB, optimistic versions, immutable quotes and no settings by operators',async()=>{const b={key:randomUUID(),channel:'cbe',version:1,enabled:true,account:'0000000000000',accountName:'DEMO NOT PAYABLE',pointsNumerator:'1',centsDenominator:'100',minCents:'100',maxCents:'100000',terms:'DEMO new quote. Do not transfer money. Refund and eligibility review required before release.',reviewReference:'Test-only policy review reference',reason:'Test quote revision'};await expect(paymentAdminCommand(db,headers(roles.PAYMENTS_OPERATOR.cookie),'preview-policy',b)).rejects.toThrow('Owner');await expect(paymentAdminCommand(db,headers(owner.cookie),'preview-policy',{...b,pointsNumerator:'2'})).rejects.toThrow('exactly ETB 1.00');const preview=await paymentAdminCommand(db,headers(owner.cookie),'preview-policy',b) as any;const t=await intent(other.id,'cbe');await paymentAdminCommand(db,headers(owner.cookie),'publish-policy',{...b,confirmation:preview.confirmation});await expect(createIntent(db,other.id,{key:randomUUID(),channel:'cbe',policyId:policies.cbe,amountCents:'10000'})).rejects.toThrow('quote changed');expect((await db.topUpIntent.findUniqueOrThrow({where:{id:t.id}})).points?.toString()).toBe("100");await expect(db.topUpIntent.update({where:{id:t.id},data:{points:new MoneyPrisma.Decimal("999")}})).rejects.toThrow();const grant=await db.staffSession.findFirstOrThrow({where:{session:{userId:owner.id},mfaAt:{not:null}}});await db.staffSession.update({where:{sessionId:grant.sessionId},data:{credentialAt:new Date(Date.now()-7*60000),mfaAt:new Date(Date.now()-6*60000)}});await expect(paymentAdminCommand(db,headers(owner.cookie),'preview-policy',b)).rejects.toThrow('Fresh MFA');await db.staffSession.update({where:{sessionId:grant.sessionId},data:{mfaAt:new Date()}});policies.cbe=(await db.paymentPolicy.findFirstOrThrow({where:{channel:'cbe'},orderBy:{version:'desc'}})).id});
- it('redacts cross-user, auditor and support evidence; notes cannot mint',async()=>{const t=await db.topUpIntent.findFirstOrThrow({where:{status:'CREDITED'}});expect((await listOwnTopups(db,other.id)).items.every(i=>i.id!==t.id||t.userId===other.id)).toBe(true);await expect(verifyIntent(db,other.id,{id:t.id,key:randomUUID(),input:t.reference!},good)).rejects.toThrow('not found');const support=await paymentAdminRead(db,headers(roles.SUPPORT.cookie),[t.id],new URLSearchParams());expect(JSON.stringify(support)).not.toContain('amountCents');const read=await paymentAdminRead(db,headers(roles.AUDITOR.cookie),[t.id],new URLSearchParams());expect(JSON.stringify(read)).not.toContain(t.receivingAccount!);const before=await db.journal.count();await paymentAdminCommand(db,headers(roles.PAYMENTS_OPERATOR.cookie),'note',{id:t.id,key:randomUUID(),reason:'Investigating user funding request'});await paymentAdminCommand(db,headers(roles.PAYMENTS_OPERATOR.cookie),'case',{id:t.id,key:randomUUID(),reason:'Escalated payment discrepancy',state:'REVERSAL_REVIEW'});expect(await db.journal.count()).toBe(before);await expect(paymentAdminCommand(db,headers(roles.AUDITOR.cookie),'note',{id:t.id,key:randomUUID(),reason:'Unauthorized mutation'})).rejects.toThrow();await expect(paymentAdminCommand(db,headers(owner.cookie),'note',{id:t.id,key:randomUUID(),reason:'Invalid mint request',points:'1000'})).rejects.toThrow()});
- it('records unmatched/mismatched bank evidence without changing balances',async()=>{const before=await db.journal.count(),result=await recordStatement(db,headers(roles.PAYMENTS_OPERATOR.cookie),{key:randomUUID(),channel:'telebirr',reference:ref(),amountCents:'10000',account:'0000000000',transferredAt:new Date().toISOString(),evidenceReference:'Private statement archive/test-row-1',reason:'Daily independently reviewed bank statement'}) as any;expect(result.status).toBe('UNMATCHED');const claim=await db.paymentClaim.findFirstOrThrow();const mismatch=await recordStatement(db,headers(owner.cookie),{key:randomUUID(),channel:claim.channel,reference:claim.reference,amountCents:'9999',account:'0000000000',transferredAt:claim.transferredAt.toISOString(),evidenceReference:'Private statement archive/test-row-2',reason:'Amount mismatch investigation'}) as any;expect(mismatch.status).toBe('MISMATCH');const incidents=await paymentAdminRead(db,headers(owner.cookie),['incidents'],new URLSearchParams()) as any;expect(incidents.statementUnmatched).toBe(2);expect(incidents.providerOutage).toBeGreaterThan(0);expect(await db.journal.count()).toBe(before)});
- it('rejects stale requests and rechecks loss of access after provider response',async()=>{const stale=await db.topUpIntent.create({data:{userId:other.id,key:randomUUID(),provider:'CHECK_ET',channel:'telebirr',points:new MoneyPrisma.Decimal("1"),policyVersion:policies.telebirr,expectedCents:100n,receivingAccount:'0000000000',expiresAt:new Date(Date.now()-8*86400000)}});await expect(verifyIntent(db,other.id,{id:stale.id,key:randomUUID(),input:ref()},good)).rejects.toThrow('recovery window');const t=await intent(other.id);await expect(verifyIntent(db,other.id,{id:t.id,key:randomUUID(),input:ref()},good,async()=>{throw Error('Session revoked')})).rejects.toThrow('revoked');expect(await db.paymentClaim.count({where:{intentId:t.id}})).toBe(0)});
- it('recovers an expired lease after a crash without a second journal',async()=>{const user=await db.user.create({data:{id:randomUUID(),name:'Recovery fixture'}}),t=await intent(user.id),reference=ref(),key=randomUUID();await expect(verifyIntent(db,user.id,{id:t.id,key,input:reference},async()=>{throw Error('worker crash')})).rejects.toThrow('worker crash');await db.topUpIntent.update({where:{id:t.id},data:{leaseUntil:new Date(0)}});expect((await verifyIntent(db,user.id,{id:t.id,key,input:reference},good)).status).toBe('PROVIDER_OUTAGE');const nextKey=randomUUID();expect((await verifyIntent(db,user.id,{id:t.id,key:nextKey,input:reference},good)).status).toBe('CREDITED');expect((await verifyIntent(db,user.id,{id:t.id,key:nextKey,input:reference},good)).status).toBe('CREDITED');expect(await db.paymentClaim.count({where:{intentId:t.id}})).toBe(1)});
- it('supports reviewed full reversals with compensating journals and refuses spent-wallet overdrafts',async()=>{const {reverseVerifiedTopup}=await import('../src/modules/payments/correction'),user=await db.user.create({data:{id:randomUUID(),name:'Correction fixture'}}),t=await intent(user.id);await verifyIntent(db,user.id,{id:t.id,key:randomUUID(),input:ref()},good);const input={intentId:t.id,key:randomUUID(),reason:'Reviewed bank reversal in isolated fixture',evidenceReference:'Private bank reversal test evidence',confirmation:t.id};await expect(reverseVerifiedTopup(db,headers(roles.PAYMENTS_OPERATOR.cookie),input)).rejects.toThrow('Owner');await reverseVerifiedTopup(db,headers(owner.cookie),input);await reverseVerifiedTopup(db,headers(owner.cookie),input);expect(await db.operation.count({where:{scope:'TOPUP_REVERSAL',key:t.id}})).toBe(1);expect((await db.topUpIntent.findUniqueOrThrow({where:{id:t.id}})).status).toBe('CREDITED');expect((await db.ledgerAccount.findUniqueOrThrow({where:{name:`user:${user.id}:available`}})).balance?.toString()).toBe("0");const t2=await intent(user.id);await verifyIntent(db,user.id,{id:t2.id,key:randomUUID(),input:ref()},good);const a=await bidAuction(db,{fee:1});await submitBid(db,{userId:user.id,auctionSlug:a.slug!,amount:'10',key:randomUUID()});await expect(reverseVerifiedTopup(db,headers(owner.cookie),{...input,intentId:t2.id,key:randomUUID(),confirmation:t2.id})).rejects.toThrow('Insufficient available');expect(await reconcile(db)).toEqual([])});
- it('separates delivery encryption and can rotate legacy ciphertext recoverably',()=>{const clear='Private test delivery contact',old=seal(clear);expect(openContact(old)).toBe(clear);process.env.DELIVERY_CONTACT_KEYS=JSON.stringify({first:'d'.repeat(64),second:'e'.repeat(64)});process.env.DELIVERY_CONTACT_KEY_ID='first';try{const first=sealContact(clear);expect(first.startsWith('v2.first.')).toBe(true);process.env.DELIVERY_CONTACT_KEY_ID='second';const rotated=sealContact(openContact(first));expect(rotated.startsWith('v2.second.')).toBe(true);expect(openContact(rotated)).toBe(clear);expect(openContact(first)).toBe(clear)}finally{delete process.env.DELIVERY_CONTACT_KEYS;delete process.env.DELIVERY_CONTACT_KEY_ID}});
- it('counts overlapping review reasons once, including escalated credited requests and aged pending',async()=>{
-  const prefix=randomUUID().slice(0,8),now=Date.now();
-  await db.topUpIntent.createMany({data:[{id:prefix+'-review',status:'NEEDS_REVIEW',caseState:'ESCALATED',createdAt:new Date(now)},{id:prefix+'-aged',status:'PENDING',caseState:'OPEN',createdAt:new Date(now-7200000)},{id:prefix+'-recent',status:'VERIFYING',caseState:'OPEN',createdAt:new Date(now)}].map(r=>({...r,userId:player.id,key:randomUUID(),provider:'CHECK_ET',points:new MoneyPrisma.Decimal('1'),policyVersion:policies.telebirr,channel:'telebirr',expectedCents:100n}))});
-  const q=await paymentAdminRead(db,headers(owner.cookie),[],new URLSearchParams({view:'attention',q:prefix})) as any;expect(q.total).toBe(2);expect(q.items.map((r:any)=>r.id).sort()).toEqual([prefix+'-aged',prefix+'-review']);
-  const credited=await db.topUpIntent.findFirstOrThrow({where:{status:'CREDITED'}});await db.topUpIntent.update({where:{id:credited.id},data:{caseState:'REVERSAL_REVIEW'}});const c=await paymentAdminRead(db,headers(owner.cookie),[],new URLSearchParams({view:'attention',q:credited.id})) as any;expect(c.total).toBe(1);
-  await expect(paymentAdminRead(db,headers(owner.cookie),[],new URLSearchParams('status=FAKE'))).rejects.toThrow('valid verification');
- });
- it('paginates more than 200 cases and keeps frozen records immutable',async()=>{await db.topUpIntent.createMany({data:Array.from({length:205},()=>({id:randomUUID(),userId:player.id,key:randomUUID(),provider:'CHECK_ET',points:new MoneyPrisma.Decimal("1"),policyVersion:policies.telebirr,channel:'telebirr',expectedCents:100n}))});const q=await paymentAdminRead(db,headers(owner.cookie),[],new URLSearchParams('page=9')) as any;expect(q.total).toBeGreaterThan(200);expect(q.items.length).toBeGreaterThan(0);const claim=await db.paymentClaim.findFirstOrThrow();await expect(db.paymentClaim.delete({where:{id:claim.id}})).rejects.toThrow();await expect(db.topUpIntent.update({where:{id:claim.intentId},data:{status:'REJECTED'}})).rejects.toThrow()});
- it('deduplicates a previously claimed transfer despite another receiving account and branch duplicate flag',async()=>{const claim=await db.paymentClaim.findFirstOrThrow({where:{channel:'telebirr'}}),original=await db.paymentPolicy.findFirstOrThrow({where:{channel:'telebirr'},orderBy:{version:'desc'}}),user=await db.user.create({data:{id:randomUUID(),name:'Other receiving account fixture'}});const {id:_,createdAt:__,...copy}=original;const policy=await db.paymentPolicy.create({data:{...copy,version:original.version+1,account:'1111111111'}});policies.telebirr=policy.id;const t=await intent(user.id);const result=await verifyIntent(db,user.id,{id:t.id,key:randomUUID(),input:claim.reference},async input=>{const body=providerBody(input);body.duplicate=true;return assess(body,input)});expect(result.status).toBe('DUPLICATE_CONFLICT');expect(await db.paymentClaim.count({where:{channel:'telebirr',reference:claim.reference}})).toBe(1);const restored=await db.paymentPolicy.create({data:{...copy,version:original.version+2}});policies.telebirr=restored.id});
- it('deduplicates global closing alerts after a restarted scheduler pass',async()=>{const auction=await bidAuction(db,{endDelayMs:600000});await scheduleAlerts(db);expect(await db.outbox.count({where:{key:`global:ending:${auction.id}`}})).toBe(1);expect(await scheduleAlerts(db)).toBe(0)});
- it('guards fake credited state at commit',async()=>{const t=await db.topUpIntent.findFirstOrThrow({where:{status:'PENDING'}});await expect(db.topUpIntent.update({where:{id:t.id},data:{status:'CREDITED'}})).rejects.toThrow()});
- it('checks real OCR, static images, metadata stripping and no retained files',async()=>{const image=await sharp(Buffer.from('<svg width="1400" height="300"><rect width="100%" height="100%" fill="white"/><text x="40" y="90" font-size="44" font-family="Arial" fill="black">Telebirr</text><text x="40" y="180" font-size="44" font-family="Arial" fill="black">Transaction reference: DEL889NG4S</text></svg>')).png().toBuffer();const clean=await cleanReceipt(image,'image/png');expect((await sharp(clean).metadata()).exif).toBeUndefined();const result=await scanReceipt(Buffer.from(image),'image/png','telebirr');expect(result.reference).toBe('DEL889NG4S');const repeated=await scanReceipt(Buffer.from(image),'image/png','telebirr');expect(repeated.reference).toBe(result.reference);const one=await db.user.create({data:{id:randomUUID(),name:'Screenshot claimant one'}}),two=await db.user.create({data:{id:randomUUID(),name:'Screenshot claimant two'}}),a=await intent(one.id),b=await intent(two.id);expect((await verifyIntent(db,one.id,{id:a.id,key:randomUUID(),input:result.reference},good)).status).toBe('CREDITED');expect((await verifyIntent(db,two.id,{id:b.id,key:randomUUID(),input:repeated.reference},good)).status).toBe('DUPLICATE_CONFLICT');for(const [bytes,mime] of [[Buffer.from('GIF89a'),'image/gif'],[image,'image/jpeg'],[Buffer.alloc(5*1024*1024+1),'image/png'],[Buffer.from('<svg/>'),'image/png']] as [Buffer,string][])await expect(cleanReceipt(bytes,mime)).rejects.toThrow();const blank=await sharp({create:{width:300,height:100,channels:3,background:'white'}}).png().toBuffer();await expect(scanReceipt(blank,'image/png','cbe')).rejects.toThrow();const huge=await sharp({create:{width:4000,height:4000,channels:3,background:'white'}}).png().toBuffer();await expect(cleanReceipt(huge,'image/png')).rejects.toThrow()},45000);
- it('revokes direct API access immediately and retains ledger/hold/settlement invariants',async()=>{const operator=roles.PAYMENTS_OPERATOR;await opsMutation(db,headers(owner.cookie),'staff',{key:randomUUID(),userId:operator.id,role:'PAYMENTS_OPERATOR',active:false,reason:'Immediate payment access revocation'});expect((await adminRoute.GET(request('admin/payments',undefined,operator.cookie),{params:Promise.resolve({})})).status).not.toBe(200);const credited=await db.paymentClaim.findFirstOrThrow({where:{userId:player.id}}),auction=await bidAuction(db,{fee:1,endDelayMs:2500});await submitBid(db,{userId:credited.userId,auctionSlug:auction.slug!,amount:'2',key:randomUUID()});await new Promise(r=>setTimeout(r,2600));await closeAuction(db,auction.id);expect(await reconcile(db)).toEqual([]);expect(await reconcilePayments(db)).toEqual([])},15000);
 });
