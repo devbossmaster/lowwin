@@ -63,18 +63,28 @@ export async function recoverProviderDuplicate(raw:unknown,input:VerificationInp
  }catch{return {...fallback,evidence:{...fallback.evidence,recoveryCheck:'ORIGINAL_UNAVAILABLE'}}}
 }
 export async function checkEt(input:VerificationInput):Promise<Verification>{
+ const started=performance.now();let httpStatus:number|undefined;
+ const finish=(result:Verification,failure?:string):Verification=>{
+  const entry=JSON.stringify({event:'payment_provider_verification',bank:input.bank,code:result.code,httpStatus,elapsedMs:Math.round(performance.now()-started),failure});
+  if(result.matched)console.info(entry);else console.warn(entry);
+  return result;
+ };
  const key=process.env.CHECK_ET_MODE==='test'?process.env.CHECK_ET_TEST_API_KEY:process.env.CHECK_ET_LIVE_API_KEY;
- if(!key)return {code:'PROVIDER_UNCONFIGURED',evidence:{},matched:false};
+ if(!key)return finish({code:'PROVIDER_UNCONFIGURED',evidence:{},matched:false});
  try{
   let endpoint='https://api.check.et/api/v1/verify';if(process.env.CHECK_ET_TEST_ENDPOINT){const url=new URL(process.env.CHECK_ET_TEST_ENDPOINT);if(!demoBidAllowed()||process.env.CHECK_ET_MODE!=='test'||url.protocol!=='http:'||!['127.0.0.1','localhost'].includes(url.hostname))throw Error();endpoint=url.href;}
   const response=await fetch(endpoint,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({bank:input.bank,transaction_number:input.reference,...(input.bank==='cbe'?{account_number:input.account}:{})}),signal:AbortSignal.timeout(12000),redirect:'error',cache:'no-store'});
-  if(!response.ok){const code=({401:'PROVIDER_AUTH',402:'PROVIDER_QUOTA',404:'NOT_FOUND',422:'INVALID_RECEIPT',429:'PROVIDER_RATE_LIMIT'} as Record<number,string>)[response.status]??'PROVIDER_OUTAGE';return {code,matched:false,evidence:{},retrySeconds:Math.min(3600,Math.max(30,Number(response.headers.get('retry-after'))||60))};}
+  httpStatus=response.status;
+  if(!response.ok){const code=({401:'PROVIDER_AUTH',402:'PROVIDER_QUOTA',404:'NOT_FOUND',422:'INVALID_RECEIPT',429:'PROVIDER_RATE_LIMIT'} as Record<number,string>)[response.status]??'PROVIDER_OUTAGE';return finish({code,matched:false,evidence:{},retrySeconds:Math.min(3600,Math.max(30,Number(response.headers.get('retry-after'))||60))});}
   const raw=await boundedJson(response),ordinary=assess(raw,input);
-  if(ordinary.code!=='DUPLICATE_REVIEW'||!input.outageAttemptAt)return ordinary;
-  return recoverProviderDuplicate(raw,input,async id=>{
+  if(ordinary.code!=='DUPLICATE_REVIEW'||!input.outageAttemptAt)return finish(ordinary);
+  return finish(await recoverProviderDuplicate(raw,input,async id=>{
    const url=new URL(endpoint);url.pathname=url.pathname.replace(/\/verify$/,'/verifications/'+id);
    const original=await fetch(url,{headers:{Authorization:`Bearer ${key}`},signal:AbortSignal.timeout(5000),redirect:'error',cache:'no-store'});
    if(!original.ok)throw Error('Original provider verification unavailable');return boundedJson(original);
-  });
- }catch{return {code:'PROVIDER_OUTAGE',retrySeconds:60,evidence:{},matched:false}}
+  }));
+ }catch(error){
+  const failure=error instanceof Error&&['TimeoutError','AbortError'].includes(error.name)?'TIMEOUT':httpStatus!==undefined?'RESPONSE_UNREADABLE':'REQUEST_FAILED';
+  return finish({code:'PROVIDER_OUTAGE',retrySeconds:60,evidence:{},matched:false},failure);
+ }
 }

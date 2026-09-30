@@ -39,6 +39,8 @@ export const walletAm:Record<string,string>={
  'Winning Bids':'ያሸነፍኩባቸው ጨረታዎች','No winning bids found.':'ያሸነፉበት ጨረታ አልተገኘም።','Read result':'ውጤቱን ይመልከቱ','· winning amount':'· ያሸነፈው መጠን','DEMO · settled test':'የሙከራ ጨረታ · ተጠናቋል'
 };
 Object.assign(walletAm,{
+ 'Code extracted with low confidence. Check it against your receipt before submitting.':'የተነበበው ቁጥር እርግጠኛ አይደለም። ከመላክዎ በፊት ከደረሰኙ ጋር ያዛምዱት።',
+ 'Confirmed transfers to our account are credited automatically in ETB, once.':'ወደ መቀበያ ሂሳባችን የተደረገው ዝውውር ሲረጋገጥ፣ የተላከው የብር መጠን በራስ-ሰር አንድ ጊዜ ይጨመራል።',
  'Under admin review':'በአስተዳዳሪ ግምገማ ላይ',
  'Deposit rejected':'የገቢ ጥያቄው ውድቅ ተደርጓል',
  'This transaction is already credited. No second credit was added.':'ይህ ዝውውር አስቀድሞ ወደ ሂሳብዎ ገብቷል። ሁለተኛ ጊዜ አልተጨመረም።',

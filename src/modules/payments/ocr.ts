@@ -7,7 +7,7 @@ export async function cleanReceipt(bytes:Buffer,mime:string){
  if(!bytes.length||bytes.length>RECEIPT_LIMIT)throw new PaymentError(413,'Use a receipt image smaller than 5 MB.');
  const png=bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])),jpeg=bytes[0]===255&&bytes[1]===216&&bytes[2]===255,webp=bytes.toString('ascii',0,4)==='RIFF'&&bytes.toString('ascii',8,12)==='WEBP';
  if(!({ 'image/png':png,'image/jpeg':jpeg,'image/webp':webp} as Record<string,boolean>)[mime])throw new PaymentError(422,'Use a static PNG, JPEG or WebP receipt.');
- try{const decoder=sharp(bytes,{limitInputPixels:12000000,failOn:'warning',animated:true}),meta=await decoder.metadata();if((meta.pages??1)!==1||!meta.width||!meta.height||meta.width>6000||meta.height>6000||png&&bytes.includes(Buffer.from('acTL')))throw Error();return await decoder.rotate().resize({width:2400,height:2400,fit:'inside',withoutEnlargement:true}).png().toBuffer();}catch{throw new PaymentError(422,'Image cannot be safely decoded. Use a smaller static receipt or enter the reference.')}
+ try{const decoder=sharp(bytes,{limitInputPixels:12000000,failOn:'warning',animated:true}),meta=await decoder.metadata();if((meta.pages??1)!==1||!meta.width||!meta.height||meta.width>6000||meta.height>6000||png&&bytes.includes(Buffer.from('acTL')))throw Error();const oriented=meta.autoOrient;const width=oriented.width<1000?Math.floor(oriented.width*Math.min(2,1200/oriented.width,Math.sqrt(12000000/(oriented.width*oriented.height)))):Math.min(oriented.width,2400);return await decoder.rotate().resize({width}).greyscale().png().toBuffer();}catch{throw new PaymentError(422,'Image cannot be safely decoded. Use a smaller static receipt or enter the reference.')}
 }
 let active=false;
 type OcrResult={text:string;confidence:number;words?:{text:string;confidence:number}[]};
@@ -18,16 +18,16 @@ export function extractedReference(result:OcrResult,bank:Bank){
  try{reference=candidate(bank,result.text)}catch(error){
   if(!(error instanceof PaymentError)||error.message!=='A single clear reference could not be found. Enter it manually.')throw error;
   // OCR may lose an Amharic or stylized label while reading its code clearly.
-  // Accept only one mixed letter/number candidate; the provider still verifies it.
+  // Extract only one literal mixed letter/number candidate; never guess replacement characters.
   const tokens=[...new Set(result.text.toUpperCase().match(/\b[A-Z][A-Z0-9]{7,31}\b/g)??[])].filter(token=>/\d/.test(token)).filter(token=>{try{canonical(bank,token);return true}catch{return false}});
-  if(tokens.length!==1||!result.words?.some(word=>word.text.toUpperCase().split(/[^A-Z0-9]+/).includes(tokens[0])&&word.confidence>=85))throw error;
+  if(tokens.length!==1)throw error;
   reference=tokens[0];
  }
  // Unrelated artwork and Amharic text must not outweigh a clearly read reference.
  const words=Array.isArray(result.words)?result.words.filter(w=>typeof w.text==='string'&&w.text.toUpperCase().split(/[^A-Z0-9]+/).includes(reference)):[];
- const confidence=Math.max(result.confidence,...words.map(w=>Number.isFinite(w.confidence)?w.confidence:0));
- if(confidence<75)throw new PaymentError(422,'Scan is uncertain. Enter the reference manually.');
- return {reference,reviewRequired:true};
+ const confidence=words.length?Math.max(...words.map(w=>Number.isFinite(w.confidence)?w.confidence:0)):result.confidence;
+ // This is an editable extraction, never payment evidence or an automatic credit.
+ return {reference,reviewRequired:true,uncertain:confidence<75};
 }
 export async function scanReceipt(bytes:Buffer,mime:string,bank:Bank){
  if(process.env.RECEIPT_OCR!=='tesseract')throw new PaymentError(503,'Scanning is unavailable. Enter the reference manually.');

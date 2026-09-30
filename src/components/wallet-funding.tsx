@@ -17,14 +17,6 @@ type Intent={id:string;demo?:boolean;reused?:boolean;channel:string;status:strin
 type Data={options:{enabled:boolean;productionEnabled:boolean;ocr:boolean;reason:string;accounts:Account[]};items:Intent[];totalPages:number};
 const money=(c:string)=>(BigInt(c)/100n).toString()+'.'+(BigInt(c)%100n).toString().padStart(2,'0');
 const labels:Record<string,string>={PENDING:'Pending verification',VERIFYING:'Verifying',CREDITED:'Credited',NEEDS_REVIEW:'Needs review',REJECTED:'Rejected',DUPLICATE_CONFLICT:'Duplicate claim — contact support',PROVIDER_OUTAGE:'Provider unavailable — retry pending'};
-async function compactReceipt(file:File):Promise<Blob>{
- let image:ImageBitmap|undefined;
- try{
-  image=await createImageBitmap(file);const scale=Math.min(1,2000/Math.max(image.width,image.height)),canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(image.width*scale));canvas.height=Math.max(1,Math.round(image.height*scale));
-  const context=canvas.getContext('2d',{alpha:false});if(!context)return file;context.fillStyle='#fff';context.fillRect(0,0,canvas.width,canvas.height);context.drawImage(image,0,0,canvas.width,canvas.height);
-  const compressed=await new Promise<Blob|null>(resolve=>canvas.toBlob(resolve,'image/jpeg',.82));return compressed&&compressed.size<file.size?compressed:file;
- }catch{return file}finally{image?.close()}
-}
 export function WalletFunding(){const {me}=useTelegram();return <Funding key={me?.user.id??'guest'}/>}
 function Funding(){
  const w=useWalletCopy(),{refreshMe}=useTelegram(),notify=useMiniNotice(),noticeId=useId();
@@ -67,10 +59,10 @@ function Funding(){
   working.current=true;setBusy(w('Uploading and scanning receipt…'));setMessage('');
   notify(w('Uploading and scanning receipt…'),'info',{id:noticeId,duration:Infinity});
   try{
-   const current=await prepare(),upload=await compactReceipt(file);
+   const current=await prepare(),upload=file;
    const response=await fetch(`/api/wallet/scan?intentId=${current.id}`,{method:'POST',headers:{'Content-Type':upload.type||file.type},body:upload}),data=await response.json();
    if(!response.ok)throw Error(data.error);
-   setInput(data.reference);verifyKey.current='';inform(w('Reference extracted. Review it against your receipt before submitting.'),'success');
+   setInput(data.reference);verifyKey.current='';inform(w(data.uncertain?'Code extracted with low confidence. Check it against your receipt before submitting.':'Reference extracted. Review it against your receipt before submitting.'),data.uncertain?'info':'success');
   }catch(error){inform(w(error instanceof Error?error.message:'Could not read the screenshot. Paste the payment SMS or transaction reference.'),'error')}finally{working.current=false;setBusy('')}
  }
  function reset(){setIntent(null);setInput('');setMessage('');createKey.current='';verifyKey.current=''}
@@ -87,7 +79,7 @@ function Funding(){
     <div className={styles.divider}>{w('Or upload a screenshot')}</div>
     <label className={styles.upload} aria-disabled={!account||!options.ocr||!!busy||credited||underReview}><Upload size={23}/><strong>{w('Upload receipt image')}</strong><span>{w('JPEG, PNG or WebP - up to 5 MB')}</span><input aria-label={w('Upload receipt image')} type="file" accept="image/png,image/jpeg,image/webp" disabled={!account||!options.ocr||!!busy||credited||underReview} onChange={event=>{void scan(event.target.files?.[0]);event.target.value=''}}/></label>
     <button type="button" className={styles.submit} disabled={!account||!input.trim()||!!busy||credited||underReview} onClick={()=>void submit()}>{busy?<LoadingSpinner/>:credited?w('Deposit credited'):underReview?w(intent?.status==='REJECTED'?'Deposit rejected':'Under admin review'):w('Submit deposit')}</button>
-    <p className={styles.footnote}>{!account?w('Choose a payment account first.'):options.ocr?w('Your wallet is credited automatically when all payment details match.'):w('Paste your receipt message. Image scanning is unavailable.')}</p>
+    <p className={styles.footnote}>{!account?w('Choose a payment account first.'):options.ocr?w('Confirmed transfers to our account are credited automatically in ETB, once.'):w('Paste your receipt message. Image scanning is unavailable.')}</p>
     {intent&&<button type="button" className={styles.secondary} disabled={!!busy} onClick={reset}>{w('Start another deposit')}</button>}
     {busy&&<LoadingSpinner label={busy}/>}{message&&<p className={styles.hint} role="status">{message}</p>}
    </div>
