@@ -7,12 +7,14 @@ export {canonical,candidate,PaymentError} from './reference';
 
 export const bankSchema=z.enum(['telebirr','cbe']);
 export type Bank=z.infer<typeof bankSchema>;
-export const hash=(value:string)=>createHash('sha256').update(value).digest('hex');
+export const hash=(value:string|Buffer)=>createHash('sha256').update(value).digest('hex');
 export function cents(value:string|number):bigint{
  const text=String(value);if(!/^(0|[1-9]\d{0,8})(\.\d{1,2})?$/.test(text))throw new PaymentError(422,'Use an exact ETB amount with at most two decimal places.');
  const [whole,fraction='']=text.split('.');return BigInt(whole)*100n+BigInt(fraction.padEnd(2,'0'));
 }
 export type VerificationInput={bank:Bank;reference:string;account:string;expectedCents:bigint|null;minCents?:bigint;maxCents?:bigint;createdAt:Date;expiresAt:Date;attemptKey:string};
+export type ImageVerificationInput=Omit<VerificationInput,'reference'>&{image:Buffer;mime:'image/png'|'image/jpeg'|'image/webp'};
+export type ImageVerification={verification:Verification;reference?:string};
 type SafeValueType='missing'|'null'|'string'|'number'|'boolean'|'array'|'object';
 type EvidenceFieldIssue={field:string;issue:string;received:SafeValueType};
 export type Verification={code:string;matched:boolean;requestId?:string;processing?:boolean;retrySeconds?:number;evidence:{currency?:'ETB';currencySource?:'channel_policy';confirmedBefore?:boolean;amountCents?:string;receiverSuffix?:string;date?:string;hash?:string;aliases?:string[];invalidFields?:EvidenceFieldIssue[]}};
@@ -20,6 +22,11 @@ export type VerifyTransport=(input:VerificationInput)=>Promise<Verification>;
 const requestIdSchema=z.string().uuid();
 const providerErrorSchema=z.object({code:z.string(),retryable:z.boolean().optional()});
 const itemSchema=z.object({bank:bankSchema,status:z.string(),verified:z.boolean(),amount:z.union([z.string(),z.number()]),receiverAccount:z.string().optional(),referenceNumber:z.string().optional(),receiptNumber:z.string().optional(),transactionNumber:z.string().optional(),timestamp:z.string().optional(),confirmationHistory:z.object({confirmedBefore:z.boolean().optional()}).optional(),settlementAccountMatch:z.object({matched:z.boolean(),matchType:z.string().optional(),matchConfidence:z.string().optional(),candidateCount:z.number().int().nonnegative().optional(),matchedSettlementAccount:z.string().optional(),bank:bankSchema.optional(),ambiguous:z.boolean().optional()}).optional()}).passthrough();
+export function providerReference(raw:unknown,bank:Bank){
+ const parsed=z.object({referenceNumber:z.string().optional(),receiptNumber:z.string().optional(),transactionNumber:z.string().optional()}).passthrough().safeParse(raw);
+ if(!parsed.success)return undefined;
+ try{const aliases=[...new Set([parsed.data.referenceNumber,parsed.data.receiptNumber,parsed.data.transactionNumber].filter((value):value is string=>!!value).map(value=>canonical(bank,value)))];return aliases.length===1?aliases[0]:undefined}catch{return undefined}
+}
 // Owner-approved Lowwin policy for these two deposit channels. This is not
 // provider proof of currency. Provider currency is not an acceptance condition.
 const depositCurrencies:Record<Bank,'ETB'>={telebirr:'ETB',cbe:'ETB'};
@@ -123,6 +130,25 @@ export async function submitVerify(input:VerificationInput):Promise<Verification
   }
   return finish(result);
  }catch(error){return finish({code:'PROVIDER_OUTAGE',matched:false,retrySeconds:60,evidence:{}},error instanceof Error&&['TimeoutError','AbortError'].includes(error.name)?'TIMEOUT':status?'RESPONSE_UNREADABLE':'REQUEST_FAILED')}
+}
+function imagePlaceholder(input:Pick<ImageVerificationInput,'bank'|'attemptKey'>){return `IMG${hash(`${input.bank}:${input.attemptKey}`).slice(0,28).toUpperCase()}`}
+export async function submitVerifyImage(input:ImageVerificationInput):Promise<ImageVerification>{
+ const started=performance.now();let status:number|undefined;const placeholder=imagePlaceholder(input),base={...input,reference:placeholder};
+ const finish=(verification:Verification,reference?:string,failure?:string)=>{log(base,verification,status,failure,Math.round(performance.now()-started));return {verification,reference}};
+ if(!key())return finish({code:'PROVIDER_UNCONFIGURED',matched:false,evidence:{}});
+ try{
+  const form=new FormData();form.append('image',new Blob([Uint8Array.from(input.image)],{type:input.mime}),input.mime==='image/png'?'receipt.png':input.mime==='image/webp'?'receipt.webp':'receipt.jpg');form.append('bank',input.bank);form.append('settlementAccount',input.account);
+  const response=await fetch(`${endpoint()}?waitMs=5000`,{method:'POST',headers:{'x-api-key':key(),'Idempotency-Key':input.attemptKey},body:form,signal:AbortSignal.timeout(PROVIDER_TIMEOUT_MS),redirect:'error',cache:'no-store'});status=response.status;
+  if(!response.ok){let raw:unknown;try{raw=await boundedJson(response)}catch{}return finish(httpFailure(status,raw,response.headers.get('retry-after')))}
+  const raw=await boundedJson(response),envelope=envelopeSchema.safeParse(raw);
+  if(status===202){
+   if(!envelope.success||!envelope.data.success||envelope.data.error||!envelope.data.verification||!['queued','running'].includes(envelope.data.verification.processingStatus))return finish({code:'INCOMPLETE_EVIDENCE',requestId:envelope.success?envelope.data.requestId:undefined,matched:false,evidence:{}});
+   return finish({code:'PROCESSING',requestId:envelope.data.requestId,processing:true,matched:false,evidence:{},retrySeconds:retryDelay(response.headers.get('retry-after'),5)});
+  }
+  const item=envelope.success&&Array.isArray(envelope.data.data)&&envelope.data.data.length===1?envelope.data.data[0]:undefined,reference=providerReference(item,input.bank);
+  const verification=assess(raw,{...base,reference:reference??placeholder});
+  return finish(verification,reference);
+ }catch(error){return finish({code:'PROVIDER_OUTAGE',matched:false,retrySeconds:60,evidence:{}},undefined,error instanceof Error&&['TimeoutError','AbortError'].includes(error.name)?'TIMEOUT':status?'RESPONSE_UNREADABLE':'REQUEST_FAILED')}
 }
 // A null result means terminal success: retrieve full evidence using the same
 // immutable submission key. All other states are final or delayed local outcomes.

@@ -1,7 +1,7 @@
 'use client';
 import {useEffect,useId,useRef,useState} from 'react';
 import Link from 'next/link';
-import {ArrowUpRight,ChevronDown,Upload} from 'lucide-react';
+import {ArrowUpRight,ChevronDown,Image as ImageIcon,ScanLine,Upload,X} from 'lucide-react';
 import {useWalletCopy} from './wallet-copy';
 import {LoadingSpinner,PageLoading} from './loading-spinner';
 import {useTelegram} from './telegram-provider';
@@ -16,13 +16,14 @@ type Account={id:string;policyId:string;version:number;name:string;number:string
 type Intent={canRetry?:boolean;retryBlocked?:string|null;retryUntil?:string;nextAttemptAt?:string;attempts?:number;id:string;demo?:boolean;reused?:boolean;channel:string;status:string;amountCents?:string;points:string;account:string;accountName:string;reference:string|null;expiresAt:string;reason:string|null;caseState:string;quote:{version:number;numerator:string;denominator:string;terms:string;minCents?:string;maxCents?:string}};
 type Data={options:{enabled:boolean;productionEnabled:boolean;ocr:boolean;reason:string;accounts:Account[]};items:Intent[];totalPages:number};
 const money=(c:string)=>(BigInt(c)/100n).toString()+'.'+(BigInt(c)%100n).toString().padStart(2,'0');
+const fileSize=(bytes:number)=>bytes<1048576?`${Math.max(1,Math.round(bytes/1024))} KB`:`${(bytes/1048576).toFixed(1)} MB`;
 const labels:Record<string,string>={PENDING:'Pending verification',VERIFYING:'Verifying',CREDITED:'Credited',NEEDS_REVIEW:'Needs review',REJECTED:'Rejected',DUPLICATE_CONFLICT:'Duplicate claim — contact support',PROVIDER_OUTAGE:'Provider unavailable — retry pending'};
 export function WalletFunding(){const {me}=useTelegram();return <Funding key={me?.user.id??'guest'}/>}
 function Funding(){
  const w=useWalletCopy(),{refreshMe}=useTelegram(),notify=useMiniNotice(),noticeId=useId();
  const [page,setPage]=useState(1),query=usePrivateQuery<Data>(`/api/wallet/top-ups?page=${page}`);
- const [selected,setSelected]=useState(''),[intent,setIntent]=useState<Intent|null>(null),[input,setInput]=useState(''),[busy,setBusy]=useState(''),[message,setMessage]=useState('');
- const createKey=useRef(''),verifyKey=useRef(''),working=useRef(false);
+ const [selected,setSelected]=useState(''),[intent,setIntent]=useState<Intent|null>(null),[input,setInput]=useState(''),[busy,setBusy]=useState(''),[message,setMessage]=useState(''),[receipt,setReceipt]=useState<{file:File;url:string;name:string;size:number}|null>(null);
+ const createKey=useRef(''),verifyKey=useRef(''),imageKey=useRef(''),working=useRef(false),receiptUrl=useRef<string|null>(null);
  const options=query.data?.options;
  const account:Account|undefined=intent?{id:intent.channel,policyId:'',version:intent.quote.version,name:intent.channel==='cbe'?'CBE':'Telebirr',number:intent.account,holder:intent.accountName,numerator:intent.quote.numerator,denominator:intent.quote.denominator,minCents:intent.quote.minCents??intent.amountCents??'0',maxCents:intent.quote.maxCents??intent.amountCents??'0',terms:intent.quote.terms}:options?.accounts.find(a=>a.id===selected);
  const credited=intent?.status==='CREDITED';
@@ -46,7 +47,12 @@ function Funding(){
  const underReview=!!intent&&(intent.canRetry===false||['DUPLICATE_CONFLICT','REJECTED','REVERSED'].includes(intent.status));
  const waiting=!!intent?.nextAttemptAt&&new Date(intent.nextAttemptAt).getTime()>now;
  const bound=!!intent?.reference;
+ const showRecoveryActions=!!intent&&!credited&&(intent.attempts??0)>0&&intent.status!=='VERIFYING';
+ const scannerAvailable=!!options?.ocr;
+ useEffect(()=>()=>{if(receiptUrl.current)URL.revokeObjectURL(receiptUrl.current)},[]);
  function inform(text:string,kind:'success'|'error'|'info'='info'){setMessage(text);notify(text,kind,{id:noticeId,duration:8000})}
+ function clearReceipt(){if(receiptUrl.current)URL.revokeObjectURL(receiptUrl.current);receiptUrl.current=null;setReceipt(null)}
+ function chooseReceipt(file?:File){if(!file)return;clearReceipt();const url=URL.createObjectURL(file);receiptUrl.current=url;setReceipt({file,url,name:file.name,size:file.size});setInput('');verifyKey.current=''}
  async function command(action:string,body:unknown):Promise<Intent>{
   const response=await fetch('/api/wallet/top-ups',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,input:body}),cache:'no-store'}),data=await response.json();
   if(!response.ok)throw Error(data.error);return data;
@@ -58,53 +64,43 @@ function Funding(){
   const receipt=await command('prepare',{key:createKey.current,channel:account.id,policyId:account.policyId,...(referenceInput?{input:referenceInput}:{})});setIntent(receipt);return receipt;
  }
  async function submit(){
-  if(working.current||!account||!input.trim()||credited||underReview||waiting)return;
-  working.current=true;setBusy(w('Checking payment…'));setMessage('');
-  notify(w('Checking payment…'),'info',{id:noticeId,duration:Infinity});
+  if(working.current||!account||(!input.trim()&&!receipt)||credited||underReview||waiting)return;
+  const image=receipt?.file;working.current=true;setBusy(w(image?'Uploading and verifying receipt…':'Checking payment…'));setMessage('');
+  notify(w(image?'Uploading and verifying receipt…':'Checking payment…'),'info',{id:noticeId,duration:Infinity});
   try{
-   const current=await prepare(input);verifyKey.current ||= crypto.randomUUID();
-   const receipt=await command('verify',{id:current.id,key:verifyKey.current,input});setIntent(receipt);
-   if(receipt.status!=='CREDITED')verifyKey.current='';
-   const feedback=depositFeedback(receipt,w);inform(feedback.message,feedback.kind);
+   const current=await prepare(image?undefined:input);let updated:Intent;
+   if(image){imageKey.current ||= crypto.randomUUID();const response=await fetch(`/api/wallet/scan?intentId=${current.id}`,{method:'POST',headers:{'Content-Type':image.type,'Idempotency-Key':imageKey.current},body:image}),data=await response.json();if(!response.ok)throw Error(data.error);updated=data as Intent}
+   else {verifyKey.current ||= crypto.randomUUID();updated=await command('verify',{id:current.id,key:verifyKey.current,input});if(updated.status!=='CREDITED')verifyKey.current=''}
+   setIntent(updated);const feedback=depositFeedback(updated,w);inform(feedback.message,feedback.kind);
    query.reload();
-   if(receipt.status==='CREDITED'){
+   if(updated.status==='CREDITED'){
     window.dispatchEvent(new Event('lowin-wallet-updated'));window.dispatchEvent(new Event('lowin-alerts'));
-    void refreshMe().catch(()=>setMessage(`${receipt.points} ${w('ETB credited. Receipt recorded.')} ${w('Reopen the wallet to refresh your balance.')}`));
+    void refreshMe().catch(()=>setMessage(`${updated.points} ${w('ETB credited. Receipt recorded.')} ${w('Reopen the wallet to refresh your balance.')}`));
    }
   }catch(error){inform(w(error instanceof Error?error.message:'Try again.'),'error')}finally{working.current=false;setBusy('')}
  }
- async function scan(file?:File){
-  if(!file||working.current||!account||credited||underReview)return;
-  working.current=true;setBusy(w('Uploading and scanning receipt…'));setMessage('');
-  notify(w('Uploading and scanning receipt…'),'info',{id:noticeId,duration:Infinity});
-  try{
-   const current=await prepare(),upload=file;
-   const response=await fetch(`/api/wallet/scan?intentId=${current.id}`,{method:'POST',headers:{'Content-Type':upload.type||file.type},body:upload}),data=await response.json();
-   if(!response.ok)throw Error(data.error);
-   if(current.reference&&current.reference!==data.reference)throw Error('This deposit uses a different reference. Use Correct a mistaken reference to start separately.');
-   setInput(data.reference);verifyKey.current='';inform(w(data.uncertain?'Code extracted with low confidence. Check it against your receipt before submitting.':'Reference extracted. Review it against your receipt before submitting.'),data.uncertain?'info':'success');
-  }catch(error){inform(w(error instanceof Error?error.message:'Could not read the screenshot. Paste the payment SMS or transaction reference.'),'error')}finally{working.current=false;setBusy('')}
- }
- function reset(){setIntent(null);setInput('');setMessage('');createKey.current='';verifyKey.current=''}
+ function reset(){setIntent(null);setInput('');setMessage('');clearReceipt();createKey.current='';verifyKey.current='';imageKey.current=''}
  if(query.status==='loading'||query.status==='authenticated'&&!query.data&&!query.error)return <section className={styles.funding} id="add-etb"><h2>{w('Add money')}</h2><PageLoading/></section>;
  if(query.error)return <section className={styles.funding} id="add-etb"><h2>{w('Add money')}</h2><p className={styles.error} role="alert">{w('Payment accounts could not load.')}<button type="button" onClick={query.reload}>{w('Retry')}</button></p></section>;
  return <>
   {!options?.enabled?<WalletFundingPreview/>:<section className={styles.funding} id="add-etb" aria-busy={!!busy}>
    <h2>{w('Add money')}</h2>
-   <PaymentAccounts accounts={intent&&account?[account]:options.accounts} selected={selected} onSelect={id=>{setSelected(id);setInput('');setMessage('');createKey.current='';verifyKey.current=''}} locked={!!intent} busy={!!busy} preview={!options.productionEnabled}/>
+   <PaymentAccounts accounts={intent&&account?[account]:options.accounts} selected={selected} onSelect={id=>{setSelected(id);setInput('');setMessage('');clearReceipt();createKey.current='';verifyKey.current=''}} locked={!!intent} busy={!!busy} preview={!options.productionEnabled}/>
    {account&&<p className={styles.hint}>{w('Allowed:')} {money(account.minCents)}–{money(account.maxCents)} ETB. {w('Your verified transfer amount is added automatically.')}</p>}
    <div className={styles.confirmation}>
     <div className={styles.referenceHeader}>
      <label className={styles.fieldLabel} htmlFor="verified-reference">{w('Telebirr or CBE message/link')}</label>
-     {intent&&<div className={styles.referenceActions}>
+     {showRecoveryActions&&<div className={styles.referenceActions}>
       {bound&&!credited&&<button type="button" className={styles.secondary} disabled={!!busy} onClick={()=>{reset();inform(w('Paste the corrected reference. The previous deposit and its review history are kept.'))}}>{w('Correct a mistaken reference')}</button>}
       <button type="button" className={styles.secondary} disabled={!!busy} onClick={reset}>{w('Start another deposit')}</button>
      </div>}
     </div>
-    <textarea className={styles.textarea} id="verified-reference" maxLength={4000} value={credited?(intent.reference??input):input} disabled={!account||!!busy||credited||underReview} readOnly={bound} onChange={event=>{setInput(event.target.value);verifyKey.current=''}} placeholder={w('Paste a transaction ID, payment SMS or official receipt link')}/>
+    <textarea className={styles.textarea} id="verified-reference" maxLength={4000} value={credited?(intent.reference??input):input} disabled={!account||!!busy||credited||underReview} readOnly={bound} onChange={event=>{setInput(event.target.value);if(event.target.value)clearReceipt();verifyKey.current=''}} placeholder={w('Paste a transaction ID, payment SMS or official receipt link')}/>
     <div className={styles.divider}>{w('Or upload a screenshot')}</div>
-    <label className={styles.upload} aria-disabled={!account||!options.ocr||!!busy||credited||underReview}><Upload size={23}/><strong>{w('Upload receipt image')}</strong><span>{w('JPEG, PNG or WebP - up to 5 MB')}</span><input aria-label={w('Upload receipt image')} type="file" accept="image/png,image/jpeg,image/webp" disabled={!account||!options.ocr||!!busy||credited||underReview} onChange={event=>{void scan(event.target.files?.[0]);event.target.value=''}}/></label>
-    <button type="button" className={styles.submit} disabled={!account||!input.trim()||!!busy||credited||underReview||waiting} onClick={()=>void submit()}>{busy?<LoadingSpinner/>:credited?w('Deposit credited'):underReview?w(intent?.status==='REJECTED'?'Deposit rejected':'Under admin review'):w(intent?.attempts?'Check payment again':'Submit deposit')}</button>
+    <label className={`${styles.upload} ${receipt?styles.uploadSelected:''}`} aria-disabled={!account||!scannerAvailable||!!busy||credited||underReview||bound}>{receipt?<><span className={styles.receiptPreview}><img src={receipt.url} alt={w('Selected receipt preview')}/></span><span className={styles.changeImage}><Upload size={16}/><strong>{w('Change image')}</strong></span></>:<><span className={styles.uploadIcon}><ImageIcon size={24}/></span><strong>{w('Choose receipt image')}</strong><span>{w('JPEG, PNG or WebP - up to 5 MB')}</span></>}<input aria-label={w(receipt?'Change image':'Upload receipt image')} type="file" accept="image/png,image/jpeg,image/webp" disabled={!account||!scannerAvailable||!!busy||credited||underReview||bound} onChange={event=>{chooseReceipt(event.target.files?.[0]);event.target.value=''}}/></label>
+    {receipt&&<div className={styles.receiptFile}><span>{receipt.name} · {fileSize(receipt.size)}</span><button type="button" aria-label={w('Remove selected image')} disabled={!!busy} onClick={clearReceipt}><X size={17}/></button></div>}
+    <p className={styles.scanNote}><ScanLine size={16}/><span>{w('The receipt scanner reads its QR code first, then the printed details if needed.')}</span></p>
+    <button type="button" className={styles.submit} disabled={!account||(!input.trim()&&!receipt)||!!busy||credited||underReview||waiting} onClick={()=>void submit()}>{busy?<LoadingSpinner/>:credited?w('Deposit credited'):underReview?w(intent?.status==='REJECTED'?'Deposit rejected':'Under admin review'):w(intent?.attempts?'Check payment again':'Submit deposit')}</button>
     <p className={styles.footnote}>{!account?w('Choose a payment account first.'):options.ocr?w('Confirmed transfers to our account are credited automatically in ETB, once.'):w('Paste your receipt message. Image scanning is unavailable.')}</p>
     {intent&&!credited&&<p className={styles.hint}>{intent.canRetry===false?w('Contact support with this deposit ID:'):waiting?w('Retry after:'):w('You can check this payment again.')} {intent.canRetry===false?intent.id:waiting&&intent.nextAttemptAt?new Date(intent.nextAttemptAt).toLocaleString():''}</p>}
     {busy&&<LoadingSpinner label={busy}/>}{message&&<p className={styles.hint} role="status">{message}</p>}

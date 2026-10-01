@@ -26,4 +26,10 @@ describe('local receipt extraction only',()=>{
   const clean=await cleanReceipt(Buffer.from(image),'image/png');expect(clean.subarray(0,8).equals(image.subarray(0,8))).toBe(true);
   await expect(cleanReceipt(Buffer.from(image),'image/jpeg')).rejects.toThrow();
  });
+ it('extracts references from full payment SMS text and punctuated receipt links',()=>{
+  expect(candidate('telebirr','Dear customer, your transaction number is DJ18AO5MVQ. Thank you for using telebirr.')).toBe('DJ18AO5MVQ');
+  expect(candidate('telebirr','Receipt: https://transactioninfo.ethiotelecom.et/receipt/DJ18AO5MVQ. Thank you.')).toBe('DJ18AO5MVQ');
+  expect(candidate('cbe','Payment completed. Receipt ID is fHCxyExampleRcpt1.')).toBe('fHCxyExampleRcpt1');
+  expect(candidate('cbe','See (https://mbreciept.cbe.com.et/receipt/fHCxyExampleRcpt1).')).toBe('fHCxyExampleRcpt1');
+ });
 });

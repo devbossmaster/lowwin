@@ -10,7 +10,7 @@ import styles from './winners-page.module.css';
 
 function compact(value:string|number){return new Intl.NumberFormat('en',{notation:'compact',maximumFractionDigits:1}).format(Number(value))}
 export function WinnerResultCard({auction}:{auction:CatalogAuction}){
-  const {language}=useMiniLocale(),am=language==='am',ref=useRef<HTMLElement>(null);
+  const {language}=useMiniLocale(),am=language==='am',ref=useRef<HTMLElement>(null),title=am?(auction.product.titleAm?.trim()||auction.product.title):auction.product.title;
   const [views,setViews]=useState(auction.viewCount);
   const recordView=useCallback(async()=>{const key=`lowwin-auction-view:${auction.slug}`;try{if(sessionStorage.getItem(key))return;sessionStorage.setItem(key,'pending')}catch{}try{const response=await fetch(`/api/catalog/auctions/${encodeURIComponent(auction.slug)}/view`,{method:'POST',cache:'no-store'});if(!response.ok)throw new Error('view');const body=await response.json() as {views?:string};if(body.views)setViews(body.views);try{sessionStorage.setItem(key,'recorded')}catch{}}catch{try{sessionStorage.removeItem(key)}catch{}}},[auction.slug]);
   useEffect(()=>{const node=ref.current;if(!node)return;let timer=0;const observer=new IntersectionObserver(([entry])=>{clearTimeout(timer);if(entry.isIntersecting&&entry.intersectionRatio>=.55)timer=window.setTimeout(recordView,900)},{threshold:[.55]});observer.observe(node);return()=>{clearTimeout(timer);observer.disconnect()}},[recordView]);
@@ -18,12 +18,12 @@ export function WinnerResultCard({auction}:{auction:CatalogAuction}){
   const ended=new Date(result?.closedAt??auction.endsAt).toLocaleDateString('en',{dateStyle:'medium',timeZone:'Africa/Addis_Ababa'});
   return <article className={styles.card} ref={ref}>
     <div className={styles.image}>
-      <Link href={`/winners/${auction.code}`} onClick={recordView} aria-label={`${am?'ውጤቱን ይመልከቱ':'View result for'} ${auction.product.title}`}><CatalogImage src={auction.product.images[0]?.path} alt={auction.product.images[0]?.alt??auction.product.title}/></Link>
+      <Link href={`/winners/${auction.code}`} onClick={recordView} aria-label={`${am?'ውጤቱን ይመልከቱ':'View result for'} ${title}`}><CatalogImage src={auction.product.images[0]?.path} alt={title}/></Link>
       <span className={styles.outcome}><Trophy size={16} aria-hidden="true"/></span><span className={styles.code}>{am?'የጨረታ ኮድ':'AUCTION CODE'} {auction.code}</span>
       <span className={styles.category}><Tag size={12} aria-hidden="true"/><MiniCategoryName slug={auction.category.slug} name={auction.category.name} nameAm={auction.category.nameAm}/></span>
     </div>
     <div className={styles.body}>
-      <h2><Link href={`/winners/${auction.code}`} onClick={recordView}>{auction.product.title}</Link></h2>
+      <h2><Link href={`/winners/${auction.code}`} onClick={recordView}>{title}</Link></h2>
       {(result?.demoLabel||auction.isDemo)&&<span className={styles.demo}>{result?.demoLabel??'DEMO'}</span>}
       <dl className={styles.winnerDetails}>
         <div><dt><UserRound size={16}/><span>{am?'አሸናፊ':'Winner'}</span></dt><dd>{result?.winnerDisplay??(am?'ስም አልተገለጸም':'Anonymous winner')}</dd></div>

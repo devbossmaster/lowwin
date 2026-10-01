@@ -28,7 +28,9 @@ Required evidence: confirmed and existing payment, completed transfer, matching 
 
 The successful transaction creates one immutable operation, balanced ISSUANCE-to-AVAILABLE journal, global transfer claim and recorded outcome. Existing hold/bid/settlement guards are preserved. Reconciliation includes orphan/mismatched payment claims as well as the preceding account, hold, fee and settlement checks. Never edit an old receipt or journal to repair a discrepancy.
 
-## Private receipt processing
+## Historical private receipt processing
+
+This section records the former local Tesseract implementation. Current setup uses Verify.et Image Processing as documented in `docs/verify-et-migration.md`.
 
 The screenshot route requires a verified session, correct origin and ownership of an active intent. It reads at most **5 MiB**, checks MIME against PNG/JPEG/WebP signatures, rejects animation/GIF/SVG and excessive dimensions, decodes at most **12 million pixels**, strips metadata and re-encodes before OCR. Longest edges are limited to 6000 before decode and 2400 after normalization.
 

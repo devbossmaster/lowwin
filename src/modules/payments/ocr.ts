@@ -5,15 +5,17 @@ import type {Bank} from './provider';
 import {candidate,canonical,PaymentError} from './reference';
 export const RECEIPT_LIMIT=5*1024*1024;
 export async function cleanReceipt(bytes:Buffer,mime:string){
+ await validateReceiptImage(bytes,mime);
+ try{return await sharp(bytes,{limitInputPixels:12000000,failOn:'warning',animated:true}).rotate().png().toBuffer()}
+ catch{throw new PaymentError(422,'Image cannot be safely decoded. Use a smaller static receipt or enter the reference.')}
+}
+export async function validateReceiptImage(bytes:Buffer,mime:string){
  if(!bytes.length||bytes.length>RECEIPT_LIMIT)throw new PaymentError(413,'Use a receipt image smaller than 5 MB.');
  const png=bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])),jpeg=bytes[0]===255&&bytes[1]===216&&bytes[2]===255,webp=bytes.toString('ascii',0,4)==='RIFF'&&bytes.toString('ascii',8,12)==='WEBP';
  if(!({ 'image/png':png,'image/jpeg':jpeg,'image/webp':webp} as Record<string,boolean>)[mime])throw new PaymentError(422,'Use a static PNG, JPEG or WebP receipt.');
  try{
-  const decoder=sharp(bytes,{limitInputPixels:12000000,failOn:'warning',animated:true}),meta=await decoder.metadata();
+  const meta=await sharp(bytes,{limitInputPixels:12000000,failOn:'warning',animated:true}).metadata();
   if((meta.pages??1)!==1||!meta.width||!meta.height||meta.width>6000||meta.height>6000||png&&bytes.includes(Buffer.from('acTL')))throw Error();
-  // Keep the original resolution and colours. Lossless decoding only corrects
-  // orientation and strips metadata; no resizing or image enhancement is applied.
-  return await decoder.rotate().png().toBuffer();
  }catch{throw new PaymentError(422,'Image cannot be safely decoded. Use a smaller static receipt or enter the reference.')}
 }
 let active=false;

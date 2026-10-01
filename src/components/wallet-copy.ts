@@ -89,6 +89,16 @@ Object.assign(walletAm,{
  'Your verified transfer amount is added automatically.':'የተረጋገጠው የዝውውር መጠን በራስ-ሰር ወደ ሂሳብዎ ይገባል።',
  'Could not read the screenshot. Paste the payment SMS or transaction reference.':'ምስሉን ማንበብ አልተቻለም። የክፍያ ኤስኤምኤሱን ወይም የዝውውር ቁጥሩን ይለጥፉ።',
  'Amount awaiting verification':'መጠኑ ማረጋገጫ እየጠበቀ ነው',
+ 'Choose receipt image':'የደረሰኝ ምስል ይምረጡ',
+ 'Change image':'ምስሉን ይቀይሩ',
+ 'Selected receipt preview':'የተመረጠው ደረሰኝ ቅድመ እይታ',
+ 'Remove selected image':'የተመረጠውን ምስል አስወግድ',
+ 'Uploading and verifying receipt…':'ደረሰኙ በመጫንና በማረጋገጥ ላይ…',
+ 'The receipt scanner reads its QR code first, then the printed details if needed.':'የደረሰኝ ስካነሩ መጀመሪያ QR ኮዱን፣ ካስፈለገም የታተመውን ዝርዝር ያነባል።',
+ 'Receipt image verification is unavailable. Paste the payment SMS or transaction ID.':'የደረሰኝ ምስል ማረጋገጥ አይገኝም። የክፍያ ኤስኤምኤሱን ወይም የዝውውር ቁጥሩን ይለጥፉ።',
+ 'Image verification request is incomplete.':'የምስል ማረጋገጫ ጥያቄው አልተሟላም።',
+ 'This deposit already has a transaction ID. Check that payment instead.':'ይህ የገቢ ጥያቄ የዝውውር ቁጥር አለው። ያንን ክፍያ ያረጋግጡ።',
+ 'Image verification needs operator review.':'የምስል ማረጋገጫው የአስተዳዳሪ ግምገማ ይፈልጋል።',
 });
 export function useWalletCopy(){const {language}=useMiniLocale();return (text:string)=>language==='am'?(text.startsWith('DEMO · ')?`DEMO · ${walletAm[text.slice(7)]??text.slice(7)}`:walletAm[text]??text):text}
 

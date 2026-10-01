@@ -1,9 +1,18 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
-import {submitVerify,type VerificationInput} from '../src/modules/payments/provider';
+import {submitVerify,submitVerifyImage,type VerificationInput} from '../src/modules/payments/provider';
 const requestId='550e8400-e29b-41d4-a716-446655440000';
 const input:VerificationInput={bank:'telebirr',reference:'SECRETREF123',account:'0912345678',expectedCents:null,minCents:100n,maxCents:2000n,createdAt:new Date(Date.now()-60000),expiresAt:new Date(Date.now()+60000),attemptKey:'stable-attempt'};
 afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();vi.unstubAllGlobals()});
 describe('Verify.et JSON transport',()=>{
+ it('sends the original receipt as multipart without forcing a content type',async()=>{
+  vi.stubEnv('VERIFY_ET_API_KEY','private-key');const fetcher=vi.fn().mockResolvedValue(Response.json({success:true,requestId,verification:{processingStatus:'queued',status:'pending',verified:false},data:[]},{status:202}));vi.stubGlobal('fetch',fetcher);vi.spyOn(console,'warn').mockImplementation(()=>{});
+  const image=Buffer.from([0x89,0x50,0x4e,0x47]);
+  expect(await submitVerifyImage({...input,image,mime:'image/png'})).toMatchObject({verification:{code:'PROCESSING',matched:false}});
+  const [url,options]=fetcher.mock.calls[0],headers=options.headers as Record<string,string>,form=options.body as FormData;
+  expect(url).toBe('https://verify.et/api/verify?waitMs=5000');expect(headers).toMatchObject({'x-api-key':'private-key','Idempotency-Key':'stable-attempt'});expect(headers).not.toHaveProperty('Content-Type');
+  expect(form).toBeInstanceOf(FormData);expect(form.get('bank')).toBe('telebirr');expect(form.get('settlementAccount')).toBe(input.account);
+  const uploaded=form.get('image');expect(uploaded).toBeInstanceOf(Blob);expect((uploaded as Blob).type).toBe('image/png');expect(Buffer.from(await (uploaded as Blob).arrayBuffer())).toEqual(image);
+ });
  it('sends only JSON, bank fields, frozen receiver and stable key',async()=>{
   vi.stubEnv('VERIFY_ET_API_KEY','private-key');const fetcher=vi.fn().mockResolvedValue(Response.json({success:true,requestId,verification:{processingStatus:'queued',status:'pending',verified:false},data:[]},{status:202}));vi.stubGlobal('fetch',fetcher);vi.spyOn(console,'warn').mockImplementation(()=>{});
   expect(await submitVerify(input)).toMatchObject({code:'PROCESSING',matched:false});

@@ -1,6 +1,7 @@
 import {createHmac,timingSafeEqual} from 'node:crypto';
 import {db} from '@/lib/db';
 import {hash} from '@/modules/payments/provider';
+import {completeVerifyWebhook} from '@/modules/payments/service';
 
 export const runtime='nodejs';
 const id=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -31,6 +32,7 @@ export async function POST(request:Request){
    await tx.verifyWebhookEvent.create({data:{id:event.id as string,requestId:event.requestId as string,event:event.event as string,payloadHash,processingStatus:typeof event.data?.processingStatus==='string'?event.data.processingStatus.slice(0,32):null}});
    await tx.verifyRequest.updateMany({where:{requestId:event.requestId as string,state:{in:['SUBMITTING','PROCESSING']}},data:{nextCheckAt:new Date()}});
   });
+  await completeVerifyWebhook(db,event.requestId as string,event.data);
   return new Response(null,{status:204,headers:noStore});
  }catch(error){return new Response(null,{status:error instanceof Error&&error.message==='EVENT_CONFLICT'?409:503,headers:noStore})}
 }

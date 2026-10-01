@@ -13,7 +13,9 @@ export function canonical(bank:Bank,raw:string){
 // Parse known receipt shapes locally. A URL is never fetched by Lowwin.
 export function candidate(bank:Bank,raw:string){
  const text=raw.trim();if(!text||text.length>4000)throw new PaymentError(422,'Enter one transaction reference or receipt.');
- const urls=text.match(/https?:\/\/[^\s<>"']+/g)??[];
+ // SMS apps commonly place a period or closing bracket immediately after the
+ // official receipt URL. Those characters are prose, not part of the receipt.
+ const urls=[...new Set((text.match(/https?:\/\/[^\s<>"']+/g)??[]).map(value=>value.replace(/[\])}>.,;:!?]+$/g,'')))];
  if(urls.length){
   if(urls.length!==1)throw new PaymentError(422,'More than one receipt was found. Enter one reference.');
   const url=new URL(urls[0]);if(url.protocol!=='https:'||url.username||url.password||url.port||url.hash||url.search)throw new PaymentError(422,'Use an official supported receipt link or enter the reference.');
@@ -23,7 +25,9 @@ export function candidate(bank:Bank,raw:string){
  }
  if(/^[A-Za-z0-9_-]+$/.test(text))return canonical(bank,text);
  if(bank==='cbe'&&/telebirr/i.test(text)||bank==='telebirr'&&/\bCBE\b|Commercial Bank/i.test(text))throw new PaymentError(422,'Receipt bank does not match the selected account.');
- const pattern=bank==='cbe'?/(?:receipt\s*id|reference(?:\s*(?:number|no\.?))?)\s*[:#-]?\s*([A-Za-z0-9_-]{8,})/gi:/(?:transaction\s*(?:number|id|no\.?|reference)?|reference|receipt)\s*[:#-]?\s*([A-Za-z][A-Za-z0-9_-]{7,})/gi;
+ const separator='\\s*(?:is\\s*)?[:#-]?\\s*';
+ const label=bank==='cbe'?'(?:receipt\\s*(?:id|number|no\\.?)|reference(?:\\s*(?:number|id|no\\.?))?)':'(?:transaction\\s*(?:number|id|no\\.?|reference)?|reference|receipt(?:\\s*(?:number|id|no\\.?))?)';
+ const pattern=new RegExp(`${label}${separator}([A-Za-z][A-Za-z0-9_-]{7,127})`,'gi');
  const found=[...text.matchAll(pattern)].map(match=>canonical(bank,match[1]));
  const unique=[...new Set(found)];if(unique.length!==1)throw new PaymentError(422,'A single clear reference could not be found. Enter it manually.');return unique[0];
 }

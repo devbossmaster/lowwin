@@ -239,8 +239,11 @@ model Product {
   version     Int            @default(1)
   slug        String         @unique
   title       String
+  titleAm     String?
   description String
+  descriptionAm String?
   condition   String
+  conditionAm String?
   categoryId  String
   category    Category       @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   visible     Boolean        @default(true)
@@ -296,7 +299,9 @@ model Auction {
   // Aggregate public impressions only. Viewer identity is never stored.
   publicViewCount     BigInt                   @default(0)
   fulfillmentSummary  String?
+  fulfillmentSummaryAm String?
   fulfillmentRegion   String?
+  fulfillmentRegionAm String?
   terms               AuctionTerms?
   result              PublicAuctionResult?
   settlement          AuctionSettlement?

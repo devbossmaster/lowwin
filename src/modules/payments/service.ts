@@ -6,13 +6,13 @@ import {Prisma,type PrismaClient,type TopUpIntent} from '@prisma/client';
 import {z} from 'zod';
 import {demoBidAllowed} from '../auctions/bids';
 import {ensureWallet,seedPlatformAccounts} from '../wallet/ledger';
-import {bankSchema,candidate,submitVerify,readVerifyStatus,assess,hash,PaymentError,type VerifyTransport,type Bank,type Verification,type VerificationInput} from './provider';
+import {bankSchema,candidate,submitVerify,submitVerifyImage,readVerifyStatus,assess,providerReference,hash,PaymentError,type VerifyTransport,type Bank,type Verification,type VerificationInput,type ImageVerificationInput,type ImageVerification} from './provider';
 import {CUSTOMER_ATTEMPTS,STAFF_ATTEMPTS,RECOVERY_WINDOW_MS,protectedPayment,retryDetails} from './retry';
 type Tx=Prisma.TransactionClient;
 export function paymentHealth(){
  const productionEnabled=liveFundingConfigured();
  const isolated=demoBidAllowed(),configured=productionEnabled||isolated&&!!process.env.VERIFY_ET_API_KEY&&!!process.env.VERIFY_ET_TEST_ENDPOINT&&process.env.PAYMENTS_TEST_ENABLED==='true';
- return {enabled:configured,productionEnabled,ocr:configured&&process.env.RECEIPT_OCR==='tesseract',reason:productionEnabled?'Only exact provider-verified transfers can credit your wallet.':configured?'Isolated test verification only. Do not send real funds.':'Adding ETB is unavailable until receiving accounts and verification are reviewed.'};
+ return {enabled:configured,productionEnabled,ocr:configured&&process.env.VERIFY_ET_IMAGE_PROCESSING==='true',reason:productionEnabled?'Only exact provider-verified transfers can credit your wallet.':configured?'Isolated test verification only. Do not send real funds.':'Adding ETB is unavailable until receiving accounts and verification are reviewed.'};
 }
 function requireEnabled(){if(!paymentHealth().enabled)throw new PaymentError(503,paymentHealth().reason)}
 async function clock(tx:Tx){return (await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`)[0].now}
@@ -45,6 +45,33 @@ export async function createIntent(client:PrismaClient,userId:string,raw:unknown
  })}
 export async function verifyIntent(client:PrismaClient,userId:string,raw:unknown,transport:VerifyTransport=submitVerify,reauthorize?:(tx:Tx)=>Promise<void>,adminRecovery=false,staffRetry=false){
  return verifyQueuedIntent(client,userId,raw,transport,reauthorize,adminRecovery,staffRetry);
+}
+const verifyImageSchema=z.object({id:z.string().uuid(),key:z.string().uuid()}).strict();
+export async function verifyIntentImage(client:PrismaClient,userId:string,raw:unknown,image:Buffer,mime:ImageVerificationInput['mime'],transport=submitVerifyImage,reauthorize?:(tx:Tx)=>Promise<void>){
+ requireEnabled();const body=verifyImageSchema.parse(raw);
+ const started=await client.$transaction(async tx=>{
+  await tx.$queryRaw`SELECT id FROM "TopUpIntent" WHERE id=${body.id} FOR UPDATE`;
+  const t=await tx.topUpIntent.findFirst({where:{id:body.id,userId}});
+  if(!t||!t.channel||!t.amountFromReceipt||!['CHECK_ET','VERIFY_ET'].includes(t.provider))throw new PaymentError(404,'Funding request not found.');
+  if(t.reference)throw new PaymentError(409,'This deposit already has a transaction ID. Check that payment instead.');
+  if(t.status==='CREDITED')return {receipt:{...ownIntent(t),reused:true}};
+  const prior=await tx.verifyRequest.findUnique({where:{key:body.key}});if(prior){if(prior.intentId!==t.id)throw new PaymentError(409,'Idempotency key changed.');return {receipt:ownIntent(t)}}
+  const active=await tx.verifyRequest.findFirst({where:{intentId:t.id,state:{in:['SUBMITTING','PROCESSING']}},orderBy:{createdAt:'desc'}});if(active)return {receipt:ownIntent(t)};
+  const now=await clock(tx);if(protectedPayment(t))throw new PaymentError(409,'This deposit is protected or rejected. Contact support.');
+  if(!t.expiresAt||now.getTime()>t.expiresAt.getTime()+RECOVERY_WINDOW_MS)throw new PaymentError(409,'The recovery window ended. Contact support with this deposit ID.');
+  if(t.scanAttempts>=3||t.attempts>=CUSTOMER_ATTEMPTS)throw new PaymentError(409,'Image verification needs operator review.');
+  if(t.nextAttemptAt>now)throw new PaymentError(429,'Verification is pending. Wait before retrying.');
+  await eligibility(tx,userId);if(reauthorize)await reauthorize(tx);
+  const placeholder=`IMG${hash(`${t.id}:${body.key}:${hash(image)}`).slice(0,28).toUpperCase()}`;
+  const request=await tx.verifyRequest.create({data:{intentId:t.id,key:body.key,reference:placeholder,state:'SUBMITTING',nextCheckAt:new Date(now.getTime()+60000)}});
+  const current=await tx.topUpIntent.update({where:{id:t.id},data:{status:'VERIFYING',reasonCode:'PROCESSING',attempts:{increment:1},scanAttempts:{increment:1},nextAttemptAt:new Date(now.getTime()+5000)}});
+  return {requestId:request.id,t:current};
+ });
+ if('receipt' in started)return started.receipt!;
+ const quote=started.t.quoteSnapshot as {minCents?:string;maxCents?:string;earliestTransferAt?:string}|null;
+ const result:ImageVerification=await transport({bank:bankSchema.parse(started.t.channel),account:started.t.receivingAccount!,expectedCents:null,minCents:BigInt(quote?.minCents??'0'),maxCents:BigInt(quote?.maxCents??'0'),createdAt:new Date(quote?.earliestTransferAt??''),expiresAt:started.t.expiresAt!,attemptKey:body.key,image,mime});
+ if(result.reference)await client.$transaction(async tx=>{await tx.$queryRaw`SELECT id FROM "VerifyRequest" WHERE id=${started.requestId} FOR UPDATE`;await tx.$queryRaw`SELECT id FROM "TopUpIntent" WHERE id=${started.t.id} FOR UPDATE`;const t=await tx.topUpIntent.findUniqueOrThrow({where:{id:started.t.id}});if(t.reference&&t.reference!==result.reference)throw new PaymentError(409,'This deposit is bound to another reference.');await tx.verifyRequest.update({where:{id:started.requestId},data:{reference:result.reference}});await tx.topUpIntent.update({where:{id:t.id},data:{reference:result.reference}})});
+ return completeVerifyRequest(client,started.requestId,result.verification,reauthorize);
 }
 const verifySchema=z.object({id:z.string().uuid(),key:z.string().uuid(),input:z.string().min(1).max(4000)}).strict();
 function inputFor(t:TopUpIntent,key:string):VerificationInput{
@@ -142,6 +169,16 @@ async function completeVerifyRequest(client:PrismaClient,id:string,verified:Veri
  },{timeout:15000});
 }
 
+export async function completeVerifyWebhook(client:PrismaClient,requestId:string,data:unknown){
+ const request=await client.verifyRequest.findUnique({where:{requestId},include:{intent:true}});if(!request||request.state==='DONE')return false;
+ const bank=bankSchema.parse(request.intent.channel),reference=providerReference(data,bank);
+ if(reference)await client.$transaction(async tx=>{await tx.$queryRaw`SELECT id FROM "VerifyRequest" WHERE id=${request.id} FOR UPDATE`;await tx.$queryRaw`SELECT id FROM "TopUpIntent" WHERE id=${request.intentId} FOR UPDATE`;const current=await tx.topUpIntent.findUniqueOrThrow({where:{id:request.intentId}});if(current.reference&&current.reference!==reference)throw new PaymentError(409,'Provider reference changed.');await tx.verifyRequest.update({where:{id:request.id},data:{reference}});await tx.topUpIntent.update({where:{id:request.intentId},data:{reference}})});
+ const current=await client.topUpIntent.findUniqueOrThrow({where:{id:request.intentId}}),item=data as {processingStatus?:unknown;status?:unknown;verified?:unknown};
+ const input={...inputFor(current,request.key),reference:current.reference??reference??request.reference};
+ const raw={success:true,requestId,verification:{processingStatus:typeof item.processingStatus==='string'?item.processingStatus:'completed',status:typeof item.status==='string'?item.status:undefined,verified:item.verified===true},data:[data]};
+ await completeVerifyRequest(client,request.id,assess(raw,input));return true;
+}
+
 export async function processOneVerifyRequest(client:PrismaClient){
  if(!paymentHealth().enabled)return false;
  const row=await client.$transaction(async tx=>{
@@ -154,7 +191,7 @@ export async function processOneVerifyRequest(client:PrismaClient){
  if(t.status==='CREDITED'){await client.verifyRequest.update({where:{id:row.id},data:{state:'DONE',code:'ALREADY_CREDITED'}});return true}
  if(row.attempts>30){await completeVerifyRequest(client,row.id,{code:'PROVIDER_UNAVAILABLE',matched:false,requestId:row.requestId??undefined,evidence:{}});return true}
  let result:Verification|null|undefined;
- if(row.requestId)result=await readVerifyStatus(row.requestId);
+ if(row.requestId){result=await readVerifyStatus(row.requestId);if(result===null&&!t.reference){await client.verifyRequest.update({where:{id:row.id},data:{nextCheckAt:new Date(Date.now()+30000)}});return true}}
  if(!result)result=await submitVerify(inputFor(t,row.key));
  await completeVerifyRequest(client,row.id,result);return true;
 }
