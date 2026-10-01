@@ -15,7 +15,7 @@ export default async function Winners({searchParams}:{searchParams:Promise<Recor
   const query=parsed.success?parsed.data:resultQuerySchema.parse({status:'winner',pageSize:12});
   const [results,categories]=await Promise.all([
     listPublicResults(db,query),
-    db.category.findMany({where:{visible:true},select:{name:true,slug:true},orderBy:{sortOrder:'asc'}}),
+    db.category.findMany({where:{visible:true},select:{name:true,nameAm:true,slug:true},orderBy:{sortOrder:'asc'}}),
   ]);
   const href=(page:number)=>`/winners/all?${new URLSearchParams({q:query.q,category:query.category,sort:query.sort,pageSize:String(query.pageSize),page:String(page)})}`;
   const pages=Array.from(new Set([1,query.page-1,query.page,query.page+1,results.totalPages].filter(page=>page>=1&&page<=results.totalPages))).sort((a,b)=>a-b);

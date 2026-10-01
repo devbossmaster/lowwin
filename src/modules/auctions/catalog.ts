@@ -11,7 +11,7 @@ export const publicAuctionSelect = {
   slug:true,code:true,publicCode:true,status:true,startsAt:true,endsAt:true,featured:true,isDemo:true,acceptedBidCount:true,publicViewCount:true,presentation:true,
   fulfillmentSummary:true,fulfillmentRegion:true,
   product:{select:{title:true,description:true,condition:true,images:{orderBy:{sortOrder:'asc'},select:{path:true,alt:true,sourceType:true,sourceCredit:true}}}},
-  category:{select:{slug:true,name:true}},
+  category:{select:{slug:true,name:true,nameAm:true}},
   terms:{select:{version:true,ruleVersion:true,minParticipants:true,minPoints:true,maxPoints:true,stepPoints:true,entryFeePoints:true,maxDistinctBids:true,noWinnerTerms:true,cancellationTerms:true,fulfillmentSnapshot:true}},
   feeRevisions:{orderBy:[{effectiveAt:'desc' as const},{version:'desc' as const}],take:1,select:{version:true,feePoints:true}},
   result:{select:{outcome:true,winningPoints:true,explanation:true,isDemo:true,closedAt:true,publishedAt:true}},
@@ -77,7 +77,7 @@ export function toPublicAuction(row: AuctionRow, now: Date) {
     startsAt:row.startsAt!.toISOString(),endsAt:row.endsAt!.toISOString(),
     product:{title:product.title,description:product.description,condition:product.condition,
       images:product.images.map(image=>({path:image.path,alt:image.alt,sourceType:image.sourceType,sourceCredit:image.sourceCredit??null}))},
-    category:{slug:row.category!.slug,name:row.category!.name},
+    category:{slug:row.category!.slug,name:row.category!.name,nameAm:row.category!.nameAm},
     fulfillment:{summary:row.fulfillmentSummary!,region:row.fulfillmentRegion!},
     terms:{version:row.feeRevisions[0]?.version??row.terms!.version,ruleVersion:row.terms!.ruleVersion,minParticipants:row.terms!.minParticipants,minPoints:row.terms!.minPoints.toString(),maxPoints:row.terms!.maxPoints.toString(),stepPoints:row.terms!.stepPoints.toString(),entryFeePoints:(row.feeRevisions[0]?.feePoints??row.terms!.entryFeePoints).toString(),maxDistinctBids:row.terms!.maxDistinctBids,noWinnerTerms:legacyTermsInEtb(row.terms!.noWinnerTerms),cancellationTerms:legacyTermsInEtb(row.terms!.cancellationTerms),fulfillmentSnapshot:row.terms!.fulfillmentSnapshot},
     result,
@@ -148,8 +148,8 @@ export async function listCategories(now?: Date) {
   now ??= await serverNow();
   // Aggregate in PostgreSQL instead of transferring every auction for each page.
   // Visibility matches publicWhere, including the product's own category.
-  const rows=await db.$queryRaw<{slug:string;name:string;description:string;requiresEligibilityReview:boolean;all:number;live:number;upcoming:number;closed:number}[]>`
-    SELECT c.slug,c.name,c.description,c."requiresEligibilityReview",
+  const rows=await db.$queryRaw<{slug:string;name:string;nameAm:string|null;description:string;descriptionAm:string|null;requiresEligibilityReview:boolean;all:number;live:number;upcoming:number;closed:number}[]>`
+    SELECT c.slug,c.name,c."nameAm",c.description,c."descriptionAm",c."requiresEligibilityReview",
       count(a.id)::int AS all,
       count(a.id) FILTER (WHERE a.status IN ('SCHEDULED','LIVE') AND a."startsAt"<=${now} AND a."endsAt">${now})::int AS live,
       count(a.id) FILTER (WHERE a.status IN ('SCHEDULED','LIVE') AND a."startsAt">${now} AND a."endsAt">${now})::int AS upcoming,

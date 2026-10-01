@@ -222,7 +222,9 @@ model Category {
   version                   Int       @default(1)
   slug                      String    @unique
   name                      String    @unique
+  nameAm                    String?
   description               String
+  descriptionAm             String?
   sortOrder                 Int       @default(0)
   visible                   Boolean   @default(true)
   requiresEligibilityReview Boolean   @default(false)

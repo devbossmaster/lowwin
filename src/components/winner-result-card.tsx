@@ -20,7 +20,7 @@ export function WinnerResultCard({auction}:{auction:CatalogAuction}){
     <div className={styles.image}>
       <Link href={`/winners/${auction.code}`} onClick={recordView} aria-label={`${am?'ውጤቱን ይመልከቱ':'View result for'} ${auction.product.title}`}><CatalogImage src={auction.product.images[0]?.path} alt={auction.product.images[0]?.alt??auction.product.title}/></Link>
       <span className={styles.outcome}><Trophy size={16} aria-hidden="true"/></span><span className={styles.code}>{am?'የጨረታ ኮድ':'AUCTION CODE'} {auction.code}</span>
-      <span className={styles.category}><Tag size={12} aria-hidden="true"/><MiniCategoryName slug={auction.category.slug} name={auction.category.name}/></span>
+      <span className={styles.category}><Tag size={12} aria-hidden="true"/><MiniCategoryName slug={auction.category.slug} name={auction.category.name} nameAm={auction.category.nameAm}/></span>
     </div>
     <div className={styles.body}>
       <h2><Link href={`/winners/${auction.code}`} onClick={recordView}>{auction.product.title}</Link></h2>

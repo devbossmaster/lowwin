@@ -20,7 +20,7 @@ const id=z.string().uuid(),key=z.string().uuid(),version=z.number().int().min(0)
 const points=z.string().regex(/^(0|[1-9]\d{0,8})(?:\.\d{1,2})?$/);
 export const draftBodySchema=z.object({productId:id,startsAt:z.iso.datetime(),endsAt:z.iso.datetime(),minPoints:points,maxPoints:points,stepPoints:points,entryFeePoints:points,fulfillmentSummary:text(500),fulfillmentRegion:text(160),featured:z.boolean().default(false),maxExtensionMinutes:z.number().int().min(0).max(43200).default(10080),allowPaidShortening:z.boolean().default(false),shortenNoticeMinutes:z.number().int().min(5).max(10080).default(1440)}).strict();
 const schemas={
-  category:z.object({key,id:id.optional(),version,name:text(80),slug:text(80).regex(/^[a-z0-9-]+$/),description:text(600),visible:z.boolean(),requiresEligibilityReview:z.boolean()}).strict(),
+  category:z.object({key,id:id.optional(),version,name:text(80),nameAm:text(80),slug:text(80).regex(/^[a-z0-9-]+$/),description:text(600),descriptionAm:text(600),visible:z.boolean(),requiresEligibilityReview:z.boolean()}).strict(),
   product:z.object({key,id:id.optional(),version,title:text(120),slug:text(100).regex(/^[a-z0-9-]+$/),description:text(1500),condition:text(100),categoryId:id,isDemo:z.boolean(),visible:z.boolean(),imageIds:z.array(id).max(8)}).strict(),
   media:z.object({key,mime:z.enum(['image/png','image/jpeg','image/webp']),data:z.string().max(2800000).regex(/^[A-Za-z0-9+/]+={0,2}$/),sourceType:z.enum(['ORIGINAL','LICENSED','SUPPLIED']),sourceCredit:text(300),rightsConfirmed:z.literal(true)}).strict(),
   content:z.object({key,id:z.enum(['home','faq']),version,body:z.unknown()}).strict(),
