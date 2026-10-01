@@ -88,7 +88,7 @@ function Funding(){
    <h2>{w('Add money')}</h2>
    <PaymentAccounts accounts={intent&&account?[account]:options.accounts} selected={selected} onSelect={id=>{setSelected(id);setInput('');setMessage('');clearReceipt();createKey.current='';verifyKey.current=''}} locked={!!intent} busy={!!busy} preview={!options.productionEnabled}/>
    {account&&<p className={styles.hint}>{w('Allowed:')} {money(account.minCents)}–{money(account.maxCents)} ETB. {w('Your verified transfer amount is added automatically.')}</p>}
-   <div className={styles.confirmation}>
+   {account&&<div className={styles.confirmation}>
     <div className={styles.referenceHeader}>
      <label className={styles.fieldLabel} htmlFor="verified-reference">{w('Telebirr or CBE message/link')}</label>
      {showRecoveryActions&&<div className={styles.referenceActions}>
@@ -102,10 +102,10 @@ function Funding(){
     {receipt&&<div className={styles.receiptFile}><span>{receipt.name} · {fileSize(receipt.size)}</span><button type="button" aria-label={w('Remove selected image')} disabled={!!busy} onClick={clearReceipt}><X size={17}/></button></div>}
     <p className={styles.scanNote}><ScanLine size={16}/><span>{w('The receipt scanner reads its QR code first, then the printed details if needed.')}</span></p>
     <button type="button" className={styles.submit} disabled={!account||(!input.trim()&&!receipt)||!!busy||credited||underReview||waiting} onClick={()=>void submit()}>{busy?<LoadingSpinner/>:credited?w('Deposit credited'):underReview?w(intent?.status==='REJECTED'?'Deposit rejected':'Under admin review'):w(intent?.attempts?'Check payment again':'Submit deposit')}</button>
-    <p className={styles.footnote}>{!account?w('Choose a payment account first.'):options.ocr?w('Confirmed transfers to our account are credited automatically in ETB, once.'):w('Paste your receipt message. Image scanning is unavailable.')}</p>
+    <p className={styles.footnote}>{options.ocr?w('Confirmed transfers to our account are credited automatically in ETB, once.'):w('Paste your receipt message. Image scanning is unavailable.')}</p>
     {intent&&!credited&&<p className={styles.hint}>{intent.canRetry===false?w('Contact support with this deposit ID:'):waiting?w('Retry after:'):w('You can check this payment again.')} {intent.canRetry===false?intent.id:waiting&&intent.nextAttemptAt?new Date(intent.nextAttemptAt).toLocaleString():''}</p>}
     {busy&&<LoadingSpinner label={busy}/>}{message&&<p className={styles.hint} role="status">{message}</p>}
-   </div>
+   </div>}
    <Link className={styles.help} href="/profile/support">{w('Need help with a payment?')}<ArrowUpRight size={16}/></Link>
   </section>}
   {!!query.data?.items.length&&<details className={styles.history}><summary>{w('Deposit history')}<ChevronDown size={17}/></summary><section className="wallet-activity">{query.data.items.map(t=><article className="activity-row" key={t.id}><div><strong>{t.demo?w('DEMO preview: '):''}{w(labels[t.status]??t.status)}</strong><small>{t.demo?w('No transfer - no ETB credited'):<>{t.channel==='cbe'?'CBE':'Telebirr'} · {t.amountCents?`${money(t.amountCents)} ETB`:w('Amount awaiting verification')}</>}</small></div><div>{options?.enabled&&['PENDING','VERIFYING','PROVIDER_OUTAGE','NEEDS_REVIEW'].includes(t.status)&&<button type="button" className="text-link" disabled={!!busy} onClick={()=>{setIntent(t);setSelected(t.channel);setInput(t.reference??'');const feedback=depositFeedback(t,w);inform(feedback.message,feedback.kind);verifyKey.current='';document.getElementById('add-etb')?.scrollIntoView({behavior:'auto'})}}>{w(t.canRetry?'Check payment again':'Continue')}</button>}<Link href="/profile/support">{w('Help')}</Link></div></article>)}<PersonalPagination page={page} totalPages={query.data.totalPages} setPage={setPage}/></section></details>}
