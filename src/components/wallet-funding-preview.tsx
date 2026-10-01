@@ -1,11 +1,11 @@
 'use client';
 import {useWalletCopy} from '@/components/wallet-copy';
 import {PageLoading} from './loading-spinner';
-import Link from 'next/link';
 import {useState} from 'react';
-import {Upload,ArrowUpRight} from 'lucide-react';
 import {usePrivateQuery} from './private-query';
 import {PaymentAccounts,type PaymentAccount} from './payment-accounts';
+import {ReceiptImageUpload} from './receipt-image-upload';
+import {PaymentHelp} from './payment-help';
 import styles from './wallet-page.module.css';
 
 export function WalletFundingPreview(){const w=useWalletCopy();
@@ -16,15 +16,16 @@ export function WalletFundingPreview(){const w=useWalletCopy();
   <h2>{w("Add money")}</h2>{status==='authenticated'&&!data&&!error&&<PageLoading/>}
   <PaymentAccounts accounts={data?.accounts??[]} selected={selected} onSelect={setSelected} preview/>
   {error&&<p className={styles.error} role="alert">{w("Account details could not load.")}<button type="button" onClick={reload}>{w("Retry")}</button></p>}
+  {!account&&!error&&<p className={styles.selectionHint}>{w(data?.enabled?'Choose Telebirr or CBE to add money.':'Deposits are unavailable. Do not send money.')}</p>}
   {account&&<div className={styles.confirmation}>
    <div className={styles.sectionHeading}><h3>{w("Payment confirmation")}</h3><span>{w("Paste message or upload")}</span></div>
    <label className={styles.fieldLabel} htmlFor="payment-reference">{w("Telebirr or CBE message/link")}</label>
    <textarea className={styles.textarea} id="payment-reference" disabled placeholder={w("Paste the payment SMS, including its receipt link")} aria-describedby="verification-disabled"/>
    <div className={styles.divider}>{w("Or upload a screenshot")}</div>
-   <label className={styles.upload} aria-disabled="true"><Upload size={23}/><strong>{w("Upload receipt image")}</strong><span>{w("JPEG, PNG or WebP · up to 5 MB")}</span><input type="file" accept="image/png,image/jpeg,image/webp" disabled aria-label={w("Upload receipt image")}/></label>
+   <ReceiptImageUpload disabled/>
    <button type="button" className={styles.submit} disabled>{w("Submit deposit")}</button>
    <p id="verification-disabled" className={styles.footnote}>{w("Deposits are unavailable. Do not send money.")}</p>
   </div>}
-  <Link className={styles.help} href="/profile/support">{w("Need help with a payment?")}<ArrowUpRight size={16}/></Link>
+  <PaymentHelp/>
  </section>;
 }

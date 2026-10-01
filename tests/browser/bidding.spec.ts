@@ -35,7 +35,7 @@ test('signed mobile bid confirmation, receipt and wallet activity',async({page},
     await expect(page.locator('.page-loading-backdrop')).toHaveCount(0);await page.screenshot({caret:'initial',path:`docs/screenshots/bid-receipt-${testInfo.project.name}.png`,fullPage:true});
     await page.getByRole('link',{name:'View wallet'}).click();
     await expect(page.getByText('958.00 ETB',{exact:true})).toContainText('958');
-    await expect(page.getByText('ETB 40.00 held for auctions')).toBeVisible();await page.getByText('Wallet activity',{exact:true}).click();
+    await expect(page.getByText('ETB 40.00 held for auctions')).toBeVisible();await page.getByRole('navigation',{name:'Wallet sections'}).getByRole('button',{name:'Transactions',exact:true}).click();await page.getByRole('group',{name:'Transaction type'}).getByRole('button',{name:'Wallet activity',exact:true}).click();
     await expect(page.getByText('Auction entry fee')).toBeVisible();
     await expect(page.locator('.page-loading-backdrop')).toHaveCount(0);await page.screenshot({caret:'initial',path:`docs/screenshots/bid-wallet-${testInfo.project.name}.png`,fullPage:true});
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);

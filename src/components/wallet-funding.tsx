@@ -1,29 +1,31 @@
 'use client';
 import {useEffect,useId,useRef,useState} from 'react';
 import Link from 'next/link';
-import {ArrowUpRight,ChevronDown,Image as ImageIcon,ScanLine,Upload,X} from 'lucide-react';
+import {ArrowDownLeft,RefreshCw} from 'lucide-react';
 import {useWalletCopy} from './wallet-copy';
 import {LoadingSpinner,PageLoading} from './loading-spinner';
 import {useTelegram} from './telegram-provider';
 import {usePrivateQuery,PersonalPagination} from './private-query';
 import {WalletFundingPreview} from './wallet-funding-preview';
-import {PaymentAccounts} from './payment-accounts';
+import {PaymentAccounts,PaymentLogo} from './payment-accounts';
+import {ReceiptImageUpload,type SelectedReceipt} from './receipt-image-upload';
+import {PaymentHelp} from './payment-help';
 import {useMiniNotice} from './mini-notice';
 import {depositFeedback} from './deposit-feedback';
 import {receiptImageKey} from './receipt-image-key';
 import styles from './wallet-page.module.css';
 
 type Account={id:string;policyId:string;version:number;name:string;number:string;holder:string;numerator:string;denominator:string;minCents:string;maxCents:string;terms:string};
-type Intent={canRetry?:boolean;retryBlocked?:string|null;retryUntil?:string;nextAttemptAt?:string;attempts?:number;id:string;demo?:boolean;reused?:boolean;channel:string;status:string;amountCents?:string;points:string;account:string;accountName:string;reference:string|null;expiresAt:string;reason:string|null;caseState:string;quote:{version:number;numerator:string;denominator:string;terms:string;minCents?:string;maxCents?:string}};
+type Intent={canRetry?:boolean;retryBlocked?:string|null;retryUntil?:string;nextAttemptAt?:string;attempts?:number;id:string;createdAt:string;demo?:boolean;reused?:boolean;channel:string;status:string;amountCents?:string;points:string;account:string;accountName:string;reference:string|null;expiresAt:string;reason:string|null;caseState:string;quote:{version:number;numerator:string;denominator:string;terms:string;minCents?:string;maxCents?:string}};
 type Data={options:{enabled:boolean;productionEnabled:boolean;ocr:boolean;reason:string;accounts:Account[]};items:Intent[];totalPages:number};
 const money=(c:string)=>(BigInt(c)/100n).toString()+'.'+(BigInt(c)%100n).toString().padStart(2,'0');
-const fileSize=(bytes:number)=>bytes<1048576?`${Math.max(1,Math.round(bytes/1024))} KB`:`${(bytes/1048576).toFixed(1)} MB`;
 const labels:Record<string,string>={PENDING:'Pending verification',VERIFYING:'Verifying',CREDITED:'Credited',NEEDS_REVIEW:'Needs review',REJECTED:'Rejected',DUPLICATE_CONFLICT:'Duplicate claim — contact support',PROVIDER_OUTAGE:'Provider unavailable — retry pending'};
-export function WalletFunding(){const {me}=useTelegram();return <Funding key={me?.user.id??'guest'}/>}
-function Funding(){
+type FundingView='deposit'|'deposits'|'hidden';
+export function WalletFunding({view='deposit',onContinue}:{view?:FundingView;onContinue?:()=>void}){const {me}=useTelegram();return <Funding key={me?.user.id??'guest'} view={view} onContinue={onContinue}/>}
+function Funding({view,onContinue}:{view:FundingView;onContinue?:()=>void}){
  const w=useWalletCopy(),{refreshMe}=useTelegram(),notify=useMiniNotice(),noticeId=useId();
  const [page,setPage]=useState(1),query=usePrivateQuery<Data>(`/api/wallet/top-ups?page=${page}`);
- const [selected,setSelected]=useState(''),[intent,setIntent]=useState<Intent|null>(null),[input,setInput]=useState(''),[busy,setBusy]=useState(''),[message,setMessage]=useState(''),[receipt,setReceipt]=useState<{file:File;url:string;name:string;size:number}|null>(null);
+ const [selected,setSelected]=useState(''),[intent,setIntent]=useState<Intent|null>(null),[input,setInput]=useState(''),[busy,setBusy]=useState(''),[message,setMessage]=useState(''),[receipt,setReceipt]=useState<SelectedReceipt|null>(null);
  const createKey=useRef(''),verifyKey=useRef(''),imageKeys=useRef(new Map<string,string>()),working=useRef(false),receiptUrl=useRef<string|null>(null);
  const options=query.data?.options;
  const account:Account|undefined=intent?{id:intent.channel,policyId:'',version:intent.quote.version,name:intent.channel==='cbe'?'CBE':'Telebirr',number:intent.account,holder:intent.accountName,numerator:intent.quote.numerator,denominator:intent.quote.denominator,minCents:intent.quote.minCents??intent.amountCents??'0',maxCents:intent.quote.maxCents??intent.amountCents??'0',terms:intent.quote.terms}:options?.accounts.find(a=>a.id===selected);
@@ -48,12 +50,12 @@ function Funding(){
  const underReview=!!intent&&(intent.canRetry===false||['DUPLICATE_CONFLICT','REJECTED','REVERSED'].includes(intent.status));
  const waiting=!!intent?.nextAttemptAt&&new Date(intent.nextAttemptAt).getTime()>now;
  const bound=!!intent?.reference;
- const showRecoveryActions=!!intent&&!credited&&(intent.attempts??0)>0&&intent.status!=='VERIFYING';
+ const showRecoveryActions=!!intent&&(credited||(intent.attempts??0)>0)&&intent.status!=='VERIFYING';
  const scannerAvailable=!!options?.ocr;
  useEffect(()=>()=>{if(receiptUrl.current)URL.revokeObjectURL(receiptUrl.current)},[]);
  function inform(text:string,kind:'success'|'error'|'info'='info'){setMessage(text);notify(text,kind,{id:noticeId,duration:8000})}
  function clearReceipt(){if(receiptUrl.current)URL.revokeObjectURL(receiptUrl.current);receiptUrl.current=null;setReceipt(null)}
- function chooseReceipt(file?:File){if(!file)return;clearReceipt();const url=URL.createObjectURL(file);receiptUrl.current=url;setReceipt({file,url,name:file.name,size:file.size});setInput('');verifyKey.current=''}
+ function chooseReceipt(file?:File){if(!file)return;if(!['image/jpeg','image/png','image/webp'].includes(file.type)){inform(w('Choose a JPEG, PNG or WebP image.'),'error');return}if(file.size>5*1024*1024){inform(w('Use an image smaller than 5 MB.'),'error');return}clearReceipt();const url=URL.createObjectURL(file);receiptUrl.current=url;setReceipt({file,url,name:file.name,size:file.size});setInput('');verifyKey.current=''}
  async function command(action:string,body:unknown):Promise<Intent>{
   const response=await fetch('/api/wallet/top-ups',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,input:body}),cache:'no-store'}),data=await response.json();
   if(!response.ok)throw Error(data.error);return data;
@@ -81,14 +83,15 @@ function Funding(){
   }catch(error){inform(w(error instanceof Error?error.message:'Try again.'),'error')}finally{working.current=false;setBusy('')}
  }
  function reset(){setIntent(null);setInput('');setMessage('');clearReceipt();createKey.current='';verifyKey.current='';imageKeys.current.clear()}
- if(query.status==='loading'||query.status==='authenticated'&&!query.data&&!query.error)return <section className={styles.funding} id="add-etb"><h2>{w('Add money')}</h2><PageLoading/></section>;
- if(query.error)return <section className={styles.funding} id="add-etb"><h2>{w('Add money')}</h2><p className={styles.error} role="alert">{w('Payment accounts could not load.')}<button type="button" onClick={query.reload}>{w('Retry')}</button></p></section>;
+ if(query.status==='loading'||query.status==='authenticated'&&!query.data&&!query.error)return <section hidden={view==='hidden'} className={styles.funding}><h2>{w(view==='deposit'?'Add money':'Deposits')}</h2><PageLoading/></section>;
+ if(query.error)return <section hidden={view==='hidden'} className={styles.funding}><h2>{w(view==='deposit'?'Add money':'Deposits')}</h2><p className={styles.error} role="alert">{w(view==='deposit'?'Payment accounts could not load.':'Deposit history could not load.')}<button type="button" onClick={query.reload}>{w('Retry')}</button></p></section>;
  return <>
-  {!options?.enabled?<WalletFundingPreview/>:<section className={styles.funding} id="add-etb" aria-busy={!!busy}>
+  <div hidden={view!=='deposit'}>{!options?.enabled?<WalletFundingPreview/>:<section className={styles.funding} id="add-etb" aria-busy={!!busy}>
    <h2>{w('Add money')}</h2>
    <PaymentAccounts accounts={intent&&account?[account]:options.accounts} selected={selected} onSelect={id=>{setSelected(id);setInput('');setMessage('');clearReceipt();createKey.current='';verifyKey.current=''}} locked={!!intent} busy={!!busy} preview={!options.productionEnabled}/>
-   {account&&<p className={styles.hint}>{w('Allowed:')} {money(account.minCents)}–{money(account.maxCents)} ETB. {w('Your verified transfer amount is added automatically.')}</p>}
+   {account?<p className={styles.hint}>{w('Allowed:')} {money(account.minCents)}–{money(account.maxCents)} ETB. {w('Your verified transfer amount is added automatically.')}</p>:<p className={styles.selectionHint}>{w('Choose Telebirr or CBE to add money.')}</p>}
    {account&&<div className={styles.confirmation}>
+    <div className={styles.sectionHeading}><h3>{w('Payment confirmation')}</h3><span>{w('Paste message or upload')}</span></div>
     <div className={styles.referenceHeader}>
      <label className={styles.fieldLabel} htmlFor="verified-reference">{w('Telebirr or CBE message/link')}</label>
      {showRecoveryActions&&<div className={styles.referenceActions}>
@@ -98,16 +101,19 @@ function Funding(){
     </div>
     <textarea className={styles.textarea} id="verified-reference" maxLength={4000} value={credited?(intent.reference??input):input} disabled={!account||!!busy||credited||underReview} readOnly={bound} onChange={event=>{setInput(event.target.value);if(event.target.value)clearReceipt();verifyKey.current=''}} placeholder={w('Paste a transaction ID, payment SMS or official receipt link')}/>
     <div className={styles.divider}>{w('Or upload a screenshot')}</div>
-    <label className={`${styles.upload} ${receipt?styles.uploadSelected:''}`} aria-disabled={!account||!scannerAvailable||!!busy||credited||underReview||bound}>{receipt?<><span className={styles.receiptPreview}><img src={receipt.url} alt={w('Selected receipt preview')}/></span><span className={styles.changeImage}><Upload size={16}/><strong>{w('Change image')}</strong></span></>:<><span className={styles.uploadIcon}><ImageIcon size={24}/></span><strong>{w('Choose receipt image')}</strong><span>{w('JPEG, PNG or WebP - up to 5 MB')}</span></>}<input aria-label={w(receipt?'Change image':'Upload receipt image')} type="file" accept="image/png,image/jpeg,image/webp" disabled={!account||!scannerAvailable||!!busy||credited||underReview||bound} onChange={event=>{chooseReceipt(event.target.files?.[0]);event.target.value=''}}/></label>
-    {receipt&&<div className={styles.receiptFile}><span>{receipt.name} · {fileSize(receipt.size)}</span><button type="button" aria-label={w('Remove selected image')} disabled={!!busy} onClick={clearReceipt}><X size={17}/></button></div>}
-    <p className={styles.scanNote}><ScanLine size={16}/><span>{w('The receipt scanner reads its QR code first, then the printed details if needed.')}</span></p>
+    <ReceiptImageUpload receipt={receipt} disabled={!scannerAvailable||!!busy||credited||underReview||bound} onSelect={chooseReceipt} onRemove={clearReceipt}/>
     <button type="button" className={styles.submit} disabled={!account||(!input.trim()&&!receipt)||!!busy||credited||underReview||waiting} onClick={()=>void submit()}>{busy?<LoadingSpinner/>:credited?w('Deposit credited'):underReview?w(intent?.status==='REJECTED'?'Deposit rejected':'Under admin review'):w(intent?.attempts?'Check payment again':'Submit deposit')}</button>
     <p className={styles.footnote}>{options.ocr?w('Confirmed transfers to our account are credited automatically in ETB, once.'):w('Paste your receipt message. Image scanning is unavailable.')}</p>
     {intent&&!credited&&<p className={styles.hint}>{intent.canRetry===false?w('Contact support with this deposit ID:'):waiting?w('Retry after:'):w('You can check this payment again.')} {intent.canRetry===false?intent.id:waiting&&intent.nextAttemptAt?new Date(intent.nextAttemptAt).toLocaleString():''}</p>}
     {busy&&<LoadingSpinner label={busy}/>}{message&&<p className={styles.hint} role="status">{message}</p>}
    </div>}
-   <Link className={styles.help} href="/profile/support">{w('Need help with a payment?')}<ArrowUpRight size={16}/></Link>
-  </section>}
-  {!!query.data?.items.length&&<details className={styles.history}><summary>{w('Deposit history')}<ChevronDown size={17}/></summary><section className="wallet-activity">{query.data.items.map(t=><article className="activity-row" key={t.id}><div><strong>{t.demo?w('DEMO preview: '):''}{w(labels[t.status]??t.status)}</strong><small>{t.demo?w('No transfer - no ETB credited'):<>{t.channel==='cbe'?'CBE':'Telebirr'} · {t.amountCents?`${money(t.amountCents)} ETB`:w('Amount awaiting verification')}</>}</small></div><div>{options?.enabled&&['PENDING','VERIFYING','PROVIDER_OUTAGE','NEEDS_REVIEW'].includes(t.status)&&<button type="button" className="text-link" disabled={!!busy} onClick={()=>{setIntent(t);setSelected(t.channel);setInput(t.reference??'');const feedback=depositFeedback(t,w);inform(feedback.message,feedback.kind);verifyKey.current='';document.getElementById('add-etb')?.scrollIntoView({behavior:'auto'})}}>{w(t.canRetry?'Check payment again':'Continue')}</button>}<Link href="/profile/support">{w('Help')}</Link></div></article>)}<PersonalPagination page={page} totalPages={query.data.totalPages} setPage={setPage}/></section></details>}
+   <PaymentHelp/>
+  </section>}</div>
+  <section hidden={view!=='deposits'} className={styles.transactionSection} aria-label={w('Deposits')}>
+   <div className={styles.sectionHeading}><h2>{w('Deposits')}</h2><button type="button" className={styles.refresh} disabled={!!busy} onClick={query.reload}><RefreshCw size={15}/>{w('Refresh')}</button></div>
+   <p className={styles.sectionDescription}>{w('Track your submitted payments and their status.')}</p>
+   {!query.data?.items.length?<div className={styles.empty}><ArrowDownLeft size={28}/><h3>{w('No deposits yet')}</h3><p>{w('Your submitted payments will appear here.')}</p><button type="button" className={styles.inlineAction} onClick={onContinue}>{w('Add money')}</button></div>:<div className={styles.transactionList}>{query.data.items.map(t=><article className={styles.depositRow} key={t.id}><div className={styles.depositSummary}><PaymentLogo channel={t.channel}/><div><strong>{t.channel==='cbe'?'CBE':'Telebirr'}{t.demo?' · DEMO':''}</strong><small>{new Date(t.createdAt).toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'})}</small></div><span className={styles.depositAmount}>{t.amountCents?`${money(t.amountCents)} ETB`:w('Awaiting amount')}</span></div><div className={styles.depositStatus}><span className={styles.statusBadge} data-state={t.status}>{w(labels[t.status]??t.status)}</span><div>{options?.enabled&&['PENDING','VERIFYING','PROVIDER_OUTAGE','NEEDS_REVIEW'].includes(t.status)&&<button type="button" className={styles.inlineAction} disabled={!!busy} onClick={()=>{clearReceipt();setIntent(t);setSelected(t.channel);setInput(t.reference??'');const feedback=depositFeedback(t,w);inform(feedback.message,feedback.kind);createKey.current='';verifyKey.current='';onContinue?.()}}>{w(t.canRetry?'Check payment again':'Continue')}</button>}<Link href="/profile/support">{w('Help')}</Link></div></div></article>)}</div>}
+   <PersonalPagination page={page} totalPages={query.data?.totalPages??0} setPage={setPage}/>
+  </section>
  </>;
 }
