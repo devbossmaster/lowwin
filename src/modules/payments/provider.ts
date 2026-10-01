@@ -14,7 +14,8 @@ export function cents(value:string|number):bigint{
 }
 export type VerificationInput={bank:Bank;reference:string;account:string;expectedCents:bigint|null;minCents?:bigint;maxCents?:bigint;createdAt:Date;expiresAt:Date;attemptKey:string};
 export type ImageVerificationInput=Omit<VerificationInput,'reference'>&{image:Buffer;mime:'image/png'|'image/jpeg'|'image/webp'};
-export type ImageVerification={verification:Verification;reference?:string};
+const imageProcessingSchema=z.object({method:z.enum(['qr','ocr']),chargedCredits:z.number().int().nonnegative()});
+export type ImageVerification={verification:Verification;reference?:string;imageProcessing?:z.infer<typeof imageProcessingSchema>};
 type SafeValueType='missing'|'null'|'string'|'number'|'boolean'|'array'|'object';
 type EvidenceFieldIssue={field:string;issue:string;received:SafeValueType};
 export type Verification={code:string;matched:boolean;requestId?:string;processing?:boolean;retrySeconds?:number;evidence:{currency?:'ETB';currencySource?:'channel_policy';confirmedBefore?:boolean;amountCents?:string;receiverSuffix?:string;date?:string;hash?:string;aliases?:string[];invalidFields?:EvidenceFieldIssue[]}};
@@ -133,14 +134,15 @@ export async function submitVerify(input:VerificationInput):Promise<Verification
 }
 function imagePlaceholder(input:Pick<ImageVerificationInput,'bank'|'attemptKey'>){return `IMG${hash(`${input.bank}:${input.attemptKey}`).slice(0,28).toUpperCase()}`}
 export async function submitVerifyImage(input:ImageVerificationInput):Promise<ImageVerification>{
- const started=performance.now();let status:number|undefined;const placeholder=imagePlaceholder(input),base={...input,reference:placeholder};
- const finish=(verification:Verification,reference?:string,failure?:string)=>{log(base,verification,status,failure,Math.round(performance.now()-started));return {verification,reference}};
+ const started=performance.now();let status:number|undefined,imageProcessing:ImageVerification['imageProcessing'];const placeholder=imagePlaceholder(input),base={...input,reference:placeholder};
+ const finish=(verification:Verification,reference?:string,failure?:string)=>{log(base,verification,status,failure,Math.round(performance.now()-started));if(imageProcessing)console.info(JSON.stringify({event:'payment_image_processing',bank:input.bank,...imageProcessing,requestTag:verification.requestId?hash(verification.requestId).slice(0,12):undefined}));return {verification,reference,imageProcessing}};
  if(!key())return finish({code:'PROVIDER_UNCONFIGURED',matched:false,evidence:{}});
  try{
   const form=new FormData();form.append('image',new Blob([Uint8Array.from(input.image)],{type:input.mime}),input.mime==='image/png'?'receipt.png':input.mime==='image/webp'?'receipt.webp':'receipt.jpg');form.append('bank',input.bank);form.append('settlementAccount',input.account);
   const response=await fetch(`${endpoint()}?waitMs=5000`,{method:'POST',headers:{'x-api-key':key(),'Idempotency-Key':input.attemptKey},body:form,signal:AbortSignal.timeout(PROVIDER_TIMEOUT_MS),redirect:'error',cache:'no-store'});status=response.status;
   if(!response.ok){let raw:unknown;try{raw=await boundedJson(response)}catch{}return finish(httpFailure(status,raw,response.headers.get('retry-after')))}
   const raw=await boundedJson(response),envelope=envelopeSchema.safeParse(raw);
+  const metadata=imageProcessingSchema.safeParse(envelope.success?envelope.data.imageProcessing:undefined);if(metadata.success)imageProcessing=metadata.data;
   if(status===202){
    if(!envelope.success||!envelope.data.success||envelope.data.error||!envelope.data.verification||!['queued','running'].includes(envelope.data.verification.processingStatus))return finish({code:'INCOMPLETE_EVIDENCE',requestId:envelope.success?envelope.data.requestId:undefined,matched:false,evidence:{}});
    return finish({code:'PROCESSING',requestId:envelope.data.requestId,processing:true,matched:false,evidence:{},retrySeconds:retryDelay(response.headers.get('retry-after'),5)});

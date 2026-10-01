@@ -10,6 +10,7 @@ import {WalletFundingPreview} from './wallet-funding-preview';
 import {PaymentAccounts} from './payment-accounts';
 import {useMiniNotice} from './mini-notice';
 import {depositFeedback} from './deposit-feedback';
+import {receiptImageKey} from './receipt-image-key';
 import styles from './wallet-page.module.css';
 
 type Account={id:string;policyId:string;version:number;name:string;number:string;holder:string;numerator:string;denominator:string;minCents:string;maxCents:string;terms:string};
@@ -23,7 +24,7 @@ function Funding(){
  const w=useWalletCopy(),{refreshMe}=useTelegram(),notify=useMiniNotice(),noticeId=useId();
  const [page,setPage]=useState(1),query=usePrivateQuery<Data>(`/api/wallet/top-ups?page=${page}`);
  const [selected,setSelected]=useState(''),[intent,setIntent]=useState<Intent|null>(null),[input,setInput]=useState(''),[busy,setBusy]=useState(''),[message,setMessage]=useState(''),[receipt,setReceipt]=useState<{file:File;url:string;name:string;size:number}|null>(null);
- const createKey=useRef(''),verifyKey=useRef(''),imageKey=useRef(''),working=useRef(false),receiptUrl=useRef<string|null>(null);
+ const createKey=useRef(''),verifyKey=useRef(''),imageKeys=useRef(new Map<string,string>()),working=useRef(false),receiptUrl=useRef<string|null>(null);
  const options=query.data?.options;
  const account:Account|undefined=intent?{id:intent.channel,policyId:'',version:intent.quote.version,name:intent.channel==='cbe'?'CBE':'Telebirr',number:intent.account,holder:intent.accountName,numerator:intent.quote.numerator,denominator:intent.quote.denominator,minCents:intent.quote.minCents??intent.amountCents??'0',maxCents:intent.quote.maxCents??intent.amountCents??'0',terms:intent.quote.terms}:options?.accounts.find(a=>a.id===selected);
  const credited=intent?.status==='CREDITED';
@@ -69,7 +70,7 @@ function Funding(){
   notify(w(image?'Uploading and verifying receipt…':'Checking payment…'),'info',{id:noticeId,duration:Infinity});
   try{
    const current=await prepare(image?undefined:input);let updated:Intent;
-   if(image){imageKey.current ||= crypto.randomUUID();const response=await fetch(`/api/wallet/scan?intentId=${current.id}`,{method:'POST',headers:{'Content-Type':image.type,'Idempotency-Key':imageKey.current},body:image}),data=await response.json();if(!response.ok)throw Error(data.error);updated=data as Intent}
+   if(image){const key=await receiptImageKey(imageKeys.current,current.id,image);const response=await fetch(`/api/wallet/scan?intentId=${current.id}`,{method:'POST',headers:{'Content-Type':image.type,'Idempotency-Key':key},body:image}),data=await response.json();if(!response.ok)throw Error(data.error);updated=data as Intent}
    else {verifyKey.current ||= crypto.randomUUID();updated=await command('verify',{id:current.id,key:verifyKey.current,input});if(updated.status!=='CREDITED')verifyKey.current=''}
    setIntent(updated);const feedback=depositFeedback(updated,w);inform(feedback.message,feedback.kind);
    query.reload();
@@ -79,7 +80,7 @@ function Funding(){
    }
   }catch(error){inform(w(error instanceof Error?error.message:'Try again.'),'error')}finally{working.current=false;setBusy('')}
  }
- function reset(){setIntent(null);setInput('');setMessage('');clearReceipt();createKey.current='';verifyKey.current='';imageKey.current=''}
+ function reset(){setIntent(null);setInput('');setMessage('');clearReceipt();createKey.current='';verifyKey.current='';imageKeys.current.clear()}
  if(query.status==='loading'||query.status==='authenticated'&&!query.data&&!query.error)return <section className={styles.funding} id="add-etb"><h2>{w('Add money')}</h2><PageLoading/></section>;
  if(query.error)return <section className={styles.funding} id="add-etb"><h2>{w('Add money')}</h2><p className={styles.error} role="alert">{w('Payment accounts could not load.')}<button type="button" onClick={query.reload}>{w('Retry')}</button></p></section>;
  return <>

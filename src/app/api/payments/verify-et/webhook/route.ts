@@ -32,7 +32,9 @@ export async function POST(request:Request){
    await tx.verifyWebhookEvent.create({data:{id:event.id as string,requestId:event.requestId as string,event:event.event as string,payloadHash,processingStatus:typeof event.data?.processingStatus==='string'?event.data.processingStatus.slice(0,32):null}});
    await tx.verifyRequest.updateMany({where:{requestId:event.requestId as string,state:{in:['SUBMITTING','PROCESSING']}},data:{nextCheckAt:new Date()}});
   });
-  await completeVerifyWebhook(db,event.requestId as string,event.data);
+  // A completion can arrive before POST /verify returns its request ID. Ask
+  // Verify.et to redeliver; the durable event fingerprint alone lacks evidence.
+  if(!await completeVerifyWebhook(db,event.requestId as string,event.data))return new Response(null,{status:503,headers:{...noStore,'Retry-After':'30'}});
   return new Response(null,{status:204,headers:noStore});
  }catch(error){return new Response(null,{status:error instanceof Error&&error.message==='EVENT_CONFLICT'?409:503,headers:noStore})}
 }

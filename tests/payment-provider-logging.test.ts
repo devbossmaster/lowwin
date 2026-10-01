@@ -4,6 +4,13 @@ const requestId='550e8400-e29b-41d4-a716-446655440000';
 const input:VerificationInput={bank:'telebirr',reference:'SECRETREF123',account:'0912345678',expectedCents:null,minCents:100n,maxCents:2000n,createdAt:new Date(Date.now()-60000),expiresAt:new Date(Date.now()+60000),attemptKey:'stable-attempt'};
 afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();vi.unstubAllGlobals()});
 describe('Verify.et JSON transport',()=>{
+ it.each(['qr','ocr'] as const)('reads safe %s image metadata from a queued response without data',async method=>{
+  vi.stubEnv('VERIFY_ET_API_KEY','private-key');vi.stubGlobal('fetch',vi.fn().mockResolvedValue(Response.json({success:true,requestId,imageProcessing:{attemptId:'private-image-attempt',method,chargedCredits:1,receipt:'private-receipt'},verification:{processingStatus:'queued',status:'pending',verified:false}},{status:202})));
+  vi.spyOn(console,'warn').mockImplementation(()=>{});const info=vi.spyOn(console,'info').mockImplementation(()=>{});
+  expect(await submitVerifyImage({...input,image:Buffer.from('fixture'),mime:'image/png'})).toMatchObject({verification:{code:'PROCESSING',requestId},imageProcessing:{method,chargedCredits:1}});
+  const line=info.mock.calls[0][0];expect(JSON.parse(line)).toMatchObject({event:'payment_image_processing',method,chargedCredits:1});
+  for(const secret of ['private-image-attempt','private-receipt','private-key',input.reference,input.account])expect(line).not.toContain(secret);
+ });
  it('sends the original receipt as multipart without forcing a content type',async()=>{
   vi.stubEnv('VERIFY_ET_API_KEY','private-key');const fetcher=vi.fn().mockResolvedValue(Response.json({success:true,requestId,verification:{processingStatus:'queued',status:'pending',verified:false},data:[]},{status:202}));vi.stubGlobal('fetch',fetcher);vi.spyOn(console,'warn').mockImplementation(()=>{});
   const image=Buffer.from([0x89,0x50,0x4e,0x47]);

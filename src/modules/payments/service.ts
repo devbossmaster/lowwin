@@ -53,9 +53,9 @@ export async function verifyIntentImage(client:PrismaClient,userId:string,raw:un
   await tx.$queryRaw`SELECT id FROM "TopUpIntent" WHERE id=${body.id} FOR UPDATE`;
   const t=await tx.topUpIntent.findFirst({where:{id:body.id,userId}});
   if(!t||!t.channel||!t.amountFromReceipt||!['CHECK_ET','VERIFY_ET'].includes(t.provider))throw new PaymentError(404,'Funding request not found.');
-  if(t.reference)throw new PaymentError(409,'This deposit already has a transaction ID. Check that payment instead.');
   if(t.status==='CREDITED')return {receipt:{...ownIntent(t),reused:true}};
   const prior=await tx.verifyRequest.findUnique({where:{key:body.key}});if(prior){if(prior.intentId!==t.id)throw new PaymentError(409,'Idempotency key changed.');return {receipt:ownIntent(t)}}
+  if(t.reference)throw new PaymentError(409,'This deposit already has a transaction ID. Check that payment instead.');
   const active=await tx.verifyRequest.findFirst({where:{intentId:t.id,state:{in:['SUBMITTING','PROCESSING']}},orderBy:{createdAt:'desc'}});if(active)return {receipt:ownIntent(t)};
   const now=await clock(tx);if(protectedPayment(t))throw new PaymentError(409,'This deposit is protected or rejected. Contact support.');
   if(!t.expiresAt||now.getTime()>t.expiresAt.getTime()+RECOVERY_WINDOW_MS)throw new PaymentError(409,'The recovery window ended. Contact support with this deposit ID.');
@@ -170,7 +170,8 @@ async function completeVerifyRequest(client:PrismaClient,id:string,verified:Veri
 }
 
 export async function completeVerifyWebhook(client:PrismaClient,requestId:string,data:unknown){
- const request=await client.verifyRequest.findUnique({where:{requestId},include:{intent:true}});if(!request||request.state==='DONE')return false;
+ const request=await client.verifyRequest.findUnique({where:{requestId},include:{intent:true}});if(!request)return false;if(request.state==='DONE')return true;
+ if(!data||typeof data!=='object'||Array.isArray(data))throw new PaymentError(422,'Incomplete verification event.');
  const bank=bankSchema.parse(request.intent.channel),reference=providerReference(data,bank);
  if(reference)await client.$transaction(async tx=>{await tx.$queryRaw`SELECT id FROM "VerifyRequest" WHERE id=${request.id} FOR UPDATE`;await tx.$queryRaw`SELECT id FROM "TopUpIntent" WHERE id=${request.intentId} FOR UPDATE`;const current=await tx.topUpIntent.findUniqueOrThrow({where:{id:request.intentId}});if(current.reference&&current.reference!==reference)throw new PaymentError(409,'Provider reference changed.');await tx.verifyRequest.update({where:{id:request.id},data:{reference}});await tx.topUpIntent.update({where:{id:request.intentId},data:{reference}})});
  const current=await client.topUpIntent.findUniqueOrThrow({where:{id:request.intentId}}),item=data as {processingStatus?:unknown;status?:unknown;verified?:unknown};
@@ -192,6 +193,9 @@ export async function processOneVerifyRequest(client:PrismaClient){
  if(row.attempts>30){await completeVerifyRequest(client,row.id,{code:'PROVIDER_UNAVAILABLE',matched:false,requestId:row.requestId??undefined,evidence:{}});return true}
  let result:Verification|null|undefined;
  if(row.requestId){result=await readVerifyStatus(row.requestId);if(result===null&&!t.reference){await client.verifyRequest.update({where:{id:row.id},data:{nextCheckAt:new Date(Date.now()+30000)}});return true}}
+ // An image has no text identifier until extraction finishes. Never replay it
+ // as a JSON verification with a null reference after a timeout or restart.
+ if(!result&&!t.reference){await client.verifyRequest.update({where:{id:row.id},data:{nextCheckAt:new Date(Date.now()+30000)}});return true}
  if(!result)result=await submitVerify(inputFor(t,row.key));
  await completeVerifyRequest(client,row.id,result);return true;
 }
