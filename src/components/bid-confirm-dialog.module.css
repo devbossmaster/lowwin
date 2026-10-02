@@ -1,0 +1,25 @@
+.dialog{position:fixed;inset:0;width:min(420px,calc(100vw - 24px));max-height:min(86dvh,620px);margin:auto;padding:0;overflow:auto;border:0;border-radius:16px;background:#fff;color:#000;box-shadow:0 24px 60px rgb(0 0 0 / 30%)}
+.dialog::backdrop{background:rgb(3 24 17 / 64%)}
+.header{display:flex;align-items:center;gap:10px;padding:16px 16px 12px}
+.icon{display:grid;place-items:center;width:36px;height:36px;flex:none;border-radius:50%;background:#edf7ed;color:#008000}
+.header h2{flex:1;min-width:0;margin:0;font-size:20px;line-height:1.25;letter-spacing:-.02em}
+.close{display:grid;place-items:center;width:44px;height:44px;flex:none;border:0;border-radius:50%;background:#f3f3f3;color:#000;cursor:pointer}
+.close:focus-visible,.agreement:focus-within,.confirm:focus-visible{outline:2px solid #008000;outline-offset:2px}
+.summary{margin:0 16px;border:1px solid #dce8df;border-radius:12px;overflow:hidden}
+.row{display:grid;grid-template-columns:minmax(0,1fr) minmax(96px,auto);align-items:center;gap:16px;padding:13px 14px;border-bottom:1px solid #e5ece7;font-size:14px;line-height:1.4}
+.row:last-child{border-bottom:0}
+.row dt{min-width:0;color:#3f5147}
+.row dd{min-width:0;margin:0;font-weight:700;text-align:right;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.bidRow dd{color:#008000}
+.feeRow dd{color:#b5362e}
+.feeLabel{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.badge{display:inline-flex;align-items:center;min-height:22px;padding:2px 7px;border-radius:999px;background:#fff0ee;color:#8f2f25;font-size:10px;font-weight:700;white-space:nowrap}
+.note{display:flex;align-items:flex-start;gap:9px;margin:12px 16px 0;padding:12px 13px;border-radius:10px;background:#f3f8f3;color:#263c2d;font-size:12px;line-height:1.55}
+.note svg{flex:none;margin-top:2px;color:#008000}
+.agreement{display:flex;align-items:center;gap:10px;min-height:48px;margin:10px 16px 0;padding:0 2px;font-size:13px;cursor:pointer}
+.agreement input{width:19px;height:19px;flex:none;accent-color:#008000}
+.error{margin:0 16px 10px;color:#8f2f25;font-size:12px;line-height:1.5}
+.confirm{display:flex;align-items:center;justify-content:center;width:calc(100% - 32px);min-height:52px;margin:4px 16px 16px;border:0;border-radius:12px;background:#008000;color:#fff;font:inherit;font-size:15px;font-weight:700;cursor:pointer}
+.confirm:hover{background:#006600}
+.confirm:disabled{background:#e7e7e7;color:#626262;cursor:not-allowed}
+@media(max-height:560px){.dialog{max-height:calc(100dvh - 16px)}.header{padding-top:10px}.row{padding-block:10px}.note{margin-top:9px;padding-block:9px}}

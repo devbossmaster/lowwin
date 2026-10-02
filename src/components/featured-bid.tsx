@@ -1,11 +1,11 @@
 'use client';
 import {createsFourConsecutiveAmounts} from '@/modules/auctions/consecutive-bids';
 import {isSubmissionFeeOnly,usesDecimalBids} from '@/modules/auctions/rules';
-import {AuctionRule} from './auction-rule';
+import {BidConfirmDialog} from './bid-confirm-dialog';
 import {LoadingSpinner} from './loading-spinner';
 import Link from 'next/link';
-import {useCallback,useEffect,useId,useMemo,useRef,useState} from 'react';
-import {CheckCircle2,Gavel,Minus,Plus,X} from 'lucide-react';
+import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
+import {CheckCircle2,Minus,Plus} from 'lucide-react';
 import {formatEtb,etbToCents,centsToEtb} from '@/lib/money';
 import {useTelegram} from './telegram-provider';
 import {useMiniLocale} from './mini-locale';
@@ -29,8 +29,6 @@ function FeaturedBidForIdentity({slug,title,onInteractionChange}:Props){
   const am=language==='am';
   const notify=useMiniNotice();
   const celebrate=useCelebration();
-  const dialog=useRef<HTMLDialogElement>(null);
-  const titleId=useId();
   const inFlight=useRef(false);
   const mounted=useRef(true);
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false}},[]);
@@ -59,10 +57,6 @@ function FeaturedBidForIdentity({slug,title,onInteractionChange}:Props){
       .finally(()=>{if(!controller.signal.aborted)setLoading(false)});
     return()=>controller.abort();
   },[slug,status,reload]);
-  useEffect(()=>{
-    if(confirm&&!dialog.current?.open)dialog.current?.showModal();
-    if(!confirm&&dialog.current?.open)dialog.current.close();
-  },[confirm]);
   const feeOnly=isSubmissionFeeOnly(state?.terms.ruleVersion);
   const bidLabel=(value:string)=>feeOnly?centsToEtb(etbToCents(value)):formatEtb(value);
   const preview=useMemo(()=>{
@@ -116,13 +110,6 @@ function FeaturedBidForIdentity({slug,title,onInteractionChange}:Props){
     <button type="button" className={styles.submitBid} disabled={!valid} onClick={()=>{setAgreed(false);setConfirm(true)}}>{loading?<LoadingSpinner/>:status!=='authenticated'?(am?'ለመጫረት ይግቡ':'Sign in to bid'):state&&!state.open?(am?'ጨረታ አይገኝም':'Bidding unavailable'):(am?'የጨረታ መጠን ያስገቡ':'Submit a bid amount')}</button>
     {loadError&&<p className={styles.bidError} role="alert">{loadError} <button type="button" onClick={()=>setReload(value=>value+1)}>{am?'እንደገና ይሞክሩ':'Retry'}</button></p>}
     {receipt&&<p className={styles.accepted} role="status"><CheckCircle2 size={17}/>{am?'ተቀብሏል':'Accepted'} {bidLabel(receipt.bid.amount)} · {am?'ያለ ቀሪ':'Available'} {formatEtb(receipt.wallet.available)}. {am?'ይህ የድል ዋስትና አይደለም።':'This does not predict a winner.'}</p>}
-    <dialog ref={dialog} className={styles.dialog} onCancel={event=>{if(submitting)event.preventDefault();else setConfirm(false)}} onClose={()=>setConfirm(false)} aria-labelledby={titleId}>
-      {preview&&state&&<><header><span className={styles.dialogIcon}><Gavel size={19}/></span><h2 id={titleId}>{am?'ጨረታዎን ያረጋግጡ':'Confirm your bid'}</h2><button type="button" onClick={()=>setConfirm(false)} disabled={submitting} aria-label={am?'ዝጋ':'Close'}><X size={19}/></button></header>
-      <div className={styles.dialogBody}><dl><div><dt>{am?'ዕቃ':'Item'}</dt><dd>{title}</dd></div><div><dt>{am?'የጨረታ መጠን':'Your bid'}</dt><dd>{bidLabel(preview.bid)}</dd></div>{!feeOnly&&<div><dt>{am?'የቀድሞ ከፍተኛ የተያዘ':'Previous maximum hold'}</dt><dd>{formatEtb(preview.previous)}</dd></div>}{!feeOnly&&<div><dt>{am?'አዲስ ከፍተኛ የተያዘ':'New maximum hold'}</dt><dd>{formatEtb(preview.newMax)}</dd></div>}{!feeOnly&&<div><dt>{am?'ተጨማሪ የሚያዝ':'Extra reserved'}</dt><dd>{formatEtb(preview.extra)}</dd></div>}{(feeOnly||Number(preview.fee)>0)&&<div><dt>{am?'የመግቢያ ክፍያ':'Submission fee'}</dt><dd>{formatEtb(preview.fee)}</dd></div>}<div className={styles.dialogTotal}><dt>{am?'ጠቅላላ የሚከፈል':'Total to pay'}</dt><dd>{formatEtb(preview.total)}</dd></div><div><dt>{am?'ከዚህ በኋላ ያለ ቀሪ':'Available after acceptance'}</dt><dd>{formatEtb(preview.after)}</dd></div><div><dt>{am?'የሚቀሩ ጨረታዎች':'Submissions left'}</dt><dd>{state.remainingSubmissions-1}</dd></div></dl>
-      <AuctionRule ruleVersion={state.terms.ruleVersion} feePoints={state.terms.entryFeePoints}/><p className={styles.dialogNote}>{feeOnly?(am?'የማቅረቢያ ክፍያውን ብቻ ይከፍላሉ። ተመላሽ አይሆንም።':'Pay only the submission fee. It is non-refundable, including cancellation.'):Number(preview.fee)>0?(am?'የጨረታው መጠን አሁን ይያዛል፤ አሸናፊው ሲወሰን ብቻ ይከፈላል። የመግቢያ ክፍያው ተጨማሪ ነው።':'Your bid is held now and charged only if it wins. This older auction also has the shown entry fee.'):(am?'የጨረታው መጠን ብቻ ይያዛል። ተጨማሪ ክፍያ የለም።':'Only your bid amount is reserved. There is no extra bid fee.')} {am?'ሰርቨሩ ቀሪዎን፣ የመዝጊያ ሰዓትንና ውሎቹን እንደገና ያረጋግጣል።':'The server rechecks your balance, closing time and terms before acceptance.'}</p></div>
-      <label className={styles.agreement}><input type="checkbox" checked={agreed} onChange={event=>setAgreed(event.target.checked)}/><span>{feeOnly?(am?'የማይመለሰውን ክፍያና ውሎቹን ተረድቻለሁ':'I agree to the non-refundable fee and terms'):Number(preview.fee)>0?(am?'ውሎቹንና ክፍያውን ተረድቻለሁ':'I understand the hold and fee'):(am?'ውሎቹንና የሚያዘውን መጠን ተረድቻለሁ':'I understand the bid hold and terms')}</span></label>
-      {error&&<p className={styles.bidError} role="alert">{error}</p>}
-      <button type="button" className={styles.confirmButton} disabled={!agreed||submitting||!valid} onClick={()=>void submit()}>{submitting?<LoadingSpinner/>:(am?'አረጋግጥና ጨረታ አቅርብ':'Confirm & submit bid')}</button></>}
-    </dialog>
+    {preview&&state&&<BidConfirmDialog open={confirm} language={language} item={title} bidNumber={bidLabel(preview.bid)} submissionFee={formatEtb(preview.fee)} total={formatEtb(preview.total)} feeOnly={feeOnly} agreed={agreed} submitting={submitting} valid={valid} error={error} onAgreedChange={setAgreed} onClose={()=>{setConfirm(false);setAgreed(false)}} onConfirm={()=>void submit()}/>}
   </div>;
 }

@@ -1,0 +1,5 @@
+.link{position:fixed;z-index:19;right:max(16px,calc((100vw - 480px)/2 + 16px));bottom:calc(90px + var(--mini-safe-bottom,0px) + var(--tg-content-safe-area-inset-bottom,0px));display:grid;place-items:center;width:52px;height:52px;border:3px solid #fff;border-radius:50%;background:#008000;color:#fff;box-shadow:0 6px 18px rgb(0 70 0 / 28%);text-decoration:none;transition:transform 160ms ease-out,background 160ms ease-out}
+.link:hover{background:#006600;transform:translateY(-2px)}
+.link:focus-visible{outline:3px solid #008000;outline-offset:3px}
+@media(prefers-reduced-motion:reduce){.link{transition:none}.link:hover{transform:none}}
+
