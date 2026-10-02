@@ -42,7 +42,36 @@ export type OverviewData={
  deliveries?:{state:'ready';count:number}|{state:'error'};
  support?:{state:'ready';count:number}|{state:'error'};
  closing?:{state:'ready';failed:number;pending:number}|{state:'error'};
+ deposits?:{state:'ready';totalEtb:string;todayEtb:string;count:number}|{state:'error'};
+ players?:{state:'ready';total:number;today:number;biddersToday:number}|{state:'error'};
 };
+export function eatDayStart(now:Date){
+ const offset=3*60*60*1000,local=new Date(now.getTime()+offset);
+ return new Date(Date.UTC(local.getUTCFullYear(),local.getUTCMonth(),local.getUTCDate())-offset);
+}
+// Registered Telegram players; staff and explicitly enrolled test identities are excluded.
+const realPlayer=Prisma.sql`u."telegramId" IS NOT NULL AND u.id NOT LIKE 'demo-showcase-%'
+ AND NOT EXISTS (SELECT 1 FROM "StaffMember" s WHERE s."userId"=u.id)
+ AND NOT EXISTS (SELECT 1 FROM "TestRunActor" t WHERE t."userId"=u.id)`;
+export async function overviewDeposits(client:PrismaClient,now:Date){
+ const [row]=await client.$queryRaw<{totalEtb:string;todayEtb:string;count:number}[]>(Prisma.sql`
+ SELECT trunc(COALESCE(SUM(c."amountCents"),0)/100,2)::text AS "totalEtb",
+ trunc(COALESCE(SUM(c."amountCents") FILTER (WHERE c."createdAt">=${eatDayStart(now)}),0)/100,2)::text AS "todayEtb",
+ COUNT(*)::int AS count FROM "PaymentClaim" c
+ JOIN "TopUpIntent" t ON t.id=c."intentId" JOIN "user" u ON u.id=c."userId"
+ WHERE t.provider IN ('CHECK_ET','VERIFY_ET') AND t.status='CREDITED' AND t."caseState"<>'REVERSED'
+ AND c."createdAt"<=${now} AND ${realPlayer}`);
+ return {state:'ready' as const,...row};
+}
+export async function overviewPlayers(client:PrismaClient,now:Date){
+ const [row]=await client.$queryRaw<{total:number;today:number;biddersToday:number}[]>(Prisma.sql`
+ SELECT COUNT(*)::int AS total,COUNT(*) FILTER (WHERE u."createdAt">=${eatDayStart(now)})::int AS today,
+ (SELECT COUNT(DISTINCT b."userId")::int FROM "Bid" b JOIN "Auction" a ON a.id=b."auctionId"
+ JOIN "user" u ON u.id=b."userId" WHERE b."acceptedAt">=${eatDayStart(now)} AND b."acceptedAt"<=${now}
+ AND a."testRunId" IS NULL AND NOT a."isDemo" AND ${realPlayer}) AS "biddersToday"
+ FROM "user" u WHERE u."createdAt"<=${now} AND ${realPlayer}`);
+ return {state:'ready' as const,...row};
+}
 export async function readOverview(client:PrismaClient,actor:{id:string;role:StaffRole;now:Date}):Promise<OverviewData>{
  const data:OverviewData={serverNow:actor.now.toISOString()},grants=permissions(actor.role),jobs:Promise<void>[]=[];
  async function part<K extends Exclude<keyof OverviewData,'serverNow'>>(key:K,load:()=>Promise<NonNullable<OverviewData[K]>>){try{data[key]=await load()}catch{data[key]={state:'error'} as OverviewData[K]}}
@@ -51,6 +80,8 @@ export async function readOverview(client:PrismaClient,actor:{id:string;role:Sta
  if(grants.includes('fulfillment'))jobs.push(part('deliveries',async()=>({state:'ready',count:(await deliveryQueue(client,actor,{status:'INCOMPLETE'})).total})));
  if(grants.includes('support'))jobs.push(part('support',async()=>({state:'ready',count:await client.supportCase.count({where:{status:{in:['OPEN','INVESTIGATING']}}})})));
  if(grants.includes('catalog'))jobs.push(part('closing',async()=>({state:'ready',failed:await client.auction.count({where:auctionStatusWhere('FAILED',actor.now)}),pending:await client.auction.count({where:auctionStatusWhere('CLOSING',actor.now)})})));
+ if(grants.includes('wallets'))jobs.push(part('deposits',()=>overviewDeposits(client,actor.now)));
+ if(grants.includes('support')||grants.includes('audit'))jobs.push(part('players',()=>overviewPlayers(client,actor.now)));
  await Promise.all(jobs);return data;
 }
 

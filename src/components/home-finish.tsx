@@ -5,7 +5,7 @@ import styles from './home-finish.module.css';
 
 const steps=[
  {number:'01',icon:Smartphone,titleEn:'Verify your contact',titleAm:'የስልክ ቁጥርዎን ያረጋግጡ',bodyEn:'Share your own phone contact in the private Telegram bot to open your account.',bodyAm:'መለያዎን ለመክፈት የራስዎን ስልክ ቁጥር በግል Telegram ቦት ያጋሩ።'},
- {number:'02',icon:Gavel,titleEn:'Choose an auction',titleAm:'ጨረታ ይምረጡ',bodyEn:'Check the item, entry fee, allowed ETB range and closing time before bidding.',bodyAm:'ከመጫረትዎ በፊት ዕቃውን፣ የመግቢያ ክፍያውን፣ የETB መጠን እና የመዝጊያ ጊዜውን ይመልከቱ።'},
+ {number:'02',icon:Gavel,titleEn:'Choose an auction',titleAm:'ጨረታ ይምረጡ',bodyEn:'Check the item, minimum bid and closing time before bidding.',bodyAm:'ከመጫረትዎ በፊት ዕቃውን፣ ዝቅተኛውን መጠን እና የመዝጊያ ጊዜውን ይመልከቱ።'},
  {number:'03',icon:Trophy,titleEn:'Bid low to win',titleAm:'በዝቅተኛ ጨረታ ያሸንፉ',bodyEn:'The smallest whole-ETB amount submitted by exactly one person wins after the auction closes.',bodyAm:'ጨረታው ሲዘጋ በአንድ ሰው ብቻ የቀረበው ዝቅተኛው ሙሉ ETB መጠን ያሸንፋል።'},
 ];
 const feedback=[

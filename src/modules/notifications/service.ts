@@ -1,9 +1,34 @@
 import {broadcastRoot,broadcastStopped,campaignContent,expandCampaign,scheduleGlobalAlerts,telegramKinds} from './campaigns';
 import {stagingDemoEnabled} from '../auctions/staging-demo';
 import type {Prisma,PrismaClient,Outbox} from '@prisma/client';
-import type {Bot} from 'grammy';
+import {InputFile,type Bot} from 'grammy';
 import {demoBidAllowed} from '../auctions/bids';
+import {existsSync,statSync} from 'node:fs';
+import {resolve} from 'node:path';
+import sharp from 'sharp';
 type DB=Prisma.TransactionClient;
+const notificationImage=resolve('public/notification.png');
+const composedPhotos=new Map<string,Buffer>();
+
+export async function notificationPhoto(tx:DB,imageId:string|undefined,origin:string,imagePath=notificationImage){
+ const custom=imageId?new URL(`/api/media/${imageId}`,origin).href:null;
+ if(!existsSync(imagePath))return custom;
+ if(!imageId)return new InputFile(imagePath);
+ const cacheKey=`${imagePath}:${imageId}:${statSync(imagePath).mtimeMs}`;
+ let photo=composedPhotos.get(cacheKey);
+ if(!photo){
+  const media=await tx.managedMedia.findUnique({where:{id:imageId},select:{bytes:true}});
+  if(!media)return new InputFile(imagePath);
+  const base=await sharp(Buffer.from(media.bytes)).resize(900,900,{fit:'inside',withoutEnlargement:true}).png().toBuffer();
+  const {width=900,height=900}=await sharp(base).metadata();
+  const badge=await sharp(imagePath).resize({width:Math.max(72,Math.round(width*0.2)),height:Math.max(72,Math.round(height*0.2)),fit:'inside'}).png().toBuffer();
+  const size=await sharp(badge).metadata();
+  photo=await sharp(base).composite([{input:badge,left:Math.max(0,width-(size.width??0)-12),top:Math.max(0,height-(size.height??0)-12)}]).png().toBuffer();
+  if(composedPhotos.size>=10)composedPhotos.clear();
+  composedPhotos.set(cacheKey,photo);
+ }
+ return new InputFile(photo,'notification.png');
+}
 const words:Record<string,[string,string]>={AUCTION_MINIMUM_CANCELLED:['Auction cancelled: participant minimum not met','Fewer than two eligible participants entered. All entry fees were refunded and all holds released.'],AUCTION_FALLBACK_WON:['You won: first accepted lowest bid','No amount was unique. Your bid at the lowest amount was accepted first by the database. View your final result and delivery details.'],BID_ACCEPTED:['Bid accepted','Your accepted receipt is ready in My Bids.'],AUCTION_CLOSED:['Auction closed','Your result and released holds are ready to review.'],AUCTION_WON:['You won this auction','Your settled result is ready. Claim instructions are in your wins.'],AUCTION_NO_WINNER:['No unique winner','This auction closed without a winner. Holds were released; disclosed entry fees were retained.'],AUCTION_CANCELLED:['Auction cancelled','Auction holds were released and charged entry fees were refunded.'],FULFILLMENT_UPDATED:['Delivery update','Open your win to review its fulfillment status.'],AUCTION_START:['A saved auction is open','Your saved auction is now open.'],FAVORITE_ENDING:['A saved auction ends soon','Open your saved auction to check its closing time.']};
 export async function notificationContent(tx:DB,row:Pick<Outbox,'kind'|'payload'>){
  if(telegramKinds.includes(row.kind))return campaignContent(tx,row);
@@ -69,11 +94,8 @@ export async function dispatchOne(client:PrismaClient,bot:Pick<Bot,'api'>){
    const text=`${content.title}\n${body}`.slice(0,1000);
    const options={reply_markup:{inline_keyboard:[[{text:'Bid',web_app:{url:link.href}}]]}};
    let sent:{message_id:number};
-   if('imageId' in content&&content.imageId){
-    // The validated image is stored once; our media endpoint caches its bytes.
-    const photo=new URL(`/api/media/${content.imageId}`,process.env.MINI_APP_URL);
-    sent=await bot.api.sendPhoto(chat.chatId,photo.href,{...options,caption:text});
-   }else sent=await bot.api.sendMessage(chat.chatId,text,options);
+   const photo=await notificationPhoto(tx,'imageId' in content?content.imageId:undefined,link.origin);
+   sent=photo?await bot.api.sendPhoto(chat.chatId,photo,{...options,caption:text}):await bot.api.sendMessage(chat.chatId,text,options);
    const payload=row.payload as {auctionId?:string};
    await tx.telegramMessage.create({data:{outboxId:row.id,auctionId:payload.auctionId,testRunId:row.testRunId,chatId:chat.chatId,messageId:BigInt(sent.message_id)}});
    await tx.outbox.update({where:{id:row.id},data:{state:'SENT',sentAt:new Date(),attempts:{increment:1},lastError:null}});

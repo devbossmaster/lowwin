@@ -70,9 +70,9 @@ export async function submitBidInTransaction(tx:Prisma.TransactionClient,input:B
   const terms=auction.terms;
   if(!terms)fail('AUCTION_CLOSED',409,'Published auction terms are unavailable.');
   const fee=auction.feeRevisions[0];
-  if(!fee||feeVersion!==undefined&&fee.version!==feeVersion)fail('RETRYABLE_CONFLICT',409,'The bid fee changed. Review the current fee and confirm again.');
-  if((terms.ruleVersion===RULE_V3&&amount.lt(1))||amount.lt(terms.minPoints)||amount.gt(terms.maxPoints)||!amount.sub(terms.minPoints).mod(terms.stepPoints).isZero())
-    fail('INVALID_AMOUNT',422,`Choose an ETB amount from ${terms.minPoints} to ${terms.maxPoints} in steps of ${terms.stepPoints}.`);
+  if(!fee||feeVersion!==undefined&&fee.version!==feeVersion)fail('RETRYABLE_CONFLICT',409,'Bidding terms changed. Review the current amount and confirm again.');
+  if((terms.ruleVersion===RULE_V3&&amount.lt(1))||amount.lt(terms.minPoints)||(terms.maxPoints!==null&&amount.gt(terms.maxPoints))||!amount.sub(terms.minPoints).mod(terms.stepPoints).isZero())
+    fail('INVALID_AMOUNT',422,terms.maxPoints===null?`Choose an ETB amount of at least ${terms.minPoints} in steps of ${terms.stepPoints}.`:`Choose an ETB amount from ${terms.minPoints} to ${terms.maxPoints} in steps of ${terms.stepPoints}.`);
 
   const own=await tx.bid.findMany({where:{userId,auctionId:auction.id},orderBy:[{acceptedAt:'asc'},{id:'asc'}],select:{id:true,amount:true,acceptedAt:true}});
   if(own.some(bid=>bid.amount.eq(amount)))fail('OWN_DUPLICATE',409,'You already submitted this ETB amount for this auction.');
@@ -87,7 +87,7 @@ export async function submitBidInTransaction(tx:Prisma.TransactionClient,input:B
   const previousMax=hold?.points??new Prisma.Decimal(0);
   const extraReserved=Prisma.Decimal.max(amount.sub(previousMax),0);
   const newlyUnavailable=extraReserved.add(fee.feePoints);
-  if(available.balance.lt(newlyUnavailable))fail('INSUFFICIENT_POINTS',409,`You need ${formatEtb(newlyUnavailable)} available for this bid and fee.`);
+  if(available.balance.lt(newlyUnavailable))fail('INSUFFICIENT_POINTS',409,`You need ${formatEtb(newlyUnavailable)} available for this bid${fee.feePoints.gt(0)?' and its disclosed fee':''}.`);
 
   const bidId=randomUUID(),operationId=randomUUID();
   // This FK is deferred: the immutable BID operation can include the exact
@@ -126,7 +126,7 @@ export async function submitBid(client:PrismaClient,input:BidInput,raw:Record<st
     if(message.includes('Auction is not open for bids'))fail('AUCTION_CLOSED',409,'This auction closed before your bid was accepted.');
     if(message.includes('Four consecutive cent amounts'))fail('CONSECUTIVE_LIMIT',422,'Leave a gap after three consecutive cent amounts.');
     if(message.includes('Distinct bid limit reached'))fail('CAP_REACHED',409,'You have reached the 100 distinct-bid limit for this auction.');
-    if(message.includes('stale')||message.includes('current fee revision'))fail('RETRYABLE_CONFLICT',409,'The bid fee changed. Review the current fee and confirm again.');
+    if(message.includes('stale')||message.includes('current fee revision'))fail('RETRYABLE_CONFLICT',409,'Bidding terms changed. Review the current amount and confirm again.');
     if(message.includes('Bid does not match published terms'))fail('INVALID_AMOUNT',422,'The published ETB terms changed or this amount is invalid.');
     if(error instanceof Prisma.PrismaClientKnownRequestError&&['P2034','P2028'].includes(error.code))
       fail('RETRYABLE_CONFLICT',409,'This auction is busy. Retry the same request key.');
@@ -149,7 +149,7 @@ export async function getOwnBidState(client:PrismaClient,userId:string,auctionSl
     const restricted=!!await tx.staffMember.findUnique({where:{userId}})||(await tx.userRestriction.findUnique({where:{userId}}))?.suspended;
     return {auctionCode:auction.code,open:!restricted&&['SCHEDULED','LIVE'].includes(auction.status)&&auction.publishedAt<=now&&!!auction.startsAt&&!!auction.endsAt&&auction.startsAt<=now&&now<auction.endsAt&&(!auction.isDemo||demoBidAllowed(raw)||auction.isSettlementFixture&&stagingDemoUser(userId,raw)),
       serverNow:now.toISOString(),isDemo:auction.isDemo,
-      terms:{version:fee.version,ruleVersion:terms.ruleVersion,minParticipants:terms.minParticipants,minPoints:terms.minPoints.toString(),maxPoints:terms.maxPoints.toString(),stepPoints:terms.stepPoints.toString(),entryFeePoints:fee.feePoints.toString(),maxDistinctBids:terms.maxDistinctBids},
+      terms:{version:fee.version,ruleVersion:terms.ruleVersion,minParticipants:terms.minParticipants,minPoints:terms.minPoints.toString(),maxPoints:terms.maxPoints?.toString()??null,stepPoints:terms.stepPoints.toString(),entryFeePoints:fee.feePoints.toString(),maxDistinctBids:terms.maxDistinctBids},
       wallet:{available:(wallet?.accounts.find(account=>account.kind==='AVAILABLE')?.balance??0n).toString(),held:(wallet?.accounts.find(account=>account.kind==='HELD')?.balance??0n).toString()},
       previousMax:previousMax.toString(),remainingSubmissions:Math.max(0,terms.maxDistinctBids-bids.length),
       ownBids:bids.map(bid=>({id:bid.id,amount:bid.amount.toString(),acceptedAt:bid.acceptedAt.toISOString()}))};

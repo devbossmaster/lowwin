@@ -4,7 +4,7 @@ import {getMiniSession,localMiniPreview} from '@/modules/auth/mini-access';
 // These handlers enforce getMiniSession/requireUser themselves before any
 // private read or mutation. Do not run another full session lookup in Proxy.
 const guardedApis=new Set(['/api/me','/api/my-bids','/api/favorites','/api/profile','/api/profile/wins','/api/alerts','/api/fulfillment','/api/support','/api/wallet','/api/wallet/top-ups','/api/wallet/scan','/api/wallet/preview']);
-const publicAssets=new Set(['/logo.png','/banner1.png','/fonts/NotoSansEthiopic-Bold.ttf','/fonts/poppins-latin-400.woff2','/fonts/poppins-latin-500.woff2','/fonts/poppins-latin-600.woff2','/fonts/poppins-latin-700.woff2']);
+const publicAssets=new Set(['/logo.png','/banner11.png','/fonts/NotoSansEthiopic-Bold.ttf','/fonts/poppins-latin-400.woff2','/fonts/poppins-latin-500.woff2','/fonts/poppins-latin-600.woff2','/fonts/poppins-latin-700.woff2']);
 
 export async function proxy(request:NextRequest) {
   const path=request.nextUrl.pathname;

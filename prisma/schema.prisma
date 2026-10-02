@@ -331,7 +331,7 @@ model AuctionTerms {
   ruleVersion          String    @default("lowest-unique-v1")
   minParticipants      Int       @default(0)
   minPoints            Decimal   @db.Decimal
-  maxPoints            Decimal   @db.Decimal
+  maxPoints            Decimal?  @db.Decimal
   stepPoints           Decimal   @db.Decimal
   entryFeePoints       Decimal   @default(0) @db.Decimal
   maxDistinctBids      Int       @default(100)

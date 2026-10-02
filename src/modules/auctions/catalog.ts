@@ -81,7 +81,7 @@ export function toPublicAuction(row: AuctionRow, now: Date) {
       images:product.images.map(image=>({path:image.path,alt:image.alt,sourceType:image.sourceType,sourceCredit:image.sourceCredit??null}))},
     category:{slug:row.category!.slug,name:row.category!.name,nameAm:row.category!.nameAm},
     fulfillment:{summary:row.fulfillmentSummary!,summaryAm:row.fulfillmentSummaryAm,region:row.fulfillmentRegion!,regionAm:row.fulfillmentRegionAm},
-    terms:{version:row.feeRevisions[0]?.version??row.terms!.version,ruleVersion:row.terms!.ruleVersion,minParticipants:row.terms!.minParticipants,minPoints:row.terms!.minPoints.toString(),maxPoints:row.terms!.maxPoints.toString(),stepPoints:row.terms!.stepPoints.toString(),entryFeePoints:(row.feeRevisions[0]?.feePoints??row.terms!.entryFeePoints).toString(),maxDistinctBids:row.terms!.maxDistinctBids,noWinnerTerms:legacyTermsInEtb(row.terms!.noWinnerTerms),cancellationTerms:legacyTermsInEtb(row.terms!.cancellationTerms),fulfillmentSnapshot:row.terms!.fulfillmentSnapshot},
+    terms:{version:row.feeRevisions[0]?.version??row.terms!.version,ruleVersion:row.terms!.ruleVersion,minParticipants:row.terms!.minParticipants,minPoints:row.terms!.minPoints.toString(),maxPoints:row.terms!.maxPoints?.toString()??null,stepPoints:row.terms!.stepPoints.toString(),entryFeePoints:(row.feeRevisions[0]?.feePoints??row.terms!.entryFeePoints).toString(),maxDistinctBids:row.terms!.maxDistinctBids,noWinnerTerms:legacyTermsInEtb(row.terms!.noWinnerTerms),cancellationTerms:legacyTermsInEtb(row.terms!.cancellationTerms),fulfillmentSnapshot:row.terms!.fulfillmentSnapshot},
     result,
   };
 }
