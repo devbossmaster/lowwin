@@ -358,7 +358,7 @@ Winning Bids is at `/winning-bids`; `/profile/wins` redirects there. Existing `/
 
 ### Brand color and live activity update (2026-10-02)
 
-The owner confirmed primary green #0BDA51. This latest direction supersedes the forest-green palette above. Main backgrounds, buttons, selected accents and view badges use #0BDA51, with #172412 text for contrast. Key amounts and count text on white use the related dark green #246B16; blue, gold and rose keep their informational roles.
+The owner confirmed standard green #008000 with white text on solid green backgrounds. This direction supersedes earlier greens. Primary controls, headers and selected accents use #008000; hover uses #006600. Green text may appear on white or neutral surfaces. Blue, gold and rose keep their informational roles.
 
 Visible products share one batched activity request every two seconds; hidden tabs pause requests. Views record after 150ms of visibility, once per auction per browser-tab session, and the returned count displays immediately. The activity response contains aggregate counts and public auction phases only. At the deadline the canonical detail switches to a short ended state, then refreshes to show the authoritative winner and Completed once settlement commits. Player pages omit result and fulfillment pending jargon. The existing VPS worker remains responsible for settlement and invalidates public caches after completion.
 

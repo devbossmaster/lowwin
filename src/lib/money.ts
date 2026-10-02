@@ -21,3 +21,8 @@ export function legacyTermsInEtb(value:string):string{
     .replace(/\bpoints?\b/gi,'ETB')
     .replace(/\bLowin\b/g,'Lowwin');
 }
+
+/** V4 entries are numbers; legacy receipts retain their ETB label. */
+export function formatAuctionBid(value:string,ruleVersion?:string):string {
+ return ruleVersion==='lowest-unique-v4'?centsToEtb(etbToCents(value)):formatEtb(value);
+}

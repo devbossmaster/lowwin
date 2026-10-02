@@ -90,6 +90,14 @@ export const walletAm:Record<string,string>={
  'Winning Bids':'ያሸነፍኩባቸው ጨረታዎች','No winning bids found.':'ያሸነፉበት ጨረታ አልተገኘም።','Read result':'ውጤቱን ይመልከቱ','· winning amount':'· ያሸነፈው መጠን','DEMO · settled test':'የሙከራ ጨረታ · ተጠናቋል'
 };
 Object.assign(walletAm,{
+ 'Choose a bid number':'የጨረታ ቁጥር ይምረጡ',
+ 'Bid number':'የጨረታ ቁጥር',
+ 'Number, up to 2 decimals':'እስከ ሁለት የአስርዮሽ ቦታዎች ያለው ቁጥር',
+ 'Review bid':'ጨረታውን ይመልከቱ',
+ 'Submission fee':'የማቅረቢያ ክፍያ',
+ 'Submission fee charged':'የተከፈለ የማቅረቢያ ክፍያ',
+ 'Total to pay':'ጠቅላላ ክፍያ',
+ 'Auction cancelled. Submission fees are non-refundable.':'ጨረታው ተሰርዟል። የማቅረቢያ ክፍያዎች አይመለሱም።',
  'Code extracted with low confidence. Check it against your receipt before submitting.':'የተነበበው ቁጥር እርግጠኛ አይደለም። ከመላክዎ በፊት ከደረሰኙ ጋር ያዛምዱት።',
  'Confirmed transfers to our account are credited automatically in ETB, once.':'ወደ መቀበያ ሂሳባችን የተደረገው ዝውውር ሲረጋገጥ፣ የተላከው የብር መጠን በራስ-ሰር አንድ ጊዜ ይጨመራል።',
  'Under admin review':'በአስተዳዳሪ ግምገማ ላይ',

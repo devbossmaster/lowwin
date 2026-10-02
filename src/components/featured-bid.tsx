@@ -1,6 +1,6 @@
 'use client';
 import {createsFourConsecutiveAmounts} from '@/modules/auctions/consecutive-bids';
-import {RULE_V3} from '@/modules/auctions/rules';
+import {isSubmissionFeeOnly,usesDecimalBids} from '@/modules/auctions/rules';
 import {AuctionRule} from './auction-rule';
 import {LoadingSpinner} from './loading-spinner';
 import Link from 'next/link';
@@ -63,12 +63,14 @@ function FeaturedBidForIdentity({slug,title,onInteractionChange}:Props){
     if(confirm&&!dialog.current?.open)dialog.current?.showModal();
     if(!confirm&&dialog.current?.open)dialog.current.close();
   },[confirm]);
+  const feeOnly=isSubmissionFeeOnly(state?.terms.ruleVersion);
+  const bidLabel=(value:string)=>feeOnly?centsToEtb(etbToCents(value)):formatEtb(value);
   const preview=useMemo(()=>{
     if(!state||!whole.test(amount))return null;
     const bid=etbToCents(amount),min=etbToCents(state.terms.minPoints),max=state.terms.maxPoints===null?null:etbToCents(state.terms.maxPoints),step=etbToCents(state.terms.stepPoints),previous=etbToCents(state.previousMax),fee=etbToCents(state.terms.entryFeePoints);
     if(bid<min||(max!==null&&bid>max)||(bid-min)%step!==0n)return null;
-    const extra=bid>previous?bid-previous:0n,total=extra+fee;
-    return {bid:centsToEtb(bid),previous:centsToEtb(previous),newMax:centsToEtb((previous+extra)),extra:centsToEtb(extra),fee:centsToEtb(fee),total:centsToEtb(total),after:centsToEtb((etbToCents(state.wallet.available)-total)),enough:etbToCents(state.wallet.available)>=total,consecutive:state.terms.ruleVersion===RULE_V3&&createsFourConsecutiveAmounts(state.ownBids.map(b=>etbToCents(b.amount)),bid),duplicate:state.ownBids.some(own=>etbToCents(own.amount)===bid)};
+    const extra=isSubmissionFeeOnly(state.terms.ruleVersion)?0n:bid>previous?bid-previous:0n,total=extra+fee;
+    return {bid:centsToEtb(bid),previous:centsToEtb(previous),newMax:centsToEtb((previous+extra)),extra:centsToEtb(extra),fee:centsToEtb(fee),total:centsToEtb(total),after:centsToEtb((etbToCents(state.wallet.available)-total)),enough:etbToCents(state.wallet.available)>=total,consecutive:usesDecimalBids(state.terms.ruleVersion)&&createsFourConsecutiveAmounts(state.ownBids.map(b=>etbToCents(b.amount)),bid),duplicate:state.ownBids.some(own=>etbToCents(own.amount)===bid)};
   },[amount,state]);
   const valid=status==='authenticated'&&!loading&&!!state?.open&&!!preview&&preview.enough&&!preview.consecutive&&!preview.duplicate&&state.remainingSubmissions>0;
   const change=(value:string)=>{setAmount(value);setKey(null);setError('');setReceipt(null)};
@@ -92,7 +94,7 @@ function FeaturedBidForIdentity({slug,title,onInteractionChange}:Props){
       const accepted=body as Receipt;
       setReceipt(accepted);setState(previous=>previous?{...previous,wallet:accepted.wallet,previousMax:accepted.hold.newMax,remainingSubmissions:accepted.remainingSubmissions,ownBids:accepted.ownBids}:previous);
       setConfirm(false);setAmount('');setKey(null);setAgreed(false);
-      notify(am?`${formatEtb(accepted.bid.amount)} ጨረታዎ ተቀብሏል።`:`${formatEtb(accepted.bid.amount)} bid accepted. Your wallet has been updated.`,'success');
+      notify(am?`${bidLabel(accepted.bid.amount)} ጨረታዎ ተቀብሏል።`:`${bidLabel(accepted.bid.amount)} bid accepted. Your wallet has been updated.`,'success');
       celebrate();
       void refreshMe().catch(()=>{});
     }catch{
@@ -100,25 +102,25 @@ function FeaturedBidForIdentity({slug,title,onInteractionChange}:Props){
       const message=am?'ግንኙነቱ ተቋርጧል። በተመሳሳይ ጥያቄ እንደገና ይሞክሩ።':'Connection interrupted. Retry safely with the same request.';
       setError(message);notify(message,'error');
     }finally{inFlight.current=false;if(mounted.current)setSubmitting(false)}
-  },[valid,submitting,agreed,preview,key,slug,notify,am,refreshMe,celebrate,state?.terms.version]);
+  },[valid,submitting,agreed,preview,key,slug,notify,am,refreshMe,celebrate,state?.terms.version,feeOnly]);
 
   return <div className={styles.bidBox}>
     <div className={styles.amountControl}>
       <button type="button" onClick={()=>step(-1)} disabled={!state?.open||loading} aria-label={am?'መጠኑን ቀንስ':'Decrease bid amount'}><Minus size={18}/></button>
-      <label><span className="sr-only">{am?'የጨረታ መጠን በ ETB':'Bid amount in ETB'}</span><input inputMode="decimal" autoComplete="off" pattern="[1-9][0-9]*([.][0-9]{1,2})?" maxLength={19} value={amount} onChange={event=>change(event.target.value)} placeholder={am?'የጨረታ መጠን · ETB':'Bid amount · ETB'} disabled={!state?.open||loading||status!=='authenticated'}/></label>
+      <label><span className="sr-only">{am?'የጨረታ ቁጥር':'Bid number'}</span><input inputMode="decimal" autoComplete="off" pattern="[1-9][0-9]*([.][0-9]{1,2})?" maxLength={19} value={amount} onChange={event=>change(event.target.value)} placeholder={am?'የጨረታ ቁጥር':'Bid number'} disabled={!state?.open||loading||status!=='authenticated'}/></label>
       <button type="button" onClick={()=>step(1)} disabled={!state?.open||loading} aria-label={am?'መጠኑን ጨምር':'Increase bid amount'}><Plus size={18}/></button>
     </div>
-    {status==='authenticated'&&state?.open&&<p className={styles.range}>{am?'ከ':'From'} {formatEtb(state.terms.minPoints)} {state.terms.maxPoints!==null&&<>{am?'እስከ':'to'} {formatEtb(state.terms.maxPoints)}</>} · {am?'እርምጃ':'Step'} {formatEtb(state.terms.stepPoints)}</p>}
-    {amount&&state&&(!preview||preview.consecutive||preview.duplicate||!preview.enough)&&<p className={styles.bidError} role="alert">{!preview?(am?'ከ1.00 ብር ጀምሮ እስከ ሁለት የአስርዮሽ ቦታዎች ያለውን መጠን ያስገቡ።':'Enter at least 1.00 ETB with up to two decimal places.'):preview.consecutive?(am?'ሦስት ተከታታይ የሳንቲም መጠኖችን ካቀረቡ በኋላ የሚቀጥለውን ሳንቲም ይዝለሉ።':'Leave a gap after three consecutive cent amounts.'):preview.duplicate?(am?'ይህን መጠን አስቀድመው አቅርበዋል።':'You already submitted this amount.'):(<>{am?'ለዚህ ጨረታ በቂ ቀሪ የለዎትም።':'Insufficient balance.'} {am?'የሚያስፈልግ':'Need'} {formatEtb(preview.total)} · {am?'ያለ ቀሪ':'Available'} {formatEtb(state.wallet.available)}. <Link href="/wallet">{am?'ብር ይጨምሩ':'Add ETB'}</Link></>)}</p>}
+    {status==='authenticated'&&state?.open&&<p className={styles.range}>{am?'ከ':'From'} {bidLabel(state.terms.minPoints)} {state.terms.maxPoints!==null&&<>{am?'እስከ':'to'} {bidLabel(state.terms.maxPoints)}</>} · {am?'እርምጃ':'Step'} {bidLabel(state.terms.stepPoints)}</p>}
+    {amount&&state&&(!preview||preview.consecutive||preview.duplicate||!preview.enough)&&<p className={styles.bidError} role="alert">{!preview?(am?'ከ1.00 ጀምሮ እስከ ሁለት የአስርዮሽ ቦታዎች ያለውን መጠን ያስገቡ።':'Enter at least 1.00 with up to two decimal places.'):preview.consecutive?(am?'ሦስት ተከታታይ የሳንቲም መጠኖችን ካቀረቡ በኋላ የሚቀጥለውን ሳንቲም ይዝለሉ።':'Leave a gap after three consecutive cent amounts.'):preview.duplicate?(am?'ይህን መጠን አስቀድመው አቅርበዋል።':'You already submitted this amount.'):(<>{am?'ለዚህ ጨረታ በቂ ቀሪ የለዎትም።':'Insufficient balance.'} {am?'የሚያስፈልግ':'Need'} {formatEtb(preview.total)} · {am?'ያለ ቀሪ':'Available'} {formatEtb(state.wallet.available)}. <Link href="/wallet">{am?'ብር ይጨምሩ':'Add ETB'}</Link></>)}</p>}
     {status==='authenticated'&&state?.open&&state.remainingSubmissions===0&&<p className={styles.bidError}>{am?'የ100 የተለያዩ ጨረታዎች ገደብ ደርሰዋል።':'You have reached the 100 distinct-bid limit.'}</p>}
     <button type="button" className={styles.submitBid} disabled={!valid} onClick={()=>{setAgreed(false);setConfirm(true)}}>{loading?<LoadingSpinner/>:status!=='authenticated'?(am?'ለመጫረት ይግቡ':'Sign in to bid'):state&&!state.open?(am?'ጨረታ አይገኝም':'Bidding unavailable'):(am?'የጨረታ መጠን ያስገቡ':'Submit a bid amount')}</button>
     {loadError&&<p className={styles.bidError} role="alert">{loadError} <button type="button" onClick={()=>setReload(value=>value+1)}>{am?'እንደገና ይሞክሩ':'Retry'}</button></p>}
-    {receipt&&<p className={styles.accepted} role="status"><CheckCircle2 size={17}/>{am?'ተቀብሏል':'Accepted'} {formatEtb(receipt.bid.amount)} · {am?'ያለ ቀሪ':'Available'} {formatEtb(receipt.wallet.available)}. {am?'ይህ የድል ዋስትና አይደለም።':'This does not predict a winner.'}</p>}
+    {receipt&&<p className={styles.accepted} role="status"><CheckCircle2 size={17}/>{am?'ተቀብሏል':'Accepted'} {bidLabel(receipt.bid.amount)} · {am?'ያለ ቀሪ':'Available'} {formatEtb(receipt.wallet.available)}. {am?'ይህ የድል ዋስትና አይደለም።':'This does not predict a winner.'}</p>}
     <dialog ref={dialog} className={styles.dialog} onCancel={event=>{if(submitting)event.preventDefault();else setConfirm(false)}} onClose={()=>setConfirm(false)} aria-labelledby={titleId}>
       {preview&&state&&<><header><span className={styles.dialogIcon}><Gavel size={19}/></span><h2 id={titleId}>{am?'ጨረታዎን ያረጋግጡ':'Confirm your bid'}</h2><button type="button" onClick={()=>setConfirm(false)} disabled={submitting} aria-label={am?'ዝጋ':'Close'}><X size={19}/></button></header>
-      <div className={styles.dialogBody}><dl><div><dt>{am?'ዕቃ':'Item'}</dt><dd>{title}</dd></div><div><dt>{am?'የጨረታ መጠን':'Your bid'}</dt><dd>{formatEtb(preview.bid)}</dd></div><div><dt>{am?'የቀድሞ ከፍተኛ የተያዘ':'Previous maximum hold'}</dt><dd>{formatEtb(preview.previous)}</dd></div><div><dt>{am?'አዲስ ከፍተኛ የተያዘ':'New maximum hold'}</dt><dd>{formatEtb(preview.newMax)}</dd></div><div><dt>{am?'ተጨማሪ የሚያዝ':'Extra reserved'}</dt><dd>{formatEtb(preview.extra)}</dd></div>{Number(preview.fee)>0&&<div><dt>{am?'የመግቢያ ክፍያ':'Entry fee'}</dt><dd>{formatEtb(preview.fee)}</dd></div>}<div className={styles.dialogTotal}><dt>{am?'አሁን የማይገኝ ጠቅላላ':'Total newly unavailable'}</dt><dd>{formatEtb(preview.total)}</dd></div><div><dt>{am?'ከዚህ በኋላ ያለ ቀሪ':'Available after acceptance'}</dt><dd>{formatEtb(preview.after)}</dd></div><div><dt>{am?'የሚቀሩ ጨረታዎች':'Submissions left'}</dt><dd>{state.remainingSubmissions-1}</dd></div></dl>
-      <AuctionRule ruleVersion={state.terms.ruleVersion} feePoints={state.terms.entryFeePoints}/><p className={styles.dialogNote}>{Number(preview.fee)>0?(am?'የጨረታው መጠን አሁን ይያዛል፤ አሸናፊው ሲወሰን ብቻ ይከፈላል። የመግቢያ ክፍያው ተጨማሪ ነው።':'Your bid is held now and charged only if it wins. This older auction also has the shown entry fee.'):(am?'የጨረታው መጠን ብቻ ይያዛል። ተጨማሪ ክፍያ የለም።':'Only your bid amount is reserved. There is no extra bid fee.')} {am?'ሰርቨሩ ቀሪዎን፣ የመዝጊያ ሰዓትንና ውሎቹን እንደገና ያረጋግጣል።':'The server rechecks your balance, closing time and terms before acceptance.'}</p></div>
-      <label className={styles.agreement}><input type="checkbox" checked={agreed} onChange={event=>setAgreed(event.target.checked)}/><span>{Number(preview.fee)>0?(am?'ውሎቹንና ክፍያውን ተረድቻለሁ':'I understand the hold and fee'):(am?'ውሎቹንና የሚያዘውን መጠን ተረድቻለሁ':'I understand the bid hold and terms')}</span></label>
+      <div className={styles.dialogBody}><dl><div><dt>{am?'ዕቃ':'Item'}</dt><dd>{title}</dd></div><div><dt>{am?'የጨረታ መጠን':'Your bid'}</dt><dd>{bidLabel(preview.bid)}</dd></div>{!feeOnly&&<div><dt>{am?'የቀድሞ ከፍተኛ የተያዘ':'Previous maximum hold'}</dt><dd>{formatEtb(preview.previous)}</dd></div>}{!feeOnly&&<div><dt>{am?'አዲስ ከፍተኛ የተያዘ':'New maximum hold'}</dt><dd>{formatEtb(preview.newMax)}</dd></div>}{!feeOnly&&<div><dt>{am?'ተጨማሪ የሚያዝ':'Extra reserved'}</dt><dd>{formatEtb(preview.extra)}</dd></div>}{(feeOnly||Number(preview.fee)>0)&&<div><dt>{am?'የመግቢያ ክፍያ':'Submission fee'}</dt><dd>{formatEtb(preview.fee)}</dd></div>}<div className={styles.dialogTotal}><dt>{am?'ጠቅላላ የሚከፈል':'Total to pay'}</dt><dd>{formatEtb(preview.total)}</dd></div><div><dt>{am?'ከዚህ በኋላ ያለ ቀሪ':'Available after acceptance'}</dt><dd>{formatEtb(preview.after)}</dd></div><div><dt>{am?'የሚቀሩ ጨረታዎች':'Submissions left'}</dt><dd>{state.remainingSubmissions-1}</dd></div></dl>
+      <AuctionRule ruleVersion={state.terms.ruleVersion} feePoints={state.terms.entryFeePoints}/><p className={styles.dialogNote}>{feeOnly?(am?'የማቅረቢያ ክፍያውን ብቻ ይከፍላሉ። ተመላሽ አይሆንም።':'Pay only the submission fee. It is non-refundable, including cancellation.'):Number(preview.fee)>0?(am?'የጨረታው መጠን አሁን ይያዛል፤ አሸናፊው ሲወሰን ብቻ ይከፈላል። የመግቢያ ክፍያው ተጨማሪ ነው።':'Your bid is held now and charged only if it wins. This older auction also has the shown entry fee.'):(am?'የጨረታው መጠን ብቻ ይያዛል። ተጨማሪ ክፍያ የለም።':'Only your bid amount is reserved. There is no extra bid fee.')} {am?'ሰርቨሩ ቀሪዎን፣ የመዝጊያ ሰዓትንና ውሎቹን እንደገና ያረጋግጣል።':'The server rechecks your balance, closing time and terms before acceptance.'}</p></div>
+      <label className={styles.agreement}><input type="checkbox" checked={agreed} onChange={event=>setAgreed(event.target.checked)}/><span>{feeOnly?(am?'የማይመለሰውን ክፍያና ውሎቹን ተረድቻለሁ':'I agree to the non-refundable fee and terms'):Number(preview.fee)>0?(am?'ውሎቹንና ክፍያውን ተረድቻለሁ':'I understand the hold and fee'):(am?'ውሎቹንና የሚያዘውን መጠን ተረድቻለሁ':'I understand the bid hold and terms')}</span></label>
       {error&&<p className={styles.bidError} role="alert">{error}</p>}
       <button type="button" className={styles.confirmButton} disabled={!agreed||submitting||!valid} onClick={()=>void submit()}>{submitting?<LoadingSpinner/>:(am?'አረጋግጥና ጨረታ አቅርብ':'Confirm & submit bid')}</button></>}
     </dialog>

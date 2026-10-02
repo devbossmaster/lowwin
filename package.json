@@ -27,6 +27,7 @@
     "admin:bootstrap": "tsx scripts/admin-bootstrap.ts",
     "email:sink": "tsx scripts/email-sink.ts",
     "worker:notifications": "tsx scripts/notification-worker.ts",
+    "auction:fee-only": "tsx scripts/auction-submission-fee.ts",
     "admin:reissue": "tsx scripts/admin-reissue.ts"
   },
   "dependencies": {

@@ -1,3 +1,4 @@
+import {isSubmissionFeeOnly} from '../auctions/rules';
 import {broadcastRoot,broadcastStopped,campaignContent,expandCampaign,scheduleGlobalAlerts,telegramKinds} from './campaigns';
 import {stagingDemoEnabled} from '../auctions/staging-demo';
 import type {Prisma,PrismaClient,Outbox} from '@prisma/client';
@@ -33,12 +34,12 @@ const words:Record<string,[string,string]>={AUCTION_MINIMUM_CANCELLED:['Auction 
 export async function notificationContent(tx:DB,row:Pick<Outbox,'kind'|'payload'>){
  if(telegramKinds.includes(row.kind))return campaignContent(tx,row);
  const p=row.payload as {auctionId?:string;recipientUserId?:string};if(!p.recipientUserId||!p.auctionId)return null;
- const a=await tx.auction.findUnique({where:{id:p.auctionId},select:{slug:true,code:true,publicCode:true,isDemo:true,isSettlementFixture:true,result:{select:{id:true}},settlement:{select:{decision:true,outcome:true,winnerUserId:true}}}});
+ const a=await tx.auction.findUnique({where:{id:p.auctionId},select:{terms:{select:{ruleVersion:true}},slug:true,code:true,publicCode:true,isDemo:true,isSettlementFixture:true,result:{select:{id:true}},settlement:{select:{decision:true,outcome:true,winnerUserId:true}}}});
  if(!a||a.result||a.isDemo&&(!a.isSettlementFixture||!(demoBidAllowed()||stagingDemoEnabled())))return null;
  const kind=row.kind==='AUCTION_CANCELLED'&&a.settlement?.decision==='MINIMUM_PARTICIPANTS'?'AUCTION_MINIMUM_CANCELLED':row.kind==='AUCTION_CLOSED'?(a.settlement?.winnerUserId===p.recipientUserId?(a.settlement.decision==='FIRST_ACCEPTED_LOWEST'?'AUCTION_FALLBACK_WON':'AUCTION_WON'):a.settlement?.outcome==='NO_WINNER'?'AUCTION_NO_WINNER':row.kind):row.kind;
  const copy=words[kind];if(!copy)return null;
  const href=kind==='BID_ACCEPTED'?'/my-bids':kind==='FULFILLMENT_UPDATED'||kind==='AUCTION_WON'||kind==='AUCTION_FALLBACK_WON'?'/winning-bids':`/auctions/${a.publicCode}`;
- return {userId:p.recipientUserId,kind,title:`${a.isDemo?'DEMO · ':''}${copy[0]}`,body:copy[1],href};
+ return {userId:p.recipientUserId,kind,title:`${a.isDemo?'DEMO · ':''}${copy[0]}`,body:isSubmissionFeeOnly(a.terms?.ruleVersion)&&['AUCTION_CANCELLED','AUCTION_MINIMUM_CANCELLED'].includes(kind)?'Auction cancelled. Accepted submission fees are non-refundable.':isSubmissionFeeOnly(a.terms?.ruleVersion)&&kind==='AUCTION_CLOSED'?'Your result is ready. The chosen number is not charged.':copy[1],href};
 }
 export async function materializeAlert(tx:DB,row:Pick<Outbox,'key'|'kind'|'payload'>&Partial<Pick<Outbox,'testRunId'>>){
  const content=await notificationContent(tx,row);if(!content)return;

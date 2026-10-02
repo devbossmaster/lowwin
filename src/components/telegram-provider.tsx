@@ -72,7 +72,7 @@ export function TelegramProvider({ children, devEnabled, botUrl, requireLaunch=f
   },[]);
   const autoAuthenticate=useCallback(()=>{const launch=window.Telegram?.WebApp?.initData??'';if(launchAttempt.current===launch)return;void authenticate()},[authenticate]);
   useEffect(() => {
-    const color=(status==='loading'&&verifyingTelegram)||status==='error'||(requireLaunch&&status==='guest')?'#0bda51':'#FFFFFF';
+    const color=(status==='loading'&&verifyingTelegram)||status==='error'||(requireLaunch&&status==='guest')?'#008000':'#FFFFFF';
     try { window.Telegram?.WebApp?.setHeaderColor?.(color); } catch { /* Older Telegram clients may reject custom colors. */ }
     try { window.Telegram?.WebApp?.setBackgroundColor?.(color); } catch { /* Keep recovery controls usable. */ }
   },[status,verifyingTelegram,requireLaunch]);

@@ -1,4 +1,4 @@
-import {RULE_V3} from './rules';
+import {isSubmissionFeeOnly,usesDecimalBids} from './rules';
 import {createsFourConsecutiveAmounts,parseBidCents} from './consecutive-bids';
 import {formatEtb} from '@/lib/money';
 import {assertPlayerContact} from '../auth/own-contact';
@@ -70,13 +70,13 @@ export async function submitBidInTransaction(tx:Prisma.TransactionClient,input:B
   const terms=auction.terms;
   if(!terms)fail('AUCTION_CLOSED',409,'Published auction terms are unavailable.');
   const fee=auction.feeRevisions[0];
-  if(!fee||feeVersion!==undefined&&fee.version!==feeVersion)fail('RETRYABLE_CONFLICT',409,'Bidding terms changed. Review the current amount and confirm again.');
-  if((terms.ruleVersion===RULE_V3&&amount.lt(1))||amount.lt(terms.minPoints)||(terms.maxPoints!==null&&amount.gt(terms.maxPoints))||!amount.sub(terms.minPoints).mod(terms.stepPoints).isZero())
-    fail('INVALID_AMOUNT',422,terms.maxPoints===null?`Choose an ETB amount of at least ${terms.minPoints} in steps of ${terms.stepPoints}.`:`Choose an ETB amount from ${terms.minPoints} to ${terms.maxPoints} in steps of ${terms.stepPoints}.`);
+  if(!fee||isSubmissionFeeOnly(terms.ruleVersion)&&feeVersion===undefined||feeVersion!==undefined&&fee.version!==feeVersion)fail('RETRYABLE_CONFLICT',409,'Bidding terms changed. Review the current amount and confirm again.');
+  if((usesDecimalBids(terms.ruleVersion)&&amount.lt(1))||amount.lt(terms.minPoints)||(terms.maxPoints!==null&&amount.gt(terms.maxPoints))||!amount.sub(terms.minPoints).mod(terms.stepPoints).isZero())
+    fail('INVALID_AMOUNT',422,terms.maxPoints===null?`Choose a bid number of at least ${terms.minPoints} in steps of ${terms.stepPoints}.`:`Choose a bid number from ${terms.minPoints} to ${terms.maxPoints} in steps of ${terms.stepPoints}.`);
 
   const own=await tx.bid.findMany({where:{userId,auctionId:auction.id},orderBy:[{acceptedAt:'asc'},{id:'asc'}],select:{id:true,amount:true,acceptedAt:true}});
-  if(own.some(bid=>bid.amount.eq(amount)))fail('OWN_DUPLICATE',409,'You already submitted this ETB amount for this auction.');
-  if(terms.ruleVersion===RULE_V3&&createsFourConsecutiveAmounts(own.map(b=>parseBidCents(b.amount.toString())),parseBidCents(amount.toString())))fail('CONSECUTIVE_LIMIT',422,'Leave a gap after three consecutive cent amounts.');
+  if(own.some(bid=>bid.amount.eq(amount)))fail('OWN_DUPLICATE',409,'You already submitted this bid number for this auction.');
+  if(usesDecimalBids(terms.ruleVersion)&&createsFourConsecutiveAmounts(own.map(b=>parseBidCents(b.amount.toString())),parseBidCents(amount.toString())))fail('CONSECUTIVE_LIMIT',422,'Leave a gap after three consecutive numbers separated by 0.01.');
   if(own.length>=terms.maxDistinctBids)fail('CAP_REACHED',409,'You have reached the 100 distinct-bid limit for this auction.');
 
   const wallet=await ensureWallet(tx,userId);
@@ -85,7 +85,7 @@ export async function submitBidInTransaction(tx:Prisma.TransactionClient,input:B
   const held=accounts.find(account=>account.kind==='HELD')!;
   const hold=await tx.auctionHold.findUnique({where:{walletId_auctionId:{walletId:wallet.id,auctionId:auction.id}}});
   const previousMax=hold?.points??new Prisma.Decimal(0);
-  const extraReserved=Prisma.Decimal.max(amount.sub(previousMax),0);
+  const extraReserved=isSubmissionFeeOnly(terms.ruleVersion)?new Prisma.Decimal(0):Prisma.Decimal.max(amount.sub(previousMax),0);
   const newlyUnavailable=extraReserved.add(fee.feePoints);
   if(available.balance.lt(newlyUnavailable))fail('INSUFFICIENT_POINTS',409,`You need ${formatEtb(newlyUnavailable)} available for this bid${fee.feePoints.gt(0)?' and its disclosed fee':''}.`);
 
@@ -124,7 +124,7 @@ export async function submitBid(client:PrismaClient,input:BidInput,raw:Record<st
     if(error instanceof BidError||error instanceof z.ZodError)throw error;
     const message=error instanceof Error?error.message:'';
     if(message.includes('Auction is not open for bids'))fail('AUCTION_CLOSED',409,'This auction closed before your bid was accepted.');
-    if(message.includes('Four consecutive cent amounts'))fail('CONSECUTIVE_LIMIT',422,'Leave a gap after three consecutive cent amounts.');
+    if(message.includes('Four consecutive cent amounts'))fail('CONSECUTIVE_LIMIT',422,'Leave a gap after three consecutive numbers separated by 0.01.');
     if(message.includes('Distinct bid limit reached'))fail('CAP_REACHED',409,'You have reached the 100 distinct-bid limit for this auction.');
     if(message.includes('stale')||message.includes('current fee revision'))fail('RETRYABLE_CONFLICT',409,'Bidding terms changed. Review the current amount and confirm again.');
     if(message.includes('Bid does not match published terms'))fail('INVALID_AMOUNT',422,'The published ETB terms changed or this amount is invalid.');

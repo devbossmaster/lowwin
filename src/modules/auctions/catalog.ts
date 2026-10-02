@@ -62,7 +62,7 @@ export function toPublicAuction(row: AuctionRow, now: Date) {
   const settled=row.settlement;
   const result=settled&&['closed','cancelled'].includes(status)?{
     outcome:settled.outcome,winningPoints:settled.winningPoints?.toString()??null,
-    decision:settled.decision,explanation:resultExplanation(settled.outcome,settled.decision),
+    decision:settled.decision,explanation:resultExplanation(settled.outcome,settled.decision,row.terms?.ruleVersion),
     isDemo:row.isDemo,closedAt:settled.completedAt.toISOString(),source:'SETTLED' as const,
     demoLabel:row.isDemo?'DEMO · settled test':null,winnerDisplay:settled.outcome==='WINNER'?(settled.winner?.name.trim()||null):null,
     winnerPhoneMasked:settled.outcome==='WINNER'&&settled.winner?.ownContact&&!settled.winner.ownContact.revokedAt&&/^\d{4}$/.test(settled.winner.ownContact.lastFour)?`********${settled.winner.ownContact.lastFour.slice(-2)}`:null,

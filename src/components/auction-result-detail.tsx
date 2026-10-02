@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import {ArrowLeft,CalendarDays,CheckCircle2,Clock3,Eye,Gavel,Trophy} from 'lucide-react';
 import type {CatalogAuction} from '@/modules/auctions/catalog';
-import {formatEtb} from '@/lib/money';
+import {formatEtb,formatAuctionBid} from '@/lib/money';
 import {AuctionGallery} from './auction-gallery';
 import {MiniCategoryName,MiniPhrase,useMiniLocale} from './mini-locale';
 import {ProductDescription} from './product-description';
@@ -19,11 +19,11 @@ export function AuctionResultDetail({auction}:{auction:CatalogAuction}){
     <Link className={styles.back} href="/winners/all"><ArrowLeft size={19}/><MiniPhrase en="All results" am="ሁሉም ውጤቶች"/></Link>
     <AuctionGallery images={auction.product.images} title={title} isDemo={auction.isDemo}/>
     <header className={styles.intro}><h1>{title}</h1><p><span><MiniPhrase en="Auction code" am="የጨረታ ኮድ"/>: <strong>{auction.code}</strong></span><span aria-hidden="true">·</span><MiniCategoryName slug={auction.category.slug} name={auction.category.name} nameAm={auction.category.nameAm}/></p></header>
-    {Number(auction.terms.entryFeePoints)>0&&<div className={styles.fee}><span><MiniPhrase en="Bid service fee" am="የጨረታ አገልግሎት ክፍያ"/></span><strong>{formatEtb(auction.terms.entryFeePoints)}</strong></div>}
+    {Number(auction.terms.entryFeePoints)>0&&<div className={styles.fee}><span><MiniPhrase en="Submission fee" am="የጨረታ አገልግሎት ክፍያ"/></span><strong>{formatEtb(auction.terms.entryFeePoints)}</strong></div>}
     <section className={styles.summary} data-testid="result-summary" aria-label={am?'የጨረታ ውጤት':'Auction result'}>
       {winner&&<Trophy size={38} aria-hidden="true"/>}<h2>{winner?winnerName:outcome}</h2>
       {winner&&result?.winnerPhoneMasked&&<p className={styles.phone}>{result.winnerPhoneMasked}</p>}
-      {winner&&result?.winningPoints&&<strong className={styles.amount}>{formatEtb(result.winningPoints)}</strong>}
+      {winner&&result?.winningPoints&&<strong className={styles.amount}>{formatAuctionBid(result.winningPoints,auction.terms.ruleVersion)}</strong>}
       {winner&&<p className={styles.closed}>{outcome}</p>}
       {(result?.demoLabel||auction.isDemo)&&<p className={styles.demo}>{result?.demoLabel??'DEMO'} · <MiniPhrase en="No real prize" am="እውነተኛ ሽልማት የለም"/></p>}
     </section>

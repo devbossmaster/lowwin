@@ -1,9 +1,14 @@
 import {MiniPhrase} from './mini-locale';
-import {RULE_V2,RULE_V3,V3_AMOUNT_TERMS,resultExplanation} from '@/modules/auctions/rules';
+import {RULE_V2,RULE_V3,V3_AMOUNT_TERMS,resultExplanation,isSubmissionFeeOnly} from '@/modules/auctions/rules';
 
 /** Version-aware disclosure: never apply future rules to a legacy auction. */
 export function AuctionRule({ruleVersion,feePoints='0'}:{ruleVersion:string;feePoints?:string}){
  const hasFee=Number(feePoints)>0;
+ if(isSubmissionFeeOnly(ruleVersion))return <div className="auction-rule" data-rule-version={ruleVersion}>
+  <p><MiniPhrase en="Your bid is a number, not money. Minimum 1.00, in 0.01 steps, with no configured maximum. Pay only the displayed submission fee per accepted bid; there is no hold or winning-number charge." am="ጨረታዎ ቁጥር ነው፤ ገንዘብ አይደለም። ከ1.00 ጀምሮ በ0.01 ልዩነት ይምረጡ፤ የተወሰነ ከፍተኛ ቁጥር የለም። ለእያንዳንዱ የተቀበለ ጨረታ የታየውን የማቅረቢያ ክፍያ ብቻ ይከፍላሉ፤ ለቁጥሩ ገንዘብ አይያዝም ወይም ሲያሸንፍ አይቀነስም።"/></p>
+  <p><MiniPhrase en="Submission fees are non-refundable, including cancellation or fewer than two participants. Rejected submissions are not charged." am="የማቅረቢያ ክፍያዎች ጨረታው ቢሰረዝም ወይም ተሳታፊዎች ከሁለት ቢያንሱም አይመለሱም። ውድቅ ለሆኑ ጨረታዎች ክፍያ አይቀነስም።"/></p>
+  <p><MiniPhrase en="At least two eligible players are required. Lowest unique number wins. If none is unique, the earliest accepted bid at the lowest number wins. Up to 100 different numbers per player; leave a gap after three consecutive numbers separated by 0.01." am="ቢያንስ ሁለት ብቁ ተሳታፊዎች ያስፈልጋሉ። ዝቅተኛው ብቸኛ ቁጥር ያሸንፋል። ብቸኛ ቁጥር ከሌለ፣ በዝቅተኛው ቁጥር መጀመሪያ የተቀበለው ጨረታ ያሸንፋል። በአንድ ሰው እስከ 100 የተለያዩ ቁጥሮች ይፈቀዳሉ፤ በ0.01 ልዩነት ከሚከታተሉ ሦስት ቁጥሮች በኋላ ክፍተት ይተዉ።"/></p>
+ </div>;
  return <div className="auction-rule" data-rule-version={ruleVersion}>
   {ruleVersion===RULE_V3&&<p><MiniPhrase en={V3_AMOUNT_TERMS} am="ዝቅተኛው የጨረታ መጠን 1.00 ብር ነው። እስከ ሁለት የአስርዮሽ ቦታዎች ያሉ መጠኖችን ማቅረብ ይችላሉ። በአንድ ጨረታ በአንድ ሳንቲም ልዩነት የሚከታተሉ አራት መጠኖችን ማቅረብ አይቻልም። ለምሳሌ፣ 1.01፣ 1.02 እና 1.03 ካቀረቡ፣ 1.04ን ይዝለሉ፤ 1.05 ይፈቀዳል። የሚያቀርቡበትን ቅደም ተከተል መቀየር ይህን ደንብ አያስቀርም። በአንድ ጨረታ እስከ 100 የተለያዩ መጠኖችን ማቅረብ ይችላሉ።"/></p>}
   {[RULE_V2,RULE_V3].includes(ruleVersion)?<>
@@ -13,7 +18,8 @@ export function AuctionRule({ruleVersion,feePoints='0'}:{ruleVersion:string;feeP
   <p><MiniPhrase en={hasFee?'Only the winner’s winning amount is charged from held money. Other holds are released. Previously disclosed entry fees remain charged unless the auction is cancelled.':'Only the winner’s winning amount is charged. All other holds are released. There is no additional bid fee.'} am={hasFee?'ከአሸናፊው የተያዘ ገንዘብ የማሸነፊያው መጠን ብቻ ይቀነሳል። ሌሎች የተያዙ መጠኖች ይለቀቃሉ። ቀድሞ የተገለጹ ክፍያዎች ጨረታው ካልተሰረዘ ይቀራሉ።':'የአሸናፊው የማሸነፊያ መጠን ብቻ ይቀነሳል። ሌሎች የተያዙ መጠኖች ይለቀቃሉ። ተጨማሪ የጨረታ ክፍያ የለም።'}/></p>
  </div>;
 }
-export function ResultExplanation({outcome,decision}:{outcome:string;decision?:string|null}){
+export function ResultExplanation({outcome,decision,ruleVersion}:{outcome:string;decision?:string|null;ruleVersion?:string}){
+ if(isSubmissionFeeOnly(ruleVersion))return outcome==='CANCELLED'?<MiniPhrase en="Auction cancelled. Accepted submission fees are non-refundable." am="ጨረታው ተሰርዟል። የተቀበሉ ጨረታዎች የማቅረቢያ ክፍያዎች አይመለሱም።"/>:decision==='FIRST_ACCEPTED_LOWEST'?<MiniPhrase en="No number was unique. The earliest accepted bid at the lowest number won. The winning number adds no charge." am="ብቸኛ ቁጥር አልነበረም። በዝቅተኛው ቁጥር መጀመሪያ የተቀበለው ጨረታ አሸንፏል። አሸናፊው ቁጥር ተጨማሪ ክፍያ አያስከትልም።"/>:<MiniPhrase en="The lowest unique number won. Only submission fees were charged; the winning number adds no charge." am="ዝቅተኛው ብቸኛ ቁጥር አሸንፏል። የማቅረቢያ ክፍያዎች ብቻ ተከፍለዋል፤ አሸናፊው ቁጥር ተጨማሪ ክፍያ አያስከትልም።"/>;
  const am=decision==='MINIMUM_PARTICIPANTS'?'በመዝጊያ ሰዓቱ ጨረታቸው የተቀበለላቸው ተሳታፊዎች ከሁለት ያነሱ ስለነበሩ ጨረታው በራሱ ተሰርዟል። የመግቢያ ክፍያዎች ሁሉ ተመልሰዋል፣ የተያዘው ገንዘብም ሁሉ ተለቋል።':decision==='FIRST_ACCEPTED_LOWEST'?'አንድ ጊዜ ብቻ የቀረበ መጠን አልነበረም። ዝቅተኛውን መጠን ያቀረቡት መካከል ጨረታው በመረጃ ቋቱ መጀመሪያ የተቀበለለት ተሳታፊ አሸንፏል። ያልተጠቀመው የተያዘ ገንዘብ ተለቋል፤ የተገለጹት የመግቢያ ክፍያዎች አልተመለሱም።':outcome==='WINNER'?'አንድ ጊዜ ብቻ ከተቀበሉት መጠኖች ዝቅተኛው አሸንፏል። ሌሎቹ የተያዙ መጠኖች ሁሉ ተለቀዋል።':outcome==='NO_WINNER'?'አንድ ጊዜ ብቻ የቀረበ መጠን አልነበረም። የተያዘው ገንዘብ ሁሉ ተለቋል፤ የተገለጹት የመግቢያ ክፍያዎች አልተመለሱም።':'ጨረታው ተሰርዟል። የተያዘው ገንዘብ እና የመግቢያ ክፍያዎች ሁሉ ተመልሰዋል።';
  return <MiniPhrase en={resultExplanation(outcome,decision)} am={am}/>;
 }

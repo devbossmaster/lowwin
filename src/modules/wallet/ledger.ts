@@ -70,16 +70,16 @@ export async function reconcile(client: PrismaClient | Prisma.TransactionClient)
     ) f ON true WHERE COALESCE(f.points,0)<>b."feePoints"
     UNION ALL
     SELECT 'FEE_REFUND' AS kind, 'settlement-user:' || m.id AS name, COALESCE(f.points,0)::numeric AS projected,
-      CASE WHEN s.outcome='CANCELLED' THEN (SELECT COALESCE(SUM(b."feePoints"),0)::numeric FROM "Bid" b WHERE b."auctionId"=s."auctionId" AND b."userId"=m."userId") ELSE 0 END AS actual
+      CASE WHEN s.outcome='CANCELLED' AND s."ruleVersion"<>'lowest-unique-v4' THEN (SELECT COALESCE(SUM(b."feePoints"),0)::numeric FROM "Bid" b WHERE b."auctionId"=s."auctionId" AND b."userId"=m."userId") ELSE 0 END AS actual
     FROM "SettlementMovement" m JOIN "AuctionSettlement" s ON s.id=m."settlementId" LEFT JOIN LATERAL (
       SELECT SUM(-p.delta) AS points FROM "Journal" j JOIN "Posting" p ON p."journalId"=j.id
       JOIN "LedgerAccount" a ON a.id=p."accountId" AND a.kind='FEES' WHERE j."operationId"=m."refundOperationId"
-    ) f ON true WHERE COALESCE(f.points,0)<>CASE WHEN s.outcome='CANCELLED' THEN (SELECT COALESCE(SUM(b."feePoints"),0) FROM "Bid" b WHERE b."auctionId"=s."auctionId" AND b."userId"=m."userId") ELSE 0 END
+    ) f ON true WHERE COALESCE(f.points,0)<>CASE WHEN s.outcome='CANCELLED' AND s."ruleVersion"<>'lowest-unique-v4' THEN (SELECT COALESCE(SUM(b."feePoints"),0) FROM "Bid" b WHERE b."auctionId"=s."auctionId" AND b."userId"=m."userId") ELSE 0 END
     UNION ALL
-    SELECT 'SETTLEMENT' AS kind, 'settlement:' || s.id AS name, COALESCE(f.points,0)::numeric AS projected, COALESCE(s."winningPoints",0) AS actual
+    SELECT 'SETTLEMENT' AS kind, 'settlement:' || s.id AS name, COALESCE(f.points,0)::numeric AS projected, (CASE WHEN s."ruleVersion"='lowest-unique-v4' THEN 0 ELSE COALESCE(s."winningPoints",0) END) AS actual
     FROM "AuctionSettlement" s LEFT JOIN LATERAL (
       SELECT SUM(p.delta) AS points FROM "SettlementMovement" m JOIN "Journal" j ON j."operationId"=m."chargeOperationId"
       JOIN "Posting" p ON p."journalId"=j.id JOIN "LedgerAccount" a ON a.id=p."accountId" AND a.kind='SETTLEMENT' WHERE m."settlementId"=s.id
-    ) f ON true WHERE COALESCE(f.points,0)<>COALESCE(s."winningPoints",0)
+    ) f ON true WHERE COALESCE(f.points,0)<>(CASE WHEN s."ruleVersion"='lowest-unique-v4' THEN 0 ELSE COALESCE(s."winningPoints",0) END)
     ORDER BY kind, name`;
 }
