@@ -6,6 +6,13 @@ import {formatEtb} from '@/lib/money';
 type Tx=Prisma.TransactionClient;
 export const telegramKinds=['AUCTION_PUBLISHED','AUCTION_ENDING','AUCTION_RESULT','DEPOSIT_CREDITED','BROADCAST'];
 export type CampaignPayload={auctionId?:string;recipientUserId?:string;intentId?:string;body?:string;imageId?:string;href?:string;cursor?:string;audienceBefore?:string;rootKey?:string;deliveryKind?:string};
+export function broadcastRoot(row:Pick<Outbox,'kind'|'key'|'payload'>){
+ const p=row.payload as CampaignPayload;
+ if(row.kind==='GLOBAL_CAMPAIGN'&&p.deliveryKind==='BROADCAST')return p.rootKey??row.key;
+ if(row.kind==='BROADCAST')return p.rootKey??(row.key.includes(':user:')?row.key.slice(0,row.key.lastIndexOf(':user:')):null);
+ return null;
+}
+export async function broadcastStopped(tx:Tx,rootKey:string){return (await tx.outbox.findUnique({where:{key:rootKey},select:{lastError:true}}))?.lastError==='CAMPAIGN_STOPPED'}
 export async function queueGlobal(tx:Tx,key:string,kind:string,payload:CampaignPayload){
  const [{now}]=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`;
  const auction=payload.auctionId?await tx.auction.findUnique({where:{id:payload.auctionId},select:{testRunId:true}}):null;
@@ -16,11 +23,15 @@ export async function queueGlobal(tx:Tx,key:string,kind:string,payload:CampaignP
 export async function expandCampaign(tx:Tx,row:Outbox){
  const p=row.payload as CampaignPayload;
  const rootKey=p.rootKey??row.key,before=new Date(p.audienceBefore??row.createdAt.toISOString());
+ if(broadcastRoot(row)){
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`broadcast:${rootKey}`},0))`;
+  if(await broadcastStopped(tx,rootKey)){await tx.outbox.update({where:{id:row.id},data:{state:'SKIPPED',lastError:'CAMPAIGN_STOPPED'}});return 0}
+ }
  const users=await tx.user.findMany({where:{staffMember:{is:null},telegramId:{not:null},createdAt:{lte:before},...(p.cursor?{id:{gt:p.cursor}}:{})},select:{id:true},orderBy:{id:'asc'},take:250});
  const kind=row.kind==='AUCTION_FINALIZED'?'AUCTION_RESULT':p.deliveryKind;
  if(!kind||!telegramKinds.includes(kind))throw Error('Unknown campaign kind');
  const {cursor:_cursor,audienceBefore:_before,rootKey:_root,deliveryKind:_kind,...content}=p;
- if(users.length)await tx.outbox.createMany({data:users.map(user=>({key:`${rootKey}:user:${user.id}`,kind,payload:{...content,recipientUserId:user.id},testRunId:row.testRunId})),skipDuplicates:true});
+ if(users.length)await tx.outbox.createMany({data:users.map(user=>({key:`${rootKey}:user:${user.id}`,kind,payload:{...content,rootKey,recipientUserId:user.id},testRunId:row.testRunId})),skipDuplicates:true});
  if(users.length===250){const cursor=users.at(-1)!.id;await tx.outbox.upsert({where:{key:`${rootKey}:after:${cursor}`},create:{key:`${rootKey}:after:${cursor}`,kind:'GLOBAL_CAMPAIGN',payload:{...p,deliveryKind:kind,rootKey,audienceBefore:before.toISOString(),cursor},testRunId:row.testRunId},update:{}})}
  await tx.outbox.update({where:{id:row.id},data:{state:'SENT',sentAt:new Date()}});
  return users.length;

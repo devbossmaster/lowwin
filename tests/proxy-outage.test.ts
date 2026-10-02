@@ -6,7 +6,7 @@ import {proxy} from '../src/proxy';
 beforeEach(()=>{vi.clearAllMocks();access.getMiniSession.mockReset()});
 describe('private access during database outages',()=>{
   it('does not run database auth for known public assets or already guarded APIs',async()=>{
-    for(const path of ['/banner1.png','/fonts/poppins-latin-400.woff2','/api/favorites','/api/favorites/phone','/api/my-bids','/api/alerts?summary=1','/api/auctions/phone/bids','/api/payments/verify-et/webhook']){
+    for(const path of ['/banner1.png','/api/media/11111111-1111-4111-a111-111111111111','/fonts/poppins-latin-400.woff2','/api/favorites','/api/favorites/phone','/api/my-bids','/api/alerts?summary=1','/api/auctions/phone/bids','/api/payments/verify-et/webhook']){
       expect((await proxy(new NextRequest(`http://localhost${path}`))).headers.get('x-middleware-next')).toBe('1');
     }
     expect(access.getMiniSession).not.toHaveBeenCalled();

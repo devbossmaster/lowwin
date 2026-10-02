@@ -14,10 +14,10 @@ test('winners list is searchable, private and mobile-safe',async({page},info)=>{
   await expect(page.getByRole('heading',{name:'Winners & results'})).toBeVisible();
   await expect(page.getByText('Winner outcomes')).toBeVisible();
   const cards=page.locator('article');await expect(cards.first()).toBeVisible();
-  await expect(cards.first().getByText('Anonymous winner')).toBeVisible();
+  await expect(cards.first().getByText('Illustrative winner')).toBeVisible();
   await expect(cards.first().getByText(/ETB \d+\.00/)).toBeVisible();
-  await expect(cards.first().getByText('DEMO · no real bids')).toBeVisible();
-  await expect(cards.first().getByRole('link',{name:'View results'})).toHaveAttribute('href',/\/winners\/DEMO-/);
+  await expect(cards.first().getByText('DEMO',{exact:true})).toBeVisible();
+  await expect(cards.first().getByRole('link',{name:/View results/i})).toHaveAttribute('href',/^\/auctions\/\d+$/);
   const text=await page.locator('main').innerText();expect(text).not.toMatch(/\b0\d{2,}\*+\d+\b/);
   await page.locator('main').screenshot({path:`docs/screenshots/winners-${info.project.name}.png`});
   await page.getByRole('link',{name:'No winner'}).click();

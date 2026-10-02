@@ -35,6 +35,8 @@ describe.skipIf(!url)('Phase 4B public outcomes and private pages on PostgreSQL'
     execFileSync(process.execPath,['node_modules/prisma/build/index.js','migrate','deploy'],{env:process.env,stdio:'pipe'});client=new PrismaClient();await seedCatalog(client);
     examples=JSON.stringify(await client.publicAuctionResult.findMany({orderBy:{auctionId:'asc'}}),(_key,value)=>typeof value==='bigint'?value.toString():value);
     first=await signIn();second=await signIn();
+    await client.user.update({where:{id:first.id},data:{name:'Elias Winner'}});
+    await client.user.update({where:{id:second.id},data:{name:'Other bidder private'}});
     for(const user of [first,second])await creditDevelopmentPoints(client,user.id,'1000',randomUUID());
     winner=await bidAuction(client,{fee:2,endDelayMs:1800});noWinner=await bidAuction(client,{fee:3,endDelayMs:1800});cancelled=await bidAuction(client,{fee:4});pending=await bidAuction(client,{endDelayMs:-1000});live=await bidAuction(client,{fee:1});
     await bid(first.id,winner,2);await bid(first.id,winner,20);await bid(second.id,winner,10);
@@ -47,7 +49,7 @@ describe.skipIf(!url)('Phase 4B public outcomes and private pages on PostgreSQL'
   },60000);
   afterAll(async()=>{await client?.$disconnect();const {db}=await import('../src/lib/db');await db.$disconnect()});
   it('projects settled, cancelled, no-winner and pending outcomes without guessing',async()=>{
-    expect((await getPublicResult(client,publicCode(winner)))?.result).toMatchObject({outcome:'WINNER',winningPoints:'2',source:'SETTLED',winnerDisplay:'Anonymous winner',demoLabel:'DEMO · settled test'});
+    expect((await getPublicResult(client,publicCode(winner)))?.result).toMatchObject({outcome:'WINNER',winningPoints:'2',source:'SETTLED',winnerDisplay:'Elias Winner',winnerPhoneMasked:`********${String(first.telegramId).slice(-2)}`,demoLabel:'DEMO · settled test'});
     expect((await getPublicResult(client,noWinner.code))?.result).toMatchObject({outcome:'NO_WINNER',winningPoints:null});
     expect((await getPublicResult(client,cancelled.code))?.result).toMatchObject({outcome:'CANCELLED',winningPoints:null});
     expect(await getPublicResult(client,pending.code)).toMatchObject({status:'closing',result:null});
@@ -55,22 +57,34 @@ describe.skipIf(!url)('Phase 4B public outcomes and private pages on PostgreSQL'
   });
   it('retains illustrative records unchanged and distinguishes both DEMO sources',async()=>{
     const row=await client.publicAuctionResult.findFirstOrThrow({include:{auction:{select:{code:true}}}});
-    expect((await getPublicResult(client,row.auction.code))?.result).toMatchObject({source:'ILLUSTRATIVE',demoLabel:'DEMO example',winnerDisplay:'Anonymous winner'});
+    expect((await getPublicResult(client,row.auction.code))?.result).toMatchObject({source:'ILLUSTRATIVE',demoLabel:'DEMO example',winnerDisplay:null,winnerPhoneMasked:null});
     expect(JSON.stringify(await client.publicAuctionResult.findMany({orderBy:{auctionId:'asc'}}),(_key,value)=>typeof value==='bigint'?value.toString():value)).toBe(examples);
   });
-  it('uses an exact public response allowlist and never leaks private proof or identities',async()=>{
+  it('shows only the winner name and masked phone, without private proof or other bidders',async()=>{
     const route=await import('../src/app/api/results/[auctionCode]/route');
     const response=await route.GET(request(`/api/results/${publicCode(winner)}`),{params:Promise.resolve({auctionCode:publicCode(winner)})});
     expect(response.status).toBe(200);expect(response.headers.get('cache-control')).toContain('no-store');const body=await response.json();
     expect(Object.keys(body).sort()).toEqual(['slug','code','status','featured','isDemo','startsAt','endsAt','bidCount','viewCount','product','category','fulfillment','terms','result'].sort());
-    expect(Object.keys(body.result).sort()).toEqual(['decision','outcome','winningPoints','explanation','isDemo','closedAt','source','demoLabel','winnerDisplay','acceptedBidCount'].sort());
+    expect(Object.keys(body.result).sort()).toEqual(['decision','outcome','winningPoints','explanation','isDemo','closedAt','source','demoLabel','winnerDisplay','winnerPhoneMasked','acceptedBidCount'].sort());
     const settlement=await client.auctionSettlement.findUniqueOrThrow({where:{auctionId:winner.id},include:{movements:true}});
     expect(settlement.proof).toHaveProperty('amountFrequencies');
     const serialized=JSON.stringify(body);
-    for(const secret of [first.id,second.id,String(first.telegramId),'Private secret name',settlement.id,settlement.winningBidId!,...settlement.movements.map(m=>m.id)])expect(serialized).not.toContain(secret);
-    expect(serialized).not.toMatch(/amountFrequencies|acceptedCount|winnerUserId|winningBidId|proof|transactionId|settlementId|telegramId|phone|contact|operationId|journalId|movements/);
+    expect(body.result.winnerDisplay).toBe('Elias Winner');
+    expect(body.result.winnerPhoneMasked).toMatch(/^\*{8}\d{2}$/);
+    for(const secret of ['Other bidder private',first.id,second.id,String(first.telegramId),'Private secret name',settlement.id,settlement.winningBidId!,...settlement.movements.map(m=>m.id)])expect(serialized).not.toContain(secret);
+    expect(serialized).not.toMatch(/amountFrequencies|acceptedCount|winnerUserId|winningBidId|proof|transactionId|settlementId|telegramId|phoneCipher|lastFour|contact|operationId|journalId|movements/);
     const catalog=await import('../src/modules/auctions/catalog');
     expect(JSON.stringify(await catalog.getAuction(winner.slug!))).not.toMatch(/amountFrequencies|winnerUserId|winningBidId|proof|movements/);
+  });
+  it('hides revoked or malformed contact suffixes',async()=>{
+    const before=await client.telegramOwnContact.findUniqueOrThrow({where:{userId:first.id}});
+    try{
+      await client.telegramOwnContact.update({where:{userId:first.id},data:{revokedAt:new Date()}});
+      expect((await getPublicResult(client,publicCode(winner)))?.result).toMatchObject({winnerDisplay:'Elias Winner',winnerPhoneMasked:null});
+      await expect(client.telegramOwnContact.update({where:{userId:first.id},data:{revokedAt:null,lastFour:'bad!'}})).rejects.toThrow('TelegramOwnContact_lastFour_check');
+    }finally{
+      await client.telegramOwnContact.update({where:{userId:first.id},data:{revokedAt:before.revokedAt,lastFour:before.lastFour}});
+    }
   });
   it('records aggregate views without accepting or storing viewer identity',async()=>{
     const route=await import('../src/app/api/catalog/auctions/[slug]/view/route');
@@ -109,6 +123,8 @@ describe.skipIf(!url)('Phase 4B public outcomes and private pages on PostgreSQL'
   it('returns real profile, wins and reconciled wallet counts with pending fulfillment',async()=>{
     expect(await getPlayerProfile(client,first.id)).toMatchObject({counts:{bids:5,liveBids:1,historyBids:4,wins:1,favorites:0},wallet:{available:'960',held:'30'}});
     const wins=await getPersonalWins(client,first.id);expect(wins.total).toBe(1);expect(wins.items[0]).toMatchObject({code:publicCode(winner),winningPoints:'2',fulfillment:'Pending',isDemo:true});expect((await getPersonalWins(client,second.id)).total).toBe(0);
+    const winningBid=(await getPersonalBids(client,first.id)).items.find(item=>item.outcome==='WON')!;
+    expect(wins.items[0]).toMatchObject({bidId:winningBid.id,views:winningBid.auction.views,titleAm:winningBid.auction.titleAm});
     const route=await import('../src/app/api/wallet/route');const response=await route.GET(request('/api/wallet',first.cookie)),wallet=await response.json();expect(wallet.wallet).toEqual({available:'960',held:'30'});expect(wallet.activity.find((row:{kind:string})=>row.kind==='AUCTION_FEE_REFUND')).toMatchObject({availableDelta:'4',heldDelta:'0'});
     expect(await reconcile(client)).toEqual([]);
   });

@@ -1,6 +1,6 @@
 import {expect,test} from '@playwright/test';
 
-test('shared header and Home hero use the forest-green surface without mobile overflow',async({page},info)=>{
+test('shared header and Home hero use the neon-green surface without mobile overflow',async({page},info)=>{
   await page.route('https://telegram.org/**',route=>route.fulfill({body:''}));
   await page.route('**/api/onboarding/contact',route=>route.fulfill({json:{verified:true}}));
   await page.route('**/api/me',route=>route.fulfill({json:{user:{id:'forest-green-fixture',name:'Tester'},wallet:{available:'750',held:'10',demo:true}}}));
@@ -8,9 +8,9 @@ test('shared header and Home hero use the forest-green surface without mobile ov
   await page.goto('/');
   const header=page.getByRole('banner',{name:'Mini App header'});
   const banner=page.getByRole('link',{name:'Explore Lowwin auctions',exact:true});
-  await expect(header).toHaveCSS('background-color','rgb(21, 128, 61)');
+  await expect(header).toHaveCSS('background-color','rgb(11, 218, 81)');
   await expect(banner).toBeVisible();
-  expect(await banner.evaluate(node=>getComputedStyle(node.parentElement!).backgroundColor)).toBe('rgb(21, 128, 61)');
+  expect(await banner.evaluate(node=>getComputedStyle(node.parentElement!).backgroundColor)).toBe('rgb(11, 218, 81)');
   const language=header.getByRole('button',{name:'Language'});
   await language.click();
   await expect(header.getByRole('menuitemradio')).toHaveText(['En','አማ']);
@@ -22,8 +22,8 @@ test('shared header and Home hero use the forest-green surface without mobile ov
   await page.screenshot({path:`docs/screenshots/home-forest-green-${info.project.name}.png`});
   const footer=page.locator('.page-footer');
   await footer.scrollIntoViewIfNeeded();
-  await expect(footer).toHaveCSS('background-color','rgb(21, 128, 61)');
-  await expect(footer).toHaveCSS('color','rgb(255, 255, 255)');
+  await expect(footer).toHaveCSS('background-color','rgb(11, 218, 81)');
+  await expect(footer).toHaveCSS('color','rgb(23, 36, 18)');
   await expect(footer.getByRole('img',{name:'Lowwin'})).toHaveAttribute('src','/logo.png?v=forest-1');
   await expect(page.getByText(/signed in/i)).toHaveCount(0);
   await expect(page.locator('#player-stories')).toHaveText('ጨረታ ቀላል ሆነ');

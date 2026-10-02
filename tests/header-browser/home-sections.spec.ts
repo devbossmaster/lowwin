@@ -22,8 +22,8 @@ test('ending, closed, how-it-works and player stories stay mobile-safe',async({p
   const closed=page.getByLabel('Closed auctions');
   await closed.scrollIntoViewIfNeeded();
   await expect(closed.getByText('DEMO example')).toBeVisible();
-  await expect(closed.getByText('Anonymous winner')).toBeVisible();
-  await expect(closed.getByText('DEMO · no real bids')).toBeVisible();
+  await expect(closed.getByText('Illustrative winner')).toBeVisible();
+  await expect(closed.getByText('DEMO',{exact:true})).toBeVisible();
   await expect(closed.getByRole('link',{name:'View results'})).toBeVisible();
   await expect.poll(()=>viewPosts,{timeout:4000}).toBeGreaterThan(0);
   await expect(closed.getByText(/1 view$/)).toBeVisible();

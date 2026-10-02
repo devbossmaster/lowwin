@@ -39,7 +39,7 @@ test('401 recovery requires a fresh launch and never opens protected content',as
  await page.route('**/api/auth/telegram/miniapp/signin',r=>{attempts++;return r.fulfill({status:401,json:{error:'Launch could not be verified'}})});
  await page.goto('/telegram');
  await expect(page.getByRole('heading',{name:'Reopen Lowwin'})).toBeVisible();
- await expect(page.locator('main')).toHaveCSS('background-color','rgb(21, 128, 61)');
+ await expect(page.locator('main')).toHaveCSS('background-color','rgb(11, 218, 81)');
  await expect(page.getByRole('img',{name:'Lowwin'})).toBeVisible();await expect.poll(()=>page.getByRole('img',{name:'Lowwin'}).evaluate((img:HTMLImageElement)=>img.complete&&img.naturalWidth>0)).toBe(true);
  await expect(page.locator('main [role="alert"]')).toHaveText('Your Telegram launch could not be verified. Open the bot, then tap Open Lowwin to start again.');
  await expect(page.getByText('Your Mini App.')).toHaveCount(0);

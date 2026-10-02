@@ -9,9 +9,19 @@ import type {listQuickLiveAuctions} from '@/modules/auctions/catalog';
 import {AuctionCountdown} from './auction-countdown';
 import {CatalogImage} from './catalog-image';
 import {MiniPhrase,useMiniLocale} from './mini-locale';
+import {useAuctionActivity} from './auction-activity';
 import styles from './header-panels.module.css';
 
 type AuctionList=Awaited<ReturnType<typeof listQuickLiveAuctions>>;
+function QuickAuction({item,serverNow,onClose}:{item:AuctionList['items'][number];serverNow:string;onClose:()=>void}){
+ const {language}=useMiniLocale(),am=language==='am',ref=useRef<HTMLElement>(null);
+ const {activity,refreshActivity}=useAuctionActivity(item.code,{element:ref});
+ const title=am?(item.product.titleAm?.trim()||item.product.title):item.product.title,bids=activity?.bids??item.bidCount,ended=activity&&activity.status!=='live';
+ return <article className={styles.auction} key={item.slug} ref={ref}>
+  <Link href={`/auctions/${item.code}`} prefetch={false} className={styles.auctionImage} onClick={onClose} aria-label={title}><CatalogImage src={item.product.images[0]?.path} alt=""/><span>{bids.toLocaleString()}</span></Link>
+  <div className={styles.auctionContent}><h3><Link href={`/auctions/${item.code}`} prefetch={false} onClick={onClose}>{title}</Link></h3><p className={styles.auctionMeta}><Gavel size={14} aria-hidden="true"/>{bids.toLocaleString()} <MiniPhrase en="bids" am="ጨረታዎች"/>{item.isDemo?' · DEMO':''}</p><div className={styles.auctionBottom}><span className={styles.timer}><Clock3 size={14} aria-hidden="true"/><AuctionCountdown target={activity?.endsAt??item.endsAt} serverNow={serverNow} label="Ends" showLabel={false} onElapsed={refreshActivity}/></span><Link className={styles.bidLink} href={`/auctions/${item.code}`} prefetch={false} onClick={onClose}><Gavel size={14} aria-hidden="true"/><MiniPhrase en={ended?'View results':'Bid now'} am={ended?'ውጤቱን ይመልከቱ':'አሁን ይጫረቱ'}/></Link></div></div>
+ </article>;
+}
 export function AuctionQuickList({className}:{className?:string}){
  const {language}=useMiniLocale(),am=language==='am',path=usePathname(),id=useId();
  const [open,setOpen]=useState(false),[page,setPage]=useState(1),[revision,setRevision]=useState(0),[data,setData]=useState<AuctionList|null>(null),[count,setCount]=useState<number|null>(null),[loading,setLoading]=useState(false),[error,setError]=useState('');
@@ -49,11 +59,12 @@ export function AuctionQuickList({className}:{className?:string}){
  const refresh=()=>{setData(null);setPage(1);setRevision(value=>value+1)};
  return <div>
   <button ref={trigger} className={`${styles.trigger} ${className??''}`} type="button" aria-label={`${am?'ያሉ ጨረታዎች':'Available auctions'}${count!==null?` (${count})`:''}`} aria-haspopup="dialog" aria-expanded={open} aria-controls={id} onClick={()=>{refresh();setOpen(true)}}><Gavel size={21} aria-hidden="true"/>{count!==null&&<span className={styles.badge} aria-hidden="true">{count>99?'99+':count}</span>}</button>
-  <dialog ref={dialog} id={id} className={styles.dialog} aria-labelledby={`${id}-title`} onCancel={()=>setOpen(false)} onClose={()=>{setOpen(false);trigger.current?.focus()}} onClick={event=>{if(event.target===event.currentTarget){const bounds=event.currentTarget.getBoundingClientRect();if(event.clientX<bounds.left||event.clientX>bounds.right||event.clientY<bounds.top||event.clientY>bounds.bottom)setOpen(false)}}}>
-   <header className={styles.heading}><div><h2 id={`${id}-title`}>{data&&<span className={styles.total}>{data.total}</span>}<MiniPhrase en="Available auctions" am="ያሉ ጨረታዎች"/></h2><small><MiniPhrase en="Newest first" am="አዲሶቹ በመጀመሪያ"/></small></div><div className={styles.headingActions}><button type="button" className={styles.iconButton} aria-label="Refresh auctions" disabled={loading} onClick={refresh}><RefreshCw size={18}/></button><button type="button" className={styles.iconButton} aria-label="Close auctions" onClick={()=>setOpen(false)}><X size={21}/></button></div></header>
+  <dialog ref={dialog} id={id} className={styles.dialog} aria-labelledby={`${id}-title`} onCancel={()=>setOpen(false)} onClose={()=>{setOpen(false);trigger.current?.focus()}}>
+   <div className={styles.closeBar}><button type="button" className={styles.iconButton} aria-label="Close auctions" onClick={()=>setOpen(false)}><X size={22}/></button></div>
+   <header className={`${styles.heading} ${styles.auctionHeading}`}>{data?<span className={styles.total}>{data.total}</span>:<span/>}<h2 id={`${id}-title`}><MiniPhrase en="Available auctions" am="ያሉ ጨረታዎች"/></h2><button type="button" className={`${styles.iconButton} ${styles.refreshButton}`} aria-label="Refresh auctions" disabled={loading} onClick={refresh}><RefreshCw size={18}/></button></header>
    <div className={styles.scroll}>
     {data&&data.items.length===0&&<p className={styles.message}><MiniPhrase en="No live auctions right now." am="በአሁኑ ጊዜ በሂደት ላይ ያሉ ጨረታዎች የሉም።"/></p>}
-    {!!data?.items.length&&<div className={styles.auctionList}>{data.items.map(item=>{const title=am?(item.product.titleAm?.trim()||item.product.title):item.product.title;return <article className={styles.auction} key={item.slug}><Link href={`/auctions/${item.code}`} prefetch={false} className={styles.auctionImage} onClick={()=>setOpen(false)} aria-label={title}><CatalogImage src={item.product.images[0]?.path} alt=""/><span>#{item.code}</span></Link><div className={styles.auctionContent}><h3><Link href={`/auctions/${item.code}`} prefetch={false} onClick={()=>setOpen(false)}>{title}</Link></h3><p className={styles.auctionMeta}><Gavel size={13} aria-hidden="true"/>{item.bidCount.toLocaleString()} <MiniPhrase en="bids" am="ጨረታዎች"/>{item.isDemo?' · DEMO':''}</p><div className={styles.auctionBottom}><span className={styles.timer}><Clock3 size={13} aria-hidden="true"/><AuctionCountdown target={item.endsAt} serverNow={data.serverNow} label="Ends"/></span><Link className={styles.bidLink} href={`/auctions/${item.code}`} prefetch={false} onClick={()=>setOpen(false)}><Gavel size={13} aria-hidden="true"/><MiniPhrase en="Bid now" am="አሁን ይጫረቱ"/></Link></div></div></article>})}</div>}
+    {open&&!!data?.items.length&&<div className={styles.auctionList}>{data.items.map(item=><QuickAuction key={item.slug} item={item} serverNow={data.serverNow} onClose={()=>setOpen(false)}/>)}</div>}
     {loading&&<p className={styles.message} role="status"><LoadingSpinner/></p>}
     {error&&<div className={styles.message} role="alert">{error}<button type="button" className={styles.retry} onClick={()=>setRevision(value=>value+1)}><MiniPhrase en="Retry" am="እንደገና ይሞክሩ"/></button></div>}
     {data&&data.page<data.totalPages&&!error&&<button type="button" className={`${styles.retry} ${styles.loadMore}`} disabled={loading} onClick={()=>setPage(value=>value+1)}><MiniPhrase en="Show more auctions" am="ተጨማሪ ጨረታዎችን ያሳዩ"/></button>}

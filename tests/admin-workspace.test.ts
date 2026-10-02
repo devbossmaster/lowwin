@@ -12,6 +12,7 @@ describe('Admin workspace contracts',()=>{
   expect(auctionStatusWhere('LIVE',new Date())).toMatchObject({testRunId:null});
  });
  it('lands every staff role on its first authorized task',()=>{
+  expect(allowedTasks('OWNER').some(t=>t.href==='/admin/content')).toBe(false);
   expect(areaLanding('OWNER','Auctions')).toBe('/admin/auctions');
   expect(areaLanding('CATALOG_MANAGER','Auctions')).toBe('/admin/auctions');
   expect(areaLanding('SUPPORT','People')).toBe('/admin/support');
@@ -24,7 +25,7 @@ describe('Admin workspace contracts',()=>{
  });
  it('matches deep routes before their parent',()=>{
   expect(activeTask('/admin/settings/payments').area).toBe('Money');
-  expect(activeTask('/admin/top-ups/statements').label).toBe('Bank statements');
+  expect(allowedTasks('OWNER').filter(t=>t.area==='Money').map(t=>t.label)).toEqual(['Deposits','Receiving accounts']);
   expect(activeTask('/admin/top-ups/example').label).toBe('Deposits');
   expect(activeTask('/admin/auctions/example/proof').label).toBe('Results');
  });

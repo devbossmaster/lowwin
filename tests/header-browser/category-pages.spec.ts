@@ -16,8 +16,8 @@ test('category routes show live, upcoming and closed auctions with numeric codes
  await expect(page.getByRole('heading',{name:'Closed auctions'})).toBeVisible();
  const code=page.getByText('Auction code').locator('..').locator('strong').first();
  if(await code.count())await expect(code).toHaveText(/^\d+$/);
- const result=page.locator('a[href^="/winners/"]').first();
- if(await result.count())await expect(result).toHaveAttribute('href',/^\/winners\/\d+$/);
+ const auctionLink=page.locator('a[href^="/auctions/"]').filter({has:page.locator('img')}).first();
+ if(await auctionLink.count())await expect(auctionLink).toHaveAttribute('href',/^\/auctions\/\d+$/);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.screenshot({path:`docs/screenshots/category-watches-${info.project.name}.png`,fullPage:true});
 });

@@ -1,4 +1,7 @@
 'use client';
+import {AdminResults,AdminResultDetail} from './admin-results';
+import {AdminPeople} from './admin-people';
+import {AdminMessages} from './admin-messages';
 import {useAdminAccess} from './admin-shell';
 import {AdminStaffPicker} from './admin-staff-picker';
 import {Status,statusLabel,eat,Evidence,useQueueParams,MfaStepUp,useAdminRead,ErrorNotice} from './admin-ui';
@@ -8,14 +11,14 @@ import {PageLoading} from '@/components/loading-spinner';
 
 import {useEffect,useState,useRef} from 'react';
 import Link from 'next/link';
-import {SettlementEvidence} from './admin-workspace';
+
 import {staffRequest} from './staff-login';
 type Row=Record<string,any>;
 const labels:Record<string,string>={users:'Players',support:'Support',results:'Results',fulfillment:'Deliveries',wallets:'Player balances',notifications:'Messages',jobs:'Message delivery',analytics:'Business summary',audit:'Staff activity',team:'Team access',settings:'Workspace information'};
 const roles=['OWNER','CATALOG_MANAGER','SUPPORT','FULFILLMENT','PAYMENTS_OPERATOR','AUDITOR'];
 async function api(path:string,body?:unknown){const r=await fetch(`/api/admin/${path}`,{cache:'no-store',...(body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{})});const d=await r.json();if(!r.ok)throw Error(d.error);return d}
 function Field({label,name,value='',required=true}:{label:string;name:string;value?:string;required?:boolean}){return <label>{label}<input name={name} defaultValue={value} required={required}/></label>}
-export function AdminOperations({path}:{path:string[]}){const section=path[0],me=useAdminAccess(),queue=useQueueParams(),page=queue.page,q=queue.params.get('q')??'',status=queue.params.get('status')??'',setPage=(p:number)=>queue.set({page:String(p)}),setQ=(q:string)=>queue.set({q,page:'1'}),setStatus=(status:string)=>queue.set({status,page:'1'}),[tab,setTab]=useState('compose'),[data,setData]=useState<Row|null>(null),[from,setFrom]=useState(''),[to,setTo]=useState(''),[revision,setRevision]=useState(0),[error,setError]=useState(''),[message,setMessage]=useState(''),[selected,setSelected]=useState<Row|null>(null),[contact,setContact]=useState<Row|null>(null),[busy,setBusy]=useState(false),[key,setKey]=useState(''),pending=useRef(false);
+function LegacyAdminOperations({path}:{path:string[]}){const section=path[0],me=useAdminAccess(),queue=useQueueParams(),page=queue.page,q=queue.params.get('q')??'',status=queue.params.get('status')??'',setPage=(p:number)=>queue.set({page:String(p)}),setQ=(q:string)=>queue.set({q,page:'1'}),setStatus=(status:string)=>queue.set({status,page:'1'}),[tab,setTab]=useState('compose'),[data,setData]=useState<Row|null>(null),[from,setFrom]=useState(''),[to,setTo]=useState(''),[revision,setRevision]=useState(0),[error,setError]=useState(''),[message,setMessage]=useState(''),[selected,setSelected]=useState<Row|null>(null),[contact,setContact]=useState<Row|null>(null),[busy,setBusy]=useState(false),[key,setKey]=useState(''),pending=useRef(false);
 useEffect(()=>{setData(null);setError('');setSelected(null);setContact(null);setKey(crypto.randomUUID());let active=true;api(`${path.join('/')}?${new URLSearchParams({page:String(page),q,status,from,to})}`).then(d=>{if(active)setData(d)}).catch(e=>active&&setError(e.message));return()=>{active=false}},[path.join('/'),page,q,status,revision,from,to]);
 async function command(action:string,input:Row){if(pending.current)return;pending.current=true;setBusy(true);setError('');try{await api('command',{action,input:{...input,key}});setMessage('Saved and audited.');setRevision(v=>v+1)}catch(e){setError((e as Error).message)}finally{pending.current=false;setBusy(false)}}
 const rowName=(r:Row)=>r.auction?.code??r.subject??r.user?.email??r.user?.name??r.name??(r.kind?statusLabel(r.kind):null)??(r.action?statusLabel(r.action):null)??r.id??r.userId;
@@ -33,4 +36,6 @@ return <><header className="admin-page-head"><div><h1>{labels[section]}</h1><p>{
 </>}
 
 function AuditDetails({id}:{id:string}){const q=useAdminRead<Row>('audit/'+id);return <section className="admin-panel"><h2>Recorded staff action</h2><ErrorNotice error={q.error} retry={q.reload}/>{q.loading&&!q.data&&<PageLoading/>}{q.data&&<><dl className="admin-facts"><div><dt>Staff member</dt><dd>{q.data.actorLabel}</dd></div><div><dt>Action</dt><dd>{statusLabel(q.data.action)}</dd></div><div><dt>Time</dt><dd>{eat(q.data.createdAt)}</dd></div><div><dt>Reason</dt><dd>{q.data.details.reason}</dd></div></dl><Evidence><p>Record: {q.data.id}</p><p>Target: {q.data.target}</p></Evidence></>}</section>}
-export function AdminProof({auctionId}:{auctionId:string}){const q=useAdminRead<Row>(`auctions/${auctionId}/proof`);return <><h1>Post-close evidence</h1><ErrorNotice error={q.error} retry={q.reload}/>{q.loading&&!q.data&&<PageLoading/>}{q.data&&<SettlementEvidence data={q.data}/>}</>}
+export function AdminProof({auctionId}:{auctionId:string}){return <AdminResultDetail auctionId={auctionId}/>;}
+
+export function AdminOperations({path}:{path:string[]}){return path[0]==='results'?<AdminResults/>:['users','support','fulfillment'].includes(path[0])?<AdminPeople section={path[0] as 'users'|'support'|'fulfillment'}/>:path[0]==='notifications'?<AdminMessages/>:<LegacyAdminOperations path={path}/>;}

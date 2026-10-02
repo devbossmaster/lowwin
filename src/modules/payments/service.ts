@@ -1,4 +1,5 @@
 import {materializeAlert} from '../notifications/service';
+import {customerDepositFailures,depositFailureMessages} from '@/lib/deposit-outcome';
 import {assertPlayerContact} from '../auth/own-contact';
 import {liveFundingConfigured} from './activation';
 import {randomUUID} from 'node:crypto';
@@ -21,7 +22,7 @@ const int=z.string().regex(/^[1-9]\d{0,10}$/);
 const createSchema=z.object({key:z.string().uuid(),channel:bankSchema,policyId:z.string().uuid(),amountCents:int}).strict();
 const receiptCreateSchema=z.object({key:z.string().uuid(),channel:bankSchema,policyId:z.string().uuid(),input:z.string().min(1).max(4000).optional()}).strict();
 async function existingDeposit(tx:Tx,userId:string,channel:string,reference:string){
- const claim=await tx.paymentClaim.findUnique({where:{channel_reference:{channel,reference}}});
+ const claim=await usedTransfer(tx,channel,reference);
  if(claim?.userId===userId)return tx.topUpIntent.findUnique({where:{id:claim.intentId}});
  return tx.topUpIntent.findFirst({where:{userId,provider:{in:['CHECK_ET','VERIFY_ET']},channel,reference},orderBy:[{createdAt:'asc'},{id:'asc'}]});
 }
@@ -33,7 +34,7 @@ export async function createIntent(client:PrismaClient,userId:string,raw:unknown
  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`},0))`;await eligibility(tx,userId);
  const prior=await tx.topUpIntent.findUnique({where:{userId_key:{userId,key:body.key}}});if(prior){if(prior.requestHash!==fingerprint)throw new PaymentError(409,'Idempotency key changed.');return ownIntent(prior)}
  const reference=fromReceipt&&'input' in body&&body.input?candidate(body.channel,body.input):undefined;
- if(reference){await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`payment-submit:${userId}:${body.channel}:${reference}`},0))`;const existing=await existingDeposit(tx,userId,body.channel,reference);if(existing)return {...ownIntent(existing),reused:true}}
+ if(reference){await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`payment-submit:${userId}:${body.channel}:${reference}`},0))`;const used=await usedTransfer(tx,body.channel,reference);if(used&&used.userId!==userId)throw new PaymentError(409,depositFailureMessages.DUPLICATE_CONFLICT);const existing=await existingDeposit(tx,userId,body.channel,reference);if(existing)return {...ownIntent(existing),reused:true}}
  const now=await clock(tx);if(await tx.topUpIntent.count({where:{userId,createdAt:{gte:new Date(now.getTime()-3600000)}}})>=8)throw new PaymentError(429,'Too many funding requests. Try later.');
  const policy=await tx.paymentPolicy.findFirst({where:{channel:body.channel},orderBy:{version:'desc'}});if(!policy?.enabled||policy.id!==body.policyId)throw new PaymentError(409,'The quote changed or channel is paused. Review the latest terms.');
  if(policy.pointsNumerator*100n!==policy.centsDenominator)throw new PaymentError(409,'This quote uses an old conversion rate. Ask an Owner to publish the ETB 1:1 quote.');
@@ -46,6 +47,9 @@ export async function createIntent(client:PrismaClient,userId:string,raw:unknown
 export async function verifyIntent(client:PrismaClient,userId:string,raw:unknown,transport:VerifyTransport=submitVerify,reauthorize?:(tx:Tx)=>Promise<void>,adminRecovery=false,staffRetry=false){
  return verifyQueuedIntent(client,userId,raw,transport,reauthorize,adminRecovery,staffRetry);
 }
+async function usedTransfer(tx:Tx,channel:string,reference:string){
+ return await tx.paymentClaim.findUnique({where:{channel_reference:{channel,reference}}})??(await tx.paymentTransferAlias.findUnique({where:{channel_alias:{channel,alias:reference}},include:{claim:true}}))?.claim??null;
+}
 const verifyImageSchema=z.object({id:z.string().uuid(),key:z.string().uuid()}).strict();
 export async function verifyIntentImage(client:PrismaClient,userId:string,raw:unknown,image:Buffer,mime:ImageVerificationInput['mime'],transport=submitVerifyImage,reauthorize?:(tx:Tx)=>Promise<void>){
  requireEnabled();const body=verifyImageSchema.parse(raw);
@@ -57,7 +61,8 @@ export async function verifyIntentImage(client:PrismaClient,userId:string,raw:un
   const prior=await tx.verifyRequest.findUnique({where:{key:body.key}});if(prior){if(prior.intentId!==t.id)throw new PaymentError(409,'Idempotency key changed.');return {receipt:ownIntent(t)}}
   if(t.reference)throw new PaymentError(409,'This deposit already has a transaction ID. Check that payment instead.');
   const active=await tx.verifyRequest.findFirst({where:{intentId:t.id,state:{in:['SUBMITTING','PROCESSING']}},orderBy:{createdAt:'desc'}});if(active)return {receipt:ownIntent(t)};
-  const now=await clock(tx);if(protectedPayment(t))throw new PaymentError(409,'This deposit is protected or rejected. Contact support.');
+  const now=await clock(tx);if(t.status==='REJECTED'&&customerDepositFailures.has(t.reasonCode??''))return {receipt:ownIntent(t)};
+  if(protectedPayment(t))throw new PaymentError(409,'This deposit is protected or rejected. Contact support.');
   if(!t.expiresAt||now.getTime()>t.expiresAt.getTime()+RECOVERY_WINDOW_MS)throw new PaymentError(409,'The recovery window ended. Contact support with this deposit ID.');
   if(t.scanAttempts>=3||t.attempts>=CUSTOMER_ATTEMPTS)throw new PaymentError(409,'Image verification needs operator review.');
   if(t.nextAttemptAt>now)throw new PaymentError(429,'Verification is pending. Wait before retrying.');
@@ -94,6 +99,7 @@ async function verifyQueuedIntent(client:PrismaClient,userId:string,raw:unknown,
   const active=await tx.verifyRequest.findFirst({where:{intentId:t.id,state:{in:['SUBMITTING','PROCESSING']}},orderBy:{createdAt:'desc'}});
   if(active)return {receipt:ownIntent(t)};
   const now=await clock(tx);
+  if(t.status==='REJECTED'&&customerDepositFailures.has(t.reasonCode??''))return {receipt:ownIntent(t)};
   if(protectedPayment(t))throw new PaymentError(409,'This deposit is protected or rejected. Contact support.');
   if(!t.expiresAt||now.getTime()>t.expiresAt.getTime()+RECOVERY_WINDOW_MS)throw new PaymentError(409,'The recovery window ended. Contact support with this deposit ID.');
   if(t.attempts>=(adminRecovery||staffRetry?STAFF_ATTEMPTS:CUSTOMER_ATTEMPTS))throw new PaymentError(409,'Verification needs operator review.');
@@ -101,8 +107,12 @@ async function verifyQueuedIntent(client:PrismaClient,userId:string,raw:unknown,
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`payment-submit:${userId}:${t.channel}:${reference}`},0))`;
   const existing=await existingDeposit(tx,userId,t.channel,reference);
   if(existing&&existing.id!==t.id){if(!t.reference&&t.attempts===0)await tx.topUpIntent.update({where:{id:t.id},data:{status:'REJECTED',reasonCode:'DUPLICATE_REQUEST',caseState:'ARCHIVED'}});return {receipt:{...ownIntent(existing),reused:true}}}
-  const claim=await tx.paymentClaim.findUnique({where:{channel_reference:{channel:t.channel,reference}}});
-  if(claim){if(claim.userId===userId)return {receipt:{...ownIntent(await tx.topUpIntent.findUniqueOrThrow({where:{id:claim.intentId}})),reused:true}};throw new PaymentError(409,'This transfer was already credited.')}
+  const claim=await usedTransfer(tx,t.channel,reference);
+  if(claim){if(claim.userId===userId)return {receipt:{...ownIntent(await tx.topUpIntent.findUniqueOrThrow({where:{id:claim.intentId}})),reused:true}};
+   const updated=await tx.topUpIntent.update({where:{id:t.id},data:{reference,status:'REJECTED',reasonCode:'DUPLICATE_CONFLICT',caseState:'RESOLVED',assignedTo:null}});
+   await tx.paymentAttempt.create({data:{intentId:t.id,key:body.key,requestHash:fingerprint,code:'DUPLICATE_CONFLICT',evidence:{result:attemptResult(ownIntent(updated))}}});
+   return {receipt:ownIntent(updated)};
+  }
   await eligibility(tx,userId);if(reauthorize)await reauthorize(tx);
   const request=await tx.verifyRequest.create({data:{intentId:t.id,key:body.key,reference,state:'SUBMITTING',nextCheckAt:new Date(now.getTime()+60000)}});
   const current=await tx.topUpIntent.update({where:{id:t.id},data:{status:'VERIFYING',reasonCode:'PROCESSING',reference,attempts:{increment:1},nextAttemptAt:new Date(now.getTime()+5000)}});
@@ -159,8 +169,9 @@ async function completeVerifyRequest(client:PrismaClient,id:string,verified:Veri
    const claim=await tx.paymentClaim.create({data:{channel,reference:request.reference,intentId:t.id,userId:t.userId,amountCents:amount!,points,receiverSuffix:verified.evidence.receiverSuffix!,transferredAt:new Date(verified.evidence.date!),operationId:operation.id,journalId,evidenceHash:verified.evidence.hash!}});
    await tx.paymentTransferAlias.createMany({data:aliases.map(alias=>({channel,alias,claimId:claim.id}))});
   }
-  const status=matched?'CREDITED':code==='DUPLICATE_CONFLICT'?code:['UNCONFIRMED','NOT_FOUND'].includes(code)?'PENDING':['PROVIDER_AUTH','PROVIDER_UNCONFIGURED','PROVIDER_QUOTA','PROVIDER_FAILED','PROVIDER_UNAVAILABLE','PROVIDER_REQUEST_NOT_FOUND'].includes(code)?'PROVIDER_OUTAGE':'NEEDS_REVIEW';
-  const updated=await tx.topUpIntent.update({where:{id:t.id},data:{status,journalId,...(matched?{caseState:'RESOLVED',assignedTo:null}:{}),...(matched&&t.amountFromReceipt?{expectedCents:amount,points}:{}),reasonCode:code,leaseToken:null,leaseUntil:null,nextAttemptAt:new Date(now.getTime()+Math.min(900,30*2**t.attempts)*1000)}});
+  const rejected=customerDepositFailures.has(code);
+  const status=matched?'CREDITED':rejected?'REJECTED':code==='UNCONFIRMED'?'PENDING':['PROVIDER_AUTH','PROVIDER_UNCONFIGURED','PROVIDER_QUOTA','PROVIDER_FAILED','PROVIDER_UNAVAILABLE','PROVIDER_REQUEST_NOT_FOUND'].includes(code)?'PROVIDER_OUTAGE':'NEEDS_REVIEW';
+  const updated=await tx.topUpIntent.update({where:{id:t.id},data:{status,journalId,...(matched||rejected?{caseState:'RESOLVED',assignedTo:null}:{}),...(matched&&t.amountFromReceipt?{expectedCents:amount,points}:{}),reasonCode:code,leaseToken:null,leaseUntil:null,nextAttemptAt:new Date(now.getTime()+Math.min(900,30*2**t.attempts)*1000)}});
   await tx.paymentAttempt.create({data:{intentId:t.id,key:request.key,requestHash:hash(request.reference),code,evidence:{currency:verified.evidence.currency??null,currencySource:verified.evidence.currencySource??null,confirmedBefore:verified.evidence.confirmedBefore??null,amountCents:verified.evidence.amountCents??null,receiverSuffix:verified.evidence.receiverSuffix??null,date:verified.evidence.date??null,hash:verified.evidence.hash??null,aliasCount:aliases.length,invalidFields:verified.evidence.invalidFields??[],result:attemptResult(ownIntent(updated))}}});
   await tx.verifyRequest.update({where:{id},data:{state:'DONE',code}});
   if(providerId)await tx.verifyWebhookEvent.updateMany({where:{requestId:providerId,processedAt:null},data:{processedAt:now}});

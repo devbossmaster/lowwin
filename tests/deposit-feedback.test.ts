@@ -10,3 +10,10 @@ it('announces credit only for a committed credit and translates every outcome',(
  expect(depositFeedback({status:'NEEDS_REVIEW',points:'0',reused:true},s=>s).message).toContain('check again');
  expect(depositFeedback({status:'REJECTED',points:'0',reason:'ADMIN_REJECTED'},s=>s).message).toContain('admin rejected');
 });
+
+it('gives translated corrections for rejected IDs without directing them to admin review',()=>{
+ for(const reason of ['NOT_FOUND','INVALID_RECEIPT','REFERENCE_MISMATCH','RECEIVER_MISMATCH','AMOUNT_MISMATCH','DATE_MISMATCH','DUPLICATE_CONFLICT']){
+  const receipt={status:'REJECTED',points:'0',reason},en=depositFeedback(receipt,s=>s),am=depositFeedback(receipt,s=>walletAm[s]??s);
+  expect(en.kind).toBe('error');expect(en.message).not.toMatch(/admin review|contact support/i);expect(am.message).not.toBe(en.message);
+ }
+});

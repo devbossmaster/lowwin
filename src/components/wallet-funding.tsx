@@ -11,6 +11,7 @@ import {PaymentAccounts,PaymentLogo} from './payment-accounts';
 import {ReceiptImageUpload,type SelectedReceipt} from './receipt-image-upload';
 import {PaymentHelp} from './payment-help';
 import {useMiniNotice} from './mini-notice';
+import {customerDepositFailures} from '../lib/deposit-outcome';
 import {depositFeedback} from './deposit-feedback';
 import {receiptImageKey} from './receipt-image-key';
 import styles from './wallet-page.module.css';
@@ -19,7 +20,7 @@ type Account={id:string;policyId:string;version:number;name:string;number:string
 type Intent={canRetry?:boolean;retryBlocked?:string|null;retryUntil?:string;nextAttemptAt?:string;attempts?:number;id:string;createdAt:string;demo?:boolean;reused?:boolean;channel:string;status:string;amountCents?:string;points:string;account:string;accountName:string;reference:string|null;expiresAt:string;reason:string|null;caseState:string;quote:{version:number;numerator:string;denominator:string;terms:string;minCents?:string;maxCents?:string}};
 type Data={options:{enabled:boolean;productionEnabled:boolean;ocr:boolean;reason:string;accounts:Account[]};items:Intent[];totalPages:number};
 const money=(c:string)=>(BigInt(c)/100n).toString()+'.'+(BigInt(c)%100n).toString().padStart(2,'0');
-const labels:Record<string,string>={PENDING:'Pending verification',VERIFYING:'Verifying',CREDITED:'Credited',NEEDS_REVIEW:'Needs review',REJECTED:'Rejected',DUPLICATE_CONFLICT:'Duplicate claim — contact support',PROVIDER_OUTAGE:'Provider unavailable — retry pending'};
+const labels:Record<string,string>={PENDING:'Pending verification',VERIFYING:'Verifying',CREDITED:'Credited',NEEDS_REVIEW:'Needs review',REJECTED:'Rejected',DUPLICATE_CONFLICT:'Transaction ID already used',PROVIDER_OUTAGE:'Provider unavailable — retry pending'};
 type FundingView='deposit'|'deposits'|'hidden';
 export function WalletFunding({view='deposit',onContinue}:{view?:FundingView;onContinue?:()=>void}){const {me}=useTelegram();return <Funding key={me?.user.id??'guest'} view={view} onContinue={onContinue}/>}
 function Funding({view,onContinue}:{view:FundingView;onContinue?:()=>void}){
@@ -48,9 +49,10 @@ function Funding({view,onContinue}:{view:FundingView;onContinue?:()=>void}){
  const [now,setNow]=useState(0);
  useEffect(()=>{setNow(Date.now());const timer=setInterval(()=>setNow(Date.now()),1000);return ()=>clearInterval(timer)},[]);
  const underReview=!!intent&&(intent.canRetry===false||['DUPLICATE_CONFLICT','REJECTED','REVERSED'].includes(intent.status));
+ const correctable=!!intent&&(intent.status==='DUPLICATE_CONFLICT'||intent.status==='REJECTED'&&customerDepositFailures.has(intent.reason??''));
  const waiting=!!intent?.nextAttemptAt&&new Date(intent.nextAttemptAt).getTime()>now;
  const bound=!!intent?.reference;
- const showRecoveryActions=!!intent&&(credited||(intent.attempts??0)>0)&&intent.status!=='VERIFYING';
+ const showRecoveryActions=!!intent&&(credited||correctable||(intent.attempts??0)>0)&&intent.status!=='VERIFYING';
  const scannerAvailable=!!options?.ocr;
  useEffect(()=>()=>{if(receiptUrl.current)URL.revokeObjectURL(receiptUrl.current)},[]);
  function inform(text:string,kind:'success'|'error'|'info'='info'){setMessage(text);notify(text,kind,{id:noticeId,duration:8000})}
@@ -95,7 +97,7 @@ function Funding({view,onContinue}:{view:FundingView;onContinue?:()=>void}){
     <div className={styles.referenceHeader}>
      <label className={styles.fieldLabel} htmlFor="verified-reference">{w('Telebirr or CBE message/link')}</label>
      {showRecoveryActions&&<div className={styles.referenceActions}>
-      {bound&&!credited&&<button type="button" className={styles.secondary} disabled={!!busy} onClick={()=>{reset();inform(w('Paste the corrected reference. The previous deposit and its review history are kept.'))}}>{w('Correct a mistaken reference')}</button>}
+      {(bound||correctable)&&!credited&&<button type="button" className={styles.secondary} disabled={!!busy} onClick={()=>{reset();inform(w('Paste the correct transaction ID to try again.'))}}>{w('Correct a mistaken reference')}</button>}
       <button type="button" className={styles.secondary} disabled={!!busy} onClick={reset}>{w('Start another deposit')}</button>
      </div>}
     </div>
@@ -104,7 +106,7 @@ function Funding({view,onContinue}:{view:FundingView;onContinue?:()=>void}){
     <ReceiptImageUpload receipt={receipt} disabled={!scannerAvailable||!!busy||credited||underReview||bound} onSelect={chooseReceipt} onRemove={clearReceipt}/>
     <button type="button" className={styles.submit} disabled={!account||(!input.trim()&&!receipt)||!!busy||credited||underReview||waiting} onClick={()=>void submit()}>{busy?<LoadingSpinner/>:credited?w('Deposit credited'):underReview?w(intent?.status==='REJECTED'?'Deposit rejected':'Under admin review'):w(intent?.attempts?'Check payment again':'Submit deposit')}</button>
     <p className={styles.footnote}>{options.ocr?w('Confirmed transfers to our account are credited automatically in ETB, once.'):w('Paste your receipt message. Image scanning is unavailable.')}</p>
-    {intent&&!credited&&<p className={styles.hint}>{intent.canRetry===false?w('Contact support with this deposit ID:'):waiting?w('Retry after:'):w('You can check this payment again.')} {intent.canRetry===false?intent.id:waiting&&intent.nextAttemptAt?new Date(intent.nextAttemptAt).toLocaleString():''}</p>}
+    {intent&&!credited&&<p className={styles.hint}>{correctable?w('Use Correct a mistaken reference to enter another transaction ID.'):intent.canRetry===false?w('Contact support with this deposit ID:'):waiting?w('Retry after:'):w('You can check this payment again.')} {!correctable&&intent.canRetry===false?intent.id:waiting&&intent.nextAttemptAt?new Date(intent.nextAttemptAt).toLocaleString():''}</p>}
     {busy&&<LoadingSpinner label={busy}/>}{message&&<p className={styles.hint} role="status">{message}</p>}
    </div>}
    <PaymentHelp/>

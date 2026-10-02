@@ -4,15 +4,15 @@ description: Separate player and staff layouts with black text on light surfaces
 colors:
   background: "#FFFFFF"
   foreground: "#000000"
-  primary: "#15803d"
-  primary-hover: "#166534"
-  support-green: "#15803d"
-  mini-focus: "#15803d"
-  mini-disabled: "#dcfce7"
+  primary: "#184d3a"
+  primary-hover: "#123d2e"
+  support-green: "#184d3a"
+  mini-focus: "#184d3a"
+  mini-disabled: "#dce8df"
   mini-disabled-ink: "#000000"
-  mini-nav-selected: "#f0fdf4"
+  mini-nav-selected: "#eef5f0"
   mini-nav-ink: "#000000"
-  forest: "#14532d"
+  forest: "#184d3a"
   mint: "#E5F4EB"
   border: "#DBE7DE"
   muted: "#000000"
@@ -158,7 +158,7 @@ components:
 
 ## Overview
 
-The current Mini App direction is pure white, flat surfaces, forest green primary actions with white labels, and quiet pale-green gradients on selected feature panels. Black text applies to white and pale surfaces, including links, metadata and status labels; white text applies to solid forest surfaces. Player primary stays #15803d and administration keeps its separate #184d3a. Check.et is a structural reference for clear sections and practical controls, not an additional palette or component source. This refresh records the implementation in the player and administration stylesheets; it supersedes the original off-white canvas direction.
+The current Mini App direction is pure white, flat surfaces, forest green primary actions with white labels, and quiet pale-green gradients on selected feature panels. Black text applies to white and pale surfaces, including links, metadata and status labels; white text applies to solid forest surfaces. Player primary stays #184d3a and administration keeps its separate #184d3a. Check.et is a structural reference for clear sections and practical controls, not an additional palette or component source. This refresh records the implementation in the player and administration stylesheets; it supersedes the original off-white canvas direction.
 
 The interface uses compact typography, restrained borders and clear account states. The lowercase text wordmark is replaceable. The Phase 1 foundation needed no product imagery; later catalog surfaces use inventory imagery and explicitly labelled original DEMO illustrations. No surface needs invented inventory or decorative live statistics.
 
@@ -175,7 +175,7 @@ The full administration redesign implements the supplied `Lowwin_Admin_Dashboard
 
 ### Primary
 
-Forest green primary marks Mini App actions, selected catalog/personal tabs and the winning example; its label is white. Both scoped `--mini-action` and Tailwind `--color-primary` use #15803D. Shared buttons, links, icons and payment selections use the same forest green palette. Forest anchors the wordmark, result summary and profile balance. Mint remains on verified identity, favorites and selected payment methods. Bottom navigation uses its distinct pale selected fill with black text. The home rule demonstration and wallet balance use the pale gradients recorded in the sidecar.
+Forest green primary marks Mini App actions, selected catalog/personal tabs and the winning example; its label is white. Both scoped `--mini-action` and Tailwind `--color-primary` use #184d3a. Shared buttons, links, icons and payment selections use the same forest green palette. Forest anchors the wordmark, result summary and profile balance. Mint remains on verified identity, favorites and selected payment methods. Bottom navigation uses its distinct pale selected fill with black text. The home rule demonstration and wallet balance use the pale gradients recorded in the sidecar.
 
 ### Neutral
 
@@ -289,7 +289,7 @@ Navigation has five primary areas: Overview, Auctions, Payments, People and Repo
 
 Overview uses independently available auction, deposit, delivery and support projections with database time. Unauthorized sections are omitted and failed reads remain explicitly unavailable. Compact metrics, auction summaries, attention rows and disclosure-based help display authorized server data. Balance checks remain a deliberate read-only task.
 
-Buttons use 9px corners, 44px minimum height, 14px semibold labels and 10px by 18px padding. Primary forest actions and their #166534 hover state have white labels. Secondary controls are white with black labels and pale selected hover; destructive actions use rust with white labels. Disabled actions reduce opacity. Focus is a 3px administration-green outline offset by 3px. Fields use 8px corners, white fill, black text and a green caret. Errors and confirmed notices retain persistent alert/status semantics. Sign-in retains separate credential, authenticator, recovery and reset forms; appearance does not establish external email delivery.
+Buttons use 9px corners, 44px minimum height, 14px semibold labels and 10px by 18px padding. Primary forest actions and their #123d2e hover state have white labels. Secondary controls are white with black labels and pale selected hover; destructive actions use rust with white labels. Disabled actions reduce opacity. Focus is a 3px administration-green outline offset by 3px. Fields use 8px corners, white fill, black text and a green caret. Errors and confirmed notices retain persistent alert/status semantics. Sign-in retains separate credential, authenticator, recovery and reset forms; appearance does not establish external email delivery.
 
 
 Work queues use semantic tables, explicit headings and a truthful empty state. Product and category editors pair inventory tables with labelled forms. Image attachment explains validation and attribution; Home & FAQ uses plain text fields and additional FAQ fieldsets. Reconciliation remains a read-only table, not a balance editor. These surfaces display server-derived data rather than decorative statistics.
@@ -315,7 +315,7 @@ The payment finish-review handoff records a ship disposition, all three requeste
 ## Do's and Don'ts
 
 - Do use black text on white/pale surfaces and white text on forest solid surfaces across both layouts.
-- Do preserve the player #15803d and separate staff #184d3a action tokens, visible focus, comfortable targets and Telegram safe areas.
+- Do preserve the player #184d3a and separate staff #184d3a action tokens, visible focus, comfortable targets and Telegram safe areas.
 - Do keep Home ending in its green footer with only fixed-navigation clearance inside it.
 - Do preserve the exact allowed `?v=forest-1` query on `/logo.png` and `/banner1.png`; arbitrary image queries are not allowed.
 - Do use typography, spacing and borders to establish hierarchy.
@@ -340,3 +340,26 @@ The payment finish-review handoff records a ship disposition, all three requeste
 ### Historical ETB unit transition (2026-09-28)
 
 One immutable historical point maps to ETB 1.00. The ledger, hold, bid, fee and settlement integers remain unchanged; the migration records the 1:1 conversion rather than rewriting journals or frozen terms. New bids use whole ETB increments. Legacy public terms are translated on display. The six-tab player navigation includes Wallet. DEMO ETB credits are synthetic test grants with no cash value and are never presented as verified Telebirr, CBE or Check.et payments. Funding quote publication and creation require ETB 1.00 per ETB 1.00 transferred; production funding stays disabled until reviewed.
+
+
+### Winner cards and result detail update (2026-10-02)
+
+The owner supplied mobile references for clear completed-auction results. Home and Winners now share product imagery, a left-aligned title, winner/amount/masked-phone rows and a forest-green View results action (#184D3A). Winning amounts use #184d3a, supporting text uses #4B6257, and the trophy uses a restrained gold accent. These scoped colors supersede the earlier all-black supporting-text rule on these result surfaces. Titles use 21–23px, winner names 20–26px and amounts 23–30px; supporting labels remain comfortably readable.
+
+Completed, cancelled and pending auction detail routes share the gallery-first result layout with a short outcome, end dates in Gregorian and Ethiopian calendars, aggregate views and bid count, and product details. Repeated rules, fulfillment placeholders and anonymity notices are removed from result pages. Active-auction bidding and its terms disclosure retain their existing behavior. Both product and auction-presentation editors have one plain-text description field per language. Label: value lines render as specification rows; other lines render as paragraphs. No HTML is accepted.
+
+Real settled results show the stored Telegram winner name and only the final two digits of a verified, non-revoked contact. Illustrative records are explicitly labeled and never acquire invented names, contacts or bid counts. View my bid history opens the player's existing private History tab.
+
+### Personal bid cards and auction navigation (2026-10-02)
+
+My Bids and Winning Bids share image-first vertical cards, readable wrapping titles and numbered pagination. Bid amounts use forest green, auction codes blue, view counts warm orange, and outcome labels green or rose. A blue copy control shows `BID_` followed by 12 characters from the original bid ID; this is a compact display reference, while stored bid IDs remain unchanged. Copying shows a status message and keeps the current page open. The rest of each card links to the numeric `/auctions/{code}` detail URL.
+
+Winning Bids is at `/winning-bids`; `/profile/wins` redirects there. Existing `/winners/{code}` and slug-based auction links redirect to the numeric auction detail. Winners lists remain at `/winners/all`. Live details use the product gallery, service fee, existing bid review and confirmation, countdown, aggregate activity and product specifications. Ended details use the winner/result layout above. Fulfillment placeholders are omitted from personal cards and result pages. Supporting colors on these scoped surfaces supersede the historical all-black text rule.
+
+### Brand color and live activity update (2026-10-02)
+
+The owner confirmed primary green #0BDA51. This latest direction supersedes the forest-green palette above. Main backgrounds, buttons, selected accents and view badges use #0BDA51, with #172412 text for contrast. Key amounts and count text on white use the related dark green #246B16; blue, gold and rose keep their informational roles.
+
+Visible products share one batched activity request every two seconds; hidden tabs pause requests. Views record after 150ms of visibility, once per auction per browser-tab session, and the returned count displays immediately. The activity response contains aggregate counts and public auction phases only. At the deadline the canonical detail switches to a short ended state, then refreshes to show the authoritative winner and Completed once settlement commits. Player pages omit result and fulfillment pending jargon. The existing VPS worker remains responsible for settlement and invalidates public caches after completion.
+
+The top-bar hammer opens a full-screen native modal that enters from the left. Close, Escape and focus restoration remain available; the list scrolls independently. Its header shows the actual available-auction count and refresh, followed by image, title, live bid count, countdown and numeric-detail actions. Reduced motion disables the entrance animation.

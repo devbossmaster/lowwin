@@ -12,7 +12,7 @@ test('closing and cancelled states stay truthful at mobile widths',async({page},
   try {
     const closing=await bidAuction(client,{endDelayMs:-1000});
     await page.goto(`/auctions/${closing.slug}`);
-    await expect(page.getByRole('region',{name:'Auction activity'})).toContainText('Result pending');
+    await expect(page.getByTestId('result-summary')).toContainText('Auction ended');
     await expect(page.getByRole('link',{name:'View result',exact:true})).toHaveCount(0);
     await expect(page.getByText('Opening your Lowwin…')).toBeHidden({timeout:20000});
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);

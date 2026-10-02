@@ -110,8 +110,12 @@ ALTER TABLE "TelegramMessage" ADD CONSTRAINT telegram_message_delete_state_check
 INSERT INTO "AuctionFeeRevision" (id,"auctionId",version,"feePoints","effectiveAt","actorId",reason)
 SELECT gen_random_uuid()::text,t."auctionId",t.version,t."entryFeePoints",COALESCE(a."publishedAt",t."createdAt"),NULL,'Initial published fee'
 FROM "AuctionTerms" t JOIN "Auction" a ON a.id=t."auctionId";
+-- Only the new revision reference is backfilled. The table lock remains held
+-- until COMMIT, and accepted bid receipts are immutable again before release.
+ALTER TABLE "Bid" DISABLE TRIGGER immutable_bid;
 UPDATE "Bid" b SET "feeRevisionId"=r.id FROM "AuctionFeeRevision" r
 WHERE r."auctionId"=b."auctionId" AND r.version=b."termsVersion" AND r."feePoints"=b."feePoints";
+ALTER TABLE "Bid" ENABLE TRIGGER immutable_bid;
 
 DROP TRIGGER bid_acceptance_guard ON "Bid";
 CREATE OR REPLACE FUNCTION guard_bid_acceptance() RETURNS trigger LANGUAGE plpgsql AS $$

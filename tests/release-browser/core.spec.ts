@@ -24,7 +24,7 @@ test('navigation, centered deposit, locale persistence and blurred page loading'
  await page.route('**/api/profile/wins?*',async route=>{await held;await route.fulfill({json:{items:[],page:1,total:0,totalPages:0}})});
  const requested=page.waitForRequest(request=>request.url().includes('/api/profile/wins?'));
  await nav.getByRole('link',{name:'Winning Bids'}).click();await requested;
- await page.waitForURL('**/profile/wins');
+ await page.waitForURL('**/winning-bids');
  await expect(page.locator('.page-loading-backdrop')).toBeVisible();
  await expect.poll(()=>page.locator('.page-loading-backdrop').evaluate(node=>getComputedStyle(node).backdropFilter)).toContain('blur');
  await expect(page.locator('.app-frame')).toHaveAttribute('inert','');

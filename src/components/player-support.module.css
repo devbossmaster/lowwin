@@ -1,0 +1,30 @@
+.page{padding:24px var(--auction-card-gutters,20px) 36px;background:#fff;min-height:65dvh;color:#172412}
+.head{display:flex;align-items:start;justify-content:space-between;gap:16px;margin-bottom:24px}
+.head h1{font-size:28px;line-height:1.25;margin:0 0 8px;letter-spacing:-.02em}
+.head p{font-size:14px;color:#4b6257;line-height:1.6;margin:0;max-width:42ch}
+.head button{display:grid;place-items:center;flex:none;width:44px;height:44px;border:1px solid #d9e5dc;border-radius:12px;background:#fff;color:#185b33;cursor:pointer}
+.compose{margin:24px 0 32px;display:grid;gap:18px;padding-bottom:28px;border-bottom:1px solid #e0e8e2}
+.compose label{display:grid;gap:8px;font-weight:600;font-size:14px}
+.compose input,.compose textarea{width:100%;padding:13px;border:1px solid #bdcec3;border-radius:10px;background:white;color:#172412;font:inherit;font-size:16px;caret-color:#185b33}
+.compose textarea{min-height:140px;resize:vertical}
+.compose small,.date{color:#4b6257;font-size:12px}
+.error{background:#fff1ee;color:#992c1e;padding:14px;border-radius:10px;font-size:14px}
+.requests{margin-top:32px}.requests h2{font-size:20px;margin-bottom:16px}
+.case{border:1px solid #d9e5dc;border-radius:12px;margin-bottom:16px;overflow:hidden}
+.case summary{padding:18px;cursor:pointer;list-style:none;display:grid;gap:10px}
+.case summary::-webkit-details-marker{display:none}
+.subject{display:flex;justify-content:space-between;gap:12px;align-items:start;font-size:16px}
+.subject strong{overflow-wrap:anywhere}
+.status{flex:none;background:#e6f8ee;color:#185b33;border-radius:6px;padding:4px 8px;font-size:11px;font-weight:600}
+.open{background:#fff2dc;color:#785016}
+.conversation{padding:0 18px 18px;display:grid;gap:14px}
+.message{padding:16px;background:#f4f7f5;border-radius:10px;font-size:14px;line-height:1.65}
+.message strong{display:flex;align-items:center;gap:8px;font-size:13px}
+.message p{margin:8px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.reply{background:#e6f8ee;color:#163e28}
+.waiting{font-size:13px;color:#4b6257;margin:0}
+.empty{padding:24px 0;color:#4b6257;font-size:14px;line-height:1.65}
+.page button:focus-visible,.page input:focus-visible,.page textarea:focus-visible,.page summary:focus-visible{outline:2px solid #185b33;outline-offset:3px}
+.page ::selection{background:#0bda51;color:#172412}
+
+.page :global(.primary-button){display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:12px 18px;border:0;border-radius:12px;background:#0bda51;color:#172412;font-size:14px;font-weight:700;cursor:pointer;box-shadow:none}.page :global(.primary-button):disabled{opacity:.6;cursor:wait}

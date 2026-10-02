@@ -107,7 +107,8 @@ export function assess(raw:unknown,input:VerificationInput,now=new Date()):Verif
  }
  if(receiver!==expected)return fail('RECEIVER_MISMATCH');
  const date=item.timestamp?new Date(item.timestamp):null;
- if(!date||!/(Z|[+-]\d{2}:\d{2})$/.test(item.timestamp!)||!Number.isFinite(date.getTime())||date<input.createdAt||date>input.expiresAt||date.getTime()>now.getTime()+60000)return fail('DATE_MISMATCH');
+ if(!date||!/(Z|[+-]\d{2}:\d{2})$/.test(item.timestamp!)||!Number.isFinite(date.getTime()))return fail('DATE_UNPROVEN');
+ if(date<input.createdAt||date>input.expiresAt||date.getTime()>now.getTime()+60000)return fail('DATE_MISMATCH');
  const evidence:Verification['evidence']={currency,currencySource,confirmedBefore,amountCents:amount.toString(),receiverSuffix:item.receiverAccount.slice(-4),date:date.toISOString(),aliases,hash:hash(JSON.stringify({bank:item.bank,currency,currencySource,confirmedBefore,aliases:aliases.slice().sort(),amount:amount.toString(),receiver,receiverEvidence:item.receiverAccount,matchType:match?.matchType,matchConfidence:match?.matchConfidence,date:date.toISOString(),requestId}))};
  return {code:'VERIFIED',matched:true,requestId,evidence};
 }

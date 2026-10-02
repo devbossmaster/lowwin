@@ -87,7 +87,7 @@ describe.skipIf(!url)('Phase 5B scoped operations and private alerts',()=>{
   const sent:any[]=[];const bot=new Bot(TEST_TOKEN);bot.api.config.use(async(_prev,method,payload)=>{sent.push({method,payload});return {ok:true,result:{message_id:1}} as any});await dispatchOne(db,bot);
   expect(sent).toHaveLength(1);expect(sent[0].method).toBe('sendPhoto');expect(sent[0].payload.photo).toBe(`https://lowin.ngrok-free.app/api/media/${media.id}`);
   expect(sent[0].payload.caption).toContain(`Hello ${(await db.user.findUniqueOrThrow({where:{id:playerId}})).name}`);expect(sent[0].payload.caption).not.toContain('{name}');
-  expect(sent[0].payload.reply_markup.inline_keyboard[0][0]).toEqual({text:'Bid',web_app:{url:`https://lowin.ngrok-free.app/auctions/${auction.slug}`}});
+  expect(sent[0].payload.reply_markup.inline_keyboard[0][0]).toEqual({text:'Bid',web_app:{url:`https://lowin.ngrok-free.app/auctions/${auction.publicCode}`}});
   expect(await db.notificationInbox.count({where:{key:row.key}})).toBe(1);
   expect(await db.adminAudit.count({where:{action:'OPS_BROADCAST',target:root.id}})).toBe(1);
  });
@@ -105,5 +105,121 @@ describe.skipIf(!url)('Phase 5B scoped operations and private alerts',()=>{
   await db.outbox.updateMany({where:{state:'PENDING'},data:{state:'SKIPPED'}});const row=await db.$transaction(tx=>enqueueAlert(tx,{key:randomUUID(),kind:'BID_ACCEPTED',auctionId:winner.id,userId:playerId}));
   const bot=new Bot(TEST_TOKEN);let sends=0;bot.api.config.use(async()=>{sends++;return {ok:true,result:true} as any});await dispatchOne(db,bot);expect(sends).toBe(0);expect(await db.notificationInbox.count({where:{key:row.key}})).toBe(1);
  });
+ it('finds players by verified phone, username and IDs with scoped balance details',async()=>{
+  await db.user.update({where:{id:playerId},data:{telegramUsername:'people_fixture'}});
+  for(const q of ['@people_fixture',playerId,'910000001','+99900910000001']){
+   const result=await okay(await get(`users?q=${encodeURIComponent(q)}`,roles.SUPPORT.cookie));expect(result.items.some((p:any)=>p.id===playerId)).toBe(true);
+  }
+  const detail=await okay(await get(`users/${playerId}`,roles.SUPPORT.cookie));expect(detail).toMatchObject({telegramUsername:'people_fixture',phone:'+99900910000001',bidCount:1,winCount:1});expect(detail.available).toBeDefined();expect(detail.held).toBeDefined();expect(JSON.stringify(detail)).not.toMatch(/phoneCipher|phoneHash|sourceUpdateId|password|accounts|session/);
+  expect((await get(`users/${playerId}`,roles.CATALOG_MANAGER.cookie)).status).toBe(403);expect((await get(`users/${ownerId}`,roles.SUPPORT.cookie)).status).toBe(404);
+ });
+ it('withdraws only the current reply, keeps its audit, and updates the player conversation',async()=>{
+  const route=await import('../src/app/api/support/route');
+  const c=await db.supportCase.create({data:{userId:playerId,subject:'Wrong reply fixture',message:'Please help with my request.'}});
+  await okay(await cmd('support',{key:randomUUID(),id:c.id,status:'RESOLVED',reason:'Mistaken reply to withdraw',expectedUpdatedAt:c.updatedAt.toISOString()},roles.SUPPORT.cookie));
+  expect((await cmd('supportWithdraw',{key:randomUUID(),id:c.id,expectedUpdatedAt:c.updatedAt.toISOString(),reason:'Withdraw incorrect reply'},roles.SUPPORT.cookie)).status).toBe(409);
+  const current=await db.supportCase.findUniqueOrThrow({where:{id:c.id}}),input={key:randomUUID(),id:c.id,expectedUpdatedAt:current.updatedAt.toISOString(),reason:'Withdraw incorrect reply'};
+  expect((await cmd('supportWithdraw',input,roles.CATALOG_MANAGER.cookie)).status).toBe(403);
+  const receipt=await okay(await cmd('supportWithdraw',input,roles.SUPPORT.cookie));expect(await okay(await cmd('supportWithdraw',input,roles.SUPPORT.cookie))).toEqual(receipt);
+  const mine=await okay(await route.GET(req('support',undefined,player)));expect(mine.find((r:any)=>r.id===c.id)).toMatchObject({message:c.message,resolution:'',status:'OPEN'});expect((await okay(await route.GET(req('support',undefined,player2)))).some((r:any)=>r.id===c.id)).toBe(false);
+  expect((await db.adminAudit.findFirstOrThrow({where:{action:'SUPPORT_REPLY_WITHDRAWN',target:c.id}})).details).toMatchObject({previousReply:'Mistaken reply to withdraw'});
+ });
+ it('completes internal delivery without customer alerts or changes to settlement proof',async()=>{
+  const before=JSON.stringify(await db.auctionSettlement.findUnique({where:{auctionId:winner.id}}),(_,v)=>typeof v==='bigint'?v.toString():v),outbox=await db.outbox.count(),inbox=await db.notificationInbox.count(),row=await db.fulfillmentCase.findUniqueOrThrow({where:{auctionId:winner.id}});
+  const input={key:randomUUID(),auctionId:winner.id,version:row.version,reason:'Winner called and item delivered'};
+  expect((await cmd('deliveryDone',input,roles.SUPPORT.cookie)).status).toBe(403);expect((await cmd('deliveryDone',{...input,version:0},roles.FULFILLMENT.cookie)).status).toBe(409);
+  const receipt=await okay(await cmd('deliveryDone',input,roles.FULFILLMENT.cookie));expect(receipt.state).toBe('DELIVERED');expect(await okay(await cmd('deliveryDone',input,roles.FULFILLMENT.cookie))).toEqual(receipt);
+  expect(await db.outbox.count()).toBe(outbox);expect(await db.notificationInbox.count()).toBe(inbox);expect(JSON.stringify(await db.auctionSettlement.findUnique({where:{auctionId:winner.id}}),(_,v)=>typeof v==='bigint'?v.toString():v)).toBe(before);
+  const queue=await okay(await get('fulfillment?status=DELIVERED',roles.FULFILLMENT.cookie));expect(queue.items.find((r:any)=>r.auctionId===winner.id)).toMatchObject({state:'DELIVERED',winner:{phone:'+99900910000001'}});
+  const a=await bidAuction(db,{endDelayMs:2000}),u=await bidUser(db),v=await bidUser(db);await submitBid(db,{userId:u,auctionSlug:a.slug!,amount:'1',key:randomUUID()});await submitBid(db,{userId:v,auctionSlug:a.slug!,amount:'2',key:randomUUID()});await new Promise(resolve=>setTimeout(resolve,2100));await closeAuction(db,a.id);
+  expect((await cmd('deliveryDone',{key:randomUUID(),auctionId:a.id,version:0,reason:'Unassigned attempt'},roles.FULFILLMENT.cookie)).status).toBe(403);
+  expect((await okay(await cmd('deliveryDone',{key:randomUUID(),auctionId:a.id,version:0,reason:'Owner confirmed direct delivery'}))).state).toBe('DELIVERED');
+ });
+ it('stops broadcasts before expansion with fresh Owner MFA and immutable history',async()=>{
+  const receipt=await okay(await cmd('broadcast',{key:randomUUID(),text:'Stop before sending fixture',reason:'Local stopped campaign test',confirmation:'SEND'})),input={key:randomUUID(),id:receipt.id,reason:'Stop local fixture broadcast'};
+  expect((await cmd('broadcastStop',input,roles.SUPPORT.cookie)).status).toBe(403);
+  const grant=await db.staffSession.findFirstOrThrow({where:{session:{userId:ownerId}}});await db.staffSession.update({where:{sessionId:grant.sessionId},data:{credentialAt:new Date(Date.now()-420000),mfaAt:new Date(Date.now()-360000)}});
+  try{expect((await cmd('broadcastStop',input)).status).toBe(403)}finally{await db.staffSession.update({where:{sessionId:grant.sessionId},data:{credentialAt:grant.credentialAt,mfaAt:grant.mfaAt}})}
+  expect((await okay(await cmd('broadcastStop',input))).stopped).toBe(true);expect((await okay(await cmd('broadcastStop',input))).stopped).toBe(true);
+  const root=await db.outbox.findUniqueOrThrow({where:{id:receipt.id}});expect(await db.$transaction(tx=>expandCampaign(tx,root))).toBe(0);expect(await db.outbox.count({where:{key:{startsWith:root.key+':'}}})).toBe(0);
+  const history=await okay(await get('notifications?q=Stop%20before'));expect(history.items[0]).toMatchObject({text:'Stop before sending fixture',state:'STOPPED',canStop:false,sent:0});
+ });
+ it('stops remaining batches and retries after an in-flight broadcast send finishes',async()=>{
+  await db.outbox.updateMany({where:{state:'PENDING'},data:{state:'SKIPPED'}});
+  const receipt=await okay(await cmd('broadcast',{key:randomUUID(),text:'Concurrent stop fixture',reason:'Local concurrency fixture',confirmation:'SEND'})),root=await db.outbox.findUniqueOrThrow({where:{id:receipt.id}});await db.$transaction(tx=>expandCampaign(tx,root));for(;;){const next=await db.outbox.findFirst({where:{kind:'GLOBAL_CAMPAIGN',state:'PENDING',key:{startsWith:root.key+':'}}});if(!next)break;await db.$transaction(tx=>expandCampaign(tx,next))}
+  const first=await db.outbox.findUniqueOrThrow({where:{key:`${root.key}:user:${playerId}`}});await db.outbox.updateMany({where:{state:'PENDING',id:{not:first.id}},data:{nextAttemptAt:new Date(Date.now()+60000)}});
+  const bot=new Bot(TEST_TOKEN);let release!:()=>void,started!:()=>void;const begun=new Promise<void>(resolve=>started=resolve),finish=new Promise<void>(resolve=>release=resolve);let calls=0;bot.api.config.use(async()=>{calls++;started();await finish;return {ok:true,result:{message_id:9876}} as any});
+  const dispatch=dispatchOne(db,bot);await begun;const stop=cmd('broadcastStop',{key:randomUUID(),id:root.id,reason:'Stop concurrent fixture broadcast'});release();await dispatch;await okay(await stop);
+  expect(calls).toBe(1);expect((await db.outbox.findUniqueOrThrow({where:{id:first.id}})).state).toBe('SENT');expect(await db.outbox.count({where:{key:{startsWith:root.key+':'},state:'PENDING'}})).toBe(0);
+  const skipped=await db.outbox.findFirstOrThrow({where:{kind:'BROADCAST',key:{startsWith:root.key+':'},state:'SKIPPED'}});await db.outbox.update({where:{id:skipped.id},data:{state:'PENDING',nextAttemptAt:new Date()}});await dispatchOne(db,bot);expect(calls).toBe(1);expect((await db.outbox.findUniqueOrThrow({where:{id:skipped.id}})).lastError).toBe('CAMPAIGN_STOPPED');
+  const history=await okay(await get('notifications?q=Concurrent%20stop'));expect(history.items[0]).toMatchObject({state:'STOPPED',sent:1,canStop:false});
+ });
  it('keeps audit and outbox content immutable',async()=>{const a=await db.adminAudit.findFirstOrThrow(),o=await db.outbox.findFirstOrThrow();await expect(db.adminAudit.delete({where:{id:a.id}})).rejects.toThrow();await expect(db.outbox.update({where:{id:o.id},data:{payload:{spoofed:true}}})).rejects.toThrow()});
+ it('shows deposit player identity and searches by verified phone without exposing protected evidence',async()=>{
+  const {paymentAdminRead}=await import('../src/modules/payments/admin');
+  const t=await db.topUpIntent.create({data:{userId:playerId,key:randomUUID(),provider:'VERIFY_ET',channel:'telebirr',status:'NEEDS_REVIEW',reasonCode:'INCOMPLETE_EVIDENCE',policyVersion:'money-fixture',expectedCents:1000n,points:10,reference:'PRIVATEDEPOSIT123',receivingAccount:'0911111111',expiresAt:new Date(Date.now()+1800000)}});
+  const headers=(c=owner)=>req('admin/payments',undefined,c).headers;
+  for(const q of [playerId,'+99900910000001','@people_fixture']){
+   const result:any=await paymentAdminRead(db,headers(),[],new URLSearchParams({q,view:'attention'}));
+   expect(result.items.find((p:any)=>p.id===t.id)).toMatchObject({player:{name:(await db.user.findUniqueOrThrow({where:{id:playerId}})).name,phone:'+99900910000001',telegramUsername:'people_fixture'},reference:'••••T123'});
+  }
+  const detail:any=await paymentAdminRead(db,headers(roles.SUPPORT.cookie),[t.id],new URLSearchParams());expect(detail.player.phone).toBe('+99900910000001');expect(detail.expectedCents).toBeUndefined();expect(detail.attempts).toBeUndefined();
+  expect(JSON.stringify(detail)).not.toMatch(/phoneCipher|phoneHash|sourceUpdateId|password/);
+  await expect(paymentAdminRead(db,headers(roles.CATALOG_MANAGER.cookie),[t.id],new URLSearchParams())).rejects.toMatchObject({status:403});
+  await db.topUpIntent.update({where:{id:t.id},data:{status:'REJECTED',reasonCode:'NOT_FOUND',caseState:'RESOLVED'}});
+  const filtered:any=await paymentAdminRead(db,headers(),[],new URLSearchParams({q:playerId,view:'attention'}));expect(filtered.items.some((p:any)=>p.id===t.id)).toBe(false);
+ });
+ it('records deposit actions with optional reasons, private audit and idempotency',async()=>{
+  const {paymentAdminCommand}=await import('../src/modules/payments/admin'),headers=req('admin/payments').headers;
+  const t=await db.topUpIntent.create({data:{userId:playerId,key:randomUUID(),provider:'VERIFY_ET',channel:'telebirr',status:'NEEDS_REVIEW',reasonCode:'INCOMPLETE_EVIDENCE',policyVersion:'money-fixture',expectedCents:1000n,points:10,expiresAt:new Date(Date.now()+1800000)}}),input={key:randomUUID(),id:t.id};
+  await expect(paymentAdminCommand(db,req('admin/payments',undefined,roles.SUPPORT.cookie).headers,'reject',input)).rejects.toMatchObject({status:403});
+  const running=await db.verifyRequest.create({data:{intentId:t.id,key:randomUUID(),reference:'DEMOSECURE123',state:'SUBMITTING'}});
+  await expect(paymentAdminCommand(db,headers,'reject',input)).rejects.toThrow('Verification is running');
+  expect((await db.topUpIntent.findUniqueOrThrow({where:{id:t.id}})).status).toBe('NEEDS_REVIEW');
+  await db.verifyRequest.update({where:{id:running.id},data:{state:'DONE'}});
+  expect(await paymentAdminCommand(db,headers,'reject',input)).toEqual({recorded:true});expect(await paymentAdminCommand(db,headers,'reject',input)).toEqual({recorded:true});
+  expect(await db.topUpIntent.findUniqueOrThrow({where:{id:t.id}})).toMatchObject({status:'REJECTED',caseState:'RESOLVED'});
+  expect((await db.adminAudit.findUniqueOrThrow({where:{operationKey:input.key}})).details).toMatchObject({reason:'Deposit reject recorded by staff'});
+  await expect(paymentAdminCommand(db,headers,'note',{key:randomUUID(),id:t.id})).rejects.toThrow('Write a note');
+  expect(await paymentAdminCommand(db,headers,'archive',{key:randomUUID(),id:t.id})).toEqual({recorded:true});
+ });
+ it('saves a compact receiving account only after exact review and fresh Owner authentication',async()=>{
+  const {paymentAdminCommand}=await import('../src/modules/payments/admin'),headers=req('admin/payments').headers;
+  const input={key:randomUUID(),channel:'telebirr',version:0,enabled:false,account:'0911111111',accountName:'Local fixture receiver',pointsNumerator:'1',centsDenominator:'100',minCents:'1000',maxCents:'1000000',accountConfirmed:true};
+  await expect(paymentAdminCommand(db,headers,'preview-policy',{...input,accountConfirmed:false})).rejects.toThrow('Confirm that');
+  await expect(paymentAdminCommand(db,req('admin/payments',undefined,roles.SUPPORT.cookie).headers,'preview-policy',input)).rejects.toMatchObject({status:403});
+  const grant=await db.staffSession.findFirstOrThrow({where:{session:{userId:ownerId}}});await db.staffSession.update({where:{sessionId:grant.sessionId},data:{credentialAt:new Date(Date.now()-420000),mfaAt:new Date(Date.now()-360000)}});
+  try{await expect(paymentAdminCommand(db,headers,'preview-policy',input)).rejects.toMatchObject({status:403})}finally{await db.staffSession.update({where:{sessionId:grant.sessionId},data:{credentialAt:grant.credentialAt,mfaAt:grant.mfaAt}})}
+  const preview=await paymentAdminCommand(db,headers,'preview-policy',input) as any;
+  await expect(paymentAdminCommand(db,headers,'publish-policy',{...input,account:'0922222222',confirmation:preview.confirmation})).rejects.toThrow('exact configuration');
+  expect(await paymentAdminCommand(db,headers,'publish-policy',{...input,confirmation:preview.confirmation})).toMatchObject({saved:true,version:1});
+  const row=await db.paymentPolicy.findFirstOrThrow({where:{channel:'telebirr'}});expect(row.terms).toContain('credited once');expect(row.reviewReference).toBe('Owner confirmed receiving account details');
+  const changed={...input,key:randomUUID(),version:1,accountName:'Updated fixture receiver'},next=await paymentAdminCommand(db,headers,'preview-policy',changed) as any;
+  expect(await paymentAdminCommand(db,headers,'publish-policy',{...changed,confirmation:next.confirmation})).toMatchObject({version:2});
+  await expect(paymentAdminCommand(db,headers,'publish-policy',{...changed,key:randomUUID(),confirmation:next.confirmation})).rejects.toThrow('Configuration changed');
+ });
+
+ it('accepts simple photo uploads but keeps byte validation and unpublished media authorization',async()=>{
+  const png=await sharp({create:{width:48,height:32,channels:4,background:'#0bda51'}}).png().toBuffer();
+  const image=await okay(await cmd('media',{key:randomUUID(),mime:'image/png',data:png.toString('base64')}));
+  expect(image.sourceCredit).toBe('');expect(image.path).toBe(`/api/media/${image.id}`);
+  const route=await import('../src/app/api/media/[id]/route');
+  const load=(session:string)=>route.GET(req(`media/${image.id}`,undefined,session),{params:Promise.resolve({id:image.id})});
+  const response=await load(owner);expect(response.status).toBe(200);expect(response.headers.get('cache-control')).toContain('no-store');
+  const metadata=await sharp(Buffer.from(await response.arrayBuffer())).metadata();expect(metadata).toMatchObject({format:'png',width:48,height:32});
+  expect((await load('')).status).toBe(404);expect((await load(roles.SUPPORT.cookie)).status).toBe(404);expect((await load(roles.CATALOG_MANAGER.cookie)).status).toBe(200);
+  expect((await cmd('media',{key:randomUUID(),mime:'image/png',data:Buffer.from('<svg onload="bad()"/>').toString('base64')})).status).toBe(422);
+ });
+ it('combines auction category and text filters and returns named post-close results without changing settlement',async()=>{
+  const {adminRead}=await import('../src/modules/admin/operations');const headers=new Headers({cookie:owner});
+  const a=await db.auction.findUniqueOrThrow({where:{id:winner.id}}),before=JSON.stringify(await db.auctionSettlement.findUnique({where:{auctionId:winner.id}}),(_,v)=>typeof v==='bigint'?v.toString():v);
+  const list=await adminRead(db,headers,['auctions'],new URLSearchParams({category:a.categoryId!,q:a.code})) as any;
+  expect(list.items.map((r:any)=>r.id)).toEqual([winner.id]);expect(list.categories.some((r:any)=>r.id===a.categoryId)).toBe(true);
+  const other=await db.category.findFirstOrThrow({where:{id:{not:a.categoryId!}}});
+  expect((await adminRead(db,headers,['auctions'],new URLSearchParams({category:other.id,q:a.code})) as any).items).toEqual([]);
+  const proof=await okay(await get(`auctions/${winner.id}/proof`,roles.AUDITOR.cookie));expect(proof.settlement.winner.name).toBeTruthy();expect(proof.participants.every((p:any)=>typeof p.name==='string')).toBe(true);expect(proof.settlement.auction.product.title).toBeTruthy();expect(proof.settlement.movements.length).toBe(1);
+  expect((await get(`auctions/${winner.id}/proof`,roles.CATALOG_MANAGER.cookie)).status).toBe(403);
+  expect(JSON.stringify(await db.auctionSettlement.findUnique({where:{auctionId:winner.id}}),(_,v)=>typeof v==='bigint'?v.toString():v)).toBe(before);
+ });
+
 });

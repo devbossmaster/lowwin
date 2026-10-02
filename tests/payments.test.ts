@@ -5,6 +5,7 @@ import {beforeAll,afterAll,describe,it,expect,vi} from 'vitest';
 import {createIntent,verifyIntent,processOneVerifyRequest,reconcilePayments,listOwnTopups} from '../src/modules/payments/service';
 import {assess,type VerificationInput} from '../src/modules/payments/provider';
 import {reconcile} from '../src/modules/wallet/ledger';
+import {depositAttentionWhere} from '../src/modules/payments/review-filter';
 const url=process.env.PAYMENT_TEST_DATABASE_URL;
 const requestId=()=>randomUUID();
 describe.skipIf(!url)('Verify.et funding on disposable PostgreSQL',()=>{
@@ -89,7 +90,7 @@ describe.skipIf(!url)('Verify.et funding on disposable PostgreSQL',()=>{
  it('blocks another user and an alternate CBE alias from a second credit',async()=>{
   const first=await newIntent(user,'cbe'),receipt='fHCxyExampleRcpt1',ft=reference().replace(/^DEMO/,'FT');
   const result=await verifyIntent(db,user,{id:first.id,key:randomUUID(),input:receipt},async input=>assess(body(input,{referenceNumber:ft,receiptNumber:receipt}),input));expect(result.status).toBe('CREDITED');
-  const second=await newIntent(other,'cbe');const duplicate=await verifyIntent(db,other,{id:second.id,key:randomUUID(),input:ft},async input=>assess(body(input,{referenceNumber:ft,receiptNumber:receipt}),input));expect(duplicate.status).toBe('DUPLICATE_CONFLICT');expect(await db.paymentClaim.count({where:{channel:'cbe',reference:{in:[ft,receipt]}}})).toBe(1);expect(await reconcilePayments(db)).toEqual([]);
+  const second=await newIntent(other,'cbe');const duplicate=await verifyIntent(db,other,{id:second.id,key:randomUUID(),input:ft},async input=>assess(body(input,{referenceNumber:ft,receiptNumber:receipt}),input));expect(duplicate.status).toBe('REJECTED');expect(await db.paymentClaim.count({where:{channel:'cbe',reference:{in:[ft,receipt]}}})).toBe(1);expect(await reconcilePayments(db)).toEqual([]);
  });
  it('shows immutable Check.et history and rechecks eligible unresolved legacy deposits',async()=>{
   const ref=reference(),legacy=await db.topUpIntent.create({data:{userId:user,key:randomUUID(),provider:'CHECK_ET',channel:'telebirr',status:'NEEDS_REVIEW',reference:ref,points:new Prisma.Decimal('10'),expectedCents:1000n,policyVersion:policy.telebirr,receivingAccount:account.telebirr,expiresAt:new Date(Date.now()+1800000)}});
@@ -143,10 +144,51 @@ describe.skipIf(!url)('Verify.et funding on disposable PostgreSQL',()=>{
   expect((await verifyIntent(db,owner,{id:intent.id,key:randomUUID(),input:receipt},transport)).status).toBe('CREDITED');
   expect(transport).toHaveBeenCalledTimes(1);
   const duplicate=await newIntent(claimant,'cbe');
-  expect((await verifyIntent(db,claimant,{id:duplicate.id,key:randomUUID(),input:ft},transport)).status).toBe('DUPLICATE_CONFLICT');
+  expect((await verifyIntent(db,claimant,{id:duplicate.id,key:randomUUID(),input:ft},transport)).status).toBe('REJECTED');
   expect(await db.paymentClaim.count({where:{intentId:{in:[intent.id,duplicate.id]}}})).toBe(1);
   expect(await db.operation.count({where:{scope:'TOPUP_CREDIT',key:intent.id}})).toBe(1);
   expect(await db.outbox.count({where:{key:`deposit:${intent.id}:credited`}})).toBe(1);
   expect(await reconcilePayments(db)).toEqual([]);
  });
+ it.each([
+  ['NOT_FOUND',{}],['RECEIVER_MISMATCH',{receiverAccount:'0999999999'}],
+  ['REFERENCE_MISMATCH',{referenceNumber:'OTHERREFERENCE123'}],['AMOUNT_MISMATCH',{amount:'1001.00'}],
+  ['DATE_MISMATCH',{timestamp:'2000-01-01T00:00:00Z'}],
+ ] as const)('resolves confirmed %s without credit, another provider call or a review case',async(code,fields)=>{
+  const owner=(await db.user.create({data:{id:randomUUID(),name:'Invalid transfer fixture'}})).id,intent=await newIntent(owner),ref=reference();
+  const transport=vi.fn(async(input:VerificationInput)=>assess(code==='NOT_FOUND'?{success:true,requestId:requestId(),verification:{processingStatus:'completed',status:'not_found',verified:false},data:[]}:body(input,fields),input));
+  expect(await verifyIntent(db,owner,{id:intent.id,key:randomUUID(),input:ref},transport)).toMatchObject({status:'REJECTED',reason:code,caseState:'RESOLVED',canRetry:false});
+  expect(await verifyIntent(db,owner,{id:intent.id,key:randomUUID(),input:ref},transport)).toMatchObject({status:'REJECTED',reason:code});
+  expect(transport).toHaveBeenCalledTimes(1);
+  expect(await db.paymentClaim.count({where:{intentId:intent.id}})).toBe(0);expect(await db.operation.count({where:{scope:'TOPUP_CREDIT',key:intent.id}})).toBe(0);
+  expect(await db.topUpIntent.count({where:{AND:[{id:intent.id},depositAttentionWhere(new Date())]}})).toBe(0);
+ });
+ it('keeps missing date evidence reviewable rather than declaring the transfer invalid',async()=>{
+  const owner=(await db.user.create({data:{id:randomUUID(),name:'Date evidence fixture'}})).id,intent=await newIntent(owner);
+  expect(await verifyIntent(db,owner,{id:intent.id,key:randomUUID(),input:reference()},async input=>assess(body(input,{timestamp:undefined}),input))).toMatchObject({status:'NEEDS_REVIEW',reason:'DATE_UNPROVEN'});
+  expect(await db.topUpIntent.count({where:{AND:[{id:intent.id},depositAttentionWhere(new Date())]}})).toBe(1);
+  expect(await db.paymentClaim.count({where:{intentId:intent.id}})).toBe(0);
+ });
+ it('rejects known CBE aliases at submission without creating more staff work',async()=>{
+  const owner=(await db.user.create({data:{id:randomUUID(),name:'Alias owner fixture'}})).id,claimant=(await db.user.create({data:{id:randomUUID(),name:'Alias submitter fixture'}})).id;
+  const intent=await newIntent(owner,'cbe'),receipt='UniqueRcpt'+randomUUID().replaceAll('-','').slice(0,12),ft=reference().replace(/^DEMO/,'FT');
+  await verifyIntent(db,owner,{id:intent.id,key:randomUUID(),input:receipt},async input=>assess(body(input,{referenceNumber:ft,receiptNumber:receipt}),input));
+  for(const input of [receipt,ft])await expect(createIntent(db,claimant,{key:randomUUID(),channel:'cbe',policyId:policy.cbe,input},true)).rejects.toThrow('already been used');
+  expect(await db.topUpIntent.count({where:{userId:claimant}})).toBe(0);
+  expect(await createIntent(db,owner,{key:randomUUID(),channel:'cbe',policyId:policy.cbe,input:ft},true)).toMatchObject({id:intent.id,status:'CREDITED',reused:true});
+  expect(await reconcilePayments(db)).toEqual([]);
+ });
+ it('keeps a provider outage queued for recovery without credit or a false not-found result',async()=>{
+  const owner=(await db.user.create({data:{id:randomUUID(),name:'Outage fixture'}})).id,intent=await newIntent(owner);
+  expect(await verifyIntent(db,owner,{id:intent.id,key:randomUUID(),input:reference()},async()=>({matched:false,code:'PROVIDER_OUTAGE',evidence:{}}))).toMatchObject({status:'VERIFYING',reason:'PROVIDER_OUTAGE'});
+  expect(await db.paymentClaim.count({where:{intentId:intent.id}})).toBe(0);
+  expect(await db.verifyRequest.count({where:{intentId:intent.id,state:'SUBMITTING'}})).toBe(1);
+ });
+
+ it('keeps old ambiguous date failures visible for staff review',async()=>{
+  const owner=(await db.user.create({data:{id:randomUUID(),name:'Legacy date fixture'}})).id;
+  const t=await db.topUpIntent.create({data:{userId:owner,key:randomUUID(),provider:'CHECK_ET',channel:'telebirr',status:'NEEDS_REVIEW',reasonCode:'DATE_MISMATCH',points:10,expectedCents:1000n,policyVersion:policy.telebirr}});
+  expect(await db.topUpIntent.count({where:{AND:[{id:t.id},depositAttentionWhere(new Date())]}})).toBe(1);
+ });
+
 });

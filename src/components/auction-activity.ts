@@ -1,0 +1,73 @@
+'use client';
+import {useCallback,useEffect,useRef,useState,type RefObject} from 'react';
+import {useRouter} from 'next/navigation';
+import type {AuctionActivity} from '@/modules/auctions/activity';
+
+type Listener=(value:AuctionActivity)=>void;
+const listeners=new Map<string,Set<Listener>>(),values=new Map<string,AuctionActivity>(),recording=new Set<string>();
+let timer:ReturnType<typeof setTimeout>|null=null,controller:AbortController|null=null,failures=0;
+function publish(value:AuctionActivity){
+ const previous=values.get(value.code);
+ // A poll that started before an increment must not move the counter backwards.
+ if(previous&&BigInt(previous.views)>BigInt(value.views))value={...value,views:previous.views};
+ values.set(value.code,value);listeners.get(value.code)?.forEach(listener=>listener(value));
+}
+function schedule(delay=2000){if(timer!==null)clearTimeout(timer);timer=null;if(listeners.size&&!document.hidden)timer=setTimeout(()=>void poll(),delay)}
+async function poll(){
+ if(controller||!listeners.size||document.hidden)return;
+ timer=null;const current=new AbortController();controller=current;
+ const timeout=setTimeout(()=>current.abort(),8000);
+ try{
+  const codes=[...listeners.keys()];
+  // One request serves every visible card; pages with many results stay bounded.
+  for(let offset=0;offset<codes.length;offset+=50){
+   const response=await fetch(`/api/catalog/activity?codes=${codes.slice(offset,offset+50).join(',')}`,{cache:'no-store',signal:current.signal});
+   if(!response.ok)throw Error('activity');
+   const body=await response.json() as {items:AuctionActivity[]};
+   if(current.signal.aborted)return;
+   for(const item of body.items)if(listeners.has(item.code))publish(item);
+  }
+  failures=0;
+ }catch{if(!current.signal.aborted)failures++}
+ finally{clearTimeout(timeout);if(controller===current)controller=null;schedule(Math.min(15000,2000*(1+failures)))}
+}
+function visibility(){if(document.hidden){if(timer!==null)clearTimeout(timer);timer=null;controller?.abort()}else schedule(0)}
+function subscribe(code:string,listener:Listener){
+ const first=listeners.size===0;let group=listeners.get(code);if(!group){group=new Set();listeners.set(code,group)}group.add(listener);
+ const existing=values.get(code);if(existing)listener(existing);
+ if(first)document.addEventListener('visibilitychange',visibility);schedule(0);
+ return()=>{group!.delete(listener);if(!group!.size){listeners.delete(code);values.delete(code)}if(!listeners.size){if(timer!==null)clearTimeout(timer);timer=null;controller?.abort();document.removeEventListener('visibilitychange',visibility)}};
+}
+export function useAuctionActivity(code:string,{element,record=false}:{element?:RefObject<Element|null>;record?:boolean}={}){
+ const [visible,setVisible]=useState(!element),[value,setValue]=useState<AuctionActivity|null>(null),[recorded,setRecorded]=useState<{code:string;views:string}|null>(null);
+ useEffect(()=>{if(!element)return;const node=element.current;if(!node)return;const observer=new IntersectionObserver(([entry])=>setVisible(entry.isIntersecting&&entry.intersectionRatio>=.25),{threshold:[0,.25]});observer.observe(node);return()=>observer.disconnect()},[element,code]);
+ useEffect(()=>{setValue(null);if(!visible||!/^\d+$/.test(code))return;return subscribe(code,setValue)},[code,visible]);
+ const recordView=useCallback(async()=>{
+  if(!/^[1-9]\d{0,9}$/.test(code)||document.hidden)return;
+  const key=`lowwin-auction-view:${code}`;
+  if(recording.has(code))return;
+  try{if(sessionStorage.getItem(key)==='recorded')return}catch{}
+  recording.add(code);
+  try{const response=await fetch(`/api/catalog/auctions/${code}/view`,{method:'POST',cache:'no-store',signal:AbortSignal.timeout(8000)});if(!response.ok)throw Error('view');const body=await response.json() as {views:string};const prior=values.get(code);if(prior)publish({...prior,views:body.views});setRecorded({code,views:body.views});try{sessionStorage.setItem(key,'recorded')}catch{}schedule(0)}catch{/* Retrying a later visible visit can record the view. */}finally{recording.delete(code)}
+ },[code]);
+ useEffect(()=>{
+  if(!record||!visible)return;
+  let delay:ReturnType<typeof setTimeout>|undefined;
+  const visit=()=>{clearTimeout(delay);if(!document.hidden)delay=setTimeout(()=>void recordView(),150)};
+  visit();document.addEventListener('visibilitychange',visit);
+  return()=>{clearTimeout(delay);document.removeEventListener('visibilitychange',visit)};
+ },[record,visible,recordView]);
+ const refreshActivity=useCallback(()=>schedule(0),[]);
+ const activity=value?.code===code?value:null,views=recorded?.code===code?recorded.views:null;
+ return {activity,views:activity&&views?(BigInt(activity.views)>BigInt(views)?activity.views:views):activity?.views??views,recordView,refreshActivity};
+}
+
+/** Fetch the canonical page once public settlement or the auction phase changes. */
+export function useAuctionRefresh(activity:AuctionActivity|null,status:AuctionActivity['status']|undefined,resultReady:boolean){
+ const router=useRouter(),lastRefresh=useRef(0);
+ useEffect(()=>{
+  if(!activity||!status||activity.status===status&&(!activity.resultReady||resultReady))return;
+  if(Date.now()-lastRefresh.current<2000)return;
+  lastRefresh.current=Date.now();router.refresh();
+ },[activity,status,resultReady,router]);
+}

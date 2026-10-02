@@ -1,4 +1,4 @@
-import {campaignContent,expandCampaign,scheduleGlobalAlerts,telegramKinds} from './campaigns';
+import {broadcastRoot,broadcastStopped,campaignContent,expandCampaign,scheduleGlobalAlerts,telegramKinds} from './campaigns';
 import {stagingDemoEnabled} from '../auctions/staging-demo';
 import type {Prisma,PrismaClient,Outbox} from '@prisma/client';
 import type {Bot} from 'grammy';
@@ -8,11 +8,11 @@ const words:Record<string,[string,string]>={AUCTION_MINIMUM_CANCELLED:['Auction 
 export async function notificationContent(tx:DB,row:Pick<Outbox,'kind'|'payload'>){
  if(telegramKinds.includes(row.kind))return campaignContent(tx,row);
  const p=row.payload as {auctionId?:string;recipientUserId?:string};if(!p.recipientUserId||!p.auctionId)return null;
- const a=await tx.auction.findUnique({where:{id:p.auctionId},select:{slug:true,code:true,isDemo:true,isSettlementFixture:true,result:{select:{id:true}},settlement:{select:{decision:true,outcome:true,winnerUserId:true}}}});
+ const a=await tx.auction.findUnique({where:{id:p.auctionId},select:{slug:true,code:true,publicCode:true,isDemo:true,isSettlementFixture:true,result:{select:{id:true}},settlement:{select:{decision:true,outcome:true,winnerUserId:true}}}});
  if(!a||a.result||a.isDemo&&(!a.isSettlementFixture||!(demoBidAllowed()||stagingDemoEnabled())))return null;
  const kind=row.kind==='AUCTION_CANCELLED'&&a.settlement?.decision==='MINIMUM_PARTICIPANTS'?'AUCTION_MINIMUM_CANCELLED':row.kind==='AUCTION_CLOSED'?(a.settlement?.winnerUserId===p.recipientUserId?(a.settlement.decision==='FIRST_ACCEPTED_LOWEST'?'AUCTION_FALLBACK_WON':'AUCTION_WON'):a.settlement?.outcome==='NO_WINNER'?'AUCTION_NO_WINNER':row.kind):row.kind;
  const copy=words[kind];if(!copy)return null;
- const href=kind==='BID_ACCEPTED'?'/my-bids':kind==='FULFILLMENT_UPDATED'||kind==='AUCTION_WON'||kind==='AUCTION_FALLBACK_WON'?'/profile/wins':a.settlement?`/winners/${a.code}`:`/auctions/${a.slug}`;
+ const href=kind==='BID_ACCEPTED'?'/my-bids':kind==='FULFILLMENT_UPDATED'||kind==='AUCTION_WON'||kind==='AUCTION_FALLBACK_WON'?'/winning-bids':`/auctions/${a.publicCode}`;
  return {userId:p.recipientUserId,kind,title:`${a.isDemo?'DEMO · ':''}${copy[0]}`,body:copy[1],href};
 }
 export async function materializeAlert(tx:DB,row:Pick<Outbox,'key'|'kind'|'payload'>&Partial<Pick<Outbox,'testRunId'>>){
@@ -32,6 +32,14 @@ export async function dispatchOne(client:PrismaClient,bot:Pick<Bot,'api'>){
  return client.$transaction(async tx=>{
   const rows=await tx.$queryRaw<Outbox[]>`SELECT * FROM "Outbox" WHERE state='PENDING' AND "nextAttemptAt"<=clock_timestamp() ORDER BY "nextAttemptAt",id FOR UPDATE SKIP LOCKED LIMIT 1`;
   const row=rows[0];if(!row)return false;
+  const root=broadcastRoot(row);
+  if(root){
+   // Nonblocking after taking the outbox row lock: Stop can safely acquire the
+   // campaign lock first and then wait for rows, without a lock-order deadlock.
+   const [{locked}]=await tx.$queryRaw<{locked:boolean}[]>`SELECT pg_try_advisory_xact_lock(hashtextextended(${`broadcast:${root}`},0)) AS locked`;
+   if(!locked)return false;
+   if(await broadcastStopped(tx,root)){await tx.outbox.update({where:{id:row.id},data:{state:'SKIPPED',lastError:'CAMPAIGN_STOPPED'}});return true}
+  }
   const skip=()=>tx.outbox.update({where:{id:row.id},data:{state:'SKIPPED',lastError:null}});
   if(row.kind==='TELEGRAM_DELETE'){
    const payload=row.payload as {telegramMessageId?:string};const record=payload.telegramMessageId?await tx.telegramMessage.findUnique({where:{id:payload.telegramMessageId}}):null;

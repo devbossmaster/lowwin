@@ -31,7 +31,7 @@ describe.skipIf(!testUrl)('public catalog on disposable PostgreSQL',()=>{
     for(const item of result.items){
       expect(item.code).toMatch(/^[1-9]\d*$/);
       expect(Object.keys(item).sort()).toEqual(['bidCount','code','endsAt','isDemo','product','slug']);
-      expect(Object.keys(item.product).sort()).toEqual(['images','title']);
+      expect(Object.keys(item.product).sort()).toEqual(['images','title','titleAm']);
       expect(item.product.images.length).toBeLessThanOrEqual(1);
     }
     expect(JSON.stringify(result)).not.toContain('winningUserId');

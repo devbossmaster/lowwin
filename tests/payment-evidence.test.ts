@@ -56,7 +56,7 @@ describe('Verify.et authoritative evidence',()=>{
   [{amount:'200.01'},'AMOUNT_MISMATCH'],
   [{amount:'1.001'},'INVALID_AMOUNT'],
   [{timestamp:'2026-09-28T10:10:00Z'},'DATE_MISMATCH'],
-  [{timestamp:undefined},'DATE_MISMATCH'],
+  [{timestamp:undefined},'DATE_UNPROVEN'],
   [{referenceNumber:'OTHERREF123'},'REFERENCE_MISMATCH'],
  ] as const)('rejects unproven evidence: %j', (change,code)=>expect(assess(completed(change),input,at)).toMatchObject({matched:false,code}));
  it.each([
@@ -66,7 +66,7 @@ describe('Verify.et authoritative evidence',()=>{
   [{amount:'0.99'},'AMOUNT_MISMATCH'],
   [{amount:'1.001'},'INVALID_AMOUNT'],
   [{timestamp:'2026-09-28T10:10:00Z'},'DATE_MISMATCH'],
-  [{timestamp:undefined},'DATE_MISMATCH'],
+  [{timestamp:undefined},'DATE_UNPROVEN'],
   [{verified:false},'UNCONFIRMED'],
  ] as const)('fixed ETB currency does not bypass other evidence checks: %j',(change,code)=>expect(assess(completed({currency:'USD',...change}),input,at)).toMatchObject({matched:false,code}));
  it('does not apply the ETB policy to unsupported banks',()=>expect(assess(completed({bank:'unsupported',currency:undefined}),input,at)).toMatchObject({matched:false,code:'INCOMPLETE_EVIDENCE'}));
