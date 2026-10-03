@@ -7,7 +7,7 @@ test('banner leads directly into the seamless unDraw category rail',async({page}
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto('/');
  const banner=page.getByRole('link',{name:'Explore Lowwin auctions',exact:true});
- await expect(banner.locator('img')).toHaveAttribute('src','/banner1.png?v=forest-1');
+ await expect(banner.locator('img')).toHaveAttribute('src','/banner11.png?v=forest-1');
  await expect(banner.getByText('Start bidding')).toBeVisible();
  await expect.poll(()=>banner.locator('img').evaluate((img:HTMLImageElement)=>img.complete&&img.naturalWidth>0)).toBe(true);
  await expect(page.getByLabel('Lowest unique bid example')).toHaveCount(0);

@@ -27,7 +27,7 @@ export function candidate(bank:Bank,raw:string){
  if(bank==='cbe'&&/telebirr/i.test(text)||bank==='telebirr'&&/\bCBE\b|Commercial Bank/i.test(text))throw new PaymentError(422,'Receipt bank does not match the selected account.');
  const separator='\\s*(?:is\\s*)?[:#-]?\\s*';
  const label=bank==='cbe'?'(?:receipt\\s*(?:id|number|no\\.?)|reference(?:\\s*(?:number|id|no\\.?))?)':'(?:transaction\\s*(?:number|id|no\\.?|reference)?|reference|receipt(?:\\s*(?:number|id|no\\.?))?)';
- const pattern=new RegExp(`${label}${separator}([A-Za-z][A-Za-z0-9_-]{7,127})`,'gi');
+ const pattern=new RegExp(`${label}${separator}([A-Za-z][A-Za-z0-9_-]{7,127})(?![A-Za-z0-9_-])`,'gi');
  const found=[...text.matchAll(pattern)].map(match=>canonical(bank,match[1]));
  const unique=[...new Set(found)];if(unique.length!==1)throw new PaymentError(422,'A single clear reference could not be found. Enter it manually.');return unique[0];
 }
