@@ -8,6 +8,7 @@ vi.mock('@/lib/db',()=>({db:{$transaction:async(callback:(tx:unknown)=>Promise<u
 })}}));
 vi.mock('@/modules/payments/service',()=>({completeVerifyWebhook:async()=>{state.completions++;return state.requestBound}}));
 import {POST} from '../src/app/api/payments/verify-et/webhook/route';
+import {POST as aliasPost} from '../src/app/webhooks/verify/route';
 
 const secret='whsec_fixture-secret';
 function signed(payload:unknown,at=new Date().toISOString(),signatureSecret=secret){const body=JSON.stringify(payload),signature=createHmac('sha256',signatureSecret).update(`${at}.${body}`).digest('hex');return new Request('https://lowwin.example/api/payments/verify-et/webhook',{method:'POST',headers:{'content-type':'application/json','x-webhook-timestamp':at,'x-webhook-signature':`sha256=${signature}`,'x-webhook-event':'verification.completed','x-webhook-event-id':String((payload as {id?:string}).id)},body})}
@@ -27,4 +28,21 @@ describe('Verify.et signed durable webhook',()=>{
  });
  it('rejects forged and stale signatures',async()=>{const payload={id:randomUUID(),event:'verification.completed',requestId:randomUUID()};expect((await POST(signed(payload,new Date().toISOString(),'whsec_wrong'))).status).toBe(401);expect((await POST(signed(payload,new Date(Date.now()-3600000).toISOString()))).status).toBe(401);expect(state.events.size).toBe(0)});
  it('accepts rotation and signed test pings without a payment event',async()=>{vi.stubEnv('VERIFY_ET_WEBHOOK_SECRET_PREVIOUS','whsec_previous');const payload={id:randomUUID(),event:'webhook.test',requestId:randomUUID()};expect((await POST(signed(payload,new Date().toISOString(),'whsec_previous'))).status).toBe(204);expect(state.events.size).toBe(0)});
+});
+
+describe('Verify.et /webhooks/verify alias',()=>{
+ const url='https://lowwin.example/webhooks/verify';
+ it('requires a signature and accepts a signed test without touching payments',async()=>{
+  expect((await aliasPost(new Request(url,{method:'POST',body:JSON.stringify({event:'webhook.test'})}))).status).toBe(401);
+  const payload={event:'webhook.test'};
+  expect((await aliasPost(new Request(url,signed(payload,new Date().toISOString(),'whsec_wrong')))).status).toBe(401);
+  expect((await aliasPost(new Request(url,signed(payload)))).status).toBe(204);
+  expect(state.events.size).toBe(0);expect(state.wakes).toBe(0);expect(state.completions).toBe(0);
+ });
+ it('deduplicates the same event arriving through both URLs',async()=>{
+  const payload={id:randomUUID(),event:'verification.completed',requestId:randomUUID(),data:{processingStatus:'completed',verified:true}};
+  expect((await POST(signed(payload))).status).toBe(204);
+  expect((await aliasPost(new Request(url,signed(payload)))).status).toBe(204);
+  expect(state.events.size).toBe(1);expect(state.wakes).toBe(1);
+ });
 });
