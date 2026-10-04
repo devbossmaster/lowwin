@@ -1,21 +1,32 @@
 'use client';
 import Link from 'next/link';
-import {useId,useRef,useState} from 'react';
-import {ArrowLeft,ArrowRight,Check,Plus,Search} from 'lucide-react';
+import {useEffect,useId,useRef,useState} from 'react';
+import {ArrowLeft,ArrowRight,Check,Plus} from 'lucide-react';
 import {AdminPhoto} from './admin-catalog';
 import {eat,MfaStepUp} from './admin-ui';
 
 type Row=Record<string,any>;
-type Props={item:Row;products:Row[];auctionId:string|null;busy:boolean;owner:boolean;dirty:boolean;preflight:Row|null;onChange:()=>void;onFind:(query:string)=>void;onSave:(body:Row)=>void;onReview:()=>void;onPublish:()=>void};
+type Props={item:Row;products:Row[];auctionId:string|null;busy:boolean;owner:boolean;dirty:boolean;preflight:Row|null;onChange:()=>void;onFind:(query:string)=>Promise<Row[]>;onSave:(body:Row)=>void;onReview:()=>void;onPublish:()=>void};
 const localTime=(value?:string)=>value?new Date(new Date(value).getTime()-new Date(value).getTimezoneOffset()*60000).toISOString().slice(0,16):'';
 const dateLabel=(value:string)=>value?eat(new Date(value)):'Choose a time';
 
 export function AdminAuctionDraft({item,products,auctionId,busy,owner,dirty,preflight,onChange,onFind,onSave,onReview,onPublish}:Props){
- const body=item.draft?.body??{},form=useRef<HTMLFormElement>(null),[step,setStep]=useState(auctionId?2:0),[language,setLanguage]=useState('en'),[query,setQuery]=useState('');
+ const body=item.draft?.body??{},form=useRef<HTMLFormElement>(null),[step,setStep]=useState(auctionId?2:0),[language,setLanguage]=useState('en'),[query,setQuery]=useState(''),[remoteMatches,setRemoteMatches]=useState<Row[]>([]),[searching,setSearching]=useState(false),[searchError,setSearchError]=useState('');
  const [productId,setProductId]=useState<string>(body.productId??''),[fee,setFee]=useState(body.entryFeePoints??''),[start,setStart]=useState(localTime(body.startsAt)),[end,setEnd]=useState(localTime(body.endsAt));
  const product=products.find(p=>p.id===productId),duration=start&&end?(new Date(end).getTime()-new Date(start).getTime())/86400000:0;
  const steps=['Product','Schedule','Delivery & publish'],[editingDelivery,setEditingDelivery]=useState(false),[summaryExpanded,setSummaryExpanded]=useState(false),summaryId=useId();
  const reviewMode=step===2&&!!auctionId&&!dirty&&!editingDelivery;
+ const term=query.trim().toLocaleLowerCase();
+ const matchesTerm=(p:Row)=>[p.title,p.titleAm,p.slug,p.category?.name].some(value=>String(value??'').toLocaleLowerCase().includes(term));
+ const localMatches=term?products.filter(matchesTerm):[];
+ const matches=term?[...localMatches,...remoteMatches.filter(p=>matchesTerm(p)&&!localMatches.some(local=>local.id===p.id))].slice(0,8):[];
+ useEffect(()=>{
+  if(!query.trim()){setRemoteMatches([]);setSearching(false);setSearchError('');return}
+  let active=true;
+  setSearching(true);setSearchError('');
+  const timer=setTimeout(()=>{onFind(query.trim()).then(found=>{if(active)setRemoteMatches(found)}).catch(()=>{if(active)setSearchError('Search is unavailable. Choose from the product list below.')}).finally(()=>{if(active)setSearching(false)})},250);
+  return()=>{active=false;clearTimeout(timer)};
+ },[query,onFind]);
  function revealInvalid(all=false){
   const fields=Array.from(form.current?.querySelectorAll<HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement>('input,select,textarea')??[]);
   const invalid=fields.find(field=>(all||field.closest('fieldset[data-step]')?.getAttribute('data-step')===String(step))&&!field.validity.valid);
@@ -33,7 +44,7 @@ export function AdminAuctionDraft({item,products,auctionId,busy,owner,dirty,pref
    <form ref={form} hidden={reviewMode} className="admin-form auction-draft-form" noValidate onChange={onChange} onSubmit={event=>{event.preventDefault();if(step<2){if(!revealInvalid())setStep(step+1)}else submit()}}>
     <fieldset data-step="0" hidden={step!==0} disabled={busy}>
      <legend>Choose your product</legend><p>Pick the item you want to auction.</p>
-     <div className="auction-product-search"><label>Find product<input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Product name" onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();onFind(query)}}}/></label><button type="button" className="secondary" onClick={()=>onFind(query)}><Search size={17}/>Search</button></div>
+     <div className="auction-product-search"><label>Find product<input value={query} onChange={event=>{event.stopPropagation();setQuery(event.target.value)}} placeholder="Type a product name" autoComplete="off" onKeyDown={event=>{if(event.key==='Enter')event.preventDefault()}}/></label>{term&&<div className="auction-product-matches" aria-live="polite">{matches.map(p=><button type="button" key={p.id} className={p.id===productId?'is-selected':''} onClick={()=>{setProductId(p.id);setQuery('');onChange()}}><AdminPhoto src={p.images?.[0]?.path} alt=""/><span><strong>{p.title}</strong><small>{p.category?.name}{p.isDemo?' · DEMO':''}</small></span>{p.id===productId&&<Check size={17} aria-label="Selected"/>}</button>)}{searching&&<p>Searching…</p>}{!searching&&!matches.length&&!searchError&&<p>No matching products.</p>}{searchError&&<p role="alert">{searchError}</p>}</div>}</div>
      <label>Product<select name="productId" value={productId} onChange={event=>setProductId(event.target.value)} required><option value="">Select a product</option>{products.map(p=><option key={p.id} value={p.id}>{p.title}{p.isDemo?' · DEMO':''}</option>)}</select></label>
      {product&&<div className="auction-selected-product"><AdminPhoto src={product.images?.[0]?.path} alt={product.title}/><div><strong>{product.title}</strong><small>{product.category?.name} · {product.condition}{product.isDemo?' · DEMO':''}</small></div></div>}
      <Link href="/admin/products" target="_blank" rel="noopener noreferrer" className="auction-add-product"><Plus size={16}/>Add a product</Link>
