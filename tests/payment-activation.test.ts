@@ -6,4 +6,7 @@ describe('explicit production funding activation',()=>{
  it('rejects mixed test credentials, endpoints, DEMO issuance and unsafe origins',()=>{
   for(const [key,value] of Object.entries({VERIFY_ET_TEST_ENDPOINT:'http://localhost:5000/api/verify',PAYMENTS_TEST_ENABLED:'true',DEV_POINTS_ENABLED:'true',DEV_IDENTITY_ENABLED:'true',STAGING_DEMO_ENABLED:'true',BETTER_AUTH_URL:'http://lowwin.example',MINI_APP_URL:'bad-url',VERIFY_ET_API_KEY:'REPLACE_ME'}))expect(liveFundingConfigured({...live,[key]:value})).toBe(false);
  });
+ it('does not enable funding when the webhook secret is a URL instead of a signing secret',()=>{
+  expect(liveFundingConfigured({...live,VERIFY_ET_WEBHOOK_SECRET:'https://lowwin.example/api/payments/verify-et/webhook'})).toBe(false);
+ });
 });
