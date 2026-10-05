@@ -367,3 +367,7 @@ The top-bar hammer opens a full-screen native modal that enters from the left. C
 ## Player home refresh - 2026-10-05
 
 The owner selected standard green #008000. Home now leads with large white copy on solid brand green and a small composition of real published auction images. It preserves Owner-managed bilingual copy. White and quiet pale-green surfaces carry most content; green is reserved for the hero, actions and key counters. Featured cards distinguish countdowns from larger bid totals. Motion slides auction items from right to left, pauses for interaction and honors reduced-motion preferences. Categories appear once and require at least one publicly published auction. The smaller header circles retain 44px tap targets. Profile green panels use explicit white text. All player support actions open @lowwinsupport on Telegram.
+
+The English home headline uses locally served Sora ExtraBold (800), with balanced
+wrapping and white text on brand green. Amharic keeps the existing Ethiopic font.
+Supporting copy and the rest of the app retain Poppins.
