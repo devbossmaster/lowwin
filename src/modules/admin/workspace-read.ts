@@ -40,7 +40,6 @@ export type OverviewData={
  auctions?:{state:'ready';live:number;drafts:number;upcoming:number;completed:number;items:Awaited<ReturnType<typeof auctionList>>['items']}|{state:'error'};
  payments?:{state:'ready';count:number}|{state:'error'};
  deliveries?:{state:'ready';count:number}|{state:'error'};
- support?:{state:'ready';count:number}|{state:'error'};
  closing?:{state:'ready';failed:number;pending:number}|{state:'error'};
  deposits?:{state:'ready';totalEtb:string;todayEtb:string;count:number}|{state:'error'};
  players?:{state:'ready';total:number;today:number;biddersToday:number}|{state:'error'};
@@ -78,7 +77,6 @@ export async function readOverview(client:PrismaClient,actor:{id:string;role:Sta
  if(grants.includes('catalog'))jobs.push(part('auctions',async()=>{const [live,upcoming,drafts,completed]=await Promise.all([auctionList(client,actor.now,{status:'LIVE',take:5}),client.auction.count({where:auctionStatusWhere('UPCOMING',actor.now)}),client.auction.count({where:{status:'DRAFT'}}),client.auction.count({where:auctionStatusWhere('COMPLETED',actor.now)})]);return {state:'ready',live:live.total,upcoming,drafts,completed,items:live.items.length?live.items:(await auctionList(client,actor.now,{status:'UPCOMING',take:5})).items}}));
  if(['OWNER','SUPPORT','PAYMENTS_OPERATOR','AUDITOR'].includes(actor.role))jobs.push(part('payments',async()=>({state:'ready',count:await client.topUpIntent.count({where:depositAttentionWhere(actor.now)})})));
  if(grants.includes('fulfillment'))jobs.push(part('deliveries',async()=>({state:'ready',count:(await deliveryQueue(client,actor,{status:'INCOMPLETE'})).total})));
- if(grants.includes('support'))jobs.push(part('support',async()=>({state:'ready',count:await client.supportCase.count({where:{status:{in:['OPEN','INVESTIGATING']}}})})));
  if(grants.includes('catalog'))jobs.push(part('closing',async()=>({state:'ready',failed:await client.auction.count({where:auctionStatusWhere('FAILED',actor.now)}),pending:await client.auction.count({where:auctionStatusWhere('CLOSING',actor.now)})})));
  if(grants.includes('wallets'))jobs.push(part('deposits',()=>overviewDeposits(client,actor.now)));
  if(grants.includes('support')||grants.includes('audit'))jobs.push(part('players',()=>overviewPlayers(client,actor.now)));

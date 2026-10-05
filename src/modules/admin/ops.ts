@@ -25,8 +25,6 @@ const schemas={
  invite:z.object({key,email:z.email().max(254).transform(s=>s.toLowerCase()),role:z.enum(staffRoles),reason}).strict(),
  staff:z.object({key,userId:uid,role:z.enum(staffRoles),active:z.boolean(),reason}).strict(),
  suspend:z.object({key,userId:uid,suspended:z.boolean(),reason}).strict(),
- support:z.object({key,id:z.string().uuid(),status:z.enum(['OPEN','INVESTIGATING','RESOLVED']),reason,expectedUpdatedAt:z.iso.datetime().optional()}).strict(),
- supportWithdraw:z.object({key,id:z.string().uuid(),expectedUpdatedAt:z.iso.datetime(),reason}).strict(),
  deliveryDone:z.object({key,auctionId:z.string().uuid(),version:z.number().int().min(0),reason}).strict(),
  broadcastStop:z.object({key,id:z.string().uuid(),reason}).strict(),
  fulfillment:z.object({key,auctionId:z.string().uuid(),version:z.number().int().min(0),state:z.enum(['PENDING','CLAIMED','PACKING','SHIPPED','DELIVERED','DISPUTED']),tracking:z.string().trim().max(160),reason,assignedTo:uid.nullable().optional()}).strict(),
@@ -36,13 +34,14 @@ const schemas={
  testClean:z.object({key,id:z.string().uuid(),confirmation:z.literal('CLEAN TEST RUN'),reason}).strict(),
 };
 export type OpsAction=keyof typeof schemas;
-const commandPermission:Record<OpsAction,Permission>={supportWithdraw:'support',deliveryDone:'fulfillment',broadcastStop:'jobs',broadcast:'jobs',invite:'team',staff:'team',suspend:'support',support:'support',fulfillment:'fulfillment',retry:'jobs',testStart:'settings',testFinish:'settings',testClean:'settings'};
-export const sectionPermission:Record<string,Permission>={users:'support',support:'support',results:'audit',fulfillment:'fulfillment',wallets:'wallets',notifications:'jobs',jobs:'jobs',analytics:'audit',audit:'audit',team:'team',settings:'settings'};
+const commandPermission:Record<OpsAction,Permission>={deliveryDone:'fulfillment',broadcastStop:'jobs',broadcast:'jobs',invite:'team',staff:'team',suspend:'support',fulfillment:'fulfillment',retry:'jobs',testStart:'settings',testFinish:'settings',testClean:'settings'};
+export const sectionPermission:Record<string,Permission>={users:'support',results:'audit',fulfillment:'fulfillment',wallets:'wallets',notifications:'jobs',jobs:'jobs',analytics:'audit',audit:'audit',team:'team',settings:'settings'};
 export const serialize=(v:unknown)=>JSON.parse(JSON.stringify(v,(_,x)=>typeof x==='bigint'?x.toString():x));
 export function pageInput(params:URLSearchParams){return z.object({page:z.coerce.number().int().min(1).max(100000).default(1),q:z.string().trim().max(100).default(''),status:z.string().max(40).default(''),category:z.union([z.literal(''),z.string().uuid()]).default('')}).parse(Object.fromEntries(params))}
 export async function opsMutation(client:PrismaClient,headers:Headers,action:OpsAction,raw:unknown){
  if(!Object.hasOwn(schemas,action))throw new AdminError(404,'Unknown staff command.');
  const input=schemas[action].parse(raw),actor=await requireAdmin(client,headers,{permission:commandPermission[action]}),hash=digest(JSON.stringify({action,input}));
+ if(action==='suspend'&&actor.role!=='OWNER')throw new AdminError(403,'Only the Owner can change bidding access.');
  return client.$transaction(async tx=>{
   // Auction -> wallet (for bidding policy) -> staff. Team lock serializes grants.
   if(action==='fulfillment'||action==='deliveryDone')await tx.$queryRaw`SELECT id FROM "Auction" WHERE id=${(input as {auctionId:string}).auctionId} FOR UPDATE`;
@@ -75,20 +74,8 @@ export async function opsMutation(client:PrismaClient,headers:Headers,action:Ops
    await tx.staffMember.update({where:{userId:d.userId},data:{role:d.role,active:d.active}});await tx.session.deleteMany({where:{userId:d.userId}});receipt={userId:d.userId,role:d.role,active:d.active,sessionsRevoked:true};target=d.userId;
   }else if(action==='suspend'){
    const d=schemas.suspend.parse(input);if(await tx.staffMember.findUnique({where:{userId:d.userId}}))throw new AdminError(409,'Manage staff access through Team.');
-   if(owner.role!=='OWNER'){const proposal=await tx.supportCase.create({data:{userId:d.userId,subject:d.suspended?'Suspension proposal':'Restore bidding proposal',message:d.reason}});receipt={userId:d.userId,proposed:true,caseId:proposal.id}}else{await tx.userRestriction.upsert({where:{userId:d.userId},create:{userId:d.userId,suspended:d.suspended,reason:d.reason},update:{suspended:d.suspended,reason:d.reason}});receipt={userId:d.userId,suspended:d.suspended}}target=d.userId;
-  }else if(action==='support'){
-   const d=schemas.support.parse(input);await tx.$queryRaw`SELECT id FROM "SupportCase" WHERE id=${d.id} FOR UPDATE`;
-   const previous=await tx.supportCase.findUnique({where:{id:d.id}});if(!previous)throw new AdminError(404,'Support request not found.');
-   if(d.expectedUpdatedAt&&previous.updatedAt.toISOString()!==d.expectedUpdatedAt)throw new AdminError(409,'This conversation changed. Refresh before replying.');
-   await tx.supportCase.update({where:{id:d.id},data:{status:d.status,resolution:d.reason}});receipt={id:d.id,status:d.status};target=d.id;
-  }else if(action==='supportWithdraw'){
-   const d=schemas.supportWithdraw.parse(input);await tx.$queryRaw`SELECT id FROM "SupportCase" WHERE id=${d.id} FOR UPDATE`;
-   const previous=await tx.supportCase.findUnique({where:{id:d.id}});if(!previous)throw new AdminError(404,'Support request not found.');
-   if(previous.updatedAt.toISOString()!==d.expectedUpdatedAt)throw new AdminError(409,'This conversation changed. Refresh before withdrawing the reply.');
-   if(!previous.resolution)throw new AdminError(409,'There is no reply to withdraw.');
-   const row=await tx.supportCase.update({where:{id:d.id},data:{resolution:'',status:previous.status==='RESOLVED'?'OPEN':previous.status}});
-   await tx.adminAudit.create({data:{actorId:owner.id,action:'SUPPORT_REPLY_WITHDRAWN',target:d.id,details:{previousReply:previous.resolution,previousStatus:previous.status,reason:d.reason}}});
-   receipt={id:d.id,status:row.status,withdrawn:true};target=d.id;
+   if(owner.role!=='OWNER')throw new AdminError(403,'Only the Owner can change bidding access.');
+   await tx.userRestriction.upsert({where:{userId:d.userId},create:{userId:d.userId,suspended:d.suspended,reason:d.reason},update:{suspended:d.suspended,reason:d.reason}});receipt={userId:d.userId,suspended:d.suspended};target=d.userId;
   }else if(action==='deliveryDone'){
    const d=schemas.deliveryDone.parse(input),settled=await tx.auctionSettlement.findUnique({where:{auctionId:d.auctionId}}),previous=await tx.fulfillmentCase.findUnique({where:{auctionId:d.auctionId}});
    if(settled?.outcome!=='WINNER'||!settled.winnerUserId)throw new AdminError(409,'A settled winner is required.');
@@ -142,7 +129,7 @@ export async function opsRead(client:PrismaClient,headers:Headers,path:string[],
  const result=(items:unknown,total:number)=>serialize({items,total,page,totalPages:Math.ceil(total/take)});
  if(section==='fulfillment'&&path[1]==='staff'){if(actor.role!=='OWNER')throw new AdminError(403,'Only the Owner assigns deliveries.');const where:Prisma.StaffMemberWhereInput={active:true,role:{in:['OWNER','FULFILLMENT']},...(q?{user:{OR:[{name:{contains:q,mode:'insensitive'}},{email:{contains:q,mode:'insensitive'}}]}}:{})};return result(await client.staffMember.findMany({where,select:{userId:true,user:{select:{name:true,email:true}}},orderBy:{userId:'asc'},skip,take}),await client.staffMember.count({where}));}
  if(section==='team'){const where:Prisma.StaffMemberWhereInput=q?{user:{email:{contains:q,mode:'insensitive'}}}:{};return result(await client.staffMember.findMany({where,select:{userId:true,role:true,active:true,createdAt:true,user:{select:{email:true}}},orderBy:{userId:'asc'},skip,take}),await client.staffMember.count({where}))}
- if(section==='users'||section==='support')return serialize(await peopleRead(client,actor,path,{page,q,status}));
+ if(section==='users')return serialize(await peopleRead(client,actor,path,{page,q,status}));
  if(section==='results'){const where:Prisma.AuctionSettlementWhereInput={auction:{testRunId:null,...(q?{OR:[{code:{contains:q,mode:'insensitive'}},{product:{title:{contains:q,mode:'insensitive'}}}]}:{})},...(status?{outcome:status}:{})};return result(await client.auctionSettlement.findMany({where,select:{ruleVersion:true,auctionId:true,outcome:true,completedAt:true,winningPoints:true,winner:{select:{id:true,name:true}},auction:{select:{code:true,isDemo:true,presentation:true,product:{select:{title:true,images:{select:{path:true,alt:true},take:1}}}}}},orderBy:[{completedAt:'desc'},{id:'asc'}],skip,take}),await client.auctionSettlement.count({where}))}
  if(section==='fulfillment'){
   if(path[1]){const row=await client.fulfillmentCase.findUnique({where:{auctionId:path[1]}});if(!row||actor.role!=='OWNER'&&row.assignedTo!==actor.id)throw new AdminError(404,'Assigned fulfillment not found.');const {contactCipher,...safe}=row;await client.adminAudit.create({data:{actorId:actor.id,action:'FULFILLMENT_CONTACT_READ',target:row.auctionId,details:{}}});return {...safe,contact:contactCipher?JSON.parse(openContact(contactCipher)):null}}

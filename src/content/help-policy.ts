@@ -34,7 +34,7 @@ const liability=[
  text('LowWin reserves the right to modify, suspend or update these terms at any time.','ሎውዊን እነዚህን ደንቦች በማንኛውም ጊዜ የማሻሻል፣ የማገድ ወይም የማዘመን መብቱን ይጠብቃል።')
 ];
 const disputes=[
- text('These terms are governed by the laws of the Federal Democratic Republic of Ethiopia. Complaints or disputes may be submitted through the bot’s Support channel for review within 24 hours.','እነዚህ ደንቦች በኢትዮጵያ ፌዴራላዊ ዲሞክራሲያዊ ሪፐብሊክ ሕጎች ይገዛሉ። ቅሬታዎችን ወይም ክርክሮችን ለግምገማ በቦቱ የድጋፍ መስጫ በኩል በ24 ሰዓታት ውስጥ ማቅረብ ይችላሉ።'),
+ text('These terms are governed by the laws of the Federal Democratic Republic of Ethiopia. Complaints or disputes may be submitted through @lowwinsupport on Telegram for review within 24 hours.','እነዚህ ደንቦች በኢትዮጵያ ፌዴራላዊ ዲሞክራሲያዊ ሪፐብሊክ ሕጎች ይገዛሉ። ቅሬታዎችን ወይም ክርክሮችን ለግምገማ በቴሌግራም @lowwinsupport በኩል በ24 ሰዓታት ውስጥ ማቅረብ ይችላሉ።'),
  text('By using the LowWin Telegram Bot, you agree to these Terms and Conditions.','የሎውዊን ቴሌግራም ቦትን በመጠቀም በእነዚህ ውሎችና ሁኔታዎች መስማማትዎን ያረጋግጣሉ።')
 ];
 export const termsDocument:LegalDocument={

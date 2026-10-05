@@ -19,7 +19,7 @@ export function WinFulfillment({auctionId,isDemo}:{auctionId:string;isDemo:boole
   {row?.tracking&&<p>{t('Shipment reference','የጭነት ማጣቀሻ')}: {row.tracking}</p>}
   {query.error&&<p role="alert">{t('Delivery details are unavailable. Retry.','የርክክብ ዝርዝር አይገኝም። እንደገና ይሞክሩ።')}</p>}
   <button className="text-link" type="button" onClick={()=>setOpen(!open)}>{open?t('Close delivery form','የርክክብ ቅጹን ዝጋ'):claim?t('Claim / update delivery contact','የርክክብ መረጃ አስገባ / አዘምን'):t('Report a delivery issue','የርክክብ ችግር ሪፖርት አድርግ')}</button>
-  {open&&<form className="support-form" onSubmit={submit}>{claim?<>
+  {open&&<form className="fulfillment-form" onSubmit={submit}>{claim?<>
    <p>{isDemo?t('Use fictional contact details for this DEMO. ','ለዚህ DEMO የሙከራ መረጃ ይጠቀሙ። '):''}{t('Delivery contact never changes your login identity.','የርክክብ መረጃ የመግቢያ ማንነትዎን አይለውጥም።')}</p>
    <label>{t('Recipient name','የተቀባይ ስም')}<input name="name" required maxLength={100}/></label>
    <label>{t('Delivery phone','የርክክብ ስልክ')}<input name="phone" type="tel" required maxLength={40}/></label>

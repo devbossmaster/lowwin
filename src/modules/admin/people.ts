@@ -40,14 +40,7 @@ export async function peopleRead(client:PrismaClient,actor:{id:string;role:Staff
   if(users.length)await client.adminAudit.create({data:{actorId:actor.id,action:path[1]?'PLAYER_DETAILS_READ':'PLAYER_CONTACT_LIST_READ',target:path[1]??'players',details:{count:users.length}}});
   return path[1]?items[0]:result(items,total);
  }
- if(section==='support'){
-  if(!['','ACTIVE','OPEN','INVESTIGATING','RESOLVED'].includes(status))throw new AdminError(422,'Choose a valid support status.');
-  const matches=q?await client.user.findMany({where:{staffMember:{is:null},...playerSearch(q)},select:{id:true},take:100}):[];
-  const where:Prisma.SupportCaseWhereInput={...(status==='ACTIVE'?{status:{in:['OPEN','INVESTIGATING']}}:status?{status}:{}),...(q?{OR:[{subject:{contains:q,mode:'insensitive'}},{message:{contains:q,mode:'insensitive'}},{id:{contains:q}},{userId:{contains:q}},{userId:{in:matches.map(u=>u.id)}}]}:{})};
-  const [rows,total]=await Promise.all([client.supportCase.findMany({where,orderBy:[{updatedAt:'desc'},{id:'asc'}],skip,take}),client.supportCase.count({where})]);
-  const users=await client.user.findMany({where:{id:{in:rows.map(r=>r.userId)}},select:{id:true,name:true,telegramUsername:true}});
-  return result(rows.map(r=>({...r,player:users.find(u=>u.id===r.userId)??null})),total);
- }
+ if(section!=='fulfillment')throw new AdminError(404,'People task not found.');
  const queue=await deliveryQueue(client,actor,{page,q,status});
  const settlements=await client.auctionSettlement.findMany({where:{auctionId:{in:queue.items.map(r=>r.auctionId)}},select:{auctionId:true,winningPoints:true,winner:{select:identity},auction:{select:{publicCode:true,presentation:true}}}});
  const cases=await client.fulfillmentCase.findMany({where:{auctionId:{in:queue.items.map(r=>r.auctionId)}},select:{auctionId:true,deliveredAt:true}});

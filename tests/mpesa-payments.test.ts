@@ -27,6 +27,7 @@ describe('M-Pesa deposits',()=>{
   [{transactionNumber:'OTHER12345'},'REFERENCE_MISMATCH'],
   [{bank:'telebirr'},'UNCONFIRMED'],
   [{amount:'1000.01'},'AMOUNT_MISMATCH'],
+  [{amount:undefined},'INCOMPLETE_EVIDENCE'],
   [{timestamp:undefined},'DATE_UNPROVEN'],
   [{timestamp:'2025-01-01T00:00:00Z'},'DATE_MISMATCH'],
  ] as const)('does not credit invalid evidence %j',(change,code)=>expect(assess(completed(change),input,now)).toMatchObject({matched:false,code}));
@@ -70,6 +71,11 @@ describe('M-Pesa deposits',()=>{
   const transaction=vi.fn(),client={$transaction:transaction} as unknown as PrismaClient;
   expect(depositBankSchema.safeParse('unsupported').success).toBe(false);
   await expect(createIntent(client,'fixture-user',{channel:'unsupported',key:randomUUID(),policyId:randomUUID()},true)).rejects.toThrow();expect(transaction).not.toHaveBeenCalled();
+ });
+ it.each(['telebirr','cbe','mpesa'])('rejects a customer amount override when preparing a %s receipt deposit',async channel=>{
+  const transaction=vi.fn(),client={$transaction:transaction} as unknown as PrismaClient;
+  await expect(createIntent(client,'fixture-user',{channel,key:randomUUID(),policyId:randomUUID(),amountCents:'999999'},true)).rejects.toThrow();
+  expect(transaction).not.toHaveBeenCalled();
  });
  it('exposes all three receiving-account configurations to the Owner',async()=>{
   const findFirst=vi.fn(async()=>null);

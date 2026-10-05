@@ -1,6 +1,6 @@
 export const defaultHomeCopy={
- headline:'LOWWIN Auction Platform',
- headlineAm:'LOWWIN የጨረታ መድረክ',
+ headline:'LowWin Auction Platform',
+ headlineAm:'LowWin የጨረታ መድረክ',
  lead:'The lowest unique bid wins.\nTry up to 100 amounts per auction.\nDiscover premium items for less.',
  leadAm:'አንድ ጊዜ ብቻ የቀረበው ዝቅተኛ መጠን ያሸንፋል።\nበአንድ ጨረታ እስከ 100 የተለያዩ መጠኖችን ያቅርቡ።\nጥራት ያላቸውን ዕቃዎች በአነስተኛ ዋጋ ያግኙ።',
 };

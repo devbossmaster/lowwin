@@ -15,13 +15,15 @@ describe('Admin workspace contracts',()=>{
   expect(allowedTasks('OWNER').some(t=>t.href==='/admin/content')).toBe(false);
   expect(areaLanding('OWNER','Auctions')).toBe('/admin/auctions');
   expect(areaLanding('CATALOG_MANAGER','Auctions')).toBe('/admin/auctions');
-  expect(areaLanding('SUPPORT','People')).toBe('/admin/support');
+  expect(areaLanding('SUPPORT','People')).toBe('/admin/users');
   expect(areaLanding('FULFILLMENT','People')).toBe('/admin/fulfillment');
   expect(areaLanding('PAYMENTS_OPERATOR','Money')).toBe('/admin/top-ups');
   expect(areaLanding('AUDITOR','Auctions')).toBe('/admin/results');
   expect(areaLanding('AUDITOR','Overview')).toBe('/admin');
   expect(areaLanding('FULFILLMENT','Money')).toBeUndefined();
   expect(allowedTasks('SUPPORT').some(t=>t.href==='/admin/top-ups/statements')).toBe(false);
+  expect(allowedTasks('OWNER').some(t=>t.href==='/admin/support')).toBe(false);
+  expect(allowedTasks('OWNER').some(t=>t.href==='/admin/notifications')).toBe(true);
  });
  it('matches deep routes before their parent',()=>{
   expect(activeTask('/admin/settings/payments').area).toBe('Money');
@@ -32,7 +34,8 @@ describe('Admin workspace contracts',()=>{
  it('keeps a failed queue distinct from an empty authorized queue',async()=>{
   const db={topUpIntent:{count:vi.fn().mockRejectedValue(Error('offline'))},supportCase:{count:vi.fn().mockResolvedValue(0)}};
   const result=await readOverview(db as unknown as PrismaClient,{id:'support',role:'SUPPORT',now:new Date('2026-09-30T10:00:00Z')});
-  expect(result).toEqual({serverNow:'2026-09-30T10:00:00.000Z',payments:{state:'error'},support:{state:'ready',count:0},players:{state:'error'}});
+  expect(result).toEqual({serverNow:'2026-09-30T10:00:00.000Z',payments:{state:'error'},players:{state:'error'}});
+  expect(db.supportCase.count).not.toHaveBeenCalled();
  });
  it('uses midnight EAT across UTC date and year boundaries',()=>{
   expect(eatDayStart(new Date('2026-10-02T20:59:59Z')).toISOString()).toBe('2026-10-01T21:00:00.000Z');

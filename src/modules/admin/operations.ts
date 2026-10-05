@@ -190,6 +190,7 @@ export async function adminMutation(client:PrismaClient,headers:Headers,action:A
 export async function adminRead(client:PrismaClient,headers:Headers,path:string[],params=new URLSearchParams()) {
   if(sectionPermission[path[0]])return opsRead(client,headers,path,params);
   const actor=await requireAdmin(client,headers);
+  if(path[0]==='support')throw new AdminError(404,'Admin resource not found.');
   if(path[0]==='me')return {role:actor.role,permissions:permissions(actor.role),expiresAt:actor.expiresAt,mfaAt:actor.mfaAt};
   if(path[0]!=='dashboard'){const permission=path[0]==='reconciliation'||path[2]==='proof'?'audit':path[2]==='impact'?'cancel':'catalog';assertPermission(actor.role,permission)}
   if(path[0]==='dashboard')return readOverview(client,actor);

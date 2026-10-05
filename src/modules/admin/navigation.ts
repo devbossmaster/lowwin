@@ -10,7 +10,6 @@ export const adminTasks:readonly Task[]=[
  {href:'/admin/results',label:'Results',area:'Auctions',permission:'audit'},
  {href:'/admin/top-ups',label:'Deposits',area:'Money',roles:['OWNER','PAYMENTS_OPERATOR','AUDITOR','SUPPORT']},
  {href:'/admin/settings/payments',label:'Receiving accounts',area:'Money',roles:['OWNER']},
- {href:'/admin/support',label:'Support',area:'People',permission:'support'},
  {href:'/admin/users',label:'Players',area:'People',permission:'support'},
  {href:'/admin/fulfillment',label:'Deliveries',area:'People',permission:'fulfillment'},
  {href:'/admin/notifications',label:'Messages',area:'People',permission:'jobs'},
@@ -21,7 +20,7 @@ export const adminTasks:readonly Task[]=[
  {href:'/admin/team',label:'Team access',area:'Settings',permission:'team'},
 ];
 export const adminAreas:readonly AdminArea[]=['Overview','Auctions','Money','People','Settings'];
-export const roleLabels:Record<StaffRole,string>={OWNER:'Owner',CATALOG_MANAGER:'Catalog manager',SUPPORT:'Support',FULFILLMENT:'Fulfillment',PAYMENTS_OPERATOR:'Payments operator',AUDITOR:'Auditor'};
+export const roleLabels:Record<StaffRole,string>={OWNER:'Owner',CATALOG_MANAGER:'Catalog manager',SUPPORT:'Player care',FULFILLMENT:'Fulfillment',PAYMENTS_OPERATOR:'Payments operator',AUDITOR:'Auditor'};
 export function allowedTasks(role:StaffRole){return adminTasks.filter(t=>t.roles?t.roles.includes(role):!t.permission||permissions(role).includes(t.permission));}
 export function activeTask(path:string){if(/\/admin\/auctions\/[^/]+\/proof$/.test(path))return adminTasks.find(t=>t.href==='/admin/results')!;return [...adminTasks].sort((a,b)=>b.href.length-a.href.length).find(t=>path===t.href||t.href!=='/admin'&&path.startsWith(t.href+'/'))??adminTasks[0];}
 export function areaLanding(role:StaffRole,area:AdminArea){return allowedTasks(role).find(t=>t.area===area)?.href;}
