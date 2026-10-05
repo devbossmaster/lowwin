@@ -10,6 +10,7 @@ export function depositFeedback(receipt:{status:string;reason?:string|null;point
    AMOUNT_MISMATCH:'The amount does not match the deposit requirements. Admin review is needed.',
    RECEIVER_MISMATCH:'The receiving account does not match. Admin review is needed.',
    RECEIVER_UNPROVEN:'The receiving account could not be confirmed. Admin review is needed.',
+   WEBHOOK_DELAYED:'The receipt was verified, but its final result is delayed. Your wallet will update automatically when it arrives.',
    STALE_INTENT:'This deposit expired before verification finished. Contact support.',
    PROVIDER_UNAVAILABLE:'Verification did not finish. Contact support with your deposit ID.',
   };

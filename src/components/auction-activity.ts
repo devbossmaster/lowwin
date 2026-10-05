@@ -1,6 +1,7 @@
 'use client';
 import {useCallback,useEffect,useRef,useState,type RefObject} from 'react';
 import {useRouter} from 'next/navigation';
+import {useTelegram} from './telegram-provider';
 import type {AuctionActivity} from '@/modules/auctions/activity';
 
 type Listener=(value:AuctionActivity)=>void;
@@ -39,21 +40,22 @@ function subscribe(code:string,listener:Listener){
  return()=>{group!.delete(listener);if(!group!.size){listeners.delete(code);values.delete(code)}if(!listeners.size){if(timer!==null)clearTimeout(timer);timer=null;controller?.abort();document.removeEventListener('visibilitychange',visibility)}};
 }
 export function useAuctionActivity(code:string,{element,record=false}:{element?:RefObject<Element|null>;record?:boolean}={}){
+ const {me,status:identityStatus}=useTelegram(),viewerId=me?.user.id;
  const [visible,setVisible]=useState(!element),[value,setValue]=useState<AuctionActivity|null>(null),[recorded,setRecorded]=useState<{code:string;views:string}|null>(null);
- useEffect(()=>{if(!element)return;const node=element.current;if(!node)return;const observer=new IntersectionObserver(([entry])=>setVisible(entry.isIntersecting&&entry.intersectionRatio>=.25),{threshold:[0,.25]});observer.observe(node);return()=>observer.disconnect()},[element,code]);
+ useEffect(()=>{if(!element)return;const node=element.current;if(!node)return;setVisible(false);const observer=new IntersectionObserver(([entry])=>setVisible(entry.isIntersecting&&entry.intersectionRatio>=.5),{threshold:[0,.5]});observer.observe(node);return()=>observer.disconnect()},[element,code]);
  useEffect(()=>{setValue(null);if(!visible||!/^\d+$/.test(code))return;return subscribe(code,setValue)},[code,visible]);
  const recordView=useCallback(async()=>{
-  if(!/^[1-9]\d{0,9}$/.test(code)||document.hidden)return;
-  const key=`lowwin-auction-view:${code}`;
+  if(!/^[1-9]\d{0,9}$/.test(code)||document.hidden||identityStatus!=='authenticated'||!viewerId)return;
+  const key=`lowwin-auction-view:${viewerId}:${code}`;
   if(recording.has(code))return;
-  try{if(sessionStorage.getItem(key)==='recorded')return}catch{}
+  try{if(Number(sessionStorage.getItem(key))>Date.now())return}catch{}
   recording.add(code);
-  try{const response=await fetch(`/api/catalog/auctions/${code}/view`,{method:'POST',cache:'no-store',signal:AbortSignal.timeout(8000)});if(!response.ok)throw Error('view');const body=await response.json() as {views:string};const prior=values.get(code);if(prior)publish({...prior,views:body.views});setRecorded({code,views:body.views});try{sessionStorage.setItem(key,'recorded')}catch{}schedule(0)}catch{/* Retrying a later visible visit can record the view. */}finally{recording.delete(code)}
- },[code]);
+  try{const response=await fetch(`/api/catalog/auctions/${code}/view`,{method:'POST',cache:'no-store',signal:AbortSignal.timeout(8000)});if(!response.ok)throw Error('view');const body=await response.json() as {views:string;counted:boolean};const prior=values.get(code);if(prior)publish({...prior,views:body.views});setRecorded({code,views:body.views});try{sessionStorage.setItem(key,String(Date.now()+(body.counted?86400000:300000)))}catch{}schedule(0)}catch{/* Retrying a later visible visit can record the view. */}finally{recording.delete(code)}
+ },[code,identityStatus,viewerId]);
  useEffect(()=>{
   if(!record||!visible)return;
   let delay:ReturnType<typeof setTimeout>|undefined;
-  const visit=()=>{clearTimeout(delay);if(!document.hidden)delay=setTimeout(()=>void recordView(),150)};
+  const visit=()=>{clearTimeout(delay);if(!document.hidden)delay=setTimeout(()=>void recordView(),1000)};
   visit();document.addEventListener('visibilitychange',visit);
   return()=>{clearTimeout(delay);document.removeEventListener('visibilitychange',visit)};
  },[record,visible,recordView]);

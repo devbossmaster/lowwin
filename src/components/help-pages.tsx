@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import {TelegramLink} from './telegram-link';
 import {useState} from 'react';
 import {ArrowUpRight,CalendarDays,Minus,Plus,Search} from 'lucide-react';
 import {LanguageSwitch,useMiniLocale} from './mini-locale';
@@ -11,7 +12,7 @@ function HelpNavigation({active}:{active:'faq'|'terms'|'privacy'}){
  const items=[{id:'faq',title:{en:'FAQ',am:'ጥያቄዎች'}},...([{id:'terms',...termsDocument},{id:'privacy',...privacyDocument}].filter(item=>item.sections.length>0))];
  return <nav className="help-navigation" aria-label={language==='am'?'መረጃ':'Information'}>{items.map(item=><Link key={item.id} href={`/${item.id}`} aria-current={active===item.id?'page':undefined}>{item.title[language]}</Link>)}</nav>;
 }
-function HelpContact(){const {language}=useMiniLocale();return <aside className="help-contact"><div><h2>{language==='am'?'አሁንም ጥያቄ አለዎት?' :'Still have a question?'}</h2><p>{language==='am'?'ቡድናችን ሊረዳዎት ዝግጁ ነው።':'Our team is here to help.'}</p></div><Link href="/profile/support">{language==='am'?'ድጋፍ ያግኙ':'Contact support'}<ArrowUpRight size={18}/></Link></aside>}
+function HelpContact(){const {language}=useMiniLocale();return <aside className="help-contact"><div><h2>{language==='am'?'አሁንም ጥያቄ አለዎት?' :'Still have a question?'}</h2><p>{language==='am'?'ቡድናችን ሊረዳዎት ዝግጁ ነው።':'Our team is here to help.'}</p></div><TelegramLink>{language==='am'?'ድጋፍ ያግኙ':'Contact support'}<ArrowUpRight size={18}/></TelegramLink></aside>}
 
 export function FaqPage(){
  const {language}=useMiniLocale(),[search,setSearch]=useState('');

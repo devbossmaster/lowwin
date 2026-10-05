@@ -1,15 +1,16 @@
 import {test,expect} from '@playwright/test';
-test('banner leads directly into the seamless unDraw category rail',async({page},info)=>{
+test('brand hero leads into populated categories without duplicate tiles',async({page},info)=>{
  await page.route('https://telegram.org/**',r=>r.fulfill({body:''}));
  await page.route('**/api/onboarding/contact',r=>r.fulfill({json:{verified:true}}));
  await page.route('**/api/me',r=>r.fulfill({json:{user:{id:'home-fixture',name:'Miki'},wallet:{available:'750',held:'25',demo:true}}}));
  await page.route('**/api/alerts',r=>r.fulfill({json:{unread:0}}));
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto('/');
- const banner=page.getByRole('link',{name:'Explore Lowwin auctions',exact:true});
- await expect(banner.locator('img')).toHaveAttribute('src','/banner11.png?v=forest-1');
- await expect(banner.getByText('Start bidding')).toBeVisible();
- await expect.poll(()=>banner.locator('img').evaluate((img:HTMLImageElement)=>img.complete&&img.naturalWidth>0)).toBe(true);
+ const banner=page.locator('section[aria-labelledby="home-headline"]');
+ await expect(banner).toHaveCSS('background-color','rgb(0, 128, 0)');
+ await expect(banner.getByRole('heading',{level:1})).toBeVisible();
+ await expect(banner.getByRole('link',{name:'Explore Lowwin auctions',exact:true})).toBeVisible();
+ await expect.poll(()=>banner.locator('img').evaluateAll(images=>images.length>0&&images.every(img=>(img as HTMLImageElement).complete&&(img as HTMLImageElement).naturalWidth>0))).toBe(true);
  await expect(page.getByLabel('Lowest unique bid example')).toHaveCount(0);
  await expect(page.getByText('Welcome to Lowwin',{exact:true})).toHaveCount(0);
  const rail=page.locator('[data-category-rail]');await expect(rail).toHaveCount(1);
@@ -18,18 +19,17 @@ test('banner leads directly into the seamless unDraw category rail',async({page}
  const images=categoryLinks.locator('img');await expect(images).toHaveCount(categoryCount);
  await categories.scrollIntoViewIfNeeded();
  await expect.poll(()=>images.evaluateAll(list=>list.slice(0,3).every(img=>(img as HTMLImageElement).complete&&(img as HTMLImageElement).naturalWidth>0))).toBe(true);
- expect(await images.evaluateAll(list=>list.every(img=>img.getAttribute('src')?.startsWith('/catalog/')))).toBe(true);
- await expect(rail.locator('[data-loop-copy]')).toHaveCount(1);
- const loop=await rail.evaluate(async element=>{const first=element.firstElementChild as HTMLElement,copy=element.querySelector<HTMLElement>('[data-loop-copy]')!;const span=copy.offsetLeft-first.offsetLeft;element.scrollLeft=span+5;await new Promise(resolve=>requestAnimationFrame(()=>resolve(null)));return {left:element.scrollLeft,span}});
- expect(loop.left).toBeLessThan(loop.span);
+ expect(await images.evaluateAll(list=>list.every(img=>/^\/catalog\/categories\/.+\.png$/.test(img.getAttribute('src')??'')))).toBe(true);
+ await expect(rail.locator('[data-loop-copy]')).toHaveCount(0);
  const paths=await categoryLinks.evaluateAll(links=>links.map(a=>a.getAttribute('href')!));
- const expectedPaths=['/categories/home-furniture','/categories/vehicles','/categories/accessories','/categories/computer-office-equipment','/categories/home-furnishings','/categories/jewelry','/categories/watches','/categories/phones','/categories/animals'];
- expect(paths).toEqual(expect.arrayContaining(expectedPaths));
+ expect(new Set(paths).size).toBe(paths.length);
+ expect(paths).not.toContain('/categories/animals');
+ for(const label of await categoryLinks.locator('small').allTextContents())expect(label).not.toMatch(/^0\s/);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:`docs/screenshots/home-banner-${info.project.name}.png`});
  await categories.screenshot({path:`docs/screenshots/home-categories-${info.project.name}.png`});
- await banner.click();await expect(page).toHaveURL(/\/auctions$/);
- for(const path of expectedPaths){await page.goto('/');await page.locator(`a[href="${path}"]`).first().click();await expect(page).toHaveURL('http://localhost:3112'+path);await expect(page.getByRole('heading',{level:1})).toBeVisible()}
+ await banner.getByRole('link',{name:'Explore Lowwin auctions',exact:true}).click();await expect(page).toHaveURL(/\/auctions\/all$/);
+ for(const path of paths){await page.goto('/');await page.locator(`a[href="${path}"]`).first().click();await expect(page).toHaveURL('http://localhost:3112'+path);await expect(page.getByRole('heading',{level:1})).toBeVisible()}
  expect(errors).toEqual([]);
 });
 test('401 recovery requires a fresh launch and never opens protected content',async({page},info)=>{

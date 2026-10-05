@@ -2,7 +2,7 @@ import {afterAll, beforeAll, describe, expect, it, vi} from 'vitest';
 import {InputFile} from 'grammy';
 import type {Update, UserFromGetMe} from 'grammy/types';
 import {createBot} from '../src/modules/bot/bot';
-import {CONTACT_REQUEST_MESSAGE,CONTACT_REPLY_KEYBOARD} from '../src/modules/bot/onboarding-copy';
+import {WELCOME_CAPTION,CONTACT_REQUEST_MESSAGE,CONTACT_REPLY_KEYBOARD} from '../src/modules/bot/onboarding-copy';
 import {TEST_TOKEN} from './helpers';
 
 describe('private Telegram welcome',()=>{
@@ -18,7 +18,9 @@ describe('private Telegram welcome',()=>{
  it('uploads the current welcome banner with the exact Amharic caption and inline Mini App button',async()=>{
   const sent=await send({},true);expect(sent).toHaveLength(1);expect(sent[0].method).toBe('sendPhoto');
   expect(sent[0].payload.photo).toBeInstanceOf(InputFile);expect((sent[0].payload.photo as InputFile).filename).toBe('banner11.png');
-  expect(sent[0].payload.caption).toBe('👋 እንኳን ወደ Lowwin በደህና መጡ! በአንድ ሰው ብቻ የቀረበው ዝቅተኛው የጨረታ መጠን ያሸንፋል። ጨረታዎችን ለማየት ሚኒ አፑን ይክፈቱ።');
+  expect(sent[0].payload.caption).toBe(WELCOME_CAPTION);
+  expect(sent[0].payload.caption).toContain('📢 ቻናላችን፦ @lowwinet');
+  expect(sent[0].payload.caption).toContain('👥 ግሩፓችን፦ @LowWinChat');
   expect(sent[0].payload.reply_markup).toEqual({inline_keyboard:[[{text:'🎯 ጨረታ ይጀምሩ',web_app:{url:'http://localhost:3000'}}]]});
  });
  it('shows new users the private bot contact button before the Mini App launch',async()=>{

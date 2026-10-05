@@ -30,16 +30,18 @@
 .action { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; margin-top: 8px; border: 0; border-radius: 10px; background: var(--mini-action, #008000); color:#fff; text-decoration: none; font-size: 12px; font-weight: 700; --surface-ink:#fff; }
 .note { margin: 13px 0 0; color: var(--surface-ink, #000); text-align: center; font-size: 10px; line-height: 1.4; }
 .upcomingNotice { margin-top:4px; padding:13px; border-radius:10px; background:#f9f9f9; color:var(--surface-ink, #000); text-align:center; font-size:11px; line-height:1.5; --surface-ink: #000; }
-.bidBox { margin-top: 4px; }
-.amountControl { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: center; min-height: 48px; border: 1px solid #e1e1e1; border-radius: 10px; background: #f9f9f9; --surface-ink: #000; color: var(--surface-ink, #000); }
+.bidBox { margin-top: 16px; padding-top: 14px; border-top: 1px solid #e1e8e1; }
+.bidLabel { display: block; margin-bottom: 8px; color: #17251d; font-size: 12px; font-weight: 650; }
+.amountControl { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: center; min-height: 52px; border: 1px solid #c4d2c4; border-radius: 10px; background: #fff; --surface-ink: #17251d; color: #17251d; }
+.amountControl:focus-within { outline: 2px solid #008000; outline-offset: 2px; }
 .amountControl button { display: grid; place-items: center; width: 44px; height: 46px; border: 0; background: transparent; color: var(--surface-ink, #000); cursor: pointer; --surface-ink: inherit; }
 .amountControl button:disabled { opacity: .4; cursor: not-allowed; }
 .amountControl label { min-width: 0; }
 .amountControl input { display: block; width: 100%; height: 46px; padding: 0 3px; border: 0; outline: 0; background: transparent; color: var(--surface-ink, #000); font: inherit; font-size: 14px; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; --surface-ink: inherit; }
 .amountControl input::placeholder { color: var(--surface-ink, #000); font-size: 12px; font-weight: 500; }
-.range { margin: 6px 2px 0; color: var(--surface-ink, #000); font-size: 10px; line-height: 1.4; }
+.range { margin: 8px 0 0; color: #536559; font-size: 11px; line-height: 1.5; }
 .submitBid,.confirmButton { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 48px; margin-top: 8px; padding: 8px 12px; border: 0; border-radius: 10px; background: var(--mini-action, #008000); color:#fff; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; --surface-ink:#fff; }
-.submitBid:disabled,.confirmButton:disabled { background: #e6e6e6; color: var(--surface-ink, #000); cursor: not-allowed; --surface-ink: #000; }
+.submitBid:disabled,.confirmButton:disabled { background: #e5ebe5; color: #536559; cursor: not-allowed; --surface-ink: #536559; }
 .bidError { margin: 8px 0; color: var(--surface-ink, #000); font-size: 11px; line-height: 1.5; }
 .bidError button { border: 0; background: none; color: var(--surface-ink, #000); font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; --surface-ink: inherit; }
 .accepted { display: flex; align-items: flex-start; gap: 6px; margin: 9px 0 0; color: var(--surface-ink, #000); font-size: 11px; line-height: 1.5; }
@@ -86,3 +88,26 @@
 .resultStats small { margin-top: 3px; color: var(--surface-ink, #000); font-size: 8px; text-transform: uppercase; letter-spacing: .04em; }
 .resultAction { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; border-radius: 12px; background: var(--mini-action, #008000); color:#fff; font-size: 13px; font-weight: 700; text-decoration: none; box-shadow: 0 5px 0 #008000; --surface-ink:#fff; }
 .toolbar button:last-child,.closedBadge { border-color: #008000; background: #008000; color:#fff; --surface-ink:#fff; }
+
+/* Neutral canvas, soft green surfaces, solid green actions and counters. */
+.slideViewport{overflow:hidden;padding-block:8px 18px}
+.card{width:100%;box-shadow:0 6px 20px rgb(17 38 24 / 12%);background:#fff;color:#17251d;--surface-ink:#17251d}
+.visual{margin:12px 12px 0;background:#f4f7f4}
+.body{padding:18px}
+.body h3{font-size:20px;line-height:1.35}
+.category{color:#536559;font-size:11px}
+.facts span{color:#536559;font-size:11px}
+.facts strong{color:#17251d;font-size:17px}
+.facts>div:last-child strong{font-size:13px;line-height:1.7}
+.timing{gap:8px;margin:14px 0 0;padding:12px;border-radius:10px;background:#edf5ed;color:#006600;--surface-ink:#006600}
+.timing :global(.countdown){color:#006600;font-size:15px;--surface-ink:#006600}
+.bidCount{padding:6px 10px;border-radius:8px;background:#008000;color:#fff;--surface-ink:#fff;font-size:17px;font-weight:700}
+.live>span{background:#fff}
+.upcomingNotice{background:#f1f5f1;color:#435548;font-size:12px}
+.upcoming .card{background:#f8faf8}
+.ending .timing{background:#e3eee3}
+.action{min-height:48px;font-size:13px}
+.bidBox+.action{margin-top:4px;background:transparent;color:#006600;--surface-ink:#006600}
+.note{margin-top:0;color:#536559;font-size:11px;line-height:1.5}
+.resultPanel{border-color:#dce8dc;background:#edf5ed}
+.resultAction{box-shadow:none}

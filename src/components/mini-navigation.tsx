@@ -1,6 +1,7 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
 import Link from 'next/link';
+import {TelegramLink} from './telegram-link';
 import {usePathname,useRouter} from 'next/navigation';
 import {ChevronDown,Menu,Search,X} from 'lucide-react';
 import {MiniPhrase,useMiniLocale} from './mini-locale';
@@ -40,7 +41,7 @@ export function MiniNavigation(){
       <Link prefetch={false} href="/auctions/all" onClick={close}><MiniPhrase en="Auctions" am="ጨረታዎች"/></Link>
       <Link prefetch={false} href="/wallet" onClick={close}><MiniPhrase en="Wallet" am="የገንዘብ ቦርሳ"/></Link>
       <Link prefetch={false} href="/faq" onClick={close}><MiniPhrase en="FAQ" am="ተደጋጋሚ ጥያቄዎች"/></Link>
-      <Link prefetch={false} href="/profile/support" onClick={close}><MiniPhrase en="Contact Us" am="ያግኙን"/></Link>
+      <TelegramLink onClick={close}><MiniPhrase en="Contact Us" am="ያግኙን"/></TelegramLink>
     </nav></>}
   </div>;
 }

@@ -163,7 +163,7 @@ export async function listCategories(now?: Date) {
       JOIN "AuctionTerms" t ON t."auctionId"=a.id)
       ON a."categoryId"=c.id AND a."publishedAt"<=${now} AND a."testRunId" IS NULL
         AND a.slug IS NOT NULL AND a.status IN ('SCHEDULED','LIVE','CLOSED','CANCELLED')
-    WHERE c.visible GROUP BY c.id ORDER BY c."sortOrder",c.name`;
+    WHERE c.visible GROUP BY c.id HAVING count(a.id)>0 ORDER BY c."sortOrder",c.name`;
   return rows.map(({all,live,upcoming,closed,...category})=>({...category,counts:{all,live,upcoming,closed}}));
   });
 }

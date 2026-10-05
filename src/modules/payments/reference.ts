@@ -5,6 +5,7 @@ export class PaymentError extends Error{constructor(public status:number,message
 export function canonical(bank:Bank,raw:string){
  const value=raw.trim();
  if(bank==='telebirr'){const upper=value.toUpperCase();if(!/^[A-Z][A-Z0-9]{7,31}$/.test(upper))throw new PaymentError(422,'Enter a supported transaction number.');return upper}
+ if(bank==='mpesa'){const upper=value.toUpperCase();if(!/^[A-Z0-9]{8,32}$/.test(upper)||!/[A-Z]/.test(upper)||!/\d/.test(upper))throw new PaymentError(422,'Enter the M-Pesa transaction number.');return upper}
  if(/^FT[A-Z0-9]{6,30}$/i.test(value))return value.toUpperCase();
  if(/^FT/i.test(value)||!/^[A-Za-z0-9_-]{12,128}$/.test(value))throw new PaymentError(422,'Enter a CBE Receipt ID or legacy FT reference.');
  return value;
@@ -18,16 +19,21 @@ export function candidate(bank:Bank,raw:string){
  const urls=[...new Set((text.match(/https?:\/\/[^\s<>"']+/g)??[]).map(value=>value.replace(/[\])}>.,;:!?]+$/g,'')))];
  if(urls.length){
   if(urls.length!==1)throw new PaymentError(422,'More than one receipt was found. Enter one reference.');
-  const url=new URL(urls[0]);if(url.protocol!=='https:'||url.username||url.password||url.port||url.hash||url.search)throw new PaymentError(422,'Use an official supported receipt link or enter the reference.');
+  const url=new URL(urls[0]);if(url.protocol!=='https:'||url.username||url.password||url.port||url.hash)throw new PaymentError(422,'Use an official supported receipt link or enter the reference.');
+  if(bank==='mpesa'&&url.hostname==='m-pesabusiness.safaricom.et'&&url.pathname==='/api/receipt/getReceipt'&&url.searchParams.getAll('trxNo').length===1&&[...url.searchParams.keys()].every(key=>key==='trxNo'))return canonical(bank,url.searchParams.get('trxNo')!);
+  if(url.search)throw new PaymentError(422,'Use an official supported receipt link or enter the reference.');
   if(bank==='cbe'&&url.hostname==='mbreciept.cbe.com.et'&&/^\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_-]+\/?$/.test(url.pathname))return canonical(bank,url.pathname.split('/').filter(Boolean).at(-1)!);
   if(bank==='telebirr'&&['apps.ethiotelecom.et','transactioninfo.ethiotelecom.et'].includes(url.hostname)&&/^\/receipt\/[A-Za-z0-9]{8,32}\/?$/.test(url.pathname))return canonical(bank,url.pathname.split('/')[2]);
   throw new PaymentError(422,'Use an official supported receipt link or enter the reference.');
  }
  if(/^[A-Za-z0-9_-]+$/.test(text))return canonical(bank,text);
- if(bank==='cbe'&&/telebirr/i.test(text)||bank==='telebirr'&&/\bCBE\b|Commercial Bank/i.test(text))throw new PaymentError(422,'Receipt bank does not match the selected account.');
+ const names={cbe:/\bCBE\b|Commercial Bank/i,telebirr:/telebirr/i,mpesa:/m[\s-]?pesa|safaricom/i};
+ if(Object.entries(names).some(([channel,pattern])=>channel!==bank&&pattern.test(text)))throw new PaymentError(422,'Receipt bank does not match the selected account.');
  const separator='\\s*(?:is\\s*)?[:#-]?\\s*';
  const label=bank==='cbe'?'(?:receipt\\s*(?:id|number|no\\.?)|reference(?:\\s*(?:number|id|no\\.?))?)':'(?:transaction\\s*(?:number|id|no\\.?|reference)?|reference|receipt(?:\\s*(?:number|id|no\\.?))?)';
- const pattern=new RegExp(`${label}${separator}([A-Za-z][A-Za-z0-9_-]{7,127})(?![A-Za-z0-9_-])`,'gi');
+ const first=bank==='mpesa'?'[A-Za-z0-9]':'[A-Za-z]';
+ const pattern=new RegExp(`${label}${separator}(${first}[A-Za-z0-9_-]{7,127})(?![A-Za-z0-9_-])`,'gi');
  const found=[...text.matchAll(pattern)].map(match=>canonical(bank,match[1]));
+ if(bank==='mpesa')for(const match of text.matchAll(/\b([A-Z0-9]{8,32})\s+confirmed\b/gi))found.push(canonical(bank,match[1]));
  const unique=[...new Set(found)];if(unique.length!==1)throw new PaymentError(422,'A single clear reference could not be found. Enter it manually.');return unique[0];
 }

@@ -1,5 +1,7 @@
-.link{position:fixed;z-index:19;right:max(16px,calc((100vw - 480px)/2 + 16px));bottom:calc(90px + var(--mini-safe-bottom,0px) + var(--tg-content-safe-area-inset-bottom,0px));display:grid;place-items:center;width:56px;height:56px;border:3px solid #fff;border-radius:50%;background:#fff;color:#229ed9;box-shadow:0 6px 18px rgb(25 104 145 / 30%);text-decoration:none;transition:transform 160ms ease-out,color 160ms ease-out}
-.link svg{width:50px;height:50px;flex:none}
+.link{position:fixed;z-index:19;right:max(16px,calc((100vw - 480px)/2 + 16px));bottom:calc(90px + var(--mini-safe-bottom,0px) + var(--tg-content-safe-area-inset-bottom,0px));display:flex;align-items:center;gap:7px;min-height:48px;padding:5px 12px 5px 5px;border:3px solid #fff;border-radius:28px;background:#fff;color:#229ed9;box-shadow:0 6px 18px rgb(25 104 145 / 30%);text-decoration:none;transition:transform 160ms ease-out,color 160ms ease-out}
+.link svg{width:34px;height:34px;flex:none}
 .link:hover{color:#168ac3;transform:translateY(-2px)}
 .link:focus-visible{outline:3px solid #229ed9;outline-offset:3px}
 @media(prefers-reduced-motion:reduce){.link{transition:none}.link:hover{transform:none}}
+
+.label{color:#155e83;font-size:12px;font-weight:700}

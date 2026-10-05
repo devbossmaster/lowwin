@@ -39,8 +39,9 @@ describe.skipIf(!testUrl)('public catalog on disposable PostgreSQL',()=>{
   it('derives live, upcoming and closed status and never shows a live animal listing',async()=>{
     const now=await catalog.serverNow();
     const categories=await catalog.listCategories(now);
-    expect(categories).toHaveLength(9);
-    expect(categories.find(item=>item.slug==='animals')?.counts).toEqual({all:0,live:0,upcoming:0,closed:0});
+    expect(categories).toHaveLength(8);
+    expect(categories.find(item=>item.slug==='animals')).toBeUndefined();
+    expect(categories.every(item=>item.counts.all>0)).toBe(true);
     expect((await catalog.listAuctions({q:'',status:'live',sort:'ending',page:1},now)).total).toBe(8);
     expect((await catalog.listAuctions({q:'',status:'upcoming',sort:'ending',page:1},now)).total).toBe(3);
     expect((await catalog.listAuctions({q:'',status:'closed',sort:'ending',page:1},now)).total).toBe(3);

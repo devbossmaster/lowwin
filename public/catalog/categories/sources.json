@@ -1,0 +1,87 @@
+[
+  {
+    "category": "home-furniture",
+    "photographer": "Dillon Mangum",
+    "source": "https://unsplash.com/photos/9489sFfgk4c",
+    "imageSource": "https://images.unsplash.com/photo-1505843490538-5133c6c7d0e1?w=600&fm=png",
+    "license": "https://unsplash.com/license",
+    "purpose": "Category navigation photograph; not auction inventory"
+  },
+  {
+    "category": "vehicles",
+    "subject": "Electric bicycle",
+    "source": "https://unsplash.com/photos/v1ydNu4wEuY",
+    "imageSource": "https://images.unsplash.com/photo-1742290293294-2575277cab61?w=600&fm=png",
+    "license": "https://unsplash.com/license",
+    "photographer": "Unsplash",
+    "purpose": "Category navigation photograph; not auction inventory"
+  },
+  {
+    "category": "accessories",
+    "photographer": "Sony",
+    "subject": "Sony WH-CH520 blue headphones",
+    "source": "https://electronics.sony.com/audio/headphones/headband/p/whch520-l",
+    "imageSource": "https://d1ncau8tqf99kp.cloudfront.net/converted/110596_original_local_504x441_v3_converted.webp",
+    "license": "Official product image; Sony retains rights",
+    "purpose": "Category navigation photograph; not auction inventory"
+  },
+  {
+    "category": "computer-office-equipment",
+    "photographer": "dlxmedia.hu",
+    "source": "https://unsplash.com/photos/Vv-COf1Oet8",
+    "imageSource": "https://images.unsplash.com/photo-1651614422674-1f51818f27b1?w=600&fm=png",
+    "license": "https://unsplash.com/license",
+    "purpose": "Category navigation photograph; not auction inventory"
+  },
+  {
+    "category": "home-furnishings",
+    "photographer": "ORIENTO",
+    "source": "https://unsplash.com/photos/l0ah3UBLppo",
+    "imageSource": "https://images.unsplash.com/photo-1526198049595-f32cde2a219d?w=600&fm=png",
+    "license": "https://unsplash.com/license",
+    "purpose": "Category navigation photograph; not auction inventory"
+  },
+  {
+    "category": "jewelry",
+    "photographer": "COPPERTIST WU",
+    "source": "https://unsplash.com/photos/kX79F-UsSNU",
+    "imageSource": "https://images.unsplash.com/photo-1679973299719-7b17cf739a6e?w=600&fm=png",
+    "license": "https://unsplash.com/license",
+    "purpose": "Category navigation photograph; not auction inventory"
+  },
+  {
+    "category": "watches",
+    "photographer": "Jozsef Hocza",
+    "source": "https://unsplash.com/photos/h1MnFsRI-_I",
+    "imageSource": "https://images.unsplash.com/photo-1594619272803-932ee1b5a0d9?w=600&fm=png",
+    "license": "https://unsplash.com/license",
+    "purpose": "Category navigation photograph; not auction inventory"
+  },
+  {
+    "category": "phones",
+    "photographer": "Apple",
+    "subject": "iPhone 17 Pro Max, Silver",
+    "source": "https://www.apple.com/newsroom/2025/09/apple-unveils-iphone-17-pro-and-iphone-17-pro-max/",
+    "imageSource": "https://store.storeimages.cdn-apple.com/1/as-images.apple.com/is/iphone-17-pro-max-finish-select-silver-202509?wid=600&hei=600&fmt=png-alpha",
+    "license": "Official product image; Apple retains rights",
+    "purpose": "Category navigation photograph; not auction inventory"
+  },
+  {
+    "category": "animals",
+    "subject": "Ox",
+    "source": "https://unsplash.com/photos/roosynr_SEA",
+    "imageSource": "https://images.unsplash.com/photo-1679370517615-30425acdb553?w=600&fm=png",
+    "license": "https://unsplash.com/license",
+    "photographer": "Unsplash",
+    "purpose": "Category navigation photograph; not auction inventory"
+  },
+  {
+    "category": "animals-sheep",
+    "subject": "Sheep",
+    "source": "https://unsplash.com/photos/yXecs01cKgw",
+    "imageSource": "https://images.unsplash.com/photo-1771600492433-ba7028102d8b?w=600&fm=png",
+    "license": "https://unsplash.com/license",
+    "photographer": "Unsplash",
+    "purpose": "Category navigation photograph; not auction inventory"
+  }
+]

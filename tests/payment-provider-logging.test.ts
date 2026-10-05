@@ -20,6 +20,13 @@ describe('Verify.et JSON transport',()=>{
   expect(form).toBeInstanceOf(FormData);expect(form.get('bank')).toBe('telebirr');expect(form.get('settlementAccount')).toBe(input.account);
   const uploaded=form.get('image');expect(uploaded).toBeInstanceOf(Blob);expect((uploaded as Blob).type).toBe('image/png');expect(Buffer.from(await (uploaded as Blob).arrayBuffer())).toEqual(image);
  });
+ it('accepts a completed CBE image result that contains both receipt and legacy references',async()=>{
+  vi.stubEnv('VERIFY_ET_API_KEY','private-key');
+  const receipt='fHCxyExampleRcpt1',legacy='FT26EXAMPLE1',account='1000303997441';
+  vi.stubGlobal('fetch',vi.fn().mockResolvedValue(Response.json({success:true,requestId,verification:{processingStatus:'completed',status:'success',verified:true},data:[{bank:'cbe',status:'success',verified:true,amount:10,referenceNumber:legacy,receiptNumber:receipt,receiverAccount:account,timestamp:new Date().toISOString()}]})));
+  vi.spyOn(console,'info').mockImplementation(()=>{});
+  expect(await submitVerifyImage({...input,bank:'cbe',account,image:Buffer.from('fixture'),mime:'image/png'})).toMatchObject({reference:receipt,verification:{code:'VERIFIED',matched:true,evidence:{aliases:expect.arrayContaining([receipt,legacy])}}});
+ });
  it('sends only JSON, bank fields, frozen receiver and stable key',async()=>{
   vi.stubEnv('VERIFY_ET_API_KEY','private-key');const fetcher=vi.fn().mockResolvedValue(Response.json({success:true,requestId,verification:{processingStatus:'queued',status:'pending',verified:false},data:[]},{status:202}));vi.stubGlobal('fetch',fetcher);vi.spyOn(console,'warn').mockImplementation(()=>{});
   expect(await submitVerify(input)).toMatchObject({code:'PROCESSING',matched:false});

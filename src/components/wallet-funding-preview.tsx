@@ -16,10 +16,10 @@ export function WalletFundingPreview(){const w=useWalletCopy();
   <h2>{w("Add money")}</h2>{status==='authenticated'&&!data&&!error&&<PageLoading/>}
   <PaymentAccounts accounts={data?.accounts??[]} selected={selected} onSelect={setSelected} preview/>
   {error&&<p className={styles.error} role="alert">{w("Account details could not load.")}<button type="button" onClick={reload}>{w("Retry")}</button></p>}
-  {!account&&!error&&<p className={styles.selectionHint}>{w(data?.enabled?'Choose Telebirr or CBE to add money.':'Deposits are unavailable. Do not send money.')}</p>}
+  {!account&&!error&&<p className={styles.selectionHint}>{w(data?.enabled?'Choose Telebirr, CBE or M-Pesa to add money.':'Deposits are unavailable. Do not send money.')}</p>}
   {account&&<div className={styles.confirmation}>
    <div className={styles.sectionHeading}><h3>{w("Payment confirmation")}</h3><span>{w("Paste message or upload")}</span></div>
-   <label className={styles.fieldLabel} htmlFor="payment-reference">{w("Telebirr or CBE message/link")}</label>
+   <label className={styles.fieldLabel} htmlFor="payment-reference">{w("Payment SMS or receipt link")}</label>
    <textarea className={styles.textarea} id="payment-reference" disabled placeholder={w("Paste the payment SMS, including its receipt link")} aria-describedby="verification-disabled"/>
    <div className={styles.divider}>{w("Or upload a screenshot")}</div>
    <ReceiptImageUpload disabled/>

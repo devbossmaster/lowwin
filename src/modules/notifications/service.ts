@@ -1,3 +1,4 @@
+import {withTelegramCommunity} from '@/lib/telegram-community';
 import {isSubmissionFeeOnly} from '../auctions/rules';
 import {broadcastRoot,broadcastStopped,campaignContent,expandCampaign,scheduleGlobalAlerts,telegramKinds} from './campaigns';
 import {stagingDemoEnabled} from '../auctions/staging-demo';
@@ -92,7 +93,7 @@ export async function dispatchOne(client:PrismaClient,bot:Pick<Bot,'api'>){
   try{
    const name=(user?.name??'Lowwin player').replace(/[\r\n\u0000-\u001f]/g,' ').slice(0,80);
    const body=content.body.includes('{name}')?content.body.replaceAll('{name}',name):`${name},\n${content.body}`;
-   const text=`${content.title}\n${body}`.slice(0,1000);
+   const text=withTelegramCommunity(`${content.title}\n${body}`);
    const options={reply_markup:{inline_keyboard:[[{text:'Bid',web_app:{url:link.href}}]]}};
    let sent:{message_id:number};
    const photo=await notificationPhoto(tx,'imageId' in content?content.imageId:undefined,link.origin);

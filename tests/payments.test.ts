@@ -19,8 +19,8 @@ describe.skipIf(!url)('Verify.et funding on disposable PostgreSQL',()=>{
   Object.assign(process.env,{DATABASE_URL:url,DIRECT_URL:url,NODE_ENV:'test',APP_ENV:'local',PAYMENTS_TEST_ENABLED:'true',VERIFY_ET_API_KEY:'fixture-only-key',VERIFY_ET_TEST_ENDPOINT:'http://127.0.0.1:8030/api/verify',TELEGRAM_BOT_TOKEN:'123456789:fixture',RECEIPT_OCR:'tesseract'});
   execFileSync(process.execPath,['node_modules/prisma/build/index.js','migrate','deploy'],{env:process.env,stdio:'pipe'});
   db=new PrismaClient();const first=await db.user.create({data:{id:randomUUID(),name:'Payment fixture'}}),second=await db.user.create({data:{id:randomUUID(),name:'Second payment fixture'}});user=first.id;other=second.id;
-  policy={};account={telebirr:'0911111111',cbe:'1000303997441'};
-  for(const channel of ['telebirr','cbe']){const row=await db.paymentPolicy.create({data:{channel,version:1,enabled:true,account:account[channel],accountName:'Fixture receiver',pointsNumerator:1n,centsDenominator:100n,minCents:100n,maxCents:100000n,terms:'Fixture only. Do not send funds.',reviewReference:'Fixture evidence',actorId:user}});policy[channel]=row.id}
+  policy={};account={telebirr:'0911111111',mpesa:'0711111111',cbe:'1000303997441'};
+  for(const channel of ['telebirr','mpesa','cbe']){const row=await db.paymentPolicy.create({data:{channel,version:1,enabled:true,account:account[channel],accountName:'Fixture receiver',pointsNumerator:1n,centsDenominator:100n,minCents:100n,maxCents:100000n,terms:'Fixture only. Do not send funds.',reviewReference:'Fixture evidence',actorId:user}});policy[channel]=row.id}
  },60000);
  afterAll(async()=>{vi.unstubAllGlobals();await db?.$disconnect()});
  it('credits a provider-derived amount once with balanced journal and one alert',async()=>{
@@ -177,6 +177,14 @@ describe.skipIf(!url)('Verify.et funding on disposable PostgreSQL',()=>{
   expect(await db.topUpIntent.count({where:{userId:claimant}})).toBe(0);
   expect(await createIntent(db,owner,{key:randomUUID(),channel:'cbe',policyId:policy.cbe,input:ft},true)).toMatchObject({id:intent.id,status:'CREDITED',reused:true});
   expect(await reconcilePayments(db)).toEqual([]);
+ });
+ it('credits an M-Pesa transfer once with the same guarded ledger flow',async()=>{
+  const owner=(await db.user.create({data:{id:randomUUID(),name:'M-Pesa fixture'}})).id,intent=await newIntent(owner,'mpesa');
+  const input={id:intent.id,key:randomUUID(),input:reference()},transport=vi.fn(good);
+  expect(await verifyIntent(db,owner,input,transport)).toMatchObject({status:'CREDITED',channel:'mpesa',amountCents:'3027'});
+  expect((await verifyIntent(db,owner,input,transport)).status).toBe('CREDITED');expect(transport).toHaveBeenCalledTimes(1);
+  expect(await db.paymentClaim.count({where:{intentId:intent.id}})).toBe(1);expect(await db.operation.count({where:{scope:'TOPUP_CREDIT',key:intent.id}})).toBe(1);
+  expect(await reconcile(db)).toEqual([]);expect(await reconcilePayments(db)).toEqual([]);
  });
  it('keeps a provider outage queued for recovery without credit or a false not-found result',async()=>{
   const owner=(await db.user.create({data:{id:randomUUID(),name:'Outage fixture'}})).id,intent=await newIntent(owner);

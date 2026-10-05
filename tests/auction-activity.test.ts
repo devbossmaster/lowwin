@@ -32,25 +32,28 @@ describe.skipIf(!url)('live public activity on disposable PostgreSQL',()=>{
   expect(Object.keys(first[0]).sort()).toEqual(['bids','code','endsAt','resultReady','startsAt','status','views']);
  });
 
- it('records concurrent views atomically through numeric and legacy slug URLs',async()=>{
+ it('deduplicates concurrent views across numeric and legacy slug URLs',async()=>{
   const auction=await bidAuction(client);
-  const recorded=await Promise.all(Array.from({length:20},(_,index)=>recordAuctionView(client,index%2?auction.slug!:String(auction.publicCode))));
+  const recorded=await Promise.all(Array.from({length:20},(_,index)=>recordAuctionView(client,index%2?auction.slug!:String(auction.publicCode),'same-verified-viewer')));
   expect(recorded.every(value=>value&&/^\d+$/.test(value.views))).toBe(true);
-  expect((await readAuctionActivity(client,[auction.publicCode]))[0].views).toBe('20');
-  expect(await recordAuctionView(client,'does-not-exist')).toBeNull();
+  expect((await readAuctionActivity(client,[auction.publicCode]))[0].views).toBe('1');
+  const unique=await Promise.all(Array.from({length:19},(_,index)=>recordAuctionView(client,String(auction.publicCode),`verified-viewer-${index}`)));
+  expect(unique.every(value=>value?.counted)).toBe(true);
+  expect((await client.auction.findUniqueOrThrow({where:{id:auction.id}})).publicViewCount).toBe(20n);
+  expect(await recordAuctionView(client,'does-not-exist','verified-viewer')).toBeNull();
  });
 
  it('hides draft inventory, invisible products and invisible categories for both reads and increments',async()=>{
   const auction=await bidAuction(client),draft=await client.auction.create({data:{code:`PRIVATE-${randomUUID()}`}});
   expect(await readAuctionActivity(client,[draft.publicCode])).toEqual([]);
-  expect(await recordAuctionView(client,String(draft.publicCode))).toBeNull();
+  expect(await recordAuctionView(client,String(draft.publicCode),'verified-viewer')).toBeNull();
   await client.product.update({where:{id:auction.productId!},data:{visible:false}});
   expect(await readAuctionActivity(client,[auction.publicCode])).toEqual([]);
-  expect(await recordAuctionView(client,auction.slug!)).toBeNull();
+  expect(await recordAuctionView(client,auction.slug!,'verified-viewer')).toBeNull();
   await client.product.update({where:{id:auction.productId!},data:{visible:true}});
   await client.category.update({where:{id:auction.categoryId!},data:{visible:false}});
   expect(await readAuctionActivity(client,[auction.publicCode])).toEqual([]);
-  expect(await recordAuctionView(client,String(auction.publicCode))).toBeNull();
+  expect(await recordAuctionView(client,String(auction.publicCode),'verified-viewer')).toBeNull();
   expect((await client.auction.findUniqueOrThrow({where:{id:auction.id}})).publicViewCount).toBe(0n);
  });
 

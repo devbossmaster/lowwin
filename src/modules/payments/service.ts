@@ -2,13 +2,14 @@ import {materializeAlert} from '../notifications/service';
 import {customerDepositFailures,depositFailureMessages} from '@/lib/deposit-outcome';
 import {assertPlayerContact} from '../auth/own-contact';
 import {liveFundingConfigured} from './activation';
+import {DEPOSIT_CHANNELS,paymentChannelName} from '@/lib/payment-channels';
 import {randomUUID} from 'node:crypto';
 import {Prisma,type PrismaClient,type TopUpIntent} from '@prisma/client';
 import {z} from 'zod';
 import {demoBidAllowed} from '../auctions/bids';
 import {ensureWallet,seedPlatformAccounts} from '../wallet/ledger';
-import {bankSchema,candidate,submitVerify,submitVerifyImage,readVerifyStatus,assess,providerReference,hash,PaymentError,type VerifyTransport,type Bank,type Verification,type VerificationInput,type ImageVerificationInput,type ImageVerification} from './provider';
-import {CUSTOMER_ATTEMPTS,STAFF_ATTEMPTS,RECOVERY_WINDOW_MS,protectedPayment,retryDetails} from './retry';
+import {bankSchema,depositBankSchema,candidate,submitVerify,submitVerifyImage,readVerifyStatus,assess,providerReference,hash,PaymentError,type VerifyTransport,type Bank,type Verification,type VerificationInput,type ImageVerificationInput,type ImageVerification} from './provider';
+import {CUSTOMER_ATTEMPTS,STAFF_ATTEMPTS,RECOVERY_WINDOW_MS,imageWebhookWait,protectedPayment,retryDetails} from './retry';
 type Tx=Prisma.TransactionClient;
 export function paymentHealth(){
  const productionEnabled=liveFundingConfigured();
@@ -19,8 +20,8 @@ function requireEnabled(){if(!paymentHealth().enabled)throw new PaymentError(503
 async function clock(tx:Tx){return (await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`)[0].now}
 async function eligibility(tx:Tx,userId:string){try{await assertPlayerContact(tx,userId)}catch{throw new PaymentError(403,'Share your own contact in Telegram first.')}if(await tx.staffMember.findUnique({where:{userId}})||await tx.userRestriction.findFirst({where:{userId,suspended:true}}))throw new PaymentError(403,'Adding ETB is unavailable for this account.')}
 const int=z.string().regex(/^[1-9]\d{0,10}$/);
-const createSchema=z.object({key:z.string().uuid(),channel:bankSchema,policyId:z.string().uuid(),amountCents:int}).strict();
-const receiptCreateSchema=z.object({key:z.string().uuid(),channel:bankSchema,policyId:z.string().uuid(),input:z.string().min(1).max(4000).optional()}).strict();
+const createSchema=z.object({key:z.string().uuid(),channel:depositBankSchema,policyId:z.string().uuid(),amountCents:int}).strict();
+const receiptCreateSchema=z.object({key:z.string().uuid(),channel:depositBankSchema,policyId:z.string().uuid(),input:z.string().min(1).max(4000).optional()}).strict();
 async function existingDeposit(tx:Tx,userId:string,channel:string,reference:string){
  const claim=await usedTransfer(tx,channel,reference);
  if(claim?.userId===userId)return tx.topUpIntent.findUnique({where:{id:claim.intentId}});
@@ -29,7 +30,7 @@ async function existingDeposit(tx:Tx,userId:string,channel:string,reference:stri
 export function ownIntent(t:TopUpIntent){return {id:t.id,demo:t.provider==='DEMO_PREVIEW',channel:t.channel,status:t.status,amountCents:t.expectedCents?.toString(),points:t.points.toString(),policyVersion:t.policyVersion,quote:t.quoteSnapshot,account:t.receivingAccount,accountName:t.accountName,createdAt:t.createdAt.toISOString(),expiresAt:t.expiresAt?.toISOString(),reference:t.reference,reason:t.reasonCode,attempts:t.attempts,caseState:t.caseState,...retryDetails(t)};}
 // Store only customer outcome fields in redacted immutable attempt evidence.
 function attemptResult(t:ReturnType<typeof ownIntent>){const {status,points,amountCents,reason,attempts,nextAttemptAt,caseState,canRetry,retryBlocked,retryUntil}=t;return JSON.parse(JSON.stringify({status,points,amountCents,reason,attempts,nextAttemptAt,caseState,canRetry,retryBlocked,retryUntil})) as Prisma.InputJsonObject;}
-export async function fundingOptions(client:PrismaClient){const policies=await Promise.all((['telebirr','cbe'] as const).map(channel=>client.paymentPolicy.findFirst({where:{channel},orderBy:{version:'desc'}})));return {...paymentHealth(),accounts:policies.filter(p=>p?.enabled&&p.pointsNumerator*100n===p.centsDenominator).map(p=>({id:p!.channel,policyId:p!.id,version:p!.version,name:p!.channel==='telebirr'?'Telebirr':'CBE',number:p!.account,holder:p!.accountName,numerator:p!.pointsNumerator.toString(),denominator:p!.centsDenominator.toString(),minCents:p!.minCents.toString(),maxCents:p!.maxCents.toString(),terms:p!.terms}))}}
+export async function fundingOptions(client:PrismaClient){const policies=await Promise.all(DEPOSIT_CHANNELS.map(channel=>client.paymentPolicy.findFirst({where:{channel},orderBy:{version:'desc'}})));return {...paymentHealth(),accounts:policies.filter(p=>p?.enabled&&p.pointsNumerator*100n===p.centsDenominator).map(p=>({id:p!.channel,policyId:p!.id,version:p!.version,name:paymentChannelName(p!.channel),number:p!.account,holder:p!.accountName,numerator:p!.pointsNumerator.toString(),denominator:p!.centsDenominator.toString(),minCents:p!.minCents.toString(),maxCents:p!.maxCents.toString(),terms:p!.terms}))}}
 export async function createIntent(client:PrismaClient,userId:string,raw:unknown,fromReceipt=false){requireEnabled();const body=fromReceipt?receiptCreateSchema.parse(raw):createSchema.parse(raw),fingerprint=hash(JSON.stringify({...body,...(fromReceipt?{amountFromReceipt:true}:{})}));return client.$transaction(async tx=>{
  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`},0))`;await eligibility(tx,userId);
  const prior=await tx.topUpIntent.findUnique({where:{userId_key:{userId,key:body.key}}});if(prior){if(prior.requestHash!==fingerprint)throw new PaymentError(409,'Idempotency key changed.');return ownIntent(prior)}
@@ -183,12 +184,28 @@ async function completeVerifyRequest(client:PrismaClient,id:string,verified:Veri
 export async function completeVerifyWebhook(client:PrismaClient,requestId:string,data:unknown){
  const request=await client.verifyRequest.findUnique({where:{requestId},include:{intent:true}});if(!request)return false;if(request.state==='DONE')return true;
  if(!data||typeof data!=='object'||Array.isArray(data))throw new PaymentError(422,'Incomplete verification event.');
- const bank=bankSchema.parse(request.intent.channel),reference=providerReference(data,bank);
+ const bank=bankSchema.parse(request.intent.channel),reference=providerReference(data,bank,request.intent.reference??undefined);
  if(reference)await client.$transaction(async tx=>{await tx.$queryRaw`SELECT id FROM "VerifyRequest" WHERE id=${request.id} FOR UPDATE`;await tx.$queryRaw`SELECT id FROM "TopUpIntent" WHERE id=${request.intentId} FOR UPDATE`;const current=await tx.topUpIntent.findUniqueOrThrow({where:{id:request.intentId}});if(current.reference&&current.reference!==reference)throw new PaymentError(409,'Provider reference changed.');await tx.verifyRequest.update({where:{id:request.id},data:{reference}});await tx.topUpIntent.update({where:{id:request.intentId},data:{reference}})});
  const current=await client.topUpIntent.findUniqueOrThrow({where:{id:request.intentId}}),item=data as {processingStatus?:unknown;status?:unknown;verified?:unknown};
  const input={...inputFor(current,request.key),reference:current.reference??reference??request.reference};
  const raw={success:true,requestId,verification:{processingStatus:typeof item.processingStatus==='string'?item.processingStatus:'completed',status:typeof item.status==='string'?item.status:undefined,verified:item.verified===true},data:[data]};
  await completeVerifyRequest(client,request.id,assess(raw,input));return true;
+}
+
+async function holdForImageWebhook(client:PrismaClient,id:string){
+ return client.$transaction(async tx=>{
+  await tx.$queryRaw`SELECT id FROM "VerifyRequest" WHERE id=${id} FOR UPDATE`;
+  const request=await tx.verifyRequest.findUniqueOrThrow({where:{id}});
+  await tx.$queryRaw`SELECT id FROM "TopUpIntent" WHERE id=${request.intentId} FOR UPDATE`;
+  const intent=await tx.topUpIntent.findUniqueOrThrow({where:{id:request.intentId}});
+  if(request.state==='DONE'||intent.status==='CREDITED')return 'finished' as const;
+  const now=await clock(tx),wait=imageWebhookWait(request.createdAt,intent.expiresAt,now);
+  if(wait.expired)return 'expired' as const;
+  await tx.verifyRequest.update({where:{id},data:{state:'PROCESSING',code:'WAITING_FOR_WEBHOOK',nextCheckAt:wait.nextCheckAt}});
+  if(wait.delayed&&intent.status==='VERIFYING')await tx.topUpIntent.update({where:{id:intent.id},data:{status:'NEEDS_REVIEW',reasonCode:'WEBHOOK_DELAYED',nextAttemptAt:wait.nextCheckAt}});
+  else if(intent.status==='VERIFYING')await tx.topUpIntent.update({where:{id:intent.id},data:{reasonCode:'WAITING_FOR_WEBHOOK',nextAttemptAt:wait.nextCheckAt}});
+  return 'waiting' as const;
+ });
 }
 
 export async function processOneVerifyRequest(client:PrismaClient){
@@ -201,9 +218,13 @@ export async function processOneVerifyRequest(client:PrismaClient){
  if(!row)return false;
  const t=await client.topUpIntent.findUniqueOrThrow({where:{id:row.intentId}});
  if(t.status==='CREDITED'){await client.verifyRequest.update({where:{id:row.id},data:{state:'DONE',code:'ALREADY_CREDITED'}});return true}
+ if(!t.reference&&row.requestId&&row.code==='WAITING_FOR_WEBHOOK'){
+  if(await holdForImageWebhook(client,row.id)==='expired')await completeVerifyRequest(client,row.id,{code:'INCOMPLETE_EVIDENCE',matched:false,requestId:row.requestId,evidence:{}});
+  return true;
+ }
  if(row.attempts>30){await completeVerifyRequest(client,row.id,{code:'PROVIDER_UNAVAILABLE',matched:false,requestId:row.requestId??undefined,evidence:{}});return true}
  let result:Verification|null|undefined;
- if(row.requestId){result=await readVerifyStatus(row.requestId);if(result===null&&!t.reference){await client.verifyRequest.update({where:{id:row.id},data:{nextCheckAt:new Date(Date.now()+30000)}});return true}}
+ if(row.requestId){result=await readVerifyStatus(row.requestId);if(result===null&&!t.reference){if(await holdForImageWebhook(client,row.id)==='expired')await completeVerifyRequest(client,row.id,{code:'INCOMPLETE_EVIDENCE',matched:false,requestId:row.requestId,evidence:{}});return true}}
  // An image has no text identifier until extraction finishes. Never replay it
  // as a JSON verification with a null reference after a timeout or restart.
  if(!result&&!t.reference){await client.verifyRequest.update({where:{id:row.id},data:{nextCheckAt:new Date(Date.now()+30000)}});return true}

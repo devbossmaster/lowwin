@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {assess,candidate,type VerificationInput} from '../src/modules/payments/provider';
+import {assess,candidate,providerReference,type VerificationInput} from '../src/modules/payments/provider';
 
 const at=new Date('2026-09-29T10:10:00Z');
 const requestId='550e8400-e29b-41d4-a716-446655440000';
@@ -74,6 +74,12 @@ describe('Verify.et authoritative evidence',()=>{
   expect(candidate('cbe','https://mbreciept.cbe.com.et/fHCxyExampleRcpt1')).toBe('fHCxyExampleRcpt1');
   expect(candidate('cbe','ft26example1')).toBe('FT26EXAMPLE1');
   expect(candidate('telebirr','transaction number: del889ng4s')).toBe('DEL889NG4S');
+ });
+ it('binds an extracted CBE receipt while preserving an already submitted valid alias',()=>{
+  const evidence={bank:'cbe',referenceNumber:'FT26EXAMPLE1',receiptNumber:'fHCxyExampleRcpt1'};
+  expect(providerReference(evidence,'cbe')).toBe('fHCxyExampleRcpt1');
+  expect(providerReference(evidence,'cbe','FT26EXAMPLE1')).toBe('FT26EXAMPLE1');
+  expect(providerReference(evidence,'cbe','OTHERREFERENCE1')).toBeUndefined();
  });
  it('does not guess ambiguous identifiers',()=>expect(()=>candidate('cbe','Receipt ID: fHCxyExampleRcpt1; Receipt ID: fHCxyExampleRcpt2')).toThrow());
 });

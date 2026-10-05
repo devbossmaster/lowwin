@@ -1,6 +1,8 @@
 'use client';
+import {paymentChannelName} from '@/lib/payment-channels';
 import {useEffect,useId,useRef,useState} from 'react';
 import Link from 'next/link';
+import {TelegramLink} from './telegram-link';
 import {ArrowDownLeft,RefreshCw} from 'lucide-react';
 import {useWalletCopy} from './wallet-copy';
 import {LoadingSpinner,PageLoading} from './loading-spinner';
@@ -29,7 +31,7 @@ function Funding({view,onContinue}:{view:FundingView;onContinue?:()=>void}){
  const [selected,setSelected]=useState(''),[intent,setIntent]=useState<Intent|null>(null),[input,setInput]=useState(''),[busy,setBusy]=useState(''),[message,setMessage]=useState(''),[receipt,setReceipt]=useState<SelectedReceipt|null>(null);
  const createKey=useRef(''),verifyKey=useRef(''),imageKeys=useRef(new Map<string,string>()),working=useRef(false),receiptUrl=useRef<string|null>(null);
  const options=query.data?.options;
- const account:Account|undefined=intent?{id:intent.channel,policyId:'',version:intent.quote.version,name:intent.channel==='cbe'?'CBE':'Telebirr',number:intent.account,holder:intent.accountName,numerator:intent.quote.numerator,denominator:intent.quote.denominator,minCents:intent.quote.minCents??intent.amountCents??'0',maxCents:intent.quote.maxCents??intent.amountCents??'0',terms:intent.quote.terms}:options?.accounts.find(a=>a.id===selected);
+ const account:Account|undefined=intent?{id:intent.channel,policyId:'',version:intent.quote.version,name:paymentChannelName(intent.channel),number:intent.account,holder:intent.accountName,numerator:intent.quote.numerator,denominator:intent.quote.denominator,minCents:intent.quote.minCents??intent.amountCents??'0',maxCents:intent.quote.maxCents??intent.amountCents??'0',terms:intent.quote.terms}:options?.accounts.find(a=>a.id===selected);
  const credited=intent?.status==='CREDITED';
  useEffect(()=>{
   if(!intent||intent.status!=='VERIFYING')return;
@@ -91,11 +93,11 @@ function Funding({view,onContinue}:{view:FundingView;onContinue?:()=>void}){
   <div hidden={view!=='deposit'}>{!options?.enabled?<WalletFundingPreview/>:<section className={styles.funding} id="add-etb" aria-busy={!!busy}>
    <h2>{w('Add money')}</h2>
    <PaymentAccounts accounts={intent&&account?[account]:options.accounts} selected={selected} onSelect={id=>{setSelected(id);setInput('');setMessage('');clearReceipt();createKey.current='';verifyKey.current=''}} locked={!!intent} busy={!!busy} preview={!options.productionEnabled}/>
-   {account?<p className={styles.hint}>{w('Allowed:')} {money(account.minCents)}–{money(account.maxCents)} ETB. {w('Your verified transfer amount is added automatically.')}</p>:<p className={styles.selectionHint}>{w('Choose Telebirr or CBE to add money.')}</p>}
+   {account?<p className={styles.hint}>{w('Allowed:')} {money(account.minCents)}–{money(account.maxCents)} ETB. {w('Your verified transfer amount is added automatically.')}</p>:<p className={styles.selectionHint}>{w('Choose Telebirr or M-Pesa to add money.')}</p>}
    {account&&<div className={styles.confirmation}>
     <div className={styles.sectionHeading}><h3>{w('Payment confirmation')}</h3><span>{w('Paste message or upload')}</span></div>
     <div className={styles.referenceHeader}>
-     <label className={styles.fieldLabel} htmlFor="verified-reference">{w('Telebirr or CBE message/link')}</label>
+     <label className={styles.fieldLabel} htmlFor="verified-reference">{w('Telebirr or M-Pesa message/link')}</label>
      {showRecoveryActions&&<div className={styles.referenceActions}>
       {(bound||correctable)&&!credited&&<button type="button" className={styles.secondary} disabled={!!busy} onClick={()=>{reset();inform(w('Paste the correct transaction ID to try again.'))}}>{w('Correct a mistaken reference')}</button>}
       <button type="button" className={styles.secondary} disabled={!!busy} onClick={reset}>{w('Start another deposit')}</button>
@@ -114,7 +116,7 @@ function Funding({view,onContinue}:{view:FundingView;onContinue?:()=>void}){
   <section hidden={view!=='deposits'} className={styles.transactionSection} aria-label={w('Deposits')}>
    <div className={styles.sectionHeading}><h2>{w('Deposits')}</h2><button type="button" className={styles.refresh} disabled={!!busy} onClick={query.reload}><RefreshCw size={15}/>{w('Refresh')}</button></div>
    <p className={styles.sectionDescription}>{w('Track your submitted payments and their status.')}</p>
-   {!query.data?.items.length?<div className={styles.empty}><ArrowDownLeft size={28}/><h3>{w('No deposits yet')}</h3><p>{w('Your submitted payments will appear here.')}</p><button type="button" className={styles.inlineAction} onClick={onContinue}>{w('Add money')}</button></div>:<div className={styles.transactionList}>{query.data.items.map(t=><article className={styles.depositRow} key={t.id}><div className={styles.depositSummary}><PaymentLogo channel={t.channel}/><div><strong>{t.channel==='cbe'?'CBE':'Telebirr'}{t.demo?' · DEMO':''}</strong><small>{new Date(t.createdAt).toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'})}</small></div><span className={styles.depositAmount}>{t.amountCents?`${money(t.amountCents)} ETB`:w('Awaiting amount')}</span></div><div className={styles.depositStatus}><span className={styles.statusBadge} data-state={t.status}>{w(labels[t.status]??t.status)}</span><div>{options?.enabled&&['PENDING','VERIFYING','PROVIDER_OUTAGE','NEEDS_REVIEW'].includes(t.status)&&<button type="button" className={styles.inlineAction} disabled={!!busy} onClick={()=>{clearReceipt();setIntent(t);setSelected(t.channel);setInput(t.reference??'');const feedback=depositFeedback(t,w);inform(feedback.message,feedback.kind);createKey.current='';verifyKey.current='';onContinue?.()}}>{w(t.canRetry?'Check payment again':'Continue')}</button>}<Link href="/profile/support">{w('Help')}</Link></div></div></article>)}</div>}
+   {!query.data?.items.length?<div className={styles.empty}><ArrowDownLeft size={28}/><h3>{w('No deposits yet')}</h3><p>{w('Your submitted payments will appear here.')}</p><button type="button" className={styles.inlineAction} onClick={onContinue}>{w('Add money')}</button></div>:<div className={styles.transactionList}>{query.data.items.map(t=><article className={styles.depositRow} key={t.id}><div className={styles.depositSummary}><PaymentLogo channel={t.channel}/><div><strong>{paymentChannelName(t.channel)}{t.demo?' · DEMO':''}</strong><small>{new Date(t.createdAt).toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'})}</small></div><span className={styles.depositAmount}>{t.amountCents?`${money(t.amountCents)} ETB`:w('Awaiting amount')}</span></div><div className={styles.depositStatus}><span className={styles.statusBadge} data-state={t.status}>{w(labels[t.status]??t.status)}</span><div>{options?.enabled&&['PENDING','VERIFYING','PROVIDER_OUTAGE','NEEDS_REVIEW'].includes(t.status)&&<button type="button" className={styles.inlineAction} disabled={!!busy} onClick={()=>{clearReceipt();setIntent(t);setSelected(t.channel);setInput(t.reference??'');const feedback=depositFeedback(t,w);inform(feedback.message,feedback.kind);createKey.current='';verifyKey.current='';onContinue?.()}}>{w(t.canRetry?'Check payment again':'Continue')}</button>}<TelegramLink>{w('Help')}</TelegramLink></div></div></article>)}</div>}
    <PersonalPagination page={page} totalPages={query.data?.totalPages??0} setPage={setPage}/>
   </section>
  </>;

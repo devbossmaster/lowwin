@@ -1,7 +1,7 @@
 import {createHash,randomUUID} from 'node:crypto';
-import type {PrismaClient} from '@prisma/client';
+import type {Prisma,PrismaClient} from '@prisma/client';
 /** Durable atomic limit keyed only by a server-verified identity, never a forwarded IP. */
-export async function allowIdentityRequest(client:PrismaClient,scope:string,identity:string,maximum:number,windowMs=60000) {
+export async function allowIdentityRequest(client:PrismaClient|Prisma.TransactionClient,scope:string,identity:string,maximum:number,windowMs=60000) {
  const key=`app:${scope}:${createHash('sha256').update(identity).digest('hex')}`;
  const [row]=await client.$queryRaw<{count:number}[]>`
   INSERT INTO "rateLimit" (id,key,count,"lastRequest")

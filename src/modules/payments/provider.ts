@@ -3,9 +3,11 @@ import {z} from 'zod';
 import {demoBidAllowed} from '../auctions/bids';
 import {PROVIDER_TIMEOUT_MS} from './timing';
 import {canonical,PaymentError} from './reference';
+import {DEPOSIT_CHANNELS} from '@/lib/payment-channels';
 export {canonical,candidate,PaymentError} from './reference';
 
-export const bankSchema=z.enum(['telebirr','cbe']);
+export const bankSchema=z.enum(DEPOSIT_CHANNELS);
+export const depositBankSchema=bankSchema;
 export type Bank=z.infer<typeof bankSchema>;
 export const hash=(value:string|Buffer)=>createHash('sha256').update(value).digest('hex');
 export function cents(value:string|number):bigint{
@@ -23,14 +25,19 @@ export type VerifyTransport=(input:VerificationInput)=>Promise<Verification>;
 const requestIdSchema=z.string().uuid();
 const providerErrorSchema=z.object({code:z.string(),retryable:z.boolean().optional()});
 const itemSchema=z.object({bank:bankSchema,status:z.string(),verified:z.boolean(),amount:z.union([z.string(),z.number()]),receiverAccount:z.string().optional(),referenceNumber:z.string().optional(),receiptNumber:z.string().optional(),transactionNumber:z.string().optional(),timestamp:z.string().optional(),confirmationHistory:z.object({confirmedBefore:z.boolean().optional()}).optional(),settlementAccountMatch:z.object({matched:z.boolean(),matchType:z.string().optional(),matchConfidence:z.string().optional(),candidateCount:z.number().int().nonnegative().optional(),matchedSettlementAccount:z.string().optional(),bank:bankSchema.optional(),ambiguous:z.boolean().optional()}).optional()}).passthrough();
-export function providerReference(raw:unknown,bank:Bank){
- const parsed=z.object({referenceNumber:z.string().optional(),receiptNumber:z.string().optional(),transactionNumber:z.string().optional()}).passthrough().safeParse(raw);
- if(!parsed.success)return undefined;
- try{const aliases=[...new Set([parsed.data.referenceNumber,parsed.data.receiptNumber,parsed.data.transactionNumber].filter((value):value is string=>!!value).map(value=>canonical(bank,value)))];return aliases.length===1?aliases[0]:undefined}catch{return undefined}
+export function providerReference(raw:unknown,bank:Bank,expected?:string){
+ const parsed=z.object({bank:bankSchema.optional(),referenceNumber:z.string().optional(),receiptNumber:z.string().optional(),transactionNumber:z.string().optional()}).passthrough().safeParse(raw);
+ if(!parsed.success||parsed.data.bank&&parsed.data.bank!==bank)return undefined;
+ const ordered=bank==='cbe'?[parsed.data.receiptNumber,parsed.data.referenceNumber,parsed.data.transactionNumber]:[parsed.data.transactionNumber,parsed.data.referenceNumber,parsed.data.receiptNumber];
+ try{
+  const aliases=[...new Set(ordered.filter((value):value is string=>!!value).map(value=>canonical(bank,value)))];
+  if(expected){const normalized=canonical(bank,expected);return aliases.includes(normalized)?normalized:undefined}
+  return aliases[0];
+ }catch{return undefined}
 }
-// Owner-approved Lowwin policy for these two deposit channels. This is not
+// Owner-approved Lowwin ETB policy, including frozen historical channels. This is not
 // provider proof of currency. Provider currency is not an acceptance condition.
-const depositCurrencies:Record<Bank,'ETB'>={telebirr:'ETB',cbe:'ETB'};
+const depositCurrencies:Record<Bank,'ETB'>={telebirr:'ETB',mpesa:'ETB',cbe:'ETB'};
 const envelopeSchema=z.object({success:z.boolean(),requestId:requestIdSchema,error:providerErrorSchema.optional(),verification:z.object({processingStatus:z.string(),status:z.string().optional(),verified:z.boolean().optional()}).optional(),data:z.union([z.array(z.unknown()),z.record(z.string(),z.unknown())]).optional()}).passthrough();
 function providerFailure(raw:unknown,requestId?:string):Verification|undefined{
  const error=providerErrorSchema.safeParse(raw);if(!error.success)return;
@@ -65,10 +72,10 @@ function safeValueType(raw:unknown,path:PropertyKey[]):SafeValueType{
 }
 function normalizedAccount(bank:Bank,value:string){
  if(!/^\d+$/.test(value))return null;
- if(bank==='telebirr'){
-  if(/^09\d{8}$/.test(value))return `251${value.slice(1)}`;
-  if(/^9\d{8}$/.test(value))return `251${value}`;
-  if(/^2519\d{8}$/.test(value))return value;
+ if(bank==='telebirr'||bank==='mpesa'){
+  if(/^0[79]\d{8}$/.test(value))return `251${value.slice(1)}`;
+  if(/^[79]\d{8}$/.test(value))return `251${value}`;
+  if(/^251[79]\d{8}$/.test(value))return value;
   return null;
  }
  return value.replace(/^0+(?=\d)/,'');
@@ -120,7 +127,7 @@ export async function submitVerify(input:VerificationInput):Promise<Verification
  const started=performance.now();let status:number|undefined;const finish=(result:Verification,failure?:string)=>{log(input,result,status,failure,Math.round(performance.now()-started));return result};
  if(!key())return finish({code:'PROVIDER_UNCONFIGURED',matched:false,evidence:{}});
  try{
-  const body=input.bank==='telebirr'?{bank:input.bank,transactionNumber:input.reference,settlementAccount:input.account}:{bank:input.bank,reference:input.reference,...(/^FT[A-Z0-9]{6,30}$/.test(input.reference)?{suffix:input.account.slice(-8)}:{}),settlementAccount:input.account};
+  const body=input.bank!=='cbe'?{bank:input.bank,transactionNumber:input.reference,settlementAccount:input.account}:{bank:input.bank,reference:input.reference,...(/^FT[A-Z0-9]{6,30}$/.test(input.reference)?{suffix:input.account.slice(-8)}:{}),settlementAccount:input.account};
   const response=await fetch(`${endpoint()}?waitMs=5000`,{method:'POST',headers:{'x-api-key':key(),'Idempotency-Key':input.attemptKey,'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(PROVIDER_TIMEOUT_MS),redirect:'error',cache:'no-store'});status=response.status;
   if(!response.ok){let raw:unknown;try{raw=await boundedJson(response)}catch{/* HTTP status still gives a safe recovery decision. */}return finish(httpFailure(status,raw,response.headers.get('retry-after')))}
   const raw=await boundedJson(response);const result=assess(raw,input);

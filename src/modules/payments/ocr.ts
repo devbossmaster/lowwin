@@ -39,7 +39,7 @@ export function extractedReference(result:OcrResult,bank:Bank){
  const literalCodes=literalReferences(result.text,bank);
  if(literalCodes.length>1)throw new PaymentError(422,'A single clear reference could not be found. Enter it manually.');
  // Unrelated artwork and Amharic text must not outweigh a clearly read reference.
- const words=Array.isArray(result.words)?result.words.filter(w=>typeof w.text==='string'&&(w.text.match(/[A-Za-z0-9_-]+/g)??[]).some(token=>token===reference||bank==='telebirr'&&token.toUpperCase()===reference)):[];
+ const words=Array.isArray(result.words)?result.words.filter(w=>typeof w.text==='string'&&(w.text.match(/[A-Za-z0-9_-]+/g)??[]).some(token=>token===reference||bank!=='cbe'&&token.toUpperCase()===reference)):[];
  const confidence=words.length?Math.max(...words.map(w=>Number.isFinite(w.confidence)?w.confidence:0)):result.confidence;
  if(confidence<35)throw new PaymentError(422,'Scan is uncertain. Enter the reference manually.');
  // This is an editable extraction, never payment evidence or an automatic credit.

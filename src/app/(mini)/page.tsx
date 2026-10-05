@@ -1,4 +1,4 @@
-import Image from 'next/image';
+import {HomeHero} from '@/components/home-hero';
 import {resolveHomeCopy} from '@/components/home-copy';
 import {publicHomeContent} from '@/modules/admin/public-content';
 import Link from 'next/link';
@@ -26,7 +26,7 @@ async function HomeWithCatalog() {
   const heroCopy=resolveHomeCopy(managed);
   const featured=[...live.items.filter(item=>item.featured),...live.items.filter(item=>!item.featured)].slice(0,5);
   const ending=live.items.filter(item=>new Date(item.endsAt).getTime()-now.getTime()<=86400000).slice(0,3);
-  return <><OfflineRetry/><section className="managed-home-copy"><h1><MiniPhrase en={heroCopy.headline} am={heroCopy.headlineAm}/></h1><p><MiniPhrase en={heroCopy.lead} am={heroCopy.leadAm}/></p></section><section className={styles.hero}><Link href="/auctions/all" className={styles.banner} aria-label="Explore Lowwin auctions"><Image src="/banner11.png?v=forest-1" alt="Lowwin — bid low to win" width={1024} height={572} sizes="(max-width: 480px) 100vw, 480px" preload/><span className={styles.bannerAction}><MiniText id="startBidding"/> <ArrowRight size={15} aria-hidden="true"/></span></Link></section>
+  return <><OfflineRetry/><HomeHero copy={heroCopy} items={[...upcoming.items,...featured].filter((item,index,all)=>all.findIndex(other=>other.code===item.code)===index)}/>
   <HomeCategories categories={categories}/>
   {featured.length>0&&<section className={`${styles.featuredSection} catalog-section`}><div className="section-heading"><div><h2><MiniPhrase en="Featured & live auctions" am="ተለይተው የቀረቡ እና በሂደት ላይ ያሉ ጨረታዎች"/></h2><p><MiniPhrase en="The lowest unique number wins. Check the submission fee and closing time before you bid." am="ዝቅተኛው ልዩ የጨረታ ቁጥር ያሸንፋል። ከመሳተፍዎ በፊት የማስገቢያ ክፍያውን እና የመዘጊያ ጊዜውን ይመልከቱ።"/></p></div></div><FeaturedCarousel items={featured} serverNow={now.toISOString()}/><Link href="/auctions/all#active" className={styles.featuredAll}><MiniPhrase en="See all auctions" am="ሁሉንም ጨረታዎች ይመልከቱ"/> <ArrowRight size={16}/></Link></section>}
   <section className={`${styles.featuredSection} ${styles.upcomingSection} catalog-section`}><div className="section-heading"><div><h2><MiniPhrase en="Upcoming auctions" am="የሚመጡ ጨረታዎች"/></h2><p><MiniPhrase en="See what is opening next and when bidding begins." am="ቀጥሎ የሚከፈቱ ጨረታዎችን እና የመጀመሪያ ጊዜያቸውን ይመልከቱ።"/></p></div></div>{upcoming.items.length>0?<><FeaturedCarousel items={upcoming.items} serverNow={now.toISOString()} variant="upcoming"/><Link href="/auctions/all#upcoming" className={styles.featuredAll}><MiniPhrase en="See all upcoming auctions" am="ሁሉንም የሚመጡ ጨረታዎች ይመልከቱ"/> <ArrowRight size={16}/></Link></>:<p className="inline-empty"><MiniPhrase en="No upcoming auctions yet." am="ገና የሚመጣ ጨረታ የለም።"/></p>}</section>

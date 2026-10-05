@@ -113,7 +113,7 @@ describe.skipIf(!url)('Phase 5B scoped operations and private alerts',()=>{
   const detail=await okay(await get(`users/${playerId}`,roles.SUPPORT.cookie));expect(detail).toMatchObject({telegramUsername:'people_fixture',phone:'+99900910000001',bidCount:1,winCount:1});expect(detail.available).toBeDefined();expect(detail.held).toBeDefined();expect(JSON.stringify(detail)).not.toMatch(/phoneCipher|phoneHash|sourceUpdateId|password|accounts|session/);
   expect((await get(`users/${playerId}`,roles.CATALOG_MANAGER.cookie)).status).toBe(403);expect((await get(`users/${ownerId}`,roles.SUPPORT.cookie)).status).toBe(404);
  });
- it('withdraws only the current reply, keeps its audit, and updates the player conversation',async()=>{
+ it('withdraws a historical reply and keeps its audit while player support is retired',async()=>{
   const route=await import('../src/app/api/support/route');
   const c=await db.supportCase.create({data:{userId:playerId,subject:'Wrong reply fixture',message:'Please help with my request.'}});
   await okay(await cmd('support',{key:randomUUID(),id:c.id,status:'RESOLVED',reason:'Mistaken reply to withdraw',expectedUpdatedAt:c.updatedAt.toISOString()},roles.SUPPORT.cookie));
@@ -121,7 +121,9 @@ describe.skipIf(!url)('Phase 5B scoped operations and private alerts',()=>{
   const current=await db.supportCase.findUniqueOrThrow({where:{id:c.id}}),input={key:randomUUID(),id:c.id,expectedUpdatedAt:current.updatedAt.toISOString(),reason:'Withdraw incorrect reply'};
   expect((await cmd('supportWithdraw',input,roles.CATALOG_MANAGER.cookie)).status).toBe(403);
   const receipt=await okay(await cmd('supportWithdraw',input,roles.SUPPORT.cookie));expect(await okay(await cmd('supportWithdraw',input,roles.SUPPORT.cookie))).toEqual(receipt);
-  const mine=await okay(await route.GET(req('support',undefined,player)));expect(mine.find((r:any)=>r.id===c.id)).toMatchObject({message:c.message,resolution:'',status:'OPEN'});expect((await okay(await route.GET(req('support',undefined,player2)))).some((r:any)=>r.id===c.id)).toBe(false);
+  expect((await db.supportCase.findUniqueOrThrow({where:{id:c.id}}))).toMatchObject({message:c.message,resolution:'',status:'OPEN'});
+  expect((await route.GET(req('support',undefined,player))).status).toBe(410);
+  expect(await (await route.POST(req('support',{},player2))).json()).toMatchObject({supportUrl:'https://t.me/lowwinsupport'});
   expect((await db.adminAudit.findFirstOrThrow({where:{action:'SUPPORT_REPLY_WITHDRAWN',target:c.id}})).details).toMatchObject({previousReply:'Mistaken reply to withdraw'});
  });
  it('completes internal delivery without customer alerts or changes to settlement proof',async()=>{

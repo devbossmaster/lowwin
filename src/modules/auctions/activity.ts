@@ -2,6 +2,7 @@ import {Prisma,type PrismaClient} from '@prisma/client';
 import {z} from 'zod';
 import {effectiveStatus} from './catalog';
 import {cachedPublicData} from '../cache/public-data';
+import {allowIdentityRequest} from '@/lib/rate-limit';
 
 const code=z.string().regex(/^[1-9]\d{0,9}$/).transform(Number).pipe(z.number().int().max(2147483647));
 export const activityCodesSchema=z.array(code).min(1).max(50).transform(values=>[...new Set(values)].sort((a,b)=>a-b));
@@ -24,11 +25,18 @@ export async function readAuctionActivity(client:PrismaClient,codes:number[]){
  });
 }
 
-/** A single atomic statement records a visible product view and returns its count. */
-export async function recordAuctionView(client:PrismaClient,identifier:string){
+export const AUCTION_VIEW_WINDOW_MS=24*60*60*1000;
+/** One qualified impression per verified person and auction in a rolling day.
+ * The database transaction deduplicates across tabs, devices and replicas. */
+export async function recordAuctionView(client:PrismaClient,identifier:string,viewerId:string){
+ if(!viewerId)throw Error('A verified viewer is required.');
  const parsed=code.safeParse(identifier);
  const match=parsed.success?Prisma.sql`a."publicCode"=${parsed.data}`:Prisma.sql`a.slug=${identifier}`;
- const rows=await client.$queryRaw<Array<{views:string}>>`UPDATE "Auction" a SET "publicViewCount"=a."publicViewCount"+1
-  WHERE ${match} AND ${visibleAuction} RETURNING a."publicViewCount"::text AS views`;
- return rows[0]??null;
+ return client.$transaction(async tx=>{
+  const [auction]=await tx.$queryRaw<Array<{id:string;views:string}>>`SELECT a.id,a."publicViewCount"::text AS views FROM "Auction" a WHERE ${match} AND ${visibleAuction} FOR UPDATE OF a`;
+  if(!auction)return null;
+  if(!await allowIdentityRequest(tx,'auction-view',`${auction.id}:${viewerId}`,1,AUCTION_VIEW_WINDOW_MS))return {views:auction.views,counted:false};
+  const updated=await tx.auction.update({where:{id:auction.id},data:{publicViewCount:{increment:1}},select:{publicViewCount:true}});
+  return {views:updated.publicViewCount.toString(),counted:true};
+ });
 }

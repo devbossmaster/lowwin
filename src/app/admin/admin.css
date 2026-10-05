@@ -56,7 +56,7 @@
 .money-filter{display:grid;grid-template-columns:minmax(220px,1fr) minmax(180px,260px) auto auto}
 .money-amount{color:#185b33;font-size:1rem;font-variant-numeric:tabular-nums}
 .money-deposits table{min-width:680px}
-.money-accounts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+.money-accounts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
 .money-account{display:flex;flex-direction:column;align-items:flex-start;gap:12px;margin:0}
 .money-account .admin-page-head{width:100%;margin:0}
 .money-account h2,.money-account p{margin:0}
