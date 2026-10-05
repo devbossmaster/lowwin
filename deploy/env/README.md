@@ -57,7 +57,7 @@ small real M-Pesa transfer before considering that channel verified in productio
 
 For incomplete deposits, an Owner or Payments Operator can use **Approve manually**
 on the deposit details page. Check the actual receipt or receiving-account statement,
-enter its exact amount and EAT transfer time, add a review note, confirm the checks,
+enter its exact amount and EAT transfer time, optionally add a note, confirm the checks,
 and provide fresh MFA. Approval creates the usual balanced wallet journal, permanent
 transaction claim, audit record and deposit notification in one transaction.
 Already-used transaction IDs, credited deposits and active verification are blocked.
@@ -66,3 +66,14 @@ their frozen amount. This approval feature requires no new migration or environm
 variable. Redeploy the web app and notifications worker with the updated code.
 Automatic M-Pesa and Telebirr deposits still require an amount in the provider evidence;
 an HTTP 200 or a handled webhook without that amount does not credit a deposit.
+
+Owners can remove a receiving account from **Money → Receiving accounts** after
+confirming the selected account and fresh MFA. Removal creates a disabled policy
+version and an immutable removal audit, so the channel disappears from new-deposit
+options and the admin card returns to **Not added**. Historical deposit snapshots,
+receipts and ledger records remain available. The account can be added again later.
+No new migration is needed for receiving-account removal.
+
+Receipt uploads send the original JPEG, PNG or WebP bytes to Verify.et after
+validating the file, without cropping or resizing. The preview fits the whole image.
+Customers should upload a full, readable payment screenshot, up to 5 MB.

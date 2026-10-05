@@ -11,7 +11,7 @@ import {protectedPayment} from './retry';
 export const manualApprovalSchema=z.object({
  key:z.string().uuid(),id:z.string().uuid(),amountCents:z.string().regex(/^[1-9]\d{0,10}$/),
  reference:z.string().trim().min(8).max(128),otherReference:z.string().trim().max(128).optional().default(''),
- transferredAt:z.iso.datetime({offset:true}),reason:z.string().trim().min(8).max(500),confirmed:z.literal(true),
+ transferredAt:z.iso.datetime({offset:true}),reason:z.string().trim().max(500).optional().default(''),confirmed:z.literal(true),
 }).strict();
 export function canReviewDeposit(t:Pick<TopUpIntent,'status'|'caseState'|'provider'|'channel'|'receivingAccount'|'journalId'|'leaseUntil'>,now:Date,active:boolean,claimed=false){
  return !claimed&&!t.journalId&&!protectedPayment(t)&&['NEEDS_REVIEW','PROVIDER_OUTAGE','PENDING'].includes(t.status)&&
@@ -48,7 +48,7 @@ export async function approveReviewedDeposit(client:PrismaClient,headers:Headers
   if(!journalId)throw new PaymentError(409,'This transaction ID has already been credited. No additional credit was added.');
   await tx.topUpIntent.update({where:{id:t.id},data:{status:'CREDITED',journalId,reference,...(t.amountFromReceipt?{expectedCents:amount,points}:{}),reasonCode:'MANUALLY_APPROVED',caseState:'RESOLVED',assignedTo:actor.id,leaseToken:null,leaseUntil:null}});
   await tx.paymentAttempt.create({data:{intentId:t.id,key:b.key,requestHash:fingerprint,code:'MANUALLY_APPROVED',evidence:{source:'MANUAL_REVIEW',currency:'ETB',amountCents:b.amountCents,receiverSuffix:t.receivingAccount!.slice(-4),date:transferredAt.toISOString(),hash:evidenceHash,aliasCount:new Set(aliases).size}}});
-  await tx.adminAudit.create({data:{actorId:actor.id,action:'PAYMENT_APPROVE',target:t.id,operationKey:b.key,requestHash:fingerprint,details:{source:'MANUAL_REVIEW',sessionId:actor.sessionId,reason:b.reason,amountCents:b.amountCents,transferredAt:b.transferredAt,referenceHash:hash(reference),journalId}}});
+  await tx.adminAudit.create({data:{actorId:actor.id,action:'PAYMENT_APPROVE',target:t.id,operationKey:b.key,requestHash:fingerprint,details:{source:'MANUAL_REVIEW',sessionId:actor.sessionId,reason:b.reason||'Staff confirmed the receipt and receiving-account checks.',amountCents:b.amountCents,transferredAt:b.transferredAt,referenceHash:hash(reference),journalId}}});
   const row=await tx.outbox.create({data:{key:`deposit:${t.id}:credited`,kind:'DEPOSIT_CREDITED',payload:{intentId:t.id,recipientUserId:t.userId}}});await materializeAlert(tx,row);
   return {recorded:true,status:'CREDITED',amountCents:b.amountCents};
  },{timeout:15000});

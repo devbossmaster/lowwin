@@ -1,9 +1,26 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
+import sharp from 'sharp';
+import {validateReceiptImage} from '../src/modules/payments/ocr';
 import {submitVerify,submitVerifyImage,type VerificationInput} from '../src/modules/payments/provider';
 const requestId='550e8400-e29b-41d4-a716-446655440000';
 const input:VerificationInput={bank:'telebirr',reference:'SECRETREF123',account:'0912345678',expectedCents:null,minCents:100n,maxCents:2000n,createdAt:new Date(Date.now()-60000),expiresAt:new Date(Date.now()+60000),attemptKey:'stable-attempt'};
 afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();vi.unstubAllGlobals()});
 describe('Verify.et JSON transport',()=>{
+ it.each(['png','jpeg','webp'] as const)('preserves the full tall %s screenshot through validation and multipart upload',async format=>{
+  vi.stubEnv('VERIFY_ET_API_KEY','private-key');
+  const fetcher=vi.fn().mockResolvedValue(Response.json({success:true,requestId,verification:{processingStatus:'queued',status:'pending',verified:false},data:[]},{status:202}));
+  vi.stubGlobal('fetch',fetcher);vi.spyOn(console,'warn').mockImplementation(()=>{});
+  const image=await sharp({create:{width:1080,height:3200,channels:3,background:'white'}}).toFormat(format).toBuffer();
+  const original=Buffer.from(image),mime=`image/${format}` as const;
+  await validateReceiptImage(image,mime);
+  await submitVerifyImage({...input,image,mime});
+  const form=fetcher.mock.calls[0][1].body as FormData;
+  const uploaded=form.get('image') as Blob;
+  expect(uploaded.type).toBe(mime);
+  const bytes=Buffer.from(await uploaded.arrayBuffer());
+  expect(bytes).toEqual(original);expect(image).toEqual(original);
+  expect(await sharp(bytes).metadata()).toMatchObject({width:1080,height:3200,format});
+ });
  it.each(['qr','ocr'] as const)('reads safe %s image metadata from a queued response without data',async method=>{
   vi.stubEnv('VERIFY_ET_API_KEY','private-key');vi.stubGlobal('fetch',vi.fn().mockResolvedValue(Response.json({success:true,requestId,imageProcessing:{attemptId:'private-image-attempt',method,chargedCredits:1,receipt:'private-receipt'},verification:{processingStatus:'queued',status:'pending',verified:false}},{status:202})));
   vi.spyOn(console,'warn').mockImplementation(()=>{});const info=vi.spyOn(console,'info').mockImplementation(()=>{});

@@ -18,6 +18,6 @@ export function ReceiptImageUpload({receipt=null,disabled=false,onSelect,onRemov
    <input ref={input} className="sr-only" tabIndex={-1} aria-label={w(receipt?'Change image':'Upload receipt image')} type="file" accept="image/png,image/jpeg,image/webp" disabled={disabled} onChange={event=>{onSelect?.(event.target.files?.[0]);event.target.value=''}}/>
   </div>
   {receipt&&<div className={styles.receiptFile}><span>{receipt.name} · {fileSize(receipt.size)}</span><button type="button" aria-label={w('Remove selected image')} disabled={disabled} onClick={onRemove}><X size={18}/></button></div>}
-  <p className={styles.uploadHelp}>{w('Upload a clear screenshot of your payment.')}<span>{w('JPEG, PNG or WebP · up to 5 MB')}</span></p>
+  <p className={styles.uploadHelp}>{w('Upload the full, clear payment screenshot. No cropping needed.')}<span>{w('JPEG, PNG or WebP · up to 5 MB')}</span></p>
  </>;
 }

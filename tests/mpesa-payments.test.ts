@@ -68,6 +68,10 @@ describe('M-Pesa deposits',()=>{
   expect(options.accounts.map(account=>account.number)).toEqual(Object.values(numbers));
   expect(findFirst.mock.calls.map(([query])=>query.where.channel)).toEqual(['telebirr','cbe','mpesa']);
  });
+ it('omits removed accounts when the latest policy disables new deposits',async()=>{
+  const findFirst=vi.fn(async({where}:{where:{channel:string}})=>({id:randomUUID(),channel:where.channel,enabled:where.channel==='telebirr',version:2,account:'0911111111',accountName:'Fixture receiver',pointsNumerator:1n,centsDenominator:100n,minCents:100n,maxCents:100000n,terms:'Fixture only'}));
+  expect((await fundingOptions({paymentPolicy:{findFirst}} as unknown as PrismaClient)).accounts.map(a=>a.id)).toEqual(['telebirr']);
+ });
  it.each(['telebirr','cbe','mpesa'])('accepts %s for new deposits at the public input boundary',async channel=>{
   const transaction=vi.fn(async()=>{throw Error('entered guarded transaction')});
   expect(depositBankSchema.safeParse(channel).success).toBe(true);

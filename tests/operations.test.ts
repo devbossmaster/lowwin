@@ -223,6 +223,20 @@ describe.skipIf(!url)('Phase 5B scoped operations and private alerts',()=>{
   await expect(paymentAdminCommand(db,headers,'publish-policy',{...changed,key:randomUUID(),confirmation:next.confirmation})).rejects.toThrow('Configuration changed');
  });
 
+ it('removes a receiving account without changing frozen deposits and permits adding it again',async()=>{
+  const {paymentAdminCommand,paymentAdminRead}=await import('../src/modules/payments/admin');
+  const headers=req('admin/payments').headers,original=await db.paymentPolicy.findFirstOrThrow({where:{channel:'telebirr'},orderBy:{version:'desc'}});
+  const t=await db.topUpIntent.create({data:{userId:player2Id,key:randomUUID(),provider:'VERIFY_ET',channel:'telebirr',status:'NEEDS_REVIEW',policyVersion:original.id,expectedCents:1000n,points:10,receivingAccount:original.account,accountName:original.accountName,expiresAt:new Date(Date.now()+1800000)}});
+  const input={key:randomUUID(),id:original.id,channel:'telebirr',version:original.version};
+  expect(await paymentAdminCommand(db,headers,'remove-policy',input)).toMatchObject({removed:true,version:original.version+1});
+  expect(await paymentAdminCommand(db,headers,'remove-policy',input)).toMatchObject({removed:true,version:original.version+1});
+  expect(await db.paymentPolicy.findUniqueOrThrow({where:{id:original.id}})).toEqual(original);
+  expect(await db.topUpIntent.findUniqueOrThrow({where:{id:t.id}})).toEqual(t);
+  const settings=await paymentAdminRead(db,headers,['settings'],new URLSearchParams()) as any,removed=settings.policies.find((p:any)=>p?.channel==='telebirr');expect(removed).toMatchObject({enabled:false,removed:true,version:original.version+1});
+  const replacement={key:randomUUID(),channel:'telebirr',version:removed.version,enabled:false,account:original.account,accountName:original.accountName,pointsNumerator:'1',centsDenominator:'100',minCents:original.minCents.toString(),maxCents:original.maxCents.toString(),accountConfirmed:true};
+  const preview=await paymentAdminCommand(db,headers,'preview-policy',replacement) as any;await paymentAdminCommand(db,headers,'publish-policy',{...replacement,confirmation:preview.confirmation});
+  const restored=await paymentAdminRead(db,headers,['settings'],new URLSearchParams()) as any;expect(restored.policies.find((p:any)=>p?.channel==='telebirr')).toMatchObject({removed:false,version:original.version+2});
+ });
  it('accepts simple photo uploads but keeps byte validation and unpublished media authorization',async()=>{
   const png=await sharp({create:{width:48,height:32,channels:4,background:'#0bda51'}}).png().toBuffer();
   const image=await okay(await cmd('media',{key:randomUUID(),mime:'image/png',data:png.toString('base64')}));

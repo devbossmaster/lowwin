@@ -10,6 +10,7 @@ import {paymentHealth,reconcilePayments,verifyIntent} from './service';
 import {reconcile} from '../wallet/ledger';
 import {DEPOSIT_CHANNELS} from '@/lib/payment-channels';
 import {approveReviewedDeposit,canReviewDeposit} from './manual-approval';
+import {receivingAccountStates,removeReceivingAccount} from './account-removal';
 const key=z.string().uuid(),reason=z.string().trim().min(8).max(500),optionalNote=z.string().trim().max(500).optional().default(''),integer=z.string().regex(/^[1-9]\d{0,10}$/);
 const policySchema=z.object({key,channel:depositBankSchema,version:z.number().int().min(0),enabled:z.boolean(),account:z.string().regex(/^\d{10,16}$/),accountName:z.string().trim().min(3).max(120),pointsNumerator:integer,centsDenominator:integer,minCents:integer,maxCents:integer,terms:z.string().trim().min(40).max(3000).optional(),reviewReference:reason.optional(),accountConfirmed:z.boolean().optional(),reason:optionalNote,confirmation:z.string().optional()}).strict().refine(value=>value.channel==='cbe'||/^(?:0|251)[79]\d{8}$/.test(value.account),{path:['account'],message:'Use an Ethiopian wallet phone number: 07..., 09... or 251...'});
 type MaterialPolicy=z.infer<typeof policySchema>&{terms:string;reviewReference:string};
@@ -17,7 +18,7 @@ function policyData(b:MaterialPolicy){const {key:_,reason:__,confirmation:___,ac
 function allow(role:string,write=false){if(!(write?['OWNER','PAYMENTS_OPERATOR']:['OWNER','PAYMENTS_OPERATOR','AUDITOR','SUPPORT']).includes(role))throw new AdminError(403,'Payment operations are not granted to this role.')}
 const mask=(s:string|null)=>s?`••••${s.slice(-4)}`:null;
 export async function paymentAdminRead(client:PrismaClient,headers:Headers,path:string[],params:URLSearchParams){const actor=await requireAdmin(client,headers);allow(actor.role);
- if(path[0]==='settings'){if(actor.role!=='OWNER')throw new AdminError(403,'Owner permission required.');const latest=await Promise.all(DEPOSIT_CHANNELS.map(channel=>client.paymentPolicy.findFirst({where:{channel},orderBy:{version:'desc'}})));return {health:paymentHealth(),policies:JSON.parse(JSON.stringify(latest,(_,v)=>typeof v==='bigint'?v.toString():v))}}
+ if(path[0]==='settings'){if(actor.role!=='OWNER')throw new AdminError(403,'Owner permission required.');const latest=await Promise.all(DEPOSIT_CHANNELS.map(channel=>client.paymentPolicy.findFirst({where:{channel},orderBy:{version:'desc'}})));return {health:paymentHealth(),policies:JSON.parse(JSON.stringify(await receivingAccountStates(client,latest),(_,v)=>typeof v==='bigint'?v.toString():v))}}
  const page=Math.max(1,Math.min(100000,Math.floor(Number(params.get('page'))||1))),query=params.get('q')?.slice(0,100),status=params.get('status')?.slice(0,40),caseState=params.get('caseState')?.slice(0,40);
  if(path[0]==='incidents'){if(actor.role==='SUPPORT')throw new AdminError(403,'Evidence permission required.');return {agedPending:await client.topUpIntent.count({where:{status:{in:['PENDING','VERIFYING','PROVIDER_OUTAGE']},createdAt:{lt:new Date(Date.now()-3600000)}}}),duplicates:await client.topUpIntent.count({where:{status:'DUPLICATE_CONFLICT'}}),providerOutage:await client.topUpIntent.count({where:{status:'PROVIDER_OUTAGE'}}),disputes:await client.topUpIntent.count({where:{caseState:{in:['ESCALATED','REVERSAL_REVIEW']}}}),statementUnmatched:await client.paymentStatementEntry.count({where:{status:{not:'MATCHED'}}}),ledgerDrift:(await reconcile(client)).length,paymentDrift:(await reconcilePayments(client)).length,health:paymentHealth()}}
  if(path[0]==='statements'){if(actor.role==='SUPPORT')throw new AdminError(403,'Evidence permission required.');const [items,total]=await client.$transaction([client.paymentStatementEntry.findMany({orderBy:{createdAt:'desc'},take:25,skip:(page-1)*25}),client.paymentStatementEntry.count()]);return JSON.parse(JSON.stringify({items:items.map(item=>({...item,reference:mask(item.reference)})),total,page,totalPages:Math.ceil(total/25)},(_,v)=>typeof v==='bigint'?v.toString():v))}
@@ -42,6 +43,7 @@ export async function paymentAdminRead(client:PrismaClient,headers:Headers,path:
 export async function paymentAdminCommand(client:PrismaClient,headers:Headers,action:string,raw:unknown){
  const initial=await requireAdmin(client,headers);allow(initial.role,true);
  if(action==='approve')return approveReviewedDeposit(client,headers,raw);
+ if(action==='remove-policy')return removeReceivingAccount(client,headers,raw);
  if(action==='preview-policy'||action==='publish-policy'){
   if(initial.role!=='OWNER')throw new AdminError(403,'Owner permission required.');
   const parsed=policySchema.parse(raw);const previous=await client.paymentPolicy.findFirst({where:{channel:parsed.channel},orderBy:{version:'desc'}});

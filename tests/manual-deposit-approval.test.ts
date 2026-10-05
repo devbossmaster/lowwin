@@ -74,7 +74,12 @@ describe('manual deposit approval',()=>{
   for(const caseState of ['ARCHIVED','ESCALATED','REVERSAL_REVIEW']){f.state.t.caseState=caseState;expect(canReviewDeposit(f.state.t,auth.now,false)).toBe(false)}
  });
  it.each([{amountCents:'99'},{amountCents:'100001'},{transferredAt:'2026-10-05T09:59:59Z'},{transferredAt:'2026-10-05T11:30:01Z'},{transferredAt:'2026-10-06T11:10:00Z'},{reference:'ANOTHER12345'}])('rejects invalid reviewed evidence %j',async change=>{const f=fixture();await expect(approveReviewedDeposit(f.client,new Headers(),{...f.input,...change})).rejects.toBeInstanceOf(Error);expect(f.state.journals).toHaveLength(0)});
- it.each([{confirmed:false},{reason:''},{amountCents:'30.27'},{amountCents:'0'},{amountCents:'-1'}])('rejects incomplete approval input %j',async change=>{const f=fixture();await expect(approveReviewedDeposit(f.client,new Headers(),{...f.input,...change})).rejects.toBeInstanceOf(Error);expect(f.state.journals).toHaveLength(0)});
+ it.each([{confirmed:false},{reason:'x'.repeat(501)},{amountCents:'30.27'},{amountCents:'0'},{amountCents:'-1'}])('rejects incomplete approval input %j',async change=>{const f=fixture();await expect(approveReviewedDeposit(f.client,new Headers(),{...f.input,...change})).rejects.toBeInstanceOf(Error);expect(f.state.journals).toHaveLength(0)});
+ it.each(['',undefined,'Checked'])('allows an optional note and preserves staff attribution and the audit trail',async reason=>{
+  const f=fixture();await approveReviewedDeposit(f.client,new Headers(),{...f.input,reason});
+  expect(f.state.t.status).toBe('CREDITED');expect(f.state.journals).toHaveLength(1);
+  expect(f.state.audits[0]).toMatchObject({actorId:'owner',action:'PAYMENT_APPROVE',details:{source:'MANUAL_REVIEW',sessionId:'staff-session',reason:reason||'Staff confirmed the receipt and receiving-account checks.',amountCents:'3027'}});
+ });
  it('does not credit an already claimed transaction or alias',async()=>{
   for(const kind of ['claims','aliases'] as const){const f=fixture();f.state[kind].push(kind==='claims'?{channel:'mpesa',reference:'MPESA123456',intentId:'someone-else'}:{channel:'mpesa',alias:'MPESA123456',claimId:'someone-else'});await expect(approveReviewedDeposit(f.client,new Headers(),f.input)).rejects.toMatchObject({status:409});expect(f.state.journals).toHaveLength(0)}
  });

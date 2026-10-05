@@ -78,6 +78,7 @@
 .money-approval-form input:not([type=checkbox]){width:100%;min-width:0}
 .money-approval-form input[readonly]{background:#f0f3f1}
 .money-approval-form .admin-check{align-items:flex-start;line-height:1.5}
+.money-approval-form small,.money-approval-form .money-approval-help{font-size:13px;font-weight:400;line-height:1.5;color:#52635c}
 .money-history{display:grid;gap:12px;margin-top:16px}
 .money-history article{padding-bottom:12px;border-bottom:1px solid #e8e8e8}
 .money-history small{display:block;color:#52635c;margin-top:4px}

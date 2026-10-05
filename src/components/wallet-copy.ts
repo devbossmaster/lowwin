@@ -22,7 +22,7 @@ export const walletAm:Record<string,string>={
  'Payment receipt':'የክፍያ ደረሰኝ',
  'Choose image':'ምስል ይምረጡ',
  'or drag and drop here':'ወይም እዚህ ጎትተው ያስቀምጡ',
- 'Upload a clear screenshot of your payment.':'ግልጽ የክፍያዎን የስክሪን ምስል ይጫኑ።',
+ 'Upload the full, clear payment screenshot. No cropping needed.':'ሙሉና ግልጽ የክፍያ ስክሪን ምስል ይጫኑ። መቁረጥ አያስፈልግም።',
  'Contact Lowwin support':'የLowwin ድጋፍን ያነጋግሩ',
  'Deposit history could not load.':'የተቀማጭ ታሪኩን ማምጣት አልተቻለም።',
  'Track your submitted payments and their status.':'የላኳቸውን ክፍያዎች እና ሁኔታቸውን ይከታተሉ።',
