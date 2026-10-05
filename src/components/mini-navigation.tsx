@@ -4,7 +4,7 @@ import Link from 'next/link';
 import {TelegramLink} from './telegram-link';
 import {usePathname,useRouter} from 'next/navigation';
 import {ChevronDown,Menu,Search,X} from 'lucide-react';
-import {MiniPhrase,useMiniLocale} from './mini-locale';
+import {LanguageSwitch,MiniPhrase,useMiniLocale} from './mini-locale';
 import styles from './mini-navigation.module.css';
 
 export function MiniNavigation(){
@@ -32,6 +32,7 @@ export function MiniNavigation(){
       <button type="submit" aria-label={am?'ፈልግ':'Submit search'}><Search size={18}/></button>
     </form>}
     {open==='menu'&&<><button className={styles.backdrop} tabIndex={-1} aria-label="Close menu" onClick={close}/><nav id="mini-global-menu" className={styles.menu} aria-label="Explore Lowwin">
+      <div className={styles.menuLanguage}><LanguageSwitch/></div>
       <details open><summary><MiniPhrase en="Home" am="መነሻ"/><ChevronDown size={17}/></summary><div className={styles.homeLinks}>
         <Link prefetch={false} href="/" onClick={close}><MiniPhrase en="Home" am="መነሻ"/></Link>
         <Link prefetch={false} href="/#how-lowwin-works" onClick={close}><MiniPhrase en="How It Works" am="እንዴት ይሰራል"/></Link>

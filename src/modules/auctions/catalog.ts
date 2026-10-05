@@ -149,20 +149,20 @@ export async function listCategories(now?: Date) {
   return cachedPublicData(`categories:${now?.toISOString()??'current'}`,5000,async()=>{
   now ??= await serverNow();
   // Aggregate in PostgreSQL instead of transferring every auction for each page.
-  // Visibility matches publicWhere, including the product's own category.
+  // Match public catalog listings: visible product/category, published, and not cancelled.
   const rows=await db.$queryRaw<{slug:string;name:string;nameAm:string|null;description:string;descriptionAm:string|null;requiresEligibilityReview:boolean;all:number;live:number;upcoming:number;closed:number}[]>`
     SELECT c.slug,c.name,c."nameAm",c.description,c."descriptionAm",c."requiresEligibilityReview",
       count(a.id)::int AS all,
       count(a.id) FILTER (WHERE a.status IN ('SCHEDULED','LIVE') AND a."startsAt"<=${now} AND a."endsAt">${now})::int AS live,
       count(a.id) FILTER (WHERE a.status IN ('SCHEDULED','LIVE') AND a."startsAt">${now} AND a."endsAt">${now})::int AS upcoming,
-      count(a.id) FILTER (WHERE a.status IN ('CLOSED','CANCELLED'))::int AS closed
+      count(a.id) FILTER (WHERE a.status = 'CLOSED')::int AS closed
     FROM "Category" c
     LEFT JOIN ("Auction" a
       JOIN "Product" p ON p.id=a."productId" AND p.visible
       JOIN "Category" pc ON pc.id=p."categoryId" AND pc.visible
       JOIN "AuctionTerms" t ON t."auctionId"=a.id)
       ON a."categoryId"=c.id AND a."publishedAt"<=${now} AND a."testRunId" IS NULL
-        AND a.slug IS NOT NULL AND a.status IN ('SCHEDULED','LIVE','CLOSED','CANCELLED')
+        AND a.slug IS NOT NULL AND a.status IN ('SCHEDULED','LIVE','CLOSED')
     WHERE c.visible GROUP BY c.id HAVING count(a.id)>0 ORDER BY c."sortOrder",c.name`;
   return rows.map(({all,live,upcoming,closed,...category})=>({...category,counts:{all,live,upcoming,closed}}));
   });

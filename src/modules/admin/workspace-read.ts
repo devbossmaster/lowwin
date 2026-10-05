@@ -6,6 +6,7 @@ import {depositAttentionWhere} from '../payments/review-filter';
 export function auctionStatusWhere(status:string,now:Date):Prisma.AuctionWhereInput {
  const running:Prisma.AuctionWhereInput={testRunId:null,publishedAt:{not:null},status:{in:['SCHEDULED','LIVE']},settlement:{is:null}};
  switch(status){
+  case 'IN_PROGRESS':return {...running};
   case 'LIVE':return {...running,startsAt:{lte:now},endsAt:{gt:now}};
   case 'UPCOMING':case 'SCHEDULED':return {...running,startsAt:{gt:now},endsAt:{gt:now}};
   case 'CLOSING':case 'PENDING':return {...running,endsAt:{lte:now}};

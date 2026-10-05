@@ -1,11 +1,11 @@
 @font-face{font-family:'Sora';src:url('/fonts/sora-latin-800.woff2') format('woff2');font-style:normal;font-weight:800;font-display:swap}
-.hero{padding:28px 20px 26px;background:#008000;color:#fff;--surface-ink:#fff;overflow:hidden}
-.heroCopy h1{max-width:16ch;font-family:'Sora','Lowwin Ethiopic',sans-serif;font-size:clamp(34px,9.5vw,44px);font-weight:800;letter-spacing:-.035em;line-height:1.13;text-wrap:balance;color:#fff}
-.hero:lang(am) .heroCopy h1{max-width:none;font-family:'Lowwin Ethiopic','Poppins',sans-serif;font-weight:700;letter-spacing:0}
+.hero{padding:16px 20px 24px;background:#008000;color:#fff;--surface-ink:#fff;overflow:hidden}
+.heroCopy h1{max-width:16ch;margin:0;font-family:'Sora','Lowwin Ethiopic',sans-serif;font-size:clamp(34px,9.5vw,44px);font-weight:800;letter-spacing:-.035em;line-height:1.13;text-wrap:balance;color:#fff}
+.hero:lang(am) .heroCopy h1{max-width:none;font-family:'Lowwin Ethiopic','Poppins',sans-serif;font-size:clamp(29px,8.5vw,40px);font-weight:700;letter-spacing:0;line-height:1.18}
 .headlineLine{display:block}
 .hero:lang(am) .headlineLine:first-child{white-space:nowrap}
-.heroCopy p{max-width:34ch;margin:16px 0 22px;color:#fff;font-size:13px;line-height:1.7;white-space:pre-line}
-.showcase{display:flex;align-items:center;justify-content:center;gap:10px;margin:26px -4px 30px;min-height:174px}
+.heroCopy p{max-width:34ch;margin:12px 0 18px;color:#fff;font-size:13px;line-height:1.6;white-space:pre-line}
+.showcase{display:flex;align-items:center;justify-content:center;gap:10px;margin:20px -4px 26px;min-height:174px}
 .showcaseItem{display:flex;flex:1;min-width:0;max-width:160px;flex-direction:column;overflow:hidden;border-radius:14px;background:#fff;color:#17251d;text-decoration:none;box-shadow:0 12px 24px rgb(0 40 0 / 20%);--surface-ink:#17251d}
 .showcaseItem[data-position='0']{transform:rotate(-7deg) translateY(8px)}
 .showcaseItem[data-position='1']{transform:translateY(-8px);z-index:1}

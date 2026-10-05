@@ -10,6 +10,8 @@ describe('Admin workspace contracts',()=>{
   expect(adminAreas).toEqual(['Overview','Auctions','Money','People','Settings']);
   expect(auctionStatusWhere('',new Date())).toMatchObject({testRunId:null});
   expect(auctionStatusWhere('LIVE',new Date())).toMatchObject({testRunId:null});
+  expect(auctionStatusWhere('IN_PROGRESS',new Date())).toMatchObject({testRunId:null,status:{in:['SCHEDULED','LIVE']},settlement:{is:null}});
+  expect(auctionStatusWhere('CANCELLED',new Date())).toMatchObject({testRunId:null,status:'CANCELLED'});
  });
  it('lands every staff role on its first authorized task',()=>{
   expect(allowedTasks('OWNER').some(t=>t.href==='/admin/content')).toBe(false);

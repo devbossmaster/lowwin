@@ -142,7 +142,7 @@ h3 { font-size:15px; font-weight:600; }
 .verified-line { background:#f0f0f0; border-radius:12px; padding:16px; display:flex; gap:9px; align-items:center; font-size:13px; --surface-ink: #000; color: var(--surface-ink, #000); }
 .quiet-note { display:flex; gap:8px; align-items:center; justify-content:center; color:var(--surface-ink, #000); font-size:11px; margin:23px 0 0; }
 .quiet-note svg { flex-shrink:0; }
-.app-frame-loading>.mini-global-navigation,.app-frame:has(.page-loading-backdrop)>.mini-global-navigation{filter:blur(9px);pointer-events:none;user-select:none}
+.app-frame-loading .mini-global-navigation,.app-frame:has(.page-loading-backdrop) .mini-global-navigation{filter:blur(9px);pointer-events:none;user-select:none}
 .page-footer { margin-top:0; padding:38px 24px 34px; border-radius:28px 28px 0 0; background:#008000; color:#fff; text-align:center; --surface-ink:#fff; }
 .page-footer .wordmark { color:var(--surface-ink, #000); font-size:27px; }
 .page-footer .wordmark span { color:var(--surface-ink, #000); }

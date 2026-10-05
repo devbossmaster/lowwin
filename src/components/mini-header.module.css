@@ -44,13 +44,15 @@
 @media (hover:hover) { .languageButton:hover { background: rgb(255 255 255 / 24%); --surface-ink: inherit; color: var(--surface-ink, #000); } .languageOption:hover { background: #f9f9f9; --surface-ink: #000; color: var(--surface-ink, #000); } }
 @media (prefers-reduced-motion: reduce) { .header a,.languageChevron { transition: none; } }
 
-/* Tighten the visible circles while retaining 44px touch targets. */
-.header{grid-template-columns:44px minmax(0,1fr) repeat(2,44px) 58px;justify-content:initial;gap:3px;padding-block:calc(8px + var(--mini-safe-top,0px) + var(--tg-content-safe-area-inset-top,0px)) 8px}
+/* Keep the primary actions on one row and retain 44px touch targets. */
+.header{grid-template-columns:44px minmax(68px,88px) repeat(2,44px) minmax(44px,1fr) 88px;justify-content:initial;gap:2px;padding-block:calc(8px + var(--mini-safe-top,0px) + var(--tg-content-safe-area-inset-top,0px)) 8px}
 .header .avatar,.header .icon{background:transparent;color:#fff;--surface-ink:#fff}
 .header .avatar::before,.header .icon::before{position:absolute;inset:5px;border-radius:50%;background:#fff;content:'';z-index:-1}
 .header .avatar,.header .icon{isolation:isolate;color:#006600}
 .header .avatar img{inset:5px;width:34px;height:34px}
-.header .balance{min-height:38px;padding:4px 10px;border-radius:12px}
+.header .balance{min-height:38px;padding:4px 8px;border-radius:12px}
+.header .balanceLabel{font-size:8px}
+.header .amount{font-size:11px}
 .language,.languageButton{color:#fff;--surface-ink:#fff}
 .header a:focus-visible,.languageButton:focus-visible{outline-color:#fff}
-@media(max-width:370px){.header{grid-template-columns:44px minmax(0,1fr) repeat(2,44px) 52px;gap:2px}}
+@media(max-width:380px){.header{grid-template-columns:44px minmax(68px,88px) repeat(2,44px) minmax(88px,1fr);gap:2px;padding-inline:max(12px,env(safe-area-inset-left,0px),env(safe-area-inset-right,0px),var(--tg-content-safe-area-inset-left,0px),var(--tg-content-safe-area-inset-right,0px))}.language{display:none}}
