@@ -16,7 +16,7 @@ function validSignature(timestamp:string,body:Buffer,header:string){
 export async function POST(request:Request){
  // Log only server-generated context and fixed outcomes, never headers or bodies.
  const started=performance.now(),traceId=randomUUID();
- const path=new URL(request.url).pathname==='/webhooks/verify'?'/webhooks/verify':'/api/payments/verify-et/webhook';
+ const path='/api/payments/verify-et/webhook';
  console.info(JSON.stringify({event:'verify_et_webhook_received',traceId,path}));
  const reply=(status:number,outcome:string,retry=false)=>{
   console.info(JSON.stringify({event:'verify_et_webhook_response',traceId,path,status,outcome,durationMs:Math.round(performance.now()-started)}));

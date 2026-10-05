@@ -21,6 +21,13 @@ describe('M-Pesa deposits',()=>{
   expect(assess(completed(),input,now)).toMatchObject({matched:true,code:'VERIFIED',evidence:{amountCents:'3027',currency:'ETB',currencySource:'channel_policy'}});
   expect(providerReference(completed().data[0],'mpesa')).toBe(input.reference);
  });
+ it.each(['telebirr','mpesa'] as const)('uses the same receipt-derived amount rules for %s transaction IDs',bank=>{
+  const walletInput={...input,bank};
+  const result=completed({bank});
+  expect(assess(result,walletInput,now)).toMatchObject({code:'VERIFIED',matched:true,evidence:{amountCents:'3027'}});
+  expect(assess({...result,data:[{...result.data[0],amount:'45.60'}]},walletInput,now)).toMatchObject({code:'VERIFIED',matched:true,evidence:{amountCents:'4560'}});
+  expect(assess({...result,data:[{...result.data[0],amount:undefined}]},walletInput,now)).toMatchObject({code:'INCOMPLETE_EVIDENCE',matched:false});
+ });
  it.each([
   [{receiverAccount:'251722222222'},'RECEIVER_MISMATCH'],
   [{receiverAccount:'2517****1111'},'RECEIVER_UNPROVEN'],

@@ -8,7 +8,6 @@ vi.mock('@/lib/db',()=>({db:{$transaction:async(callback:(tx:unknown)=>Promise<u
 })}}));
 vi.mock('@/modules/payments/service',()=>({completeVerifyWebhook:async()=>{state.completions++;return state.requestBound}}));
 import {POST} from '../src/app/api/payments/verify-et/webhook/route';
-import {POST as aliasPost} from '../src/app/webhooks/verify/route';
 
 const secret='whsec_fixture-secret';
 function signed(payload:unknown,at=new Date().toISOString(),signatureSecret=secret){const body=JSON.stringify(payload),signature=createHmac('sha256',signatureSecret).update(`${at}.${body}`).digest('hex');return new Request('https://lowwin.example/api/payments/verify-et/webhook',{method:'POST',headers:{'content-type':'application/json','x-webhook-timestamp':at,'x-webhook-signature':`sha256=${signature}`,'x-webhook-event':'verification.completed','x-webhook-event-id':String((payload as {id?:string}).id)},body})}
@@ -31,33 +30,16 @@ describe('Verify.et signed durable webhook',()=>{
  it('accepts rotation and signed test pings without a payment event',async()=>{vi.stubEnv('VERIFY_ET_WEBHOOK_SECRET_PREVIOUS','whsec_previous');const payload={id:randomUUID(),event:'webhook.test',requestId:randomUUID()};expect((await POST(signed(payload,new Date().toISOString(),'whsec_previous'))).status).toBe(204);expect(state.events.size).toBe(0)});
 });
 
-describe('Verify.et /webhooks/verify alias',()=>{
- const url='https://lowwin.example/webhooks/verify';
- it('requires a signature and accepts a signed test without touching payments',async()=>{
-  expect((await aliasPost(new Request(url,{method:'POST',body:JSON.stringify({event:'webhook.test'})}))).status).toBe(401);
-  const payload={event:'webhook.test'};
-  expect((await aliasPost(new Request(url,signed(payload,new Date().toISOString(),'whsec_wrong')))).status).toBe(401);
-  expect((await aliasPost(new Request(url,signed(payload)))).status).toBe(204);
-  expect(state.events.size).toBe(0);expect(state.wakes).toBe(0);expect(state.completions).toBe(0);
- });
- it('deduplicates the same event arriving through both URLs',async()=>{
-  const payload={id:randomUUID(),event:'verification.completed',requestId:randomUUID(),data:{processingStatus:'completed',verified:true}};
-  expect((await POST(signed(payload))).status).toBe(204);
-  expect((await aliasPost(new Request(url,signed(payload)))).status).toBe(204);
-  expect(state.events.size).toBe(1);expect(state.wakes).toBe(1);
- });
-});
-
 describe('Verify.et webhook diagnostics',()=>{
- it('logs arrival and accepted test through the alias without exposing request data',async()=>{
-  const request=new Request('https://lowwin.example/webhooks/verify?private=query-sentinel',signed({event:'webhook.test',data:{senderName:'private-sender-sentinel',referenceNumber:'private-reference-sentinel'}}));
+ it('logs arrival and response for one request without exposing request data',async()=>{
+  const request=new Request('https://lowwin.example/api/payments/verify-et/webhook?private=query-sentinel',signed({event:'webhook.test',data:{senderName:'private-sender-sentinel',referenceNumber:'private-reference-sentinel'}}));
   request.headers.set('authorization','Bearer private-auth-sentinel');
   const signature=request.headers.get('x-webhook-signature')!;
-  expect((await aliasPost(request)).status).toBe(204);
+  expect((await POST(request)).status).toBe(204);
   const lines=vi.mocked(console.info).mock.calls.map(call=>String(call[0]));
   expect(lines).toHaveLength(2);
   const [arrival,result]=lines.map(line=>JSON.parse(line));
-  expect(arrival).toMatchObject({event:'verify_et_webhook_received',path:'/webhooks/verify'});
+  expect(arrival).toMatchObject({event:'verify_et_webhook_received',path:'/api/payments/verify-et/webhook'});
   expect(result).toMatchObject({event:'verify_et_webhook_response',traceId:arrival.traceId,status:204,outcome:'test_accepted',durationMs:expect.any(Number)});
   for(const sensitive of [secret,signature,'query-sentinel','private-sender-sentinel','private-reference-sentinel','private-auth-sentinel'])expect(lines.join('\n')).not.toContain(sensitive);
   expect(state.events.size).toBe(0);expect(state.completions).toBe(0);

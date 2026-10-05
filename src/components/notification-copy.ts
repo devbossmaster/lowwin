@@ -13,7 +13,7 @@ const messages:Record<string,[string,string,string]>={
 };
 // Translate the display only; stored messages and financial records stay intact.
 export function notificationCopy(item:AlertCopy,language:'en'|'am'){
- const campaigns:Record<string,[string,string]>={AUCTION_PUBLISHED:['New auction','አዲስ ጨረታ'],AUCTION_ENDING:['Less than one day left','ከአንድ ቀን ያነሰ ጊዜ ቀርቷል'],AUCTION_RESULT:['Auction finished','ጨረታው ተጠናቋል'],DEPOSIT_CREDITED:['Deposit successful','ገንዘቡ ገብቷል'],BROADCAST:['Lowwin update','የLowwin መረጃ']};
+ const campaigns:Record<string,[string,string]>={AUCTION_UPCOMING:['Starts in less than 24 hours','\u12a824 \u1230\u12d3\u1275 \u1260\u1273\u127d \u130a\u12dc \u12cd\u1235\u1325 \u12ed\u1300\u121d\u122b\u120d'],AUCTION_PUBLISHED:['New auction','አዲስ ጨረታ'],AUCTION_ENDING:['Less than one day left','ከአንድ ቀን ያነሰ ጊዜ ቀርቷል'],AUCTION_RESULT:['Auction finished','ጨረታው ተጠናቋል'],DEPOSIT_CREDITED:['Deposit successful','ገንዘቡ ገብቷል'],BROADCAST:['Lowwin update','የLowwin መረጃ']};
  const campaign=item.kind?campaigns[item.kind]:undefined;
  if(campaign){
   const lines=item.body.split('\n'),am=language==='am';

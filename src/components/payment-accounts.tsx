@@ -8,7 +8,7 @@ import {DEPOSIT_CHANNELS,paymentChannelName} from '@/lib/payment-channels';
 
 export type PaymentAccount={id:string;name:string;number:string;holder:string};
 export function PaymentLogo({channel}:{channel:string}){
- if(channel==='mpesa')return <span className={`${styles.providerLogo} ${styles.mpesaLogo}`} aria-hidden="true">M<span>•</span></span>;
+ if(channel==='mpesa')return <span className={`${styles.providerLogo} ${styles.mpesaLogo}`}><Image src="/icons/payments/mpesa.png" alt="" width={80} height={30}/></span>;
  return <span className={`${styles.providerLogo} ${channel==='cbe'?styles.cbeLogo:''}`}><Image src={`/icons/payments/${channel==='cbe'?'cbe.png':'telebirr.jpg'}`} alt="" width={channel==='cbe'?168:36} height={channel==='cbe'?98:36}/></span>;
 }
 export function PaymentAccounts({accounts,selected,onSelect,locked=false,busy=false,preview=false}:{accounts:PaymentAccount[];selected:string|null;onSelect:(id:string)=>void;locked?:boolean;busy?:boolean;preview?:boolean}){

@@ -24,6 +24,15 @@ same. During secret rotation, `VERIFY_ET_WEBHOOK_SECRET_PREVIOUS` may hold the
 old secret for the documented 24-hour overlap. Confirm the endpoint is
 `active` and its latest test delivery is HTTP 204.
 
+The notifications worker also queues a bilingual upcoming-auction reminder once
+per published auction when its start is less than 24 hours away. Existing players
+receive it through the usual inbox/Telegram delivery flow; blocked chats are skipped.
+The message includes the EAT start time, standard notification image, community
+links and a View auction button. Sending rechecks the start time and auction status,
+so expired or cancelled upcoming reminders are skipped. Deploy
+`lowwin-notifications` for this behavior; no new environment variable or migration
+is required.
+
 The payment flow uses the inline Verify.et result when it finishes immediately,
 the signed account webhook for queued completion, the notifications worker for
 server-side status polling and reference replay, and the Mini App's local status
@@ -45,3 +54,15 @@ M-Pesa. Use an Ethiopian wallet number (`07…`, `09…`, or `251…`) for Teleb
 and M-Pesa; CBE continues to use a bank account number. No new environment
 variable is needed for this channel change. Check a
 small real M-Pesa transfer before considering that channel verified in production.
+
+For incomplete deposits, an Owner or Payments Operator can use **Approve manually**
+on the deposit details page. Check the actual receipt or receiving-account statement,
+enter its exact amount and EAT transfer time, add a review note, confirm the checks,
+and provide fresh MFA. Approval creates the usual balanced wallet journal, permanent
+transaction claim, audit record and deposit notification in one transaction.
+Already-used transaction IDs, credited deposits and active verification are blocked.
+Receipt-derived deposits acquire the reviewed amount; legacy quoted deposits retain
+their frozen amount. This approval feature requires no new migration or environment
+variable. Redeploy the web app and notifications worker with the updated code.
+Automatic M-Pesa and Telebirr deposits still require an amount in the provider evidence;
+an HTTP 200 or a handled webhook without that amount does not credit a deposit.

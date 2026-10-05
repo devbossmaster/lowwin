@@ -18,7 +18,7 @@ export async function proxy(request:NextRequest) {
   if(guardedApis.has(path)||/^\/api\/favorites\/[a-z0-9-]{1,120}$/.test(path)||/^\/api\/auctions\/[a-z0-9-]{1,120}\/bids$/.test(path))return NextResponse.next();
   // Verify.et calls these exact endpoints without a Telegram session. The route
   // validates its signed raw body before accepting a test or payment event.
-  if(path==='/api/payments/verify-et/webhook'||path==='/webhooks/verify'||path==='/telegram'||path==='/api/onboarding/contact'||path.startsWith('/admin')||path.startsWith('/api/admin/')||path.startsWith('/api/auth/')||path.startsWith('/api/bot/'))return NextResponse.next();
+  if(path==='/api/payments/verify-et/webhook'||path==='/telegram'||path==='/api/onboarding/contact'||path.startsWith('/admin')||path.startsWith('/api/admin/')||path.startsWith('/api/auth/')||path.startsWith('/api/bot/'))return NextResponse.next();
   let allowed=false,unavailable=false;
   try { allowed=localMiniPreview(request.headers)||!!await getMiniSession(request.headers); } catch { unavailable=true; }
   // An unavailable database is not an invalid login. Keep access closed, but

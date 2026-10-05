@@ -1,5 +1,6 @@
-.carousel { max-width: 440px; margin: 0 auto; }
-.toolbar { display: flex; align-items: center; justify-content: space-between; min-height: 48px; margin: 2px 0 12px; color: var(--surface-ink, #000); font-size: 12px; font-variant-numeric: tabular-nums; }
+.carousel { max-width: 440px; margin: 0 auto; border-radius: 16px; }
+.toolbar { display: flex; align-items: center; justify-content: space-between; min-height: 48px; margin: 2px 12px 12px; color: var(--surface-ink, #000); font-size: 12px; font-variant-numeric: tabular-nums; }
+.toolbar>span { padding: 8px 12px; border-radius: 12px; background: #edf5ed; color: #435548; font-weight: 600; }
 .toolbar>div { display: flex; gap: 8px; }
 .toolbar button { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 14px; border: 1px solid #e2e2e2; background: #fff; color: var(--surface-ink, #000); --surface-ink: #000; }
 .toolbar button:last-child { border-color: #008000; background: #008000; color:#fff; --surface-ink:#fff; }
@@ -90,8 +91,8 @@
 .toolbar button:last-child,.closedBadge { border-color: #008000; background: #008000; color:#fff; --surface-ink:#fff; }
 
 /* Neutral canvas, soft green surfaces, solid green actions and counters. */
-.slideViewport{overflow:hidden;padding-block:8px 18px}
-.card{width:100%;box-shadow:0 6px 20px rgb(17 38 24 / 12%);background:#fff;color:#17251d;--surface-ink:#17251d}
+.slideViewport{overflow:hidden;padding:8px 12px 24px}
+.card{width:100%;border-radius:16px;box-shadow:0 10px 22px rgb(17 38 24 / 12%),0 3px 6px rgb(17 38 24 / 5%);background:#fff;color:#17251d;--surface-ink:#17251d}
 .visual{margin:12px 12px 0;background:#f4f7f4}
 .body{padding:18px}
 .body h3{font-size:20px;line-height:1.35}
@@ -104,7 +105,7 @@
 .bidCount{padding:6px 10px;border-radius:8px;background:#008000;color:#fff;--surface-ink:#fff;font-size:17px;font-weight:700}
 .live>span{background:#fff}
 .upcomingNotice{background:#f1f5f1;color:#435548;font-size:12px}
-.upcoming .card{background:#f8faf8}
+.upcomingVariant .card{background:#f8faf8}
 .ending .timing{background:#e3eee3}
 .action{min-height:48px;font-size:13px}
 .bidBox+.action{margin-top:4px;background:transparent;color:#006600;--surface-ink:#006600}

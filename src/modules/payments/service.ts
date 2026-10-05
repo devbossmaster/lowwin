@@ -7,9 +7,9 @@ import {randomUUID} from 'node:crypto';
 import {Prisma,type PrismaClient,type TopUpIntent} from '@prisma/client';
 import {z} from 'zod';
 import {demoBidAllowed} from '../auctions/bids';
-import {ensureWallet,seedPlatformAccounts} from '../wallet/ledger';
 import {bankSchema,depositBankSchema,candidate,submitVerify,submitVerifyImage,readVerifyStatus,assess,providerReference,hash,PaymentError,type VerifyTransport,type Bank,type Verification,type VerificationInput,type ImageVerificationInput,type ImageVerification} from './provider';
 import {CUSTOMER_ATTEMPTS,STAFF_ATTEMPTS,RECOVERY_WINDOW_MS,imageWebhookWait,protectedPayment,retryDetails} from './retry';
+import {creditTransfer} from './credit';
 type Tx=Prisma.TransactionClient;
 export function paymentHealth(){
  const productionEnabled=liveFundingConfigured();
@@ -19,6 +19,7 @@ export function paymentHealth(){
 function requireEnabled(){if(!paymentHealth().enabled)throw new PaymentError(503,paymentHealth().reason)}
 async function clock(tx:Tx){return (await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`)[0].now}
 async function eligibility(tx:Tx,userId:string){try{await assertPlayerContact(tx,userId)}catch{throw new PaymentError(403,'Share your own contact in Telegram first.')}if(await tx.staffMember.findUnique({where:{userId}})||await tx.userRestriction.findFirst({where:{userId,suspended:true}}))throw new PaymentError(403,'Adding ETB is unavailable for this account.')}
+export {eligibility as assertDepositEligibility};
 const int=z.string().regex(/^[1-9]\d{0,10}$/);
 const createSchema=z.object({key:z.string().uuid(),channel:depositBankSchema,policyId:z.string().uuid(),amountCents:int}).strict();
 const receiptCreateSchema=z.object({key:z.string().uuid(),channel:depositBankSchema,policyId:z.string().uuid(),input:z.string().min(1).max(4000).optional()}).strict();
@@ -155,20 +156,10 @@ async function completeVerifyRequest(client:PrismaClient,id:string,verified:Veri
   if(matched&&(!amount||points.lte(0)||points.gt(1000000000)||t.amountFromReceipt&&(amount<BigInt(quote?.minCents??'0')||amount>BigInt(quote?.maxCents??'0')))){matched=false;code='AMOUNT_MISMATCH'}
   const channel=t.channel!,rawAliases=[request.reference,...(verified.evidence.aliases??[])];
   const aliases=[...new Set(rawAliases.map(value=>candidate(bankSchema.parse(channel),value)))].sort();
-  if(matched){
-   for(const alias of aliases)await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`transfer:${channel}:${alias}`},0))`;
-   const [claim,alias]=await Promise.all([tx.paymentClaim.findFirst({where:{channel,reference:{in:aliases}}}),tx.paymentTransferAlias.findFirst({where:{channel,alias:{in:aliases}}})]);
-   if(claim||alias){matched=false;code='DUPLICATE_CONFLICT'}
-  }
   let journalId:string|undefined;
   if(matched){
-   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${t.userId}`},0))`;
-   await ensureWallet(tx,t.userId);await seedPlatformAccounts(tx);
-   const available=await tx.ledgerAccount.findUniqueOrThrow({where:{name:`user:${t.userId}:available`}}),issuance=await tx.ledgerAccount.findUniqueOrThrow({where:{name:'platform:issuance'}});
-   const operation=await tx.operation.create({data:{userId:t.userId,scope:'TOPUP_CREDIT',key:t.id,requestHash:hash(`${t.id}:${request.reference}:${points}`),result:{intentId:t.id,credited:points.toString(),amountCents:amount!.toString(),policyVersion:t.policyVersion}}});
-   const journal=await tx.journal.create({data:{operationId:operation.id,kind:'TOPUP_CREDIT',reference:`topup:${t.id}`,postings:{create:[{accountId:issuance.id,delta:points.negated()},{accountId:available.id,delta:points}]}}});journalId=journal.id;
-   const claim=await tx.paymentClaim.create({data:{channel,reference:request.reference,intentId:t.id,userId:t.userId,amountCents:amount!,points,receiverSuffix:verified.evidence.receiverSuffix!,transferredAt:new Date(verified.evidence.date!),operationId:operation.id,journalId,evidenceHash:verified.evidence.hash!}});
-   await tx.paymentTransferAlias.createMany({data:aliases.map(alias=>({channel,alias,claimId:claim.id}))});
+   const credited=await creditTransfer(tx,t,{reference:request.reference,aliases,amountCents:amount!,points,receiverSuffix:verified.evidence.receiverSuffix!,transferredAt:new Date(verified.evidence.date!),evidenceHash:verified.evidence.hash!});
+   if(credited)journalId=credited;else{matched=false;code='DUPLICATE_CONFLICT'}
   }
   const rejected=customerDepositFailures.has(code);
   const status=matched?'CREDITED':rejected?'REJECTED':code==='UNCONFIRMED'?'PENDING':['PROVIDER_AUTH','PROVIDER_UNCONFIGURED','PROVIDER_QUOTA','PROVIDER_FAILED','PROVIDER_UNAVAILABLE','PROVIDER_REQUEST_NOT_FOUND'].includes(code)?'PROVIDER_OUTAGE':'NEEDS_REVIEW';
