@@ -1,6 +1,7 @@
 import {describe,it,expect,vi} from 'vitest';
 import type {Prisma,PrismaClient,Outbox} from '@prisma/client';
 import {auctionNotificationImageId,campaignContent,expandCampaign,scheduleGlobalAlerts,telegramKinds} from '../src/modules/notifications/campaigns';
+import {notificationContent} from '../src/modules/notifications/service';
 import {notificationCopy} from '../src/components/notification-copy';
 import {withTelegramCommunity} from '../src/lib/telegram-community';
 
@@ -10,6 +11,26 @@ const auction=(change:Record<string,unknown>={})=>({id:'auction-1',slug:'fixture
 const transaction=(a=auction())=>({auction:{findUnique:vi.fn(async()=>a)},$queryRaw:vi.fn(async()=>[{now}])}) as unknown as Prisma.TransactionClient;
 
 describe('upcoming auction reminders',()=>{
+ it('suppresses queued cancellation results for the bot and Mini App bell',async()=>{
+  const cancelled=auction({status:'CANCELLED',settlement:{outcome:'CANCELLED',decision:'OWNER_CANCELLED'}});
+  const result={kind:'AUCTION_RESULT',payload:{auctionId:'auction-1',recipientUserId:'player-1'}};
+  expect(await campaignContent(transaction(cancelled),result)).toBeNull();
+  expect(await notificationContent(transaction(cancelled),{kind:'AUCTION_CANCELLED',payload:{auctionId:'auction-1',recipientUserId:'player-1'}})).toBeNull();
+
+  const tx={auctionSettlement:{findUnique:vi.fn(async()=>({outcome:'CANCELLED'}))},user:{findMany:vi.fn()},outbox:{createMany:vi.fn(),update:vi.fn()}} as unknown as Prisma.TransactionClient;
+  const root:Outbox={id:'cancelled-root',key:'settlement:cancelled:completed',kind:'AUCTION_FINALIZED',createdAt:now,payload:{auctionId:'auction-1'},testRunId:null,state:'PENDING',attempts:0,nextAttemptAt:now,sentAt:null,lastError:null,settlementId:'cancelled'};
+  expect(await expandCampaign(tx,root)).toBe(0);
+  expect(tx.user.findMany).not.toHaveBeenCalled();
+ expect(tx.outbox.update).toHaveBeenCalledWith({where:{id:root.id},data:{state:'SKIPPED',lastError:'CANCELLATION_SILENT'}});
+ });
+ it('keeps completed winner results available for bot delivery',async()=>{
+  vi.stubEnv('MINI_APP_URL','https://lowwin.example');
+  try{
+   const completed=auction({status:'CLOSED',settlement:{outcome:'WINNER'}});
+   const content=await campaignContent(transaction(completed),{kind:'AUCTION_RESULT',payload:{auctionId:'auction-1',recipientUserId:'player-1'}});
+   expect(content?.body).toContain('A winner has been announced.');
+  }finally{vi.unstubAllEnvs()}
+ });
  it('uses the displayed product PNG for auction notifications and rejects unrelated paths',async()=>{
   const current='11111111-2222-4333-8444-555555555555',original='aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
   const content=await campaignContent(transaction(auction({presentation:{title:'Fixture phone',images:[{path:`/api/media/${current}`}]},product:{title:'Old title',visible:true,images:[{path:`/api/media/${original}`}]}})),row);

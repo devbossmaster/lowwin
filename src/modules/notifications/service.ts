@@ -41,6 +41,8 @@ export async function notificationContent(tx:DB,row:Pick<Outbox,'kind'|'payload'
  const p=row.payload as {auctionId?:string;recipientUserId?:string};if(!p.recipientUserId||!p.auctionId)return null;
  const a=await tx.auction.findUnique({where:{id:p.auctionId},select:{terms:{select:{ruleVersion:true}},slug:true,code:true,publicCode:true,isDemo:true,isSettlementFixture:true,result:{select:{id:true}},settlement:{select:{decision:true,outcome:true,winnerUserId:true}}}});
  if(!a||a.result||a.isDemo&&(!a.isSettlementFixture||!(demoBidAllowed()||stagingDemoEnabled())))return null;
+ // Older cancellation jobs may still be pending when the new code is deployed.
+ if(a.settlement?.outcome==='CANCELLED'&&row.kind==='AUCTION_CANCELLED')return null;
  const kind=row.kind==='AUCTION_CANCELLED'&&a.settlement?.decision==='MINIMUM_PARTICIPANTS'?'AUCTION_MINIMUM_CANCELLED':row.kind==='AUCTION_CLOSED'?(a.settlement?.winnerUserId===p.recipientUserId?(a.settlement.decision==='FIRST_ACCEPTED_LOWEST'?'AUCTION_FALLBACK_WON':'AUCTION_WON'):a.settlement?.outcome==='NO_WINNER'?'AUCTION_NO_WINNER':row.kind):row.kind;
  const copy=words[kind];if(!copy)return null;
  const href=kind==='BID_ACCEPTED'?'/my-bids':kind==='FULFILLMENT_UPDATED'||kind==='AUCTION_WON'||kind==='AUCTION_FALLBACK_WON'?'/winning-bids':`/auctions/${a.publicCode}`;

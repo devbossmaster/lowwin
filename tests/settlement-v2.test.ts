@@ -92,10 +92,10 @@ describe.skipIf(!url)('frozen v2 on disposable PostgreSQL',()=>{
  it('owner cancellation before the deadline refunds all fees and cannot pick a winner',async()=>{
   const u=await bidUser(db),v=await bidUser(db),a=await auction({endDelayMs:60000});await bid(u,a.slug!,5);await bid(v,a.slug!,6);
   const command={auctionId:a.id,actor:{id:'fixture-owner',permission:'auction:cancel' as const},reason:'DEMO investigation',key:randomUUID()};const s=await cancelAuction(db,command);
-  expect(s).toMatchObject({decision:'OWNER_CANCELLED',outcome:'CANCELLED',winningBidId:null});expect((await cancelAuction(db,command)).id).toBe(s.id);for(const id of [u,v])expect(await balance(id)).toMatchObject({AVAILABLE:1000n,HELD:0n});expect(await reconcile(db)).toEqual([]);
+  expect(s).toMatchObject({decision:'OWNER_CANCELLED',outcome:'CANCELLED',winningBidId:null});expect((await cancelAuction(db,command)).id).toBe(s.id);for(const id of [u,v])expect(await balance(id)).toMatchObject({AVAILABLE:1000n,HELD:0n});expect(await db.outbox.count({where:{settlementId:s.id}})).toBe(0);expect(await db.notificationInbox.count({where:{key:{startsWith:`settlement:${s.id}:`}}})).toBe(0);expect(await reconcile(db)).toEqual([]);
  });
  it('scheduled workers perform minimum cancellation idempotently',async()=>{
-  const a=await auction({endDelayMs:200});await due(a);await Promise.all([processDueAuction(db),processDueAuction(db)]);expect(await db.auctionSettlement.findUniqueOrThrow({where:{auctionId:a.id}})).toMatchObject({decision:'MINIMUM_PARTICIPANTS'});
+  const a=await auction({endDelayMs:200});await due(a);await Promise.all([processDueAuction(db),processDueAuction(db)]);const s=await db.auctionSettlement.findUniqueOrThrow({where:{auctionId:a.id}});expect(s).toMatchObject({decision:'MINIMUM_PARTICIPANTS'});expect(await db.outbox.count({where:{settlementId:s.id}})).toBe(0);
  });
  it('one accepted bid cancels and direct SQL cannot force a winner below the minimum',async()=>{
   const u=await bidUser(db),a=await auction();const receipt=await bid(u,a.slug!,4);await due(a);

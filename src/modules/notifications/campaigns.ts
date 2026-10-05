@@ -1,4 +1,3 @@
-import {isSubmissionFeeOnly} from '../auctions/rules';
 import type {Prisma,PrismaClient,Outbox} from '@prisma/client';
 import {demoBidAllowed} from '../auctions/bids';
 import {stagingDemoEnabled} from '../auctions/staging-demo';
@@ -32,6 +31,14 @@ export async function expandCampaign(tx:Tx,row:Outbox){
  if(broadcastRoot(row)){
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`broadcast:${rootKey}`},0))`;
   if(await broadcastStopped(tx,rootKey)){await tx.outbox.update({where:{id:row.id},data:{state:'SKIPPED',lastError:'CAMPAIGN_STOPPED'}});return 0}
+ }
+ // A cancellation queued by an older app version must not fan out after deploy.
+ if(row.kind==='AUCTION_FINALIZED'||p.deliveryKind==='AUCTION_RESULT'){
+  const settlement=p.auctionId?await tx.auctionSettlement.findUnique({where:{auctionId:p.auctionId},select:{outcome:true}}):null;
+  if(settlement?.outcome==='CANCELLED'){
+   await tx.outbox.update({where:{id:row.id},data:{state:'SKIPPED',lastError:'CANCELLATION_SILENT'}});
+   return 0;
+  }
  }
  const users=await tx.user.findMany({where:{staffMember:{is:null},telegramId:{not:null},createdAt:{lte:before},...(p.cursor?{id:{gt:p.cursor}}:{})},select:{id:true},orderBy:{id:'asc'},take:250});
  const kind=row.kind==='AUCTION_FINALIZED'?'AUCTION_RESULT':p.deliveryKind;
@@ -75,14 +82,15 @@ export async function campaignContent(tx:Tx,row:Pick<Outbox,'kind'|'payload'>){
   return {...base,title:'Deposit successful · ገንዘቡ ገብቷል',body:`${formatEtb(t.points)} has been added to your wallet.\n${formatEtb(t.points)} ወደ ሂሳብዎ ገብቷል።`,href:'/auctions/all'};
  }
  if(!p.auctionId)return null;
- const a=await tx.auction.findUnique({where:{id:p.auctionId},select:{terms:{select:{ruleVersion:true}},slug:true,publicCode:true,publishedAt:true,startsAt:true,endsAt:true,status:true,isDemo:true,isSettlementFixture:true,testRunId:true,presentation:true,product:{select:{title:true,visible:true,images:{orderBy:{sortOrder:'asc'},take:1,select:{path:true}}}},result:{select:{id:true}},settlement:{select:{outcome:true,decision:true}}}});
+ const a=await tx.auction.findUnique({where:{id:p.auctionId},select:{slug:true,publicCode:true,publishedAt:true,startsAt:true,endsAt:true,status:true,isDemo:true,isSettlementFixture:true,testRunId:true,presentation:true,product:{select:{title:true,visible:true,images:{orderBy:{sortOrder:'asc'},take:1,select:{path:true}}}},result:{select:{id:true}},settlement:{select:{outcome:true}}}});
  if(!a?.publishedAt||!a.slug||a.result||a.testRunId||a.isDemo&&(!a.isSettlementFixture||!(demoBidAllowed()||stagingDemoEnabled())))return null;
  const presentation=a.presentation as {title?:unknown;images?:{path?:unknown}[]}|null;const title=typeof presentation?.title==='string'?presentation.title:a.product?.title;
  base.imageId=auctionNotificationImageId(presentation,a.product?.images?.[0]?.path);
  const prefix=a.isDemo?'DEMO · ':'',item=`${title??'Auction'} · #${a.publicCode}`;
  if(row.kind==='AUCTION_RESULT'){
   if(!a.settlement)return null;
-  const outcome=a.settlement.outcome==='WINNER'?'A winner has been announced. See the final result.\nአሸናፊው ታውቋል። የመጨረሻ ውጤቱን ይመልከቱ።':a.settlement.outcome==='CANCELLED'?isSubmissionFeeOnly(a.terms?.ruleVersion)?'The auction was cancelled. Accepted submission fees are non-refundable.\nጨረታው ተሰርዟል። ለተቀበሉ ጨረታዎች የተከፈሉ የማቅረቢያ ክፍያዎች ተመላሽ አይሆኑም።':'The auction was cancelled. Entry fees and holds were returned.\nጨረታው ተሰርዟል። ክፍያዎችና የተያዘው ገንዘብ ተመልሰዋል።':'The auction closed without a winner.\nጨረታው ያለ አሸናፊ ተዘግቷል።';
+  if(a.settlement.outcome==='CANCELLED')return null;
+  const outcome=a.settlement.outcome==='WINNER'?'A winner has been announced. See the final result.\nአሸናፊው ታውቋል። የመጨረሻ ውጤቱን ይመልከቱ።':'The auction closed without a winner.\nጨረታው ያለ አሸናፊ ተዘግቷል።';
   return {...base,title:`${prefix}Auction finished · ጨረታው ተጠናቋል`,body:`${item}\n${outcome}\n${new URL(`/winners/${a.publicCode}`,process.env.MINI_APP_URL).href}`,href:`/auctions/${a.slug}`};
  }
  const [{now}]=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`;

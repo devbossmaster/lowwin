@@ -99,7 +99,9 @@ async function completeLocked(tx:Prisma.TransactionClient,auctionId:string,cance
     movements:{create:movements},
     // No amounts, frequencies, names, Telegram IDs or winning guesses in intents.
     // Phase 5 resolves recipient preferences and performs external delivery.
-    outbox:{create:[{key:`settlement:${settlementId}:completed`,kind:'AUCTION_FINALIZED',payload:{auctionId,settlementId,outcome},testRunId:auction.testRunId},...userIds.map(userId=>({key:`settlement:${settlementId}:user:${userId}`,kind:cancelled?'AUCTION_CANCELLED':'AUCTION_CLOSED',payload:{auctionId,settlementId,recipientUserId:userId},testRunId:auction.testRunId}))]},
+    // Cancellation remains in settlement, ledger and admin audit records. It
+    // must not enqueue either the global bot result or private bell alerts.
+    outbox:{create:cancelled?[]:[{key:`settlement:${settlementId}:completed`,kind:'AUCTION_FINALIZED',payload:{auctionId,settlementId,outcome},testRunId:auction.testRunId},...userIds.map(userId=>({key:`settlement:${settlementId}:user:${userId}`,kind:'AUCTION_CLOSED',payload:{auctionId,settlementId,recipientUserId:userId},testRunId:auction.testRunId}))]},
   },include:settlementInclude});
   for(const row of await tx.outbox.findMany({where:{settlementId:settled.id}}))await materializeAlert(tx,row);
   return settled;
