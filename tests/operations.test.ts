@@ -145,7 +145,7 @@ describe.skipIf(!url)('Phase 5B scoped operations and private alerts',()=>{
  it('stops broadcasts before expansion with fresh Owner MFA and immutable history',async()=>{
   const receipt=await okay(await cmd('broadcast',{key:randomUUID(),text:'Stop before sending fixture',reason:'Local stopped campaign test',confirmation:'SEND'})),input={key:randomUUID(),id:receipt.id,reason:'Stop local fixture broadcast'};
   expect((await cmd('broadcastStop',input,roles.SUPPORT.cookie)).status).toBe(403);
-  const grant=await db.staffSession.findFirstOrThrow({where:{session:{userId:ownerId}}});await db.staffSession.update({where:{sessionId:grant.sessionId},data:{credentialAt:new Date(Date.now()-420000),mfaAt:new Date(Date.now()-360000)}});
+  const grant=await db.staffSession.findFirstOrThrow({where:{session:{userId:ownerId}}});await db.staffSession.update({where:{sessionId:grant.sessionId},data:{credentialAt:new Date(Date.now()-420000),mfaAt:new Date(Date.now()-31*60000)}});
   try{expect((await cmd('broadcastStop',input)).status).toBe(403)}finally{await db.staffSession.update({where:{sessionId:grant.sessionId},data:{credentialAt:grant.credentialAt,mfaAt:grant.mfaAt}})}
   expect((await okay(await cmd('broadcastStop',input))).stopped).toBe(true);expect((await okay(await cmd('broadcastStop',input))).stopped).toBe(true);
   const root=await db.outbox.findUniqueOrThrow({where:{id:receipt.id}});expect(await db.$transaction(tx=>expandCampaign(tx,root))).toBe(0);expect(await db.outbox.count({where:{key:{startsWith:root.key+':'}}})).toBe(0);
@@ -212,7 +212,7 @@ describe.skipIf(!url)('Phase 5B scoped operations and private alerts',()=>{
   const input={key:randomUUID(),channel:'telebirr',version:0,enabled:false,account:'0911111111',accountName:'Local fixture receiver',pointsNumerator:'1',centsDenominator:'100',minCents:'1000',maxCents:'1000000',accountConfirmed:true};
   await expect(paymentAdminCommand(db,headers,'preview-policy',{...input,accountConfirmed:false})).rejects.toThrow('Confirm that');
   await expect(paymentAdminCommand(db,req('admin/payments',undefined,roles.SUPPORT.cookie).headers,'preview-policy',input)).rejects.toMatchObject({status:403});
-  const grant=await db.staffSession.findFirstOrThrow({where:{session:{userId:ownerId}}});await db.staffSession.update({where:{sessionId:grant.sessionId},data:{credentialAt:new Date(Date.now()-420000),mfaAt:new Date(Date.now()-360000)}});
+  const grant=await db.staffSession.findFirstOrThrow({where:{session:{userId:ownerId}}});await db.staffSession.update({where:{sessionId:grant.sessionId},data:{credentialAt:new Date(Date.now()-420000),mfaAt:new Date(Date.now()-31*60000)}});
   try{await expect(paymentAdminCommand(db,headers,'preview-policy',input)).rejects.toMatchObject({status:403})}finally{await db.staffSession.update({where:{sessionId:grant.sessionId},data:{credentialAt:grant.credentialAt,mfaAt:grant.mfaAt}})}
   const preview=await paymentAdminCommand(db,headers,'preview-policy',input) as any;
   await expect(paymentAdminCommand(db,headers,'publish-policy',{...input,account:'0922222222',confirmation:preview.confirmation})).rejects.toThrow('exact configuration');

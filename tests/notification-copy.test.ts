@@ -3,6 +3,11 @@ import {notificationCopy,notificationAge} from '../src/components/notification-c
 import {defaultHomeCopy,resolveHomeCopy} from '../src/components/home-copy';
 
 describe('notification display language',()=>{
+ it('keeps the Lowwin update heading in the Mini App for both languages',()=>{
+  const item={kind:'BROADCAST',title:'Lowwin update · የLowwin መረጃ',body:'A new auction is ready.'};
+  expect(notificationCopy(item,'en')).toEqual({title:'Lowwin update',body:item.body});
+  expect(notificationCopy(item,'am')).toEqual({title:'የLowwin መረጃ',body:item.body});
+ });
  it('selects one language for new campaigns while keeping item and result links',()=>{
   const item={kind:'AUCTION_RESULT',title:'Auction finished · ጨረታው ተጠናቋል',body:'Item #42\nA winner has been announced.\nአሸናፊው ታውቋል።\nhttps://example.test/winners/42'};
   expect(notificationCopy(item,'en').body).toBe('Item #42\nA winner has been announced.\nhttps://example.test/winners/42');

@@ -2,6 +2,7 @@ import type { Prisma,PrismaClient } from '@prisma/client';
 import { createAuth } from '../auth/server';
 import { AdminError } from './errors';
 import {assertPermission,staffRoles,type Permission,type StaffRole} from './permissions';
+import {isFreshAdminMfa} from '@/lib/admin-security';
 export const adminHeaders={'Cache-Control':'private, no-store, max-age=0','Vary':'Cookie','X-Robots-Tag':'noindex'};
 export async function requireAdmin(tx:Prisma.TransactionClient|PrismaClient,headers:Headers,options:{fresh?:boolean;lock?:boolean;permission?:Permission}={}) {
   const current=await createAuth(tx).api.getSession({headers});
@@ -12,7 +13,7 @@ export async function requireAdmin(tx:Prisma.TransactionClient|PrismaClient,head
   const member=grant?.session.user.staffMember;
   const trusted=grant?.trustedDevice?.userId===current.user.id&&grant.trustedDevice.expiresAt>now;
   if(!grant||!(grant.mfaAt||trusted)||!member?.active||!staffRoles.includes(member.role as StaffRole)||!grant.session.user.emailVerified||grant.session.userId!==current.user.id||grant.expiresAt<=now||grant.session.expiresAt<=now||grant.credentialAt.getTime()+8*3600000<now.getTime())throw new AdminError(403,'An active credential-plus-MFA staff session is required.');
-  if(options.fresh&&(!grant.mfaAt||now.getTime()-grant.mfaAt.getTime()>5*60000))throw new AdminError(403,'Fresh MFA is required. Confirm a new authenticator code.');
+  if(options.fresh&&!isFreshAdminMfa(grant.mfaAt,now))throw new AdminError(403,'Fresh MFA is required. Confirm a new authenticator code.');
   if(options.permission)assertPermission(member.role,options.permission);
   return {id:member.userId,role:member.role as StaffRole,sessionId:grant.sessionId,now,mfaAt:grant.mfaAt,expiresAt:grant.expiresAt};
 }

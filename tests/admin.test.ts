@@ -68,7 +68,7 @@ describe.skipIf(!url)('Phase 5A invite-only Owner operations',()=>{
   const impact=await okay(await get(`auctions/${auction.id}/impact`));expect(impact).toMatchObject({affectedBidders:2,heldPoints:'13',feeRefund:'6'});expect(impact.participants.map((p:{feeRefund:string})=>p.feeRefund)).toEqual(['3','3']);expect(JSON.stringify(impact)).not.toMatch(/amountFrequencies|winningBid|telegram/);
   expect((await get(`auctions/${auction.id}/proof`)).status).toBe(409);
   expect((await cmd('cancel',{key:randomUUID(),auctionId:auction.id,reason:'DEMO cancellation',confirmation:auction.code,impactHash:'0'.repeat(64)})).status).toBe(409);
-  const grant=await client.staffSession.findFirstOrThrow({where:{mfaAt:{not:null},session:{userId:ownerId}}});await client.staffSession.update({where:{sessionId:grant.sessionId},data:{credentialAt:new Date(Date.now()-600000),mfaAt:new Date(Date.now()-360000)}});
+  const grant=await client.staffSession.findFirstOrThrow({where:{mfaAt:{not:null},session:{userId:ownerId}}});await client.staffSession.update({where:{sessionId:grant.sessionId},data:{credentialAt:new Date(Date.now()-600000),mfaAt:new Date(Date.now()-31*60000)}});
   expect((await cmd('cancel',{key:randomUUID(),auctionId:auction.id,reason:'DEMO cancellation',confirmation:auction.code,impactHash:impact.impactHash})).status).toBe(403);
   const fresh=await auth('step-up',{code:totp(secret,BigInt(Math.floor(Date.now()/30000)+1))});await okay(fresh);
  });

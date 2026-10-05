@@ -3,7 +3,7 @@ import {resolve} from 'node:path';
 import { getEnv } from '@/lib/env';
 import {db} from '@/lib/db';
 import {isRegisteredTelegramUser} from '../auth/own-contact';
-import {WELCOME_CAPTION,START_BIDDING_ACTION,CONTACT_REQUEST_MESSAGE,CONTACT_REPLY_KEYBOARD} from './onboarding-copy';
+import {WELCOME_CAPTION,START_BIDDING_ACTION,CONTACT_REQUEST_MESSAGE,CONTACT_REPLY_KEYBOARD,CONTACT_KEYBOARD_REMOVED_MESSAGE} from './onboarding-copy';
 export function createBot({contactVerified}:{contactVerified?:(telegramId:string)=>Promise<boolean>}={}) {
   const env = getEnv();
   const bot = new Bot(env.TELEGRAM_BOT_TOKEN, { client: { timeoutSeconds: 20 } });
@@ -13,6 +13,7 @@ export function createBot({contactVerified}:{contactVerified?:(telegramId:string
     if (ctx.chat.type !== 'private') { await ctx.reply('Open a private chat with Lowwin to launch the app.'); return; }
     if(!ctx.from||ctx.from.is_bot||ctx.from.id!==ctx.chat.id||ctx.message?.forward_origin)return;
     if(!await isVerified(String(ctx.from.id))){await ctx.reply(CONTACT_REQUEST_MESSAGE,{reply_markup:CONTACT_REPLY_KEYBOARD});return}
+    await ctx.reply(CONTACT_KEYBOARD_REMOVED_MESSAGE,{reply_markup:{remove_keyboard:true}});
     const caption=WELCOME_CAPTION;
     const reply_markup=new InlineKeyboard().webApp(START_BIDDING_ACTION,env.MINI_APP_URL);
     try{await ctx.replyWithPhoto(new InputFile(resolve('public/banner11.png')),{caption,reply_markup})}

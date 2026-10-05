@@ -12,6 +12,10 @@ type DB=Prisma.TransactionClient;
 const notificationImage=resolve('public/notification.png');
 const composedPhotos=new Map<string,Buffer>();
 
+export function telegramCampaignText(kind:string,title:string,body:string){
+ return withTelegramCommunity(kind==='BROADCAST'?body:`${title}\n${body}`);
+}
+
 export async function notificationPhoto(tx:DB,imageId:string|undefined,origin:string,imagePath=notificationImage){
  const custom=imageId?new URL(`/api/media/${imageId}`,origin).href:null;
  if(!existsSync(imagePath))return custom;
@@ -93,7 +97,7 @@ export async function dispatchOne(client:PrismaClient,bot:Pick<Bot,'api'>){
   try{
    const name=(user?.name??'Lowwin player').replace(/[\r\n\u0000-\u001f]/g,' ').slice(0,80);
    const body=content.body.includes('{name}')?content.body.replaceAll('{name}',name):`${name},\n${content.body}`;
-   const text=withTelegramCommunity(`${content.title}\n${body}`);
+   const text=telegramCampaignText(row.kind,content.title,body);
    const options={reply_markup:{inline_keyboard:[[{text:row.kind==='AUCTION_UPCOMING'?'View auction':'Bid',web_app:{url:link.href}}]]}};
    let sent:{message_id:number};
    const photo=await notificationPhoto(tx,'imageId' in content?content.imageId:undefined,link.origin);

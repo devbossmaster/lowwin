@@ -5,6 +5,7 @@ import { pointsSchema } from '../src/modules/wallet/ledger';
 import { validWebhookSecret } from '../src/modules/bot/webhook';
 import { getFundingProvider } from '../src/modules/wallet/topups';
 import { signedLaunch, TEST_TOKEN } from './helpers';
+import {ADMIN_FRESH_MFA_MS,isFreshAdminMfa} from '../src/lib/admin-security';
 describe('Telegram signature boundary', () => {
   it('accepts a valid raw signed launch',()=>expect(validateTelegramInitData(signedLaunch(),TEST_TOKEN).id).toBe(778899));
   it.each([
@@ -27,4 +28,13 @@ describe('funding and webhook boundaries',()=>{
   it('rejects hosted dev identity and remote development databases',()=>{ expect(()=>assertLocalDevelopment('identity',{ APP_ENV:'local', VERCEL:'1', DEV_IDENTITY_ENABLED:'true', DATABASE_URL:'postgresql://localhost/lowin' })).toThrow(); expect(()=>assertLocalDevelopment('points',{ APP_ENV:'local', DEV_POINTS_ENABLED:'true', DATABASE_URL:'postgresql://remote.invalid/lowin' })).toThrow(); });
   it('has no available top-up provider',()=>expect(getFundingProvider).toThrow());
   it('does not include secret values in environment errors',()=>{ try { parseEnv({ BETTER_AUTH_SECRET:'private-value' }); } catch(e) { expect(String(e)).not.toContain('private-value'); } });
+});
+describe('admin assurance boundary',()=>{
+  const now=new Date('2026-10-05T12:00:00.000Z');
+  it('keeps MFA fresh for 30 minutes and expires it immediately afterward',()=>{
+    expect(ADMIN_FRESH_MFA_MS).toBe(30*60*1000);
+    expect(isFreshAdminMfa(new Date(now.getTime()-ADMIN_FRESH_MFA_MS),now)).toBe(true);
+    expect(isFreshAdminMfa(new Date(now.getTime()-ADMIN_FRESH_MFA_MS-1),now)).toBe(false);
+    expect(isFreshAdminMfa(null,now)).toBe(false);
+  });
 });

@@ -39,6 +39,12 @@ export function ContactGate(){
  }
  async function requestPermission(){
   cancelled.current=false;setError('');setRetryBotPrompt(false);
+  try{
+   const response=await fetch('/api/onboarding/contact',{cache:'no-store',signal:AbortSignal.timeout(6000)});
+   if(!alive.current||cancelled.current)return;
+   if(!response.ok)throw Error('Could not check your contact. Please retry.');
+   if((await response.json()).verified){await finishContact();return}
+  }catch(cause){if(alive.current)setError(cause instanceof Error?cause.message:'Could not check your contact. Please retry.');return}
   const app=window.Telegram?.WebApp;
   if(app?.requestContact&&(!app.isVersionAtLeast||app.isVersionAtLeast('6.9'))){
    try{

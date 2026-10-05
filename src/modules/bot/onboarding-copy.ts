@@ -13,3 +13,4 @@ export const CONTACT_REPLY_KEYBOARD = {
   input_field_placeholder: 'የስልክ ቁጥሬን አጋራ',
   one_time_keyboard: true,
 };
+export const CONTACT_KEYBOARD_REMOVED_MESSAGE = '✅ ስልክ ቁጥርዎ ተረጋግጧል።';

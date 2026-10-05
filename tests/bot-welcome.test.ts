@@ -16,12 +16,12 @@ describe('private Telegram welcome',()=>{
   return sent;
  }
  it('uploads the current welcome banner with the exact Amharic caption and inline Mini App button',async()=>{
-  const sent=await send({},true);expect(sent).toHaveLength(1);expect(sent[0].method).toBe('sendPhoto');
-  expect(sent[0].payload.photo).toBeInstanceOf(InputFile);expect((sent[0].payload.photo as InputFile).filename).toBe('banner11.png');
-  expect(sent[0].payload.caption).toBe(WELCOME_CAPTION);
-  expect(sent[0].payload.caption).toContain('📢 ቻናላችን፦ @lowwinet');
-  expect(sent[0].payload.caption).toContain('👥 ግሩፓችን፦ @LowWinChat');
-  expect(sent[0].payload.reply_markup).toEqual({inline_keyboard:[[{text:'🎯 ጨረታ ይጀምሩ',web_app:{url:'http://localhost:3000'}}]]});
+  const sent=await send({},true);expect(sent).toHaveLength(2);expect(sent[0].method).toBe('sendMessage');expect(sent[0].payload.reply_markup).toEqual({remove_keyboard:true});expect(sent[1].method).toBe('sendPhoto');
+  expect(sent[1].payload.photo).toBeInstanceOf(InputFile);expect((sent[1].payload.photo as InputFile).filename).toBe('banner11.png');
+  expect(sent[1].payload.caption).toBe(WELCOME_CAPTION);
+  expect(sent[1].payload.caption).toContain('📢 ቻናላችን፦ @lowwinet');
+  expect(sent[1].payload.caption).toContain('👥 ግሩፓችን፦ @LowWinChat');
+  expect(sent[1].payload.reply_markup).toEqual({inline_keyboard:[[{text:'🎯 ጨረታ ይጀምሩ',web_app:{url:'http://localhost:3000'}}]]});
  });
  it('shows new users the private bot contact button before the Mini App launch',async()=>{
   const sent=await send();expect(sent).toHaveLength(1);expect(sent[0].method).toBe('sendMessage');

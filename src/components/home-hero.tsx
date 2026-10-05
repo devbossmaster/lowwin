@@ -10,7 +10,7 @@ export function HomeHero({copy,items}:{copy:Copy;items:CatalogAuction[]}){
  const {language}=useMiniLocale(),am=language==='am';
  const showcase=items.slice(0,3);
  return <section className={styles.hero} aria-labelledby="home-headline">
-  <div className={styles.heroCopy}><h1 id="home-headline"><MiniPhrase en={copy.headline} am={copy.headlineAm}/></h1><p><MiniPhrase en={copy.lead} am={copy.leadAm}/></p></div>
+  <div className={styles.heroCopy}><h1 id="home-headline">{am&&copy.headlineAm.trim()==='LowWin የጨረታ መድረክ'?<><span className={styles.headlineLine}>LowWin የጨረታ</span><span className={styles.headlineLine}>መድረክ</span></>:<MiniPhrase en={copy.headline} am={copy.headlineAm}/>}</h1><p><MiniPhrase en={copy.lead} am={copy.leadAm}/></p></div>
   {showcase.length>0&&<div className={styles.showcase} aria-label={am?'የጨረታ ዕቃዎች':'Explore auction items'}>{showcase.map((item,index)=>{
    const title=am?(item.product.titleAm?.trim()||item.product.title):item.product.title;
    return <Link className={styles.showcaseItem} data-position={index} href={`/auctions/${item.code}`} key={item.code} aria-label={`${am?'ይመልከቱ':'View'} ${title}`}><CatalogImage src={item.product.images[0]?.path} alt={title}/><span>{title}<ArrowUpRight size={15}/></span></Link>;

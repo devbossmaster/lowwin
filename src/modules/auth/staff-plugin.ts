@@ -8,6 +8,7 @@ import { digest,token,newTotpSecret,seal,unseal,verifyTotp } from '../admin/cryp
 import { emailAdapter } from '../admin/email';
 import {staffRoles,type StaffRole} from '../admin/permissions';
 import { AdminError } from '../admin/errors';
+import {ADMIN_FRESH_MFA_MS} from '@/lib/admin-security';
 
 export const staffActions=['accept-invite','login','enroll','mfa','step-up','forgot','reset','logout'] as const;
 const emailSchema=z.email().max(254).transform(value=>value.toLowerCase());
@@ -27,7 +28,7 @@ export function staffPlugin(tx:Prisma.TransactionClient|PrismaClient) {
       async function issue(userId:string,credentialAt:Date,mfaAt:Date|null=null,trustedDeviceHash:string|null=null) {
         const user=await ctx.context.internalAdapter.findUserById(userId);if(!user)throw new AdminError(401,'Staff sign-in failed.');
         const session=await ctx.context.internalAdapter.createSession(userId,true);if(!session)throw new Error('Session unavailable');
-        await tx.staffSession.create({data:{sessionId:session.id,credentialAt,mfaAt,trustedDeviceHash,expiresAt:new Date(now.getTime()+(trustedDeviceHash?8*3600000:15*60000))}});
+        await tx.staffSession.create({data:{sessionId:session.id,credentialAt,mfaAt,trustedDeviceHash,expiresAt:new Date(now.getTime()+(trustedDeviceHash?8*3600000:mfaAt?ADMIN_FRESH_MFA_MS:15*60000))}});
         await setSessionCookie(ctx,{session,user},true);
       }
       if(action==='accept-invite') {
@@ -126,7 +127,7 @@ export function staffPlugin(tx:Prisma.TransactionClient|PrismaClient) {
         ctx.setCookie(deviceCookie,remembered,{...cookieOptions,maxAge:30*86400});
         await audit(member.userId,'STAFF_DEVICE_REMEMBERED');
       }
-      if(action==='step-up')await tx.staffSession.update({where:{sessionId:grant.sessionId},data:{mfaAt:now,expiresAt:new Date(now.getTime()+15*60000)}});
+      if(action==='step-up')await tx.staffSession.update({where:{sessionId:grant.sessionId},data:{mfaAt:now,expiresAt:new Date(now.getTime()+ADMIN_FRESH_MFA_MS)}});
       else {await tx.session.delete({where:{id:current.session.id}});await issue(member.userId,grant.credentialAt,now,rememberedHash)}
       await audit(member.userId,recoveryCodes?'MFA_ENROLLED':action==='step-up'?'MFA_STEP_UP':'MFA_CHALLENGE_PASSED');
       return ctx.json({mode:'authenticated',...(recoveryCodes?{recoveryCodes}:{})});
