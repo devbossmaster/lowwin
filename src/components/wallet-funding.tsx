@@ -22,6 +22,7 @@ type Account={id:string;policyId:string;version:number;name:string;number:string
 type Intent={canRetry?:boolean;retryBlocked?:string|null;retryUntil?:string;nextAttemptAt?:string;attempts?:number;id:string;createdAt:string;demo?:boolean;reused?:boolean;channel:string;status:string;amountCents?:string;points:string;account:string;accountName:string;reference:string|null;expiresAt:string;reason:string|null;caseState:string;quote:{version:number;numerator:string;denominator:string;terms:string;minCents?:string;maxCents?:string}};
 type Data={options:{enabled:boolean;productionEnabled:boolean;ocr:boolean;reason:string;accounts:Account[]};items:Intent[];totalPages:number};
 const money=(c:string)=>(BigInt(c)/100n).toString()+'.'+(BigInt(c)%100n).toString().padStart(2,'0');
+const depositLimit=(c:string)=>{const cents=BigInt(c),fraction=cents%100n;return `${new Intl.NumberFormat('en-US').format(cents/100n)}${fraction?'.'+fraction.toString().padStart(2,'0'):''}`};
 const labels:Record<string,string>={PENDING:'Pending verification',VERIFYING:'Verifying',CREDITED:'Credited',NEEDS_REVIEW:'Needs review',REJECTED:'Rejected',DUPLICATE_CONFLICT:'Transaction ID already used',PROVIDER_OUTAGE:'Provider unavailable — retry pending'};
 type FundingView='deposit'|'deposits'|'hidden';
 export function WalletFunding({view='deposit',onContinue}:{view?:FundingView;onContinue?:()=>void}){const {me}=useTelegram();return <Funding key={me?.user.id??'guest'} view={view} onContinue={onContinue}/>}
@@ -93,7 +94,7 @@ function Funding({view,onContinue}:{view:FundingView;onContinue?:()=>void}){
   <div hidden={view!=='deposit'}>{!options?.enabled?<WalletFundingPreview/>:<section className={styles.funding} id="add-etb" aria-busy={!!busy}>
    <h2>{w('Add money')}</h2>
    <PaymentAccounts accounts={intent&&account?[account]:options.accounts} selected={selected} onSelect={id=>{setSelected(id);setInput('');setMessage('');clearReceipt();createKey.current='';verifyKey.current=''}} locked={!!intent} busy={!!busy} preview={!options.productionEnabled}/>
-   {account?<p className={styles.hint}>{w('Allowed:')} {money(account.minCents)}–{money(account.maxCents)} ETB. {w('Your verified transfer amount is added automatically.')}</p>:<p className={styles.selectionHint}>{w('Choose Telebirr or M-Pesa to add money.')}</p>}
+   {account?<p className={styles.hint}><span>{w('Minimum deposit')} <strong>ETB {depositLimit(account.minCents)}</strong></span><span>{w('Maximum deposit')} <strong>ETB {depositLimit(account.maxCents)}</strong></span></p>:<p className={styles.selectionHint}>{w('Choose Telebirr or M-Pesa to add money.')}</p>}
    {account&&<div className={styles.confirmation}>
     <div className={styles.sectionHeading}><h3>{w('Payment confirmation')}</h3><span>{w('Paste message or upload')}</span></div>
     <div className={styles.referenceHeader}>

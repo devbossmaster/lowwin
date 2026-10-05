@@ -24,8 +24,8 @@
 .facts>div+div { padding-left: 11px; border-left: 1px solid #ececec; }
 .facts span { min-width: 0; color: var(--surface-ink, #000); font-size: 10px; line-height: 1.35; }
 .facts strong { display: block; overflow: hidden; text-overflow: ellipsis; color: #008000; font-size: 16px; font-weight: 700; white-space: nowrap; }
-.timing { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 10px; min-height: 48px; color: var(--surface-ink, #000); }
-.timing>span { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.timing { display: grid; grid-template-columns: minmax(0,1fr) max-content; align-items: start; gap: 10px; min-height: 48px; color: var(--surface-ink, #000); }
+.timing>span { display: grid; grid-template-columns: 17px minmax(0,1fr); align-items: start; gap: 8px; min-width: 0; }
 .timing :global(.countdown) { padding: 0; background: none; color: var(--surface-ink, #000); font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.5; --surface-ink: inherit; }
 .bidCount { flex: none; color: #008000; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .action { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; margin-top: 8px; border: 0; border-radius: 10px; background: var(--mini-action, #008000); color:#fff; text-decoration: none; font-size: 12px; font-weight: 700; --surface-ink:#fff; }
@@ -100,9 +100,10 @@
 .facts span{color:#536559;font-size:11px}
 .facts strong{color:#17251d;font-size:17px}
 .facts>div:last-child strong{font-size:13px;line-height:1.7}
-.timing{gap:8px;margin:14px 0 0;padding:12px;border-radius:10px;background:#edf5ed;color:#006600;--surface-ink:#006600}
+.timing{margin:14px 0 0;padding:12px;border-radius:10px;background:#edf5ed;color:#006600;--surface-ink:#006600}
 .timing :global(.countdown){color:#006600;font-size:15px;--surface-ink:#006600}
-.bidCount{padding:6px 10px;border-radius:8px;background:#008000;color:#fff;--surface-ink:#fff;font-size:17px;font-weight:700}
+.bidCount{justify-self:end;padding:6px 10px;border-radius:8px;background:#008000;color:#fff;--surface-ink:#fff;font-size:17px;font-weight:700}
+@media(max-width:370px){.timing :global(.countdown){font-size:13px}.bidCount{font-size:15px;padding-inline:8px}}
 .live>span{background:#fff}
 .upcomingNotice{background:#f1f5f1;color:#435548;font-size:12px}
 .upcomingVariant .card{background:#f8faf8}

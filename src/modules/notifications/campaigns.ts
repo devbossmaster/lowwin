@@ -6,6 +6,11 @@ import {formatEtb} from '@/lib/money';
 
 type Tx=Prisma.TransactionClient;
 export const telegramKinds=['AUCTION_PUBLISHED','AUCTION_UPCOMING','AUCTION_ENDING','AUCTION_RESULT','DEPOSIT_CREDITED','BROADCAST'];
+export function auctionNotificationImageId(presentation:unknown,productPath?:string){
+ const image=typeof presentation==='object'&&presentation!==null&&'images' in presentation&&Array.isArray(presentation.images)?presentation.images[0]:null;
+ const path=typeof image?.path==='string'?image.path:productPath;
+ return /^\/api\/media\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/i.exec(path??'')?.[1];
+}
 export type CampaignPayload={auctionId?:string;recipientUserId?:string;intentId?:string;body?:string;imageId?:string;href?:string;cursor?:string;audienceBefore?:string;rootKey?:string;deliveryKind?:string};
 export function broadcastRoot(row:Pick<Outbox,'kind'|'key'|'payload'>){
  const p=row.payload as CampaignPayload;
@@ -70,9 +75,10 @@ export async function campaignContent(tx:Tx,row:Pick<Outbox,'kind'|'payload'>){
   return {...base,title:'Deposit successful · ገንዘቡ ገብቷል',body:`${formatEtb(t.points)} has been added to your wallet.\n${formatEtb(t.points)} ወደ ሂሳብዎ ገብቷል።`,href:'/auctions/all'};
  }
  if(!p.auctionId)return null;
- const a=await tx.auction.findUnique({where:{id:p.auctionId},select:{terms:{select:{ruleVersion:true}},slug:true,publicCode:true,publishedAt:true,startsAt:true,endsAt:true,status:true,isDemo:true,isSettlementFixture:true,testRunId:true,presentation:true,product:{select:{title:true,visible:true}},result:{select:{id:true}},settlement:{select:{outcome:true,decision:true}}}});
+ const a=await tx.auction.findUnique({where:{id:p.auctionId},select:{terms:{select:{ruleVersion:true}},slug:true,publicCode:true,publishedAt:true,startsAt:true,endsAt:true,status:true,isDemo:true,isSettlementFixture:true,testRunId:true,presentation:true,product:{select:{title:true,visible:true,images:{orderBy:{sortOrder:'asc'},take:1,select:{path:true}}}},result:{select:{id:true}},settlement:{select:{outcome:true,decision:true}}}});
  if(!a?.publishedAt||!a.slug||a.result||a.testRunId||a.isDemo&&(!a.isSettlementFixture||!(demoBidAllowed()||stagingDemoEnabled())))return null;
- const presentation=a.presentation as {title?:unknown}|null;const title=typeof presentation?.title==='string'?presentation.title:a.product?.title;
+ const presentation=a.presentation as {title?:unknown;images?:{path?:unknown}[]}|null;const title=typeof presentation?.title==='string'?presentation.title:a.product?.title;
+ base.imageId=auctionNotificationImageId(presentation,a.product?.images?.[0]?.path);
  const prefix=a.isDemo?'DEMO · ':'',item=`${title??'Auction'} · #${a.publicCode}`;
  if(row.kind==='AUCTION_RESULT'){
   if(!a.settlement)return null;

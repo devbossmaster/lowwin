@@ -73,7 +73,8 @@
 .submit{display:flex;align-items:center;justify-content:center;width:100%;min-height:48px;margin-top:24px;padding:12px 18px;border:0;border-radius:26px;background:var(--wallet-action);color:#fff;font-size:14px!important;font-weight:700!important;cursor:pointer;--surface-ink:#fff}
 .submit:hover:not(:disabled),.uploadButton:hover:not(:disabled),.addMoney:hover,.referenceActions .secondary:hover:not(:disabled){background:#008000;--surface-ink:#fff;color:#fff;}
 .submit:disabled{background:#e7e7e7;color:#354b38;cursor:default;--surface-ink:#354b38}
-.hint{margin:12px 0 0;font-size:12px;line-height:1.7;overflow-wrap:anywhere}
+.hint{display:flex;flex-wrap:wrap;gap:4px 18px;margin:12px 0 0;color:var(--wallet-muted);font-size:12px;line-height:1.7;overflow-wrap:anywhere}
+.hint strong{color:#17251d;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
 .footnote{margin:12px 0 0;text-align:center;color:var(--wallet-muted);font-size:11px;line-height:1.6}
 .error{margin:16px 0;padding:16px;border-radius:12px;background:#fff1ee;color:#000;font-size:14px;line-height:1.6;--surface-ink:#000}
 .error button{min-height:44px;margin-left:8px;border:0;background:transparent;color:inherit;font-weight:700;cursor:pointer}

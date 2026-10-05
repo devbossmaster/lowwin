@@ -90,6 +90,8 @@ export const walletAm:Record<string,string>={
  'Winning Bids':'ያሸነፍኩባቸው ጨረታዎች','No winning bids found.':'ያሸነፉበት ጨረታ አልተገኘም።','Read result':'ውጤቱን ይመልከቱ','· winning amount':'· ያሸነፈው መጠን','DEMO · settled test':'የሙከራ ጨረታ · ተጠናቋል'
 };
 Object.assign(walletAm,{
+ 'Minimum deposit':'ዝቅተኛ ተቀማጭ፦',
+ 'Maximum deposit':'ከፍተኛ ተቀማጭ፦',
  'Choose a bid number':'የጨረታ ቁጥር ይምረጡ',
  'Bid number':'የጨረታ ቁጥር',
  'Number, up to 2 decimals':'እስከ ሁለት የአስርዮሽ ቦታዎች ያለው ቁጥር',

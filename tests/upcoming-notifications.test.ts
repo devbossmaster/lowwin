@@ -1,6 +1,6 @@
 import {describe,it,expect,vi} from 'vitest';
 import type {Prisma,PrismaClient,Outbox} from '@prisma/client';
-import {campaignContent,expandCampaign,scheduleGlobalAlerts,telegramKinds} from '../src/modules/notifications/campaigns';
+import {auctionNotificationImageId,campaignContent,expandCampaign,scheduleGlobalAlerts,telegramKinds} from '../src/modules/notifications/campaigns';
 import {notificationCopy} from '../src/components/notification-copy';
 import {withTelegramCommunity} from '../src/lib/telegram-community';
 
@@ -10,6 +10,13 @@ const auction=(change:Record<string,unknown>={})=>({id:'auction-1',slug:'fixture
 const transaction=(a=auction())=>({auction:{findUnique:vi.fn(async()=>a)},$queryRaw:vi.fn(async()=>[{now}])}) as unknown as Prisma.TransactionClient;
 
 describe('upcoming auction reminders',()=>{
+ it('uses the displayed product PNG for auction notifications and rejects unrelated paths',async()=>{
+  const current='11111111-2222-4333-8444-555555555555',original='aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+  const content=await campaignContent(transaction(auction({presentation:{title:'Fixture phone',images:[{path:`/api/media/${current}`}]},product:{title:'Old title',visible:true,images:[{path:`/api/media/${original}`}]}})),row);
+  expect(content?.imageId).toBe(current);
+  expect(auctionNotificationImageId(null,`/api/media/${original}`)).toBe(original);
+  expect(auctionNotificationImageId({images:[{path:'https://elsewhere.example/image.png'}]},`/api/media/${original}`)).toBeUndefined();
+ });
  it('uses the existing bilingual campaign style, EAT start time and community footer',async()=>{
   expect(telegramKinds).toContain('AUCTION_UPCOMING');
   const content=await campaignContent(transaction(),row);
