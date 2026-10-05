@@ -34,10 +34,14 @@ crediting from status alone.
 
 New deposits support **Telebirr, CBE and M-Pesa**. Each channel keeps its own
 receiving account, policies and verification references.
-After deploying `lowwin-web` and `lowwin-notifications`, an Owner must configure
+Deploy `lowwin-web` and `lowwin-notifications`, then run `npm run db:migrate`
+using the migration database connection. The migration
+`202610050001_mpesa_receiving_accounts` extends the database receiving-account
+constraint to allow M-Pesa alongside Telebirr and CBE, preserving existing policies.
+An Owner must then configure
 the M-Pesa wallet number and account holder under **Payments → Receiving accounts**,
 review the quote, and enable it. The application never copies a CBE account into
 M-Pesa. Use an Ethiopian wallet number (`07…`, `09…`, or `251…`) for Telebirr
-and M-Pesa; CBE continues to use a bank account number. No database
-migration or new environment variable is needed for this channel change. Check a
+and M-Pesa; CBE continues to use a bank account number. No new environment
+variable is needed for this channel change. Check a
 small real M-Pesa transfer before considering that channel verified in production.
