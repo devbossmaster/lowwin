@@ -138,6 +138,7 @@ export async function adminMutation(client:PrismaClient,headers:Headers,action:A
       if(!auction.terms||!auction.publishedAt||!auction.endsAt||auction.endsAt<=actor.now||!['LIVE','SCHEDULED'].includes(auction.status)||auction.settlement||auction.result)throw new AdminError(409,'The deadline can change only for an open, unsettled published auction.');
       const next=new Date(data.endsAt),previous=auction.endsAt;if(next.getTime()===previous.getTime())throw new AdminError(422,'Enter a different deadline.');
       if(next.getTime()<actor.now.getTime()+5*60000)throw new AdminError(422,'The new deadline must be at least five minutes in the future.');
+      if(auction.startsAt&&next<=auction.startsAt)throw new AdminError(422,'The new deadline must be after the auction starts.');
       const publishedEnd=auction.terms.publishedEndsAt??previous,maxEnd=new Date(publishedEnd.getTime()+auction.terms.maxExtensionMinutes*60000);
       if(next>maxEnd)throw new AdminError(422,`The published policy permits extension only until ${maxEnd.toISOString()}.`);
       if(next<previous&&auction.acceptedBidCount>0){if(!auction.terms.allowPaidShortening)throw new AdminError(422,'The published policy does not permit shortening after bids.');const notice=auction.terms.shortenNoticeMinutes*60000;if(next.getTime()<actor.now.getTime()+notice)throw new AdminError(422,`Bidders must retain at least ${auction.terms.shortenNoticeMinutes} minutes of notice.`)}
