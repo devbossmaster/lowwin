@@ -16,7 +16,7 @@ test('catalog at mobile widths: header, carousel, cards, countdown and navigatio
   await expect(page.getByLabel('Featured auctions').locator('article')).toBeVisible();
   await page.waitForLoadState('networkidle');await expect(page.locator('.page-loading-backdrop')).toHaveCount(0);await expect(page.locator('.app-frame[inert]')).toHaveCount(0);await page.screenshot({caret:'initial',path:`docs/screenshots/catalog-home-${testInfo.project.name}.png`,fullPage:true});
   await page.getByRole('button',{name:'Open menu',exact:true}).click();await page.getByRole('navigation',{name:'Explore Lowwin'}).getByRole('link',{name:'Auctions',exact:true}).click();
-  await expect(page.getByRole('heading',{name:'Auctions',exact:true})).toBeVisible();
+  await expect(page.getByRole('navigation',{name:'Auction status'})).toBeVisible();
   await expect(page.locator('[data-auction-list] article').first()).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
   await page.waitForLoadState('networkidle');await expect(page.locator('.page-loading-backdrop')).toHaveCount(0);await expect(page.locator('.app-frame[inert]')).toHaveCount(0);await page.screenshot({caret:'initial',path:`docs/screenshots/catalog-auctions-${testInfo.project.name}.png`,fullPage:true});

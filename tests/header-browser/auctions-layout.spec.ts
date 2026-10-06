@@ -10,7 +10,7 @@ test.beforeEach(async({page})=>{
 
 test('auction list follows the winners layout at phone widths',async({page})=>{
  await page.goto('/auctions/all');
- await expect(page.getByRole('heading',{level:1,name:'Auctions'})).toBeVisible();
+ await expect(page.getByRole('navigation',{name:'Auction status'})).toBeVisible();
  const listing=page.locator('[data-auction-list]');
  const cards=listing.locator('article');
  await expect(cards.first()).toBeVisible();
