@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import {ArrowLeft,ChevronDown,Eye,Gavel,ShieldCheck} from 'lucide-react';
+import {ArrowLeft,ChevronDown,Eye,ShieldCheck,UsersRound} from 'lucide-react';
 import type {CatalogAuction} from '@/modules/auctions/catalog';
 import {formatEtb,formatAuctionBid} from '@/lib/money';
 import {AuctionGallery} from './auction-gallery';
@@ -35,7 +35,7 @@ export function AuctionDetail({auction:initialAuction,serverNow}:{auction:Catalo
   <section className={styles.stats} aria-label="Auction activity">
    <p><MiniPhrase en={live?'This auction ends in':upcoming?'This auction starts in':auction.status==='closing'?'Bidding ended':auction.status==='cancelled'?'Auction cancelled':'Auction closed'} am={live?'ጨረታው የሚያበቃው':upcoming?'ጨረታው የሚጀምረው':auction.status==='cancelled'?'ጨረታው ተሰርዟል':'ጨረታው ተጠናቋል'}/></p>
    <div className={styles.clock}>{live||upcoming?<AuctionCountdown target={upcoming?auction.startsAt:auction.endsAt} serverNow={serverNow} label={upcoming?'Starts':'Ends'} showLabel={false} onElapsed={refreshActivity}/>:<strong>{date(auction.endsAt)}</strong>}</div>
-   <div className={styles.numbers}><div><Eye size={24} aria-hidden="true"/><span><strong>{BigInt(auction.viewCount).toLocaleString()}</strong><small><MiniPhrase en="Views" am="እይታዎች"/></small></span></div><div><Gavel size={24} aria-hidden="true"/><span><strong>{auction.bidCount.toLocaleString()}</strong><small><MiniPhrase en="Total bids" am="ጠቅላላ ጨረታዎች"/></small></span></div></div>
+   <div className={styles.numbers}><div><Eye size={24} aria-hidden="true"/><span><strong>{BigInt(auction.viewCount).toLocaleString()}</strong><small><MiniPhrase en="Views" am="እይታዎች"/></small></span></div><div><UsersRound size={24} aria-hidden="true"/><span><strong>{activity?.bidders?.toLocaleString()??(auction.bidCount===0?'0':'—')}</strong><small><MiniPhrase en="Bidders" am="ተጫራቾች"/></small></span></div></div>
   </section>
   <ProductDescription description={auction.product.description} descriptionAm={auction.product.descriptionAm}/>
   <dl className={styles.facts}><div><dt><MiniPhrase en="Condition" am="ሁኔታ"/></dt><dd>{condition}</dd></div><div><dt><MiniPhrase en="Delivery region" am="የርክክብ አካባቢ"/></dt><dd>{region}</dd></div><div><dt><MiniPhrase en="Delivery" am="ርክክብ"/></dt><dd>{delivery}</dd></div></dl>

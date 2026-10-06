@@ -21,7 +21,13 @@ export function TelegramEntry({onComplete}:{onComplete?:()=>void}={}){
     frame=window.requestAnimationFrame(()=>{paintFrame=window.requestAnimationFrame(()=>{
       if(pathname==='/telegram'){
         window.location.replace('/'+window.location.hash);
-      }else onComplete?.();
+      }else if(onComplete){
+        onComplete();
+      }else{
+        // A bot button may open an auction before a bound session exists.
+        // Sign in here, then reload the original path instead of losing it.
+        window.location.reload();
+      }
     })});
     return()=>{window.cancelAnimationFrame(frame);window.cancelAnimationFrame(paintFrame)};
   },[status,telegramLaunch,pathname,onComplete]);

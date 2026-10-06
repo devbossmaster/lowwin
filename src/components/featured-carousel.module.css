@@ -107,6 +107,7 @@
 .timing :global(.countdown){color:#006600;font-size:15px;--surface-ink:#006600}
 .bidCount{justify-self:end;padding:6px 10px;border-radius:8px;background:#008000;color:#fff;--surface-ink:#fff;font-size:17px;font-weight:700}
 @media(max-width:370px){.timing :global(.countdown){font-size:13px}.bidCount{font-size:15px;padding-inline:8px}}
+@media(max-width:420px){.timing{grid-template-columns:minmax(0,1fr)}.bidCount{justify-self:start}}
 .live>span{background:#fff}
 .upcomingNotice{background:#f1f5f1;color:#435548;font-size:12px}
 .upcomingVariant .card{background:#f8faf8}

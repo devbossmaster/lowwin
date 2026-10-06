@@ -28,8 +28,16 @@ describe.skipIf(!url)('live public activity on disposable PostgreSQL',()=>{
   const auction=await bidAuction(client),codes=[auction.publicCode];
   const first=await readAuctionActivity(client,codes),second=await readAuctionActivity(client,codes);
   expect(first).toEqual(second);
-  expect(first[0]).toMatchObject({code:String(auction.publicCode),views:'0',bids:0,status:'live',resultReady:false});
-  expect(Object.keys(first[0]).sort()).toEqual(['bids','code','endsAt','resultReady','startsAt','status','views']);
+  expect(first[0]).toMatchObject({code:String(auction.publicCode),views:'0',bids:0,bidders:0,status:'live',resultReady:false});
+  expect(Object.keys(first[0]).sort()).toEqual(['bidders','bids','code','endsAt','resultReady','startsAt','status','views']);
+ });
+
+ it('counts people once when they place multiple accepted bids',async()=>{
+  const auction=await bidAuction(client),first=await bidUser(client),second=await bidUser(client);
+  await submitBid(client,{userId:first,auctionSlug:auction.slug!,amount:'4',key:randomUUID()});
+  await submitBid(client,{userId:first,auctionSlug:auction.slug!,amount:'5',key:randomUUID()});
+  await submitBid(client,{userId:second,auctionSlug:auction.slug!,amount:'6',key:randomUUID()});
+  expect((await readAuctionActivity(client,[auction.publicCode]))[0]).toMatchObject({bids:3,bidders:2});
  });
 
  it('deduplicates concurrent views across numeric and legacy slug URLs',async()=>{
@@ -60,7 +68,7 @@ describe.skipIf(!url)('live public activity on disposable PostgreSQL',()=>{
  it('changes from ended to a ready result only after the worker commits one settlement',async()=>{
   const auction=await bidAuction(client,{endDelayMs:1800}),user=await bidUser(client);
   await submitBid(client,{userId:user,auctionSlug:auction.slug!,amount:'4',key:randomUUID()});
-  expect((await readAuctionActivity(client,[auction.publicCode]))[0]).toMatchObject({bids:1,status:'live',resultReady:false});
+  expect((await readAuctionActivity(client,[auction.publicCode]))[0]).toMatchObject({bids:1,bidders:1,status:'live',resultReady:false});
   await new Promise(resolve=>setTimeout(resolve,Math.max(0,auction.endsAt!.getTime()-Date.now()+30)));
   expect((await readAuctionActivity(client,[auction.publicCode]))[0]).toMatchObject({status:'closing',resultReady:false});
   expect(await processDueAuction(client)).toMatchObject({status:'settled',auctionId:auction.id});

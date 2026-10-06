@@ -4,7 +4,7 @@ import {LoadingSpinner} from '@/components/loading-spinner';
 import {useEffect,useId,useRef,useState} from 'react';
 import Link from 'next/link';
 import {usePathname} from 'next/navigation';
-import {Clock3,Gavel,RefreshCw,X} from 'lucide-react';
+import {Clock3,Gavel,RefreshCw,UsersRound,X} from 'lucide-react';
 import type {listQuickLiveAuctions} from '@/modules/auctions/catalog';
 import {AuctionCountdown} from './auction-countdown';
 import {CatalogImage} from './catalog-image';
@@ -16,10 +16,10 @@ type AuctionList=Awaited<ReturnType<typeof listQuickLiveAuctions>>;
 function QuickAuction({item,serverNow,onClose}:{item:AuctionList['items'][number];serverNow:string;onClose:()=>void}){
  const {language}=useMiniLocale(),am=language==='am',ref=useRef<HTMLElement>(null);
  const {activity,refreshActivity}=useAuctionActivity(item.code,{element:ref});
- const title=am?(item.product.titleAm?.trim()||item.product.title):item.product.title,bids=activity?.bids??item.bidCount,ended=activity&&activity.status!=='live';
+ const title=am?(item.product.titleAm?.trim()||item.product.title):item.product.title,bidders=activity?.bidders??(item.bidCount===0?0:null),ended=activity&&activity.status!=='live';
  return <article className={styles.auction} key={item.slug} ref={ref}>
-  <Link href={`/auctions/${item.code}`} prefetch={false} className={styles.auctionImage} onClick={onClose} aria-label={title}><CatalogImage src={item.product.images[0]?.path} alt=""/><span>{bids.toLocaleString()}</span></Link>
-  <div className={styles.auctionContent}><h3><Link href={`/auctions/${item.code}`} prefetch={false} onClick={onClose}>{title}</Link></h3><p className={styles.auctionMeta}><Gavel size={14} aria-hidden="true"/>{bids.toLocaleString()} <MiniPhrase en="bids" am="ጨረታዎች"/>{item.isDemo?' · DEMO':''}</p><div className={styles.auctionBottom}><span className={styles.timer}><Clock3 size={14} aria-hidden="true"/><AuctionCountdown target={activity?.endsAt??item.endsAt} serverNow={serverNow} label="Ends" showLabel={false} onElapsed={refreshActivity}/></span><Link className={styles.bidLink} href={`/auctions/${item.code}`} prefetch={false} onClick={onClose}><Gavel size={14} aria-hidden="true"/><MiniPhrase en={ended?'View results':'Bid now'} am={ended?'ውጤቱን ይመልከቱ':'አሁን ይጫረቱ'}/></Link></div></div>
+  <Link href={`/auctions/${item.code}`} prefetch={false} className={styles.auctionImage} onClick={onClose} aria-label={title}><CatalogImage src={item.product.images[0]?.path} alt=""/><span>{bidders?.toLocaleString()??'—'}</span></Link>
+  <div className={styles.auctionContent}><h3><Link href={`/auctions/${item.code}`} prefetch={false} onClick={onClose}>{title}</Link></h3><p className={styles.auctionMeta}><UsersRound size={14} aria-hidden="true"/>{bidders?.toLocaleString()??'—'} <MiniPhrase en="Bidders" am="ተጫራቾች"/>{item.isDemo?' · DEMO':''}</p><div className={styles.auctionBottom}><span className={styles.timer}><Clock3 size={14} aria-hidden="true"/><AuctionCountdown target={activity?.endsAt??item.endsAt} serverNow={serverNow} label="Ends" showLabel={false} onElapsed={refreshActivity}/></span><Link className={styles.bidLink} href={`/auctions/${item.code}`} prefetch={false} onClick={onClose}><Gavel size={14} aria-hidden="true"/><MiniPhrase en={ended?'View results':'Bid now'} am={ended?'ውጤቱን ይመልከቱ':'አሁን ይጫረቱ'}/></Link></div></div>
  </article>;
 }
 export function AuctionQuickList({className}:{className?:string}){
