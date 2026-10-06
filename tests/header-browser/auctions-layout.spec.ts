@@ -13,16 +13,21 @@ test('auction cards stay full width and inside the page at phone sizes',async({p
  await expect(page.getByRole('heading',{level:1,name:'All auctions'})).toBeVisible();
  const auctionPage=page.locator('#main > main');
  await expect(auctionPage).toHaveCSS('background-color','rgb(255, 255, 255)');
- const card=page.locator('#upcoming .featured-carousel article').first();
- await expect(card).toBeVisible();
+ const carousels=page.locator('#featured .featured-carousel, #active .featured-carousel, #upcoming .featured-carousel');
+ expect(await carousels.count()).toBeGreaterThan(0);
  const checkLayout=async()=>{
   const frame=await page.locator('.app-frame').boundingBox();
-  const section=await page.locator('#upcoming').boundingBox();
-  const bounds=await card.boundingBox();
-  expect(frame&&section&&bounds).toBeTruthy();
-  expect(bounds!.width).toBeGreaterThan(frame!.width*.7);
-  expect(bounds!.x).toBeGreaterThanOrEqual(section!.x);
-  expect(bounds!.x+bounds!.width).toBeLessThanOrEqual(section!.x+section!.width);
+  expect(frame).toBeTruthy();
+  for(const carousel of await carousels.all()){
+   const section=await carousel.locator('xpath=ancestor::section[1]').boundingBox();
+   const card=carousel.locator('article').first();
+   await expect(card).toBeVisible();
+   const bounds=await card.boundingBox();
+   expect(section&&bounds).toBeTruthy();
+   expect(bounds!.width).toBeGreaterThan(frame!.width*.7);
+   expect(bounds!.x).toBeGreaterThanOrEqual(section!.x);
+   expect(bounds!.x+bounds!.width).toBeLessThanOrEqual(section!.x+section!.width);
+  }
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  };
  await checkLayout();
