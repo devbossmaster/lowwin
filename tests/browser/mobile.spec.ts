@@ -36,7 +36,7 @@ test('catalog at mobile widths: header, carousel, cards, countdown and navigatio
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
   await page.waitForLoadState('networkidle');await expect(page.locator('.page-loading-backdrop')).toHaveCount(0);await expect(page.locator('.app-frame[inert]')).toHaveCount(0);await page.screenshot({caret:'initial',path:`docs/screenshots/etb-wallet-nav-${testInfo.project.name}.png`,fullPage:true});
   await page.getByRole('navigation',{name:'Your navigation'}).getByRole('link',{name:'Profile'}).click();
-  await expect(page.getByRole('heading',{name:'Your profile.'})).toBeVisible();
+  await expect(page.locator('.profile-heading h2')).toBeVisible();
   await page.getByRole('link',{name:'ETB wallet',exact:true}).click();
   await expect(page.getByRole('heading',{name:'Add money',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Submit deposit'})).toBeDisabled();
 });

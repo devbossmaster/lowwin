@@ -7,6 +7,6 @@ export const viewport: Viewport = { width: 'device-width', initialScale: 1, view
 export const dynamic = 'force-dynamic';
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   // Telegram's beforeInteractive SDK owns viewport CSS variables on <html>.
-  const language=(await cookies()).get('lowwin-language')?.value==='am'?'am':'en';
+  const language=(await cookies()).get('lowwin-language')?.value==='en'?'en':'am';
   return <html lang={language} suppressHydrationWarning><body><MiniLocaleProvider initialLanguage={language}><a className="skip-link" href="#main"><MiniPhrase en="Skip to content" am="ወደ ዋናው ይዘት ይሂዱ"/></a>{children}</MiniLocaleProvider></body></html>;
 }

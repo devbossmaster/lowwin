@@ -18,6 +18,19 @@ test('category routes show live, upcoming and closed auctions with numeric codes
  if(await code.count())await expect(code).toHaveText(/^\d+$/);
  const auctionLink=page.locator('a[href^="/auctions/"]').filter({has:page.locator('img')}).first();
  if(await auctionLink.count())await expect(auctionLink).toHaveAttribute('href',/^\/auctions\/\d+$/);
+ // A carousel must remain in normal flow; the Live badge uses absolute positioning.
+ for(const carousel of await page.locator('.featured-carousel').all()){
+  await expect(carousel).not.toHaveCSS('position','absolute');
+  const fits=await carousel.evaluate(element=>{
+   const card=element.querySelector('article'),section=element.closest('section');
+   if(!card||!section)return false;
+   const bounds=card.getBoundingClientRect(),container=element.getBoundingClientRect();
+   const heading=section.querySelector('h2')?.getBoundingClientRect();
+   return bounds.width>=container.width*.75&&bounds.left>=container.left-1
+    &&bounds.right<=container.right+1&&(!heading||bounds.top>=heading.bottom);
+  });
+  expect(fits).toBe(true);
+ }
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.screenshot({path:`docs/screenshots/category-watches-${info.project.name}.png`,fullPage:true});
 });

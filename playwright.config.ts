@@ -1,5 +1,5 @@
 import { defineConfig } from '@playwright/test';
-import { LOCAL_ACCESS_KEY, TEST_TOKEN } from './tests/helpers';
+import { ENGLISH_UI_STATE, LOCAL_ACCESS_KEY, TEST_TOKEN } from './tests/helpers';
 const database = process.env.TEST_DATABASE_URL ?? 'postgresql://fixture@127.0.0.1:9/absent_test';
 if (process.env.TEST_DATABASE_URL) {
   const url = new URL(database);
@@ -13,7 +13,7 @@ const env = { APP_ENV:'local', DATABASE_URL:database, DIRECT_URL:database,
   WALLET_TEST_PREVIEW:'true',ADMIN_MFA_KEY:'b'.repeat(64),EMAIL_TRANSPORT:'local-sink',EMAIL_SINK_URL:'http://127.0.0.1:8027',
 };
 export default defineConfig({outputDir:'test-results/full-browser',
-  testDir:'./tests/browser', workers:1, expect:{timeout:20000}, timeout:120000, use:{baseURL:'http://localhost:3107',browserName:'chromium',channel:process.env.LOWWIN_PLAYWRIGHT_CHANNEL||undefined},
+  testDir:'./tests/browser', workers:1, expect:{timeout:20000}, timeout:120000, use:{storageState:ENGLISH_UI_STATE,baseURL:'http://localhost:3107',browserName:'chromium',channel:process.env.LOWWIN_PLAYWRIGHT_CHANNEL||undefined},
   globalSetup:'./tests/browser-server-setup.ts',
   metadata:{testServers:[
     {kind:'email',port:8027,env},

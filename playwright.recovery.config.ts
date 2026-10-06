@@ -1,5 +1,5 @@
 import {defineConfig} from '@playwright/test';
-import {TEST_TOKEN} from './tests/helpers';
+import {ENGLISH_UI_STATE,TEST_TOKEN} from './tests/helpers';
 
 const database='postgresql://fixture@127.0.0.1:9/recovery_test';
 const env={
@@ -16,7 +16,7 @@ const env={
 export default defineConfig({
   testDir:'./tests/recovery-browser',outputDir:'test-results/recovery',workers:1,
   timeout:90000,expect:{timeout:20000},reporter:'list',
-  use:{baseURL:'http://localhost:3116',browserName:'chromium',channel:process.env.LOWWIN_PLAYWRIGHT_CHANNEL||'chrome',trace:'retain-on-failure'},
+  use:{storageState:ENGLISH_UI_STATE,baseURL:'http://localhost:3116',browserName:'chromium',channel:process.env.LOWWIN_PLAYWRIGHT_CHANNEL||'chrome',trace:'retain-on-failure'},
   globalSetup:'./tests/browser-server-setup.ts',metadata:{testServers:[{kind:'next',port:3116,env}]},
   projects:[
     {name:'mobile-360',use:{viewport:{width:360,height:800}}},

@@ -296,18 +296,24 @@ h3 { font-size:15px; font-weight:600; }
 .result-card .demo-label { color:var(--surface-ink, #000); }
 .result-card .result-outcome { color:var(--surface-ink, #000); font-weight:700; margin:4px 0; }
 .result-card h2,.profile-heading h2 { overflow-wrap:anywhere; }
-.profile-heading { display:flex; align-items:flex-start; gap:14px; margin:20px 0; }
+.profile-heading { display:flex; align-items:center; gap:12px; margin:0 0 20px; padding:4px 0 20px; border-bottom:1px solid #e4eae5; }
 .profile-heading>div { min-width:0; flex:1; }
-.profile-heading h2 { font-size:23px; line-height:1.25; }
-.profile-heading p,.profile-caption { color:var(--surface-ink, #000); font-size:12px; line-height:1.6; margin:8px 0 18px; overflow-wrap:anywhere; }
-.profile-wallet { display:flex; gap:20px; align-items:center; padding:22px 20px; border-radius:14px; background:#008000; color:#fff; text-decoration:none; --surface-ink:#fff; }
-.profile-wallet>span { flex:1; min-width:0; font-size:12px; color:var(--surface-ink, #000); }
-.profile-wallet strong { display:block; margin-top:6px; color:var(--surface-ink, #000); font-size:26px; line-height:1.2; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
-.profile-wallet small { font-size:12px; }
-.profile-counts { display:grid; grid-template-columns:repeat(3,1fr); margin:20px 0 8px; border-bottom:1px solid #e4e4e4; padding-bottom:16px; }
-.profile-counts a { display:flex; flex-direction:column; align-items:center; gap:3px; color:var(--surface-ink, #000); text-decoration:none; min-height:44px; }
-.profile-counts strong { font-size:24px; font-variant-numeric:tabular-nums; }
-.profile-counts span { font-size:11px; }
+.profile-heading h2 { margin:0; font-size:21px; line-height:1.35; }
+.profile-heading p,.profile-caption { color:#536559; font-size:12px; line-height:1.6; margin:6px 0 0; overflow-wrap:anywhere; }
+.profile-avatar { position:relative; display:grid; place-items:center; width:48px; height:48px; flex:none; overflow:hidden; border-radius:50%; background:#edf5ed; color:#008000; }
+.profile-avatar img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+.profile-heading .secondary-button { flex:none; gap:6px; min-height:44px; padding:8px 10px; font-size:12px; }
+.profile-wallet { display:grid; gap:12px; min-width:0; padding:18px; border:1px solid #dce7dd; border-radius:14px; background:#f5f9f5; color:#17251d; text-decoration:none; --surface-ink:#17251d; }
+.profile-wallet-label { display:flex; align-items:center; gap:8px; color:#435548; font-size:12px; }
+.profile-wallet-label>svg:last-child { margin-left:auto; flex:none; }
+.profile-wallet-amount { color:#008000; font-size:30px; line-height:1.2; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
+.profile-wallet-held { display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding-top:12px; border-top:1px solid #dce7dd; color:#536559; font-size:12px; }
+.profile-wallet-held strong { min-width:0; color:#17251d; font-size:14px; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
+.profile-counts { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); margin:20px 0 8px; border-bottom:1px solid #e4e4e4; padding-bottom:16px; }
+.profile-counts a { display:flex; min-width:0; flex-direction:column; align-items:center; gap:4px; padding:0 5px; color:var(--surface-ink, #000); text-decoration:none; min-height:44px; text-align:center; }
+.profile-counts a+a { border-left:1px solid #e4eae5; }
+.profile-counts strong { font-size:22px; line-height:1.3; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
+.profile-counts span { font-size:11px; line-height:1.4; overflow-wrap:anywhere; }
 .profile-editor { padding:18px; border:1px solid #cbdcd0; border-radius:12px; margin-bottom:20px; background:white; --surface-ink: #000; color: var(--surface-ink, #000); }
 .profile-editor label { display:block; font-size:12px; font-weight:700; margin-bottom:14px; }
 .profile-editor input,.profile-editor textarea { display:block; width:100%; margin-top:6px; border:1px solid #b7cbbd; border-radius:8px; padding:12px; background:#fbfbfb; color:var(--surface-ink, #000); font:inherit; font-size:16px; resize:vertical; --surface-ink: #000; }
@@ -401,8 +407,7 @@ h3 { font-size:15px; font-weight:600; }
   --surface-ink:#fff;
 }
 .app-frame .countdown-panel,
-.app-frame .result-summary,
-.app-frame .profile-wallet {
+.app-frame .result-summary {
   border: 1px solid #008000;
   background: #008000;
   color:#fff;
@@ -418,9 +423,7 @@ h3 { font-size:15px; font-weight:600; }
 .app-frame .countdown-panel .countdown,
 .app-frame .result-summary > span,
 .app-frame .result-summary strong,
-.app-frame .result-summary p,
-.app-frame .profile-wallet > span,
-.app-frame .profile-wallet strong {
+.app-frame .result-summary p {
   color: var(--surface-ink, #000);
 }
 .retry-screen{display:grid;min-height:100dvh;place-items:center;padding:24px;background:#008000;color:#fff;text-align:center;--surface-ink:#fff}.retry-screen section{display:flex;width:min(100%,340px);flex-direction:column;align-items:center}.retry-screen img{width:106px;height:106px;object-fit:contain;margin-bottom:16px}.retry-screen h1{margin:0;font-size:34px;line-height:1.1}.retry-screen p{margin:10px 0 24px;color:var(--surface-ink, #000)}.retry-screen button{display:inline-flex;min-width:150px;min-height:48px;align-items:center;justify-content:center;gap:8px;border:0;border-radius:999px;background:#008000;color:#fff;font-weight:800;box-shadow:0 7px 0 rgb(2 35 28 / 24%);--surface-ink:#fff}
@@ -431,10 +434,12 @@ h3 { font-size:15px; font-weight:600; }
 
 .auction-view-badge{position:absolute;top:12px;right:12px;display:inline-flex;align-items:center;gap:5px;min-height:30px;padding:4px 9px;border-radius:8px;background:#008000;color:#fff;font-size:13px;font-weight:650;font-variant-numeric:tabular-nums;pointer-events:none;--surface-ink:#fff;}.card-facts strong{color:#008000}
 
-/* Profile: explicit white foreground on every solid brand surface. */
-.profile-page{background:#fff}
-.profile-page>.page-title{margin:-0px -24px 20px;padding:24px;background:#008000;color:#fff;--surface-ink:#fff}
-.profile-page>.page-title .title-dot{color:#fff}
-.profile-page .profile-heading{padding:18px;border-radius:14px;background:#008000;color:#fff;--surface-ink:#fff}
-.profile-page .profile-heading h2,.profile-page .profile-heading p,.profile-page .profile-wallet,.profile-page .profile-wallet>span,.profile-page .profile-wallet strong,.profile-page .profile-wallet svg{color:#fff}
-@media(max-width:370px){.profile-page>.page-title{margin-inline:-20px;padding-inline:20px}}
+/* Compact account overview; the shared Mini App header handles navigation. */
+.profile-page{width:100%;min-width:0;background:#fff;color:#17251d;--surface-ink:#17251d}
+.profile-accessible-title{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+.profile-page .profile-links{margin-top:20px}
+.profile-page .profile-links>a{min-height:56px;gap:12px;font-size:14px;text-decoration:none}
+.profile-page .profile-links>a>span{min-width:0;overflow-wrap:anywhere}
+.profile-page .profile-links>a>svg{flex:none;color:#536559}
+.profile-page .profile-links>a:last-child{border-bottom:0}
+.profile-page>.profile-caption{margin-top:12px}
