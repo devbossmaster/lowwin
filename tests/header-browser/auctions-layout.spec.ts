@@ -8,29 +8,32 @@ test.beforeEach(async({page})=>{
  await page.route('**/api/favorites/*',route=>route.fulfill({json:{saved:false}}));
 });
 
-test('auction cards stay full width and inside the page at phone sizes',async({page})=>{
+test('auction list follows the winners layout at phone widths',async({page})=>{
  await page.goto('/auctions/all');
- await expect(page.getByRole('heading',{level:1,name:'All auctions'})).toBeVisible();
- const auctionPage=page.locator('#main > main');
- await expect(auctionPage).toHaveCSS('background-color','rgb(255, 255, 255)');
- const carousels=page.locator('#featured .featured-carousel, #active .featured-carousel, #upcoming .featured-carousel');
- expect(await carousels.count()).toBeGreaterThan(0);
+ await expect(page.getByRole('heading',{level:1,name:'Auctions'})).toBeVisible();
+ const listing=page.locator('[data-auction-list]');
+ const cards=listing.locator('article');
+ await expect(cards.first()).toBeVisible();
  const checkLayout=async()=>{
   const frame=await page.locator('.app-frame').boundingBox();
-  expect(frame).toBeTruthy();
-  for(const carousel of await carousels.all()){
-   const section=await carousel.locator('xpath=ancestor::section[1]').boundingBox();
-   const card=carousel.locator('article').first();
-   await expect(card).toBeVisible();
+  const content=await listing.boundingBox();
+  expect(frame&&content).toBeTruthy();
+  for(const card of await cards.all()){
    const bounds=await card.boundingBox();
-   expect(section&&bounds).toBeTruthy();
+   expect(bounds).toBeTruthy();
    expect(bounds!.width).toBeGreaterThan(frame!.width*.7);
-   expect(bounds!.x).toBeGreaterThanOrEqual(section!.x);
-   expect(bounds!.x+bounds!.width).toBeLessThanOrEqual(section!.x+section!.width);
+   expect(bounds!.x).toBeGreaterThanOrEqual(content!.x);
+   expect(bounds!.x+bounds!.width).toBeLessThanOrEqual(content!.x+content!.width);
   }
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  };
  await checkLayout();
+ const codes=await listing.locator('.card-code').allTextContents();
+ expect(codes.map(value=>Number(value.match(/\d+$/)?.[0]))).toEqual(codes.map(value=>Number(value.match(/\d+$/)?.[0])).sort((a,b)=>a-b));
  await page.getByRole('combobox',{name:'Language'}).selectOption('am');
  await checkLayout();
+ const upcoming=page.getByRole('navigation',{name:'Auction status'}).getByRole('link',{name:/የሚመጡ/});
+ await upcoming.click();
+ await expect(page).toHaveURL(/status=upcoming/);
+ await expect(upcoming).toHaveAttribute('aria-current','page');
 });
