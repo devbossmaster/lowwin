@@ -4,7 +4,7 @@ import {stagingDemoEnabled} from '../auctions/staging-demo';
 import {formatEtb} from '@/lib/money';
 
 type Tx=Prisma.TransactionClient;
-export const telegramKinds=['AUCTION_PUBLISHED','AUCTION_UPCOMING','AUCTION_ENDING','AUCTION_RESULT','DEPOSIT_CREDITED','BROADCAST'];
+export const telegramKinds=['AUCTION_PUBLISHED','AUCTION_UPCOMING','AUCTION_STARTING_SOON','AUCTION_ENDING','AUCTION_RESULT','DEPOSIT_CREDITED','BROADCAST'];
 export function auctionNotificationImageId(presentation:unknown,productPath?:string){
  const image=typeof presentation==='object'&&presentation!==null&&'images' in presentation&&Array.isArray(presentation.images)?presentation.images[0]:null;
  const path=typeof image?.path==='string'?image.path:productPath;
@@ -58,13 +58,18 @@ export async function scheduleGlobalAlerts(client:PrismaClient){
   if(allowed.length)created+=(await client.outbox.createMany({data:allowed.map(a=>({key:`global:ending:${a.id}:v${a.controlVersion}`,kind:'GLOBAL_CAMPAIGN',payload:{auctionId:a.id,deliveryKind:'AUCTION_ENDING',rootKey:`global:ending:${a.id}:v${a.controlVersion}`,audienceBefore:now.toISOString()}})),skipDuplicates:true})).count;
   if(auctions.length<100)break;cursor=auctions.at(-1)!.id;
  }
- cursor=undefined;
- for(;;){
-  const auctions:Array<{id:string;isDemo:boolean;isSettlementFixture:boolean}>=await client.auction.findMany({where:{testRunId:null,publishedAt:{lte:now},status:{in:['LIVE','SCHEDULED']},startsAt:{gt:now,lt:new Date(now.getTime()+86400000)},endsAt:{gt:now},product:{visible:true},settlement:{is:null},result:{is:null},...(cursor?{id:{gt:cursor}}:{})},select:{id:true,isDemo:true,isSettlementFixture:true},orderBy:{id:'asc'},take:100});
-  const allowed=auctions.filter(a=>!a.isDemo||a.isSettlementFixture&&(demoBidAllowed()||stagingDemoEnabled()));
-  // One durable campaign per auction, independent of deadline revisions.
-  if(allowed.length)created+=(await client.outbox.createMany({data:allowed.map(a=>({key:`global:upcoming:${a.id}`,kind:'GLOBAL_CAMPAIGN',payload:{auctionId:a.id,deliveryKind:'AUCTION_UPCOMING',rootKey:`global:upcoming:${a.id}`,audienceBefore:now.toISOString()}})),skipDuplicates:true})).count;
-  if(auctions.length<100)break;cursor=auctions.at(-1)!.id;
+ for(const reminder of [
+  {kind:'AUCTION_UPCOMING',key:'upcoming',startsAt:{gt:new Date(now.getTime()+3600000),lt:new Date(now.getTime()+86400000)}},
+  {kind:'AUCTION_STARTING_SOON',key:'starting-soon',startsAt:{gt:now,lte:new Date(now.getTime()+3600000)}},
+ ]){
+  cursor=undefined;
+  for(;;){
+   const auctions:Array<{id:string;isDemo:boolean;isSettlementFixture:boolean}>=await client.auction.findMany({where:{testRunId:null,publishedAt:{lte:now},status:{in:['LIVE','SCHEDULED']},startsAt:reminder.startsAt,endsAt:{gt:now},product:{visible:true},settlement:{is:null},result:{is:null},...(cursor?{id:{gt:cursor}}:{})},select:{id:true,isDemo:true,isSettlementFixture:true},orderBy:{id:'asc'},take:100});
+   const allowed=auctions.filter(a=>!a.isDemo||a.isSettlementFixture&&(demoBidAllowed()||stagingDemoEnabled()));
+   // Separate durable keys deliver each reminder at most once per auction.
+   if(allowed.length)created+=(await client.outbox.createMany({data:allowed.map(a=>({key:`global:${reminder.key}:${a.id}`,kind:'GLOBAL_CAMPAIGN',payload:{auctionId:a.id,deliveryKind:reminder.kind,rootKey:`global:${reminder.key}:${a.id}`,audienceBefore:now.toISOString()}})),skipDuplicates:true})).count;
+   if(auctions.length<100)break;cursor=auctions.at(-1)!.id;
+  }
  }
  return created;
 }
@@ -95,11 +100,15 @@ export async function campaignContent(tx:Tx,row:Pick<Outbox,'kind'|'payload'>){
  }
  const [{now}]=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`;
  if(!['LIVE','SCHEDULED'].includes(a.status)||!a.product?.visible||!a.endsAt||a.endsAt<=now)return null;
- if(row.kind==='AUCTION_UPCOMING'){
-  if(a.settlement||!a.startsAt||a.startsAt<=now||a.startsAt.getTime()-now.getTime()>=86400000)return null;
+ if(row.kind==='AUCTION_UPCOMING'||row.kind==='AUCTION_STARTING_SOON'){
+  if(a.settlement||!a.startsAt)return null;
+  const remaining=a.startsAt.getTime()-now.getTime();
+  if(remaining<=0||remaining>=86400000)return null;
+  if(row.kind==='AUCTION_UPCOMING'?remaining<=3600000:remaining>3600000)return null;
   const options={dateStyle:'medium',timeStyle:'short',timeZone:'Africa/Addis_Ababa'} as const;
   const when=new Intl.DateTimeFormat('en-GB',options).format(a.startsAt),whenAm=new Intl.DateTimeFormat('am-ET',options).format(a.startsAt);
-  return {...base,title:`${prefix}Starts in less than 24 hours · ከ24 ሰዓት በታች ጊዜ ውስጥ ይጀምራል`,body:`${item}\nStarts ${when} EAT. View the item before bidding opens.\nየሚጀምርበት ጊዜ፦ ${whenAm} EAT። ጨረታው ከመጀመሩ በፊት ዕቃውን ይመልከቱ።`,href:`/auctions/${a.slug}`};
+  const hour=row.kind==='AUCTION_STARTING_SOON';
+  return {...base,title:`${prefix}${hour?'⏰ Bidding opens within 1 hour':'⏰ Bidding opens within 24 hours'}\n${hour?'ጨረታው በ1 ሰዓት ውስጥ ይጀምራል':'ጨረታው በ24 ሰዓት ውስጥ ይጀምራል'}`,body:`${item}\nOpens: ${when} EAT\nየሚጀምርበት ጊዜ፦ ${whenAm} EAT\n${hour?'Get ready to bid when it opens.':'Preview the item before bidding opens.'}\n${hour?'ሲከፈት ለመጫረት ይዘጋጁ።':'ጨረታው ከመጀመሩ በፊት ዕቃውን ይመልከቱ።'}`,href:`/auctions/${a.slug}`};
  }
  if(row.kind==='AUCTION_ENDING'&&(!a.startsAt||a.startsAt>now||a.endsAt.getTime()-now.getTime()>=86400000))return null;
  return {...base,title:prefix+(row.kind==='AUCTION_ENDING'?'Less than one day left · ከአንድ ቀን ያነሰ ጊዜ ቀርቷል':'New auction · አዲስ ጨረታ'),body:`${item}\n${row.kind==='AUCTION_ENDING'?'Check the closing time and place your bid.\nየመዝጊያ ሰዓቱን ይመልከቱና ጨረታዎን ያቅርቡ።':'View the item and its auction terms.\nዕቃውንና የጨረታውን ውሎች ይመልከቱ።'}`,href:`/auctions/${a.slug}`};

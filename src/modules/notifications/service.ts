@@ -12,7 +12,12 @@ type DB=Prisma.TransactionClient;
 const notificationImage=resolve('public/notification.png');
 const composedPhotos=new Map<string,Buffer>();
 
-export function telegramCampaignText(kind:string,title:string,body:string){
+export function telegramCampaignText(kind:string,title:string,body:string,name?:string){
+ if(name&&(kind==='AUCTION_UPCOMING'||kind==='AUCTION_STARTING_SOON')){
+  const [item,englishTime,amharicTime,englishAction,amharicAction]=body.split('\n');
+  if(item&&englishTime&&amharicTime&&englishAction&&amharicAction)
+   return withTelegramCommunity(`${name},\n\n${title}\n\n${item}\n\n${englishTime}\n${amharicTime}\n\n${englishAction}\n${amharicAction}`);
+ }
  return withTelegramCommunity(kind==='BROADCAST'?body:`${title}\n${body}`);
 }
 
@@ -98,9 +103,10 @@ export async function dispatchOne(client:PrismaClient,bot:Pick<Bot,'api'>){
   if(link.protocol!=='https:'){await skip();return true}
   try{
    const name=(user?.name??'Lowwin player').replace(/[\r\n\u0000-\u001f]/g,' ').slice(0,80);
+   const startReminder=row.kind==='AUCTION_UPCOMING'||row.kind==='AUCTION_STARTING_SOON';
    const body=content.body.includes('{name}')?content.body.replaceAll('{name}',name):`${name},\n${content.body}`;
-   const text=telegramCampaignText(row.kind,content.title,body);
-   const options={reply_markup:{inline_keyboard:[[{text:row.kind==='AUCTION_UPCOMING'?'View auction':'Bid',web_app:{url:link.href}}]]}};
+   const text=telegramCampaignText(row.kind,content.title,startReminder?content.body:body,startReminder?name:undefined);
+   const options={reply_markup:{inline_keyboard:[[{text:startReminder?'View auction':'Bid',web_app:{url:link.href}}]]}};
    let sent:{message_id:number};
    const photo=await notificationPhoto(tx,'imageId' in content?content.imageId:undefined,link.origin);
    sent=photo?await bot.api.sendPhoto(chat.chatId,photo,{...options,caption:text}):await bot.api.sendMessage(chat.chatId,text,options);
@@ -119,7 +125,7 @@ export async function dispatchOne(client:PrismaClient,bot:Pick<Bot,'api'>){
 }
 
 export async function retireAuctionPromotions(tx:DB,auctionId:string,now:Date){
- const promotional=['AUCTION_PUBLISHED','AUCTION_UPCOMING','AUCTION_ENDING','GLOBAL_CAMPAIGN'];
+ const promotional=['AUCTION_PUBLISHED','AUCTION_UPCOMING','AUCTION_STARTING_SOON','AUCTION_ENDING','GLOBAL_CAMPAIGN'];
  const jobs=await tx.outbox.findMany({where:{kind:{in:promotional},payload:{path:['auctionId'],equals:auctionId}},select:{id:true,key:true,state:true}});
  if(jobs.length)await tx.notificationInbox.deleteMany({where:{key:{in:jobs.map(job=>job.key)}}});
  const pending=jobs.filter(job=>job.state==='PENDING');

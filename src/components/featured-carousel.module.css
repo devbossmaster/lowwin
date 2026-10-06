@@ -33,12 +33,15 @@
 .upcomingNotice { margin-top:4px; padding:13px; border-radius:10px; background:#f9f9f9; color:var(--surface-ink, #000); text-align:center; font-size:11px; line-height:1.5; --surface-ink: #000; }
 .bidBox { margin-top: 16px; padding-top: 14px; border-top: 1px solid #e1e8e1; }
 .bidLabel { display: block; margin-bottom: 8px; color: #17251d; font-size: 12px; font-weight: 650; }
-.amountControl { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: center; min-height: 52px; border: 1px solid #c4d2c4; border-radius: 10px; background: #fff; --surface-ink: #17251d; color: #17251d; }
-.amountControl:focus-within { outline: 2px solid #008000; outline-offset: 2px; }
+.amountControl { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: center; min-height: 52px; overflow: hidden; border: 1px solid #c4d2c4; border-radius: 12px; background: #fff; --surface-ink: #17251d; color: #17251d; transition: border-color .18s ease, box-shadow .18s ease; }
+.amountControl:focus-within { border-color: #008000; box-shadow: 0 0 0 2px rgb(0 128 0 / 14%); }
 .amountControl button { display: grid; place-items: center; width: 44px; height: 46px; border: 0; background: transparent; color: var(--surface-ink, #000); cursor: pointer; --surface-ink: inherit; }
+.amountControl button:hover:not(:disabled),.amountControl button:focus-visible { background: #edf5ed; }
+.carousel .amountControl button:focus-visible { outline: 0; }
 .amountControl button:disabled { opacity: .4; cursor: not-allowed; }
 .amountControl label { min-width: 0; }
 .amountControl input { display: block; width: 100%; height: 46px; padding: 0 3px; border: 0; outline: 0; background: transparent; color: var(--surface-ink, #000); font: inherit; font-size: 14px; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; --surface-ink: inherit; }
+.amountControl input:focus-visible { outline: 0; }
 .amountControl input::placeholder { color: var(--surface-ink, #000); font-size: 12px; font-weight: 500; }
 .range { margin: 8px 0 0; color: #536559; font-size: 11px; line-height: 1.5; }
 .submitBid,.confirmButton { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 48px; margin-top: 8px; padding: 8px 12px; border: 0; border-radius: 10px; background: var(--mini-action, #008000); color:#fff; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; --surface-ink:#fff; }

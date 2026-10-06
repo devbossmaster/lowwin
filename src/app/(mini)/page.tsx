@@ -22,11 +22,12 @@ export default async function Home() {
 }
 async function HomeWithCatalog() {
   const now=await serverNow();
-  const [categories,live,upcoming,closed,managed]=await Promise.all([listCategories(now),listAuctions({q:'',status:'live',sort:'ending',page:1},now,20),listAuctions({q:'',status:'upcoming',sort:'ending',page:1},now,5),listPublicResults(db),publicHomeContent()]);
+  const [categories,live,upcoming,closed,managed]=await Promise.all([listCategories(now),listAuctions({q:'',status:'live',sort:'code',page:1},now,20),listAuctions({q:'',status:'upcoming',sort:'code',page:1},now,5),listPublicResults(db),publicHomeContent()]);
   const heroCopy=resolveHomeCopy(managed);
-  const featured=[...live.items.filter(item=>item.featured),...live.items.filter(item=>!item.featured)].slice(0,5);
-  const ending=live.items.filter(item=>new Date(item.endsAt).getTime()-now.getTime()<=86400000).slice(0,3);
-  return <><OfflineRetry/><HomeHero copy={heroCopy} items={[...upcoming.items,...featured].filter((item,index,all)=>all.findIndex(other=>other.code===item.code)===index)}/>
+  const byCode=(left:{code:string},right:{code:string})=>Number(left.code)-Number(right.code);
+  const featured=[...live.items.filter(item=>item.featured),...live.items.filter(item=>!item.featured)].slice(0,5).sort(byCode);
+  const ending=live.items.filter(item=>new Date(item.endsAt).getTime()-now.getTime()<=86400000).sort((left,right)=>Date.parse(left.endsAt)-Date.parse(right.endsAt)).slice(0,3);
+  return <><OfflineRetry/><HomeHero copy={heroCopy} items={[...upcoming.items,...featured].filter((item,index,all)=>all.findIndex(other=>other.code===item.code)===index).sort(byCode)}/>
   <HomeCategories categories={categories}/>
   {featured.length>0&&<section className={`${styles.featuredSection} catalog-section`}><div className="section-heading"><div><h2><MiniPhrase en="Featured & live auctions" am="ተለይተው የቀረቡ እና በሂደት ላይ ያሉ ጨረታዎች"/></h2><p><MiniPhrase en="The lowest unique number wins. Check the submission fee and closing time before you bid." am="ዝቅተኛው ልዩ የጨረታ ቁጥር ያሸንፋል። ከመሳተፍዎ በፊት የማስገቢያ ክፍያውን እና የመዘጊያ ጊዜውን ይመልከቱ።"/></p></div></div><FeaturedCarousel items={featured} serverNow={now.toISOString()}/><Link href="/auctions/all#active" className={styles.featuredAll}><MiniPhrase en="See all auctions" am="ሁሉንም ጨረታዎች ይመልከቱ"/> <ArrowRight size={16}/></Link></section>}
   <section className={`${styles.featuredSection} ${styles.upcomingSection} catalog-section`}><div className="section-heading"><div><h2><MiniPhrase en="Upcoming auctions" am="የሚመጡ ጨረታዎች"/></h2><p><MiniPhrase en="See what is opening next and when bidding begins." am="ቀጥሎ የሚከፈቱ ጨረታዎችን እና የመጀመሪያ ጊዜያቸውን ይመልከቱ።"/></p></div></div>{upcoming.items.length>0?<><FeaturedCarousel items={upcoming.items} serverNow={now.toISOString()} variant="upcoming"/><Link href="/auctions/all#upcoming" className={styles.featuredAll}><MiniPhrase en="See all upcoming auctions" am="ሁሉንም የሚመጡ ጨረታዎች ይመልከቱ"/> <ArrowRight size={16}/></Link></>:<p className="inline-empty"><MiniPhrase en="No upcoming auctions yet." am="ገና የሚመጣ ጨረታ የለም።"/></p>}</section>

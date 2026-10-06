@@ -14,12 +14,12 @@ export default async function Auctions({searchParams}:{searchParams:Promise<{q?:
  const search=await searchParams,q=typeof search.q==='string'?search.q.trim().slice(0,80):'';
  const now=await serverNow();
  const [live,upcoming,closing,closed]=await Promise.all([
-  listAuctions({q,status:'live',sort:'ending',page:1},now,50),
-  listAuctions({q,status:'upcoming',sort:'ending',page:1},now,50),
-  listAuctions({q,status:'closing',sort:'ending',page:1},now,50),
-  listAuctions({q,status:'closed',sort:'ending',page:1},now,50),
+  listAuctions({q,status:'live',sort:'code',page:1},now,50),
+  listAuctions({q,status:'upcoming',sort:'code',page:1},now,50),
+  listAuctions({q,status:'closing',sort:'code',page:1},now,50),
+  listAuctions({q,status:'closed',sort:'code',page:1},now,50),
  ]);
- const featured=live.items.filter(item=>item.featured),completed=[...closing.items,...closed.items],serverTime=now.toISOString();
+ const featured=live.items.filter(item=>item.featured),completed=[...closing.items,...closed.items].sort((left,right)=>Number(left.code)-Number(right.code)),serverTime=now.toISOString();
  return <main className={styles.page}><OfflineRetry/>
   <header className={styles.hero}>
    {q&&<p role="status"><MiniPhrase en="Results for" am="የፍለጋ ውጤት"/> “{q}”</p>}

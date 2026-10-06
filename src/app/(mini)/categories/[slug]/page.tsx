@@ -11,12 +11,12 @@ import styles from './category-page.module.css';
 export default async function CategoryPage({params}:{params:Promise<{slug:string}>}){
  const {slug}=await params,now=await serverNow(),category=await getCategory(slug,now);if(!category)notFound();
  const [live,upcoming,closing,closed]=await Promise.all([
-  listAuctions({q:'',status:'live',sort:'ending',category:slug,page:1},now,20),
-  listAuctions({q:'',status:'upcoming',sort:'ending',category:slug,page:1},now,20),
-  listAuctions({q:'',status:'closing',sort:'ending',category:slug,page:1},now,20),
-  listAuctions({q:'',status:'closed',sort:'ending',category:slug,page:1},now,20),
+  listAuctions({q:'',status:'live',sort:'code',category:slug,page:1},now,20),
+  listAuctions({q:'',status:'upcoming',sort:'code',category:slug,page:1},now,20),
+  listAuctions({q:'',status:'closing',sort:'code',category:slug,page:1},now,20),
+  listAuctions({q:'',status:'closed',sort:'code',category:slug,page:1},now,20),
  ]);
- const completed=[...closing.items,...closed.items],closedTotal=closing.total+closed.total,serverTime=now.toISOString();
+ const completed=[...closing.items,...closed.items].sort((left,right)=>Number(left.code)-Number(right.code)),closedTotal=closing.total+closed.total,serverTime=now.toISOString();
  return <div className={styles.page}><OfflineRetry/>
   <div className={styles.heroBand}><section className={styles.hero} aria-labelledby="category-title"><Link className={styles.back} href="/"><ArrowLeft size={16}/><MiniPhrase en="Categories" am="ምድቦች"/></Link><h1 id="category-title"><MiniCategoryName slug={slug} name={category.name} nameAm={category.nameAm}/></h1><p><MiniPhrase en={category.description} am={category.descriptionAm?.trim()||category.description}/></p><div className={styles.counts} aria-label="Auction status counts"><span><Flame size={17}/><strong>{live.total}</strong><MiniPhrase en="live" am="ቀጥታ"/></span><span><Clock3 size={17}/><strong>{upcoming.total}</strong><MiniPhrase en="upcoming" am="የሚመጣ"/></span><span><CheckCircle2 size={17}/><strong>{closedTotal}</strong><MiniPhrase en="closed" am="የተዘጋ"/></span></div></section></div>
   {category.requiresEligibilityReview&&<p className={styles.notice}><MiniPhrase en="Listings in this category require eligibility review before they can open." am="በዚህ ምድብ ያሉ ዝርዝሮች ከመከፈታቸው በፊት የብቁነት ግምገማ ያስፈልጋቸዋል።"/></p>}

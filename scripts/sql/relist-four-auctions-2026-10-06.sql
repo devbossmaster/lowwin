@@ -51,7 +51,6 @@ BEGIN
      OR (SELECT count(*) FROM "SettlementMovement")<>0
      OR (SELECT count(*) FROM "PublicAuctionResult")<>0
      OR (SELECT count(*) FROM "FulfillmentCase")<>0
-     OR (SELECT count(*) FROM "AuctionFavorite")<>0
      OR (SELECT count(*) FROM "AuctionControlRevision")<>0
      OR (SELECT count(*) FROM "AuctionTerms")<>4
      OR (SELECT count(*) FROM "AuctionFeeRevision" WHERE version=1)<>4
@@ -82,6 +81,7 @@ CREATE TEMP TABLE _old_images ON COMMIT DROP AS SELECT * FROM "ProductImage";
 CREATE TEMP TABLE _old_auctions ON COMMIT DROP AS SELECT * FROM "Auction";
 CREATE TEMP TABLE _old_terms ON COMMIT DROP AS SELECT * FROM "AuctionTerms";
 CREATE TEMP TABLE _old_fees ON COMMIT DROP AS SELECT * FROM "AuctionFeeRevision";
+CREATE TEMP TABLE _old_favorites ON COMMIT DROP AS SELECT * FROM "AuctionFavorite";
 
 CREATE TEMP TABLE _category_ids ON COMMIT DROP AS
   SELECT id AS old_id, gen_random_uuid()::text AS new_id FROM _old_categories;
@@ -121,6 +121,7 @@ ALTER TABLE "AuctionTerms" ENABLE TRIGGER immutable_auction_terms;
 ALTER TABLE "AuctionFeeRevision" ENABLE TRIGGER immutable_auction_fee_revision;
 ALTER TABLE "AuctionControlRevision" ENABLE TRIGGER immutable_auction_control_revision;
 
+DELETE FROM "AuctionFavorite" WHERE "auctionId" IN (SELECT old_id FROM _auction_ids);
 DELETE FROM "Auction" WHERE id IN (SELECT old_id FROM _auction_ids);
 DELETE FROM "ProductImage" WHERE id IN (SELECT id FROM _old_images);
 DELETE FROM "Product" WHERE id IN (SELECT old_id FROM _product_ids);
@@ -180,6 +181,11 @@ FROM _old_fees f JOIN _auction_ids m ON m.old_id=f."auctionId";
 UPDATE "Auction" SET "publishedAt"=clock_timestamp() AT TIME ZONE 'UTC',
   status=CASE WHEN "startsAt"<=clock_timestamp() AT TIME ZONE 'UTC' THEN 'LIVE' ELSE 'SCHEDULED' END
 WHERE id IN (SELECT new_id FROM _auction_ids);
+
+-- A saved item remains saved for the same user after its auction is replaced.
+INSERT INTO "AuctionFavorite" ("userId","auctionId","createdAt")
+SELECT f."userId",m.new_id,f."createdAt"
+FROM _old_favorites f JOIN _auction_ids m ON m.old_id=f."auctionId";
 
 -- ALTER SEQUENCE RESTART is transactional; the next admin-created auction is 5.
 ALTER SEQUENCE "Auction_publicCode_seq" RESTART WITH 5;
@@ -261,6 +267,7 @@ DO $$
 BEGIN
   IF (SELECT count(*) FROM "Category")<>3 OR (SELECT count(*) FROM "Product")<>4
     OR (SELECT count(*) FROM "ProductImage")<>4 OR (SELECT count(*) FROM "Auction")<>4
+    OR (SELECT count(*) FROM "AuctionFavorite")<>(SELECT count(*) FROM _old_favorites)
     OR (SELECT array_agg("publicCode" ORDER BY "publicCode") FROM "Auction")
        IS DISTINCT FROM ARRAY[1,2,3,4]
     OR EXISTS (SELECT 1 FROM "Auction" a LEFT JOIN "AuctionTerms" t ON t."auctionId"=a.id
@@ -276,7 +283,8 @@ COMMIT;
 
 SELECT a."publicCode",a.code,a.status,a."startsAt" AS "startsAtUtc",
   a."endsAt" AS "endsAtUtc",p.title,c.name AS category,
-  t."allowPaidShortening",t."shortenNoticeMinutes"
+  t."allowPaidShortening",t."shortenNoticeMinutes",
+  (SELECT count(*) FROM "AuctionFavorite" f WHERE f."auctionId"=a.id) AS favorites
 FROM "Auction" a JOIN "Product" p ON p.id=a."productId"
 JOIN "Category" c ON c.id=a."categoryId"
 JOIN "AuctionTerms" t ON t."auctionId"=a.id

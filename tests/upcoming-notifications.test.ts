@@ -1,9 +1,8 @@
 import {describe,it,expect,vi} from 'vitest';
 import type {Prisma,PrismaClient,Outbox} from '@prisma/client';
 import {auctionNotificationImageId,campaignContent,expandCampaign,scheduleGlobalAlerts,telegramKinds} from '../src/modules/notifications/campaigns';
-import {notificationContent} from '../src/modules/notifications/service';
+import {notificationContent,telegramCampaignText} from '../src/modules/notifications/service';
 import {notificationCopy} from '../src/components/notification-copy';
-import {withTelegramCommunity} from '../src/lib/telegram-community';
 
 const now=new Date('2026-10-05T09:00:00Z');
 const row={kind:'AUCTION_UPCOMING',payload:{auctionId:'auction-1',recipientUserId:'player-1'}};
@@ -31,30 +30,50 @@ describe('upcoming auction reminders',()=>{
    expect(content?.body).toContain('A winner has been announced.');
   }finally{vi.unstubAllEnvs()}
  });
- it('uses the displayed product PNG for auction notifications and rejects unrelated paths',async()=>{
+ it('uses the displayed product PNG for the one-hour reminder and rejects unrelated paths',async()=>{
   const current='11111111-2222-4333-8444-555555555555',original='aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
-  const content=await campaignContent(transaction(auction({presentation:{title:'Fixture phone',images:[{path:`/api/media/${current}`}]},product:{title:'Old title',visible:true,images:[{path:`/api/media/${original}`}]}})),row);
+  const item=auction({presentation:{title:'Fixture phone',images:[{path:`/api/media/${current}`}]},product:{title:'Old title',visible:true,images:[{path:`/api/media/${original}`}]},startsAt:new Date(now.getTime()+30*60000)});
+  const content=await campaignContent(transaction(item),{...row,kind:'AUCTION_STARTING_SOON'});
   expect(content?.imageId).toBe(current);
+  expect(content?.kind).toBe('AUCTION_STARTING_SOON');
   expect(auctionNotificationImageId(null,`/api/media/${original}`)).toBe(original);
   expect(auctionNotificationImageId({images:[{path:'https://elsewhere.example/image.png'}]},`/api/media/${original}`)).toBeUndefined();
  });
- it('uses the existing bilingual campaign style, EAT start time and community footer',async()=>{
+ it('spaces the personalized bilingual reminder into readable blocks',async()=>{
   expect(telegramKinds).toContain('AUCTION_UPCOMING');
   const content=await campaignContent(transaction(),row);
   expect(content).toMatchObject({kind:'AUCTION_UPCOMING',userId:'player-1',href:'/auctions/fixture-phone'});
-  expect(content!.title).toContain('Starts in less than 24 hours');
+  expect(content!.title).toContain('Bidding opens within 24 hours');
   expect(content!.body).toContain('Fixture phone · #42');expect(content!.body).toContain('5 Oct 2026, 21:00 EAT');
   expect(notificationCopy(content!,'en').body).not.toMatch(/[\u1200-\u137f]/);
   expect(notificationCopy(content!,'am').body).toContain('የሚጀምርበት ጊዜ');
   expect(notificationCopy(content!,'am').title).toContain('24');
-  const caption=withTelegramCommunity(`${content!.title}\n${content!.body}`);
+  const caption=telegramCampaignText(content!.kind,content!.title,content!.body,'Bura');
+  expect(caption).toMatch(/^Bura,\n\n⏰ Bidding opens within 24 hours/);
+  expect(caption).toContain('\n\nFixture phone · #42\n\nOpens:');
+  expect(caption).toContain('\n\nPreview the item before bidding opens.');
   expect(caption).toContain('@lowwinet');expect(caption).toContain('@LowWinChat');
+ });
+ it('uses a distinct one-hour reminder and skips the late 24-hour message',async()=>{
+  const item=auction({startsAt:new Date(now.getTime()+30*60000)});
+  expect(await campaignContent(transaction(item),row)).toBeNull();
+  const content=await campaignContent(transaction(item),{...row,kind:'AUCTION_STARTING_SOON'});
+  expect(content?.title).toContain('Bidding opens within 1 hour');
+  expect(notificationCopy(content!,'am').title).toContain('1 ሰዓት');
+  expect(notificationCopy(content!,'en').body).toContain('Get ready to bid');
+  expect(telegramCampaignText(content!.kind,content!.title,content!.body,'Bura')).toContain('\n\nGet ready to bid when it opens.');
  });
  it.each([-1,0,86400000,86400001])('suppresses delivery outside the upcoming window (%i ms)',async offset=>{
   expect(await campaignContent(transaction(auction({startsAt:new Date(now.getTime()+offset)})),row)).toBeNull();
  });
- it.each([1,86399999])('accepts a still-upcoming auction inside the window (%i ms)',async offset=>{
+ it.each([3600001,86399999])('accepts a still-upcoming auction inside the 24-hour window (%i ms)',async offset=>{
   expect(await campaignContent(transaction(auction({startsAt:new Date(now.getTime()+offset)})),row)).not.toBeNull();
+ });
+ it.each([-1,0,3600001])('suppresses the one-hour reminder outside its window (%i ms)',async offset=>{
+  expect(await campaignContent(transaction(auction({startsAt:new Date(now.getTime()+offset)})),{...row,kind:'AUCTION_STARTING_SOON'})).toBeNull();
+ });
+ it.each([1,3600000])('accepts the one-hour reminder inside its window (%i ms)',async offset=>{
+  expect(await campaignContent(transaction(auction({startsAt:new Date(now.getTime()+offset)})),{...row,kind:'AUCTION_STARTING_SOON'})).not.toBeNull();
  });
  it.each([
   {status:'CANCELLED'},{status:'DRAFT'},{publishedAt:null},{startsAt:null},{endsAt:now},
@@ -66,12 +85,20 @@ describe('upcoming auction reminders',()=>{
  it('queues one durable campaign despite repeated scheduler ticks',async()=>{
   const saved=new Map<string,unknown>();
   const createMany=vi.fn(async({data}:{data:Array<{key:string}>})=>{let count=0;for(const r of data)if(!saved.has(r.key)){saved.set(r.key,r);count++}return {count}});
-  const findMany=vi.fn(async({where}:{where:{startsAt:{gt?:Date;lt?:Date}}})=>where.startsAt.gt?[{id:'auction-1',isDemo:false,isSettlementFixture:false}]:[]);
+  const findMany=vi.fn(async({where}:{where:{startsAt:{gt?:Date;lt?:Date}}})=>where.startsAt.gt?.getTime()===now.getTime()+3600000?[{id:'auction-1',isDemo:false,isSettlementFixture:false}]:[]);
   const client={$queryRaw:vi.fn(async()=>[{now}]),auction:{findMany},outbox:{createMany}} as unknown as PrismaClient;
   expect(await scheduleGlobalAlerts(client)).toBe(1);expect(await scheduleGlobalAlerts(client)).toBe(0);
   expect(saved.size).toBe(1);expect(saved.get('global:upcoming:auction-1')).toMatchObject({kind:'GLOBAL_CAMPAIGN',payload:{auctionId:'auction-1',deliveryKind:'AUCTION_UPCOMING',rootKey:'global:upcoming:auction-1',audienceBefore:now.toISOString()}});
   const upcomingQuery=findMany.mock.calls[1][0];
-  expect(upcomingQuery.where.startsAt).toEqual({gt:now,lt:new Date(now.getTime()+86400000)});
+  expect(upcomingQuery.where.startsAt).toEqual({gt:new Date(now.getTime()+3600000),lt:new Date(now.getTime()+86400000)});
+ });
+ it('queues the one-hour reminder once with its own campaign key',async()=>{
+  const saved=new Map<string,unknown>(),createMany=vi.fn(async({data}:{data:Array<{key:string}>})=>{let count=0;for(const job of data)if(!saved.has(job.key)){saved.set(job.key,job);count++}return {count}});
+  const findMany=vi.fn(async({where}:{where:{startsAt:{gt?:Date;lte?:Date}}})=>where.startsAt.gt?.getTime()===now.getTime()&&where.startsAt.lte?[{id:'auction-1',isDemo:false,isSettlementFixture:false}]:[]);
+  const client={$queryRaw:vi.fn(async()=>[{now}]),auction:{findMany},outbox:{createMany}} as unknown as PrismaClient;
+  expect(await scheduleGlobalAlerts(client)).toBe(1);expect(await scheduleGlobalAlerts(client)).toBe(0);
+  expect(saved.get('global:starting-soon:auction-1')).toMatchObject({kind:'GLOBAL_CAMPAIGN',payload:{deliveryKind:'AUCTION_STARTING_SOON',auctionId:'auction-1'}});
+  expect(findMany.mock.calls[2][0].where.startsAt).toEqual({gt:now,lte:new Date(now.getTime()+3600000)});
  });
  it('expands reminders into distinct durable recipient keys and retries without duplicate jobs',async()=>{
   const keys=new Set<string>(),createMany=vi.fn(async({data}:{data:Array<{key:string;kind:string}>})=>{let count=0;for(const r of data)if(!keys.has(r.key)){expect(r.kind).toBe('AUCTION_UPCOMING');keys.add(r.key);count++}return {count}});

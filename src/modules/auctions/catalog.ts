@@ -24,7 +24,7 @@ export const catalogQuerySchema = z.object({
   q: z.string().trim().max(80).optional().default(''),
   status: z.enum(['all','live','upcoming','closing','closed']).optional().default('all'),
   category: z.preprocess(value=>value===''?undefined:value,z.string().regex(/^[a-z0-9-]{1,80}$/).optional()),
-  sort: z.enum(['ending','newest','title']).optional().default('ending'),
+  sort: z.enum(['code','ending','newest','title']).optional().default('code'),
   page: z.coerce.number().int().min(1).max(1000).optional().default(1),
 });
 export type CatalogQuery = z.infer<typeof catalogQuerySchema>;
@@ -93,7 +93,7 @@ export async function listAuctions(input: CatalogQuery, now?: Date, pageSize = 6
   const where: Prisma.AuctionWhereInput = {AND:[publicWhere(at),{status:{not:'CANCELLED'}},statusWhere(query.status,at),
     query.category?{category:{is:{slug:query.category}}}:{},
     query.q?{OR:[{code:{contains:query.q,mode:'insensitive'}},{product:{is:{OR:[{title:{contains:query.q,mode:'insensitive'}},{titleAm:{contains:query.q,mode:'insensitive'}}]}}},{presentation:{path:['title'],string_contains:query.q}},{presentation:{path:['titleAm'],string_contains:query.q}},...(searchedPublicCode?[{publicCode:searchedPublicCode}]:[])]}:{}]};
-  const orderBy: Prisma.AuctionOrderByWithRelationInput[] = query.sort==='newest' ? [{publishedAt:'desc'},{id:'asc'}] : query.sort==='title' ? [{product:{title:'asc'}},{id:'asc'}] : query.status==='closed' ? [{endsAt:'desc'},{id:'asc'}] : query.status==='upcoming' ? [{startsAt:'asc'},{id:'asc'}] : [{endsAt:'asc'},{id:'asc'}];
+  const orderBy: Prisma.AuctionOrderByWithRelationInput[] = query.sort==='code' ? [{publicCode:'asc'}] : query.sort==='newest' ? [{publishedAt:'desc'},{id:'asc'}] : query.sort==='title' ? [{product:{title:'asc'}},{id:'asc'}] : query.status==='closed' ? [{endsAt:'desc'},{id:'asc'}] : query.status==='upcoming' ? [{startsAt:'asc'},{id:'asc'}] : [{endsAt:'asc'},{id:'asc'}];
   let rows: AuctionRow[];
   let total: number;
   if (query.status==='all' && query.sort==='ending') {
@@ -138,7 +138,7 @@ export async function listQuickLiveAuctions(page=1) {
   const now=await serverNow(),pageSize=6;
   const where:Prisma.AuctionWhereInput={AND:[publicWhere(now),statusWhere('live',now)]};
   const [rows,total]=await Promise.all([
-    db.auction.findMany({where,orderBy:[{publishedAt:'desc'},{id:'asc'}],skip:(page-1)*pageSize,take:pageSize,
+    db.auction.findMany({where,orderBy:[{publicCode:'asc'}],skip:(page-1)*pageSize,take:pageSize,
       select:{slug:true,publicCode:true,endsAt:true,isDemo:true,acceptedBidCount:true,presentation:true,product:{select:{title:true,titleAm:true,images:{orderBy:{sortOrder:'asc'},take:1,select:{path:true}}}}}}),
     db.auction.count({where})
   ]);
