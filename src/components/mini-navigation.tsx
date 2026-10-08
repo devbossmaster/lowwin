@@ -1,6 +1,7 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
 import Link from 'next/link';
+import {IntentPrefetchLink} from './intent-prefetch-link';
 import {TelegramLink} from './telegram-link';
 import {usePathname,useRouter} from 'next/navigation';
 import {ChevronDown,Menu,Search,X} from 'lucide-react';
@@ -34,14 +35,14 @@ export function MiniNavigation(){
     {open==='menu'&&<><button className={styles.backdrop} tabIndex={-1} aria-label="Close menu" onClick={close}/><nav id="mini-global-menu" className={styles.menu} aria-label="Explore Lowwin">
       <div className={styles.menuLanguage}><LanguageSwitch/></div>
       <details open><summary><MiniPhrase en="Home" am="መነሻ"/><ChevronDown size={17}/></summary><div className={styles.homeLinks}>
-        <Link prefetch={false} href="/" onClick={close}><MiniPhrase en="Home" am="መነሻ"/></Link>
-        <Link prefetch={false} href="/#how-lowwin-works" onClick={close}><MiniPhrase en="How It Works" am="እንዴት ይሰራል"/></Link>
-        <Link prefetch={false} href="/faq#terms" onClick={close}><MiniPhrase en="Terms & Conditions" am="ውሎች እና ደንቦች"/></Link>
+        <IntentPrefetchLink href="/" onClick={close}><MiniPhrase en="Home" am="መነሻ"/></IntentPrefetchLink>
+        <IntentPrefetchLink href="/#how-lowwin-works" onClick={close}><MiniPhrase en="How It Works" am="እንዴት ይሰራል"/></IntentPrefetchLink>
+        <IntentPrefetchLink href="/faq#terms" onClick={close}><MiniPhrase en="Terms & Conditions" am="ውሎች እና ደንቦች"/></IntentPrefetchLink>
       </div></details>
-      <Link prefetch={false} href="/winners/all" onClick={close}><MiniPhrase en="Winners" am="አሸናፊዎች"/></Link>
-      <Link prefetch={false} href="/auctions/all" onClick={close}><MiniPhrase en="Auctions" am="ጨረታዎች"/></Link>
+      <IntentPrefetchLink href="/winners/all" onClick={close}><MiniPhrase en="Winners" am="አሸናፊዎች"/></IntentPrefetchLink>
+      <IntentPrefetchLink href="/auctions/all" onClick={close}><MiniPhrase en="Auctions" am="ጨረታዎች"/></IntentPrefetchLink>
       <Link prefetch={false} href="/wallet" onClick={close}><MiniPhrase en="Wallet" am="የገንዘብ ቦርሳ"/></Link>
-      <Link prefetch={false} href="/faq" onClick={close}><MiniPhrase en="FAQ" am="ተደጋጋሚ ጥያቄዎች"/></Link>
+      <IntentPrefetchLink href="/faq" onClick={close}><MiniPhrase en="FAQ" am="ተደጋጋሚ ጥያቄዎች"/></IntentPrefetchLink>
       <TelegramLink onClick={close}><MiniPhrase en="Contact Us" am="ያግኙን"/></TelegramLink>
     </nav></>}
   </div>;

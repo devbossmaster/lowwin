@@ -5,7 +5,8 @@ import Link from 'next/link';
 import {TelegramLink} from './telegram-link';
 import {ArrowDownLeft,RefreshCw} from 'lucide-react';
 import {useWalletCopy} from './wallet-copy';
-import {LoadingSpinner,PageLoading} from './loading-spinner';
+import {LoadingSpinner} from './loading-spinner';
+import {WalletFundingSkeleton} from './wallet-funding-skeleton';
 import {useTelegram} from './telegram-provider';
 import {usePrivateQuery,PersonalPagination} from './private-query';
 import {WalletFundingPreview} from './wallet-funding-preview';
@@ -16,6 +17,7 @@ import {useMiniNotice} from './mini-notice';
 import {customerDepositFailures} from '../lib/deposit-outcome';
 import {depositFeedback} from './deposit-feedback';
 import {receiptImageKey} from './receipt-image-key';
+import {invalidatePrivateQueries} from './private-query-cache';
 import styles from './wallet-page.module.css';
 
 type Account={id:string;policyId:string;version:number;name:string;number:string;holder:string;numerator:string;denominator:string;minCents:string;maxCents:string;terms:string};
@@ -27,7 +29,7 @@ const labels:Record<string,string>={PENDING:'Pending verification',VERIFYING:'Ve
 type FundingView='deposit'|'deposits'|'hidden';
 export function WalletFunding({view='deposit',onContinue}:{view?:FundingView;onContinue?:()=>void}){const {me}=useTelegram();return <Funding key={me?.user.id??'guest'} view={view} onContinue={onContinue}/>}
 function Funding({view,onContinue}:{view:FundingView;onContinue?:()=>void}){
- const w=useWalletCopy(),{refreshMe}=useTelegram(),notify=useMiniNotice(),noticeId=useId();
+ const w=useWalletCopy(),{refreshMe,me}=useTelegram(),notify=useMiniNotice(),noticeId=useId();
  const [page,setPage]=useState(1),query=usePrivateQuery<Data>(`/api/wallet/top-ups?page=${page}`);
  const [selected,setSelected]=useState(''),[intent,setIntent]=useState<Intent|null>(null),[input,setInput]=useState(''),[busy,setBusy]=useState(''),[message,setMessage]=useState(''),[receipt,setReceipt]=useState<SelectedReceipt|null>(null);
  const createKey=useRef(''),verifyKey=useRef(''),imageKeys=useRef(new Map<string,string>()),working=useRef(false),receiptUrl=useRef<string|null>(null);
@@ -43,7 +45,7 @@ function Funding({view,onContinue}:{view:FundingView;onContinue?:()=>void}){
    if(cancelled||!updated||updated.status===intent.status)return;
    setIntent(updated);query.reload();
    const feedback=depositFeedback(updated,w);inform(feedback.message,feedback.kind);
-   if(updated.status==='CREDITED'){window.dispatchEvent(new Event('lowin-wallet-updated'));window.dispatchEvent(new Event('lowin-alerts'));void refreshMe()}
+   if(updated.status==='CREDITED'){if(me?.user.id)invalidatePrivateQueries(me.user.id);window.dispatchEvent(new Event('lowin-wallet-updated'));window.dispatchEvent(new Event('lowin-alerts'));void refreshMe()}
   }catch{/* The next poll can recover a transient network failure. */}};
   const timer=setInterval(()=>void poll(),5000);return()=>{cancelled=true;clearInterval(timer)};
  // Polling is tied to the selected deposit, not to query refreshes.
@@ -82,13 +84,14 @@ function Funding({view,onContinue}:{view:FundingView;onContinue?:()=>void}){
    setIntent(updated);const feedback=depositFeedback(updated,w);inform(feedback.message,feedback.kind);
    query.reload();
    if(updated.status==='CREDITED'){
+    if(me?.user.id)invalidatePrivateQueries(me.user.id);
     window.dispatchEvent(new Event('lowin-wallet-updated'));window.dispatchEvent(new Event('lowin-alerts'));
     void refreshMe().catch(()=>setMessage(`${updated.points} ${w('ETB credited. Receipt recorded.')} ${w('Reopen the wallet to refresh your balance.')}`));
    }
   }catch(error){inform(w(error instanceof Error?error.message:'Try again.'),'error')}finally{working.current=false;setBusy('')}
  }
  function reset(){setIntent(null);setInput('');setMessage('');clearReceipt();createKey.current='';verifyKey.current='';imageKeys.current.clear()}
- if(query.status==='loading'||query.status==='authenticated'&&!query.data&&!query.error)return <section hidden={view==='hidden'} className={styles.funding}><h2>{w(view==='deposit'?'Add money':'Deposits')}</h2><PageLoading/></section>;
+ if(query.status==='loading'||query.status==='authenticated'&&!query.data&&!query.error)return <section hidden={view==='hidden'} className={styles.funding} aria-busy="true"><h2>{w(view==='deposit'?'Add money':'Deposits')}</h2><WalletFundingSkeleton variant={view==='deposits'?'deposits':'deposit'}/></section>;
  if(query.error)return <section hidden={view==='hidden'} className={styles.funding}><h2>{w(view==='deposit'?'Add money':'Deposits')}</h2><p className={styles.error} role="alert">{w(view==='deposit'?'Payment accounts could not load.':'Deposit history could not load.')}<button type="button" onClick={query.reload}>{w('Retry')}</button></p></section>;
  return <>
   <div hidden={view!=='deposit'}>{!options?.enabled?<WalletFundingPreview/>:<section className={styles.funding} id="add-etb" aria-busy={!!busy}>

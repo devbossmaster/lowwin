@@ -9,7 +9,7 @@ import {cachedPublicData} from '@/modules/cache/public-data';
 // settlement proof, participant movements, winning user/bid IDs or raw bids here.
 // Only the completed winner's name and contact suffix enter the public result.
 export const publicAuctionSelect = {
-  slug:true,code:true,publicCode:true,status:true,startsAt:true,endsAt:true,featured:true,isDemo:true,acceptedBidCount:true,publicViewCount:true,presentation:true,
+  slug:true,code:true,publicCode:true,status:true,publishedAt:true,startsAt:true,endsAt:true,featured:true,isDemo:true,acceptedBidCount:true,publicViewCount:true,presentation:true,
   fulfillmentSummary:true,fulfillmentSummaryAm:true,fulfillmentRegion:true,fulfillmentRegionAm:true,
   product:{select:{title:true,titleAm:true,description:true,descriptionAm:true,condition:true,conditionAm:true,images:{orderBy:{sortOrder:'asc'},select:{path:true,alt:true,sourceType:true,sourceCredit:true}}}},
   category:{select:{slug:true,name:true,nameAm:true}},
@@ -52,7 +52,12 @@ function statusWhere(status: CatalogQuery['status'], now: Date): Prisma.AuctionW
   if (status === 'live') return {status:{in:['SCHEDULED','LIVE']},startsAt:{lte:now},endsAt:{gt:now}};
   if (status === 'upcoming') return {status:{in:['SCHEDULED','LIVE']},startsAt:{gt:now}};
   if (status === 'closing') return {status:{in:['SCHEDULED','LIVE']},endsAt:{lte:now}};
-  if (status === 'closed') return {status:{in:['CLOSED','CANCELLED']}};
+  // A passed deadline is part of the closed browsing section even while the
+  // settlement worker is still preparing the authoritative result.
+  if (status === 'closed') return {OR:[
+    {status:{in:['CLOSED','CANCELLED']}},
+    {status:{in:['SCHEDULED','LIVE']},endsAt:{lte:now}},
+  ]};
   return {};
 }
 export function toPublicAuction(row: AuctionRow, now: Date) {
@@ -74,7 +79,7 @@ export function toPublicAuction(row: AuctionRow, now: Date) {
     acceptedBidCount:null,
   }:null;
   return {
-    slug:row.slug!,code:row.publicCode.toString(),status,featured:row.featured,isDemo:row.isDemo,bidCount:row.acceptedBidCount,
+    slug:row.slug!,code:row.publicCode.toString(),status,publishedAt:row.publishedAt!.toISOString(),featured:row.featured,isDemo:row.isDemo,bidCount:row.acceptedBidCount,
     viewCount:row.publicViewCount.toString(),
     startsAt:row.startsAt!.toISOString(),endsAt:row.endsAt!.toISOString(),
     product:{title:product.title,titleAm:product.titleAm??row.product!.titleAm,description:product.description,descriptionAm:product.descriptionAm??row.product!.descriptionAm,condition:product.condition,conditionAm:product.conditionAm??row.product!.conditionAm,
@@ -155,7 +160,7 @@ export async function listCategories(now?: Date) {
       count(a.id)::int AS all,
       count(a.id) FILTER (WHERE a.status IN ('SCHEDULED','LIVE') AND a."startsAt"<=${now} AND a."endsAt">${now})::int AS live,
       count(a.id) FILTER (WHERE a.status IN ('SCHEDULED','LIVE') AND a."startsAt">${now} AND a."endsAt">${now})::int AS upcoming,
-      count(a.id) FILTER (WHERE a.status = 'CLOSED')::int AS closed
+      count(a.id) FILTER (WHERE a.status = 'CLOSED' OR (a.status IN ('SCHEDULED','LIVE') AND a."endsAt"<=${now}))::int AS closed
     FROM "Category" c
     LEFT JOIN ("Auction" a
       JOIN "Product" p ON p.id=a."productId" AND p.visible

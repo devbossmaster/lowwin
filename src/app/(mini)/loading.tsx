@@ -1,2 +1,2 @@
-import {CatalogSkeleton} from '@/components/catalog-skeleton';
-export default function Loading(){return <CatalogSkeleton/>}
+import {MiniRouteSkeleton} from '@/components/mini-route-skeleton';
+export default function Loading(){return <MiniRouteSkeleton/>}

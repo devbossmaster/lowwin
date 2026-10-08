@@ -11,6 +11,7 @@ import {useTelegram} from './telegram-provider';
 import {useMiniLocale} from './mini-locale';
 import {useMiniNotice} from './mini-notice';
 import {useCelebration} from './celebration';
+import {invalidatePrivateQueries,loadPrivateJson,PrivateAuthorizationError,readPrivateQuery,setPrivateQueryIdentity,subscribePrivateQueries} from './private-query-cache';
 import styles from './featured-carousel.module.css';
 
 type OwnBid={id:string;amount:string;acceptedAt:string};
@@ -18,13 +19,13 @@ type BidState={open:boolean;terms:{version:number;ruleVersion:string;minParticip
 type Receipt={bid:{amount:string;acceptedAt:string};hold:{newMax:string;extraReserved:string};charge:{feePoints:string;newlyUnavailable:string};wallet:{available:string;held:string};remainingSubmissions:number;ownBids:OwnBid[]};
 const whole=/^[1-9]\d{0,15}(?:\.\d{1,2})?$/;
 
-type Props={slug:string;title:string;onInteractionChange?:(active:boolean)=>void};
+type Props={slug:string;title:string;active?:boolean;onInteractionChange?:(active:boolean)=>void};
 export function FeaturedBid(props:Props){
   const {me}=useTelegram();
   return <FeaturedBidForIdentity key={`${props.slug}:${me?.user.id??'guest'}`} {...props}/>;
 }
-function FeaturedBidForIdentity({slug,title,onInteractionChange}:Props){
-  const {status,refreshMe}=useTelegram();
+function FeaturedBidForIdentity({slug,title,active=true,onInteractionChange}:Props){
+  const {status,refreshMe,me}=useTelegram();
   const {language}=useMiniLocale();
   const am=language==='am';
   const notify=useMiniNotice();
@@ -32,7 +33,8 @@ function FeaturedBidForIdentity({slug,title,onInteractionChange}:Props){
   const inFlight=useRef(false);
   const mounted=useRef(true);
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false}},[]);
-  const [state,setState]=useState<BidState|null>(null);
+  const bidUrl='/api/auctions/'+slug+'/bids';
+  const [state,setState]=useState<BidState|null>(()=>status==='authenticated'&&me?.user.id?readPrivateQuery<BidState>(me.user.id,bidUrl)?.value??null:null);
   const [loading,setLoading]=useState(false);
   const [loadError,setLoadError]=useState('');
   const [reload,setReload]=useState(0);
@@ -41,22 +43,31 @@ function FeaturedBidForIdentity({slug,title,onInteractionChange}:Props){
   const [confirm,setConfirm]=useState(false);
   const [agreed,setAgreed]=useState(false);
   const [submitting,setSubmitting]=useState(false);
+  const [focused,setFocused]=useState(false);
   const [error,setError]=useState('');
   const [receipt,setReceipt]=useState<Receipt|null>(null);
-  useEffect(()=>{onInteractionChange?.(Boolean(amount)||confirm||submitting)},[amount,confirm,submitting,onInteractionChange]);
+  useEffect(()=>{onInteractionChange?.(Boolean(amount)||confirm||submitting||focused)},[amount,confirm,submitting,focused,onInteractionChange]);
   useEffect(()=>()=>onInteractionChange?.(false),[onInteractionChange]);
 
   useEffect(()=>{
     if(status!=='authenticated'){setState(null);return}
-    const controller=new AbortController();
-    setLoading(true);setLoadError('');
-    fetch(`/api/auctions/${slug}/bids`,{cache:'no-store',signal:controller.signal})
-      .then(async response=>{const body=await response.json();if(!response.ok)throw new Error(body.error??'Bid details are unavailable.');return body as BidState})
-      .then(value=>{if(!controller.signal.aborted)setState(value)})
-      .catch(cause=>{if(!controller.signal.aborted)setLoadError(cause instanceof Error?cause.message:'Bid details are unavailable.')})
-      .finally(()=>{if(!controller.signal.aborted)setLoading(false)});
-    return()=>controller.abort();
-  },[slug,status,reload]);
+    if(!active)return;
+    const identity=me?.user.id;if(!identity){setLoadError('Your account could not be verified. Reload before bidding.');return}
+    setPrivateQueryIdentity(identity);const cached=readPrivateQuery<BidState>(identity,bidUrl);let disposed=false;
+    if(cached){setState(cached.value);setLoading(false)}else setLoading(true);
+    setLoadError('');
+    // Reuse a fresh session-scoped snapshot on warm visits; stale data is
+    // refreshed quietly. The bid mutation remains server-authoritative.
+    const refresh=()=>{void loadPrivateJson<BidState>(identity,bidUrl,{force:true})
+      .then(value=>{if(!disposed){setState(value);setLoadError('')}})
+      .catch(cause=>{if(!disposed&&cause instanceof Error&&cause.name!=='ObsoletePrivateQueryError')setLoadError(cause.message||'Bid details are unavailable.')})};
+    const unsubscribe=subscribePrivateQueries(event=>{if(active&&event.identity===identity&&event.kind==='mutation')refresh()});
+    loadPrivateJson<BidState>(identity,bidUrl)
+      .then(value=>{if(!disposed){setState(value);setLoadError('')}})
+      .catch(cause=>{if(!disposed&&cause instanceof PrivateAuthorizationError)void refreshMe().catch(()=>{});if(!disposed&&cause instanceof Error&&cause.name!=='ObsoletePrivateQueryError')setLoadError(cause.message||'Bid details are unavailable.')})
+      .finally(()=>{if(!disposed)setLoading(false)});
+    return()=>{disposed=true;unsubscribe()};
+  },[slug,status,reload,active,me?.user.id,refreshMe]);
   const feeOnly=isSubmissionFeeOnly(state?.terms.ruleVersion);
   const bidLabel=(value:string)=>feeOnly?centsToEtb(etbToCents(value)):formatEtb(value);
   const preview=useMemo(()=>{
@@ -84,9 +95,10 @@ function FeaturedBidForIdentity({slug,title,onInteractionChange}:Props){
       const response=await fetch(`/api/auctions/${slug}/bids`,{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount:preview.bid,key:requestKey,feeVersion:state?.terms.version}),signal:AbortSignal.timeout(20000)});
       const body=await response.json();
       if(!mounted.current)return;
-      if(!response.ok){const message=body.error??'Bid was not accepted.';setError(message);notify(message,'error');if(body.code==='AUCTION_CLOSED'||body.code==='RETRYABLE_CONFLICT'){setConfirm(false);setAgreed(false);setKey(null);setReload(value=>value+1)}return}
+      if(!response.ok){const message=body.error??'Bid was not accepted.';setError(message);notify(message,'error');if(body.code==='AUCTION_CLOSED'||body.code==='RETRYABLE_CONFLICT'){setConfirm(false);setAgreed(false);setKey(null);setError('');setReload(value=>value+1)}return}
       const accepted=body as Receipt;
       setReceipt(accepted);setState(previous=>previous?{...previous,wallet:accepted.wallet,previousMax:accepted.hold.newMax,remainingSubmissions:accepted.remainingSubmissions,ownBids:accepted.ownBids}:previous);
+      if(me?.user.id)invalidatePrivateQueries(me.user.id);
       setConfirm(false);setAmount('');setKey(null);setAgreed(false);
       notify(am?`${bidLabel(accepted.bid.amount)} ጨረታዎ ተቀብሏል።`:`${bidLabel(accepted.bid.amount)} bid accepted. Your wallet has been updated.`,'success');
       celebrate();
@@ -96,9 +108,10 @@ function FeaturedBidForIdentity({slug,title,onInteractionChange}:Props){
       const message=am?'ግንኙነቱ ተቋርጧል። በተመሳሳይ ጥያቄ እንደገና ይሞክሩ።':'Connection interrupted. Retry safely with the same request.';
       setError(message);notify(message,'error');
     }finally{inFlight.current=false;if(mounted.current)setSubmitting(false)}
-  },[valid,submitting,agreed,preview,key,slug,notify,am,refreshMe,celebrate,state?.terms.version,feeOnly]);
+  },[valid,submitting,agreed,preview,key,slug,notify,am,refreshMe,celebrate,state?.terms.version,feeOnly,me?.user.id]);
 
-  return <div className={styles.bidBox}><span className={styles.bidLabel}>{am?'የጨረታ ቁጥር':'Your bid number'}</span>
+  if(status==='loading'||status==='authenticated'&&!state&&!loadError)return <div className={`${styles.bidBox} bid-loading-skeleton`} aria-busy="true"><span className={styles.bidLabel}>{am?'የጨረታ ቁጥር':'Your bid number'}</span><span/><span/><span/></div>;
+  return <div className={styles.bidBox} onFocusCapture={()=>setFocused(true)} onBlurCapture={event=>{if(!event.currentTarget.contains(event.relatedTarget as Node|null))setFocused(false)}}><span className={styles.bidLabel}>{am?'የጨረታ ቁጥር':'Your bid number'}</span>
     <div className={styles.amountControl}>
       <button type="button" onClick={()=>step(-1)} disabled={!state?.open||loading} aria-label={am?'መጠኑን ቀንስ':'Decrease bid amount'}><Minus size={18}/></button>
       <label><span className="sr-only">{am?'የጨረታ ቁጥር':'Bid number'}</span><input inputMode="decimal" autoComplete="off" pattern="[1-9][0-9]*([.][0-9]{1,2})?" maxLength={19} value={amount} onChange={event=>change(event.target.value)} placeholder={am?'የጨረታ ቁጥር':'Bid number'} disabled={!state?.open||loading||status!=='authenticated'}/></label>

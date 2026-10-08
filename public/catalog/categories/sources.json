@@ -1,20 +1,20 @@
 [
   {
     "category": "home-furniture",
-    "photographer": "Dillon Mangum",
-    "source": "https://unsplash.com/photos/9489sFfgk4c",
-    "imageSource": "https://images.unsplash.com/photo-1505843490538-5133c6c7d0e1?w=600&fm=png",
-    "license": "https://unsplash.com/license",
-    "purpose": "Category navigation photograph; not auction inventory"
+    "photographer": "Lowwin",
+    "source": "scripts/assets/category-illustrations/home-furniture.svg",
+    "imageSource": "/catalog/categories/home-furniture.png",
+    "license": "Original Lowwin artwork",
+    "purpose": "Category navigation illustration; not auction inventory"
   },
   {
     "category": "vehicles",
-    "subject": "Electric bicycle",
-    "source": "https://unsplash.com/photos/v1ydNu4wEuY",
-    "imageSource": "https://images.unsplash.com/photo-1742290293294-2575277cab61?w=600&fm=png",
-    "license": "https://unsplash.com/license",
-    "photographer": "Unsplash",
-    "purpose": "Category navigation photograph; not auction inventory"
+    "subject": "Modern electric bicycle category illustration",
+    "source": "scripts/assets/category-illustrations/vehicles.svg",
+    "imageSource": "/catalog/categories/vehicles.png",
+    "license": "Original Lowwin artwork",
+    "photographer": "Lowwin",
+    "purpose": "Category navigation illustration; not auction inventory"
   },
   {
     "category": "accessories",

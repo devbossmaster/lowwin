@@ -2,6 +2,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import Script from 'next/script';
 import {MINI_AUTH_TIMEOUT_MS,TelegramLaunchError,miniAuthError,signInTelegram,type MiniAccount} from '@/lib/mini-auth-client';
+import {setPrivateQueryIdentity} from './private-query-cache';
 type WebApp = { initData?: string; platform?:string; ready: () => void; expand?:()=>void; requestFullscreen?:()=>void; close?:()=>void; openTelegramLink?:(url:string)=>void; requestContact?:(callback:(shared:boolean)=>void)=>void; isVersionAtLeast?:(version:string)=>boolean; setHeaderColor?: (color: string) => void; setBackgroundColor?: (color: string) => void };
 declare global { interface Window { Telegram?: { WebApp?: WebApp } } }
 type Me = MiniAccount;
@@ -20,6 +21,7 @@ export function TelegramProvider({ children, devEnabled, botUrl, requireLaunch=f
   const authenticating=useRef(false);
   const refreshMe=useCallback(async()=>{
     const response=await fetch('/api/me',{cache:'no-store',signal:AbortSignal.timeout(MINI_AUTH_TIMEOUT_MS)});
+    if(response.status===401||response.status===403){setMe(null);setStatus('guest');throw new Error('Your session expired. Reopen Lowwin from Telegram.')}
     if(!response.ok)throw new Error('Account refresh failed');
     setMe(await response.json());
   },[]);
@@ -76,6 +78,7 @@ export function TelegramProvider({ children, devEnabled, botUrl, requireLaunch=f
     try { window.Telegram?.WebApp?.setHeaderColor?.(color); } catch { /* Older Telegram clients may reject custom colors. */ }
     try { window.Telegram?.WebApp?.setBackgroundColor?.(color); } catch { /* Keep recovery controls usable. */ }
   },[status,verifyingTelegram,requireLaunch]);
+  useEffect(()=>{setPrivateQueryIdentity(status==='authenticated'?me?.user.id??null:null)},[status,me?.user.id]);
   // A late SDK load can arrive during a previous request. Retry only a changed
   // launch once that request settles, never loop on the same failed launch.
   useEffect(()=>{if(status!=='loading')autoAuthenticate()},[status,autoAuthenticate]);

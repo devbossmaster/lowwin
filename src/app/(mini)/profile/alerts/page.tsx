@@ -6,6 +6,7 @@ import {usePrivateQuery,PrivateState,PersonalPagination} from '@/components/priv
 import {useMiniLocale} from '@/components/mini-locale';
 import {notificationCopy,notificationAge} from '@/components/notification-copy';
 import styles from '@/components/personal-pages.module.css';
+import {MiniRouteSkeleton} from '@/components/mini-route-skeleton';
 
 type Data={items:{id:string;kind?:string;title:string;body:string;href:string;readAt:string|null;createdAt:string}[];page:number;total:number;totalPages:number;unread:number};
 export default function Alerts(){
@@ -22,6 +23,7 @@ export default function Alerts(){
       window.dispatchEvent(new Event('lowin-alerts'));
     }catch{setError(true)}finally{setBusy(false)}
   }
+  if(query.status==='loading'||query.status==='authenticated'&&!data&&!query.error)return <MiniRouteSkeleton/>;
   return <section className={styles.page}>
     <div className={styles.notifications}>
       <header className={styles.hero}>
@@ -34,7 +36,7 @@ export default function Alerts(){
         </div>
       </header>
 
-      <PrivateState query={query}/>
+      <PrivateState query={query} variant="alerts"/>
       {error&&<p role="alert" className="notice-card">{text('Could not save alerts. Retry.','ለውጦቹን ማስቀመጥ አልተቻለም። እንደገና ይሞክሩ።')}</p>}
       {data&&!data.items.length&&<p className={styles.empty}>{text('No notifications yet.','እስካሁን ማሳወቂያዎች የሉም።')}</p>}
       {data?.items.map(item=><article key={item.id} className={styles.alert}>

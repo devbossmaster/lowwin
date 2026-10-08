@@ -7,16 +7,17 @@ test.beforeEach(async({page})=>{
  await page.route('**/api/alerts',route=>route.fulfill({json:{unread:0}}));
 });
 
-test('category routes show live, upcoming and closed auctions with numeric codes',async({page},info)=>{
- await page.goto('/categories/watches');
+test('legacy category links redirect to the canonical filtered view and preserve supported filters',async({page},info)=>{
+ await page.goto('/categories/watches?status=live&sort=ending');
+ await expect(page).toHaveURL(/\/auctions\/all\?status=live&category=watches&sort=ending/);
  await expect(page.getByRole('heading',{level:1,name:'Watches'})).toBeVisible();
- await expect(page.getByLabel('Auction status counts')).toBeVisible();
  await expect(page.getByRole('heading',{name:'Live auctions'})).toBeVisible();
- await expect(page.getByRole('heading',{name:'Upcoming auctions'})).toBeVisible();
- await expect(page.getByRole('heading',{name:'Closed auctions'})).toBeVisible();
- const code=page.getByText('Auction code').locator('..').locator('strong').first();
+ await expect(page.getByRole('navigation',{name:'Auction status'}).getByRole('link',{name:/Live/})).toHaveAttribute('aria-current','page');
+ await expect(page.getByRole('heading',{name:'Upcoming auctions'})).toHaveCount(0);
+ if(await page.locator('.featured-carousel article').count())await expect(page.locator('.featured-carousel article').first()).toBeVisible();
+ const code=page.locator('.featured-carousel .facts>div:last-child strong').first();
  if(await code.count())await expect(code).toHaveText(/^\d+$/);
- const auctionLink=page.locator('a[href^="/auctions/"]').filter({has:page.locator('img')}).first();
+ const auctionLink=page.locator('a[href^="/auctions/"]').filter({has:page.locator('img')}).last();
  if(await auctionLink.count())await expect(auctionLink).toHaveAttribute('href',/^\/auctions\/\d+$/);
  // A carousel must remain in normal flow; the Live badge uses absolute positioning.
  for(const carousel of await page.locator('.featured-carousel').all()){
@@ -31,6 +32,11 @@ test('category routes show live, upcoming and closed auctions with numeric codes
   });
   expect(fits).toBe(true);
  }
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await page.goto('/auctions/all?category=watches');
+ await expect(page.getByRole('heading',{name:'Live auctions'})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Upcoming auctions'})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Closed auctions'})).toBeVisible();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.screenshot({path:`docs/screenshots/category-watches-${info.project.name}.png`,fullPage:true});
 });

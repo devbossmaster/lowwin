@@ -3,6 +3,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { ChevronRight,Wallet,Trophy,Heart,CircleHelp,Bell,Layers,MessageCircle,UserRound,Pencil } from 'lucide-react';
 import { usePrivateQuery,PrivateState } from '@/components/private-query';
+import {MiniRouteSkeleton} from '@/components/mini-route-skeleton';
 import { useTelegram } from '@/components/telegram-provider';
 import {TelegramLink} from '@/components/telegram-link';
 import { OfflineRetry } from '@/components/offline-retry';
@@ -18,7 +19,8 @@ export default function Profile() {
     event.preventDefault();const form=new FormData(event.currentTarget);setSaving(true);setMessage('');
     try{const response=await fetch('/api/profile',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({displayName:form.get('displayName'),bio:form.get('bio')}),cache:'no-store'});const body=await response.json();if(!response.ok)throw new Error(body.error);setEditing(false);setMessage(text('Display profile saved.','መገለጫዎ ተቀምጧል።'));query.reload();await refreshMe()}catch{setMessage(text('Could not save. Please retry.','መገለጫዎን ማስቀመጥ አልተቻለም። እንደገና ይሞክሩ።'))}finally{setSaving(false)}
   }
-  return <><OfflineRetry/><section className="page-inset profile-page"><h1 className="profile-accessible-title">{text('Profile','መገለጫ')}</h1><PrivateState query={query}/>{data&&<>
+  if(query.status==='loading'||query.status==='authenticated'&&!data&&!query.error)return <MiniRouteSkeleton/>;
+  return <><OfflineRetry/><section className="page-inset profile-page"><h1 className="profile-accessible-title">{text('Profile','መገለጫ')}</h1><PrivateState query={query} variant="profile"/>{data&&<>
     <div className="profile-heading"><span className="profile-avatar"><UserRound size={24} aria-hidden="true"/>{photo&&<img key={photo} src={photo} alt="" width={48} height={48} referrerPolicy="no-referrer" onError={event=>{event.currentTarget.style.display='none'}}/>}</span><div><h2>{data.displayName}</h2>{data.bio&&<p>{data.bio}</p>}</div><button type="button" className="secondary-button" aria-expanded={editing} aria-controls="profile-editor" onClick={()=>{setEditing(!editing);setMessage('')}}><Pencil size={14} aria-hidden="true"/>{editing?text('Cancel','ይቅር'):text('Edit','አስተካክል')}</button></div>
     {editing&&<form id="profile-editor" className="profile-editor" onSubmit={save}><label>{text('Display name','የማሳያ ስም')}<input name="displayName" defaultValue={data.displayName} required maxLength={60} autoComplete="nickname"/></label><label>{text('About you','ስለ እርስዎ')}<textarea name="bio" defaultValue={data.bio} maxLength={160} rows={3}/></label><p>{text('These fields are private to your profile. Verified Telegram identity and contact details cannot be edited here.','እነዚህ መረጃዎች በመገለጫዎ ውስጥ ብቻ ይታያሉ። የተረጋገጠውን የቴሌግራም ማንነትና የእውቂያ መረጃ ከዚህ ማስተካከል አይቻልም።')}</p><button className="primary-bid-button" disabled={saving}>{saving?text('Saving…','በማስቀመጥ ላይ…'):text('Save profile','መገለጫውን አስቀምጥ')}</button></form>}
     {message&&<p className="inline-empty" role="status">{message}</p>}

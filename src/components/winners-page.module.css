@@ -12,8 +12,8 @@
 .search input::placeholder{color:var(--surface-ink, #000);opacity:1}
 .search:focus-within{border-color:#008000;outline:2px solid rgb(36 107 22 / 18%)}
 .listing{width:min(100%,440px);margin:18px auto 22px;padding-top:16px;border-top:1px solid #e7ebee;color:var(--surface-ink, #000);font-size:12px;line-height:1.4}
-.list{display:grid;gap:26px;max-width:440px;margin:0 auto}
-.card{width:min(var(--auction-card-width),calc(100% - var(--auction-card-gutters)));min-width:0;margin-inline:auto;overflow:hidden;border:1px solid #e8edf1;border-radius:14px;background:#fff;box-shadow:var(--auction-card-shadow);--surface-ink:#000;color:var(--surface-ink, #000)}
+.list{display:grid;gap:26px;width:100%;margin:0 auto}
+.card{width:100%;min-width:0;margin-inline:auto;overflow:hidden;border:1px solid #e8edf1;border-radius:14px;background:#fff;box-shadow:var(--auction-card-shadow);--surface-ink:#000;color:var(--surface-ink, #000)}
 .image{position:relative;height:215px;overflow:hidden;background:#f6f8f8;--surface-ink:#000;color:var(--surface-ink, #000)}
 .image>a{display:block;width:100%;height:100%}
 .image img{display:block;width:100%;height:100%;object-fit:contain}

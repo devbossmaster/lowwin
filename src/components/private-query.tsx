@@ -1,29 +1,47 @@
 'use client';
-import {PageLoading} from '@/components/loading-spinner';
-
-import { useEffect,useState } from 'react';
+import { useCallback,useEffect,useRef,useState } from 'react';
 import { useTelegram } from './telegram-provider';
 import { IdentityState } from './identity-state';
-import {MiniPhrase} from './mini-locale';
-export function usePrivateQuery<T>(url:string,{pollMs=0}:{pollMs?:number}={}) {
-  const {status,me}=useTelegram(),userId=me?.user.id;
-  const [result,setResult]=useState<{userId:string;url:string;data:T}|null>(null),[error,setError]=useState(''),[retry,setRetry]=useState(0);
+import {MiniPhrase,useMiniLocale} from './mini-locale';
+import {loadPrivateJson,PrivateAuthorizationError,readPrivateQuery,setPrivateQueryIdentity,subscribePrivateQueries} from './private-query-cache';
+import styles from './private-query.module.css';
+export function usePrivateQuery<T>(url:string,{pollMs=0,enabled=true}:{pollMs?:number;enabled?:boolean}={}) {
+  const {status,me,refreshMe}=useTelegram(),userId=me?.user.id;
+  const [error,setError]=useState(''),[retry,setRetry]=useState(0),[fetching,setFetching]=useState(false),[,setRevision]=useState(0);
+  const lastRetry=useRef(retry);
   useEffect(()=>{
-    if(status!=='authenticated'||!userId)return;
-    const controller=new AbortController();setError('');setResult(old=>pollMs&&old?.userId===userId&&old.url===url?old:null);
-    let inFlight=false;
-    const refresh=()=>{if(inFlight||controller.signal.aborted)return;inFlight=true;
-    fetch(url,{cache:'no-store',signal:controller.signal}).then(async response=>{const body=await response.json();if(!response.ok){if(response.status===401||response.status===403)setResult(null);throw new Error(body.error??'Could not load this page.');}return body as T}).then(data=>{if(!controller.signal.aborted){setError('');setResult({userId,url,data})}}).catch(cause=>{if(!controller.signal.aborted)setError(cause instanceof Error?cause.message:'Connection interrupted.')}).finally(()=>{inFlight=false});
-    };refresh();const timer=pollMs?setInterval(()=>{if(document.visibilityState==='visible')refresh()},pollMs):null;
-    return()=>{controller.abort();if(timer)clearInterval(timer)};
-  },[url,status,userId,retry,pollMs]);
-  return {data:status==='authenticated'&&result&&result.userId===userId&&result.url===url?result.data:null,error,status,reload:()=>setRetry(value=>value+1)};
+    const forceRetry=retry>lastRetry.current;lastRetry.current=retry;
+    if(!enabled){setError('');return}
+    if(status!=='authenticated'||!userId){setError('');return}
+    setPrivateQueryIdentity(userId);setError('');let active=true;
+    const refresh=(force:boolean)=>{setFetching(true);void loadPrivateJson<T>(userId,url,{force}).then(()=>{if(active)setError('')}).catch(cause=>{if(active&&cause instanceof PrivateAuthorizationError)void refreshMe().catch(()=>{});if(active&&cause instanceof Error&&cause.name!=='ObsoletePrivateQueryError')setError(cause.message||'Connection interrupted.')}).finally(()=>{if(active){setFetching(false);setRevision(value=>value+1)}})};
+    const cached=readPrivateQuery<T>(userId,url);
+    if(forceRetry||!cached||!cached.fresh)refresh(forceRetry);
+    const unsubscribe=subscribePrivateQueries(event=>{
+      if(!active)return;
+      setRevision(value=>value+1);
+      if(event.identity===userId&&event.kind==='mutation')refresh(true);
+    });
+    const timer=pollMs?setInterval(()=>{if(document.visibilityState==='visible')refresh(true)},pollMs):null;
+    return()=>{active=false;unsubscribe();if(timer)clearInterval(timer)};
+  },[url,status,userId,retry,pollMs,enabled,refreshMe]);
+  const data=enabled&&status==='authenticated'&&userId?readPrivateQuery<T>(userId,url)?.value??null:null;
+  const reload=useCallback(()=>setRetry(value=>value+1),[]);
+  return {data,error:enabled?error:'',status:enabled?status:'disabled',fetching,reload};
 }
-export function PrivateState({query}:{query:{status:string;data:unknown;error:string;reload:()=>void}}) {
+type PrivateSkeletonVariant='profile'|'alerts'|'favorites'|'bids'|'wins';
+export function PrivateState({query,variant='profile'}:{query:{status:string;data:unknown;error:string;reload:()=>void};variant?:PrivateSkeletonVariant}) {
+  if(query.status==='loading')return <PrivateQuerySkeleton variant={variant}/>;
   if(query.status!=='authenticated')return <IdentityState/>;
-  if(query.error)return <div className="notice-card" role="alert"><MiniPhrase en="Could not load this page. Please retry." am="ገጹን ማምጣት አልተቻለም። እንደገና ይሞክሩ።"/><button className="retry-action" onClick={query.reload}><MiniPhrase en="Retry" am="እንደገና ይሞክሩ"/></button></div>;
-  if(!query.data)return <PageLoading/>;
+  if(query.error&&!query.data)return <div className="notice-card" role="alert"><MiniPhrase en="Could not load this page. Please retry." am="ገጹን ማምጣት አልተቻለም። እንደገና ይሞክሩ።"/><button className="retry-action" onClick={query.reload}><MiniPhrase en="Retry" am="እንደገና ይሞክሩ"/></button></div>;
+  if(query.error&&query.data)return <p className={styles.warning} role="status"><MiniPhrase en="Showing saved details. Refresh failed." am="የተቀመጠው መረጃ ይታያል። ማደስ አልተሳካም።"/> <button className="retry-action" onClick={query.reload}><MiniPhrase en="Retry" am="እንደገና ይሞክሩ"/></button></p>;
+  if(!query.data)return <PrivateQuerySkeleton variant={variant}/>;
   return null;
+}
+function PrivateQuerySkeleton({variant}:{variant:PrivateSkeletonVariant}){
+  const label=variant==='alerts'?'notifications':variant==='favorites'?'saved auctions':variant==='bids'?'your bids':variant==='wins'?'winning bids':'your profile';
+  const {language}=useMiniLocale(),am=language==='am',amLabel=variant==='alerts'?'ማሳወቂያዎች':variant==='favorites'?'ተወዳጆች':variant==='bids'?'ጨረታዎች':variant==='wins'?'ያሸነፉ ጨረታዎች':'መገለጫዎ';
+  return <div className={styles.skeleton} role="status" aria-label={am?amLabel:'Loading '+label} aria-busy="true">{variant==='profile'?<><div className={styles.profileHead}><i/><div><i/><i/></div></div><i className={styles.profileBalance}/><div className={styles.profileMetrics}><i/><i/><i/></div><i className={styles.profileLink}/><i className={styles.profileLink}/></>:variant==='alerts'?<>{[0,1,2].map(item=><div className={styles.alertRow} key={item}><i/><div><b/><span/><span/></div></div>)}</>:variant==='favorites'?<>{[0,1].map(item=><article className={styles.favoriteCard} key={item}><i/><div><b/><span/><span/></div></article>)}</>:<>{[0,1].map(item=><article className={styles.bidRow} key={item}><i/><div><b/><b/><span/></div></article>)}</>}</div>
 }
 export function PersonalPagination({page,totalPages,setPage}:{page:number;totalPages:number;setPage:(page:number)=>void}) {
   return <nav className="pagination" aria-label="Your pages">{page>1&&<button onClick={()=>setPage(page-1)}><MiniPhrase en="Previous" am="ወደ ኋላ"/></button>}{page<totalPages&&<button onClick={()=>setPage(page+1)}><MiniPhrase en="Next page" am="ቀጣይ ገጽ"/></button>}</nav>;

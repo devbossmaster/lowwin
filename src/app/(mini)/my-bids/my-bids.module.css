@@ -5,7 +5,7 @@
 .tabs button{display:flex;align-items:center;justify-content:center;gap:8px;min-height:48px;border:0;border-radius:9px;background:transparent;color:#4b6257;font:inherit;font-size:15px;font-weight:600;cursor:pointer}
 .tabs button[aria-pressed=true]{background:#008000;color:#fff;--surface-ink:#fff;}
 .tabs button span{display:grid;place-items:center;min-width:24px;height:24px;padding:0 6px;border-radius:50%;background:#ebebeb;color:#008000;font-size:13px;font-variant-numeric:tabular-nums}
-.list{display:grid;gap:28px;width:min(calc(100% - 14px),440px);margin-inline:auto}
+.list{display:grid;gap:28px;width:100%;max-width:460px;margin-inline:auto}
 .card{position:relative;min-width:0;overflow:hidden;border-radius:14px;background:#fff;color:#172d24;box-shadow:0 10px 22px rgb(23 45 36 / 16%)}
 .cardLink{position:absolute;inset:0;z-index:1;border-radius:inherit}
 .cardLink:focus-visible{outline:3px solid #008000;outline-offset:-3px}

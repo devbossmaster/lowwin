@@ -17,12 +17,19 @@ test('catalog at mobile widths: header, carousel, cards, countdown and navigatio
   await page.waitForLoadState('networkidle');await expect(page.locator('.page-loading-backdrop')).toHaveCount(0);await expect(page.locator('.app-frame[inert]')).toHaveCount(0);await page.screenshot({caret:'initial',path:`docs/screenshots/catalog-home-${testInfo.project.name}.png`,fullPage:true});
   await page.getByRole('button',{name:'Open menu',exact:true}).click();await page.getByRole('navigation',{name:'Explore Lowwin'}).getByRole('link',{name:'Auctions',exact:true}).click();
   await expect(page.getByRole('navigation',{name:'Auction status'})).toBeVisible();
-  await expect(page.locator('[data-auction-list] article').first()).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Live auctions'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Upcoming auctions'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Closed auctions'})).toBeVisible();
+  await expect(page.locator('.featured-carousel article').first()).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
   await page.waitForLoadState('networkidle');await expect(page.locator('.page-loading-backdrop')).toHaveCount(0);await expect(page.locator('.app-frame[inert]')).toHaveCount(0);await page.screenshot({caret:'initial',path:`docs/screenshots/catalog-auctions-${testInfo.project.name}.png`,fullPage:true});
 
   await page.getByRole('navigation',{name:'Auction status'}).getByRole('link',{name:/Live/}).click();
-  await page.getByRole('link',{name:'Place a bid'}).first().click();
+  await expect(page).toHaveURL(/\/auctions\/all\?status=live/);
+  const liveCard=page.locator('.featured-carousel article').first();
+  await expect(liveCard.locator('.amountControl input')).toBeVisible();
+  await expect(liveCard.getByRole('button',{name:/Review bid|Sign in to bid/})).toBeVisible();
+  await liveCard.getByRole('link',{name:'View auction details'}).click();
   await expect(page.getByLabel('ETB amount',{exact:true})).toBeVisible();
   await expect(page.getByRole('timer')).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);

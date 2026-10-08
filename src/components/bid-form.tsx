@@ -14,6 +14,7 @@ import { IdentityState } from './identity-state';
 import { formatEtb,etbToCents,centsToEtb } from '@/lib/money';
 import {useMiniNotice} from './mini-notice';
 import {useCelebration} from './celebration';
+import {invalidatePrivateQueries} from './private-query-cache';
 type OwnBid={id:string;amount:string;acceptedAt:string};
 type BidState={auctionCode:string;open:boolean;serverNow:string;isDemo:boolean;terms:{ruleVersion:string;minParticipants:number;version:number;minPoints:string;maxPoints:string|null;stepPoints:string;entryFeePoints:string;maxDistinctBids:number};wallet:{available:string;held:string};previousMax:string;remainingSubmissions:number;ownBids:OwnBid[]};
 type Receipt={bid:{id:string;auctionCode:string;auctionSlug:string;amount:string;acceptedAt:string;termsVersion:number;feePoints:string};hold:{previousMax:string;newMax:string;extraReserved:string};charge:{feePoints:string;newlyUnavailable:string};wallet:{available:string;held:string};remainingSubmissions:number;ownBids:OwnBid[]};
@@ -24,7 +25,7 @@ export function BidForm(props:BidFormProps) {
   return <div id="bid-review"><BidFormForIdentity key={me?.user.id??'guest'} {...props}/></div>;
 }
 function BidFormForIdentity({slug,title,status,isDemo,compact=false}:BidFormProps) {
-  const {status:authStatus,refreshMe}=useTelegram();
+  const {status:authStatus,refreshMe,me}=useTelegram();
   const w=useWalletCopy();const {language}=useMiniLocale();
   const notify=useMiniNotice();
   const celebrate=useCelebration();
@@ -61,7 +62,7 @@ function BidFormForIdentity({slug,title,status,isDemo,compact=false}:BidFormProp
   const submit=async()=>{
     if(!valid||submitting||!agreed)return;
     const requestKey=key??crypto.randomUUID();setKey(requestKey);setSubmitting(true);setError('');
-    try {const response=await fetch(`/api/auctions/${slug}/bids`,{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount,key:requestKey,feeVersion:state.terms.version})});const body=await response.json();if(!response.ok){setError(body.error??'Bid was not accepted.');notify(body.error??'Bid was not accepted.','error');if(body.code==='AUCTION_CLOSED'||body.code==='RETRYABLE_CONFLICT'){setConfirm(false);setAgreed(false);setKey(null);void refresh()}return}const accepted=body as Receipt;setConfirm(false);setAgreed(false);setReceipt(accepted);notify(`${bidLabel(accepted.bid.amount)} ${w('bid accepted')}`,'success');setState(previous=>previous?{...previous,wallet:accepted.wallet,previousMax:accepted.hold.newMax,remainingSubmissions:accepted.remainingSubmissions,ownBids:accepted.ownBids}:previous);celebrate();void refreshMe().catch(()=>{});}
+    try {const response=await fetch(`/api/auctions/${slug}/bids`,{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount,key:requestKey,feeVersion:state.terms.version})});const body=await response.json();if(!response.ok){setError(body.error??'Bid was not accepted.');notify(body.error??'Bid was not accepted.','error');if(body.code==='AUCTION_CLOSED'||body.code==='RETRYABLE_CONFLICT'){setConfirm(false);setAgreed(false);setKey(null);void refresh()}return}const accepted=body as Receipt;setConfirm(false);setAgreed(false);setReceipt(accepted);notify(`${bidLabel(accepted.bid.amount)} ${w('bid accepted')}`,'success');setState(previous=>previous?{...previous,wallet:accepted.wallet,previousMax:accepted.hold.newMax,remainingSubmissions:accepted.remainingSubmissions,ownBids:accepted.ownBids}:previous);if(me?.user.id)invalidatePrivateQueries(me.user.id);celebrate();void refreshMe().catch(()=>{});}
     catch {const message='Connection interrupted. Retry this same request; it cannot debit you twice.';setError(message);notify(message,'error')}
     finally {setSubmitting(false)}
   };

@@ -8,12 +8,14 @@ test.beforeEach(async({page})=>{
  await page.route('**/api/favorites/*',route=>route.fulfill({json:{saved:false}}));
 });
 
-test('auction list follows the winners layout at phone widths',async({page})=>{
+test('canonical auction browsing groups rich cards and keeps controls within the viewport',async({page})=>{
  await page.goto('/auctions/all');
  await expect(page.getByRole('navigation',{name:'Auction status'})).toBeVisible();
- const listing=page.locator('[data-auction-list]');
- const cards=listing.locator('article');
+ for(const heading of ['Live auctions','Upcoming auctions','Closed auctions'])await expect(page.getByRole('heading',{name:heading})).toBeVisible();
+ const listing=page.locator('.groups');
+ const cards=listing.locator('.featured-carousel article, .closed-auction-carousel article');
  await expect(cards.first()).toBeVisible();
+ await expect(page.locator('a[href="/auctions/all?status=live"]')).toBeVisible();
  const checkLayout=async()=>{
   const frame=await page.locator('.app-frame').boundingBox();
   const content=await listing.boundingBox();
@@ -28,12 +30,23 @@ test('auction list follows the winners layout at phone widths',async({page})=>{
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  };
  await checkLayout();
- const codes=await listing.locator('.card-code').allTextContents();
- expect(codes.map(value=>Number(value.match(/\d+$/)?.[0]))).toEqual(codes.map(value=>Number(value.match(/\d+$/)?.[0])).sort((a,b)=>a-b));
- await page.getByRole('combobox',{name:'Language'}).selectOption('am');
+ await page.getByRole('button',{name:'Language'}).click();
+ await page.getByRole('menuitemradio',{name:'አማ'}).click();
  await checkLayout();
  const upcoming=page.getByRole('navigation',{name:'Auction status'}).getByRole('link',{name:/የሚመጡ/});
  await upcoming.click();
  await expect(page).toHaveURL(/status=upcoming/);
  await expect(upcoming).toHaveAttribute('aria-current','page');
+ await expect(page.getByRole('heading',{name:/የሚመጡ.*ጨረታዎች/})).toBeVisible();
+ await page.screenshot({path:`docs/screenshots/auction-upcoming-${test.info().project.name}.png`,fullPage:true});
+ await page.goto('/auctions?search=Watch&status=live&category=watches&sort=ending');
+ await expect(page).toHaveURL(/\/auctions\/all\?q=Watch&status=live&category=watches&sort=ending/);
+ await expect(page.locator('input[name="q"]')).toHaveValue('Watch');
+ await expect(page.getByRole('combobox').nth(0)).toHaveValue('live');
+ await expect(page.getByRole('combobox').nth(1)).toHaveValue('watches');
+ await expect(page.getByRole('combobox').nth(2)).toHaveValue('ending');
+ await page.goto('/auctions/all?status=live&sort=ending&page=2');
+ await expect(page).toHaveURL(/status=live&sort=ending&page=2/);
+ await expect(page.locator('.featured-carousel article').first()).toBeVisible();
+ await page.screenshot({path:`docs/screenshots/auction-live-page2-${test.info().project.name}.png`,fullPage:true});
 });
