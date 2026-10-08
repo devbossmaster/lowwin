@@ -1,6 +1,5 @@
 'use client';
 import {usePathname} from 'next/navigation';
-import Link from 'next/link';
 import {Bell,CircleUserRound,Heart,House,Layers,Trophy,Wallet} from 'lucide-react';
 import {MiniPhrase} from './mini-locale';
 import styles from './bottom-navigation.module.css';
@@ -22,8 +21,9 @@ export function BottomNavigation(){
   const deposit=href==='/wallet';
   const content=<>{deposit?<span className={styles.depositIcon}><Icon size={26} aria-hidden="true"/></span>:<Icon size={20} aria-hidden="true"/>}<span className={styles.label}><MiniPhrase en={en} am={am}/></span></>;
   const linkProps={href:deposit?'/wallet#add-etb':href,className:`${styles.item} ${deposit?styles.deposit:''}`,"aria-current":active===href?'page' as const:undefined,children:content};
-  // The landing page is public; personal pages stay opt-out to avoid keeping
-  // private RSC payloads in Next's navigation prefetch cache across sessions.
-  return href==='/'?<IntentPrefetchLink key={href} {...linkProps}/>:<Link key={href} {...linkProps} prefetch={false}/>;
+  // Personal routes serialize a client shell, not account data. Only warm
+  // the selected route on hover, touch or keyboard focus; API data stays in
+  // the identity-scoped private query cache.
+  return <IntentPrefetchLink key={href} {...linkProps}/>;
  })}</nav>;
 }

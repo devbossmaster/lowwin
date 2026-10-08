@@ -1,6 +1,7 @@
 'use client';
+import {useMiniPage} from '@/components/mini-query-state';
+
 import Link from 'next/link';
-import {useState} from 'react';
 import {PersonalBidCard} from './personal-bid-card';
 import {BidPagination} from './bid-pagination';
 import {usePrivateQuery,PrivateState} from './private-query';
@@ -12,7 +13,7 @@ import styles from '@/app/(mini)/my-bids/my-bids.module.css';
 import {MiniRouteSkeleton} from './mini-route-skeleton';
 
 export function WinningBidsPage(){
-  const [page,setPage]=useState(1),query=usePrivateQuery<Awaited<ReturnType<typeof getPersonalWins>>>(`/api/profile/wins?page=${page}`),data=query.data;
+  const [page,setPage]=useMiniPage(),query=usePrivateQuery<Awaited<ReturnType<typeof getPersonalWins>>>(`/api/profile/wins?page=${page}`),data=query.data;
   if(query.status==='loading'||query.status==='authenticated'&&!data&&!query.error)return <MiniRouteSkeleton/>;
   return <><OfflineRetry/><section className={styles.page}><header className={styles.heading}><h1><MiniPhrase en="Winning Bids" am="ያሸነፉ ጨረታዎች"/></h1></header><PrivateState query={query} variant="wins"/>{query.status==='authenticated'&&data&&<>
     {data.items.length>0&&<WinnerCelebration id={`personal-win:${data.items[0].code}`}/>}

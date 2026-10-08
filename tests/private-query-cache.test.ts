@@ -1,5 +1,5 @@
 import {describe,expect,it,vi} from 'vitest';
-import {invalidatePrivateQueries,loadPrivateJson,ObsoletePrivateQueryError,PrivateAuthorizationError,readPrivateQuery,SessionPrivateQueryCache,setPrivateQueryIdentity} from '../src/components/private-query-cache';
+import {privateQueryKey,invalidatePrivateQueries,loadPrivateJson,ObsoletePrivateQueryError,PrivateAuthorizationError,readPrivateQuery,SessionPrivateQueryCache,setPrivateQueryIdentity} from '../src/components/private-query-cache';
 
 describe('session private query cache',()=>{
  it('bounds entries and updates least-recently-used order on reads',async()=>{
@@ -75,5 +75,46 @@ describe('session private query cache',()=>{
    expect(readPrivateQuery('http-account','/api/profile')).toBeNull();
    expect(readPrivateQuery('http-account','/api/private/late')).toBeNull();
   }finally{vi.unstubAllGlobals();invalidatePrivateQueries('http-account');setPrivateQueryIdentity(null)}
+ });
+});
+
+describe('private cache navigation regressions',()=>{
+ it('retains a stale snapshot after mutation but rejects the pre-mutation response',async()=>{
+  const cache=new SessionPrivateQueryCache();cache.setIdentity('a:session');
+  await cache.load('a:session','wallet',async()=>10);
+  let finish!:(value:number)=>void;
+  const old=cache.load('a:session','wallet',()=>new Promise<number>(resolve=>{finish=resolve}),{force:true});
+  cache.invalidate('a:session');
+  expect(cache.read('a:session','wallet')).toMatchObject({value:10,fresh:false});
+  await cache.load('a:session','wallet',async()=>9);finish(10);
+  await expect(old).rejects.toBeInstanceOf(ObsoletePrivateQueryError);
+  expect(cache.read('a:session','wallet')).toMatchObject({value:9,fresh:true});
+ });
+ it('isolates new sessions of the same account and ignores late authorization failures',async()=>{
+  const cache=new SessionPrivateQueryCache();cache.setIdentity('a:old');
+  let reject!:(reason:Error)=>void;
+  const old=cache.load('a:old','profile',()=>new Promise<string>((_,fail)=>{reject=fail}));
+  cache.setIdentity('a:new');await cache.load('a:new','profile',async()=>'new session');
+  reject(new PrivateAuthorizationError('Expired',401));
+  await expect(old).rejects.toBeInstanceOf(ObsoletePrivateQueryError);
+  expect(cache.read('a:new','profile')?.value).toBe('new session');
+  expect(cache.read('a:old','profile')).toBeNull();
+ });
+ it('expires retained snapshots and bounds concurrent requests',async()=>{
+  vi.useFakeTimers();
+  try{
+   const cache=new SessionPrivateQueryCache(2,10,1,100);cache.setIdentity('a');
+   await cache.load('a','profile',async()=>1);vi.advanceTimersByTime(101);
+   expect(cache.read('a','profile')).toBeNull();
+   let finish!:(value:number)=>void;
+   const pending=cache.load('a','first',()=>new Promise<number>(r=>{finish=r}));
+   await expect(cache.load('a','second',async()=>2)).rejects.toThrow('Too many requests');
+   finish(1);await pending;
+  }finally{vi.useRealTimers()}
+ });
+ it('canonicalizes query ordering without mixing filters, pages or languages',()=>{
+  expect(privateQueryKey('/api/favorites?page=2&status=live','am')).toBe(privateQueryKey('/api/favorites?status=live&page=2','am'));
+  expect(privateQueryKey('/api/favorites?page=2','am')).not.toBe(privateQueryKey('/api/favorites?page=1','am'));
+  expect(privateQueryKey('/api/favorites?page=2','am')).not.toBe(privateQueryKey('/api/favorites?page=2','en'));
  });
 });

@@ -1,0 +1,157 @@
+{
+  "before": [
+    {
+      "href": "/my-bids",
+      "ms": 903,
+      "requests": 7,
+      "apiRequests": [
+        "/api/my-bids"
+      ],
+      "rscRequests": 3,
+      "skeletonFrames": 2,
+      "maxLoaders": 1,
+      "overflow": 0
+    },
+    {
+      "href": "/profile",
+      "ms": 389,
+      "requests": 2,
+      "apiRequests": [
+        "/api/profile"
+      ],
+      "rscRequests": 1,
+      "skeletonFrames": 1,
+      "maxLoaders": 1,
+      "overflow": 0
+    },
+    {
+      "href": "/my-bids",
+      "ms": 342,
+      "requests": 1,
+      "apiRequests": [],
+      "rscRequests": 1,
+      "skeletonFrames": 1,
+      "maxLoaders": 1,
+      "overflow": 0
+    },
+    {
+      "href": "/profile",
+      "ms": 419,
+      "requests": 1,
+      "apiRequests": [],
+      "rscRequests": 1,
+      "skeletonFrames": 1,
+      "maxLoaders": 1,
+      "overflow": 0
+    }
+  ],
+  "after": [
+    {
+      "href": "/my-bids",
+      "ms": 853,
+      "requests": 7,
+      "apiRequests": [
+        "/api/my-bids"
+      ],
+      "rscRequests": 5,
+      "skeletonFrames": 2,
+      "maxLoaders": 1,
+      "overflow": 0
+    },
+    {
+      "href": "/profile",
+      "ms": 52,
+      "requests": 1,
+      "apiRequests": [],
+      "rscRequests": 1,
+      "skeletonFrames": 0,
+      "maxLoaders": 0,
+      "overflow": 0
+    },
+    {
+      "href": "/my-bids",
+      "ms": 60,
+      "requests": 1,
+      "apiRequests": [],
+      "rscRequests": 1,
+      "skeletonFrames": 0,
+      "maxLoaders": 0,
+      "overflow": 0
+    },
+    {
+      "href": "/profile",
+      "ms": 50,
+      "requests": 1,
+      "apiRequests": [],
+      "rscRequests": 1,
+      "skeletonFrames": 0,
+      "maxLoaders": 0,
+      "overflow": 0
+    }
+  ],
+  "headers": [
+    {
+      "endpoint": "/api/me",
+      "status": 200,
+      "cacheControl": "private, no-store, max-age=0"
+    },
+    {
+      "endpoint": "/api/profile",
+      "status": 200,
+      "cacheControl": "private, no-store, max-age=0"
+    },
+    {
+      "endpoint": "/api/wallet?page=1",
+      "status": 200,
+      "cacheControl": "private, no-store, max-age=0"
+    },
+    {
+      "endpoint": "/api/my-bids?page=1&view=live",
+      "status": 200,
+      "cacheControl": "private, no-store, max-age=0"
+    },
+    {
+      "endpoint": "/api/alerts?page=1",
+      "status": 200,
+      "cacheControl": "private, no-store, max-age=0"
+    }
+  ],
+  "refreshAndAuthorization": [
+    {
+      "test": "background refresh failure",
+      "saved": 1,
+      "skeletons": 0
+    },
+    {
+      "test": "authorization failure removes cached private profile",
+      "privateDataVisible": 0
+    }
+  ],
+  "verified": {
+    "mobileWidths": [
+      360,
+      430
+    ],
+    "desktopWidth": 1280,
+    "documentOverflowPixels": 0,
+    "coldMainLoaders": 1,
+    "reducedMotionAnimationNames": [
+      "none"
+    ],
+    "lostReplyBid": {
+      "attempts": 2,
+      "sameKey": true,
+      "persistedBids": 1,
+      "balanceAfter": "990.00"
+    },
+    "accountSwitch": {
+      "newAccountVisible": 1,
+      "oldAccountVisible": 0
+    },
+    "backNavigation": {
+      "url": "/my-bids?view=history",
+      "selectedTab": "history"
+    }
+  },
+  "buildId": "8r4eyPIgNGAxatLY0xobI"
+}

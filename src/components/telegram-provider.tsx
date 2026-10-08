@@ -2,16 +2,20 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import Script from 'next/script';
 import {MINI_AUTH_TIMEOUT_MS,TelegramLaunchError,miniAuthError,signInTelegram,type MiniAccount} from '@/lib/mini-auth-client';
-import {setPrivateQueryIdentity} from './private-query-cache';
+import {setPrivateQueryIdentity,subscribePrivateQueries} from './private-query-cache';
 type WebApp = { initData?: string; platform?:string; ready: () => void; expand?:()=>void; requestFullscreen?:()=>void; close?:()=>void; openTelegramLink?:(url:string)=>void; requestContact?:(callback:(shared:boolean)=>void)=>void; isVersionAtLeast?:(version:string)=>boolean; setHeaderColor?: (color: string) => void; setBackgroundColor?: (color: string) => void };
 declare global { interface Window { Telegram?: { WebApp?: WebApp } } }
 type Me = MiniAccount;
 type Status = 'loading' | 'guest' | 'contact-required' | 'authenticated' | 'error';
-const Context = createContext<{ status: Status; verifyingTelegram: boolean; me: Me | null; error: string; needsReopen: boolean; retry: () => void; finishContact: () => Promise<void>; refreshMe: () => Promise<void>; devLogin: (accessKey: string) => void; devEnabled: boolean; botUrl: string | null }>({ status: 'loading', verifyingTelegram: false, me: null, error: '', needsReopen: false, retry: () => {}, finishContact: async () => {}, refreshMe: async () => {}, devLogin: () => {}, devEnabled: false, botUrl: null });
+const Context = createContext<{ status: Status; queryIdentity:string|null; verifyingTelegram: boolean; me: Me | null; error: string; needsReopen: boolean; retry: () => void; finishContact: () => Promise<void>; refreshMe: () => Promise<void>; devLogin: (accessKey: string) => void; devEnabled: boolean; botUrl: string | null }>({ status: 'loading', queryIdentity:null, verifyingTelegram: false, me: null, error: '', needsReopen: false, retry: () => {}, finishContact: async () => {}, refreshMe: async () => {}, devLogin: () => {}, devEnabled: false, botUrl: null });
 export const useTelegram = () => useContext(Context);
 export function TelegramProvider({ children, devEnabled, botUrl, requireLaunch=false }: { children: React.ReactNode; devEnabled: boolean; botUrl: string | null; requireLaunch?:boolean }) {
   const [status, setStatus] = useState<Status>('loading');
   const [verifyingTelegram, setVerifyingTelegram] = useState(false);
+  const [queryIdentity,setQueryIdentity]=useState<string|null>(null);
+  const identityRef=useRef<string|null>(null);
+  const refreshSequence=useRef(0);
+  const accountUpdatedAt=useRef(0);
   const [me, setMe] = useState<Me | null>(null);
   const [error, setError] = useState('');
   const [needsReopen, setNeedsReopen] = useState(false);
@@ -19,18 +23,43 @@ export function TelegramProvider({ children, devEnabled, botUrl, requireLaunch=f
   const launchAttempt=useRef<string|null>(null);
   const attemptSequence=useRef(0);
   const authenticating=useRef(false);
-  const refreshMe=useCallback(async()=>{
-    const response=await fetch('/api/me',{cache:'no-store',signal:AbortSignal.timeout(MINI_AUTH_TIMEOUT_MS)});
-    if(response.status===401||response.status===403){setMe(null);setStatus('guest');throw new Error('Your session expired. Reopen Lowwin from Telegram.')}
-    if(!response.ok)throw new Error('Account refresh failed');
-    setMe(await response.json());
+  const clearAccount=useCallback(()=>{
+    refreshSequence.current++;
+    identityRef.current=null;setPrivateQueryIdentity(null);setQueryIdentity(null);setMe(null);
   },[]);
+  const acceptAccount=useCallback((account:Me)=>{
+    const identity=account.user.id+':'+(account.sessionKey??String(attemptSequence.current));
+    identityRef.current=identity;accountUpdatedAt.current=Date.now();
+    setPrivateQueryIdentity(identity);setQueryIdentity(identity);setMe(account);
+  },[]);
+  const refreshMe=useCallback(async()=>{
+    const attempt=attemptSequence.current,sequence=++refreshSequence.current;
+    const identity=identityRef.current;
+    const response=await fetch('/api/me',{cache:'no-store',signal:AbortSignal.timeout(MINI_AUTH_TIMEOUT_MS)});
+    if(attempt!==attemptSequence.current||sequence!==refreshSequence.current||identity!==identityRef.current)return;
+    if(response.status===401||response.status===403){clearAccount();setStatus('guest');throw new Error('Your session expired. Reopen Lowwin from Telegram.')}
+    if(!response.ok)throw new Error('Account refresh failed');
+    const account=await response.json();
+    if(attempt!==attemptSequence.current||sequence!==refreshSequence.current||identity!==identityRef.current)return;
+    acceptAccount(account);
+  },[acceptAccount,clearAccount]);
+  useEffect(()=>subscribePrivateQueries(event=>{
+    if(event.kind==='authorization'&&event.identity===identityRef.current){
+      attemptSequence.current++;clearAccount();setStatus('guest');
+    }
+  }),[clearAccount]);
+  useEffect(()=>{
+    const visible=()=>{if(!document.hidden&&identityRef.current&&Date.now()-accountUpdatedAt.current>=15_000)void refreshMe().catch(()=>{})};
+    document.addEventListener('visibilitychange',visible);
+    return()=>document.removeEventListener('visibilitychange',visible);
+  },[refreshMe]);
+  useEffect(()=>()=>{attemptSequence.current++;refreshSequence.current++;identityRef.current=null;setPrivateQueryIdentity(null)},[]);
   const authenticate = useCallback(async (dev = false, accessKey?: string) => {
     // The SDK callback, mount effect and Retry must not create parallel sign-ins.
     if(authenticating.current)return;
     authenticating.current=true;
     const attempt=++attemptSequence.current;
-    setStatus('loading'); setError(''); setNeedsReopen(false);
+    clearAccount();setStatus('loading'); setError(''); setNeedsReopen(false);
     const app = window.Telegram?.WebApp;
     launchAttempt.current=app?.initData??'';
     // The spinner is presentation only. Access still requires signed initData and server contact verification.
@@ -42,7 +71,7 @@ export function TelegramProvider({ children, devEnabled, botUrl, requireLaunch=f
       if(app?.initData&&!dev) {
         const result=await signInTelegram(app.initData);
         if(attempt!==attemptSequence.current)return;
-        setMe(result.me);setStatus(result.status);return;
+        if(result.status==='authenticated')acceptAccount(result.me);setStatus(result.status);return;
       }
       if(dev) {
         const response=await fetch('/api/auth/lowin/dev-identity',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({accessKey}),signal:AbortSignal.timeout(MINI_AUTH_TIMEOUT_MS)});
@@ -53,13 +82,13 @@ export function TelegramProvider({ children, devEnabled, botUrl, requireLaunch=f
       if(attempt!==attemptSequence.current)return;
       if (response.status === 401 || (!app?.initData && !dev && response.status === 503)) { setMe(null); setStatus('guest'); return; }
       if (!response.ok) throw new Error('Your account could not be loaded. Please retry.');
-      const account=await response.json();if(attempt!==attemptSequence.current)return;setMe(account); setStatus('authenticated');
+      const account=await response.json();if(attempt!==attemptSequence.current)return;acceptAccount(account); setStatus('authenticated');
     } catch (err) { if(attempt!==attemptSequence.current)return;setMe(null); setNeedsReopen(err instanceof TelegramLaunchError); setError(miniAuthError(err)); setStatus('error'); }
     finally { authenticating.current=false;if(attempt===attemptSequence.current)setVerifyingTelegram(false); }
-  }, [requireLaunch]);
+  }, [requireLaunch,acceptAccount,clearAccount]);
   const finishContact=useCallback(async()=>{
     const attempt=++attemptSequence.current;
-    setStatus('loading');setError('');setNeedsReopen(false);setVerifyingTelegram(true);
+    clearAccount();setStatus('loading');setError('');setNeedsReopen(false);setVerifyingTelegram(true);
     try{
       // /api/me requires the stored Telegram-bound session and verified contact.
       // Reusing that session avoids a second Mini App sign-in after the bot confirms contact.
@@ -68,17 +97,16 @@ export function TelegramProvider({ children, devEnabled, botUrl, requireLaunch=f
       if(response.status===401||response.status===403)throw new TelegramLaunchError();
       if(!response.ok)throw new Error('Contact was shared, but your account could not load. Tap Retry.');
       const account=await response.json();if(attempt!==attemptSequence.current)return;
-      setMe(account);setStatus('authenticated');
+      acceptAccount(account);setStatus('authenticated');
     }catch(cause){if(attempt!==attemptSequence.current)return;setMe(null);setNeedsReopen(cause instanceof TelegramLaunchError);setError(miniAuthError(cause));setStatus('error')}
     finally{if(attempt===attemptSequence.current)setVerifyingTelegram(false)}
-  },[]);
+  },[acceptAccount,clearAccount]);
   const autoAuthenticate=useCallback(()=>{const launch=window.Telegram?.WebApp?.initData??'';if(launchAttempt.current===launch)return;void authenticate()},[authenticate]);
   useEffect(() => {
     const color=(status==='loading'&&verifyingTelegram)||status==='error'||(requireLaunch&&status==='guest')?'#008000':'#FFFFFF';
     try { window.Telegram?.WebApp?.setHeaderColor?.(color); } catch { /* Older Telegram clients may reject custom colors. */ }
     try { window.Telegram?.WebApp?.setBackgroundColor?.(color); } catch { /* Keep recovery controls usable. */ }
   },[status,verifyingTelegram,requireLaunch]);
-  useEffect(()=>{setPrivateQueryIdentity(status==='authenticated'?me?.user.id??null:null)},[status,me?.user.id]);
   // A late SDK load can arrive during a previous request. Retry only a changed
   // launch once that request settles, never loop on the same failed launch.
   useEffect(()=>{if(status!=='loading')autoAuthenticate()},[status,autoAuthenticate]);
@@ -89,7 +117,7 @@ export function TelegramProvider({ children, devEnabled, botUrl, requireLaunch=f
     if(window.Telegram?.WebApp?.initData){autoAuthenticate();return}
     const timer = setTimeout(autoAuthenticate, 800); return () => clearTimeout(timer);
   }, [autoAuthenticate]);
-  return <Context.Provider value={{ status, verifyingTelegram, me, error, needsReopen, retry: () => {if(!needsReopen)void authenticate()}, finishContact, refreshMe, devLogin: accessKey => void authenticate(true, accessKey), devEnabled: devEnabled && localBrowser, botUrl }}>
+  return <Context.Provider value={{ status, queryIdentity, verifyingTelegram, me, error, needsReopen, retry: () => {if(!needsReopen)void authenticate()}, finishContact, refreshMe, devLogin: accessKey => void authenticate(true, accessKey), devEnabled: devEnabled && localBrowser, botUrl }}>
     <Script src="https://telegram.org/js/telegram-web-app.js" strategy="afterInteractive" onReady={autoAuthenticate}/>
     {children}
   </Context.Provider>;

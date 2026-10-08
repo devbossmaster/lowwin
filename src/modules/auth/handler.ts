@@ -50,7 +50,7 @@ export async function handleAuth(request: Request) {
       if(path==='/telegram/miniapp/signin'&&request.headers.has('cookie')) {
         const current=await getLaunchSession(request.headers);
         if(current?.telegramId===identity) {
-          const result=await telegramBootstrap(db,current.user,identity);
+          const result=await telegramBootstrap(db,current.user,identity,current.session.id);
           return Response.json(result,{headers:{...responseHeaders,'Server-Timing':`auth;dur=${Math.round(performance.now()-started)}`}});
         }
       }
@@ -70,7 +70,7 @@ export async function handleAuth(request: Request) {
           const bound=await tx.session.updateMany({where:{id:issued.session.id,userId:issued.user.id,user:{telegramId:identity,staffMember:null}},data:{telegramLaunchId:identity}});
           if(bound.count!==1)throw new Error('Launch identity mismatch');
           await bindOwnContact(tx,issued.user.id,identity);
-          result=await telegramBootstrap(tx,issued.user,identity);
+          result=await telegramBootstrap(tx,issued.user,identity,issued.session.id);
         }
         // Do not return the plugin's session token in a browser-readable JSON body.
         const headers = new Headers(response.headers);

@@ -50,15 +50,7 @@ export default async function AllAuctions({searchParams}:{searchParams:Promise<S
  const sectionData:Record<GroupStatus,Awaited<ReturnType<typeof listAuctions>>>={live:results.live!,upcoming:results.upcoming!,closed};
 
  return <div className={styles.page}><OfflineRetry/><div className={styles.content}>
-  <header className={styles.header}><div><h1>{title}</h1><p><MiniPhrase en="Browse auctions by status, category, or product." am="ጨረታዎችን በሁኔታ፣ በምድብ ወይም በምርት ይፈልጉ።"/></p></div><Link className={styles.reset} href="/auctions/all"><RotateCcw size={15}/><MiniPhrase en="Reset" am="አጽዳ"/></Link></header>
-
-  <form className={styles.filters} action="/auctions/all" method="get" role="search">
-   <label className={styles.search}><span><MiniPhrase en="Search auctions" am="ጨረታ ይፈልጉ"/></span><input name="q" defaultValue={query.q} maxLength={80}/></label>
-   <label><span><MiniPhrase en="Status" am="ሁኔታ"/></span><select name="status" defaultValue={query.status}><option value="all"><MiniPhrase en="All auctions" am="ሁሉም ጨረታዎች"/></option><option value="live"><MiniPhrase en="Live" am="ቀጥታ"/></option><option value="upcoming"><MiniPhrase en="Upcoming" am="የሚመጡ"/></option><option value="closing"><MiniPhrase en="Finalizing" am="ውጤት በመጠባበቅ ላይ"/></option><option value="closed"><MiniPhrase en="Closed" am="የተዘጉ"/></option></select></label>
-   <label><span><MiniPhrase en="Category" am="ምድብ"/></span><select name="category" defaultValue={query.category??''}><option value=""><MiniPhrase en="All categories" am="ሁሉም ምድቦች"/></option>{categories.map(category=><option value={category.slug} key={category.slug}><MiniCategoryName slug={category.slug} name={category.name} nameAm={category.nameAm}/></option>)}</select></label>
-   <label><span><MiniPhrase en="Sort by" am="ደረጃ አሰጣጥ"/></span><select name="sort" defaultValue={query.sort}><option value="code"><MiniPhrase en="Auction code" am="የጨረታ ኮድ"/></option><option value="ending"><MiniPhrase en="Ending soon" am="በቅርቡ የሚያበቁ"/></option><option value="newest"><MiniPhrase en="Recently added" am="በቅርቡ የተጨመሩ"/></option><option value="title"><MiniPhrase en="Product name" am="የምርት ስም"/></option></select></label>
-   <button type="submit"><MiniPhrase en="Apply filters" am="ፈልግ"/></button>
-  </form>
+  <header className={styles.header}><div><h1>{title}</h1></div><Link className={styles.reset} href="/auctions/all"><RotateCcw size={15}/><MiniPhrase en="Reset" am="አጽዳ"/></Link></header>
 
   <nav className={styles.tabs} aria-label="Auction status">{statusTabs.map(tab=><Link key={tab.value} href={auctionBrowseHref(query,{status:tab.value,page:1})} aria-current={query.status===tab.value?'page':undefined}><span><MiniPhrase en={tab.en} am={tab.am}/></span><strong>{tab.count}</strong></Link>)}</nav>
 

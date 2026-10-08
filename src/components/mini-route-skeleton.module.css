@@ -11,3 +11,18 @@
 .auctionImage{height:clamp(185px,56vw,255px)}.auctionBody{padding:14px 17px 17px}.winnerImage{height:215px}.winnerBody{padding:17px 16px 18px}
 
 @media(min-width:420px){.winnerImage{height:245px}}
+
+/* Match the full-width personal cards instead of the former compact rows. */
+.personalCard{min-width:0;overflow:hidden;border:1px solid #e4e9e5;border-radius:16px;background:#fff}
+.personalCard .auctionImage{height:clamp(185px,56vw,255px)}
+.filters{display:flex;gap:8px;overflow:hidden}.filters .bone{flex:1;height:39px;border-radius:20px}
+.root:has(>.detailBid){min-height:0;padding:0;background:transparent}
+
+/* Align with the compact profile and wallet surfaces, including their row rhythm. */
+.profileHeading{padding-bottom:20px;border-bottom:1px solid #e4e9e5}
+.profileWallet{min-height:150px;background:#f5f8f5;border:1px solid #dce6de}
+.profileWallet .bone{background:linear-gradient(100deg,var(--bone) 22%,var(--bone-hi) 40%,var(--bone) 62%);background-size:300% 100%}
+.profileCaption{width:62%;height:14px}.profileLinks{gap:6px}.profileLinks .bone{height:50px}
+.root:has(>.wallet){background:#f3f4f8}.walletBalance{background:#fff}.walletTabs{border-radius:30px;background:#fff}.walletTabs .bone{border-radius:24px}
+.paymentLabel{width:46%;height:16px;margin-top:8px}
+@media(prefers-reduced-motion:reduce){.profileWallet .bone{animation:none;background:#e8ede8}}

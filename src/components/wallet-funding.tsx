@@ -1,4 +1,5 @@
 'use client';
+import {useMiniPage} from './mini-query-state';
 import {paymentChannelName} from '@/lib/payment-channels';
 import {useEffect,useId,useRef,useState} from 'react';
 import Link from 'next/link';
@@ -27,10 +28,10 @@ const money=(c:string)=>(BigInt(c)/100n).toString()+'.'+(BigInt(c)%100n).toStrin
 const depositLimit=(c:string)=>{const cents=BigInt(c),fraction=cents%100n;return `${new Intl.NumberFormat('en-US').format(cents/100n)}${fraction?'.'+fraction.toString().padStart(2,'0'):''}`};
 const labels:Record<string,string>={PENDING:'Pending verification',VERIFYING:'Verifying',CREDITED:'Credited',NEEDS_REVIEW:'Needs review',REJECTED:'Rejected',DUPLICATE_CONFLICT:'Transaction ID already used',PROVIDER_OUTAGE:'Provider unavailable — retry pending'};
 type FundingView='deposit'|'deposits'|'hidden';
-export function WalletFunding({view='deposit',onContinue}:{view?:FundingView;onContinue?:()=>void}){const {me}=useTelegram();return <Funding key={me?.user.id??'guest'} view={view} onContinue={onContinue}/>}
+export function WalletFunding({view='deposit',onContinue}:{view?:FundingView;onContinue?:()=>void}){const {me,queryIdentity}=useTelegram();return <Funding key={queryIdentity??'guest'} view={view} onContinue={onContinue}/>}
 function Funding({view,onContinue}:{view:FundingView;onContinue?:()=>void}){
- const w=useWalletCopy(),{refreshMe,me}=useTelegram(),notify=useMiniNotice(),noticeId=useId();
- const [page,setPage]=useState(1),query=usePrivateQuery<Data>(`/api/wallet/top-ups?page=${page}`);
+ const w=useWalletCopy(),{refreshMe,me,queryIdentity}=useTelegram(),notify=useMiniNotice(),noticeId=useId();
+ const [page,setPage]=useMiniPage('depositsPage'),query=usePrivateQuery<Data>(`/api/wallet/top-ups?page=${page}`);
  const [selected,setSelected]=useState(''),[intent,setIntent]=useState<Intent|null>(null),[input,setInput]=useState(''),[busy,setBusy]=useState(''),[message,setMessage]=useState(''),[receipt,setReceipt]=useState<SelectedReceipt|null>(null);
  const createKey=useRef(''),verifyKey=useRef(''),imageKeys=useRef(new Map<string,string>()),working=useRef(false),receiptUrl=useRef<string|null>(null);
  const options=query.data?.options;
@@ -45,7 +46,7 @@ function Funding({view,onContinue}:{view:FundingView;onContinue?:()=>void}){
    if(cancelled||!updated||updated.status===intent.status)return;
    setIntent(updated);query.reload();
    const feedback=depositFeedback(updated,w);inform(feedback.message,feedback.kind);
-   if(updated.status==='CREDITED'){if(me?.user.id)invalidatePrivateQueries(me.user.id);window.dispatchEvent(new Event('lowin-wallet-updated'));window.dispatchEvent(new Event('lowin-alerts'));void refreshMe()}
+   if(updated.status==='CREDITED'){if(queryIdentity)invalidatePrivateQueries(queryIdentity);window.dispatchEvent(new Event('lowin-wallet-updated'));window.dispatchEvent(new Event('lowin-alerts'));void refreshMe()}
   }catch{/* The next poll can recover a transient network failure. */}};
   const timer=setInterval(()=>void poll(),5000);return()=>{cancelled=true;clearInterval(timer)};
  // Polling is tied to the selected deposit, not to query refreshes.
@@ -84,7 +85,7 @@ function Funding({view,onContinue}:{view:FundingView;onContinue?:()=>void}){
    setIntent(updated);const feedback=depositFeedback(updated,w);inform(feedback.message,feedback.kind);
    query.reload();
    if(updated.status==='CREDITED'){
-    if(me?.user.id)invalidatePrivateQueries(me.user.id);
+    if(queryIdentity)invalidatePrivateQueries(queryIdentity);
     window.dispatchEvent(new Event('lowin-wallet-updated'));window.dispatchEvent(new Event('lowin-alerts'));
     void refreshMe().catch(()=>setMessage(`${updated.points} ${w('ETB credited. Receipt recorded.')} ${w('Reopen the wallet to refresh your balance.')}`));
    }
@@ -92,7 +93,7 @@ function Funding({view,onContinue}:{view:FundingView;onContinue?:()=>void}){
  }
  function reset(){setIntent(null);setInput('');setMessage('');clearReceipt();createKey.current='';verifyKey.current='';imageKeys.current.clear()}
  if(query.status==='loading'||query.status==='authenticated'&&!query.data&&!query.error)return <section hidden={view==='hidden'} className={styles.funding} aria-busy="true"><h2>{w(view==='deposit'?'Add money':'Deposits')}</h2><WalletFundingSkeleton variant={view==='deposits'?'deposits':'deposit'}/></section>;
- if(query.error)return <section hidden={view==='hidden'} className={styles.funding}><h2>{w(view==='deposit'?'Add money':'Deposits')}</h2><p className={styles.error} role="alert">{w(view==='deposit'?'Payment accounts could not load.':'Deposit history could not load.')}<button type="button" onClick={query.reload}>{w('Retry')}</button></p></section>;
+ if(query.error&&!query.data)return <section hidden={view==='hidden'} className={styles.funding}><h2>{w(view==='deposit'?'Add money':'Deposits')}</h2><p className={styles.error} role="alert">{w(view==='deposit'?'Payment accounts could not load.':'Deposit history could not load.')}<button type="button" onClick={query.reload}>{w('Retry')}</button></p></section>;
  return <>
   <div hidden={view!=='deposit'}>{!options?.enabled?<WalletFundingPreview/>:<section className={styles.funding} id="add-etb" aria-busy={!!busy}>
    <h2>{w('Add money')}</h2>

@@ -1,2 +1,2 @@
-import {MiniRouteSkeleton} from '@/components/mini-route-skeleton';
-export default function Loading(){return <MiniRouteSkeleton/>}
+import {MiniRouteLoading} from '@/components/mini-route-loading';
+export default function Loading(){return <MiniRouteLoading/>}

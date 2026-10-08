@@ -4,7 +4,7 @@ import {isSubmissionFeeOnly,usesDecimalBids} from '@/modules/auctions/rules';
 import {useMiniLocale} from './mini-locale';
 import {useWalletCopy} from './wallet-copy';
 import {BidConfirmDialog} from './bid-confirm-dialog';
-import {LoadingSpinner} from '@/components/loading-spinner';
+import {BidPanelSkeleton} from './mini-route-skeleton';
 
 import { useCallback,useEffect,useMemo,useState } from 'react';
 import Link from 'next/link';
@@ -14,29 +14,29 @@ import { IdentityState } from './identity-state';
 import { formatEtb,etbToCents,centsToEtb } from '@/lib/money';
 import {useMiniNotice} from './mini-notice';
 import {useCelebration} from './celebration';
-import {invalidatePrivateQueries} from './private-query-cache';
+import {invalidatePrivateQueries,loadPrivateJson,readPrivateQuery,subscribePrivateQueries} from './private-query-cache';
 type OwnBid={id:string;amount:string;acceptedAt:string};
 type BidState={auctionCode:string;open:boolean;serverNow:string;isDemo:boolean;terms:{ruleVersion:string;minParticipants:number;version:number;minPoints:string;maxPoints:string|null;stepPoints:string;entryFeePoints:string;maxDistinctBids:number};wallet:{available:string;held:string};previousMax:string;remainingSubmissions:number;ownBids:OwnBid[]};
 type Receipt={bid:{id:string;auctionCode:string;auctionSlug:string;amount:string;acceptedAt:string;termsVersion:number;feePoints:string};hold:{previousMax:string;newMax:string;extraReserved:string};charge:{feePoints:string;newlyUnavailable:string};wallet:{available:string;held:string};remainingSubmissions:number;ownBids:OwnBid[]};
 const integer=/^[1-9]\d{0,15}(?:\.\d{1,2})?$/;
 type BidFormProps={slug:string;title?:string;status:'live'|'upcoming'|'closing'|'closed'|'cancelled';isDemo:boolean;compact?:boolean};
 export function BidForm(props:BidFormProps) {
-  const {me}=useTelegram();
-  return <div id="bid-review"><BidFormForIdentity key={me?.user.id??'guest'} {...props}/></div>;
+  const {queryIdentity}=useTelegram();
+  return <div id="bid-review"><BidFormForIdentity key={queryIdentity??'guest'} {...props}/></div>;
 }
 function BidFormForIdentity({slug,title,status,isDemo,compact=false}:BidFormProps) {
-  const {status:authStatus,refreshMe,me}=useTelegram();
+  const {status:authStatus,refreshMe,queryIdentity}=useTelegram();
   const w=useWalletCopy();const {language}=useMiniLocale();
   const notify=useMiniNotice();
   const celebrate=useCelebration();
-  const [state,setState]=useState<BidState|null>(null),[loading,setLoading]=useState(false),[amount,setAmount]=useState(''),[key,setKey]=useState<string|null>(null),[confirm,setConfirm]=useState(false),[agreed,setAgreed]=useState(false),[submitting,setSubmitting]=useState(false),[error,setError]=useState(''),[receipt,setReceipt]=useState<Receipt|null>(null);
-  const refresh=useCallback(async(signal?:AbortSignal)=>{
+  const [state,setState]=useState<BidState|null>(()=>queryIdentity?readPrivateQuery<BidState>(queryIdentity,`/api/auctions/${slug}/bids`)?.value??null:null),[loading,setLoading]=useState(false),[amount,setAmount]=useState(''),[key,setKey]=useState<string|null>(null),[confirm,setConfirm]=useState(false),[agreed,setAgreed]=useState(false),[submitting,setSubmitting]=useState(false),[error,setError]=useState(''),[receipt,setReceipt]=useState<Receipt|null>(null);
+  const refresh=useCallback(async(signal?:AbortSignal,force=true)=>{
     setLoading(true);setError('');
-    try {const response=await fetch(`/api/auctions/${slug}/bids`,{cache:'no-store',signal});if(!response.ok)throw new Error('Bid details are unavailable.');setState(await response.json())}
+    try {if(!queryIdentity)return;const value=await loadPrivateJson<BidState>(queryIdentity,`/api/auctions/${slug}/bids`,{force});if(!signal?.aborted)setState(value)}
     catch(cause){if(!signal?.aborted)setError(cause instanceof Error?cause.message:'Bid details are unavailable.')}
     finally {if(!signal?.aborted)setLoading(false)}
-  },[slug]);
-  useEffect(()=>{if(authStatus!=='authenticated'){setState(null);setReceipt(null);return}const controller=new AbortController();void refresh(controller.signal);return()=>controller.abort()},[authStatus,refresh]);
+  },[slug,queryIdentity]);
+  useEffect(()=>{if(authStatus!=='authenticated'){setState(null);setReceipt(null);return}const controller=new AbortController();void refresh(controller.signal,false);const unsubscribe=subscribePrivateQueries(event=>{if(event.kind==='mutation'&&event.identity===queryIdentity)void refresh(controller.signal,false)});return()=>{controller.abort();unsubscribe()}},[authStatus,refresh,queryIdentity]);
   const feeOnly=isSubmissionFeeOnly(state?.terms.ruleVersion);
   const bidLabel=(value:string)=>feeOnly?centsToEtb(etbToCents(value)):formatEtb(value);
   const preview=useMemo(()=>{
@@ -46,9 +46,9 @@ function BidFormForIdentity({slug,title,status,isDemo,compact=false}:BidFormProp
     const extra=isSubmissionFeeOnly(terms.ruleVersion)?0n:value>previous?value-previous:0n;
     return {amount:centsToEtb(value),previous:centsToEtb(previous),newMax:centsToEtb((previous+extra)),extra:centsToEtb(extra),fee:centsToEtb(fee),total:centsToEtb((extra+fee)),enough:etbToCents(state.wallet.available)>=extra+fee,consecutive:usesDecimalBids(state.terms.ruleVersion)&&createsFourConsecutiveAmounts(state.ownBids.map(b=>etbToCents(b.amount)),value),duplicate:state.ownBids.some(bid=>etbToCents(bid.amount)===value)};
   },[amount,state]);
-  if(authStatus==='loading')return <LoadingSpinner/>;
+  if(authStatus==='loading')return <BidPanelSkeleton/>;
   if(authStatus!=='authenticated')return <div className="bid-panel"><h2>{w("Ready when you are")}</h2><p>{w("Open Lowwin in Telegram and sign in before submitting an ETB bid.")}</p><IdentityState/></div>;
-  if(loading&&!state)return <LoadingSpinner/>;
+  if(loading&&!state)return <BidPanelSkeleton/>;
   if(!state)return <div className="bid-panel"><p role="alert">{w(error||'Bid details are unavailable.')}</p><button className="text-link" onClick={()=>void refresh()}><RefreshCw size={16}/> {w("Retry")}</button></div>;
   if(receipt)return <section className="bid-panel receipt-panel" aria-live="polite"><ShieldCheck size={26}/><h2>{bidLabel(receipt.bid.amount)} {w("bid accepted")}</h2><p>{w("Accepted")} {new Date(receipt.bid.acceptedAt).toLocaleString(language==='am'?'am-ET':'en-ET',{dateStyle:'medium',timeStyle:'medium',timeZone:'Africa/Addis_Ababa'})}. {w("This receipt records your bid; it does not predict a winner.")}</p><dl className="bid-preview-list">{!feeOnly&&<div><dt>{w("Extra ETB reserved")}</dt><dd>{formatEtb(receipt.hold.extraReserved)}</dd></div>}{(feeOnly||Number(receipt.charge.feePoints)>0)&&<div><dt>{w("Submission fee charged")}</dt><dd>{formatEtb(receipt.charge.feePoints)}</dd></div>}<div><dt>{w("Available now")}</dt><dd>{formatEtb(receipt.wallet.available)}</dd></div>{!feeOnly&&<div><dt>{w("Held now")}</dt><dd>{formatEtb(receipt.wallet.held)}</dd></div>}<div><dt>{w("Submissions left")}</dt><dd>{receipt.remainingSubmissions}</dd></div></dl><button className="secondary-button" onClick={()=>{setReceipt(null);setAmount('');setKey(null);setConfirm(false)}}>{w("Submit another amount")}</button><Link className="text-link" href="/wallet">{w("View wallet")} <ArrowRight size={16}/></Link></section>;
   if(!state.open||status!=='live')return <><div className="bid-unavailable"><LockKeyhole size={19}/><div><strong>{w(status==='closing'?'Auction ended':status==='cancelled'?'Auction cancelled':status==='upcoming'?'Bidding has not opened':status==='closed'?'Bidding has closed':isDemo?'DEMO bids unavailable here':'Bidding unavailable')}</strong>{status!=='closing'&&<p>{w(status==='cancelled'?(feeOnly?'Auction cancelled. Submission fees are non-refundable.':'Auction holds and charged entry fees have been returned.'):isDemo?'DEMO bidding requires an enrolled staging tester or isolated local test account.':'Your existing bids remain private to you.')}</p>}</div></div>{state.ownBids.length>0&&<div className="own-bids"><h3>{w("Your accepted amounts")}</h3><div>{state.ownBids.map(bid=><span key={bid.id}>{bidLabel(bid.amount)}</span>)}</div></div>}</>;
@@ -62,7 +62,7 @@ function BidFormForIdentity({slug,title,status,isDemo,compact=false}:BidFormProp
   const submit=async()=>{
     if(!valid||submitting||!agreed)return;
     const requestKey=key??crypto.randomUUID();setKey(requestKey);setSubmitting(true);setError('');
-    try {const response=await fetch(`/api/auctions/${slug}/bids`,{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount,key:requestKey,feeVersion:state.terms.version})});const body=await response.json();if(!response.ok){setError(body.error??'Bid was not accepted.');notify(body.error??'Bid was not accepted.','error');if(body.code==='AUCTION_CLOSED'||body.code==='RETRYABLE_CONFLICT'){setConfirm(false);setAgreed(false);setKey(null);void refresh()}return}const accepted=body as Receipt;setConfirm(false);setAgreed(false);setReceipt(accepted);notify(`${bidLabel(accepted.bid.amount)} ${w('bid accepted')}`,'success');setState(previous=>previous?{...previous,wallet:accepted.wallet,previousMax:accepted.hold.newMax,remainingSubmissions:accepted.remainingSubmissions,ownBids:accepted.ownBids}:previous);if(me?.user.id)invalidatePrivateQueries(me.user.id);celebrate();void refreshMe().catch(()=>{});}
+    try {const response=await fetch(`/api/auctions/${slug}/bids`,{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount,key:requestKey,feeVersion:state.terms.version})});const body=await response.json();if(!response.ok){setError(body.error??'Bid was not accepted.');notify(body.error??'Bid was not accepted.','error');if(body.code==='AUCTION_CLOSED'||body.code==='RETRYABLE_CONFLICT'){setConfirm(false);setAgreed(false);setKey(null);void refresh()}return}const accepted=body as Receipt;setConfirm(false);setAgreed(false);setReceipt(accepted);notify(`${bidLabel(accepted.bid.amount)} ${w('bid accepted')}`,'success');setState(previous=>previous?{...previous,wallet:accepted.wallet,previousMax:accepted.hold.newMax,remainingSubmissions:accepted.remainingSubmissions,ownBids:accepted.ownBids}:previous);if(queryIdentity)invalidatePrivateQueries(queryIdentity);celebrate();void refreshMe().catch(()=>{});}
     catch {const message='Connection interrupted. Retry this same request; it cannot debit you twice.';setError(message);notify(message,'error')}
     finally {setSubmitting(false)}
   };

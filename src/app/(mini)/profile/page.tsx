@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
-import Link from 'next/link';
+import {IntentPrefetchLink as Link} from '@/components/intent-prefetch-link';
+import {invalidatePrivateQueries} from '@/components/private-query-cache';
 import { ChevronRight,Wallet,Trophy,Heart,CircleHelp,Bell,Layers,MessageCircle,UserRound,Pencil } from 'lucide-react';
 import { usePrivateQuery,PrivateState } from '@/components/private-query';
 import {MiniRouteSkeleton} from '@/components/mini-route-skeleton';
@@ -13,11 +14,11 @@ import {useMiniLocale} from '@/components/mini-locale';
 export default function Profile() {
   const query=usePrivateQuery<Awaited<ReturnType<typeof getPlayerProfile>>>('/api/profile'),data=query.data;
   const {language}=useMiniLocale(),am=language==='am',text=(en:string,amharic:string)=>am?amharic:en;
-  const {refreshMe,me}=useTelegram();const [editing,setEditing]=useState(false),[saving,setSaving]=useState(false),[message,setMessage]=useState('');
+  const {refreshMe,me,queryIdentity}=useTelegram();const [editing,setEditing]=useState(false),[saving,setSaving]=useState(false),[message,setMessage]=useState('');
   const photo=me?.user.image?.startsWith('https://')?me.user.image:null;
   async function save(event:React.FormEvent<HTMLFormElement>) {
     event.preventDefault();const form=new FormData(event.currentTarget);setSaving(true);setMessage('');
-    try{const response=await fetch('/api/profile',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({displayName:form.get('displayName'),bio:form.get('bio')}),cache:'no-store'});const body=await response.json();if(!response.ok)throw new Error(body.error);setEditing(false);setMessage(text('Display profile saved.','መገለጫዎ ተቀምጧል።'));query.reload();await refreshMe()}catch{setMessage(text('Could not save. Please retry.','መገለጫዎን ማስቀመጥ አልተቻለም። እንደገና ይሞክሩ።'))}finally{setSaving(false)}
+    try{const response=await fetch('/api/profile',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({displayName:form.get('displayName'),bio:form.get('bio')}),cache:'no-store'});const body=await response.json();if(!response.ok)throw new Error(body.error);setEditing(false);setMessage(text('Display profile saved.','መገለጫዎ ተቀምጧል።'));if(queryIdentity)invalidatePrivateQueries(queryIdentity);await refreshMe()}catch{setMessage(text('Could not save. Please retry.','መገለጫዎን ማስቀመጥ አልተቻለም። እንደገና ይሞክሩ።'))}finally{setSaving(false)}
   }
   if(query.status==='loading'||query.status==='authenticated'&&!data&&!query.error)return <MiniRouteSkeleton/>;
   return <><OfflineRetry/><section className="page-inset profile-page"><h1 className="profile-accessible-title">{text('Profile','መገለጫ')}</h1><PrivateState query={query} variant="profile"/>{data&&<>

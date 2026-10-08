@@ -1,4 +1,5 @@
 'use client';
+import {useMiniPage} from '@/components/mini-query-state';
 import {useState} from 'react';
 import Link from 'next/link';
 import {Bell,Check,CheckCheck,Clock3} from 'lucide-react';
@@ -6,20 +7,23 @@ import {usePrivateQuery,PrivateState,PersonalPagination} from '@/components/priv
 import {useMiniLocale} from '@/components/mini-locale';
 import {notificationCopy,notificationAge} from '@/components/notification-copy';
 import styles from '@/components/personal-pages.module.css';
+import {useTelegram} from '@/components/telegram-provider';
+import {invalidatePrivateQueries} from '@/components/private-query-cache';
 import {MiniRouteSkeleton} from '@/components/mini-route-skeleton';
 
 type Data={items:{id:string;kind?:string;title:string;body:string;href:string;readAt:string|null;createdAt:string}[];page:number;total:number;totalPages:number;unread:number};
 export default function Alerts(){
   const {language}=useMiniLocale(),am=language==='am',locale=am?'am-ET':'en';
   const text=(en:string,amharic:string)=>am?amharic:en;
-  const [page,setPage]=useState(1),[revision,setRevision]=useState(0),[error,setError]=useState(false),[busy,setBusy]=useState(false);
-  const query=usePrivateQuery<Data>(`/api/alerts?page=${page}&v=${revision}`),data=query.data;
+  const {queryIdentity}=useTelegram();
+  const [page,setPage]=useMiniPage(),[error,setError]=useState(false),[busy,setBusy]=useState(false);
+  const query=usePrivateQuery<Data>(`/api/alerts?page=${page}`),data=query.data;
   async function update(body:unknown){
     setBusy(true);setError(false);
     try{
       const response=await fetch('/api/alerts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
       if(!response.ok)throw new Error('Could not save alerts. Retry.');
-      setRevision(value=>value+1);
+      if(queryIdentity)invalidatePrivateQueries(queryIdentity);
       window.dispatchEvent(new Event('lowin-alerts'));
     }catch{setError(true)}finally{setBusy(false)}
   }

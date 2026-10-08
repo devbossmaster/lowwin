@@ -6,3 +6,5 @@
 @keyframes query-shimmer{to{background-position:-120% 0}}
 @media(max-width:370px){.favoriteCard>i{height:165px}.bidRow{grid-template-columns:78px minmax(0,1fr);gap:10px}.bidRow>i{height:86px}}
 @media(prefers-reduced-motion:reduce){.skeleton i,.skeleton b,.skeleton span{animation:none;background:#edf1ed}}
+
+.refreshing{margin:0;padding:4px 0;color:#334638;font-size:12px;line-height:1.5}
