@@ -23,6 +23,42 @@ describe.skipIf(!url)('Verify.et funding on disposable PostgreSQL',()=>{
   for(const channel of ['telebirr','mpesa','cbe']){const row=await db.paymentPolicy.create({data:{channel,version:1,enabled:true,account:account[channel],accountName:'Fixture receiver',pointsNumerator:1n,centsDenominator:100n,minCents:100n,maxCents:100000n,terms:'Fixture only. Do not send funds.',reviewReference:'Fixture evidence',actorId:user}});policy[channel]=row.id}
  },60000);
  afterAll(async()=>{vi.unstubAllGlobals();await db?.$disconnect()});
+ it('reproduces the closed-transaction error with the old five-second limit',async()=>{
+  await expect(db.$transaction(async tx=>{
+   await new Promise(resolve=>setTimeout(resolve,5500));
+   await tx.user.findFirst();
+  },{timeout:5000})).rejects.toMatchObject({code:'P2028'});
+ },15000);
+ it('keeps delayed authorization in the payment transaction and credits only once',async()=>{
+  const owner=(await db.user.create({data:{id:randomUUID(),name:'Slow authorization fixture'}})).id;
+  const intent=await newIntent(owner),input={id:intent.id,key:randomUUID(),input:reference()},transport=vi.fn(good);
+  const authorize=vi.fn(async(tx:Prisma.TransactionClient)=>{
+   await new Promise(resolve=>setTimeout(resolve,5500));
+   expect(await tx.user.findUnique({where:{id:owner}})).toMatchObject({id:owner});
+  });
+  expect(await verifyIntent(db,owner,input,transport,authorize)).toMatchObject({status:'CREDITED',amountCents:'3027'});
+  expect(authorize).toHaveBeenCalledTimes(2);
+  expect((await verifyIntent(db,owner,input,transport,authorize)).status).toBe('CREDITED');
+  expect(transport).toHaveBeenCalledTimes(1);
+  expect(await db.paymentClaim.count({where:{intentId:intent.id}})).toBe(1);
+  expect(await db.outbox.count({where:{key:`deposit:${intent.id}:credited`}})).toBe(1);
+  expect(await reconcile(db)).toEqual([]);expect(await reconcilePayments(db)).toEqual([]);
+ },45000);
+ it.each([1,2])('fails closed when authorization is revoked at payment phase %i',async phase=>{
+  const owner=(await db.user.create({data:{id:randomUUID(),name:'Revoked authorization fixture'}})).id;
+  const intent=await newIntent(owner),input={id:intent.id,key:randomUUID(),input:reference()},transport=vi.fn(good);
+  let checks=0;
+  const authorize=async(tx:Prisma.TransactionClient)=>{
+   await tx.user.findUniqueOrThrow({where:{id:owner}});
+   if(++checks===phase)throw Error('AUTHORIZATION_REVOKED');
+  };
+  await expect(verifyIntent(db,owner,input,transport,authorize)).rejects.toThrow('AUTHORIZATION_REVOKED');
+  expect(transport).toHaveBeenCalledTimes(phase-1);
+  expect(await db.paymentClaim.count({where:{intentId:intent.id}})).toBe(0);
+  expect(await db.operation.count({where:{scope:'TOPUP_CREDIT',key:intent.id}})).toBe(0);
+  expect(await db.outbox.count({where:{key:`deposit:${intent.id}:credited`}})).toBe(0);
+  expect((await db.topUpIntent.findUniqueOrThrow({where:{id:intent.id}})).status).toBe(phase===1?'PENDING':'VERIFYING');
+ });
  it('credits a provider-derived amount once with balanced journal and one alert',async()=>{
   const intent=await newIntent(),input={id:intent.id,key:randomUUID(),input:reference()};
   expect(intent.amountCents).toBeUndefined();const credited=await verifyIntent(db,user,input,good);expect(credited).toMatchObject({status:'CREDITED',amountCents:'3027',points:'30.27'});

@@ -10,6 +10,7 @@ import {demoBidAllowed} from '../auctions/bids';
 import {bankSchema,depositBankSchema,candidate,submitVerify,submitVerifyImage,readVerifyStatus,assess,providerReference,hash,PaymentError,type VerifyTransport,type Bank,type Verification,type VerificationInput,type ImageVerificationInput,type ImageVerification} from './provider';
 import {CUSTOMER_ATTEMPTS,STAFF_ATTEMPTS,RECOVERY_WINDOW_MS,imageWebhookWait,protectedPayment,retryDetails} from './retry';
 import {creditTransfer} from './credit';
+import {PAYMENT_TRANSACTION_OPTIONS} from './timing';
 type Tx=Prisma.TransactionClient;
 export function paymentHealth(){
  const productionEnabled=liveFundingConfigured();
@@ -23,8 +24,7 @@ export {eligibility as assertDepositEligibility};
 const int=z.string().regex(/^[1-9]\d{0,10}$/);
 const createSchema=z.object({key:z.string().uuid(),channel:depositBankSchema,policyId:z.string().uuid(),amountCents:int}).strict();
 const receiptCreateSchema=z.object({key:z.string().uuid(),channel:depositBankSchema,policyId:z.string().uuid(),input:z.string().min(1).max(4000).optional()}).strict();
-async function existingDeposit(tx:Tx,userId:string,channel:string,reference:string){
- const claim=await usedTransfer(tx,channel,reference);
+async function existingDeposit(tx:Tx,userId:string,channel:string,reference:string,claim:Awaited<ReturnType<typeof usedTransfer>>){
  if(claim?.userId===userId)return tx.topUpIntent.findUnique({where:{id:claim.intentId}});
  return tx.topUpIntent.findFirst({where:{userId,provider:{in:['CHECK_ET','VERIFY_ET']},channel,reference},orderBy:[{createdAt:'asc'},{id:'asc'}]});
 }
@@ -36,7 +36,7 @@ export async function createIntent(client:PrismaClient,userId:string,raw:unknown
  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`},0))`;await eligibility(tx,userId);
  const prior=await tx.topUpIntent.findUnique({where:{userId_key:{userId,key:body.key}}});if(prior){if(prior.requestHash!==fingerprint)throw new PaymentError(409,'Idempotency key changed.');return ownIntent(prior)}
  const reference=fromReceipt&&'input' in body&&body.input?candidate(body.channel,body.input):undefined;
- if(reference){await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`payment-submit:${userId}:${body.channel}:${reference}`},0))`;const used=await usedTransfer(tx,body.channel,reference);if(used&&used.userId!==userId)throw new PaymentError(409,depositFailureMessages.DUPLICATE_CONFLICT);const existing=await existingDeposit(tx,userId,body.channel,reference);if(existing)return {...ownIntent(existing),reused:true}}
+ if(reference){await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`payment-submit:${userId}:${body.channel}:${reference}`},0))`;const used=await usedTransfer(tx,body.channel,reference);if(used&&used.userId!==userId)throw new PaymentError(409,depositFailureMessages.DUPLICATE_CONFLICT);const existing=await existingDeposit(tx,userId,body.channel,reference,used);if(existing)return {...ownIntent(existing),reused:true}}
  const now=await clock(tx);if(await tx.topUpIntent.count({where:{userId,createdAt:{gte:new Date(now.getTime()-3600000)}}})>=8)throw new PaymentError(429,'Too many funding requests. Try later.');
  const policy=await tx.paymentPolicy.findFirst({where:{channel:body.channel},orderBy:{version:'desc'}});if(!policy?.enabled||policy.id!==body.policyId)throw new PaymentError(409,'The quote changed or channel is paused. Review the latest terms.');
  if(policy.pointsNumerator*100n!==policy.centsDenominator)throw new PaymentError(409,'This quote uses an old conversion rate. Ask an Owner to publish the ETB 1:1 quote.');
@@ -45,7 +45,7 @@ export async function createIntent(client:PrismaClient,userId:string,raw:unknown
  // Freeze a bounded receipt submission window, never before this policy existed.
  const earliestTransferAt=new Date(Math.max(policy.createdAt.getTime(),now.getTime()-86400000));
  const t=await tx.topUpIntent.create({data:{userId,key:body.key,provider:'VERIFY_ET',channel:body.channel,reference,policyVersion:policy.id,requestHash:fingerprint,points,expectedCents:amount,amountFromReceipt:fromReceipt,receivingAccount:policy.account,accountName:policy.accountName,quoteSnapshot:{version:policy.version,numerator:policy.pointsNumerator.toString(),denominator:policy.centsDenominator.toString(),terms:policy.terms,...(fromReceipt?{minCents:policy.minCents.toString(),maxCents:policy.maxCents.toString(),earliestTransferAt:earliestTransferAt.toISOString()}:{})},createdAt:now,expiresAt:new Date(now.getTime()+30*60000)}});return ownIntent(t);
- })}
+ },PAYMENT_TRANSACTION_OPTIONS)}
 export async function verifyIntent(client:PrismaClient,userId:string,raw:unknown,transport:VerifyTransport=submitVerify,reauthorize?:(tx:Tx)=>Promise<void>,adminRecovery=false,staffRetry=false){
  return verifyQueuedIntent(client,userId,raw,transport,reauthorize,adminRecovery,staffRetry);
 }
@@ -73,11 +73,11 @@ export async function verifyIntentImage(client:PrismaClient,userId:string,raw:un
   const request=await tx.verifyRequest.create({data:{intentId:t.id,key:body.key,reference:placeholder,state:'SUBMITTING',nextCheckAt:new Date(now.getTime()+60000)}});
   const current=await tx.topUpIntent.update({where:{id:t.id},data:{status:'VERIFYING',reasonCode:'PROCESSING',attempts:{increment:1},scanAttempts:{increment:1},nextAttemptAt:new Date(now.getTime()+5000)}});
   return {requestId:request.id,t:current};
- });
+ },PAYMENT_TRANSACTION_OPTIONS);
  if('receipt' in started)return started.receipt!;
  const quote=started.t.quoteSnapshot as {minCents?:string;maxCents?:string;earliestTransferAt?:string}|null;
  const result:ImageVerification=await transport({bank:bankSchema.parse(started.t.channel),account:started.t.receivingAccount!,expectedCents:null,minCents:BigInt(quote?.minCents??'0'),maxCents:BigInt(quote?.maxCents??'0'),createdAt:new Date(quote?.earliestTransferAt??''),expiresAt:started.t.expiresAt!,attemptKey:body.key,image,mime});
- if(result.reference)await client.$transaction(async tx=>{await tx.$queryRaw`SELECT id FROM "VerifyRequest" WHERE id=${started.requestId} FOR UPDATE`;await tx.$queryRaw`SELECT id FROM "TopUpIntent" WHERE id=${started.t.id} FOR UPDATE`;const t=await tx.topUpIntent.findUniqueOrThrow({where:{id:started.t.id}});if(t.reference&&t.reference!==result.reference)throw new PaymentError(409,'This deposit is bound to another reference.');await tx.verifyRequest.update({where:{id:started.requestId},data:{reference:result.reference}});await tx.topUpIntent.update({where:{id:t.id},data:{reference:result.reference}})});
+ if(result.reference)await client.$transaction(async tx=>{await tx.$queryRaw`SELECT id FROM "VerifyRequest" WHERE id=${started.requestId} FOR UPDATE`;await tx.$queryRaw`SELECT id FROM "TopUpIntent" WHERE id=${started.t.id} FOR UPDATE`;const t=await tx.topUpIntent.findUniqueOrThrow({where:{id:started.t.id}});if(t.reference&&t.reference!==result.reference)throw new PaymentError(409,'This deposit is bound to another reference.');await tx.verifyRequest.update({where:{id:started.requestId},data:{reference:result.reference}});await tx.topUpIntent.update({where:{id:t.id},data:{reference:result.reference}})},PAYMENT_TRANSACTION_OPTIONS);
  return completeVerifyRequest(client,started.requestId,result.verification,reauthorize);
 }
 const verifySchema=z.object({id:z.string().uuid(),key:z.string().uuid(),input:z.string().min(1).max(4000)}).strict();
@@ -107,9 +107,9 @@ async function verifyQueuedIntent(client:PrismaClient,userId:string,raw:unknown,
   if(t.attempts>=(adminRecovery||staffRetry?STAFF_ATTEMPTS:CUSTOMER_ATTEMPTS))throw new PaymentError(409,'Verification needs operator review.');
   if(t.nextAttemptAt>now)throw new PaymentError(429,'Verification is pending. Wait before retrying.');
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`payment-submit:${userId}:${t.channel}:${reference}`},0))`;
-  const existing=await existingDeposit(tx,userId,t.channel,reference);
-  if(existing&&existing.id!==t.id){if(!t.reference&&t.attempts===0)await tx.topUpIntent.update({where:{id:t.id},data:{status:'REJECTED',reasonCode:'DUPLICATE_REQUEST',caseState:'ARCHIVED'}});return {receipt:{...ownIntent(existing),reused:true}}}
   const claim=await usedTransfer(tx,t.channel,reference);
+  const existing=await existingDeposit(tx,userId,t.channel,reference,claim);
+  if(existing&&existing.id!==t.id){if(!t.reference&&t.attempts===0)await tx.topUpIntent.update({where:{id:t.id},data:{status:'REJECTED',reasonCode:'DUPLICATE_REQUEST',caseState:'ARCHIVED'}});return {receipt:{...ownIntent(existing),reused:true}}}
   if(claim){if(claim.userId===userId)return {receipt:{...ownIntent(await tx.topUpIntent.findUniqueOrThrow({where:{id:claim.intentId}})),reused:true}};
    const updated=await tx.topUpIntent.update({where:{id:t.id},data:{reference,status:'REJECTED',reasonCode:'DUPLICATE_CONFLICT',caseState:'RESOLVED',assignedTo:null}});
    await tx.paymentAttempt.create({data:{intentId:t.id,key:body.key,requestHash:fingerprint,code:'DUPLICATE_CONFLICT',evidence:{result:attemptResult(ownIntent(updated))}}});
@@ -119,7 +119,7 @@ async function verifyQueuedIntent(client:PrismaClient,userId:string,raw:unknown,
   const request=await tx.verifyRequest.create({data:{intentId:t.id,key:body.key,reference,state:'SUBMITTING',nextCheckAt:new Date(now.getTime()+60000)}});
   const current=await tx.topUpIntent.update({where:{id:t.id},data:{status:'VERIFYING',reasonCode:'PROCESSING',reference,attempts:{increment:1},nextAttemptAt:new Date(now.getTime()+5000)}});
   return {requestId:request.id,t:current};
- });
+ },PAYMENT_TRANSACTION_OPTIONS);
  if('receipt' in started)return started.receipt!;
  const verified=await transport(inputFor(started.t,body.key));
  return completeVerifyRequest(client,started.requestId,verified,reauthorize);
@@ -169,14 +169,14 @@ async function completeVerifyRequest(client:PrismaClient,id:string,verified:Veri
   if(providerId)await tx.verifyWebhookEvent.updateMany({where:{requestId:providerId,processedAt:null},data:{processedAt:now}});
   if(matched){const row=await tx.outbox.create({data:{key:`deposit:${t.id}:credited`,kind:'DEPOSIT_CREDITED',payload:{intentId:t.id,recipientUserId:t.userId}}});await materializeAlert(tx,row)}
   return ownIntent(updated);
- },{timeout:15000});
+ },PAYMENT_TRANSACTION_OPTIONS);
 }
 
 export async function completeVerifyWebhook(client:PrismaClient,requestId:string,data:unknown){
  const request=await client.verifyRequest.findUnique({where:{requestId},include:{intent:true}});if(!request)return false;if(request.state==='DONE')return true;
  if(!data||typeof data!=='object'||Array.isArray(data))throw new PaymentError(422,'Incomplete verification event.');
  const bank=bankSchema.parse(request.intent.channel),reference=providerReference(data,bank,request.intent.reference??undefined);
- if(reference)await client.$transaction(async tx=>{await tx.$queryRaw`SELECT id FROM "VerifyRequest" WHERE id=${request.id} FOR UPDATE`;await tx.$queryRaw`SELECT id FROM "TopUpIntent" WHERE id=${request.intentId} FOR UPDATE`;const current=await tx.topUpIntent.findUniqueOrThrow({where:{id:request.intentId}});if(current.reference&&current.reference!==reference)throw new PaymentError(409,'Provider reference changed.');await tx.verifyRequest.update({where:{id:request.id},data:{reference}});await tx.topUpIntent.update({where:{id:request.intentId},data:{reference}})});
+ if(reference)await client.$transaction(async tx=>{await tx.$queryRaw`SELECT id FROM "VerifyRequest" WHERE id=${request.id} FOR UPDATE`;await tx.$queryRaw`SELECT id FROM "TopUpIntent" WHERE id=${request.intentId} FOR UPDATE`;const current=await tx.topUpIntent.findUniqueOrThrow({where:{id:request.intentId}});if(current.reference&&current.reference!==reference)throw new PaymentError(409,'Provider reference changed.');await tx.verifyRequest.update({where:{id:request.id},data:{reference}});await tx.topUpIntent.update({where:{id:request.intentId},data:{reference}})},PAYMENT_TRANSACTION_OPTIONS);
  const current=await client.topUpIntent.findUniqueOrThrow({where:{id:request.intentId}}),item=data as {processingStatus?:unknown;status?:unknown;verified?:unknown};
  const input={...inputFor(current,request.key),reference:current.reference??reference??request.reference};
  const raw={success:true,requestId,verification:{processingStatus:typeof item.processingStatus==='string'?item.processingStatus:'completed',status:typeof item.status==='string'?item.status:undefined,verified:item.verified===true},data:[data]};
@@ -196,7 +196,7 @@ async function holdForImageWebhook(client:PrismaClient,id:string){
   if(wait.delayed&&intent.status==='VERIFYING')await tx.topUpIntent.update({where:{id:intent.id},data:{status:'NEEDS_REVIEW',reasonCode:'WEBHOOK_DELAYED',nextAttemptAt:wait.nextCheckAt}});
   else if(intent.status==='VERIFYING')await tx.topUpIntent.update({where:{id:intent.id},data:{reasonCode:'WAITING_FOR_WEBHOOK',nextAttemptAt:wait.nextCheckAt}});
   return 'waiting' as const;
- });
+ },PAYMENT_TRANSACTION_OPTIONS);
 }
 
 export async function processOneVerifyRequest(client:PrismaClient){
@@ -205,7 +205,7 @@ export async function processOneVerifyRequest(client:PrismaClient){
   const ids=await tx.$queryRaw<{id:string}[]>`SELECT id FROM "VerifyRequest" WHERE state IN ('SUBMITTING','PROCESSING') AND "nextCheckAt"<=clock_timestamp() ORDER BY "nextCheckAt" FOR UPDATE SKIP LOCKED LIMIT 1`;
   if(!ids[0])return null;
   return tx.verifyRequest.update({where:{id:ids[0].id},data:{nextCheckAt:new Date(Date.now()+60000),attempts:{increment:1}}});
- });
+ },PAYMENT_TRANSACTION_OPTIONS);
  if(!row)return false;
  const t=await client.topUpIntent.findUniqueOrThrow({where:{id:row.intentId}});
  if(t.status==='CREDITED'){await client.verifyRequest.update({where:{id:row.id},data:{state:'DONE',code:'ALREADY_CREDITED'}});return true}
