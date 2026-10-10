@@ -59,6 +59,18 @@ describe.skipIf(!testUrl)('public catalog on disposable PostgreSQL',()=>{
     expect((await catalog.listAuctions({...query,q:'DEMO-WAT-002'})).items.map(item=>item.code)).toEqual([watch.publicCode.toString()]);
     expect((await catalog.listAuctions({...query,q:watch.publicCode.toString()})).items.map(item=>item.code)).toEqual([watch.publicCode.toString()]);
   });
+  it('count-only tabs match the public listing filters without loading cards',async()=>{
+    const now=await catalog.serverNow();
+    for(const status of ['all','live','upcoming','closing','closed'] as const){
+      for(const category of [undefined,'phones']){
+        const query={q:'',status,category,sort:'code' as const,page:1};
+        expect(await catalog.countAuctions(query,now)).toBe((await catalog.listAuctions(query,now)).total);
+      }
+    }
+    const query={q:'DEMO-WAT-002',status:'all' as const,sort:'title' as const,page:2};
+    expect(await catalog.countAuctions(query,now)).toBe(1);
+    expect(await catalog.countAuctions({...query,q:'not-present'},now)).toBe(0);
+  });
   it('allowlists public response data and hides unpublished inventory and future results',async()=>{
     const {GET}=await import('../src/app/api/catalog/auctions/route');
     const response=await GET(new Request('http://localhost:3000/api/catalog/auctions?status=live'));

@@ -21,7 +21,7 @@ END $$;
 -- role useful when it is created after migrations, without granting mutations
 -- on immutable revision and transfer-alias rows.
 DO $$ DECLARE t text; BEGIN
- FOREACH t IN ARRAY ARRAY['AuctionFeeRevision','AuctionControlRevision','PaymentTransferAlias'] LOOP
+ FOREACH t IN ARRAY ARRAY['AuctionFeeRevision','AuctionControlRevision','PaymentTransferAlias','AdminWalletCredit'] LOOP
   IF EXISTS(SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename=t) THEN
    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',t);
    EXECUTE format('GRANT SELECT,INSERT ON public.%I TO lowwin_runtime',t);

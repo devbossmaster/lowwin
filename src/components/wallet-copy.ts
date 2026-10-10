@@ -1,6 +1,10 @@
 'use client';
 import {useMiniLocale} from './mini-locale';
 export const walletAm:Record<string,string>={
+ 'Funds added by admin':'በአስተዳዳሪ የተጨመረ ገንዘብ',
+ 'Admin credit':'የአስተዳዳሪ ገቢ',
+ 'Resolved by admin':'በአስተዳዳሪ ተፈትቷል',
+ 'Review closed. Funds were added in a separate admin credit.':'ግምገማው ተዘግቷል። ገንዘቡ በተለየ የአስተዳዳሪ ገቢ ተጨምሯል።',
  'No transaction was found for this ID. Check the ID and selected receiving account.':'በዚህ መለያ ዝውውር አልተገኘም። የዝውውር ቁጥሩን እና የመረጡትን መቀበያ ሂሳብ ያረጋግጡ።',
  'This transaction ID is invalid. Check your payment receipt.':'ይህ የዝውውር ቁጥር ልክ አይደለም። የክፍያ ደረሰኝዎን ያረጋግጡ።',
  'The receipt does not match this transaction ID. Check your receipt.':'ደረሰኙ ከዚህ የዝውውር ቁጥር ጋር አይዛመድም። ደረሰኝዎን ያረጋግጡ።',

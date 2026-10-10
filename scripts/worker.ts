@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { setTimeout } from 'node:timers/promises';
+import { databaseErrorSummary } from '../src/lib/database-error';
 // The bot consumes one update at a time. Keep it on one database connection so
 // the Mini App retains capacity in the Supabase pool for sign-in.
 if(process.env.DATABASE_URL){const url=new URL(process.env.DATABASE_URL);url.searchParams.set('connection_limit','1');url.searchParams.set('pool_timeout','20');process.env.DATABASE_URL=url.toString()}
@@ -21,7 +22,7 @@ try {
   console.log('Lowwin command worker started. Auction settlement runs separately with worker:auctions.');
   while (running) {
     try { if (!await processOneUpdate(db, bot, contactVerification)) await setTimeout(1000); }
-    catch (error) { const code=(error as {code?:string}).code??'unknown'; console.error(`Inbox unavailable (${code}); retrying shortly.`); await setTimeout(5000); }
+    catch (error) { console.error('Inbox unavailable; retrying shortly.', JSON.stringify(databaseErrorSummary(error))); await setTimeout(5000); }
   }
 } catch { console.error('Worker could not initialize. Check configuration.'); process.exitCode = 1; }
 finally { await db.$disconnect(); }

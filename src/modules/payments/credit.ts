@@ -9,8 +9,8 @@ export async function creditTransfer(tx:Prisma.TransactionClient,t:TopUpIntent,t
  const channel=t.channel!;
  const aliases=[...new Set([transfer.reference,...transfer.aliases])].sort();
  for(const alias of aliases)await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`transfer:${channel}:${alias}`},0))`;
- const [claim,alias]=await Promise.all([tx.paymentClaim.findFirst({where:{channel,reference:{in:aliases}}}),tx.paymentTransferAlias.findFirst({where:{channel,alias:{in:aliases}}})]);
- if(claim||alias)return null;
+ const [claim,alias,adminCredit]=await Promise.all([tx.paymentClaim.findFirst({where:{channel,reference:{in:aliases}}}),tx.paymentTransferAlias.findFirst({where:{channel,alias:{in:aliases}}}),tx.adminWalletCredit.findFirst({where:{channel,reference:{in:aliases}}})]);
+ if(claim||alias||adminCredit)return null;
  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${t.userId}`},0))`;
  await ensureWallet(tx,t.userId);await seedPlatformAccounts(tx);
  const available=await tx.ledgerAccount.findUniqueOrThrow({where:{name:`user:${t.userId}:available`}}),issuance=await tx.ledgerAccount.findUniqueOrThrow({where:{name:'platform:issuance'}});

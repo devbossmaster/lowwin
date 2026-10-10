@@ -2,12 +2,13 @@
 import {useWalletCopy} from '@/components/wallet-copy';
 import {useEffect,useId,useState} from 'react';
 import Image from 'next/image';
-import {Check,Copy} from 'lucide-react';
+import {Check,Copy,Wallet} from 'lucide-react';
 import styles from './wallet-page.module.css';
 import {DEPOSIT_CHANNELS,paymentChannelName} from '@/lib/payment-channels';
 
 export type PaymentAccount={id:string;name:string;number:string;holder:string};
 export function PaymentLogo({channel}:{channel:string}){
+ if(channel==='manual')return <span className={styles.providerLogo}><Wallet size={24} aria-hidden="true"/></span>;
  if(channel==='mpesa')return <span className={`${styles.providerLogo} ${styles.mpesaLogo}`}><Image src="/icons/payments/mpesa.png" alt="" width={80} height={30}/></span>;
  return <span className={`${styles.providerLogo} ${channel==='cbe'?styles.cbeLogo:''}`}><Image src={`/icons/payments/${channel==='cbe'?'cbe.png':'telebirr.jpg'}`} alt="" width={channel==='cbe'?168:36} height={channel==='cbe'?98:36}/></span>;
 }

@@ -520,6 +520,24 @@ model PaymentAttempt {
   @@unique([intentId, key])
 }
 
+// An explicit staff-issued credit, never a provider-verified bank receipt.
+model AdminWalletCredit {
+  id             String   @id @default(uuid())
+  intentId       String   @unique
+  sourceIntentId String   @unique
+  userId         String
+  actorId        String
+  amountCents    BigInt
+  reason         String
+  channel        String?
+  reference      String?
+  operationId    String   @unique
+  journalId      String   @unique
+  createdAt      DateTime @default(now())
+
+  @@unique([channel, reference])
+}
+
 model PaymentTransferAlias {
   id        String       @id @default(uuid())
   channel   String

@@ -22,7 +22,7 @@ colors:
   admin-ink: "#000000"
   admin-muted: "#000000"
   admin-line: "#E1E8E4"
-  admin-canvas: "#F6F8F7"
+  admin-canvas: "#F6F8F7"SSSASSS
   admin-selected: "#EAF3EE"
   admin-field-border: "#B7C7BE"
   admin-sidebar: "#FFFFFF"

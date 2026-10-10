@@ -6,7 +6,7 @@ import {FeaturedCarousel} from '@/components/featured-carousel';
 import {MiniCategoryName,MiniPhrase} from '@/components/mini-locale';
 import {OfflineRetry} from '@/components/offline-retry';
 import {auctionBrowseHref,parseBrowseQuery} from '@/modules/auctions/browse-query';
-import {listAuctions,listCategories,serverNow,type CatalogQuery} from '@/modules/auctions/catalog';
+import {countAuctions,listAuctions,listCategories,serverNow,type CatalogQuery} from '@/modules/auctions/catalog';
 import styles from '../auctions-page.module.css';
 
 type SearchParams=Record<string,string|string[]|undefined>;
@@ -20,16 +20,17 @@ const labels:Record<BrowseStatus,{en:string;am:string}>={
 };
 
 export default async function AllAuctions({searchParams}:{searchParams:Promise<SearchParams>}){
- const query=parseBrowseQuery(await searchParams),now=await serverNow(),categories=await listCategories(now);
- if(query.category&&!categories.some(category=>category.slug===query.category))redirect(auctionBrowseHref(query,{category:undefined,page:1}));
+ const query=parseBrowseQuery(await searchParams),now=await serverNow();
  const requestedStatuses:BrowseStatus[]=query.status==='closing'?[...browseStatuses,'closing']:browseStatuses;
- const requests=requestedStatuses.map(status=>listAuctions(
-  {...query,status,page:query.status===status?query.page:1},now,
-  query.status==='all'||query.status===status?PAGE_SIZE:1,
-));
- const [allCount,...statusResults]=await Promise.all([
-  listAuctions({...query,status:'all',page:1},now,1),...requests,
+ const requests=requestedStatuses.map(status=>{
+  const scoped={...query,status,page:query.status===status?query.page:1};
+  if(query.status==='all'||query.status===status)return listAuctions(scoped,now,PAGE_SIZE);
+  return countAuctions(scoped,now).then(total=>({items:[],total,page:1,pageSize:PAGE_SIZE,totalPages:Math.ceil(total/PAGE_SIZE),serverNow:now.toISOString()}));
+ });
+ const [categories,allTotal,...statusResults]=await Promise.all([
+  query.category?listCategories(now):Promise.resolve([]),countAuctions({...query,status:'all',page:1},now),...requests,
  ]);
+ if(query.category&&!categories.some(category=>category.slug===query.category))redirect(auctionBrowseHref(query,{category:undefined,page:1}));
  const results=Object.fromEntries(requestedStatuses.map((status,index)=>[status,statusResults[index]])) as Partial<Record<BrowseStatus,Awaited<ReturnType<typeof listAuctions>>>>;
  const closed=results.closed!;
  const selected=query.status==='all'?null:results[query.status];
@@ -40,7 +41,7 @@ export default async function AllAuctions({searchParams}:{searchParams:Promise<S
  const filteredStatus:BrowseStatus=query.status==='all'?'live':query.status;
  const selectedItems=selected?.items??[];
  const statusTabs=[
-  {value:'all' as const,en:'All',am:'ሁሉም',count:allCount.total},
+  {value:'all' as const,en:'All',am:'ሁሉም',count:allTotal},
   {value:'live' as const,en:'Live',am:'ቀጥታ',count:results.live!.total},
   {value:'upcoming' as const,en:'Upcoming',am:'የሚመጡ',count:results.upcoming!.total},
   {value:'closed' as const,en:'Closed',am:'የተዘጉ',count:closed.total},

@@ -92,6 +92,23 @@ Verify.et requires an API key with `verification:write` and `verification:read`.
 
 ## Verification and rollback
 
+If the bot repeatedly reports `Inbox unavailable`, open its **Terminal** (not Logs)
+and run `npm run db:check -- --bot-inbox`. This uses the bot's single-connection
+limit and checks an interactive transaction plus the inbox columns/permissions
+without processing messages or returning private payloads. A normal `db:check`
+only proves `SELECT 1` works. The JSON diagnostic identifies the failing stage
+and safe Prisma/PostgreSQL codes; it never prints raw exception messages or
+credentials. Do not reset the database or regenerate auth/contact keys to fix an
+inbox error. The npm `config production` warning is separate from this failure.
+
+For slow Mini App pages, run `npm run db:check -- --timings` in the **web**
+container. `firstReadMs` includes opening the connection; `warmReadMs` measures
+four subsequent `SELECT 1` calls on the same client. These are round-trip
+measurements, not timings of real catalog or account queries. Check that
+`productionCaching` is true, and use `npm run redis:check` if Redis is configured.
+Compare the VPS and Supabase regions and inspect CPU/memory and connection-pool
+usage during the delay before increasing pool sizes or upgrading the VPS.
+
 Redis unit tests verify shared hits, expiry, post-commit invalidation and outage fallback using a mocked transport. Real Redis connectivity and Coolify builds must be checked on the server. No browser was connected during preparation, so the dashboard resources have not been created by the agent.
 
 Keep a v2-capable rollback release and the persistent media volume. After publishing any v2 auction, never use a v1-only worker. Preserve migrations and financial rows. Disable PAYMENTS_LIVE_ENABLED to stop new credits. Off-host database/key backups and queue/reconciliation alerts remain essential.

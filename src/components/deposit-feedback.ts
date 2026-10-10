@@ -1,6 +1,7 @@
 import {depositFailureMessages} from '../lib/deposit-outcome';
 export function depositFeedback(receipt:{status:string;reason?:string|null;points:string;reused?:boolean},translate:(text:string)=>string){
  const t=translate;
+ if(receipt.reason==='ADMIN_CREDIT_REPLACEMENT')return {kind:'info' as const,message:t('Review closed. Funds were added in a separate admin credit.')};
  if(receipt.status==='CREDITED')return {kind:'success' as const,message:receipt.reused?t('This transaction is already credited. No second credit was added.'):`${receipt.points} ${t('ETB credited. Receipt recorded.')}`};
  if(receipt.status==='REJECTED'&&depositFailureMessages[receipt.reason??''])return {kind:'error' as const,message:t(depositFailureMessages[receipt.reason!])};
  if(receipt.status==='NEEDS_REVIEW'){

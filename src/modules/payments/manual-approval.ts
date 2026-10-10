@@ -13,10 +13,19 @@ export const manualApprovalSchema=z.object({
  reference:z.string().trim().min(8).max(128),otherReference:z.string().trim().max(128).optional().default(''),
  transferredAt:z.iso.datetime({offset:true}),reason:z.string().trim().max(500).optional().default(''),confirmed:z.literal(true),
 }).strict();
-export function canReviewDeposit(t:Pick<TopUpIntent,'status'|'caseState'|'provider'|'channel'|'receivingAccount'|'journalId'|'leaseUntil'>,now:Date,active:boolean,claimed=false){
- return !claimed&&!t.journalId&&!protectedPayment(t)&&['NEEDS_REVIEW','PROVIDER_OUTAGE','PENDING'].includes(t.status)&&
-  ['CHECK_ET','VERIFY_ET'].includes(t.provider)&&depositBankSchema.safeParse(t.channel).success&&!!t.receivingAccount&&
-  !active&&(!t.leaseUntil||t.leaseUntil<=now);
+type ReviewDeposit=Pick<TopUpIntent,'status'|'caseState'|'provider'|'channel'|'receivingAccount'|'journalId'|'leaseUntil'>;
+export function depositApprovalBlocker(t:ReviewDeposit,now:Date,active:boolean,claimed=false):string|null{
+ if(claimed||t.journalId||t.status==='CREDITED')return 'This deposit has already been credited. It cannot be credited again.';
+ if(t.status==='REJECTED')return 'This deposit was rejected. Manual approval is unavailable for rejected deposits.';
+ if(protectedPayment(t))return 'This deposit is protected or archived. Manual approval is unavailable in its current review state.';
+ if(active||t.leaseUntil&&t.leaseUntil>now||t.status==='VERIFYING')return 'Automatic verification is still in progress. Refresh after it finishes to check manual approval.';
+ if(!['NEEDS_REVIEW','PROVIDER_OUTAGE','PENDING'].includes(t.status))return 'Manual approval is unavailable for this deposit status.';
+ if(!['CHECK_ET','VERIFY_ET'].includes(t.provider)||!depositBankSchema.safeParse(t.channel).success)return 'This deposit type does not support manual approval.';
+ if(!t.receivingAccount)return 'This deposit has no receiving account recorded. Its receipt cannot be manually approved.';
+ return null;
+}
+export function canReviewDeposit(t:ReviewDeposit,now:Date,active:boolean,claimed=false){
+ return depositApprovalBlocker(t,now,active,claimed)===null;
 }
 export async function approveReviewedDeposit(client:PrismaClient,headers:Headers,raw:unknown){
  const b=manualApprovalSchema.parse(raw);
@@ -29,7 +38,8 @@ export async function approveReviewedDeposit(client:PrismaClient,headers:Headers
   const prior=await tx.adminAudit.findUnique({where:{operationKey:b.key}});
   if(prior){if(prior.requestHash!==fingerprint||prior.target!==t.id)throw new PaymentError(409,'Idempotency key changed.');return {recorded:true,status:t.status,amountCents:t.expectedCents?.toString()}}
   const [claimed,active]=await Promise.all([tx.paymentClaim.findUnique({where:{intentId:t.id}}),tx.verifyRequest.findFirst({where:{intentId:t.id,state:{in:['SUBMITTING','PROCESSING']}},select:{id:true}})]);
-  if(!canReviewDeposit(t,actor.now,!!active,!!claimed))throw new PaymentError(409,'This deposit cannot be manually approved. It is credited, protected, or still being verified.');
+  const blocked=depositApprovalBlocker(t,actor.now,!!active,!!claimed);
+  if(blocked)throw new PaymentError(409,blocked);
   if(!paymentHealth().enabled)throw new PaymentError(503,'Payment crediting is paused.');
   await assertDepositEligibility(tx,t.userId);
   const bank=depositBankSchema.parse(t.channel),reference=candidate(bank,b.reference);

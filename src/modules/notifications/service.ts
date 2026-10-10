@@ -106,7 +106,7 @@ export async function dispatchOne(client:PrismaClient,bot:Pick<Bot,'api'>){
    const startReminder=row.kind==='AUCTION_UPCOMING'||row.kind==='AUCTION_STARTING_SOON';
    const body=content.body.includes('{name}')?content.body.replaceAll('{name}',name):`${name},\n${content.body}`;
    const text=telegramCampaignText(row.kind,content.title,startReminder?content.body:body,startReminder?name:undefined);
-   const options={reply_markup:{inline_keyboard:[[{text:startReminder?'View auction':'Bid',web_app:{url:link.href}}]]}};
+   const options={reply_markup:{inline_keyboard:[[{text:row.kind==='DEPOSIT_CREDITED'?'View wallet':startReminder?'View auction':'Bid',web_app:{url:link.href}}]]}};
    let sent:{message_id:number};
    const photo=await notificationPhoto(tx,'imageId' in content?content.imageId:undefined,link.origin);
    sent=photo?await bot.api.sendPhoto(chat.chatId,photo,{...options,caption:text}):await bot.api.sendMessage(chat.chatId,text,options);

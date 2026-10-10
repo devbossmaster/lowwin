@@ -90,14 +90,27 @@ export function toPublicAuction(row: AuctionRow, now: Date) {
     result,
   };
 }
-export async function listAuctions(input: CatalogQuery, now?: Date, pageSize = 6) {
-  const query = catalogQuerySchema.parse(input);
-  return cachedPublicData(`auctions:${pageSize}:${JSON.stringify(query)}:${now?.toISOString()??'current'}`,3000,async()=>{
-  const at=now??await serverNow();
+function catalogWhere(query:CatalogQuery,at:Date):Prisma.AuctionWhereInput {
   const searchedPublicCode=/^[1-9]\d*$/.test(query.q)&&Number.isSafeInteger(Number(query.q))?Number(query.q):null;
   const where: Prisma.AuctionWhereInput = {AND:[publicWhere(at),{status:{not:'CANCELLED'}},statusWhere(query.status,at),
     query.category?{category:{is:{slug:query.category}}}:{},
     query.q?{OR:[{code:{contains:query.q,mode:'insensitive'}},{product:{is:{OR:[{title:{contains:query.q,mode:'insensitive'}},{titleAm:{contains:query.q,mode:'insensitive'}}]}}},{presentation:{path:['title'],string_contains:query.q}},{presentation:{path:['titleAm'],string_contains:query.q}},...(searchedPublicCode?[{publicCode:searchedPublicCode}]:[])]}:{}]};
+  return where;
+}
+// Tab counts never load product images, terms, fees or settlement relations.
+export async function countAuctions(input:CatalogQuery,now?:Date){
+ const query=catalogQuerySchema.parse(input);
+ const {page:_,sort:__,...filters}=query;
+ return cachedPublicData(`auction-count:${JSON.stringify(filters)}:${now?.toISOString()??'current'}`,3000,async()=>{
+  const at=now??await serverNow();
+  return db.auction.count({where:catalogWhere(query,at)});
+ });
+}
+export async function listAuctions(input: CatalogQuery, now?: Date, pageSize = 6) {
+  const query = catalogQuerySchema.parse(input);
+  return cachedPublicData(`auctions:${pageSize}:${JSON.stringify(query)}:${now?.toISOString()??'current'}`,3000,async()=>{
+  const at=now??await serverNow();
+  const where=catalogWhere(query,at);
   const orderBy: Prisma.AuctionOrderByWithRelationInput[] = query.sort==='code' ? [{publicCode:'asc'}] : query.sort==='newest' ? [{publishedAt:'desc'},{id:'asc'}] : query.sort==='title' ? [{product:{title:'asc'}},{id:'asc'}] : query.status==='closed' ? [{endsAt:'desc'},{id:'asc'}] : query.status==='upcoming' ? [{startsAt:'asc'},{id:'asc'}] : [{endsAt:'asc'},{id:'asc'}];
   let rows: AuctionRow[];
   let total: number;
@@ -124,7 +137,7 @@ export async function listAuctions(input: CatalogQuery, now?: Date, pageSize = 6
     const byId=new Map(found.map(item=>[item.id,item]));
     rows=ids.map(item=>byId.get(item.id)!).filter(Boolean);
     total=await db.auction.count({where});
-  } else [rows,total] = await db.$transaction([db.auction.findMany({where,select:publicAuctionSelect,orderBy,skip:(query.page-1)*pageSize,take:pageSize}),db.auction.count({where})]);
+  } else [rows,total] = await Promise.all([db.auction.findMany({where,select:publicAuctionSelect,orderBy,skip:(query.page-1)*pageSize,take:pageSize}),db.auction.count({where})]);
   return {items:rows.map(row=>toPublicAuction(row,at)),total,page:query.page,pageSize,totalPages:Math.ceil(total/pageSize),serverNow:at.toISOString()};
   });
 }

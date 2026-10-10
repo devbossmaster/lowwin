@@ -82,9 +82,10 @@ export async function campaignContent(tx:Tx,row:Pick<Outbox,'kind'|'payload'>){
  }
  if(row.kind==='DEPOSIT_CREDITED'){
   if(!p.intentId)return null;
-  const t=await tx.topUpIntent.findUnique({where:{id:p.intentId},select:{userId:true,status:true,points:true}});
+  const t=await tx.topUpIntent.findUnique({where:{id:p.intentId},select:{userId:true,status:true,points:true,provider:true}});
   if(!t||t.userId!==p.recipientUserId||t.status!=='CREDITED')return null;
-  return {...base,title:'Deposit successful · ገንዘቡ ገብቷል',body:`${formatEtb(t.points)} has been added to your wallet.\n${formatEtb(t.points)} ወደ ሂሳብዎ ገብቷል።`,href:'/auctions/all'};
+  if(t.provider==='ADMIN_CREDIT')return {...base,title:'Funds added · ገንዘብ ተጨምሯል',body:`Lowwin admin added ${formatEtb(t.points)} to your wallet.\nየLowwin አስተዳዳሪ ${formatEtb(t.points)} ወደ ሂሳብዎ ጨምሯል።`,href:'/wallet'};
+  return {...base,title:'Deposit successful · ገንዘቡ ገብቷል',body:`${formatEtb(t.points)} has been added to your wallet.\n${formatEtb(t.points)} ወደ ሂሳብዎ ገብቷል።`,href:'/wallet'};
  }
  if(!p.auctionId)return null;
  const a=await tx.auction.findUnique({where:{id:p.auctionId},select:{slug:true,publicCode:true,publishedAt:true,startsAt:true,endsAt:true,status:true,isDemo:true,isSettlementFixture:true,testRunId:true,presentation:true,product:{select:{title:true,visible:true,images:{orderBy:{sortOrder:'asc'},take:1,select:{path:true}}}},result:{select:{id:true}},settlement:{select:{outcome:true}}}});

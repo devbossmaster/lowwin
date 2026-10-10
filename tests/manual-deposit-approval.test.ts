@@ -20,6 +20,7 @@ function fixture(){
  let state={t:initial,claims:[] as Record<string,any>[],aliases:[] as Record<string,any>[],operations:[] as Record<string,any>[],journals:[] as Record<string,any>[],audits:[] as Record<string,any>[],attempts:[] as Record<string,any>[],alerts:[] as Record<string,any>[],active:false,failAudit:false};
  const locks:string[]=[];
  const tx={
+  adminWalletCredit:{findFirst:async()=>null},
   $queryRaw:vi.fn(async()=>[]),$executeRaw:vi.fn(async(_query:unknown,...values:unknown[])=>{locks.push(String(values[0]));return 1}),
   topUpIntent:{findUnique:async()=>state.t,update:async({data}:any)=>{state.t={...state.t,...data};return state.t}},
   verifyRequest:{findFirst:async()=>state.active?{id:'running'}:null},

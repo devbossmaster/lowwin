@@ -14,7 +14,7 @@ import { formatEtb,etbToCents } from '@/lib/money';
 import styles from '@/components/wallet-page.module.css';
 type WalletView={page:number;total:number;totalPages:number;wallet:{available:string;held:string};activity:{id:string;kind:string;at:string;availableDelta:string;heldDelta:string}[]};
 type FundingAvailability={options?:{enabled:boolean}};
-const names:Record<string,string>={TOPUP_CREDIT:'Verified transfer credit',TOPUP_REVERSAL:'Reviewed top-up correction',DEMO_CREDIT:'DEMO ETB credit',DEV_CREDIT:'Development ETB credit',HOLD_RESERVE:'Auction ETB reserved',HOLD_RELEASE:'Auction ETB released',BID_FEE:'Auction entry fee',AUCTION_WIN_CHARGE:'Winning ETB amount charged',AUCTION_FEE_REFUND:'Cancelled auction fee refund'};
+const names:Record<string,string>={ADMIN_CREDIT:'Funds added by admin',TOPUP_CREDIT:'Verified transfer credit',TOPUP_REVERSAL:'Reviewed top-up correction',DEMO_CREDIT:'DEMO ETB credit',DEV_CREDIT:'Development ETB credit',HOLD_RESERVE:'Auction ETB reserved',HOLD_RELEASE:'Auction ETB released',BID_FEE:'Auction entry fee',AUCTION_WIN_CHARGE:'Winning ETB amount charged',AUCTION_FEE_REFUND:'Cancelled auction fee refund'};
 export default function Wallet() {const w=useWalletCopy();
   const {status,me}=useTelegram();
   const fundingQuery=usePrivateQuery<FundingAvailability>('/api/wallet/top-ups?page=1');
