@@ -1,11 +1,22 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import sharp from 'sharp';
 import {validateReceiptImage} from '../src/modules/payments/ocr';
-import {submitVerify,submitVerifyImage,type VerificationInput} from '../src/modules/payments/provider';
+import {submitVerify,submitVerifyImage,readVerifyStatus,type VerificationInput} from '../src/modules/payments/provider';
 const requestId='550e8400-e29b-41d4-a716-446655440000';
 const input:VerificationInput={bank:'telebirr',reference:'SECRETREF123',account:'0912345678',expectedCents:null,minCents:100n,maxCents:2000n,createdAt:new Date(Date.now()-60000),expiresAt:new Date(Date.now()+60000),attemptKey:'stable-attempt'};
 afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();vi.unstubAllGlobals()});
 describe('Verify.et JSON transport',()=>{
+ it.each([[null,undefined,undefined],[null,1500,2],['30',1500,30]] as const)('preserves worker backoff unless the provider gives a status hint',async(header,pollAfterMs,seconds)=>{
+  vi.stubEnv('VERIFY_ET_API_KEY','private-key');
+  vi.stubGlobal('fetch',vi.fn(async()=>Response.json({success:true,data:{requestId,processingStatus:'running'},links:{pollAfterMs}},{headers:header?{'Retry-After':header}:{}})));
+  expect(await readVerifyStatus(requestId)).toMatchObject({matched:false,processing:true,requestId,retrySeconds:seconds});
+ });
+ it.each([[null,1500,2],['30',1500,30],[null,8000,8],[null,undefined,2]] as const)('honors the suggested queued delay %s / %s',async(header,pollAfterMs,seconds)=>{
+  vi.stubEnv('VERIFY_ET_API_KEY','private-key');vi.spyOn(console,'warn').mockImplementation(()=>{});
+  vi.stubGlobal('fetch',vi.fn(async()=>Response.json({success:true,requestId,verification:{processingStatus:'queued'},links:{pollAfterMs},data:[]},{status:202,headers:header?{'Retry-After':header}:{}})));
+  expect(await submitVerify(input)).toMatchObject({matched:false,processing:true,requestId,retrySeconds:seconds});
+  expect((await submitVerifyImage({...input,image:Buffer.from('fixture'),mime:'image/png'})).verification).toMatchObject({matched:false,processing:true,retrySeconds:seconds});
+ });
  it.each(['png','jpeg','webp'] as const)('preserves the full tall %s screenshot through validation and multipart upload',async format=>{
   vi.stubEnv('VERIFY_ET_API_KEY','private-key');
   const fetcher=vi.fn().mockResolvedValue(Response.json({success:true,requestId,verification:{processingStatus:'queued',status:'pending',verified:false},data:[]},{status:202}));

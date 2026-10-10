@@ -1,6 +1,7 @@
 'use client';
 import {useMiniLocale} from './mini-locale';
 export const walletAm:Record<string,string>={
+ 'Verification is still pending. Reopen your deposits to check the result.':'ማረጋገጫው ገና በሂደት ላይ ነው። ውጤቱን ለማየት የገቢ ዝርዝርዎን እንደገና ይክፈቱ።',
  'Funds added by admin':'በአስተዳዳሪ የተጨመረ ገንዘብ',
  'Admin credit':'የአስተዳዳሪ ገቢ',
  'Resolved by admin':'በአስተዳዳሪ ተፈትቷል',

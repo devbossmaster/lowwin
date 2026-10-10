@@ -17,8 +17,9 @@ import {PaymentHelp} from './payment-help';
 import {useMiniNotice} from './mini-notice';
 import {customerDepositFailures} from '../lib/deposit-outcome';
 import {depositFeedback} from './deposit-feedback';
+import {startDepositPolling,paymentPollRetryAfter} from './deposit-polling';
 import {receiptImageKey} from './receipt-image-key';
-import {invalidatePrivateQueries} from './private-query-cache';
+import {invalidatePrivateQueries,setPrivateQueryIdentity} from './private-query-cache';
 import styles from './wallet-page.module.css';
 
 type Account={id:string;policyId:string;version:number;name:string;number:string;holder:string;numerator:string;denominator:string;minCents:string;maxCents:string;terms:string};
@@ -38,20 +39,28 @@ function Funding({view,onContinue}:{view:FundingView;onContinue?:()=>void}){
  const account:Account|undefined=intent?{id:intent.channel,policyId:'',version:intent.quote.version,name:paymentChannelName(intent.channel),number:intent.account,holder:intent.accountName,numerator:intent.quote.numerator,denominator:intent.quote.denominator,minCents:intent.quote.minCents??intent.amountCents??'0',maxCents:intent.quote.maxCents??intent.amountCents??'0',terms:intent.quote.terms}:options?.accounts.find(a=>a.id===selected);
  const credited=intent?.status==='CREDITED';
  useEffect(()=>{
-  if(!intent||intent.status!=='VERIFYING')return;
+  if(!intent||intent.status!=='VERIFYING'||view!=='deposit')return;
   let cancelled=false;
-  const poll=async()=>{try{
-   const response=await fetch('/api/wallet/top-ups?page=1',{cache:'no-store'});if(!response.ok)return;
-   const data=await response.json() as Data,updated=data.items.find(item=>item.id===intent.id);
-   if(cancelled||!updated||updated.status===intent.status)return;
+  const stop=startDepositPolling(async signal=>{
+   const response=await fetch(`/api/wallet/top-ups?intentId=${encodeURIComponent(intent.id)}`,{cache:'no-store',signal});
+   if(cancelled)return {done:true};
+   if(response.status===401||response.status===403){setPrivateQueryIdentity(null);void refreshMe().catch(()=>{});return {done:true}}
+   if(response.status===404)return {done:true};
+   if(!response.ok)return {retryAfterMs:paymentPollRetryAfter(response.headers.get('retry-after'))};
+   const updated=await response.json() as Intent;
+   if(cancelled||updated.id!==intent.id)return {done:true};
+   if(updated.status==='VERIFYING')return {};
    setIntent(updated);query.reload();
    const feedback=depositFeedback(updated,w);inform(feedback.message,feedback.kind);
    if(updated.status==='CREDITED'){if(queryIdentity)invalidatePrivateQueries(queryIdentity);window.dispatchEvent(new Event('lowin-wallet-updated'));window.dispatchEvent(new Event('lowin-alerts'));void refreshMe()}
-  }catch{/* The next poll can recover a transient network failure. */}};
-  const timer=setInterval(()=>void poll(),5000);return()=>{cancelled=true;clearInterval(timer)};
+   return {done:true};
+  },()=>document.visibilityState==='visible',()=>{
+   if(!cancelled)inform(w('Verification is still pending. Reopen your deposits to check the result.'),'info');
+  });
+  return()=>{cancelled=true;stop()};
  // Polling is tied to the selected deposit, not to query refreshes.
  // eslint-disable-next-line react-hooks/exhaustive-deps
- },[intent?.id,intent?.status]);
+ },[intent?.id,intent?.status,view,queryIdentity]);
  const [now,setNow]=useState(0);
  useEffect(()=>{setNow(Date.now());const timer=setInterval(()=>setNow(Date.now()),1000);return ()=>clearInterval(timer)},[]);
  const underReview=!!intent&&(intent.canRetry===false||['DUPLICATE_CONFLICT','REJECTED','REVERSED'].includes(intent.status));

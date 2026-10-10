@@ -32,8 +32,8 @@ export function ownIntent(t:TopUpIntent){return {id:t.id,demo:t.provider==='DEMO
 // Store only customer outcome fields in redacted immutable attempt evidence.
 function attemptResult(t:ReturnType<typeof ownIntent>){const {status,points,amountCents,reason,attempts,nextAttemptAt,caseState,canRetry,retryBlocked,retryUntil}=t;return JSON.parse(JSON.stringify({status,points,amountCents,reason,attempts,nextAttemptAt,caseState,canRetry,retryBlocked,retryUntil})) as Prisma.InputJsonObject;}
 export async function fundingOptions(client:PrismaClient){const policies=await Promise.all(DEPOSIT_CHANNELS.map(channel=>client.paymentPolicy.findFirst({where:{channel},orderBy:{version:'desc'}})));return {...paymentHealth(),accounts:policies.filter(p=>p?.enabled&&p.pointsNumerator*100n===p.centsDenominator).map(p=>({id:p!.channel,policyId:p!.id,version:p!.version,name:paymentChannelName(p!.channel),number:p!.account,holder:p!.accountName,numerator:p!.pointsNumerator.toString(),denominator:p!.centsDenominator.toString(),minCents:p!.minCents.toString(),maxCents:p!.maxCents.toString(),terms:p!.terms}))}}
-export async function createIntent(client:PrismaClient,userId:string,raw:unknown,fromReceipt=false){requireEnabled();const body=fromReceipt?receiptCreateSchema.parse(raw):createSchema.parse(raw),fingerprint=hash(JSON.stringify({...body,...(fromReceipt?{amountFromReceipt:true}:{})}));return client.$transaction(async tx=>{
- await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`},0))`;await eligibility(tx,userId);
+export async function createIntent(client:PrismaClient,userId:string,raw:unknown,fromReceipt=false,reauthorize?:(tx:Tx)=>Promise<void>){requireEnabled();const body=fromReceipt?receiptCreateSchema.parse(raw):createSchema.parse(raw),fingerprint=hash(JSON.stringify({...body,...(fromReceipt?{amountFromReceipt:true}:{})}));return client.$transaction(async tx=>{
+ await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`},0))`;await eligibility(tx,userId);if(reauthorize)await reauthorize(tx);
  const prior=await tx.topUpIntent.findUnique({where:{userId_key:{userId,key:body.key}}});if(prior){if(prior.requestHash!==fingerprint)throw new PaymentError(409,'Idempotency key changed.');return ownIntent(prior)}
  const reference=fromReceipt&&'input' in body&&body.input?candidate(body.channel,body.input):undefined;
  if(reference){await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`payment-submit:${userId}:${body.channel}:${reference}`},0))`;const used=await usedTransfer(tx,body.channel,reference);if(used&&used.userId!==userId)throw new PaymentError(409,depositFailureMessages.DUPLICATE_CONFLICT);const existing=await existingDeposit(tx,userId,body.channel,reference,used);if(existing)return {...ownIntent(existing),reused:true}}
@@ -50,7 +50,15 @@ export async function verifyIntent(client:PrismaClient,userId:string,raw:unknown
  return verifyQueuedIntent(client,userId,raw,transport,reauthorize,adminRecovery,staffRetry);
 }
 async function usedTransfer(tx:Tx,channel:string,reference:string){
- return await tx.paymentClaim.findUnique({where:{channel_reference:{channel,reference}}})??(await tx.paymentTransferAlias.findUnique({where:{channel_alias:{channel,alias:reference}},include:{claim:true}}))?.claim??await tx.adminWalletCredit.findUnique({where:{channel_reference:{channel,reference}}});
+ // A single parameterized lookup across every consumed-reference source.
+ const rows=await tx.$queryRaw<{userId:string;intentId:string}[]>`
+  SELECT "userId","intentId" FROM (
+   SELECT "userId","intentId",0 AS priority FROM "PaymentClaim" WHERE channel=${channel} AND reference=${reference}
+   UNION ALL SELECT c."userId",c."intentId",1 AS priority FROM "PaymentTransferAlias" a
+    JOIN "PaymentClaim" c ON c.id=a."claimId" WHERE a.channel=${channel} AND a.alias=${reference}
+   UNION ALL SELECT "userId","intentId",2 AS priority FROM "AdminWalletCredit" WHERE channel=${channel} AND reference=${reference}
+  ) used ORDER BY priority LIMIT 1`;
+ return rows[0]??null;
 }
 const verifyImageSchema=z.object({id:z.string().uuid(),key:z.string().uuid()}).strict();
 export async function verifyIntentImage(client:PrismaClient,userId:string,raw:unknown,image:Buffer,mime:ImageVerificationInput['mime'],transport=submitVerifyImage,reauthorize?:(tx:Tx)=>Promise<void>){
@@ -221,6 +229,12 @@ export async function processOneVerifyRequest(client:PrismaClient){
  if(!result&&!t.reference){await client.verifyRequest.update({where:{id:row.id},data:{nextCheckAt:new Date(Date.now()+30000)}});return true}
  if(!result)result=await submitVerify(inputFor(t,row.key));
  await completeVerifyRequest(client,row.id,result);return true;
+}
+export async function getOwnTopup(client:PrismaClient,userId:string,rawId:unknown){
+ const id=z.string().uuid().parse(rawId);
+ const row=await client.topUpIntent.findFirst({where:{id,userId,provider:{in:['CHECK_ET','VERIFY_ET','DEMO_PREVIEW','ADMIN_CREDIT']}}});
+ if(!row)throw new PaymentError(404,'Funding request not found.');
+ return ownIntent(row);
 }
 export async function listOwnTopups(client:PrismaClient,userId:string,page=1){const [rows,total]=await client.$transaction([client.topUpIntent.findMany({where:{userId,provider:{in:['CHECK_ET','VERIFY_ET','DEMO_PREVIEW','ADMIN_CREDIT']},OR:[{reasonCode:null},{reasonCode:{not:'DUPLICATE_REQUEST'}}]},orderBy:[{createdAt:'desc'},{id:'desc'}],take:20,skip:(page-1)*20}),client.topUpIntent.count({where:{userId,provider:{in:['CHECK_ET','VERIFY_ET','DEMO_PREVIEW','ADMIN_CREDIT']},OR:[{reasonCode:null},{reasonCode:{not:'DUPLICATE_REQUEST'}}]}})]);return {items:rows.map(ownIntent),page,total,totalPages:Math.ceil(total/20)}}
 export async function reconcilePayments(client:PrismaClient|Tx){return client.$queryRaw<{id:string}[]>`SELECT t.id FROM "TopUpIntent" t LEFT JOIN "PaymentClaim" c ON c."intentId"=t.id WHERE t.provider<>'ADMIN_CREDIT' AND ((t.status='CREDITED') IS DISTINCT FROM (c.id IS NOT NULL) OR c.id IS NOT NULL AND (c.points<>t.points OR c."journalId" IS DISTINCT FROM t."journalId" OR c."amountCents"<>t."expectedCents" OR c."userId"<>t."userId")) UNION ALL SELECT j.id FROM "Journal" j LEFT JOIN "PaymentClaim" c ON c."journalId"=j.id WHERE j.kind='TOPUP_CREDIT' AND c.id IS NULL UNION ALL SELECT t.id FROM "TopUpIntent" t LEFT JOIN "AdminWalletCredit" c ON c."intentId"=t.id WHERE t.provider='ADMIN_CREDIT' AND (t.status<>'CREDITED' OR c.id IS NULL OR c."userId"<>t."userId" OR c."amountCents" IS DISTINCT FROM t."expectedCents" OR t.points IS DISTINCT FROM c."amountCents"::numeric/100 OR c."journalId" IS DISTINCT FROM t."journalId") UNION ALL SELECT j.id FROM "Journal" j LEFT JOIN "AdminWalletCredit" c ON c."journalId"=j.id WHERE j.kind='ADMIN_CREDIT' AND c.id IS NULL`}

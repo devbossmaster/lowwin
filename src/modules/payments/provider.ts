@@ -50,6 +50,11 @@ function retryDelay(value:string|null,fallback=30){
  const seconds=/^\d+$/.test(text)?Number(text):(Date.parse(text)-Date.now())/1000;
  return Number.isFinite(seconds)?Math.min(86400,Math.max(1,Math.ceil(seconds))):fallback;
 }
+function queuedRetrySeconds(raw:unknown,retryAfter:string|null){
+ const links=z.object({links:z.object({pollAfterMs:z.number().finite().positive()})}).safeParse(raw);
+ const suggested=links.success?Math.min(86400,Math.max(1,Math.ceil(links.data.links.pollAfterMs/1000))):2;
+ return retryDelay(retryAfter,suggested);
+}
 function httpFailure(status:number,raw:unknown,retryAfter:string|null):Verification{
  const details=z.object({requestId:requestIdSchema.optional(),error:providerErrorSchema.optional()}).safeParse(raw);
  const requestId=details.success?details.data.requestId:undefined;
@@ -135,7 +140,7 @@ export async function submitVerify(input:VerificationInput):Promise<Verification
    const queued=envelopeSchema.safeParse(raw);
    if(!queued.success||!queued.data.success||queued.data.error)return finish(result);
    if(queued.data.verification&&!['queued','running'].includes(queued.data.verification.processingStatus))return finish({code:'INCOMPLETE_EVIDENCE',requestId:queued.data.requestId,matched:false,evidence:{}});
-   return finish({code:'PROCESSING',requestId:queued.data.requestId,processing:true,matched:false,evidence:{},retrySeconds:retryDelay(response.headers.get('retry-after'),5)});
+   return finish({code:'PROCESSING',requestId:queued.data.requestId,processing:true,matched:false,evidence:{},retrySeconds:queuedRetrySeconds(raw,response.headers.get('retry-after'))});
   }
   return finish(result);
  }catch(error){return finish({code:'PROVIDER_OUTAGE',matched:false,retrySeconds:60,evidence:{}},error instanceof Error&&['TimeoutError','AbortError'].includes(error.name)?'TIMEOUT':status?'RESPONSE_UNREADABLE':'REQUEST_FAILED')}
@@ -153,7 +158,7 @@ export async function submitVerifyImage(input:ImageVerificationInput):Promise<Im
   const metadata=imageProcessingSchema.safeParse(envelope.success?envelope.data.imageProcessing:undefined);if(metadata.success)imageProcessing=metadata.data;
   if(status===202){
    if(!envelope.success||!envelope.data.success||envelope.data.error||!envelope.data.verification||!['queued','running'].includes(envelope.data.verification.processingStatus))return finish({code:'INCOMPLETE_EVIDENCE',requestId:envelope.success?envelope.data.requestId:undefined,matched:false,evidence:{}});
-   return finish({code:'PROCESSING',requestId:envelope.data.requestId,processing:true,matched:false,evidence:{},retrySeconds:retryDelay(response.headers.get('retry-after'),5)});
+   return finish({code:'PROCESSING',requestId:envelope.data.requestId,processing:true,matched:false,evidence:{},retrySeconds:queuedRetrySeconds(raw,response.headers.get('retry-after'))});
   }
   const item=envelope.success&&Array.isArray(envelope.data.data)&&envelope.data.data.length===1?envelope.data.data[0]:undefined,reference=providerReference(item,input.bank);
   const verification=assess(raw,{...base,reference:reference??placeholder});
@@ -175,7 +180,7 @@ export async function readVerifyStatus(requestId:string):Promise<Verification|nu
   if(data&&data.requestId!==id)return incomplete;
   const failure=providerFailure(parsed.data.error??data?.error,id);if(failure)return failure;
   if(!data)return incomplete;
-  if(parsed.data.success&&['queued','running'].includes(data.processingStatus))return {code:'PROCESSING',matched:false,processing:true,requestId:id,retrySeconds:response.headers.has('retry-after')?retryDelay(response.headers.get('retry-after')):undefined,evidence:{}};
+  if(parsed.data.success&&['queued','running'].includes(data.processingStatus))return {code:'PROCESSING',matched:false,processing:true,requestId:id,retrySeconds:response.headers.has('retry-after')||z.object({links:z.object({pollAfterMs:z.number().finite().positive()})}).safeParse(raw).success?queuedRetrySeconds(raw,response.headers.get('retry-after')):undefined,evidence:{}};
   if(data.processingStatus==='completed'&&parsed.data.success&&data.status==='success'&&data.verified===true)return null;
   if(['completed','failed'].includes(data.processingStatus))return {code:data.status==='not_found'?'NOT_FOUND':'UNCONFIRMED',matched:false,requestId:id,evidence:{}};
   return incomplete;
