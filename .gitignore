@@ -10,3 +10,6 @@ test-results/
 playwright-report/
 *.tsbuildinfo
 next-env.d.ts
+
+# Prevent accidental Windows system-cache check-ins
+/%SystemDrive%/
