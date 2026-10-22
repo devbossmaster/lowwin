@@ -22,6 +22,11 @@ export function databaseErrorSummary(error: unknown) {
   const embedded = typeof failure.message === 'string'
     ? failure.message.match(/\bcode:\s*"([A-Z0-9]{5})"/)?.[1] : undefined;
   const sqlState = [failure.meta?.code,embedded].find(value => typeof value === 'string' && Object.hasOwn(states,value)) as string | undefined;
+  // Supabase pooler initialization can omit a Prisma code. Return a fixed
+  // reason only; the server message can contain the private tenant reference.
+  const reason = kind==='PrismaClientInitializationError'&&typeof failure.message==='string'
+    && /\bFATAL:[\s\S]{0,256}\bTenant\b[\s\S]{0,256}\bnot found\b/i.test(failure.message)
+    ? 'POOLER_TENANT_NOT_FOUND' as const : undefined;
   const hints:Record<string,string> = {
     P1000:'Database authentication failed; check the runtime credentials.',
     P1001:'Database unreachable; check the endpoint and network.',
@@ -34,6 +39,7 @@ export function databaseErrorSummary(error: unknown) {
     P2024:'Database connection pool timed out; inspect pool usage.',
     P2028:'Database transaction failed; run the inbox database check.',
   };
-  return {code:code??'UNKNOWN',kind,...(sqlState?{sqlState}:{}),
-    hint:(sqlState?states[sqlState]:undefined)??(code?hints[code]:undefined)??'Run npm run db:check -- --bot-inbox in this container.'};
+  return {code:code??'UNKNOWN',kind,...(sqlState?{sqlState}:{}),...(reason?{reason}:{}),
+    hint:reason?'Database pooler tenant was not found; check the configured project reference and project status.':
+      (sqlState?states[sqlState]:undefined)??(code?hints[code]:undefined)??'Run npm run db:check -- --bot-inbox in this container.'};
 }
