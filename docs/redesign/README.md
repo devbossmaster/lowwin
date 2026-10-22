@@ -32,13 +32,13 @@ The reference payment-method picker is superseded by the latest direct-payment r
 
 See the before/after screenshot folders, measured JSON files, and `release.md`. Screens show synthetic users and DEMO inventory in disposable local databases, never real customer PII or invented production results. Physical Android/iOS Telegram, real merchant USSD, provider p95 latency and production reconciliation remain release gates. The published Terms/Privacy discrepancy is listed in `release.md`.
 
-Validation results and final timing table are appended after the final mobile pass. Dependency security audit: zero reported vulnerabilities after patched Next/Sharp/Vitest/Vite/source-map-js versions. Impeccable mechanical detector: one warning for the existing active legal-navigation underline; native active navigation remains intentional.
+The original mobile evidence below was captured at `da9625aa` with Next.js 16.3.8. Framework security revalidation is recorded in `measurements.md`; the current pin is 16.4.2. Impeccable mechanical detector: one warning for the existing active legal-navigation underline; native active navigation remains intentional.
 
 ## Final verification
 
 - Full opt-in PostgreSQL safety suite: **757 passed, 0 failed, 0 skipped** in 72 files.
 - Final optimized browser suite: **6 passed, 0 skipped, 0 flaky**, at both requested mobile widths.
-- Production build and typecheck passed. Dependency audit: **0 reported vulnerabilities**.
+- Production build and typecheck passed. The dependency audit was refreshed after the framework security update; see `measurements.md` for version and date.
 - Read-only wallet/payment reconciliation on the final disposable database: **zero drift**.
 - Captured **30 before / 76 after** PNGs. [Open the visual review](review.html) and [exact measured results](measurements.md).
 
@@ -47,3 +47,5 @@ Home render observations: 1529 → 1141ms at 360px; 1298 → 1074ms at 430px. Si
 [Hero asset and final generation prompt](../../public/images/SOURCES.md) records the built-in ImageGen workflow. [Font provenance](../../public/fonts/REDESIGN-SOURCES.md) records the self-hosted sources. No production deployment or irreversible data change was performed.
 
 CI now runs the current redesign browser scenarios. The historical customer/deposit visual suites remain in the repository as prior UI references; legacy financial, payment, authentication and staff invariants remain covered by the full opt-in PostgreSQL suite. They were not removed or disabled to manufacture the safety result.
+
+Framework update: Next.js is now pinned to **16.4.2**. Prisma generation, typecheck, both optimized builds, all **757 safety tests** and all **six mobile regressions** pass again. The refreshed dependency audit reports **zero vulnerabilities**, and the fresh disposable database has **zero reconciliation drift**. Original screenshots/timings above remain unchanged; patch-validation provenance is in `measurements.md`.

@@ -8,7 +8,7 @@ import {bidAuction} from '../bid-fixtures';
 import {creditDevelopmentPoints, reconcile} from '../../src/modules/wallet/ledger';
 
 const stage = process.env.REDESIGN_STAGE ?? 'after';
-const root = `docs/redesign/screenshots/${stage}`;
+const root = process.env.REDESIGN_CAPTURE_DIR ?? `docs/redesign/screenshots/${stage}`;
 const origin = process.env.BETTER_AUTH_URL!;
 
 test('authenticated mobile screens and local timing evidence', async ({page, browser}, info) => {

@@ -24,6 +24,8 @@ Release the interface first with ArifPay disabled. Inspect authenticated error r
 - Confirm Telegram login, current balances, old auction deep links, bid receipts and admin access after rollback. Run read-only wallet and payment reconciliation again and compare counts with the pre-release audit.
 - Restore a backup only for a confirmed data incident under a separate recovery decision. Restoring an old snapshot can lose legitimate customer operations accepted after the snapshot; reconcile provider transactions and the append-only ledger before reopening traffic.
 
+A rollback artifact must retain a patched framework: Next.js 16.4.1 or newer, with this branch pinned to 16.4.2. Re-run the dependency audit before release or rollback. This requirement addresses the published [image-optimization advisory](https://github.com/vercel/next.js/security/advisories/GHSA-2464-fhr4-w9xw) and [Server Actions advisory](https://github.com/vercel/next.js/security/advisories/GHSA-p3m5-59mp-jv5r); an older passing build is not sufficient security evidence.
+
 ## Verification boundaries
 
 Local browser evidence uses a fresh PostgreSQL cluster bound to `127.0.0.1`, disposable `_test` databases, synthetic signed Telegram launches and clearly labeled DEMO inventory. It does not establish production database performance, real Telegram Android/iOS behavior, keyboard/safe-area behavior on physical devices, real merchant payment acceptance, or external provider p95 latency. Complete those staging/device checks before a broad release.
@@ -32,7 +34,7 @@ Never use a screenshot, image OCR, browser redirect, client amount or optimistic
 
 ## Local workstation limitation
 
-C: filled during a dependency patch attempt. Automatic approval rejected both generated cache cleanup and replacing partial dependency directories with npm's retained copies, returning blocked by policy. No rejected action executed. The complete, built and tested review checkout is D:/lowin-redesign-qa/patched-deps/app with patched dependencies in its parent. The original C: source tree is preserved, but its interrupted node_modules install needs repair after space is freed. Do not treat C: dependencies as verified. No production service or database was involved.
+C: filled during a dependency patch attempt. Automatic approval review still blocked deletion of the explicitly approved `.next/cache` and `.next-ui-local/cache` directories; neither cache was deleted. A non-deleting copy of the verified D: dependencies repaired the interrupted C: installation. C: typecheck, the native Sharp check and generated Prisma ArifPay model checks now pass. Its source remains an earlier, uncommitted redesign, so D:/lowin-redesign-qa/patched-deps/app remains the authoritative PR checkout. About 538 MB remained free on C: when repair was checked; disk space is still limited. No production service or database was involved.
 
 ## Published policy discrepancy
 
