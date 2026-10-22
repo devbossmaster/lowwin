@@ -13,14 +13,15 @@ export function localMiniPreview(headers:Headers) {
 async function readBoundSession(headers:Headers,client:PrismaClient|Prisma.TransactionClient,requireContact:boolean) {
   const current=await createAuth(client).api.getSession({headers});
   if(!current)return null;
-  if(current.user.id==='lowin-local-test-user'&&localMiniPreview(headers))return {...current,telegramId:null};
-  const session=await client.session.findUnique({where:{id:current.session.id},select:{telegramLaunchId:true,user:{select:{telegramId:true,staffMember:{select:{userId:true}},ownContact:{select:{telegramId:true,botId:true,revokedAt:true}}}}}});
+  if(current.user.id==='lowin-local-test-user'&&localMiniPreview(headers))return {...current,telegramId:null,contactStatus:{verified:true,masked:null}};
+  const session=await client.session.findUnique({where:{id:current.session.id},select:{telegramLaunchId:true,user:{select:{telegramId:true,staffMember:{select:{userId:true}},ownContact:{select:{telegramId:true,botId:true,revokedAt:true,lastFour:true}}}}}});
   if(!session?.telegramLaunchId||session.telegramLaunchId!==session.user.telegramId||session.user.staffMember)return null;
-  if(requireContact){
-    const contact=session.user.ownContact;
-    if(!contact||contact.revokedAt||contact.telegramId!==session.user.telegramId||contact.botId!==contactBotId())return null;
-  }
-  return {...current,telegramId:session.user.telegramId};
+  const contact=session.user.ownContact;
+  const verified=!!contact&&!contact.revokedAt&&contact.telegramId===session.user.telegramId&&contact.botId===contactBotId();
+  if(requireContact&&!verified)return null;
+  // The contact endpoint can reuse this same server-validated snapshot. It is
+  // shared only while a lookup is pending; later requests recheck revocation.
+  return {...current,telegramId:session.user.telegramId,contactStatus:{verified,masked:verified?`•••• ${contact!.lastFour}`:null}};
 }
 // Cards load their private state together. Share only an unfinished lookup for
 // the same cookie; never retain an authorization result between requests.
