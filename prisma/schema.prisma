@@ -34,6 +34,7 @@ model User {
   favorites           AuctionFavorite[]
   staffMember         StaffMember?
   testRunActors       TestRunActor[]
+  arifPayCheckouts     ArifPayCheckout[]
 
   @@map("user")
 }
@@ -314,6 +315,7 @@ model Auction {
   draft               AuctionDraft?
   feeRevisions        AuctionFeeRevision[]
   controlRevisions    AuctionControlRevision[]
+  arifPayCheckouts     ArifPayCheckout[]
 
   @@index([status, startsAt, endsAt])
   @@index([categoryId, status])
@@ -430,6 +432,43 @@ model Bid {
   @@index([userId, auctionId, acceptedAt])
   @@index([auctionId, amount])
   @@index([feeRevisionId])
+}
+
+// Additive direct bid-fee checkout. Existing wallets and transfer records remain intact.
+model ArifPayCheckout {
+  id                String    @id @default(uuid())
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+  auctionId         String
+  auction           Auction   @relation(fields: [auctionId], references: [id], onDelete: Restrict)
+  auctionSlug       String
+  key               String
+  requestHash       String
+  bidNumber         Decimal   @db.Decimal
+  feeVersion        Int
+  fee               Decimal   @db.Decimal
+  currency          String    @default("ETB")
+  channel           String
+  phoneCipher       String
+  phoneHash         String
+  nonce             String    @unique
+  sessionId         String?   @unique
+  transactionId     String?   @unique
+  status            String    @default("SUBMITTING")
+  reason            String?
+  creditJournalId   String?   @unique
+  bidId             String?   @unique
+  receipt           Json?
+  evidenceHash      String?
+  attempts          Int       @default(0)
+  nextCheckAt       DateTime  @default(now())
+  expiresAt         DateTime
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([userId, key])
+  @@index([status, nextCheckAt])
+  @@index([userId, createdAt])
 }
 
 model TopUpIntent {

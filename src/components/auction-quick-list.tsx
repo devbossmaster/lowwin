@@ -26,17 +26,6 @@ export function AuctionQuickList({className}:{className?:string}){
  const {language}=useMiniLocale(),am=language==='am',path=usePathname(),id=useId();
  const [open,setOpen]=useState(false),[page,setPage]=useState(1),[revision,setRevision]=useState(0),[data,setData]=useState<AuctionList|null>(null),[count,setCount]=useState<number|null>(null),[loading,setLoading]=useState(false),[error,setError]=useState('');
  const dialog=useRef<HTMLDialogElement>(null),trigger=useRef<HTMLButtonElement>(null);
- useEffect(()=>{
-  let controller:AbortController|null=null,disposed=false;
-  const refreshCount=async()=>{
-   if(controller||disposed)return;
-   controller=new AbortController();const current=controller,timeout=setTimeout(()=>current.abort(),10000);
-   try{const response=await fetch('/api/catalog/auctions?view=quick&status=live&sort=code&page=1',{cache:'no-store',signal:current.signal});if(!response.ok)throw Error();const result=await response.json() as AuctionList;if(!disposed)setCount(Number.isSafeInteger(result.total)&&result.total>=0?result.total:null)}catch{if(!disposed)setCount(null)}finally{clearTimeout(timeout);controller=null}
-  };
-  void refreshCount();const timer=setInterval(()=>{if(!document.hidden)void refreshCount()},300000);const visible=()=>{if(!document.hidden)void refreshCount()};
-  document.addEventListener('visibilitychange',visible);window.addEventListener('lowin-auctions',refreshCount);
-  return()=>{disposed=true;controller?.abort();clearInterval(timer);document.removeEventListener('visibilitychange',visible);window.removeEventListener('lowin-auctions',refreshCount)};
- },[]);
  useEffect(()=>{setOpen(false)},[path]);
  useEffect(()=>{
   if(!open){dialog.current?.close();return}

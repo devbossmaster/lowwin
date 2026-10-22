@@ -2,7 +2,6 @@
 import {useCallback,useState} from 'react';
 import Link from 'next/link';
 import {usePathname} from 'next/navigation';
-import {ArrowUpRight} from 'lucide-react';
 import {BottomNavigation} from './bottom-navigation';
 import {TelegramEntry} from './telegram-entry';
 import {MiniHeader} from './mini-header';
@@ -20,7 +19,7 @@ export function AppShell({children,requireLaunch=false}:{children:React.ReactNod
  return <div className="app-frame">
   <MiniHeader/>
   <main id="main">{children}</main>
-  {path==='/'&&<footer className="page-footer"><img className="footer-logo" src="/logo.png?v=forest-1" alt="Lowwin" width="92" height="92"/><p><MiniPhrase en="Bid low. Win differently." am="በዝቅተኛ ዋጋ ተጫረቱ፣ በተለየ መንገድ ያሸንፉ።"/></p><div className="footer-links"><Link href="/auctions/all"><MiniPhrase en="Auctions" am="ጨረታዎች"/></Link><Link href="/winners/all"><MiniPhrase en="Results" am="ውጤቶች"/></Link><Link href="/faq"><MiniPhrase en="How it works" am="እንዴት ይሰራል?"/></Link></div><small>Telegram Mini App · © 2026 Lowwin</small><Link className="footer-rules" href="/faq"><MiniPhrase en="Understand the rules" am="ደንቦቹን ይረዱ"/> <ArrowUpRight size={14}/></Link></footer>}
+  {path==='/'&&<footer className="page-footer"><div className="footer-links"><Link href="/faq"><MiniPhrase en="FAQ" am="ጥያቄዎች"/></Link><Link href="/terms"><MiniPhrase en="Terms" am="ውሎች"/></Link><Link href="/privacy"><MiniPhrase en="Privacy" am="ግላዊነት"/></Link></div><small>© 2026 Lowin · Telegram Mini App</small></footer>}
   <TelegramSupportLink/>
   <BottomNavigation/>
  </div>;

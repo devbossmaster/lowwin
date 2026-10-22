@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import {cookies} from 'next/headers';
 import {MiniLocaleProvider,MiniPhrase} from '@/components/mini-locale';
 import './globals.css';
+import '@/components/mini-redesign.css';
 export const metadata: Metadata = { title: { default: 'Lowwin — A little different wins', template: '%s · Lowwin' }, description: 'The lowest unique ETB bid wins. Discover a different way to bid with Lowwin.' };
 export const viewport: Viewport = { width: 'device-width', initialScale: 1, viewportFit: 'cover', themeColor: '#FFFFFF' };
 export const dynamic = 'force-dynamic';

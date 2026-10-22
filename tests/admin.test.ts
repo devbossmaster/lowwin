@@ -3,6 +3,7 @@ import {beforeAll,afterAll,describe,it,expect} from 'vitest';
 import {PrismaClient} from '@prisma/client';
 import {createServer,type Server} from 'node:http';
 import {execFileSync} from 'node:child_process';
+import {createRequire} from 'node:module';
 import {randomUUID} from 'node:crypto';
 import sharp from 'sharp';
 import {bootstrapOwner} from '../src/modules/admin/bootstrap';
@@ -27,7 +28,7 @@ describe.skipIf(!url)('Phase 5A invite-only Owner operations',()=>{
   const target=new URL(url!);if(!['127.0.0.1','localhost'].includes(target.hostname)||!target.pathname.endsWith('_test'))throw Error('Loopback disposable DB required');
   sink=createServer(async(req,res)=>{let data='';for await(const part of req)data+=part;messages.push(JSON.parse(data));res.writeHead(204);res.end()});await new Promise<void>(resolve=>sink.listen(0,'127.0.0.1',resolve));
   Object.assign(process.env,{DATABASE_URL:url,DIRECT_URL:url,NODE_ENV:'test',APP_ENV:'local',DEV_POINTS_ENABLED:'true',DEV_IDENTITY_ENABLED:'false',BETTER_AUTH_URL:'http://localhost:3000',MINI_APP_URL:'http://localhost:3000',BETTER_AUTH_SECRET:'fixture-only-secret-at-least-thirty-two-characters',TELEGRAM_BOT_TOKEN:TEST_TOKEN,TELEGRAM_BOT_USERNAME:'lowin_fixture_bot',TELEGRAM_WEBHOOK_SECRET:'fixture-only-webhook-secret-thirty-two',ADMIN_BOOTSTRAP_ENABLED:'true',ADMIN_MFA_KEY:'a'.repeat(64),EMAIL_TRANSPORT:'local-sink',EMAIL_SINK_URL:`http://127.0.0.1:${(sink.address() as {port:number}).port}`});
-  execFileSync(process.execPath,['node_modules/prisma/build/index.js','migrate','deploy'],{env:process.env,stdio:'pipe'});client=new PrismaClient();({handleAuth}=await import('../src/modules/auth/handler'));admin=await import('../src/app/api/admin/[...path]/route');
+  execFileSync(process.execPath,[createRequire(import.meta.url).resolve('prisma/build/index.js'),'migrate','deploy'],{env:process.env,stdio:'pipe'});client=new PrismaClient();({handleAuth}=await import('../src/modules/auth/handler'));admin=await import('../src/app/api/admin/[...path]/route');
  },60000);
  afterAll(async()=>{await client?.$disconnect();const {db}=await import('../src/lib/db');await db.$disconnect();await new Promise<void>(resolve=>sink?.close(()=>resolve()))});
  it('delivers one audited Owner invitation to a real local HTTP sink and denies bootstrap replay',async()=>{
@@ -50,7 +51,7 @@ describe.skipIf(!url)('Phase 5A invite-only Owner operations',()=>{
   const login=await auth('login',{email,password,role:'OWNER'},'');expect(login.status).toBe(400);const plain=await auth('login',{email,password},'');await okay(plain);expect((await get('dashboard',takeCookie(plain))).status).toBe(403);
  });
  it('creates real inventory, validates and sanitizes images, rejects SVG and untrusted input',async()=>{
-  const category=await okay(await cmd('category',{key:randomUUID(),version:0,name:'Admin test category',slug:`admin-${randomUUID()}`,description:'DEMO category',visible:true,requiresEligibilityReview:false}));
+  const category=await okay(await cmd('category',{key:randomUUID(),version:0,name:'Admin test category',nameAm:'የአስተዳዳሪ ሙከራ ምድብ',slug:`admin-${randomUUID()}`,description:'DEMO category',descriptionAm:'የሙከራ ምድብ',visible:true,requiresEligibilityReview:false}));
   const bad=await cmd('media',{key:randomUUID(),mime:'image/png',data:Buffer.from('<svg onload="alert(1)"></svg>').toString('base64'),sourceType:'SUPPLIED',sourceCredit:'test',rightsConfirmed:true});expect(bad.status).toBe(422);
   const png=await sharp({create:{width:50,height:50,channels:3,background:'#184d3a'}}).png().toBuffer();const image=await okay(await cmd('media',{key:randomUUID(),mime:'image/png',data:png.toString('base64'),sourceType:'ORIGINAL',sourceCredit:'Original test pixels',rightsConfirmed:true}));
   const product=await okay(await cmd('product',{key:randomUUID(),version:0,title:'DEMO admin item',slug:`admin-${randomUUID()}`,description:'Isolated test inventory',condition:'New',categoryId:category.id,isDemo:true,visible:true,imageIds:[image.id]}));productId=product.id;
@@ -68,7 +69,7 @@ describe.skipIf(!url)('Phase 5A invite-only Owner operations',()=>{
   const impact=await okay(await get(`auctions/${auction.id}/impact`));expect(impact).toMatchObject({affectedBidders:2,heldPoints:'13',feeRefund:'6'});expect(impact.participants.map((p:{feeRefund:string})=>p.feeRefund)).toEqual(['3','3']);expect(JSON.stringify(impact)).not.toMatch(/amountFrequencies|winningBid|telegram/);
   expect((await get(`auctions/${auction.id}/proof`)).status).toBe(409);
   expect((await cmd('cancel',{key:randomUUID(),auctionId:auction.id,reason:'DEMO cancellation',confirmation:auction.code,impactHash:'0'.repeat(64)})).status).toBe(409);
-  const grant=await client.staffSession.findFirstOrThrow({where:{mfaAt:{not:null},session:{userId:ownerId}}});await client.staffSession.update({where:{sessionId:grant.sessionId},data:{credentialAt:new Date(Date.now()-600000),mfaAt:new Date(Date.now()-31*60000)}});
+  const grant=await client.staffSession.findFirstOrThrow({where:{mfaAt:{not:null},session:{userId:ownerId}}});await client.staffSession.update({where:{sessionId:grant.sessionId},data:{credentialAt:new Date(Date.now()-40*60000),mfaAt:new Date(Date.now()-31*60000)}});
   expect((await cmd('cancel',{key:randomUUID(),auctionId:auction.id,reason:'DEMO cancellation',confirmation:auction.code,impactHash:impact.impactHash})).status).toBe(403);
   const fresh=await auth('step-up',{code:totp(secret,BigInt(Math.floor(Date.now()/30000)+1))});await okay(fresh);
  });

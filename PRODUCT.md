@@ -1,23 +1,28 @@
 # Lowin
 
 ## Platform
-Telegram Mini App only for players. Outside Telegram, the domain shows Continue with the bot; staff administration remains a separate interface. This is an independent repository.
+web
 
-## Stack
-Next.js App Router, strict TypeScript, Tailwind, shadcn/ui conventions, Prisma/PostgreSQL, Better Auth, grammY and a separate Node worker. Owner selected Vercel initially, with a possible later move to VPS; the worker needs a separate always-on host.
+Lowin is a Telegram Mini App for Ethiopian customers. The ordinary browser entry directs customers to the Telegram bot. Staff administration has a separate permission-controlled workspace.
 
-## Product truth
-The smallest integer point amount appearing exactly once wins. No unique amount means no winner. Up to 100 different amounts per user per auction. Reserve the maximum bid, not the sum; disclose any entry fee. Points have no assumed ETB conversion, transfer or withdrawal path.
+## Current product truth
 
-## Current scope
-Phase 1: verified Telegram identity, bot launch, mobile shell and database-enforced journal foundation. Catalog, bidding and settlement arrive in later reviewed phases. Never fabricate inventory, wallet activity or live counts.
+The repository supports frozen, versioned auction terms. Current `lowest-unique-v4` auctions treat the entered bid number as a number, never a monetary hold or winner payment. Only the disclosed ETB submission fee is deducted. Submission fees are non-refundable under v4. Earlier versions keep their own holds, charges, refunds and fallback rules. Existing settlements and published terms are not rewritten by the redesign.
 
-## Identity and funds
-Better Auth opaque user IDs own domain data. Telegram IDs are unique verified external identities. Future phone linking needs an active session and SMS proof, without automatic merges. Top-up provider and terms are undecided; production issuance remains disabled.
+The existing v4 fallback remains the earliest accepted bid at the lowest number when no number is unique. A least-frequent / most-recent fallback would require a separate future rules version.
 
-## Brand commitments
-Warm off-white, forest green, primary green and mint. Replaceable text wordmark; no supplied logo or licensed product images. Comfortable phone tap targets, visible focus and Telegram safe areas.
+## Identity and financial records
 
-Visual direction update (2026-09-27): the owner replaced the off-white canvas with pure white, flat surfaces and selected green gradients, using Check.et as a structural reference. The existing Mini App Home serves as the landing surface; no separate website is required. DESIGN.md records the implemented system. This update changes the visual direction, not the historical Phase 1 scope or the identity and funds boundaries above.
+Better Auth user IDs, verified Telegram identity/contact binding, encrypted phone keys and existing balances remain authoritative. Browser data cannot authenticate a customer or confirm a payment. Ledger postings, holds, audit history and admin permissions remain intact.
 
-Platform direction update (2026-09-27): the owner explicitly requires a Telegram-only player experience. The ordinary domain is a bot-entry surface, not public read-only browsing. This platform update leaves the historical phase and funds statements above as historical scope context.
+New manual deposits are retired from customer UI and create/prepare API actions. Existing transfer records, Verify.et verification/recovery, staff review and wallet history remain supported. Existing available balances can still pay auction fees.
+
+ArifPay Telebirr and M-PESA direct bid-fee checkout is additive and disabled by default. New charges require explicit server configuration, migration readiness, reviewed merchant setup and activation. An independently verified merchant lookup is required before balanced ledger posting and the existing idempotent bid command. Paid but unaccepted bids preserve funds for review. Neither a redirect, callback body nor a USSD prompt proves payment.
+
+## Brand and experience
+
+Use the supplied Lowin logo. Customer screens use warm white, near-black actions and restrained gold; DM Sans Latin and Noto Sans Ethiopic. Home, Draws, centered Auctions, My Bids and Profile form the five-item navigation. There is no Deposit navigation action. Real finalized settlement records supply results. Winner identities are masked; no public winner stories or photos exist without a separate consent and moderation workflow.
+
+## Release boundary
+
+This branch contains code and additive migration files only. Production deployment, migration execution, provider activation and real transfers are separate reviewable operations. Do not run seeds, resets or cleanup against production. Keep payment recovery running for unresolved charges during rollback.

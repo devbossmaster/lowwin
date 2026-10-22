@@ -2,6 +2,7 @@
 import {useEffect,useState} from 'react';
 import {usePathname} from 'next/navigation';
 import {useTelegram} from './telegram-provider';
+import {miniReturnPath} from '@/lib/mini-return';
 import {ContactGate} from './contact-gate';
 import {LaunchSplash} from './launch-splash';
 import {RotateCcw,ArrowUpRight} from 'lucide-react';
@@ -20,7 +21,8 @@ export function TelegramEntry({onComplete}:{onComplete?:()=>void}={}){
     let frame=0,paintFrame=0;
     frame=window.requestAnimationFrame(()=>{paintFrame=window.requestAnimationFrame(()=>{
       if(pathname==='/telegram'){
-        window.location.replace('/'+window.location.hash);
+        const destination=miniReturnPath(new URL(window.location.href).searchParams.get('next'));
+        window.location.replace(destination+(destination.includes('#')?'':window.location.hash));
       }else if(onComplete){
         onComplete();
       }else{

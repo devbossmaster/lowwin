@@ -9,8 +9,8 @@ if (!['127.0.0.1','localhost'].includes(base.hostname) || !base.pathname.endsWit
   throw Error('Explicit disposable loopback TEST_DATABASE_URL ending in _test required.');
 const suffix = randomBytes(5).toString('hex');
 const mode=process.argv[2]??'unit';
-if(!['unit','browser','payments','smoke'].includes(mode))throw Error('Choose unit, browser, payments, or smoke.');
-const variables=['TEST_DATABASE_URL','BID_TEST_DATABASE_URL','SETTLEMENT_TEST_DATABASE_URL','PERSONAL_TEST_DATABASE_URL','ADMIN_TEST_DATABASE_URL','OPS_TEST_DATABASE_URL','PAYMENT_TEST_DATABASE_URL'];
+if(!['unit','browser','payments','smoke','redesign'].includes(mode))throw Error('Choose unit, browser, payments, smoke, or redesign.');
+const variables=['TEST_DATABASE_URL','BID_TEST_DATABASE_URL','SETTLEMENT_TEST_DATABASE_URL','PERSONAL_TEST_DATABASE_URL','ADMIN_TEST_DATABASE_URL','OPS_TEST_DATABASE_URL','PAYMENT_TEST_DATABASE_URL','ARIFPAY_TEST_DATABASE_URL','ADMIN_CREDIT_TEST_DATABASE_URL','ACTIVITY_TEST_DATABASE_URL'];
 const env={...process.env};
 const admin=new URL(base);admin.pathname='/postgres';
 const client=new Client({connectionString:admin.href});
@@ -35,5 +35,5 @@ if(mode==='unit') {
 } else {
   run(['node_modules/prisma/build/index.js','migrate','deploy']);
   run(['node_modules/tsx/dist/cli.mjs','scripts/seed-catalog.ts']);
-  run(['node_modules/@playwright/test/cli.js','test','--config',mode==='payments'?'playwright.payments.config.ts':mode==='smoke'?'playwright.release.config.ts':'playwright.config.ts']);
+  run(['node_modules/@playwright/test/cli.js','test','--config',mode==='redesign'?'playwright.redesign.config.ts':mode==='payments'?'playwright.payments.config.ts':mode==='smoke'?'playwright.release.config.ts':'playwright.config.ts']);
 }

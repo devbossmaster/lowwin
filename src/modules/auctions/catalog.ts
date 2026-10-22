@@ -7,7 +7,8 @@ import {cachedPublicData} from '@/modules/cache/public-data';
 
 // SQL selection and DTO mapping are independent allowlists. Never select the
 // settlement proof, participant movements, winning user/bid IDs or raw bids here.
-// Only the completed winner's name and contact suffix enter the public result.
+// Only a masked contact suffix enters the public result; names need a future
+// explicit, verified consent and moderation workflow.
 export const publicAuctionSelect = {
   slug:true,code:true,publicCode:true,status:true,publishedAt:true,startsAt:true,endsAt:true,featured:true,isDemo:true,acceptedBidCount:true,publicViewCount:true,presentation:true,
   fulfillmentSummary:true,fulfillmentSummaryAm:true,fulfillmentRegion:true,fulfillmentRegionAm:true,
@@ -16,7 +17,7 @@ export const publicAuctionSelect = {
   terms:{select:{version:true,ruleVersion:true,minParticipants:true,minPoints:true,maxPoints:true,stepPoints:true,entryFeePoints:true,maxDistinctBids:true,noWinnerTerms:true,cancellationTerms:true,fulfillmentSnapshot:true}},
   feeRevisions:{orderBy:[{effectiveAt:'desc' as const},{version:'desc' as const}],take:1,select:{version:true,feePoints:true}},
   result:{select:{outcome:true,winningPoints:true,explanation:true,isDemo:true,closedAt:true,publishedAt:true}},
-  settlement:{select:{decision:true,outcome:true,winningPoints:true,completedAt:true,winner:{select:{name:true,ownContact:{select:{lastFour:true,revokedAt:true}}}}}},
+  settlement:{select:{decision:true,outcome:true,winningPoints:true,completedAt:true,winner:{select:{ownContact:{select:{lastFour:true,revokedAt:true}}}}}},
 } satisfies Prisma.AuctionSelect;
 type AuctionRow = Prisma.AuctionGetPayload<{ select: typeof publicAuctionSelect }>;
 const presentationSchema=z.object({title:z.string(),titleAm:z.string().nullable().optional(),description:z.string(),descriptionAm:z.string().nullable().optional(),condition:z.string(),conditionAm:z.string().nullable().optional(),images:z.array(z.object({path:z.string(),alt:z.string(),sourceType:z.string(),sourceCredit:z.string().nullable().optional()}))}).strict();
@@ -69,7 +70,7 @@ export function toPublicAuction(row: AuctionRow, now: Date) {
     outcome:settled.outcome,winningPoints:settled.winningPoints?.toString()??null,
     decision:settled.decision,explanation:resultExplanation(settled.outcome,settled.decision,row.terms?.ruleVersion),
     isDemo:row.isDemo,closedAt:settled.completedAt.toISOString(),source:'SETTLED' as const,
-    demoLabel:row.isDemo?'DEMO · settled test':null,winnerDisplay:settled.outcome==='WINNER'?(settled.winner?.name.trim()||null):null,
+    demoLabel:row.isDemo?'DEMO · settled test':null,winnerDisplay:null,
     winnerPhoneMasked:settled.outcome==='WINNER'&&settled.winner?.ownContact&&!settled.winner.ownContact.revokedAt&&/^\d{4}$/.test(settled.winner.ownContact.lastFour)?`********${settled.winner.ownContact.lastFour.slice(-2)}`:null,
     acceptedBidCount:row.acceptedBidCount,
   }:status==='closed'&&row.result&&row.result.publishedAt<=now?{

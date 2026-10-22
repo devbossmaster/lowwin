@@ -53,7 +53,12 @@ export function TelegramProvider({ children, devEnabled, botUrl, requireLaunch=f
     document.addEventListener('visibilitychange',visible);
     return()=>document.removeEventListener('visibilitychange',visible);
   },[refreshMe]);
-  useEffect(()=>()=>{attemptSequence.current++;refreshSequence.current++;identityRef.current=null;setPrivateQueryIdentity(null)},[]);
+  useEffect(()=>()=>{
+    attemptSequence.current++;refreshSequence.current++;identityRef.current=null;setPrivateQueryIdentity(null);
+    // React may replay mount effects. Let the new lifetime authenticate rather
+    // than leaving it locked behind the discarded lifetime's request.
+    authenticating.current=false;launchAttempt.current=null;
+  },[]);
   const authenticate = useCallback(async (dev = false, accessKey?: string) => {
     // The SDK callback, mount effect and Retry must not create parallel sign-ins.
     if(authenticating.current)return;
@@ -84,7 +89,7 @@ export function TelegramProvider({ children, devEnabled, botUrl, requireLaunch=f
       if (!response.ok) throw new Error('Your account could not be loaded. Please retry.');
       const account=await response.json();if(attempt!==attemptSequence.current)return;acceptAccount(account); setStatus('authenticated');
     } catch (err) { if(attempt!==attemptSequence.current)return;setMe(null); setNeedsReopen(err instanceof TelegramLaunchError); setError(miniAuthError(err)); setStatus('error'); }
-    finally { authenticating.current=false;if(attempt===attemptSequence.current)setVerifyingTelegram(false); }
+    finally { if(attempt===attemptSequence.current){authenticating.current=false;setVerifyingTelegram(false)} }
   }, [requireLaunch,acceptAccount,clearAccount]);
   const finishContact=useCallback(async()=>{
     const attempt=++attemptSequence.current;
@@ -103,7 +108,7 @@ export function TelegramProvider({ children, devEnabled, botUrl, requireLaunch=f
   },[acceptAccount,clearAccount]);
   const autoAuthenticate=useCallback(()=>{const launch=window.Telegram?.WebApp?.initData??'';if(launchAttempt.current===launch)return;void authenticate()},[authenticate]);
   useEffect(() => {
-    const color=(status==='loading'&&verifyingTelegram)||status==='error'||(requireLaunch&&status==='guest')?'#008000':'#FFFFFF';
+    const color='#FFFFFF';
     try { window.Telegram?.WebApp?.setHeaderColor?.(color); } catch { /* Older Telegram clients may reject custom colors. */ }
     try { window.Telegram?.WebApp?.setBackgroundColor?.(color); } catch { /* Keep recovery controls usable. */ }
   },[status,verifyingTelegram,requireLaunch]);

@@ -1,8 +1,8 @@
 export const defaultHomeCopy={
- headline:'LowWin Auction Platform',
- headlineAm:'LowWin የጨረታ መድረክ',
- lead:'The lowest unique bid wins.\nTry up to 100 amounts per auction.\nDiscover premium items for less.',
- leadAm:'አንድ ጊዜ ብቻ የቀረበው ዝቅተኛ መጠን ያሸንፋል።\nበአንድ ጨረታ እስከ 100 የተለያዩ መጠኖችን ያቅርቡ።\nጥራት ያላቸውን ዕቃዎች በአነስተኛ ዋጋ ያግኙ።',
+ headline:'A little different wins.',
+ headlineAm:'ትንሽ ልዩነት ያሸንፋል።',
+ lead:'Welcome to Lowin. Choose your number.\nThe lowest unique number wins.\nReview the submission fee before you bid.',
+ leadAm:'እንኳን ወደ Lowin በደህና መጡ። ቁጥርዎን ይምረጡ።\nዝቅተኛው ልዩ ቁጥር ያሸንፋል።\nከመጫረትዎ በፊት ክፍያውን ይመልከቱ።',
 };
 type HomeCopy={headline:string;lead:string;headlineAm?:string;leadAm?:string};
 export function resolveHomeCopy(managed:HomeCopy|null){
