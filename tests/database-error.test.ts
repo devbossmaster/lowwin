@@ -28,6 +28,17 @@ describe('safe database diagnostics',()=>{
     expect(summary).not.toHaveProperty('reason');expect(summary.code).toBe('UNKNOWN');
     expect(JSON.stringify(summary)).not.toContain('private');
   });
+  it('classifies a network allow-list rejection without returning the address or credentials',()=>{
+    const summary=databaseErrorSummary(new Prisma.PrismaClientInitializationError('FATAL: Address not in tenant allow_list: 192.0.2.123 private-credentials','6.19.3'));
+    expect(summary).toMatchObject({code:'UNKNOWN',kind:'PrismaClientInitializationError',reason:'NETWORK_ADDRESS_NOT_ALLOWED'});
+    expect(summary.hint).toContain('project allow list');
+    expect(JSON.stringify(summary)).not.toMatch(/192\.0\.2\.123|private-credentials/);
+  });
+  it('does not infer a network restriction from an ordinary error',()=>{
+    const summary=databaseErrorSummary(new Error('FATAL: Address not in tenant allow_list: 192.0.2.123 private-credentials'));
+    expect(summary).not.toHaveProperty('reason');expect(summary.code).toBe('UNKNOWN');
+    expect(JSON.stringify(summary)).not.toMatch(/192\.0\.2\.123|private-credentials/);
+  });
   it('recognizes PostgreSQL failures wrapped by an unknown Prisma request',()=>{
     const error=new Prisma.PrismaClientUnknownRequestError('ConnectorError { code: "42P05", message: "private SQL and credentials" }',{clientVersion:'6.19.3'});
     expect(databaseErrorSummary(error)).toMatchObject({code:'UNKNOWN',kind:'PrismaClientUnknownRequestError',sqlState:'42P05'});
