@@ -30,13 +30,13 @@ The reference payment-method picker is superseded by the latest direct-payment r
 
 ## Evidence and limits
 
-See the before/after screenshot folders, measured JSON files, and `release.md`. Screens show synthetic users and DEMO inventory in disposable local databases, never real customer PII or invented production results. Physical Android/iOS Telegram, real merchant USSD, provider p95 latency and production reconciliation remain release gates. The published Terms/Privacy discrepancy is listed in `release.md`.
+See the before/after screenshot folders, measured JSON files, and `release.md`. Screens show synthetic users and DEMO inventory in disposable local databases, never real customer PII or invented production results. The [retained database review](retained-data-review.md) records a later read-only baseline with zero ledger/payment drift and the remaining configuration and permission findings. Physical Android/iOS Telegram, real merchant USSD, provider p95 latency and a fresh pre-release reconciliation remain release gates. The published Terms/Privacy discrepancy is listed in `release.md`.
 
 The original mobile evidence below was captured at `da9625aa` with Next.js 16.3.8. Framework security revalidation is recorded in `measurements.md`; the current pin is 16.4.2. Impeccable mechanical detector: one warning for the existing active legal-navigation underline; native active navigation remains intentional.
 
 ## Final verification
 
-- Full opt-in PostgreSQL safety suite: **757 passed, 0 failed, 0 skipped** in 72 files.
+- Full opt-in PostgreSQL safety suite at `cea2aba`: **757 passed, 0 failed, 0 skipped** in 72 files. Later contact changes have the focused validation below.
 - Final optimized browser suite: **6 passed, 0 skipped, 0 flaky**, at both requested mobile widths.
 - Production build and typecheck passed. The dependency audit was refreshed after the framework security update; see `measurements.md` for version and date.
 - Read-only wallet/payment reconciliation on the final disposable database: **zero drift**.
@@ -48,4 +48,8 @@ Home render observations: 1529 → 1141ms at 360px; 1298 → 1074ms at 430px. Si
 
 CI now runs the current redesign browser scenarios. The historical customer/deposit visual suites remain in the repository as prior UI references; legacy financial, payment, authentication and staff invariants remain covered by the full opt-in PostgreSQL suite. They were not removed or disabled to manufacture the safety result.
 
-Framework update: Next.js is now pinned to **16.4.2**. Prisma generation, typecheck, both optimized builds, all **757 safety tests** and all **six mobile regressions** pass again. The refreshed dependency audit reports **zero vulnerabilities**, and the fresh disposable database has **zero reconciliation drift**. Original screenshots/timings above remain unchanged; patch-validation provenance is in `measurements.md`.
+Framework validation at `cea2aba`: Next.js is pinned to **16.4.2**. Prisma generation, typecheck, both optimized builds, all **757 safety tests** and all **six mobile regressions** passed again. The refreshed dependency audit reported **zero vulnerabilities**, and the fresh disposable database had **zero reconciliation drift**. Original screenshots/timings above remain unchanged; patch-validation provenance is in `measurements.md`.
+
+Contact follow-up: **145 auth/contact/recovery tests**, **five native-approval watchdog tests** and **four cleanup-permission tests** passed. The final optimized build and both checkout typechecks passed. A fresh runtime dependency audit reports zero vulnerabilities. **Six additional browser checks** passed at 360px/430px in development fixture mode, including a missing native callback, Retry, cancellation, stale callbacks and continued server contact gating. They are separate from the original optimized design benchmarks; no live sign-in recovery or remote p95 improvement is claimed.
+
+Four additional recovery captures are in `screenshots/contact-recovery/`: [360px timeout](screenshots/contact-recovery/contact-native-timeout-360.png), [430px timeout](screenshots/contact-recovery/contact-native-timeout-430.png), [360px cancelled retry](screenshots/contact-recovery/contact-canceled-retry-360.png), and [430px cancelled retry](screenshots/contact-recovery/contact-canceled-retry-430.png). These use an explicitly mocked Telegram SDK and intercepted API responses, with no real customer or bot calls.

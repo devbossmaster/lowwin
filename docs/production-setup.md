@@ -122,4 +122,6 @@ TLS proxy limits, public ingress rate limits, Hostinger isolation, process super
 
 ## 9. Frozen rules and service templates
 
-Follow [the versioned rollout order](frozen-auction-v2-release.md) and [isolated deployment](deployment.md). New publications use v3 after the additive cent-money migration; existing auctions retain their v1/v2 rules. Follow the [cent-money rollout and rollback limits](cent-money-v3-release.md). Stop all writers during the migration and deploy matching decimal-aware web and workers together; never run an older integer client against new fractional values. Deployment templates are prepared, not proof of installation on Hostinger.
+Current new publications use [submission-fee-only v4](submission-fee-rollout.md): the entered number is not charged or reserved, and only the disclosed submission fee is deducted. Existing auctions use their own frozen terms. The UI redesign does not run the optional legacy-auction conversion command or change the published fallback selection.
+
+Retain the [versioned rollout history](frozen-auction-v2-release.md), [cent-money rollout and rollback limits](cent-money-v3-release.md) and [isolated deployment procedure](deployment.md). For a separately reviewed data migration, stop writers and deploy matching decimal-aware web and workers together; never run an older integer client against fractional values. Deployment templates are prepared, not proof of installation on Hostinger.
