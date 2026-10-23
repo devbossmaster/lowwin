@@ -1,0 +1,37 @@
+{
+  "stage": "after",
+  "width": "430",
+  "mode": "optimized build on loopback; not a production service or Telegram device benchmark",
+  "authenticatedLaunchMs": 1582,
+  "homeRenderMs": 1225,
+  "auctionsRenderMs": 1160,
+  "drawsRenderMs": 996,
+  "my-bidsRenderMs": 934,
+  "profileRenderMs": 880,
+  "bid-paymentsRenderMs": 909,
+  "auctionRenderMs": 1059,
+  "receiptSource": "Historical local bid fixture; not an ArifPay browser acceptance",
+  "slowConnectionHomeMs": 2828,
+  "slowConnection": "Chromium simulated 150ms latency, 1.28Mbps down/600kbps up, browser cache disabled; one sample",
+  "clientNavigationToMyBidsMs": 641,
+  "/api/me": {
+    "n": 20,
+    "p50Ms": 21,
+    "p95Ms": 31,
+    "maxMs": 346
+  },
+  "/api/alerts": {
+    "n": 20,
+    "p50Ms": 24,
+    "p95Ms": 30,
+    "maxMs": 30
+  },
+  "/api/catalog/auctions/test-bid-ac210da2": {
+    "n": 20,
+    "p50Ms": 29,
+    "p95Ms": 37,
+    "maxMs": 43
+  },
+  "reconciliationDrift": 0,
+  "browserErrors": []
+}

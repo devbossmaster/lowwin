@@ -20,7 +20,7 @@ describe.skipIf(!url)('Telegram-only entry boundary',()=>{
  it('returns the private account at sign-in and reuses only the same live Telegram session',async()=>{
   const raw=signedLaunch({user:JSON.stringify({id:randomInt(6100000000,6200000000),first_name:'Bootstrap'})});
   const first=await sign(raw),cookie=cookies(first),body=await first.json();
-  expect(body).toMatchObject({ok:true,status:'authenticated',me:{user:{name:'Lowwin player'},wallet:{available:'0',held:'0'}}});
+  expect(body).toMatchObject({ok:true,status:'authenticated',me:{user:{name:'Lowwin player'}}});
   expect(body).not.toHaveProperty('session');expect(body).not.toHaveProperty('token');
   expect(first.headers.get('cache-control')).toContain('no-store');expect(first.headers.get('vary')).toBe('Cookie');
   const session=await access.getMiniSession(new Headers({cookie}),db);

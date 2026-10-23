@@ -124,11 +124,11 @@ describe.skipIf(!url)('Phase 4B public outcomes and private pages on PostgreSQL'
     expect((await route.GET(request(`/api/my-bids?userId=${first.id}`,second.cookie))).status).toBe(422);
   });
   it('returns real profile, wins and reconciled wallet counts with pending fulfillment',async()=>{
-    expect(await getPlayerProfile(client,first.id)).toMatchObject({counts:{bids:5,liveBids:1,historyBids:4,wins:1,favorites:0},wallet:{available:'960',held:'30'}});
+    const profile=await getPlayerProfile(client,first.id);expect(profile).toMatchObject({counts:{bids:5,liveBids:1,historyBids:4,wins:1,favorites:0}});expect(profile).not.toHaveProperty('wallet');
     const wins=await getPersonalWins(client,first.id);expect(wins.total).toBe(1);expect(wins.items[0]).toMatchObject({code:publicCode(winner),winningPoints:'2',fulfillment:'Pending',isDemo:true});expect((await getPersonalWins(client,second.id)).total).toBe(0);
     const winningBid=(await getPersonalBids(client,first.id)).items.find(item=>item.outcome==='WON')!;
     expect(wins.items[0]).toMatchObject({bidId:winningBid.id,views:winningBid.auction.views,titleAm:winningBid.auction.titleAm});
-    const route=await import('../src/app/api/wallet/route');const response=await route.GET(request('/api/wallet',first.cookie)),wallet=await response.json();expect(wallet.wallet).toEqual({available:'960',held:'30'});expect(wallet.activity.find((row:{kind:string})=>row.kind==='AUCTION_FEE_REFUND')).toMatchObject({availableDelta:'4',heldDelta:'0'});
+    const route=await import('../src/app/api/wallet/route');const response=await route.GET(request('/api/wallet',first.cookie));expect(response.status).toBe(410);const {getWalletView}=await import('../src/modules/wallet/view');const wallet=await getWalletView(client,first.id);expect(wallet.wallet).toEqual({available:'960',held:'30'});expect(wallet.activity.find((row:{kind:string})=>row.kind==='AUCTION_FEE_REFUND')).toMatchObject({availableDelta:'4',heldDelta:'0'});
     expect(await reconcile(client)).toEqual([]);
   });
   it('requires sessions and no-store on every private API, including failures',async()=>{
@@ -165,14 +165,15 @@ describe.skipIf(!url)('Phase 4B public outcomes and private pages on PostgreSQL'
   });
   it('filters real notifications by category and never reads or marks another customer’s inbox',async()=>{
     const route=await import('../src/app/api/alerts/route');
-    const ownDraw=randomUUID(),ownPayment=randomUUID(),otherPayment=randomUUID();
+    const ownDraw=randomUUID(),ownPayment=randomUUID(),otherPayment=randomUUID(),retiredTransfer=randomUUID();
     await client.notificationInbox.createMany({data:[
+      {id:retiredTransfer,key:`account-fixture:${retiredTransfer}`,userId:first.id,kind:'DEPOSIT_CREDITED',title:'Historical wallet credit',body:'Historical transfer stays in the audit record',href:'/wallet'},
       {id:ownDraw,key:`account-fixture:${ownDraw}`,userId:first.id,kind:'AUCTION_WON',title:'Your draw result',body:'Private own draw update',href:'/my-bids'},
       {id:ownPayment,key:`account-fixture:${ownPayment}`,userId:first.id,kind:'PAYMENT_ACCEPTED',title:'Own payment',body:'Private own payment update',href:'/wallet'},
       {id:otherPayment,key:`account-fixture:${otherPayment}`,userId:second.id,kind:'PAYMENT_ACCEPTED',title:'Other customer payment secret',body:'Do not expose this',href:'/wallet'},
     ]});
     const all=await route.GET(request('/api/alerts',first.cookie));expect(all.headers.get('cache-control')).toContain('no-store');const allBody=await all.json();
-    expect(allBody.categories).toEqual(['all','draws','payments']);expect(allBody.items.map((item:{id:string})=>item.id)).toEqual(expect.arrayContaining([ownDraw,ownPayment]));expect(allBody.items.map((item:{id:string})=>item.id)).not.toContain(otherPayment);expect(JSON.stringify(allBody)).not.toContain('Other customer payment secret');
+    expect(allBody.categories).toEqual(['all','draws','payments']);expect(allBody.items.map((item:{id:string})=>item.id)).toEqual(expect.arrayContaining([ownDraw,ownPayment]));expect(allBody.items.map((item:{id:string})=>item.id)).not.toContain(otherPayment);expect(allBody.items.map((item:{id:string})=>item.id)).not.toContain(retiredTransfer);expect(await client.notificationInbox.findUnique({where:{id:retiredTransfer}})).not.toBeNull();expect(JSON.stringify(allBody)).not.toContain('Other customer payment secret');
     const drawIds=(await (await route.GET(request('/api/alerts?category=draws',first.cookie))).json()).items.map((item:{id:string})=>item.id);
     expect(drawIds).toContain(ownDraw);expect(drawIds).not.toContain(ownPayment);expect(drawIds).not.toContain(otherPayment);
     expect((await (await route.GET(request('/api/alerts?category=payments',first.cookie))).json()).items.map((item:{id:string})=>item.id)).toEqual([ownPayment]);

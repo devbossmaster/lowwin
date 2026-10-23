@@ -2,6 +2,8 @@
 
 Working branch: `redesign/lowin-arifpay-mobile`.
 
+Latest owner override: [customer wallets are retired and admin follows direct payments](walletless.md). New entries always use direct ArifPay; customer balances, wallet activity and old manual-transfer history are removed. Admin now has Bid payments, provider checks, accepted-fee reporting and a simplified Players workspace. Historical ledger records remain internal. Earlier wallet screenshots and balance-funded timing evidence below are historical.
+
 The latest [signed-in workflow follow-up](workflow.md) adds TanStack beneath `usePrivateQuery`, fee sorting with persistent filters, Draws countdowns and receipt navigation. It includes fresh bilingual mobile captures and a public-query timezone correction, without changing authentication or financial commands.
 
 Customer UI: warm-white canvas, muted-gold ordinary actions, near-black payment actions, supplied Lowin logo, self-hosted DM Sans and variable Noto Sans Ethiopic. Home uses an original illustrative family photograph, HTML copy, on-demand Learn More, genuine recent-result scrolling, chips, search and a single auction list. Five-item navigation replaces Deposit with centered Auctions. Private receipts, profile editing, filtered notifications and payment history use native bottom sheets. The latest [header, loading and color refinement](polish.md) includes eight fresh mobile captures and the banner-serving correction.

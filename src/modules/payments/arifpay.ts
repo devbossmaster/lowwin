@@ -15,7 +15,9 @@ const createSchema=z.object({auctionSlug:z.string().regex(/^[a-z0-9-]{1,120}$/),
 const finalStatuses=['BID_ACCEPTED','NEEDS_REVIEW','FAILED','CANCELLED','EXPIRED'];
 const pendingStatuses=['SUBMITTING','PENDING'];
 function resolvedCheckout(t:ArifPayCheckout){return finalStatuses.includes(t.status)&&!(t.status==='NEEDS_REVIEW'&&!t.creditJournalId&&t.reason==='PROVIDER_CONFIRMATION_REQUIRED')}
-export function ownArifPayCheckout(t:ArifPayCheckout){return {id:t.id,auctionSlug:t.auctionSlug,amount:t.bidNumber.toString(),feeVersion:t.feeVersion,fee:t.fee.toString(),currency:t.currency,channel:t.channel,status:t.status,reason:t.reason,receipt:t.receipt,createdAt:t.createdAt.toISOString(),expiresAt:t.expiresAt.toISOString(),pollAfterMs:Math.max(2000,t.nextCheckAt.getTime()-Date.now()),fundsPreserved:!!t.creditJournalId&&t.status==='NEEDS_REVIEW'};}
+export function ownArifPayCheckout(t:ArifPayCheckout){
+ const receipt=t.receipt&&typeof t.receipt==='object'&&!Array.isArray(t.receipt)?Object.fromEntries(Object.entries(t.receipt).filter(([key])=>key!=='wallet')):t.receipt;
+ return {id:t.id,auctionSlug:t.auctionSlug,amount:t.bidNumber.toString(),feeVersion:t.feeVersion,fee:t.fee.toString(),currency:t.currency,channel:t.channel,status:t.status,reason:t.reason,receipt,createdAt:t.createdAt.toISOString(),expiresAt:t.expiresAt.toISOString(),pollAfterMs:Math.max(2000,t.nextCheckAt.getTime()-Date.now()),fundsPreserved:!!t.creditJournalId&&t.status==='NEEDS_REVIEW'};}
 export type ArifPayCheckoutView=ReturnType<typeof ownArifPayCheckout>;
 async function eligible(tx:Tx,userId:string){
  try{await assertPlayerContact(tx,userId)}catch{throw new ArifPayError(403,'CONTACT_REQUIRED','Share your own contact in Telegram first.')}
@@ -98,6 +100,7 @@ export async function verifyArifPayCheckout(client:PrismaClient,id:string,userId
   return getArifPayCheckout(client,snapshot.userId,id);
  }
  return client.$transaction(async tx=>{
+  if(reauthorize)await reauthorize(tx);
   await tx.$queryRaw`SELECT id FROM "Auction" WHERE id=${snapshot.auctionId} FOR UPDATE`;
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${snapshot.userId}`},0))`;
   await tx.$queryRaw`SELECT id FROM "ArifPayCheckout" WHERE id=${id} FOR UPDATE`;

@@ -7,7 +7,7 @@ import type {StaffRole} from './permissions';
 const identity={id:true,name:true,telegramId:true,telegramUsername:true,createdAt:true,
  ownContact:{select:{telegramId:true,botId:true,phoneCipher:true,revokedAt:true}},
  phoneIdentity:{select:{e164:true}}} satisfies Prisma.UserSelect;
-const playerSelect={...identity,wallet:{select:{accounts:{select:{kind:true,balance:true}}}},
+const playerSelect={...identity,
  _count:{select:{bids:true,wonSettlements:true}}} satisfies Prisma.UserSelect;
 type Identity=Prisma.UserGetPayload<{select:typeof identity}>;
 function contact(user:Identity){
@@ -36,7 +36,7 @@ export async function peopleRead(client:PrismaClient,actor:{id:string;role:Staff
   const [users,total]=await Promise.all([client.user.findMany({where,select:playerSelect,orderBy:[{createdAt:'desc'},{id:'asc'}],skip:path[1]?0:skip,take:path[1]?1:take}),client.user.count({where})]);
   if(path[1]&&!users.length)throw new AdminError(404,'Player not found.');
   const restrictions=await client.userRestriction.findMany({where:{userId:{in:users.map(u=>u.id)}},select:{userId:true,suspended:true,reason:true}});
-  const items=users.map(u=>({...contact(u),available:u.wallet?.accounts.find(a=>a.kind==='AVAILABLE')?.balance.toString()??'0',held:u.wallet?.accounts.find(a=>a.kind==='HELD')?.balance.toString()??'0',bidCount:u._count.bids,winCount:u._count.wonSettlements,suspended:restrictions.find(r=>r.userId===u.id)?.suspended??false,...(path[1]?{restrictionReason:restrictions.find(r=>r.userId===u.id)?.reason??null}:{})}));
+  const items=users.map(u=>({...contact(u),bidCount:u._count.bids,winCount:u._count.wonSettlements,suspended:restrictions.find(r=>r.userId===u.id)?.suspended??false,...(path[1]?{restrictionReason:restrictions.find(r=>r.userId===u.id)?.reason??null}:{})}));
   if(users.length)await client.adminAudit.create({data:{actorId:actor.id,action:path[1]?'PLAYER_DETAILS_READ':'PLAYER_CONTACT_LIST_READ',target:path[1]??'players',details:{count:users.length}}});
   return path[1]?items[0]:result(items,total);
  }

@@ -5,12 +5,12 @@ import {LoadingSpinner} from './loading-spinner';
 import {MiniPhrase,useMiniLocale} from './mini-locale';
 import {useTelegram} from './telegram-provider';
 import {invalidatePrivateQueries} from './private-query-cache';
-import type {BidReceipt} from '@/modules/auctions/bids';
+import type {DirectBidReceipt} from '@/modules/auctions/bids';
 import type {ArifPayCheckoutView} from '@/modules/payments/arifpay';
 import {formatEtb} from '@/lib/money';
 import {ArifPayClientError,arifPayPaymentPhone,arifPayRecoverable,clearArifPayAttempt,readArifPayAttempt,requestArifPayJson,writeArifPayAttempt,type ArifPayAttempt} from '@/lib/arifpay-recovery';
 
-type Props={slug:string;amount:string;feeVersion:number;fee:string;onAccepted:(receipt:BidReceipt)=>void;initialOrder?:ArifPayCheckoutView};
+type Props={slug:string;amount:string;feeVersion:number;fee:string;onAccepted:(receipt:DirectBidReceipt)=>void;initialOrder?:ArifPayCheckoutView};
 const terminal=new Set(['BID_ACCEPTED','NEEDS_REVIEW','FAILED','CANCELLED','EXPIRED']);
 const deterministicErrors=new Set(['INVALID_INPUT','INVALID_PHONE','CONTACT_REQUIRED','BIDDING_RESTRICTED','TERMS_CHANGED','LEGACY_TERMS','CAP_REACHED','CONSECUTIVE_LIMIT','INVALID_AMOUNT','AUCTION_CLOSED','PAYMENT_UNAVAILABLE']);
 export default function ArifPayCheckout(props:Props){
@@ -39,7 +39,7 @@ function CheckoutForIdentity({slug,amount,feeVersion,fee,onAccepted,initialOrder
   if(attemptRef.current){const saved={...attemptRef.current,orderId:next.id};attemptRef.current=saved;setAttempt(saved);try{writeArifPayAttempt(sessionStorage,storageKey,saved)}catch{}}
   if(terminal.has(next.status)){try{clearArifPayAttempt(sessionStorage,storageKey)}catch{};attemptRef.current=null;setAttempt(null)}
   if((next.status==='BID_ACCEPTED'||next.fundsPreserved)&&invalidated.current!==next.id){invalidated.current=next.id;if(queryIdentity)invalidatePrivateQueries(queryIdentity);void refreshMe().catch(()=>{})}
-  if(next.status==='BID_ACCEPTED'&&next.receipt&&!accepted.current){accepted.current=true;callback.current(next.receipt as unknown as BidReceipt)}
+  if(next.status==='BID_ACCEPTED'&&next.receipt&&!accepted.current){accepted.current=true;callback.current(next.receipt as unknown as DirectBidReceipt)}
  },[queryIdentity,refreshMe,storageKey]);
  useEffect(()=>{
   alive.current=true;generation.current++;
@@ -119,12 +119,12 @@ function CheckoutForIdentity({slug,amount,feeVersion,fee,onAccepted,initialOrder
  const check=()=>{started.current=Date.now();setPaused(false);if(order)setPollCycle(value=>value+1);else setReload(value=>value+1)};
  const locked=!!attempt||!!restoreId;
  const shownFee=attempt?.fee??fee;
- const help=<p><Link href="/wallet"><MiniPhrase en="Payment history" am="የክፍያ ታሪክ"/></Link> · <Link href="/profile/support"><MiniPhrase en="Get help" am="እርዳታ ያግኙ"/></Link></p>;
+ const help=<p><Link href="/payments"><MiniPhrase en="Payment history" am="የክፍያ ታሪክ"/></Link> · <Link href="/profile/support"><MiniPhrase en="Get help" am="እርዳታ ያግኙ"/></Link></p>;
  if(order)return <section className="arif-checkout" aria-live="polite"><div className="arif-status">
   <strong><MiniPhrase en={order.status==='BID_ACCEPTED'?'Bid accepted':order.status==='NEEDS_REVIEW'?'Needs review':order.status==='FAILED'?'Payment failed':order.status==='CANCELLED'?'Payment cancelled':order.status==='EXPIRED'?'Payment expired':'Confirm on your phone'} am={order.status==='BID_ACCEPTED'?'ጨረታው ተቀብሏል':order.status==='NEEDS_REVIEW'?'ግምገማ ያስፈልጋል':order.status==='FAILED'?'ክፍያው አልተሳካም':order.status==='CANCELLED'?'ክፍያው ተሰርዟል':order.status==='EXPIRED'?'የክፍያ ጊዜው አልፏል':'በስልክዎ ያረጋግጡ'}/></strong>
   <p>{formatEtb(order.fee)} · {order.channel==='MPESA'?'M-PESA':'Telebirr'}</p>
   {!terminal.has(order.status)&&<p><MiniPhrase en="Approve the request on your phone. Your bid is accepted only after payment verification. Do not pay again while this request is pending." am="በስልክዎ የመጣውን ጥያቄ ያረጋግጡ። ክፍያው ከተረጋገጠ በኋላ ጨረታዎ ይረጋገጣል። ጥያቄው በመጠባበቅ ላይ እያለ እንደገና አይክፈሉ።"/></p>}
-  {order.status==='NEEDS_REVIEW'&&<p><MiniPhrase en={order.fundsPreserved?'Your payment was verified but the bid could not be accepted. Your funds are preserved in your account. Contact support with this payment ID.':'We need to review this payment. This is not an accepted bid. Keep this payment ID and contact support.'} am={order.fundsPreserved?'ክፍያዎ ተረጋግጧል፣ ግን ጨረታዎ አልተቀበለም። ገንዘብዎ በመለያዎ ውስጥ ተጠብቋል። በዚህ የክፍያ መለያ ድጋፍ ያግኙ።':'ይህ ክፍያ ግምገማ ያስፈልገዋል። ጨረታዎ ገና አልተቀበለም። ድጋፍ ያግኙ።'}/></p>}
+  {order.status==='NEEDS_REVIEW'&&<p><MiniPhrase en={order.fundsPreserved?'Your payment was verified but the bid was not accepted. It needs payment support review. Keep this payment ID and do not pay again.':'We need to review this payment. This is not an accepted bid. Keep this payment ID and contact support.'} am={order.fundsPreserved?'ክፍያዎ ተረጋግጧል፣ ግን ጨረታዎ አልተቀበለም። የክፍያ ድጋፍ ግምገማ ይፈልጋል። ይህን የክፍያ መለያ ይያዙና እንደገና አይክፈሉ።':'ይህ ክፍያ ግምገማ ያስፈልገዋል። ጨረታዎ ገና አልተቀበለም። ድጋፍ ያግኙ።'}/></p>}
   <small style={{overflowWrap:'anywhere'}}>ID: {order.id}</small>
   {paused&&<p><MiniPhrase en="Automatic checking is paused. Your payment remains saved for server verification." am="ራስ-ሰር ማረጋገጥ ቆሟል። ክፍያዎ ለማረጋገጥ ተቀምጧል።"/></p>}
   {error&&<p role="alert">{error}</p>}
@@ -138,7 +138,7 @@ function CheckoutForIdentity({slug,amount,feeVersion,fee,onAccepted,initialOrder
    <label className="arif-agreement"><input type="checkbox" checked={agreed} onChange={event=>setAgreed(event.target.checked)} disabled={busy||locked}/><span><MiniPhrase en={`I agree to pay the non-refundable ${formatEtb(shownFee)} fee for bid number ${amount}.`} am={`ለጨረታ ቁጥር ${amount} ተመላሽ የማይሆን ${formatEtb(shownFee)} ክፍያ ለመክፈል ተስማምቻለሁ።`}/></span></label>
    {attempt&&<p><MiniPhrase en="Your original request is saved. Retry uses the same number, payment method, phone and request key." am="የመጀመሪያ ጥያቄዎ ተቀምጧል። ድጋሚ ሲሞክሩ ተመሳሳይ መረጃ ይጠቀማል።"/></p>}
    <button className="primary-bid-button" data-payment-action disabled={!agreed||busy||!phone.trim()} onClick={()=>void begin()}>{busy?<LoadingSpinner/>:<MiniPhrase en={attempt?'Retry original request':`Pay ${formatEtb(fee)} & bid`} am={attempt?'የመጀመሪያውን ጥያቄ እንደገና ይሞክሩ':`${formatEtb(fee)} ይክፈሉ እና ይጫረቱ`}/>}</button>
-  </>:<p><MiniPhrase en="Direct checkout is not available yet. Your existing balance and records are safe. Try again later or contact support." am="ቀጥታ ክፍያ ገና አልተዘጋጀም። ያለዎት ቀሪ ሂሳብ እና መዝገቦች ተጠብቀዋል። ቆይተው ይሞክሩ ወይም ድጋፍ ያግኙ።"/></p>}
+  </>:<p><MiniPhrase en="Direct checkout is not available yet. Try again later or contact support." am="ቀጥታ ክፍያ ገና አልተዘጋጀም። ቆይተው ይሞክሩ ወይም ድጋፍ ያግኙ።"/></p>}
   {error&&<p className="field-error" role="alert">{error}</p>}{!loading&&!availability&&<button className="secondary-button" onClick={check}><MiniPhrase en="Retry" am="እንደገና"/></button>}{locked&&help}
  </section>;
 }

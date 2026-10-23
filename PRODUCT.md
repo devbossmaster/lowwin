@@ -15,7 +15,7 @@ The existing v4 fallback remains the earliest accepted bid at the lowest number 
 
 Better Auth user IDs, verified Telegram identity/contact binding, encrypted phone keys and existing balances remain authoritative. Browser data cannot authenticate a customer or confirm a payment. Ledger postings, holds, audit history and admin permissions remain intact.
 
-New manual deposits are retired from customer UI and create/prepare API actions. Existing transfer records, Verify.et verification/recovery, staff review and wallet history remain supported. Existing available balances can still pay auction fees.
+New manual deposits are retired from customer UI and create/prepare API actions. Customer wallet balances, wallet activity and old transfer history are retired. Every new entry uses direct ArifPay payment; existing balances cannot fund new customer bids. Registered identities and historical financial/audit records remain intact behind restricted staff operations and legacy payment recovery. Older auction rules are not rewritten; unsupported older auctions are read-only for new entries.
 
 ArifPay Telebirr and M-PESA direct bid-fee checkout is additive and disabled by default. New charges require explicit server configuration, migration readiness, reviewed merchant setup and activation. An independently verified merchant lookup is required before balanced ledger posting and the existing idempotent bid command. Paid but unaccepted bids preserve funds for review. Neither a redirect, callback body nor a USSD prompt proves payment.
 

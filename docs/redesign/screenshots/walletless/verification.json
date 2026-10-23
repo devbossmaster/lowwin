@@ -1,0 +1,435 @@
+{
+  "checkedAt": "2026-10-23T13:04:53.442Z",
+  "scope": "One complete final safety run on fresh disposable loopback PostgreSQL databases",
+  "files": 84,
+  "tests": {
+    "passed": 865,
+    "failed": 0,
+    "skipped": 0,
+    "todo": 0
+  },
+  "durationMs": 380563.3095703125,
+  "results": [
+    {
+      "file": "admin-arifpay.test.ts",
+      "status": "passed",
+      "cases": 10
+    },
+    {
+      "file": "admin-crypto.test.ts",
+      "status": "passed",
+      "cases": 2
+    },
+    {
+      "file": "admin-wallet-credit.test.ts",
+      "status": "passed",
+      "cases": 13
+    },
+    {
+      "file": "admin-workspace.test.ts",
+      "status": "passed",
+      "cases": 11
+    },
+    {
+      "file": "admin.test.ts",
+      "status": "passed",
+      "cases": 20
+    },
+    {
+      "file": "alerts-summary.test.ts",
+      "status": "passed",
+      "cases": 3
+    },
+    {
+      "file": "arifpay-checkout.test.ts",
+      "status": "passed",
+      "cases": 12
+    },
+    {
+      "file": "arifpay-provider.test.ts",
+      "status": "passed",
+      "cases": 5
+    },
+    {
+      "file": "arifpay-recovery.test.ts",
+      "status": "passed",
+      "cases": 7
+    },
+    {
+      "file": "auction-activity.test.ts",
+      "status": "passed",
+      "cases": 7
+    },
+    {
+      "file": "auction-browse-links.test.ts",
+      "status": "passed",
+      "cases": 2
+    },
+    {
+      "file": "auction-view-route.test.ts",
+      "status": "passed",
+      "cases": 3
+    },
+    {
+      "file": "bids.test.ts",
+      "status": "passed",
+      "cases": 13
+    },
+    {
+      "file": "bot-welcome.test.ts",
+      "status": "passed",
+      "cases": 6
+    },
+    {
+      "file": "browser-server-setup.test.ts",
+      "status": "passed",
+      "cases": 3
+    },
+    {
+      "file": "catalog-workflow.test.ts",
+      "status": "passed",
+      "cases": 3
+    },
+    {
+      "file": "catalog.test.ts",
+      "status": "passed",
+      "cases": 7
+    },
+    {
+      "file": "cent-migration.test.ts",
+      "status": "passed",
+      "cases": 1
+    },
+    {
+      "file": "cleanup-test-run-acl.test.ts",
+      "status": "passed",
+      "cases": 4
+    },
+    {
+      "file": "consecutive-bids.test.ts",
+      "status": "passed",
+      "cases": 4
+    },
+    {
+      "file": "contact-approval.test.ts",
+      "status": "passed",
+      "cases": 5
+    },
+    {
+      "file": "contact-request-limit.test.ts",
+      "status": "passed",
+      "cases": 7
+    },
+    {
+      "file": "contact-route.test.ts",
+      "status": "passed",
+      "cases": 15
+    },
+    {
+      "file": "customer-loading.test.ts",
+      "status": "passed",
+      "cases": 14
+    },
+    {
+      "file": "database-config.test.ts",
+      "status": "passed",
+      "cases": 6
+    },
+    {
+      "file": "database-error.test.ts",
+      "status": "passed",
+      "cases": 17
+    },
+    {
+      "file": "database.test.ts",
+      "status": "passed",
+      "cases": 14
+    },
+    {
+      "file": "deposit-feedback.test.ts",
+      "status": "passed",
+      "cases": 2
+    },
+    {
+      "file": "deposit-polling.test.ts",
+      "status": "passed",
+      "cases": 5
+    },
+    {
+      "file": "deposit-retirement.test.ts",
+      "status": "passed",
+      "cases": 5
+    },
+    {
+      "file": "email.test.ts",
+      "status": "passed",
+      "cases": 2
+    },
+    {
+      "file": "holds.test.ts",
+      "status": "passed",
+      "cases": 13
+    },
+    {
+      "file": "live-controls-migration.test.ts",
+      "status": "passed",
+      "cases": 1
+    },
+    {
+      "file": "local-identity.test.ts",
+      "status": "passed",
+      "cases": 20
+    },
+    {
+      "file": "manual-deposit-approval.test.ts",
+      "status": "passed",
+      "cases": 31
+    },
+    {
+      "file": "media-cache.test.ts",
+      "status": "passed",
+      "cases": 2
+    },
+    {
+      "file": "mini-access-concurrency.test.ts",
+      "status": "passed",
+      "cases": 15
+    },
+    {
+      "file": "mini-auth-client.test.ts",
+      "status": "passed",
+      "cases": 9
+    },
+    {
+      "file": "mini-return.test.ts",
+      "status": "passed",
+      "cases": 12
+    },
+    {
+      "file": "money.test.ts",
+      "status": "passed",
+      "cases": 3
+    },
+    {
+      "file": "mpesa-migration.test.ts",
+      "status": "passed",
+      "cases": 1
+    },
+    {
+      "file": "mpesa-payments.test.ts",
+      "status": "passed",
+      "cases": 42
+    },
+    {
+      "file": "notification-copy.test.ts",
+      "status": "passed",
+      "cases": 10
+    },
+    {
+      "file": "notification-photo.test.ts",
+      "status": "passed",
+      "cases": 2
+    },
+    {
+      "file": "operations.test.ts",
+      "status": "passed",
+      "cases": 33
+    },
+    {
+      "file": "own-contact.test.ts",
+      "status": "passed",
+      "cases": 18
+    },
+    {
+      "file": "payment-activation.test.ts",
+      "status": "passed",
+      "cases": 3
+    },
+    {
+      "file": "payment-admin-route.test.ts",
+      "status": "passed",
+      "cases": 6
+    },
+    {
+      "file": "payment-approval-availability.test.ts",
+      "status": "passed",
+      "cases": 10
+    },
+    {
+      "file": "payment-evidence.test.ts",
+      "status": "passed",
+      "cases": 41
+    },
+    {
+      "file": "payment-http-error.test.ts",
+      "status": "passed",
+      "cases": 9
+    },
+    {
+      "file": "payment-ocr.test.ts",
+      "status": "passed",
+      "cases": 5
+    },
+    {
+      "file": "payment-provider-logging.test.ts",
+      "status": "passed",
+      "cases": 29
+    },
+    {
+      "file": "payment-session.test.ts",
+      "status": "passed",
+      "cases": 12
+    },
+    {
+      "file": "payment-webhook-recovery.test.ts",
+      "status": "passed",
+      "cases": 3
+    },
+    {
+      "file": "payments.test.ts",
+      "status": "passed",
+      "cases": 25
+    },
+    {
+      "file": "personal.test.ts",
+      "status": "passed",
+      "cases": 13
+    },
+    {
+      "file": "private-query-cache.test.ts",
+      "status": "passed",
+      "cases": 13
+    },
+    {
+      "file": "proxy-outage.test.ts",
+      "status": "passed",
+      "cases": 7
+    },
+    {
+      "file": "public-content.test.ts",
+      "status": "passed",
+      "cases": 3
+    },
+    {
+      "file": "public-data-cache.test.ts",
+      "status": "passed",
+      "cases": 3
+    },
+    {
+      "file": "receipt-image-key.test.ts",
+      "status": "passed",
+      "cases": 2
+    },
+    {
+      "file": "receipt-reference.test.ts",
+      "status": "passed",
+      "cases": 6
+    },
+    {
+      "file": "receipt-scan.test.ts",
+      "status": "passed",
+      "cases": 8
+    },
+    {
+      "file": "receiving-account-removal.test.ts",
+      "status": "passed",
+      "cases": 12
+    },
+    {
+      "file": "redis-public.test.ts",
+      "status": "passed",
+      "cases": 4
+    },
+    {
+      "file": "request-body.test.ts",
+      "status": "passed",
+      "cases": 3
+    },
+    {
+      "file": "runtime-login.test.ts",
+      "status": "passed",
+      "cases": 10
+    },
+    {
+      "file": "runtime-role-provisioning.test.ts",
+      "status": "passed",
+      "cases": 5
+    },
+    {
+      "file": "security.test.ts",
+      "status": "passed",
+      "cases": 22
+    },
+    {
+      "file": "settlement-v2.test.ts",
+      "status": "passed",
+      "cases": 16
+    },
+    {
+      "file": "settlement-v3.test.ts",
+      "status": "passed",
+      "cases": 9
+    },
+    {
+      "file": "settlement.test.ts",
+      "status": "passed",
+      "cases": 19
+    },
+    {
+      "file": "staging-demo.test.ts",
+      "status": "passed",
+      "cases": 11
+    },
+    {
+      "file": "submission-fee.test.ts",
+      "status": "passed",
+      "cases": 8
+    },
+    {
+      "file": "support-retirement.test.ts",
+      "status": "passed",
+      "cases": 5
+    },
+    {
+      "file": "telegram-auth-diagnostics.test.ts",
+      "status": "passed",
+      "cases": 8
+    },
+    {
+      "file": "telegram-community.test.ts",
+      "status": "passed",
+      "cases": 5
+    },
+    {
+      "file": "telegram-entry.test.ts",
+      "status": "passed",
+      "cases": 7
+    },
+    {
+      "file": "telegram-recovery.test.ts",
+      "status": "passed",
+      "cases": 17
+    },
+    {
+      "file": "upcoming-notifications.test.ts",
+      "status": "passed",
+      "cases": 29
+    },
+    {
+      "file": "verify-contract.test.ts",
+      "status": "passed",
+      "cases": 24
+    },
+    {
+      "file": "verify-webhook.test.ts",
+      "status": "passed",
+      "cases": 6
+    },
+    {
+      "file": "wallet-retirement.test.ts",
+      "status": "passed",
+      "cases": 7
+    }
+  ],
+  "productionTouched": false
+}

@@ -4,6 +4,7 @@ import {createRequire} from 'node:module';
 import {randomUUID} from 'node:crypto';
 import {PrismaClient} from '@prisma/client';
 import {bidAuction,bidUser} from './bid-fixtures';
+import {arifPayAdminTotals} from '../src/modules/admin/arifpay';
 import {reconcile} from '../src/modules/wallet/ledger';
 import {encryptPhone,phoneHash} from '../src/modules/auth/own-contact';
 import type {ArifPayCreate,ArifPayTransport} from '../src/modules/payments/arifpay-provider';
@@ -36,8 +37,16 @@ describe.skipIf(!url)('ArifPay checkout on disposable loopback PostgreSQL',()=>{
  const available=async(userId:string)=>(await db.ledgerAccount.findUniqueOrThrow({where:{name:`user:${userId}:available`}})).balance.toString();
  it('does not accept a bid from create/USSD response; verified payment and repeated polls accept and charge exactly once',async()=>{
   const f=await fixture(),order=await f.start();expect(order.status).toBe('PENDING');expect(await db.bid.count({where:{auctionId:f.a.id}})).toBe(0);expect(await available(f.userId)).toBe('10');
-  const result=await f.verify(order.id);expect(result.status).toBe('BID_ACCEPTED');expect(result.receipt).toMatchObject({charge:{feePoints:'30',newlyUnavailable:'30'},hold:{extraReserved:'0'}});expect(await available(f.userId)).toBe('10');
+  const result=await f.verify(order.id);expect(result.status).toBe('BID_ACCEPTED');expect(result.receipt).not.toHaveProperty('wallet');expect(result.receipt).toMatchObject({charge:{feePoints:'30',newlyUnavailable:'30'},hold:{extraReserved:'0'}});expect(await available(f.userId)).toBe('10');
   await Promise.all([f.verify(order.id),f.verify(order.id)]);expect(await db.bid.count({where:{auctionId:f.a.id}})).toBe(1);expect(await db.operation.count({where:{userId:f.userId,scope:'ARIFPAY_RECEIPT'}})).toBe(1);expect(await reconcile(db)).toEqual([]);
+ });
+ it('reports only verified accepted submission fees and reauthorizes after provider HTTP',async()=>{
+  process.env.ARIFPAY_SCHEMA_READY='true';const before=await arifPayAdminTotals(db,new Date()),f=await fixture(),order=await f.start();
+  expect(await arifPayAdminTotals(db,new Date())).toMatchObject({totalEtb:before.totalEtb,count:before.count});
+  let calls=0;const auth=async()=>{if(++calls===2)throw Error('staff access revoked during provider lookup')};
+  await db.arifPayCheckout.update({where:{id:order.id},data:{nextCheckAt:new Date(0)}});
+  await expect(verifyArifPayCheckout(db,order.id,undefined,auth,f.transport)).rejects.toThrow('staff access revoked');expect(await db.bid.count({where:{auctionId:f.a.id}})).toBe(0);
+  await f.verify(order.id);const after=await arifPayAdminTotals(db,new Date());expect(after.count).toBe(before.count+1);expect(new (await import('@prisma/client')).Prisma.Decimal(after.totalEtb).sub(before.totalEtb).toString()).toBe('30');expect(await reconcile(db)).toEqual([]);
  });
  it('reuses the durable checkout and nonce after retry, concurrent calls and a refreshed idempotency key',async()=>{
   const f=await fixture(),orders=await Promise.all([f.start(),f.start()]);expect(orders[0].id).toBe(orders[1].id);expect(f.create).toHaveBeenCalledTimes(1);

@@ -1,3 +1,2 @@
-import {demoBidAllowed} from '@/modules/auctions/bids';
 import {privateHeaders,requireUser,privateError} from '@/modules/auth/private-api';
-export async function GET(r:Request){try{await requireUser(r);const enabled=process.env.WALLET_TEST_PREVIEW==='true'&&demoBidAllowed();return Response.json({enabled,accounts:enabled?[{id:'telebirr',name:'Telebirr',number:'TEST-TELEBIRR-NOT-PAYABLE',holder:'Lowwin DEMO account'},{id:'cbe',name:'CBE',number:'TEST-CBE-NOT-PAYABLE',holder:'Lowwin DEMO account'},{id:'mpesa',name:'M-Pesa',number:'TEST-MPESA-NOT-PAYABLE',holder:'Lowwin DEMO account'}]:[]},{headers:privateHeaders})}catch(e){return privateError(e)}}
+export async function GET(request:Request){try{await requireUser(request);return Response.json({error:'Customer funding has been retired. Pay directly through ArifPay.',code:'WALLETS_RETIRED'},{status:410,headers:privateHeaders})}catch(error){return privateError(error)}}

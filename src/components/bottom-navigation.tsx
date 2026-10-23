@@ -14,7 +14,7 @@ const items=[
 ];
 export function BottomNavigation(){
  const path=usePathname();
- const active=items.filter(({href})=>href==='/'?path==='/':href==='/auctions/all'?path.startsWith('/auctions')||path.startsWith('/categories'):href==='/my-bids'&&path==='/winning-bids'?true:path===href||path.startsWith(`${href}/`)).sort((a,b)=>b.href.length-a.href.length)[0]?.href;
+ const active=path==='/payments'?'/profile':items.filter(({href})=>href==='/'?path==='/':href==='/auctions/all'?path.startsWith('/auctions')||path.startsWith('/categories'):href==='/my-bids'&&path==='/winning-bids'?true:path===href||path.startsWith(`${href}/`)).sort((a,b)=>b.href.length-a.href.length)[0]?.href;
  return <nav className={`${styles.bar} mini-bottom-navigation`} aria-label="Your navigation">{items.map(({href,en,am,icon:Icon})=>{
   const deposit=href==='/auctions/all';
   const content=<>{deposit?<span className={styles.depositIcon}><Icon size={26} aria-hidden="true"/></span>:<Icon size={20} aria-hidden="true"/>}<span className={styles.label}><MiniPhrase en={en} am={am}/></span></>;

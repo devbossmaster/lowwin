@@ -27,6 +27,7 @@ const receiptSchema=z.object({
   remainingSubmissions:z.number(),ownBids:z.array(ownBidSchema),
 });
 export type BidReceipt=z.infer<typeof receiptSchema>;
+export type DirectBidReceipt=Omit<BidReceipt,'wallet'>;
 
 export type BidErrorCode='AUCTION_NOT_FOUND'|'AUCTION_CLOSED'|'DEMO_UNAVAILABLE'|'INVALID_AMOUNT'|'CONSECUTIVE_LIMIT'|'OWN_DUPLICATE'|'CAP_REACHED'|'INSUFFICIENT_POINTS'|'KEY_REUSED'|'RETRYABLE_CONFLICT'|'BIDDING_RESTRICTED'|'CONTACT_REQUIRED';
 export class BidError extends Error {
@@ -134,14 +135,14 @@ export async function submitBid(client:PrismaClient,input:BidInput,raw:Record<st
   }
 }
 
-export async function getOwnBidState(client:PrismaClient,userId:string,auctionSlug:string,raw:Record<string,string|undefined>=process.env) {
+export async function getOwnBidState(client:PrismaClient,userId:string,auctionSlug:string,raw:Record<string,string|undefined>=process.env,includeWallet=true) {
   return client.$transaction(async tx=>{
     const auction=await tx.auction.findUnique({where:{slug:auctionSlug},include:{terms:true,feeRevisions:{orderBy:[{effectiveAt:'desc'},{version:'desc'}],take:1}}});
     if(!auction||!auction.publishedAt||!auction.terms)fail('AUCTION_NOT_FOUND',404,'Auction not found.');
     const clock=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AT TIME ZONE 'UTC' AS now`;
     const now=clock[0].now;
     const [wallet,bids]=await Promise.all([
-      tx.wallet.findUnique({where:{userId},include:{accounts:true,holds:{where:{auctionId:auction.id}}}}),
+      includeWallet?tx.wallet.findUnique({where:{userId},include:{accounts:true,holds:{where:{auctionId:auction.id}}}}):Promise.resolve(null),
       tx.bid.findMany({where:{userId,auctionId:auction.id},orderBy:[{acceptedAt:'asc'},{id:'asc'}],select:{id:true,amount:true,acceptedAt:true}}),
     ]);
     const terms=auction.terms,fee=auction.feeRevisions[0],previousMax=wallet?.holds[0]?.points??0n;

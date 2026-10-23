@@ -39,7 +39,7 @@ Browser and Telegram safe-area insets are respected at the top and bottom. Nativ
 
 Each auction displays its frozen terms. V4 bid numbers have no currency charge; older auctions retain their own financial policy. No winner is inferred from an elapsed timer. Draws excludes illustrative/test announcements and uses finalized settlements for winners, with masked identity. No winning photos or stories are fabricated.
 
-Private query snapshots are scoped to the authenticated session identity and invalidated after financial mutations. Direct ArifPay checkout is off until reviewed configuration is complete. Pending/needs-review states remain visible in wallet payment history. No optimistic acceptance or credit exists. Customer deposit creation is retired; historical evidence, verification workers and staff operations remain.
+Private query snapshots are scoped to the authenticated session identity and invalidated after financial mutations. Direct ArifPay checkout is off until reviewed configuration is complete. Pending/needs-review ArifPay requests remain visible on the dedicated Bid payments page. Customer wallets, balance/hold displays and past manual-transfer history are removed; each new entry pays directly through ArifPay. No optimistic acceptance or credit exists. Customer deposit creation is retired; historical evidence, verification workers and staff operations remain.
 
 ## Verification evidence
 

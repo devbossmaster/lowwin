@@ -5,6 +5,7 @@ import {randomInt, randomUUID} from 'node:crypto';
 import {ENGLISH_UI_STATE, signedLaunch} from '../helpers';
 import {verifyFixtureContact} from '../contact-fixtures';
 import {bidAuction} from '../bid-fixtures';
+import {submitBid} from '../../src/modules/auctions/bids';
 import {creditDevelopmentPoints, reconcile} from '../../src/modules/wallet/ledger';
 
 const stage = process.env.REDESIGN_STAGE ?? 'after';
@@ -14,7 +15,8 @@ const origin = process.env.BETTER_AUTH_URL!;
 test('authenticated mobile screens and local timing evidence', async ({page, browser}, info) => {
   const client = new PrismaClient({datasourceUrl: process.env.TEST_DATABASE_URL});
   mkdirSync(root, {recursive: true});
-  const errors: string[] = [];
+  const errors: string[] = [],walletReads:string[]=[];
+  page.on('request',request=>{if(new URL(request.url()).pathname.startsWith('/api/wallet'))walletReads.push(request.url())});
   page.on('pageerror', error => errors.push(error.message));
   const telegramId = randomInt(6000000000, 7000000000);
   const launch = signedLaunch({user: JSON.stringify({id: telegramId, first_name: 'Redesign fixture'})}, process.env.TELEGRAM_BOT_TOKEN);
@@ -33,10 +35,11 @@ test('authenticated mobile screens and local timing evidence', async ({page, bro
     await expect(page.getByRole('navigation', {name: 'Your navigation'})).toBeVisible();
     timings.authenticatedLaunchMs = Math.round(performance.now() - start);
     const user = await client.user.findUniqueOrThrow({where: {telegramId: String(telegramId)}});
+    expect(await (await page.request.get('/api/me')).json()).not.toHaveProperty('wallet');
     // Test fixture issuance remains confined to this disposable database.
     Object.assign(process.env, {DEV_POINTS_ENABLED: 'true', NODE_ENV: 'test'});
     await creditDevelopmentPoints(client, user.id, '1000', `redesign-${randomUUID()}`);
-    for (const [name, path] of [['home', '/'], ['auctions', '/auctions'], ['draws', '/draws'], ['my-bids', '/my-bids'], ['profile', '/profile'], ['wallet-history', '/wallet'], ['auction', `/auctions/${auction.slug}`]] as const) {
+    for (const [name, path] of [['home', '/'], ['auctions', '/auctions'], ['draws', '/draws'], ['my-bids', '/my-bids'], ['profile', '/profile'], ['bid-payments', '/payments'], ['auction', `/auctions/${auction.slug}`]] as const) {
       if (stage === 'before' && name === 'draws') continue;
       const began = performance.now();
       const response = await page.goto(path);
@@ -97,28 +100,28 @@ test('authenticated mobile screens and local timing evidence', async ({page, bro
       await page.screenshot({path: `${root}/bid-sheet-short-viewport-${info.project.name}.png`});
       await expect.poll(() => page.evaluate(() => {const el = document.activeElement!.getBoundingClientRect(); return el.top >= 0 && el.bottom <= innerHeight;})).toBe(true);
       await page.setViewportSize(original);
-      await bidSheet.getByRole('button', {name: 'Review bid', exact: true}).click();
-      const confirmation = page.getByRole('dialog', {name: 'Confirm your bid'});
-      await expect(confirmation).toContainText('Your bid number is not money and is never charged.');
-      await page.screenshot({path: `${root}/bid-confirm-${info.project.name}-en.png`});
-      await confirmation.getByRole('checkbox', {name: 'I agree to continue'}).check();
-      const bidBegan = performance.now();
-      await confirmation.getByRole('button', {name: 'Confirm & submit bid'}).click();
-      await expect(bidSheet.getByRole('heading', {name: '3.60 bid accepted'})).toBeVisible();
-      timings.bidConfirmationMs = Math.round(performance.now() - bidBegan);
-      await expect(bidSheet).toContainText('ETB 970.00');
-      expect((await client.auctionHold.findMany({where: {auctionId: auction.id}}))).toHaveLength(0);
-      await page.screenshot({path: `${root}/bid-receipt-${info.project.name}-en.png`});
-      await bidSheet.getByRole('link', {name: 'View my bids', exact: true}).click();
-      await expect(page).toHaveURL(/\/my-bids(?:\?|$)/);
+      await bidSheet.getByRole('button', {name: 'Continue to payment', exact: true}).click();
+      await expect(bidSheet.getByText('Direct checkout is not available yet.', {exact:false})).toBeVisible();
+      await expect(bidSheet).not.toContainText(/Available balance|Insufficient balance|wallet/i);
+      expect(await client.bid.count({where:{auctionId:auction.id,userId:user.id}})).toBe(0);
+      expect((await client.ledgerAccount.findUniqueOrThrow({where:{name:`user:${user.id}:available`}})).balance.toString()).toBe('1000');
+      await page.screenshot({path:`${root}/checkout-disabled-funded-${info.project.name}-en.png`});
+      await page.keyboard.press('Escape');
+      // A historical local fixture exercises receipts, separately from the
+      // disabled gateway. Merchant verification is covered in PostgreSQL tests.
+      await submitBid(client,{userId:user.id,auctionSlug:auction.slug!,amount:'3.60',feeVersion:1,key:randomUUID()});
+      timings.receiptSource='Historical local bid fixture; not an ArifPay browser acceptance';
+      await page.goto('/my-bids');
       await page.getByRole('button', {name: 'DEMO wireless headphones, bid details'}).click();
-      await expect(page.getByRole('dialog', {name: 'Bid details'})).toContainText('Only the disclosed submission fee was deducted.');
-      await expect(page.getByRole('dialog', {name: 'Bid details'}).getByRole('link', {name: 'Payment history', exact: true})).toHaveAttribute('href','/wallet');
+      await expect(page.getByRole('dialog', {name: 'Bid details'})).toContainText('Only the disclosed submission fee was paid.');
+      await expect(page.getByRole('dialog', {name: 'Bid details'}).getByRole('link', {name: 'Payment history', exact: true})).toHaveAttribute('href','/payments');
       await page.screenshot({path: `${root}/my-bid-details-${info.project.name}-en.png`});
       await page.getByRole('dialog', {name: 'Bid details'}).getByRole('link', {name: 'Draws and results', exact: true}).click();
       await expect(page).toHaveURL(/\/draws(?:\?|$)/);
       await expect(page.getByRole('dialog', {name: 'Bid details'})).toHaveCount(0);
       await page.goto('/profile');
+      await expect(page.getByText('Existing wallet balance',{exact:true})).toHaveCount(0);
+      await expect(page.getByRole('link',{name:'Bid payments',exact:true})).toHaveAttribute('href','/payments');
       await page.getByRole('button', {name: 'Edit', exact: true}).click();
       const editor = page.getByRole('dialog', {name: 'Edit profile'});
       await expect(editor.getByLabel('Display name', {exact: true})).toBeVisible();
@@ -127,8 +130,7 @@ test('authenticated mobile screens and local timing evidence', async ({page, bro
       await editor.getByRole('button', {name: 'Save profile', exact: true}).click();
       await expect(page.getByText('Profile saved.', {exact: true})).toBeVisible();
       expect((await client.telegramOwnContact.findUniqueOrThrow({where: {userId: user.id}})).telegramId).toBe(String(telegramId));
-      // A second real local account has no fixture issuance: insufficient balance
-      // must lead to the disabled checkout, without opening a deposit screen.
+      // An account without historical funds takes the exact same direct path.
       const zeroId = randomInt(7000000000, 8000000000);
       await verifyFixtureContact(client, zeroId);
       const zeroContext = await browser.newContext({viewport: original, baseURL: origin, ignoreHTTPSErrors: true, storageState: ENGLISH_UI_STATE});
@@ -141,8 +143,8 @@ test('authenticated mobile screens and local timing evidence', async ({page, bro
         await expect(zero.getByRole('button', {name: 'Choose your bid number', exact: true})).toBeVisible();
         await zero.getByRole('button', {name: 'Choose your bid number', exact: true}).click();
         await zero.getByLabel('Bid number', {exact: true}).fill('7.31');
-        await expect(zero.getByText('Insufficient balance.', {exact: false})).toBeVisible();
-        await zero.getByRole('button', {name: 'Pay & bid', exact: true}).click();
+        await expect(zero.getByText('Insufficient balance.', {exact: false})).toHaveCount(0);
+        await zero.getByRole('button', {name: 'Continue to payment', exact: true}).click();
         await expect(zero.getByText('Direct checkout is not available yet.', {exact: false})).toBeVisible();
         await expect(zero.getByRole('button', {name: /^Pay ETB/})).toHaveCount(0);
         await zero.screenshot({path: `${root}/checkout-disabled-${info.project.name}-en.png`});
@@ -161,7 +163,7 @@ test('authenticated mobile screens and local timing evidence', async ({page, bro
         await zero.route('**/api/payments/arifpay/checkouts/*', route => route.fulfill({json: order()}));
         await zero.getByRole('button', {name: 'Choose your bid number', exact: true}).click();
         await zero.getByLabel('Bid number', {exact: true}).fill('7.32');
-        await zero.getByRole('button', {name: 'Pay & bid', exact: true}).click();
+        await zero.getByRole('button', {name: 'Continue to payment', exact: true}).click();
         await expect(zero.getByRole('button', {name: 'Telebirr', exact: true})).toBeVisible();
         await zero.getByRole('button', {name: 'M-PESA', exact: true}).click();
         const phone = zero.getByLabel('Payment phone number', {exact: true});
@@ -228,6 +230,15 @@ test('authenticated mobile screens and local timing evidence', async ({page, bro
       for (let i = 0; i < 20; i++) {const began = performance.now(); const r = await page.request.get(endpoint); expect(r.status()).toBe(200); await r.body(); samples.push(performance.now() - began);}
       samples.sort((a, b) => a - b);
       timings[endpoint] = {n: samples.length, p50Ms: Math.round(samples[9]), p95Ms: Math.round(samples[18]), maxMs: Math.round(samples[19])};
+    }
+    if(stage==='after'){
+      await page.goto('/wallet?tab=transactions&type=activity');
+      await expect(page).toHaveURL(/\/payments(?:\?|$)/);
+      await expect(page.getByRole('heading',{name:'Bid payments',exact:true})).toBeVisible();
+      expect((await page.request.get('/api/wallet')).status()).toBe(410);
+      const oldBid=await page.request.post(`/api/auctions/${auction.slug}/bids`,{headers:{origin},data:{amount:'9.50',feeVersion:1,key:randomUUID()}});
+      expect(oldBid.status()).toBe(410);
+      expect(walletReads).toEqual([]);
     }
     await page.context().addCookies([{name: 'lowwin-language', value: 'am', domain: 'localhost', path: '/'}]);
     await page.goto('/');

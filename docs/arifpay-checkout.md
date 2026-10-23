@@ -1,6 +1,6 @@
 # ArifPay direct bid-fee checkout
 
-This additive integration pays one published v4 submission fee through Telebirr or M-PESA. It does not turn the chosen number into a monetary charge. V1–V3 auctions retain their frozen rules and existing bid command. Existing customers, wallet funds, transfer history, bids, settlements, staff tools and Verify.et records remain intact.
+This additive integration pays one published v4 submission fee through Telebirr or M-PESA. It does not turn the chosen number into a monetary charge. V1–V3 auctions retain their frozen rules; new customer entries in these auctions are read-only after wallet retirement. Existing customers, wallet funds, transfer history, bids, settlements, staff tools and Verify.et records remain intact.
 
 All ArifPay release switches are **false** in `.env.example`. No production database migration, payment activation or real payment has been performed by this change.
 
@@ -29,7 +29,7 @@ Authenticated routes use Telegram/contact-bound sessions, same-origin mutations,
 {"auctionSlug":"example","amount":"3.60","feeVersion":1,"key":"UUID","channel":"TELEBIRR","phone":"0911111111"}
 ```
 
-`amount` is a **bid number**. The server reads and freezes the actual fee from the auction; the client cannot submit a payment amount. The response is 202 with `{id,auctionSlug,amount,fee,currency,channel,status,reason,receipt,createdAt,expiresAt,pollAfterMs,fundsPreserved}`. `receipt` has the unchanged existing bid receipt shape when accepted.
+`amount` is a **bid number**. The server reads and freezes the actual fee from the auction; the client cannot submit a payment amount. The response is 202 with `{id,auctionSlug,amount,fee,currency,channel,status,reason,receipt,createdAt,expiresAt,pollAfterMs,fundsPreserved}`. `receipt` projects the accepted bid receipt without customer wallet balances. The immutable internal receipt remains unchanged.
 
 `GET /api/payments/arifpay/checkouts/{id}` reads only the authenticated customer's order. `POST` to the same path checks provider status and attempts completion. Poll only after `pollAfterMs`, pause while hidden, do not overlap requests, and keep the same checkout ID after a timeout. Bound foreground polling and show a recoverable pending state with a manual check and support access; never spin indefinitely.
 
@@ -50,7 +50,7 @@ The browser success/cancel/error return URL carries only a checkout ID. It has n
 2. Send the USSD request once. An ambiguous timeout never generates a second session. Repeated keys and refreshed keys for the same unresolved bid intent reuse the original order.
 3. A short durable polling lease deduplicates browser, callback and worker checks. Fetch provider evidence outside the database transaction. Confirm exact merchant-scoped nonce, session, fee and payer phone; reject contradictory status and identifiers.
 4. Serialize by auction, wallet, checkout and provider transaction reference. Exactly one balanced `ARIFPAY_RECEIPT` journal records the independently confirmed fee. Then call `submitBidInTransaction` with its original idempotency key and frozen fee revision. The normal `BID_FEE` journal debits only the disclosed fee. No v4 hold is created.
-5. A savepoint keeps the verified payment journal if the bid loses a deadline/contact/terms/duplicate race. The order becomes `NEEDS_REVIEW`; the customer's funds stay in their existing balance. No automatic external refund is implemented, and the UI must not claim one occurred.
+5. A savepoint keeps the verified payment journal if the bid loses a deadline/contact/terms/duplicate race. The order becomes `NEEDS_REVIEW`; the verified funds remain recorded for restricted payment support review; customers cannot spend that internal balance. No automatic external refund is implemented, and the UI must not claim one occurred.
 
 The additive table has foreign keys, unique session/transaction/journal/bid references, an active-intent uniqueness index, immutable financial intent/evidence protection and RLS. There is no delete/reset migration. The existing wallet reconciliation includes the new journal automatically.
 

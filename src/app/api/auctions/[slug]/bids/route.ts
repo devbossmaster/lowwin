@@ -1,12 +1,11 @@
 import { z } from 'zod';
-import {smallJson,PrivateApiError,requireMutationOrigin,limitUserMutation} from '@/modules/auth/private-api';
+import {PrivateApiError,requireMutationOrigin,limitUserMutation} from '@/modules/auth/private-api';
 import { db } from '@/lib/db';
 import {getMiniSession} from '@/modules/auth/mini-access';
-import { BidError, getOwnBidState, submitBid } from '@/modules/auctions/bids';
+import { BidError, getOwnBidState } from '@/modules/auctions/bids';
 
 export const runtime='nodejs';
 const privateHeaders={'Cache-Control':'private, no-store, max-age=0'};
-const bodySchema=z.object({amount:z.string(),key:z.string().uuid(),feeVersion:z.number().int().min(1)}).strict();
 async function userId(request:Request) {
   const session=await getMiniSession(request.headers);
   return session?.user.id??null;
@@ -23,7 +22,8 @@ export async function GET(request:Request,{params}:{params:Promise<{slug:string}
     const id=await userId(request);
     if(!id)return Response.json({error:'Sign in through Telegram.',code:'UNAUTHENTICATED'},{status:401,headers:privateHeaders});
     const {slug}=await params;
-    return Response.json(await getOwnBidState(db,id,slug),{headers:privateHeaders});
+    const {wallet:_,previousMax:__,...state}=await getOwnBidState(db,id,slug,process.env,false);
+    return Response.json({...state,paymentMode:state.terms.ruleVersion==='lowest-unique-v4'?'ARIFPAY':'LEGACY_READ_ONLY'},{headers:privateHeaders});
   } catch(error){return errorResponse(error)}
 }
 export async function POST(request:Request,{params}:{params:Promise<{slug:string}>}) {
@@ -32,9 +32,6 @@ export async function POST(request:Request,{params}:{params:Promise<{slug:string
     if(!id)return Response.json({error:'Sign in through Telegram.',code:'UNAUTHENTICATED'},{status:401,headers:privateHeaders});
     requireMutationOrigin(request);
     await limitUserMutation(request,id);
-    if(Number(request.headers.get('content-length')??0)>4096)return Response.json({error:'Request is too large.',code:'INVALID_INPUT'},{status:413,headers:privateHeaders});
-    const body=bodySchema.parse(await smallJson(request));
-    const {slug}=await params;
-    return Response.json(await submitBid(db,{userId:id,auctionSlug:slug,amount:body.amount,key:body.key,feeVersion:body.feeVersion}),{status:201,headers:privateHeaders});
+    return Response.json({error:'Pay this entry’s submission fee through ArifPay.',code:'ARIFPAY_REQUIRED'},{status:410,headers:privateHeaders});
   } catch(error){return errorResponse(error)}
 }

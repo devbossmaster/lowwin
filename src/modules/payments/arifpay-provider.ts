@@ -23,7 +23,7 @@ export function arifPayAvailability(raw:Record<string,string|undefined>=process.
   &&raw.ARIFPAY_CURRENCY==='ETB'&&raw.DEV_POINTS_ENABLED!=='true'&&raw.DEV_IDENTITY_ENABLED!=='true'&&raw.STAGING_DEMO_ENABLED!=='true';
  const enabled=configured&&raw.ARIFPAY_ENABLED==='true';
  const recoveryEnabled=configured&&(enabled||raw.ARIFPAY_RECOVERY_ENABLED==='true');
- return {enabled,recoveryEnabled,channels,currency:'ETB' as const,reason:enabled?null:'Direct payment is not available yet. Your existing balance and history are safe.'};
+ return {enabled,recoveryEnabled,channels,currency:'ETB' as const,reason:enabled?null:'Direct payment is not available yet. Try again later or contact support.'};
 }
 export function requireArifPay(mode:'create'|'recover'='create'){const health=arifPayAvailability();if(!(mode==='recover'?health.recoveryEnabled:health.enabled))throw new ArifPayError(503,'PAYMENT_UNAVAILABLE',health.reason??'Payment recovery is unavailable. Keep this payment ID and contact support.')}
 export type ArifPayCreate={nonce:string;phone:string;fee:string;channel:ArifPayChannel;expiresAt:Date;returnUrl:string;notifyUrl:string};

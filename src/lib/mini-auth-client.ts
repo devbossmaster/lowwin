@@ -3,7 +3,6 @@ export const MINI_AUTH_TIMEOUT_MS = 45000;
 export type MiniAccount = {
   sessionKey?:string;
   user:{id:string;name:string;image?:string|null};
-  wallet:{available:string;held:string;demo?:boolean};
 };
 type Bootstrap = {status:'authenticated';me:MiniAccount}|{status:'contact-required';me:null};
 

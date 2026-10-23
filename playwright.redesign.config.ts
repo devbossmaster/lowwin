@@ -17,15 +17,15 @@ const env = {
   TELEGRAM_WEBHOOK_SECRET: 'redesign-local-webhook-secret-20261022',
   DEV_IDENTITY_ENABLED: 'false', DEV_POINTS_ENABLED: 'false',
   PHONE_CONTACT_KEY_ID: 'local-fixture', PHONE_CONTACT_KEYS: JSON.stringify({'local-fixture': 'e'.repeat(64)}),
-  PHONE_CONTACT_HASH_KEY: 'f'.repeat(64), PAYMENTS_LIVE_ENABLED: 'false', ARIFPAY_ENABLED: 'false',
+  PHONE_CONTACT_HASH_KEY: 'f'.repeat(64), PAYMENTS_LIVE_ENABLED: 'false', ARIFPAY_ENABLED: 'false', ARIFPAY_SCHEMA_READY:'true', ADMIN_MFA_KEY:'b'.repeat(64),
 };
 Object.assign(process.env, env);
 const directory = process.env.REDESIGN_SOURCE_DIR ?? '.';
 const nextCli = process.env.REDESIGN_NEXT_CLI ?? 'node_modules/next/dist/bin/next';
 export default defineConfig({
-  testDir: './tests/redesign-browser', outputDir: 'test-results/redesign', workers: 1,
+  testDir: './tests/redesign-browser', outputDir: process.env.REDESIGN_OUTPUT_DIR??'test-results/redesign', workers: 1,
   timeout: 480000, expect: {timeout: 60000},
-  reporter: [['list'], ['json', {outputFile: `test-results/redesign/${process.env.REDESIGN_STAGE ?? 'after'}.json`}]],
+  reporter: [['list'], ['json', {outputFile: process.env.REDESIGN_REPORT_PATH??`test-results/redesign/${process.env.REDESIGN_STAGE ?? 'after'}.json`}]],
   use: {storageState: ENGLISH_UI_STATE, baseURL: origin, ignoreHTTPSErrors: true, browserName: 'chromium',
     ...(process.env.PLAYWRIGHT_CHANNEL ? {channel: process.env.PLAYWRIGHT_CHANNEL} : {}), trace: 'retain-on-failure'},
   webServer: {

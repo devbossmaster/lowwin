@@ -1,5 +1,7 @@
 # Signed-in workflow follow-up
 
+Historical checkpoint: the later [wallet retirement and admin update](walletless.md) supersedes the balance-funded bid flow and its confirmation timings described below. Cache isolation, sorting and navigation changes remain current.
+
 The public [Onebid review](../research/onebid-public-review.md) informed the browsing and receipt flow. Lowin retains its own identity, authentication, fee-only v4 rules and ArifPay integration. Onebid's private admin design remains unverified.
 
 ## Customer changes

@@ -27,14 +27,13 @@ export async function getPersonalBids(client:PrismaClient,userId:string,input:un
 export async function getPlayerProfile(client:PrismaClient,userId:string) {
   return client.$transaction(async tx=>{
     const [{now}]=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`;
-    const [user,wallet,bids,liveBids,wins,favorites]=await Promise.all([
+    const [user,bids,liveBids,wins,favorites]=await Promise.all([
       tx.user.findUniqueOrThrow({where:{id:userId},select:{name:true,playerProfile:{select:{displayName:true,bio:true}}}}),
-      tx.wallet.findUnique({where:{userId},select:{accounts:{select:{kind:true,balance:true}}}}),
       tx.bid.count({where:{userId}}),tx.bid.count({where:{userId,auction:liveWhere(now)}}),
       tx.auctionSettlement.count({where:{winnerUserId:userId,outcome:'WINNER'}}),
       tx.auctionFavorite.count({where:{userId,auction:publicWhere(now)}}),
     ]);
-    return {displayName:user.playerProfile?.displayName??user.name,bio:user.playerProfile?.bio??'',counts:{bids,liveBids,historyBids:bids-liveBids,wins,favorites},wallet:{available:wallet?.accounts.find(a=>a.kind==='AVAILABLE')?.balance.toString()??'0',held:wallet?.accounts.find(a=>a.kind==='HELD')?.balance.toString()??'0'}};
+    return {displayName:user.playerProfile?.displayName??user.name,bio:user.playerProfile?.bio??'',counts:{bids,liveBids,historyBids:bids-liveBids,wins,favorites}};
   },{isolationLevel:Prisma.TransactionIsolationLevel.RepeatableRead});
 }
 export async function editPlayerProfile(client:PrismaClient,userId:string,input:unknown) {

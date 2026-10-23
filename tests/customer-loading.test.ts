@@ -35,7 +35,7 @@ describe('plain customer loading states',()=>{
  });
  it.each([
   ['/auctions','Loading auctions…'],['/auctions/1234','Loading auction details…'],
-  ['/wallet','Loading your wallet…'],['/my-bids','Loading your bids…'],['/draws','Loading draws…'],
+  ['/wallet','Loading bid payments…'],['/payments','Loading bid payments…'],['/my-bids','Loading your bids…'],['/draws','Loading draws…'],
  ])('keeps route loading useful for %s', (path,label)=>{
   state.path=path;
   expect(render(createElement(MiniRouteSkeleton))).toContain(`<p>${label}</p>`);
@@ -64,10 +64,10 @@ describe('plain customer loading states',()=>{
   expect(html).toContain('Retry</button>');
   expect(html).not.toContain('loading-spinner-ring');
  });
- it('uses wallet loading copy for private payment and transfer sections within the wallet',()=>{
+ it('uses payment loading copy on the new page and retired route',()=>{
   state.path='/wallet';
   const html=render(createElement(PrivateState,{query:waiting}));
-  expect(html).toContain('Loading your wallet…');
+  expect(html).toContain('Loading bid payments…');
   expect(html).not.toContain('Loading your profile');
  });
  it('keeps existing data readable during background refresh and refresh errors',()=>{
