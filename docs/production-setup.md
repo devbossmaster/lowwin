@@ -63,6 +63,10 @@ npm run wallet:reconcile
 
 `db:check` checks connectivity; it does not certify role permissions. Reconciliation must return zero drift. Keep bids, journals, postings, holds, settlement proofs and migration history. Roll back application code to a compatible release; never roll back by deleting financial rows.
 
+For a verified empty staging database, apply all versioned migrations as the schema owner, then run `deploy/runtime-role.sql` as that owner, then provision the separate login with `db:create-runtime-login` using process-only `MIGRATION_DIRECT_URL` and a protected generated `LOWWIN_APP_PASSWORD`. The role script supports creation before or after migrations and includes ArifPay, test-run tracking and server-only cleanup permissions. It refuses unsafe runtime-group attributes or inherited browser cleanup access. Do not seed synthetic customers, credits, products or results into a remote staging database to make an empty screen look populated.
+
+Configure the normal web/worker connections with the restricted login after provisioning. Keep the migration connection outside the application's runtime environment; inject it only into a reviewed migration job. Recheck RLS, required table access and browser cleanup denial through catalog reads, then reconcile. A fresh database must never replace the retained production database merely because local sign-in was unavailable.
+
 ## 4. Telegram and ngrok staging
 
 1. Set `APP_ENV=staging`, the dedicated staging bot credentials, contact keys, and both app/auth origins to the current ngrok HTTPS origin (`MINI_APP_URL` may include `/telegram`). Keep all `DEV_*`, `PAYMENTS_TEST_ENABLED`, `WALLET_TEST_PREVIEW` and bootstrap flags false.
