@@ -2,7 +2,7 @@
 
 Working branch: `redesign/lowin-arifpay-mobile`.
 
-Customer UI: warm-white canvas, near-black actions, restrained gold, supplied Lowin logo, self-hosted DM Sans and variable Noto Sans Ethiopic. Home uses an original illustrative family photograph, HTML copy, on-demand Learn More, genuine recent-result scrolling, chips, search and a single auction list. Five-item navigation replaces Deposit with centered Auctions. Private receipts, profile editing, filtered notifications and payment history use native bottom sheets.
+Customer UI: warm-white canvas, muted-gold ordinary actions, near-black payment actions, supplied Lowin logo, self-hosted DM Sans and variable Noto Sans Ethiopic. Home uses an original illustrative family photograph, HTML copy, on-demand Learn More, genuine recent-result scrolling, chips, search and a single auction list. Five-item navigation replaces Deposit with centered Auctions. Private receipts, profile editing, filtered notifications and payment history use native bottom sheets. The latest [header, loading and color refinement](polish.md) includes eight fresh mobile captures and the banner-serving correction.
 
 The latest instruction supersedes the initial deposit brief: new manual deposit creation returns 410; direct Telebirr/M-PESA bid-fee checkout is implemented and disabled by default. Historical balances, transfers, bids, terms, settlement and staff operations remain intact. The migration only adds ArifPay checkout records with restrictive foreign keys, immutable intent/evidence and replay constraints.
 

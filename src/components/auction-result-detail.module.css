@@ -16,7 +16,7 @@
 .activity h2{display:flex;align-items:center;justify-content:center;gap:8px;margin:0;padding:16px;background:#181815;color:#fff;font-size:18px;font-weight:650;--surface-ink:#fff;}
 .date{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:0 18px;padding:16px 0;border-bottom:1px solid #f0f0f0;color:#68665e;font-size:14px;line-height:1.5}
 .date svg{flex:none;color:#52734b}.date>span:last-child{margin-left:auto}.date:nth-of-type(2)>span{margin-left:0}
-.action{display:flex;align-items:center;justify-content:center;gap:8px;min-height:50px;margin:20px 18px;border-radius:12px;background:#181815;color:#fff;font-size:15px;font-weight:650;text-decoration:none;--surface-ink:#fff;}.action:hover{background:#181815;--surface-ink:#fff;color:#fff;}
+.action{display:flex;align-items:center;justify-content:center;gap:8px;min-height:50px;margin:20px 18px;border-radius:12px;background:var(--mini-action,#c9a227);color:var(--mini-action-ink,#181815);font-size:15px;font-weight:650;text-decoration:none;--surface-ink:var(--mini-action-ink,#181815)}.action:hover{background:var(--mini-action-hover,#b48e1d);color:var(--mini-action-ink,#181815)}
 .numbers{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:4px 18px 22px}.numbers>div{display:flex;align-items:center;justify-content:center;gap:10px;min-width:0}.numbers svg{flex:none;color:#52734b}.numbers>div:last-child svg{color:#a36b08}
 .numbers strong{display:block;color:#181815;font-size:26px;line-height:1.4;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.numbers small{display:block;color:#68665e;font-size:14px}
 .page a:focus-visible{outline:3px solid #181815;outline-offset:4px}

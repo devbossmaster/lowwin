@@ -2,7 +2,7 @@
 import {createsFourConsecutiveAmounts} from '@/modules/auctions/consecutive-bids';
 import {isSubmissionFeeOnly,usesDecimalBids} from '@/modules/auctions/rules';
 import {BidConfirmDialog} from './bid-confirm-dialog';
-import {LoadingSpinner} from './loading-spinner';
+import {CustomerLoading,LoadingSpinner} from './loading-spinner';
 import Link from 'next/link';
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import {CheckCircle2,Minus,Plus} from 'lucide-react';
@@ -110,7 +110,7 @@ function FeaturedBidForIdentity({slug,title,active=true,onInteractionChange}:Pro
     }finally{inFlight.current=false;if(mounted.current)setSubmitting(false)}
   },[valid,submitting,agreed,preview,key,slug,notify,am,refreshMe,celebrate,state?.terms.version,feeOnly,queryIdentity]);
 
-  if(status==='loading'||status==='authenticated'&&!state&&!loadError)return <div className={`${styles.bidBox} bid-loading-skeleton`} role="status" aria-label={am?'የጨረታ መረጃ በመጫን ላይ':'Loading bid details'} aria-busy="true"><span className={styles.bidLabel}>{am?'የጨረታ ቁጥር':'Your bid number'}</span><span/><span/><span/></div>;
+  if(status==='loading'||status==='authenticated'&&!state&&!loadError)return <CustomerLoading en="Loading bid details…" am="የጨረታ ዝርዝሮችን በመጫን ላይ…" compact/>;
   return <div className={styles.bidBox} onFocusCapture={()=>setFocused(true)} onBlurCapture={event=>{if(!event.currentTarget.contains(event.relatedTarget as Node|null))setFocused(false)}}><span className={styles.bidLabel}>{am?'የጨረታ ቁጥር':'Your bid number'}</span>
     <div className={styles.amountControl}>
       <button type="button" onClick={()=>step(-1)} disabled={!state?.open||loading} aria-label={am?'መጠኑን ቀንስ':'Decrease bid amount'}><Minus size={18}/></button>

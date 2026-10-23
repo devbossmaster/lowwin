@@ -1,3 +1,6 @@
-import styles from './wallet-funding-skeleton.module.css';
+import {CustomerLoading} from './loading-spinner';
+
 type Variant='deposit'|'deposits'|'preview';
-export function WalletFundingSkeleton({variant='deposit'}:{variant?:Variant}){return <div className={styles.root} role="status" aria-label={variant==='deposits'?'Loading deposits':'Loading payment details'} aria-busy="true"><div aria-hidden="true">{variant==='deposits'?<div className={styles.rows}>{[0,1,2].map(item=><div key={item} className={styles.row}><i className={styles.icon}/><div><b/><span/></div><strong/></div>)}</div>:<><div className={styles.methods}><i/><i/><i/></div><div className={styles.account}><i className={styles.icon}/><b/><span/></div>{variant==='deposit'&&<><div className={styles.field}/><div className={styles.upload}/><div className={styles.submit}/></>}</>}</div></div>}
+export function WalletFundingSkeleton({variant='deposit'}:{variant?:Variant}){
+ return <CustomerLoading en={variant==='deposits'?'Loading your transfers…':'Loading payment details…'} am={variant==='deposits'?'ዝውውሮችዎን በመጫን ላይ…':'የክፍያ ዝርዝሮችን በመጫን ላይ…'} compact/>;
+}

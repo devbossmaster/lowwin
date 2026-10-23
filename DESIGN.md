@@ -12,7 +12,10 @@ Mode: Operate. A customer should be able to find an auction, understand the real
 | --- | --- |
 | Canvas | `#f5f4ef` |
 | Panel | `#ffffff` |
-| Ink / action | `#181815` |
+| Ink / payment action | `#181815` |
+| Standard primary action | `#c9a227` |
+| Primary action label / icon | `#181815` |
+| Primary action hover | `#b48e1d` |
 | Secondary text | `#68665e` |
 | Gold text | `#715719` |
 | Gold accent / focus | `#987522` |
@@ -20,7 +23,7 @@ Mode: Operate. A customer should be able to find an auction, understand the real
 | Quiet line | `#e5e1d6` |
 | Error | `#a03928` |
 
-Gold supports focus, fees and result details; it does not fill every action. Primary actions are near-black with white labels. Status labels always include text. Cards have 16px corners, sheets 24px upper corners, compact controls pill-shaped. Avoid decorative shadows; the photographic banner carries the visual richness.
+The 23 October 2026 user override makes ordinary customer primary actions muted gold with near-black labels and icons. Use `--mini-action: #c9a227`, `--mini-action-ink: #181815` and hover `#b48e1d`; contrast is 7.35:1 normally and 5.78:1 on hover. Gold continues to support focus, fees and result details. Quiet secondary controls and selected filters remain neutral. Payment initiation, fee confirmation and payment-status primary actions retain near-black with white labels (17.79:1). Mark shared payment buttons with `data-payment-action`; ArifPay primary buttons and the final bid confirmation keep their explicit payment styling. Status labels always include text. Cards have 16px corners, sheets 24px upper corners, compact controls pill-shaped. Avoid decorative shadows; the photographic banner carries the visual richness.
 
 ## Type
 
@@ -28,7 +31,7 @@ Self-host DM Sans Latin at 400/500/600/700 and a single variable Noto Sans Ethio
 
 ## Layout and interaction
 
-A centered 480px maximum canvas serves mobile WebViews and ordinary preview widths. Check 360px and 430px. Insets are 16–20px, list gaps 12–16px, section separation 22–28px. The white header contains the existing logo, hammer shortcut, notification bell and language control. The bottom bar contains Home, Draws, Auctions, My Bids and Profile; black centered Auctions replaces the superseded Deposit action. All primary and icon controls provide at least 44px targets.
+A centered 480px maximum canvas serves mobile WebViews and ordinary preview widths. Check 360px and 430px. Insets are 16–20px, list gaps 12–16px, section separation 22–28px. The white header contains the existing logo, hammer shortcut, notification bell and language control. The bottom bar contains Home, Draws, Auctions, My Bids and Profile; gold centered Auctions replaces the superseded Deposit action. All primary and icon controls provide at least 44px targets.
 
 Browser and Telegram safe-area insets are respected at the top and bottom. Native dialog sheets provide focus containment, Escape/backdrop dismissal and focus restoration; sheet body scrolling remains independent. Keyboard/device behavior still requires physical Telegram validation. Motion is subtle and reduced-motion-aware. Learn More and bid sheets are code split; an optional configured YouTube player is mounted only after an explicit Watch action. The family banner is a 104KB original generated photographic asset with HTML copy and an illustrative label.
 
