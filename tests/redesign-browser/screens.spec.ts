@@ -109,12 +109,15 @@ test('authenticated mobile screens and local timing evidence', async ({page, bro
       await expect(bidSheet).toContainText('ETB 970.00');
       expect((await client.auctionHold.findMany({where: {auctionId: auction.id}}))).toHaveLength(0);
       await page.screenshot({path: `${root}/bid-receipt-${info.project.name}-en.png`});
-      await page.keyboard.press('Escape');
-      await page.goto('/my-bids');
+      await bidSheet.getByRole('link', {name: 'View my bids', exact: true}).click();
+      await expect(page).toHaveURL(/\/my-bids(?:\?|$)/);
       await page.getByRole('button', {name: 'DEMO wireless headphones, bid details'}).click();
       await expect(page.getByRole('dialog', {name: 'Bid details'})).toContainText('Only the disclosed submission fee was deducted.');
+      await expect(page.getByRole('dialog', {name: 'Bid details'}).getByRole('link', {name: 'Payment history', exact: true})).toHaveAttribute('href','/wallet');
       await page.screenshot({path: `${root}/my-bid-details-${info.project.name}-en.png`});
-      await page.keyboard.press('Escape');
+      await page.getByRole('dialog', {name: 'Bid details'}).getByRole('link', {name: 'Draws and results', exact: true}).click();
+      await expect(page).toHaveURL(/\/draws(?:\?|$)/);
+      await expect(page.getByRole('dialog', {name: 'Bid details'})).toHaveCount(0);
       await page.goto('/profile');
       await page.getByRole('button', {name: 'Edit', exact: true}).click();
       const editor = page.getByRole('dialog', {name: 'Edit profile'});
@@ -240,9 +243,20 @@ test('authenticated mobile screens and local timing evidence', async ({page, bro
         await expect(page).toHaveURL(new RegExp(`${href}(?:\\?|$)`));
         await page.waitForLoadState('networkidle');
         await expect(page.locator('main')).toBeVisible();
+        if(name==='auctions')await expect(page.getByRole('heading',{name:'የሚወዱትን ዕቃ ያግኙ',exact:true})).toBeVisible();
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Amharic overflow on ${href}`).toBe(true);
         await page.screenshot({path: `${root}/${name}-${info.project.name}-am.png`, fullPage: true});
         await page.screenshot({path: `${root}/${name}-${info.project.name}-am-viewport.png`});
+        if(name==='my-bids'){
+          await page.getByRole('button',{name:/^DEMO wireless headphones,/}).click();
+          const receipt=page.getByRole('dialog',{name:'የጨረታ ዝርዝር'});
+          await expect(receipt).toBeVisible();
+          await receipt.getByRole('link',{name:'የክፍያ ታሪክ',exact:true}).scrollIntoViewIfNeeded();
+          for(const link of await receipt.getByRole('link').all()){const box=await link.boundingBox();expect(box!.height).toBeGreaterThanOrEqual(44)}
+          expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+          await page.screenshot({path:`${root}/my-bid-details-${info.project.name}-am.png`});
+          await page.keyboard.press('Escape');
+        }
       }
     }
     timings.reconciliationDrift = (await reconcile(client)).length;

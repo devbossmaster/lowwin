@@ -10,7 +10,7 @@ if (!['127.0.0.1','localhost'].includes(base.hostname) || !base.pathname.endsWit
 const suffix = randomBytes(5).toString('hex');
 const mode=process.argv[2]??'unit';
 if(!['unit','browser','payments','smoke','redesign'].includes(mode))throw Error('Choose unit, browser, payments, smoke, or redesign.');
-const variables=['TEST_DATABASE_URL','BID_TEST_DATABASE_URL','SETTLEMENT_TEST_DATABASE_URL','PERSONAL_TEST_DATABASE_URL','ADMIN_TEST_DATABASE_URL','OPS_TEST_DATABASE_URL','PAYMENT_TEST_DATABASE_URL','ARIFPAY_TEST_DATABASE_URL','ADMIN_CREDIT_TEST_DATABASE_URL','ACTIVITY_TEST_DATABASE_URL'];
+const variables=['TEST_DATABASE_URL','BID_TEST_DATABASE_URL','SETTLEMENT_TEST_DATABASE_URL','PERSONAL_TEST_DATABASE_URL','ADMIN_TEST_DATABASE_URL','OPS_TEST_DATABASE_URL','PAYMENT_TEST_DATABASE_URL','ARIFPAY_TEST_DATABASE_URL','ADMIN_CREDIT_TEST_DATABASE_URL','ACTIVITY_TEST_DATABASE_URL','CATALOG_WORKFLOW_TEST_DATABASE_URL'];
 const env={...process.env};
 const admin=new URL(base);admin.pathname='/postgres';
 const client=new Client({connectionString:admin.href});

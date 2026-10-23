@@ -1,0 +1,11 @@
+{
+  "stats": {
+    "startTime": "2026-10-23T11:42:11.558Z",
+    "duration": 93893.452,
+    "expected": 8,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "mode": "optimized Chromium on loopback; synthetic users; no real provider calls"
+}

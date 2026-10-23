@@ -79,6 +79,34 @@ describe('session private query cache',()=>{
 });
 
 describe('private cache navigation regressions',()=>{
+ it('aborts obsolete reads when an account changes, without exposing their payload',async()=>{
+  const cache=new SessionPrivateQueryCache();cache.setIdentity('old');
+  let finish!:(value:string)=>void,captured:AbortSignal|undefined;
+  const pending=cache.load('old','profile',signal=>{captured=signal;return new Promise<string>(resolve=>{finish=resolve})});
+  const rejected=expect(pending).rejects.toBeInstanceOf(ObsoletePrivateQueryError);
+  cache.setIdentity('new');expect(captured?.aborted).toBe(true);finish('private old account');await rejected;
+  expect(cache.read('new','profile')).toBeNull();
+ });
+ it('does not automatically retry a failed read or pause it waiting for connectivity',async()=>{
+  const cache=new SessionPrivateQueryCache();cache.setIdentity('a');
+  const loader=vi.fn(async()=>{throw Error('Network unavailable')});
+  await expect(cache.load('a','profile',loader)).rejects.toThrow('Network unavailable');
+  expect(loader).toHaveBeenCalledTimes(1);
+  await cache.load('a','profile',async()=>({name:'Recovered'}));
+  expect(cache.read('a','profile')?.value).toEqual({name:'Recovered'});
+ });
+ it('deduplicates a post-payment refresh across readers and ignores the cancelled old result',async()=>{
+  const cache=new SessionPrivateQueryCache();cache.setIdentity('a');
+  await cache.load('a','wallet',async()=>100);
+  let oldDone!:(value:number)=>void,newDone!:(value:number)=>void;
+  const old=cache.load('a','wallet',()=>new Promise<number>(resolve=>{oldDone=resolve}),{force:true});
+  const obsolete=expect(old).rejects.toBeInstanceOf(ObsoletePrivateQueryError);
+  cache.invalidate('a');expect(cache.read('a','wallet')).toMatchObject({value:100,fresh:false});
+  const loader=vi.fn(()=>new Promise<number>(resolve=>{newDone=resolve}));
+  const next=cache.load('a','wallet',loader),other=cache.load('a','wallet',loader);
+  expect(loader).toHaveBeenCalledTimes(1);newDone(70);oldDone(100);await obsolete;await Promise.all([next,other]);
+  expect(cache.read('a','wallet')).toMatchObject({value:70,fresh:true});
+ });
  it('retains a stale snapshot after mutation but rejects the pre-mutation response',async()=>{
   const cache=new SessionPrivateQueryCache();cache.setIdentity('a:session');
   await cache.load('a:session','wallet',async()=>10);

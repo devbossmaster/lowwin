@@ -34,6 +34,7 @@
     "@fontsource/dm-sans": "5.2.8",
     "@prisma/client": "6.19.3",
     "@radix-ui/react-slot": "1.2.4",
+    "@tanstack/react-query": "5.104.5",
     "@tesseract.js-data/eng": "1.0.0",
     "better-auth": "1.6.33",
     "better-auth-telegram": "2.0.1",

@@ -1,0 +1,37 @@
+{
+  "stage": "after",
+  "width": "430",
+  "mode": "optimized build on loopback; not a production service or Telegram device benchmark",
+  "authenticatedLaunchMs": 1249,
+  "homeRenderMs": 1078,
+  "auctionsRenderMs": 1080,
+  "drawsRenderMs": 967,
+  "my-bidsRenderMs": 882,
+  "profileRenderMs": 826,
+  "wallet-historyRenderMs": 844,
+  "auctionRenderMs": 971,
+  "bidConfirmationMs": 192,
+  "slowConnectionHomeMs": 2662,
+  "slowConnection": "Chromium simulated 150ms latency, 1.28Mbps down/600kbps up, browser cache disabled; one sample",
+  "clientNavigationToMyBidsMs": 648,
+  "/api/me": {
+    "n": 20,
+    "p50Ms": 17,
+    "p95Ms": 37,
+    "maxMs": 346
+  },
+  "/api/alerts": {
+    "n": 20,
+    "p50Ms": 19,
+    "p95Ms": 23,
+    "maxMs": 24
+  },
+  "/api/catalog/auctions/test-bid-7c1fc0af": {
+    "n": 20,
+    "p50Ms": 23,
+    "p95Ms": 28,
+    "maxMs": 32
+  },
+  "reconciliationDrift": 0,
+  "browserErrors": []
+}
