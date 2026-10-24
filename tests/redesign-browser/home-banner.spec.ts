@@ -40,7 +40,8 @@ test('home banner: both languages, image, mobile geometry and existing actions',
    if(language==='am')expect(await page.evaluate(()=>document.fonts.check('800 24px \"Lowwin Banner Ethiopic\"','ትንሽ'))).toBe(true);
    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
    const bannerBox=(await hero.boundingBox())!,copyBox=(await hero.locator('p').boundingBox())!;
-   expect(bannerBox.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+   expect(bannerBox.width).toBe(page.viewportSize()!.width);
+   expect(bannerBox.height).toBeLessThanOrEqual(235);
    for(const element of await hero.locator('h1,p,button,a,small').all()){
     const box=(await element.boundingBox())!;
     expect(box.x).toBeGreaterThanOrEqual(bannerBox.x);
@@ -53,6 +54,8 @@ test('home banner: both languages, image, mobile geometry and existing actions',
     const box=(await action.boundingBox())!;expect(box.height).toBeGreaterThanOrEqual(44);
     expect(box.y).toBeGreaterThanOrEqual(copyBox.y+copyBox.height);
    }
+   const firstActionBox=(await hero.locator('button').boundingBox())!;
+   expect(firstActionBox.y-copyBox.y-copyBox.height).toBeCloseTo(12,0);
    await hero.screenshot({path:`${root}/banner-${info.project.name}-${language}.png`});
    const learn=hero.getByRole('button');await learn.click();await expect(page.getByRole('dialog')).toBeVisible();
    await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);await expect(learn).toBeFocused();

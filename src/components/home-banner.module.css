@@ -1,6 +1,6 @@
 @font-face{font-family:Lowwin Banner Ethiopic;src:url('/fonts/noto-serif-ethiopic-banner.woff2') format('woff2');font-style:normal;font-weight:400 800;font-display:swap;unicode-range:U+030E,U+1200-1399,U+2D80-2DDE,U+AB01-AB2E,U+1E7E0-1E7E6,U+1E7E8-1E7EB,U+1E7ED-1E7EE,U+1E7F0-1E7FE}
 @font-face{font-family:Lowwin Banner Latin;src:url('/fonts/sora-latin-800.woff2') format('woff2');font-style:normal;font-weight:800;font-display:swap}
-.banner{width:100%;min-width:0;position:relative;isolation:isolate;display:flex;flex-direction:column;align-items:flex-start;gap:20px;min-height:280px;aspect-ratio:1.5;padding:24px 16px 34px;overflow:hidden;background:#14130f;color:#fff}
+.banner{width:100%;min-width:0;position:relative;isolation:isolate;display:flex;flex-direction:column;align-items:flex-start;gap:12px;min-height:230px;aspect-ratio:1.9;padding:18px 16px 26px;overflow:hidden;background:#14130f;color:#fff}
 .banner>img{z-index:-2;object-fit:contain;object-position:top right}
 .bannerShade{position:absolute;z-index:-1;inset:0;pointer-events:none;background:linear-gradient(90deg,rgba(9,9,7,.94),rgba(9,9,7,.78) 35%,rgba(9,9,7,.15) 62%,transparent 80%),linear-gradient(0deg,#14130f 0%,rgba(20,19,15,.96) 13%,transparent 56%)}
 .bannerCopy{width:50%;max-width:235px}
@@ -10,7 +10,7 @@
 .banner:lang(am) h1{letter-spacing:0;line-height:1.4}
 .banner:lang(am) p{line-height:1.8}
 .illustration{position:absolute;bottom:9px;right:12px;color:#e2ddd0;font-size:8px;line-height:1.5}
-.introActions{display:flex;flex-wrap:wrap;justify-content:flex-start;gap:8px;margin-top:auto;max-width:100%}
+.introActions{display:flex;flex-wrap:wrap;justify-content:flex-start;gap:8px;margin-top:0;max-width:100%}
 .introActions button,.introActions a{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:44px;max-width:100%;padding:9px 14px;border:0;border-radius:24px;background:var(--mini-action,#c9a227);color:var(--mini-action-ink,#181815);font:inherit;font-size:12px;font-weight:600;line-height:1.5;text-align:center;text-decoration:none;cursor:pointer}
 .introActions a{background:#fff;color:#181815}
 .introActions svg{flex-shrink:0}
