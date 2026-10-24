@@ -24,3 +24,4 @@
 .feedTitle{font-size:20px;font-weight:700;margin:0 0 14px}.sortChips{display:flex;gap:7px;overflow-x:auto;margin:0 -16px 18px;padding:0 16px 4px;scrollbar-width:none}.sortChips a{display:inline-flex;align-items:center;justify-content:center;flex:none;min-height:44px;padding:0 14px;border-radius:24px;background:#fff;color:#54524c;font-size:11px;font-weight:600;text-decoration:none}.sortChips a[aria-current=page]{background:#181815;color:#fff}.loadMore{text-align:center;padding:20px 0 8px;font-size:12px}.loadMore button,.howAction{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;border:0;border-radius:24px;padding:10px 18px;background:var(--mini-action,#c9a227);color:#181815;font:inherit;font-size:12px;font-weight:600;cursor:pointer}.loadMore button:disabled{opacity:.65;cursor:default}
 
 .winnersSection{padding:24px 0 18px}.winnersSection>.heading{padding:0 16px;margin-bottom:10px}
+.homeFeed{padding-top:4px}
