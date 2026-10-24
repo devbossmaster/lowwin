@@ -2,6 +2,7 @@ import {Prisma,type PrismaClient} from '@prisma/client';
 import {z} from 'zod';
 import {publicAuctionSelect,publicWhere,toPublicAuction} from './catalog';
 import {contactBotId,decryptPhone} from '@/modules/auth/own-contact';
+import {finalizedDemoFilter} from './staging-demo';
 
 export const breakdownQuery=z.object({page:z.coerce.number().int().min(1).max(10000).default(1),sort:z.enum(['amount','picked']).default('amount'),amount:z.string().regex(/^\d{1,18}(?:\.\d{1,2})?$/).optional(),jump:z.literal('winner').optional()}).strict();
 type Query=z.infer<typeof breakdownQuery>;
@@ -27,7 +28,7 @@ export async function getResultBreakdown(client:PrismaClient,code:string,input:Q
  return client.$transaction(async tx=>{
   const [{now}]=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`;
   const numeric=/^[1-9]\d*$/.test(code)&&Number.isSafeInteger(Number(code))?Number(code):null;
-  const row=await tx.auction.findFirst({where:{AND:[publicWhere(now),{isDemo:false,status:{in:['CLOSED','CANCELLED']},settlement:{is:{completedAt:{lte:now}}}},{OR:[{code},...(numeric?[{publicCode:numeric}]:[])]}]},select:{...publicAuctionSelect,id:true,settlement:{select:{...publicAuctionSelect.settlement.select,cutoff:true,acceptanceCutoff:true,acceptedCount:true,winningBid:{select:{feePoints:true}},winner:{select:{ownContact:{select:{lastFour:true,botId:true,phoneCipher:true,revokedAt:true}}}}}}}});
+  const row=await tx.auction.findFirst({where:{AND:[publicWhere(now),finalizedDemoFilter(),{status:{in:['CLOSED','CANCELLED']},settlement:{is:{completedAt:{lte:now}}}},{OR:[{code},...(numeric?[{publicCode:numeric}]:[])]}]},select:{...publicAuctionSelect,id:true,settlement:{select:{...publicAuctionSelect.settlement.select,cutoff:true,acceptanceCutoff:true,acceptedCount:true,winningBid:{select:{feePoints:true}},winner:{select:{ownContact:{select:{lastFour:true,botId:true,phoneCipher:true,revokedAt:true}}}}}}}});
   if(!row?.settlement)return null;
   const settlement=row.settlement,filter=Prisma.sql`"auctionId"=${row.id} AND "acceptedAt"<${settlement.cutoff}${settlement.acceptanceCutoff===null?Prisma.empty:Prisma.sql` AND "acceptanceOrder"<=${settlement.acceptanceCutoff}`}`;
   const [totals]=await tx.$queryRaw<Totals[]>(Prisma.sql`SELECT count(*)::int AS bids,count(DISTINCT "userId")::int AS players,count(DISTINCT amount)::int AS amounts,count(DISTINCT "feePoints")::int AS fees FROM "Bid" WHERE ${filter}`);

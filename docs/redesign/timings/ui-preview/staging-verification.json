@@ -1,0 +1,25 @@
+{
+  "seedCompleted": true,
+  "registeredCustomers": 3,
+  "syntheticPlayers": 21,
+  "visibleLiveAuctions": 11,
+  "liveFirstBatch": 10,
+  "upcoming": 3,
+  "visibleDemoWinners": 4,
+  "acceptedResultBids": 43,
+  "distinctAmounts": 23,
+  "totalPlayers": 21,
+  "amountPages": [
+    20,
+    3
+  ],
+  "participantPages": [
+    20,
+    1
+  ],
+  "maskedDisplaysOnly": true,
+  "liveBreakdownPrivate": true,
+  "upcomingBreakdownPrivate": true,
+  "telegramMessagesSent": 0,
+  "reconciliationDrift": 0
+}

@@ -4,6 +4,7 @@ import {legacyTermsInEtb} from '@/lib/money';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import {cachedPublicData} from '@/modules/cache/public-data';
+import {previewTestRunFilter,stagingDemoEnabled} from './staging-demo';
 
 // SQL selection and DTO mapping are independent allowlists. Never select the
 // settlement proof, participant movements, winning user/bid IDs or raw bids here.
@@ -45,10 +46,11 @@ export function effectiveStatus(row: Pick<AuctionRow,'status'|'startsAt'|'endsAt
   if (row.startsAt && row.startsAt > now) return 'upcoming' as const;
   return 'live' as const;
 }
-export function publicWhere(now: Date): Prisma.AuctionWhereInput {
-  return { publishedAt: { lte: now }, status: { in: ['SCHEDULED','LIVE','CLOSED','CANCELLED'] }, slug: { not: null },testRunId:null,
+export function publicWhere(now: Date,raw:Record<string,string|undefined>=process.env): Prisma.AuctionWhereInput {
+  return { publishedAt: { lte: now }, status: { in: ['SCHEDULED','LIVE','CLOSED','CANCELLED'] }, slug: { not: null },...previewTestRunFilter(raw),
     product: { is: { visible: true, category: { visible: true } } }, category: { is: { visible: true } }, terms: { isNot: null } };
 }
+function publicTestRunSql(){return stagingDemoEnabled()?Prisma.sql`(a."testRunId" IS NULL OR (a."isDemo"=true AND a."testRunId" IS NOT NULL))`:Prisma.sql`a."testRunId" IS NULL`}
 function statusWhere(status: CatalogQuery['status'], now: Date): Prisma.AuctionWhereInput {
   if (status === 'live') return {status:{in:['SCHEDULED','LIVE']},startsAt:{lte:now},endsAt:{gt:now}};
   if (status === 'upcoming') return {status:{in:['SCHEDULED','LIVE']},startsAt:{gt:now}};
@@ -140,7 +142,7 @@ export async function listAuctions(input: CatalogQuery, now?: Date, pageSize = 6
       LEFT JOIN LATERAL (SELECT r."feePoints" FROM "AuctionFeeRevision" r
         WHERE r."auctionId"=a.id ORDER BY r."effectiveAt" DESC,r.version DESC LIMIT 1) fee ON true
       WHERE a."publishedAt"<=${sqlAt}::timestamp AND a.status IN ('SCHEDULED','LIVE','CLOSED')
-        AND a."testRunId" IS NULL AND a.slug IS NOT NULL AND p.visible AND pc.visible AND c.visible
+        AND ${publicTestRunSql()} AND a.slug IS NOT NULL AND p.visible AND pc.visible AND c.visible
         ${category} ${status} ${search}
       ORDER BY COALESCE(fee."feePoints",t."entryFeePoints") ${direction},a.id ASC
       LIMIT ${pageSize} OFFSET ${(query.page-1)*pageSize}`,db.auction.count({where})]);
@@ -158,7 +160,7 @@ export async function listAuctions(input: CatalogQuery, now?: Date, pageSize = 6
       JOIN "Category" pc ON pc.id = p."categoryId"
       JOIN "Category" c ON c.id = a."categoryId"
       JOIN "AuctionTerms" t ON t."auctionId" = a.id
-      WHERE a."publishedAt" <= ${sqlAt}::timestamp AND a.status IN ('SCHEDULED','LIVE','CLOSED') AND a."testRunId" IS NULL
+      WHERE a."publishedAt" <= ${sqlAt}::timestamp AND a.status IN ('SCHEDULED','LIVE','CLOSED') AND ${publicTestRunSql()}
         AND a.slug IS NOT NULL AND p.visible AND pc.visible AND c.visible ${categoryFilter} ${searchFilter}
       ORDER BY CASE WHEN a.status IN ('CLOSED','CANCELLED') OR a."endsAt" <= ${sqlAt}::timestamp THEN 2
                     WHEN a."startsAt" > ${sqlAt}::timestamp THEN 1 ELSE 0 END,
@@ -214,7 +216,7 @@ export async function listCategories(now?: Date) {
       JOIN "Product" p ON p.id=a."productId" AND p.visible
       JOIN "Category" pc ON pc.id=p."categoryId" AND pc.visible
       JOIN "AuctionTerms" t ON t."auctionId"=a.id)
-      ON a."categoryId"=c.id AND a."publishedAt"<=${sqlNow}::timestamp AND a."testRunId" IS NULL
+      ON a."categoryId"=c.id AND a."publishedAt"<=${sqlNow}::timestamp AND ${publicTestRunSql()}
         AND a.slug IS NOT NULL AND a.status IN ('SCHEDULED','LIVE','CLOSED')
     WHERE c.visible GROUP BY c.id HAVING count(a.id)>0 ORDER BY c."sortOrder",c.name`;
   return rows.map(({all,live,upcoming,closed,...category})=>({...category,counts:{all,live,upcoming,closed}}));
