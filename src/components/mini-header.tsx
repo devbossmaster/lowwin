@@ -46,7 +46,7 @@ export function MiniHeader(){
  return <header className={styles.header} aria-label="Mini App header">
   <Link href="/" className={styles.brand} aria-label={am?'Lowwin መነሻ':'Lowwin Home'}><img src="/logo.png" width={32} height={32} alt=""/></Link>
   <div className={styles.balancePill}>
-   <Link href="/wallet" prefetch={false} className={styles.balance} aria-label={`${am?'ዋሌት':'Wallet'}${amount!==null?`, ${amount} ETB`:''}`} aria-busy={wallet.fetching||undefined} title={amount!==null?`${amount} ETB`:am?'ቀሪ ሂሳቡን ለማየት ዋሌትን ይክፈቱ':'Open Wallet to check your balance'}><Wallet size={14} strokeWidth={1.75} aria-hidden="true"/><span data-header-balance>{amount??'—'} <small>ETB</small></span></Link>
+   <Link href="/wallet" prefetch={false} className={styles.balance} aria-label={`${am?'ዋሌት':'Wallet'}${amount!==null?`, ${amount} ETB`:''}`} aria-busy={wallet.fetching||undefined} title={amount!==null?`${amount} ETB`:am?'ቀሪ ሂሳቡን ለማየት ዋሌትን ይክፈቱ':'Open Wallet to check your balance'}><Wallet size={14} strokeWidth={1.75} aria-hidden="true"/><span data-header-balance><span className={styles.balanceAmount}>{amount??'—'}</span>{' '}<small>ETB</small></span></Link>
    <Link href="/wallet/deposit" prefetch={false} className={styles.addFunds} aria-label={am?'ገንዘብ ያስገቡ':'Deposit'}><Plus size={15} strokeWidth={1.75} aria-hidden="true"/></Link>
   </div>
   <nav className={styles.actions} aria-label={am?'የመለያ ቁጥጥሮች':'Account controls'}>

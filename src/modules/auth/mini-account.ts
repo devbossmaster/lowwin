@@ -17,8 +17,15 @@ export async function readMiniAccount(client:Client, user:Player, sessionId?:str
   };
 }
 
-export async function telegramBootstrap(client:Client, user:Player, telegramId:string, sessionId?:string) {
+export async function telegramBootstrap(client:Client, user:Player, telegramId:string, sessionId?:string,verifiedPhoto?:string|null) {
   const contact = await contactStatus(client,user.id,telegramId);
   if (!contact.verified) return {ok:true as const,status:'contact-required' as const,me:null};
+  if(verifiedPhoto!==undefined){
+    if((user.image??null)!==verifiedPhoto){
+      const saved=await client.user.updateMany({where:{id:user.id,telegramId,staffMember:null},data:{image:verifiedPhoto}});
+      if(saved.count!==1)throw Error('Telegram profile identity mismatch');
+    }
+    user={...user,image:verifiedPhoto};
+  }
   return {ok:true as const,status:'authenticated' as const,me:await readMiniAccount(client,user,sessionId)};
 }

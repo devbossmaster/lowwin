@@ -34,6 +34,7 @@ export async function handleAuth(request: Request) {
     const started=performance.now();
     const responseHeaders={'Cache-Control':'private, no-store, max-age=0','Vary':'Cookie'};
     let identity: string;
+    let telegramPhoto:string|null|undefined;
     try {
       if (path === '/lowin/dev-identity') {
         assertLocalIdentityAccess(request.headers, await request.clone().json(), process.env, request.url);
@@ -41,7 +42,8 @@ export async function handleAuth(request: Request) {
       }
       else {
         const body = miniAppBody.parse(await request.clone().json());
-        identity = String(validateTelegramInitData(body.initData, env.TELEGRAM_BOT_TOKEN).id);
+        const launch=validateTelegramInitData(body.initData, env.TELEGRAM_BOT_TOKEN);
+        identity = String(launch.id);telegramPhoto=launch.photo_url;
       }
     } catch { return Response.json({ error: 'Launch could not be verified. Reopen Lowwin from Telegram.' }, { status: 401,headers:responseHeaders }); }
     let stage:'launch-rate-limit'|'session-read'|'account-bootstrap'|'transaction-start'|'identity-lock'|'plugin-sign-in'|'session-bind'|'contact-bind'='launch-rate-limit';
@@ -54,7 +56,7 @@ export async function handleAuth(request: Request) {
         const current=await getLaunchSession(request.headers);
         if(current?.telegramId===identity) {
           stage='account-bootstrap';
-          const result=await telegramBootstrap(db,current.user,identity,current.session.id);
+          const result=await telegramBootstrap(db,current.user,identity,current.session.id,telegramPhoto);
           return Response.json(result,{headers:{...responseHeaders,'Server-Timing':`auth;dur=${Math.round(performance.now()-started)}`}});
         }
       }
@@ -80,7 +82,7 @@ export async function handleAuth(request: Request) {
           stage='contact-bind';
           await bindOwnContact(tx,issued.user.id,identity);
           stage='account-bootstrap';
-          result=await telegramBootstrap(tx,issued.user,identity,issued.session.id);
+          result=await telegramBootstrap(tx,issued.user,identity,issued.session.id,telegramPhoto);
         }
         // Do not return the plugin's session token in a browser-readable JSON body.
         const headers = new Headers(response.headers);

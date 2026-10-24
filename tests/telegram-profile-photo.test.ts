@@ -1,0 +1,19 @@
+import {beforeEach,describe,expect,it,vi} from 'vitest';
+const contact=vi.hoisted(()=>vi.fn());
+vi.mock('../src/modules/auth/own-contact',()=>({contactStatus:contact}));
+import {telegramBootstrap} from '../src/modules/auth/mini-account';
+import {validateTelegramInitData} from '../src/modules/auth/telegram-validation';
+import {signedLaunch,TEST_TOKEN} from './helpers';
+const photo='https://t.me/i/userpic/320/fixture.jpg';
+const raw=(url:unknown=photo)=>signedLaunch({user:JSON.stringify({id:778899,first_name:'Telegram player',photo_url:url})});
+function fixture(){const user={id:'opaque-existing-player',name:'Telegram name',image:null as string|null},client={user:{updateMany:vi.fn(async()=>({count:1}))},playerProfile:{findUnique:vi.fn(async()=>({displayName:'My existing display name'}))}};return {user,client}}
+beforeEach(()=>{vi.clearAllMocks();contact.mockResolvedValue({verified:true})});
+describe('verified Telegram profile photo',()=>{
+ it('retains photo_url only after verifying the signed launch',()=>{expect(validateTelegramInitData(raw(),TEST_TOKEN)).toMatchObject({id:778899,photo_url:photo});const params=new URLSearchParams(raw());params.set('user',JSON.stringify({id:778899,first_name:'Telegram player',photo_url:'https://t.me/i/userpic/320/tampered.jpg'}));expect(()=>validateTelegramInitData(params.toString(),TEST_TOKEN)).toThrow('signature')});
+ it.each(['javascript:alert(1)','data:image/png;base64,abc','http://t.me/avatar.jpg','https://user:password@t.me/avatar.jpg',123,null])('ignores unsafe or missing photo metadata without weakening launch validation: %s',value=>{expect(validateTelegramInitData(raw(value),TEST_TOKEN)).toMatchObject({id:778899,photo_url:null})});
+ it('syncs the signed photo for the bound identity while preserving display name and session',async()=>{const {client,user}=fixture();const result=await telegramBootstrap(client as never,user,'778899','existing-session',photo);expect(client.user.updateMany).toHaveBeenCalledWith({where:{id:user.id,telegramId:'778899',staffMember:null},data:{image:photo}});expect(result).toMatchObject({status:'authenticated',me:{user:{id:user.id,name:'My existing display name',image:photo}}});expect(result.me?.sessionKey).toHaveLength(64);expect(result.me).not.toHaveProperty('wallet')});
+ it('does not write again for an unchanged Telegram photo',async()=>{const {client,user}=fixture();user.image=photo;await telegramBootstrap(client as never,user,'778899','session',photo);expect(client.user.updateMany).not.toHaveBeenCalled()});
+ it('keeps contact gating ahead of profile synchronization and exposure',async()=>{const {client,user}=fixture();contact.mockResolvedValue({verified:false});expect(await telegramBootstrap(client as never,user,'778899','session',photo)).toEqual({ok:true,status:'contact-required',me:null});expect(client.user.updateMany).not.toHaveBeenCalled();expect(client.playerProfile.findUnique).not.toHaveBeenCalled()});
+ it('removes a stored image when the verified launch no longer supplies a photo',async()=>{const {client,user}=fixture();user.image=photo;const result=await telegramBootstrap(client as never,user,'778899','session',null);expect(client.user.updateMany).toHaveBeenCalledWith(expect.objectContaining({data:{image:null}}));expect(result.me?.user.image).toBeNull()});
+ it('rejects a missing or mismatched bound user instead of updating another account',async()=>{const {client,user}=fixture();client.user.updateMany.mockResolvedValue({count:0});await expect(telegramBootstrap(client as never,user,'different-telegram-id','session',photo)).rejects.toThrow('identity mismatch')});
+});

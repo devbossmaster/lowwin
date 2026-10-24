@@ -47,6 +47,13 @@ beforeEach(()=>{
 afterEach(()=>{vi.unstubAllEnvs();vi.restoreAllMocks()});
 
 describe('safe Telegram authentication diagnostics',()=>{
+  it('forwards only server-verified photo metadata on a resumed Telegram session',async()=>{
+    const photo='https://t.me/i/userpic/320/verified.jpg',user={id:'private-player',name:'Private player',image:null};
+    mocks.launchSession.mockResolvedValue({telegramId:'778899',user,session:{id:'private-session'}});
+    expect((await launch(signedLaunch({user:JSON.stringify({id:778899,first_name:'Private player',photo_url:photo})}),'private-cookie')).status).toBe(200);
+    expect(mocks.bootstrap).toHaveBeenCalledWith(expect.anything(),user,'778899','private-session',photo);
+    expect(mocks.transaction).not.toHaveBeenCalled();
+  });
   it('reports initialization errorCode before any session can be issued',async()=>{
     mocks.limit.mockRejectedValue(new Prisma.PrismaClientInitializationError('private connection credentials','6.19.3','P1001'));
     const response=await launch();

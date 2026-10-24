@@ -19,8 +19,8 @@ test('account header: real balance, destinations, avatar fallback, language and 
   await page.goto('/profile');const header=page.getByRole('banner',{name:'Mini App header'});
   await expect(header.locator('[data-header-balance]')).toHaveText('0.00 ETB');
   const user=await db.user.findUniqueOrThrow({where:{telegramId:String(id)}});
-  // Exercise saved, authenticated account fields; contact bootstrap may use a generic name.
-  await db.user.update({where:{id:user.id},data:{image:'https://header-avatar.example.test/avatar.png'}});
+  // The avatar must arrive from signed Telegram data, not a seeded database image.
+  expect(user.image).toBe('https://header-avatar.example.test/avatar.png');
   await db.playerProfile.upsert({where:{userId:user.id},create:{userId:user.id,displayName:name,bio:''},update:{displayName:name}});
   await page.reload();await expect(header.locator('[data-header-balance]')).toHaveText('0.00 ETB');
   Object.assign(process.env,{DEV_POINTS_ENABLED:'true',NODE_ENV:'test'});
@@ -32,6 +32,8 @@ test('account header: real balance, destinations, avatar fallback, language and 
   await expect(profile.locator('img')).toBeVisible();await expect.poll(()=>profile.locator('img').evaluate((image:HTMLImageElement)=>image.complete&&image.naturalWidth>0)).toBe(true);
   for(const control of await header.locator('a,button').all()){const box=await control.boundingBox();expect(box!.width).toBeGreaterThanOrEqual(44);expect(box!.height).toBeGreaterThanOrEqual(44)}
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  const centers=await header.locator('a,button').evaluateAll(nodes=>nodes.map(node=>{const r=node.getBoundingClientRect();return r.top+r.height/2}));expect(Math.max(...centers)-Math.min(...centers)).toBeLessThanOrEqual(1);
+  expect(await header.locator('[data-header-balance] > span').evaluate(node=>node.scrollWidth<=node.clientWidth)).toBe(true);
   await header.screenshot({path:`${root}/header-${info.project.name}-en.png`});
   await db.notificationInbox.create({data:{key:'header-alert-'+randomUUID(),userId:user.id,kind:'PAYMENT_VERIFIED',title:'Header notification fixture',body:'Local test only',href:'/payments'}});
   await page.evaluate(()=>window.dispatchEvent(new Event('lowin-alerts')));const bell=header.getByRole('button',{name:'Notifications, 1 unread',exact:true});await expect(bell).toBeVisible();await bell.click();await expect(page.getByRole('dialog',{name:'Notifications'})).toContainText('Header notification fixture');await page.keyboard.press('Escape');await expect(bell).toBeFocused();
