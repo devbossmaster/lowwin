@@ -6,7 +6,7 @@ import {resolveLearnMoreMedia} from '@/lib/learn-more-media';
 // These handlers enforce getMiniSession/requireUser themselves before any
 // private read or mutation. Do not run another full session lookup in Proxy.
 const guardedApis=new Set(['/api/me','/api/my-bids','/api/favorites','/api/profile','/api/profile/wins','/api/alerts','/api/fulfillment','/api/support','/api/wallet','/api/wallet/top-ups','/api/wallet/scan','/api/wallet/preview','/api/payments/arifpay','/api/payments/arifpay/checkouts']);
-const publicAssets=new Set(['/logo.png','/banner11.png','/images/lowin-family-hero.webp','/fonts/dm-sans-latin-400.woff2','/fonts/dm-sans-latin-500.woff2','/fonts/dm-sans-latin-600.woff2','/fonts/dm-sans-latin-700.woff2','/fonts/sora-latin-800.woff2','/fonts/noto-serif-ethiopic-banner.woff2','/fonts/noto-sans-ethiopic-variable.woff2','/fonts/NotoSansEthiopic-Bold.ttf','/fonts/poppins-latin-400.woff2','/fonts/poppins-latin-500.woff2','/fonts/poppins-latin-600.woff2','/fonts/poppins-latin-700.woff2']);
+const publicAssets=new Set(['/logo.png','/banner11.png','/images/lowin-family-hero.webp','/images/lowwin-demo-headphones.webp','/fonts/dm-sans-latin-400.woff2','/fonts/dm-sans-latin-500.woff2','/fonts/dm-sans-latin-600.woff2','/fonts/dm-sans-latin-700.woff2','/fonts/sora-latin-800.woff2','/fonts/noto-serif-ethiopic-banner.woff2','/fonts/noto-sans-ethiopic-variable.woff2','/fonts/NotoSansEthiopic-Bold.ttf','/fonts/poppins-latin-400.woff2','/fonts/poppins-latin-500.woff2','/fonts/poppins-latin-600.woff2','/fonts/poppins-latin-700.woff2']);
 
 export async function proxy(request:NextRequest) {
   const path=request.nextUrl.pathname;

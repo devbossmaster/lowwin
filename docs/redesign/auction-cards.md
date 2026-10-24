@@ -1,6 +1,6 @@
 # Auction cards and sorting controls
 
-The existing product assets now sit in wide rounded image frames with truthful status badges and a small Win tab for live/upcoming listings. Titles, fee/countdown pills and the dark gold-text fee action are centered. Fee disclosure and the actual schedule/auction ID appear beneath the action. Paid entries display their exact submission fee; free entries retain Bid now. The existing BidSheet and financial behavior are unchanged.
+Product assets now fill wide rounded image frames edge to edge, with truthful status badges and a small Win tab for live/upcoming listings. Titles, fee/countdown pills and the dark gold-text fee action are centered. Fee disclosure and the actual schedule/auction ID appear beneath the action. Paid entries display their exact submission fee; free entries retain Bid now. The existing BidSheet and financial behavior are unchanged. See the [current compact layout, image dimensions and generated staging preview](home-density.md).
 
 Home sorting chips use readable natural widths in a horizontal scroll row, with neutral inactive pills, a gold selected state and a small Default sorting icon. English and Amharic labels retain accessible tap targets without compressed text. The selected chip stays visible after a sort/language change. Recent winners remains after the live list; the smaller category-to-heading gap is retained. See the [guide and current scrolling controls](home-guide.md).
 
