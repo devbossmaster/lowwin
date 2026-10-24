@@ -40,6 +40,10 @@ export class SessionPrivateQueryCache {
     if(identity===this.identity)return;
     this.identity=identity;this.drop();this.emit('session');
   }
+  seed<T>(identity:string,key:string,value:T){
+    if(!identity||identity!==this.identity)throw new ObsoletePrivateQueryError();
+    this.client.setQueryData(this.key(identity,key),value);this.touch(identity,key);this.emit('stored',[key]);
+  }
   read<T>(identity:string,key:string,freshnessMs=this.freshnessMs):ReadValue<T>|null{
     if(!identity||identity!==this.identity)return null;
     const queryKey=this.key(identity,key),entry=this.client.getQueryState<T>(queryKey);
@@ -105,6 +109,7 @@ export function privateQueryFreshness(url:string){
   return 30_000;
 }
 export function setPrivateQueryIdentity(identity:string|null){cache.setIdentity(identity)}
+export function seedPrivateQuery<T>(identity:string,url:string,value:T){cache.seed(identity,privateQueryKey(url),value)}
 export function readPrivateQuery<T>(identity:string,url:string,options:{language?:string;freshnessMs?:number}={}){return cache.read<T>(identity,privateQueryKey(url,options.language),options.freshnessMs??privateQueryFreshness(url))}
 export function subscribePrivateQueries(listener:(event:CacheEvent)=>void){return cache.subscribe(listener)}
 export function invalidatePrivateQueries(identity:string){cache.invalidate(identity)}

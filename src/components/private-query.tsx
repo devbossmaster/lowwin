@@ -39,9 +39,10 @@ export function usePrivateQuery<T>(url:string,{pollMs=0,enabled=true,freshnessMs
     const timer=pollMs?setInterval(()=>{if(document.visibilityState==='visible')refresh()},pollMs):null;
     return()=>{active=false;unsubscribe();document.removeEventListener('visibilitychange',visible);window.removeEventListener('focus',visible);window.removeEventListener('online',visible);if(timer)clearInterval(timer)};
   },[url,status,queryIdentity,retry,pollMs,enabled,freshnessMs,language]);
-  const data=enabled&&status==='authenticated'&&queryIdentity?readPrivateQuery<T>(queryIdentity,url,{freshnessMs,language})?.value??null:null;
+  const snapshot=enabled&&status==='authenticated'&&queryIdentity?readPrivateQuery<T>(queryIdentity,url,{freshnessMs,language}):null;
+  const data=snapshot?.value??null;
   const reload=useCallback(()=>setRetry(value=>value+1),[]);
-  return {data,error:enabled?error:'',status:enabled?status:'disabled',fetching,reload};
+  return {data,updatedAt:snapshot?.updatedAt??0,error:enabled?error:'',status:enabled?status:'disabled',fetching,reload};
 }
 type PrivateLoadingVariant='profile'|'alerts'|'favorites'|'bids'|'wins';
 export function PrivateState({query,variant='profile'}:{query:{status:string;data:unknown;error:string;fetching?:boolean;reload:()=>void};variant?:PrivateLoadingVariant}) {

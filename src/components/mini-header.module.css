@@ -14,3 +14,5 @@
 @media(prefers-reduced-motion:reduce){.header .icon::before,.languageButton::before,.languageChevron{transition:none}}
 
 .header a,.header button,.header .profileName,.header .avatar{font-family:inherit;font-style:normal}
+
+.icon[aria-current=page]::before{background:#f6efdb;border-color:#dac582}

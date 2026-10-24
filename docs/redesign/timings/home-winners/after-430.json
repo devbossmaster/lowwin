@@ -1,0 +1,128 @@
+{
+  "phase": "after",
+  "width": "430",
+  "mode": "optimized production build on loopback",
+  "sdkFixtureDelayMs": 250,
+  "anonymousFonts": [
+    {
+      "path": "/fonts/sora-latin-800.woff2",
+      "status": 200,
+      "cacheControl": "public, max-age=604800, stale-while-revalidate=86400",
+      "elapsedMs": 378
+    },
+    {
+      "path": "/fonts/noto-serif-ethiopic-banner.woff2",
+      "status": 200,
+      "cacheControl": "public, max-age=604800, stale-while-revalidate=86400",
+      "elapsedMs": 26
+    }
+  ],
+  "normal": {
+    "homeReadyMs": 1265,
+    "fontsReadyMs": 1275,
+    "signInRequests": 1,
+    "documentRequests": [
+      "/telegram"
+    ],
+    "serverTiming": [
+      "auth;dur=35"
+    ],
+    "fonts": [
+      {
+        "asset": "/fonts/sora-latin-800.woff2",
+        "startMs": 641,
+        "durationMs": 17,
+        "transferBytes": 15164
+      },
+      {
+        "asset": "/js/telegram-web-app.js",
+        "startMs": 644,
+        "durationMs": 261,
+        "transferBytes": 0
+      },
+      {
+        "asset": "/fonts/dm-sans-latin-400.woff2",
+        "startMs": 679,
+        "durationMs": 35,
+        "transferBytes": 14500
+      },
+      {
+        "asset": "/fonts/dm-sans-latin-700.woff2",
+        "startMs": 1068,
+        "durationMs": 31,
+        "transferBytes": 14648
+      },
+      {
+        "asset": "/fonts/dm-sans-latin-500.woff2",
+        "startMs": 1068,
+        "durationMs": 33,
+        "transferBytes": 14604
+      },
+      {
+        "asset": "/fonts/dm-sans-latin-600.woff2",
+        "startMs": 1068,
+        "durationMs": 37,
+        "transferBytes": 14444
+      }
+    ],
+    "accountApiSamples": 20,
+    "accountApiP95Ms": 29
+  },
+  "slow": {
+    "homeReadyMs": 4437,
+    "fontsReadyMs": 5221,
+    "signInRequests": 1,
+    "documentRequests": [
+      "/telegram"
+    ],
+    "serverTiming": [
+      "auth;dur=23"
+    ],
+    "fonts": [
+      {
+        "asset": "/fonts/sora-latin-800.woff2",
+        "startMs": 798,
+        "durationMs": 356,
+        "transferBytes": 15164
+      },
+      {
+        "asset": "/js/telegram-web-app.js",
+        "startMs": 801,
+        "durationMs": 263,
+        "transferBytes": 0
+      },
+      {
+        "asset": "/fonts/dm-sans-latin-400.woff2",
+        "startMs": 1423,
+        "durationMs": 764,
+        "transferBytes": 14500
+      },
+      {
+        "asset": "/fonts/sora-latin-800.woff2",
+        "startMs": 3398,
+        "durationMs": 297,
+        "transferBytes": 15164
+      },
+      {
+        "asset": "/fonts/dm-sans-latin-700.woff2",
+        "startMs": 4314,
+        "durationMs": 846,
+        "transferBytes": 14648
+      },
+      {
+        "asset": "/fonts/dm-sans-latin-500.woff2",
+        "startMs": 4314,
+        "durationMs": 834,
+        "transferBytes": 14604
+      },
+      {
+        "asset": "/fonts/dm-sans-latin-600.woff2",
+        "startMs": 4314,
+        "durationMs": 833,
+        "transferBytes": 14444
+      }
+    ],
+    "accountApiSamples": 0,
+    "accountApiP95Ms": null
+  }
+}

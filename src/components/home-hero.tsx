@@ -5,9 +5,10 @@ import {useRef,useState} from 'react';
 import {ArrowRight,Trophy} from 'lucide-react';
 import {MiniPhrase,useMiniLocale} from './mini-locale';
 import styles from './home-banner.module.css';
+import type {LearnMoreMedia} from '@/lib/learn-more-media';
 const LearnMoreSheet=dynamic(()=>import('./learn-more-sheet'));
 type Copy={headline:string;headlineAm:string;lead:string;leadAm:string};
-export function HomeHero({copy,videoId}:{copy:Copy;videoId:string|null}){
+export function HomeHero({copy,videoId,media}:{copy:Copy;videoId?:string|null;media?:LearnMoreMedia|null}){
  const [learn,setLearn]=useState(false);
  const learnButton=useRef<HTMLButtonElement>(null);
  const {language}=useMiniLocale();
@@ -27,6 +28,6 @@ export function HomeHero({copy,videoId}:{copy:Copy;videoId:string|null}){
    </div>
    <small className={styles.illustration}><MiniPhrase en="Illustrative scene" am="ለማሳያ የተዘጋጀ ምስል"/></small>
   </section>
-  {learn&&<LearnMoreSheet onClose={()=>setLearn(false)} videoId={videoId} returnFocusRef={learnButton}/>}
+  {learn&&<LearnMoreSheet onClose={()=>setLearn(false)} videoId={videoId} media={media} returnFocusRef={learnButton}/>}
  </>;
 }

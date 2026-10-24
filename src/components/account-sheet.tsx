@@ -4,12 +4,14 @@ import {useEffect,useId,useRef,type ReactNode,type RefObject} from 'react';
 import {X} from 'lucide-react';
 import {useMiniLocale} from './mini-locale';
 import styles from './account-sheet.module.css';
+import {useSheetBack} from './use-sheet-back';
 
 /** Native modal focus containment, Escape handling, and focus restoration. Mount only while open. */
 export function AccountSheet({title,onClose,children,footer,returnFocusRef}:{title:ReactNode;onClose:()=>void;children:ReactNode;footer?:ReactNode;returnFocusRef?:RefObject<HTMLElement|null>}){
+  const dismiss=useSheetBack(onClose);
   const dialog=useRef<HTMLDialogElement>(null),closeButton=useRef<HTMLButtonElement>(null),close=useRef(onClose),titleId=useId();
   const {language}=useMiniLocale();
-  close.current=onClose;
+  close.current=dismiss;
   useEffect(()=>{
     const element=dialog.current,previous=document.activeElement as HTMLElement|null;
     const scroll=document.body.style.overflow;
@@ -30,7 +32,7 @@ export function AccountSheet({title,onClose,children,footer,returnFocusRef}:{tit
   },[]);
   return <dialog ref={dialog} className={styles.sheet} aria-labelledby={titleId} onCancel={event=>{event.preventDefault();close.current()}} onClick={event=>{if(event.target===event.currentTarget){const box=event.currentTarget.getBoundingClientRect();if(event.clientX<box.left||event.clientX>box.right||event.clientY<box.top||event.clientY>box.bottom)close.current()}}}>
     <div className={styles.handle} aria-hidden="true"/>
-    <header className={styles.header}><h2 id={titleId}>{title}</h2><button ref={closeButton} type="button" onClick={onClose} aria-label={language==='am'?'ዝጋ':'Close'}><X size={19} aria-hidden="true"/></button></header>
+    <header className={styles.header}><h2 id={titleId}>{title}</h2><button ref={closeButton} type="button" onClick={dismiss} aria-label={language==='am'?'ዝጋ':'Close'}><X size={19} aria-hidden="true"/></button></header>
     <div className={styles.body}>{children}</div>
     {footer&&<footer className={styles.footer}>{footer}</footer>}
   </dialog>;

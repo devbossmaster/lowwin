@@ -19,7 +19,7 @@ function PlayerInbox({onNavigate}:{onNavigate?:()=>void}){
   const {queryIdentity}=useTelegram(),{language}=useMiniLocale(),am=language==='am',text=(en:string,translated:string)=>am?translated:en;
   const [category,setCategory]=useState<Category>('all'),[page,setPage]=useState(1),[busy,setBusy]=useState(false),[error,setError]=useState('');
   const query=usePrivateQuery<Data>(`/api/alerts?category=${category}&page=${page}`),data=query.data;
-  const filters:[Category,string,string,typeof Bell][]=[['all','All','ሁሉም',Bell],['draws','Draws','ጨረታዎች',Trophy],['payments','Payments','ክፍያዎች',CreditCard],...(data?.categories?.includes('promotions')?[['promotions','Promotions','ማስታወቂያዎች',Gift] as [Category,string,string,typeof Bell]]:[])];
+  const filters:[Category,string,string,typeof Bell][]=[['all','All','ሁሉም',Bell],['draws','Winners','አሸናፊዎች',Trophy],['payments','Payments','ክፍያዎች',CreditCard],...(data?.categories?.includes('promotions')?[['promotions','Promotions','ማስታወቂያዎች',Gift] as [Category,string,string,typeof Bell]]:[])];
   async function markRead(id?:string){
     if(busy)return;setBusy(true);setError('');
     try{const response=await fetch('/api/alerts',{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'read',...(id?{id}:{})}),signal:AbortSignal.timeout(10000)});if(!response.ok)throw Error('save');if(queryIdentity)invalidatePrivateQueries(queryIdentity);window.dispatchEvent(new Event('lowin-alerts'))}catch{setError(text('Could not update notifications. Please retry.','ማሳወቂያዎችን ማዘመን አልተቻለም። እንደገና ይሞክሩ።'))}finally{setBusy(false)}

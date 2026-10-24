@@ -2,6 +2,14 @@ import {describe,expect,it,vi} from 'vitest';
 import {privateQueryKey,invalidatePrivateQueries,loadPrivateJson,ObsoletePrivateQueryError,PrivateAuthorizationError,readPrivateQuery,SessionPrivateQueryCache,setPrivateQueryIdentity} from '../src/components/private-query-cache';
 
 describe('session private query cache',()=>{
+ it('seeds the verified bootstrap without another read and rejects another identity',async()=>{
+  const cache=new SessionPrivateQueryCache();cache.setIdentity('account:session');
+  cache.seed('account:session','/api/me',{user:{id:'account'}});
+  const loader=vi.fn(async()=>({user:{id:'unexpected'}}));
+  expect(await cache.load('account:session','/api/me',loader)).toEqual({user:{id:'account'}});expect(loader).not.toHaveBeenCalled();
+  cache.setIdentity('other:session');expect(cache.read('other:session','/api/me')).toBeNull();
+  expect(()=>cache.seed('account:session','/api/me',{user:{id:'account'}})).toThrow(ObsoletePrivateQueryError);
+ });
  it('bounds entries and updates least-recently-used order on reads',async()=>{
   const cache=new SessionPrivateQueryCache(2,1000,4);cache.setIdentity('account-a');
   await cache.load('account-a','one',async()=>1);

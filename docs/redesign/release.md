@@ -1,5 +1,7 @@
 # Lowin mobile redesign: release procedure
 
+The current [Home/Winners and launch follow-up](home-winners.md) adds no migration or financial command. It uses Home, Winners, My Bids and Profile navigation, with Live/Upcoming browsing on the header hammer. Authenticated wallet balance reads and the disabled future top-up page are restored; new wallet-funded bid submissions remain disabled. Keep the Zod 4.6.7 security patch (`c8a524f`) when reverting the follow-up feature commit.
+
 This branch changes the customer interface and adds a separately gated ArifPay checkout. Existing customers, Telegram identities and contact verification, balances, ledger history, accepted bids, frozen auction terms, settlement proofs, staff permissions and existing payment audit records remain in place. Do not reset or reseed a hosted database for this release.
 
 ## Staging
@@ -17,7 +19,7 @@ Inventory active auctions by frozen rules version before switching traffic. This
 
 Production deployment and funding activation are a separate approval step. Prepare a concrete release containing the commit, exact migration SQL, backup/restore evidence, current safeguards, provider sandbox evidence and known limitations before requesting approval.
 
-Rehearse the interface in staging with ArifPay disabled. Inspect authenticated error rate, login/contact failures, API p50/p95, bid failures, pending payment age, duplicate/replay counts and reconciliation. Set ARIFPAY_CANARY_USER_IDS and ARIFPAY_CANARY_AUCTION_SLUGS to the approved internal customer IDs and exact auction slugs before enabling a reviewed live checkout canary. Start with dedicated non-staff player test accounts, then a small consented canary; staff identities remain barred from bidding. With checkout disabled and customer wallets retired, new entries remain unavailable; do not switch general customer traffic until the direct payment path has passed the merchant and server verification checks. Keep historical ledger records and unresolved funding evidence available to restricted staff and recovery workers. Customer balance-funded submissions return 410. Do not enable Verify.et flags as a side effect of this redesign.
+Rehearse the interface in staging with ArifPay disabled. Inspect authenticated error rate, login/contact failures, API p50/p95, bid failures, pending payment age, duplicate/replay counts and reconciliation. Set ARIFPAY_CANARY_USER_IDS and ARIFPAY_CANARY_AUCTION_SLUGS to the approved internal customer IDs and exact auction slugs before enabling a reviewed live checkout canary. Start with dedicated non-staff player test accounts, then a small consented canary; staff identities remain barred from bidding. With direct checkout disabled and wallet-funded submissions still disabled, new entries remain unavailable; do not switch general customer traffic until the direct payment path has passed the merchant and server verification checks. Keep historical ledger records and unresolved funding evidence available to restricted staff and recovery workers. Customer balance-funded submissions return 410. Do not enable Verify.et flags as a side effect of this redesign.
 
 ## Rollback
 

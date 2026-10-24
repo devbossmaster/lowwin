@@ -4,7 +4,7 @@ export function miniReturnPath(value:string|null|undefined):string{
  try{
   const url=new URL(value,'https://lowin.invalid');
   if(url.origin!=='https://lowin.invalid')return '/';
-  const customer=/^\/(?:auctions(?:\/[A-Za-z0-9-]{1,120})?|categories\/[a-z0-9-]{1,80}|draws|my-bids|winning-bids|wallet|profile(?:\/(?:favorites|alerts|wins|support))?|winners(?:\/[A-Za-z0-9-]{1,120})?|faq|terms|privacy)?$/;
+  const customer=/^\/(?:auctions(?:\/[A-Za-z0-9-]{1,120})?|categories\/[a-z0-9-]{1,80}|draws|my-bids|winning-bids|wallet(?:\/deposit)?|payments|profile(?:\/(?:favorites|alerts|wins|support))?|winners(?:\/[A-Za-z0-9-]{1,120})?|faq|terms|privacy)?$/;
   return customer.test(url.pathname)?url.pathname+url.search+url.hash:'/';
  }catch{return '/'}
 }
