@@ -6,7 +6,8 @@ import {ArrowRight,Hash,TicketCheck,Trophy} from 'lucide-react';
 import {MiniPhrase,useMiniLocale} from './mini-locale';
 import type {LearnMoreMedia} from '@/lib/learn-more-media';
 import styles from './home-how-it-works.module.css';
-const LearnMoreSheet=dynamic(()=>import('./learn-more-sheet'));
+// Keep the current page visible while the sheet's code loads.
+const LearnMoreSheet=dynamic(()=>import('./learn-more-sheet'),{loading:()=>null});
 const steps=[
  {Icon:Hash,title:'Choose your number',titleAm:'ቁጥርዎን ይምረጡ',body:'Read the terms and choose a number. Entries stay private until the final result.',bodyAm:'ውሎቹን ያንብቡና ቁጥርዎን ይምረጡ። የቀረቡ ቁጥሮች ውጤቱ እስኪረጋገጥ ድረስ የግል ናቸው።'},
  {Icon:TicketCheck,title:'Confirm your entry',titleAm:'ክፍያውን ያረጋግጡ',body:'Review the submission fee and confirm your entry. Check My Bids for your receipt.',bodyAm:'የማስገቢያ ክፍያውን ይመልከቱና ያረጋግጡ። ደረሰኝዎን በ«ጨረታዎቼ» ይመልከቱ።'},

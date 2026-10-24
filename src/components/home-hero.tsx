@@ -6,7 +6,8 @@ import {ArrowRight,Trophy} from 'lucide-react';
 import {MiniPhrase,useMiniLocale} from './mini-locale';
 import styles from './home-banner.module.css';
 import type {LearnMoreMedia} from '@/lib/learn-more-media';
-const LearnMoreSheet=dynamic(()=>import('./learn-more-sheet'));
+// Keep the current page visible while the sheet's code loads.
+const LearnMoreSheet=dynamic(()=>import('./learn-more-sheet'),{loading:()=>null});
 type Copy={headline:string;headlineAm:string;lead:string;leadAm:string};
 export function HomeHero({copy,videoId,media}:{copy:Copy;videoId?:string|null;media?:LearnMoreMedia|null}){
  const [learn,setLearn]=useState(false);
