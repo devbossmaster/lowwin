@@ -11,7 +11,7 @@ import {WinnerCelebration} from './celebration';
 import {ProductDescription} from './product-description';
 import {AuctionCountdown} from './auction-countdown';
 import {AuctionShare} from './auction-share';
-const BidSheet=dynamic(()=>import('./bid-sheet'));
+const BidSheet=dynamic(()=>import('./bid-sheet'),{loading:()=>null});
 const ArifPayReturn=dynamic(()=>import('./arifpay-return').then(module=>module.ArifPayReturn));
 import {FavoriteButton} from './favorite-button';
 import {MiniCategoryName,MiniPhrase,useMiniLocale} from './mini-locale';

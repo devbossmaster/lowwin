@@ -4,6 +4,7 @@ import {usePathname} from 'next/navigation';
 import {useEffect,useId,useRef,useState,type KeyboardEvent as ReactKeyboardEvent} from 'react';
 import {Check,ChevronDown,Gavel,Languages,Plus,UserRound,Wallet} from 'lucide-react';
 import {AlertBell} from './alert-bell';
+import {WalletTopUpTrigger} from './wallet-top-up-trigger';
 import {useTelegram} from './telegram-provider';
 import {usePrivateQuery} from './private-query';
 import {centsToEtb,etbToCents} from '@/lib/money';
@@ -49,7 +50,7 @@ export function MiniHeader(){
   <Link href="/" className={styles.brand} aria-label={am?'Lowwin መነሻ':'Lowwin Home'}><img src="/logo.png" width={32} height={32} alt=""/></Link>
   <div className={styles.balancePill}>
    <Link href="/wallet" prefetch={false} className={styles.balance} aria-label={`${am?'ዋሌት':'Wallet'}${amount!==null?`, ${amount} ETB`:''}`} aria-busy={wallet.fetching||undefined} title={amount!==null?`${amount} ETB`:am?'ቀሪ ሂሳቡን ለማየት ዋሌትን ይክፈቱ':'Open Wallet to check your balance'}><Wallet size={14} strokeWidth={1.75} aria-hidden="true"/><span data-header-balance><span className={styles.balanceAmount}>{amount??'—'}</span>{' '}<small>ETB</small></span></Link>
-   <Link href="/wallet/deposit" prefetch={false} className={styles.addFunds} aria-label={am?'ገንዘብ ያስገቡ':'Deposit'}><Plus size={15} strokeWidth={1.75} aria-hidden="true"/></Link>
+   <WalletTopUpTrigger className={styles.addFunds} ariaLabel={am?'ገንዘብ ያስገቡ':'Deposit'}><Plus size={15} strokeWidth={1.75} aria-hidden="true"/></WalletTopUpTrigger>
   </div>
   <nav className={styles.actions} aria-label={am?'የመለያ ቁጥጥሮች':'Account controls'}>
   <Link href="/auctions/all?status=live" prefetch={false} className={styles.icon} aria-current={(pathname.startsWith('/auctions')||pathname.startsWith('/categories'))?'page':undefined} aria-label={am?'ጨረታዎችን ይመልከቱ':'Browse auctions'}><Gavel size={17} strokeWidth={1.75} aria-hidden="true"/></Link>

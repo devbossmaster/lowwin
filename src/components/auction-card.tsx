@@ -10,7 +10,7 @@ import {etbToCents,formatEtb} from '@/lib/money';
 import {isSubmissionFeeOnly} from '@/modules/auctions/rules';
 import {MiniPhrase,useMiniLocale} from './mini-locale';
 import {useAuctionActivity,useAuctionRefresh} from './auction-activity';
-const BidSheet=dynamic(()=>import('./bid-sheet'));
+const BidSheet=dynamic(()=>import('./bid-sheet'),{loading:()=>null});
 export function AuctionCard({auction:initialAuction,serverNow}:{auction:CatalogAuction;serverNow?:string;onFavoriteChanged?:()=>void}){
  const [bidding,setBidding]=useState(false),ref=useRef<HTMLElement>(null);
  const {activity,refreshActivity}=useAuctionActivity(initialAuction.code,{element:ref,record:true});
