@@ -1,0 +1,11 @@
+# Results open when their content is ready
+
+The reported screenshot was the Final result sheet. Its generic `PrivateState` was placing the full-page customer loading panel inside an already-open modal. Learn More's earlier code-loading fix did not cover this separate result-data request.
+
+The winner-card code chunk now has its own empty loading boundary. Result and participant components fetch through the existing authenticated, user-scoped query cache but mount the actual modal only after data or a recoverable error is available. Home or the parent result stays visible while the initial request runs.
+
+During pagination and sorting, the sheet keeps the previous committed response from the same signed-in identity and resource, with the existing small Updating message. Dependent controls wait for the requested page; sort selection follows the displayed response. A different result or amount mounts a fresh component. Identity changes cannot display the previous identity's snapshot. Initial failures open a compact retry sheet; failed refreshes retain content and offer Retry. No new spinner, API, financial command, dependency or server disclosure is introduced.
+
+Verification: both checkout typechecks and 28 existing loading/cache-isolation tests pass. Two focused development-browser scenarios pass: 360×800 English and 430×932 Amharic. They hold the real script request and initial authenticated result request separately, verify no dialog/page spinner while waiting, then check 20 amounts, delayed sorting, delayed nested participants, 20+1 participant pagination with retained content, masked identity, Escape/Back and restored focus. A simulated initial 503 produces a sheet shorter than 350px and Retry recovers. No horizontal overflow occurs.
+
+Captures: [360px waiting](screenshots/result-sheet-loading/waiting-360.png), [360px ready](screenshots/result-sheet-loading/ready-360.png), [430px waiting](screenshots/result-sheet-loading/waiting-430.png), [430px ready](screenshots/result-sheet-loading/ready-430.png). These use clearly labeled committed loopback QA settlements and illustration placeholders, with no production records or settings changed. A full build and physical Telegram checks were not rerun for this scoped behavior change.
