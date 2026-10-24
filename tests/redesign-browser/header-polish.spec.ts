@@ -26,7 +26,7 @@ test('compact header, language keyboard controls and banner assets',async({page}
   await page.screenshot({path:`${root}/profile-loading-${info.project.name}-en.png`});releaseProfile();
   const bell=header.getByRole('button',{name:/^Notifications/});await expect(bell).toHaveAccessibleName('Notifications, 7 unread');
   await bell.click();const notifications=page.getByRole('dialog',{name:'Notifications'});await expect(notifications).toBeVisible();await page.keyboard.press('Escape');await expect(bell).toBeFocused();
-  const auctions=header.getByRole('button',{name:/^Available auctions/});await auctions.click();await expect(page.getByRole('dialog',{name:'Available auctions'})).toBeVisible();await page.getByRole('button',{name:'Close auctions',exact:true}).click();await expect(auctions).toBeFocused();
+  const bids=header.getByRole('link',{name:'My Bids',exact:true});await expect(bids).toHaveAttribute('href','/my-bids');await bids.click();await expect(page).toHaveURL(/\/my-bids$/);
   await page.goto('/');await expect(page.getByRole('button',{name:'Learn more',exact:true})).toBeVisible();
   const banner=page.locator('section[aria-label="Lowin"] img');await expect.poll(()=>banner.evaluate((el:HTMLImageElement)=>el.complete&&el.naturalWidth>0)).toBe(true);
   for(const path of ['/images/lowin-family-hero.webp','/fonts/dm-sans-latin-500.woff2','/fonts/noto-sans-ethiopic-variable.woff2'])expect((await page.request.get(path,{maxRedirects:0})).status(),path).toBe(200);

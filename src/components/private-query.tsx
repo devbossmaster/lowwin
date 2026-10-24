@@ -55,7 +55,7 @@ export function PrivateState({query,variant='profile'}:{query:{status:string;dat
 }
 function PrivateQueryLoading({variant}:{variant:PrivateLoadingVariant}){
  const pathname=usePathname();
- const path=variant==='alerts'?'/profile/alerts':variant==='favorites'?'/profile/favorites':variant==='bids'?'/my-bids':variant==='wins'?'/winning-bids':pathname==='/payments'||pathname==='/wallet'?'/payments':'/profile';
+ const path=variant==='alerts'?'/profile/alerts':variant==='favorites'?'/profile/favorites':variant==='bids'?'/my-bids':variant==='wins'?'/winning-bids':pathname?.startsWith('/wallet')?'/wallet':pathname==='/payments'?'/payments':'/profile';
  return <CustomerLoading {...customerLoadingCopy(path)}/>;
 }
 export function PersonalPagination({page,totalPages,setPage}:{page:number;totalPages:number;setPage:(page:number)=>void}) {

@@ -128,7 +128,7 @@ describe.skipIf(!url)('Phase 4B public outcomes and private pages on PostgreSQL'
     const wins=await getPersonalWins(client,first.id);expect(wins.total).toBe(1);expect(wins.items[0]).toMatchObject({code:publicCode(winner),winningPoints:'2',fulfillment:'Pending',isDemo:true});expect((await getPersonalWins(client,second.id)).total).toBe(0);
     const winningBid=(await getPersonalBids(client,first.id)).items.find(item=>item.outcome==='WON')!;
     expect(wins.items[0]).toMatchObject({bidId:winningBid.id,views:winningBid.auction.views,titleAm:winningBid.auction.titleAm});
-    const route=await import('../src/app/api/wallet/route');const response=await route.GET(request('/api/wallet',first.cookie));expect(response.status).toBe(410);const {getWalletView}=await import('../src/modules/wallet/view');const wallet=await getWalletView(client,first.id);expect(wallet.wallet).toEqual({available:'960',held:'30'});expect(wallet.activity.find((row:{kind:string})=>row.kind==='AUCTION_FEE_REFUND')).toMatchObject({availableDelta:'4',heldDelta:'0'});
+    const route=await import('../src/app/api/wallet/route');const response=await route.GET(request('/api/wallet',first.cookie));expect(response.status).toBe(200);expect(await response.json()).toMatchObject({available:'960',held:'30',currency:'ETB',topUp:{enabled:false}});const {getWalletView}=await import('../src/modules/wallet/view');const wallet=await getWalletView(client,first.id);expect(wallet.wallet).toEqual({available:'960',held:'30'});expect(wallet.activity.find((row:{kind:string})=>row.kind==='AUCTION_FEE_REFUND')).toMatchObject({availableDelta:'4',heldDelta:'0'});
     expect(await reconcile(client)).toEqual([]);
   });
   it('requires sessions and no-store on every private API, including failures',async()=>{

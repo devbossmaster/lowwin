@@ -1,0 +1,17 @@
+{
+  "checkedAt": "2026-10-24T06:54:38.071Z",
+  "typecheck": "passed in user and QA checkout",
+  "focusedUnitTests": {
+    "passed": 33,
+    "files": 5
+  },
+  "browser": {
+    "startTime": "2026-10-24T06:51:54.259Z",
+    "duration": 47514.759,
+    "expected": 2,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "scope": "Only header checks; local authenticated fixtures and ledger balances. No full suite, release build, provider activation or production deployment."
+}

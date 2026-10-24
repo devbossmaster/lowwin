@@ -233,12 +233,12 @@ test('authenticated mobile screens and local timing evidence', async ({page, bro
     }
     if(stage==='after'){
       await page.goto('/wallet?tab=transactions&type=activity');
-      await expect(page).toHaveURL(/\/payments(?:\?|$)/);
-      await expect(page.getByRole('heading',{name:'Bid payments',exact:true})).toBeVisible();
-      expect((await page.request.get('/api/wallet')).status()).toBe(410);
+      await expect(page).toHaveURL(/\/wallet(?:\?|$)/);
+      await expect(page.getByRole('heading',{name:'Wallet',exact:true})).toBeVisible();
+      expect((await page.request.get('/api/wallet')).status()).toBe(200);
       const oldBid=await page.request.post(`/api/auctions/${auction.slug}/bids`,{headers:{origin},data:{amount:'9.50',feeVersion:1,key:randomUUID()}});
       expect(oldBid.status()).toBe(410);
-      expect(walletReads).toEqual([]);
+      expect(walletReads.length).toBeGreaterThan(0);
     }
     await page.context().addCookies([{name: 'lowwin-language', value: 'am', domain: 'localhost', path: '/'}]);
     await page.goto('/');

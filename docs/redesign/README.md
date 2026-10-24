@@ -2,6 +2,8 @@
 
 Working branch: `redesign/lowin-arifpay-mobile`.
 
+24 October follow-up: [Lowwin's compact account header and wallet display](header-wallet.md) restore authenticated balance reads and a disabled deposit page for a future Chapa integration. This supersedes the wallet-retirement UI below. Bid charging remains unchanged; current verification is limited to typecheck and focused checks.
+
 Latest owner override: [customer wallets are retired and admin follows direct payments](walletless.md). New entries always use direct ArifPay; customer balances, wallet activity and old manual-transfer history are removed. Admin now has Bid payments, provider checks, accepted-fee reporting and a simplified Players workspace. Historical ledger records remain internal. Earlier wallet screenshots and balance-funded timing evidence below are historical.
 
 The latest [signed-in workflow follow-up](workflow.md) adds TanStack beneath `usePrivateQuery`, fee sorting with persistent filters, Draws countdowns and receipt navigation. It includes fresh bilingual mobile captures and a public-query timezone correction, without changing authentication or financial commands.

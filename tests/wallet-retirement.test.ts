@@ -5,14 +5,13 @@ vi.mock('../src/modules/auth/mini-access',()=>({getMiniSession:fixture.session})
 vi.mock('../src/modules/auth/private-api',async original=>({...await original<typeof import('../src/modules/auth/private-api')>(),requireUser:fixture.user,limitUserMutation:fixture.limit}));
 vi.mock('../src/modules/auctions/bids',async original=>({...await original<typeof import('../src/modules/auctions/bids')>(),getOwnBidState:fixture.state,submitBid:fixture.submit}));
 import {GET as state,POST as bid} from '../src/app/api/auctions/[slug]/bids/route';
-import {GET as wallet} from '../src/app/api/wallet/route';
 import {GET as preview} from '../src/app/api/wallet/preview/route';
 import {readMiniAccount} from '../src/modules/auth/mini-account';
 const context={params:Promise.resolve({slug:'fixture-auction'})};
 const request=(method='GET',origin='https://lowin.example')=>new Request('https://lowin.example/api/auctions/fixture-auction/bids',{method,headers:{origin}});
 beforeEach(()=>{vi.clearAllMocks();vi.stubEnv('BETTER_AUTH_URL','https://lowin.example');fixture.session.mockResolvedValue({user:{id:'registered-player'}});fixture.user.mockResolvedValue('registered-player');fixture.state.mockResolvedValue({open:true,terms:{ruleVersion:'lowest-unique-v4'},wallet:{available:'100000',held:'100'},previousMax:'100'})});
 afterEach(()=>vi.unstubAllEnvs());
-describe('customer wallets are retired',()=>{
+describe('legacy wallet spending and funding stay disabled',()=>{
  it('rejects balance-funded bid submissions even when an account has money',async()=>{
   const response=await bid(request('POST'),context);expect(response.status).toBe(410);expect(await response.json()).toMatchObject({code:'ARIFPAY_REQUIRED'});expect(fixture.submit).not.toHaveBeenCalled();expect(fixture.state).not.toHaveBeenCalled();
  });
@@ -26,7 +25,7 @@ describe('customer wallets are retired',()=>{
  it('does not reinterpret older frozen auctions as direct-fee auctions',async()=>{
   fixture.state.mockResolvedValueOnce({terms:{ruleVersion:'lowest-unique-v3'}});expect(await (await state(request(),context)).json()).toMatchObject({paymentMode:'LEGACY_READ_ONLY'});
  });
- it.each([wallet,preview])('retires customer balance/funding reads with private cache headers',async handler=>{
+ it.each([preview])('keeps legacy funding details disabled with private cache headers',async handler=>{
   const response=await handler(request());expect(response.status).toBe(410);expect(response.headers.get('cache-control')).toContain('no-store');expect(await response.json()).toMatchObject({code:'WALLETS_RETIRED'});
  });
  it('returns the same registered identity without initializing or reading a wallet',async()=>{
