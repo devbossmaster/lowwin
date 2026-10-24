@@ -14,13 +14,23 @@ describe.skipIf(!url)('Telegram-only entry boundary',()=>{
  const sign=async(raw:string,cookie?:string)=>{try{const user=JSON.parse(new URLSearchParams(raw).get('user')??'null');if(user?.id)await verifyFixtureContact(db,user.id)}catch{}return launch(raw,cookie)};
  const launch=(raw:string,cookie?:string)=>auth(new Request('http://localhost:3000/api/auth/telegram/miniapp/signin',{method:'POST',headers:{origin:'http://localhost:3000','content-type':'application/json',...(cookie?{cookie}:{})},body:JSON.stringify({initData:raw})}));
  const cookies=(response:Response)=>response.headers.getSetCookie().map(value=>value.split(';')[0]).join('; ');
+ it('syncs the verified Telegram photo on first and resumed launches without changing identity',async()=>{
+  const id=randomInt(6600000000,6700000000),photo='https://t.me/i/userpic/320/first.jpg',next='https://t.me/i/userpic/320/updated.jpg';
+  const raw=(photo_url?:string)=>signedLaunch({user:JSON.stringify({id,first_name:'Photo fixture',...(photo_url?{photo_url}:{})})});
+  const first=await sign(raw(photo)),initial=await first.json(),cookie=cookies(first);expect(first.status).toBe(200);expect(initial.me.user.image).toBe(photo);
+  const updated=await launch(raw(next),cookie),body=await updated.json();expect(body.me.user).toMatchObject({id:initial.me.user.id,image:next});
+  expect(await db.session.count({where:{userId:initial.me.user.id}})).toBe(1);
+  const {GET}=await import('../src/app/api/me/route');expect((await (await GET(new Request('http://localhost:3000/api/me',{headers:{cookie}}))).json()).user.image).toBe(next);
+  const tampered=new URLSearchParams(raw(next));tampered.set('user',JSON.stringify({id,first_name:'Photo fixture',photo_url:'https://t.me/i/userpic/320/forged.jpg'}));expect((await launch(tampered.toString(),cookie)).status).toBe(401);expect((await db.user.findUniqueOrThrow({where:{id:initial.me.user.id}})).image).toBe(next);
+  const removed=await launch(raw(),cookie);expect((await removed.json()).me.user.image).toBeNull();expect((await db.user.findUniqueOrThrow({where:{id:initial.me.user.id}})).image).toBeNull();
+ });
  it('denies guests, spoofed browser headers and forged or stale launches',async()=>{expect(await access.getMiniSession(new Headers({'user-agent':'Telegram','x-telegram-user-id':'1'}),db)).toBeNull();expect((await sign('forged')).status).toBe(401);expect((await sign(signedLaunch({auth_date:'1'}))).status).toBe(401)});
  it('binds the exact issued session to verified Telegram identity and denies unbound or revoked sessions',async()=>{const response=await sign(signedLaunch({user:JSON.stringify({id:randomInt(6000000000,6100000000),first_name:'Boundary test'})}));expect(response.status).toBe(200);const headers=new Headers({cookie:response.headers.getSetCookie().map(v=>v.split(';')[0]).join('; ')});const session=await access.getMiniSession(headers,db);expect(session).not.toBeNull();await db.session.update({where:{id:session!.session.id},data:{telegramLaunchId:null}});expect(await access.getMiniSession(headers,db)).toBeNull();await db.session.update({where:{id:session!.session.id},data:{telegramLaunchId:'wrong-identity'}});expect(await access.getMiniSession(headers,db)).toBeNull();await db.session.delete({where:{id:session!.session.id}});expect(await access.getMiniSession(headers,db)).toBeNull()});
  it('public tunnel configuration cannot enable the local preview exception',()=>{const old=process.env.MINI_APP_URL;process.env.MINI_APP_URL='https://example.ngrok-free.app';try{expect(access.localMiniPreview(new Headers({host:'localhost:3000','x-forwarded-host':'localhost:3000'}))).toBe(false)}finally{process.env.MINI_APP_URL=old}});
  it('returns the private account at sign-in and reuses only the same live Telegram session',async()=>{
   const raw=signedLaunch({user:JSON.stringify({id:randomInt(6100000000,6200000000),first_name:'Bootstrap'})});
   const first=await sign(raw),cookie=cookies(first),body=await first.json();
-  expect(body).toMatchObject({ok:true,status:'authenticated',me:{user:{name:'Lowwin player'},wallet:{available:'0',held:'0'}}});
+  expect(body).toMatchObject({ok:true,status:'authenticated',me:{user:{name:'Lowwin player'}}});
   expect(body).not.toHaveProperty('session');expect(body).not.toHaveProperty('token');
   expect(first.headers.get('cache-control')).toContain('no-store');expect(first.headers.get('vary')).toBe('Cookie');
   const session=await access.getMiniSession(new Headers({cookie}),db);

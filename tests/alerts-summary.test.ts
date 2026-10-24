@@ -14,7 +14,7 @@ describe('lightweight alert count',()=>{
   it('counts only the current player unread rows without fetching the inbox',async()=>{
     const response=await GET(new Request('http://localhost/api/alerts?summary=1'));
     expect(await response.json()).toEqual({unread:3});expect(response.headers.get('cache-control')).toContain('no-store');
-    expect(mocks.count).toHaveBeenCalledExactlyOnceWith({where:{userId:'player-a',readAt:null}});
+    expect(mocks.count).toHaveBeenCalledExactlyOnceWith({where:{AND:[{userId:'player-a',readAt:null},{NOT:{OR:[{kind:{startsWith:'DEPOSIT_'}},{kind:{startsWith:'TOPUP_'}}]}}]}});
     expect(mocks.findMany).not.toHaveBeenCalled();expect(mocks.preferences).not.toHaveBeenCalled();
   });
   it('returns retryable failure instead of authorizing when the session database is busy',async()=>{

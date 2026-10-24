@@ -41,7 +41,7 @@ export function MiniNavigation(){
       </div></details>
       <IntentPrefetchLink href="/winners/all" onClick={close}><MiniPhrase en="Winners" am="አሸናፊዎች"/></IntentPrefetchLink>
       <IntentPrefetchLink href="/auctions/all" onClick={close}><MiniPhrase en="Auctions" am="ጨረታዎች"/></IntentPrefetchLink>
-      <Link prefetch={false} href="/wallet" onClick={close}><MiniPhrase en="Wallet" am="የገንዘብ ቦርሳ"/></Link>
+      <Link prefetch={false} href="/payments" onClick={close}><MiniPhrase en="Bid payments" am="የጨረታ ክፍያዎች"/></Link>
       <IntentPrefetchLink href="/faq" onClick={close}><MiniPhrase en="FAQ" am="ተደጋጋሚ ጥያቄዎች"/></IntentPrefetchLink>
       <TelegramLink onClick={close}><MiniPhrase en="Contact Us" am="ያግኙን"/></TelegramLink>
     </nav></>}

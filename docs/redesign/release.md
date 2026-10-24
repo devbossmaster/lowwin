@@ -1,0 +1,45 @@
+# Lowin mobile redesign: release procedure
+
+The current [Home/Winners and launch follow-up](home-winners.md) adds no migration or financial command. It uses Home, Winners, My Bids and Profile navigation, with Live/Upcoming browsing on the header hammer. Authenticated wallet balance reads and the disabled future top-up page are restored; new wallet-funded bid submissions remain disabled. Keep the Zod 4.6.7 security patch (`c8a524f`) when reverting the follow-up feature commit.
+
+This branch changes the customer interface and adds a separately gated ArifPay checkout. Existing customers, Telegram identities and contact verification, balances, ledger history, accepted bids, frozen auction terms, settlement proofs, staff permissions and existing payment audit records remain in place. Do not reset or reseed a hosted database for this release.
+
+## Staging
+
+1. Record the current web and worker revisions, deployment environment, migration list, customer count and wallet/payment reconciliation result. Take an encrypted database backup and verify a restore into an isolated database. Keep provider secrets out of logs and screenshots.
+2. Apply the reviewed additive migrations to staging, including the cleanup-function permission correction. Deploy matching web and worker revisions with production funding switches unchanged and ArifPay disabled until the merchant contract is verified. Review the [retained database baseline](retained-data-review.md), resolve its runtime-role and configuration findings, and verify client roles cannot execute the cleanup routine without invoking it.
+3. Use an isolated Telegram staging bot and test accounts. Verify existing-customer login, own-contact gating, English/Amharic, deep links, Home, auctions, Draws, My Bids, Profile, notifications and direct bid-payment status. Compare the 360px/430px captures in `screenshots/` with the supplied reference images.
+4. Exercise v4 direct fee-only checkout and older read-only terms separately. Check accepted receipt replay, stale fee quotes, provider failure, deadline races, duplicate callbacks and reconciliation. Verify old funded and empty accounts take the same direct-payment path. A chosen v4 number must never become a monetary reserve or winning charge. Verify staff payment-role boundaries, fresh MFA, disabled-provider behavior, needs-review cases and accepted-fee totals in the new admin workspace.
+5. Confirm the merchant-specific sandbox and verification contract with ArifPay first. The current transport follows the published production direct endpoints and remains disabled; the public sandbox collection differs, so do not substitute sandbox hosts or keys into this transport. Complete the provider exercise in its documented sandbox, then review the production merchant configuration. Test cancel, failed, unknown, delayed and duplicate provider events. The return page must never create a credit or accepted bid merely because the browser says success.
+6. Confirm how late successful payments are reviewed/refunded when an auction closes or its fee changes. Preserve their provider evidence and audit trail. Do not claim that a paid checkout guarantees bid acceptance after a published deadline.
+
+Inventory active auctions by frozen rules version before switching traffic. This walletless entry flow accepts new v4 direct-payment entries and renders older versions read-only. If a pre-v4 auction is still accepting entries, retain a compatible reviewed entry path until its published process finishes, or agree a separately reviewed transition. Do not silently end participation, rewrite terms, or reopen/cancel a live auction as part of the UI deployment.
+
+## Canary and production approval
+
+Production deployment and funding activation are a separate approval step. Prepare a concrete release containing the commit, exact migration SQL, backup/restore evidence, current safeguards, provider sandbox evidence and known limitations before requesting approval.
+
+Rehearse the interface in staging with ArifPay disabled. Inspect authenticated error rate, login/contact failures, API p50/p95, bid failures, pending payment age, duplicate/replay counts and reconciliation. Set ARIFPAY_CANARY_USER_IDS and ARIFPAY_CANARY_AUCTION_SLUGS to the approved internal customer IDs and exact auction slugs before enabling a reviewed live checkout canary. Start with dedicated non-staff player test accounts, then a small consented canary; staff identities remain barred from bidding. With direct checkout disabled and wallet-funded submissions still disabled, new entries remain unavailable; do not switch general customer traffic until the direct payment path has passed the merchant and server verification checks. Keep historical ledger records and unresolved funding evidence available to restricted staff and recovery workers. Customer balance-funded submissions return 410. Do not enable Verify.et flags as a side effect of this redesign.
+
+## Rollback
+
+- Disable the new checkout first; retain pending checkout records and let the reviewed reconciliation/recovery path process confirmed payments.
+- Roll back the customer web to the recorded compatible revision while keeping the reviewed ArifPay recovery worker and its required configuration running until every accepted provider charge is reconciled. Existing settlement/Verify.et workers must remain compatible. Retain the additive checkout table; do not drop payment history.
+- Confirm Telegram login, current balances, old auction deep links, bid receipts and admin access after rollback. Run read-only wallet and payment reconciliation again and compare counts with the pre-release audit.
+- Restore a backup only for a confirmed data incident under a separate recovery decision. Restoring an old snapshot can lose legitimate customer operations accepted after the snapshot; reconcile provider transactions and the append-only ledger before reopening traffic.
+
+A rollback artifact must retain a patched framework: Next.js 16.4.1 or newer, with this branch pinned to 16.4.2. Re-run the dependency audit before release or rollback. This requirement addresses the published [image-optimization advisory](https://github.com/vercel/next.js/security/advisories/GHSA-2464-fhr4-w9xw) and [Server Actions advisory](https://github.com/vercel/next.js/security/advisories/GHSA-p3m5-59mp-jv5r); an older passing build is not sufficient security evidence.
+
+## Verification boundaries
+
+Local browser evidence uses a fresh PostgreSQL cluster bound to `127.0.0.1`, disposable `_test` databases, synthetic signed Telegram launches and clearly labeled DEMO inventory. It does not establish production database performance, real Telegram Android/iOS behavior, keyboard/safe-area behavior on physical devices, real merchant payment acceptance, or external provider p95 latency. Complete those staging/device checks before a broad release.
+
+Never use a screenshot, image OCR, browser redirect, client amount or optimistic UI as proof of payment. Preserve provider status, receiver/amount/reference checks, transaction ownership and duplicate protection, idempotency, server authorization, ledger invariants and the audit trail.
+
+## Local workstation limitation
+
+C: filled during a dependency patch attempt. Automatic approval review still blocked deletion of the explicitly approved `.next/cache` and `.next-ui-local/cache` directories; neither cache was deleted. A non-deleting copy of the verified D: dependencies repaired the interrupted C: installation. C: typecheck, the native Sharp check and generated Prisma ArifPay model checks now pass. The reviewed customer/admin source has since been synced into C: while preserving its pre-existing divergent test and configuration files. Both checkouts pass typecheck. D:/lowin-redesign-qa/patched-deps/app remains the authoritative PR checkout; C: still contains earlier uncommitted work and has limited disk space. No production service or database was involved.
+
+## Published policy discrepancy
+
+The existing published terms include old manual-funding and photo-consent wording, while Privacy currently has no published sections. This redesign preserves published legal records and requires explicit verified consent/moderation before any winner photo/story workflow. The owner must review and publish consistent Terms/Privacy before rollout; this branch does not invent legal policy text or retroactively change auction terms.

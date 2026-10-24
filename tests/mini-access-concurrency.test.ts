@@ -8,7 +8,7 @@ vi.mock('../src/modules/auth/own-contact',()=>({contactBotId:()=> '123'}));
 import {getLaunchSession,getMiniSession} from '../src/modules/auth/mini-access';
 
 const current={session:{id:'session-a'},user:{id:'user-a'}};
-const bound=()=>({telegramLaunchId:'456',user:{telegramId:'456',staffMember:null,ownContact:{telegramId:'456',botId:'123',revokedAt:null as Date|null}}});
+const bound=()=>({telegramLaunchId:'456',user:{telegramId:'456',staffMember:null,ownContact:{telegramId:'456',botId:'123',revokedAt:null as Date|null,lastFour:'1234'}}});
 const headers=(token='a')=>new Headers({cookie:`better-auth.session_token=${token}`});
 beforeEach(()=>{vi.clearAllMocks();mocks.getSession.mockReset().mockResolvedValue(current);mocks.findUnique.mockReset().mockImplementation(async()=>bound())});
 
@@ -50,6 +50,25 @@ describe('concurrent Mini App session checks',()=>{
     const tx={session:{findUnique:vi.fn(async()=>bound())}} as unknown as Prisma.TransactionClient;
     await Promise.all([getMiniSession(headers()),getMiniSession(headers(),tx)]);
     expect(mocks.getSession).toHaveBeenCalledTimes(2);expect(tx.session.findUnique).toHaveBeenCalledOnce();
+  });
+  it('returns a masked contact snapshot from the same validated session read',async()=>{
+    const session=await getLaunchSession(headers());
+    expect(session?.contactStatus).toEqual({verified:true,masked:'•••• 1234'});
+    expect(mocks.findUnique).toHaveBeenCalledTimes(1);
+    expect(session).not.toHaveProperty('phoneCipher');expect(session).not.toHaveProperty('phoneHash');
+  });
+  it('rechecks contact revocation instead of retaining a launch snapshot',async()=>{
+    expect((await getLaunchSession(headers()))?.contactStatus.verified).toBe(true);
+    mocks.findUnique.mockResolvedValue({...bound(),user:{...bound().user,ownContact:{...bound().user.ownContact,revokedAt:new Date()}}});
+    expect((await getLaunchSession(headers()))?.contactStatus).toEqual({verified:false,masked:null});
+    expect(await getMiniSession(headers())).toBeNull();
+    expect(mocks.findUnique).toHaveBeenCalledTimes(3);
+  });
+  it.each(['wrong-contact','wrong-bot'])('does not verify the contact snapshot for a %s',async kind=>{
+    const row=bound();if(kind==='wrong-contact')row.user.ownContact.telegramId='other';else row.user.ownContact.botId='other';
+    mocks.findUnique.mockResolvedValue(row);
+    expect((await getLaunchSession(headers()))?.contactStatus).toEqual({verified:false,masked:null});
+    expect(await getMiniSession(headers())).toBeNull();
   });
   it.each(['unbound','mismatch','staff','wrong-contact','wrong-bot'])('denies a %s session',async(kind)=>{
     const row=bound();

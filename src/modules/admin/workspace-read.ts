@@ -1,7 +1,7 @@
 import {Prisma,type PrismaClient} from '@prisma/client';
 import {permissions,type StaffRole} from './permissions';
 import {AdminError} from './errors';
-import {depositAttentionWhere} from '../payments/review-filter';
+import {arifPayAdminTotals} from './arifpay';
 
 export function auctionStatusWhere(status:string,now:Date):Prisma.AuctionWhereInput {
  const running:Prisma.AuctionWhereInput={testRunId:null,publishedAt:{not:null},status:{in:['SCHEDULED','LIVE']},settlement:{is:null}};
@@ -42,7 +42,7 @@ export type OverviewData={
  payments?:{state:'ready';count:number}|{state:'error'};
  deliveries?:{state:'ready';count:number}|{state:'error'};
  closing?:{state:'ready';failed:number;pending:number}|{state:'error'};
- deposits?:{state:'ready';totalEtb:string;todayEtb:string;count:number}|{state:'error'};
+ fees?:{state:'ready';totalEtb:string;todayEtb:string;count:number}|{state:'error'};
  players?:{state:'ready';total:number;today:number;biddersToday:number}|{state:'error'};
 };
 export function eatDayStart(now:Date){
@@ -76,10 +76,10 @@ export async function readOverview(client:PrismaClient,actor:{id:string;role:Sta
  const data:OverviewData={serverNow:actor.now.toISOString()},grants=permissions(actor.role),jobs:Promise<void>[]=[];
  async function part<K extends Exclude<keyof OverviewData,'serverNow'>>(key:K,load:()=>Promise<NonNullable<OverviewData[K]>>){try{data[key]=await load()}catch{data[key]={state:'error'} as OverviewData[K]}}
  if(grants.includes('catalog'))jobs.push(part('auctions',async()=>{const [live,upcoming,drafts,completed]=await Promise.all([auctionList(client,actor.now,{status:'LIVE',take:5}),client.auction.count({where:auctionStatusWhere('UPCOMING',actor.now)}),client.auction.count({where:{status:'DRAFT'}}),client.auction.count({where:auctionStatusWhere('COMPLETED',actor.now)})]);return {state:'ready',live:live.total,upcoming,drafts,completed,items:live.items.length?live.items:(await auctionList(client,actor.now,{status:'UPCOMING',take:5})).items}}));
- if(['OWNER','SUPPORT','PAYMENTS_OPERATOR','AUDITOR'].includes(actor.role))jobs.push(part('payments',async()=>({state:'ready',count:await client.topUpIntent.count({where:depositAttentionWhere(actor.now)})})));
+ if(['OWNER','SUPPORT','PAYMENTS_OPERATOR','AUDITOR'].includes(actor.role))jobs.push(part('payments',async()=>({state:'ready',count:await (async()=>{if(process.env.ARIFPAY_SCHEMA_READY!=='true')throw new AdminError(503,'Direct-payment storage is not ready.');return client.arifPayCheckout.count({where:{status:'NEEDS_REVIEW',auction:{isDemo:false,testRunId:null}}})})()})));
  if(grants.includes('fulfillment'))jobs.push(part('deliveries',async()=>({state:'ready',count:(await deliveryQueue(client,actor,{status:'INCOMPLETE'})).total})));
  if(grants.includes('catalog'))jobs.push(part('closing',async()=>({state:'ready',failed:await client.auction.count({where:auctionStatusWhere('FAILED',actor.now)}),pending:await client.auction.count({where:auctionStatusWhere('CLOSING',actor.now)})})));
- if(grants.includes('wallets'))jobs.push(part('deposits',()=>overviewDeposits(client,actor.now)));
+ if(grants.includes('wallets'))jobs.push(part('fees',()=>arifPayAdminTotals(client,actor.now)));
  if(grants.includes('support')||grants.includes('audit'))jobs.push(part('players',()=>overviewPlayers(client,actor.now)));
  await Promise.all(jobs);return data;
 }

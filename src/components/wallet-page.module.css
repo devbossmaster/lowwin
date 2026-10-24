@@ -1,4 +1,4 @@
-.page{padding:16px 16px 32px;background:#f3f4f7;color:#000;--surface-ink:#000;--wallet-action:#008000;--wallet-muted:#4b554e}
+.page{padding:16px 16px 32px;background:#f3f4f7;color:#000;--surface-ink:#000;--wallet-action:#181815;--wallet-muted:#4b554e}
 .page ::selection{background:#efefef;color:#000}
 .page button,.page a,.page input,.page textarea{font:inherit}
 .page button:focus-visible,.page a:focus-visible,.page input:focus-visible{outline:2px solid var(--wallet-action);outline-offset:3px}
@@ -13,7 +13,7 @@
 .tabs button[aria-pressed=true]{background:var(--wallet-action);color:#fff;--surface-ink:#fff}
 .transactionFilters{display:flex;gap:8px;margin-top:20px}
 .transactionFilters button{min-height:44px;padding:8px 16px;border:1px solid #dfdfdf;border-radius:12px;background:#fff;color:#000;font-size:13px;font-weight:600;cursor:pointer}
-.transactionFilters button[aria-pressed=true]{border-color:var(--wallet-action);background:#eeeeee;color:#008000}
+.transactionFilters button[aria-pressed=true]{border-color:var(--wallet-action);background:#eeeeee;color:#181815}
 .funding,.transactionSection{margin-top:24px;scroll-margin-top:20px}
 .funding h2,.transactionSection h2{margin:0 0 20px;font-size:22px;font-weight:700;letter-spacing:-.025em;line-height:1.3}
 .sectionHeading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
@@ -39,7 +39,7 @@
 .accountNumber{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .accountNumber>div{min-width:0}
 .accountNumber strong{font-size:22px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
-.accountNumber button{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;flex:none;padding:8px 12px;border:0;border-radius:24px;background:#ededed;color:#008000;font-size:12px;font-weight:700;cursor:pointer}
+.accountNumber button{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;flex:none;padding:8px 12px;border:0;border-radius:24px;background:#ededed;color:#181815;font-size:12px;font-weight:700;cursor:pointer}
 .accountName{margin-top:20px}
 .selectionHint{margin:12px 0 0;font-size:12px;line-height:1.6;color:var(--wallet-muted)}
 .confirmation{margin-top:28px}
@@ -57,7 +57,7 @@
 .divider::before,.divider::after{content:'';height:1px;flex:1;background:#dcdcdc}
 .receiptHeading{margin-bottom:12px}
 .upload{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;min-height:196px;padding:24px 12px;border-radius:16px;text-align:center}
-.uploadIcon{display:grid;place-items:center;width:56px;height:56px;border-radius:16px;background:#fff;color:#008000}
+.uploadIcon{display:grid;place-items:center;width:56px;height:56px;border-radius:16px;background:#fff;color:#181815}
 .uploadButton{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:10px 20px;border:0;border-radius:24px;background:var(--wallet-action);color:#fff;font-size:13px!important;font-weight:700!important;cursor:pointer;--surface-ink:#fff}
 .uploadButton:disabled{background:#e6e6e6;color:#3d5140;cursor:default;--surface-ink:#3d5140}
 .dropHint{color:var(--wallet-muted);font-size:12px}
@@ -66,12 +66,12 @@
 .receiptPreview img{display:block;width:100%;height:100%;object-fit:contain}
 .receiptFile{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;color:var(--wallet-muted);font-size:12px}
 .receiptFile>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.receiptFile button{display:grid;place-items:center;flex:none;width:44px;height:44px;border:0;border-radius:12px;background:transparent;color:#008000;cursor:pointer}
+.receiptFile button{display:grid;place-items:center;flex:none;width:44px;height:44px;border:0;border-radius:12px;background:transparent;color:#181815;cursor:pointer}
 .receiptFile button:disabled{opacity:.55;cursor:default}
 .uploadHelp{margin:16px 0 0;color:var(--wallet-muted);font-size:12px;line-height:1.7}
 .uploadHelp span{display:block}
 .submit{display:flex;align-items:center;justify-content:center;width:100%;min-height:48px;margin-top:24px;padding:12px 18px;border:0;border-radius:26px;background:var(--wallet-action);color:#fff;font-size:14px!important;font-weight:700!important;cursor:pointer;--surface-ink:#fff}
-.submit:hover:not(:disabled),.uploadButton:hover:not(:disabled),.addMoney:hover,.referenceActions .secondary:hover:not(:disabled){background:#008000;--surface-ink:#fff;color:#fff;}
+.submit:hover:not(:disabled),.uploadButton:hover:not(:disabled),.addMoney:hover,.referenceActions .secondary:hover:not(:disabled){background:#181815;--surface-ink:#fff;color:#fff;}
 .submit:disabled{background:#e7e7e7;color:#354b38;cursor:default;--surface-ink:#354b38}
 .hint{display:flex;flex-wrap:wrap;gap:4px 18px;margin:12px 0 0;color:var(--wallet-muted);font-size:12px;line-height:1.7;overflow-wrap:anywhere}
 .hint strong{color:#17251d;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -83,14 +83,14 @@
 .help strong{display:block;font-size:13px;font-weight:700;line-height:1.5}
 .help small{display:block;margin-top:2px;color:var(--wallet-muted);font-size:12px;line-height:1.5}
 .help>svg{flex:none;color:var(--wallet-muted)}
-.helpIcon{display:grid;place-items:center;flex:none;width:40px;height:40px;border-radius:12px;background:#ececec;color:#008000}
+.helpIcon{display:grid;place-items:center;flex:none;width:40px;height:40px;border-radius:12px;background:#ececec;color:#181815}
 .transactionSection .sectionHeading{margin-bottom:4px}
 .transactionSection .sectionHeading h2{margin:0}
-.refresh{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:8px 0 8px 12px;border:0;background:transparent;color:#008000;font-size:12px;font-weight:700;cursor:pointer}
+.refresh{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:8px 0 8px 12px;border:0;background:transparent;color:#181815;font-size:12px;font-weight:700;cursor:pointer}
 .refresh:disabled{opacity:.6;cursor:default}
 .sectionDescription{margin:0 0 20px;color:var(--wallet-muted);font-size:13px;line-height:1.6}
 .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-height:220px;padding:28px 20px;border-radius:16px;background:#fff;text-align:center}
-.empty>svg{margin-bottom:8px;color:#008000}
+.empty>svg{margin-bottom:8px;color:#181815}
 .empty h3{margin:0;font-size:18px;font-weight:700}
 .empty p{margin:0;max-width:30ch;font-size:13px;line-height:1.6;color:var(--wallet-muted)}
 .transactionList{overflow:hidden;border-radius:16px;background:#fff}
@@ -104,14 +104,14 @@
 .depositAmount{max-width:42%;font-size:13px;font-weight:700;text-align:right;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 .depositStatus{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-top:12px}
 .depositStatus>div{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
-.depositStatus a,.inlineAction{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:4px 0;border:0;background:transparent;color:#008000;font-size:12px!important;font-weight:700!important;cursor:pointer}
+.depositStatus a,.inlineAction{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:4px 0;border:0;background:transparent;color:#181815;font-size:12px!important;font-weight:700!important;cursor:pointer}
 .inlineAction:disabled{opacity:.6;cursor:default}
 .statusBadge{padding:6px 10px;border-radius:8px;background:#f2f2f2;font-size:11px;font-weight:600;line-height:1.5}
-.statusBadge[data-state=CREDITED]{background:#efefef;color:#008000}
+.statusBadge[data-state=CREDITED]{background:#efefef;color:#181815}
 .statusBadge[data-state=VERIFYING],.statusBadge[data-state=PENDING],.statusBadge[data-state=NEEDS_REVIEW]{background:#fff3de;color:#633c00}
 .statusBadge[data-state=REJECTED],.statusBadge[data-state=DUPLICATE_CONFLICT],.statusBadge[data-state=PROVIDER_OUTAGE]{background:#fff0ed;color:#85392d}
 .activityRow{display:flex;align-items:center;gap:10px;padding:16px;border-bottom:1px solid #ececec}
-.activityIcon{display:grid;place-items:center;flex:none;width:36px;height:36px;border-radius:12px;background:#f0f0f0;color:#008000}
+.activityIcon{display:grid;place-items:center;flex:none;width:36px;height:36px;border-radius:12px;background:#f0f0f0;color:#181815}
 .activityRow>div{flex:1;min-width:0}
 .activityRow strong{display:block;font-size:13px;font-weight:600;line-height:1.5}
 .activityRow small{display:block;margin-top:4px;color:var(--wallet-muted);font-size:11px;line-height:1.5}

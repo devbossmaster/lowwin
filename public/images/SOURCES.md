@@ -1,0 +1,9 @@
+# Original Lowin hero asset
+
+File: `lowin-family-hero.webp` (1200px wide, approximately 104KB). Generated with the built-in ImageGen tool on 2026-10-22, then resized/compressed with the repository's installed Sharp library. The PNG original remains in the local image-generation library. No Onebid image, model photograph, winner announcement or branding was copied.
+
+Purpose: a clearly labelled illustrative Ethiopian family celebration with a bicycle, coffee machine and suitcase. These models are not actual Lowin winners and the pictured products do not assert current auction inventory. Important copy is HTML, not baked into the image.
+
+Prompt:
+
+> Create one polished photographic website hero asset for Lowin, an Ethiopian Telegram auction Mini App. Wide landscape 3:2 composition, photographic realism, cinematic warm interior evening lighting against charcoal nearly black background. An Ethiopian family of four, mother father young adult daughter and younger teenage son, smiling and celebrating together casually, original generic models not actual winners. On the RIGHT two thirds of the composition, family in contemporary understated cream, warm brown and dark casual clothing, positioned naturally together. A tasteful unbranded compact coffee machine, a blue city bicycle and a small red carry-on suitcase in the foreground; these are illustrative different products, no cars smartphones or game consoles. LEFT third nearly black soft negative space for HTML heading overlay, no objects blocking left text area. Soft restrained warm gold rim light, no glowing magic ribbons, no trophy, no cash. Premium editorial retail campaign photograph. No text, no lettering, no logos, no watermark, no faux winner labels. Keep faces and hands realistic, all four people distinct. Rich dark tones, restrained saturation, warm joyful human scene.

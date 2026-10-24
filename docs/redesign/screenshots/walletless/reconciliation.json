@@ -1,0 +1,61 @@
+{
+  "checkedAt": "2026-10-23T13:04:52.473Z",
+  "scope": "All 11 final disposable loopback test databases; no hosted database access",
+  "results": [
+    {
+      "databaseGroup": 0,
+      "ledgerDiscrepancies": 0,
+      "paymentDiscrepancies": 0
+    },
+    {
+      "databaseGroup": 1,
+      "ledgerDiscrepancies": 0,
+      "paymentDiscrepancies": 0
+    },
+    {
+      "databaseGroup": 2,
+      "ledgerDiscrepancies": 0,
+      "paymentDiscrepancies": 0
+    },
+    {
+      "databaseGroup": 3,
+      "ledgerDiscrepancies": 0,
+      "paymentDiscrepancies": 0
+    },
+    {
+      "databaseGroup": 4,
+      "ledgerDiscrepancies": 0,
+      "paymentDiscrepancies": 0
+    },
+    {
+      "databaseGroup": 5,
+      "ledgerDiscrepancies": 0,
+      "paymentDiscrepancies": 0
+    },
+    {
+      "databaseGroup": 6,
+      "ledgerDiscrepancies": 0,
+      "paymentDiscrepancies": 0
+    },
+    {
+      "databaseGroup": 7,
+      "ledgerDiscrepancies": 0,
+      "paymentDiscrepancies": 0
+    },
+    {
+      "databaseGroup": 8,
+      "ledgerDiscrepancies": 0,
+      "paymentDiscrepancies": 0
+    },
+    {
+      "databaseGroup": 9,
+      "ledgerDiscrepancies": 0,
+      "paymentDiscrepancies": 0
+    },
+    {
+      "databaseGroup": 10,
+      "ledgerDiscrepancies": 0,
+      "paymentDiscrepancies": 0
+    }
+  ]
+}

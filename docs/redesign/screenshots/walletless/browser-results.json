@@ -1,0 +1,117 @@
+{
+  "scope": "Optimized Chromium on disposable loopback PostgreSQL. Latest result per scenario; launch retry and slow-network timings rerun with after-stage enabled. Local safety tests were also running during final timing samples.",
+  "counts": {
+    "passed": 16
+  },
+  "scenarios": [
+    {
+      "title": "missing native contact callback times out with usable recovery controls",
+      "project": "360",
+      "status": "passed"
+    },
+    {
+      "title": "retired callbacks cannot affect a retry or cancel-and-close recovery",
+      "project": "360",
+      "status": "passed"
+    },
+    {
+      "title": "native approval still requires server contact verification and ignores duplicate callback delivery",
+      "project": "360",
+      "status": "passed"
+    },
+    {
+      "title": "missing native contact callback times out with usable recovery controls",
+      "project": "430",
+      "status": "passed"
+    },
+    {
+      "title": "retired callbacks cannot affect a retry or cancel-and-close recovery",
+      "project": "430",
+      "status": "passed"
+    },
+    {
+      "title": "native approval still requires server contact verification and ignores duplicate callback delivery",
+      "project": "430",
+      "status": "passed"
+    },
+    {
+      "title": "sheet returns keyboard focus to its trigger",
+      "project": "360",
+      "status": "passed"
+    },
+    {
+      "title": "sheet returns keyboard focus to its trigger",
+      "project": "430",
+      "status": "passed"
+    },
+    {
+      "title": "compact header, language keyboard controls and banner assets",
+      "project": "360",
+      "status": "passed"
+    },
+    {
+      "title": "compact header, language keyboard controls and banner assets",
+      "project": "430",
+      "status": "passed"
+    },
+    {
+      "title": "authenticated mobile screens and local timing evidence",
+      "project": "360",
+      "status": "passed"
+    },
+    {
+      "title": "launch failure exits the spinner and Retry opens the app",
+      "project": "360",
+      "status": "passed"
+    },
+    {
+      "title": "authenticated mobile screens and local timing evidence",
+      "project": "430",
+      "status": "passed"
+    },
+    {
+      "title": "launch failure exits the spinner and Retry opens the app",
+      "project": "430",
+      "status": "passed"
+    },
+    {
+      "title": "browse filters survive navigation and private screens reuse a fresh read",
+      "project": "360",
+      "status": "passed"
+    },
+    {
+      "title": "browse filters survive navigation and private screens reuse a fresh read",
+      "project": "430",
+      "status": "passed"
+    }
+  ],
+  "runs": [
+    {
+      "report": "walletless-final-browser.json",
+      "startTime": "2026-10-23T12:55:13.453Z",
+      "duration": 78759.42,
+      "expected": 14,
+      "skipped": 2,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    {
+      "report": "walletless-retry-browser.json",
+      "startTime": "2026-10-23T12:57:42.349Z",
+      "duration": 18202.193,
+      "expected": 2,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    {
+      "report": "walletless-timing-browser.json",
+      "startTime": "2026-10-23T13:01:06.291Z",
+      "duration": 83348.735,
+      "expected": 2,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    }
+  ]
+}

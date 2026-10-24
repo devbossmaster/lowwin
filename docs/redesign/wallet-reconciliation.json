@@ -1,0 +1,8 @@
+{
+  "environment": "local disposable loopback database",
+  "database": "lowwin_redesign_capture_test",
+  "command": "tsx scripts/reconcile.ts",
+  "reconciled": true,
+  "drift": [],
+  "production": false
+}

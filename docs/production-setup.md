@@ -46,6 +46,10 @@ Runtime must not be a superuser, table owner, BYPASSRLS role, schema creator, or
 
 Count connections across processes: web pool + bot pool + auction pool + notification pool + migrations/administration. Do not fix pool exhaustion by arbitrarily raising every process limit. Check query duration, number of replicas, database CPU, lock waits and idle transactions first. P1001 means connectivity failed; P2024 means a pool acquisition timed out. Neither is evidence that Telegram or GitHub authentication should be bypassed.
 
+`NETWORK_ADDRESS_NOT_ALLOWED` means the database provider rejected the connection under its network restrictions. Review the intended project's allow list and the application's current egress address; authorize only the required address or CIDR. Keep existing restrictions and TLS verification enabled, then re-run the read-only connection check. Never put operator addresses or connection credentials in the repository or logs.
+
+For Telegram sign-in 503s, run `npm run db:check -- --timings` in the same checkout and environment as the web process. Auth logs record a fixed execution stage and safe database error fields without credentials or launch data. `POOLER_TENANT_NOT_FOUND` means the pooler reported a missing tenant: check the existing project's status and its Connect panel, then verify the project reference, region/host and username in the local connection configuration. Resume the intended project if paused; a different empty database does not recover registered customers. Re-run the connection check before retrying Telegram sign-in. Increasing an auth timeout does not repair a missing project.
+
 Before any remote migration: identify the target without printing credentials, take a full custom-format backup with PostgreSQL 17 tools, verify its checksum and restore it into a **separate disposable database**, and reconcile the restored data. Inventory the existing `_prisma_migrations` chain. Never use `db push`, `migrate reset`, `TRUNCATE`, fixture seeds, or rewritten historical migrations against retained data.
 
 ```sh
@@ -58,6 +62,10 @@ npm run wallet:reconcile
 ```
 
 `db:check` checks connectivity; it does not certify role permissions. Reconciliation must return zero drift. Keep bids, journals, postings, holds, settlement proofs and migration history. Roll back application code to a compatible release; never roll back by deleting financial rows.
+
+For a verified empty staging database, apply all versioned migrations as the schema owner, then run `deploy/runtime-role.sql` as that owner, then provision the separate login with `db:create-runtime-login` using process-only `MIGRATION_DIRECT_URL` and a protected generated `LOWWIN_APP_PASSWORD`. The role script supports creation before or after migrations and includes ArifPay, test-run tracking and server-only cleanup permissions. It refuses unsafe runtime-group attributes or inherited browser cleanup access. Do not seed synthetic customers, credits, products or results into a remote staging database to make an empty screen look populated.
+
+Configure the normal web/worker connections with the restricted login after provisioning. Keep the migration connection outside the application's runtime environment; inject it only into a reviewed migration job. Recheck RLS, required table access and browser cleanup denial through catalog reads, then reconcile. A fresh database must never replace the retained production database merely because local sign-in was unavailable.
 
 ## 4. Telegram and ngrok staging
 
@@ -118,4 +126,6 @@ TLS proxy limits, public ingress rate limits, Hostinger isolation, process super
 
 ## 9. Frozen rules and service templates
 
-Follow [the versioned rollout order](frozen-auction-v2-release.md) and [isolated deployment](deployment.md). New publications use v3 after the additive cent-money migration; existing auctions retain their v1/v2 rules. Follow the [cent-money rollout and rollback limits](cent-money-v3-release.md). Stop all writers during the migration and deploy matching decimal-aware web and workers together; never run an older integer client against new fractional values. Deployment templates are prepared, not proof of installation on Hostinger.
+Current new publications use [submission-fee-only v4](submission-fee-rollout.md): the entered number is not charged or reserved, and only the disclosed submission fee is deducted. Existing auctions use their own frozen terms. The UI redesign does not run the optional legacy-auction conversion command or change the published fallback selection.
+
+Retain the [versioned rollout history](frozen-auction-v2-release.md), [cent-money rollout and rollback limits](cent-money-v3-release.md) and [isolated deployment procedure](deployment.md). For a separately reviewed data migration, stop writers and deploy matching decimal-aware web and workers together; never run an older integer client against fractional values. Deployment templates are prepared, not proof of installation on Hostinger.

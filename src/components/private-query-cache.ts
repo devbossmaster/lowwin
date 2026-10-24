@@ -1,8 +1,7 @@
 'use client';
+import {QueryClient} from '@tanstack/react-query';
 
 export type CacheEvent={identity:string|null;kind:'session'|'stored'|'mutation'|'authorization';keys?:readonly string[]};
-type Entry={identity:string;value:unknown;updatedAt:number;stale:boolean};
-type Pending={generation:number;promise:Promise<unknown>};
 type ReadValue<T>={value:T;fresh:boolean;updatedAt:number};
 
 export class ObsoletePrivateQueryError extends Error {
@@ -16,53 +15,76 @@ export class PrivateAuthorizationError extends Error {
 export class SessionPrivateQueryCache {
   private identity:string|null=null;
   private generation=0;
-  private entries=new Map<string,Entry>();
-  private pending=new Map<string,Pending>();
+  private client:QueryClient;
+  // Payloads and in-flight deduplication belong to TanStack. This map stores
+  // only access order so the existing per-session memory bound is preserved.
+  private accessed=new Map<string,true>();
   private listeners=new Set<(event:CacheEvent)=>void>();
-  constructor(private readonly maxEntries=48,private readonly freshnessMs=30_000,private readonly maxPending=24,private readonly retentionMs=600_000){}
+  constructor(private readonly maxEntries=48,private readonly freshnessMs=30_000,private readonly maxPending=24,private readonly retentionMs=600_000){
+    this.client=new QueryClient({defaultOptions:{queries:{retry:false,networkMode:'always',staleTime:freshnessMs,gcTime:retentionMs},mutations:{retry:false}}});
+    this.client.getQueryCache().subscribe(event=>{
+      if(event.type==='removed')this.accessed.delete(String(event.query.queryKey[2]));
+    });
+  }
+  private key(identity:string,key:string){return ['lowin-private',identity,key] as const}
   private emit(kind:CacheEvent['kind'],keys?:readonly string[]){const event={identity:this.identity,kind,keys};this.listeners.forEach(listener=>listener(event))}
-  private drop(){this.generation++;this.entries.clear();this.pending.clear()}
+  private drop(){this.generation++;this.client.clear();this.accessed.clear()}
+  private touch(identity:string,key:string){
+    this.accessed.delete(key);this.accessed.set(key,true);
+    while(this.accessed.size>this.maxEntries){
+      const oldest=this.accessed.keys().next().value!;
+      this.client.removeQueries({queryKey:this.key(identity,oldest),exact:true});this.accessed.delete(oldest);
+    }
+  }
   setIdentity(identity:string|null){
     if(identity===this.identity)return;
     this.identity=identity;this.drop();this.emit('session');
   }
+  seed<T>(identity:string,key:string,value:T){
+    if(!identity||identity!==this.identity)throw new ObsoletePrivateQueryError();
+    this.client.setQueryData(this.key(identity,key),value);this.touch(identity,key);this.emit('stored',[key]);
+  }
   read<T>(identity:string,key:string,freshnessMs=this.freshnessMs):ReadValue<T>|null{
     if(!identity||identity!==this.identity)return null;
-    const entry=this.entries.get(key);
-    if(!entry||entry.identity!==identity)return null;
-    const age=Date.now()-entry.updatedAt;
-    if(age>=this.retentionMs){this.entries.delete(key);return null}
-    this.entries.delete(key);this.entries.set(key,entry);
-    return {value:entry.value as T,fresh:!entry.stale&&age<freshnessMs,updatedAt:entry.updatedAt};
+    const queryKey=this.key(identity,key),entry=this.client.getQueryState<T>(queryKey);
+    if(!entry||entry.data===undefined)return null;
+    const age=Date.now()-entry.dataUpdatedAt;
+    if(age>=this.retentionMs){this.client.removeQueries({queryKey,exact:true});return null}
+    this.touch(identity,key);
+    return {value:entry.data,fresh:!entry.isInvalidated&&age<freshnessMs,updatedAt:entry.dataUpdatedAt};
   }
-  async load<T>(identity:string,key:string,loader:()=>Promise<T>,{force=false,freshnessMs=this.freshnessMs}:{force?:boolean;freshnessMs?:number}={}):Promise<T>{
+  async load<T>(identity:string,key:string,loader:(signal:AbortSignal)=>Promise<T>,{force=false,freshnessMs=this.freshnessMs}:{force?:boolean;freshnessMs?:number}={}):Promise<T>{
     if(!identity||identity!==this.identity)throw new ObsoletePrivateQueryError();
     const cached=this.read<T>(identity,key,freshnessMs);
     if(!force&&cached?.fresh)return cached.value;
-    const active=this.pending.get(key);
-    if(active&&active.generation===this.generation)return active.promise as Promise<T>;
-    if(this.pending.size>=this.maxPending)throw new Error('Too many requests are already in progress. Please retry.');
+    const queryKey=this.key(identity,key),active=this.client.getQueryState(queryKey)?.fetchStatus==='fetching';
+    if(!active&&this.client.isFetching()>=this.maxPending)throw new Error('Too many requests are already in progress. Please retry.');
     const generation=this.generation;
     const current=()=>generation===this.generation&&identity===this.identity;
-    const promise=(async()=>loader())().then(value=>{
+    if(force&&!active)void this.client.invalidateQueries({queryKey,exact:true,refetchType:'none'});
+    try{
+      const value=await this.client.fetchQuery<T>({queryKey,staleTime:freshnessMs,queryFn:async({signal})=>{
+        const value=await loader(signal);
+        if(!current())throw new ObsoletePrivateQueryError();
+        return value;
+      }});
       if(!current())throw new ObsoletePrivateQueryError();
-      this.entries.delete(key);this.entries.set(key,{identity,value,updatedAt:Date.now(),stale:false});
-      while(this.entries.size>this.maxEntries)this.entries.delete(this.entries.keys().next().value!);
-      this.emit('stored',[key]);
+      this.touch(identity,key);this.emit('stored',[key]);
       return value;
-    }).catch(cause=>{
+    }catch(cause){
       // Even an old 401 must not revoke a newer session.
       if(!current())throw new ObsoletePrivateQueryError();
       if(cause instanceof PrivateAuthorizationError)this.authorizationFailure(identity);
       throw cause;
-    }).finally(()=>{if(this.pending.get(key)?.promise===promise)this.pending.delete(key)});
-    this.pending.set(key,{generation,promise});
-    return promise;
+    }
   }
   invalidate(identity:string){
     if(!identity||identity!==this.identity)return;
-    this.generation++;this.pending.clear();
-    for(const entry of this.entries.values())entry.stale=true;
+    this.generation++;
+    // Cancel old reads before a post-mutation refresh, retaining their last
+    // committed display snapshot. No mutation/charge is retried by this cache.
+    void this.client.cancelQueries({queryKey:['lowin-private',identity]});
+    void this.client.invalidateQueries({queryKey:['lowin-private',identity],refetchType:'none'});
     this.emit('mutation');
   }
   authorizationFailure(identity:string){
@@ -71,7 +93,7 @@ export class SessionPrivateQueryCache {
     this.setIdentity(null);
   }
   subscribe(listener:(event:CacheEvent)=>void){this.listeners.add(listener);return()=>{this.listeners.delete(listener)}}
-  get size(){return this.entries.size}
+  get size(){return this.accessed.size}
 }
 
 const cache=new SessionPrivateQueryCache();
@@ -87,13 +109,14 @@ export function privateQueryFreshness(url:string){
   return 30_000;
 }
 export function setPrivateQueryIdentity(identity:string|null){cache.setIdentity(identity)}
+export function seedPrivateQuery<T>(identity:string,url:string,value:T){cache.seed(identity,privateQueryKey(url),value)}
 export function readPrivateQuery<T>(identity:string,url:string,options:{language?:string;freshnessMs?:number}={}){return cache.read<T>(identity,privateQueryKey(url,options.language),options.freshnessMs??privateQueryFreshness(url))}
 export function subscribePrivateQueries(listener:(event:CacheEvent)=>void){return cache.subscribe(listener)}
 export function invalidatePrivateQueries(identity:string){cache.invalidate(identity)}
 
 export async function loadPrivateJson<T>(identity:string,url:string,{force=false,freshnessMs,language}:{force?:boolean;freshnessMs?:number;language?:string}={}):Promise<T>{
-  return cache.load(identity,privateQueryKey(url,language),async()=>{
-    const response=await fetch(url,{cache:'no-store',signal:AbortSignal.timeout(15_000)});
+  return cache.load(identity,privateQueryKey(url,language),async signal=>{
+    const response=await fetch(url,{cache:'no-store',signal:AbortSignal.any([signal,AbortSignal.timeout(15_000)])});
     const body=await response.json().catch(()=>({}));
     if(!response.ok){
       const message=body&&typeof body.error==='string'?body.error:'Could not load this page.';

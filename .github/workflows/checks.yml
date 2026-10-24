@@ -38,7 +38,7 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - run: npx playwright install --with-deps chromium
-      - run: node scripts/run-db-tests.mjs smoke
+      # Current customer paths are exercised in browser-redesign below.
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
@@ -69,13 +69,9 @@ jobs:
           name: security-results
           path: security-results.json
           retention-days: 7
-  browser-matrix:
+  browser-redesign:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
-    strategy:
-      fail-fast: false
-      matrix:
-        suite: [browser, payments]
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:17
@@ -100,12 +96,15 @@ jobs:
       - run: npm ci
       - run: npm run db:generate
       - run: npx playwright install --with-deps chromium
-      - run: node scripts/run-db-tests.mjs ${{ matrix.suite }}
+      # Covers the redesigned navigation, sheets, receipt, zero balance, auth,
+      # language, keyboard viewport, notifications and private reconciliation.
+      # Full legacy rule/payment/staff invariants execute in foundation Vitest.
+      - run: node scripts/run-db-tests.mjs redesign
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: browser-${{ matrix.suite }}
+          name: mobile-redesign
           path: |
             test-results/
-            docs/screenshots/
+            docs/redesign/screenshots/
           retention-days: 7

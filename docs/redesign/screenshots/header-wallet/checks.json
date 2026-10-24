@@ -1,0 +1,32 @@
+{
+  "checkedAt": "2026-10-24T07:28:13.359Z",
+  "typecheck": "passed",
+  "focusedUnitChecks": {
+    "files": 5,
+    "passed": 57
+  },
+  "telegramEntryChecks": {
+    "passed": 8,
+    "failed": 0,
+    "skipped": 0
+  },
+  "browser": {
+    "startTime": "2026-10-24T07:23:58.761Z",
+    "duration": 91333.89600000001,
+    "expected": 2,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "coverage": [
+    "single horizontal row and 44px targets at 360/430px",
+    "authenticated ledger values and refresh",
+    "all header destinations",
+    "English and Amharic controls",
+    "real private unread notification",
+    "signed Telegram avatar creation and session reuse",
+    "tampered photo rejection, privacy removal, failed-image fallback",
+    "long names and exact balance formatting"
+  ],
+  "scope": "Disposable local fixtures only. No full test suite, release build or production deployment."
+}

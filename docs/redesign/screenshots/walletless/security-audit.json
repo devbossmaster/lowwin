@@ -1,0 +1,19 @@
+{
+  "checkedAt": "2026-10-23T12:49:48.313Z",
+  "vulnerabilities": {
+    "info": 0,
+    "low": 0,
+    "moderate": 0,
+    "high": 0,
+    "critical": 0,
+    "total": 0
+  },
+  "dependencies": {
+    "prod": 154,
+    "dev": 99,
+    "optional": 114,
+    "peer": 21,
+    "peerOptional": 0,
+    "total": 308
+  }
+}

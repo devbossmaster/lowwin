@@ -1,23 +1,23 @@
-.page{padding:18px 20px 38px;background:linear-gradient(to bottom,#008000 0 200px,#fff 200px);color:#172d24}
+.page{padding:18px 20px 38px;background:#f5f4ef;color:#172d24}
 .back{display:inline-flex;align-items:center;gap:8px;min-height:44px;margin-bottom:14px;color:#172412;font-size:15px;font-weight:600;text-decoration:none}
 .intro{margin-top:24px}
 .intro h1{margin:0;font-size:23px;font-weight:700;line-height:1.5;letter-spacing:-.02em;overflow-wrap:anywhere}
-.intro p{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 22px;color:#4b6257;font-size:14px;line-height:1.6}
-.fee{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 16px;border-radius:12px;background:#f7f7f7;color:#4b6257;font-size:15px}
-.fee strong{flex:none;color:#008000;font-size:19px;font-weight:600;font-variant-numeric:tabular-nums}
+.intro p{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 22px;color:#68665e;font-size:14px;line-height:1.6}
+.fee{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 16px;border-radius:12px;background:#f7f7f7;color:#68665e;font-size:15px}
+.fee strong{flex:none;color:#181815;font-size:19px;font-weight:600;font-variant-numeric:tabular-nums}
 .summary{margin:28px 0;padding:25px 18px;border-radius:16px;background:#fff9e8;text-align:center}
 .summary>svg{margin:0 auto 10px;color:#a36b08}
 .summary h2{margin:0;font-size:26px;font-weight:700;line-height:1.4;overflow-wrap:anywhere}
-.phone{margin:5px 0 0;color:#4b6257;font-size:17px;font-variant-numeric:tabular-nums}
-.amount{display:block;margin-top:9px;color:#008000;font-size:30px;line-height:1.4;font-variant-numeric:tabular-nums}
-.closed{margin:14px 0 0;color:#4b6257;font-size:15px;line-height:1.6}
+.phone{margin:5px 0 0;color:#68665e;font-size:17px;font-variant-numeric:tabular-nums}
+.amount{display:block;margin-top:9px;color:#181815;font-size:30px;line-height:1.4;font-variant-numeric:tabular-nums}
+.closed{margin:14px 0 0;color:#68665e;font-size:15px;line-height:1.6}
 .demo{margin:12px 0 0;color:#75591d;font-size:13px;line-height:1.5}
 .activity{overflow:hidden;border:1px solid #e3e3e3;border-radius:16px}
-.activity h2{display:flex;align-items:center;justify-content:center;gap:8px;margin:0;padding:16px;background:#008000;color:#fff;font-size:18px;font-weight:650;--surface-ink:#fff;}
-.date{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:0 18px;padding:16px 0;border-bottom:1px solid #f0f0f0;color:#4b6257;font-size:14px;line-height:1.5}
+.activity h2{display:flex;align-items:center;justify-content:center;gap:8px;margin:0;padding:16px;background:#181815;color:#fff;font-size:18px;font-weight:650;--surface-ink:#fff;}
+.date{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:0 18px;padding:16px 0;border-bottom:1px solid #f0f0f0;color:#68665e;font-size:14px;line-height:1.5}
 .date svg{flex:none;color:#52734b}.date>span:last-child{margin-left:auto}.date:nth-of-type(2)>span{margin-left:0}
-.action{display:flex;align-items:center;justify-content:center;gap:8px;min-height:50px;margin:20px 18px;border-radius:12px;background:#008000;color:#fff;font-size:15px;font-weight:650;text-decoration:none;--surface-ink:#fff;}.action:hover{background:#008000;--surface-ink:#fff;color:#fff;}
+.action{display:flex;align-items:center;justify-content:center;gap:8px;min-height:50px;margin:20px 18px;border-radius:12px;background:var(--mini-action,#c9a227);color:var(--mini-action-ink,#181815);font-size:15px;font-weight:650;text-decoration:none;--surface-ink:var(--mini-action-ink,#181815)}.action:hover{background:var(--mini-action-hover,#b48e1d);color:var(--mini-action-ink,#181815)}
 .numbers{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:4px 18px 22px}.numbers>div{display:flex;align-items:center;justify-content:center;gap:10px;min-width:0}.numbers svg{flex:none;color:#52734b}.numbers>div:last-child svg{color:#a36b08}
-.numbers strong{display:block;color:#008000;font-size:26px;line-height:1.4;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.numbers small{display:block;color:#4b6257;font-size:14px}
-.page a:focus-visible{outline:3px solid #008000;outline-offset:4px}
+.numbers strong{display:block;color:#181815;font-size:26px;line-height:1.4;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.numbers small{display:block;color:#68665e;font-size:14px}
+.page a:focus-visible{outline:3px solid #181815;outline-offset:4px}
 @media(max-width:370px){.page{padding-inline:16px}.intro h1{font-size:22px}.fee{padding-inline:12px}.fee strong{font-size:17px}.numbers{gap:8px;padding-inline:12px}.numbers strong{font-size:23px}}
