@@ -18,6 +18,9 @@ test('account header: real balance, destinations, avatar fallback, language and 
   await page.addInitScript(({data})=>{window.Telegram={WebApp:{initData:data,ready(){},expand(){},setHeaderColor(){},setBackgroundColor(){}}};},{data:signedLaunch({user:JSON.stringify({id,first_name:name,photo_url:'https://header-avatar.example.test/avatar.png'})},process.env.TELEGRAM_BOT_TOKEN)});
   await page.goto('/profile');const header=page.getByRole('banner',{name:'Mini App header'});
   await expect(header.locator('[data-header-balance]')).toHaveText('0.00 ETB');
+  const balance=header.locator('a[href="/wallet"]'),pill=balance.locator('..');await expect(balance).toHaveCSS('color','rgb(255, 255, 255)');
+  const capsule=await pill.evaluate(node=>{const shape=getComputedStyle(node,'::before'),box=node.getBoundingClientRect();return {width:box.width,height:box.height-parseFloat(shape.top)-parseFloat(shape.bottom),color:shape.backgroundColor}});expect(capsule.width).toBeGreaterThanOrEqual(110);expect(capsule.width).toBeLessThanOrEqual(125);expect(capsule.height).toBe(32);expect(capsule.color).toBe('rgb(201, 162, 39)');
+  await header.screenshot({path:`${root}/header-${info.project.name}-zero.png`});
   const user=await db.user.findUniqueOrThrow({where:{telegramId:String(id)}});
   // The avatar must arrive from signed Telegram data, not a seeded database image.
   expect(user.image).toBe('https://header-avatar.example.test/avatar.png');
