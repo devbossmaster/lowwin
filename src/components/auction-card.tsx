@@ -2,11 +2,11 @@
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import {useRef,useState} from 'react';
-import {ArrowUpRight,Clock3} from 'lucide-react';
+import {ArrowUpRight,Clock3,Ticket} from 'lucide-react';
 import type {CatalogAuction} from '@/modules/auctions/catalog';
 import {CatalogImage} from './catalog-image';
 import {AuctionCountdown} from './auction-countdown';
-import {formatEtb} from '@/lib/money';
+import {etbToCents,formatEtb} from '@/lib/money';
 import {isSubmissionFeeOnly} from '@/modules/auctions/rules';
 import {MiniPhrase,useMiniLocale} from './mini-locale';
 import {useAuctionActivity,useAuctionRefresh} from './auction-activity';
@@ -19,11 +19,13 @@ export function AuctionCard({auction:initialAuction,serverNow}:{auction:CatalogA
  const {language}=useMiniLocale(),am=language==='am',live=auction.status==='live',upcoming=auction.status==='upcoming';
  const detail=`/auctions/${auction.code}`,title=am?(auction.product.titleAm?.trim()||auction.product.title):auction.product.title;
  const statusText={live:am?'ክፍት':'Live',upcoming:am?'የሚመጣ':'Upcoming',closing:am?'ውጤት በመጠባበቅ':'Result pending',closed:am?'ተጠናቋል':'Completed',cancelled:am?'ተሰርዟል':'Cancelled'}[auction.status];
+ const fee=formatEtb(auction.terms.entryFeePoints),hasFee=etbToCents(auction.terms.entryFeePoints)>0n;
  return <article className="auction-card" ref={ref}>
-  <Link className="auction-card-art" href={detail} aria-label={title}><CatalogImage src={auction.product.images[0]?.path} alt={title}/><span className={`status-tag status-${auction.status}`}>{statusText}</span>{auction.isDemo&&<span className="demo-ribbon">DEMO</span>}</Link>
-  <div className="auction-card-body"><h3><Link href={detail}>{title}</Link></h3><div className="card-facts"><span className="card-fee"><MiniPhrase en="Fee" am="ክፍያ"/> <strong>{formatEtb(auction.terms.entryFeePoints)}</strong></span><span className="card-clock"><Clock3 size={13}/>{(live||upcoming)&&serverNow?<AuctionCountdown target={upcoming?auction.startsAt:auction.endsAt} serverNow={serverNow} label={upcoming?'Starts':'Ends'} showLabel={false} onElapsed={refreshActivity}/>:statusText}</span></div>
-   {live?<button className="primary-button card-action" onClick={()=>setBidding(true)}><MiniPhrase en="Bid now" am="አሁን ይጫረቱ"/><ArrowUpRight size={16}/></button>:<Link className="secondary-button card-action" href={detail}><MiniPhrase en={upcoming?'View auction':'View result'} am={upcoming?'ጨረታውን ይመልከቱ':'ውጤቱን ይመልከቱ'}/><ArrowUpRight size={16}/></Link>}
-   <p className="card-caption"><MiniPhrase en={live?(isSubmissionFeeOnly(auction.terms.ruleVersion)?'Submission fee is non-refundable':'See auction terms'):'Scheduled'} am={live?(isSubmissionFeeOnly(auction.terms.ruleVersion)?'የማስገቢያ ክፍያው ተመላሽ አይሆንም':'የጨረታ ውሎችን ይመልከቱ'):'የተወሰነ ጊዜ'}/> · {new Date(upcoming?auction.startsAt:auction.endsAt).toLocaleString(am?'am-ET':'en-ET',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',timeZone:'Africa/Addis_Ababa'})} · <MiniPhrase en="Auction ID" am="የጨረታ መለያ"/> {auction.code}</p>
+  <Link className="auction-card-art" href={detail} aria-label={title}><CatalogImage src={auction.product.images[0]?.path} alt={title}/><span className={`status-tag status-${auction.status}`}>{statusText}</span>{auction.isDemo&&<span className="demo-ribbon">DEMO</span>}{(live||upcoming)&&<span className="auction-card-win"><MiniPhrase en="Win" am="ያሸንፉ"/></span>}</Link>
+  <div className="auction-card-body"><h3><Link href={detail}>{title}</Link></h3><div className="card-facts"><span className="card-fee"><MiniPhrase en="Fee" am="ክፍያ"/> <strong>{fee}</strong></span><span className="card-clock"><Clock3 size={13} aria-hidden="true"/>{(live||upcoming)&&serverNow?<AuctionCountdown target={upcoming?auction.startsAt:auction.endsAt} serverNow={serverNow} label={upcoming?'Starts':'Ends'} showLabel={false} onElapsed={refreshActivity}/>:statusText}</span></div>
+   {live?<button className="primary-button card-action" onClick={()=>setBidding(true)}><Ticket size={16} aria-hidden="true"/><MiniPhrase en={hasFee?`Pay ${fee} & bid`:'Bid now'} am={hasFee?`${fee} ከፍለው ይጫረቱ`:'አሁን ይጫረቱ'}/></button>:<Link className="secondary-button card-action" href={detail}><MiniPhrase en={upcoming?'View auction':'View result'} am={upcoming?'ጨረታውን ይመልከቱ':'ውጤቱን ይመልከቱ'}/><ArrowUpRight size={16} aria-hidden="true"/></Link>}
+   <p className="card-disclosure"><MiniPhrase en={hasFee?(isSubmissionFeeOnly(auction.terms.ruleVersion)?'Submission fee is non-refundable':'See auction terms'):'No entry fee'} am={hasFee?(isSubmissionFeeOnly(auction.terms.ruleVersion)?'የማስገቢያ ክፍያው ተመላሽ አይሆንም':'የጨረታ ውሎችን ይመልከቱ'):'የመግቢያ ክፍያ የለም'}/></p>
+   <p className="card-caption"><span><MiniPhrase en={upcoming?'Starts':live?'Closes':'Scheduled close'} am={upcoming?'የሚጀምረው':live?'የሚዘጋው':'የመዝጊያ ጊዜ'}/> · <time dateTime={upcoming?auction.startsAt:auction.endsAt}>{new Date(upcoming?auction.startsAt:auction.endsAt).toLocaleString(am?'am-ET':'en-ET',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',timeZone:'Africa/Addis_Ababa'})}</time></span><span>· <MiniPhrase en="Auction ID" am="የጨረታ መለያ"/> {auction.code}</span></p>
   </div>{bidding&&<BidSheet auction={auction} serverNow={serverNow??new Date().toISOString()} onClose={()=>setBidding(false)}/>}
  </article>;
 }
