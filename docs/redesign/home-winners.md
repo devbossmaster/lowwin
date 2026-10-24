@@ -4,7 +4,7 @@
 
 ## Customer behavior
 
-- Home preserves the existing logo, compact account header and photographic banner. The order is main categories, sorting, live auctions in batches of ten, recent winners, then How Bidding Works and existing policy/support links. Category, search and sort survive pagination; duplicate auction codes are discarded.
+- Home preserves the existing logo, compact account header and photographic banner. The order is main categories, horizontally scrolling sorting, live auctions in batches of ten, recent winners, then the [illustrated bidding guide](home-guide.md). A single Terms and conditions apply link replaces the separate Home footer. Category, search and sort survive pagination; duplicate auction codes are discarded.
 - Bottom navigation is Home, Winners, My Bids and Profile. The header hammer opens auction browsing with Live and Upcoming tabs. Old Draws links resolve to Winners or Upcoming browsing as appropriate. Personal bids remain separate.
 - Winners contains genuine completed winner settlements only. Cards reuse product imagery; there are no fabricated announcements or unconsented winner portraits. Clearly labeled QA records in these screenshots exist only in disposable local databases.
 - The separately guarded [local staging preview](ui-preview-seed.md) can show labeled, committed demo settlements. Normal and production environments continue excluding demo/test-run results. [Current card styling and mobile captures](auction-cards.md).
