@@ -27,7 +27,7 @@ test('account header: real balance, destinations, avatar fallback, language and 
   await creditDevelopmentPoints(db,user.id,'1234.50','header-fixture-'+randomUUID());
   await page.evaluate(()=>window.dispatchEvent(new Event('lowin-wallet-updated')));
   await expect(header.locator('[data-header-balance]')).toHaveText('1234.50 ETB');
-  const brand=header.getByRole('link',{name:'Lowwin Home',exact:true});await expect(brand).toHaveText('Lowwin');await expect(brand).toHaveCSS('color','rgb(0, 0, 0)');
+  const brand=header.getByRole('link',{name:'Lowwin Home',exact:true});await expect(brand).toHaveText('');await expect(brand.locator('img')).toBeVisible();await expect(brand).toHaveCSS('color','rgb(0, 0, 0)');
   const profile=header.getByRole('link',{name:`Profile, ${name}`,exact:true});await expect(profile).toHaveAttribute('href','/profile');
   await expect(profile.locator('img')).toBeVisible();await expect.poll(()=>profile.locator('img').evaluate((image:HTMLImageElement)=>image.complete&&image.naturalWidth>0)).toBe(true);
   for(const control of await header.locator('a,button').all()){const box=await control.boundingBox();expect(box!.width).toBeGreaterThanOrEqual(44);expect(box!.height).toBeGreaterThanOrEqual(44)}
