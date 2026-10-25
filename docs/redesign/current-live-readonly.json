@@ -1,0 +1,27 @@
+[
+  {
+    "path": "/api/health/live",
+    "status": 204,
+    "ms": 1126,
+    "cache": [
+      "no-store"
+    ],
+    "contentType": null
+  },
+  {
+    "path": "/api/me",
+    "status": 401,
+    "ms": 832,
+    "cache": [
+      "no-store, max-age=0, private"
+    ],
+    "contentType": [
+      "application/json"
+    ]
+  },
+  {
+    "path": "/api/payments/arifpay",
+    "status": "unreachable",
+    "ms": 20043
+  }
+]

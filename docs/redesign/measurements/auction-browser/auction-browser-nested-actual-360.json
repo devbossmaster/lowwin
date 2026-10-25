@@ -1,0 +1,38 @@
+{
+  "fixture": "fresh guarded synthetic verified contact/account; actual local catalog API; no financial fixture writes",
+  "timingClaims": false,
+  "reason": "Parallel local QA; prior isolated observations remain separate",
+  "width": 360,
+  "languages": [
+    {
+      "language": "en",
+      "liveTotal": 14,
+      "upcomingTotal": 0,
+      "cachedReopen": true,
+      "focusAndBack": true,
+      "noHorizontalOverflow": true
+    },
+    {
+      "language": "am",
+      "liveTotal": 14,
+      "upcomingTotal": 0,
+      "cachedReopen": true,
+      "focusAndBack": true,
+      "noHorizontalOverflow": true
+    }
+  ],
+  "quickRequests": [
+    "live:1",
+    "upcoming:1"
+  ],
+  "summaryRequests": 1,
+  "footerUpcomingNavigation": true,
+  "footerSamePathLiveNavigation": true,
+  "footerExactCurrentCloses": true,
+  "liveNestedBid": true,
+  "childReopenExtraDetailReads": 0,
+  "childReopenExtraOwnBidReads": 0,
+  "financialPosts": 0,
+  "privateBreakdownRequests": 0,
+  "errors": []
+}

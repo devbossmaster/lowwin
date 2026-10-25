@@ -3,7 +3,7 @@ import {useEffect,useId,useState,useSyncExternalStore} from 'react';
 import {createPortal} from 'react-dom';
 import {usePathname} from 'next/navigation';
 import {useMiniLocale} from './mini-locale';
-import {MiniInlineSkeleton} from './mini-route-skeleton';
+import {customerLoadingCopy,type CustomerLoadingCopy} from './customer-loading-copy';
 const pages=new Set<string>();
 const listeners=new Set<()=>void>();
 const subscribe=(listener:()=>void)=>{listeners.add(listener);return()=>{listeners.delete(listener)}};
@@ -11,9 +11,13 @@ const first=()=>pages.values().next().value??'';
 const announce=()=>listeners.forEach(listener=>listener());
 const inertRoots=new Map<HTMLElement,boolean>();
 
-export function LoadingSpinner({label,className=''}:{label?:string;className?:string}){
+export function LoadingSpinner({label,className='',decorative=false}:{label?:string;className?:string;decorative?:boolean}){
  const {language}=useMiniLocale();
- return <span className={`loading-spinner ${className}`} role="status"><span className="loading-spinner-ring" aria-hidden="true"/><span className="sr-only">{label??(language==='am'?'በመጫን ላይ…':'Loading…')}</span></span>;
+ return <span className={`loading-spinner ${className}`} role={decorative?undefined:'status'} aria-hidden={decorative||undefined}><span className="loading-spinner-ring" aria-hidden="true"/>{!decorative&&<span className="sr-only">{label??(language==='am'?'በመጫን ላይ…':'Loading…')}</span>}</span>;
+}
+export function CustomerLoading({en='Loading…',am='በመጫን ላይ…',compact=false}:Partial<CustomerLoadingCopy>&{compact?:boolean}){
+ const {language}=useMiniLocale(),message=language==='am'?am:en;
+ return <div className={`customer-loading${compact?' customer-loading-compact':''}`} role="status" aria-live="polite" aria-busy="true"><LoadingSpinner decorative/><p>{message}</p></div>;
 }
 /** One overlay for concurrent page requests; mounted outside filtered page ancestors. */
 export function PageLoading(){
@@ -30,6 +34,6 @@ export function PageLoading(){
   announce();
   return()=>{pages.delete(id);if(!pages.size){for(const [node,prior] of inertRoots)node.inert=prior;inertRoots.clear()}announce()};
  },[id,admin]);
- if(!admin)return <MiniInlineSkeleton/>;
+ if(!admin)return <CustomerLoading {...customerLoadingCopy(pathname??'/')}/>;
  return mounted&&active===id?createPortal(<div className="page-loading-backdrop" aria-busy="true"><div className="page-loading-indicator"><LoadingSpinner/></div></div>,document.body):null;
 }

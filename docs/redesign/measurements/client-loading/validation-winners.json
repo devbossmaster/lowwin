@@ -1,0 +1,41 @@
+{
+  "stage": "Final optimized Winners cache and performance rerun",
+  "stats": {
+    "startTime": "2026-10-25T20:24:22.421Z",
+    "duration": 100801.117,
+    "expected": 2,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "tests": [
+    {
+      "title": "focused first/repeat sheet and navigation request measurements",
+      "project": "360",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "durationMs": 46190
+        }
+      ]
+    },
+    {
+      "title": "focused first/repeat sheet and navigation request measurements",
+      "project": "430",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "durationMs": 44607
+        }
+      ]
+    }
+  ],
+  "priorRegression": "validation-prior-eight.json",
+  "notes": [
+    "Final rerun covers both widths and normal/slow contexts, authenticated Winners boundaries, settled-only DTOs, first/repeat request reuse, pagination, and exact Home scroll/filter/batch restoration.",
+    "Earlier eight-case regression also covers unchanged populated/empty My Bids English/Amharic accuracy, receipts, focus, reduced motion, and retry.",
+    "No config, environment, credentials, or traces are included."
+  ]
+}

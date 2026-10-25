@@ -1,38 +1,27 @@
+import Link from 'next/link';
+import {ArrowRight} from 'lucide-react';
 import {HomeHero} from '@/components/home-hero';
+import {HomeCategories} from '@/components/home-categories';
+import {HomeAuctions} from '@/components/home-auctions';
+import {HomeHowItWorks} from '@/components/home-how-it-works';
 import {resolveHomeCopy} from '@/components/home-copy';
 import {publicHomeContent} from '@/modules/admin/public-content';
-import Link from 'next/link';
-import { ArrowRight,ArrowUpRight,LockKeyhole } from 'lucide-react';
+import {MiniPhrase} from '@/components/mini-locale';
+import {parseBrowseQuery} from '@/modules/auctions/browse-query';
+import {OfflineRetry} from '@/components/offline-retry';
+import {WinnerCards} from '@/components/winner-cards';
+import {resolveLearnMoreMedia} from '@/lib/learn-more-media';
+import {db} from '@/lib/db';
+import {listCompletedWinners} from '@/modules/auctions/results';
+import {stagingDemoEnabled} from '@/modules/auctions/staging-demo';
+import {listAuctions,listCategories,serverNow} from '@/modules/auctions/catalog';
 import styles from '@/components/home-banner.module.css';
-import {HomeCategories} from '@/components/home-categories';
-import {MiniPhrase,MiniText} from '@/components/mini-locale';
-import { db } from '@/lib/db';
-import { listPublicResults } from '@/modules/auctions/results';
-import { FeaturedCarousel } from '@/components/featured-carousel';
-import { ClosedAuctionCarousel } from '@/components/closed-auction-carousel';
-import { HomeFinish } from '@/components/home-finish';
-import { OfflineRetry } from '@/components/offline-retry';
-import { listAuctions,listCategories,serverNow } from '@/modules/auctions/catalog';
-export default async function Home() {
-  try{return await HomeWithCatalog()}catch(error){
-    const failure=error as {code?:string;meta?:{modelName?:string}};
-    if(failure.code==='P2021'&&['Auction','Category','Product','AuctionTerms','PublicAuctionResult','AuctionSettlement'].includes(failure.meta?.modelName??''))return <section className="page-inset empty-state"><h1>The catalog is being prepared</h1><p>Auctions are not available yet. Please check back later.</p><Link className="text-link" href="/faq">Read how Lowwin works</Link></section>;
-    throw error;
-  }
-}
-async function HomeWithCatalog() {
-  const now=await serverNow();
-  const [categories,live,upcoming,closed,managed]=await Promise.all([listCategories(now),listAuctions({q:'',status:'live',sort:'code',page:1},now,20),listAuctions({q:'',status:'upcoming',sort:'code',page:1},now,5),listPublicResults(db),publicHomeContent()]);
-  const heroCopy=resolveHomeCopy(managed);
-  const byCode=(left:{code:string},right:{code:string})=>Number(left.code)-Number(right.code);
-  const featured=[...live.items.filter(item=>item.featured),...live.items.filter(item=>!item.featured)].slice(0,5).sort(byCode);
-  const ending=live.items.filter(item=>new Date(item.endsAt).getTime()-now.getTime()<=86400000).sort((left,right)=>Date.parse(left.endsAt)-Date.parse(right.endsAt)).slice(0,3);
-  return <><OfflineRetry/><HomeHero copy={heroCopy} items={[...upcoming.items,...featured].filter((item,index,all)=>all.findIndex(other=>other.code===item.code)===index).sort(byCode)}/>
-  <HomeCategories categories={categories}/>
-  {featured.length>0&&<section className={`${styles.featuredSection} catalog-section`}><div className="section-heading"><div><h2><MiniPhrase en="Featured & live auctions" am="ተለይተው የቀረቡ እና በሂደት ላይ ያሉ ጨረታዎች"/></h2><p><MiniPhrase en="The lowest unique number wins. Check the submission fee and closing time before you bid." am="ዝቅተኛው ልዩ የጨረታ ቁጥር ያሸንፋል። ከመሳተፍዎ በፊት የማስገቢያ ክፍያውን እና የመዘጊያ ጊዜውን ይመልከቱ።"/></p></div></div><FeaturedCarousel items={featured} serverNow={now.toISOString()}/><Link href="/auctions/all?status=live" className={styles.featuredAll}><MiniPhrase en="View all live" am="ሁሉንም ቀጥታ ጨረታዎች ይመልከቱ"/> <ArrowRight size={16}/></Link></section>}
-  <section className={`${styles.featuredSection} ${styles.upcomingSection} catalog-section`}><div className="section-heading"><div><h2><MiniPhrase en="Upcoming auctions" am="የሚመጡ ጨረታዎች"/></h2><p><MiniPhrase en="See what is opening next and when bidding begins." am="ቀጥሎ የሚከፈቱ ጨረታዎችን እና የመጀመሪያ ጊዜያቸውን ይመልከቱ።"/></p></div></div>{upcoming.items.length>0?<><FeaturedCarousel items={upcoming.items} serverNow={now.toISOString()} variant="upcoming"/><Link href="/auctions/all?status=upcoming" className={styles.featuredAll}><MiniPhrase en="See all upcoming auctions" am="ሁሉንም የሚመጡ ጨረታዎች ይመልከቱ"/> <ArrowRight size={16}/></Link></>:<p className="inline-empty"><MiniPhrase en="No upcoming auctions yet." am="ገና የሚመጣ ጨረታ የለም።"/></p>}</section>
-  <section className={`${styles.featuredSection} ${styles.endingSection} catalog-section`}><div className="section-heading"><div><h2><MiniPhrase en="Ending soon auctions" am="በቅርቡ የሚያበቁ ጨረታዎች"/></h2><p><MiniPhrase en="These auctions close within 24 hours. Place your bid before time runs out." am="እነዚህ ጨረታዎች በ24 ሰዓት ውስጥ ያበቃሉ። ጊዜው ከማለቁ በፊት ጨረታዎን ያቅርቡ።"/></p></div></div>{ending.length>0?<><FeaturedCarousel items={ending} serverNow={now.toISOString()} variant="ending"/><Link href="/auctions/all?status=live&sort=ending" className={styles.featuredAll}><MiniPhrase en="View ending auctions" am="በቅርቡ የሚያበቁትን ይመልከቱ"/> <ArrowRight size={16}/></Link></>:<p className="inline-empty"><MiniText id="nothingEnding"/></p>}</section>
-  <section className={`${styles.featuredSection} ${styles.closedSection} catalog-section`}><div className="section-heading"><div><h2><MiniPhrase en="Closed auctions" am="የተዘጉ ጨረታዎች"/></h2><p><MiniPhrase en="See final outcomes after closing. A passed end time alone never declares a winner." am="ጨረታው ከተዘጋ በኋላ የመጨረሻ ውጤቱን ይመልከቱ። የመዝጊያ ጊዜ ማለፍ ብቻ አሸናፊ አያረጋግጥም።"/></p></div></div>{closed.items.length>0?<><ClosedAuctionCarousel items={closed.items.slice(0,5)}/><Link href="/auctions/all?status=closed" className={styles.featuredAll}><MiniPhrase en="View closed auctions" am="ሁሉንም የተዘጉ ጨረታዎች ይመልከቱ"/> <ArrowRight size={16}/></Link></>:<p className="inline-empty"><MiniText id="noResults"/></p>}</section>
-  <section className="home-how"><div className="section-heading"><h2><MiniText id="questions"/></h2><Link href="/faq" aria-label="Read all frequently asked questions"><ArrowUpRight size={21}/></Link></div><p className="section-copy"><MiniText id="faqBlurb"/></p><Link className="text-link" href="/faq"><MiniText id="readFaq"/> <ArrowRight size={16}/></Link></section>
-  <div className="page-inset"><div className="quiet-note"><LockKeyhole size={16}/><p><MiniText id="privateBids"/></p></div></div><HomeFinish/></>;
+export default async function Home({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}){
+ const params=await searchParams,query=parseBrowseQuery({...params,status:'live',sort:params.sort??'code',page:'1'}),now=await serverNow();
+ const [categories,auctions,winners,managed]=await Promise.all([listCategories(now),listAuctions(query,now,10),listCompletedWinners(db,1,6),publicHomeContent()]);
+ const media=resolveLearnMoreMedia({youtube:process.env.LOWIN_YOUTUBE_URL,local:process.env.LOWIN_HOW_TO_VIDEO_PATH,poster:process.env.LOWIN_HOW_TO_POSTER_PATH});
+ return <><OfflineRetry/><HomeHero copy={resolveHomeCopy(managed)} media={media}/>
+  <HomeCategories categories={categories} query={query} home/><HomeAuctions key={`${query.category??'all'}:${query.sort}:${query.q}`} initial={auctions} query={query}/>
+  <section id="recent-winners" tabIndex={-1} className={styles.winnersSection} style={{scrollMarginTop:20}}><div className={styles.heading}><h2><MiniPhrase en="Recent winners" am="የቅርብ አሸናፊዎች"/></h2><Link href="/winners"><MiniPhrase en="View all" am="ሁሉንም ይመልከቱ"/><ArrowRight/></Link></div><WinnerCards items={winners.items} carousel allowDemo={stagingDemoEnabled()}/></section><HomeHowItWorks media={media}/>
+ </>;
 }

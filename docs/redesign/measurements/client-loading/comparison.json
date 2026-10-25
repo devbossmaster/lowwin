@@ -1,0 +1,268 @@
+{
+  "notes": [
+    "Optimized webpack HTTPS loopback; signed local Telegram fixtures with SDK blocked via CDP.",
+    "Fresh browser contexts retain normal HTTP cache; slow profile150ms RTT,125KB/s download,64KB/s upload.",
+    "Sheet visible and actual data-ready are separate; navigation completeDataMs includes150ms settling and is not exact data readiness.",
+    "Only one first load plus two reopen samples per connection/width; no production/device/p95 claims.",
+    "Shared fixture product image limits inference about distinct inventory image downloads; asset collector omits /_next/image byte totals.",
+    "Baseline My Bids default Active can be empty; final All includes20 accepted rows, so navigation data timings are not equal-payload API benchmarks."
+  ],
+  "rows": [
+    {
+      "width": 360,
+      "connection": "normal",
+      "before": {
+        "homeMs": 4121,
+        "sheetVisibleMs": 1055,
+        "sheetDataMs": 1122,
+        "repeatVisibleMs": "139–145",
+        "repeatDataMs": "201–212",
+        "bidReadsOnRepeat": 0,
+        "initialRequests": 55,
+        "initialRsc": 13,
+        "initialScripts": 25,
+        "sheetRsc": 4,
+        "jsBytes": 261288,
+        "fontBytes": 73360,
+        "idleApi5s": 4,
+        "concurrentExactApiDuplicates": 0,
+        "homeRestores": [
+          {
+            "filters": false,
+            "batches": false,
+            "scrollDelta": 3202
+          },
+          {
+            "filters": false,
+            "batches": false,
+            "scrollDelta": 3202
+          }
+        ],
+        "financialPosts": 0,
+        "errors": []
+      },
+      "after": {
+        "homeMs": 2691,
+        "sheetVisibleMs": 272,
+        "sheetDataMs": 477,
+        "repeatVisibleMs": "164–166",
+        "repeatDataMs": "229–231",
+        "bidReadsOnRepeat": 0,
+        "initialRequests": 38,
+        "initialRsc": 2,
+        "initialScripts": 22,
+        "sheetRsc": 0,
+        "jsBytes": 255716,
+        "fontBytes": 58196,
+        "idleApi5s": 2,
+        "concurrentExactApiDuplicates": 0,
+        "homeRestores": [
+          {
+            "filters": true,
+            "batches": true,
+            "scrollDelta": 0
+          },
+          {
+            "filters": true,
+            "batches": true,
+            "scrollDelta": 0
+          }
+        ],
+        "financialPosts": 0,
+        "errors": []
+      }
+    },
+    {
+      "width": 360,
+      "connection": "slow",
+      "before": {
+        "homeMs": 5534,
+        "sheetVisibleMs": 1007,
+        "sheetDataMs": 1050,
+        "repeatVisibleMs": "103–133",
+        "repeatDataMs": "151–184",
+        "bidReadsOnRepeat": 0,
+        "initialRequests": 55,
+        "initialRsc": 13,
+        "initialScripts": 25,
+        "sheetRsc": 4,
+        "jsBytes": 261288,
+        "fontBytes": 73360,
+        "idleApi5s": 3,
+        "concurrentExactApiDuplicates": 0,
+        "homeRestores": [
+          {
+            "filters": false,
+            "batches": false,
+            "scrollDelta": 3202
+          },
+          {
+            "filters": false,
+            "batches": false,
+            "scrollDelta": 3202
+          }
+        ],
+        "financialPosts": 0,
+        "errors": []
+      },
+      "after": {
+        "homeMs": 5374,
+        "sheetVisibleMs": 207,
+        "sheetDataMs": 281,
+        "repeatVisibleMs": "164–178",
+        "repeatDataMs": "227–244",
+        "bidReadsOnRepeat": 0,
+        "initialRequests": 39,
+        "initialRsc": 2,
+        "initialScripts": 22,
+        "sheetRsc": 0,
+        "jsBytes": 255716,
+        "fontBytes": 58196,
+        "idleApi5s": 2,
+        "concurrentExactApiDuplicates": 0,
+        "homeRestores": [
+          {
+            "filters": true,
+            "batches": true,
+            "scrollDelta": 0
+          },
+          {
+            "filters": true,
+            "batches": true,
+            "scrollDelta": 0
+          }
+        ],
+        "financialPosts": 0,
+        "errors": []
+      }
+    },
+    {
+      "width": 430,
+      "connection": "normal",
+      "before": {
+        "homeMs": 1724,
+        "sheetVisibleMs": 541,
+        "sheetDataMs": 622,
+        "repeatVisibleMs": "114–144",
+        "repeatDataMs": "179–231",
+        "bidReadsOnRepeat": 0,
+        "initialRequests": 53,
+        "initialRsc": 13,
+        "initialScripts": 25,
+        "sheetRsc": 4,
+        "jsBytes": 261288,
+        "fontBytes": 73360,
+        "idleApi5s": 4,
+        "concurrentExactApiDuplicates": 0,
+        "homeRestores": [
+          {
+            "filters": false,
+            "batches": false,
+            "scrollDelta": 3445
+          },
+          {
+            "filters": false,
+            "batches": false,
+            "scrollDelta": 3445
+          }
+        ],
+        "financialPosts": 0,
+        "errors": []
+      },
+      "after": {
+        "homeMs": 1470,
+        "sheetVisibleMs": 201,
+        "sheetDataMs": 263,
+        "repeatVisibleMs": "162–176",
+        "repeatDataMs": "231–234",
+        "bidReadsOnRepeat": 0,
+        "initialRequests": 38,
+        "initialRsc": 2,
+        "initialScripts": 22,
+        "sheetRsc": 0,
+        "jsBytes": 255716,
+        "fontBytes": 58196,
+        "idleApi5s": 2,
+        "concurrentExactApiDuplicates": 0,
+        "homeRestores": [
+          {
+            "filters": true,
+            "batches": true,
+            "scrollDelta": 0
+          },
+          {
+            "filters": true,
+            "batches": true,
+            "scrollDelta": 0
+          }
+        ],
+        "financialPosts": 0,
+        "errors": []
+      }
+    },
+    {
+      "width": 430,
+      "connection": "slow",
+      "before": {
+        "homeMs": 5534,
+        "sheetVisibleMs": 999,
+        "sheetDataMs": 1076,
+        "repeatVisibleMs": "134–141",
+        "repeatDataMs": "193–205",
+        "bidReadsOnRepeat": 0,
+        "initialRequests": 55,
+        "initialRsc": 13,
+        "initialScripts": 25,
+        "sheetRsc": 4,
+        "jsBytes": 261288,
+        "fontBytes": 73360,
+        "idleApi5s": 3,
+        "concurrentExactApiDuplicates": 0,
+        "homeRestores": [
+          {
+            "filters": false,
+            "batches": false,
+            "scrollDelta": 3445
+          },
+          {
+            "filters": false,
+            "batches": false,
+            "scrollDelta": 3445
+          }
+        ],
+        "financialPosts": 0,
+        "errors": []
+      },
+      "after": {
+        "homeMs": 5487,
+        "sheetVisibleMs": 200,
+        "sheetDataMs": 278,
+        "repeatVisibleMs": "161–162",
+        "repeatDataMs": "226–238",
+        "bidReadsOnRepeat": 0,
+        "initialRequests": 39,
+        "initialRsc": 2,
+        "initialScripts": 22,
+        "sheetRsc": 0,
+        "jsBytes": 255716,
+        "fontBytes": 58196,
+        "idleApi5s": 2,
+        "concurrentExactApiDuplicates": 0,
+        "homeRestores": [
+          {
+            "filters": true,
+            "batches": true,
+            "scrollDelta": 0
+          },
+          {
+            "filters": true,
+            "batches": true,
+            "scrollDelta": 0
+          }
+        ],
+        "financialPosts": 0,
+        "errors": []
+      }
+    }
+  ]
+}

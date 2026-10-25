@@ -1,7 +1,8 @@
 'use client';
 import {useEffect,useState} from 'react';
-import {usePathname} from 'next/navigation';
+import {usePathname,useRouter} from 'next/navigation';
 import {useTelegram} from './telegram-provider';
+import {miniReturnPath} from '@/lib/mini-return';
 import {ContactGate} from './contact-gate';
 import {LaunchSplash} from './launch-splash';
 import {RotateCcw,ArrowUpRight} from 'lucide-react';
@@ -9,7 +10,7 @@ import {Button} from './ui/button';
 import {TelegramBotLink} from './telegram-bot-link';
 import styles from './telegram-entry.module.css';
 export function TelegramEntry({onComplete}:{onComplete?:()=>void}={}){
-  const pathname=usePathname();
+  const pathname=usePathname(),router=useRouter();
   const {status,botUrl,error,needsReopen,retry}=useTelegram();
   const [handedOff,setHandedOff]=useState(false);
   const [reloading,setReloading]=useState(false);
@@ -20,7 +21,8 @@ export function TelegramEntry({onComplete}:{onComplete?:()=>void}={}){
     let frame=0,paintFrame=0;
     frame=window.requestAnimationFrame(()=>{paintFrame=window.requestAnimationFrame(()=>{
       if(pathname==='/telegram'){
-        window.location.replace('/'+window.location.hash);
+        const destination=miniReturnPath(new URL(window.location.href).searchParams.get('next'));
+        router.replace(destination+(destination.includes('#')?'':window.location.hash));
       }else if(onComplete){
         onComplete();
       }else{
@@ -30,7 +32,7 @@ export function TelegramEntry({onComplete}:{onComplete?:()=>void}={}){
       }
     })});
     return()=>{window.cancelAnimationFrame(frame);window.cancelAnimationFrame(paintFrame)};
-  },[status,telegramLaunch,pathname,onComplete]);
+  },[status,telegramLaunch,pathname,onComplete,router]);
   if(status==='contact-required')return <ContactGate/>;
   if(status==='loading'||(status==='authenticated'&&telegramLaunch))return <LaunchSplash complete={status==='authenticated'}/>;
   return <main id="main" className={`telegram-entry ${styles.screen}`}>

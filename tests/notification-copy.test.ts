@@ -29,6 +29,18 @@ describe('notification display language',()=>{
   expect(translate('AUCTION_MINIMUM_CANCELLED').body).toContain('ሁሉም የመግቢያ ክፍያዎች ተመልሰዋል');
   expect(translate('AUCTION_FALLBACK_WON').body).toContain('በመረጃ ቋቱ መጀመሪያ');
  });
+ it('does not translate v4 cancellation into the legacy fee refund promise',()=>{
+  const item={kind:'AUCTION_MINIMUM_CANCELLED',title:'Auction cancelled: participant minimum not met',body:'Auction cancelled. Accepted submission fees are non-refundable.'};
+  expect(notificationCopy(item,'en').body).toBe(item.body);
+  expect(notificationCopy(item,'am').body).toContain('አይመለስም');
+  expect(notificationCopy(item,'am').body).not.toContain('ተመልሰዋል');
+  expect(item.body).toBe('Auction cancelled. Accepted submission fees are non-refundable.');
+ });
+ it('does not introduce held money into the v4 completed result notice',()=>{
+  const item={kind:'AUCTION_CLOSED',title:'Auction closed',body:'Your result is ready. The chosen number is not charged.'};
+  expect(notificationCopy(item,'am').body).toContain('የመረጡት ቁጥር አይከፈልም');
+  expect(notificationCopy(item,'am').body).not.toContain('የተለቀቀውን ገንዘብ');
+ });
  it('retains unfamiliar messages instead of inventing an outcome',()=>{
   const item={kind:'CUSTOM',title:'Owner announcement',body:'Specific announcement'};
   expect(notificationCopy(item,'am')).toEqual({title:item.title,body:item.body});

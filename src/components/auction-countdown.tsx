@@ -1,10 +1,12 @@
 'use client';
 import { useEffect, useState } from 'react';
 import {useMiniLocale} from './mini-locale';
-export function AuctionCountdown({target,serverNow,label,showLabel=true,onElapsed}:{target:string;serverNow:string;label:string;showLabel?:boolean;onElapsed?:()=>void}) {
+import {AuctionClockAnchors} from '@/lib/auction-clock';
+const clocks=new AuctionClockAnchors();
+export function AuctionCountdown({target,serverNow,observedAt,label,showLabel=true,onElapsed}:{target:string;serverNow:string;observedAt?:number;label:string;showLabel?:boolean;onElapsed?:()=>void}) {
   const {language}=useMiniLocale(),am=language==='am';
-  const [remaining,setRemaining]=useState(()=>Math.max(0,new Date(target).getTime()-new Date(serverNow).getTime()));
-  useEffect(()=>{const began=Date.now(),initial=Math.max(0,new Date(target).getTime()-new Date(serverNow).getTime());const tick=()=>setRemaining(Math.max(0,initial-(Date.now()-began)));tick();const id=setInterval(tick,1000);return()=>clearInterval(id)},[target,serverNow]);
+  const [remaining,setRemaining]=useState(()=>clocks.initial(target,serverNow,observedAt,Date.now()));
+  useEffect(()=>{const anchor=clocks.observe(serverNow,observedAt,Date.now());const tick=()=>setRemaining(clocks.remaining(target,serverNow,anchor,Date.now()));tick();const id=setInterval(tick,1000);return()=>clearInterval(id)},[target,serverNow,observedAt]);
   useEffect(()=>{if(remaining===0)onElapsed?.()},[remaining,onElapsed]);
   if(remaining===0)return <span className="countdown" role="timer">{label==='Starts'?(am?'አሁን ይጀምራል':'Starting now'):(am?'ጨረታው አብቋል':'Auction ended')}</span>;
   const seconds=Math.floor(remaining/1000),days=Math.floor(seconds/86400),hours=Math.floor(seconds%86400/3600),minutes=Math.floor(seconds%3600/60),s=seconds%60;

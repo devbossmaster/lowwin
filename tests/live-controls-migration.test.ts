@@ -67,21 +67,24 @@ describe.skipIf(!base)('live controls migration over accepted bids',()=>{
    await expect(pg.query(`UPDATE "AuctionTerms" SET "entryFeePoints"=3 WHERE id='upgrade-terms'`)).rejects.toThrow('Immutable');
    for(const dir of dirs.filter(d=>d>migration))await pg.query(readFileSync(`prisma/migrations/${dir}/migration.sql`,'utf8'));
    expect(await snapshot()).toEqual(before);
-   const deadlineBefore=(await pg.query(`SELECT "endsAt" FROM "Auction" WHERE id='upgrade-auction'`)).rows[0].endsAt as Date;
+   const deadlineBefore=(await pg.query(`SELECT "endsAt" AT TIME ZONE 'UTC' AS "endsAt" FROM "Auction" WHERE id='upgrade-auction'`)).rows[0].endsAt as Date;
    const deadlineAfter=new Date(deadlineBefore.getTime()+60*60*1000);
-   await expect(pg.query(`UPDATE "Auction" SET "endsAt"=$1 WHERE id='upgrade-auction'`,[deadlineAfter])).rejects.toThrow(/control revision/);
+   // Later additive migrations may have already written a fee-policy control
+   // revision. Extend from the current durable sequence instead of reusing 1.
+   const nextVersion=Number((await pg.query(`SELECT "controlVersion" FROM "Auction" WHERE id='upgrade-auction'`)).rows[0].controlVersion)+1;
+   await expect(pg.query(`UPDATE "Auction" SET "endsAt"=($1::timestamptz AT TIME ZONE 'UTC') WHERE id='upgrade-auction'`,[deadlineAfter])).rejects.toThrow(/control revision/);
    await pg.query(`INSERT INTO "AuctionControlRevision"
      (id,"auctionId",version,kind,"before","after","actorId",reason,"operationKey")
-     VALUES ('upgrade-deadline','upgrade-auction',1,'DEADLINE',$1::jsonb,$2::jsonb,'upgrade-user','Test controlled extension','upgrade-deadline-op')`,
-     [JSON.stringify({endsAt:deadlineBefore.toISOString()}),JSON.stringify({endsAt:deadlineAfter.toISOString()})]);
-   await pg.query(`UPDATE "Auction" SET "endsAt"=$1,"controlVersion"=1 WHERE id='upgrade-auction'`,[deadlineAfter]);
-   expect((await pg.query(`SELECT "endsAt" FROM "Auction" WHERE id='upgrade-auction'`)).rows[0].endsAt).toEqual(deadlineAfter);
+     VALUES ('upgrade-deadline','upgrade-auction',$3,'DEADLINE',$1::jsonb,$2::jsonb,'upgrade-user','Test controlled extension','upgrade-deadline-op')`,
+     [JSON.stringify({endsAt:deadlineBefore.toISOString()}),JSON.stringify({endsAt:deadlineAfter.toISOString()}),nextVersion]);
+   await pg.query(`UPDATE "Auction" SET "endsAt"=($1::timestamptz AT TIME ZONE 'UTC'),"controlVersion"=$2 WHERE id='upgrade-auction'`,[deadlineAfter,nextVersion]);
+   expect((await pg.query(`SELECT "endsAt" AT TIME ZONE 'UTC' AS "endsAt" FROM "Auction" WHERE id='upgrade-auction'`)).rows[0].endsAt).toEqual(deadlineAfter);
    const prematureEnd=new Date(Date.now()+60*60*1000);
    await pg.query(`INSERT INTO "AuctionControlRevision"
      (id,"auctionId",version,kind,"before","after","actorId",reason,"operationKey")
-     VALUES ('upgrade-shortening','upgrade-auction',2,'DEADLINE',$1::jsonb,$2::jsonb,'upgrade-user','Test rejected shortening','upgrade-shortening-op')`,
-     [JSON.stringify({endsAt:deadlineAfter.toISOString()}),JSON.stringify({endsAt:prematureEnd.toISOString()})]);
-   await expect(pg.query(`UPDATE "Auction" SET "endsAt"=$1,"controlVersion"=2 WHERE id='upgrade-auction'`,[prematureEnd])).rejects.toThrow(/control revision/);
+     VALUES ('upgrade-shortening','upgrade-auction',$3,'DEADLINE',$1::jsonb,$2::jsonb,'upgrade-user','Test rejected shortening','upgrade-shortening-op')`,
+     [JSON.stringify({endsAt:deadlineAfter.toISOString()}),JSON.stringify({endsAt:prematureEnd.toISOString()}),nextVersion+1]);
+   await expect(pg.query(`UPDATE "Auction" SET "endsAt"=($1::timestamptz AT TIME ZONE 'UTC'),"controlVersion"=$2 WHERE id='upgrade-auction'`,[prematureEnd,nextVersion+1])).rejects.toThrow(/control revision/);
   }finally{await pg.query('ROLLBACK').catch(()=>{});await pg.end()}
  },60000);
 });

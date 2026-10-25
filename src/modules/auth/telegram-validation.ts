@@ -2,7 +2,13 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 
 export const miniAppBody = z.object({ initData: z.string().min(1).max(16384) }).strict();
-const userSchema = z.object({ id: z.number().int().positive().safe(), first_name: z.string().min(1).max(256) });
+const userSchema = z.object({ id: z.number().int().positive().safe(), first_name: z.string().min(1).max(256),photo_url:z.unknown().optional() });
+// Photo metadata is presentation only, read after the launch signature passes.
+// Invalid/absent photos never weaken authentication or become executable URLs.
+export function telegramPhotoUrl(value:unknown):string|null {
+  if(typeof value!=='string'||value.length>2048)return null;
+  try{const url=new URL(value);return url.protocol==='https:'&&!url.username&&!url.password?url.href:null}catch{return null}
+}
 export function validateTelegramInitData(raw: string, botToken: string, now = Math.floor(Date.now() / 1000)) {
   if (!raw || raw.length > 16384) throw new Error('Missing launch data');
   const params = new URLSearchParams(raw);
@@ -17,5 +23,6 @@ export function validateTelegramInitData(raw: string, botToken: string, now = Ma
   const key = createHmac('sha256', 'WebAppData').update(botToken).digest();
   const expected = createHmac('sha256', key).update(check).digest();
   if (!timingSafeEqual(expected, Buffer.from(hash, 'hex'))) throw new Error('Invalid launch signature');
-  return userSchema.parse(JSON.parse(params.get('user') ?? 'null'));
+  const user=userSchema.parse(JSON.parse(params.get('user') ?? 'null'));
+  return {...user,photo_url:telegramPhotoUrl(user.photo_url),...(params.has('start_param')?{start_param:params.get('start_param')!}:{})};
 }

@@ -1,0 +1,126 @@
+{
+  "phase": "before",
+  "width": "430",
+  "mode": "optimized production build on loopback",
+  "sdkFixtureDelayMs": 250,
+  "anonymousFonts": [
+    {
+      "path": "/fonts/sora-latin-800.woff2",
+      "status": 307,
+      "cacheControl": "private, no-store, max-age=0",
+      "elapsedMs": 381
+    },
+    {
+      "path": "/fonts/noto-serif-ethiopic-banner.woff2",
+      "status": 307,
+      "cacheControl": "private, no-store, max-age=0",
+      "elapsedMs": 12
+    }
+  ],
+  "normal": {
+    "homeReadyMs": 1856,
+    "fontsReadyMs": 1878,
+    "signInRequests": 2,
+    "documentRequests": [
+      "/telegram",
+      "/"
+    ],
+    "serverTiming": [
+      "auth;dur=74",
+      "auth;dur=27"
+    ],
+    "fonts": [
+      {
+        "asset": "/js/telegram-web-app.js",
+        "startMs": 62,
+        "durationMs": 272,
+        "transferBytes": 0
+      },
+      {
+        "asset": "/fonts/dm-sans-latin-400.woff2",
+        "startMs": 103,
+        "durationMs": 22,
+        "transferBytes": 14500
+      },
+      {
+        "asset": "/fonts/dm-sans-latin-700.woff2",
+        "startMs": 466,
+        "durationMs": 83,
+        "transferBytes": 14648
+      },
+      {
+        "asset": "/fonts/dm-sans-latin-500.woff2",
+        "startMs": 467,
+        "durationMs": 83,
+        "transferBytes": 14604
+      },
+      {
+        "asset": "/fonts/dm-sans-latin-600.woff2",
+        "startMs": 467,
+        "durationMs": 96,
+        "transferBytes": 14444
+      },
+      {
+        "asset": "/fonts/sora-latin-800.woff2",
+        "startMs": 483,
+        "durationMs": 98,
+        "transferBytes": 15164
+      }
+    ],
+    "accountApiSamples": 20,
+    "accountApiP95Ms": 30
+  },
+  "slow": {
+    "homeReadyMs": 7259,
+    "fontsReadyMs": 7465,
+    "signInRequests": 2,
+    "documentRequests": [
+      "/telegram",
+      "/"
+    ],
+    "serverTiming": [
+      "auth;dur=66",
+      "auth;dur=14"
+    ],
+    "fonts": [
+      {
+        "asset": "/js/telegram-web-app.js",
+        "startMs": 193,
+        "durationMs": 273,
+        "transferBytes": 0
+      },
+      {
+        "asset": "/fonts/dm-sans-latin-400.woff2",
+        "startMs": 887,
+        "durationMs": 780,
+        "transferBytes": 14500
+      },
+      {
+        "asset": "/fonts/dm-sans-latin-700.woff2",
+        "startMs": 2993,
+        "durationMs": 934,
+        "transferBytes": 14648
+      },
+      {
+        "asset": "/fonts/dm-sans-latin-500.woff2",
+        "startMs": 2993,
+        "durationMs": 919,
+        "transferBytes": 14604
+      },
+      {
+        "asset": "/fonts/dm-sans-latin-600.woff2",
+        "startMs": 2993,
+        "durationMs": 918,
+        "transferBytes": 14444
+      },
+      {
+        "asset": "/fonts/sora-latin-800.woff2",
+        "startMs": 3012,
+        "durationMs": 976,
+        "transferBytes": 15164
+      }
+    ],
+    "accountApiSamples": 0,
+    "accountApiP95Ms": null
+  }
+}

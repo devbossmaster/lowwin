@@ -1,0 +1,102 @@
+{
+  "mode": "optimized webpack HTTPS loopback",
+  "baselineCommit": "98266020061cbff706ff2d534c244fe879ce3a8b",
+  "finalStats": {
+    "startTime": "2026-10-25T20:06:52.627Z",
+    "duration": 118061.662,
+    "expected": 8,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "cases": [
+    {
+      "title": "focused first/repeat sheet and navigation request measurements",
+      "project": "360",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "durationMs": 42733
+        }
+      ]
+    },
+    {
+      "title": "focused first/repeat sheet and navigation request measurements",
+      "project": "430",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "durationMs": 41566
+        }
+      ]
+    },
+    {
+      "title": "returning Home retains exact filters, loaded batch and scroll position",
+      "project": "360",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "durationMs": 6281
+        }
+      ]
+    },
+    {
+      "title": "returning Home retains exact filters, loaded batch and scroll position",
+      "project": "430",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "durationMs": 5110
+        }
+      ]
+    },
+    {
+      "title": "My Bids compact accepted records, paging and local receipts in English/Amharic",
+      "project": "360",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "durationMs": 4633
+        }
+      ]
+    },
+    {
+      "title": "My Bids new authenticated account has honest zero and empty state",
+      "project": "360",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "durationMs": 1702
+        }
+      ]
+    },
+    {
+      "title": "My Bids compact accepted records, paging and local receipts in English/Amharic",
+      "project": "430",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "durationMs": 4612
+        }
+      ]
+    },
+    {
+      "title": "My Bids new authenticated account has honest zero and empty state",
+      "project": "430",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "durationMs": 1561
+        }
+      ]
+    }
+  ]
+}

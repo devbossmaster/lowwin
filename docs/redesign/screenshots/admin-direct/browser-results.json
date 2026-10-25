@@ -1,0 +1,9 @@
+{
+  "scope": "Real local credential+TOTP staff login; synthetic payment records; no provider network; desktop 1440px and mobile 360/430px",
+  "startTime": "2026-10-23T12:52:03.725Z",
+  "duration": 23830.432,
+  "expected": 1,
+  "skipped": 0,
+  "unexpected": 0,
+  "flaky": 0
+}

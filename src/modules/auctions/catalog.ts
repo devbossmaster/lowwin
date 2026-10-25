@@ -4,10 +4,12 @@ import {legacyTermsInEtb} from '@/lib/money';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import {cachedPublicData} from '@/modules/cache/public-data';
+import {previewTestRunFilter,stagingDemoEnabled} from './staging-demo';
 
 // SQL selection and DTO mapping are independent allowlists. Never select the
 // settlement proof, participant movements, winning user/bid IDs or raw bids here.
-// Only the completed winner's name and contact suffix enter the public result.
+// Only a masked contact suffix enters the public result; names need a future
+// explicit, verified consent and moderation workflow.
 export const publicAuctionSelect = {
   slug:true,code:true,publicCode:true,status:true,publishedAt:true,startsAt:true,endsAt:true,featured:true,isDemo:true,acceptedBidCount:true,publicViewCount:true,presentation:true,
   fulfillmentSummary:true,fulfillmentSummaryAm:true,fulfillmentRegion:true,fulfillmentRegionAm:true,
@@ -16,7 +18,7 @@ export const publicAuctionSelect = {
   terms:{select:{version:true,ruleVersion:true,minParticipants:true,minPoints:true,maxPoints:true,stepPoints:true,entryFeePoints:true,maxDistinctBids:true,noWinnerTerms:true,cancellationTerms:true,fulfillmentSnapshot:true}},
   feeRevisions:{orderBy:[{effectiveAt:'desc' as const},{version:'desc' as const}],take:1,select:{version:true,feePoints:true}},
   result:{select:{outcome:true,winningPoints:true,explanation:true,isDemo:true,closedAt:true,publishedAt:true}},
-  settlement:{select:{decision:true,outcome:true,winningPoints:true,completedAt:true,winner:{select:{name:true,ownContact:{select:{lastFour:true,revokedAt:true}}}}}},
+  settlement:{select:{decision:true,outcome:true,winningPoints:true,completedAt:true,winner:{select:{ownContact:{select:{lastFour:true,revokedAt:true}}}}}},
 } satisfies Prisma.AuctionSelect;
 type AuctionRow = Prisma.AuctionGetPayload<{ select: typeof publicAuctionSelect }>;
 const presentationSchema=z.object({title:z.string(),titleAm:z.string().nullable().optional(),description:z.string(),descriptionAm:z.string().nullable().optional(),condition:z.string(),conditionAm:z.string().nullable().optional(),images:z.array(z.object({path:z.string(),alt:z.string(),sourceType:z.string(),sourceCredit:z.string().nullable().optional()}))}).strict();
@@ -24,7 +26,7 @@ export const catalogQuerySchema = z.object({
   q: z.string().trim().max(80).optional().default(''),
   status: z.enum(['all','live','upcoming','closing','closed']).optional().default('all'),
   category: z.preprocess(value=>value===''?undefined:value,z.string().regex(/^[a-z0-9-]{1,80}$/).optional()),
-  sort: z.enum(['code','ending','newest','title']).optional().default('code'),
+  sort: z.enum(['code','ending','newest','title','fee-low','fee-high']).optional().default('code'),
   page: z.coerce.number().int().min(1).max(1000).optional().default(1),
 });
 export type CatalogQuery = z.infer<typeof catalogQuerySchema>;
@@ -44,10 +46,11 @@ export function effectiveStatus(row: Pick<AuctionRow,'status'|'startsAt'|'endsAt
   if (row.startsAt && row.startsAt > now) return 'upcoming' as const;
   return 'live' as const;
 }
-export function publicWhere(now: Date): Prisma.AuctionWhereInput {
-  return { publishedAt: { lte: now }, status: { in: ['SCHEDULED','LIVE','CLOSED','CANCELLED'] }, slug: { not: null },testRunId:null,
+export function publicWhere(now: Date,raw:Record<string,string|undefined>=process.env): Prisma.AuctionWhereInput {
+  return { publishedAt: { lte: now }, status: { in: ['SCHEDULED','LIVE','CLOSED','CANCELLED'] }, slug: { not: null },...previewTestRunFilter(raw),
     product: { is: { visible: true, category: { visible: true } } }, category: { is: { visible: true } }, terms: { isNot: null } };
 }
+function publicTestRunSql(){return stagingDemoEnabled()?Prisma.sql`(a."testRunId" IS NULL OR (a."isDemo"=true AND a."testRunId" IS NOT NULL))`:Prisma.sql`a."testRunId" IS NULL`}
 function statusWhere(status: CatalogQuery['status'], now: Date): Prisma.AuctionWhereInput {
   if (status === 'live') return {status:{in:['SCHEDULED','LIVE']},startsAt:{lte:now},endsAt:{gt:now}};
   if (status === 'upcoming') return {status:{in:['SCHEDULED','LIVE']},startsAt:{gt:now}};
@@ -69,7 +72,7 @@ export function toPublicAuction(row: AuctionRow, now: Date) {
     outcome:settled.outcome,winningPoints:settled.winningPoints?.toString()??null,
     decision:settled.decision,explanation:resultExplanation(settled.outcome,settled.decision,row.terms?.ruleVersion),
     isDemo:row.isDemo,closedAt:settled.completedAt.toISOString(),source:'SETTLED' as const,
-    demoLabel:row.isDemo?'DEMO · settled test':null,winnerDisplay:settled.outcome==='WINNER'?(settled.winner?.name.trim()||null):null,
+    demoLabel:row.isDemo?'DEMO · settled test':null,winnerDisplay:null,
     winnerPhoneMasked:settled.outcome==='WINNER'&&settled.winner?.ownContact&&!settled.winner.ownContact.revokedAt&&/^\d{4}$/.test(settled.winner.ownContact.lastFour)?`********${settled.winner.ownContact.lastFour.slice(-2)}`:null,
     acceptedBidCount:row.acceptedBidCount,
   }:status==='closed'&&row.result&&row.result.publishedAt<=now?{
@@ -111,10 +114,43 @@ export async function listAuctions(input: CatalogQuery, now?: Date, pageSize = 6
   return cachedPublicData(`auctions:${pageSize}:${JSON.stringify(query)}:${now?.toISOString()??'current'}`,3000,async()=>{
   const at=now??await serverNow();
   const where=catalogWhere(query,at);
+  // Prisma timestamps are UTC without a zone. Bind ISO text explicitly so
+  // a non-UTC database session cannot shift raw SQL deadlines by hours.
+  const sqlAt=at.toISOString();
   const orderBy: Prisma.AuctionOrderByWithRelationInput[] = query.sort==='code' ? [{publicCode:'asc'}] : query.sort==='newest' ? [{publishedAt:'desc'},{id:'asc'}] : query.sort==='title' ? [{product:{title:'asc'}},{id:'asc'}] : query.status==='closed' ? [{endsAt:'desc'},{id:'asc'}] : query.status==='upcoming' ? [{startsAt:'asc'},{id:'asc'}] : [{endsAt:'asc'},{id:'asc'}];
   let rows: AuctionRow[];
   let total: number;
-  if (query.status==='all' && query.sort==='ending') {
+  if(query.sort==='fee-low'||query.sort==='fee-high'){
+    const category=query.category?Prisma.sql`AND c.slug=${query.category}`:Prisma.empty;
+    const status=query.status==='live'?Prisma.sql`AND a.status IN ('SCHEDULED','LIVE') AND a."startsAt"<=${sqlAt}::timestamp AND a."endsAt">${sqlAt}::timestamp`
+      :query.status==='upcoming'?Prisma.sql`AND a.status IN ('SCHEDULED','LIVE') AND a."startsAt">${sqlAt}::timestamp`
+      :query.status==='closing'?Prisma.sql`AND a.status IN ('SCHEDULED','LIVE') AND a."endsAt"<=${sqlAt}::timestamp`
+      :query.status==='closed'?Prisma.sql`AND (a.status='CLOSED' OR a."endsAt"<=${sqlAt}::timestamp)`:Prisma.empty;
+    const pattern=`%${query.q}%`;
+    const search=query.q?Prisma.sql`AND (p.title ILIKE ${pattern} OR p."titleAm" ILIKE ${pattern}
+      OR a.presentation->>'title' LIKE ${pattern} OR a.presentation->>'titleAm' LIKE ${pattern}
+      OR a.code ILIKE ${pattern} OR a."publicCode"::text=${query.q})`:Prisma.empty;
+    const direction=query.sort==='fee-low'?Prisma.sql`ASC`:Prisma.sql`DESC`;
+    // Sort the exact fee displayed by the public DTO, including its latest
+    // published revision, before pagination. No private bid/ledger fields enter.
+    const [ids,count]=await Promise.all([db.$queryRaw<{id:string}[]>`
+      SELECT a.id FROM "Auction" a
+      JOIN "Product" p ON p.id=a."productId"
+      JOIN "Category" pc ON pc.id=p."categoryId"
+      JOIN "Category" c ON c.id=a."categoryId"
+      JOIN "AuctionTerms" t ON t."auctionId"=a.id
+      LEFT JOIN LATERAL (SELECT r."feePoints" FROM "AuctionFeeRevision" r
+        WHERE r."auctionId"=a.id ORDER BY r."effectiveAt" DESC,r.version DESC LIMIT 1) fee ON true
+      WHERE a."publishedAt"<=${sqlAt}::timestamp AND a.status IN ('SCHEDULED','LIVE','CLOSED')
+        AND ${publicTestRunSql()} AND a.slug IS NOT NULL AND p.visible AND pc.visible AND c.visible
+        ${category} ${status} ${search}
+      ORDER BY COALESCE(fee."feePoints",t."entryFeePoints") ${direction},a.id ASC
+      LIMIT ${pageSize} OFFSET ${(query.page-1)*pageSize}`,db.auction.count({where})]);
+    const found=ids.length?await db.auction.findMany({where:{id:{in:ids.map(item=>item.id)}},select:{...publicAuctionSelect,id:true}}):[];
+    const byId=new Map(found.map(item=>[item.id,item]));
+    rows=ids.map(item=>byId.get(item.id)!).filter(Boolean);
+    total=count;
+  }else if (query.status==='all' && query.sort==='ending') {
     // One database-ordered page: active end times, future start times, then recent closes.
     const categoryFilter=query.category?Prisma.sql`AND c.slug = ${query.category}`:Prisma.empty;
     const searchFilter=query.q?Prisma.sql`AND (COALESCE(a.presentation->>'title',p.title) ILIKE ${`%${query.q}%`} OR COALESCE(a.presentation->>'titleAm',p."titleAm") ILIKE ${`%${query.q}%`} OR a.code ILIKE ${`%${query.q}%`} OR a."publicCode"::text = ${query.q})`:Prisma.empty;
@@ -124,13 +160,13 @@ export async function listAuctions(input: CatalogQuery, now?: Date, pageSize = 6
       JOIN "Category" pc ON pc.id = p."categoryId"
       JOIN "Category" c ON c.id = a."categoryId"
       JOIN "AuctionTerms" t ON t."auctionId" = a.id
-      WHERE a."publishedAt" <= ${at} AND a.status IN ('SCHEDULED','LIVE','CLOSED') AND a."testRunId" IS NULL
+      WHERE a."publishedAt" <= ${sqlAt}::timestamp AND a.status IN ('SCHEDULED','LIVE','CLOSED') AND ${publicTestRunSql()}
         AND a.slug IS NOT NULL AND p.visible AND pc.visible AND c.visible ${categoryFilter} ${searchFilter}
-      ORDER BY CASE WHEN a.status IN ('CLOSED','CANCELLED') OR a."endsAt" <= ${at} THEN 2
-                    WHEN a."startsAt" > ${at} THEN 1 ELSE 0 END,
-               CASE WHEN a.status IN ('SCHEDULED','LIVE') AND a."startsAt" <= ${at} AND a."endsAt" > ${at} THEN a."endsAt" END ASC,
-               CASE WHEN a."startsAt" > ${at} THEN a."startsAt" END ASC,
-               CASE WHEN a.status IN ('CLOSED','CANCELLED') OR a."endsAt" <= ${at} THEN a."endsAt" END DESC,
+      ORDER BY CASE WHEN a.status IN ('CLOSED','CANCELLED') OR a."endsAt" <= ${sqlAt}::timestamp THEN 2
+                    WHEN a."startsAt" > ${sqlAt}::timestamp THEN 1 ELSE 0 END,
+               CASE WHEN a.status IN ('SCHEDULED','LIVE') AND a."startsAt" <= ${sqlAt}::timestamp AND a."endsAt" > ${sqlAt}::timestamp THEN a."endsAt" END ASC,
+               CASE WHEN a."startsAt" > ${sqlAt}::timestamp THEN a."startsAt" END ASC,
+               CASE WHEN a.status IN ('CLOSED','CANCELLED') OR a."endsAt" <= ${sqlAt}::timestamp THEN a."endsAt" END DESC,
                a.id ASC
       LIMIT ${pageSize} OFFSET ${(query.page-1)*pageSize}`;
     const found=ids.length?await db.auction.findMany({where:{id:{in:ids.map(item=>item.id)}},select:{...publicAuctionSelect,id:true}}):[];
@@ -150,36 +186,70 @@ export async function getAuction(slug: string, now?: Date) {
   return row?toPublicAuction(row,at):null;
   });
 }
-// The header needs only public summary fields, not descriptions or rule snapshots.
-export async function listQuickLiveAuctions(page=1) {
-  return cachedPublicData(`quick-live:${page}`,3000,async()=>{
-  const now=await serverNow(),pageSize=6;
-  const where:Prisma.AuctionWhereInput={AND:[publicWhere(now),statusWhere('live',now)]};
+export type QuickAuctionStatus='live'|'upcoming';
+// The header needs a thumbnail, actual schedule and displayed fee, not full
+// descriptions, rule snapshots, settlement relations or any submitted amounts.
+export async function listQuickAuctions(status:QuickAuctionStatus='live',page=1,now?:Date) {
+  return cachedPublicData(`quick-auctions:${status}:${page}:${now?.toISOString()??'current'}`,3000,async()=>{
+  const at=now??await serverNow(),pageSize=10;
+  const where=catalogWhere(catalogQuerySchema.parse({status,page}),at);
   const [rows,total]=await Promise.all([
-    db.auction.findMany({where,orderBy:[{publicCode:'asc'}],skip:(page-1)*pageSize,take:pageSize,
-      select:{slug:true,publicCode:true,endsAt:true,isDemo:true,acceptedBidCount:true,presentation:true,product:{select:{title:true,titleAm:true,images:{orderBy:{sortOrder:'asc'},take:1,select:{path:true}}}}}}),
+    db.auction.findMany({where,orderBy:status==='upcoming'?[{startsAt:'asc'},{id:'asc'}]:[{publicCode:'asc'}],skip:(page-1)*pageSize,take:pageSize,
+      select:{slug:true,publicCode:true,status:true,startsAt:true,endsAt:true,isDemo:true,acceptedBidCount:true,presentation:true,
+        product:{select:{title:true,titleAm:true,images:{orderBy:{sortOrder:'asc'},take:1,select:{path:true,alt:true}}}},
+        terms:{select:{version:true,ruleVersion:true,entryFeePoints:true}},
+        feeRevisions:{orderBy:[{effectiveAt:'desc'},{version:'desc'}],take:1,select:{version:true,feePoints:true}},
+      }}),
     db.auction.count({where})
   ]);
-  return {items:rows.map(row=>{const override=presentationSchema.safeParse(row.presentation);return {slug:row.slug!,code:String(row.publicCode),endsAt:row.endsAt!.toISOString(),isDemo:row.isDemo,bidCount:row.acceptedBidCount,product:override.success?{title:override.data.title,titleAm:override.data.titleAm??row.product!.titleAm,images:override.data.images.slice(0,1).map(image=>({path:image.path}))}:row.product!}}),total,page,totalPages:Math.ceil(total/pageSize),serverNow:now.toISOString()};
+  return {items:rows.map(row=>{const override=presentationSchema.safeParse(row.presentation);return {
+    slug:row.slug!,code:String(row.publicCode),status:effectiveStatus(row,at),startsAt:row.startsAt!.toISOString(),endsAt:row.endsAt!.toISOString(),isDemo:row.isDemo,bidCount:row.acceptedBidCount,
+    product:override.success?{title:override.data.title,titleAm:override.data.titleAm??row.product!.titleAm,images:override.data.images.slice(0,1).map(image=>({path:image.path,alt:image.alt}))}:row.product!,
+    terms:{version:row.feeRevisions[0]?.version??row.terms!.version,ruleVersion:row.terms!.ruleVersion,entryFeePoints:(row.feeRevisions[0]?.feePoints??row.terms!.entryFeePoints).toString()},
+  }}),total,page,pageSize,totalPages:Math.ceil(total/pageSize),serverNow:at.toISOString()};
+  });
+}
+// Keep existing callers compatible while the header moves to Live / Upcoming.
+export async function listQuickLiveAuctions(page=1){return listQuickAuctions('live',page)}
+
+// One bounded aggregate, with the same publication/visibility/terms and tagged
+// preview boundary as catalogWhere. No product cards or private records load.
+export async function getAuctionSummary(now?:Date){
+  return cachedPublicData(`auction-summary:${now?.toISOString()??'current'}`,3000,async()=>{
+    const at=now?Prisma.sql`${now.toISOString()}::timestamp`:Prisma.sql`CURRENT_TIMESTAMP AT TIME ZONE 'UTC'`;
+    const clock=now?Prisma.sql`${now.toISOString()}::timestamptz`:Prisma.sql`CURRENT_TIMESTAMP`;
+    const rows=await db.$queryRaw<{totalLive:number;totalUpcoming:number;serverNow:Date}[]>`
+      SELECT count(*) FILTER (WHERE a."startsAt"<=(${at}) AND a."endsAt">(${at}))::int AS "totalLive",
+        count(*) FILTER (WHERE a."startsAt">(${at}))::int AS "totalUpcoming",${clock} AS "serverNow"
+      FROM "Auction" a
+      JOIN "Product" p ON p.id=a."productId"
+      JOIN "Category" pc ON pc.id=p."categoryId"
+      JOIN "Category" c ON c.id=a."categoryId"
+      JOIN "AuctionTerms" t ON t."auctionId"=a.id
+      WHERE a."publishedAt"<=(${at}) AND a.status IN ('SCHEDULED','LIVE') AND a.slug IS NOT NULL
+        AND ${publicTestRunSql()} AND p.visible AND pc.visible AND c.visible`;
+    const row=rows[0];
+    return {totalLive:row.totalLive,totalUpcoming:row.totalUpcoming,serverNow:row.serverNow.toISOString()};
   });
 }
 export async function listCategories(now?: Date) {
   return cachedPublicData(`categories:${now?.toISOString()??'current'}`,5000,async()=>{
   now ??= await serverNow();
+  const sqlNow=now.toISOString();
   // Aggregate in PostgreSQL instead of transferring every auction for each page.
   // Match public catalog listings: visible product/category, published, and not cancelled.
   const rows=await db.$queryRaw<{slug:string;name:string;nameAm:string|null;description:string;descriptionAm:string|null;requiresEligibilityReview:boolean;all:number;live:number;upcoming:number;closed:number}[]>`
     SELECT c.slug,c.name,c."nameAm",c.description,c."descriptionAm",c."requiresEligibilityReview",
       count(a.id)::int AS all,
-      count(a.id) FILTER (WHERE a.status IN ('SCHEDULED','LIVE') AND a."startsAt"<=${now} AND a."endsAt">${now})::int AS live,
-      count(a.id) FILTER (WHERE a.status IN ('SCHEDULED','LIVE') AND a."startsAt">${now} AND a."endsAt">${now})::int AS upcoming,
-      count(a.id) FILTER (WHERE a.status = 'CLOSED' OR (a.status IN ('SCHEDULED','LIVE') AND a."endsAt"<=${now}))::int AS closed
+      count(a.id) FILTER (WHERE a.status IN ('SCHEDULED','LIVE') AND a."startsAt"<=${sqlNow}::timestamp AND a."endsAt">${sqlNow}::timestamp)::int AS live,
+      count(a.id) FILTER (WHERE a.status IN ('SCHEDULED','LIVE') AND a."startsAt">${sqlNow}::timestamp AND a."endsAt">${sqlNow}::timestamp)::int AS upcoming,
+      count(a.id) FILTER (WHERE a.status = 'CLOSED' OR (a.status IN ('SCHEDULED','LIVE') AND a."endsAt"<=${sqlNow}::timestamp))::int AS closed
     FROM "Category" c
     LEFT JOIN ("Auction" a
       JOIN "Product" p ON p.id=a."productId" AND p.visible
       JOIN "Category" pc ON pc.id=p."categoryId" AND pc.visible
       JOIN "AuctionTerms" t ON t."auctionId"=a.id)
-      ON a."categoryId"=c.id AND a."publishedAt"<=${now} AND a."testRunId" IS NULL
+      ON a."categoryId"=c.id AND a."publishedAt"<=${sqlNow}::timestamp AND ${publicTestRunSql()}
         AND a.slug IS NOT NULL AND a.status IN ('SCHEDULED','LIVE','CLOSED')
     WHERE c.visible GROUP BY c.id HAVING count(a.id)>0 ORDER BY c."sortOrder",c.name`;
   return rows.map(({all,live,upcoming,closed,...category})=>({...category,counts:{all,live,upcoming,closed}}));

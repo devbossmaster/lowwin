@@ -1,0 +1,21 @@
+{
+  "width": "360",
+  "phase": "after",
+  "mode": "optimized Chromium loopback",
+  "en": {
+    "cardTop": 430,
+    "cardHeight": 354,
+    "navTop": 730,
+    "visiblePercent": 84.6,
+    "imageInset": 0,
+    "imageWidth": 328
+  },
+  "am": {
+    "cardTop": 437,
+    "cardHeight": 337,
+    "navTop": 730,
+    "visiblePercent": 87.1,
+    "imageInset": 0,
+    "imageWidth": 328
+  }
+}

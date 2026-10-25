@@ -1,0 +1,12 @@
+{
+  "mode": "optimized Chromium on loopback; not Telegram device timing",
+  "initialProfileReads": 1,
+  "profileReadsAfterRoundTrip": 1,
+  "roundTripMs": 872,
+  "feeSortedCatalogApi": {
+    "n": 20,
+    "p50Ms": 28,
+    "p95Ms": 33
+  },
+  "browserErrors": []
+}

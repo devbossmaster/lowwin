@@ -1,0 +1,37 @@
+{
+  "viewport": {
+    "width": 430,
+    "height": 932
+  },
+  "fixture": "isolated credential-and-MFA Owner",
+  "freshMfaDenied": true,
+  "realStepUp": true,
+  "sameRetryKey": true,
+  "invalidBoundsRejected": true,
+  "updates": [
+    {
+      "percent": 5,
+      "days": 15,
+      "enabled": false
+    },
+    {
+      "percent": 10,
+      "days": 20,
+      "enabled": false
+    },
+    {
+      "percent": 15,
+      "days": 30,
+      "enabled": true
+    }
+  ],
+  "policyAudits": 3,
+  "existingCouponsUnchanged": true,
+  "reconciliationDiscrepancies": 0,
+  "paymentConfigurationUnchanged": true,
+  "anonymousStatus": 401,
+  "auditorStatus": 403,
+  "noHorizontalOverflow": true,
+  "financialPosts": 0,
+  "errors": []
+}

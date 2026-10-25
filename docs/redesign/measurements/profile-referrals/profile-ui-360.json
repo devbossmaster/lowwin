@@ -1,0 +1,27 @@
+{
+  "width": "360",
+  "fixture": "synthetic isolated referrer with server-earned reward",
+  "earned": 1,
+  "available": 1,
+  "totalBids": 0,
+  "languages": [
+    {
+      "language": "en",
+      "layoutNoOverflow": true,
+      "serverRewardVisible": true,
+      "opaqueCouponCodeVisible": false,
+      "topUpSheet": true,
+      "shareIntercepted": true
+    },
+    {
+      "language": "am",
+      "layoutNoOverflow": true,
+      "serverRewardVisible": true,
+      "opaqueCouponCodeVisible": false,
+      "topUpSheet": true,
+      "shareIntercepted": true
+    }
+  ],
+  "financialPosts": 0,
+  "confirmedLogout": true
+}

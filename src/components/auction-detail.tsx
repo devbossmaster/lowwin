@@ -1,5 +1,8 @@
 'use client';
 import Link from 'next/link';
+import BidSheet from './bid-sheet';
+import dynamic from 'next/dynamic';
+import {useEffect,useState} from 'react';
 import {ArrowLeft,ChevronDown,Eye,ShieldCheck,UsersRound} from 'lucide-react';
 import type {CatalogAuction} from '@/modules/auctions/catalog';
 import {formatEtb,formatAuctionBid} from '@/lib/money';
@@ -9,13 +12,14 @@ import {WinnerCelebration} from './celebration';
 import {ProductDescription} from './product-description';
 import {AuctionCountdown} from './auction-countdown';
 import {AuctionShare} from './auction-share';
-import {BidForm} from './bid-form';
-import {FavoriteButton} from './favorite-button';
+const ArifPayReturn=dynamic(()=>import('./arifpay-return').then(module=>module.ArifPayReturn));
 import {MiniCategoryName,MiniPhrase,useMiniLocale} from './mini-locale';
 import styles from './auction-detail.module.css';
 import {useAuctionActivity,useAuctionRefresh} from './auction-activity';
 
 export function AuctionDetail({auction:initialAuction,serverNow}:{auction:CatalogAuction;serverNow:string}){
+ const [bidding,setBidding]=useState(false);
+ useEffect(()=>{if(window.location.hash==='#bid-review')setBidding(true)},[]);
  const {activity,views,refreshActivity}=useAuctionActivity(initialAuction.code,{record:true});
  useAuctionRefresh(activity,initialAuction.status,Boolean(initialAuction.result));
  const auction={...initialAuction,status:activity?.status??initialAuction.status,viewCount:views??initialAuction.viewCount,bidCount:activity?.bids??initialAuction.bidCount,startsAt:activity?.startsAt??initialAuction.startsAt,endsAt:activity?.endsAt??initialAuction.endsAt};
@@ -25,13 +29,15 @@ export function AuctionDetail({auction:initialAuction,serverNow}:{auction:Catalo
  const delivery=am?(auction.fulfillment.summaryAm?.trim()||auction.fulfillment.summary):auction.fulfillment.summary;
  const region=am?(auction.fulfillment.regionAm?.trim()||auction.fulfillment.region):auction.fulfillment.region;
  const date=(value:string)=>new Date(value).toLocaleString('en',{dateStyle:'medium',timeStyle:'short',timeZone:'Africa/Addis_Ababa'});
- if(['closed','cancelled','closing'].includes(auction.status))return <>{auction.result?.outcome==='WINNER'&&<WinnerCelebration id={`winner:${auction.code}`}/>}<AuctionResultDetail auction={auction}/></>;
+ if(['closed','cancelled','closing'].includes(auction.status))return <><ArifPayReturn auctionSlug={auction.slug}/>{auction.result?.outcome==='WINNER'&&<WinnerCelebration id={`winner:${auction.code}`}/>}<AuctionResultDetail auction={auction}/></>;
  return <article className={styles.page}>
   <div className={styles.top}><Link href="/auctions/all" className={styles.back}><ArrowLeft size={17}/><MiniPhrase en="Auctions" am="ጨረታዎች"/></Link><span className={styles.status}><MiniPhrase en={auction.status} am={{live:'በሂደት ላይ',upcoming:'የሚመጣ',closing:'ጨረታው አብቋል',closed:'ተጠናቋል',cancelled:'የተሰረዘ'}[auction.status]}/></span></div>
+  <ArifPayReturn auctionSlug={auction.slug}/>
   <AuctionGallery images={auction.product.images} title={title} isDemo={auction.isDemo}/>
  <header className={styles.intro}><h1>{title}</h1><p className={styles.code}><span><MiniPhrase en="Auction code" am="የጨረታ ኮድ"/>: <strong>{auction.code}</strong></span><span aria-hidden="true">·</span><Link href={`/auctions/all?category=${encodeURIComponent(auction.category.slug)}`}><MiniCategoryName slug={auction.category.slug} name={auction.category.name} nameAm={auction.category.nameAm}/></Link></p></header>
   {!live&&Number(auction.terms.entryFeePoints)>0&&<div className={styles.fee}><span><MiniPhrase en="Submission fee" am="የጨረታ አገልግሎት ክፍያ"/></span><strong>{formatEtb(auction.terms.entryFeePoints)}</strong></div>}
-  <div className={styles.bidding}><BidForm slug={auction.slug} title={title} status={auction.status} isDemo={auction.isDemo} compact/>{live&&<a className={styles.termsLink} href="#auction-terms"><ShieldCheck size={15}/><MiniPhrase en="Terms and conditions apply" am="ውሎች እና ሁኔታዎች ተፈጻሚ ይሆናሉ"/></a>}</div>
+  <div className={styles.bidding} id="bid-review">{live?<button className="primary-bid-button" style={{width:'100%'}} onClick={()=>setBidding(true)}><MiniPhrase en="Choose your bid number" am="የጨረታ ቁጥርዎን ይምረጡ"/></button>:<p><MiniPhrase en="Bidding opens at the scheduled start time." am="ጨረታው በተወሰነው የመጀመሪያ ጊዜ ይከፈታል።"/></p>}{live&&<a className={styles.termsLink} href="#auction-terms"><ShieldCheck size={15}/><MiniPhrase en="Terms and conditions apply" am="ውሎች እና ሁኔታዎች ተፈጻሚ ይሆናሉ"/></a>}</div>
+  {bidding&&<BidSheet auction={auction} serverNow={serverNow} onClose={()=>setBidding(false)}/>}
   <section className={styles.stats} aria-label="Auction activity">
    <p><MiniPhrase en={live?'This auction ends in':upcoming?'This auction starts in':auction.status==='closing'?'Bidding ended':auction.status==='cancelled'?'Auction cancelled':'Auction closed'} am={live?'ጨረታው የሚያበቃው':upcoming?'ጨረታው የሚጀምረው':auction.status==='cancelled'?'ጨረታው ተሰርዟል':'ጨረታው ተጠናቋል'}/></p>
    <div className={styles.clock}>{live||upcoming?<AuctionCountdown target={upcoming?auction.startsAt:auction.endsAt} serverNow={serverNow} label={upcoming?'Starts':'Ends'} showLabel={false} onElapsed={refreshActivity}/>:<strong>{date(auction.endsAt)}</strong>}</div>
@@ -39,7 +45,7 @@ export function AuctionDetail({auction:initialAuction,serverNow}:{auction:Catalo
   </section>
   <ProductDescription description={auction.product.description} descriptionAm={auction.product.descriptionAm}/>
   <dl className={styles.facts}><div><dt><MiniPhrase en="Condition" am="ሁኔታ"/></dt><dd>{condition}</dd></div><div><dt><MiniPhrase en="Delivery region" am="የርክክብ አካባቢ"/></dt><dd>{region}</dd></div><div><dt><MiniPhrase en="Delivery" am="ርክክብ"/></dt><dd>{delivery}</dd></div></dl>
-  <div className={styles.actions}><AuctionShare title={title} code={auction.code}/><FavoriteButton slug={auction.slug}/></div>
-  <details id="auction-terms" className={styles.terms}><summary><MiniPhrase en="Auction terms" am="የጨረታ ውሎች"/><ChevronDown size={18}/></summary><dl className={styles.facts}><div><dt><MiniPhrase en="Starts" am="ይጀምራል"/></dt><dd>{date(auction.startsAt)} EAT</dd></div><div><dt><MiniPhrase en="Ends" am="ያበቃል"/></dt><dd>{date(auction.endsAt)} EAT</dd></div><div><dt><MiniPhrase en={auction.terms.maxPoints===null?"Minimum bid":"Bid range"} am={auction.terms.maxPoints===null?"ዝቅተኛ የጨረታ መጠን":"የጨረታ መጠን"}/></dt><dd>{formatAuctionBid(auction.terms.minPoints,auction.terms.ruleVersion)}{auction.terms.maxPoints!==null?` – ${formatAuctionBid(auction.terms.maxPoints,auction.terms.ruleVersion)}`:''}</dd></div><div><dt><MiniPhrase en="Step" am="የጨረታ እርምጃ"/></dt><dd>{formatAuctionBid(auction.terms.stepPoints,auction.terms.ruleVersion)}</dd></div>{Number(auction.terms.entryFeePoints)>0&&<div><dt><MiniPhrase en="Fee per accepted bid" am="ለእያንዳንዱ የተቀበለ ጨረታ ክፍያ"/></dt><dd>{formatEtb(auction.terms.entryFeePoints)}</dd></div>}<div><dt><MiniPhrase en="Distinct bids per person" am="ለአንድ ሰው የተለያዩ ጨረታዎች"/></dt><dd>{auction.terms.maxDistinctBids}</dd></div></dl><h3><MiniPhrase en="How a winner is found" am="አሸናፊ እንዴት ይመረጣል"/></h3><p><MiniPhrase en="The lowest ETB amount chosen by exactly one bidder wins. Live amounts and uniqueness stay private." am="በአንድ ተሳታፊ ብቻ የተመረጠው ዝቅተኛው ETB መጠን ያሸንፋል። በሂደት ላይ ያሉ መጠኖች የግል ናቸው።"/></p><p>{auction.terms.noWinnerTerms}</p><p>{auction.terms.cancellationTerms}</p><p>Terms v{auction.terms.version} · {auction.terms.ruleVersion}</p></details>
+  <div className={styles.actions}><AuctionShare title={title} code={auction.code}/></div>
+  <details id="auction-terms" className={styles.terms}><summary><MiniPhrase en="Auction terms" am="የጨረታ ውሎች"/><ChevronDown size={18}/></summary><dl className={styles.facts}><div><dt><MiniPhrase en="Starts" am="ይጀምራል"/></dt><dd>{date(auction.startsAt)} EAT</dd></div><div><dt><MiniPhrase en="Ends" am="ያበቃል"/></dt><dd>{date(auction.endsAt)} EAT</dd></div><div><dt><MiniPhrase en={auction.terms.maxPoints===null?"Minimum bid":"Bid range"} am={auction.terms.maxPoints===null?"ዝቅተኛ የጨረታ መጠን":"የጨረታ መጠን"}/></dt><dd>{formatAuctionBid(auction.terms.minPoints,auction.terms.ruleVersion)}{auction.terms.maxPoints!==null?` – ${formatAuctionBid(auction.terms.maxPoints,auction.terms.ruleVersion)}`:''}</dd></div><div><dt><MiniPhrase en="Step" am="የጨረታ እርምጃ"/></dt><dd>{formatAuctionBid(auction.terms.stepPoints,auction.terms.ruleVersion)}</dd></div>{Number(auction.terms.entryFeePoints)>0&&<div><dt><MiniPhrase en="Fee per accepted bid" am="ለእያንዳንዱ የተቀበለ ጨረታ ክፍያ"/></dt><dd>{formatEtb(auction.terms.entryFeePoints)}</dd></div>}<div><dt><MiniPhrase en="Distinct bids per person" am="ለአንድ ሰው የተለያዩ ጨረታዎች"/></dt><dd>{auction.terms.maxDistinctBids}</dd></div></dl><h3><MiniPhrase en="How a winner is found" am="አሸናፊ እንዴት ይመረጣል"/></h3><p><MiniPhrase en="The lowest number chosen by exactly one bidder wins. Live numbers stay private. Fees, holds and any winner payment follow the published auction terms." am="በአንድ ተሳታፊ ብቻ የተመረጠው ዝቅተኛው ቁጥር ያሸንፋል። ክፍያዎች የዚህን ጨረታ ውሎች ይከተላሉ።"/></p><p>{auction.terms.noWinnerTerms}</p><p>{auction.terms.cancellationTerms}</p><p>Terms v{auction.terms.version} · {auction.terms.ruleVersion}</p></details>
  </article>;
 }

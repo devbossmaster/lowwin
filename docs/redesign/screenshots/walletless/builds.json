@@ -1,0 +1,27 @@
+{
+  "checkedAt": "2026-10-23T13:03:13.571Z",
+  "nextVersion": "16.4.2",
+  "checks": [
+    {
+      "command": "npm.cmd run typecheck",
+      "checkout": "reviewed branch checkout",
+      "result": "passed"
+    },
+    {
+      "command": "npm.cmd run typecheck",
+      "checkout": "user running checkout",
+      "result": "passed"
+    },
+    {
+      "command": "next build --webpack",
+      "mode": "standard production build, tsconfig.json, default .next directory; explicit loopback database and providers disabled",
+      "result": "passed"
+    },
+    {
+      "command": "next build --webpack",
+      "mode": "optimized browser-fixture build, tsconfig.ui-tests.json, isolated .next-ui-local directory",
+      "result": "passed"
+    }
+  ],
+  "productionDeployment": false
+}

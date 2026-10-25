@@ -1,0 +1,9 @@
+{
+  "isolated": true,
+  "ownerReceiptMatched": true,
+  "payment": "PAID",
+  "method": "WALLET",
+  "grossFee": "10",
+  "discount": "1",
+  "netFee": "9"
+}

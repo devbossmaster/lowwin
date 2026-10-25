@@ -51,7 +51,7 @@ export async function creditTestRunPoints(tx:Prisma.TransactionClient,userId:str
 }
 export async function reconcile(client: PrismaClient | Prisma.TransactionClient) {
   // One statement gives both comparisons the same MVCC snapshot.
-  return client.$queryRaw<Array<{ kind: 'POSTING' | 'HOLD' | 'BID_FEE' | 'FEE_REFUND' | 'SETTLEMENT'; name: string; projected: Prisma.Decimal; actual: Prisma.Decimal }>>`
+  const findings=await client.$queryRaw<Array<{ kind: 'POSTING' | 'HOLD' | 'BID_FEE' | 'FEE_REFUND' | 'SETTLEMENT' | 'REFERRAL_DISCOUNT'; name: string; projected: Prisma.Decimal; actual: Prisma.Decimal }>>`
     SELECT 'POSTING' AS kind, a.name, a.balance AS projected, COALESCE(SUM(p.delta),0)::numeric AS actual
     FROM "LedgerAccount" a LEFT JOIN "Posting" p ON p."accountId"=a.id
     GROUP BY a.id HAVING a.balance <> COALESCE(SUM(p.delta),0)
@@ -82,4 +82,21 @@ export async function reconcile(client: PrismaClient | Prisma.TransactionClient)
       JOIN "Posting" p ON p."journalId"=j.id JOIN "LedgerAccount" a ON a.id=p."accountId" AND a.kind='SETTLEMENT' WHERE m."settlementId"=s.id
     ) f ON true WHERE COALESCE(f.points,0)<>(CASE WHEN s."ruleVersion"='lowest-unique-v4' THEN 0 ELSE COALESCE(s."winningPoints",0) END)
     ORDER BY kind, name`;
+  if(process.env.REFERRAL_REWARDS_SCHEMA_READY!=='true')return findings;
+  const discounts=await client.$queryRaw<typeof findings>`
+    SELECT 'REFERRAL_DISCOUNT' AS kind, 'referral-fees:'||r.id AS name, COALESCE(f.points,0)::numeric AS projected,r."discountPoints" AS actual
+    FROM "ReferralRedemption" r LEFT JOIN "Journal" j ON j."operationId"=r."operationId"
+    LEFT JOIN LATERAL (SELECT SUM(-p.delta) AS points FROM "Posting" p JOIN "LedgerAccount" a ON a.id=p."accountId" WHERE p."journalId"=j.id AND a.name='platform:fees') f ON true
+    WHERE COALESCE(f.points,0)<>r."discountPoints"
+    UNION ALL
+    SELECT 'REFERRAL_DISCOUNT' AS kind, 'referral-wallet:'||r.id AS name,COALESCE(f.points,0)::numeric AS projected,r."discountPoints" AS actual
+    FROM "ReferralRedemption" r LEFT JOIN "Journal" j ON j."operationId"=r."operationId"
+    LEFT JOIN LATERAL (SELECT SUM(p.delta) AS points FROM "Posting" p JOIN "LedgerAccount" a ON a.id=p."accountId" WHERE p."journalId"=j.id AND a.name='user:'||r."userId"||':available') f ON true
+    WHERE COALESCE(f.points,0)<>r."discountPoints"
+    UNION ALL
+    SELECT 'REFERRAL_DISCOUNT' AS kind,'orphan-referral:'||j.id AS name,COALESCE(SUM(p.delta) FILTER(WHERE p.delta>0),0)::numeric AS projected,0::numeric AS actual
+    FROM "Journal" j LEFT JOIN "ReferralRedemption" r ON r."operationId"=j."operationId" LEFT JOIN "Posting" p ON p."journalId"=j.id
+    WHERE j.kind='REFERRAL_DISCOUNT' AND r.id IS NULL GROUP BY j.id
+    ORDER BY kind,name`;
+  return [...findings,...discounts];
 }

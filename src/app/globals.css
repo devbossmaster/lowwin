@@ -1,29 +1,12 @@
 @import "tailwindcss";
-
-@font-face { font-family: 'Poppins'; src: url('/fonts/poppins-latin-400.woff2') format('woff2'); font-style: normal; font-weight: 400; font-display: swap; }
-@font-face { font-family: 'Poppins'; src: url('/fonts/poppins-latin-500.woff2') format('woff2'); font-style: normal; font-weight: 500; font-display: swap; }
-@font-face { font-family: 'Poppins'; src: url('/fonts/poppins-latin-600.woff2') format('woff2'); font-style: normal; font-weight: 600; font-display: swap; }
-@font-face { font-family: 'Poppins'; src: url('/fonts/poppins-latin-700.woff2') format('woff2'); font-style: normal; font-weight: 700; font-display: swap; }
-
-@theme {
-  --font-sans: 'Poppins', 'Lowwin Ethiopic', sans-serif;
-  --color-primary: #008000;
-  --color-primary-foreground: #fff;
-  --color-forest: #008000;
-  --color-mint: #f9f9f9;
-}
-body { font-family: 'Poppins', 'Lowwin Ethiopic', sans-serif; }
-
-@font-face {
-  font-family: 'Lowwin Ethiopic';
-  src: url('/fonts/NotoSansEthiopic-Bold.ttf') format('truetype');
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-}
-
-[lang='am'] { font-family: 'Poppins', 'Lowwin Ethiopic', sans-serif; }
-
+@font-face{font-family:'DM Sans';src:url('/fonts/dm-sans-latin-400.woff2') format('woff2');font-style:normal;font-weight:400;font-display:swap}
+@font-face{font-family:'DM Sans';src:url('/fonts/dm-sans-latin-500.woff2') format('woff2');font-style:normal;font-weight:500;font-display:swap}
+@font-face{font-family:'DM Sans';src:url('/fonts/dm-sans-latin-600.woff2') format('woff2');font-style:normal;font-weight:600;font-display:swap}
+@font-face{font-family:'DM Sans';src:url('/fonts/dm-sans-latin-700.woff2') format('woff2');font-style:normal;font-weight:700;font-display:swap}
+@font-face{font-family:'Lowwin Ethiopic';src:url('/fonts/noto-sans-ethiopic-variable.woff2') format('woff2');font-style:normal;font-weight:100 900;font-display:swap;unicode-range:U+030E,U+1200-1399,U+2D80-2DDE,U+AB01-AB2E,U+1E7E0-1E7FE}
+@theme{--font-sans:'DM Sans','Lowwin Ethiopic',sans-serif;--color-primary:#181815;--color-primary-foreground:#fff;--color-forest:#181815;--color-mint:#f0eee7}
+body{font-family:'DM Sans','Lowwin Ethiopic',sans-serif}
+[lang='am']{font-family:'DM Sans','Lowwin Ethiopic',sans-serif}
 .telegram-entry.launch-loader {
   position: relative;
   isolation: isolate;
