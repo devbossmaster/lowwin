@@ -1,2 +1,2 @@
-import {WalletTopUpPage} from "@/components/wallet-top-up";
-export default function Deposit(){return <WalletTopUpPage/>;}
+import {redirect} from 'next/navigation';
+export default function Deposit(){redirect('/profile?topup=1')}

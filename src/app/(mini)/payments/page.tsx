@@ -1,9 +1,18 @@
-'use client';
-import {PaymentHistory} from '@/components/payment-history';
-import {MiniPhrase} from '@/components/mini-locale';
-import {OfflineRetry} from '@/components/offline-retry';
-import styles from '@/components/account-pages.module.css';
+import {headers} from 'next/headers';
+import {redirect} from 'next/navigation';
+import {db} from '@/lib/db';
+import {getMiniSession} from '@/modules/auth/mini-access';
 
-export default function Payments(){
- return <section className={styles.page}><OfflineRetry/><header className={styles.heading}><h1><MiniPhrase en="Bid payments" am="የጨረታ ክፍያዎች"/></h1><p><MiniPhrase en="Track your ArifPay requests and payment status." am="የArifPay ጥያቄዎችዎን እና የክፍያ ሁኔታን ይከታተሉ።"/></p></header><PaymentHistory/></section>;
+const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export default async function Payments({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}){
+ const params=await searchParams,values=[params.checkout,params.checkoutId,params.id].filter(value=>value!==undefined);
+ let destination='/profile#wallet';
+ if(process.env.ARIFPAY_SCHEMA_READY==='true'&&values.length===1&&typeof values[0]==='string'&&uuid.test(values[0])){
+  const current=await getMiniSession(await headers());
+  if(current){
+   const checkout=await db.arifPayCheckout.findFirst({where:{id:values[0],userId:current.user.id},select:{id:true,auction:{select:{publicCode:true}}}});
+   if(checkout)destination=`/auctions/${checkout.auction.publicCode}?checkout=${checkout.id}`;
+  }
+ }
+ redirect(destination);
 }

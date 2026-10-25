@@ -1,0 +1,345 @@
+{
+  "notes": [
+    "Registration uses database transaction proof, including app-clock skew.",
+    "First accepted bid and one-use discount use atomic ledger transactions.",
+    "Gross frozen fee remains unchanged; discount is a contra-fee journal.",
+    "Runtime role and private tables verified.",
+    "Existing 410 customer bid command remains disabled; wallet GET is authenticated read-only."
+  ],
+  "mode": "Guarded disposable PostgreSQL loopback",
+  "policy": {
+    "expiryDaysRange": [
+      15,
+      30
+    ],
+    "defaultDraft": {
+      "expiryDays": 30,
+      "discountPercent": 10,
+      "enabled": false
+    },
+    "discountPercentRange": [
+      5,
+      15
+    ]
+  },
+  "release": {
+    "hostedMigrationApplied": false,
+    "telegramMessagesSent": 0,
+    "customerPaymentsEnabled": false,
+    "providerCalls": 0
+  },
+  "groups": [
+    {
+      "failed": 0,
+      "skipped": 0,
+      "cases": [
+        {
+          "status": "passed",
+          "durationMs": 8.961399999999912,
+          "name": "referral rewards on isolated PostgreSQL validates the configured range and leaves disabled old schemas untouched"
+        },
+        {
+          "status": "passed",
+          "durationMs": 120.47080000000005,
+          "name": "referral rewards on isolated PostgreSQL binds a trusted first bot start to contact registration and never retroclaims a customer"
+        },
+        {
+          "status": "passed",
+          "durationMs": 357.79549999999995,
+          "name": "referral rewards on isolated PostgreSQL awards nothing for a failed attempt, then exactly once for the first accepted bid and replay"
+        },
+        {
+          "status": "passed",
+          "durationMs": 54.4543000000001,
+          "name": "referral rewards on isolated PostgreSQL quotes owned rewards without consuming them, and rejects another account"
+        },
+        {
+          "status": "passed",
+          "durationMs": 125.596,
+          "name": "referral rewards on isolated PostgreSQL redeems atomically as contra-fees while keeping frozen gross fee and idempotency"
+        },
+        {
+          "status": "passed",
+          "durationMs": 364.65740000000005,
+          "name": "referral rewards on isolated PostgreSQL allows only one of two concurrent submissions to spend the same reward"
+        },
+        {
+          "status": "passed",
+          "durationMs": 419.7606999999998,
+          "name": "referral rewards on isolated PostgreSQL keeps earned snapshots when policy changes or pauses, and snapshots the next grant"
+        },
+        {
+          "status": "passed",
+          "durationMs": 805.0920000000001,
+          "name": "referral rewards on isolated PostgreSQL rolls back a rejected deadline bid without consuming or crediting a reward"
+        },
+        {
+          "status": "passed",
+          "durationMs": 234.57560000000012,
+          "name": "referral rewards on isolated PostgreSQL rejects a standalone balanced reward credit and a forged redemption at commit"
+        },
+        {
+          "status": "passed",
+          "durationMs": 1772.5666000000006,
+          "name": "referral rewards on isolated PostgreSQL uses signed first-launch attribution only and ignores existing/unsigned/tampered sources"
+        },
+        {
+          "status": "passed",
+          "durationMs": 65.91229999999996,
+          "name": "referral rewards on isolated PostgreSQL ignores expired pre-registration attribution and restricted referrers"
+        },
+        {
+          "status": "passed",
+          "durationMs": 69.57340000000022,
+          "name": "referral rewards on isolated PostgreSQL renews an expired unused bot start without retroclaiming a registered account"
+        },
+        {
+          "status": "passed",
+          "durationMs": 68.18910000000051,
+          "name": "referral rewards on isolated PostgreSQL uses transaction registration proof across positive and negative app-clock skew"
+        },
+        {
+          "status": "passed",
+          "durationMs": 191.39999999999964,
+          "name": "referral rewards on isolated PostgreSQL supports the restricted runtime role and keeps proof and immutable tables protected"
+        },
+        {
+          "status": "passed",
+          "durationMs": 3225.3476,
+          "name": "referral rewards on isolated PostgreSQL can quote an owned unspent reward beyond the bounded twenty-item selection list"
+        },
+        {
+          "status": "passed",
+          "durationMs": 211.7577000000001,
+          "name": "referral rewards on isolated PostgreSQL leaves a real unused preview reward for mobile UI checks and reconciles cleanly"
+        }
+      ],
+      "name": "referral-rewards",
+      "passed": 16
+    },
+    {
+      "failed": 0,
+      "skipped": 0,
+      "cases": [
+        {
+          "status": "passed",
+          "durationMs": 2725.8669000000004,
+          "name": "authenticated point bids on disposable PostgreSQL authenticates signed Telegram sessions and rejects guest POST/GET"
+        },
+        {
+          "status": "passed",
+          "durationMs": 217.20750000000044,
+          "name": "authenticated point bids on disposable PostgreSQL enforces integer range, step and immutable accepted rows"
+        },
+        {
+          "status": "passed",
+          "durationMs": 218.30000000000018,
+          "name": "authenticated point bids on disposable PostgreSQL rejects own duplicate but allows the same amount from another user"
+        },
+        {
+          "status": "passed",
+          "durationMs": 6170.4947999999995,
+          "name": "authenticated point bids on disposable PostgreSQL allows 100 distinct amounts per user and rejects the 101st, without capping the auction globally"
+        },
+        {
+          "status": "passed",
+          "durationMs": 271.0602999999992,
+          "name": "authenticated point bids on disposable PostgreSQL charges each fee and reserves only increases above the previous maximum"
+        },
+        {
+          "status": "passed",
+          "durationMs": 113.07250000000022,
+          "name": "authenticated point bids on disposable PostgreSQL rejects insufficient available points without any partial bid, hold or fee"
+        },
+        {
+          "status": "passed",
+          "durationMs": 111.90270000000055,
+          "name": "authenticated point bids on disposable PostgreSQL replays identical keys and rejects changed input without a second debit"
+        },
+        {
+          "status": "passed",
+          "durationMs": 1307.8055999999997,
+          "name": "authenticated point bids on disposable PostgreSQL replays an accepted receipt after the auction deadline"
+        },
+        {
+          "status": "passed",
+          "durationMs": 495.22949999999946,
+          "name": "authenticated point bids on disposable PostgreSQL serializes concurrent retries and distinct bids without double holds"
+        },
+        {
+          "status": "passed",
+          "durationMs": 145.03219999999965,
+          "name": "authenticated point bids on disposable PostgreSQL rolls back a bid, reserve and immutable operation if its outer transaction fails"
+        },
+        {
+          "status": "passed",
+          "durationMs": 46.704899999998815,
+          "name": "authenticated point bids on disposable PostgreSQL rejects DEMO inventory in production settings without writing"
+        },
+        {
+          "status": "passed",
+          "durationMs": 2091.8871000000017,
+          "name": "authenticated point bids on disposable PostgreSQL rejects a queued bid whose auction lock is granted after the deadline"
+        },
+        {
+          "status": "passed",
+          "durationMs": 153.59530000000086,
+          "name": "authenticated point bids on disposable PostgreSQL keeps real accepted bids and user identities out of the public catalog"
+        },
+        {
+          "status": "passed",
+          "durationMs": 114.91570000000002,
+          "name": "required own-contact boundary rejects unauthenticated webhooks before storage"
+        },
+        {
+          "status": "passed",
+          "durationMs": 33.6237000000001,
+          "name": "required own-contact boundary stores encrypted contact without phone or vCard and deduplicates update delivery"
+        },
+        {
+          "status": "passed",
+          "durationMs": 18.88220000000001,
+          "name": "required own-contact boundary rejects missing-id"
+        },
+        {
+          "status": "passed",
+          "durationMs": 6.695099999999911,
+          "name": "required own-contact boundary rejects other-contact"
+        },
+        {
+          "status": "passed",
+          "durationMs": 6.365600000000086,
+          "name": "required own-contact boundary rejects other-chat"
+        },
+        {
+          "status": "passed",
+          "durationMs": 6.358099999999922,
+          "name": "required own-contact boundary rejects group"
+        },
+        {
+          "status": "passed",
+          "durationMs": 6.361300000000028,
+          "name": "required own-contact boundary rejects forwarded"
+        },
+        {
+          "status": "passed",
+          "durationMs": 6.649499999999989,
+          "name": "required own-contact boundary rejects wrong-bot"
+        },
+        {
+          "status": "passed",
+          "durationMs": 5.736699999999928,
+          "name": "required own-contact boundary rejects invalid-phone"
+        },
+        {
+          "status": "passed",
+          "durationMs": 77.04020000000037,
+          "name": "required own-contact boundary serializes same-phone claims, never merges users and keeps only one owner"
+        },
+        {
+          "status": "passed",
+          "durationMs": 1299.0699999999997,
+          "name": "required own-contact boundary binds a prelaunch contact; unverified signed sessions have no Mini App access; revocation denies access again"
+        },
+        {
+          "status": "passed",
+          "durationMs": 78.97700000000077,
+          "name": "required own-contact boundary registers on verified contact before launch and reuses the same user at signed launch"
+        },
+        {
+          "status": "passed",
+          "durationMs": 17.369799999999486,
+          "name": "required own-contact boundary does not treat an existing user without verified contact as registered"
+        },
+        {
+          "status": "passed",
+          "durationMs": 43.76479999999992,
+          "name": "required own-contact boundary serializes contact registration racing signed launch without duplicate users or sessions from contact"
+        },
+        {
+          "status": "passed",
+          "durationMs": 134.96530000000075,
+          "name": "required own-contact boundary confirms a verified bot contact once with an Amharic Mini App button"
+        },
+        {
+          "status": "passed",
+          "durationMs": 88.17060000000038,
+          "name": "required own-contact boundary fallback sends an own-contact reply keyboard only to the signed private identity, without unlocking Home"
+        },
+        {
+          "status": "passed",
+          "durationMs": 24.24539999999979,
+          "name": "required own-contact boundary does not mutate audit records"
+        },
+        {
+          "status": "passed",
+          "durationMs": 2.4167000000006738,
+          "name": "required own-contact boundary staging fixture capability rejects production, hosted and different targets"
+        },
+        {
+          "status": "passed",
+          "durationMs": 30.899299999999982,
+          "name": "verified Telegram profile photo retains photo_url only after verifying the signed launch"
+        },
+        {
+          "status": "passed",
+          "durationMs": 1.1014999999999873,
+          "name": "verified Telegram profile photo ignores unsafe or missing photo metadata without weakening launch validation: javascript:alert(1)"
+        },
+        {
+          "status": "passed",
+          "durationMs": 0.8654000000000224,
+          "name": "verified Telegram profile photo ignores unsafe or missing photo metadata without weakening launch validation: data:image/png;base64,abc"
+        },
+        {
+          "status": "passed",
+          "durationMs": 0.7443999999999846,
+          "name": "verified Telegram profile photo ignores unsafe or missing photo metadata without weakening launch validation: http://t.me/avatar.jpg"
+        },
+        {
+          "status": "passed",
+          "durationMs": 0.8429999999999609,
+          "name": "verified Telegram profile photo ignores unsafe or missing photo metadata without weakening launch validation: https://user:password@t.me/avatar.jpg"
+        },
+        {
+          "status": "passed",
+          "durationMs": 0.9936999999999898,
+          "name": "verified Telegram profile photo ignores unsafe or missing photo metadata without weakening launch validation: 123"
+        },
+        {
+          "status": "passed",
+          "durationMs": 0.7235000000000014,
+          "name": "verified Telegram profile photo ignores unsafe or missing photo metadata without weakening launch validation: null"
+        },
+        {
+          "status": "passed",
+          "durationMs": 6.490199999999959,
+          "name": "verified Telegram profile photo syncs the signed photo for the bound identity while preserving display name and session"
+        },
+        {
+          "status": "passed",
+          "durationMs": 0.8294999999999959,
+          "name": "verified Telegram profile photo does not write again for an unchanged Telegram photo"
+        },
+        {
+          "status": "passed",
+          "durationMs": 0.7379999999999995,
+          "name": "verified Telegram profile photo keeps contact gating ahead of profile synchronization and exposure"
+        },
+        {
+          "status": "passed",
+          "durationMs": 4.000699999999995,
+          "name": "verified Telegram profile photo removes a stored image when the verified launch no longer supplies a photo"
+        },
+        {
+          "status": "passed",
+          "durationMs": 1.9104000000000383,
+          "name": "verified Telegram profile photo rejects a missing or mismatched bound user instead of updating another account"
+        }
+      ],
+      "name": "referral-compat",
+      "passed": 43
+    }
+  ],
+  "reconciliationDiscrepancies": 0
+}

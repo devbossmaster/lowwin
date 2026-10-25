@@ -19,6 +19,7 @@ export const adminTasks:readonly Task[]=[
  {href:'/admin/audit',label:'Staff activity',area:'Settings',permission:'audit'},
  {href:'/admin/jobs',label:'Message delivery',area:'Settings',permission:'jobs'},
  {href:'/admin/settings',label:'Workspace information',area:'Settings',permission:'settings'},
+ {href:'/admin/settings/referrals',label:'Referral rewards',area:'Settings',permission:'settings'},
  {href:'/admin/team',label:'Team access',area:'Settings',permission:'team'},
 ];
 export const adminAreas:readonly AdminArea[]=['Overview','Auctions','Payments','People','Settings'];

@@ -21,7 +21,7 @@ END $$;
 -- role useful when it is created after migrations, without granting mutations
 -- on immutable revision and transfer-alias rows.
 DO $$ DECLARE t text; BEGIN
- FOREACH t IN ARRAY ARRAY['AuctionFeeRevision','AuctionControlRevision','PaymentTransferAlias','AdminWalletCredit'] LOOP
+ FOREACH t IN ARRAY ARRAY['AuctionFeeRevision','AuctionControlRevision','PaymentTransferAlias','AdminWalletCredit','ReferralInvite','ReferralCoupon','ReferralRedemption','ReferralRegistrationProof'] LOOP
   IF EXISTS(SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename=t) THEN
    IF EXISTS(SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename=t AND tableowner='lowwin_runtime') THEN RAISE EXCEPTION 'Runtime must not own tables'; END IF;
    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',t);
@@ -31,7 +31,7 @@ DO $$ DECLARE t text; BEGIN
    END IF;
   END IF;
  END LOOP;
- FOREACH t IN ARRAY ARRAY['VerifyRequest','VerifyWebhookEvent','ArifPayCheckout'] LOOP
+ FOREACH t IN ARRAY ARRAY['VerifyRequest','VerifyWebhookEvent','ArifPayCheckout','ReferralPolicy','ReferralPendingSignup','ReferralSignup'] LOOP
   IF EXISTS(SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename=t) THEN
    IF EXISTS(SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename=t AND tableowner='lowwin_runtime') THEN RAISE EXCEPTION 'Runtime must not own tables'; END IF;
    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',t);

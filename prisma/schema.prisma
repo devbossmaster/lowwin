@@ -35,6 +35,14 @@ model User {
   staffMember         StaffMember?
   testRunActors       TestRunActor[]
   arifPayCheckouts     ArifPayCheckout[]
+  referralInvite      ReferralInvite?
+  referralSignups     ReferralSignup[]       @relation("ReferralSponsor")
+  referredSignup      ReferralSignup?        @relation("ReferralNewUser")
+  pendingReferrals    ReferralPendingSignup[] @relation("PendingReferralSponsor")
+  consumedReferral    ReferralPendingSignup? @relation("PendingReferralUser")
+  referralCoupons     ReferralCoupon[]
+  referralRedemptions ReferralRedemption[]
+  referralRegistrationProof ReferralRegistrationProof?
 
   @@map("user")
 }
@@ -213,6 +221,7 @@ model Operation {
   settlementCharges  SettlementMovement[] @relation("SettlementCharge")
   settlementReleases SettlementMovement[] @relation("SettlementRelease")
   settlementRefunds  SettlementMovement[] @relation("SettlementRefund")
+  referralRedemption ReferralRedemption?
 
   @@unique([userId, scope, key])
   @@index([scope, requestHash, createdAt])
@@ -426,6 +435,8 @@ model Bid {
   operationId       String              @unique
   operation         Operation           @relation(fields: [operationId], references: [id], onDelete: NoAction)
   winningSettlement AuctionSettlement?
+  referralSignup    ReferralSignup?       @relation("ReferralFirstBid")
+  referralRedemption ReferralRedemption?
 
   @@unique([userId, auctionId, amount])
   @@unique([auctionId, acceptanceOrder])
@@ -740,7 +751,103 @@ model PlayerProfile {
   user        User     @relation(fields: [userId], references: [id], onDelete: Restrict)
   displayName String
   bio         String   @default("")
+  contactEmail String?
+  city         String?
   updatedAt   DateTime @updatedAt
+}
+
+// Referral policy changes affect future grants only. Earned rewards snapshot
+// their percentage and expiry and never become transferable voucher codes.
+model ReferralPolicy {
+  id              String   @id @default("default")
+  enabled         Boolean  @default(false)
+  discountPercent Int      @default(10)
+  expiryDays      Int      @default(30)
+  version         Int      @default(1)
+  updatedBy       String?
+  updatedAt       DateTime @updatedAt
+}
+
+model ReferralInvite {
+  userId    String   @id
+  user      User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  token     String   @unique
+  createdAt DateTime @default(now())
+}
+
+// A private, trusted bot /start event can precede contact registration.
+// Existing customers can never create or consume a new pending attribution.
+model ReferralPendingSignup {
+  id             String   @id @default(uuid())
+  botId          String
+  telegramId     String
+  referrerUserId String
+  referrer       User     @relation("PendingReferralSponsor", fields: [referrerUserId], references: [id], onDelete: Restrict)
+  consumedUserId String?  @unique
+  consumedUser   User?    @relation("PendingReferralUser", fields: [consumedUserId], references: [id], onDelete: Restrict)
+  createdAt      DateTime @default(now())
+  renewedAt      DateTime?
+  expiresAt      DateTime
+  signup         ReferralSignup?
+
+  @@unique([botId, telegramId])
+}
+
+// Internal server registration proof: inserted by the user INSERT trigger,
+// never backfilled for existing accounts or accepted from the browser.
+model ReferralRegistrationProof {
+  userId        String @id
+  user          User @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  transactionId BigInt @default(dbgenerated("txid_current()"))
+  registeredAt  DateTime @default(dbgenerated("(clock_timestamp() AT TIME ZONE 'UTC')"))
+}
+
+model ReferralSignup {
+  referredUserId String @id
+  referredUser   User   @relation("ReferralNewUser", fields: [referredUserId], references: [id], onDelete: Restrict)
+  referrerUserId String
+  referrer       User   @relation("ReferralSponsor", fields: [referrerUserId], references: [id], onDelete: Restrict)
+  pendingId      String? @unique
+  pending        ReferralPendingSignup? @relation(fields: [pendingId], references: [id], onDelete: Restrict)
+  registeredAt  DateTime @default(now())
+  firstBidId     String? @unique
+  firstBid       Bid?   @relation("ReferralFirstBid", fields: [firstBidId], references: [id], onDelete: Restrict)
+  qualifiedAt   DateTime?
+  coupon        ReferralCoupon?
+
+  @@index([referrerUserId, registeredAt])
+}
+
+model ReferralCoupon {
+  id              String @id @default(uuid())
+  ownerUserId     String
+  owner           User   @relation(fields: [ownerUserId], references: [id], onDelete: Restrict)
+  referredUserId  String @unique
+  signup          ReferralSignup @relation(fields: [referredUserId], references: [referredUserId], onDelete: Restrict)
+  percent         Int
+  policyVersion   Int
+  createdAt       DateTime @default(now())
+  expiresAt       DateTime
+  redemption      ReferralRedemption?
+
+  @@index([ownerUserId, expiresAt])
+}
+
+// One coupon can sponsor one accepted v4 submission fee. Its journal is a
+// contra-fee movement; it is never a deposit or a reusable wallet credit.
+model ReferralRedemption {
+  id              String @id @default(uuid())
+  couponId        String @unique
+  coupon          ReferralCoupon @relation(fields: [couponId], references: [id], onDelete: Restrict)
+  userId          String
+  user            User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  bidId           String @unique
+  bid             Bid @relation(fields: [bidId], references: [id], onDelete: Restrict)
+  operationId     String @unique
+  operation       Operation @relation(fields: [operationId], references: [id], onDelete: Restrict)
+  grossFeePoints  Decimal @db.Decimal
+  discountPoints  Decimal @db.Decimal
+  createdAt       DateTime @default(now())
 }
 
 model AuctionFavorite {

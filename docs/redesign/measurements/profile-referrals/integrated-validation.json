@@ -1,0 +1,95 @@
+{
+  "scope": "Profile, referral discounts and legacy customer route compatibility",
+  "environment": "Guarded disposable loopback PostgreSQL _test fixtures and local browsers",
+  "fixtureData": "Synthetic; no production customers or balances",
+  "validationGroups": [
+    {
+      "name": "backend-referral-and-existing-compatibility",
+      "passed": 59,
+      "source": "backend-validation.json",
+      "parts": [
+        16,
+        43
+      ]
+    },
+    {
+      "name": "admin-referral-policy-and-workspace",
+      "passed": 37,
+      "parts": [
+        26,
+        11
+      ]
+    },
+    {
+      "name": "legacy-customer-redirect-and-return-compatibility",
+      "passed": 30,
+      "parts": [
+        18,
+        12
+      ]
+    },
+    {
+      "name": "profile-contact-discount-preview-quote-and-client-auth",
+      "passed": 33,
+      "finalRerunConfirmedByIntegrationOwner": true
+    },
+    {
+      "name": "customer-browser",
+      "passed": 4,
+      "widths": [
+        360,
+        430
+      ],
+      "languages": [
+        "en",
+        "am"
+      ],
+      "reports": [
+        "profile-ui-360.json",
+        "profile-ui-430.json"
+      ]
+    },
+    {
+      "name": "admin-browser",
+      "passed": 2,
+      "widths": [
+        1440,
+        430
+      ],
+      "reports": [
+        "admin-referral-policy-1440.json",
+        "admin-referral-policy-430.json"
+      ]
+    }
+  ],
+  "countsMayOverlap": true,
+  "uniqueGrandTotalClaimed": false,
+  "typescript": {
+    "validationWorktree": "passed",
+    "userWorktree": "passed",
+    "confirmedByIntegrationOwner": true
+  },
+  "prismaValidation": "passed",
+  "finalIntegratedOptimizedBuild": {
+    "status": "passed",
+    "command": "next build --webpack",
+    "elapsedMs": 140897,
+    "staticPages": 21,
+    "environment": "isolated loopback _test; live/provider flags disabled",
+    "warning": "Parent-directory lockfile ignored outside Git root"
+  },
+  "browserFinancialPosts": 0,
+  "reconciliationDiscrepancies": 0,
+  "providerCalls": 0,
+  "telegramMessagesSent": 0,
+  "customerPaymentsEnabled": false,
+  "hostedMigrationApplied": false,
+  "unverified": [
+    "production deployment",
+    "hosted migration",
+    "real merchant/provider behavior",
+    "physical Android/iOS Telegram WebViews",
+    "real Telegram message/avatar delivery",
+    "production latency and query plans"
+  ]
+}

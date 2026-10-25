@@ -24,5 +24,5 @@ export function validateTelegramInitData(raw: string, botToken: string, now = Ma
   const expected = createHmac('sha256', key).update(check).digest();
   if (!timingSafeEqual(expected, Buffer.from(hash, 'hex'))) throw new Error('Invalid launch signature');
   const user=userSchema.parse(JSON.parse(params.get('user') ?? 'null'));
-  return {...user,photo_url:telegramPhotoUrl(user.photo_url)};
+  return {...user,photo_url:telegramPhotoUrl(user.photo_url),...(params.has('start_param')?{start_param:params.get('start_param')!}:{})};
 }

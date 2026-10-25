@@ -13,6 +13,16 @@ export class TelegramLaunchError extends Error {
   }
 }
 
+/** Revoke the existing session before discarding any private client state. */
+export async function signOutMiniAccount():Promise<void> {
+  const response=await fetch('/api/auth/sign-out',{
+    method:'POST',credentials:'same-origin',cache:'no-store',
+    headers:{'Content-Type':'application/json'},body:'{}',
+    signal:AbortSignal.timeout(15_000),
+  });
+  if(!response.ok)throw new Error('Could not sign out. Please retry.');
+}
+
 export async function signInTelegram(initData:string):Promise<Bootstrap> {
   const response=await fetch('/api/auth/telegram/miniapp/signin',{
     method:'POST',credentials:'same-origin',cache:'no-store',

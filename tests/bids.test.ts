@@ -55,8 +55,8 @@ describe.skipIf(!url)('authenticated point bids on disposable PostgreSQL',()=>{
     const walletRoute=await import('../src/app/api/wallet/route');
     expect((await walletRoute.GET(new Request('http://localhost:3000/api/wallet'))).status).toBe(401);
     const walletResponse=await walletRoute.GET(new Request('http://localhost:3000/api/wallet',{headers:{cookie}}));
-    expect(walletResponse.status).toBe(410);expect(walletResponse.headers.get('cache-control')).toContain('no-store');
-    expect(await walletResponse.json()).toMatchObject({code:'WALLETS_RETIRED'});
+    expect(walletResponse.status).toBe(200);expect(walletResponse.headers.get('cache-control')).toContain('private, no-store');expect(walletResponse.headers.get('vary')).toBe('Cookie');
+    expect(await walletResponse.json()).toMatchObject({available:'100',held:'0'});
     const {getWalletView}=await import('../src/modules/wallet/view');expect((await getWalletView(client,signedUser.id)).wallet).toEqual({available:'100',held:'0'});
     const personalRoute=await import('../src/app/api/my-bids/route');
     expect((await personalRoute.GET(new Request('http://localhost:3000/api/my-bids'))).status).toBe(401);

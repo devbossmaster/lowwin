@@ -20,6 +20,6 @@ export default function LearnMoreSheet({onClose,videoId,media,returnFocusRef}:{o
   </ol>
   <div className="learn-example"><h3><MiniPhrase en="A simple example" am="ቀላል ምሳሌ"/></h3><p><MiniPhrase en="Imagine the numbers are 2, 2, 4, 5, 5 and 7. Both 4 and 7 are unique. 4 wins because it is the lowest unique number." am="ቁጥሮቹ 2፣ 2፣ 4፣ 5፣ 5 እና 7 ቢሆኑ፣ 4 እና 7 ልዩ ናቸው። 4 ዝቅተኛው ልዩ ቁጥር ስለሆነ ያሸንፋል።"/></p><strong><MiniPhrase en="For current v4 auctions, your number is not money. Only the disclosed submission fee is charged; it is non-refundable." am="በአሁኑ v4 ጨረታዎች ቁጥርዎ ገንዘብ አይደለም። የሚከፈለው የተገለጸው የማስገቢያ ክፍያ ብቻ ሲሆን ተመላሽ አይሆንም።"/></strong></div>
   <p className="learn-fine"><MiniPhrase en="Older auctions follow their own published terms, including any reserve or winner payment. If no number is unique, the fallback written in that auction’s terms applies." am="የቆዩ ጨረታዎች የራሳቸውን የታተሙ ውሎች ይከተላሉ። ልዩ ቁጥር ከሌለ፣ በዚያ ጨረታ ውል የተጻፈው ደንብ ይተገበራል።"/></p>
-  <div className="learn-links"><Link href="/terms"><MiniPhrase en="Terms" am="ውሎች"/></Link><Link href="/privacy"><MiniPhrase en="Privacy" am="ግላዊነት"/></Link><Link href="/faq"><MiniPhrase en="More questions?" am="ተጨማሪ ጥያቄዎች?"/></Link></div>
+  <div className="learn-links"><Link href="/terms"><MiniPhrase en="Terms" am="ውሎች"/></Link><Link href="/privacy"><MiniPhrase en="Privacy" am="ግላዊነት"/></Link></div>
  </AccountSheet>;
 }

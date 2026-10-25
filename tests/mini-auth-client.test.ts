@@ -1,5 +1,5 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
-import {miniAuthError,signInTelegram,TelegramLaunchError} from '../src/lib/mini-auth-client';
+import {miniAuthError,signInTelegram,signOutMiniAccount,TelegramLaunchError} from '../src/lib/mini-auth-client';
 
 afterEach(()=>{vi.unstubAllGlobals();vi.restoreAllMocks();vi.useRealTimers()});
 describe('Telegram startup request',()=>{
@@ -46,5 +46,17 @@ describe('Telegram startup request',()=>{
   it('provides short retry instructions for browser timeouts and network failures',()=>{
     expect(miniAuthError(new DOMException('raw timeout','TimeoutError'))).toBe('Connection took too long. Tap Retry.');
     expect(miniAuthError(new TypeError('Failed to fetch'))).toBe('Connection interrupted. Tap Retry.');
+  });
+});
+
+describe('explicit account sign-out',()=>{
+  it('uses the existing same-origin session-revocation endpoint without caching',async()=>{
+    const request=vi.fn(async()=>Response.json({success:true}));vi.stubGlobal('fetch',request);
+    await signOutMiniAccount();expect(request).toHaveBeenCalledOnce();
+    expect(request).toHaveBeenCalledWith('/api/auth/sign-out',expect.objectContaining({method:'POST',credentials:'same-origin',cache:'no-store',body:'{}'}));
+  });
+  it('does not report a failed revocation as a completed sign-out',async()=>{
+    vi.stubGlobal('fetch',vi.fn(async()=>Response.json({error:'unavailable'},{status:503})));
+    await expect(signOutMiniAccount()).rejects.toThrow('Could not sign out. Please retry.');
   });
 });

@@ -17,16 +17,18 @@ export function AccountSheet({title,onClose,children,footer,returnFocusRef,size=
     const scroll=document.body.style.overflow,initialHeight=window.innerHeight;
     element?.showModal();document.body.style.overflow='hidden';closeButton.current?.focus({preventScroll:true});
     const viewport=window.visualViewport;let frame=0;
+    const keyboardField=(node:Element|null)=>node instanceof HTMLElement&&(node.isContentEditable||node instanceof HTMLTextAreaElement||node instanceof HTMLSelectElement||node instanceof HTMLInputElement&&!['radio','checkbox','button','submit','reset','hidden','file','range','color'].includes(node.type));
     const fitViewport=()=>{
       if(!element)return;
       const height=viewport?.height??window.innerHeight,inset=Math.max(0,window.innerHeight-height-(viewport?.offsetTop??0));
       element.style.setProperty('--sheet-viewport-height',`${Math.round(height)}px`);
       element.style.setProperty('--sheet-keyboard-inset',`${Math.round(inset)}px`);
       const focused=document.activeElement;
-      element.dataset.keyboardOpen=String(focused instanceof HTMLElement&&element.contains(focused)&&focused.matches('input,textarea,select,[contenteditable="true"]')&&(height<initialHeight-100||inset>100));
+      const keyboardOpen=focused instanceof HTMLElement&&element.contains(focused)&&keyboardField(focused)&&(height<initialHeight-100||inset>100);
+      element.dataset.keyboardOpen=String(keyboardOpen);
       cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>{
         const active=document.activeElement;
-        if(active instanceof HTMLElement&&element.contains(active)&&active.matches('input,textarea,select,[contenteditable="true"]'))active.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});
+        if(keyboardOpen&&active instanceof HTMLElement&&element.contains(active)&&keyboardField(active))active.scrollIntoView({block:'nearest',inline:'nearest',behavior:'instant'});
       });
     };
     fitViewport();window.addEventListener('resize',fitViewport);viewport?.addEventListener('resize',fitViewport);element?.addEventListener('focusin',fitViewport);

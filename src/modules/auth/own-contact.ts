@@ -1,6 +1,7 @@
 import {createCipheriv,createDecipheriv,createHmac,randomBytes,randomUUID} from 'node:crypto';
 import type {Prisma,PrismaClient} from '@prisma/client';
 import {stagingDemoUser} from '../auctions/staging-demo';
+import {attributeNewReferralInTransaction} from '../referrals/service';
 type DB=Prisma.TransactionClient|PrismaClient;
 export function contactBotId(){const id=process.env.TELEGRAM_BOT_TOKEN?.split(':')[0];if(!id||!/^\d+$/.test(id))throw Error('Contact bot unavailable');return id}
 function localFixture(){try{const u=new URL(process.env.DATABASE_URL??'');return process.env.NODE_ENV!=='production'&&!process.env.VERCEL&&['local','test'].includes(process.env.APP_ENV??'')&&['127.0.0.1','localhost','[::1]'].includes(u.hostname)&&u.pathname.endsWith('_test')}catch{return false}}
@@ -35,6 +36,7 @@ export async function acceptOwnContact(tx:DB,payload:unknown,botId:string|null,u
  if(!user){
   const name=[m.from?.first_name,m.from?.last_name].filter((part):part is string=>typeof part==='string').join(' ').trim().slice(0,200)||'Lowwin player';
   user=await tx.user.create({data:{id:randomUUID(),name,telegramId:tid,telegramUsername:typeof m.from?.username==='string'?m.from.username.slice(0,64):null},select:{id:true}});
+  await attributeNewReferralInTransaction(tx,user.id,tid,{newAccount:true});
  }
  if(!existing)await tx.telegramOwnContact.create({data:{telegramId:tid,botId,userId:user.id,phoneHash:hash,phoneCipher:encryptPhone(phone,botId),lastFour:phone.slice(-4),verifiedAt:new Date(),sourceUpdateId:updateId}});
  else if(!existing.userId)await tx.telegramOwnContact.update({where:{id:existing.id},data:{userId:user.id}});

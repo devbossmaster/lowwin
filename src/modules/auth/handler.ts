@@ -11,6 +11,7 @@ import { staffRateLimit } from '../admin/rate-limit';
 import {bindOwnContact} from './own-contact';
 import {getLaunchSession} from './mini-access';
 import {telegramBootstrap} from './mini-account';
+import {attributeNewReferralInTransaction,referralSchemaReady} from '../referrals/service';
 
 export async function handleAuth(request: Request) {
   const path = new URL(request.url).pathname.replace('/api/auth', '');
@@ -35,6 +36,7 @@ export async function handleAuth(request: Request) {
     const responseHeaders={'Cache-Control':'private, no-store, max-age=0','Vary':'Cookie'};
     let identity: string;
     let telegramPhoto:string|null|undefined;
+    let telegramStartParam:string|undefined;
     try {
       if (path === '/lowin/dev-identity') {
         assertLocalIdentityAccess(request.headers, await request.clone().json(), process.env, request.url);
@@ -43,7 +45,7 @@ export async function handleAuth(request: Request) {
       else {
         const body = miniAppBody.parse(await request.clone().json());
         const launch=validateTelegramInitData(body.initData, env.TELEGRAM_BOT_TOKEN);
-        identity = String(launch.id);telegramPhoto=launch.photo_url;
+        identity = String(launch.id);telegramPhoto=launch.photo_url;telegramStartParam=launch.start_param;
       }
     } catch { return Response.json({ error: 'Launch could not be verified. Reopen Lowwin from Telegram.' }, { status: 401,headers:responseHeaders }); }
     let stage:'launch-rate-limit'|'session-read'|'account-bootstrap'|'transaction-start'|'identity-lock'|'plugin-sign-in'|'session-bind'|'contact-bind'='launch-rate-limit';
@@ -66,6 +68,7 @@ export async function handleAuth(request: Request) {
       return await db.$transaction(async tx => {
         stage='identity-lock';
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`telegram:${identity}`}, 0))`;
+        const existed=path==='/telegram/miniapp/signin'&&referralSchemaReady()?await tx.user.findUnique({where:{telegramId:identity},select:{id:true}}):null;
         stage='plugin-sign-in';
         const response = await createAuth(tx).handler(request);
         if (!response.ok) throw response;
@@ -79,6 +82,7 @@ export async function handleAuth(request: Request) {
           if(!issued.session?.id||!issued.user?.id||issued.session.userId!==issued.user.id)throw new Error('Missing issued session');
           const bound=await tx.session.updateMany({where:{id:issued.session.id,userId:issued.user.id,user:{telegramId:identity,staffMember:null}},data:{telegramLaunchId:identity}});
           if(bound.count!==1)throw new Error('Launch identity mismatch');
+          await attributeNewReferralInTransaction(tx,issued.user.id,identity,{newAccount:!existed,signedStartParam:telegramStartParam});
           stage='contact-bind';
           await bindOwnContact(tx,issued.user.id,identity);
           stage='account-bootstrap';

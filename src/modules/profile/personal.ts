@@ -3,8 +3,10 @@ import { Prisma, type PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { publicAuctionSelect,publicWhere,toPublicAuction } from '../auctions/catalog';
 import { PrivateApiError } from '../auth/private-api';
+import {ownProfileContact} from './account-contact';
+import {getReferralOverview,referralSchemaReady} from '../referrals/service';
 
-export const displayProfileSchema=z.object({displayName:z.string().trim().min(1).max(60).regex(/^[^\p{Cc}\p{Cf}]+$/u),bio:z.string().trim().max(160).regex(/^[^\p{Cc}\p{Cf}]*$/u)}).strict();
+export const displayProfileSchema=z.object({displayName:z.string().trim().min(1).max(60).regex(/^[^\p{Cc}\p{Cf}]+$/u),bio:z.string().trim().max(160).regex(/^[^\p{Cc}\p{Cf}]*$/u),contactEmail:z.string().trim().max(254).refine(value=>value===''||z.email().safeParse(value).success).optional(),city:z.string().trim().max(80).regex(/^[^\p{Cc}\p{Cf}]*$/u).optional()}).strict();
 export const pageSchema=z.coerce.number().int().min(1).max(1000).default(1);
 export const personalQuerySchema=z.object({view:z.enum(['all','live','history']).default('all'),page:pageSchema}).strict();
 const liveWhere=(now:Date):Prisma.AuctionWhereInput=>({status:{in:['LIVE','SCHEDULED']},endsAt:{gt:now},settlement:{is:null}});
@@ -26,18 +28,21 @@ export async function getPersonalBids(client:PrismaClient,userId:string,input:un
     // Provider details are optional evidence, never a separate list of attempts.
     // The legacy adapter is additive and may not be installed on an older DB.
     const providers=process.env.ARIFPAY_SCHEMA_READY==='true'&&rows.length?await tx.arifPayCheckout.findMany({where:{userId,bidId:{in:rows.map(bid=>bid.id)},status:'BID_ACCEPTED',creditJournalId:{not:null}},select:{bidId:true,transactionId:true,channel:true,fee:true}}):[];
+    const discounts=referralSchemaReady()&&rows.length?await tx.referralRedemption.findMany({where:{userId,bidId:{in:rows.map(bid=>bid.id)}},select:{bidId:true,grossFeePoints:true,discountPoints:true,coupon:{select:{percent:true}}}}):[];
     return {items:rows.map(bid=>{
       const result=bid.auction.settlement;
       const outcome=result?(result.outcome==='WINNER'?(result.winningBidId===bid.id?'WON':'LOST'):result.outcome):bid.auction.status==='CANCELLED'?'CANCELLED':bid.auction.status==='CLOSED'||bid.auction.endsAt&&bid.auction.endsAt<=now?'PENDING':'LIVE';
       const journal=bid.operation.journal,paid=bid.feePoints.gt(0)&&journal?.kind==='BID_FEE'&&journal.postings.some(posting=>posting.account.kind==='AVAILABLE'&&posting.account.wallet?.userId===userId&&posting.delta.eq(bid.feePoints.negated()))&&journal.postings.some(posting=>posting.account.kind==='FEES'&&posting.delta.eq(bid.feePoints));
       const provider=providers.find(order=>order.bidId===bid.id&&order.fee.eq(bid.feePoints)&&!!order.transactionId);
       const payment={status:bid.feePoints.isZero()?'NOT_REQUIRED' as const:paid?'PAID' as const:'UNAVAILABLE' as const,method:paid?(provider?(provider.channel==='TELEBIRR'?'ARIFPAY_TELEBIRR' as const:provider.channel==='MPESA'?'ARIFPAY_MPESA' as const:null):'WALLET' as const):null,transactionRef:paid&&provider?provider.transactionId:null};
-      return {id:bid.id,amount:bid.amount.toString(),acceptedAt:bid.acceptedAt.toISOString(),feePoints:bid.feePoints.toString(),payment,outcome,decision:result?.decision??null,feeRefunded:result?.outcome==='CANCELLED'&&!isSubmissionFeeOnly(bid.auction.terms?.ruleVersion)?bid.feePoints.toString():'0',closedAt:result?.completedAt.toISOString()??null,auction:{ruleVersion:bid.auction.terms?.ruleVersion,code:bid.auction.publicCode.toString(),slug:bid.auction.slug,title:bid.auction.product?.title??bid.auction.publicCode.toString(),titleAm:bid.auction.product?.titleAm??null,image:bid.auction.product?.images[0]??null,endsAt:bid.auction.endsAt?.toISOString()??null,isDemo:bid.auction.isDemo,views:bid.auction.publicViewCount.toString()}};
+      const redemption=discounts.find(row=>row.bidId===bid.id&&row.grossFeePoints.eq(bid.feePoints));
+      const discount=redemption?{points:redemption.discountPoints.toString(),percent:redemption.coupon.percent,netFeePoints:bid.feePoints.sub(redemption.discountPoints).toString()}:null;
+      return {id:bid.id,amount:bid.amount.toString(),acceptedAt:bid.acceptedAt.toISOString(),feePoints:bid.feePoints.toString(),payment,discount,outcome,decision:result?.decision??null,feeRefunded:result?.outcome==='CANCELLED'&&!isSubmissionFeeOnly(bid.auction.terms?.ruleVersion)?bid.feePoints.toString():'0',closedAt:result?.completedAt.toISOString()??null,auction:{ruleVersion:bid.auction.terms?.ruleVersion,code:bid.auction.publicCode.toString(),slug:bid.auction.slug,title:bid.auction.product?.title??bid.auction.publicCode.toString(),titleAm:bid.auction.product?.titleAm??null,image:bid.auction.product?.images[0]??null,endsAt:bid.auction.endsAt?.toISOString()??null,isDemo:bid.auction.isDemo,views:bid.auction.publicViewCount.toString()}};
     }),page:query.page,pageSize:20 as const,total,totalPages:Math.ceil(total/20),counts:{total:all,active:live,won,live,history:all-live}};
   },{isolationLevel:Prisma.TransactionIsolationLevel.RepeatableRead});
 }
 export async function getPlayerProfile(client:PrismaClient,userId:string) {
-  return client.$transaction(async tx=>{
+  const profile=client.$transaction(async tx=>{
     const [{now}]=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`;
     const [user,bids,liveBids,wins,favorites]=await Promise.all([
       tx.user.findUniqueOrThrow({where:{id:userId},select:{name:true,playerProfile:{select:{displayName:true,bio:true}}}}),
@@ -47,10 +52,19 @@ export async function getPlayerProfile(client:PrismaClient,userId:string) {
     ]);
     return {displayName:user.playerProfile?.displayName??user.name,bio:user.playerProfile?.bio??'',counts:{bids,liveBids,historyBids:bids-liveBids,wins,favorites}};
   },{isolationLevel:Prisma.TransactionIsolationLevel.RepeatableRead});
+  const [base,contact,details,referral]=await Promise.all([
+    profile,ownProfileContact(client,userId),
+    referralSchemaReady()?client.playerProfile.findUnique({where:{userId},select:{contactEmail:true,city:true}}):Promise.resolve(null),
+    getReferralOverview(client,userId),
+  ]);
+  return {...base,...contact,contactEmail:details?.contactEmail??'',city:details?.city??'',contactDetailsEditable:referralSchemaReady(),referral};
 }
 export async function editPlayerProfile(client:PrismaClient,userId:string,input:unknown) {
   const fields=displayProfileSchema.parse(input);
-  return client.playerProfile.upsert({where:{userId},create:{userId,...fields},update:fields,select:{displayName:true,bio:true}});
+  const {contactEmail,city,...display}=fields,ready=referralSchemaReady();
+  if(!ready&&(contactEmail||city))throw new PrivateApiError(503,'Additional profile details are temporarily unavailable.');
+  const update=ready?{...display,...(contactEmail!==undefined?{contactEmail:contactEmail||null}:{}),...(city!==undefined?{city:city||null}:{})}:display;
+  return client.playerProfile.upsert({where:{userId},create:{userId,...update},update,select:{displayName:true,bio:true}});
 }
 export async function getPersonalWins(client:PrismaClient,userId:string,page=1) {
   page=pageSchema.parse(page);

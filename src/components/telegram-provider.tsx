@@ -2,13 +2,13 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import Script from 'next/script';
 import {usePathname} from 'next/navigation';
-import {MINI_AUTH_TIMEOUT_MS,TelegramLaunchError,miniAuthError,signInTelegram,type MiniAccount} from '@/lib/mini-auth-client';
+import {MINI_AUTH_TIMEOUT_MS,TelegramLaunchError,miniAuthError,signInTelegram,signOutMiniAccount,type MiniAccount} from '@/lib/mini-auth-client';
 import {loadPrivateJson,seedPrivateQuery,setPrivateQueryIdentity,subscribePrivateQueries} from './private-query-cache';
 type WebApp = { BackButton?:{isVisible?:boolean;show:()=>void;hide:()=>void;onClick:(handler:()=>void)=>void;offClick:(handler:()=>void)=>void};initData?: string; platform?:string; ready: () => void; expand?:()=>void; requestFullscreen?:()=>void; close?:()=>void; openTelegramLink?:(url:string)=>void; requestContact?:(callback:(shared:boolean)=>void)=>void; isVersionAtLeast?:(version:string)=>boolean; setHeaderColor?: (color: string) => void; setBackgroundColor?: (color: string) => void };
 declare global { interface Window { Telegram?: { WebApp?: WebApp } } }
 type Me = MiniAccount;
 type Status = 'loading' | 'guest' | 'contact-required' | 'authenticated' | 'error';
-const Context = createContext<{ status: Status; queryIdentity:string|null; verifyingTelegram: boolean; me: Me | null; error: string; needsReopen: boolean; retry: () => void; finishContact: () => Promise<void>; refreshMe: () => Promise<void>; devLogin: (accessKey: string) => void; devEnabled: boolean; botUrl: string | null }>({ status: 'loading', queryIdentity:null, verifyingTelegram: false, me: null, error: '', needsReopen: false, retry: () => {}, finishContact: async () => {}, refreshMe: async () => {}, devLogin: () => {}, devEnabled: false, botUrl: null });
+const Context = createContext<{ status: Status; queryIdentity:string|null; verifyingTelegram: boolean; me: Me | null; error: string; needsReopen: boolean; retry: () => void; finishContact: () => Promise<void>; refreshMe: () => Promise<void>; signOut:()=>Promise<void>; devLogin: (accessKey: string) => void; devEnabled: boolean; botUrl: string | null }>({ status: 'loading', queryIdentity:null, verifyingTelegram: false, me: null, error: '', needsReopen: false, retry: () => {}, finishContact: async () => {}, refreshMe: async () => {}, signOut:async()=>{}, devLogin: () => {}, devEnabled: false, botUrl: null });
 export const useTelegram = () => useContext(Context);
 export function TelegramProvider({ children, devEnabled, botUrl, requireLaunch=false }: { children: React.ReactNode; devEnabled: boolean; botUrl: string | null; requireLaunch?:boolean }) {
   const pathname=usePathname(),previousPath=useRef(pathname);
@@ -42,6 +42,17 @@ export function TelegramProvider({ children, devEnabled, botUrl, requireLaunch=f
     if(attempt!==attemptSequence.current||sequence!==refreshSequence.current||identity!==identityRef.current)return;
     acceptAccount(account);
   },[acceptAccount,clearAccount]);
+  const signOut=useCallback(async()=>{
+    if(authenticating.current)throw new Error('Please wait for sign-in to finish.');
+    authenticating.current=true;
+    ++attemptSequence.current;
+    try{
+      await signOutMiniAccount();
+      // The same SDK launch must not immediately sign the user back in.
+      launchAttempt.current=window.Telegram?.WebApp?.initData??'';
+      clearAccount();setError('');setNeedsReopen(true);setVerifyingTelegram(false);setStatus('guest');
+    }finally{authenticating.current=false}
+  },[clearAccount]);
   useEffect(()=>subscribePrivateQueries(event=>{
     if(event.kind==='authorization'&&event.identity===identityRef.current){
       attemptSequence.current++;clearAccount();setStatus('guest');
@@ -127,7 +138,7 @@ export function TelegramProvider({ children, devEnabled, botUrl, requireLaunch=f
     if(window.Telegram?.WebApp?.initData){autoAuthenticate();return}
     const timer = setTimeout(autoAuthenticate, 800); return () => clearTimeout(timer);
   }, [autoAuthenticate]);
-  return <Context.Provider value={{ status, queryIdentity, verifyingTelegram, me, error, needsReopen, retry: () => {if(!needsReopen)void authenticate()}, finishContact, refreshMe, devLogin: accessKey => void authenticate(true, accessKey), devEnabled: devEnabled && localBrowser, botUrl }}>
+  return <Context.Provider value={{ status, queryIdentity, verifyingTelegram, me, error, needsReopen, retry: () => {if(!needsReopen)void authenticate()}, finishContact, refreshMe, signOut, devLogin: accessKey => void authenticate(true, accessKey), devEnabled: devEnabled && localBrowser, botUrl }}>
     <Script src="https://telegram.org/js/telegram-web-app.js" strategy="afterInteractive" onReady={autoAuthenticate}/>
     {children}
   </Context.Provider>;
