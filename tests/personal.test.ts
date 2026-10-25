@@ -112,7 +112,7 @@ describe.skipIf(!url)('Phase 4B public outcomes and private pages on PostgreSQL'
   });
   it('isolates two users own bid histories and exposes only their final outcomes',async()=>{
     const a=await getPersonalBids(client,first.id),b=await getPersonalBids(client,second.id);
-    expect(a.total).toBe(5);expect(b.total).toBe(3);expect(a.counts).toEqual({live:1,history:4});
+    expect(a.total).toBe(5);expect(b.total).toBe(3);expect(a.counts).toEqual({total:5,active:1,won:1,live:1,history:4});
     expect(a.items.filter(row=>row.auction.code===publicCode(winner)).map(row=>[row.amount,row.outcome]).sort()).toEqual([['2','WON'],['20','LOST']]);
     expect(b.items.find(row=>row.auction.code===publicCode(winner))?.outcome).toBe('LOST');
     expect(a.items.find(row=>row.auction.code===publicCode(cancelled))).toMatchObject({feePoints:'4',feeRefunded:'4',outcome:'CANCELLED'});

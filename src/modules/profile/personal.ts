@@ -14,14 +14,26 @@ export async function getPersonalBids(client:PrismaClient,userId:string,input:un
   return client.$transaction(async tx=>{
     const [{now}]=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`;
     const where:Prisma.BidWhereInput={userId,...(query.view==='all'?{}:{auction:query.view==='live'?liveWhere(now):{NOT:liveWhere(now)}})};
-    const [rows,total,live,all]=await Promise.all([
-      tx.bid.findMany({where,orderBy:[{acceptedAt:'desc'},{id:'desc'}],skip:(query.page-1)*20,take:20,select:{id:true,amount:true,acceptedAt:true,feePoints:true,auction:{select:ownAuctionSelect}}}),tx.bid.count({where}),tx.bid.count({where:{userId,auction:liveWhere(now)}}),tx.bid.count({where:{userId}}),
+    const [rows,[counts]]=await Promise.all([
+      tx.bid.findMany({where,orderBy:[{acceptedAt:'desc'},{id:'desc'}],skip:(query.page-1)*20,take:20,select:{id:true,amount:true,acceptedAt:true,feePoints:true,auction:{select:ownAuctionSelect},operation:{select:{journal:{select:{kind:true,postings:{select:{delta:true,account:{select:{kind:true,wallet:{select:{userId:true}}}}}}}}}}}}),
+      tx.$queryRaw<{total:number;active:number;won:number}[]>`SELECT count(*)::int AS total,
+        (count(*) FILTER (WHERE a.status IN ('LIVE','SCHEDULED') AND a."endsAt">(${now}::timestamptz AT TIME ZONE 'UTC') AND s.id IS NULL))::int AS active,
+        (count(*) FILTER (WHERE s.outcome='WINNER' AND s."winningBidId"=b.id))::int AS won
+        FROM "Bid" b JOIN "Auction" a ON a.id=b."auctionId"
+        LEFT JOIN "AuctionSettlement" s ON s."auctionId"=a.id WHERE b."userId"=${userId}`,
     ]);
+    const {total:all,active:live,won}=counts,total=query.view==='all'?all:query.view==='live'?live:all-live;
+    // Provider details are optional evidence, never a separate list of attempts.
+    // The legacy adapter is additive and may not be installed on an older DB.
+    const providers=process.env.ARIFPAY_SCHEMA_READY==='true'&&rows.length?await tx.arifPayCheckout.findMany({where:{userId,bidId:{in:rows.map(bid=>bid.id)},status:'BID_ACCEPTED',creditJournalId:{not:null}},select:{bidId:true,transactionId:true,channel:true,fee:true}}):[];
     return {items:rows.map(bid=>{
       const result=bid.auction.settlement;
-      const outcome=result?(result.outcome==='WINNER'?(result.winningBidId===bid.id?'WON':'LOST'):result.outcome):bid.auction.endsAt&&bid.auction.endsAt<=now?'PENDING':'LIVE';
-      return {id:bid.id,amount:bid.amount.toString(),acceptedAt:bid.acceptedAt.toISOString(),feePoints:bid.feePoints.toString(),outcome,decision:result?.decision??null,feeRefunded:result?.outcome==='CANCELLED'&&!isSubmissionFeeOnly(bid.auction.terms?.ruleVersion)?bid.feePoints.toString():'0',closedAt:result?.completedAt.toISOString()??null,auction:{ruleVersion:bid.auction.terms?.ruleVersion,code:bid.auction.publicCode.toString(),slug:bid.auction.slug,title:bid.auction.product?.title??bid.auction.publicCode.toString(),titleAm:bid.auction.product?.titleAm??null,image:bid.auction.product?.images[0]??null,endsAt:bid.auction.endsAt?.toISOString()??null,isDemo:bid.auction.isDemo,views:bid.auction.publicViewCount.toString()}};
-    }),page:query.page,total,totalPages:Math.ceil(total/20),counts:{live,history:all-live}};
+      const outcome=result?(result.outcome==='WINNER'?(result.winningBidId===bid.id?'WON':'LOST'):result.outcome):bid.auction.status==='CANCELLED'?'CANCELLED':bid.auction.status==='CLOSED'||bid.auction.endsAt&&bid.auction.endsAt<=now?'PENDING':'LIVE';
+      const journal=bid.operation.journal,paid=bid.feePoints.gt(0)&&journal?.kind==='BID_FEE'&&journal.postings.some(posting=>posting.account.kind==='AVAILABLE'&&posting.account.wallet?.userId===userId&&posting.delta.eq(bid.feePoints.negated()))&&journal.postings.some(posting=>posting.account.kind==='FEES'&&posting.delta.eq(bid.feePoints));
+      const provider=providers.find(order=>order.bidId===bid.id&&order.fee.eq(bid.feePoints)&&!!order.transactionId);
+      const payment={status:bid.feePoints.isZero()?'NOT_REQUIRED' as const:paid?'PAID' as const:'UNAVAILABLE' as const,method:paid?(provider?(provider.channel==='TELEBIRR'?'ARIFPAY_TELEBIRR' as const:provider.channel==='MPESA'?'ARIFPAY_MPESA' as const:null):'WALLET' as const):null,transactionRef:paid&&provider?provider.transactionId:null};
+      return {id:bid.id,amount:bid.amount.toString(),acceptedAt:bid.acceptedAt.toISOString(),feePoints:bid.feePoints.toString(),payment,outcome,decision:result?.decision??null,feeRefunded:result?.outcome==='CANCELLED'&&!isSubmissionFeeOnly(bid.auction.terms?.ruleVersion)?bid.feePoints.toString():'0',closedAt:result?.completedAt.toISOString()??null,auction:{ruleVersion:bid.auction.terms?.ruleVersion,code:bid.auction.publicCode.toString(),slug:bid.auction.slug,title:bid.auction.product?.title??bid.auction.publicCode.toString(),titleAm:bid.auction.product?.titleAm??null,image:bid.auction.product?.images[0]??null,endsAt:bid.auction.endsAt?.toISOString()??null,isDemo:bid.auction.isDemo,views:bid.auction.publicViewCount.toString()}};
+    }),page:query.page,pageSize:20 as const,total,totalPages:Math.ceil(total/20),counts:{total:all,active:live,won,live,history:all-live}};
   },{isolationLevel:Prisma.TransactionIsolationLevel.RepeatableRead});
 }
 export async function getPlayerProfile(client:PrismaClient,userId:string) {

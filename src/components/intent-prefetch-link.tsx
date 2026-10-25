@@ -2,24 +2,26 @@
 
 import Link from 'next/link';
 import {useRouter} from 'next/navigation';
-import {useCallback,useRef,type ComponentProps} from 'react';
+import {useCallback,type ComponentProps} from 'react';
+import {useTelegram} from './telegram-provider';
+import {prefetchMiniIntent} from './mini-prefetch';
+import {rememberCurrentMiniRoute} from './mini-navigation-state';
 
 type Props=ComponentProps<typeof Link>;
 
 /** Prefetch a route only when a user shows intent to open it. */
 export function IntentPrefetchLink({href,...props}:Props){
-  const router=useRouter(),lastIntent=useRef(0);
-  const target=(typeof href==='string'?href:href.pathname??'/').split('#',1)[0]||'/';
+  const router=useRouter(),{queryIdentity}=useTelegram();
+  const target=typeof href==='string'?href.split('#',1)[0]||'/':(href.pathname??'/')+(href.query?'?'+new URLSearchParams(Object.entries(href.query).map(([key,value])=>[key,String(value)])).toString():'');
   const prefetch=useCallback(()=>{
-    const now=Date.now();
-    if(now-lastIntent.current<700)return;
-    lastIntent.current=now;
-    router.prefetch(target);
-  },[router,target]);
+    if(target===location.pathname+location.search)return;
+    prefetchMiniIntent(queryIdentity,target,url=>router.prefetch(url));
+  },[router,target,queryIdentity]);
   const intentHandlers={
     onPointerEnter:(event:React.PointerEvent<HTMLAnchorElement>)=>{props.onPointerEnter?.(event);prefetch()},
     onFocus:(event:React.FocusEvent<HTMLAnchorElement>)=>{props.onFocus?.(event);prefetch()},
     onTouchStart:(event:React.TouchEvent<HTMLAnchorElement>)=>{props.onTouchStart?.(event);prefetch()},
+    onClick:(event:React.MouseEvent<HTMLAnchorElement>)=>{props.onClick?.(event);if(!event.defaultPrevented)rememberCurrentMiniRoute(queryIdentity)},
   };
   return <Link {...props} href={href} prefetch={false} {...intentHandlers}/>;
 }

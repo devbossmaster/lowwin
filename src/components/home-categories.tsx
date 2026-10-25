@@ -1,5 +1,5 @@
 'use client';
-import Link from 'next/link';
+import {IntentPrefetchLink as Link} from './intent-prefetch-link';
 import {MiniCategoryName,MiniPhrase} from './mini-locale';
 import styles from './home-banner.module.css';
 import type {CatalogQuery} from '@/modules/auctions/catalog';

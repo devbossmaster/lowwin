@@ -1,0 +1,28 @@
+{
+  "width": "430",
+  "acceptedTotal": 23,
+  "active": 0,
+  "won": 1,
+  "pageSize": 20,
+  "languages": [
+    {
+      "language": "en",
+      "receiptVisibleMs": 92,
+      "detailApiReads": 0,
+      "summaryAccurate": true,
+      "newestFirst": true,
+      "paginationAccurate": true
+    },
+    {
+      "language": "am",
+      "receiptVisibleMs": 105,
+      "detailApiReads": 0,
+      "summaryAccurate": true,
+      "newestFirst": true,
+      "paginationAccurate": true
+    }
+  ],
+  "retryRecovered": true,
+  "financialPosts": 0,
+  "errors": []
+}

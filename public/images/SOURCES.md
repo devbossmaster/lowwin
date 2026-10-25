@@ -12,7 +12,7 @@ Generation brief: an original 2.3:1 landscape studio product photograph, complet
 
 File: `lowin-family-hero.webp` (1200px wide, approximately 104KB). Generated with the built-in ImageGen tool on 2026-10-22, then resized/compressed with the repository's installed Sharp library. The PNG original remains in the local image-generation library. No Onebid image, model photograph, winner announcement or branding was copied.
 
-Purpose: a clearly labelled illustrative Ethiopian family celebration with a bicycle, coffee machine and suitcase. These models are not actual Lowin winners and the pictured products do not assert current auction inventory. Important copy is HTML, not baked into the image.
+Purpose: a clearly labelled illustrative Ethiopian family celebration with a bicycle, coffee machine and suitcase. These models are not actual Lowin winners and the pictured products do not assert current auction inventory. This original source contains no copy. The later user-requested localized raster variants are documented in [HOME-BANNER-SOURCES.md](HOME-BANNER-SOURCES.md); the original remains unchanged.
 
 Prompt:
 

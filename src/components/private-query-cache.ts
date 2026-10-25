@@ -1,5 +1,6 @@
 'use client';
 import {QueryClient} from '@tanstack/react-query';
+import {miniNavigationState} from './mini-navigation-state';
 
 export type CacheEvent={identity:string|null;kind:'session'|'stored'|'mutation'|'authorization';keys?:readonly string[]};
 type ReadValue<T>={value:T;fresh:boolean;updatedAt:number};
@@ -93,10 +94,16 @@ export class SessionPrivateQueryCache {
     this.setIdentity(null);
   }
   subscribe(listener:(event:CacheEvent)=>void){this.listeners.add(listener);return()=>{this.listeners.delete(listener)}}
+  isCurrent(identity:string|null){return !!identity&&identity===this.identity}
   get size(){return this.accessed.size}
 }
 
 const cache=new SessionPrivateQueryCache();
+const intentPending=new Set<string>(),intentAt=new Map<string,number>();
+cache.subscribe(event=>{
+ if(event.kind==='session'||event.kind==='authorization'){miniNavigationState.setIdentity(event.kind==='authorization'?null:event.identity);intentPending.clear();intentAt.clear()}
+ if(event.kind==='mutation')intentAt.clear();
+});
 export function privateQueryKey(url:string,language?:string){
   const parsed=new URL(url,'http://lowwin.invalid');
   parsed.searchParams.sort();
@@ -109,10 +116,21 @@ export function privateQueryFreshness(url:string){
   return 30_000;
 }
 export function setPrivateQueryIdentity(identity:string|null){cache.setIdentity(identity)}
+export function isPrivateQueryIdentity(identity:string|null){return cache.isCurrent(identity)}
 export function seedPrivateQuery<T>(identity:string,url:string,value:T){cache.seed(identity,privateQueryKey(url),value)}
 export function readPrivateQuery<T>(identity:string,url:string,options:{language?:string;freshnessMs?:number}={}){return cache.read<T>(identity,privateQueryKey(url,options.language),options.freshnessMs??privateQueryFreshness(url))}
 export function subscribePrivateQueries(listener:(event:CacheEvent)=>void){return cache.subscribe(listener)}
 export function invalidatePrivateQueries(identity:string){cache.invalidate(identity)}
+
+/** Low-priority user-intent reads share the same cache and never issue mutations. */
+export async function prefetchPrivateQuery(identity:string|null,url:string):Promise<void>{
+ if(!identity)return;
+ const key=JSON.stringify([identity,privateQueryKey(url)]),now=Date.now();
+ if(readPrivateQuery(identity,url)?.fresh||intentPending.has(key)||intentPending.size>=2||now-(intentAt.get(key)??-Infinity)<5000)return;
+ intentAt.delete(key);intentAt.set(key,now);while(intentAt.size>32)intentAt.delete(intentAt.keys().next().value!);
+ intentPending.add(key);
+ try{await loadPrivateJson(identity,url)}catch{/* The ordinary destination keeps its own retryable state. */}finally{intentPending.delete(key)}
+}
 
 export async function loadPrivateJson<T>(identity:string,url:string,{force=false,freshnessMs,language}:{force?:boolean;freshnessMs?:number;language?:string}={}):Promise<T>{
   return cache.load(identity,privateQueryKey(url,language),async signal=>{

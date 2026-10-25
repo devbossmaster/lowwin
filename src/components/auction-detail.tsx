@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import BidSheet from './bid-sheet';
 import dynamic from 'next/dynamic';
 import {useEffect,useState} from 'react';
 import {ArrowLeft,ChevronDown,Eye,ShieldCheck,UsersRound} from 'lucide-react';
@@ -11,7 +12,6 @@ import {WinnerCelebration} from './celebration';
 import {ProductDescription} from './product-description';
 import {AuctionCountdown} from './auction-countdown';
 import {AuctionShare} from './auction-share';
-const BidSheet=dynamic(()=>import('./bid-sheet'),{loading:()=>null});
 const ArifPayReturn=dynamic(()=>import('./arifpay-return').then(module=>module.ArifPayReturn));
 import {FavoriteButton} from './favorite-button';
 import {MiniCategoryName,MiniPhrase,useMiniLocale} from './mini-locale';
