@@ -17,7 +17,7 @@ const env = {
   TELEGRAM_WEBHOOK_SECRET: 'redesign-local-webhook-secret-20261022',
   DEV_IDENTITY_ENABLED: 'false', DEV_POINTS_ENABLED: 'false',
   PHONE_CONTACT_KEY_ID: 'local-fixture', PHONE_CONTACT_KEYS: JSON.stringify({'local-fixture': 'e'.repeat(64)}),
-  PHONE_CONTACT_HASH_KEY: 'f'.repeat(64), PAYMENTS_LIVE_ENABLED: 'false', ARIFPAY_ENABLED: 'false', ARIFPAY_SCHEMA_READY:'true', ADMIN_MFA_KEY:'b'.repeat(64),
+  PHONE_CONTACT_HASH_KEY: 'f'.repeat(64), PAYMENTS_LIVE_ENABLED: 'false', ARIFPAY_ENABLED: 'false', ARIFPAY_SCHEMA_READY:'true', REFERRAL_REWARDS_SCHEMA_READY:'true', ADMIN_MFA_KEY:'b'.repeat(64),
 };
 Object.assign(process.env, env);
 const directory = process.env.REDESIGN_SOURCE_DIR ?? '.';

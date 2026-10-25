@@ -1,5 +1,6 @@
 import {afterAll,beforeAll,describe,expect,it,vi} from 'vitest';
 import {PrismaClient} from '@prisma/client';
+import {execFileSync} from 'node:child_process';
 import {richFinalResult} from './result-fixtures';
 import {bidAuction} from './bid-fixtures';
 import {breakdownQuery,getResultBreakdown,maskResultPhone} from '../src/modules/auctions/result-breakdown';
@@ -20,9 +21,14 @@ describe('result privacy and media validation',()=>{
   expect(resolveLearnMoreMedia({youtube:'https://youtube.com.evil.test/watch?v=abcdefghijk'})).toBeNull();
  });
 });
-describe.skipIf(!process.env.TEST_DATABASE_URL)('final result API on disposable PostgreSQL',()=>{
- const db=new PrismaClient({datasourceUrl:process.env.TEST_DATABASE_URL});let fixture:Awaited<ReturnType<typeof richFinalResult>>;
- beforeAll(async()=>{fixture=await richFinalResult(db);auth.mockResolvedValue({user:{id:fixture.users[0]}})},60000);
+const database=process.env.RESULT_TEST_DATABASE_URL??process.env.TEST_DATABASE_URL;
+describe.skipIf(!database)('final result API on disposable PostgreSQL',()=>{
+ const db=new PrismaClient({datasourceUrl:database});let fixture:Awaited<ReturnType<typeof richFinalResult>>;
+ beforeAll(async()=>{
+  const target=new URL(database!);if(!['127.0.0.1','localhost'].includes(target.hostname)||!target.pathname.endsWith('_test'))throw Error('Result tests require a disposable loopback *_test database');
+  execFileSync(process.execPath,['node_modules/prisma/build/index.js','migrate','deploy'],{env:process.env,stdio:'pipe'});
+  fixture=await richFinalResult(db);auth.mockResolvedValue({user:{id:fixture.users[0]}});
+ },60000);
  afterAll(async()=>{await db.$disconnect();const {db:shared}=await import('../src/lib/db');await shared.$disconnect()});
  const read=(input:Record<string,unknown>={})=>getResultBreakdown(db,fixture.code,breakdownQuery.parse(input));
  it('paginates 20 distinct numeric amounts with global counts and no duplicates',async()=>{

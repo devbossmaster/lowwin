@@ -1,8 +1,9 @@
 import {afterAll,beforeAll,describe,expect,it} from 'vitest';
 import {PrismaClient} from '@prisma/client';
 import {Client} from 'pg';
+import {execFileSync} from 'node:child_process';
 import {randomInt,randomUUID} from 'node:crypto';
-import {readFileSync,writeFileSync} from 'node:fs';
+import {mkdirSync,readFileSync,writeFileSync} from 'node:fs';
 import {contactBotId} from '../src/modules/auth/own-contact';
 import {attributeNewReferralInTransaction,getBidDiscountQuote,getReferralOverview,getReferralPolicy,recordBotReferralStart,referralPolicySchema} from '../src/modules/referrals/service';
 import {submitBid,submitBidInTransaction} from '../src/modules/auctions/bids';
@@ -11,12 +12,14 @@ import {verifyFixtureContact} from './contact-fixtures';
 import {signedLaunch} from './helpers';
 import {earnedReferralCoupon,guardedReferralFixture,realReferralAuction,referredRegistration,verifiedReferralUser} from './referral-fixtures';
 
-const url=process.env.TEST_DATABASE_URL;
+const url=process.env.REFERRAL_TEST_DATABASE_URL??process.env.TEST_DATABASE_URL;
 describe.skipIf(!url)('referral rewards on isolated PostgreSQL',()=>{
  let db:PrismaClient,sponsor:Awaited<ReturnType<typeof verifiedReferralUser>>,other:typeof sponsor,registered:Awaited<ReturnType<typeof referredRegistration>>,firstCouponId:string;
  const balance=async(userId:string)=>(await db.ledgerAccount.findUniqueOrThrow({where:{name:`user:${userId}:available`}})).balance.toString();
  beforeAll(async()=>{
-  guardedReferralFixture();db=new PrismaClient();await db.referralPolicy.create({data:{enabled:true,discountPercent:10,expiryDays:30,updatedBy:'local-fixture-owner'}});
+  guardedReferralFixture();
+  execFileSync(process.execPath,['node_modules/prisma/build/index.js','migrate','deploy'],{env:process.env,stdio:'pipe'});
+  db=new PrismaClient();await db.referralPolicy.create({data:{enabled:true,discountPercent:10,expiryDays:30,updatedBy:'local-fixture-owner'}});
   sponsor=await verifiedReferralUser(db);other=await verifiedReferralUser(db);await creditDevelopmentPoints(db,sponsor.id,'100',`referral-fixture-${randomUUID()}`);await creditDevelopmentPoints(db,other.id,'100',`referral-fixture-${randomUUID()}`);
  },60000);
  afterAll(async()=>{await db?.$disconnect();const {db:shared}=await import('../src/lib/db');await shared.$disconnect()});
@@ -89,7 +92,7 @@ describe.skipIf(!url)('referral rewards on isolated PostgreSQL',()=>{
   await expect(db.$transaction(tx=>attributeNewReferralInTransaction(tx,other.id,String(other.telegramId),{newAccount:true,signedStartParam:payload}))).rejects.toThrow();expect(await db.referralSignup.findUnique({where:{referredUserId:other.id}})).toBeNull();
  });
  it('supports the restricted runtime role and keeps proof and immutable tables protected',async()=>{
-  const admin=new Client({connectionString:process.env.TEST_DATABASE_URL});await admin.connect();try{await admin.query(readFileSync('deploy/runtime-role.sql','utf8'))}finally{await admin.end()}
+  const admin=new Client({connectionString:url});await admin.connect();try{await admin.query(readFileSync('deploy/runtime-role.sql','utf8'))}finally{await admin.end()}
   await db.$transaction(async tx=>{await tx.$executeRawUnsafe('SET LOCAL ROLE lowwin_runtime');const tid=String(randomInt(8000000000,8900000000)),user=await tx.user.create({data:{id:randomUUID(),name:'Restricted runtime fixture',telegramId:tid}});expect(await tx.referralRegistrationProof.findUnique({where:{userId:user.id}})).not.toBeNull();expect(await tx.referralPolicy.findUnique({where:{id:'default'}})).not.toBeNull();expect(await tx.referralCoupon.count()).toBeGreaterThan(0)});
   await expect(db.referralRegistrationProof.create({data:{userId:other.id}})).rejects.toThrow();
   const permissions=await db.$queryRaw<Array<{table_name:string;delete_allowed:boolean}>>`SELECT t AS table_name,has_table_privilege('lowwin_runtime',format('%I',t),'DELETE') AS delete_allowed FROM unnest(ARRAY['ReferralPolicy','ReferralInvite','ReferralPendingSignup','ReferralSignup','ReferralCoupon','ReferralRedemption','ReferralRegistrationProof']) t`;
@@ -101,6 +104,6 @@ describe.skipIf(!url)('referral rewards on isolated PostgreSQL',()=>{
  },20000);
  it('leaves a real unused preview reward for mobile UI checks and reconciles cleanly',async()=>{
   const preview=await verifiedReferralUser(db,'Referral UI fixture');await creditDevelopmentPoints(db,preview.id,'100',`referral-fixture-${randomUUID()}`);const grant=await earnedReferralCoupon(db,preview.id),auction=await realReferralAuction(db,20);
-  writeFileSync('.local/referral-preview-fixture.json',JSON.stringify({userId:preview.id,telegramId:preview.telegramId,couponId:grant.coupon.id,auctionSlug:auction.slug,auctionCode:auction.publicCode},null,2)+'\n');expect(await reconcile(db)).toEqual([]);
+  mkdirSync('.local',{recursive:true});writeFileSync('.local/referral-preview-fixture.json',JSON.stringify({userId:preview.id,telegramId:preview.telegramId,couponId:grant.coupon.id,auctionSlug:auction.slug,auctionCode:auction.publicCode},null,2)+'\n');expect(await reconcile(db)).toEqual([]);
  });
 });

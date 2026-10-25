@@ -51,7 +51,7 @@ test('authenticated mobile screens and local timing evidence', async ({page, bro
       timings[`${name}RenderMs`] = Math.round(performance.now() - began);
       await expect(page.locator('.page-loading-backdrop')).toHaveCount(0);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `overflow on ${path}`).toBe(true);
-      if (stage === 'after' && name === 'home') await expect.poll(() => page.locator('section[aria-label="Lowin"] img').evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth > 0)).toBe(true);
+      if (stage === 'after' && name === 'home') await expect.poll(() => page.locator('section[aria-labelledby="home-headline"] img').evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth > 0)).toBe(true);
       await page.screenshot({path: `${root}/${name}-${info.project.name}-en.png`, fullPage: true});
       await page.screenshot({path: `${root}/${name}-${info.project.name}-en-viewport.png`});
     }
@@ -69,15 +69,15 @@ test('authenticated mobile screens and local timing evidence', async ({page, bro
     }
     if (stage === 'after') {
       await page.goto('/');
-      await expect(page.getByRole('button', {name: 'Learn more'})).toBeVisible();
-      await page.getByRole('button', {name: 'Learn more'}).click();
+      await expect(page.getByRole('button', {name: 'Learn more',exact:true}).first()).toBeVisible();
+      await page.getByRole('button', {name: 'Learn more',exact:true}).first().click();
       const learn = page.getByRole('dialog', {name: 'A little different wins'});
       await expect(learn).toBeVisible();
       await expect(learn.locator('ol > li')).toHaveCount(3);
       await expect(learn.locator('iframe')).toHaveCount(0);
       await page.screenshot({path: `${root}/learn-more-${info.project.name}-en.png`});
       await learn.getByRole('button', {name: 'Close', exact: true}).click();
-      await expect(page.getByRole('button', {name: 'Learn more'})).toBeFocused();
+      await expect(page.getByRole('button', {name: 'Learn more',exact:true}).first()).toBeFocused();
       await page.getByRole('link', {name: 'Recent winners', exact: true}).click();
       await expect(page.locator('#recent-winners')).toBeFocused();
       await expect(page.locator('#recent-winners')).toBeInViewport();
@@ -90,19 +90,18 @@ test('authenticated mobile screens and local timing evidence', async ({page, bro
       await expect(notifications).toHaveCount(0);
       await page.goto(`/auctions/${auction.slug}`);
       await page.getByRole('button', {name: 'Choose your bid number', exact: true}).click();
-      const bidSheet = page.getByRole('dialog', {name: 'Your next bid'});
-      await expect(bidSheet.getByLabel('Bid number', {exact: true})).toBeVisible();
-      await bidSheet.getByLabel('Bid number', {exact: true}).fill('3.60');
+      const bidSheet = page.getByRole('dialog', {name: 'Place your bid',exact:true});
+      await expect(bidSheet.getByLabel('Your bid number', {exact: true})).toBeVisible();
+      await bidSheet.getByLabel('Your bid number', {exact: true}).fill('3.60');
       await page.screenshot({path: `${root}/bid-sheet-${info.project.name}-en.png`});
       const original = page.viewportSize()!;
       await page.setViewportSize({width: original.width, height: 450});
-      await bidSheet.getByLabel('Bid number', {exact: true}).focus();
+      await bidSheet.getByLabel('Your bid number', {exact: true}).focus();
       await page.screenshot({path: `${root}/bid-sheet-short-viewport-${info.project.name}.png`});
       await expect.poll(() => page.evaluate(() => {const el = document.activeElement!.getBoundingClientRect(); return el.top >= 0 && el.bottom <= innerHeight;})).toBe(true);
       await page.setViewportSize(original);
-      await bidSheet.getByRole('button', {name: 'Continue to payment', exact: true}).click();
-      await expect(bidSheet.getByText('Direct checkout is not available yet.', {exact:false})).toBeVisible();
-      await expect(bidSheet).not.toContainText(/Available balance|Insufficient balance|wallet/i);
+      await expect(bidSheet.getByRole('radio',{name:'Wallet balance',exact:true})).toBeChecked();await expect(bidSheet).toContainText('1000.00 ETB');await bidSheet.getByRole('radio',{name:'Chapa',exact:true}).check();
+      await expect(bidSheet.locator('[data-payment-action]')).toBeDisabled();await expect(bidSheet).toContainText('Payments are not available yet.');
       expect(await client.bid.count({where:{auctionId:auction.id,userId:user.id}})).toBe(0);
       expect((await client.ledgerAccount.findUniqueOrThrow({where:{name:`user:${user.id}:available`}})).balance.toString()).toBe('1000');
       await page.screenshot({path:`${root}/checkout-disabled-funded-${info.project.name}-en.png`});
@@ -114,19 +113,19 @@ test('authenticated mobile screens and local timing evidence', async ({page, bro
       await page.goto('/my-bids');
       await page.getByRole('button', {name: 'DEMO wireless headphones, bid details'}).click();
       await expect(page.getByRole('dialog', {name: 'Bid details'})).toContainText('Only the disclosed submission fee was paid.');
-      await expect(page.getByRole('dialog', {name: 'Bid details'}).getByRole('link', {name: 'Payment history', exact: true})).toHaveAttribute('href','/payments');
+      await expect(page.getByRole('dialog', {name: 'Bid details'})).toContainText('Paid at submission');await expect(page.getByRole('dialog', {name: 'Bid details'}).getByRole('link', {name: 'Payment history', exact: true})).toHaveCount(0);
       await page.screenshot({path: `${root}/my-bid-details-${info.project.name}-en.png`});
-      await page.getByRole('dialog', {name: 'Bid details'}).getByRole('link', {name: 'Draws and results', exact: true}).click();
-      await expect(page).toHaveURL(/\/draws(?:\?|$)/);
+      await page.getByRole('dialog', {name: 'Bid details'}).getByRole('link', {name: 'Winners', exact: true}).click();
+      await expect(page).toHaveURL(/\/winners(?:\?|$)/);
       await expect(page.getByRole('dialog', {name: 'Bid details'})).toHaveCount(0);
       await page.goto('/profile');
       await expect(page.getByText('Existing wallet balance',{exact:true})).toHaveCount(0);
-      await expect(page.getByRole('link',{name:'Bid payments',exact:true})).toHaveAttribute('href','/payments');
+      await expect(page.getByRole('region',{name:'Your wallet',exact:true})).toContainText('970.00 ETB');await expect(page.getByRole('region',{name:'Your wallet',exact:true}).getByRole('link',{name:'Top up wallet',exact:true})).toBeVisible();await expect(page.getByRole('link',{name:'Bid payments',exact:true})).toHaveCount(0);
       await page.getByRole('button', {name: 'Edit', exact: true}).click();
       const editor = page.getByRole('dialog', {name: 'Edit profile'});
-      await expect(editor.getByLabel('Display name', {exact: true})).toBeVisible();
+      await expect(editor.getByLabel('Nickname', {exact: true})).toBeVisible();
       await page.screenshot({path: `${root}/profile-edit-${info.project.name}-en.png`});
-      await editor.getByLabel('Display name', {exact: true}).fill('DEMO review player');
+      await editor.getByLabel('Nickname', {exact: true}).fill('DEMO review player');
       await editor.getByRole('button', {name: 'Save profile', exact: true}).click();
       await expect(page.getByText('Profile saved.', {exact: true})).toBeVisible();
       expect((await client.telegramOwnContact.findUniqueOrThrow({where: {userId: user.id}})).telegramId).toBe(String(telegramId));
@@ -142,50 +141,20 @@ test('authenticated mobile screens and local timing evidence', async ({page, bro
         await expect(zero.getByRole('navigation', {name: 'Your navigation'})).toBeVisible();
         await expect(zero.getByRole('button', {name: 'Choose your bid number', exact: true})).toBeVisible();
         await zero.getByRole('button', {name: 'Choose your bid number', exact: true}).click();
-        await zero.getByLabel('Bid number', {exact: true}).fill('7.31');
-        await expect(zero.getByText('Insufficient balance.', {exact: false})).toHaveCount(0);
-        await zero.getByRole('button', {name: 'Continue to payment', exact: true}).click();
-        await expect(zero.getByText('Direct checkout is not available yet.', {exact: false})).toBeVisible();
-        await expect(zero.getByRole('button', {name: /^Pay ETB/})).toHaveCount(0);
+        const zeroSheet=zero.getByRole('dialog',{name:'Place your bid',exact:true});await zeroSheet.getByLabel('Your bid number', {exact: true}).fill('7.31');
+        await expect(zeroSheet.getByRole('radio',{name:'Wallet balance',exact:true})).toBeChecked();await expect(zeroSheet).toContainText('Your balance is below this submission fee.');await expect(zeroSheet.locator('[data-payment-action]')).toBeDisabled();
         await zero.screenshot({path: `${root}/checkout-disabled-${info.project.name}-en.png`});
-        // Browser fixtures below exercise rendering/retry only. No provider is
-        // called and these mocked states are excluded from speed claims.
-        await zero.keyboard.press('Escape');
-        const orderId = randomUUID(), createBodies: string[] = [];
-        let mockStatus = 'PENDING';
-        const order = () => ({id: orderId, auctionSlug: auction.slug, amount: '7.32', feeVersion: 1, fee: '30', currency: 'ETB', channel: 'MPESA', status: mockStatus, reason: mockStatus === 'NEEDS_REVIEW' ? 'PROVIDER_CONFIRMATION_REQUIRED' : 'AWAITING_PROVIDER', receipt: null, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 300000).toISOString(), pollAfterMs: 60000, fundsPreserved: false});
-        await zero.route('**/api/payments/arifpay', route => route.fulfill({json: {enabled: true, reason: null}}));
-        await zero.route('**/api/payments/arifpay/checkouts', route => {
-          if (route.request().method() === 'GET') return route.fulfill({json: {items: []}});
-          createBodies.push(route.request().postData()!);
-          return createBodies.length === 1 ? route.abort('failed') : route.fulfill({json: order()});
-        });
-        await zero.route('**/api/payments/arifpay/checkouts/*', route => route.fulfill({json: order()}));
-        await zero.getByRole('button', {name: 'Choose your bid number', exact: true}).click();
-        await zero.getByLabel('Bid number', {exact: true}).fill('7.32');
-        await zero.getByRole('button', {name: 'Continue to payment', exact: true}).click();
-        await expect(zero.getByRole('button', {name: 'Telebirr', exact: true})).toBeVisible();
-        await zero.getByRole('button', {name: 'M-PESA', exact: true}).click();
-        const phone = zero.getByLabel('Payment phone number', {exact: true});
-        await phone.fill('0712345678');
-        await zero.getByRole('checkbox', {name: /I agree to pay the non-refundable/}).check();
+        // Current Wallet/Chapa controls remain read-only until merchant
+        // activation. Provider recovery/idempotency stays covered by DB tests;
+        // this browser verifies actual visible options and balance recovery.
+        const financialPosts:string[]=[];zero.on('request',request=>{if(request.method()==='POST'&&/\/api\/(?:auctions\/[^/]+\/bids|payments\/|wallet\/top-ups)/.test(new URL(request.url()).pathname))financialPosts.push(request.url())});
+        await zeroSheet.getByRole('radio',{name:'Chapa',exact:true}).check();await expect(zeroSheet.locator('[data-payment-action]')).toContainText('with Chapa');await expect(zeroSheet.locator('[data-payment-action]')).toBeDisabled();
         await zero.screenshot({path: `${root}/checkout-options-fixture-${info.project.name}.png`});
-        await zero.getByRole('button', {name: 'Pay ETB 30.00 & bid', exact: true}).click();
-        await expect(zero.getByRole('button', {name: 'Retry original request', exact: true})).toBeVisible();
-        await expect(phone).toBeDisabled();
-        await expect(zero.getByRole('button', {name: 'Telebirr', exact: true})).toBeDisabled();
-        await zero.getByRole('button', {name: 'Retry original request', exact: true}).click();
-        await expect(zero.getByText('Confirm on your phone', {exact: true})).toBeVisible();
-        expect(createBodies).toHaveLength(2);
-        expect(createBodies[1]).toBe(createBodies[0]);
-        await zero.screenshot({path: `${root}/checkout-pending-fixture-${info.project.name}.png`});
-        mockStatus = 'NEEDS_REVIEW';
-        await zero.getByRole('button', {name: 'Check status', exact: true}).click();
-        await expect(zero.getByText('Needs review', {exact: true})).toBeVisible();
-        await expect(zero.getByText('This is not an accepted bid.', {exact: false})).toBeVisible();
-        await zero.screenshot({path: `${root}/checkout-review-fixture-${info.project.name}.png`});
+        await zeroSheet.getByRole('link',{name:'Top up wallet',exact:true}).click();const topUp=zero.getByRole('dialog',{name:'Top up wallet',exact:true});await expect(topUp).toBeVisible();await topUp.getByRole('button',{name:'100.00 ETB',exact:true}).click();await expect(topUp.locator('[data-payment-action]')).toBeDisabled();await zero.keyboard.press('Escape');await expect(topUp).toHaveCount(0);await expect(zeroSheet.getByLabel('Your bid number',{exact:true})).toHaveValue('7.31');
+        await zero.route('**/api/wallet',route=>route.fulfill({status:503,json:{error:'Explicit balance transport fixture'}}));await zero.evaluate(()=>window.dispatchEvent(new Event('lowin-wallet-updated')));await expect(zeroSheet).toContainText('Showing the saved balance. Refresh failed.');await expect(zeroSheet.locator('[data-payment-action]')).toBeDisabled();
+        await zero.unroute('**/api/wallet');await zeroSheet.getByRole('button',{name:'Retry',exact:true}).click();await expect(zeroSheet.getByText('Showing the saved balance. Refresh failed.',{exact:false})).toHaveCount(0);await expect(zeroSheet.locator('[data-payment-action]')).toBeDisabled();expect(financialPosts).toEqual([]);
         const zeroUser = await client.user.findUniqueOrThrow({where: {telegramId: String(zeroId)}});
-        expect(await client.arifPayCheckout.count({where: {userId: zeroUser.id}})).toBe(0);
+        expect(await client.arifPayCheckout.count({where: {userId: zeroUser.id}})).toBe(0);expect(await client.bid.count({where:{userId:zeroUser.id}})).toBe(0);
       } finally {await zeroContext.close();}
       await page.emulateMedia({reducedMotion: 'reduce'});
       await page.goto('/');
@@ -198,7 +167,7 @@ test('authenticated mobile screens and local timing evidence', async ({page, bro
       const slowBegan = performance.now();
       await page.goto('/');
       await expect(page.getByRole('navigation', {name: 'Your navigation'})).toBeVisible();
-      await expect(page.getByRole('button', {name: 'Learn more'})).toBeVisible();
+      await expect(page.getByRole('button', {name: 'Learn more',exact:true}).first()).toBeVisible();
       timings.slowConnectionHomeMs = Math.round(performance.now() - slowBegan);
       timings.slowConnection = 'Chromium simulated 150ms latency, 1.28Mbps down/600kbps up, browser cache disabled; one sample';
       await network.send('Network.emulateNetworkConditions', {offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1});
@@ -233,8 +202,8 @@ test('authenticated mobile screens and local timing evidence', async ({page, bro
     }
     if(stage==='after'){
       await page.goto('/wallet?tab=transactions&type=activity');
-      await expect(page).toHaveURL(/\/wallet(?:\?|$)/);
-      await expect(page.getByRole('heading',{name:'Wallet',exact:true})).toBeVisible();
+      await expect(page).toHaveURL(/\/profile#wallet$/);
+      await expect(page.getByRole('region',{name:'Your wallet',exact:true})).toContainText('970.00 ETB');
       expect((await page.request.get('/api/wallet')).status()).toBe(200);
       const oldBid=await page.request.post(`/api/auctions/${auction.slug}/bids`,{headers:{origin},data:{amount:'9.50',feeVersion:1,key:randomUUID()}});
       expect(oldBid.status()).toBe(410);
@@ -245,16 +214,15 @@ test('authenticated mobile screens and local timing evidence', async ({page, bro
     await page.waitForLoadState('networkidle');
     await page.screenshot({path: `${root}/home-${info.project.name}-am.png`, fullPage: true});
     if (stage === 'after') {
-      await page.getByRole('button', {name: 'ተጨማሪ ይወቁ'}).click();
+      await page.getByRole('button', {name: 'ተጨማሪ ይወቁ',exact:true}).first().click();
       await expect(page.getByRole('dialog')).toBeVisible();
       await page.screenshot({path: `${root}/learn-more-${info.project.name}-am.png`});
       await page.keyboard.press('Escape');
-      for (const [name, href] of [['draws', '/draws'], ['my-bids', '/my-bids'], ['profile', '/profile'], ['auctions', '/auctions/all']] as const) {
+      for (const [name, href] of [['winners', '/winners'], ['my-bids', '/my-bids'], ['profile', '/profile'], ['home', '/']] as const) {
         await page.getByRole('navigation', {name: 'Your navigation'}).locator(`a[href="${href}"]`).click();
         await expect(page).toHaveURL(new RegExp(`${href}(?:\\?|$)`));
         await page.waitForLoadState('networkidle');
         await expect(page.locator('main')).toBeVisible();
-        if(name==='auctions')await expect(page.getByRole('heading',{name:'የሚወዱትን ዕቃ ያግኙ',exact:true})).toBeVisible();
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Amharic overflow on ${href}`).toBe(true);
         await page.screenshot({path: `${root}/${name}-${info.project.name}-am.png`, fullPage: true});
         await page.screenshot({path: `${root}/${name}-${info.project.name}-am-viewport.png`});
@@ -262,7 +230,7 @@ test('authenticated mobile screens and local timing evidence', async ({page, bro
           await page.getByRole('button',{name:/^DEMO wireless headphones,/}).click();
           const receipt=page.getByRole('dialog',{name:'የጨረታ ዝርዝር'});
           await expect(receipt).toBeVisible();
-          await receipt.getByRole('link',{name:'የክፍያ ታሪክ',exact:true}).scrollIntoViewIfNeeded();
+          await receipt.getByRole('link',{name:'አሸናፊዎች',exact:true}).scrollIntoViewIfNeeded();
           for(const link of await receipt.getByRole('link').all()){const box=await link.boundingBox();expect(box!.height).toBeGreaterThanOrEqual(44)}
           expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
           await page.screenshot({path:`${root}/my-bid-details-${info.project.name}-am.png`});

@@ -2,10 +2,10 @@ import {test,expect} from '@playwright/test';
 import {PrismaClient} from '@prisma/client';
 import {mkdirSync,writeFileSync} from 'node:fs';
 import {randomInt} from 'node:crypto';
-import {contactBotId,decryptPhone} from '../../src/modules/auth/own-contact';
 import {signedLaunch} from '../helpers';
 import {formatEtb} from '../../src/lib/money';
 import {verifyFixtureContact} from '../contact-fixtures';
+import {referralBrowserFixture,referralBrowserPolicy} from '../referral-browser-fixtures';
 
 test('reference Profile uses real referral rewards, private edits, top-up sheet and confirmed logout',async({page,browser},info)=>{
  const database=process.env.TEST_DATABASE_URL??'',target=new URL(database);
@@ -15,12 +15,7 @@ test('reference Profile uses real referral rewards, private edits, top-up sheet 
  page.on('pageerror',error=>errors.push(error.message));
  page.on('request',request=>{const path=new URL(request.url()).pathname;if(request.method()==='POST'&&/\/api\/(?:auctions\/[^/]+\/bids|payments\/|wallet\/top-ups)/.test(path))financialPosts.push(path);if(request.method()==='POST'&&path==='/api/auth/telegram/miniapp/signin')signins.push(path)});
  try{
-  const suspended=await db.userRestriction.findMany({where:{suspended:true},select:{userId:true}});
-  const candidates=await db.user.findMany({where:{id:{notIn:suspended.map(item=>item.userId)},telegramId:{not:null},staffMember:{is:null},ownContact:{is:{botId:contactBotId(),revokedAt:null}},referralCoupons:{some:{redemption:null,expiresAt:{gt:new Date()}}}},include:{ownContact:true},take:30});
-  const user=candidates.find(item=>{try{return !!decryptPhone(item.ownContact!.phoneCipher,contactBotId())}catch{return false}});
-  if(!user)throw Error('An actual verified referrer with an earned available coupon is required; this browser does not manufacture or submit bids.');
-  const now=new Date(),auction=await db.auction.findFirst({where:{isDemo:false,isSettlementFixture:false,testRunId:null,status:'LIVE',publishedAt:{not:null},startsAt:{lte:now},endsAt:{gt:new Date(now.getTime()+120000)},product:{is:{visible:true}},category:{is:{visible:true}},terms:{is:{ruleVersion:'lowest-unique-v4',entryFeePoints:{gt:0}}}},orderBy:{endsAt:'desc'},select:{id:true,publicCode:true,slug:true}});
-  if(!auction?.slug)throw Error('An existing visible non-demo v4 paid auction is required for quote-only UI checks.');
+  const {user,auction}=await referralBrowserFixture(db);
   const redemptionsBefore=await db.referralRedemption.count({where:{userId:user.id}});
   const photo='https://t.me/i/userpic/320/lowwin-profile-fixture.jpg';
   await page.route(photo,route=>route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" rx="32" fill="#252319"/><text x="32" y="42" fill="#ffffff" font-size="30" text-anchor="middle" font-family="sans-serif">P</text></svg>'}));
@@ -69,6 +64,7 @@ test('new Profile has real zero rewards and initials without a Telegram photo',a
  const database=process.env.TEST_DATABASE_URL??'',target=new URL(database);if(!['127.0.0.1','localhost'].includes(target.hostname)||!target.pathname.endsWith('_test')||process.env.REFERRAL_REWARDS_SCHEMA_READY!=='true')throw Error('Fresh migrated loopback referral _test database required');
  const db=new PrismaClient({datasourceUrl:database}),root=process.env.PROFILE_FLOW_REPORT_DIR??'test-results/profile-referrals';mkdirSync(root,{recursive:true});
  try{
+  await referralBrowserPolicy(db);
   const telegramId=randomInt(8000000000,8900000000);await verifyFixtureContact(db,telegramId);const cdp=await page.context().newCDPSession(page);await cdp.send('Network.enable');await cdp.send('Network.setBlockedURLs',{urls:['https://telegram.org/*']});await page.addInitScript(({launch})=>{window.Telegram={WebApp:{initData:launch,ready(){},expand(){},setHeaderColor(){},setBackgroundColor(){}}};},{launch:signedLaunch({user:JSON.stringify({id:telegramId,first_name:'New Profile QA'})},process.env.TELEGRAM_BOT_TOKEN)});
   await page.goto('/telegram?next='+encodeURIComponent('/profile'));const profile=page.locator('[data-profile-ready=true]');await expect(profile).toBeVisible();const data=await (await page.request.get('/api/profile')).json(),initials=data.displayName.trim().split(/\s+/).filter(Boolean).slice(0,2).map((part:string)=>Array.from(part)[0]).join('').toUpperCase();await expect(profile.getByText(initials,{exact:true})).toBeVisible();await expect(profile.locator('img')).toHaveCount(0);await expect(profile.getByRole('heading',{name:'Refer & earn',exact:true})).toBeVisible();await expect(profile.getByText('0 available',{exact:true})).toBeVisible();await expect(profile.getByText('No available discounts. Invite a friend to earn your first one.',{exact:true})).toBeVisible();expect(data.counts.bids).toBe(0);expect(data.referral.counts).toEqual({signedUp:0,qualified:0,earned:0,available:0});expect(data.referral.coupons).toEqual([]);expect(data.phoneDisplay).toBeTruthy();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:`${root}/profile-empty-${info.project.name}.png`});
  }finally{await db.$disconnect()}

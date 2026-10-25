@@ -57,4 +57,17 @@ describe.skipIf(!url)('catalog workflow on disposable PostgreSQL',()=>{
   expect(body.items.map((item:{terms:{entryFeePoints:string}})=>Number(item.terms.entryFeePoints))).toEqual([5,10,10,30,80]);
   expect(JSON.stringify(body)).not.toMatch(/telegramId|walletId|bidderId|winningUserId|requestHash|frequency|uniqueHint/);
  });
+ it('returns current public fees, complete totals and stable ten-card quick batches',async()=>{
+  const now=await catalog.serverNow();
+  const initial=await catalog.listQuickAuctions('live',1,now);
+  expect(initial.total).toBe(5);expect(initial.pageSize).toBe(10);
+  for(const item of expected){
+   const quick=initial.items.find(row=>row.code===item.code)!;expect(quick.terms.entryFeePoints).toBe(String(item.fee));expect(quick.terms.version).toBe(item.fee===5?2:1);expect(quick.terms.ruleVersion).toBe('lowest-unique-v4');
+  }
+  for(let i=0;i<7;i++)await bidAuction(client,{fee:10,ruleVersion:'lowest-unique-v4',endDelayMs:3600000});
+  const first=await catalog.listQuickAuctions('live',1,now),second=await catalog.listQuickAuctions('live',2,now);
+  expect(first.total).toBe(12);expect(first.pageSize).toBe(10);expect(first.totalPages).toBe(2);expect(first.items).toHaveLength(10);expect(second.items).toHaveLength(2);expect(second.total).toBe(12);expect(new Set([...first.items,...second.items].map(item=>item.code)).size).toBe(12);
+  expect((await catalog.listQuickAuctions('live',3,now)).items).toEqual([]);
+  expect(await catalog.getAuctionSummary(now)).toEqual({totalLive:12,totalUpcoming:0,serverNow:now.toISOString()});
+ });
 });

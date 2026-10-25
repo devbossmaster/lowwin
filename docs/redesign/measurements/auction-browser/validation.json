@@ -1,0 +1,45 @@
+{
+  "scope": "Header auction browser and nested bid preview",
+  "fixture": "Synthetic guarded loopback _test; actual catalog reads and controlled delayed GETs reported separately",
+  "catalogAndReleaseHarness": {
+    "passed": 63,
+    "skipped": 0
+  },
+  "cachePaginationAndIntent": {
+    "passed": 34
+  },
+  "latestMobileBrowser": {
+    "passed": 4,
+    "widths": [
+      360,
+      430
+    ],
+    "languages": [
+      "en",
+      "am"
+    ],
+    "liveOpensBidSheet": true,
+    "upcomingReadOnly": true,
+    "cachedBidReopenExtraDetailRequests": 0,
+    "cachedBidReopenExtraOwnBidRequests": 0
+  },
+  "typescript": "passed in validation checkout",
+  "financialPosts": 0,
+  "providerCalls": 0,
+  "hostedDatabaseChanges": 0,
+  "physicalTelegramWebviews": "unverified",
+  "optimizedBuild": "GitHub Checks foundation runs the final optimized build before merge",
+  "checkedInBrowserFixtureFocus": {
+    "contractsValidated": 8,
+    "initialRun": {
+      "passed": 7,
+      "failed": 1,
+      "reason": "Fresh-fixture last-Owner protection; fixed by a separate active fixture Owner"
+    },
+    "freshDatabaseRecheck": {
+      "passed": 1,
+      "failed": 0
+    },
+    "broaderScreenAssertions": "Full GitHub browser job verifies the updated legacy screen contracts"
+  }
+}

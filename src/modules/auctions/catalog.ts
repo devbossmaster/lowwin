@@ -186,17 +186,50 @@ export async function getAuction(slug: string, now?: Date) {
   return row?toPublicAuction(row,at):null;
   });
 }
-// The header needs only public summary fields, not descriptions or rule snapshots.
-export async function listQuickLiveAuctions(page=1) {
-  return cachedPublicData(`quick-live:${page}`,3000,async()=>{
-  const now=await serverNow(),pageSize=6;
-  const where:Prisma.AuctionWhereInput={AND:[publicWhere(now),statusWhere('live',now)]};
+export type QuickAuctionStatus='live'|'upcoming';
+// The header needs a thumbnail, actual schedule and displayed fee, not full
+// descriptions, rule snapshots, settlement relations or any submitted amounts.
+export async function listQuickAuctions(status:QuickAuctionStatus='live',page=1,now?:Date) {
+  return cachedPublicData(`quick-auctions:${status}:${page}:${now?.toISOString()??'current'}`,3000,async()=>{
+  const at=now??await serverNow(),pageSize=10;
+  const where=catalogWhere(catalogQuerySchema.parse({status,page}),at);
   const [rows,total]=await Promise.all([
-    db.auction.findMany({where,orderBy:[{publicCode:'asc'}],skip:(page-1)*pageSize,take:pageSize,
-      select:{slug:true,publicCode:true,endsAt:true,isDemo:true,acceptedBidCount:true,presentation:true,product:{select:{title:true,titleAm:true,images:{orderBy:{sortOrder:'asc'},take:1,select:{path:true}}}}}}),
+    db.auction.findMany({where,orderBy:status==='upcoming'?[{startsAt:'asc'},{id:'asc'}]:[{publicCode:'asc'}],skip:(page-1)*pageSize,take:pageSize,
+      select:{slug:true,publicCode:true,status:true,startsAt:true,endsAt:true,isDemo:true,acceptedBidCount:true,presentation:true,
+        product:{select:{title:true,titleAm:true,images:{orderBy:{sortOrder:'asc'},take:1,select:{path:true,alt:true}}}},
+        terms:{select:{version:true,ruleVersion:true,entryFeePoints:true}},
+        feeRevisions:{orderBy:[{effectiveAt:'desc'},{version:'desc'}],take:1,select:{version:true,feePoints:true}},
+      }}),
     db.auction.count({where})
   ]);
-  return {items:rows.map(row=>{const override=presentationSchema.safeParse(row.presentation);return {slug:row.slug!,code:String(row.publicCode),endsAt:row.endsAt!.toISOString(),isDemo:row.isDemo,bidCount:row.acceptedBidCount,product:override.success?{title:override.data.title,titleAm:override.data.titleAm??row.product!.titleAm,images:override.data.images.slice(0,1).map(image=>({path:image.path}))}:row.product!}}),total,page,totalPages:Math.ceil(total/pageSize),serverNow:now.toISOString()};
+  return {items:rows.map(row=>{const override=presentationSchema.safeParse(row.presentation);return {
+    slug:row.slug!,code:String(row.publicCode),status:effectiveStatus(row,at),startsAt:row.startsAt!.toISOString(),endsAt:row.endsAt!.toISOString(),isDemo:row.isDemo,bidCount:row.acceptedBidCount,
+    product:override.success?{title:override.data.title,titleAm:override.data.titleAm??row.product!.titleAm,images:override.data.images.slice(0,1).map(image=>({path:image.path,alt:image.alt}))}:row.product!,
+    terms:{version:row.feeRevisions[0]?.version??row.terms!.version,ruleVersion:row.terms!.ruleVersion,entryFeePoints:(row.feeRevisions[0]?.feePoints??row.terms!.entryFeePoints).toString()},
+  }}),total,page,pageSize,totalPages:Math.ceil(total/pageSize),serverNow:at.toISOString()};
+  });
+}
+// Keep existing callers compatible while the header moves to Live / Upcoming.
+export async function listQuickLiveAuctions(page=1){return listQuickAuctions('live',page)}
+
+// One bounded aggregate, with the same publication/visibility/terms and tagged
+// preview boundary as catalogWhere. No product cards or private records load.
+export async function getAuctionSummary(now?:Date){
+  return cachedPublicData(`auction-summary:${now?.toISOString()??'current'}`,3000,async()=>{
+    const at=now?Prisma.sql`${now.toISOString()}::timestamp`:Prisma.sql`CURRENT_TIMESTAMP AT TIME ZONE 'UTC'`;
+    const clock=now?Prisma.sql`${now.toISOString()}::timestamptz`:Prisma.sql`CURRENT_TIMESTAMP`;
+    const rows=await db.$queryRaw<{totalLive:number;totalUpcoming:number;serverNow:Date}[]>`
+      SELECT count(*) FILTER (WHERE a."startsAt"<=(${at}) AND a."endsAt">(${at}))::int AS "totalLive",
+        count(*) FILTER (WHERE a."startsAt">(${at}))::int AS "totalUpcoming",${clock} AS "serverNow"
+      FROM "Auction" a
+      JOIN "Product" p ON p.id=a."productId"
+      JOIN "Category" pc ON pc.id=p."categoryId"
+      JOIN "Category" c ON c.id=a."categoryId"
+      JOIN "AuctionTerms" t ON t."auctionId"=a.id
+      WHERE a."publishedAt"<=(${at}) AND a.status IN ('SCHEDULED','LIVE') AND a.slug IS NOT NULL
+        AND ${publicTestRunSql()} AND p.visible AND pc.visible AND c.visible`;
+    const row=rows[0];
+    return {totalLive:row.totalLive,totalUpcoming:row.totalUpcoming,serverNow:row.serverNow.toISOString()};
   });
 }
 export async function listCategories(now?: Date) {

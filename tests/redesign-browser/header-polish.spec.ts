@@ -20,15 +20,16 @@ test('compact header, language keyboard controls and banner assets',async({page}
   await page.route('**/api/profile',async route=>{await profileReady;await route.continue()});
   await page.goto('/profile');
   const header=page.getByRole('banner',{name:'Mini App header'});
-  await expect(header).toBeVisible();
+  await expect(header).toHaveCount(0);
   await expect(page.getByText('Loading your profile…',{exact:true})).toBeVisible();
   await expect(page.locator('.private-skeleton,.mini-route-skeleton')).toHaveCount(0);
-  await page.screenshot({path:`${root}/profile-loading-${info.project.name}-en.png`});releaseProfile();
+  await page.screenshot({path:`${root}/profile-loading-${info.project.name}-en.png`});releaseProfile();await expect(page.locator('[data-profile-ready=true]')).toBeVisible();await expect(page.getByRole('heading',{name:'Profile',exact:true})).toHaveCount(1);await page.goto('/');await expect(header).toBeVisible();
   const bell=header.getByRole('button',{name:/^Notifications/});await expect(bell).toHaveAccessibleName('Notifications, 7 unread');
   await bell.click();const notifications=page.getByRole('dialog',{name:'Notifications'});await expect(notifications).toBeVisible();await page.keyboard.press('Escape');await expect(bell).toBeFocused();
-  const bids=header.getByRole('link',{name:'My Bids',exact:true});await expect(bids).toHaveAttribute('href','/my-bids');await bids.click();await expect(page).toHaveURL(/\/my-bids$/);
-  await page.goto('/');await expect(page.getByRole('button',{name:'Learn more',exact:true})).toBeVisible();
-  const banner=page.locator('section[aria-label="Lowin"] img');await expect.poll(()=>banner.evaluate((el:HTMLImageElement)=>el.complete&&el.naturalWidth>0)).toBe(true);
+  await header.getByRole('button',{name:/^Browse auctions/}).click();await expect(page.getByRole('dialog',{name:'Auctions',exact:true})).toBeVisible();await page.keyboard.press('Escape');
+  const bids=page.getByRole('navigation',{name:'Your navigation',exact:true}).getByRole('link',{name:'My Bids',exact:true});await expect(bids).toHaveAttribute('href','/my-bids');await bids.click();await expect(page).toHaveURL(/\/my-bids$/);
+  await page.goto('/');await expect(page.getByRole('button',{name:'Learn more',exact:true}).first()).toBeVisible();
+  const banner=page.locator('section[aria-labelledby="home-headline"] img');await expect.poll(()=>banner.evaluate((el:HTMLImageElement)=>el.complete&&el.naturalWidth>0)).toBe(true);
   for(const path of ['/images/lowin-family-hero.webp','/fonts/dm-sans-latin-500.woff2','/fonts/noto-sans-ethiopic-variable.woff2'])expect((await page.request.get(path,{maxRedirects:0})).status(),path).toBe(200);
   for(const control of await header.getByRole('button').all()){const box=await control.boundingBox();expect(box!.width).toBeGreaterThanOrEqual(44);expect(box!.height).toBeGreaterThanOrEqual(44)}
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
@@ -38,7 +39,7 @@ test('compact header, language keyboard controls and banner assets',async({page}
   await page.keyboard.press('Enter');await expect(header.getByRole('button',{name:'ቋንቋ: አማርኛ'})).toBeFocused();await expect(page.locator('html')).toHaveAttribute('lang','am');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:`${root}/home-${info.project.name}-am.png`});
   await header.getByRole('button',{name:'ቋንቋ: አማርኛ'}).click();await page.keyboard.press('Escape');await expect(header.getByRole('button',{name:'ቋንቋ: አማርኛ'})).toBeFocused();
-  const bad=await page.evaluate(async()=>{await document.fonts.ready;return Array.from(document.images).filter(image=>image.src.includes('lowin-family-hero')&&(!image.complete||image.naturalWidth===0)).length});expect(bad).toBe(0);
+  const bad=await page.evaluate(async()=>{await document.fonts.ready;return Array.from(document.images).filter(image=>image.src.includes('lowwin-home-banner')&&(!image.complete||image.naturalWidth===0)).length});expect(bad).toBe(0);
   expect(errors).toEqual([]);
  }finally{await client.$disconnect()}
 });

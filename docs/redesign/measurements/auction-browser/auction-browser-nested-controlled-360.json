@@ -1,0 +1,22 @@
+{
+  "fixture": "synthetic GET-only delayed catalog responses; fresh guarded verified local contact/account; no financial fixture writes",
+  "timingClaims": false,
+  "reason": "Parallel local QA; prior isolated observations remain separate",
+  "width": 360,
+  "structureBeforeData": true,
+  "upcomingReadOnly": true,
+  "knownBidPreviewBeforeDetails": true,
+  "detailReads": 1,
+  "ownReads": 1,
+  "deadlineWhileGatedDisabled": true,
+  "lateLiveDidNotReplaceUpcoming": true,
+  "refreshRetainedRows": true,
+  "refreshFailureRetry": true,
+  "uniqueLoadedRows": 12,
+  "paginationRestored": true,
+  "savedAndRestoredScrollTop": 888,
+  "reopenExtraRequests": 0,
+  "financialPosts": 0,
+  "privateBreakdownRequests": 0,
+  "errors": []
+}

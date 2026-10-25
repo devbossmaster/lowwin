@@ -4,13 +4,19 @@ import {randomUUID} from 'node:crypto';
 import {mkdirSync,writeFileSync} from 'node:fs';
 import {digest,token,totp} from '../../src/modules/admin/crypto';
 import {reconcile} from '../../src/modules/wallet/ledger';
+import {referralBrowserFixture} from '../referral-browser-fixtures';
 
 test('Owner referral policy uses fresh MFA, bounded values and explicit enablement',async({page,browser},info)=>{
  const database=process.env.TEST_DATABASE_URL??'',target=new URL(database),origin=process.env.BETTER_AUTH_URL??'';
  if(!['127.0.0.1','localhost'].includes(target.hostname)||!target.pathname.endsWith('_test')||process.env.REFERRAL_REWARDS_SCHEMA_READY!=='true'||new URL(origin).hostname!=='localhost')throw Error('Pinned migrated loopback referral _test database required');
  const db=new PrismaClient({datasourceUrl:database}),root=process.env.ADMIN_REFERRAL_REPORT_DIR??'test-results/profile-referrals';mkdirSync(root,{recursive:true});
  const email=`referral-policy-${randomUUID()}@lowwin.test`,password='Isolated-referral-policy-browser-fixture-12345',invitation=token(),errors:string[]=[],financialPosts:string[]=[],policyPosts:Array<{key:string;enabled:boolean;discountPercent:number;expiryDays:number}>=[];
+ await referralBrowserFixture(db);
+ // Keep a separate active Owner so testing the authenticated actor's Auditor
+ // permissions does not violate the database's last-active-Owner safeguard.
+ await db.user.create({data:{id:randomUUID(),name:'Isolated ownership guard fixture',staffMember:{create:{role:'OWNER',recoveryHashes:[]}}}});
  const initial=await db.referralPolicy.findUniqueOrThrow({where:{id:'default'}}),couponsBefore=await db.referralCoupon.findMany({orderBy:{id:'asc'},select:{id:true,percent:true,expiresAt:true,policyVersion:true}}),redemptionsBefore=await db.referralRedemption.count();
+ expect(couponsBefore.length).toBeGreaterThan(0);
  let ownerId:string|null=null,policyChanged=false;
  page.on('pageerror',error=>errors.push(error.message));
  page.on('request',request=>{const path=new URL(request.url()).pathname;if(request.method()==='POST'&&/\/api\/(?:auctions\/[^/]+\/bids|payments\/|wallet\/top-ups)/.test(path))financialPosts.push(path);if(request.method()==='POST'&&path==='/api/admin/referrals')policyPosts.push(request.postDataJSON().input)});

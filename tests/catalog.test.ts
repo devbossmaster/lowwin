@@ -4,7 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import { execFileSync } from 'node:child_process';
 import { seedCatalog } from '../scripts/seed-catalog';
 
-const testUrl=process.env.TEST_DATABASE_URL;
+const testUrl=process.env.CATALOG_TEST_DATABASE_URL??process.env.TEST_DATABASE_URL;
 describe.skipIf(!testUrl)('public catalog on disposable PostgreSQL',()=>{
   let client:PrismaClient;
   let catalog:typeof import('../src/modules/auctions/catalog');
@@ -27,14 +27,30 @@ describe.skipIf(!testUrl)('public catalog on disposable PostgreSQL',()=>{
   });
   it('returns a small public-only live header list with numeric detail codes',async()=>{
     const result=await catalog.listQuickLiveAuctions(1);
-    expect(result.total).toBe(8);expect(result.items).toHaveLength(6);
+    expect(result.total).toBe(8);expect(result.items).toHaveLength(8);expect(result.pageSize).toBe(10);
     for(const item of result.items){
       expect(item.code).toMatch(/^[1-9]\d*$/);
-      expect(Object.keys(item).sort()).toEqual(['bidCount','code','endsAt','isDemo','product','slug']);
+      expect(Object.keys(item).sort()).toEqual(['bidCount','code','endsAt','isDemo','product','slug','startsAt','status','terms']);
       expect(Object.keys(item.product).sort()).toEqual(['images','title','titleAm']);
       expect(item.product.images.length).toBeLessThanOrEqual(1);
+      expect(item.status).toBe('live');expect(Object.keys(item.terms).sort()).toEqual(['entryFeePoints','ruleVersion','version']);
     }
     expect(JSON.stringify(result)).not.toContain('winningUserId');
+  });
+  it('keeps live/upcoming quick totals, schedules and count-only summary consistent',async()=>{
+    const now=await catalog.serverNow(),summary=await catalog.getAuctionSummary(now);
+    expect(summary).toEqual({totalLive:8,totalUpcoming:3,serverNow:now.toISOString()});
+    for(const status of ['live','upcoming'] as const){
+      const result=await catalog.listQuickAuctions(status,1,now);
+      expect(result.total).toBe(status==='live'?summary.totalLive:summary.totalUpcoming);
+      expect(result.total).toBe((await catalog.listAuctions({q:'',status,sort:'code',page:1},now)).total);
+      expect(result.items.every(item=>item.status===status&&new Date(item.endsAt)>now)).toBe(true);
+      expect(result.items.every(item=>status==='live'?new Date(item.startsAt)<=now:new Date(item.startsAt)>now)).toBe(true);
+      expect((await catalog.listQuickAuctions(status,2,now)).items).toEqual([]);
+      expect(JSON.stringify(result)).not.toMatch(/description|winningUserId|telegramId|walletId|participant|frequency|uniqueHint|amounts/);
+    }
+    const later=new Date(now.getTime()+10*24*60*60*1000);
+    expect(await catalog.getAuctionSummary(later)).toEqual({totalLive:0,totalUpcoming:0,serverNow:later.toISOString()});
   });
   it('derives live, upcoming and closed status and never shows a live animal listing',async()=>{
     const now=await catalog.serverNow();

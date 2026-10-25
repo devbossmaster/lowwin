@@ -44,10 +44,12 @@ export function prefetchMiniIntent(identity:string|null,target:string,prefetchRo
  const data=privateIntentDestination(target);if(data)void prefetchPrivateQuery(identity,data);
 }
 /** Card action intent shares the route budget and respects constrained connections. */
-export function prefetchAuctionIntent(identity:string|null,slug:string){
+export function prefetchAuctionIntent(identity:string|null,slug:string,{details=false}:{details?:boolean}={}){
  if(!identity||!/^[-a-z0-9]{1,120}$/.test(slug))return;
  const connection=typeof navigator==='undefined'?null:(navigator as Navigator&{connection?:{saveData?:boolean;effectiveType?:string}}).connection;
  if(connection?.saveData||connection?.effectiveType==='2g'||connection?.effectiveType==='slow-2g')return;
  if(!budget.allow(identity,`bid:${slug}`))return;
- void prefetchPrivateQuery(identity,`/api/auctions/${slug}/bids`);void prefetchPrivateQuery(identity,'/api/wallet');
+ if(details)void prefetchPrivateQuery(identity,`/api/catalog/auctions/${slug}`);
+ void prefetchPrivateQuery(identity,`/api/auctions/${slug}/bids`);
+ if(!details)void prefetchPrivateQuery(identity,'/api/wallet');
 }

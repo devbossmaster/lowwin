@@ -1,0 +1,27 @@
+.panel{color:#181815}
+.tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;padding:4px;border-radius:25px;background:#eeece6}
+.tabs button{display:flex;align-items:center;justify-content:center;gap:7px;min-height:44px;padding:9px 12px;border:0;border-radius:22px;background:transparent;color:#68665e;font:inherit;font-size:12px;font-weight:650;cursor:pointer}
+.tabs button[aria-selected=true]{background:#181815;color:#fff}
+.tabs button>span{font-size:10px;line-height:1.5;font-variant-numeric:tabular-nums;opacity:.85}
+.caption{min-height:18px;margin:9px 2px 8px;color:#68665e;font-size:10px;line-height:1.6}
+.viewport{height:min(54dvh,500px);min-height:200px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#d6d0c1 #f5f4ef;outline-offset:-2px}
+.row{display:grid;grid-template-columns:76px minmax(0,1fr);align-items:center;gap:12px;width:100%;min-height:100px;margin-bottom:10px;padding:10px;border:0;border-radius:16px;background:#f5f4ef;color:#181815;font:inherit;text-align:left;text-decoration:none;touch-action:manipulation}button.row{cursor:pointer}
+.image{display:block;overflow:hidden;width:76px;height:76px;border-radius:13px;background:#eeece6}
+.image img{display:block;width:100%;height:100%;object-fit:cover}
+.details{display:block;min-width:0}
+.details>strong{display:-webkit-box;overflow:hidden;-webkit-line-clamp:2;-webkit-box-orient:vertical;font-size:13px;font-weight:650;line-height:1.45;overflow-wrap:anywhere}
+.date{display:flex;align-items:center;gap:4px;margin-top:4px;color:#68665e;font-size:10px;line-height:1.5;flex-wrap:wrap}
+.date>svg{flex:none}.date small{font-size:8px;color:#715719}
+.facts{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:5px;margin-top:7px}
+.fee,.timer{display:inline-flex;align-items:center;gap:4px;min-height:20px;padding:2px 6px;border-radius:12px;background:#eae7de;font-size:9px;font-weight:600;line-height:1.5;font-variant-numeric:tabular-nums}
+.fee{color:#715719;white-space:nowrap}.timer{margin-left:auto;color:#514d43}.timer>svg{flex:none}
+.timer :global(.countdown){padding:0;border:0;background:transparent;color:inherit;font-size:9px;font-weight:600;line-height:1.5;white-space:nowrap}
+.loadMore{display:block;width:100%;min-height:44px;margin:4px 0 10px;padding:10px 16px;border:1px solid #e5e1d6;border-radius:22px;background:#fff;color:#181815;font:inherit;font-size:12px;font-weight:650;cursor:pointer}
+.loadMore:disabled{color:#68665e;background:#eeece6;cursor:wait}
+.browseAll{display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px;border-radius:22px;background:#eeece6;color:#181815;font-size:12px;font-weight:650;text-decoration:none}.browseAll:focus-visible{outline:2px solid #987522;outline-offset:2px}
+.empty{display:grid;justify-items:center;align-content:center;min-height:250px;padding:32px 22px;text-align:center;color:#68665e}.empty>svg{color:#987522}.empty h3{margin:13px 0 6px;color:#181815;font-size:15px;line-height:1.5;font-weight:650}.empty p{margin:0;font-size:12px;line-height:1.7}
+.loading{display:grid;gap:10px}.placeholder{display:flex;align-items:center;gap:12px;min-height:100px;padding:10px;border-radius:16px;background:#f5f4ef}.placeholder>span{width:76px;height:76px;flex:none;border-radius:13px;background:#eae7de}.placeholder>div{display:grid;gap:9px;width:70%}.placeholder i{height:9px;border-radius:4px;background:#e5e1d6}.placeholder i:nth-child(2){width:75%}.placeholder i:nth-child(3){width:55%}
+.panel :focus-visible{outline:2px solid #987522;outline-offset:-2px}.panel ::selection{background:#e9e3d1;color:#181815}
+@media(max-width:370px){.row{grid-template-columns:64px minmax(0,1fr);gap:10px;padding:9px}.image{width:64px;height:72px}.details>strong{font-size:12px}.facts{gap:4px}.fee,.timer,.timer :global(.countdown){font-size:8.5px}}
+@media(prefers-reduced-motion:no-preference){.tabs button,.row,.loadMore{transition:background-color 150ms ease,transform 150ms ease}button.row:active{transform:scale(.99)}}
+@media(hover:hover){button.row:hover{background:#eeece6}.loadMore:hover{background:#f5f4ef}.tabs button:hover:not([aria-selected=true]){background:#e5e1d6}}
