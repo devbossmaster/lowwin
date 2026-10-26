@@ -6,11 +6,11 @@ import {Play} from 'lucide-react';
 import {AccountSheet} from './account-sheet';
 import {MiniPhrase} from './mini-locale';
 import type {LearnMoreMedia} from '@/lib/learn-more-media';
-export default function LearnMoreSheet({onClose,videoId,media,returnFocusRef}:{onClose:()=>void;videoId?:string|null;media?:LearnMoreMedia|null;returnFocusRef?:RefObject<HTMLElement|null>}){
+export default function LearnMoreSheet({onClose,videoId,media,intro,returnFocusRef}:{onClose:()=>void;videoId?:string|null;media?:LearnMoreMedia|null;intro?:{en:string;am:string};returnFocusRef?:RefObject<HTMLElement|null>}){
  const [watch,setWatch]=useState(false),[failed,setFailed]=useState(false),[posterFailed,setPosterFailed]=useState(false);
  const video=media??(videoId?{kind:'youtube' as const,id:videoId,poster:'/images/lowin-family-hero.webp'}:null);
  return <AccountSheet title={<MiniPhrase en="A little different wins" am="ትንሽ ልዩነት ያሸንፋል"/>} onClose={onClose} returnFocusRef={returnFocusRef}>
-  <p className="learn-lead"><MiniPhrase en="Choose a number that stands on its own. The lowest number entered by just one person wins." am="በአንድ ሰው ብቻ የተመረጠ ቁጥር ይምረጡ። ዝቅተኛው ልዩ ቁጥር ያሸንፋል።"/></p>
+  <p className="learn-lead"><MiniPhrase en={intro?.en||'Choose a number that stands on its own. The lowest number entered by just one person wins.'} am={intro?.am||'በአንድ ሰው ብቻ የተመረጠ ቁጥር ይምረጡ። ዝቅተኛው ልዩ ቁጥር ያሸንፋል።'}/></p>
   {video&&!failed&&<div className="learn-media">{!watch?<><Image src={posterFailed?'/images/lowin-family-hero.webp':video.poster} fill sizes="(max-width:480px) 100vw,480px" quality={75} alt="" onError={()=>setPosterFailed(true)}/><button className="learn-play" onClick={()=>setWatch(true)}><Play size={32} aria-hidden="true"/><MiniPhrase en="Play: How Lowwin works" am="አጫውት፦ Lowwin እንዴት ይሠራል"/></button></>:video.kind==='youtube'?<iframe src={`https://www.youtube-nocookie.com/embed/${video.id}?autoplay=1`} title="How Lowwin works" allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen referrerPolicy="strict-origin-when-cross-origin"/>:<video src={video.src} poster={video.poster} preload="none" controls playsInline autoPlay onError={()=>setFailed(true)}><MiniPhrase en="Your browser cannot play this video. Read the steps below." am="ይህ ቪዲዮ ማጫወት አልተቻለም። ከታች ያሉትን ደረጃዎች ያንብቡ።"/></video>}</div>}
   {failed&&<p role="status"><MiniPhrase en="The video is unavailable. The complete explanation is below." am="ቪዲዮው አይገኝም። ሙሉ ማብራሪያው ከታች አለ።"/></p>}
   <ol className="learn-steps">

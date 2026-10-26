@@ -8,7 +8,7 @@ END $$;
 REVOKE CREATE ON SCHEMA public FROM PUBLIC,lowwin_runtime;
 GRANT USAGE ON SCHEMA public TO lowwin_runtime;
 DO $$ DECLARE t text; BEGIN
- FOREACH t IN ARRAY ARRAY['user','session','account','verification','rateLimit','VerifiedPhoneIdentity','TelegramOwnContact','ContactEvent','Wallet','CurrencyConversion','WalletHoldGuard','LedgerAccount','Journal','Posting','Operation','Category','Product','ProductImage','Auction','AuctionTerms','PublicAuctionResult','AuctionHold','Bid','TopUpIntent','PaymentPolicy','PaymentClaim','PaymentAttempt','PaymentStatementEntry','ExternalEvent','BotUpdate','Outbox','AuctionSettlement','SettlementMovement','PlayerProfile','AuctionFavorite','StaffMember','StaffSession','StaffTrustedDevice','StaffToken','OwnerBootstrap','AdminAudit','AuctionDraft','ManagedMedia','SiteContent','UserRestriction','SupportCase','FulfillmentCase','NotificationPreference','NotificationInbox','BotChat','TestRun','TestRunActor','TelegramMessage'] LOOP
+ FOREACH t IN ARRAY ARRAY['user','session','account','verification','rateLimit','TelegramOwnContact','ContactEvent','Wallet','CurrencyConversion','WalletHoldGuard','LedgerAccount','Journal','Posting','Operation','Category','Product','ProductImage','Auction','AuctionTerms','PublicAuctionResult','AuctionHold','Bid','TopUpIntent','PaymentPolicy','PaymentClaim','PaymentAttempt','PaymentStatementEntry','BotUpdate','Outbox','AuctionSettlement','SettlementMovement','PlayerProfile','AuctionFavorite','StaffMember','StaffSession','StaffTrustedDevice','StaffToken','OwnerBootstrap','AdminAudit','AuctionDraft','ManagedMedia','SiteContent','UserRestriction','FulfillmentCase','NotificationPreference','NotificationInbox','BotChat','TestRun','TestRunActor','TelegramMessage'] LOOP
   IF EXISTS(SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename=t AND tableowner='lowwin_runtime') THEN RAISE EXCEPTION 'Runtime must not own tables'; END IF;
   EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',t);
   EXECUTE format('GRANT SELECT,INSERT,UPDATE,DELETE ON public.%I TO lowwin_runtime',t);
@@ -36,6 +36,22 @@ DO $$ DECLARE t text; BEGIN
    IF EXISTS(SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename=t AND tableowner='lowwin_runtime') THEN RAISE EXCEPTION 'Runtime must not own tables'; END IF;
    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',t);
    EXECUTE format('GRANT SELECT,INSERT,UPDATE ON public.%I TO lowwin_runtime',t);
+   IF NOT EXISTS(SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename=t AND policyname='lowwin_server_access') THEN
+    EXECUTE format('CREATE POLICY lowwin_server_access ON public.%I TO lowwin_runtime USING (true) WITH CHECK (true)',t);
+   END IF;
+  END IF;
+ END LOOP;
+END $$;
+-- Hosted Chapa storage is optional until its additive migration is reviewed.
+-- Clear any default grants on these new tables before issuing minimal rights.
+DO $$ DECLARE t text; BEGIN
+ FOREACH t IN ARRAY ARRAY['ChapaCheckout','ChapaWebhookEvent'] LOOP
+  IF EXISTS(SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename=t) THEN
+   IF EXISTS(SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename=t AND tableowner='lowwin_runtime') THEN RAISE EXCEPTION 'Runtime must not own tables'; END IF;
+   EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',t);
+   EXECUTE format('REVOKE ALL ON public.%I FROM lowwin_runtime',t);
+   EXECUTE format('GRANT SELECT,INSERT ON public.%I TO lowwin_runtime',t);
+   IF t='ChapaCheckout' THEN EXECUTE format('GRANT UPDATE ON public.%I TO lowwin_runtime',t); END IF;
    IF NOT EXISTS(SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename=t AND policyname='lowwin_server_access') THEN
     EXECUTE format('CREATE POLICY lowwin_server_access ON public.%I TO lowwin_runtime USING (true) WITH CHECK (true)',t);
    END IF;

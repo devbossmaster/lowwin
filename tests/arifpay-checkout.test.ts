@@ -35,6 +35,10 @@ describe.skipIf(!url)('ArifPay checkout on disposable loopback PostgreSQL',()=>{
   return {a,userId,key,input,start,verify,create,lookup,transport,setStatus:(value:string)=>{status=value},setMutate:(value:typeof mutate)=>{mutate=value}};
  }
  const available=async(userId:string)=>(await db.ledgerAccount.findUniqueOrThrow({where:{name:`user:${userId}:available`}})).balance.toString();
+ it('retains verified incoming funds during maintenance without accepting a bid or crediting twice',async()=>{
+  const f=await fixture(),order=await f.start();await db.adminAudit.create({data:{actorId:'isolated-operator',action:'AUCTIONS_MAINTENANCE_HALTED',target:'isolated-maintenance-test',details:{runId:'isolated-maintenance-test'}}});
+  try{await expect(f.start()).rejects.toMatchObject({code:'AUCTIONS_PAUSED'});const result=await f.verify(order.id);expect(result).toMatchObject({status:'NEEDS_REVIEW',reason:'AUCTIONS_PAUSED',fundsPreserved:true});expect(await available(f.userId)).toBe('40');await f.verify(order.id);expect(await available(f.userId)).toBe('40');expect(await db.bid.count({where:{auctionId:f.a.id}})).toBe(0);expect(await reconcile(db)).toEqual([])}finally{await db.adminAudit.create({data:{actorId:'isolated-operator',action:'AUCTIONS_MAINTENANCE_RESUMED',target:'isolated-maintenance-test',details:{runId:'isolated-maintenance-test'}}})}
+ });
  it('does not accept a bid from create/USSD response; verified payment and repeated polls accept and charge exactly once',async()=>{
   const f=await fixture(),order=await f.start();expect(order.status).toBe('PENDING');expect(await db.bid.count({where:{auctionId:f.a.id}})).toBe(0);expect(await available(f.userId)).toBe('10');
   const result=await f.verify(order.id);expect(result.status).toBe('BID_ACCEPTED');expect(result.receipt).not.toHaveProperty('wallet');expect(result.receipt).toMatchObject({charge:{feePoints:'30',newlyUnavailable:'30'},hold:{extraReserved:'0'}});expect(await available(f.userId)).toBe('10');

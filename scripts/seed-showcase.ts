@@ -38,7 +38,6 @@ export async function seedShowcase(db:PrismaClient,batch:string,testerId?:string
  await cancelAuction(db,{auctionId:auctions[4].id,actor:{id:'demo-showcase-operator',permission:'auction:cancel'},reason:'DEMO cancellation with exact entry-fee refunds.',key:uuid(`${marker}:cancel`)});
  // Explicit safe fixtures only: no provider evidence, claim or credited journal.
  for(const status of ['PENDING','NEEDS_REVIEW','REJECTED'])await db.topUpIntent.upsert({where:{userId_key:{userId:users[0],key:`${marker}:funding:${status}`}},update:{},create:{userId:users[0],key:`${marker}:funding:${status}`,provider:'DEMO_PREVIEW',status,points:'100',policyVersion:'DEMO-NOT-A-PAYMENT',reasonCode:'DEMO_ONLY_NO_TRANSFER',quoteSnapshot:{demo:true,label:'DEMO funding preview. No money transferred or points credited.'}}});
- await db.supportCase.upsert({where:{id:uuid(`${marker}:support`)},update:{},create:{id:uuid(`${marker}:support`),userId:users[0],subject:'DEMO — understanding a hold',message:'DEMO support sample: where can I see released auction points?'}});
  await db.siteContent.upsert({where:{id:'home'},update:{},create:{id:'home',body:{headline:'A little different wins.',lead:'The lowest point amount chosen only once wins. Explore the DEMO showcase and learn the rules.'}}});
  console.log(JSON.stringify({batch,stage:'bids-accepted',waitingForPublishedDeadline:ending.toISOString()}));
  while(Date.now()<=ending.getTime()+250)await new Promise(r=>setTimeout(r,Math.min(15000,ending.getTime()+300-Date.now())));

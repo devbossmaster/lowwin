@@ -20,7 +20,7 @@ export async function addAdminFunds(client:PrismaClient,headers:Headers,raw:unkn
  const b=adminCreditSchema.parse(raw);
  return client.$transaction(async tx=>{
   await tx.$queryRaw`SELECT id FROM "TopUpIntent" WHERE id=${b.id} FOR UPDATE`;
-  const actor=await requireAdmin(tx,headers,{fresh:true,lock:true});
+  const actor=await requireAdmin(tx,headers,{lock:true});
   if(actor.role!=='OWNER')throw new AdminError(403,'Only an Owner can add funds without verified receipt evidence.');
   const t=await tx.topUpIntent.findUnique({where:{id:b.id}});if(!t)throw new PaymentError(404,'Deposit not found.');
   const fingerprint=hash(JSON.stringify({action:'add-funds',actorId:actor.id,...b}));

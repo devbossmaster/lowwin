@@ -5,7 +5,7 @@ import { pointsSchema } from '../src/modules/wallet/ledger';
 import { validWebhookSecret } from '../src/modules/bot/webhook';
 import { getFundingProvider } from '../src/modules/wallet/topups';
 import { signedLaunch, TEST_TOKEN } from './helpers';
-import {ADMIN_FRESH_MFA_MS,isFreshAdminMfa} from '../src/lib/admin-security';
+import {ADMIN_SESSION_MS,ADMIN_CHALLENGE_MS,adminSessionExpiry} from '../src/lib/admin-security';
 describe('Telegram signature boundary', () => {
   it('accepts a valid raw signed launch',()=>expect(validateTelegramInitData(signedLaunch(),TEST_TOKEN).id).toBe(778899));
   it.each([
@@ -31,10 +31,13 @@ describe('funding and webhook boundaries',()=>{
 });
 describe('admin assurance boundary',()=>{
   const now=new Date('2026-10-05T12:00:00.000Z');
-  it('keeps MFA fresh for 30 minutes and expires it immediately afterward',()=>{
-    expect(ADMIN_FRESH_MFA_MS).toBe(30*60*1000);
-    expect(isFreshAdminMfa(new Date(now.getTime()-ADMIN_FRESH_MFA_MS),now)).toBe(true);
-    expect(isFreshAdminMfa(new Date(now.getTime()-ADMIN_FRESH_MFA_MS-1),now)).toBe(false);
-    expect(isFreshAdminMfa(null,now)).toBe(false);
+  it('requires MFA on the credential login and expires at the eight-hour absolute cap',()=>{
+    expect(ADMIN_SESSION_MS).toBe(8*60*60*1000);expect(ADMIN_CHALLENGE_MS).toBe(15*60*1000);
+    const grant={credentialAt:new Date(now.getTime()-7*3600000),mfaAt:new Date(now.getTime()-6*3600000),expiresAt:new Date(now.getTime()+5*3600000)},session=new Date(now.getTime()+24*3600000);
+    expect(adminSessionExpiry(grant,session,now)).toEqual(new Date(now.getTime()+3600000));
+    expect(adminSessionExpiry({...grant,mfaAt:null},session,now)).toBeNull();
+    expect(adminSessionExpiry({...grant,mfaAt:new Date(grant.credentialAt.getTime()-1)},session,now)).toBeNull();
+    expect(adminSessionExpiry({...grant,credentialAt:new Date(now.getTime()-ADMIN_SESSION_MS)},session,now)).toBeNull();
+    expect(adminSessionExpiry(grant,new Date(now.getTime()-1),now)).toBeNull();
   });
 });

@@ -1,4 +1,4 @@
-import {test, expect, type Page, type TestInfo} from '@playwright/test';
+import {test, expect, type Page, type TestInfo} from '../isolated-browser';
 
 const timeoutCopy = 'Telegram contact confirmation took too long. Check the bot, then try again.';
 type ContactFixture = {callbacks: Array<(shared: boolean) => void>; closes: number; opened: string[]};

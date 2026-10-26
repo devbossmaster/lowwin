@@ -27,7 +27,7 @@ export default async function setup(config:FullConfig){
  try{
   for(const spec of config.metadata.testServers as Spec[]){
    if(await portOpen(spec.port))throw Error(`Test port ${spec.port} is already in use; refusing to reuse or kill another process`);
-   const child=spawn(process.execPath,['--import','tsx','scripts/browser-test-server.mjs',spec.kind,String(spec.port)],{shell:false,windowsHide:true,stdio:['ignore','inherit','inherit','ipc'],env:{...process.env,...spec.env,NODE_ENV:'development',NEXT_TELEMETRY_DISABLED:'1'}});
+   const child=spawn(process.execPath,['--import','tsx','scripts/browser-test-server.mjs',spec.kind,String(spec.port)],{shell:false,windowsHide:true,stdio:['ignore','inherit','inherit','ipc'],env:{...process.env,...spec.env,NODE_ENV:spec.env?.LOWWIN_BROWSER_PRODUCTION==='1'&&spec.env?.LOWWIN_BROWSER_LOCAL_RUNTIME!=='1'?'production':'development',NEXT_TELEMETRY_DISABLED:'1'}});
    const record:Owned={child,spec,closed:false,exit:Promise.resolve(null)};
    record.exit=new Promise(resolve=>child.once('exit',code=>{record.closed=true;resolve(code)}));owned.push(record);
    await new Promise<void>((resolve,reject)=>{const timer=setTimeout(()=>reject(Error(`Test server ${spec.port} startup timed out`)),120000);const ready=(message:unknown)=>{if(message&&typeof message==='object'&&'ready'in message){clearTimeout(timer);child.off('message',ready);resolve()}};child.on('message',ready);child.once('error',e=>{clearTimeout(timer);reject(e)});record.exit.then(()=>{clearTimeout(timer);reject(Error(`Test server ${spec.port} exited during startup`))})});

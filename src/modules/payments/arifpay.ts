@@ -3,6 +3,7 @@ import {Prisma,type ArifPayCheckout,type PrismaClient} from '@prisma/client';
 import {z} from 'zod';
 import {BidError,submitBidInTransaction} from '../auctions/bids';
 import {isSubmissionFeeOnly} from '../auctions/rules';
+import {auctionMaintenance} from '../auctions/maintenance';
 import {createsFourConsecutiveAmounts,parseBidCents} from '../auctions/consecutive-bids';
 import {assertPlayerContact,contactBotId,decryptPhone,encryptPhone,normalizePhone,phoneHash} from '../auth/own-contact';
 import {ensureWallet,pointsSchema,seedPlatformAccounts} from '../wallet/ledger';
@@ -30,6 +31,7 @@ export async function createArifPayCheckout(client:PrismaClient,userId:string,in
  if(!(body.channel==='MPESA'?/^2517\d{8}$/:/^2519\d{8}$/).test(phone))throw new ArifPayError(422,'INVALID_PHONE',body.channel==='MPESA'?'Enter an M-PESA number starting with 07 or 2517.':'Enter a Telebirr number starting with 09 or 2519.');
  const requestHash=arifPayHash(JSON.stringify({...body,amount:body.amount.toString(),phone:phoneHash(`+${phone}`)}));
  const started=await client.$transaction(async tx=>{
+  if(await auctionMaintenance(tx))throw new ArifPayError(503,'AUCTIONS_PAUSED','New checkouts are paused for auction maintenance. Existing verification continues.');
   // Match the existing bid/settlement writer order: auction -> wallet -> order.
   await tx.$queryRaw`SELECT id FROM "Auction" WHERE slug=${body.auctionSlug} FOR UPDATE`;
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`},0))`;
@@ -100,6 +102,7 @@ export async function verifyArifPayCheckout(client:PrismaClient,id:string,userId
   return getArifPayCheckout(client,snapshot.userId,id);
  }
  return client.$transaction(async tx=>{
+  await auctionMaintenance(tx);
   if(reauthorize)await reauthorize(tx);
   await tx.$queryRaw`SELECT id FROM "Auction" WHERE id=${snapshot.auctionId} FOR UPDATE`;
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${snapshot.userId}`},0))`;

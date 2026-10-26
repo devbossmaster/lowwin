@@ -26,10 +26,15 @@ export async function handleAuth(request: Request) {
   }
   if(staffAction){
     const headers={'Cache-Control':'private, no-store, max-age=0','Vary':'Cookie'};
+    const started=performance.now();let stage:'rate-limit'|'transaction-start'|'credential-handler'='rate-limit';
     try{
       if(!await staffRateLimit(db,staffAction,request))return Response.json({error:'Too many attempts. Try again later.'},{status:429,headers});
-      return await db.$transaction(async tx=>{const response=await createAuth(tx).handler(request);if(!response.ok)throw response;const h=new Headers(response.headers);for(const [key,value] of Object.entries(headers))h.set(key,value);return new Response(response.body,{status:response.status,headers:h})},{timeout:20000});
-    }catch(error){if(error instanceof Response){const body=await error.json().catch(()=>({message:'Staff sign-in failed.'}));return Response.json({error:body.message??'Staff sign-in failed.'},{status:error.status,headers})}return Response.json({error:'Staff authentication is temporarily unavailable.'},{status:503,headers})}
+      stage='transaction-start';
+      return await db.$transaction(async tx=>{stage='credential-handler';const response=await createAuth(tx).handler(request);if(!response.ok)throw response;const h=new Headers(response.headers);for(const [key,value] of Object.entries(headers))h.set(key,value);return new Response(response.body,{status:response.status,headers:h})},{timeout:20000});
+    }catch(error){
+      if(!(error instanceof Response)||error.status>=500){const {code,kind,sqlState,reason}=databaseErrorSummary(error);console.warn('Staff authentication unavailable',{action:staffAction,stage,code,kind,...(sqlState?{sqlState}:{}),...(reason?{reason}:{}),elapsedMs:Math.round(performance.now()-started)})}
+      if(error instanceof Response){const body=await error.json().catch(()=>({message:'Staff sign-in failed.'}));return Response.json({error:body.message??'Staff sign-in failed.'},{status:error.status,headers})}return Response.json({error:'Staff authentication is temporarily unavailable.'},{status:503,headers})
+    }
   }
   if (path === '/telegram/miniapp/signin' || path === '/lowin/dev-identity') {
     const started=performance.now();

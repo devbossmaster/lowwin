@@ -48,7 +48,7 @@ export async function opsMutation(client:PrismaClient,headers:Headers,action:Ops
   if(action==='fulfillment'||action==='deliveryDone')await tx.$queryRaw`SELECT id FROM "Auction" WHERE id=${(input as {auctionId:string}).auctionId} FOR UPDATE`;
   if(action==='invite'||action==='staff')await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('admin:team',0))`;
   if('userId' in input)await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${input.userId}`},0))`;
-  const owner=await requireAdmin(tx,headers,{permission:commandPermission[action],lock:true,fresh:action==='invite'||action==='staff'||action==='broadcast'||action==='broadcastStop'||action.startsWith('test')});
+  const owner=await requireAdmin(tx,headers,{permission:commandPermission[action],lock:true});
   const operationKey=`${actor.id}:${input.key}`;await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`admin:${operationKey}`},0))`;
   const old=await tx.adminAudit.findUnique({where:{operationKey}});if(old){if(old.requestHash!==hash)throw new AdminError(409,'Idempotency key changed.');return (old.details as {receipt:unknown}).receipt}
   let receipt:Record<string,unknown>={},target='';

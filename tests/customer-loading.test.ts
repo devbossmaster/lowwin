@@ -35,7 +35,7 @@ describe('plain customer loading states',()=>{
  });
  it.each([
   ['/auctions','Loading auctions…'],['/auctions/1234','Loading auction details…'],
-  ['/wallet','Loading your wallet…'],['/payments','Loading bid payments…'],['/my-bids','Loading your bids…'],['/draws','Loading draws…'],
+  ['/wallet','Loading your wallet…'],['/payments','Loading bid payments…'],['/my-bids','Loading your bids…'],['/draws','Loading winners…'],
  ])('keeps route loading useful for %s', (path,label)=>{
   state.path=path;
   expect(render(createElement(MiniRouteSkeleton))).toContain(`<p>${label}</p>`);

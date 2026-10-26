@@ -21,8 +21,9 @@ export function arifPayAvailability(raw:Record<string,string|undefined>=process.
   &&!!raw.ARIFPAY_WEBHOOK_TOKEN&&raw.ARIFPAY_WEBHOOK_TOKEN.length>=32
   &&raw.ARIFPAY_BASE_URL==='https://gateway.arifpay.net'
   &&raw.ARIFPAY_CURRENCY==='ETB'&&raw.DEV_POINTS_ENABLED!=='true'&&raw.DEV_IDENTITY_ENABLED!=='true'&&raw.STAGING_DEMO_ENABLED!=='true';
- const enabled=configured&&raw.ARIFPAY_ENABLED==='true';
- const recoveryEnabled=configured&&(enabled||raw.ARIFPAY_RECOVERY_ENABLED==='true');
+ // Selecting Chapa stops new legacy charges without abandoning existing orders.
+ const enabled=configured&&raw.ARIFPAY_ENABLED==='true'&&raw.PAYMENT_GATEWAY!=='CHAPA';
+ const recoveryEnabled=configured&&(raw.ARIFPAY_ENABLED==='true'||raw.ARIFPAY_RECOVERY_ENABLED==='true');
  return {enabled,recoveryEnabled,channels,currency:'ETB' as const,reason:enabled?null:'Direct payment is not available yet. Try again later or contact support.'};
 }
 export function requireArifPay(mode:'create'|'recover'='create'){const health=arifPayAvailability();if(!(mode==='recover'?health.recoveryEnabled:health.enabled))throw new ArifPayError(503,'PAYMENT_UNAVAILABLE',health.reason??'Payment recovery is unavailable. Keep this payment ID and contact support.')}

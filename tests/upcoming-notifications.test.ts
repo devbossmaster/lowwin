@@ -8,6 +8,10 @@ const now=new Date('2026-10-05T09:00:00Z');
 const row={kind:'AUCTION_UPCOMING',payload:{auctionId:'auction-1',recipientUserId:'player-1'}};
 const auction=(change:Record<string,unknown>={})=>({id:'auction-1',slug:'fixture-phone',publicCode:42,publishedAt:new Date(now.getTime()-60000),startsAt:new Date('2026-10-05T18:00:00Z'),endsAt:new Date('2026-10-07T18:00:00Z'),status:'SCHEDULED',isDemo:false,isSettlementFixture:false,testRunId:null,presentation:{title:'Fixture phone'},product:{title:'Old title',visible:true},result:null,settlement:null,...change});
 const transaction=(a=auction())=>({auction:{findUnique:vi.fn(async()=>a)},$queryRaw:vi.fn(async()=>[{now}])}) as unknown as Prisma.TransactionClient;
+function schedulerClient(data:Record<string,unknown>,halted=false):PrismaClient{
+ const client={...data,$executeRaw:vi.fn(async()=>0),adminAudit:{findFirst:vi.fn(async()=>halted?{action:'AUCTIONS_MAINTENANCE_HALTED',details:{},createdAt:now}:null)}};
+ return Object.assign(client,{$transaction:async(callback:(tx:unknown)=>unknown)=>callback(client)}) as unknown as PrismaClient;
+}
 
 describe('upcoming auction reminders',()=>{
  it('suppresses queued cancellation results for the bot and Mini App bell',async()=>{
@@ -86,7 +90,7 @@ describe('upcoming auction reminders',()=>{
   const saved=new Map<string,unknown>();
   const createMany=vi.fn(async({data}:{data:Array<{key:string}>})=>{let count=0;for(const r of data)if(!saved.has(r.key)){saved.set(r.key,r);count++}return {count}});
   const findMany=vi.fn(async({where}:{where:{startsAt:{gt?:Date;lt?:Date}}})=>where.startsAt.gt?.getTime()===now.getTime()+3600000?[{id:'auction-1',isDemo:false,isSettlementFixture:false}]:[]);
-  const client={$queryRaw:vi.fn(async()=>[{now}]),auction:{findMany},outbox:{createMany}} as unknown as PrismaClient;
+  const client=schedulerClient({$queryRaw:vi.fn(async()=>[{now}]),auction:{findMany},outbox:{createMany}});
   expect(await scheduleGlobalAlerts(client)).toBe(1);expect(await scheduleGlobalAlerts(client)).toBe(0);
   expect(saved.size).toBe(1);expect(saved.get('global:upcoming:auction-1')).toMatchObject({kind:'GLOBAL_CAMPAIGN',payload:{auctionId:'auction-1',deliveryKind:'AUCTION_UPCOMING',rootKey:'global:upcoming:auction-1',audienceBefore:now.toISOString()}});
   const upcomingQuery=findMany.mock.calls[1][0];
@@ -95,10 +99,14 @@ describe('upcoming auction reminders',()=>{
  it('queues the one-hour reminder once with its own campaign key',async()=>{
   const saved=new Map<string,unknown>(),createMany=vi.fn(async({data}:{data:Array<{key:string}>})=>{let count=0;for(const job of data)if(!saved.has(job.key)){saved.set(job.key,job);count++}return {count}});
   const findMany=vi.fn(async({where}:{where:{startsAt:{gt?:Date;lte?:Date}}})=>where.startsAt.gt?.getTime()===now.getTime()&&where.startsAt.lte?[{id:'auction-1',isDemo:false,isSettlementFixture:false}]:[]);
-  const client={$queryRaw:vi.fn(async()=>[{now}]),auction:{findMany},outbox:{createMany}} as unknown as PrismaClient;
+  const client=schedulerClient({$queryRaw:vi.fn(async()=>[{now}]),auction:{findMany},outbox:{createMany}});
   expect(await scheduleGlobalAlerts(client)).toBe(1);expect(await scheduleGlobalAlerts(client)).toBe(0);
   expect(saved.get('global:starting-soon:auction-1')).toMatchObject({kind:'GLOBAL_CAMPAIGN',payload:{deliveryKind:'AUCTION_STARTING_SOON',auctionId:'auction-1'}});
   expect(findMany.mock.calls[2][0].where.startsAt).toEqual({gt:now,lte:new Date(now.getTime()+3600000)});
+ });
+ it('does not inspect auctions or create jobs during reset maintenance',async()=>{
+  const findMany=vi.fn(),createMany=vi.fn(),client=schedulerClient({auction:{findMany},outbox:{createMany}},true);
+  expect(await scheduleGlobalAlerts(client)).toBe(0);expect(findMany).not.toHaveBeenCalled();expect(createMany).not.toHaveBeenCalled();
  });
  it('expands reminders into distinct durable recipient keys and retries without duplicate jobs',async()=>{
   const keys=new Set<string>(),createMany=vi.fn(async({data}:{data:Array<{key:string;kind:string}>})=>{let count=0;for(const r of data)if(!keys.has(r.key)){expect(r.kind).toBe('AUCTION_UPCOMING');keys.add(r.key);count++}return {count}});

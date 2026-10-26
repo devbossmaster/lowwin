@@ -53,6 +53,32 @@ describe.skipIf(!url)('Phase 5B scoped operations and private alerts',()=>{
   expect((await route.POST(req('admin/arifpay',body))).status).toBe(503);
  });
  it('revokes already-open sessions immediately and blocks every staff identity from bidding',async()=>{const a=await bidAuction(db);await expect(submitBid(db,{userId:roles.SUPPORT.id,auctionSlug:a.slug!,amount:'2',key:randomUUID()})).rejects.toMatchObject({code:'BIDDING_RESTRICTED'});await okay(await cmd('staff',{key:randomUUID(),userId:roles.PAYMENTS_OPERATOR.id,active:false,role:'PAYMENTS_OPERATOR',reason:'Access no longer required'}));expect((await get('wallets',roles.PAYMENTS_OPERATOR.cookie)).status).toBe(401);expect(await db.session.count({where:{userId:roles.PAYMENTS_OPERATOR.id}})).toBe(0)});
+ it('paginates provider-neutral transactions and returns only allowlisted private evidence',async()=>{
+  const userId=await bidUser(db),createdAt=new Date();
+  await db.topUpIntent.createMany({data:Array.from({length:31},(_,i)=>({userId,key:randomUUID(),provider:'VERIFY_ET',channel:'telebirr',status:i%2?'PENDING':'NEEDS_REVIEW',points:0,amountFromReceipt:true,policyVersion:'isolated-neutral-fixture',receivingAccount:'0911111111',expiresAt:new Date(Date.now()+3600000),createdAt,quoteSnapshot:{minCents:'100',maxCents:'100000',earliestTransferAt:new Date(Date.now()-3600000).toISOString()}}))});
+  const response=await get(`workspace/transactions?q=${userId}`);expect(response.headers.get('cache-control')).toContain('private, no-store');const first=await okay(response),second=await okay(await get(`workspace/transactions?q=${userId}&page=2`));
+  expect(first.total).toBe(31);expect(first.items).toHaveLength(25);expect(second.items).toHaveLength(6);expect(new Set([...first.items,...second.items].map((r:any)=>r.id)).size).toBe(31);expect(first.items.every((r:any)=>r.amount===null)).toBe(true);expect(first.summary.reduce((n:number,r:any)=>n+r.count,0)).toBe(31);expect(first.gateway).toMatchObject({selected:null,state:'Not selected',chapa:{implemented:true,enabled:false}});
+  expect(JSON.stringify(first)).not.toMatch(/phoneCipher|phoneHash|rawProvider|receivingAccount|0911111111/);expect((await get('workspace/transactions',roles.CATALOG_MANAGER.cookie)).status).toBe(403);expect((await get('workspace/transactions','')).status).toBe(401);expect((await get('workspace/transactions?page=0')).status).toBe(422);
+ });
+ it('stores managed content within home, preserves other sections and protects legal publication',async()=>{
+  const {defaultHomeCopy}=await import('../src/components/home-copy'),{termsDocument}=await import('../src/content/help');
+  const initial=await db.siteContent.findUnique({where:{id:'home'}});await okay(await cmd('content',{key:randomUUID(),id:'home',version:initial?.version??0,body:defaultHomeCopy}));const home=await db.siteContent.findUniqueOrThrow({where:{id:'home'}});
+  const experience={bannerEn:'',bannerAm:'',learnIntroEn:'A written explanation without a broken player.',learnIntroAm:'የጨረታ መመሪያ።',video:{youtube:'',local:'',poster:''},socials:[]};
+  await okay(await cmd('content',{key:randomUUID(),id:'experience',version:home.version,body:experience},roles.CATALOG_MANAGER.cookie));const saved=await db.siteContent.findUniqueOrThrow({where:{id:'home'}});expect(saved.body).toMatchObject({...defaultHomeCopy,managedExperience:experience});
+  expect((await cmd('content',{key:randomUUID(),id:'home',version:home.version,body:defaultHomeCopy})).status).toBe(409);
+  expect((await cmd('content',{key:randomUUID(),id:'terms',version:saved.version,body:termsDocument},roles.CATALOG_MANAGER.cookie)).status).toBe(403);await okay(await cmd('content',{key:randomUUID(),id:'terms',version:saved.version,body:termsDocument}));
+  const after=await db.siteContent.findUniqueOrThrow({where:{id:'home'}});expect(after.body).toMatchObject({managedExperience:experience,managedTerms:termsDocument});expect(await db.siteContent.count({where:{id:{notIn:['home','faq']}}})).toBe(0);const projection=await okay(await get('content'));expect(projection.find((r:any)=>r.id==='home').body).toEqual(defaultHomeCopy);
+  const audit=await db.adminAudit.findFirstOrThrow({where:{action:'CONTENT',target:'terms'},orderBy:{createdAt:'desc'}});expect(audit.details).toMatchObject({before:{version:saved.version,body:{managedExperience:experience}}});
+  expect((await cmd('content',{key:randomUUID(),id:'experience',version:after.version,body:{...experience,video:{youtube:'javascript:alert(1)',local:'',poster:''}}})).status).toBe(422);
+ });
+ it('paginates categories on the server without changing draft selector compatibility',async()=>{
+  const tag=randomUUID().slice(0,8);await db.category.createMany({data:Array.from({length:31},(_,i)=>({name:`Category ${tag} ${String(i).padStart(2,'0')}`,nameAm:'የሙከራ ምድብ',slug:`category-${tag}-${i}`,description:'Fixture',visible:i<30}))});
+  const first=await okay(await get(`categories?list=1&q=${tag}&status=VISIBLE`)),second=await okay(await get(`categories?list=1&q=${tag}&status=VISIBLE&page=2`));expect(first.total).toBe(30);expect(first.items).toHaveLength(25);expect(second.items).toHaveLength(5);expect(second.items[0].name).toContain('25');expect(Array.isArray(await okay(await get('categories')))).toBe(true);expect((await get('categories?list=1&status=MADE_UP')).status).toBe(422);
+ });
+ it('archives a cancelled listing while retaining its published slug and settlement proof',async()=>{
+  const a=await bidAuction(db,{ruleVersion:'lowest-unique-v4'}),impact=await okay(await get(`auctions/${a.id}/impact`));await okay(await cmd('cancel',{key:randomUUID(),auctionId:a.id,reason:'Archive a synthetic cancelled listing',confirmation:a.code,impactHash:impact.impactHash}));const cancelled=await db.auction.findUniqueOrThrow({where:{id:a.id}});
+  await okay(await cmd('removeCancelled',{key:randomUUID(),auctionId:a.id,version:cancelled.controlVersion,confirmation:a.code,reason:'Retain source records and retire the public product'}));const after=await db.auction.findUniqueOrThrow({where:{id:a.id},include:{terms:true,settlement:true,product:true}});expect(after.slug).toBe(a.slug);expect(after.product?.visible).toBe(false);expect(after.terms?.ruleVersion).toBe('lowest-unique-v4');expect(after.settlement?.proof).toMatchObject({feePolicy:'NON_REFUNDABLE_SUBMISSION_FEES'});
+ });
  it('returns real page counts and records beyond the old 200 cap',async()=>{const c=await db.category.create({data:{name:'Pagination test',slug:'pagination-test',description:'Test'}});await db.product.createMany({data:Array.from({length:211},(_,i)=>({title:`Page item ${String(i).padStart(3,'0')}`,slug:`page-item-${i}`,description:'Test',condition:'New',categoryId:c.id,isDemo:true}))});const first=await okay(await get('products?q=Page%20item')),last=await okay(await get('products?q=Page%20item&page=9'));expect(first.total).toBe(211);expect(first.items).toHaveLength(25);expect(last.items).toHaveLength(11);expect(last.items[0].title).toBe('Page item 200');await db.auction.createMany({data:Array.from({length:211},(_,i)=>({code:`PAGE-${i}`,slug:`page-auction-${i}`}))});expect((await okay(await get('auctions?q=PAGE-&page=9'))).items).toHaveLength(11)});
  it('counts distinct participants and classifies published schedules using database time',async()=>{
   const a=await bidAuction(db,{ruleVersion:'lowest-unique-v3'}),u=await bidUser(db),v=await bidUser(db);
@@ -72,7 +98,6 @@ describe.skipIf(!url)('Phase 5B scoped operations and private alerts',()=>{
  it('suspends only new bids, preserves accepted outcomes and refunds on cancellation',async()=>{expect((await cmd('suspend',{key:randomUUID(),userId:playerId,suspended:true,reason:'Investigate player report'},roles.SUPPORT.cookie)).status).toBe(403);await okay(await cmd('suspend',{key:randomUUID(),userId:playerId,suspended:true,reason:'Owner reviewed player report'}));const a=await bidAuction(db);await expect(submitBid(db,{userId:playerId,auctionSlug:a.slug!,amount:'4',key:randomUUID()})).rejects.toMatchObject({code:'BIDDING_RESTRICTED'});await new Promise(r=>setTimeout(r,1900));const s=await closeAuction(db,winner.id);expect(s.winnerUserId).toBe(playerId);expect(await reconcile(db)).toEqual([]);const u=await bidUser(db),c=await bidAuction(db,{fee:3});await submitBid(db,{userId:u,auctionSlug:c.slug!,amount:'4',key:randomUUID()});await cancelAuction(db,{auctionId:c.id,actor:{id:ownerId,permission:'auction:cancel'},reason:'Test cancellation',key:randomUUID()});expect(await reconcile(db)).toEqual([])});
  it('includes a settled winner without a delivery case and omits the retired inbox',async()=>{
   const queue=await okay(await get('fulfillment?status=INCOMPLETE'));expect(queue.items.find((r:any)=>r.auctionId===winner.id)).toMatchObject({state:'PENDING',version:0});
-  await db.supportCase.createMany({data:[{userId:playerId,subject:'Overview fixture open',message:'DEMO',status:'OPEN'},{userId:playerId,subject:'Overview fixture investigating',message:'DEMO',status:'INVESTIGATING'},{userId:playerId,subject:'Overview fixture resolved',message:'DEMO',status:'RESOLVED'}]});
   expect((await get('support?status=ACTIVE&q=Overview%20fixture')).status).toBe(404);
   const dash=await okay(await get('dashboard'));expect(dash.deliveries.state).toBe('ready');expect(dash.deliveries.count).toBe(queue.total);
  });
@@ -133,12 +158,10 @@ describe.skipIf(!url)('Phase 5B scoped operations and private alerts',()=>{
   const detail=await okay(await get(`users/${playerId}`,roles.SUPPORT.cookie));expect(detail).toMatchObject({telegramUsername:'people_fixture',phone:'+99900910000001',bidCount:1,winCount:1});expect(detail).not.toHaveProperty('available');expect(detail).not.toHaveProperty('held');expect(JSON.stringify(detail)).not.toMatch(/phoneCipher|phoneHash|sourceUpdateId|password|accounts|session/);
   expect((await get(`users/${playerId}`,roles.CATALOG_MANAGER.cookie)).status).toBe(403);expect((await get(`users/${ownerId}`,roles.SUPPORT.cookie)).status).toBe(404);
  });
- it('retires support reads and writes while retaining historical records',async()=>{
+ it('keeps retired support routes unavailable after removing the legacy table',async()=>{
   const route=await import('../src/app/api/support/route');
-  const c=await db.supportCase.create({data:{userId:playerId,subject:'Historical reply fixture',message:'Please help with my request.',resolution:'Historical response',status:'RESOLVED'}});
   expect((await get('support',roles.SUPPORT.cookie)).status).toBe(404);
-  for(const action of ['support','supportWithdraw'])expect((await cmd(action,{key:randomUUID(),id:c.id,status:'OPEN',reason:'Retired command test',expectedUpdatedAt:c.updatedAt.toISOString()},roles.SUPPORT.cookie)).status).toBe(422);
-  expect(await db.supportCase.findUniqueOrThrow({where:{id:c.id}})).toEqual(c);
+  for(const action of ['support','supportWithdraw'])expect((await cmd(action,{key:randomUUID(),id:randomUUID(),status:'OPEN',reason:'Retired command test',expectedUpdatedAt:new Date().toISOString()},roles.SUPPORT.cookie)).status).toBe(422);
   expect((await route.GET(req('support',undefined,player))).status).toBe(410);
   expect(await (await route.POST(req('support',{},player2))).json()).toMatchObject({supportUrl:'https://t.me/lowwinsupport'});
  });
@@ -153,11 +176,11 @@ describe.skipIf(!url)('Phase 5B scoped operations and private alerts',()=>{
   expect((await cmd('deliveryDone',{key:randomUUID(),auctionId:a.id,version:0,reason:'Unassigned attempt'},roles.FULFILLMENT.cookie)).status).toBe(403);
   expect((await okay(await cmd('deliveryDone',{key:randomUUID(),auctionId:a.id,version:0,reason:'Owner confirmed direct delivery'}))).state).toBe('DELIVERED');
  });
- it('stops broadcasts before expansion with fresh Owner MFA and immutable history',async()=>{
+ it('stops broadcasts before expansion with the verified Owner login and immutable history',async()=>{
   const receipt=await okay(await cmd('broadcast',{key:randomUUID(),text:'Stop before sending fixture',reason:'Local stopped campaign test',confirmation:'SEND'})),input={key:randomUUID(),id:receipt.id,reason:'Stop local fixture broadcast'};
   expect((await cmd('broadcastStop',input,roles.SUPPORT.cookie)).status).toBe(403);
   const grant=await db.staffSession.findFirstOrThrow({where:{session:{userId:ownerId}}});await db.staffSession.update({where:{sessionId:grant.sessionId},data:{credentialAt:new Date(Date.now()-32*60000),mfaAt:new Date(Date.now()-31*60000)}});
-  try{expect((await cmd('broadcastStop',input)).status).toBe(403)}finally{await db.staffSession.update({where:{sessionId:grant.sessionId},data:{credentialAt:grant.credentialAt,mfaAt:grant.mfaAt}})}
+  try{expect((await cmd('broadcastStop',input)).status).toBe(200)}finally{await db.staffSession.update({where:{sessionId:grant.sessionId},data:{credentialAt:grant.credentialAt,mfaAt:grant.mfaAt}})}
   expect((await okay(await cmd('broadcastStop',input))).stopped).toBe(true);expect((await okay(await cmd('broadcastStop',input))).stopped).toBe(true);
   const root=await db.outbox.findUniqueOrThrow({where:{id:receipt.id}});expect(await db.$transaction(tx=>expandCampaign(tx,root))).toBe(0);expect(await db.outbox.count({where:{key:{startsWith:root.key+':'}}})).toBe(0);
   const history=await okay(await get('notifications?q=Stop%20before'));expect(history.items[0]).toMatchObject({text:'Stop before sending fixture',state:'STOPPED',canStop:false,sent:0});
@@ -187,7 +210,7 @@ describe.skipIf(!url)('Phase 5B scoped operations and private alerts',()=>{
   await db.topUpIntent.update({where:{id:t.id},data:{status:'REJECTED',reasonCode:'NOT_FOUND',caseState:'RESOLVED'}});
   const filtered:any=await paymentAdminRead(db,headers(),[],new URLSearchParams({q:playerId,view:'attention'}));expect(filtered.items.some((p:any)=>p.id===t.id)).toBe(false);
  });
- it('credits reviewed M-Pesa receipts once under concurrent approvals and blocks reused IDs and late webhooks',async()=>{
+ it('retires manual-credit APIs while retaining historical M-Pesa duplicate and late-webhook safeguards',async()=>{
   const {paymentAdminCommand}=await import('../src/modules/payments/admin'),{completeVerifyWebhook,reconcilePayments}=await import('../src/modules/payments/service');
   const names=['VERIFY_ET_API_KEY','VERIFY_ET_TEST_ENDPOINT','PAYMENTS_TEST_ENABLED'] as const,previous=names.map(name=>process.env[name]);
   Object.assign(process.env,{VERIFY_ET_API_KEY:'fixture-only',VERIFY_ET_TEST_ENDPOINT:'http://127.0.0.1:9/api/verify',PAYMENTS_TEST_ENABLED:'true'});
@@ -196,11 +219,11 @@ describe.skipIf(!url)('Phase 5B scoped operations and private alerts',()=>{
    const deposit=(userId:string)=>db.topUpIntent.create({data:{userId,key:randomUUID(),provider:'VERIFY_ET',channel:'mpesa',status:'NEEDS_REVIEW',reasonCode:'INCOMPLETE_EVIDENCE',policyVersion:'money-fixture',amountFromReceipt:true,expectedCents:null,points:0,reference,receivingAccount:'0711111111',accountName:'Fixture receiver',quoteSnapshot:{minCents:'100',maxCents:'100000',earliestTransferAt:new Date(now.getTime()-86400000).toISOString()},expiresAt:new Date(now.getTime()+1800000)}});
    const t=await deposit(userId),requestId=randomUUID();await db.verifyRequest.create({data:{intentId:t.id,key:randomUUID(),reference,requestId,state:'DONE',code:'INCOMPLETE_EVIDENCE'}});
    const input={key:randomUUID(),id:t.id,amountCents:'3027',reference,transferredAt:date.toISOString(),reason:'Checked the fixture receipt against the receiver statement.',confirmed:true},headers=req('admin/payments').headers;
-   const results=await Promise.all([paymentAdminCommand(db,headers,'approve',input),paymentAdminCommand(db,headers,'approve',input)]);expect(results).toEqual([{recorded:true,status:'CREDITED',amountCents:'3027'},{recorded:true,status:'CREDITED',amountCents:'3027'}]);
+   await expect(paymentAdminCommand(db,headers,'approve',input)).rejects.toMatchObject({status:410});const {approveReviewedDeposit}=await import('../src/modules/payments/manual-approval');const results=await Promise.all([approveReviewedDeposit(db,headers,input),approveReviewedDeposit(db,headers,input)]);expect(results).toEqual([{recorded:true,status:'CREDITED',amountCents:'3027'},{recorded:true,status:'CREDITED',amountCents:'3027'}]);
    const claim=await db.paymentClaim.findUniqueOrThrow({where:{intentId:t.id}});expect(claim.amountCents).toBe(3027n);expect(claim.points.toString()).toBe('30.27');expect(await db.journal.count({where:{reference:`topup:${t.id}`}})).toBe(1);
    expect(await completeVerifyWebhook(db,requestId,{processingStatus:'completed',bank:'mpesa',status:'success',verified:true,amount:'30.27',transactionNumber:reference,receiverAccount:'251711111111',timestamp:date.toISOString()})).toBe(true);
-   await expect(paymentAdminCommand(db,headers,'approve',{...input,key:randomUUID()})).rejects.toMatchObject({status:409});
-   const other=await deposit(otherUser);await expect(paymentAdminCommand(db,headers,'approve',{...input,key:randomUUID(),id:other.id})).rejects.toMatchObject({status:409});
+   await expect(approveReviewedDeposit(db,headers,{...input,key:randomUUID()})).rejects.toMatchObject({status:409});
+   const other=await deposit(otherUser);await expect(approveReviewedDeposit(db,headers,{...input,key:randomUUID(),id:other.id})).rejects.toMatchObject({status:409});
    expect(await db.outbox.count({where:{key:`deposit:${t.id}:credited`}})).toBe(1);expect(await db.paymentClaim.count({where:{channel:'mpesa',reference}})).toBe(1);expect(await reconcile(db)).toEqual([]);expect(await reconcilePayments(db)).toEqual([]);
   }finally{names.forEach((name,index)=>{if(previous[index]===undefined)delete process.env[name];else process.env[name]=previous[index]})}
  });
@@ -218,13 +241,13 @@ describe.skipIf(!url)('Phase 5B scoped operations and private alerts',()=>{
   await expect(paymentAdminCommand(db,headers,'note',{key:randomUUID(),id:t.id})).rejects.toThrow('Write a note');
   expect(await paymentAdminCommand(db,headers,'archive',{key:randomUUID(),id:t.id})).toEqual({recorded:true});
  });
- it('saves a compact receiving account only after exact review and fresh Owner authentication',async()=>{
+ it('saves a compact receiving account only after exact review and an unexpired Owner login',async()=>{
   const {paymentAdminCommand}=await import('../src/modules/payments/admin'),headers=req('admin/payments').headers;
   const input={key:randomUUID(),channel:'telebirr',version:0,enabled:false,account:'0911111111',accountName:'Local fixture receiver',pointsNumerator:'1',centsDenominator:'100',minCents:'1000',maxCents:'1000000',accountConfirmed:true};
   await expect(paymentAdminCommand(db,headers,'preview-policy',{...input,accountConfirmed:false})).rejects.toThrow('Confirm that');
   await expect(paymentAdminCommand(db,req('admin/payments',undefined,roles.SUPPORT.cookie).headers,'preview-policy',input)).rejects.toMatchObject({status:403});
   const grant=await db.staffSession.findFirstOrThrow({where:{session:{userId:ownerId}}});await db.staffSession.update({where:{sessionId:grant.sessionId},data:{credentialAt:new Date(Date.now()-32*60000),mfaAt:new Date(Date.now()-31*60000)}});
-  try{await expect(paymentAdminCommand(db,headers,'preview-policy',input)).rejects.toMatchObject({status:403})}finally{await db.staffSession.update({where:{sessionId:grant.sessionId},data:{credentialAt:grant.credentialAt,mfaAt:grant.mfaAt}})}
+  try{expect(await paymentAdminCommand(db,headers,'preview-policy',input)).toMatchObject({proposed:{enabled:false}})}finally{await db.staffSession.update({where:{sessionId:grant.sessionId},data:{credentialAt:grant.credentialAt,mfaAt:grant.mfaAt}})}
   const preview=await paymentAdminCommand(db,headers,'preview-policy',input) as any;
   await expect(paymentAdminCommand(db,headers,'publish-policy',{...input,account:'0922222222',confirmation:preview.confirmation})).rejects.toThrow('exact configuration');
   expect(await paymentAdminCommand(db,headers,'publish-policy',{...input,confirmation:preview.confirmation})).toMatchObject({saved:true,version:1});

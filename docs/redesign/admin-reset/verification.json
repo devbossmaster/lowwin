@@ -1,0 +1,90 @@
+{
+  "at": "2026-10-26T07:56:53.443Z",
+  "scope": "Synthetic disposable loopback tests and explicitly read-only production audit",
+  "typecheck": "PASS",
+  "optimizedBuild": "PASS Next16.4.2 Webpack, local fixture runtime for UI",
+  "focused": {
+    "passed": 122,
+    "failed": 0
+  },
+  "financialCases": {
+    "unique": 177,
+    "failed": 0,
+    "explanation": "Latest result for each unique case across the broad run and focused reruns"
+  },
+  "browsers": [
+    {
+      "width": 360,
+      "timings": {
+        "firstTransactionPageDataMs": 595,
+        "cachedDrawerVisibleMs": 73,
+        "warmTransactionPageDataMs": 438
+      },
+      "warmAdditionalRequests": 0,
+      "authMfaOnce": true,
+      "roleIsolation": true,
+      "logoutRevoked": true,
+      "reconciliation": 0,
+      "errors": []
+    },
+    {
+      "width": 430,
+      "timings": {
+        "firstTransactionPageDataMs": 600,
+        "cachedDrawerVisibleMs": 71,
+        "warmTransactionPageDataMs": 313
+      },
+      "warmAdditionalRequests": 0,
+      "authMfaOnce": true,
+      "roleIsolation": true,
+      "logoutRevoked": true,
+      "reconciliation": 0,
+      "errors": []
+    },
+    {
+      "width": 1440,
+      "timings": {
+        "firstTransactionPageDataMs": 347,
+        "cachedDrawerVisibleMs": 69,
+        "warmTransactionPageDataMs": 159
+      },
+      "warmAdditionalRequests": 0,
+      "authMfaOnce": true,
+      "roleIsolation": true,
+      "logoutRevoked": true,
+      "reconciliation": 0,
+      "errors": []
+    }
+  ],
+  "rehearsal": "rehearsal-results.json",
+  "dependencyAdvisories": {
+    "info": 0,
+    "low": 0,
+    "moderate": 0,
+    "high": 0,
+    "critical": 0,
+    "total": 0
+  },
+  "productionAudit": {
+    "snapshotAt": "2026-10-26T07:09:28.871Z",
+    "readOnly": true,
+    "verifiedTls": true,
+    "registeredIdentities": 1364,
+    "wallets": 1236,
+    "acceptedBids": 24,
+    "targetAuctions": 4,
+    "proposedNetCompensationETB": "1005.00",
+    "availableBeforeETB": "198.00",
+    "holdReleaseETB": "0.00",
+    "projectionDrift": 0,
+    "settlements": 0,
+    "openReviewCases": 4,
+    "resolvedReviewStatuses": 1
+  },
+  "productionWrites": 0,
+  "gatewaySelection": null,
+  "productionDeployment": false,
+  "deviceWebViewsVerified": false,
+  "deployedRevisionAttested": false,
+  "adminCiHarness": "PASS fresh databases, optimized build and all three viewport flows"
+}

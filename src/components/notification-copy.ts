@@ -13,6 +13,10 @@ const messages:Record<string,[string,string,string]>={
 };
 // Translate the display only; stored messages and financial records stay intact.
 export function notificationCopy(item:AlertCopy,language:'en'|'am'){
+ if(item.kind==='PAYMENT_CREDITED'){
+  const index=language==='am'?1:0;
+  return {title:item.title.split(' · ')[index]??item.title,body:item.body.split('\n')[index]??item.body};
+ }
  // Frozen v4 notices must not inherit older translations promising refunds or holds.
  if(language==='am'&&item.body==='Auction cancelled. Accepted submission fees are non-refundable.')return {title:'ጨረታው ተሰርዟል',body:'ጨረታው ተሰርዟል። የተቀበሉ ጨረታዎች የማቅረቢያ ክፍያ አይመለስም።'};
  if(language==='am'&&item.body==='Your result is ready. The chosen number is not charged.')return {title:'የጨረታዎ ውጤት ዝግጁ ነው',body:'ውጤትዎ ዝግጁ ነው። የመረጡት ቁጥር አይከፈልም።'};

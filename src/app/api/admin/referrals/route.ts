@@ -8,7 +8,7 @@ import {requireMutationOrigin,smallJson,PrivateApiError} from '@/modules/auth/pr
 export const runtime='nodejs';
 const json=(body:unknown,status=200)=>Response.json(body,{status,headers:adminHeaders});
 function failure(error:unknown){
- if(error instanceof AdminError||error instanceof PrivateApiError)return json({error:error.message},error.status);
+ if(error instanceof AdminError||error instanceof PrivateApiError)return json({error:error.message,...(error instanceof AdminError&&error.code?{code:error.code}:{})},error.status);
  if(error instanceof z.ZodError||error instanceof SyntaxError)return json({error:'Use a discount from 5–15%, a validity from 15–30 days, and a reason.'},422);
  return json({error:'Referral settings could not be loaded. Try again.'},503);
 }

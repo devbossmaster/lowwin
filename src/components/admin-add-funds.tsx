@@ -1,6 +1,6 @@
 'use client';
 import {useState} from 'react';
-import {centsToEtb,etbToCents,ErrorNotice,MfaStepUp,useAdminMutation} from './admin-ui';
+import {centsToEtb,etbToCents,ErrorNotice,useAdminMutation} from './admin-ui';
 
 export function AdminAddFunds({depositId,name,reference='',reload}:{depositId:string;name:string;reference?:string;reload:()=>void}){
  const m=useAdminMutation('payments'),[open,setOpen]=useState(false),[amount,setAmount]=useState(''),[reason,setReason]=useState(''),[transactionId,setTransactionId]=useState(reference),[error,setError]=useState(''),[credited,setCredited]=useState('');
@@ -18,7 +18,7 @@ export function AdminAddFunds({depositId,name,reference='',reload}:{depositId:st
   {!open?<><button onClick={()=>setOpen(true)} aria-expanded={false}>Add funds</button><p className="money-approval-help">Credit this player and close this deposit review.</p></>:<>
    <h3>Add funds to {name}</h3>
    <p className="money-approval-help">The player receives an admin credit and a notification.</p>
-   {m.error.startsWith('Fresh MFA is required.')&&<MfaStepUp visible purpose="add funds"/>}
+   {m.error.startsWith('Fresh MFA is required.')&&null}
    <form className="money-approval-form" onSubmit={e=>{e.preventDefault();void submit()}}>
     <fieldset disabled={m.busy}>
      <label>Amount (ETB)<input autoFocus required inputMode="decimal" pattern="[0-9]{1,5}(\.[0-9]{1,2})?" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="e.g. 100.00"/></label>

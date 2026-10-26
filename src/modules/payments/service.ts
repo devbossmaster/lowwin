@@ -12,6 +12,7 @@ import {CUSTOMER_ATTEMPTS,STAFF_ATTEMPTS,RECOVERY_WINDOW_MS,imageWebhookWait,pro
 import {creditTransfer} from './credit';
 import {PAYMENT_TRANSACTION_OPTIONS} from './timing';
 type Tx=Prisma.TransactionClient;
+import {auctionMaintenance} from '../auctions/maintenance';
 export function paymentHealth(){
  const productionEnabled=liveFundingConfigured();
  const isolated=demoBidAllowed(),configured=productionEnabled||isolated&&!!process.env.VERIFY_ET_API_KEY&&!!process.env.VERIFY_ET_TEST_ENDPOINT&&process.env.PAYMENTS_TEST_ENABLED==='true';
@@ -33,6 +34,7 @@ export function ownIntent(t:TopUpIntent){return {id:t.id,demo:t.provider==='DEMO
 function attemptResult(t:ReturnType<typeof ownIntent>){const {status,points,amountCents,reason,attempts,nextAttemptAt,caseState,canRetry,retryBlocked,retryUntil}=t;return JSON.parse(JSON.stringify({status,points,amountCents,reason,attempts,nextAttemptAt,caseState,canRetry,retryBlocked,retryUntil})) as Prisma.InputJsonObject;}
 export async function fundingOptions(client:PrismaClient){const policies=await Promise.all(DEPOSIT_CHANNELS.map(channel=>client.paymentPolicy.findFirst({where:{channel},orderBy:{version:'desc'}})));return {...paymentHealth(),accounts:policies.filter(p=>p?.enabled&&p.pointsNumerator*100n===p.centsDenominator).map(p=>({id:p!.channel,policyId:p!.id,version:p!.version,name:paymentChannelName(p!.channel),number:p!.account,holder:p!.accountName,numerator:p!.pointsNumerator.toString(),denominator:p!.centsDenominator.toString(),minCents:p!.minCents.toString(),maxCents:p!.maxCents.toString(),terms:p!.terms}))}}
 export async function createIntent(client:PrismaClient,userId:string,raw:unknown,fromReceipt=false,reauthorize?:(tx:Tx)=>Promise<void>){requireEnabled();const body=fromReceipt?receiptCreateSchema.parse(raw):createSchema.parse(raw),fingerprint=hash(JSON.stringify({...body,...(fromReceipt?{amountFromReceipt:true}:{})}));return client.$transaction(async tx=>{
+ if(await auctionMaintenance(tx))throw new PaymentError(503,'New funding requests are paused for auction maintenance. Existing verification continues.');
  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`},0))`;await eligibility(tx,userId);if(reauthorize)await reauthorize(tx);
  const prior=await tx.topUpIntent.findUnique({where:{userId_key:{userId,key:body.key}}});if(prior){if(prior.requestHash!==fingerprint)throw new PaymentError(409,'Idempotency key changed.');return ownIntent(prior)}
  const reference=fromReceipt&&'input' in body&&body.input?candidate(body.channel,body.input):undefined;

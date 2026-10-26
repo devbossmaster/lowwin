@@ -1,0 +1,23 @@
+{
+  "fixture": "Mocked same-origin checkout/wallet mutation responses only; no provider requests",
+  "languages": [
+    "en",
+    "am"
+  ],
+  "viewport": {
+    "width": 360,
+    "height": 800
+  },
+  "disabledControls": true,
+  "noOptimisticCredit": true,
+  "pendingReopenWithoutCreation": true,
+  "sameFrameDoubleClickDeduplicated": true,
+  "confirmedBalanceRefresh": true,
+  "walletCommands": 2,
+  "hostedCommands": 4,
+  "publicReturnPrivateReads": 0,
+  "realAcceptedBids": 0,
+  "realWalletBalance": "250",
+  "ledgerDrift": 0,
+  "errors": []
+}

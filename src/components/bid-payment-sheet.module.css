@@ -4,3 +4,77 @@
 .fieldSkeleton{display:inline-block;width:60px;max-width:100%;height:11px;border-radius:4px;background:#dcd8cd;vertical-align:middle;animation:fieldPulse 1.3s ease-in-out infinite alternate}.inlineRetry{display:inline-flex;align-items:center;min-height:44px;padding:0 8px;border:0;background:transparent;color:#715719;font:inherit;font-weight:650;text-decoration:underline;cursor:pointer}@keyframes fieldPulse{to{opacity:.55}}@media(prefers-reduced-motion:reduce){.fieldSkeleton{animation:none}}
 .productThumb{width:40px;height:40px;flex:none;border-radius:10px;object-fit:cover;background:#eeece7}
 .earnedDiscount{display:flex;align-items:center;gap:8px;margin:9px 0 0;padding:4px 9px;border:1px solid #e5d9b7;border-radius:16px;background:#faf7ed;color:#715719}.earnedDiscount>svg{flex:none}.earnedDiscount>div{flex:1;min-width:0}.earnedDiscount strong{display:block;font-size:11px;line-height:1.5}.earnedDiscount small{display:block;color:#6b6455;font-size:9px;line-height:1.5}.earnedDiscount button{flex:none;min-width:48px;min-height:44px;padding:0 5px;border:0;background:transparent;color:#715719;font:inherit;font-size:11px;font-weight:700;cursor:pointer}.earnedDiscount button:focus-visible{outline:2px solid #96731a;outline-offset:2px;border-radius:8px}.earnedDiscount button:disabled{opacity:.6;cursor:wait}.feeStrip .discountSaving{margin-top:2px;color:#715719;font-size:9px}
+.paymentStatus{padding:14px 0 4px;text-align:center}.paymentStatus h1,.paymentStatus h3{margin:12px 0 8px;font-size:19px;line-height:1.5;font-weight:750}.paymentStatus>p{margin:8px auto 16px;max-width:45ch;color:#625e54;font-size:12px;line-height:1.75}.paymentStatusIcon{display:grid;place-items:center;width:48px;height:48px;margin:0 auto 12px;border-radius:50%;background:#f6f1df;color:#715719}.paymentStatus .paymentTotal{font-size:22px;font-weight:750;color:#181815;font-variant-numeric:tabular-nums}.paymentTotal span{display:block;margin:4px 0;font-size:11px;font-weight:600;color:#715719}.paymentReference{display:block;margin:12px 0;color:#625e54;font-size:10px;overflow-wrap:anywhere}.paymentStatus .payButton{text-decoration:none;margin-top:16px}.paymentStatus .links{flex-wrap:wrap}.checkPayment{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:44px;margin:8px 0 0;padding:8px 14px;border:1px solid #d8d5cc;border-radius:22px;background:#fff;color:#181815;font:inherit;font-size:12px;font-weight:650}.checkPayment:disabled{opacity:.6;cursor:wait}.receiptFacts{margin:16px 0;padding:10px 14px;border-radius:16px;background:#f0eee8;text-align:left}.receiptFacts>div{display:flex;align-items:start;justify-content:space-between;gap:12px;padding:5px 0;font-size:11px;line-height:1.6}.receiptFacts dt{color:#625e54}.receiptFacts dd{margin:0;text-align:right;max-width:65%;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}.returnPage{max-width:460px;min-height:100dvh;margin:auto;padding:28px 22px;background:#fff}.returnBrand{display:flex;align-items:center;gap:10px;margin-bottom:48px;color:#181815;text-decoration:none;font-size:24px}.returnBrand img{object-fit:contain}.returnPage .paymentStatus{padding:0}.returnPage .paymentStatus>p{font-size:14px}.payButton:focus-visible,.checkPayment:focus-visible{outline:2px solid #96731a;outline-offset:2px}
+
+.providerLogo{display:grid;place-items:center;flex:0 0 58px;align-self:center;width:58px;min-height:30px}.providerLogo img{max-width:100%;object-fit:contain}
+.walletRow .method{display:grid;grid-template-columns:18px minmax(0,1fr) 14px;gap:4px;align-items:center}.walletRow .methodIcon{display:grid;grid-column:1;grid-row:1;width:18px;height:18px;background:transparent}.walletRow .methodIcon svg{width:17px;height:17px}.walletRow .methodText{display:contents}.walletRow .methodText strong{grid-column:2;grid-row:1;font-size:11px}.walletRow .methodText small{grid-column:1/-1;grid-row:2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.walletRow .method input{grid-column:3;grid-row:1}
+/* Bid entry only: leave top-up and receipt layouts independent. */
+.bidEntry{color:#181815}
+.bidEntry .productHeading{display:block;margin:2px 0 12px}
+.bidEntry .productTitle{margin:0;text-align:center;font-size:18px;font-weight:650;line-height:1.4;letter-spacing:-.02em;overflow-wrap:anywhere}
+.bidEntry:lang(am) .productTitle{letter-spacing:0;line-height:1.5}
+.bidEntry .description{margin:0 0 12px;padding:10px 12px;border-radius:26px;background:#eeece8;color:#625e54}
+.bidEntry .description summary{display:block;min-height:54px}
+.bidEntry .description summary>span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:11px;line-height:1.5}
+.bidEntry .description summary b{display:flex;align-items:center;gap:3px;margin-top:5px;font-size:10px;font-weight:600;line-height:1.5;color:#805f0c}
+.bidEntry .description[open] summary{min-height:30px}
+.bidEntry .description[open] summary>span{display:none}
+.bidEntry .description p{font-size:12px;line-height:1.7;margin:8px 0}
+.bidEntry .description small{font-size:10px}
+.bidEntry .feeStrip{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:9px;margin:0 0 12px;padding:10px 12px;border:0;border-radius:24px;background:#eeece8}
+.bidEntry .feeStrip>div{min-width:0}
+.bidEntry .feeStrip>div>small{font-size:10px;color:#625e54;margin-bottom:2px}
+.bidEntry .feeStrip>div>strong{font-size:18px;font-weight:650;line-height:1.3;color:#86650e;font-variant-numeric:tabular-nums;white-space:nowrap}
+.bidCount{display:inline-flex;align-items:center;gap:4px;padding:4px 7px;border-radius:999px;background:#fff;font-size:10px;font-weight:500;line-height:1.4;white-space:nowrap}
+.bidCount svg{color:#876710;flex:none}
+.feeTiming{display:flex;align-items:center;gap:5px;min-width:0;white-space:nowrap}
+.feeTiming>svg{flex:none}
+.bidEntry .feeTiming :global(.countdown){padding:0;background:none;font-size:10px;font-weight:550;line-height:1.5;color:#181815;white-space:nowrap}
+.bidEntry .feeStrip .discountSaving{font-size:9px;color:#715719;margin-top:3px}
+.bidEntry .inputHeading{display:block;margin:0 0 6px}
+.bidEntry .inputLabel{margin:0 0 1px;font-size:12px;font-weight:500;color:#625e54}
+.bidEntry .range{margin:0;font-size:11px;line-height:1.5;color:#625e54}
+.bidEntry .amountInput{min-height:48px;gap:8px;padding:0 14px;border:0;border-radius:26px;background:#fff;box-shadow:0 2px 5px #18181516,inset 0 0 0 2px #e8e6e0}
+.bidEntry .amountInput input{height:46px;font-size:16px;font-weight:550}
+.bidEntry .amountInput input::placeholder{font-size:13px;font-weight:500;color:#716c62}
+.bidEntry .balanceNote{display:flex;align-items:flex-start;gap:7px;margin:10px 3px 0;color:#625e54}
+.bidEntry .balanceNote>svg{flex:none;margin-top:1px}
+.bidEntry .balanceNote p{margin:0;font-size:10.5px;line-height:1.5}
+.bidEntry .balanceNote a{display:inline;color:#805f0c;font-weight:700;text-underline-offset:2px}
+.bidEntry .balanceNote a:focus-visible{outline:2px solid #96731a;outline-offset:3px;border-radius:3px}
+.bidEntry .remaining{margin-top:6px;font-size:10px}
+.bidEntry .earnedDiscount{display:flex;align-items:center;gap:7px;min-height:40px;margin:2px 0 0;padding:0;border:0;border-radius:0;background:transparent;color:#715719}
+.bidEntry .earnedDiscount>svg{width:14px;height:14px;flex:none}
+.bidEntry .earnedDiscount>div{flex:1;min-width:0}
+.bidEntry .earnedDiscount strong{font-size:10.5px;font-weight:500}
+.bidEntry .earnedDiscount small{font-size:10px;font-weight:400;line-height:1.5}
+.bidEntry .earnedDiscount[data-active=false] small{display:none}
+.bidEntry .earnedDiscount button{min-width:44px;min-height:40px;padding:4px 0 4px 10px;border:0;background:transparent;color:#715719;font-size:11px;font-weight:600}
+.bidEntry .methods{display:block;margin:8px 0 0;padding:10px;border:0;border-radius:26px;background:#eeece8}
+.methodChoices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;clear:both}
+.bidEntry .methods legend{float:left;display:flex;align-items:center;gap:5px;width:100%;padding:0 0 7px;font-size:10.5px;font-weight:500;color:#625e54}
+.bidEntry .methods legend svg{color:#876710}
+.bidEntry .walletRow{position:relative;display:block;min-width:0;margin:0}
+.bidEntry .methods .method{position:relative;display:flex;flex-direction:row;align-items:center;justify-content:center;gap:7px;width:100%;min-height:44px;box-sizing:border-box;padding:7px 12px;border:1px solid transparent;border-radius:24px;background:#fff;color:#181815;cursor:pointer;transition:border-color .15s,background-color .15s}
+.bidEntry .methods .selected{border-color:#aa8223}
+.bidEntry .methods .method:hover{background:#fcfaf5}
+.bidEntry .methods .methodIcon{display:grid;place-items:center;flex:0 0 20px;width:20px;height:22px;background:transparent;color:#715719;border-radius:0}
+.bidEntry .methods .methodIcon svg{width:19px;height:19px}
+.bidEntry .methods .providerLogo{display:grid;place-items:center;align-self:center;flex:0 0 64px;width:64px;height:24px;min-height:24px}
+.bidEntry .methods .providerLogo img{width:64px!important;height:24px!important}
+.bidEntry .methods .methodText{display:flex;flex-direction:column;gap:0;min-width:0;flex:0 1 auto}
+.bidEntry .methods .methodText strong{font-size:11px;font-weight:550;line-height:1.4}
+.bidEntry .walletRow .method{justify-content:flex-start;padding-right:42px}
+.bidEntry .methods .method input{position:absolute;inset:0;width:100%;height:100%;padding:0;margin:0;opacity:0;cursor:pointer}
+.bidEntry .topUpLink{position:absolute;right:0;top:0;bottom:auto;display:grid;place-items:center;width:40px;min-width:40px;height:44px;min-height:44px;padding:0;border:0;border-radius:50%;background:transparent;color:#86671d}
+.bidEntry .topUpLink:hover{background:#f3ecd8}
+.bidEntry .methods :global(.sr-only){position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+.bidEntry .error{margin:7px 0 0;font-size:10.5px;line-height:1.5}
+.bidEntry .hint{margin:8px 0 0;font-size:10px;line-height:1.5;color:#625e54}
+.bidEntry .availability{margin:8px 0 0;font-size:11px;line-height:1.6;color:#625e54}
+.bidEntry .links{margin:0;gap:22px;font-size:10px}
+.bidEntry .links a{min-height:36px;color:#625e54}
+.bidPayButton{min-height:50px;font-size:14px;font-weight:650}
+.bidAvailability{margin:7px 0 0!important;text-align:center;font-size:10px!important;line-height:1.5;color:#625e54}
+@media(max-width:370px){.bidEntry .feeStrip{gap:6px;padding-inline:10px}.bidEntry .feeStrip>div>strong{font-size:17px}.bidCount{font-size:9px;padding-inline:5px}.bidEntry .feeTiming :global(.countdown){font-size:9.5px}.bidEntry .productTitle{font-size:17px}.bidEntry .methods{gap:7px}.bidEntry .methods .method{padding-left:9px;gap:5px}.bidEntry .walletRow .method{padding-right:38px}.bidEntry .topUpLink{width:40px;min-width:40px}}
+@media(prefers-reduced-motion:reduce){.bidEntry .methods .method{transition:none}}

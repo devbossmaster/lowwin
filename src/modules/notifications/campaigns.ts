@@ -2,6 +2,7 @@ import type {Prisma,PrismaClient,Outbox} from '@prisma/client';
 import {demoBidAllowed} from '../auctions/bids';
 import {stagingDemoEnabled} from '../auctions/staging-demo';
 import {formatEtb} from '@/lib/money';
+import {auctionMaintenance} from '../auctions/maintenance';
 
 type Tx=Prisma.TransactionClient;
 export const telegramKinds=['AUCTION_PUBLISHED','AUCTION_UPCOMING','AUCTION_STARTING_SOON','AUCTION_ENDING','AUCTION_RESULT','DEPOSIT_CREDITED','BROADCAST'];
@@ -50,6 +51,12 @@ export async function expandCampaign(tx:Tx,row:Outbox){
  return users.length;
 }
 export async function scheduleGlobalAlerts(client:PrismaClient){
+ return client.$transaction(async tx=>{
+  if(await auctionMaintenance(tx))return 0;
+  return scheduleGlobalAlertsInTransaction(tx);
+ },{maxWait:5000,timeout:30000});
+}
+async function scheduleGlobalAlertsInTransaction(client:Tx){
  const [{now}]=await client.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`;
  let cursor:string|undefined,created=0;
  for(;;){

@@ -31,7 +31,7 @@ export async function approveReviewedDeposit(client:PrismaClient,headers:Headers
  const b=manualApprovalSchema.parse(raw);
  return client.$transaction(async tx=>{
   await tx.$queryRaw`SELECT id FROM "TopUpIntent" WHERE id=${b.id} FOR UPDATE`;
-  const actor=await requireAdmin(tx,headers,{fresh:true,lock:true});
+  const actor=await requireAdmin(tx,headers,{lock:true});
   if(!['OWNER','PAYMENTS_OPERATOR'].includes(actor.role))throw new AdminError(403,'Payment approval is not granted to this role.');
   const t=await tx.topUpIntent.findUnique({where:{id:b.id}});if(!t)throw new PaymentError(404,'Deposit not found.');
   const fingerprint=hash(JSON.stringify({action:'approve',...b}));

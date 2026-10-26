@@ -1,0 +1,55 @@
+{
+  "viewport": {
+    "width": 1440,
+    "height": 1000
+  },
+  "measurement": "Optimized build with local fixture runtime and synthetic loopback data; not a production p95",
+  "timings": {
+    "firstTransactionPageDataMs": 347,
+    "cachedDrawerVisibleMs": 69,
+    "warmTransactionPageDataMs": 159
+  },
+  "loginMfaOnce": true,
+  "sessionHours": 8,
+  "validAfter45Minutes": true,
+  "acceptedFinancialPosts": 0,
+  "serverPagination": 25,
+  "fullSearchTotal": 30,
+  "warmPaymentNavigationAdditionalRequests": 0,
+  "roleChangeChangesCacheIdentity": true,
+  "logoutRevokesSession": true,
+  "liveGateways": false,
+  "reconciliationDiscrepancies": 0,
+  "errors": [],
+  "captures": [
+    "docs/redesign/screenshots/admin-neutral/login-1440.png",
+    "docs/redesign/screenshots/admin-neutral/forgot-password-1440.png",
+    "docs/redesign/screenshots/admin-neutral/overview-1440.png",
+    "docs/redesign/screenshots/admin-neutral/transactions-1440.png",
+    "docs/redesign/screenshots/admin-neutral/transaction-drawer-1440.png",
+    "docs/redesign/screenshots/admin-neutral/auctions-1440.png",
+    "docs/redesign/screenshots/admin-neutral/players-1440.png",
+    "docs/redesign/screenshots/admin-neutral/wallets-1440.png",
+    "docs/redesign/screenshots/admin-neutral/results-1440.png",
+    "docs/redesign/screenshots/admin-neutral/deliveries-1440.png",
+    "docs/redesign/screenshots/admin-neutral/content-1440.png",
+    "docs/redesign/screenshots/admin-neutral/financials-1440.png",
+    "docs/redesign/screenshots/admin-neutral/system-1440.png"
+  ],
+  "requests": [
+    "/api/admin/dashboard",
+    "/api/admin/workspace/transactions?page=1&q=1a055725-336e-43f4-8559-c03f11e467d8&status=&sort=newest",
+    "/api/admin/workspace/transactions?page=2&q=1a055725-336e-43f4-8559-c03f11e467d8&status=&sort=newest",
+    "/api/admin/dashboard",
+    "/api/admin/auctions?status=IN_PROGRESS&q=&category=&page=1",
+    "/api/admin/users?page=1&q=&status=",
+    "/api/admin/wallets?page=1&q=&status=&from=&to=",
+    "/api/admin/results?q=&status=&page=1",
+    "/api/admin/fulfillment?page=1&q=&status=",
+    "/api/admin/content",
+    "/api/admin/content",
+    "/api/admin/workspace/financials",
+    "/api/admin/workspace/system",
+    "/api/admin/workspace/system"
+  ]
+}

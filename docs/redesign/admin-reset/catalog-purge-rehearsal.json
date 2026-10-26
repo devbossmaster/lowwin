@@ -1,0 +1,37 @@
+{
+  "at": "2026-10-26T21:41:12.962Z",
+  "mode": "DISPOSABLE LOOPBACK ONLY",
+  "passed": true,
+  "results": [
+    {
+      "database": "lowwin_catalog_purge_prod31_580dc21c_test",
+      "shape": "production-31",
+      "checks": [
+        "lowwin_catalog_purge_prod31_580dc21c_test: legacy table migration refuses nonempty history",
+        "lowwin_catalog_purge_prod31_580dc21c_test: cleanup cannot prepare before refunds",
+        "lowwin_catalog_purge_prod31_580dc21c_test: maintenance stops notification scheduling and delivery without touching funds or pending jobs",
+        "lowwin_catalog_purge_prod31_580dc21c_test: unapproved cleanup cannot delete any catalog row",
+        "lowwin_catalog_purge_prod31_580dc21c_test: final audit failure rolls back deletion and restores original immutable guards",
+        "lowwin_catalog_purge_prod31_580dc21c_test: a later legitimate credit blocks stale cleanup and is retained after re-review",
+        "lowwin_catalog_purge_prod31_580dc21c_test: catalog, bids, notification history and legacy support cleared; users, Owner, wallets and all money records unchanged",
+        "lowwin_catalog_purge_prod31_580dc21c_test: exact purge rerun is a no-op",
+        "lowwin_catalog_purge_prod31_580dc21c_test: retired tables removed and a fresh auction accepts a correct fee without reusing old public codes"
+      ]
+    },
+    {
+      "database": "lowwin_catalog_purge_current_e378f495_test",
+      "shape": "current",
+      "checks": [
+        "lowwin_catalog_purge_current_e378f495_test: cleanup cannot prepare before refunds",
+        "lowwin_catalog_purge_current_e378f495_test: maintenance stops notification scheduling and delivery without touching funds or pending jobs",
+        "lowwin_catalog_purge_current_e378f495_test: unapproved cleanup cannot delete any catalog row",
+        "lowwin_catalog_purge_current_e378f495_test: final audit failure rolls back deletion and restores original immutable guards",
+        "lowwin_catalog_purge_current_e378f495_test: a later legitimate credit blocks stale cleanup and is retained after re-review",
+        "lowwin_catalog_purge_current_e378f495_test: catalog, bids, notification history and legacy support cleared; users, Owner, wallets and all money records unchanged",
+        "lowwin_catalog_purge_current_e378f495_test: exact purge rerun is a no-op",
+        "lowwin_catalog_purge_current_e378f495_test: retired tables removed and a fresh auction accepts a correct fee without reusing old public codes",
+        "lowwin_catalog_purge_current_e378f495_test: linked Chapa evidence prevents another destructive cleanup"
+      ]
+    }
+  ]
+}

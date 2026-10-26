@@ -3,6 +3,11 @@ import {notificationCopy,notificationAge} from '../src/components/notification-c
 import {defaultHomeCopy,resolveHomeCopy} from '../src/components/home-copy';
 
 describe('notification display language',()=>{
+ it('shows verified Chapa wallet outcomes in one language without changing their content',()=>{
+  const item={kind:'PAYMENT_CREDITED',title:'Wallet credited · ገንዘብ ገብቷል',body:'10.00 ETB verified through Chapa. The bid was not accepted; the funds remain in your wallet.\n10.00 ብር በChapa ተረጋግጦ ገብቷል። ጨረታው አልተቀበለም፤ ገንዘቡ በዋሌትዎ ውስጥ ቀርቷል።'};
+  expect(notificationCopy(item,'en')).toEqual({title:'Wallet credited',body:item.body.split('\n')[0]});
+  expect(notificationCopy(item,'am')).toEqual({title:'ገንዘብ ገብቷል',body:item.body.split('\n')[1]});
+ });
  it('keeps the Lowwin update heading in the Mini App for both languages',()=>{
   const item={kind:'BROADCAST',title:'Lowwin update · የLowwin መረጃ',body:'A new auction is ready.'};
   expect(notificationCopy(item,'en')).toEqual({title:'Lowwin update',body:item.body});
@@ -57,7 +62,7 @@ describe('home introduction',()=>{
   expect(resolveHomeCopy(null)).toEqual(defaultHomeCopy);
   const edited={headline:'Custom headline',lead:'Custom copy',headlineAm:'አዲስ ርዕስ',leadAm:'አዲስ መግለጫ'};
   expect(resolveHomeCopy(edited)).toEqual(edited);
-  expect(defaultHomeCopy.lead.split('\n')).toHaveLength(3);
-  expect(defaultHomeCopy.leadAm.split('\n')).toHaveLength(3);
+  expect(defaultHomeCopy.lead).toBe('The lowest unique bid wins.');
+  expect(defaultHomeCopy.leadAm).toBe('ዝቅተኛና ያልተደገመ ዋጋ ያሸንፋል።');
  });
 });

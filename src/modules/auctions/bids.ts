@@ -1,4 +1,5 @@
 import {isSubmissionFeeOnly,usesDecimalBids} from './rules';
+import {auctionMaintenance} from './maintenance';
 import {createsFourConsecutiveAmounts,parseBidCents} from './consecutive-bids';
 import {formatEtb} from '@/lib/money';
 import {assertPlayerContact} from '../auth/own-contact';
@@ -31,7 +32,7 @@ const receiptSchema=z.object({
 export type BidReceipt=z.infer<typeof receiptSchema>;
 export type DirectBidReceipt=Omit<BidReceipt,'wallet'>;
 
-export type BidErrorCode='AUCTION_NOT_FOUND'|'AUCTION_CLOSED'|'DEMO_UNAVAILABLE'|'INVALID_AMOUNT'|'CONSECUTIVE_LIMIT'|'OWN_DUPLICATE'|'CAP_REACHED'|'INSUFFICIENT_POINTS'|'KEY_REUSED'|'RETRYABLE_CONFLICT'|'BIDDING_RESTRICTED'|'CONTACT_REQUIRED'|'COUPON_UNAVAILABLE';
+export type BidErrorCode='AUCTIONS_PAUSED'|'AUCTION_NOT_FOUND'|'AUCTION_CLOSED'|'DEMO_UNAVAILABLE'|'INVALID_AMOUNT'|'CONSECUTIVE_LIMIT'|'OWN_DUPLICATE'|'CAP_REACHED'|'INSUFFICIENT_POINTS'|'KEY_REUSED'|'RETRYABLE_CONFLICT'|'BIDDING_RESTRICTED'|'CONTACT_REQUIRED'|'COUPON_UNAVAILABLE';
 export class BidError extends Error {
   constructor(public readonly code:BidErrorCode,public readonly status:number,message:string){super(message);this.name='BidError';}
 }
@@ -46,6 +47,7 @@ export function demoBidAllowed(raw:Record<string,string|undefined>=process.env) 
 }
 export async function submitBidInTransaction(tx:Prisma.TransactionClient,input:BidInput,raw:Record<string,string|undefined>=process.env):Promise<BidReceipt> {
   const command=bidInputSchema.parse(input);
+  if(await auctionMaintenance(tx))fail('AUCTIONS_PAUSED',503,'Auctions are temporarily paused for maintenance. Your existing funds and bids are preserved.');
   const {userId,auctionSlug,amount,key,feeVersion,couponId}=command;
   const requestHash=createHash('sha256').update(JSON.stringify({auctionSlug,amount:amount.toString(),feeVersion,couponId})).digest('hex');
 

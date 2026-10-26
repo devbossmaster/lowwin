@@ -1,12 +1,3 @@
-export const defaultHomeCopy={
- headline:'A little different wins.',
- headlineAm:'ትንሽ ልዩነት ያሸንፋል።',
- lead:'Welcome to Lowin. Choose your number.\nThe lowest unique number wins.\nReview the submission fee before you bid.',
- leadAm:'እንኳን ወደ Lowin በደህና መጡ። ቁጥርዎን ይምረጡ።\nዝቅተኛው ልዩ ቁጥር ያሸንፋል።\nከመጫረትዎ በፊት ክፍያውን ይመልከቱ።',
-};
+export const defaultHomeCopy={headline:'Small price. Big joy.',headlineAm:'ትንሽ ዋጋ። ትልቅ ደስታ።',lead:'The lowest unique bid wins.',leadAm:'ዝቅተኛና ያልተደገመ ዋጋ ያሸንፋል።'};
 type HomeCopy={headline:string;lead:string;headlineAm?:string;leadAm?:string};
-export function resolveHomeCopy(managed:HomeCopy|null){
- // Replace the retired showcase copy without discarding future Owner edits.
- if(!managed||/^A little different wins\.?$/i.test(managed.headline.trim()))return defaultHomeCopy;
- return {...managed,headlineAm:managed.headlineAm?.trim()||defaultHomeCopy.headlineAm,leadAm:managed.leadAm?.trim()||defaultHomeCopy.leadAm};
-}
+export function resolveHomeCopy(managed:HomeCopy|null){if(!managed||/^A little different wins\.?$/i.test(managed.headline.trim()))return defaultHomeCopy;return {...managed,headlineAm:managed.headlineAm?.trim()||defaultHomeCopy.headlineAm,leadAm:managed.leadAm?.trim()||defaultHomeCopy.leadAm};}

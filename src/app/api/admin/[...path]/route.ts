@@ -8,7 +8,7 @@ import {adminRead,adminMutation} from '@/modules/admin/operations';
 import {requireMutationOrigin,PrivateApiError} from '@/modules/auth/private-api';
 export const dynamic='force-dynamic';
 const json=(body:unknown,status=200)=>Response.json(body,{status,headers:adminHeaders});
-function failure(error:unknown){const status=error instanceof AdminError||error instanceof PrivateApiError?error.status:error instanceof z.ZodError||error instanceof SyntaxError?422:503;return json({error:error instanceof AdminError||error instanceof PrivateApiError?error.message:status===422?'Check the supplied fields.':'Admin information is temporarily unavailable.'},status)}
+function failure(error:unknown){const status=error instanceof AdminError||error instanceof PrivateApiError?error.status:error instanceof z.ZodError||error instanceof SyntaxError?422:503;return json({...(error instanceof AdminError&&error.code?{code:error.code}:{}),error:error instanceof AdminError||error instanceof PrivateApiError?error.message:status===422?'Check the supplied fields.':'Admin information is temporarily unavailable.'},status)}
 export async function GET(request:Request,{params}:{params:Promise<{path:string[]}>}){try{return json(await adminRead(db,request.headers,(await params).path,new URL(request.url).searchParams))}catch(error){return failure(error)}}
 export async function POST(request:Request,{params}:{params:Promise<{path:string[]}>}){try{
   requireMutationOrigin(request);if((await params).path.join('/')!=='command')throw new AdminError(404,'Admin command not found.');

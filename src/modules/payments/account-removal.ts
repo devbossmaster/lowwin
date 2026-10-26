@@ -19,7 +19,7 @@ export async function receivingAccountStates(client:PrismaClient,policies:(Payme
 export async function removeReceivingAccount(client:PrismaClient,headers:Headers,raw:unknown){
  const b=removalSchema.parse(raw),fingerprint=hash(JSON.stringify({action:removalAction,...b}));
  return client.$transaction(async tx=>{
-  const actor=await requireAdmin(tx,headers,{fresh:true,lock:true});
+  const actor=await requireAdmin(tx,headers,{lock:true});
   if(actor.role!=='OWNER')throw new AdminError(403,'Owner permission required.');
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`payment-policy:${b.channel}`},0))`;
   const prior=await tx.adminAudit.findUnique({where:{operationKey:b.key}});

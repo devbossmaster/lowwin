@@ -1,7 +1,7 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
 import dynamic from 'next/dynamic';
-import {ArrowLeft,Check,ChevronRight,Copy,Gift,Mail,MapPin,Pencil,Plus,Share2,ShieldCheck,Ticket,UsersRound,Wallet} from 'lucide-react';
+import {Check,ChevronRight,Copy,Gift,Mail,MapPin,Pencil,Plus,Share2,ShieldCheck,Ticket,UsersRound,Wallet} from 'lucide-react';
 import {IntentPrefetchLink as Link} from '@/components/intent-prefetch-link';
 import {invalidatePrivateQueries} from '@/components/private-query-cache';
 import {usePrivateQuery,PrivateState} from '@/components/private-query';
@@ -9,9 +9,7 @@ import {MiniRouteSkeleton} from '@/components/mini-route-skeleton';
 import {useTelegram} from '@/components/telegram-provider';
 import {OfflineRetry} from '@/components/offline-retry';
 import {WalletTopUpTrigger} from '@/components/wallet-top-up-trigger';
-import {miniNavigationState} from '@/components/mini-navigation-state';
 import {useMiniLocale} from '@/components/mini-locale';
-import {MiniLanguageMenu} from '@/components/mini-language-menu';
 import {centsToEtb,etbToCents} from '@/lib/money';
 import type {getPlayerProfile} from '@/modules/profile/personal';
 import type {WalletBalance} from '@/modules/wallet/balance';
@@ -44,7 +42,6 @@ function PlayerProfile(){
   const photo=me?.user.image?.startsWith('https://')&&failedPhoto!==me.user.image?me.user.image:null;
   const referral=data?.referral,knownRewards=!!referral?.configured,available=knownRewards?referral.counts.available:null;
   const shareUrl=referral?.enabled?referral.shareUrl:null;
-  const home=miniNavigationState.visit(queryIdentity,'/');
   const initials=(data?.displayName??me?.user.name??'').trim().split(/\s+/).filter(Boolean).slice(0,2).map(part=>Array.from(part)[0]).join('').toLocaleUpperCase(language)||'L';
   let balance:string|null=null;
   try{if(wallet.data)balance=centsToEtb(etbToCents(wallet.data.available))}catch{/* Keep an unavailable balance distinct from zero. */}
@@ -86,7 +83,6 @@ function PlayerProfile(){
   }
   if(query.status==='loading'||query.status==='authenticated'&&!data&&!query.error)return <MiniRouteSkeleton/>;
   return <><OfflineRetry/><section className={styles.page} data-profile-ready={!!data||undefined}>
-    <header className={styles.heading}><Link href={home?.href??'/'} scroll={home&&home.scrollY>0?false:undefined} className={styles.back} aria-label={text('Back to Home','ወደ መነሻ ይመለሱ')}><ArrowLeft size={20} aria-hidden="true"/></Link><h1>{text('Profile','መገለጫ')}</h1><div className={styles.language}><MiniLanguageMenu/></div></header>
     <PrivateState query={query} variant="profile"/>
     {query.status==='authenticated'&&data&&<>
       <section className={styles.identity} aria-label={text('Your account','መለያዎ')}>

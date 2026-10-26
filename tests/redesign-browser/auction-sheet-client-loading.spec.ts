@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {test,expect} from '../isolated-browser';
 import {PrismaClient} from '@prisma/client';
 import {randomInt,randomUUID} from 'node:crypto';
 import {bidAuction} from '../bid-fixtures';
@@ -19,10 +19,12 @@ test('card shell opens before data, pending reopen dedups and late selection can
   await page.goto('/telegram?next='+encodeURIComponent('/?q='+encodeURIComponent(marker)));
   const cards=page.locator('#discover-auctions .auction-card'),firstCard=cards.filter({has:page.getByRole('heading',{name:marker+' first',exact:true})}),secondCard=cards.filter({has:page.getByRole('heading',{name:marker+' second',exact:true})});await expect(cards).toHaveCount(2);
   const openFirst=firstCard.getByRole('button');await openFirst.click();const sheet=page.getByRole('dialog',{name:'Place your bid',exact:true});await expect(sheet).toBeVisible();await expect(sheet).toContainText(marker+' first');await expect(sheet).toContainText('ETB 10.00');await expect(sheet.locator('[data-sheet-details-ready]')).toHaveAttribute('data-sheet-details-ready','false');await expect(sheet.locator('.customer-loading,.loading-spinner-ring')).toHaveCount(0);
-  const fields=sheet.locator('span[role="status"][aria-label]');await expect(fields).toHaveCount(2);for(const field of await fields.all()){const box=await field.boundingBox();expect(box!.height).toBeLessThanOrEqual(16);expect(box!.width).toBeLessThanOrEqual(100)}
+  // Published limits already arrive on the Home card. Only the held wallet
+  // balance needs a skeleton while the private acceptance state loads.
+  const fields=sheet.locator('span[role="status"][aria-label]');await expect(fields).toHaveCount(1);await expect(fields).toHaveAccessibleName('Loading wallet balance');for(const field of await fields.all()){const box=await field.boundingBox();expect(box!.height).toBeLessThanOrEqual(16);expect(box!.width).toBeLessThanOrEqual(100)}
   await page.keyboard.press('Escape');await expect(sheet).toHaveCount(0);await openFirst.click();await expect(sheet).toBeVisible();await expect.poll(()=>firstGets).toBe(1);expect(walletGets).toBe(1);await page.keyboard.press('Escape');
   await secondCard.getByRole('button').click();await expect(sheet).toContainText(marker+' second');await expect(sheet).toContainText('ETB 20.00');await expect.poll(()=>secondGets).toBe(1);
-  first.release();wallet.release();await expect(sheet.getByRole('radio',{name:'Wallet balance',exact:true}).locator('..')).toContainText('0.00 ETB');await expect(sheet).toContainText(marker+' second');await expect(sheet).toContainText('ETB 20.00');await expect(sheet.locator('[data-sheet-details-ready]')).toHaveAttribute('data-sheet-details-ready','false');
+  first.release();wallet.release();await expect(sheet).toContainText('Available: 0.00 ETB');await expect(sheet.getByRole('radio',{name:'Wallet balance',exact:true})).toBeChecked();await expect(sheet).toContainText(marker+' second');await expect(sheet).toContainText('ETB 20.00');await expect(sheet.locator('[data-sheet-details-ready]')).toHaveAttribute('data-sheet-details-ready','false');
   second.release();await expect(sheet.locator('[data-sheet-details-ready]')).toHaveAttribute('data-sheet-details-ready','true');await expect(fields).toHaveCount(0);await page.keyboard.press('Escape');
   await openFirst.click();await expect(sheet.locator('[data-sheet-details-ready]')).toHaveAttribute('data-sheet-details-ready','true');expect(firstGets).toBe(1);expect(walletGets).toBe(1);expect(financialPosts).toBe(0);await page.keyboard.press('Escape');await expect(openFirst).toBeFocused();
  }finally{first.release();second.release();wallet.release();await db.$disconnect()}

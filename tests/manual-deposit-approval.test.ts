@@ -3,9 +3,9 @@ import {Prisma,type PrismaClient,type TopUpIntent} from '@prisma/client';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
 import {AdminError} from '../src/modules/admin/errors';
 
-const auth=vi.hoisted(()=>({role:'OWNER',fresh:true,enabled:true,eligible:true,now:new Date('2026-10-05T12:00:00Z')}));
+const auth=vi.hoisted(()=>({role:'OWNER',authorized:true,enabled:true,eligible:true,now:new Date('2026-10-05T12:00:00Z')}));
 vi.mock('@/modules/admin/boundary',()=>({requireAdmin:vi.fn(async(_tx,_headers,options)=>{
- if(options.fresh&&!auth.fresh)throw new AdminError(403,'Fresh MFA is required.');
+ if(!auth.authorized)throw new AdminError(403,'Staff sign-in is required.');
  return {id:'owner',sessionId:'staff-session',role:auth.role,now:auth.now};
 })}));
 vi.mock('@/modules/payments/service',()=>({paymentHealth:()=>({enabled:auth.enabled}),assertDepositEligibility:async()=>{if(!auth.eligible)throw new AdminError(403,'Account unavailable')}}));
@@ -40,7 +40,7 @@ function fixture(){
  const input={key:randomUUID(),id:initial.id,amountCents:'3027',reference:'mpesa123456',transferredAt:'2026-10-05T11:10:00Z',reason:'Checked the receiver account statement and receipt.',confirmed:true};
  return {client,input,get state(){return state},locks};
 }
-beforeEach(()=>{auth.role='OWNER';auth.fresh=true;auth.enabled=true;auth.eligible=true;vi.clearAllMocks()});
+beforeEach(()=>{auth.role='OWNER';auth.authorized=true;auth.enabled=true;auth.eligible=true;vi.clearAllMocks()});
 
 describe('manual deposit approval',()=>{
  it('credits the exact reviewed amount with a balanced journal, permanent claim, audit and alert',async()=>{
@@ -63,9 +63,9 @@ describe('manual deposit approval',()=>{
   expect(f.state.journals).toHaveLength(1);expect(f.state.claims).toHaveLength(1);expect(f.state.alerts).toHaveLength(1);
  });
  it.each(['SUPPORT','AUDITOR','CATALOG_MANAGER'])('rejects %s even with MFA',async role=>{const f=fixture();auth.role=role;await expect(approveReviewedDeposit(f.client,new Headers(),f.input)).rejects.toMatchObject({status:403});expect(f.state.journals).toHaveLength(0)});
- it('requires fresh MFA, enabled payments and an eligible player',async()=>{
-  const f=fixture();auth.fresh=false;await expect(approveReviewedDeposit(f.client,new Headers(),f.input)).rejects.toMatchObject({status:403});
-  auth.fresh=true;auth.enabled=false;await expect(approveReviewedDeposit(f.client,new Headers(),f.input)).rejects.toMatchObject({status:503});
+ it('requires authorized MFA, enabled payments and an eligible player',async()=>{
+  const f=fixture();auth.authorized=false;await expect(approveReviewedDeposit(f.client,new Headers(),f.input)).rejects.toMatchObject({status:403});
+  auth.authorized=true;auth.enabled=false;await expect(approveReviewedDeposit(f.client,new Headers(),f.input)).rejects.toMatchObject({status:503});
   auth.enabled=true;auth.eligible=false;await expect(approveReviewedDeposit(f.client,new Headers(),f.input)).rejects.toMatchObject({status:403});expect(f.state.journals).toHaveLength(0);
  });
  it.each(['CREDITED','REJECTED','REVERSED','DUPLICATE_CONFLICT','FAILED','VERIFYING'])('blocks %s deposits',async status=>{const f=fixture();f.state.t.status=status;await expect(approveReviewedDeposit(f.client,new Headers(),f.input)).rejects.toMatchObject({status:409});expect(f.state.journals).toHaveLength(0)});

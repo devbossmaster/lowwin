@@ -6,11 +6,15 @@ import {resolveLearnMoreMedia} from '@/lib/learn-more-media';
 // These handlers enforce getMiniSession/requireUser themselves before any
 // private read or mutation. Do not run another full session lookup in Proxy.
 const guardedApis=new Set(['/api/me','/api/my-bids','/api/results/winners','/api/favorites','/api/profile','/api/profile/wins','/api/alerts','/api/fulfillment','/api/support','/api/wallet','/api/wallet/top-ups','/api/wallet/scan','/api/wallet/preview','/api/payments/arifpay','/api/payments/arifpay/checkouts']);
-const publicAssets=new Set(['/logo.png','/banner11.png','/images/lowin-family-hero.webp',"/images/lowwin-home-banner-en.webp","/images/lowwin-home-banner-am.webp",'/images/lowwin-demo-headphones.webp','/fonts/dm-sans-latin-400.woff2','/fonts/dm-sans-latin-500.woff2','/fonts/dm-sans-latin-600.woff2','/fonts/dm-sans-latin-700.woff2','/fonts/sora-latin-800.woff2','/fonts/noto-serif-ethiopic-banner.woff2','/fonts/noto-sans-ethiopic-variable.woff2','/fonts/NotoSansEthiopic-Bold.ttf','/fonts/poppins-latin-400.woff2','/fonts/poppins-latin-500.woff2','/fonts/poppins-latin-600.woff2','/fonts/poppins-latin-700.woff2']);
+const publicAssets=new Set(['/logo.png','/images/chapa-logo.svg','/banner11.png','/images/lowin-family-hero.webp',"/images/lowwin-home-banner-en.webp","/images/lowwin-home-banner-am.webp",'/images/lowwin-demo-headphones.webp','/fonts/dm-sans-latin-400.woff2','/fonts/dm-sans-latin-500.woff2','/fonts/dm-sans-latin-600.woff2','/fonts/dm-sans-latin-700.woff2','/fonts/sora-latin-800.woff2','/fonts/noto-serif-ethiopic-banner.woff2','/fonts/noto-sans-ethiopic-variable.woff2','/fonts/NotoSansEthiopic-Bold.ttf','/fonts/poppins-latin-400.woff2','/fonts/poppins-latin-500.woff2','/fonts/poppins-latin-600.woff2','/fonts/poppins-latin-700.woff2']);
 
 export async function proxy(request:NextRequest) {
   const path=request.nextUrl.pathname;
   if(path==='/api/health/live')return NextResponse.next();
+  // Hosted returns are public guidance; callback never mutates money and the
+  // webhook authenticates exact bytes itself. Owned checkout APIs authorize in
+  // their handlers, avoiding duplicate session reads here.
+  if(path==='/payments/chapa/return'||path==='/api/payments/chapa/callback'||path==='/api/payments/chapa/webhook'||path==='/api/payments/chapa'||path==='/api/payments/chapa/checkouts'||/^\/api\/payments\/chapa\/checkouts\/[0-9a-f-]{36}$/i.test(path))return NextResponse.next();
   // Public onboarding artwork must load before a Telegram session exists.
   // Keep this exact allowlist separate from all protected Mini App data.
   if(publicAssets.has(path))return NextResponse.next();

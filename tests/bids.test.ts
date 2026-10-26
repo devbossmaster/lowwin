@@ -48,7 +48,7 @@ describe.skipIf(!url)('authenticated point bids on disposable PostgreSQL',()=>{
     const response=await route.POST(request(cookie),context);
     expect(response.status).toBe(410);
     expect(response.headers.get('cache-control')).toContain('no-store');
-    const body=await response.json();expect(body.code).toBe('ARIFPAY_REQUIRED');expect(await client.bid.count({where:{auctionId:auction.id}})).toBe(0);
+    const body=await response.json();expect(body.code).toBe('WALLET_BIDS_DISABLED');expect(await client.bid.count({where:{auctionId:auction.id}})).toBe(0);
     const state=await route.GET(new Request(url,{headers:{cookie}}),context);
     expect(state.status).toBe(200);expect(state.headers.get('cache-control')).toContain('no-store');
     const stateBody=await state.json();expect(stateBody.ownBids).toEqual([]);expect(stateBody).not.toHaveProperty('wallet');expect(stateBody.paymentMode).toBe('LEGACY_READ_ONLY');

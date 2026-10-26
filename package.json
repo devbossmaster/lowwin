@@ -28,7 +28,8 @@
     "email:sink": "tsx scripts/email-sink.ts",
     "worker:notifications": "tsx scripts/notification-worker.ts",
     "auction:fee-only": "tsx scripts/auction-submission-fee.ts",
-    "admin:reissue": "tsx scripts/admin-reissue.ts"
+    "admin:reissue": "tsx scripts/admin-reissue.ts",
+    "worker:chapa": "tsx scripts/chapa-worker.ts"
   },
   "dependencies": {
     "@fontsource/dm-sans": "5.2.8",

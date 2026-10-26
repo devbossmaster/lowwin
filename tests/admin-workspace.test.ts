@@ -7,38 +7,37 @@ import {centsToEtb,etbToCents} from '../src/lib/admin-money';
 
 describe('Admin workspace contracts',()=>{
  beforeEach(()=>{vi.stubEnv('ARIFPAY_SCHEMA_READY','true')});
- it('keeps exactly five primary business areas and private test auctions out of ordinary queues',()=>{
-  expect(adminAreas).toEqual(['Overview','Auctions','Payments','People','Settings']);
+ it('keeps seven primary business areas and private test auctions out of ordinary queues',()=>{
+  expect(adminAreas).toEqual(['Overview','Auctions and Catalog','Players and Wallets','Payments and Refunds','Winners and Deliveries','Content and Messages','Reports and Settings']);
   expect(auctionStatusWhere('',new Date())).toMatchObject({testRunId:null});
   expect(auctionStatusWhere('LIVE',new Date())).toMatchObject({testRunId:null});
   expect(auctionStatusWhere('IN_PROGRESS',new Date())).toMatchObject({testRunId:null,status:{in:['SCHEDULED','LIVE']},settlement:{is:null}});
   expect(auctionStatusWhere('CANCELLED',new Date())).toMatchObject({testRunId:null,status:'CANCELLED'});
  });
  it('lands every staff role on its first authorized task',()=>{
-  expect(allowedTasks('OWNER').some(t=>t.href==='/admin/content')).toBe(false);
-  expect(areaLanding('OWNER','Auctions')).toBe('/admin/auctions');
-  expect(areaLanding('CATALOG_MANAGER','Auctions')).toBe('/admin/auctions');
-  expect(areaLanding('SUPPORT','People')).toBe('/admin/users');
-  expect(areaLanding('FULFILLMENT','People')).toBe('/admin/fulfillment');
-  expect(areaLanding('PAYMENTS_OPERATOR','Payments')).toBe('/admin/payments');
-  expect(areaLanding('AUDITOR','Auctions')).toBe('/admin/results');
+  expect(allowedTasks('OWNER').some(t=>t.href==='/admin/content')).toBe(true);
+  expect(areaLanding('OWNER','Auctions and Catalog')).toBe('/admin/auctions');
+  expect(areaLanding('CATALOG_MANAGER','Auctions and Catalog')).toBe('/admin/auctions');
+  expect(areaLanding('SUPPORT','Players and Wallets')).toBe('/admin/users');
+  expect(areaLanding('FULFILLMENT','Winners and Deliveries')).toBe('/admin/fulfillment');
+  expect(areaLanding('PAYMENTS_OPERATOR','Payments and Refunds')).toBe('/admin/payments');
+  expect(areaLanding('AUDITOR','Winners and Deliveries')).toBe('/admin/results');
   expect(areaLanding('AUDITOR','Overview')).toBe('/admin');
-  expect(areaLanding('FULFILLMENT','Payments')).toBeUndefined();
+  expect(areaLanding('FULFILLMENT','Payments and Refunds')).toBeUndefined();
   expect(allowedTasks('SUPPORT').some(t=>t.href==='/admin/top-ups/statements')).toBe(false);
   expect(allowedTasks('OWNER').some(t=>t.href==='/admin/support')).toBe(false);
   expect(allowedTasks('OWNER').some(t=>t.href==='/admin/notifications')).toBe(true);
  });
  it('matches deep routes before their parent',()=>{
-  expect(activeTask('/admin/settings/payments').area).toBe('Payments');
-  expect(allowedTasks('OWNER').filter(t=>t.area==='Payments').map(t=>t.label)).toEqual(['Bid payments','Legacy transfers','Ledger checks','Legacy receiving accounts']);
-  expect(activeTask('/admin/top-ups/example').label).toBe('Legacy transfers');
-  expect(activeTask('/admin/auctions/example/proof').label).toBe('Results');
+  expect(activeTask('/admin/settings/payments').area).toBe('Reports and Settings');
+  expect(allowedTasks('OWNER').filter(t=>t.area==='Payments and Refunds').map(t=>t.label)).toEqual(['Transactions','Refunds & compensation','Reconciliation']);
+  expect(activeTask('/admin/top-ups/example').label).toBe('Transactions');
+  expect(activeTask('/admin/auctions/example/proof').label).toBe('Finalized results');
  });
  it('keeps a failed queue distinct from an empty authorized queue',async()=>{
-  const db={arifPayCheckout:{count:vi.fn().mockRejectedValue(Error('offline'))},supportCase:{count:vi.fn().mockResolvedValue(0)}};
+  const db={arifPayCheckout:{count:vi.fn().mockRejectedValue(Error('offline'))}};
   const result=await readOverview(db as unknown as PrismaClient,{id:'support',role:'SUPPORT',now:new Date('2026-09-30T10:00:00Z')});
   expect(result).toEqual({serverNow:'2026-09-30T10:00:00.000Z',payments:{state:'error'},players:{state:'error'}});
-  expect(db.supportCase.count).not.toHaveBeenCalled();
  });
  it('uses midnight EAT across UTC date and year boundaries',()=>{
   expect(eatDayStart(new Date('2026-10-02T20:59:59Z')).toISOString()).toBe('2026-10-01T21:00:00.000Z');
@@ -64,9 +63,9 @@ describe('Admin workspace contracts',()=>{
   expect(result.fees).toBeUndefined();expect(result.players).toBeUndefined();expect($queryRaw).not.toHaveBeenCalled();
  });
  it('lets support see player totals without exposing deposit amounts',async()=>{
-  const db={arifPayCheckout:{count:vi.fn().mockResolvedValue(0)},supportCase:{count:vi.fn().mockResolvedValue(1)},$queryRaw:vi.fn().mockResolvedValue([{total:8,today:2,biddersToday:3}])};
+  const db={arifPayCheckout:{count:vi.fn().mockResolvedValue(0)},$queryRaw:vi.fn().mockResolvedValue([{total:8,today:2,biddersToday:3}])};
   const result=await readOverview(db as unknown as PrismaClient,{id:'support',role:'SUPPORT',now:new Date()});
-  expect(result.players).toEqual({state:'ready',total:8,today:2,biddersToday:3});expect(result.fees).toBeUndefined();expect(db.$queryRaw).toHaveBeenCalledTimes(1);
+  expect(result.players).toEqual({state:'ready',total:8,today:2,biddersToday:3});expect(result.fees).toBeUndefined();expect(db.$queryRaw).toHaveBeenCalledTimes(2);
  });
  it('converts ETB to exact cents without floating point or silent rounding',()=>{
   expect(etbToCents('1.97')).toBe('197');expect(etbToCents('2.34')).toBe('234');expect(etbToCents('999999999.99')).toBe('99999999999');

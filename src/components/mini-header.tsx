@@ -45,8 +45,8 @@ export function MiniHeader(){
    options[next]?.focus();
   }else if(event.key==='Tab'){setLanguageOpen(false);languageButtonRef.current?.focus()}
  };
- return <header className={styles.header} aria-label="Mini App header">
-  <Link href="/" className={styles.brand} aria-label={am?'Lowwin መነሻ':'Lowwin Home'}><img src="/logo.png" width={32} height={32} alt=""/></Link>
+ return <header className={styles.header} role="banner" aria-label="Mini App header">
+  <Link href="/" className={styles.brand} aria-label={am?'Lowwin መነሻ':'Lowwin Home'}><img src="/logo.png" width={28} height={28} alt=""/><span className={styles.brandName}>Lowwin</span></Link>
   <div className={styles.balancePill}>
    <Link href="/wallet" prefetch={false} className={styles.balance} aria-label={`${am?'ዋሌት':'Wallet'}${amount!==null?`, ${amount} ETB`:''}`} aria-busy={wallet.fetching||undefined} title={amount!==null?`${amount} ETB`:am?'ቀሪ ሂሳቡን ለማየት ዋሌትን ይክፈቱ':'Open Wallet to check your balance'}><Wallet size={14} strokeWidth={1.75} aria-hidden="true"/><span data-header-balance><span className={styles.balanceAmount}>{amount??'—'}</span>{' '}<small>ETB</small></span></Link>
    <WalletTopUpTrigger className={styles.addFunds} ariaLabel={am?'ገንዘብ ያስገቡ':'Deposit'}><Plus size={15} strokeWidth={1.75} aria-hidden="true"/></WalletTopUpTrigger>

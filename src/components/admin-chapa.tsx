@@ -1,0 +1,22 @@
+'use client';
+import {useState} from 'react';
+import {RefreshCw} from 'lucide-react';
+import type {ChapaAdminDetail,ChapaAdminCheckReceipt} from '@/modules/admin/chapa';
+import {centsToEtb,eat,ErrorNotice,Status,useAdminMutation,useAdminRead} from './admin-ui';
+
+export function AdminChapaRecovery({id}:{id:string}){
+ const query=useAdminRead<ChapaAdminDetail>('chapa/'+encodeURIComponent(id)),data=query.data,item=data?.item,mutation=useAdminMutation('chapa');
+ const [checked,setChecked]=useState<ChapaAdminCheckReceipt|null>(null),[intent,setIntent]=useState(0);
+ return <div className="admin-direct-payments"><ErrorNotice error={query.error} retry={query.reload}/>{!item&&query.loading&&<p role="status">Loading payment details…</p>}
+ {data&&item&&<><section className="admin-panel direct-receipt"><div className="direct-receipt-head"><div><h2>{item.title}</h2><p>{item.playerName} · Chapa {item.mode==='test'?'test payment':'live payment'}</p></div><Status value={item.status}/></div>
+ <div className="direct-fee"><div><span>{item.purpose==='TOP_UP'?'Wallet top-up':'Submission fee'}</span><strong>{centsToEtb(item.amountCents)} ETB</strong></div>{item.bidNumber!==null&&<div><span>Chosen bid number</span><strong>{item.bidNumber}</strong></div>}</div>
+ {item.purpose==='BID'&&<p>The chosen number is not a payment amount. Only this auction’s published submission fee applies.</p>}
+ <dl className="admin-facts"><div><dt>Payment ID</dt><dd>{item.id}</dd></div><div><dt>Purpose</dt><dd>{item.purpose==='TOP_UP'?'Wallet top-up':'Bid submission'}</dd></div><div><dt>Started</dt><dd>{eat(item.createdAt)}</dd></div><div><dt>Last update</dt><dd>{eat(item.updatedAt)}</dd></div><div><dt>Wallet credit</dt><dd>{item.credited?'Verified credit recorded':'Not confirmed'}</dd></div><div><dt>Bid entry</dt><dd>{item.bidAccepted?'Accepted':item.purpose==='BID'?'No accepted bid recorded':'Not applicable'}</dd></div>{item.paymentMethod&&<div><dt>Payment method</dt><dd>{item.paymentMethod}</dd></div>}<div><dt>Reason</dt><dd>{item.reason?.replaceAll('_',' ').toLowerCase()??'No issue recorded'}</dd></div>{item.references&&<><div><dt>Merchant reference</dt><dd>{item.references.merchant}</dd></div><div><dt>Chapa reference</dt><dd>{item.references.chapa??'Not assigned'}</dd></div><div><dt>Processor reference</dt><dd>{item.references.processor??'Not confirmed'}</dd></div>{item.references.journalId&&<div><dt>Credit journal</dt><dd>{item.references.journalId}</dd></div>}{item.references.bidId&&<div><dt>Accepted bid</dt><dd>{item.references.bidId}</dd></div>}</>}<div><dt>Verification attempts</dt><dd>{item.attempts}</dd></div><div><dt>Next eligible check</dt><dd>{item.credited?'Credit already recorded':eat(item.nextCheckAt)}</dd></div></dl>
+ {item.credited&&item.purpose==='BID'&&!item.bidAccepted&&<div className="admin-notice"><strong>Payment received; bid not accepted.</strong><p>The verified funds remain in the player’s wallet. Do not create a replacement credit.</p></div>}
+ {!item.configurationMatches&&<p className="admin-notice">This payment requires its original reviewed Chapa configuration. Stored records remain available.</p>}
+ <div className="admin-actions"><button type="button" className="secondary" onClick={query.reload} disabled={query.loading}><RefreshCw size={16}/>Refresh details</button></div></section>
+ {item.canCheck&&<section className="admin-panel direct-check"><h2>Check with Chapa</h2><p>Retrieve the current provider record. Verified evidence and the existing server checks determine whether funds or a bid can be recorded.</p><form className="admin-form" onSubmit={async event=>{event.preventDefault();setChecked(null);const form=event.currentTarget,result=await mutation.run<ChapaAdminCheckReceipt>('check',{id:item.id,reason:new FormData(form).get('reason'),key:String(intent)});if(result){setChecked(result);setIntent(value=>value+1);query.reload();}}}><label>Reason for checking<textarea name="reason" required minLength={12} maxLength={300} rows={2} disabled={mutation.busy}/></label><button disabled={mutation.busy}>{mutation.busy?'Checking Chapa…':'Check provider status'}</button></form><ErrorNotice error={mutation.error}/>{checked?.id===item.id&&<p role="status">Check recorded: <Status value={checked.status}/>. A pending payment is not a confirmed credit.</p>}</section>}
+ {!data.health.recoveryEnabled&&!item.credited&&<p className="admin-notice">Provider checks are disabled. Existing records remain available for review.</p>}
+ </>}
+ </div>;
+}
