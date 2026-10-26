@@ -1,0 +1,20 @@
+import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
+import {Prisma} from '@prisma/client';
+const f=vi.hoisted(()=>({transaction:vi.fn(),createAuth:vi.fn(),handler:vi.fn(),staffLimit:vi.fn()}));
+vi.mock('../src/lib/db',()=>({db:{$transaction:f.transaction}}));
+vi.mock('../src/lib/env',()=>({getEnv:()=>({BETTER_AUTH_URL:'http://localhost:3000'})}));
+vi.mock('../src/modules/auth/server',()=>({createAuth:f.createAuth}));
+vi.mock('../src/modules/auth/staff-plugin',()=>({staffActions:['login']}));
+vi.mock('../src/modules/admin/rate-limit',()=>({staffRateLimit:f.staffLimit}));
+import {handleAuth} from '../src/modules/auth/handler';
+const request=()=>new Request('http://localhost:3000/api/auth/lowin/staff/login',{method:'POST',headers:{origin:'http://localhost:3000','content-type':'application/json',cookie:'private-cookie'},body:JSON.stringify({email:'private-email@example.invalid',password:'private-password-value'})});
+beforeEach(()=>{vi.clearAllMocks();vi.spyOn(console,'warn').mockImplementation(()=>{});f.staffLimit.mockResolvedValue(true);f.handler.mockResolvedValue(Response.json({mode:'challenge'}));f.createAuth.mockReturnValue({handler:f.handler});f.transaction.mockImplementation(async task=>task({}))});
+afterEach(()=>vi.restoreAllMocks());
+const safeLog=(stage:string,code:string,kind:string)=>{expect(console.warn).toHaveBeenCalledWith('Staff authentication unavailable',{action:'login',stage,code,kind,elapsedMs:expect.any(Number)});expect(JSON.stringify(vi.mocked(console.warn).mock.calls)).not.toMatch(/private|postgresql|SELECT|password|example\.invalid/)};
+describe('safe staff authentication stage diagnostics',()=>{
+ it('distinguishes rate-limit pool failures before the credential transaction',async()=>{f.staffLimit.mockRejectedValue(new Prisma.PrismaClientKnownRequestError('private SQL password',{code:'P2028',clientVersion:'6.19.3'}));const response=await handleAuth(request());expect(response.status).toBe(503);expect(response.headers.get('cache-control')).toContain('no-store');expect(response.headers.get('vary')).toBe('Cookie');expect(response.headers.has('set-cookie')).toBe(false);expect(f.transaction).not.toHaveBeenCalled();safeLog('rate-limit','P2028','PrismaClientKnownRequestError')});
+ it('distinguishes auth transaction acquisition failure from a credential handler failure',async()=>{f.transaction.mockRejectedValue(new Prisma.PrismaClientKnownRequestError('private connection',{code:'P2024',clientVersion:'6.19.3'}));expect((await handleAuth(request())).status).toBe(503);expect(f.handler).not.toHaveBeenCalled();safeLog('transaction-start','P2024','PrismaClientKnownRequestError')});
+ it('classifies unexpected credential handler failures without request data',async()=>{f.handler.mockRejectedValue(new Prisma.PrismaClientInitializationError('private connection URL','6.19.3','P1001'));expect((await handleAuth(request())).status).toBe(503);safeLog('credential-handler','P1001','PrismaClientInitializationError')});
+ it('records a provider-wrapped service error without logging its body',async()=>{f.handler.mockResolvedValue(Response.json({message:'Staff authentication is temporarily unavailable.',private:'private-password-value'},{status:503}));const response=await handleAuth(request());expect(response.status).toBe(503);expect(await response.json()).toEqual({error:'Staff authentication is temporarily unavailable.'});safeLog('credential-handler','UNKNOWN','Error')});
+ it('keeps ordinary rejected credentials and rate limits out of service-failure logs',async()=>{f.handler.mockResolvedValue(Response.json({message:'Email or password could not be verified.'},{status:401}));expect((await handleAuth(request())).status).toBe(401);expect(console.warn).not.toHaveBeenCalled();f.staffLimit.mockResolvedValue(false);expect((await handleAuth(request())).status).toBe(429);expect(console.warn).not.toHaveBeenCalled()});
+});

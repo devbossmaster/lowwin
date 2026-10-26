@@ -9,11 +9,14 @@ export async function staffRateLimit(client:PrismaClient,action:string,request:R
   const session=['enroll','mfa','logout'].includes(action)?await createAuth(client).api.getSession({headers:request.headers}):null;
   const identity=session?`user:${session.user.id}`:typeof body.email==='string'?body.email.trim().toLowerCase():String(body.token??'anonymous');
   const key=`staff:${action}:${digest(identity)}`;
-  return client.$transaction(async tx=>{
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key},0))`;
-    const [{now}]=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`,ms=BigInt(now.getTime());
-    const old=await tx.rateLimit.findUnique({where:{key}}),count=old&&ms-old.lastRequest<900000n?old.count+1:1;
-    await tx.rateLimit.upsert({where:{key},create:{id:randomUUID(),key,count,lastRequest:ms},update:{count,lastRequest:count===1?ms:old!.lastRequest}});
-    return count<=(action==='forgot'?5:12);
-  });
+  // The unique key serializes concurrent increments in one statement. Keep the
+  // original fixed-window start until 15 minutes have elapsed; use only DB time.
+  const [{count}]=await client.$queryRaw<{count:number}[]>`
+    INSERT INTO "rateLimit" (id,key,count,"lastRequest")
+    VALUES (${randomUUID()},${key},1,floor(extract(epoch FROM clock_timestamp())*1000)::bigint)
+    ON CONFLICT (key) DO UPDATE SET
+      count=CASE WHEN EXCLUDED."lastRequest"-"rateLimit"."lastRequest"<900000 THEN "rateLimit".count+1 ELSE 1 END,
+      "lastRequest"=CASE WHEN EXCLUDED."lastRequest"-"rateLimit"."lastRequest"<900000 THEN "rateLimit"."lastRequest" ELSE EXCLUDED."lastRequest" END
+    RETURNING count`;
+  return count<=(action==='forgot'?5:12);
 }

@@ -9,6 +9,7 @@ import { emailAdapter } from '../admin/email';
 import {staffRoles,type StaffRole} from '../admin/permissions';
 import { AdminError } from '../admin/errors';
 import {ADMIN_SESSION_MS,ADMIN_CHALLENGE_MS} from '@/lib/admin-security';
+import {databaseErrorSummary} from '@/lib/database-error';
 
 export const staffActions=['accept-invite','login','enroll','mfa','forgot','reset','logout'] as const;
 const emailSchema=z.email().max(254).transform(value=>value.toLowerCase());
@@ -16,14 +17,17 @@ const passwordSchema=z.string().min(12).max(128);
 const tokenSchema=z.string().regex(/^[A-Za-z0-9_-]{43}$/);
 export function staffPlugin(tx:Prisma.TransactionClient|PrismaClient) {
   const endpoints=Object.fromEntries(staffActions.map(action=>[`staff_${action}`,createAuthEndpoint(`/lowin/staff/${action}`,{method:'POST',body:z.unknown()},async ctx=>{
+    const started=performance.now();let stage='clock-read';
     try {
       const secure=process.env.BETTER_AUTH_URL?.startsWith('https:')===true;
       const deviceCookie=secure?'__Host-lowwin_staff_device':'lowwin_staff_device';
       const cookieOptions={httpOnly:true,secure,sameSite:'strict' as const,path:'/'};
       let [{now}]=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`;
+      stage=action;
       const refreshClock=async()=>{[{now}]=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`};
       const audit=(actorId:string,event:string,target=actorId)=>tx.adminAudit.create({data:{actorId,action:event,target,details:{}}});
       async function issue(userId:string,credentialAt:Date,mfaAt:Date|null=null) {
+        stage='session-issue';
         const expiresAt=new Date(credentialAt.getTime()+(mfaAt?ADMIN_SESSION_MS:ADMIN_CHALLENGE_MS));
         if(expiresAt<=now)throw new AdminError(401,'Credential session expired. Sign in again.');
         const user=await ctx.context.internalAdapter.findUserById(userId);if(!user)throw new AdminError(401,'Staff sign-in failed.');
@@ -46,14 +50,18 @@ export function staffPlugin(tx:Prisma.TransactionClient|PrismaClient) {
       }
       if(action==='login') {
         const body=z.object({email:emailSchema,password:passwordSchema}).strict().parse(ctx.body);
+        stage='credential-lookup';
         const identity=await tx.user.findUnique({where:{email:body.email},select:{id:true}});
+        stage='credential-lock';
         if(identity)await tx.$queryRaw`SELECT "userId" FROM "StaffMember" WHERE "userId"=${identity.id} FOR UPDATE`;
+        stage='credential-read';
         const user=await tx.user.findUnique({where:{email:body.email},include:{staffMember:true,accounts:{where:{providerId:'credential'}}}}),account=user?.accounts[0];
         if(!user?.staffMember?.active||!staffRoles.includes(user.staffMember.role as StaffRole)||!user.emailVerified||!account?.password){await hashPassword(body.password);throw new AdminError(401,'Email or password could not be verified.')}
+        stage='credential-verify';
         if(!await verifyPassword({password:body.password,hash:account.password}))throw new AdminError(401,'Email or password could not be verified.');
         await refreshClock();
         ctx.setCookie(deviceCookie,'',{...cookieOptions,maxAge:0});
-        await issue(user.id,now);await audit(user.id,'STAFF_CREDENTIAL_ACCEPTED');return ctx.json({mode:user.staffMember.secret?'challenge':'enroll'});
+        await issue(user.id,now);stage='credential-audit';await audit(user.id,'STAFF_CREDENTIAL_ACCEPTED');return ctx.json({mode:user.staffMember.secret?'challenge':'enroll'});
       }
       if(action==='forgot') {
         const body=z.object({email:emailSchema}).strict().parse(ctx.body);
@@ -117,6 +125,7 @@ export function staffPlugin(tx:Prisma.TransactionClient|PrismaClient) {
       await audit(member.userId,recoveryCodes?'MFA_ENROLLED':'MFA_CHALLENGE_PASSED');
       return ctx.json({mode:'authenticated',...(recoveryCodes?{recoveryCodes}:{})});
     }catch(error){
+      if(!(error instanceof AdminError)&&!(error instanceof z.ZodError)||error instanceof AdminError&&error.status>=500){const {code,kind,sqlState,reason}=databaseErrorSummary(error);console.warn('Staff credential operation unavailable',{action,stage,code,kind,...(sqlState?{sqlState}:{}),...(reason?{reason}:{}),elapsedMs:Math.round(performance.now()-started)})}
       if(error instanceof AdminError)throw new APIError(error.status===401?'UNAUTHORIZED':error.status===403?'FORBIDDEN':error.status===409?'CONFLICT':error.status===503?'SERVICE_UNAVAILABLE':'BAD_REQUEST',{message:error.message});
       if(error instanceof z.ZodError)throw new APIError('BAD_REQUEST',{message:'Check the supplied fields.'});
       throw new APIError('SERVICE_UNAVAILABLE',{message:'Staff authentication is temporarily unavailable.'});
