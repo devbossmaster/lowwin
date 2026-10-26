@@ -4,6 +4,8 @@ Implementation and rehearsal only. The agent has performed **no production write
 
 ## Reviewed baseline
 
+The baseline below is the original morning audit, not the current execution amount. The refreshed private packet and SQL Editor run order are in `.local/admin-production-reset-current/START-HERE.md`; the older `.local/admin-production-reset-20261026/` packet is superseded. Always review the latest manifest and retain its exact hash rather than copying a total from this historical baseline.
+
 The verified-TLS, explicitly read-only audit at `2026-10-26T07:09:28.871Z` found 1,364 identities, one active enrolled Owner, 1,236 wallets, four unsettled v4 auctions and 24 accepted bids from ten players. Actual accepted submission fees total 1,005.00 ETB. Existing AVAILABLE balances total 198.00 ETB; HELD balances and settlements are zero. Expected aggregate AVAILABLE after the proposed compensation is 1,203.00 ETB, before any later verified funding or other legitimate activity.
 
 There are 21 verified payment claims totaling 1,178.00 ETB and two historical staff recovery credits totaling 25.00 ETB. Their credited funds already belong to their wallets. The reset never credits these receipts again. Five payments still carry NEEDS_REVIEW: four open cases and one already-resolved case. Keep their evidence and review them individually; none is automatically credited by the reset.
@@ -31,7 +33,7 @@ The prepared packet has all three acknowledgements set to `REVIEW_REQUIRED`, so 
 - Deploy the maintenance-aware web and workers together in staging first. Do not run the reset against old workers. Both new bids and natural settlement take the shared maintenance lock; the SQL takes its exclusive counterpart. Stop or drain any unverified old instances and cron jobs.
 - Obtain a restorable production backup/PITR checkpoint and verify restoration into an isolated database, including identities, encrypted contacts, MFA key compatibility, ledger, payments and outbox. Retain protected deployment secrets independently; SQL backups do not recover missing encryption keys.
 - Keep all provider activation flags unchanged. The gateway remains undecided. Incoming verified cash evidence and already-due recoveries must remain recoverable while new auction entries pause.
-- Record the Owner's approval of the exact target IDs, compensation totals, snapshot and hash. Only then create a private acknowledgement JSON with `rolloutAcknowledgement: MATCHING_WEB_AND_WORKERS_DEPLOYED`, `backupAcknowledgement: RESTORABLE_BACKUP_VERIFIED`, and `executionAcknowledgement: EXECUTE_REVIEWED_RESET`. Regenerate with `--review <private-file>`; do not hand-edit money or base64 SQL payloads.
+- Record the Owner's approval of the exact target IDs, compensation totals, snapshot and hash. Only then create a private acknowledgement JSON with `rolloutAcknowledgement: MATCHING_WEB_AND_WORKERS_DEPLOYED`, `backupAcknowledgement: RESTORABLE_BACKUP_VERIFIED`, and `executionAcknowledgement: EXECUTE_REVIEWED_RESET`. Include `reviewedManifestHash` matching the preview's manifest hash and `reviewedCompensationEtb` as its exact ETB total string. Regenerate with `--review <private-file>`; the generator rejects missing or stale review bindings, including after a fresh audit. Do not hand-edit money or base64 SQL payloads.
 
 ## Fresh read-only audit and offline generation
 
@@ -68,7 +70,7 @@ Do not retry a provider transfer, cancel a pending provider payment or send noti
 
 ## Verification, restart and rollback
 
-The post-run queries must show one completion audit for the exact hash, all four target auctions CANCELLED with original versions/fee policies, 1,005.00 ETB total compensation for the audited baseline, zero active public auctions, no ledger/journal/hold drift, and the original users and Owner. Compare each private wallet's before/after result, not just aggregate totals. Investigate any new legitimate late credit separately.
+The post-run queries must show one completion audit for the exact hash, every reviewed target CANCELLED with original versions/fee policies, compensation matching the latest private manifest, zero active public auctions, no ledger/journal/hold drift, and the original users and Owner. The original morning baseline was 1,005.00 ETB; it is not the current execution amount. Compare each private wallet's before/after result, not just aggregate totals. Investigate any new legitimate late credit separately.
 
 The rehearsal report in this directory covers both the 31-migration production shape and the current schema, including legacy holds, v4 compensation, referral discounts, a pre-existing winner, forced audit failure, stale snapshots, exact reruns and a late verified deposit. Fixtures are synthetic local databases, not production transactions.
 

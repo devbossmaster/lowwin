@@ -42,9 +42,14 @@ async function scenario(productionShape:boolean){
  let audit=await read(),prepared=prepareReset(audit.inventory,audit.schema,audit.recovery,{runId,reason:'Synthetic reset rehearsal with immutable source evidence',fixture:true});writeResetPackage(prepared.config,out);
  const execute=async()=>{try{await sql.query(fs.readFileSync(path.join(out,'02_guarded_reset.sql'),'utf8'))}catch(e){await sql.query('ROLLBACK');throw e}};
  await assert.rejects(execute,/Review gate/);checks.push(`${name}: unapproved package cannot halt or credit`);
- prepared=prepareReset(audit.inventory,audit.schema,audit.recovery,{runId,reason:'Synthetic reset rehearsal with immutable source evidence',fixture:true,review:ack});writeResetPackage(prepared.config,out);
+ const approve=(config:Record<string,any>)=>({...ack,reviewedManifestHash:config.manifestHash,reviewedCompensationEtb:config.totalCompensation});
+ const firstReview=approve(prepared.config);
+ prepared=prepareReset(audit.inventory,audit.schema,audit.recovery,{runId,reason:'Synthetic reset rehearsal with immutable source evidence',fixture:true,review:firstReview});writeResetPackage(prepared.config,out);
  await creditDevelopmentPoints(db,users[0],'1',randomUUID());await assert.rejects(execute,/Wallet baseline changed/);assert.equal(await db.operation.count({where:{scope:'AUCTION_RESET_COMPENSATION'}}),0);checks.push(`${name}: stale balance aborts before financial changes and keeps maintenance active`);
- audit=await read();prepared=prepareReset(audit.inventory,audit.schema,audit.recovery,{runId,reason:'Synthetic reset rehearsal with immutable source evidence',fixture:true,review:ack});writeResetPackage(prepared.config,out);
+ audit=await read();
+ assert.throws(()=>prepareReset(audit.inventory,audit.schema,audit.recovery,{runId,reason:'Synthetic reset rehearsal with immutable source evidence',fixture:true,review:firstReview}),/Reviewed manifest is missing or changed/);checks.push(`${name}: regenerated snapshot rejects approval of an older manifest before SQL can be written`);
+ prepared=prepareReset(audit.inventory,audit.schema,audit.recovery,{runId,reason:'Synthetic reset rehearsal with immutable source evidence',fixture:true});
+ prepared=prepareReset(audit.inventory,audit.schema,audit.recovery,{runId,reason:'Synthetic reset rehearsal with immutable source evidence',fixture:true,review:approve(prepared.config)});writeResetPackage(prepared.config,out);
  await sql.query(`CREATE FUNCTION test_reset_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action='RESET_COMPLETED' THEN RAISE EXCEPTION 'forced reset audit failure'; END IF; RETURN NEW; END $$`);await sql.query(`CREATE TRIGGER test_reset_failure BEFORE INSERT ON "AdminAudit" FOR EACH ROW EXECUTE FUNCTION test_reset_failure()`);
  try{await assert.rejects(execute,/forced reset audit failure/)}finally{await sql.query('DROP TRIGGER test_reset_failure ON "AdminAudit"');await sql.query('DROP FUNCTION test_reset_failure()')}
  assert.equal(await db.operation.count({where:{scope:'AUCTION_RESET_COMPENSATION'}}),0);checks.push(`${name}: forced final audit failure rolls every refund, hold release and settlement back`);

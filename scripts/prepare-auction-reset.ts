@@ -59,7 +59,15 @@ export function prepareReset(data:Row,schema:Row,recovery:Row,options:{runId:str
   exceptions:{settledAuctions:data.settlements.map((s:Row)=>({auctionId:s.auctionId,outcome:s.outcome})),unresolvedPayments:data.payments.filter((p:Row)=>['PENDING','VERIFYING','SUBMITTING','NEEDS_REVIEW','PROVIDER_OUTAGE','DUPLICATE_CONFLICT'].includes(p.status)).map((p:Row)=>({id:p.id,userId:p.userId,status:p.status,reason:p.reasonCode,caseState:p.caseState})),historicalAdminCredits:recovery.credits??[]},
  };
  config.manifestHash=hash(JSON.stringify(config));
- for(const key of ['rolloutAcknowledgement','backupAcknowledgement','executionAcknowledgement'])config[key]=options.review?.[key]??'REVIEW_REQUIRED';
+ const acknowledgementKeys=['rolloutAcknowledgement','backupAcknowledgement','executionAcknowledgement'],review=options.review;
+ // Approval belongs to this exact snapshot. A review file from an earlier
+ // audit must not silently authorize a regenerated target list or amount.
+ if(review&&acknowledgementKeys.some(key=>review[key]!==undefined&&review[key]!=='REVIEW_REQUIRED')){
+  ensure(review.reviewedManifestHash===config.manifestHash,'Reviewed manifest is missing or changed: review the new hash and compensation before approval');
+  let reviewedCents:bigint|null=null;try{if(typeof review.reviewedCompensationEtb==='string')reviewedCents=money(review.reviewedCompensationEtb)}catch{}
+  ensure(reviewedCents===total,'Reviewed compensation is missing or differs from the exact net fee total');
+ }
+ for(const key of acknowledgementKeys)config[key]=review?.[key]??'REVIEW_REQUIRED';
  ensure(config.runId===options.runId,'Review configuration cannot change the run');
  return {config,summary:{auctions:targets.length,acceptedBids:data.bids.filter((b:Row)=>targetIds.has(b.auctionId)).length,distinctBidders:new Set(participants.map(p=>p.userId)).size,totalCompensation:centsToEtb(total),holdRelease:centsToEtb(releases),blockingExceptions,unresolvedPayments:config.exceptions.unresolvedPayments.filter((p:Row)=>!['RESOLVED','ARCHIVED'].includes(p.caseState)).length,resolvedReviewStatuses:config.exceptions.unresolvedPayments.filter((p:Row)=>['RESOLVED','ARCHIVED'].includes(p.caseState)).length}};
 }
