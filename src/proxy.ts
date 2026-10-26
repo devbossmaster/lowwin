@@ -11,6 +11,10 @@ const publicAssets=new Set(['/logo.png','/banner11.png','/images/lowin-family-he
 export async function proxy(request:NextRequest) {
   const path=request.nextUrl.pathname;
   if(path==='/api/health/live')return NextResponse.next();
+  // Hosted returns are public guidance; callback never mutates money and the
+  // webhook authenticates exact bytes itself. Owned checkout APIs authorize in
+  // their handlers, avoiding duplicate session reads here.
+  if(path==='/payments/chapa/return'||path==='/api/payments/chapa/callback'||path==='/api/payments/chapa/webhook'||path==='/api/payments/chapa'||path==='/api/payments/chapa/checkouts'||/^\/api\/payments\/chapa\/checkouts\/[0-9a-f-]{36}$/i.test(path))return NextResponse.next();
   // Public onboarding artwork must load before a Telegram session exists.
   // Keep this exact allowlist separate from all protected Mini App data.
   if(publicAssets.has(path))return NextResponse.next();

@@ -42,6 +42,22 @@ DO $$ DECLARE t text; BEGIN
   END IF;
  END LOOP;
 END $$;
+-- Hosted Chapa storage is optional until its additive migration is reviewed.
+-- Clear any default grants on these new tables before issuing minimal rights.
+DO $$ DECLARE t text; BEGIN
+ FOREACH t IN ARRAY ARRAY['ChapaCheckout','ChapaWebhookEvent'] LOOP
+  IF EXISTS(SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename=t) THEN
+   IF EXISTS(SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename=t AND tableowner='lowwin_runtime') THEN RAISE EXCEPTION 'Runtime must not own tables'; END IF;
+   EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',t);
+   EXECUTE format('REVOKE ALL ON public.%I FROM lowwin_runtime',t);
+   EXECUTE format('GRANT SELECT,INSERT ON public.%I TO lowwin_runtime',t);
+   IF t='ChapaCheckout' THEN EXECUTE format('GRANT UPDATE ON public.%I TO lowwin_runtime',t); END IF;
+   IF NOT EXISTS(SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename=t AND policyname='lowwin_server_access') THEN
+    EXECUTE format('CREATE POLICY lowwin_server_access ON public.%I TO lowwin_runtime USING (true) WITH CHECK (true)',t);
+   END IF;
+  END IF;
+ END LOOP;
+END $$;
 -- Migrations can run before this group exists. Restore its intended function
 -- access explicitly, while keeping privileged cleanup unavailable to browsers.
 GRANT EXECUTE ON FUNCTION public.cleanup_test_run(text) TO lowwin_runtime;

@@ -5,6 +5,13 @@ vi.mock('../src/modules/auth/mini-access',()=>access);
 import {proxy} from '../src/proxy';
 beforeEach(()=>{vi.clearAllMocks();access.getMiniSession.mockReset()});
 describe('private access during database outages',()=>{
+  it('leaves only exact Chapa callbacks public and delegates private checkout auth to its handlers',async()=>{
+    access.getMiniSession.mockRejectedValue(Error('Database unavailable'));
+    for(const path of ['/payments/chapa/return','/api/payments/chapa/callback','/api/payments/chapa/webhook','/api/payments/chapa','/api/payments/chapa/checkouts','/api/payments/chapa/checkouts/11111111-1111-4111-a111-111111111111'])expect((await proxy(new NextRequest('http://localhost'+path))).headers.get('x-middleware-next')).toBe('1');
+    expect(access.getMiniSession).not.toHaveBeenCalled();
+    access.getMiniSession.mockResolvedValue(null);
+    for(const path of ['/api/payments/chapa/webhook/extra','/api/payments/chapa/callback/extra','/api/payments/chapa/checkouts/not-a-uuid','/api/payments/chapa/checkouts/11111111-1111-4111-a111-111111111111/extra'])expect((await proxy(new NextRequest('http://localhost'+path))).status).toBe(401);
+  });
   it('preserves a customer deep link through the Telegram entry without allowing other destinations',async()=>{
     access.getMiniSession.mockResolvedValue(null);
     const response=await proxy(new NextRequest('https://localhost/auctions/123?checkout=11111111-1111-4111-a111-111111111111'));

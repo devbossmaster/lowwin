@@ -35,6 +35,7 @@ model User {
   staffMember         StaffMember?
   testRunActors       TestRunActor[]
   arifPayCheckouts     ArifPayCheckout[]
+  chapaCheckouts       ChapaCheckout[]
   referralInvite      ReferralInvite?
   referralSignups     ReferralSignup[]       @relation("ReferralSponsor")
   referredSignup      ReferralSignup?        @relation("ReferralNewUser")
@@ -193,6 +194,7 @@ model Journal {
   createdAt     DateTime  @default(now())
   transactionId BigInt    @default(dbgenerated("txid_current()"))
   postings      Posting[]
+  chapaCheckout ChapaCheckout?
 }
 
 model Posting {
@@ -325,6 +327,7 @@ model Auction {
   feeRevisions        AuctionFeeRevision[]
   controlRevisions    AuctionControlRevision[]
   arifPayCheckouts     ArifPayCheckout[]
+  chapaCheckouts       ChapaCheckout[]
 
   @@index([status, startsAt, endsAt])
   @@index([categoryId, status])
@@ -437,6 +440,7 @@ model Bid {
   winningSettlement AuctionSettlement?
   referralSignup    ReferralSignup?       @relation("ReferralFirstBid")
   referralRedemption ReferralRedemption?
+  chapaCheckout     ChapaCheckout?
 
   @@unique([userId, auctionId, amount])
   @@unique([auctionId, acceptanceOrder])
@@ -480,6 +484,74 @@ model ArifPayCheckout {
   @@unique([userId, key])
   @@index([status, nextCheckAt])
   @@index([userId, createdAt])
+}
+
+// Hosted Chapa v2 attempts are additive; verified funds use the existing ledger.
+// Purpose, environment, expected cents and source auction quote are immutable.
+model ChapaCheckout {
+  id                    String    @id @default(uuid())
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+  purpose               String
+  mode                  String
+  credentialFingerprint String
+  key                   String
+  requestHash           String
+  initialization        Json
+  phoneCipher           String?
+  phoneBotId            String?
+  merchantReference     String    @unique
+  chapaReference        String?   @unique
+  checkoutUrl           String?
+  amountCents           BigInt
+  currency              String    @default("ETB")
+  auctionId             String?
+  auction               Auction?  @relation(fields: [auctionId], references: [id], onDelete: Restrict)
+  auctionSlug           String?
+  bidNumber             Decimal?  @db.Decimal
+  feeVersion            Int?
+  grossFee              Decimal?  @db.Decimal
+  discountPoints        Decimal   @default(0) @db.Decimal
+  // A quote snapshot only. Redemption remains owned by the referral command.
+  couponId              String?
+  status                String    @default("SUBMITTING")
+  reason                String?
+  creditJournalId       String?   @unique
+  creditJournal         Journal?  @relation(fields: [creditJournalId], references: [id], onDelete: Restrict)
+  bidId                 String?   @unique
+  bid                   Bid?      @relation(fields: [bidId], references: [id], onDelete: Restrict)
+  receipt               Json?
+  evidenceHash          String?
+  paymentMethod         String?
+  processorReference    String?
+  serviceFeeCents       BigInt?
+  attempts              Int       @default(0)
+  nextCheckAt           DateTime  @default(now())
+  leaseUntil            DateTime?
+  expiresAt             DateTime
+  providerCreatedAt     DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@unique([userId, key])
+  @@index([status, nextCheckAt])
+  @@index([userId, createdAt])
+}
+
+// Authenticated delivery hashes are durable hints, never payment authority.
+// No webhook body, customer contact or provider secret is retained here.
+model ChapaWebhookEvent {
+  id                       String   @id @default(uuid())
+  mode                     String
+  configurationFingerprint String
+  bodyHash                 String
+  merchantReference        String?
+  chapaReference           String?
+  event                    String
+  receivedAt               DateTime @default(now())
+
+  @@unique([mode, configurationFingerprint, bodyHash])
+  @@index([merchantReference, receivedAt])
 }
 
 model TopUpIntent {

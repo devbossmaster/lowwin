@@ -2,6 +2,10 @@ import {describe,expect,it} from 'vitest';
 import {arifPayAvailability,arifPayCanaryAllowed,createdArifPaySession,parseArifPayEvidence} from '../src/modules/payments/arifpay-provider';
 const live={ARIFPAY_ENABLED:'true',ARIFPAY_SCHEMA_READY:'true',ARIFPAY_MERCHANT_REVIEWED:'true',APP_ENV:'production',NODE_ENV:'production',BETTER_AUTH_URL:'https://lowin.example',MINI_APP_URL:'https://lowin.example/telegram',ARIFPAY_API_KEY:'merchant-server-key-with-production-access',ARIFPAY_WEBHOOK_TOKEN:'independent-server-callback-token-at-least-32',ARIFPAY_BASE_URL:'https://gateway.arifpay.net',ARIFPAY_CURRENCY:'ETB'};
 describe('ArifPay provider boundary',()=>{
+ it('stops new ArifPay charges when Chapa is selected and preserves historical recovery',()=>{
+  expect(arifPayAvailability({...live,PAYMENT_GATEWAY:'CHAPA'})).toMatchObject({enabled:false,recoveryEnabled:true});
+  expect(arifPayAvailability({...live,PAYMENT_GATEWAY:'ARIFPAY'})).toMatchObject({enabled:true,recoveryEnabled:true});
+ });
  it('enforces both configured canary account and auction allowlists',()=>{
   const config={ARIFPAY_CANARY_USER_IDS:'player-one, player-two',ARIFPAY_CANARY_AUCTION_SLUGS:'reviewed-auction'};
   expect(arifPayCanaryAllowed('player-one','reviewed-auction',config)).toBe(true);
