@@ -1,3 +1,4 @@
 import {LegalPage} from '@/components/help-pages';
 import {privacyDocument} from '@/content/help';
-export default function Privacy(){return <LegalPage document={privacyDocument} kind="privacy"/>}
+import {publicLegalContent} from '@/modules/admin/public-content';
+export default async function Privacy(){return <LegalPage document={await publicLegalContent('privacy')??privacyDocument} kind="privacy"/>}

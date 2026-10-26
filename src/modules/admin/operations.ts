@@ -15,6 +15,10 @@ import { demoBidAllowed } from '../auctions/bids';
 import { reconcile } from '../wallet/ledger';
 import {clearPublicDataCache} from '../cache/public-data';
 import {retireAuctionEndingAlerts,retireAuctionPromotions} from '../notifications/service';
+import {workspaceRead} from './workspace';
+import {experienceSchema,legalSchema} from './content-schema';
+import {auctionMaintenance} from '../auctions/maintenance';
+import {defaultHomeCopy} from '@/components/home-copy';
 
 const id=z.string().uuid(),key=z.string().uuid(),version=z.number().int().min(0),text=(n:number)=>z.string().trim().min(1).max(n);
 const points=z.string().regex(/^(0|[1-9]\d{0,8})(?:\.\d{1,2})?$/),localized=(n:number)=>z.string().trim().max(n).optional().default('');
@@ -23,7 +27,7 @@ const schemas={
   category:z.object({key,id:id.optional(),version,name:text(80),nameAm:text(80),slug:text(80).regex(/^[a-z0-9-]+$/),description:text(600),descriptionAm:text(600),visible:z.boolean(),requiresEligibilityReview:z.boolean()}).strict(),
   product:z.object({key,id:id.optional(),version,title:text(120),titleAm:localized(120),slug:text(100).regex(/^[a-z0-9-]+$/),description:text(1500),descriptionAm:localized(1500),condition:text(100),conditionAm:localized(100),categoryId:id,isDemo:z.boolean(),visible:z.boolean(),imageIds:z.array(id).max(8)}).strict(),
   media:z.object({key,mime:z.enum(['image/png','image/jpeg','image/webp']),data:z.string().max(2800000).regex(/^[A-Za-z0-9+/]+={0,2}$/),sourceType:z.enum(['ORIGINAL','LICENSED','SUPPLIED']).default('SUPPLIED'),sourceCredit:z.string().trim().max(300).default(''),rightsConfirmed:z.literal(true).optional()}).strict(),
-  content:z.object({key,id:z.enum(['home','faq']),version,body:z.unknown()}).strict(),
+  content:z.object({key,id:z.enum(['home','faq','experience','terms','privacy']),version,body:z.unknown()}).strict(),
   draft:z.object({key,auctionId:id.optional(),version,body:draftBodySchema}).strict(),
   publish:z.object({key,auctionId:id,version}).strict(),
   fee:z.object({key,auctionId:id,version,feePoints:points,reason:text(1000)}).strict(),
@@ -72,16 +76,18 @@ export async function publicationPreflight(tx:Prisma.TransactionClient,auctionId
 export async function adminMutation(client:PrismaClient,headers:Headers,action:AdminAction,raw:unknown) {
   if(!Object.hasOwn(schemas,action))throw new AdminError(404,'Unknown admin command.');
   const highRisk=['cancel','publish','fee','deadline','presentation','removeCancelled'].includes(action);
-  const input=schemas[action].parse(raw),owner=await requireAdmin(client,headers,{permission:highRisk?'cancel':'catalog'}),hash=digest(JSON.stringify({action,input}));
+  const input=schemas[action].parse(raw),permission=action==='content'&&['terms','privacy'].includes(schemas.content.parse(input).id)?'settings':highRisk?'cancel':'catalog',owner=await requireAdmin(client,headers,{permission}),hash=digest(JSON.stringify({action,input}));
   // All auction writes acquire the auction row BEFORE staff/idempotency and wallet
   // locks. The unchanged cancellation command then locks wallet keys in stable order.
   const receipt=await client.$transaction(async tx=>{
+    const paused=await auctionMaintenance(tx);
+    if(action==='publish'&&paused)throw new AdminError(503,'Publication is paused for auction maintenance.');
     if('auctionId' in input&&input.auctionId)await lockAuction(tx,input.auctionId);
     const operationKey=`${owner.id}:${input.key}`;await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`admin:${operationKey}`},0))`;
-    const actor=await requireAdmin(tx,headers,{lock:true,fresh:highRisk,permission:highRisk?'cancel':'catalog'});
+    const actor=await requireAdmin(tx,headers,{lock:true,permission});
     const previous=await tx.adminAudit.findUnique({where:{operationKey}});
     if(previous){if(previous.requestHash!==hash)throw new AdminError(409,'Idempotency key was used with different input.');return (previous.details as {receipt:unknown}).receipt}
-    let receipt:unknown,target='';
+    let receipt:unknown,target='',contentBefore:unknown=undefined;
     if(action==='category'){
       const data=schemas.category.parse(input);const {key:_,id:categoryId,version:expected,...fields}=data;
       if(categoryId){await tx.$queryRaw`SELECT id FROM "Category" WHERE id=${categoryId} FOR UPDATE`;const current=await tx.category.findUniqueOrThrow({where:{id:categoryId}});if(current.version!==expected)throw new AdminError(409,'Category changed. Reload before saving.');if(await tx.auction.count({where:{categoryId,publishedAt:{not:null}}}))throw new AdminError(409,'Published inventory is frozen. Create a replacement category.');receipt=await tx.category.update({where:{id:categoryId},data:{...fields,version:{increment:1}}})}
@@ -103,9 +109,14 @@ export async function adminMutation(client:PrismaClient,headers:Headers,action:A
       receipt=await tx.product.findUniqueOrThrow({where:{id:target},include:{images:true}});
     }else if(action==='content'){
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('admin:content',0))`;
-      const data=schemas.content.parse(input),body=data.id==='home'?homeContentSchema.parse(data.body):faqContentSchema.parse(data.body),current=await tx.siteContent.findUnique({where:{id:data.id}});
+      const data=schemas.content.parse(input),body=data.id==='home'?homeContentSchema.parse(data.body):data.id==='faq'?faqContentSchema.parse(data.body):data.id==='experience'?experienceSchema.parse(data.body):legalSchema.parse(data.body),storageId=data.id==='faq'?'faq':'home',current=await tx.siteContent.findUnique({where:{id:storageId}});
       if((current?.version??0)!==data.version)throw new AdminError(409,'Content changed. Reload before saving.');
-      receipt=await tx.siteContent.upsert({where:{id:data.id},create:{id:data.id,body:asJson(body)},update:{body:asJson(body),version:{increment:1}}});target=data.id;
+      contentBefore=current?{id:current.id,version:current.version,body:current.body}:null;
+      // The production schema intentionally permits only home / faq rows.
+      // Keep managed subdocuments inside home, preserving every other section.
+      const previous=(current?.body??{}) as Record<string,unknown>,field=data.id==='experience'?'managedExperience':data.id==='terms'?'managedTerms':'managedPrivacy';
+      const stored=data.id==='faq'?body:data.id==='home'?{...previous,...body}:{...previous,[field]:body};
+      const saved=await tx.siteContent.upsert({where:{id:storageId},create:{id:storageId,body:asJson(stored)},update:{body:asJson(stored),version:{increment:1}}});receipt={id:data.id,version:saved.version,body,updatedAt:saved.updatedAt};target=data.id;
     }else if(action==='draft'){
       const data=schemas.draft.parse(input);
       if(data.auctionId){const auction=await tx.auction.findUniqueOrThrow({where:{id:data.auctionId},include:{draft:true}});if(auction.publishedAt||auction.status!=='DRAFT')throw new AdminError(409,'Published auctions are immutable. Cancel and replace.');if(auction.draft?.version!==data.version)throw new AdminError(409,'Draft changed. Reload before saving.');await tx.auctionDraft.update({where:{auctionId:data.auctionId},data:{body:asJson(data.body),version:{increment:1}}});target=data.auctionId}
@@ -169,7 +180,13 @@ export async function adminMutation(client:PrismaClient,headers:Headers,action:A
     }else if(action==='removeCancelled'){
       const data=schemas.removeCancelled.parse(input),auction=await tx.auction.findUniqueOrThrow({where:{id:data.auctionId},include:{settlement:{select:{outcome:true}}}});
       if(auction.controlVersion!==data.version)throw new AdminError(409,'Auction controls changed. Reload before saving.');if(data.confirmation!==auction.code)throw new AdminError(422,'Type the exact auction code to remove its public page.');if(auction.status!=='CANCELLED'||auction.settlement?.outcome!=='CANCELLED')throw new AdminError(409,'Only a committed cancelled auction can be removed from public discovery.');
-      const controlVersion=auction.controlVersion+1;await tx.auctionControlRevision.create({data:{auctionId:auction.id,version:controlVersion,kind:'PRESENTATION',before:{publicSlug:auction.slug,featured:auction.featured},after:{publicSlug:null,featured:false},actorId:actor.id,reason:data.reason,operationKey}});await tx.auction.update({where:{id:auction.id},data:{slug:null,featured:false,controlVersion}});target=auction.id;receipt={auctionId:auction.id,removedFromPublic:true,reason:data.reason};
+      // Published rows must retain their slug under the deployed database guard.
+      // Archive only an exclusive product; never hide a different live listing
+      // or a finalized winner that happens to share its catalog product.
+      if(!auction.productId)throw new AdminError(409,'The cancelled listing has no catalog product to archive.');
+      await tx.$queryRaw`SELECT id FROM "Product" WHERE id=${auction.productId} FOR UPDATE`;
+      if(await tx.auction.count({where:{productId:auction.productId,id:{not:auction.id},publishedAt:{not:null},status:{not:'CANCELLED'}}}))throw new AdminError(409,'This product is shared with another published listing. Keep its history visible and review the catalog separately.');
+      const controlVersion=auction.controlVersion+1;await tx.auctionControlRevision.create({data:{auctionId:auction.id,version:controlVersion,kind:'PRESENTATION',before:{publicSlug:auction.slug,featured:auction.featured},after:{publicSlug:auction.slug,featured:false,catalogArchived:true},actorId:actor.id,reason:data.reason,operationKey}});await tx.product.update({where:{id:auction.productId},data:{visible:false,version:{increment:1}}});await tx.auction.update({where:{id:auction.id},data:{featured:false,controlVersion}});target=auction.id;receipt={auctionId:auction.id,removedFromPublic:true,slugPreserved:true,reason:data.reason};
     }else if(action==='cancel'){
       const data=schemas.cancel.parse(input),impact=await cancellationImpact(tx,data.auctionId);
       if(data.confirmation!==impact.code)throw new AdminError(422,'Type the exact auction code to confirm cancellation.');
@@ -183,22 +200,23 @@ export async function adminMutation(client:PrismaClient,headers:Headers,action:A
       const suffix=randomUUID().slice(0,12),now=actor.now,body={productId:original.productId,startsAt:new Date(now.getTime()+3600000).toISOString(),endsAt:new Date(now.getTime()+86400000).toISOString(),minPoints:original.terms.minPoints.toString(),stepPoints:original.terms.stepPoints.toString(),entryFeePoints:original.terms.entryFeePoints.toString(),fulfillmentSummary:original.fulfillmentSummary!,fulfillmentSummaryAm:original.fulfillmentSummaryAm??'',fulfillmentRegion:original.fulfillmentRegion!,fulfillmentRegionAm:original.fulfillmentRegionAm??'',featured:original.featured,maxExtensionMinutes:original.terms.maxExtensionMinutes,allowPaidShortening:original.terms.allowPaidShortening,shortenNoticeMinutes:original.terms.shortenNoticeMinutes};
       const replacement=await tx.auction.create({data:{code:`LW-${suffix.toUpperCase()}`,slug:`lowin-${suffix}`,isDemo:original.isDemo,draft:{create:{body}}}});target=replacement.id;receipt={auctionId:target,replaces:original.id};
     }
-    await tx.adminAudit.create({data:{actorId:actor.id,action:action.toUpperCase(),target,operationKey,requestHash:hash,details:{receipt:asJson(receipt)}}});return receipt;
+    await tx.adminAudit.create({data:{actorId:actor.id,action:action.toUpperCase(),target,operationKey,requestHash:hash,details:{receipt:asJson(receipt),...(contentBefore!==undefined?{before:asJson(contentBefore)}:{})}}});return receipt;
   },{timeout:120000,maxWait:15000,isolationLevel:Prisma.TransactionIsolationLevel.ReadCommitted});
   if(['category','product','deleteProduct','content','publish','fee','deadline','presentation','removeCancelled','cancel'].includes(action))await clearPublicDataCache();
   return receipt;
 }
 export async function adminRead(client:PrismaClient,headers:Headers,path:string[],params=new URLSearchParams()) {
+  if(path[0]==='workspace')return workspaceRead(client,headers,path[1],params);
   if(sectionPermission[path[0]])return opsRead(client,headers,path,params);
   const actor=await requireAdmin(client,headers);
   if(path[0]==='support')throw new AdminError(404,'Admin resource not found.');
   if(path[0]==='me')return {role:actor.role,permissions:permissions(actor.role),expiresAt:actor.expiresAt,mfaAt:actor.mfaAt};
   if(path[0]!=='dashboard'){const permission=path[0]==='reconciliation'||path[2]==='proof'?'audit':path[2]==='impact'?'cancel':'catalog';assertPermission(actor.role,permission)}
   if(path[0]==='dashboard')return readOverview(client,actor);
-  if(path[0]==='categories')return client.category.findMany({orderBy:{name:'asc'}});
+  if(path[0]==='categories'){if(params.get('list')==='1'){const {page,q,status}=pageInput(params);if(!['','VISIBLE','HIDDEN'].includes(status))throw new AdminError(422,'Choose a valid visibility.');const where:Prisma.CategoryWhereInput={...(q?{OR:[{name:{contains:q,mode:'insensitive'}},{nameAm:{contains:q,mode:'insensitive'}}]}:{}),...(status?{visible:status==='VISIBLE'}:{})};const [items,total]=await Promise.all([client.category.findMany({where,orderBy:[{name:'asc'},{id:'asc'}],take:25,skip:(page-1)*25}),client.category.count({where})]);return {items,total,page,totalPages:Math.ceil(total/25)}}return client.category.findMany({orderBy:[{name:'asc'},{id:'asc'}]})}
   if(path[0]==='products'&&path[1])return client.product.findUniqueOrThrow({where:{id:id.parse(path[1])},include:{images:true,category:{select:{name:true}}}});
   if(path[0]==='products'){const {page,q,status,category}=pageInput(params),where={...(q?{title:{contains:q,mode:'insensitive' as const}}:{}),...(category?{categoryId:category}:{}),...(status==='VISIBLE'?{visible:true}:status==='HIDDEN'?{visible:false}:{})},total=await client.product.count({where});return {items:await client.product.findMany({where,include:{images:true,category:{select:{name:true}},_count:{select:{auctions:{where:{publishedAt:{not:null}}}}}},orderBy:[{title:'asc'},{id:'asc'}],take:25,skip:(page-1)*25}),total,page,totalPages:Math.ceil(total/25)}}
-  if(path[0]==='content')return client.siteContent.findMany();
+  if(path[0]==='content'){const rows=await client.siteContent.findMany(),home=rows.find(r=>r.id==='home'),body=(home?.body??{}) as Record<string,unknown>,copy={headline:body.headline,lead:body.lead,headlineAm:body.headlineAm,leadAm:body.leadAm},parsed=homeContentSchema.safeParse(copy),base={version:home?.version??0,updatedAt:home?.updatedAt??null};return [{id:'home',...base,body:parsed.success?parsed.data:defaultHomeCopy},...(rows.find(r=>r.id==='faq')?[rows.find(r=>r.id==='faq')!]:[]),...(['experience','terms','privacy'] as const).map(id=>({id,...base,body:body[id==='experience'?'managedExperience':id==='terms'?'managedTerms':'managedPrivacy']??null}))]}
   if(path[0]==='reconciliation')return {drift:asJson(await reconcile(client)),checkedAt:actor.now.toISOString()};
   if(path[0]==='auctions'&&!path[1])return auctionList(client,actor.now,pageInput(params));
   if(path[0]==='auctions'&&path[1]){

@@ -6,7 +6,7 @@ export async function staffRateLimit(client:PrismaClient,action:string,request:R
   const body=await request.clone().json().catch(()=>({}));
   // A browser can append arbitrary cookies or rotate incomplete sessions. MFA
   // limits follow the verified account, never the raw Cookie header or proxy IP.
-  const session=['enroll','mfa','step-up','logout'].includes(action)?await createAuth(client).api.getSession({headers:request.headers}):null;
+  const session=['enroll','mfa','logout'].includes(action)?await createAuth(client).api.getSession({headers:request.headers}):null;
   const identity=session?`user:${session.user.id}`:typeof body.email==='string'?body.email.trim().toLowerCase():String(body.token??'anonymous');
   const key=`staff:${action}:${digest(identity)}`;
   return client.$transaction(async tx=>{

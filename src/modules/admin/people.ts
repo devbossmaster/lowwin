@@ -42,9 +42,9 @@ export async function peopleRead(client:PrismaClient,actor:{id:string;role:Staff
  }
  if(section!=='fulfillment')throw new AdminError(404,'People task not found.');
  const queue=await deliveryQueue(client,actor,{page,q,status});
- const settlements=await client.auctionSettlement.findMany({where:{auctionId:{in:queue.items.map(r=>r.auctionId)}},select:{auctionId:true,winningPoints:true,winner:{select:identity},auction:{select:{publicCode:true,presentation:true}}}});
+ const settlements=await client.auctionSettlement.findMany({where:{auctionId:{in:queue.items.map(r=>r.auctionId)}},select:{auctionId:true,ruleVersion:true,winningPoints:true,winner:{select:identity},auction:{select:{publicCode:true,presentation:true}}}});
  const cases=await client.fulfillmentCase.findMany({where:{auctionId:{in:queue.items.map(r=>r.auctionId)}},select:{auctionId:true,deliveredAt:true}});
- const items=queue.items.map(row=>{const settled=settlements.find(s=>s.auctionId===row.auctionId),presentation=settled?.auction.presentation as {title?:string}|null;return {...row,title:presentation?.title??row.title,publicCode:settled?.auction.publicCode,winner:settled?.winner?contact(settled.winner):null,winningAmount:settled?.winningPoints?.toString()??null,deliveredAt:cases.find(c=>c.auctionId===row.auctionId)?.deliveredAt??null}});
+ const items=queue.items.map(row=>{const settled=settlements.find(s=>s.auctionId===row.auctionId),presentation=settled?.auction.presentation as {title?:string}|null;return {...row,title:presentation?.title??row.title,publicCode:settled?.auction.publicCode,winner:settled?.winner?contact(settled.winner):null,winningAmount:settled?.winningPoints?.toString()??null,ruleVersion:settled?.ruleVersion??null,deliveredAt:cases.find(c=>c.auctionId===row.auctionId)?.deliveredAt??null}});
  if(items.length)await client.adminAudit.create({data:{actorId:actor.id,action:'DELIVERY_CONTACT_LIST_READ',target:'deliveries',details:{count:items.length}}});
  return {...queue,items};
 }

@@ -6,18 +6,19 @@ import {ArrowRight,Trophy} from 'lucide-react';
 import {MiniPhrase,useMiniLocale} from './mini-locale';
 import styles from './home-banner.module.css';
 import type {LearnMoreMedia} from '@/lib/learn-more-media';
+import type {HomeExperience} from '@/modules/admin/content-schema';
 // Keep the current page visible while the sheet's code loads.
 const LearnMoreSheet=dynamic(()=>import('./learn-more-sheet'),{loading:()=>null});
 type Copy={headline:string;headlineAm:string;lead:string;leadAm:string};
-export function HomeHero({videoId,media}:{copy:Copy;videoId?:string|null;media?:LearnMoreMedia|null}){
+export function HomeHero({copy,videoId,media,experience}:{copy:Copy;videoId?:string|null;media?:LearnMoreMedia|null;experience?:HomeExperience|null}){
  const [learn,setLearn]=useState(false);
  const learnButton=useRef<HTMLButtonElement>(null);
  const {language}=useMiniLocale();
- const headline=language==='am'?'ትንሽ ዋጋ። ትልቅ ደስታ።':'Small price. Big joy.';
- const lead=language==='am'?'ዝቅተኛና ያልተደገመ ዋጋ ያሸንፋል።':'The lowest unique bid wins.';
+ const headline=language==='am'?copy.headlineAm:copy.headline;
+ const lead=language==='am'?copy.leadAm:copy.lead;
  return <>
   <section className={styles.banner} aria-labelledby="home-headline" lang={language}>
-   <Image src={`/images/lowwin-home-banner-${language}.webp`} alt={language==='am'?'ለማሳያ የተዘጋጀ የኢትዮጵያ ቤተሰብ ከብስክሌት፣ ከቡና ማሽን እና ከሻንጣ ጋር':'Illustrative Ethiopian family with a bicycle, coffee machine and suitcase'} fill sizes="(max-width:480px) 100vw, 480px" quality={75} preload/>
+   <Image src={(language==='am'?experience?.bannerAm:experience?.bannerEn)||`/images/lowwin-home-banner-${language}.webp`} alt={language==='am'?'የLowwin ማስተዋወቂያ ምስል፤ ለማሳያ የተዘጋጀ':'Lowwin promotional image; illustrative scene'} fill sizes="(max-width:480px) 100vw, 480px" quality={75} preload/>
    <div className="sr-only"><h1 id="home-headline">{headline}</h1><p>{lead}</p></div>
    <div className={styles.introActions}>
     <button ref={learnButton} type="button" onClick={()=>setLearn(true)}><MiniPhrase en="Learn more" am="ተጨማሪ ይወቁ"/><ArrowRight size={15}/></button>
@@ -25,6 +26,6 @@ export function HomeHero({videoId,media}:{copy:Copy;videoId?:string|null;media?:
    </div>
    <small className={styles.illustration}><MiniPhrase en="Illustrative scene" am="ለማሳያ የተዘጋጀ ምስል"/></small>
   </section>
-  {learn&&<LearnMoreSheet onClose={()=>setLearn(false)} videoId={videoId} media={media} returnFocusRef={learnButton}/>}
+  {learn&&<LearnMoreSheet onClose={()=>setLearn(false)} videoId={videoId} media={media} intro={experience?{en:experience.learnIntroEn,am:experience.learnIntroAm}:undefined} returnFocusRef={learnButton}/>}
  </>;
 }

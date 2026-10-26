@@ -1,7 +1,7 @@
 'use client';
 import {useState} from 'react';
 import {RefreshCw} from 'lucide-react';
-import {AdminHeading,ErrorNotice,MfaStepUp,eat,useAdminMutation,useAdminRead} from './admin-ui';
+import {AdminHeading,ErrorNotice,eat,useAdminMutation,useAdminRead} from './admin-ui';
 import type {ReferralAdminRead,ReferralPolicyReceipt} from '@/modules/admin/referrals';
 import styles from './admin-referral-policy.module.css';
 
@@ -27,7 +27,7 @@ export function AdminReferralPolicy(){
       <button disabled={!dirty||mutation.busy}>{mutation.busy?'Saving…':'Save reward settings'}</button>
      </fieldset>
     </form>
-    <MfaStepUp visible={mutation.error.startsWith('Fresh MFA')} purpose="change referral reward settings"/>
+    {null}
     <ErrorNotice error={mutation.error}/>
     {saved&&<p className="admin-notice" role="status">Saved: {saved.discountPercent}% discount, valid for {saved.expiryDays} days. New rewards are {saved.enabled?'enabled':'paused'}.</p>}
    </section>

@@ -1,0 +1,131 @@
+{
+  "source": "Read-only production schema inventory; migration metadata only, no customer data",
+  "snapshotAt": "2026-10-26T07:09:28.871Z",
+  "schemaHash": "d0010c66796b84390685060d62b1e6770d2b0c8b0688a4b79686029acc5d93c8",
+  "migrations": [
+    {
+      "migration_name": "202609260001_foundation",
+      "checksum": "70ef21cc14d6461b7aea125b23948755f64e1c6f0e2b4d178805c0e5c941d288"
+    },
+    {
+      "migration_name": "202609260002_ledger_invariants",
+      "checksum": "cb9aa5fd6610c989178d19a99a71989965f64fd6495d75c665312435bbdb65bd"
+    },
+    {
+      "migration_name": "202609270001_hold_integrity",
+      "checksum": "e2c50d11ef9a62b1564fd4dd24b901888881df4dfa5b7cc4949cd87a08ad689d"
+    },
+    {
+      "migration_name": "202609270002_catalog",
+      "checksum": "eaea0a568679ad7dd27cf61241caaf0541f58c735bebcbf7e37131fba6d108df"
+    },
+    {
+      "migration_name": "202609270003_accepted_bids",
+      "checksum": "b2d5699076eea055258bba76a0f08fb0e86755fd3b625099684009742a02b5a8"
+    },
+    {
+      "migration_name": "202609270004_auction_settlement",
+      "checksum": "aadb8f838809baf2ff72fcb42899cecf1c2b1c5262ab08e7c0ba3cadfda71cc1"
+    },
+    {
+      "migration_name": "202609270005_settlement_lock_guard",
+      "checksum": "b54933b306648cde8ed9cb9898d7315005a16f77667c3b585d82b55155dc0722"
+    },
+    {
+      "migration_name": "202609270006_personal_pages",
+      "checksum": "14d7154e9aa99f0af81d7e8f2b7c77107479c5cba25c36d94869d740ba928053"
+    },
+    {
+      "migration_name": "202609270007_admin_foundation",
+      "checksum": "0a6885f1fedf2a592b23ee61583311477c3c0c126dc5cff4cc3cab36f730f28f"
+    },
+    {
+      "migration_name": "202609270008_operations_notifications",
+      "checksum": "dfced92b8ead2b25fb30b1f4690f6a02f88a420faadf362d49322239b61d479a"
+    },
+    {
+      "migration_name": "202609280001_verified_topups",
+      "checksum": "ac3b9217c37e3fb03a97b65cdbb9a623392f1b7d9522398387a380fe68bc313f"
+    },
+    {
+      "migration_name": "202609280002_scheduler_indexes",
+      "checksum": "c9a4efda323f075cf71baaaacc794527ccba4a6fec7368151512c70387b2801f"
+    },
+    {
+      "migration_name": "202609280003_telegram_launch_boundary",
+      "checksum": "c5dea386b933a9ad1e5fa9b9194e3792202b4104a397e75c9af3e80ff0164e14"
+    },
+    {
+      "migration_name": "202609280004_own_contact",
+      "checksum": "d52dd8f46a85cbd6a7164defb005273b6476ce89d274e766c479fd15ff0816a0"
+    },
+    {
+      "migration_name": "202609280005_etb_conversion",
+      "checksum": "094f13f8c252ed57b56d4eccc41a9517223082f6152e577b119ebba75bee43c0"
+    },
+    {
+      "migration_name": "202609280006_public_auction_views",
+      "checksum": "d37819b3a14f3c4e7571d94538aa4dab4792a703213c2c512f632195f9948eef"
+    },
+    {
+      "migration_name": "202609280007_numeric_public_auction_codes",
+      "checksum": "46025d0525c08af007b7075029a8ac66b2ec848fa573d44d2ac48687a65adfa7"
+    },
+    {
+      "migration_name": "202609290001_frozen_auction_v2",
+      "checksum": "e7cd64bb2fbbec66d8251507ac09e8fa6f81f98b4bf374b8a7050444e75f4f1f"
+    },
+    {
+      "migration_name": "202609300001_cent_money_v3",
+      "checksum": "5a421c57121f21a8095c5d4c48f5da5f6e2e3ead30a85badb846380e2eaa29f7"
+    },
+    {
+      "migration_name": "202609300002_staff_trusted_devices",
+      "checksum": "414ae5c549e7e366cac1538aaa51daa4a2b7b9be4415103db222a6ad24a1defd"
+    },
+    {
+      "migration_name": "202609300003_receipt_amount_funding",
+      "checksum": "81c21defba6a0b83bae04924a13cbd4016eaf5c5f2e099ec921e0c4724f3f0d3"
+    },
+    {
+      "migration_name": "202609300005_payment_attempt_lookup",
+      "checksum": "d74f1d4522747de3d61bff47957cc3d6e9223aecce06284b7d53cb82f757f2ca"
+    },
+    {
+      "migration_name": "202609300006_live_controls_and_test_runs",
+      "checksum": "782d8dde02521908c4a03b09ced71f941e1cc492dd48ee1890b56a7e47d67f21"
+    },
+    {
+      "migration_name": "202609300007_verify_et_queue",
+      "checksum": "735cbbe61b59f095e6899b7b0da6b38ea53ec0d5a74834cfe7d57d95df9fb723"
+    },
+    {
+      "migration_name": "202610010001_category_localization",
+      "checksum": "3ff996c94a4804774a5623435c6ba26cec17bacd913fce679c4c47ac00230a3c"
+    },
+    {
+      "migration_name": "202610010002_product_auction_localization",
+      "checksum": "0b4b5313373d60ff82e19a03be84a77c15535f5d9dcbde41a0dd8253d3d16c6a"
+    },
+    {
+      "migration_name": "202610020001_unbounded_v3_bids",
+      "checksum": "f58781fa22e5c9028636963bab38f1719270727fcb16fd8f3c5d6c7766688114"
+    },
+    {
+      "migration_name": "202610020002_submission_fee_bids",
+      "checksum": "ab241024c8e4a61729b6f49b4fd506a882168b5e8725180007eff4b2ca8956f0"
+    },
+    {
+      "migration_name": "202610050001_mpesa_receiving_accounts",
+      "checksum": "f3cd2c50c4e12d70a645e100b3377b573ef8bb390b573c9dc24c2b158e3b2413"
+    },
+    {
+      "migration_name": "202610060001_published_auction_controls",
+      "checksum": "b0f376c6325020c99dcd41796a5efdc65729fa20b37083f4676f5b78d86ecb61"
+    },
+    {
+      "migration_name": "202610110001_admin_wallet_credit",
+      "checksum": "245d1243378f913f912162a7403eb668cc29425815b7dd3b417a813f8fcfeeb2"
+    }
+  ]
+}

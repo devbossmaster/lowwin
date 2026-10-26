@@ -1,3 +1,4 @@
 import {LegalPage} from '@/components/help-pages';
 import {termsDocument} from '@/content/help';
-export default function Terms(){return <LegalPage document={termsDocument} kind="terms"/>}
+import {publicLegalContent} from '@/modules/admin/public-content';
+export default async function Terms(){return <LegalPage document={await publicLegalContent('terms')??termsDocument} kind="terms"/>}

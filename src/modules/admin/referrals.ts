@@ -19,14 +19,14 @@ export async function readReferralAdmin(client:PrismaClient,headers:Headers){
 
 export async function saveReferralAdmin(client:PrismaClient,headers:Headers,raw:unknown){
  const input=referralPolicyInput.parse(raw);
- const actor=await requireAdmin(client,headers,{permission:'settings',fresh:true});
+ const actor=await requireAdmin(client,headers,{permission:'settings'});
  if(process.env.REFERRAL_REWARDS_SCHEMA_READY!=='true')throw new AdminError(503,'Referral rewards storage is not configured. No settings were changed.');
  if(!await allowIdentityRequest(client,'admin-referral-policy',actor.id,10))throw new AdminError(429,'Wait a minute before changing referral settings again.');
  const requestHash=digest(JSON.stringify(input));
  return client.$transaction(async tx=>{
   // One policy lock serializes first creation and expected-version updates.
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('admin:referral-policy',0))`;
-  const owner=await requireAdmin(tx,headers,{permission:'settings',fresh:true,lock:true});
+  const owner=await requireAdmin(tx,headers,{permission:'settings',lock:true});
   const operationKey=`referral-policy:${owner.id}:${input.key}`;
   const previousAttempt=await tx.adminAudit.findUnique({where:{operationKey}});
   if(previousAttempt){

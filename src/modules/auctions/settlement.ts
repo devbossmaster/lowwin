@@ -7,6 +7,7 @@ import { demoBidAllowed } from './bids';
 import {stagingDemoEnabled} from './staging-demo';
 import { seedPlatformAccounts } from '@/modules/wallet/ledger';
 import { settleWalletInTransaction } from '@/modules/wallet/settlement';
+import {auctionMaintenance} from './maintenance';
 
 export class SettlementError extends Error {
   constructor(public readonly code:string){super(code);this.name='SettlementError'}
@@ -19,6 +20,7 @@ const txOptions={isolationLevel:Prisma.TransactionIsolationLevel.ReadCommitted,m
 const settlementInclude={movements:true} as const;
 
 async function completeLocked(tx:Prisma.TransactionClient,auctionId:string,cancellation:CancelInput|null,raw:Record<string,string|undefined>) {
+  if(await auctionMaintenance(tx)&&!cancellation)throw new SettlementError('AUCTIONS_PAUSED');
   // Every caller locks ONE auction first. Lock ALL participant wallet advisory
   // keys in code-point user-id order, then their guard/projection rows. No writer
   // may acquire another auction after wallet locks. ReadCommitted refreshes rows
@@ -121,6 +123,7 @@ export async function processDueAuction(client:PrismaClient,raw:Record<string,st
   let attempted:string|null=null;
   try{
     return await client.$transaction(async tx=>{
+      if(await auctionMaintenance(tx))return {status:'idle' as const};
       const allowDemo=demoBidAllowed(raw)||stagingDemoEnabled(raw);
       const rows=await tx.$queryRaw<{id:string}[]>`SELECT a.id FROM "Auction" a
         WHERE a.status IN ('LIVE','SCHEDULED') AND a."publishedAt"<=clock_timestamp() AT TIME ZONE 'UTC'

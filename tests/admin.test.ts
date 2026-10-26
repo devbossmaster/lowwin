@@ -64,14 +64,13 @@ describe.skipIf(!url)('Phase 5A invite-only Owner operations',()=>{
   await expect(client.auction.update({where:{id:draftId},data:{endsAt:new Date(Date.now()+200000)}})).rejects.toThrow();await expect(client.auctionTerms.update({where:{auctionId:draftId},data:{entryFeePoints:new MoneyPrisma.Decimal("99")}})).rejects.toThrow();await expect(client.auctionDraft.update({where:{auctionId:draftId},data:{version:99}})).rejects.toThrow();
   const p=await client.product.findUniqueOrThrow({where:{id:productId}});expect((await cmd('product',{key:randomUUID(),id:p.id,version:p.version,title:p.title,slug:p.slug,description:p.description,condition:p.condition,categoryId:p.categoryId,isDemo:false,visible:true,imageIds:[]})).status).toBe(409);
  });
- it('reports exact cancellation impact, rejects stale impact and requires fresh MFA',async()=>{
+ it('reports exact cancellation impact and retains valid login MFA for more than 30 minutes',async()=>{
   auction=await bidAuction(client,{fee:3});const a=await bidUser(client),b=await bidUser(client);await submitBid(client,{userId:a,auctionSlug:auction.slug!,amount:'4',key:randomUUID()});await submitBid(client,{userId:b,auctionSlug:auction.slug!,amount:'9',key:randomUUID()});
   const impact=await okay(await get(`auctions/${auction.id}/impact`));expect(impact).toMatchObject({affectedBidders:2,heldPoints:'13',feeRefund:'6'});expect(impact.participants.map((p:{feeRefund:string})=>p.feeRefund)).toEqual(['3','3']);expect(JSON.stringify(impact)).not.toMatch(/amountFrequencies|winningBid|telegram/);
   expect((await get(`auctions/${auction.id}/proof`)).status).toBe(409);
   expect((await cmd('cancel',{key:randomUUID(),auctionId:auction.id,reason:'DEMO cancellation',confirmation:auction.code,impactHash:'0'.repeat(64)})).status).toBe(409);
   const grant=await client.staffSession.findFirstOrThrow({where:{mfaAt:{not:null},session:{userId:ownerId}}});await client.staffSession.update({where:{sessionId:grant.sessionId},data:{credentialAt:new Date(Date.now()-40*60000),mfaAt:new Date(Date.now()-31*60000)}});
-  expect((await cmd('cancel',{key:randomUUID(),auctionId:auction.id,reason:'DEMO cancellation',confirmation:auction.code,impactHash:impact.impactHash})).status).toBe(403);
-  const fresh=await auth('step-up',{code:totp(secret,BigInt(Math.floor(Date.now()/30000)+1))});await okay(fresh);
+  expect((await get('dashboard')).status).toBe(200);expect((await auth('step-up',{code:'000000'})).status).toBe(404);
  });
  it('rolls cancellation back if its immutable audit cannot commit',async()=>{
   const impact=await okay(await get(`auctions/${auction.id}/impact`));
@@ -101,25 +100,17 @@ describe.skipIf(!url)('Phase 5A invite-only Owner operations',()=>{
   const grant=await client.staffSession.findFirstOrThrow({where:{mfaAt:{not:null},session:{userId:ownerId}}});await client.staffSession.update({where:{sessionId:grant.sessionId},data:{expiresAt:new Date(Date.now()-1000)}});expect((await get('dashboard')).status).toBe(403);
   const login=await auth('login',{email,password},'');await okay(login);cookie=takeCookie(login);const member=await client.staffMember.findUniqueOrThrow({where:{userId:ownerId}});const next=member.lastCounter+1n;
   const wait=Math.max(0,(Number(next)-1)*30000-Date.now()+100);if(wait)await new Promise(resolve=>setTimeout(resolve,wait));
-  const response=await auth('mfa',{code:totp(secret,next),rememberDevice:true});await okay(response);cookie=takeCookie(response);expect((await get('dashboard')).status).toBe(200);
-  const remembered=response.headers.getSetCookie().find(c=>c.startsWith('lowwin_staff_device='))!;expect(remembered).toContain('HttpOnly');expect(remembered).toContain('SameSite=Strict');expect(remembered).toContain('Max-Age=2592000');deviceCookie=remembered.split(';')[0];
+  const response=await auth('mfa',{code:totp(secret,next)});await okay(response);cookie=takeCookie(response);expect((await get('dashboard')).status).toBe(200);
+  expect(response.headers.getSetCookie().find(c=>c.startsWith('lowwin_staff_device='))).toContain('Max-Age=0');
+  const verified=await client.staffSession.findFirstOrThrow({where:{session:{userId:ownerId},mfaAt:{not:null}},orderBy:{credentialAt:'desc'}});
+  expect(verified.expiresAt.getTime()-verified.credentialAt.getTime()).toBe(8*3600000);
  },40000);
- it('remembers a device for 30 days, rotates its token, and still requires fresh MFA',async()=>{
-  const before=await client.staffTrustedDevice.findUniqueOrThrow({where:{tokenHash:digest(deviceCookie.split('=')[1])}});
-  expect(before.expiresAt.getTime()-before.createdAt.getTime()).toBe(30*86400000);
-  const login=await auth('login',{email,password},deviceCookie);expect(await okay(login)).toEqual({mode:'authenticated'});cookie=takeCookie(login);
-  const rotated=login.headers.getSetCookie().find(c=>c.startsWith('lowwin_staff_device='))!.split(';')[0];expect(rotated).not.toBe(deviceCookie);
-  expect(await client.staffTrustedDevice.findUnique({where:{tokenHash:before.tokenHash}})).toBeNull();
-  const next=await client.staffTrustedDevice.findUniqueOrThrow({where:{tokenHash:digest(rotated.split('=')[1])}});expect(next.expiresAt).toEqual(before.expiresAt);
-  expect((await get('dashboard')).status).toBe(200);
-  const {requireAdmin}=await import('../src/modules/admin/boundary');
-  await expect(requireAdmin(client,new Headers({cookie}),{fresh:true})).rejects.toThrow('Fresh MFA');
-  expect(await okay(await auth('login',{email,password},deviceCookie))).toEqual({mode:'challenge'});
+ it('never accepts a remembered-device token instead of the required login authenticator',async()=>{
   expect(await okay(await auth('login',{email,password},'lowwin_staff_device=forged'))).toEqual({mode:'challenge'});
-  await client.staffTrustedDevice.update({where:{tokenHash:next.tokenHash},data:{createdAt:new Date(Date.now()-31*86400000),expiresAt:new Date(Date.now()-86400000)}});
+  expect(await client.staffTrustedDevice.count({where:{userId:ownerId}})).toBe(0);
+  const grant=await client.staffSession.findFirstOrThrow({where:{session:{userId:ownerId},mfaAt:{not:null}}});
+  await client.staffSession.updateMany({where:{session:{userId:ownerId},mfaAt:{not:null}},data:{credentialAt:new Date(Date.now()-8*3600000-1000),mfaAt:new Date(Date.now()-7*3600000)}});
   expect((await get('dashboard')).status).toBe(403);
-  expect(await okay(await auth('login',{email,password},rotated))).toEqual({mode:'challenge'});
-  deviceCookie=rotated;
  });
  it('uses generic forgot responses, one-time reset tokens and revokes all sessions',async()=>{
   const known=await okay(await auth('forgot',{email},'')),unknown=await okay(await auth('forgot',{email:'missing@lowin.test'},''));expect(known).toEqual(unknown);

@@ -3,9 +3,9 @@ import {randomUUID} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {beforeAll,afterAll,beforeEach,describe,it,expect,vi} from 'vitest';
 import {AdminError} from '../src/modules/admin/errors';
-const access=vi.hoisted(()=>({id:'',role:'OWNER',fresh:true}));
-vi.mock('@/modules/admin/boundary',()=>({requireAdmin:async(_tx:unknown,_headers:unknown,options:{fresh?:boolean})=>{
- if(options.fresh&&!access.fresh)throw new AdminError(403,'Fresh MFA is required.');
+const access=vi.hoisted(()=>({id:'',role:'OWNER',authorized:true}));
+vi.mock('@/modules/admin/boundary',()=>({requireAdmin:async(_tx:unknown,_headers:unknown,options:{authorized?:boolean})=>{
+ if(!access.authorized)throw new AdminError(403,'Staff sign-in is required.');
  return {...access,now:new Date(),sessionId:'fixture-staff-session'};
 }}));
 import {addAdminFunds,adminCreditSchema} from '../src/modules/payments/admin-credit';
@@ -31,7 +31,7 @@ describe.skipIf(!url)('admin funds on disposable PostgreSQL',()=>{
   db=new PrismaClient();userId=randomUUID();access.id=randomUUID();
   await db.user.createMany({data:[{id:userId,name:'Credit fixture'},{id:access.id,name:'Owner fixture'}]});
  },60000);
- beforeEach(()=>{access.role='OWNER';access.fresh=true;process.env.PAYMENTS_TEST_ENABLED='true'});
+ beforeEach(()=>{access.role='OWNER';access.authorized=true;process.env.PAYMENTS_TEST_ENABLED='true'});
  afterAll(async()=>{await db?.$disconnect()});
  async function fixture(reference:string|null=null){
   const t=await db.topUpIntent.create({data:{userId,key:randomUUID(),provider:'VERIFY_ET',channel:'telebirr',status:'PROVIDER_OUTAGE',points:0,amountFromReceipt:true,policyVersion:'fixture',quoteSnapshot:{minCents:'100',maxCents:'1000000',earliestTransferAt:new Date(Date.now()-5*86400000).toISOString()},receivingAccount:'0911111111',reference,createdAt:new Date(Date.now()-4*86400000),expiresAt:new Date(Date.now()-3*86400000)}});
@@ -74,9 +74,9 @@ describe.skipIf(!url)('admin funds on disposable PostgreSQL',()=>{
   const b=await fixture();access.role=role;await expect(addAdminFunds(db,new Headers(),b)).rejects.toMatchObject({status:403});
   expect(await db.adminWalletCredit.count({where:{sourceIntentId:b.id}})).toBe(0);
  });
- it('requires fresh MFA and enabled funding',async()=>{
-  const b=await fixture();access.fresh=false;await expect(addAdminFunds(db,new Headers(),b)).rejects.toMatchObject({status:403});
-  access.fresh=true;process.env.PAYMENTS_TEST_ENABLED='false';await expect(addAdminFunds(db,new Headers(),b)).rejects.toMatchObject({status:503});
+ it('requires authorized MFA and enabled funding',async()=>{
+  const b=await fixture();access.authorized=false;await expect(addAdminFunds(db,new Headers(),b)).rejects.toMatchObject({status:403});
+  access.authorized=true;process.env.PAYMENTS_TEST_ENABLED='false';await expect(addAdminFunds(db,new Headers(),b)).rejects.toMatchObject({status:503});
  });
  it('blocks a running lease and protected deposit',async()=>{
   const b=await fixture();await db.topUpIntent.update({where:{id:b.id},data:{leaseUntil:new Date(Date.now()+60000)}});

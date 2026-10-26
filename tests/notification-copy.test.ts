@@ -57,7 +57,7 @@ describe('home introduction',()=>{
   expect(resolveHomeCopy(null)).toEqual(defaultHomeCopy);
   const edited={headline:'Custom headline',lead:'Custom copy',headlineAm:'አዲስ ርዕስ',leadAm:'አዲስ መግለጫ'};
   expect(resolveHomeCopy(edited)).toEqual(edited);
-  expect(defaultHomeCopy.lead.split('\n')).toHaveLength(3);
-  expect(defaultHomeCopy.leadAm.split('\n')).toHaveLength(3);
+  expect(defaultHomeCopy.lead).toBe('The lowest unique bid wins.');
+  expect(defaultHomeCopy.leadAm).toBe('ዝቅተኛና ያልተደገመ ዋጋ ያሸንፋል።');
  });
 });

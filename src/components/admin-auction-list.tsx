@@ -2,7 +2,7 @@
 
 import {LoadingSpinner} from './loading-spinner';
 import {AdminPhoto} from './admin-catalog';
-import Link from 'next/link';
+import {AdminLink as Link} from './admin-query';
 import {Plus} from 'lucide-react';
 import type {auctionList} from '@/modules/admin/workspace-read';
 import {AdminHeading,Empty,ErrorNotice,Pagination,Status,eat,statusLabel,useAdminRead,useQueueParams} from './admin-ui';

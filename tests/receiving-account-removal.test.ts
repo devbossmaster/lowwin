@@ -2,9 +2,9 @@ import {randomUUID} from 'node:crypto';
 import {type PaymentPolicy,type PrismaClient} from '@prisma/client';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
 import {AdminError} from '../src/modules/admin/errors';
-const auth=vi.hoisted(()=>({role:'OWNER',fresh:true}));
-vi.mock('@/modules/admin/boundary',()=>({requireAdmin:async(_tx:unknown,_headers:unknown,options:{fresh:boolean})=>{
- if(options.fresh&&!auth.fresh)throw new AdminError(403,'Fresh MFA is required.');
+const auth=vi.hoisted(()=>({role:'OWNER',authorized:true}));
+vi.mock('@/modules/admin/boundary',()=>({requireAdmin:async(_tx:unknown,_headers:unknown,options:{authorized:boolean})=>{
+ if(!auth.authorized)throw new AdminError(403,'Staff sign-in is required.');
  return {id:'owner',sessionId:'fixture-session',role:auth.role};
 }}));
 vi.mock('@/modules/auctions/bids',()=>({demoBidAllowed:()=>false}));
@@ -22,7 +22,7 @@ function fixture(){
  const input={key:randomUUID(),id:original.id,channel:'mpesa',version:1};
  return {client,input,original,locks,get policies(){return policies},get audits(){return audits},failAudit(){failAudit=true}};
 }
-beforeEach(()=>{auth.role='OWNER';auth.fresh=true});
+beforeEach(()=>{auth.role='OWNER';auth.authorized=true});
 describe('receiving account removal',()=>{
  it('creates a disabled successor and removal audit without modifying the historical account',async()=>{
   const f=fixture();expect(await removeReceivingAccount(f.client,new Headers(),f.input)).toEqual({removed:true,version:2});
@@ -37,7 +37,7 @@ describe('receiving account removal',()=>{
   await expect(removeReceivingAccount(f.client,new Headers(),{...f.input,version:2})).rejects.toMatchObject({status:409});expect(f.policies).toHaveLength(2);expect(f.audits).toHaveLength(1);
  });
  it.each(['PAYMENTS_OPERATOR','SUPPORT','AUDITOR','CATALOG_MANAGER'])('rejects %s account removal',async role=>{const f=fixture();auth.role=role;await expect(removeReceivingAccount(f.client,new Headers(),f.input)).rejects.toMatchObject({status:403});expect(f.policies).toHaveLength(1)});
- it('requires fresh MFA',async()=>{const f=fixture();auth.fresh=false;await expect(removeReceivingAccount(f.client,new Headers(),f.input)).rejects.toMatchObject({status:403});expect(f.audits).toHaveLength(0)});
+ it('requires authorized MFA',async()=>{const f=fixture();auth.authorized=false;await expect(removeReceivingAccount(f.client,new Headers(),f.input)).rejects.toMatchObject({status:403});expect(f.audits).toHaveLength(0)});
  it.each([{id:randomUUID()},{version:2}])('rejects stale or mismatched account identity %j',async change=>{const f=fixture();await expect(removeReceivingAccount(f.client,new Headers(),{...f.input,...change})).rejects.toMatchObject({status:409});expect(f.policies).toHaveLength(1)});
  it('blocks removal of an already removed account using another key',async()=>{const f=fixture();await removeReceivingAccount(f.client,new Headers(),f.input);await expect(removeReceivingAccount(f.client,new Headers(),{...f.input,key:randomUUID(),id:f.policies[1].id,version:2})).rejects.toMatchObject({status:409});expect(f.policies).toHaveLength(2)});
  it('distinguishes paused accounts from removed accounts and permits adding a later version',async()=>{const f=fixture();f.original.enabled=false;expect(await receivingAccountStates(f.client,[f.original])).toEqual([{...f.original,removed:false}]);await removeReceivingAccount(f.client,new Headers(),f.input);const replacement={...f.original,id:randomUUID(),version:3,enabled:true};expect(await receivingAccountStates(f.client,[replacement])).toEqual([{...replacement,removed:false}])});

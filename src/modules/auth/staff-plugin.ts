@@ -8,9 +8,9 @@ import { digest,token,newTotpSecret,seal,unseal,verifyTotp } from '../admin/cryp
 import { emailAdapter } from '../admin/email';
 import {staffRoles,type StaffRole} from '../admin/permissions';
 import { AdminError } from '../admin/errors';
-import {ADMIN_FRESH_MFA_MS} from '@/lib/admin-security';
+import {ADMIN_SESSION_MS,ADMIN_CHALLENGE_MS} from '@/lib/admin-security';
 
-export const staffActions=['accept-invite','login','enroll','mfa','step-up','forgot','reset','logout'] as const;
+export const staffActions=['accept-invite','login','enroll','mfa','forgot','reset','logout'] as const;
 const emailSchema=z.email().max(254).transform(value=>value.toLowerCase());
 const passwordSchema=z.string().min(12).max(128);
 const tokenSchema=z.string().regex(/^[A-Za-z0-9_-]{43}$/);
@@ -20,16 +20,17 @@ export function staffPlugin(tx:Prisma.TransactionClient|PrismaClient) {
       const secure=process.env.BETTER_AUTH_URL?.startsWith('https:')===true;
       const deviceCookie=secure?'__Host-lowwin_staff_device':'lowwin_staff_device';
       const cookieOptions={httpOnly:true,secure,sameSite:'strict' as const,path:'/'};
-      const presentedDevice=ctx.getCookie(deviceCookie);
-      const deviceHash=presentedDevice&&tokenSchema.safeParse(presentedDevice).success?digest(presentedDevice):null;
       let [{now}]=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`;
       const refreshClock=async()=>{[{now}]=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`};
       const audit=(actorId:string,event:string,target=actorId)=>tx.adminAudit.create({data:{actorId,action:event,target,details:{}}});
-      async function issue(userId:string,credentialAt:Date,mfaAt:Date|null=null,trustedDeviceHash:string|null=null) {
+      async function issue(userId:string,credentialAt:Date,mfaAt:Date|null=null) {
+        const expiresAt=new Date(credentialAt.getTime()+(mfaAt?ADMIN_SESSION_MS:ADMIN_CHALLENGE_MS));
+        if(expiresAt<=now)throw new AdminError(401,'Credential session expired. Sign in again.');
         const user=await ctx.context.internalAdapter.findUserById(userId);if(!user)throw new AdminError(401,'Staff sign-in failed.');
         const session=await ctx.context.internalAdapter.createSession(userId,true);if(!session)throw new Error('Session unavailable');
-        await tx.staffSession.create({data:{sessionId:session.id,credentialAt,mfaAt,trustedDeviceHash,expiresAt:new Date(now.getTime()+(trustedDeviceHash?8*3600000:mfaAt?ADMIN_FRESH_MFA_MS:15*60000))}});
-        await setSessionCookie(ctx,{session,user},true);
+        await tx.session.update({where:{id:session.id},data:{expiresAt}});
+        await tx.staffSession.create({data:{sessionId:session.id,credentialAt,mfaAt,expiresAt}});
+        await setSessionCookie(ctx,{session:{...session,expiresAt},user},true);
       }
       if(action==='accept-invite') {
         const body=z.object({token:tokenSchema,password:passwordSchema}).strict().parse(ctx.body),hash=digest(body.token);
@@ -51,16 +52,7 @@ export function staffPlugin(tx:Prisma.TransactionClient|PrismaClient) {
         if(!user?.staffMember?.active||!staffRoles.includes(user.staffMember.role as StaffRole)||!user.emailVerified||!account?.password){await hashPassword(body.password);throw new AdminError(401,'Email or password could not be verified.')}
         if(!await verifyPassword({password:body.password,hash:account.password}))throw new AdminError(401,'Email or password could not be verified.');
         await refreshClock();
-        const device=deviceHash?await tx.staffTrustedDevice.findUnique({where:{tokenHash:deviceHash}}):null;
-        if(user.staffMember.secret&&device?.userId===user.id&&device.expiresAt>now){
-          // Rotate the bearer token without extending its original 30-day expiry.
-          const next=token(),nextHash=digest(next);
-          await tx.staffTrustedDevice.delete({where:{tokenHash:device.tokenHash}});
-          await tx.staffTrustedDevice.create({data:{tokenHash:nextHash,userId:user.id,createdAt:device.createdAt,expiresAt:device.expiresAt}});
-          await issue(user.id,now,null,nextHash);
-          ctx.setCookie(deviceCookie,next,{...cookieOptions,maxAge:Math.floor((device.expiresAt.getTime()-now.getTime())/1000)});
-          await audit(user.id,'STAFF_TRUSTED_DEVICE_ACCEPTED');return ctx.json({mode:'authenticated'});
-        }
+        ctx.setCookie(deviceCookie,'',{...cookieOptions,maxAge:0});
         await issue(user.id,now);await audit(user.id,'STAFF_CREDENTIAL_ACCEPTED');return ctx.json({mode:user.staffMember.secret?'challenge':'enroll'});
       }
       if(action==='forgot') {
@@ -91,26 +83,28 @@ export function staffPlugin(tx:Prisma.TransactionClient|PrismaClient) {
         await audit(user.id,'PASSWORD_RESET_SESSIONS_REVOKED');deleteSessionCookie(ctx);return ctx.json({mode:'login',message:'Password reset. Sign in again with your authenticator.'});
       }
       const current=await getSessionFromCtx(ctx,{disableCookieCache:true,disableRefresh:true});
+      if(action==='logout'){
+        z.object({}).strict().parse(ctx.body);
+        if(current){const staff=await tx.staffMember.findUnique({where:{userId:current.user.id}});await tx.session.deleteMany({where:{id:current.session.id,userId:current.user.id}});if(staff)await audit(staff.userId,'STAFF_SIGNED_OUT')}
+        ctx.setCookie(deviceCookie,'',{...cookieOptions,maxAge:0});deleteSessionCookie(ctx);return ctx.json({mode:'login'});
+      }
       if(!current)throw new AdminError(401,'Staff sign-in required.');
       await tx.$queryRaw`SELECT "userId" FROM "StaffMember" WHERE "userId"=${current.user.id} FOR UPDATE`;
       await refreshClock();
       const member=await tx.staffMember.findUnique({where:{userId:current.user.id}}),grant=await tx.staffSession.findUnique({where:{sessionId:current.session.id}});
-      if(!member?.active||!staffRoles.includes(member.role as StaffRole)||!current.user.emailVerified||!grant||grant.expiresAt<=now||grant.credentialAt.getTime()+8*3600000<now.getTime())throw new AdminError(401,'Credential session expired. Sign in again.');
-      if(action==='logout'){z.object({}).strict().parse(ctx.body);if(deviceHash)await tx.staffTrustedDevice.deleteMany({where:{tokenHash:deviceHash,userId:member.userId}});ctx.setCookie(deviceCookie,'',{...cookieOptions,maxAge:0});await tx.session.delete({where:{id:current.session.id}});deleteSessionCookie(ctx);await audit(member.userId,'STAFF_SIGNED_OUT');return ctx.json({mode:'login'})}
+      if(!member?.active||!staffRoles.includes(member.role as StaffRole)||!current.user.emailVerified||!grant||grant.expiresAt<=now||grant.credentialAt.getTime()+ADMIN_SESSION_MS<=now.getTime())throw new AdminError(401,'Credential session expired. Sign in again.');
       if(action==='enroll'){
         z.object({}).strict().parse(ctx.body);if(member.secret||grant.mfaAt)throw new AdminError(409,'Authenticator is already enrolled.');
         const secret=grant.pendingSecret?unseal(grant.pendingSecret):newTotpSecret();
         if(!grant.pendingSecret){await tx.staffSession.update({where:{sessionId:grant.sessionId},data:{pendingSecret:seal(secret)}});await audit(member.userId,'MFA_ENROLLMENT_STARTED')}
         return ctx.json({secret,uri:`otpauth://totp/${encodeURIComponent(`Lowwin:${current.user.email}`)}?secret=${secret}&issuer=Lowwin&algorithm=SHA1&digits=6&period=30`});
       }
-      const {code,rememberDevice}=z.object({code:z.string().trim().min(6).max(64),rememberDevice:z.boolean().optional()}).strict().parse(ctx.body);
-      const trusted=grant.trustedDeviceHash?await tx.staffTrustedDevice.findUnique({where:{tokenHash:grant.trustedDeviceHash}}):null;
-      const assured=!!grant.mfaAt||trusted?.userId===member.userId&&trusted.expiresAt>now;
-      if(action==='step-up'&&!assured)throw new AdminError(403,'Complete MFA before requesting fresh assurance.');
-      if(action==='mfa'&&assured)throw new AdminError(409,'Use step-up for an enrolled admin session.');
-      if(member.secret&&!/^\d{6}$/.test(code)&&action==='mfa'){
+      const {code}=z.object({code:z.string().trim().min(6).max(64)}).strict().parse(ctx.body);
+      if(grant.mfaAt)throw new AdminError(409,'This login is already verified. Sign in again when the session expires.');
+      if(member.secret&&!/^\d{6}$/.test(code)){
         const recoveryHash=digest(code),index=member.recoveryHashes.indexOf(recoveryHash);if(index<0)throw new AdminError(401,'Authenticator or recovery code could not be verified.');
         await tx.staffMember.update({where:{userId:member.userId},data:{secret:null,recoveryHashes:[],lastCounter:-1n}});
+        await tx.staffTrustedDevice.deleteMany({where:{userId:member.userId}});
         await tx.session.deleteMany({where:{userId:member.userId}});await issue(member.userId,grant.credentialAt);await audit(member.userId,'MFA_RECOVERY_SESSIONS_REVOKED');return ctx.json({mode:'enroll',message:'Recovery accepted. Enroll a new authenticator before admin access.'});
       }
       const encrypted=member.secret??grant.pendingSecret;if(!encrypted)throw new AdminError(409,'Start authenticator enrollment first.');
@@ -118,18 +112,9 @@ export function staffPlugin(tx:Prisma.TransactionClient|PrismaClient) {
       if(counter===null)throw new AdminError(401,'Authenticator code invalid or already used. Wait for the next code.');
       const recoveryCodes=member.secret?undefined:Array.from({length:10},()=>token().slice(0,24));
       await tx.staffMember.update({where:{userId:member.userId},data:{secret:encrypted,lastCounter:counter,...(recoveryCodes?{recoveryHashes:recoveryCodes.map(digest)}:{})}});
-      let rememberedHash:string|null=null;
-      if(rememberDevice&&action==='mfa'){
-        const remembered=token();rememberedHash=digest(remembered);
-        if(deviceHash)await tx.staffTrustedDevice.deleteMany({where:{tokenHash:deviceHash,userId:member.userId}});
-        await tx.staffTrustedDevice.deleteMany({where:{userId:member.userId,expiresAt:{lte:now}}});
-        await tx.staffTrustedDevice.create({data:{tokenHash:rememberedHash,userId:member.userId,createdAt:now,expiresAt:new Date(now.getTime()+30*86400000)}});
-        ctx.setCookie(deviceCookie,remembered,{...cookieOptions,maxAge:30*86400});
-        await audit(member.userId,'STAFF_DEVICE_REMEMBERED');
-      }
-      if(action==='step-up')await tx.staffSession.update({where:{sessionId:grant.sessionId},data:{mfaAt:now,expiresAt:new Date(now.getTime()+ADMIN_FRESH_MFA_MS)}});
-      else {await tx.session.delete({where:{id:current.session.id}});await issue(member.userId,grant.credentialAt,now,rememberedHash)}
-      await audit(member.userId,recoveryCodes?'MFA_ENROLLED':action==='step-up'?'MFA_STEP_UP':'MFA_CHALLENGE_PASSED');
+      await tx.session.delete({where:{id:current.session.id}});await issue(member.userId,grant.credentialAt,now);
+      ctx.setCookie(deviceCookie,'',{...cookieOptions,maxAge:0});
+      await audit(member.userId,recoveryCodes?'MFA_ENROLLED':'MFA_CHALLENGE_PASSED');
       return ctx.json({mode:'authenticated',...(recoveryCodes?{recoveryCodes}:{})});
     }catch(error){
       if(error instanceof AdminError)throw new APIError(error.status===401?'UNAUTHORIZED':error.status===403?'FORBIDDEN':error.status===409?'CONFLICT':error.status===503?'SERVICE_UNAVAILABLE':'BAD_REQUEST',{message:error.message});

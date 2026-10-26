@@ -52,18 +52,18 @@ export async function readArifPayAdmin(client:PrismaClient,headers:Headers,id:st
 }
 export async function checkArifPayAdmin(client:PrismaClient,headers:Headers,input:unknown){
  const b=z.object({id:z.uuid(),key:z.uuid(),reason:z.string().trim().min(5).max(300)}).strict().parse(input);
- const actor=await requireAdmin(client,headers,{fresh:true});allow(actor.role,true);
+ const actor=await requireAdmin(client,headers,{});allow(actor.role,true);
  if(!arifPayAvailability().recoveryEnabled)throw new AdminError(503,'Provider checks are disabled. No payment was changed.');
  if(!await allowIdentityRequest(client,'admin-arifpay',actor.id,10))throw new AdminError(429,'Wait a minute before checking more payments.');
  // Audit the attempt before any provider call; retries use the same key.
  await client.$transaction(async tx=>{
-  const current=await requireAdmin(tx,headers,{fresh:true,lock:true});allow(current.role,true);
+  const current=await requireAdmin(tx,headers,{lock:true});allow(current.role,true);
   const row=await tx.arifPayCheckout.findUnique({where:{id:b.id},select:{id:true}});if(!row)throw new AdminError(404,'Bid payment not found.');
   const operationKey=`arifpay-check:${b.key}`,requestHash=arifPayHash(JSON.stringify(b)),prior=await tx.adminAudit.findUnique({where:{operationKey}});
   if(prior){if(prior.actorId!==current.id||prior.requestHash!==requestHash)throw new AdminError(409,'Retry with the original payment details.');return;}
   await tx.adminAudit.create({data:{actorId:current.id,action:'ARIFPAY_PROVIDER_CHECK',target:b.id,operationKey,requestHash,details:{reason:b.reason}}});
  });
- await verifyArifPayCheckout(client,b.id,undefined,async tx=>{const current=await requireAdmin(tx,headers,{fresh:true,lock:true});allow(current.role,true)});
+ await verifyArifPayCheckout(client,b.id,undefined,async tx=>{const current=await requireAdmin(tx,headers,{lock:true});allow(current.role,true)});
  return readArifPayAdmin(client,headers,b.id,new URLSearchParams());
 }
 export type ArifPayAdminList=Awaited<ReturnType<typeof readArifPayAdmin>> & {items:ReturnType<typeof view>[];total:number;page:number;totalPages:number;summary:{pending:number;review:number;accepted:number}|null};

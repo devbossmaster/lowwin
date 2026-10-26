@@ -1,11 +1,11 @@
 'use client';
-import Link from 'next/link';
+import {AdminLink as Link} from './admin-query';
 import {useState} from 'react';
 import {ArrowLeft,ArrowRight,CheckCircle2,CreditCard,Clock3,ShieldCheck} from 'lucide-react';
 import type {ArifPayAdminDetail,ArifPayAdminList} from '@/modules/admin/arifpay';
 import {formatEtb} from '@/lib/money';
 import {useAdminAccess} from './admin-shell';
-import {AdminHeading,Empty,ErrorNotice,MfaStepUp,Pagination,Status,eat,useAdminMutation,useAdminRead,useQueueParams} from './admin-ui';
+import {AdminHeading,Empty,ErrorNotice,Pagination,Status,eat,useAdminMutation,useAdminRead,useQueueParams} from './admin-ui';
 import {LoadingSpinner} from './loading-spinner';
 
 const channel=(value:string)=>value==='MPESA'?'M-PESA':'Telebirr';
@@ -29,7 +29,7 @@ function PaymentDetail({id}:{id:string}){
  <dl className="admin-facts"><div><dt>Payment ID</dt><dd>{t.id}</dd></div><div><dt>Started</dt><dd>{eat(t.createdAt)}</dd></div><div><dt>Last update</dt><dd>{eat(t.updatedAt)}</dd></div><div><dt>Provider evidence</dt><dd>{t.verified?'Verified receipt recorded':'Not confirmed'}</dd></div><div><dt>Bid entry</dt><dd>{t.bidId?'Accepted · '+t.bidId:'No accepted bid recorded'}</dd></div><div><dt>Reason</dt><dd>{t.reason?.replaceAll('_',' ').toLowerCase()??'No issue recorded'}</dd></div>{access.role!=='SUPPORT'&&<><div><dt>Provider session</dt><dd>{t.providerSession??'Not assigned'}</dd></div><div><dt>Provider reference</dt><dd>{t.providerReference??'Not confirmed'}</dd></div></>}<div><dt>Verification attempts</dt><dd>{t.attempts}</dd></div><div><dt>Next eligible check</dt><dd>{t.canCheck?eat(t.nextCheckAt):'Final state / manual investigation'}</dd></div></dl>
  {t.status==='NEEDS_REVIEW'&&<div className="admin-notice"><strong>{t.verified?'Payment verified; bid not accepted.':'Provider evidence needs review.'}</strong><p>Keep this payment ID and investigate before resolving the case. This screen cannot manually mark a payment paid or issue credit or a refund.</p></div>}
  <div className="admin-actions"><Link className="admin-button secondary" href={`/auctions/${t.auctionSlug}`}>View auction</Link>{access.permissions.includes('support')&&<Link className="admin-button secondary" href={`/admin/users?q=${encodeURIComponent(t.userId)}`}>Find player</Link>}</div></section>
- {write&&t.canCheck&&<section className="admin-panel direct-check"><h2>Check with ArifPay</h2><p>Fetch current merchant evidence for this same payment. The existing verification and bid checks decide the result.</p>{!d.health.recoveryEnabled?<p className="admin-notice">Provider checks are disabled. No payment will be changed.</p>:<><MfaStepUp purpose="check this payment with ArifPay"/><form className="admin-form" onSubmit={async e=>{e.preventDefault();setChecked(false);const result=await mutation.run('check',{id:t.id,reason:new FormData(e.currentTarget).get('reason')});if(result){setChecked(true);q.reload()}}}><label>Reason for checking<textarea name="reason" required minLength={5} maxLength={300} rows={2}/></label><button disabled={mutation.busy}>{mutation.busy?'Checking provider…':'Check provider status'}</button></form><ErrorNotice error={mutation.error}/>{checked&&<p role="status">Check completed. The stored status above is authoritative; pending is not payment success.</p>}</>}</section>}
+ {write&&t.canCheck&&<section className="admin-panel direct-check"><h2>Check with ArifPay</h2><p>Fetch current merchant evidence for this same payment. The existing verification and bid checks decide the result.</p>{!d.health.recoveryEnabled?<p className="admin-notice">Provider checks are disabled. No payment will be changed.</p>:<>{null}<form className="admin-form" onSubmit={async e=>{e.preventDefault();setChecked(false);const result=await mutation.run('check',{id:t.id,reason:new FormData(e.currentTarget).get('reason')});if(result){setChecked(true);q.reload()}}}><label>Reason for checking<textarea name="reason" required minLength={5} maxLength={300} rows={2}/></label><button disabled={mutation.busy}>{mutation.busy?'Checking provider…':'Check provider status'}</button></form><ErrorNotice error={mutation.error}/>{checked&&<p role="status">Check completed. The stored status above is authoritative; pending is not payment success.</p>}</>}</section>}
  </>}
  </>;
 }

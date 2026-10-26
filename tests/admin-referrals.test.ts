@@ -1,15 +1,15 @@
 import {beforeEach,describe,expect,it,vi} from 'vitest';
 import type {PrismaClient} from '@prisma/client';
 import {randomUUID} from 'node:crypto';
-const f=vi.hoisted(()=>({role:'OWNER',authenticated:true,fresh:true,revoked:false,limited:false,read:vi.fn(),routeDb:{} as Record<string,unknown>}));
+const f=vi.hoisted(()=>({role:'OWNER',authenticated:true,revoked:false,limited:false,read:vi.fn(),routeDb:{} as Record<string,unknown>}));
 vi.mock('../src/lib/db',()=>({db:f.routeDb}));
 vi.mock('../src/modules/referrals/service',()=>({getReferralPolicy:f.read}));
 vi.mock('../src/lib/rate-limit',()=>({allowIdentityRequest:vi.fn(async()=>!f.limited)}));
-vi.mock('../src/modules/admin/boundary',async original=>({...await original<typeof import('../src/modules/admin/boundary')>(),requireAdmin:vi.fn(async(_db,_headers,options:{fresh?:boolean;lock?:boolean;permission?:import('../src/modules/admin/permissions').Permission}={})=>{
+vi.mock('../src/modules/admin/boundary',async original=>({...await original<typeof import('../src/modules/admin/boundary')>(),requireAdmin:vi.fn(async(_db,_headers,options:{lock?:boolean;permission?:import('../src/modules/admin/permissions').Permission}={})=>{
  const {AdminError}=await import('../src/modules/admin/errors');
  if(!f.authenticated)throw new AdminError(401,'Staff credentials required.');
  if(options.lock&&f.revoked)throw new AdminError(403,'Staff access was revoked.');
- if(options.fresh&&!f.fresh)throw new AdminError(403,'Fresh MFA is required.');
+
  if(options.permission){const {assertPermission}=await import('../src/modules/admin/permissions');assertPermission(f.role,options.permission)}
  return {id:'owner-fixture',role:f.role,now:new Date('2026-10-26T00:00:00Z')};
 })}));
@@ -31,7 +31,7 @@ function fixture(initial:Policy|null={id:'default',enabled:false,discountPercent
  mock.$transaction.mockImplementation(async callback=>callback(mock));return {mock,db:mock as unknown as PrismaClient,audits,current:()=>row};
 }
 beforeEach(()=>{
- vi.clearAllMocks();Object.assign(f,{role:'OWNER',authenticated:true,fresh:true,revoked:false,limited:false});
+ vi.clearAllMocks();Object.assign(f,{role:'OWNER',authenticated:true,revoked:false,limited:false});
  vi.stubEnv('REFERRAL_REWARDS_SCHEMA_READY','true');vi.stubEnv('BETTER_AUTH_URL','https://lowwin.example');
  f.read.mockResolvedValue({configured:false,enabled:false,discountPercent:10,expiryDays:30,version:0,updatedAt:null});
 });
@@ -40,7 +40,7 @@ describe('referral reward administration boundary',()=>{
  it('exposes the task only to settings-authorized staff and matches its own route',()=>{
   expect(allowedTasks('OWNER').some(task=>task.href==='/admin/settings/referrals')).toBe(true);
   for(const role of ['CATALOG_MANAGER','SUPPORT','FULFILLMENT','PAYMENTS_OPERATOR','AUDITOR'] as const)expect(allowedTasks(role).some(task=>task.href==='/admin/settings/referrals')).toBe(false);
-  expect(activeTask('/admin/settings/referrals')).toMatchObject({label:'Referral rewards',area:'Settings'});
+  expect(activeTask('/admin/settings/referrals')).toMatchObject({label:'Referral policy',area:'Reports and Settings'});
  });
  it('requires a staff session and settings permission before reading policy',async()=>{
   const {db}=fixture();f.authenticated=false;await expect(readReferralAdmin(db,headers)).rejects.toMatchObject({status:401});expect(f.read).not.toHaveBeenCalled();
@@ -51,11 +51,11 @@ describe('referral reward administration boundary',()=>{
   await expect(saveReferralAdmin(db,headers,input())).rejects.toMatchObject({status:503});expect(mock.$transaction).not.toHaveBeenCalled();
  });
  it.each(['CATALOG_MANAGER','SUPPORT','FULFILLMENT','PAYMENTS_OPERATOR','AUDITOR'])('denies %s a policy write',async role=>{const {db,mock}=fixture();f.role=role;await expect(saveReferralAdmin(db,headers,input())).rejects.toMatchObject({status:403});expect(mock.$transaction).not.toHaveBeenCalled()});
- it('requires fresh MFA and durable rate capacity before entering the write transaction',async()=>{
-  const {db,mock}=fixture();f.fresh=false;await expect(saveReferralAdmin(db,headers,input())).rejects.toMatchObject({status:403});f.fresh=true;f.limited=true;await expect(saveReferralAdmin(db,headers,input())).rejects.toMatchObject({status:429});expect(mock.$transaction).not.toHaveBeenCalled();
+ it('requires login authorization and durable rate capacity before entering the write transaction',async()=>{
+  const {db,mock}=fixture();f.authenticated=false;await expect(saveReferralAdmin(db,headers,input())).rejects.toMatchObject({status:401});f.authenticated=true;f.limited=true;await expect(saveReferralAdmin(db,headers,input())).rejects.toMatchObject({status:429});expect(mock.$transaction).not.toHaveBeenCalled();
  });
- it('reauthorizes with fresh MFA and staff lock inside the transaction before changing the policy',async()=>{
-  const {db,mock}=fixture();f.revoked=true;await expect(saveReferralAdmin(db,headers,input())).rejects.toMatchObject({status:403});expect(requireAdmin).toHaveBeenCalledWith(db,headers,{permission:'settings',fresh:true,lock:true});expect(mock.referralPolicy.update).not.toHaveBeenCalled();expect(mock.adminAudit.create).not.toHaveBeenCalled();
+ it('reauthorizes the login session with a staff lock inside the transaction before changing the policy',async()=>{
+  const {db,mock}=fixture();f.revoked=true;await expect(saveReferralAdmin(db,headers,input())).rejects.toMatchObject({status:403});expect(requireAdmin).toHaveBeenCalledWith(db,headers,{permission:'settings',lock:true});expect(mock.referralPolicy.update).not.toHaveBeenCalled();expect(mock.adminAudit.create).not.toHaveBeenCalled();
  });
  it.each([{discountPercent:4},{discountPercent:16},{discountPercent:5.5},{expiryDays:14},{expiryDays:31},{expiryDays:20.5},{enabled:'true'},{reason:'x'},{providerEnabled:true}])('rejects unsupported policy values %j',async patch=>{
   const {db,mock}=fixture();expect(referralPolicyInput.safeParse(input(patch)).success).toBe(false);await expect(saveReferralAdmin(db,headers,input(patch))).rejects.toThrow();expect(mock.$transaction).not.toHaveBeenCalled();

@@ -8,7 +8,7 @@ import {paymentAdminRead,paymentAdminCommand,recordStatement} from '@/modules/pa
 import {requireMutationOrigin,smallJson,PrivateApiError} from '@/modules/auth/private-api';
 const json=(body:unknown,status=200)=>Response.json(body,{status,headers:adminHeaders});
 function failure(e:unknown,method:'GET'|'POST'){
- if(e instanceof AdminError||e instanceof PaymentError||e instanceof PrivateApiError)return json({error:e.message},e.status);
+ if(e instanceof AdminError||e instanceof PaymentError||e instanceof PrivateApiError)return json({error:e.message,...(e instanceof AdminError&&e.code?{code:e.code}:{})},e.status);
  if(e instanceof z.ZodError)return json({error:'Check the supplied fields.'},422);
  const traceId=randomUUID(),exception=e&&typeof e==='object'?e as {code?:unknown;errorCode?:unknown;name?:unknown}:{};
  const rawCode=exception.code??exception.errorCode;

@@ -9,7 +9,7 @@ if (!['127.0.0.1','localhost'].includes(base.hostname) || !base.pathname.endsWit
   throw Error('Explicit disposable loopback TEST_DATABASE_URL ending in _test required.');
 const suffix = randomBytes(5).toString('hex');
 const mode=process.argv[2]??'unit';
-if(!['unit','browser','payments','smoke','redesign'].includes(mode))throw Error('Choose unit, browser, payments, smoke, or redesign.');
+if(!['unit','browser','payments','smoke','redesign','admin'].includes(mode))throw Error('Choose unit, browser, payments, smoke, redesign, or admin.');
 // A focused reproduction uses the exact release harness and fresh databases.
 // Normal CI supplies no files and still runs every suite with the no-skip gate.
 const files=process.argv.slice(3);
@@ -38,6 +38,11 @@ if(mode==='unit') {
   if(report.numPendingTests||report.numTodoTests)throw Error('Release requires every opt-in database test to execute.');
 } else {
   run(['node_modules/prisma/build/index.js','migrate','deploy']);
-  run(['node_modules/tsx/dist/cli.mjs','scripts/seed-catalog.ts']);
-  run(['node_modules/@playwright/test/cli.js','test','--config',mode==='redesign'?'playwright.redesign.config.ts':mode==='payments'?'playwright.payments.config.ts':mode==='smoke'?'playwright.release.config.ts':'playwright.config.ts']);
+  if(mode==='admin'){
+    env.LOWIN_UI_TEST_MODE='admin-neutral';env.PAYMENTS_LIVE_ENABLED='false';env.ARIFPAY_ENABLED='false';
+    const runtimeNodeEnv=env.NODE_ENV;env.NODE_ENV='production';
+    run(['node_modules/next/dist/bin/next','build','--webpack']);
+    env.NODE_ENV=runtimeNodeEnv??'development';
+  }else run(['node_modules/tsx/dist/cli.mjs','scripts/seed-catalog.ts']);
+  run(['node_modules/@playwright/test/cli.js','test','--config',mode==='admin'?'playwright.admin-workspace.config.ts':mode==='redesign'?'playwright.redesign.config.ts':mode==='payments'?'playwright.payments.config.ts':mode==='smoke'?'playwright.release.config.ts':'playwright.config.ts']);
 }
