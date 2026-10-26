@@ -30,7 +30,7 @@ test('account header: real balance, destinations, avatar fallback, language and 
   await creditDevelopmentPoints(db,user.id,'1234.50','header-fixture-'+randomUUID());
   await page.evaluate(()=>window.dispatchEvent(new Event('lowin-wallet-updated')));
   await expect(header.locator('[data-header-balance]')).toHaveText('1234.50 ETB');
-  const brand=header.getByRole('link',{name:'Lowwin Home',exact:true});await expect(brand).toHaveText('');await expect(brand.locator('img')).toBeVisible();await expect(brand).toHaveCSS('color','rgb(0, 0, 0)');
+  const brand=header.getByRole('link',{name:'Lowwin Home',exact:true});await expect(brand).toHaveText('Lowwin');await expect(brand.locator('img')).toBeVisible();await expect(brand).toHaveCSS('color','rgb(0, 0, 0)');
   const profile=header.getByRole('link',{name:`Profile, ${name}`,exact:true});await expect(profile).toHaveAttribute('href','/profile');
   await expect(profile.locator('img')).toBeVisible();await expect.poll(()=>profile.locator('img').evaluate((image:HTMLImageElement)=>image.complete&&image.naturalWidth>0)).toBe(true);
   for(const control of await header.locator('a,button').all()){const box=await control.boundingBox();expect(box!.width).toBeGreaterThanOrEqual(44);expect(box!.height).toBeGreaterThanOrEqual(44)}
@@ -44,7 +44,7 @@ test('account header: real balance, destinations, avatar fallback, language and 
   await page.getByRole('navigation',{name:'Your navigation',exact:true}).getByRole('link',{name:'Home',exact:true}).click();await expect(header).toBeVisible();
   const deposit=header.getByRole('link',{name:'Deposit',exact:true});await deposit.click();const topUp=page.getByRole('dialog',{name:'Top up wallet',exact:true});await expect(topUp).toBeVisible();await expect(topUp.getByRole('button',{name:'Top up',exact:true})).toBeDisabled();await page.keyboard.press('Escape');await expect(topUp).toHaveCount(0);await expect(deposit).toBeFocused();
   await header.getByRole('button',{name:/^Browse auctions/}).click();await page.getByRole('dialog',{name:'Auctions',exact:true}).getByRole('link',{name:'Browse all auctions',exact:true}).click();await expect(page).toHaveURL(/\/auctions\/all\?status=live$/);
-  await profile.click();await expect(page).toHaveURL(/\/profile$/);await expect(header).toHaveCount(0);await expect(page.getByRole('heading',{name:'Profile',exact:true})).toHaveCount(1);
+  await expect(header).toHaveCount(0);await page.getByRole('navigation',{name:'Your navigation',exact:true}).getByRole('link',{name:'Profile',exact:true}).click();await expect(page).toHaveURL(/\/profile$/);await expect(header).toHaveCount(0);await expect(page.getByRole('heading',{name:'Profile',exact:true})).toHaveCount(1);
   await page.getByRole('navigation',{name:'Your navigation',exact:true}).getByRole('link',{name:'Home',exact:true}).click();await expect(header).toBeVisible();
   const language=header.getByRole('button',{name:'Language: English',exact:true});await language.focus();await page.keyboard.press('ArrowDown');await expect(page.getByRole('menuitemradio',{name:'English',exact:true})).toBeFocused();await page.keyboard.press('ArrowDown');await page.keyboard.press('Enter');await expect(page.locator('html')).toHaveAttribute('lang','am');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await header.screenshot({path:`${root}/header-${info.project.name}-am.png`});
   await header.getByRole('button',{name:'ቋንቋ: አማርኛ',exact:true}).click();await page.getByRole('menuitemradio',{name:'English',exact:true}).click();
