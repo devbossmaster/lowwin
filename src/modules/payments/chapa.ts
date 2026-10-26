@@ -21,6 +21,8 @@ const createSchema=z.discriminatedUnion('purpose',[
 ]);
 const pending=['SUBMITTING','PENDING','VERIFYING','AUTH_NEEDED'];
 const openStatuses=[...pending,'NEEDS_REVIEW'];
+const aliasScope='CHAPA_CHECKOUT_ALIAS';
+const aliasResult=z.object({checkoutId:z.string().uuid()}).strict();
 const json=(value:unknown)=>JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 const paid=(order:ChapaCheckout)=>order.creditJournalId!==null;
 const after=(ms:number)=>new Date(Date.now()+ms);
@@ -53,12 +55,22 @@ export async function createChapaCheckout(client:PrismaClient,userId:string,raw:
   if(body.purpose==='BID')await tx.$queryRaw`SELECT id FROM "Auction" WHERE slug=${body.auctionSlug} FOR UPDATE`;
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`},0))`;
   if(reauthorize)await reauthorize(tx);const contact=await eligible(tx,userId);
+  const alias=await tx.operation.findUnique({where:{userId_scope_key:{userId,scope:aliasScope,key:body.key}}});
+  if(alias){
+   if(alias.requestHash!==requestHash)throw new ChapaError(409,'KEY_REUSED','Retry the original payment details with this request key.');
+   const result=aliasResult.safeParse(alias.result);if(!result.success)throw new ChapaError(503,'PAYMENT_UNAVAILABLE','This payment retry needs review. Keep its payment ID.');
+   const original=await tx.chapaCheckout.findFirst({where:{id:result.data.checkoutId,userId}});if(!original)throw new ChapaError(404,'NOT_FOUND','Payment not found.');
+   return original;
+  }
   const previous=await tx.chapaCheckout.findUnique({where:{userId_key:{userId,key:body.key}}});
   if(previous){if(previous.requestHash!==requestHash)throw new ChapaError(409,'KEY_REUSED','Retry the original payment details with this request key.');return previous}
   const active=await tx.chapaCheckout.findFirst({where:{userId,purpose:body.purpose,status:{in:openStatuses},creditJournalId:null,...(body.purpose==='BID'?{auctionSlug:body.auctionSlug,bidNumber:body.amount}:{})},orderBy:{createdAt:'desc'}});
   if(active){
    const same=body.purpose==='TOP_UP'?active.amountCents===etbToCents(body.amount):active.feeVersion===body.feeVersion&&active.couponId===(body.couponId??null);
    if(!same)throw new ChapaError(409,'PAYMENT_ALREADY_PENDING','Another payment is still pending. Check it before starting a differently priced payment.');
+   // Bind every coalesced client key before returning. A lost response must
+   // still resolve to this checkout after its payment becomes terminal.
+   await tx.operation.create({data:{userId,scope:aliasScope,key:body.key,requestHash,result:{checkoutId:active.id}}});
    return active;
   }
   if(halted)throw new ChapaError(503,'AUCTIONS_PAUSED','New checkouts are paused for auction maintenance. Existing payments can still be checked.');

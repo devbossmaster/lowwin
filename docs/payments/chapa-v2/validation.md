@@ -7,6 +7,7 @@ The implementation uses Chapa v2 hosted checkout. Actual merchant credentials ar
 | Check | Result | Scope |
 | --- | --- | --- |
 | Financial/API/client regression subset | 188/188 passed, no skips | Fresh loopback PostgreSQL; includes 9 additive schema and 19 Chapa service/reconciliation cases, existing bid rules and payment-session revocation |
+| Final Chapa database regression run | 29/29 passed, no skips | Includes permanent request-key binding after a lost response and terminal payment, for top-ups and bids |
 | Provider switching/admin workspace/notification/proxy subset | 33/33 passed | Some cases overlap the preceding subset; old-schema compatibility and Support redaction included |
 | Staff limiter and safe diagnostics | 49/49 passed | Includes six real-database cases; 48 concurrent login attempts permit exactly 12, and 20 password-recovery attempts permit exactly five |
 | Mobile browser flows | 2/2 passed | 360px and 430px, each in English and Amharic; payment mutation responses mocked |
@@ -15,6 +16,8 @@ The implementation uses Chapa v2 hosted checkout. Actual merchant credentials ar
 | Dependency audit | Zero reported vulnerabilities | No new dependencies or SDK |
 
 Browser assertions cover disabled controls, pending payment preservation after closing/reopening, duplicate-click protection, confirmed-only balance invalidation, wallet and hosted bid receipts, and anonymous returns performing no private payment reads. Browser fixture money remains 250 ETB with no real accepted bids and zero ledger drift. Real database tests separately exercise actual financial commands with mocked provider transport, exact cents, idempotency, races and balanced receipts.
+
+The new `node scripts/run-db-tests.mjs chapa` CI harness was also executed locally from a fresh database: both browser cases passed, and its owned server stopped and released port 3156. Remote CI is a separate result. The staff limiter suite also passed all six cases starting from a fresh database with zero tables, deploying its own migrations.
 
 See the [integration runbook](../chapa-v2.md) for configuration, reproducible commands, six mobile screenshots, activation gates and rollback. Local checks do not establish provider acceptance, dashboard webhook delivery, physical Android/iOS Telegram checkout behavior or production query latency.
 

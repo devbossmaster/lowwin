@@ -59,6 +59,17 @@ describe.skipIf(!database)('Chapa v2 hosted payments on disposable PostgreSQL',(
  it('deduplicates concurrent and refreshed keys for an unresolved top-up or bid intent',async()=>{
   for(const purpose of ['TOP_UP','BID'] as const){const f=await payment({purpose}),orders=await Promise.all([f.start(),f.start()]);expect(orders[0].id).toBe(orders[1].id);expect(f.create).toHaveBeenCalledTimes(1);const again=await createChapaCheckout(db,f.userId,{...f.input,key:randomUUID()},undefined,f.transport);expect(again.id).toBe(orders[0].id);expect(f.create).toHaveBeenCalledTimes(1);await expect(createChapaCheckout(db,f.userId,{...f.input,amount:'17.00'},undefined,f.transport)).rejects.toMatchObject({status:409,code:'KEY_REUSED'})}
  });
+ it('binds coalesced request keys after a lost response and terminal payment',async()=>{
+  for(const purpose of ['TOP_UP','BID'] as const){
+   const f=await payment({purpose}),first=await f.start(),secondInput={...f.input,key:randomUUID()};
+   await createChapaCheckout(db,f.userId,secondInput,undefined,f.transport); // The response never reaches the caller.
+   const committed=await f.verify(first.id);expect(committed.status).toBe(purpose==='TOP_UP'?'CREDITED':'BID_ACCEPTED');
+   const retry=await createChapaCheckout(db,f.userId,secondInput,undefined,f.transport);expect(retry.id).toBe(first.id);expect(retry.status).toBe(committed.status);
+   await expect(createChapaCheckout(db,f.userId,{...secondInput,amount:'17.00'},undefined,f.transport)).rejects.toMatchObject({status:409,code:'KEY_REUSED'});
+   const alias=await db.operation.findUniqueOrThrow({where:{userId_scope_key:{userId:f.userId,scope:'CHAPA_CHECKOUT_ALIAS',key:secondInput.key}},include:{journal:true}});expect(alias.result).toEqual({checkoutId:first.id});expect(alias.journal).toBeNull();expect(f.create).toHaveBeenCalledTimes(1);expect(await db.chapaCheckout.count({where:{userId:f.userId}})).toBe(1);expect(await balance(f.userId)).toBe(purpose==='TOP_UP'?'10':'0');
+  }
+  expect(await reconcile(db)).toEqual([]);expect(await reconcileChapaReceipts(db)).toEqual([]);
+ });
  it('normalizes equivalent top-up amounts but rejects a changed payload for the same key',async()=>{
   const f=await payment({amount:'10'}),order=await f.start();expect((await createChapaCheckout(db,f.userId,{...f.input,amount:'10.00'},undefined,f.transport)).id).toBe(order.id);await expect(createChapaCheckout(db,f.userId,{...f.input,amount:'11.00'},undefined,f.transport)).rejects.toMatchObject({code:'KEY_REUSED'});expect(f.create).toHaveBeenCalledTimes(1);
  });

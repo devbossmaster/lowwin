@@ -58,6 +58,8 @@ All customer reads and commands require the original authenticated Telegram/cont
 
 A top-up create request uses the ETB amount as a decimal string:
 
+Each request key stays permanently bound to its original payment and payload. When a new key resumes an already-pending checkout, an immutable account-scoped alias preserves that binding after payment becomes terminal, including recovery from a lost response. It cannot create a replacement charge or accept different input on retry.
+
 ```json
 {"key":"<new UUID for this operation>","purpose":"TOP_UP","amount":"100.00"}
 ```
