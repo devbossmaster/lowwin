@@ -6,7 +6,7 @@ Back navigation uses account-scoped in-app history metadata, never browser histo
 
 The auction details layout uses the existing generated product artwork at **1840 × 800 px (2.3:1)**, with a reserved landscape image area and compact thumbnails. The four-part countdown still uses the existing server clock anchor and local ticks. Its fixed Bid action opens the existing sheet and shows the real submission fee. Rules come from the existing version-aware disclosure; no reference-site price, fake activity, deadline extension or winner-payment claim was added.
 
-The payment sheet offers Wallet and Chapa. Wallet retains its balance, radio control and adjacent top-up action. Chapa uses the official self-hosted wordmark; its checkout handles merchant-enabled payment methods. Chapa variables and activation notes are in `.env.example`; real credentials and financial activation remain separate from this UI change.
+The payment sheet offers Chapa and Wallet in the [latest compact reference layout](bid-entry-polish.md). Wallet retains its real balance note, radio control and plus top-up action. Chapa uses the official self-hosted wordmark; its checkout handles merchant-enabled payment methods. Chapa variables and activation notes are in `.env.example`; real credentials and financial activation remain separate from this UI change.
 
 ## Verification
 
@@ -30,6 +30,6 @@ The configuration keeps real payment switches disabled. Screenshots and sanitize
 - [Winners, Amharic, 430px](customer-headers/winners-am-430.png)
 - [My Bids, 430px](customer-headers/my-bids-en-430.png)
 - [Auction details, 430px](customer-headers/auction-en-430.png)
-- [Payment choices, Amharic, 360px](customer-headers/bid-payment-am-360.png)
-- [Payment choices, English, 430px](customer-headers/bid-payment-en-430.png)
+- [Payment choices, Amharic, 360px](bid-entry-polish/chapa-am-360.png)
+- [Payment choices, English, 430px](bid-entry-polish/chapa-en-430.png)
 - [360px assertions](customer-headers/evidence-360.json), [430px assertions](customer-headers/evidence-430.json)
