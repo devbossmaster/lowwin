@@ -37,7 +37,6 @@ jobs:
       - run: node scripts/run-db-tests.mjs unit
       - run: npm run typecheck
       - run: npm run build
-      - run: npx playwright install --with-deps chromium
       # Current customer paths are exercised in browser-redesign below.
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()

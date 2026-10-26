@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {test,expect} from '../isolated-browser';
 import {PrismaClient} from '@prisma/client';
 import {randomInt} from 'node:crypto';
 import {richFinalResult} from '../result-fixtures';

@@ -1,4 +1,4 @@
-import {test,expect,type Page,type Locator,type Request} from '@playwright/test';
+import {test,expect,type Page,type Locator,type Request} from '../isolated-browser';
 import {PrismaClient} from '@prisma/client';
 import {randomInt} from 'node:crypto';
 import {mkdirSync,writeFileSync} from 'node:fs';
