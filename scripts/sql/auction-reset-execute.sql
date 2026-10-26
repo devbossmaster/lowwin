@@ -2,6 +2,7 @@
 -- money, hashes or source rows by hand. Re-audit and regenerate on drift.
 -- Two commits by design: a durable halt remains if the financial transaction fails.
 BEGIN;
+SET LOCAL TIME ZONE 'UTC';
 SET LOCAL lock_timeout='8s';
 SET LOCAL statement_timeout='60s';
 DO $halt$
@@ -23,6 +24,7 @@ END $halt$;
 COMMIT;
 
 BEGIN;
+SET LOCAL TIME ZONE 'UTC';
 SET LOCAL lock_timeout='8s';
 SET LOCAL statement_timeout='120s';
 SET LOCAL idle_in_transaction_session_timeout='30s';

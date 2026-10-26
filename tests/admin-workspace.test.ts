@@ -35,10 +35,9 @@ describe('Admin workspace contracts',()=>{
   expect(activeTask('/admin/auctions/example/proof').label).toBe('Finalized results');
  });
  it('keeps a failed queue distinct from an empty authorized queue',async()=>{
-  const db={arifPayCheckout:{count:vi.fn().mockRejectedValue(Error('offline'))},supportCase:{count:vi.fn().mockResolvedValue(0)}};
+  const db={arifPayCheckout:{count:vi.fn().mockRejectedValue(Error('offline'))}};
   const result=await readOverview(db as unknown as PrismaClient,{id:'support',role:'SUPPORT',now:new Date('2026-09-30T10:00:00Z')});
   expect(result).toEqual({serverNow:'2026-09-30T10:00:00.000Z',payments:{state:'error'},players:{state:'error'}});
-  expect(db.supportCase.count).not.toHaveBeenCalled();
  });
  it('uses midnight EAT across UTC date and year boundaries',()=>{
   expect(eatDayStart(new Date('2026-10-02T20:59:59Z')).toISOString()).toBe('2026-10-01T21:00:00.000Z');
@@ -64,7 +63,7 @@ describe('Admin workspace contracts',()=>{
   expect(result.fees).toBeUndefined();expect(result.players).toBeUndefined();expect($queryRaw).not.toHaveBeenCalled();
  });
  it('lets support see player totals without exposing deposit amounts',async()=>{
-  const db={arifPayCheckout:{count:vi.fn().mockResolvedValue(0)},supportCase:{count:vi.fn().mockResolvedValue(1)},$queryRaw:vi.fn().mockResolvedValue([{total:8,today:2,biddersToday:3}])};
+  const db={arifPayCheckout:{count:vi.fn().mockResolvedValue(0)},$queryRaw:vi.fn().mockResolvedValue([{total:8,today:2,biddersToday:3}])};
   const result=await readOverview(db as unknown as PrismaClient,{id:'support',role:'SUPPORT',now:new Date()});
   expect(result.players).toEqual({state:'ready',total:8,today:2,biddersToday:3});expect(result.fees).toBeUndefined();expect(db.$queryRaw).toHaveBeenCalledTimes(2);
  });

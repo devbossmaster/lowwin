@@ -1,5 +1,6 @@
 import {withTelegramCommunity} from '@/lib/telegram-community';
 import {isSubmissionFeeOnly} from '../auctions/rules';
+import {auctionMaintenance} from '../auctions/maintenance';
 import {broadcastRoot,broadcastStopped,campaignContent,expandCampaign,scheduleGlobalAlerts,telegramKinds} from './campaigns';
 import {stagingDemoEnabled} from '../auctions/staging-demo';
 import type {Prisma,PrismaClient,Outbox} from '@prisma/client';
@@ -68,6 +69,9 @@ export const scheduleAlerts=scheduleGlobalAlerts;
  * commit may repeat a message; never repeats a ledger operation. */
 export async function dispatchOne(client:PrismaClient,bot:Pick<Bot,'api'>){
  return client.$transaction(async tx=>{
+  // The shared barrier is held until this bounded delivery finishes. A reset
+  // halt waits for current deliveries, then prevents new claims or fan-out.
+  if(await auctionMaintenance(tx))return false;
   const rows=await tx.$queryRaw<Outbox[]>`SELECT * FROM "Outbox" WHERE state='PENDING' AND "nextAttemptAt"<=clock_timestamp() ORDER BY "nextAttemptAt",id FOR UPDATE SKIP LOCKED LIMIT 1`;
   const row=rows[0];if(!row)return false;
   const root=broadcastRoot(row);

@@ -1,9 +1,9 @@
 {
-  "at": "2026-10-26T20:57:16.144Z",
+  "at": "2026-10-26T21:25:58.577Z",
   "mode": "DISPOSABLE LOOPBACK DATABASES ONLY",
   "results": [
     {
-      "database": "lowwin_reset_prod31_50c8ede5_test",
+      "database": "lowwin_reset_prod31_a313feec_test",
       "summary": {
         "auctions": 7,
         "acceptedBids": 30,
@@ -15,19 +15,19 @@
         "resolvedReviewStatuses": 0
       },
       "checks": [
-        "lowwin_reset_prod31_50c8ede5_test: unapproved package cannot halt or credit",
-        "lowwin_reset_prod31_50c8ede5_test: stale balance aborts before financial changes and keeps maintenance active",
-        "lowwin_reset_prod31_50c8ede5_test: regenerated snapshot rejects approval of an older manifest before SQL can be written",
-        "lowwin_reset_prod31_50c8ede5_test: forced final audit failure rolls every refund, hold release and settlement back",
-        "lowwin_reset_prod31_50c8ede5_test: canonical v1/v2/v3 holds and fees settle under real deferred triggers; v4 compensation preserves fee-only proof",
-        "lowwin_reset_prod31_50c8ede5_test: exact rerun changes no financial row",
-        "lowwin_reset_prod31_50c8ede5_test: late verified deposit credits once, survives reset replay and produces no accepted bid",
-        "lowwin_reset_prod31_50c8ede5_test: customer, Owner, credentials, MFA, settled winner and unresolved payment evidence preserved"
+        "lowwin_reset_prod31_a313feec_test: unapproved package cannot halt or credit",
+        "lowwin_reset_prod31_a313feec_test: stale balance aborts before financial changes and keeps maintenance active",
+        "lowwin_reset_prod31_a313feec_test: regenerated snapshot rejects approval of an older manifest before SQL can be written",
+        "lowwin_reset_prod31_a313feec_test: forced final audit failure rolls every refund, hold release and settlement back",
+        "lowwin_reset_prod31_a313feec_test: canonical v1/v2/v3 holds and fees settle under real deferred triggers; v4 compensation preserves fee-only proof",
+        "lowwin_reset_prod31_a313feec_test: exact rerun changes no financial row",
+        "lowwin_reset_prod31_a313feec_test: late verified deposit credits once, survives reset replay and produces no accepted bid",
+        "lowwin_reset_prod31_a313feec_test: customer, Owner, credentials, MFA, settled winner and unresolved payment evidence preserved"
       ],
       "productionMigrations": 31
     },
     {
-      "database": "lowwin_reset_current_5d620aec_test",
+      "database": "lowwin_reset_current_5ac5e406_test",
       "summary": {
         "auctions": 9,
         "acceptedBids": 32,
@@ -39,15 +39,15 @@
         "resolvedReviewStatuses": 0
       },
       "checks": [
-        "lowwin_reset_current_5d620aec_test: unapproved package cannot halt or credit",
-        "lowwin_reset_current_5d620aec_test: stale balance aborts before financial changes and keeps maintenance active",
-        "lowwin_reset_current_5d620aec_test: regenerated snapshot rejects approval of an older manifest before SQL can be written",
-        "lowwin_reset_current_5d620aec_test: forced final audit failure rolls every refund, hold release and settlement back",
-        "lowwin_reset_current_5d620aec_test: canonical v1/v2/v3 holds and fees settle under real deferred triggers; v4 compensation preserves fee-only proof",
-        "lowwin_reset_current_5d620aec_test: exact rerun changes no financial row",
-        "lowwin_reset_current_5d620aec_test: late verified deposit credits once, survives reset replay and produces no accepted bid",
-        "lowwin_reset_current_5d620aec_test: 10% referral contra-fee reduces compensation to actual net cost and preserves earned/redemption evidence",
-        "lowwin_reset_current_5d620aec_test: customer, Owner, credentials, MFA, settled winner and unresolved payment evidence preserved"
+        "lowwin_reset_current_5ac5e406_test: unapproved package cannot halt or credit",
+        "lowwin_reset_current_5ac5e406_test: stale balance aborts before financial changes and keeps maintenance active",
+        "lowwin_reset_current_5ac5e406_test: regenerated snapshot rejects approval of an older manifest before SQL can be written",
+        "lowwin_reset_current_5ac5e406_test: forced final audit failure rolls every refund, hold release and settlement back",
+        "lowwin_reset_current_5ac5e406_test: canonical v1/v2/v3 holds and fees settle under real deferred triggers; v4 compensation preserves fee-only proof",
+        "lowwin_reset_current_5ac5e406_test: exact rerun changes no financial row",
+        "lowwin_reset_current_5ac5e406_test: late verified deposit credits once, survives reset replay and produces no accepted bid",
+        "lowwin_reset_current_5ac5e406_test: 10% referral contra-fee reduces compensation to actual net cost and preserves earned/redemption evidence",
+        "lowwin_reset_current_5ac5e406_test: customer, Owner, credentials, MFA, settled winner and unresolved payment evidence preserved"
       ],
       "productionMigrations": "current"
     }

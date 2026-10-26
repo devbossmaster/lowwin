@@ -5,8 +5,7 @@ import {AdminError} from './errors';
 import type {StaffRole} from './permissions';
 
 const identity={id:true,name:true,telegramId:true,telegramUsername:true,createdAt:true,
- ownContact:{select:{telegramId:true,botId:true,phoneCipher:true,revokedAt:true}},
- phoneIdentity:{select:{e164:true}}} satisfies Prisma.UserSelect;
+ ownContact:{select:{telegramId:true,botId:true,phoneCipher:true,revokedAt:true}}} satisfies Prisma.UserSelect;
 const playerSelect={...identity,
  _count:{select:{bids:true,wonSettlements:true}}} satisfies Prisma.UserSelect;
 type Identity=Prisma.UserGetPayload<{select:typeof identity}>;
@@ -14,7 +13,7 @@ function contact(user:Identity){
  let phone:string|null=null,phoneUnavailable=false;
  if(user.ownContact){
   try{if(!user.ownContact.revokedAt&&user.ownContact.telegramId===user.telegramId&&user.ownContact.botId===contactBotId())phone=decryptPhone(user.ownContact.phoneCipher,user.ownContact.botId)}catch{phoneUnavailable=true}
- }else phone=user.phoneIdentity?.e164??null;
+ }
  return {id:user.id,name:user.name,telegramId:user.telegramId,telegramUsername:user.telegramUsername,createdAt:user.createdAt,phone,phoneUnavailable};
 }
 /** Use only after the caller's staff authorization, and audit contact access. */
@@ -25,7 +24,7 @@ export function playerSearch(q:string):Prisma.UserWhereInput{
  if(!q)return {};
  const OR:Prisma.UserWhereInput[]=[{id:{contains:q}},{name:{contains:q,mode:'insensitive'}},{telegramId:{contains:q}},{telegramUsername:{contains:q.replace(/^@/,''),mode:'insensitive'}}];
  let normalized:string|undefined;try{normalized=normalizePhone(q)}catch{}
- if(normalized){OR.push({ownContact:{is:{phoneHash:phoneHash(normalized),revokedAt:null}}},{phoneIdentity:{is:{e164:normalized}}})}
+ if(normalized){OR.push({ownContact:{is:{phoneHash:phoneHash(normalized),revokedAt:null}}})}
  return {OR};
 }
 export async function peopleRead(client:PrismaClient,actor:{id:string;role:StaffRole},path:string[],{page,q,status}:{page:number;q:string;status:string}){

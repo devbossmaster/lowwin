@@ -57,7 +57,7 @@ describe.skipIf(!url)('Phase 5B scoped operations and private alerts',()=>{
   const userId=await bidUser(db),createdAt=new Date();
   await db.topUpIntent.createMany({data:Array.from({length:31},(_,i)=>({userId,key:randomUUID(),provider:'VERIFY_ET',channel:'telebirr',status:i%2?'PENDING':'NEEDS_REVIEW',points:0,amountFromReceipt:true,policyVersion:'isolated-neutral-fixture',receivingAccount:'0911111111',expiresAt:new Date(Date.now()+3600000),createdAt,quoteSnapshot:{minCents:'100',maxCents:'100000',earliestTransferAt:new Date(Date.now()-3600000).toISOString()}}))});
   const response=await get(`workspace/transactions?q=${userId}`);expect(response.headers.get('cache-control')).toContain('private, no-store');const first=await okay(response),second=await okay(await get(`workspace/transactions?q=${userId}&page=2`));
-  expect(first.total).toBe(31);expect(first.items).toHaveLength(25);expect(second.items).toHaveLength(6);expect(new Set([...first.items,...second.items].map((r:any)=>r.id)).size).toBe(31);expect(first.items.every((r:any)=>r.amount===null)).toBe(true);expect(first.summary.reduce((n:number,r:any)=>n+r.count,0)).toBe(31);expect(first.gateway).toMatchObject({selected:null,state:'Not selected',chapa:{implemented:false,enabled:false}});
+  expect(first.total).toBe(31);expect(first.items).toHaveLength(25);expect(second.items).toHaveLength(6);expect(new Set([...first.items,...second.items].map((r:any)=>r.id)).size).toBe(31);expect(first.items.every((r:any)=>r.amount===null)).toBe(true);expect(first.summary.reduce((n:number,r:any)=>n+r.count,0)).toBe(31);expect(first.gateway).toMatchObject({selected:null,state:'Not selected',chapa:{implemented:true,enabled:false}});
   expect(JSON.stringify(first)).not.toMatch(/phoneCipher|phoneHash|rawProvider|receivingAccount|0911111111/);expect((await get('workspace/transactions',roles.CATALOG_MANAGER.cookie)).status).toBe(403);expect((await get('workspace/transactions','')).status).toBe(401);expect((await get('workspace/transactions?page=0')).status).toBe(422);
  });
  it('stores managed content within home, preserves other sections and protects legal publication',async()=>{
@@ -98,7 +98,6 @@ describe.skipIf(!url)('Phase 5B scoped operations and private alerts',()=>{
  it('suspends only new bids, preserves accepted outcomes and refunds on cancellation',async()=>{expect((await cmd('suspend',{key:randomUUID(),userId:playerId,suspended:true,reason:'Investigate player report'},roles.SUPPORT.cookie)).status).toBe(403);await okay(await cmd('suspend',{key:randomUUID(),userId:playerId,suspended:true,reason:'Owner reviewed player report'}));const a=await bidAuction(db);await expect(submitBid(db,{userId:playerId,auctionSlug:a.slug!,amount:'4',key:randomUUID()})).rejects.toMatchObject({code:'BIDDING_RESTRICTED'});await new Promise(r=>setTimeout(r,1900));const s=await closeAuction(db,winner.id);expect(s.winnerUserId).toBe(playerId);expect(await reconcile(db)).toEqual([]);const u=await bidUser(db),c=await bidAuction(db,{fee:3});await submitBid(db,{userId:u,auctionSlug:c.slug!,amount:'4',key:randomUUID()});await cancelAuction(db,{auctionId:c.id,actor:{id:ownerId,permission:'auction:cancel'},reason:'Test cancellation',key:randomUUID()});expect(await reconcile(db)).toEqual([])});
  it('includes a settled winner without a delivery case and omits the retired inbox',async()=>{
   const queue=await okay(await get('fulfillment?status=INCOMPLETE'));expect(queue.items.find((r:any)=>r.auctionId===winner.id)).toMatchObject({state:'PENDING',version:0});
-  await db.supportCase.createMany({data:[{userId:playerId,subject:'Overview fixture open',message:'DEMO',status:'OPEN'},{userId:playerId,subject:'Overview fixture investigating',message:'DEMO',status:'INVESTIGATING'},{userId:playerId,subject:'Overview fixture resolved',message:'DEMO',status:'RESOLVED'}]});
   expect((await get('support?status=ACTIVE&q=Overview%20fixture')).status).toBe(404);
   const dash=await okay(await get('dashboard'));expect(dash.deliveries.state).toBe('ready');expect(dash.deliveries.count).toBe(queue.total);
  });
@@ -159,12 +158,10 @@ describe.skipIf(!url)('Phase 5B scoped operations and private alerts',()=>{
   const detail=await okay(await get(`users/${playerId}`,roles.SUPPORT.cookie));expect(detail).toMatchObject({telegramUsername:'people_fixture',phone:'+99900910000001',bidCount:1,winCount:1});expect(detail).not.toHaveProperty('available');expect(detail).not.toHaveProperty('held');expect(JSON.stringify(detail)).not.toMatch(/phoneCipher|phoneHash|sourceUpdateId|password|accounts|session/);
   expect((await get(`users/${playerId}`,roles.CATALOG_MANAGER.cookie)).status).toBe(403);expect((await get(`users/${ownerId}`,roles.SUPPORT.cookie)).status).toBe(404);
  });
- it('retires support reads and writes while retaining historical records',async()=>{
+ it('keeps retired support routes unavailable after removing the legacy table',async()=>{
   const route=await import('../src/app/api/support/route');
-  const c=await db.supportCase.create({data:{userId:playerId,subject:'Historical reply fixture',message:'Please help with my request.',resolution:'Historical response',status:'RESOLVED'}});
   expect((await get('support',roles.SUPPORT.cookie)).status).toBe(404);
-  for(const action of ['support','supportWithdraw'])expect((await cmd(action,{key:randomUUID(),id:c.id,status:'OPEN',reason:'Retired command test',expectedUpdatedAt:c.updatedAt.toISOString()},roles.SUPPORT.cookie)).status).toBe(422);
-  expect(await db.supportCase.findUniqueOrThrow({where:{id:c.id}})).toEqual(c);
+  for(const action of ['support','supportWithdraw'])expect((await cmd(action,{key:randomUUID(),id:randomUUID(),status:'OPEN',reason:'Retired command test',expectedUpdatedAt:new Date().toISOString()},roles.SUPPORT.cookie)).status).toBe(422);
   expect((await route.GET(req('support',undefined,player))).status).toBe(410);
   expect(await (await route.POST(req('support',{},player2))).json()).toMatchObject({supportUrl:'https://t.me/lowwinsupport'});
  });

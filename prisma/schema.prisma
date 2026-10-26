@@ -23,7 +23,6 @@ model User {
   accounts            Account[]
   sessions            Session[]
   wallet              Wallet?
-  phoneIdentity       VerifiedPhoneIdentity?
   ownContact          TelegramOwnContact?
   operations          Operation[]
   topups              TopUpIntent[]
@@ -107,15 +106,6 @@ model RateLimit {
   lastRequest BigInt
 
   @@map("rateLimit")
-}
-
-model VerifiedPhoneIdentity {
-  id             String   @id @default(uuid())
-  userId         String   @unique
-  user           User     @relation(fields: [userId], references: [id], onDelete: Restrict)
-  e164           String   @unique
-  verifiedAt     DateTime
-  proofReference String
 }
 
 model TelegramOwnContact {
@@ -720,18 +710,6 @@ model PaymentStatementEntry {
   @@index([status, createdAt])
 }
 
-model ExternalEvent {
-  id          String    @id @default(uuid())
-  provider    String
-  externalId  String
-  payloadHash String
-  verifiedAt  DateTime
-  processedAt DateTime?
-  createdAt   DateTime  @default(now())
-
-  @@unique([provider, externalId])
-}
-
 model BotUpdate {
   botId         String?
   updateId      BigInt    @id
@@ -1027,19 +1005,6 @@ model UserRestriction {
   suspended Boolean  @default(false)
   reason    String
   updatedAt DateTime @updatedAt
-}
-
-model SupportCase {
-  id         String   @id @default(uuid())
-  userId     String
-  subject    String
-  message    String
-  status     String   @default("OPEN")
-  resolution String   @default("")
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  @@index([userId, createdAt])
 }
 
 model FulfillmentCase {

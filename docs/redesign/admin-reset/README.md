@@ -2,6 +2,8 @@
 
 Implementation and rehearsal only. The agent has performed **no production write, refund, migration, deployment, deletion or gateway activation**. Production execution belongs to the Owner after review.
 
+The Owner subsequently requested physical removal of the old catalog and customer auction history, plus retirement of unused schema tables. That separate post-refund phase is implemented in [clean-start.md](clean-start.md). The original refund procedure below remains the required first step.
+
 ## Reviewed baseline
 
 The baseline below is the original morning audit, not the current execution amount. The refreshed private packet and SQL Editor run order are in `.local/admin-production-reset-current/START-HERE.md`; the older `.local/admin-production-reset-20261026/` packet is superseded. Always review the latest manifest and retain its exact hash rather than copying a total from this historical baseline.
