@@ -1,17 +1,16 @@
 'use client';
 import {useRef,useState} from 'react';
 import {IntentPrefetchLink as Link} from './intent-prefetch-link';
-import {ArrowLeft,ChevronLeft,ChevronRight,Ticket} from 'lucide-react';
+import {ChevronLeft,ChevronRight,Ticket} from 'lucide-react';
 import {AccountSheet} from './account-sheet';
 import {usePrivateQuery,PrivateState} from './private-query';
 import {OfflineRetry} from './offline-retry';
 import type {getPersonalBids} from '@/modules/profile/personal';
 import {useMiniPage,useMiniQueryState} from './mini-query-state';
-import {MiniPhrase,useMiniLocale} from './mini-locale';
+import {useMiniLocale} from './mini-locale';
 import {formatAuctionBid,formatEtb,etbToCents} from '@/lib/money';
 import {isSubmissionFeeOnly} from '@/modules/auctions/rules';
 import {useTelegram} from './telegram-provider';
-import {rememberedMiniDestination} from './mini-navigation-state';
 import {bidFeeNotice} from './my-bids-copy';
 import styles from './my-bids-page.module.css';
 
@@ -43,7 +42,6 @@ function PlayerBids({initialView}:{initialView:View}){
  const date=(value:string)=>new Date(value).toLocaleString(am?'am-ET':'en-ET',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',timeZone:'Africa/Addis_Ababa'});
  const summary=[{label:text('Total','ጠቅላላ'),value:data?(data.counts.total??data.counts.live+data.counts.history):undefined},{label:text('Active','በሂደት ላይ'),value:data?(data.counts.active??data.counts.live):undefined},{label:text('Won','ያሸነፉ'),value:data?.counts.won}];
  return <><OfflineRetry/><section className={styles.page} data-my-bids-ready={!!data&&!busy||undefined}>
-  <header className={styles.heading}><Link href={rememberedMiniDestination(queryIdentity,'/')} className={styles.back} aria-label={text('Back to Home','ወደ መነሻ ይመለሱ')}><ArrowLeft size={20} aria-hidden="true"/></Link><h1><MiniPhrase en="My Bids" am="የእኔ ጨረታዎች"/></h1><span aria-hidden="true"/></header>
   <div className={styles.summary} data-my-bids-summary aria-label={text('Accepted bid summary','የተቀበሉ ጨረታዎች ማጠቃለያ')} aria-busy={!data&&query.status==='authenticated'}>{summary.map(item=><div key={item.label}><span>{item.label}</span><strong>{item.value??<span className={styles.skeleton} aria-label={text('Loading','በመጫን ላይ')}/>}</strong></div>)}</div>
   <div className={styles.tabs} role="group" aria-label={text('Bid status','የጨረታ ሁኔታ')}>{(['all','live','history'] as const).map(tab=><button type="button" key={tab} aria-pressed={view===tab} onClick={()=>{setSelected(null);set({view:tab==='all'?null:tab,page:null})}}>{tab==='all'?text('All','ሁሉም'):tab==='live'?text('Active','በሂደት ላይ'):text('History','ታሪክ')}</button>)}</div>
   {(data||query.error||!['loading','authenticated'].includes(query.status))&&<PrivateState query={query} variant="bids"/>}

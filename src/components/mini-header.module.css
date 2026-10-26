@@ -16,3 +16,4 @@
 .header a,.header button,.header .profileName,.header .avatar{font-family:inherit;font-style:normal}
 
 .icon[aria-current=page]::before{background:#f6efdb;border-color:#dac582}
+.header .brand{flex-direction:column;gap:2px;justify-content:center}.brandName{font-size:10px;font-weight:700;line-height:1.1;color:#181815}

@@ -1,0 +1,20 @@
+{
+  "languages": [
+    "en",
+    "am"
+  ],
+  "directEntryFallback": true,
+  "oneHeaderPerPage": true,
+  "centeredTitles": true,
+  "inAppBack": true,
+  "homePollingStops": true,
+  "warmBalanceRetained": true,
+  "oneWalletRefreshOnReturn": true,
+  "providersPreserved": true,
+  "initialSignins": 2,
+  "signinsAfterNavigation": 2,
+  "liveBidModal": true,
+  "generatedImageAspect": 2.3,
+  "financialMutations": 0,
+  "errors": []
+}

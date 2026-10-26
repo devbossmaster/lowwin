@@ -7,6 +7,7 @@ import {usePrivateQuery} from './private-query';
 import {useTelegram} from './telegram-provider';
 import {IdentityState} from './identity-state';
 import {ChapaPaymentStatus,useChapaPayment} from './chapa-payment';
+import {ChapaLogo} from './chapa-logo';
 import {centsToEtb,etbToCents} from '@/lib/money';
 import type {ChapaAvailability} from '@/lib/chapa-client';
 import type {WalletBalance} from '@/modules/wallet/balance';
@@ -26,7 +27,7 @@ function TopUp({onClose,returnFocusRef}:Props){
   <label className={styles.inputLabel} htmlFor={`${id}-amount`}>{text('Amount','መጠን')}</label><div className={styles.amountInput}><input id={`${id}-amount`} inputMode="decimal" autoComplete="off" maxLength={19} value={amount} disabled={payment.busy} onChange={event=>setAmount(event.target.value)} placeholder="0.00" aria-describedby={`${id}-notice`}/><span>ETB</span></div>
   <div className={styles.presets} aria-label={text('Suggested top-up amounts','የገንዘብ ማስገቢያ መጠኖች')}>{['100','250','500','1000'].map(value=><button key={value} type="button" aria-pressed={amount===value} disabled={payment.busy} onClick={()=>setAmount(value)}>{Number(value).toLocaleString('en-ET',{minimumFractionDigits:2})} ETB</button>)}</div>
   {amount&&!valid&&<p className={styles.error}>{text(`Enter ${settings?.minTopup??'1.00'}–${settings?.maxTopup??'43,200.00'} ETB, with up to two decimal places.`,`${settings?.minTopup??'1.00'}–${settings?.maxTopup??'43,200.00'} ብር፣ እስከ ሁለት የአስርዮሽ ቦታዎች ያስገቡ።`)}</p>}
-  <fieldset className={styles.methods}><legend><CreditCard size={14} aria-hidden="true"/>{text('Payment method','የክፍያ መንገድ')}</legend><label className={`${styles.method} ${styles.selected}`}><span className={styles.methodIcon}><CreditCard size={20} aria-hidden="true"/></span><span className={styles.methodText}><strong>Chapa</strong><small>{text('Continue to Chapa checkout','ወደ Chapa ክፍያ ይቀጥሉ')}</small></span><input type="radio" name={`${id}-provider`} value="chapa" checked readOnly aria-label="Chapa"/></label></fieldset>
+  <fieldset className={styles.methods}><legend><CreditCard size={14} aria-hidden="true"/>{text('Payment method','የክፍያ መንገድ')}</legend><label className={`${styles.method} ${styles.selected}`}><span className={styles.providerLogo}><ChapaLogo/></span><span className={styles.methodText}><strong>Chapa</strong><small>{text('Continue to Chapa checkout','ወደ Chapa ክፍያ ይቀጥሉ')}</small></span><input type="radio" name={`${id}-provider`} value="chapa" checked readOnly aria-label="Chapa"/></label></fieldset>
   <p id={`${id}-notice`} className={styles.availability} role="status">{settings?.enabled?text(settings.mode==='test'?'Test checkout · no real money.':'Your wallet is credited only after secure payment verification.',settings.mode==='test'?'የሙከራ ክፍያ · እውነተኛ ገንዘብ አይከፈልም።':'ክፍያው በደህንነት ከተረጋገጠ በኋላ ብቻ ወደ ዋሌትዎ ይጨመራል።'):text('Top-ups are not available yet.','ገንዘብ ማስገባት ገና አልተጀመረም።')}</p>
   {(availability.error||wallet.error)&&<p className={styles.error} role="status">{text('Payment details could not refresh.','የክፍያ ዝርዝሮችን ማደስ አልተቻለም።')} <button className={styles.inlineRetry} type="button" onClick={()=>{availability.reload();wallet.reload()}}>{text('Retry','እንደገና')}</button></p>}{payment.error&&<p className={styles.error} role="alert">{payment.error}</p>}
   {!onClose&&action}

@@ -3,7 +3,7 @@ import {Suspense} from 'react';
 import {usePathname} from 'next/navigation';
 import {BottomNavigation} from './bottom-navigation';
 import {TelegramEntry} from './telegram-entry';
-import {MiniHeader} from './mini-header';
+import {CustomerPageHeader} from './customer-page-header';
 import {useTelegram} from './telegram-provider';
 import {TelegramSupportLink} from './telegram-support-link';
 import {CatalogImagePreview} from './catalog-image';
@@ -16,9 +16,9 @@ export function AppShell({children,requireLaunch=false,demoProductImage=false}:{
  return <CatalogImagePreview enabled={demoProductImage}><div className="app-frame">
   <Suspense fallback={null}><MiniNavigationMemory/></Suspense>
   <Suspense fallback={null}><LegacyAccountActions/></Suspense>
-  {path!=='/profile'&&<MiniHeader/>}
+  {path!=='/'&&<CustomerPageHeader/>}
   <main id="main">{children}</main>
-  {path!=='/profile'&&<TelegramSupportLink/>}
+  {path!=='/profile'&&<TelegramSupportLink aboveBidAction={/^\/auctions\/[^/]+$/.test(path)&&path!=='/auctions/all'}/>}
   <BottomNavigation/>
  </div></CatalogImagePreview>;
 }

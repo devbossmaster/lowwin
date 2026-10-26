@@ -96,3 +96,4 @@
 @media(min-width:620px){.list.results{grid-template-columns:repeat(2,minmax(0,1fr))}.page{padding:28px 24px 40px}}
 @media(prefers-reduced-motion:no-preference){.bidRow,.drawCard{transition:background .15s ease}.bidRow:hover,.drawCard:hover{background:#faf9f5}}
 .drawCard .pill :global(.countdown){font-size:11px;font-weight:500;line-height:1.5;color:inherit;background:transparent;padding:0;white-space:normal}
+.subtitle{margin:0 0 16px;color:#69685f;font-size:12px;line-height:1.7}

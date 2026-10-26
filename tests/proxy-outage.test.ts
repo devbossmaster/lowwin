@@ -5,6 +5,7 @@ vi.mock('../src/modules/auth/mini-access',()=>access);
 import {proxy} from '../src/proxy';
 beforeEach(()=>{vi.clearAllMocks();access.getMiniSession.mockReset()});
 describe('private access during database outages',()=>{
+  it('serves the exact public Chapa logo without a database lookup',async()=>{access.getMiniSession.mockRejectedValue(Error('Database unavailable'));expect((await proxy(new NextRequest('http://localhost/images/chapa-logo.svg'))).headers.get('x-middleware-next')).toBe('1');expect(access.getMiniSession).not.toHaveBeenCalled();access.getMiniSession.mockResolvedValue(null);expect((await proxy(new NextRequest('http://localhost/images/chapa-logo.svg/private'))).status).toBe(307)});
   it('leaves only exact Chapa callbacks public and delegates private checkout auth to its handlers',async()=>{
     access.getMiniSession.mockRejectedValue(Error('Database unavailable'));
     for(const path of ['/payments/chapa/return','/api/payments/chapa/callback','/api/payments/chapa/webhook','/api/payments/chapa','/api/payments/chapa/checkouts','/api/payments/chapa/checkouts/11111111-1111-4111-a111-111111111111'])expect((await proxy(new NextRequest('http://localhost'+path))).headers.get('x-middleware-next')).toBe('1');
