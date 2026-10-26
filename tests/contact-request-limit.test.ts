@@ -14,8 +14,9 @@ describe.skipIf(!url)('atomic contact-request cooldown on disposable PostgreSQL'
   const player = () => `contact-limit-fixture-${randomUUID()}`;
   const key = (userId: string) => `own-contact-request:${userId}`;
   const row = (userId: string) => db.rateLimit.findUniqueOrThrow({where: {key: key(userId)}});
+  // Match the limiter's truncation; a numeric-to-bigint cast can round up 1 ms.
   const clock = async () => (await db.$queryRaw<{now: bigint}[]>`
-    SELECT (extract(epoch FROM statement_timestamp()) * 1000)::bigint AS now
+    SELECT floor(extract(epoch FROM statement_timestamp()) * 1000)::bigint AS now
   `)[0].now;
   const seed = async (userId: string, offsetMs: bigint, count = 7) => {
     const id = randomUUID();
