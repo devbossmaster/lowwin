@@ -22,7 +22,6 @@ export function MiniHeader(){
  const photo=status==='authenticated'&&me?.user.image?.startsWith('https://')&&failedPhoto!==me.user.image?me.user.image:null;
  let amount:string|null=null;
  try{if(wallet.data&&!wallet.error)amount=centsToEtb(etbToCents(wallet.data.available))}catch{/* Unavailable amounts are never displayed as zero. */}
- useEffect(()=>{const refresh=()=>wallet.reload();window.addEventListener('lowin-wallet-updated',refresh);return()=>window.removeEventListener('lowin-wallet-updated',refresh)},[wallet.reload]);
  const [languageOpen,setLanguageOpen]=useState(false);
  const languageRef=useRef<HTMLDivElement>(null);
  const languageButtonRef=useRef<HTMLButtonElement>(null);

@@ -39,7 +39,7 @@ test('browse filters survive navigation and private screens reuse a fresh read',
   await page.goBack();await expect(cards).toHaveCount(3);
   const category=categories.getByRole('link').nth(1),categoryHref=(await category.getAttribute('href'))!;
   expect(new URL(categoryHref,'http://localhost').searchParams.get('q')).toBe(marker);
-  await category.click();expect(new URL(page.url()).searchParams.get('sort')).toBe('fee-high');
+  await category.click();await expect(category).toHaveAttribute('aria-current','page');await expect(page).toHaveURL(new URL(categoryHref,process.env.BETTER_AUTH_URL).href);expect(new URL(page.url()).searchParams.get('sort')).toBe('fee-high');
   await page.getByRole('textbox',{name:'Search auctions'}).fill('no-result-fixture');
   await page.getByRole('button',{name:'Search',exact:true}).click();
   await expect(page.getByText('Nothing here just yet',{exact:true})).toBeVisible();

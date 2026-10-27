@@ -7,7 +7,7 @@ import {verifyFixtureContact} from '../contact-fixtures';
 import {contactBotId,decryptPhone} from '../../src/modules/auth/own-contact';
 import {signedLaunch,ENGLISH_UI_STATE} from '../helpers';
 
-test('focused first/repeat sheet and navigation request measurements',async({browser},info)=>{
+test('focused first/repeat sheet and navigation request measurements',async({browser,extraHTTPHeaders},info)=>{
  test.setTimeout(480000);
  const database=process.env.TEST_DATABASE_URL!,u=new URL(database);if(u.hostname!=='127.0.0.1'||!u.pathname.endsWith('_test'))throw Error('Disposable loopback _test database required');
  const db=new PrismaClient({datasourceUrl:database}),phase=process.env.CLIENT_FLOW_PHASE??'after',root=process.env.CLIENT_FLOW_REPORT_DIR??'test-results/client-flow';mkdirSync(root,{recursive:true});
@@ -22,7 +22,7 @@ test('focused first/repeat sheet and navigation request measurements',async({bro
   const marker='QA client flow '+randomUUID().slice(0,7);let slug='';
   for(let index=0;index<12;index++){const a=await bidAuction(db,{fee:10,ruleVersion:'lowest-unique-v4',isDemo:false,endDelayMs:3600000});if(!index)slug=a.slug!;await db.product.update({where:{id:a.productId!},data:{title:`${marker} ${String(index).padStart(2,'0')}`,titleAm:`የሙከራ ዕቃ ${index}`,images:{create:{path:'/images/lowwin-demo-headphones.webp',alt:'Explicit QA preview product',sourceType:'ORIGINAL'}}}})}
   for(const slow of [false,true]){
-   const context=await browser.newContext({baseURL:process.env.BETTER_AUTH_URL,ignoreHTTPSErrors:true,viewport:info.project.use.viewport,storageState:ENGLISH_UI_STATE});
+   const context=await browser.newContext({baseURL:process.env.BETTER_AUTH_URL,ignoreHTTPSErrors:true,viewport:info.project.use.viewport,storageState:ENGLISH_UI_STATE,extraHTTPHeaders});
    const page=await context.newPage();page.setDefaultTimeout(45000);const cdp=await context.newCDPSession(page);await cdp.send('Network.enable');await cdp.send('Network.setBlockedURLs',{urls:['https://telegram.org/*']});
    if(slow)await cdp.send('Network.emulateNetworkConditions',{offline:false,latency:150,downloadThroughput:125000,uploadThroughput:64000});
    await page.addInitScript(({launch})=>{window.Telegram={WebApp:{initData:launch,ready(){},expand(){},setHeaderColor(){},setBackgroundColor(){}}};},{launch:signedLaunch({user:JSON.stringify({id:telegramId,first_name:'Client flow QA'})},process.env.TELEGRAM_BOT_TOKEN)});
@@ -34,7 +34,7 @@ test('focused first/repeat sheet and navigation request measurements',async({bro
    page.on('response',response=>{const row=active.get(response.request());if(row){row.status=response.status();if(row.path.startsWith('/api/'))row.cacheControl=response.headers()['cache-control']??''}});
    const finish=(request:import('@playwright/test').Request)=>{const row=active.get(request);if(!row)return;row.durationMs=Math.round(performance.now()-started-row.startedMs);active.delete(request);if(row.path.startsWith('/api/')){const k=request.method()+':'+row.path;inFlight.set(k,Math.max(0,(inFlight.get(k)??1)-1))}};page.on('requestfinished',finish);page.on('requestfailed',finish);
    const counts=(rows:RequestRow[])=>({requests:rows.length,api:rows.filter(r=>r.path.startsWith('/api/')).map(r=>({path:r.path,method:r.method,durationMs:r.durationMs,status:r.status,cacheControl:r.cacheControl})),scripts:rows.filter(r=>r.kind==='script').length,images:rows.filter(r=>r.kind==='image').length,rsc:rows.filter(r=>r.kind==='fetch'&&!r.path.startsWith('/api/')).length});
-   await page.goto('/telegram?next='+encodeURIComponent('/?q='+encodeURIComponent(marker)));const nav=page.getByRole('navigation',{name:'Your navigation'});await expect(nav).toBeVisible();await expect(page.locator('#discover-auctions .auction-card')).toHaveCount(10);await page.evaluate(()=>document.fonts.ready);const firstHomeMs=Math.round(performance.now()-started);await page.waitForTimeout(600);
+   await page.goto('/telegram?next='+encodeURIComponent('/?q='+encodeURIComponent(marker)),{waitUntil:'domcontentloaded'});const nav=page.getByRole('navigation',{name:'Your navigation'});await expect(nav).toBeVisible();await expect(page.locator('#discover-auctions .auction-card')).toHaveCount(10);await page.evaluate(()=>document.fonts.ready);const firstHomeMs=Math.round(performance.now()-started);await page.waitForTimeout(600);
    const mode:Record<string,unknown>={firstHomeMs,initialRequests:counts(requests.slice()),network:slow?'CDP latency150ms, 125KB/s down, 64KB/s up':'normal loopback'};
    if(phase!=='before'){
     const hero=page.locator('section[aria-labelledby="home-headline"]'),actions=hero.locator('button,a');

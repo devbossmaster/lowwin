@@ -35,12 +35,16 @@ export function usePrivateQuery<T>(url:string,{pollMs=0,enabled=true,freshnessMs
       if(event.identity===queryIdentity&&event.kind==='mutation')refresh(true);
     });
     refresh(forceRetry);
+    // Wallet changes also need to reach an open sheet or Wallet/Profile page
+    // while Home's header is unmounted. Every reader shares the same request.
+    const walletChanged=()=>refresh(true);
+    if(url==='/api/wallet')window.addEventListener('lowin-wallet-updated',walletChanged);
     const visible=()=>{if(document.visibilityState==='visible')refresh()};
     document.addEventListener('visibilitychange',visible);
     window.addEventListener('focus',visible);
     window.addEventListener('online',visible);
     const timer=pollMs?setInterval(()=>{if(document.visibilityState==='visible')refresh()},pollMs):null;
-    return()=>{active=false;unsubscribe();document.removeEventListener('visibilitychange',visible);window.removeEventListener('focus',visible);window.removeEventListener('online',visible);if(timer)clearInterval(timer)};
+    return()=>{active=false;unsubscribe();window.removeEventListener('lowin-wallet-updated',walletChanged);document.removeEventListener('visibilitychange',visible);window.removeEventListener('focus',visible);window.removeEventListener('online',visible);if(timer)clearInterval(timer)};
   },[url,status,queryIdentity,retry,pollMs,enabled,freshnessMs,language,key,request]);
   const snapshot=enabled&&status==='authenticated'&&queryIdentity?readPrivateQuery<T>(queryIdentity,url,{freshnessMs,language}):null;
   useEffect(()=>{if(snapshot&&queryIdentity)previous.current={identity:queryIdentity,url,language};else if(status!=='authenticated')previous.current=null},[snapshot?.value,queryIdentity,url,language,status]);

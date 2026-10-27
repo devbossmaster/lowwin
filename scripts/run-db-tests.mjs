@@ -45,5 +45,11 @@ if(mode==='unit') {
     run(['node_modules/next/dist/bin/next','build','--webpack']);
     env.NODE_ENV=runtimeNodeEnv??'development';
   }else if(mode!=='chapa')run(['node_modules/tsx/dist/cli.mjs','scripts/seed-catalog.ts']);
+  if(mode==='redesign'&&env.REDESIGN_PRODUCTION==='1'){
+    env.LOWIN_UI_TEST_MODE='local';
+    const runtimeNodeEnv=env.NODE_ENV;env.NODE_ENV='production';
+    run(['node_modules/next/dist/bin/next','build','--webpack']);
+    env.NODE_ENV=runtimeNodeEnv??'development';
+  }
   run(['node_modules/@playwright/test/cli.js','test','--config',mode==='chapa'?'playwright.chapa.config.ts':mode==='admin'?'playwright.admin-workspace.config.ts':mode==='redesign'?'playwright.redesign.config.ts':mode==='payments'?'playwright.payments.config.ts':mode==='smoke'?'playwright.release.config.ts':'playwright.config.ts']);
 }

@@ -5,7 +5,7 @@ import {mkdirSync,writeFileSync} from 'node:fs';
 import {signedLaunch,ENGLISH_UI_STATE} from '../helpers';
 import {verifyFixtureContact} from '../contact-fixtures';
 
-test('launch transport, fonts and measured account latency',async({browser},info)=>{
+test('launch transport, fonts and measured account latency',async({browser,extraHTTPHeaders},info)=>{
  const database=process.env.TEST_DATABASE_URL!,target=new URL(database);
  if(target.hostname!=='127.0.0.1'||!target.pathname.endsWith('_test'))throw Error('Disposable loopback database required');
  const db=new PrismaClient({datasourceUrl:database}),phase=process.env.LAUNCH_PHASE??'after';
@@ -15,7 +15,7 @@ test('launch transport, fonts and measured account latency',async({browser},info
   const id=randomInt(9100000000,9200000000);await verifyFixtureContact(db,id);
   const initData=signedLaunch({user:JSON.stringify({id,first_name:'Launch performance fixture'})},process.env.TELEGRAM_BOT_TOKEN);
   const script=`window.Telegram={WebApp:{initData:${JSON.stringify(initData)},ready(){},expand(){},setHeaderColor(){},setBackgroundColor(){}}};`;
-  const anonymous=await browser.newContext({baseURL:process.env.BETTER_AUTH_URL});
+  const anonymous=await browser.newContext({baseURL:process.env.BETTER_AUTH_URL,ignoreHTTPSErrors:true});
   const fontResponses=[];
   for(const path of ['/fonts/sora-latin-800.woff2','/fonts/noto-serif-ethiopic-banner.woff2']){
    const began=performance.now(),response=await anonymous.request.get(path,{maxRedirects:0});
@@ -25,7 +25,7 @@ test('launch transport, fonts and measured account latency',async({browser},info
   expect((await anonymous.request.get('/api/me')).status()).toBe(401);
   await anonymous.close();report.anonymousFonts=fontResponses;
   for(const slow of [false,true]){
-   const context=await browser.newContext({baseURL:process.env.BETTER_AUTH_URL,viewport:info.project.use.viewport,storageState:ENGLISH_UI_STATE});
+   const context=await browser.newContext({baseURL:process.env.BETTER_AUTH_URL,ignoreHTTPSErrors:true,viewport:info.project.use.viewport,storageState:ENGLISH_UI_STATE,extraHTTPHeaders});
    const page=await context.newPage();page.setDefaultTimeout(45000);
    if(slow){const cdp=await context.newCDPSession(page);await cdp.send('Network.enable');await cdp.send('Network.emulateNetworkConditions',{offline:false,latency:150,downloadThroughput:125000,uploadThroughput:64000})}
    await page.route('https://telegram.org/js/telegram-web-app.js',async route=>{await new Promise(resolve=>setTimeout(resolve,250));await route.fulfill({contentType:'application/javascript',body:script})});
@@ -33,7 +33,7 @@ test('launch transport, fonts and measured account latency',async({browser},info
    page.on('pageerror',error=>errors.push(error.message));
    page.on('request',request=>{if(new URL(request.url()).pathname==='/api/auth/telegram/miniapp/signin')signins.push(request.method());if(request.resourceType()==='document')documents.push(new URL(request.url()).pathname)});
    page.on('response',response=>{if(new URL(response.url()).pathname==='/api/auth/telegram/miniapp/signin')apiTiming.push(response.headerValue('server-timing').then(value=>value??undefined))});
-   const started=performance.now();await page.goto('/telegram');
+   const started=performance.now();await page.goto('/telegram',{waitUntil:'domcontentloaded'});
    await expect(page.getByRole('navigation',{name:'Your navigation'})).toBeVisible();
    const homeReadyMs=Math.round(performance.now()-started);
    await page.evaluate(()=>document.fonts.ready);const fontsReadyMs=Math.round(performance.now()-started);

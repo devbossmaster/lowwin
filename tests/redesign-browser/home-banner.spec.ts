@@ -26,36 +26,31 @@ test('home banner: both languages, image, mobile geometry and existing actions',
    }
    await expect(hero).toHaveAttribute('lang',language);
    const headline=language==='en'?defaultHomeCopy.headline:defaultHomeCopy.headlineAm;
-   const lead=language==='en'?'The lowest unique bid wins.':'ዝቅተኛው ልዩ ቁጥር ያሸንፋል።';
+   const lead=language==='en'?defaultHomeCopy.lead:defaultHomeCopy.leadAm;
    await expect(hero.locator('h1')).toHaveText(headline);
    expect(await hero.locator('p').textContent()).toBe(lead);
    await expect(page.locator('#home-headline')).toHaveCount(1);
-   await expect(page.getByText(lead,{exact:true})).toHaveCount(1);
-   await expect(page.getByText(defaultHomeCopy.lead,{exact:true})).toHaveCount(0);
-   await expect(page.getByText(defaultHomeCopy.leadAm,{exact:true})).toHaveCount(0);
-   const image=hero.locator('img');await expect(image).toHaveAttribute('src',/lowin-family-hero/);
+   await expect(hero.getByText(lead,{exact:true})).toHaveCount(1);
+   const image=hero.locator('img');await expect(image).toHaveAttribute('src',new RegExp(`lowwin-home-banner-${language}\\.webp`));
    await expect.poll(()=>image.evaluate((node:HTMLImageElement)=>node.complete&&node.naturalWidth>0)).toBe(true);
    await page.evaluate(()=>document.fonts.ready);
-   expect(await page.evaluate(()=>document.fonts.check('800 24px \"Lowwin Banner Latin\"','wins'))).toBe(true);
-   if(language==='am')expect(await page.evaluate(()=>document.fonts.check('800 24px \"Lowwin Banner Ethiopic\"','ትንሽ'))).toBe(true);
    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-   const bannerBox=(await hero.boundingBox())!,copyBox=(await hero.locator('p').boundingBox())!;
+   // The approved headline and logo are in the image. Accessible copy stays
+   // available to assistive technology without duplicating the visible text.
+   const bannerBox=(await hero.boundingBox())!,copyBox=(await hero.locator('.sr-only').boundingBox())!;
+   expect(copyBox.width).toBeLessThanOrEqual(1);expect(copyBox.height).toBeLessThanOrEqual(1);
    expect(bannerBox.width).toBe(page.viewportSize()!.width);
    expect(bannerBox.height).toBeLessThanOrEqual(235);
-   for(const element of await hero.locator('h1,p,button,a,small').all()){
+   for(const element of await hero.locator('button,a,small').all()){
     const box=(await element.boundingBox())!;
     expect(box.x).toBeGreaterThanOrEqual(bannerBox.x);
     expect(box.x+box.width).toBeLessThanOrEqual(bannerBox.x+bannerBox.width+1);
     expect(box.y+box.height).toBeLessThanOrEqual(bannerBox.y+bannerBox.height+1);
    }
-   // Left copy stays clear of the photo's right-hand faces. Actions follow the copy.
-   expect(copyBox.x+copyBox.width).toBeLessThanOrEqual(bannerBox.x+bannerBox.width*.55);
    for(const action of await hero.locator('button,a').all()){
     const box=(await action.boundingBox())!;expect(box.height).toBeGreaterThanOrEqual(44);
-    expect(box.y).toBeGreaterThanOrEqual(copyBox.y+copyBox.height);
+    expect(box.y).toBeGreaterThanOrEqual(bannerBox.y);
    }
-   const firstActionBox=(await hero.locator('button').boundingBox())!;
-   expect(firstActionBox.y-copyBox.y-copyBox.height).toBeCloseTo(12,0);
    await hero.screenshot({path:`${root}/banner-${info.project.name}-${language}.png`});
    const learn=hero.getByRole('button');await learn.click();await expect(page.getByRole('dialog')).toBeVisible();
    await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);await expect(learn).toBeFocused();

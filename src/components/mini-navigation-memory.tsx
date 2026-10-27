@@ -1,5 +1,5 @@
 'use client';
-import {useEffect,useRef} from 'react';
+import {useEffect,useRef,useTransition} from 'react';
 import {usePathname,useRouter,useSearchParams} from 'next/navigation';
 import {useTelegram} from './telegram-provider';
 import {miniNavigationState,miniRouteKey,rememberCurrentMiniRoute} from './mini-navigation-state';
@@ -11,6 +11,7 @@ export function MiniNavigationMemory(){
  const pathname=usePathname(),params=useSearchParams(),router=useRouter(),{queryIdentity,status}=useTelegram();
  const href=pathname+(params.size?'?'+params.toString():'');
  const routeKey=miniRouteKey(href);
+ const [refreshingHome,startHomeRefresh]=useTransition();
  const history=useRef(new CustomerNavigationHistory()),popped=useRef(false),visitedHome=useRef(false),last=useRef<{identity:string|null;path:string|null}>({identity:null,path:null});
  useEffect(()=>{const pop=()=>{popped.current=true};window.addEventListener('popstate',pop);return()=>window.removeEventListener('popstate',pop)},[]);
  useEffect(()=>{
@@ -25,11 +26,14 @@ export function MiniNavigationMemory(){
    visitedHome.current=true;
    void loadPrivateJson(queryIdentity,'/api/wallet',{force:true}).catch(()=>{});
    // Refresh server Home content in place; cached client state and providers survive.
-   if(returning)router.refresh();
+   if(returning)startHomeRefresh(()=>router.refresh());
   }
  },[href,pathname,queryIdentity,status,router]);
  useEffect(()=>{
-  if(status!=='authenticated'||!queryIdentity)return;
+  // A returning Home can commit its cached list before the server refresh.
+  // Keep the saved coordinate until that transition has committed, so a
+  // temporary shorter tree cannot overwrite it with a clamped zero.
+  if(status!=='authenticated'||!queryIdentity||refreshingHome)return;
   const saved=miniNavigationState.visit(queryIdentity,href),target=saved&&miniRouteKey(saved.href)===routeKey?saved.scrollY:0;
   let frame=0,restoring=target>0,stopped=false;const until=performance.now()+1200;
   const save=()=>{if(!restoring&&miniRouteKey(location.pathname+location.search)===routeKey)rememberCurrentMiniRoute(queryIdentity)};
@@ -44,6 +48,6 @@ export function MiniNavigationMemory(){
   window.addEventListener('scroll',save,{passive:true});window.addEventListener('pagehide',save);
   window.addEventListener('pointerdown',cancel,{once:true,passive:true});window.addEventListener('wheel',cancel,{once:true,passive:true});window.addEventListener('keydown',cancel,{once:true});
   return()=>{save();stopped=true;cancelAnimationFrame(frame);window.removeEventListener('scroll',save);window.removeEventListener('pagehide',save);window.removeEventListener('pointerdown',cancel);window.removeEventListener('wheel',cancel);window.removeEventListener('keydown',cancel)};
- },[href,pathname,queryIdentity,status,routeKey]);
+ },[href,pathname,queryIdentity,status,routeKey,refreshingHome]);
  return null;
 }
