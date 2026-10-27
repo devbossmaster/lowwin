@@ -1,16 +1,20 @@
 'use client';
 
-import {useEffect,useId,useRef,type ReactNode,type RefObject} from 'react';
+import {createContext,useContext,useEffect,useId,useRef,useState,type ReactNode,type RefObject} from 'react';
+import {createPortal} from 'react-dom';
 import {X} from 'lucide-react';
 import {useMiniLocale} from './mini-locale';
 import styles from './account-sheet.module.css';
 import {useSheetBack} from './use-sheet-back';
+const FooterTarget=createContext<HTMLElement|null>(null);
+export function AccountSheetFooter({children}:{children:ReactNode}){const target=useContext(FooterTarget);return target?createPortal(children,target):null}
 
 /** Native modal focus containment, Escape handling, and focus restoration. Mount only while open. */
-export function AccountSheet({title,onClose,children,footer,headerActions,returnFocusRef,size='content'}:{title:ReactNode;onClose:()=>void;children:ReactNode;footer?:ReactNode;headerActions?:ReactNode;returnFocusRef?:RefObject<HTMLElement|null>;size?:'content'|'payment'}){
+export function AccountSheet({title,onClose,children,footer,footerPortal=false,headerActions,returnFocusRef,size='content'}:{title:ReactNode;onClose:()=>void;children:ReactNode;footer?:ReactNode;footerPortal?:boolean;headerActions?:ReactNode;returnFocusRef?:RefObject<HTMLElement|null>;size?:'content'|'payment'}){
   const dismiss=useSheetBack(onClose);
   const dialog=useRef<HTMLDialogElement>(null),closeButton=useRef<HTMLButtonElement>(null),close=useRef(onClose),titleId=useId();
   const {language}=useMiniLocale();
+  const [footerTarget,setFooterTarget]=useState<HTMLElement|null>(null);
   close.current=dismiss;
   useEffect(()=>{
     const element=dialog.current,previous=document.activeElement as HTMLElement|null;
@@ -37,7 +41,7 @@ export function AccountSheet({title,onClose,children,footer,headerActions,return
   return <dialog ref={dialog} className={styles.sheet} data-size={size} aria-labelledby={titleId} onCancel={event=>{event.preventDefault();close.current()}} onClick={event=>{if(event.target===event.currentTarget){const box=event.currentTarget.getBoundingClientRect();if(event.clientX<box.left||event.clientX>box.right||event.clientY<box.top||event.clientY>box.bottom)close.current()}}}>
     <div className={styles.handle} aria-hidden="true"/>
     <header className={styles.header}><h2 id={titleId}>{title}</h2><div className={styles.headerActions}>{headerActions}<button ref={closeButton} type="button" onClick={dismiss} aria-label={language==='am'?'ዝጋ':'Close'}><X size={19} aria-hidden="true"/></button></div></header>
-    <div className={styles.body}>{children}</div>
-    {footer&&<footer className={styles.footer}>{footer}</footer>}
+    <FooterTarget.Provider value={footerTarget}><div className={styles.body}>{children}</div></FooterTarget.Provider>
+    {(footer||footerPortal)&&<footer ref={footerPortal?setFooterTarget:undefined} className={styles.footer}>{footer}</footer>}
   </dialog>;
 }

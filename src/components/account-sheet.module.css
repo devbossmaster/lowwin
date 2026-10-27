@@ -12,5 +12,6 @@
 .header button:focus-visible{outline:2px solid #987522;outline-offset:2px}
 .body{overflow-y:auto;overscroll-behavior:contain;padding:0 18px max(24px,calc(max(env(safe-area-inset-bottom,0px),var(--tg-safe-area-inset-bottom,0px)) + var(--tg-content-safe-area-inset-bottom,0px)));min-height:0}
 .footer{padding:14px 18px max(16px,calc(max(env(safe-area-inset-bottom,0px),var(--tg-safe-area-inset-bottom,0px)) + var(--tg-content-safe-area-inset-bottom,0px)));background:#fff;border-top:1px solid #eceae3;flex-shrink:0}
+.footer:empty{display:none}
 @keyframes arrive{from{transform:translateY(24px);opacity:.8}to{transform:translateY(0);opacity:1}}
 @media(prefers-reduced-motion:reduce){.sheet[open]{animation:none}}

@@ -4,7 +4,7 @@ import {useCallback,useEffect,useRef,useState} from 'react';
 import {ArrowUpRight,Check,Clock3,RefreshCw,ShieldCheck} from 'lucide-react';
 import {useTelegram} from './telegram-provider';
 import {useMiniLocale} from './mini-locale';
-import {invalidatePrivateQueries,isPrivateQueryIdentity,subscribePrivateQueries} from './private-query-cache';
+import {confirmedBidQueryScopes,invalidatePrivateQueries,isPrivateQueryIdentity,subscribePrivateQueries,WALLET_QUERY_SCOPES} from './private-query-cache';
 import {chapaCheckoutUrl,chapaConfirmed,chapaRecoverable,chapaUuid,ChapaClientError,clearChapaAttempt,clearChapaAttempts,readChapaAttempt,requestChapaJson,writeChapaAttempt,type ChapaAttempt,type ChapaCheckoutView,type ChapaIntent} from '@/lib/chapa-client';
 import {formatEtb} from '@/lib/money';
 import styles from './bid-payment-sheet.module.css';
@@ -24,7 +24,7 @@ export function useChapaPayment(scope:string,initialId?:string){
  const persist=useCallback((value:ChapaAttempt|null)=>{if(storageKey&&typeof window!=='undefined'){try{value?writeChapaAttempt(window.sessionStorage,storageKey,value):clearChapaAttempt(window.sessionStorage,storageKey)}catch{}}stateRef.current={...stateRef.current,attempt:value};setSnapshot(s=>s.identity===queryIdentity?{...s,attempt:value}:s)},[storageKey,queryIdentity]);
  const receive=useCallback((order:ChapaCheckoutView)=>{
   setSnapshot(s=>s.identity===queryIdentity?{...s,order,error:'',restoring:false}:s);const a=stateRef.current.attempt;if(a)persist({...a,orderId:order.id});
-  if(queryIdentity&&chapaConfirmed(order)&&invalidated.current!==order.id){invalidated.current=order.id;invalidatePrivateQueries(queryIdentity);void refreshMe().catch(()=>{});persist(null)}
+  if(queryIdentity&&chapaConfirmed(order)&&invalidated.current!==order.id){invalidated.current=order.id;invalidatePrivateQueries(queryIdentity,scope.startsWith('bid:')?confirmedBidQueryScopes(scope.slice(4)):WALLET_QUERY_SCOPES);void refreshMe().catch(()=>{});persist(null)}
  },[persist,queryIdentity,refreshMe]);
  const run=useCallback(async(url:string,options:RequestInit={})=>{
   const version=epoch.current,controller=new AbortController();controllers.current.add(controller);

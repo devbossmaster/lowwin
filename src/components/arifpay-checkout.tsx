@@ -4,7 +4,7 @@ import Link from 'next/link';
 import {LoadingSpinner} from './loading-spinner';
 import {MiniPhrase,useMiniLocale} from './mini-locale';
 import {useTelegram} from './telegram-provider';
-import {invalidatePrivateQueries} from './private-query-cache';
+import {confirmedBidQueryScopes,invalidatePrivateQueries} from './private-query-cache';
 import type {DirectBidReceipt} from '@/modules/auctions/bids';
 import type {ArifPayCheckoutView} from '@/modules/payments/arifpay';
 import {formatEtb} from '@/lib/money';
@@ -38,7 +38,7 @@ function CheckoutForIdentity({slug,amount,feeVersion,fee,onAccepted,initialOrder
   setOrder(next);setError('');setRestoreId(null);
   if(attemptRef.current){const saved={...attemptRef.current,orderId:next.id};attemptRef.current=saved;setAttempt(saved);try{writeArifPayAttempt(sessionStorage,storageKey,saved)}catch{}}
   if(terminal.has(next.status)){try{clearArifPayAttempt(sessionStorage,storageKey)}catch{};attemptRef.current=null;setAttempt(null)}
-  if((next.status==='BID_ACCEPTED'||next.fundsPreserved)&&invalidated.current!==next.id){invalidated.current=next.id;if(queryIdentity)invalidatePrivateQueries(queryIdentity);void refreshMe().catch(()=>{})}
+  if((next.status==='BID_ACCEPTED'||next.fundsPreserved)&&invalidated.current!==next.id){invalidated.current=next.id;if(queryIdentity)invalidatePrivateQueries(queryIdentity,confirmedBidQueryScopes(slug));void refreshMe().catch(()=>{})}
   if(next.status==='BID_ACCEPTED'&&next.receipt&&!accepted.current){accepted.current=true;callback.current(next.receipt as unknown as DirectBidReceipt)}
  },[queryIdentity,refreshMe,storageKey]);
  useEffect(()=>{

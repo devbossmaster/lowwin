@@ -13,6 +13,6 @@ export function CatalogImage({src,alt,className,priority=false,sizes='(max-width
   const [failedSource,setFailedSource]=useState<string|null>(null);
   const resolved=!source||failedSource===source?'/catalog/fallback.svg':source,label=usePreview&&alt?preview!.alt:alt;
   const props={className,alt:label,onError:()=>setFailedSource(source??null),loading:priority?'eager' as const:'lazy' as const,fetchPriority:priority?'high' as const:'auto' as const};
-  // Only this known public raster is optimized. Authenticated uploads keep their cookie-bound URL.
-  return resolved==='/images/lowwin-demo-headphones.webp'?<Image {...props} src={resolved} width={1840} height={800} sizes={sizes} quality={75}/>:<img {...props} src={resolved} decoding="async"/>;
+  // Static public rasters receive responsive sizes; authenticated uploads keep their cookie-bound URL.
+  return resolved.startsWith('/images/')&&/\.(webp|png|jpe?g)$/.test(resolved)?<Image {...props} src={resolved} width={1840} height={800} sizes={sizes} quality={75}/>:<img {...props} src={resolved} width={1840} height={800} decoding="async"/>;
 }

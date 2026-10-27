@@ -70,7 +70,7 @@ function PlayerProfile(){
       const response=await fetch('/api/profile',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(fields),cache:'no-store',signal:AbortSignal.timeout(15000)});
       if(!response.ok)throw Error('save');
       setEditing(false);setMessage(text('Profile saved.','መገለጫዎ ተቀምጧል።'));
-      if(queryIdentity)invalidatePrivateQueries(queryIdentity);await refreshMe();
+      if(queryIdentity)invalidatePrivateQueries(queryIdentity,['/api/profile','/api/me']);await refreshMe();
     }catch{setMessage(text('Could not save. Please retry.','ማስቀመጥ አልተቻለም። እንደገና ይሞክሩ።'))}
     finally{setSaving(false)}
   }

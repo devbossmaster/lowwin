@@ -10,7 +10,8 @@ import {useMiniLocale} from './mini-locale';
 import {useTelegram} from './telegram-provider';
 import {IdentityState} from './identity-state';
 import {BidPanelSkeleton} from './mini-route-skeleton';
-import {invalidatePrivateQueries,loadPrivateJson,readPrivateQuery,subscribePrivateQueries} from './private-query-cache';
+import {confirmedBidQueryScopes,invalidatePrivateQueries,loadPrivateJson,readPrivateQuery,subscribePrivateQueries} from './private-query-cache';
+import {matchesPrivateResource} from './mini-query-policy';
 import type {DirectBidReceipt} from '@/modules/auctions/bids';
 
 const ArifPayCheckout=dynamic(()=>import('./arifpay-checkout'));
@@ -38,7 +39,7 @@ function DirectBidForm({slug,status,compact=false}:Props){
  useEffect(()=>{
   if(authStatus!=='authenticated'){setState(null);setReceipt(null);return}
   const controller=new AbortController();void refresh(controller.signal);
-  const unsubscribe=subscribePrivateQueries(event=>{if(event.kind==='mutation'&&event.identity===queryIdentity)void refresh(controller.signal)});
+  const unsubscribe=subscribePrivateQueries(event=>{if(event.kind==='mutation'&&event.identity===queryIdentity&&(!event.keys||event.keys.some(scope=>matchesPrivateResource(url,scope))))void refresh(controller.signal)});
   return()=>{controller.abort();unsubscribe()};
  },[authStatus,queryIdentity,refresh]);
  const preview=useMemo(()=>{
@@ -53,7 +54,7 @@ function DirectBidForm({slug,status,compact=false}:Props){
  if(receipt)return <section className="bid-panel receipt-panel" aria-live="polite"><ShieldCheck size={26} aria-hidden="true"/><h2>{receipt.bid.amount} {text('bid accepted','ጨረታዎ ተቀብሏል')}</h2><p>{text('This receipt records your accepted bid. It does not predict a winner.','ይህ ደረሰኝ የተቀበለውን ጨረታዎን ይመዘግባል። አሸናፊነትን አያረጋግጥም።')}</p><dl className="bid-preview-list"><div><dt>{text('Submission fee paid','የተከፈለ የማቅረቢያ ክፍያ')}</dt><dd>{formatEtb(receipt.charge.feePoints)}</dd></div><div><dt>{text('Submissions left','የሚቀሩ ጨረታዎች')}</dt><dd>{receipt.remainingSubmissions}</dd></div></dl><Link className="text-link" href="/my-bids">{text('View my bids','የእኔ ጨረታዎች')}<ArrowRight size={16}/></Link><Link className="text-link" href="/payments">{text('Bid payments','የጨረታ ክፍያዎች')}</Link><button className="secondary-button" onClick={()=>{setReceipt(null);setAmount('');void refresh(undefined,true)}}>{text('Choose another number','ሌላ ቁጥር ይምረጡ')}</button></section>;
  if(!state.open||status!=='live')return <div className="bid-unavailable"><LockKeyhole size={19}/><strong>{text(status==='upcoming'?'Bidding has not opened':status==='cancelled'?'Auction cancelled':'Bidding has closed',status==='upcoming'?'ጨረታው ገና አልተጀመረም':status==='cancelled'?'ጨረታው ተሰርዟል':'ጨረታው ተዘግቷል')}</strong></div>;
  if(state.paymentMode!=='ARIFPAY'||!isSubmissionFeeOnly(state.terms.ruleVersion))return <div className="bid-unavailable"><LockKeyhole size={19}/><p>{text('New entries are unavailable for this older auction. Its published terms and existing results remain available.','ለዚህ የቆየ ጨረታ አዲስ ጨረታ ማቅረብ አይቻልም። የታተሙት ውሎች እና ነባር ውጤቶች ይታያሉ።')}</p></div>;
- if(checkout)return <ArifPayCheckout slug={slug} {...checkout} onAccepted={accepted=>{setReceipt(accepted);setCheckout(null);if(queryIdentity)invalidatePrivateQueries(queryIdentity);void refreshMe().catch(()=>{})}}/>;
+ if(checkout)return <ArifPayCheckout slug={slug} {...checkout} onAccepted={accepted=>{setReceipt(accepted);setCheckout(null);if(queryIdentity)invalidatePrivateQueries(queryIdentity,confirmedBidQueryScopes(slug));void refreshMe().catch(()=>{})}}/>;
  const valid=!!preview&&!preview.duplicate&&!preview.consecutive&&state.remainingSubmissions>0;
  const stepAmount=(direction:1|-1)=>{
   const min=etbToCents(state.terms.minPoints),max=state.terms.maxPoints===null?null:etbToCents(state.terms.maxPoints),step=etbToCents(state.terms.stepPoints),next=preview?etbToCents(preview.amount)+BigInt(direction)*step:min;

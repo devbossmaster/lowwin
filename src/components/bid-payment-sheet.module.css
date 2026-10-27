@@ -10,6 +10,7 @@
 .walletRow .method{display:grid;grid-template-columns:18px minmax(0,1fr) 14px;gap:4px;align-items:center}.walletRow .methodIcon{display:grid;grid-column:1;grid-row:1;width:18px;height:18px;background:transparent}.walletRow .methodIcon svg{width:17px;height:17px}.walletRow .methodText{display:contents}.walletRow .methodText strong{grid-column:2;grid-row:1;font-size:11px}.walletRow .methodText small{grid-column:1/-1;grid-row:2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.walletRow .method input{grid-column:3;grid-row:1}
 /* Bid entry only: leave top-up and receipt layouts independent. */
 .bidEntry{color:#181815}
+.previewPhoto{height:104px;margin:0 0 12px;overflow:hidden;border-radius:16px;background:#eeece8}.previewPhoto img{display:block;width:100%;height:100%;object-fit:cover}.previewStatus{display:block;margin:4px 0 0;text-align:center;font-size:10px;line-height:1.5;color:#625e54}
 .bidEntry .productHeading{display:block;margin:2px 0 12px}
 .bidEntry .productTitle{margin:0;text-align:center;font-size:18px;font-weight:650;line-height:1.4;letter-spacing:-.02em;overflow-wrap:anywhere}
 .bidEntry:lang(am) .productTitle{letter-spacing:0;line-height:1.5}

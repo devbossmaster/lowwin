@@ -1,0 +1,2148 @@
+{
+  "phase": "after",
+  "width": "430",
+  "mode": "optimized Next webpack build, HTTPS loopback",
+  "sdk": "signed local Telegram fixture; external SDK blocked via CDP",
+  "observationOnly": true,
+  "acceptedFixtureRecords": 23,
+  "normal": {
+    "firstHomeMs": 1402,
+    "initialRequests": {
+      "requests": 46,
+      "transferredBytes": 620902,
+      "requestsWithRecordedBytes": 44,
+      "api": [
+        {
+          "path": "/api/auth/telegram/miniapp/signin",
+          "method": "POST",
+          "durationMs": 53,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 805
+        },
+        {
+          "path": "/api/wallet",
+          "method": "GET",
+          "durationMs": 148,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 544
+        },
+        {
+          "path": "/api/catalog/auctions?view=summary",
+          "method": "GET",
+          "durationMs": 147,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 480
+        },
+        {
+          "path": "/api/alerts?summary=1",
+          "method": "GET",
+          "durationMs": 148,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 395
+        },
+        {
+          "path": "/api/catalog/activity?codes=163",
+          "method": "GET",
+          "durationMs": 33,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 575
+        }
+      ],
+      "scripts": 26,
+      "images": 3,
+      "rsc": 2
+    },
+    "network": "normal loopback",
+    "heroButtons": {
+      "nonoverlap": true,
+      "insideBanner": true
+    },
+    "catalogImages": {
+      "first": "optimized eager/high",
+      "lower": "lazy"
+    },
+    "auctionBrowsing": [
+      {
+        "attempt": 1,
+        "visibleMs": 180,
+        "completeDataMs": 221,
+        "rows": 20,
+        "requests": 13,
+        "transferredBytes": 20870,
+        "requestsWithRecordedBytes": 13,
+        "api": [
+          {
+            "path": "/api/catalog/auctions?page=1&status=live&view=quick",
+            "method": "GET",
+            "durationMs": 35,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 4431
+          },
+          {
+            "path": "/api/catalog/auctions/163/view",
+            "method": "POST",
+            "durationMs": 48,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 434
+          },
+          {
+            "path": "/api/catalog/auctions?page=2&status=live&view=quick",
+            "method": "GET",
+            "durationMs": 37,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 4631
+          },
+          {
+            "path": "/api/catalog/auctions/test-bid-da28ed52",
+            "method": "GET",
+            "durationMs": 46,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 1983
+          },
+          {
+            "path": "/api/auctions/test-bid-da28ed52/bids",
+            "method": "GET",
+            "durationMs": 56,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 786
+          }
+        ],
+        "scripts": 0,
+        "images": 8,
+        "rsc": 0
+      },
+      {
+        "attempt": 2,
+        "visibleMs": 189,
+        "completeDataMs": 221,
+        "rows": 20,
+        "requests": 0,
+        "transferredBytes": 0,
+        "requestsWithRecordedBytes": 0,
+        "api": [],
+        "scripts": 0,
+        "images": 0,
+        "rsc": 0
+      }
+    ],
+    "resultSheets": [
+      {
+        "attempt": 1,
+        "visibleMs": 165,
+        "completeDataMs": 722,
+        "requests": 6,
+        "transferredBytes": 11281,
+        "requestsWithRecordedBytes": 6,
+        "api": [
+          {
+            "path": "/api/catalog/activity?codes=172",
+            "method": "GET",
+            "durationMs": 38,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 575
+          },
+          {
+            "path": "/api/results/162/breakdown?page=1&sort=amount",
+            "method": "GET",
+            "durationMs": 62,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 4030
+          }
+        ],
+        "scripts": 1,
+        "images": 0,
+        "rsc": 3
+      },
+      {
+        "attempt": 2,
+        "visibleMs": 131,
+        "completeDataMs": 320,
+        "requests": 1,
+        "transferredBytes": 434,
+        "requestsWithRecordedBytes": 1,
+        "api": [
+          {
+            "path": "/api/catalog/auctions/172/view",
+            "method": "POST",
+            "durationMs": 47,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 434
+          }
+        ],
+        "scripts": 0,
+        "images": 0,
+        "rsc": 0
+      }
+    ],
+    "sheetRuns": [
+      {
+        "attempt": 1,
+        "visibleMs": 443,
+        "completeDataMs": 519,
+        "requests": 9,
+        "transferredBytes": 22491,
+        "requestsWithRecordedBytes": 9,
+        "api": [
+          {
+            "path": "/api/catalog/activity?codes=163%2C164",
+            "method": "GET",
+            "durationMs": 19,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 734
+          },
+          {
+            "path": "/api/auctions/test-bid-b0171c8d/bids",
+            "method": "GET",
+            "durationMs": 51,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 786
+          },
+          {
+            "path": "/api/catalog/activity?codes=164%2C165",
+            "method": "GET",
+            "durationMs": 46,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 734
+          },
+          {
+            "path": "/api/payments/chapa",
+            "method": "GET",
+            "durationMs": 40,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 595
+          },
+          {
+            "path": "/api/catalog/auctions/test-bid-b0171c8d",
+            "method": "GET",
+            "durationMs": 40,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 1984
+          },
+          {
+            "path": "/api/auctions/test-bid-b0171c8d/bids",
+            "method": "GET",
+            "durationMs": 53,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 786
+          }
+        ],
+        "scripts": 2,
+        "images": 1,
+        "rsc": 0
+      },
+      {
+        "attempt": 2,
+        "visibleMs": 144,
+        "completeDataMs": 193,
+        "requests": 2,
+        "transferredBytes": 1168,
+        "requestsWithRecordedBytes": 2,
+        "api": [
+          {
+            "path": "/api/catalog/activity?codes=164%2C163",
+            "method": "GET",
+            "durationMs": 21,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 734
+          },
+          {
+            "path": "/api/catalog/auctions/164/view",
+            "method": "POST",
+            "durationMs": 54,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 434
+          }
+        ],
+        "scripts": 0,
+        "images": 0,
+        "rsc": 0
+      },
+      {
+        "attempt": 3,
+        "visibleMs": 141,
+        "completeDataMs": 188,
+        "requests": 0,
+        "transferredBytes": 0,
+        "requestsWithRecordedBytes": 0,
+        "api": [],
+        "scripts": 0,
+        "images": 0,
+        "rsc": 0
+      }
+    ],
+    "homeBefore": {
+      "url": "/?q=QA%20client%20flow%20077a690",
+      "cards": 12,
+      "scrollY": 3445
+    },
+    "navigation": [
+      {
+        "round": 1,
+        "destination": "Winners",
+        "visibleMs": 135,
+        "completeDataMs": 710,
+        "intent": {
+          "requests": 0,
+          "transferredBytes": 0,
+          "requestsWithRecordedBytes": 0,
+          "api": [],
+          "scripts": 0,
+          "images": 0,
+          "rsc": 0
+        },
+        "requests": 4,
+        "transferredBytes": 12250,
+        "requestsWithRecordedBytes": 4,
+        "api": [],
+        "scripts": 2,
+        "images": 0,
+        "rsc": 1
+      },
+      {
+        "round": 1,
+        "destination": "My Bids",
+        "visibleMs": 87,
+        "completeDataMs": 282,
+        "intent": {
+          "requests": 0,
+          "transferredBytes": 0,
+          "requestsWithRecordedBytes": 0,
+          "api": [],
+          "scripts": 0,
+          "images": 0,
+          "rsc": 0
+        },
+        "requests": 5,
+        "transferredBytes": 27302,
+        "requestsWithRecordedBytes": 5,
+        "api": [
+          {
+            "path": "/api/my-bids?page=1&view=all",
+            "method": "GET",
+            "durationMs": 76,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 13347
+          }
+        ],
+        "scripts": 2,
+        "images": 0,
+        "rsc": 1
+      },
+      {
+        "round": 1,
+        "destination": "My Bids detail",
+        "visibleMs": 101,
+        "requests": 0,
+        "transferredBytes": 0,
+        "requestsWithRecordedBytes": 0,
+        "api": [],
+        "scripts": 0,
+        "images": 0,
+        "rsc": 0
+      },
+      {
+        "round": 1,
+        "destination": "Profile",
+        "visibleMs": 79,
+        "completeDataMs": 368,
+        "intent": {
+          "requests": 0,
+          "transferredBytes": 0,
+          "requestsWithRecordedBytes": 0,
+          "api": [],
+          "scripts": 0,
+          "images": 0,
+          "rsc": 0
+        },
+        "requests": 3,
+        "transferredBytes": 8129,
+        "requestsWithRecordedBytes": 3,
+        "api": [
+          {
+            "path": "/api/profile",
+            "method": "GET",
+            "durationMs": 50,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 789
+          }
+        ],
+        "scripts": 1,
+        "images": 0,
+        "rsc": 1
+      },
+      {
+        "round": 1,
+        "destination": "Home",
+        "visibleMs": 248,
+        "completeDataMs": 448,
+        "intent": {
+          "requests": 0,
+          "transferredBytes": 0,
+          "requestsWithRecordedBytes": 0,
+          "api": [],
+          "scripts": 0,
+          "images": 0,
+          "rsc": 0
+        },
+        "requests": 3,
+        "transferredBytes": 1700,
+        "requestsWithRecordedBytes": 3,
+        "api": [
+          {
+            "path": "/api/wallet",
+            "method": "GET",
+            "durationMs": 32,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 544
+          },
+          {
+            "path": "/api/catalog/activity?codes=171%2C172",
+            "method": "GET",
+            "durationMs": 28,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 734
+          }
+        ],
+        "scripts": 0,
+        "images": 0,
+        "rsc": 1
+      },
+      {
+        "round": 1,
+        "destination": "Home state",
+        "url": "/?q=QA%20client%20flow%20077a690",
+        "cards": 12,
+        "scrollY": 3445,
+        "filtersPreserved": true,
+        "batchesPreserved": true,
+        "scrollDelta": 0
+      },
+      {
+        "round": 2,
+        "destination": "Winners",
+        "visibleMs": 95,
+        "completeDataMs": 295,
+        "intent": {
+          "requests": 0,
+          "transferredBytes": 0,
+          "requestsWithRecordedBytes": 0,
+          "api": [],
+          "scripts": 0,
+          "images": 0,
+          "rsc": 0
+        },
+        "requests": 1,
+        "transferredBytes": 1958,
+        "requestsWithRecordedBytes": 1,
+        "api": [],
+        "scripts": 0,
+        "images": 0,
+        "rsc": 1
+      },
+      {
+        "round": 2,
+        "destination": "My Bids",
+        "visibleMs": 68,
+        "completeDataMs": 278,
+        "intent": {
+          "requests": 0,
+          "transferredBytes": 0,
+          "requestsWithRecordedBytes": 0,
+          "api": [],
+          "scripts": 0,
+          "images": 0,
+          "rsc": 0
+        },
+        "requests": 1,
+        "transferredBytes": 1743,
+        "requestsWithRecordedBytes": 1,
+        "api": [],
+        "scripts": 0,
+        "images": 0,
+        "rsc": 1
+      },
+      {
+        "round": 2,
+        "destination": "My Bids detail",
+        "visibleMs": 78,
+        "requests": 0,
+        "transferredBytes": 0,
+        "requestsWithRecordedBytes": 0,
+        "api": [],
+        "scripts": 0,
+        "images": 0,
+        "rsc": 0
+      },
+      {
+        "round": 2,
+        "destination": "Profile",
+        "visibleMs": 77,
+        "completeDataMs": 263,
+        "intent": {
+          "requests": 0,
+          "transferredBytes": 0,
+          "requestsWithRecordedBytes": 0,
+          "api": [],
+          "scripts": 0,
+          "images": 0,
+          "rsc": 0
+        },
+        "requests": 1,
+        "transferredBytes": 1787,
+        "requestsWithRecordedBytes": 1,
+        "api": [],
+        "scripts": 0,
+        "images": 0,
+        "rsc": 1
+      },
+      {
+        "round": 2,
+        "destination": "Home",
+        "visibleMs": 224,
+        "completeDataMs": 421,
+        "intent": {
+          "requests": 0,
+          "transferredBytes": 0,
+          "requestsWithRecordedBytes": 0,
+          "api": [],
+          "scripts": 0,
+          "images": 0,
+          "rsc": 0
+        },
+        "requests": 3,
+        "transferredBytes": 8039,
+        "requestsWithRecordedBytes": 3,
+        "api": [
+          {
+            "path": "/api/wallet",
+            "method": "GET",
+            "durationMs": 39,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 544
+          },
+          {
+            "path": "/api/catalog/activity?codes=171%2C172",
+            "method": "GET",
+            "durationMs": 26,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 734
+          }
+        ],
+        "scripts": 0,
+        "images": 0,
+        "rsc": 1
+      },
+      {
+        "round": 2,
+        "destination": "Home state",
+        "url": "/?q=QA%20client%20flow%20077a690",
+        "cards": 12,
+        "scrollY": 3445,
+        "filtersPreserved": true,
+        "batchesPreserved": true,
+        "scrollDelta": 0
+      }
+    ],
+    "backgroundWindow": {
+      "durationMs": 5000,
+      "requests": 1,
+      "transferredBytes": 434,
+      "requestsWithRecordedBytes": 1,
+      "api": [
+        {
+          "path": "/api/catalog/auctions/171/view",
+          "method": "POST",
+          "durationMs": 35,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 434
+        }
+      ],
+      "scripts": 0,
+      "images": 0,
+      "rsc": 0
+    },
+    "resources": [
+      {
+        "path": "/_next/static/css/72de37f8fa155415.css",
+        "durationMs": 12,
+        "transferBytes": 15333
+      },
+      {
+        "path": "/_next/static/css/e1d95f78a7f91444.css",
+        "durationMs": 19,
+        "transferBytes": 7128
+      },
+      {
+        "path": "/_next/static/chunks/webpack-fe70020cdbc5eeca.js",
+        "durationMs": 22,
+        "transferBytes": 2852
+      },
+      {
+        "path": "/_next/static/chunks/4bd1b696-8cd12253b448cc13.js",
+        "durationMs": 38,
+        "transferBytes": 64361
+      },
+      {
+        "path": "/_next/static/chunks/3794-04350b0fcecd82e5.js",
+        "durationMs": 63,
+        "transferBytes": 67433
+      },
+      {
+        "path": "/_next/static/chunks/main-app-22164e04688c5bb5.js",
+        "durationMs": 66,
+        "transferBytes": 829
+      },
+      {
+        "path": "/_next/static/chunks/app/telegram/loading-8a46823fcd3cab4d.js",
+        "durationMs": 71,
+        "transferBytes": 3726
+      },
+      {
+        "path": "/_next/static/chunks/3107-8087df131338251e.js",
+        "durationMs": 75,
+        "transferBytes": 8125
+      },
+      {
+        "path": "/_next/static/chunks/8780-622681fefb909214.js",
+        "durationMs": 80,
+        "transferBytes": 10321
+      },
+      {
+        "path": "/_next/static/chunks/7820-cd30d75ad05ed387.js",
+        "durationMs": 85,
+        "transferBytes": 7725
+      },
+      {
+        "path": "/_next/static/chunks/6420-9d6b5be013b94289.js",
+        "durationMs": 89,
+        "transferBytes": 5110
+      },
+      {
+        "path": "/_next/static/chunks/app/telegram/page-da6b632ea2326402.js",
+        "durationMs": 92,
+        "transferBytes": 2419
+      },
+      {
+        "path": "/_next/static/chunks/app/layout-255ea94fca8d0df5.js",
+        "durationMs": 95,
+        "transferBytes": 2759
+      },
+      {
+        "path": "/_next/static/chunks/app/error-e3c49c774ae4cd4b.js",
+        "durationMs": 98,
+        "transferBytes": 1083
+      },
+      {
+        "path": "/_next/static/chunks/8500-63a4afbeacab3b52.js",
+        "durationMs": 101,
+        "transferBytes": 3559
+      },
+      {
+        "path": "/_next/static/chunks/app/not-found-07c97bab91ca592b.js",
+        "durationMs": 105,
+        "transferBytes": 491
+      },
+      {
+        "path": "/fonts/dm-sans-latin-400.woff2",
+        "durationMs": 23,
+        "transferBytes": 14500
+      },
+      {
+        "path": "/_next/static/chunks/5350-b7f4e3ff1992c27d.js",
+        "durationMs": 7,
+        "transferBytes": 7453
+      },
+      {
+        "path": "/_next/static/chunks/8653-a4ebd6b5a9982cd5.js",
+        "durationMs": 26,
+        "transferBytes": 2864
+      },
+      {
+        "path": "/_next/static/chunks/7950-da891987d85cbad3.js",
+        "durationMs": 30,
+        "transferBytes": 10205
+      },
+      {
+        "path": "/_next/static/chunks/app/(mini)/loading-d581842ef38884a3.js",
+        "durationMs": 42,
+        "transferBytes": 6742
+      },
+      {
+        "path": "/_next/static/css/cf87a9bb0fd73e23.css",
+        "durationMs": 10,
+        "transferBytes": 2214
+      },
+      {
+        "path": "/_next/static/css/04ce1284b894f596.css",
+        "durationMs": 16,
+        "transferBytes": 9320
+      },
+      {
+        "path": "/_next/static/css/689d95a7e26e8551.css",
+        "durationMs": 20,
+        "transferBytes": 844
+      },
+      {
+        "path": "/_next/static/chunks/4109-90e4c847d1de6a63.js",
+        "durationMs": 43,
+        "transferBytes": 3388
+      },
+      {
+        "path": "/_next/static/chunks/5848-7456117182e60a7c.js",
+        "durationMs": 45,
+        "transferBytes": 6670
+      },
+      {
+        "path": "/_next/static/chunks/7463-94a45499e1370a7f.js",
+        "durationMs": 46,
+        "transferBytes": 6904
+      },
+      {
+        "path": "/_next/static/chunks/app/(mini)/page-8f5e25550d0872d8.js",
+        "durationMs": 49,
+        "transferBytes": 7066
+      },
+      {
+        "path": "/_next/static/chunks/1946-fda0f0792c43d30d.js",
+        "durationMs": 48,
+        "transferBytes": 11339
+      },
+      {
+        "path": "/_next/static/chunks/app/(mini)/layout-4353a2ecba42dac8.js",
+        "durationMs": 51,
+        "transferBytes": 7944
+      },
+      {
+        "path": "/fonts/dm-sans-latin-700.woff2",
+        "durationMs": 36,
+        "transferBytes": 14648
+      },
+      {
+        "path": "/fonts/dm-sans-latin-500.woff2",
+        "durationMs": 36,
+        "transferBytes": 14604
+      },
+      {
+        "path": "/fonts/dm-sans-latin-600.woff2",
+        "durationMs": 44,
+        "transferBytes": 14444
+      },
+      {
+        "path": "/_next/static/chunks/4615.fc4abf2158347a07.js",
+        "durationMs": 5,
+        "transferBytes": 3617
+      },
+      {
+        "path": "/_next/static/chunks/2268-bf6e5cd2907c0b37.js",
+        "durationMs": 6,
+        "transferBytes": 5301
+      },
+      {
+        "path": "/_next/static/chunks/543.757f201f8f28b669.js",
+        "durationMs": 10,
+        "transferBytes": 9084
+      },
+      {
+        "path": "/images/chapa-logo.svg",
+        "durationMs": 11,
+        "transferBytes": 2050
+      },
+      {
+        "path": "/_next/static/chunks/3078-7232bdc8675edf06.js",
+        "durationMs": 6,
+        "transferBytes": 6369
+      },
+      {
+        "path": "/_next/static/chunks/app/(mini)/winners/page-76a26c4cabd5717b.js",
+        "durationMs": 5,
+        "transferBytes": 475
+      },
+      {
+        "path": "/_next/static/css/ea27c58af8f3ffb5.css",
+        "durationMs": 8,
+        "transferBytes": 3033
+      },
+      {
+        "path": "/_next/static/css/79f4be78bf65ced5.css",
+        "durationMs": 5,
+        "transferBytes": 2265
+      },
+      {
+        "path": "/_next/static/chunks/4548-96d2458edf6db70e.js",
+        "durationMs": 5,
+        "transferBytes": 2815
+      },
+      {
+        "path": "/_next/static/chunks/app/(mini)/my-bids/page-ad6e43b99c55412c.js",
+        "durationMs": 8,
+        "transferBytes": 6669
+      },
+      {
+        "path": "/_next/static/chunks/app/(mini)/profile/page-6a88211057728586.js",
+        "durationMs": 5,
+        "transferBytes": 6758
+      }
+    ],
+    "concurrentApiDuplicates": [],
+    "financialPosts": [],
+    "errors": [],
+    "allRequests": {
+      "requests": 105,
+      "transferredBytes": 747285,
+      "requestsWithRecordedBytes": 103,
+      "api": [
+        {
+          "path": "/api/auth/telegram/miniapp/signin",
+          "method": "POST",
+          "durationMs": 53,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 805
+        },
+        {
+          "path": "/api/wallet",
+          "method": "GET",
+          "durationMs": 148,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 544
+        },
+        {
+          "path": "/api/catalog/auctions?view=summary",
+          "method": "GET",
+          "durationMs": 147,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 480
+        },
+        {
+          "path": "/api/alerts?summary=1",
+          "method": "GET",
+          "durationMs": 148,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 395
+        },
+        {
+          "path": "/api/catalog/activity?codes=163",
+          "method": "GET",
+          "durationMs": 33,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 575
+        },
+        {
+          "path": "/api/catalog/auctions?page=1&status=live&view=quick",
+          "method": "GET",
+          "durationMs": 35,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 4431
+        },
+        {
+          "path": "/api/catalog/auctions/163/view",
+          "method": "POST",
+          "durationMs": 48,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 434
+        },
+        {
+          "path": "/api/catalog/auctions?page=2&status=live&view=quick",
+          "method": "GET",
+          "durationMs": 37,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 4631
+        },
+        {
+          "path": "/api/catalog/auctions/test-bid-da28ed52",
+          "method": "GET",
+          "durationMs": 46,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 1983
+        },
+        {
+          "path": "/api/auctions/test-bid-da28ed52/bids",
+          "method": "GET",
+          "durationMs": 56,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 786
+        },
+        {
+          "path": "/api/catalog/activity?codes=172",
+          "method": "GET",
+          "durationMs": 38,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 575
+        },
+        {
+          "path": "/api/results/162/breakdown?page=1&sort=amount",
+          "method": "GET",
+          "durationMs": 62,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 4030
+        },
+        {
+          "path": "/api/catalog/auctions/172/view",
+          "method": "POST",
+          "durationMs": 47,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 434
+        },
+        {
+          "path": "/api/catalog/activity?codes=163%2C164",
+          "method": "GET",
+          "durationMs": 19,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 734
+        },
+        {
+          "path": "/api/auctions/test-bid-b0171c8d/bids",
+          "method": "GET",
+          "durationMs": 51,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 786
+        },
+        {
+          "path": "/api/catalog/activity?codes=164%2C165",
+          "method": "GET",
+          "durationMs": 46,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 734
+        },
+        {
+          "path": "/api/payments/chapa",
+          "method": "GET",
+          "durationMs": 40,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 595
+        },
+        {
+          "path": "/api/catalog/auctions/test-bid-b0171c8d",
+          "method": "GET",
+          "durationMs": 40,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 1984
+        },
+        {
+          "path": "/api/auctions/test-bid-b0171c8d/bids",
+          "method": "GET",
+          "durationMs": 53,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 786
+        },
+        {
+          "path": "/api/catalog/activity?codes=164%2C163",
+          "method": "GET",
+          "durationMs": 21,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 734
+        },
+        {
+          "path": "/api/catalog/auctions/164/view",
+          "method": "POST",
+          "durationMs": 54,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 434
+        },
+        {
+          "path": "/api/catalog/auctions?page=2&q=QA+client+flow+077a690&sort=code&status=live&view=home",
+          "method": "GET",
+          "durationMs": 42,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 3664
+        },
+        {
+          "path": "/api/catalog/activity?codes=172",
+          "method": "GET",
+          "durationMs": 26,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 575
+        },
+        {
+          "path": "/api/catalog/activity?codes=172%2C173",
+          "method": "GET",
+          "durationMs": 22,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 734
+        },
+        {
+          "path": "/api/catalog/activity?codes=172%2C171",
+          "method": "GET",
+          "durationMs": 25,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 734
+        },
+        {
+          "path": "/api/my-bids?page=1&view=all",
+          "method": "GET",
+          "durationMs": 76,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 13347
+        },
+        {
+          "path": "/api/profile",
+          "method": "GET",
+          "durationMs": 50,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 789
+        },
+        {
+          "path": "/api/wallet",
+          "method": "GET",
+          "durationMs": 32,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 544
+        },
+        {
+          "path": "/api/catalog/activity?codes=171%2C172",
+          "method": "GET",
+          "durationMs": 28,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 734
+        },
+        {
+          "path": "/api/wallet",
+          "method": "GET",
+          "durationMs": 39,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 544
+        },
+        {
+          "path": "/api/catalog/activity?codes=171%2C172",
+          "method": "GET",
+          "durationMs": 26,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 734
+        },
+        {
+          "path": "/api/catalog/auctions/171/view",
+          "method": "POST",
+          "durationMs": 35,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 434
+        }
+      ],
+      "scripts": 34,
+      "images": 12,
+      "rsc": 15
+    },
+    "winnersBoundary": {
+      "authenticatedStatus": 200,
+      "cacheControl": "private, no-store, max-age=0",
+      "liveFixtureExcluded": true,
+      "settledWinnersOnly": true,
+      "winnerPhonesOmitted": true,
+      "total": 12,
+      "totalPages": 1,
+      "pageSize": 12,
+      "pagination": "one page",
+      "freshRepeatDedicatedGets": 0
+    }
+  },
+  "slow": {
+    "firstHomeMs": 5555,
+    "initialRequests": {
+      "requests": 47,
+      "transferredBytes": 404611,
+      "requestsWithRecordedBytes": 44,
+      "api": [
+        {
+          "path": "/api/auth/telegram/miniapp/signin",
+          "method": "POST",
+          "durationMs": 203,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 809
+        },
+        {
+          "path": "/api/wallet",
+          "method": "GET",
+          "durationMs": 220,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 544
+        },
+        {
+          "path": "/api/catalog/auctions?view=summary",
+          "method": "GET",
+          "durationMs": 224,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 480
+        },
+        {
+          "path": "/api/alerts?summary=1",
+          "method": "GET",
+          "durationMs": 222,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 395
+        },
+        {
+          "path": "/api/catalog/activity?codes=163",
+          "method": "GET",
+          "durationMs": 623,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 575
+        },
+        {
+          "path": "/api/catalog/auctions/163/view",
+          "method": "POST",
+          "durationMs": 173,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 435
+        }
+      ],
+      "scripts": 26,
+      "images": 3,
+      "rsc": 2
+    },
+    "network": "CDP latency150ms, 125KB/s down, 64KB/s up",
+    "heroButtons": {
+      "nonoverlap": true,
+      "insideBanner": true
+    },
+    "catalogImages": {
+      "first": "optimized eager/high",
+      "lower": "lazy"
+    },
+    "auctionBrowsing": [
+      {
+        "attempt": 1,
+        "visibleMs": 127,
+        "completeDataMs": 543,
+        "rows": 20,
+        "requests": 12,
+        "transferredBytes": 20436,
+        "requestsWithRecordedBytes": 12,
+        "api": [
+          {
+            "path": "/api/catalog/auctions?page=1&status=live&view=quick",
+            "method": "GET",
+            "durationMs": 214,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 4431
+          },
+          {
+            "path": "/api/catalog/auctions?page=2&status=live&view=quick",
+            "method": "GET",
+            "durationMs": 252,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 4631
+          },
+          {
+            "path": "/api/catalog/auctions/test-bid-0f8771a6",
+            "method": "GET",
+            "durationMs": 183,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 1983
+          },
+          {
+            "path": "/api/auctions/test-bid-0f8771a6/bids",
+            "method": "GET",
+            "durationMs": 183,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 786
+          }
+        ],
+        "scripts": 0,
+        "images": 8,
+        "rsc": 0
+      },
+      {
+        "attempt": 2,
+        "visibleMs": 178,
+        "completeDataMs": 203,
+        "rows": 20,
+        "requests": 0,
+        "transferredBytes": 0,
+        "requestsWithRecordedBytes": 0,
+        "api": [],
+        "scripts": 0,
+        "images": 0,
+        "rsc": 0
+      }
+    ],
+    "resultSheets": [
+      {
+        "attempt": 1,
+        "visibleMs": 137,
+        "completeDataMs": 860,
+        "requests": 7,
+        "transferredBytes": 11950,
+        "requestsWithRecordedBytes": 7,
+        "api": [
+          {
+            "path": "/api/catalog/activity?codes=172",
+            "method": "GET",
+            "durationMs": 180,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 575
+          },
+          {
+            "path": "/api/results/162/breakdown?page=1&sort=amount",
+            "method": "GET",
+            "durationMs": 209,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 4030
+          }
+        ],
+        "scripts": 1,
+        "images": 0,
+        "rsc": 4
+      },
+      {
+        "attempt": 2,
+        "visibleMs": 110,
+        "completeDataMs": 307,
+        "requests": 0,
+        "transferredBytes": 0,
+        "requestsWithRecordedBytes": 0,
+        "api": [],
+        "scripts": 0,
+        "images": 0,
+        "rsc": 0
+      }
+    ],
+    "sheetRuns": [
+      {
+        "attempt": 1,
+        "visibleMs": 372,
+        "completeDataMs": 800,
+        "requests": 8,
+        "transferredBytes": 20264,
+        "requestsWithRecordedBytes": 8,
+        "api": [
+          {
+            "path": "/api/catalog/activity?codes=163%2C164",
+            "method": "GET",
+            "durationMs": 178,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 734
+          },
+          {
+            "path": "/api/auctions/test-bid-b0171c8d/bids",
+            "method": "GET",
+            "durationMs": 149,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 786
+          },
+          {
+            "path": "/api/wallet",
+            "method": "GET",
+            "durationMs": 135,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 543
+          },
+          {
+            "path": "/api/catalog/activity?codes=164%2C165",
+            "method": "GET",
+            "durationMs": 172,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 734
+          },
+          {
+            "path": "/api/payments/chapa",
+            "method": "GET",
+            "durationMs": 172,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 595
+          }
+        ],
+        "scripts": 2,
+        "images": 1,
+        "rsc": 0
+      },
+      {
+        "attempt": 2,
+        "visibleMs": 181,
+        "completeDataMs": 235,
+        "requests": 2,
+        "transferredBytes": 1885,
+        "requestsWithRecordedBytes": 2,
+        "api": [
+          {
+            "path": "/api/catalog/activity?codes=164%2C163",
+            "method": "GET",
+            "durationMs": 157,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 734
+          }
+        ],
+        "scripts": 0,
+        "images": 0,
+        "rsc": 1
+      },
+      {
+        "attempt": 3,
+        "visibleMs": 163,
+        "completeDataMs": 223,
+        "requests": 0,
+        "transferredBytes": 0,
+        "requestsWithRecordedBytes": 0,
+        "api": [],
+        "scripts": 0,
+        "images": 0,
+        "rsc": 0
+      }
+    ],
+    "homeBefore": {
+      "url": "/?q=QA%20client%20flow%20077a690",
+      "cards": 12,
+      "scrollY": 3445
+    },
+    "navigation": [
+      {
+        "round": 1,
+        "destination": "Winners",
+        "visibleMs": 111,
+        "completeDataMs": 1214,
+        "intent": {
+          "requests": 0,
+          "transferredBytes": 0,
+          "requestsWithRecordedBytes": 0,
+          "api": [],
+          "scripts": 0,
+          "images": 0,
+          "rsc": 0
+        },
+        "requests": 5,
+        "transferredBytes": 13343,
+        "requestsWithRecordedBytes": 5,
+        "api": [],
+        "scripts": 2,
+        "images": 1,
+        "rsc": 1
+      },
+      {
+        "round": 1,
+        "destination": "My Bids",
+        "visibleMs": 450,
+        "completeDataMs": 743,
+        "intent": {
+          "requests": 0,
+          "transferredBytes": 0,
+          "requestsWithRecordedBytes": 0,
+          "api": [],
+          "scripts": 0,
+          "images": 0,
+          "rsc": 0
+        },
+        "requests": 5,
+        "transferredBytes": 12635,
+        "requestsWithRecordedBytes": 4,
+        "api": [
+          {
+            "path": "/api/my-bids?page=1&view=all",
+            "method": "GET",
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0"
+          }
+        ],
+        "scripts": 2,
+        "images": 0,
+        "rsc": 1
+      },
+      {
+        "round": 1,
+        "destination": "Profile",
+        "visibleMs": 441,
+        "completeDataMs": 995,
+        "intent": {
+          "requests": 0,
+          "transferredBytes": 0,
+          "requestsWithRecordedBytes": 0,
+          "api": [],
+          "scripts": 0,
+          "images": 0,
+          "rsc": 0
+        },
+        "requests": 3,
+        "transferredBytes": 8129,
+        "requestsWithRecordedBytes": 3,
+        "api": [
+          {
+            "path": "/api/profile",
+            "method": "GET",
+            "durationMs": 172,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 789
+          }
+        ],
+        "scripts": 1,
+        "images": 0,
+        "rsc": 1
+      },
+      {
+        "round": 1,
+        "destination": "Home",
+        "visibleMs": 384,
+        "completeDataMs": 583,
+        "intent": {
+          "requests": 0,
+          "transferredBytes": 0,
+          "requestsWithRecordedBytes": 0,
+          "api": [],
+          "scripts": 0,
+          "images": 0,
+          "rsc": 0
+        },
+        "requests": 5,
+        "transferredBytes": 8040,
+        "requestsWithRecordedBytes": 3,
+        "api": [
+          {
+            "path": "/api/wallet",
+            "method": "GET",
+            "durationMs": 197,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 545
+          },
+          {
+            "path": "/api/catalog/activity?codes=171%2C172",
+            "method": "GET",
+            "durationMs": 185,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 734
+          }
+        ],
+        "scripts": 0,
+        "images": 2,
+        "rsc": 1
+      },
+      {
+        "round": 1,
+        "destination": "Home state",
+        "url": "/?q=QA%20client%20flow%20077a690",
+        "cards": 12,
+        "scrollY": 3445,
+        "filtersPreserved": true,
+        "batchesPreserved": true,
+        "scrollDelta": 0
+      },
+      {
+        "round": 2,
+        "destination": "Winners",
+        "visibleMs": 86,
+        "completeDataMs": 654,
+        "intent": {
+          "requests": 0,
+          "transferredBytes": 0,
+          "requestsWithRecordedBytes": 0,
+          "api": [],
+          "scripts": 0,
+          "images": 0,
+          "rsc": 0
+        },
+        "requests": 1,
+        "transferredBytes": 1961,
+        "requestsWithRecordedBytes": 1,
+        "api": [],
+        "scripts": 0,
+        "images": 0,
+        "rsc": 1
+      },
+      {
+        "round": 2,
+        "destination": "My Bids",
+        "visibleMs": 86,
+        "completeDataMs": 638,
+        "intent": {
+          "requests": 0,
+          "transferredBytes": 0,
+          "requestsWithRecordedBytes": 0,
+          "api": [],
+          "scripts": 0,
+          "images": 0,
+          "rsc": 0
+        },
+        "requests": 1,
+        "transferredBytes": 422,
+        "requestsWithRecordedBytes": 1,
+        "api": [],
+        "scripts": 0,
+        "images": 0,
+        "rsc": 1
+      },
+      {
+        "round": 2,
+        "destination": "My Bids detail",
+        "visibleMs": 98,
+        "requests": 0,
+        "transferredBytes": 0,
+        "requestsWithRecordedBytes": 0,
+        "api": [],
+        "scripts": 0,
+        "images": 0,
+        "rsc": 0
+      },
+      {
+        "round": 2,
+        "destination": "Profile",
+        "visibleMs": 65,
+        "completeDataMs": 620,
+        "intent": {
+          "requests": 0,
+          "transferredBytes": 0,
+          "requestsWithRecordedBytes": 0,
+          "api": [],
+          "scripts": 0,
+          "images": 0,
+          "rsc": 0
+        },
+        "requests": 1,
+        "transferredBytes": 422,
+        "requestsWithRecordedBytes": 1,
+        "api": [],
+        "scripts": 0,
+        "images": 0,
+        "rsc": 1
+      },
+      {
+        "round": 2,
+        "destination": "Home",
+        "visibleMs": 470,
+        "completeDataMs": 671,
+        "intent": {
+          "requests": 0,
+          "transferredBytes": 0,
+          "requestsWithRecordedBytes": 0,
+          "api": [],
+          "scripts": 0,
+          "images": 0,
+          "rsc": 0
+        },
+        "requests": 3,
+        "transferredBytes": 8040,
+        "requestsWithRecordedBytes": 3,
+        "api": [
+          {
+            "path": "/api/wallet",
+            "method": "GET",
+            "durationMs": 186,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 543
+          },
+          {
+            "path": "/api/catalog/activity?codes=171%2C172",
+            "method": "GET",
+            "durationMs": 184,
+            "status": 200,
+            "cacheControl": "private, no-store, max-age=0",
+            "transferBytes": 734
+          }
+        ],
+        "scripts": 0,
+        "images": 0,
+        "rsc": 1
+      },
+      {
+        "round": 2,
+        "destination": "Home state",
+        "url": "/?q=QA%20client%20flow%20077a690",
+        "cards": 12,
+        "scrollY": 3445,
+        "filtersPreserved": true,
+        "batchesPreserved": true,
+        "scrollDelta": 0
+      }
+    ],
+    "backgroundWindow": {
+      "durationMs": 5000,
+      "requests": 1,
+      "transferredBytes": 435,
+      "requestsWithRecordedBytes": 1,
+      "api": [
+        {
+          "path": "/api/catalog/auctions/171/view",
+          "method": "POST",
+          "durationMs": 184,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 435
+        }
+      ],
+      "scripts": 0,
+      "images": 0,
+      "rsc": 0
+    },
+    "resources": [
+      {
+        "path": "/_next/static/css/72de37f8fa155415.css",
+        "durationMs": 380,
+        "transferBytes": 15333
+      },
+      {
+        "path": "/_next/static/css/e1d95f78a7f91444.css",
+        "durationMs": 349,
+        "transferBytes": 7128
+      },
+      {
+        "path": "/_next/static/chunks/webpack-fe70020cdbc5eeca.js",
+        "durationMs": 534,
+        "transferBytes": 2852
+      },
+      {
+        "path": "/_next/static/chunks/4bd1b696-8cd12253b448cc13.js",
+        "durationMs": 1934,
+        "transferBytes": 64361
+      },
+      {
+        "path": "/_next/static/chunks/3794-04350b0fcecd82e5.js",
+        "durationMs": 2168,
+        "transferBytes": 67433
+      },
+      {
+        "path": "/_next/static/chunks/main-app-22164e04688c5bb5.js",
+        "durationMs": 803,
+        "transferBytes": 829
+      },
+      {
+        "path": "/_next/static/chunks/app/telegram/loading-8a46823fcd3cab4d.js",
+        "durationMs": 957,
+        "transferBytes": 3726
+      },
+      {
+        "path": "/_next/static/chunks/3107-8087df131338251e.js",
+        "durationMs": 1157,
+        "transferBytes": 8125
+      },
+      {
+        "path": "/_next/static/chunks/8780-622681fefb909214.js",
+        "durationMs": 1359,
+        "transferBytes": 10321
+      },
+      {
+        "path": "/_next/static/chunks/7820-cd30d75ad05ed387.js",
+        "durationMs": 1469,
+        "transferBytes": 7725
+      },
+      {
+        "path": "/_next/static/chunks/6420-9d6b5be013b94289.js",
+        "durationMs": 1500,
+        "transferBytes": 5110
+      },
+      {
+        "path": "/_next/static/chunks/app/telegram/page-da6b632ea2326402.js",
+        "durationMs": 1438,
+        "transferBytes": 2419
+      },
+      {
+        "path": "/_next/static/chunks/app/layout-255ea94fca8d0df5.js",
+        "durationMs": 1594,
+        "transferBytes": 2759
+      },
+      {
+        "path": "/_next/static/chunks/app/error-e3c49c774ae4cd4b.js",
+        "durationMs": 1624,
+        "transferBytes": 1083
+      },
+      {
+        "path": "/_next/static/chunks/8500-63a4afbeacab3b52.js",
+        "durationMs": 1747,
+        "transferBytes": 3559
+      },
+      {
+        "path": "/_next/static/chunks/app/not-found-07c97bab91ca592b.js",
+        "durationMs": 1686,
+        "transferBytes": 491
+      },
+      {
+        "path": "/fonts/dm-sans-latin-400.woff2",
+        "durationMs": 742,
+        "transferBytes": 14500
+      },
+      {
+        "path": "/_next/static/chunks/5350-b7f4e3ff1992c27d.js",
+        "durationMs": 450,
+        "transferBytes": 7453
+      },
+      {
+        "path": "/_next/static/chunks/8653-a4ebd6b5a9982cd5.js",
+        "durationMs": 324,
+        "transferBytes": 2864
+      },
+      {
+        "path": "/_next/static/chunks/7950-da891987d85cbad3.js",
+        "durationMs": 527,
+        "transferBytes": 10205
+      },
+      {
+        "path": "/_next/static/chunks/app/(mini)/loading-d581842ef38884a3.js",
+        "durationMs": 433,
+        "transferBytes": 6742
+      },
+      {
+        "path": "/_next/static/css/cf87a9bb0fd73e23.css",
+        "durationMs": 277,
+        "transferBytes": 2214
+      },
+      {
+        "path": "/_next/static/css/04ce1284b894f596.css",
+        "durationMs": 530,
+        "transferBytes": 9320
+      },
+      {
+        "path": "/_next/static/css/689d95a7e26e8551.css",
+        "durationMs": 477,
+        "transferBytes": 844
+      },
+      {
+        "path": "/_next/static/chunks/4109-90e4c847d1de6a63.js",
+        "durationMs": 554,
+        "transferBytes": 3388
+      },
+      {
+        "path": "/_next/static/chunks/5848-7456117182e60a7c.js",
+        "durationMs": 695,
+        "transferBytes": 6670
+      },
+      {
+        "path": "/_next/static/chunks/7463-94a45499e1370a7f.js",
+        "durationMs": 786,
+        "transferBytes": 6904
+      },
+      {
+        "path": "/_next/static/chunks/app/(mini)/page-8f5e25550d0872d8.js",
+        "durationMs": 832,
+        "transferBytes": 7066
+      },
+      {
+        "path": "/_next/static/chunks/1946-fda0f0792c43d30d.js",
+        "durationMs": 921,
+        "transferBytes": 11339
+      },
+      {
+        "path": "/_next/static/chunks/app/(mini)/layout-4353a2ecba42dac8.js",
+        "durationMs": 904,
+        "transferBytes": 7944
+      },
+      {
+        "path": "/fonts/dm-sans-latin-700.woff2",
+        "durationMs": 691,
+        "transferBytes": 14648
+      },
+      {
+        "path": "/fonts/dm-sans-latin-500.woff2",
+        "durationMs": 737,
+        "transferBytes": 14604
+      },
+      {
+        "path": "/fonts/dm-sans-latin-600.woff2",
+        "durationMs": 845,
+        "transferBytes": 14444
+      },
+      {
+        "path": "/_next/static/chunks/4615.fc4abf2158347a07.js",
+        "durationMs": 216,
+        "transferBytes": 3617
+      },
+      {
+        "path": "/_next/static/chunks/2268-bf6e5cd2907c0b37.js",
+        "durationMs": 270,
+        "transferBytes": 5301
+      },
+      {
+        "path": "/_next/static/chunks/543.757f201f8f28b669.js",
+        "durationMs": 316,
+        "transferBytes": 9084
+      },
+      {
+        "path": "/images/chapa-logo.svg",
+        "durationMs": 174,
+        "transferBytes": 2050
+      },
+      {
+        "path": "/_next/static/chunks/3078-7232bdc8675edf06.js",
+        "durationMs": 263,
+        "transferBytes": 6369
+      },
+      {
+        "path": "/_next/static/chunks/app/(mini)/winners/page-76a26c4cabd5717b.js",
+        "durationMs": 170,
+        "transferBytes": 475
+      },
+      {
+        "path": "/_next/static/css/ea27c58af8f3ffb5.css",
+        "durationMs": 246,
+        "transferBytes": 3033
+      },
+      {
+        "path": "/_next/static/css/79f4be78bf65ced5.css",
+        "durationMs": 215,
+        "transferBytes": 2265
+      },
+      {
+        "path": "/_next/static/chunks/4548-96d2458edf6db70e.js",
+        "durationMs": 198,
+        "transferBytes": 2815
+      },
+      {
+        "path": "/_next/static/chunks/app/(mini)/my-bids/page-ad6e43b99c55412c.js",
+        "durationMs": 260,
+        "transferBytes": 6669
+      },
+      {
+        "path": "/_next/static/chunks/app/(mini)/profile/page-6a88211057728586.js",
+        "durationMs": 218,
+        "transferBytes": 6758
+      }
+    ],
+    "concurrentApiDuplicates": [],
+    "financialPosts": [],
+    "errors": [],
+    "allRequests": {
+      "requests": 107,
+      "transferredBytes": 969868,
+      "requestsWithRecordedBytes": 105,
+      "api": [
+        {
+          "path": "/api/auth/telegram/miniapp/signin",
+          "method": "POST",
+          "durationMs": 203,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 809
+        },
+        {
+          "path": "/api/wallet",
+          "method": "GET",
+          "durationMs": 220,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 544
+        },
+        {
+          "path": "/api/catalog/auctions?view=summary",
+          "method": "GET",
+          "durationMs": 224,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 480
+        },
+        {
+          "path": "/api/alerts?summary=1",
+          "method": "GET",
+          "durationMs": 222,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 395
+        },
+        {
+          "path": "/api/catalog/activity?codes=163",
+          "method": "GET",
+          "durationMs": 623,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 575
+        },
+        {
+          "path": "/api/catalog/auctions/163/view",
+          "method": "POST",
+          "durationMs": 173,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 435
+        },
+        {
+          "path": "/api/catalog/auctions?page=1&status=live&view=quick",
+          "method": "GET",
+          "durationMs": 214,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 4431
+        },
+        {
+          "path": "/api/catalog/auctions?page=2&status=live&view=quick",
+          "method": "GET",
+          "durationMs": 252,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 4631
+        },
+        {
+          "path": "/api/catalog/auctions/test-bid-0f8771a6",
+          "method": "GET",
+          "durationMs": 183,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 1983
+        },
+        {
+          "path": "/api/auctions/test-bid-0f8771a6/bids",
+          "method": "GET",
+          "durationMs": 183,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 786
+        },
+        {
+          "path": "/api/catalog/activity?codes=172",
+          "method": "GET",
+          "durationMs": 180,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 575
+        },
+        {
+          "path": "/api/results/162/breakdown?page=1&sort=amount",
+          "method": "GET",
+          "durationMs": 209,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 4030
+        },
+        {
+          "path": "/api/catalog/auctions/172/view",
+          "method": "POST",
+          "durationMs": 173,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 435
+        },
+        {
+          "path": "/api/catalog/activity?codes=163%2C164",
+          "method": "GET",
+          "durationMs": 178,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 734
+        },
+        {
+          "path": "/api/auctions/test-bid-b0171c8d/bids",
+          "method": "GET",
+          "durationMs": 149,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 786
+        },
+        {
+          "path": "/api/wallet",
+          "method": "GET",
+          "durationMs": 135,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 543
+        },
+        {
+          "path": "/api/catalog/activity?codes=164%2C165",
+          "method": "GET",
+          "durationMs": 172,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 734
+        },
+        {
+          "path": "/api/payments/chapa",
+          "method": "GET",
+          "durationMs": 172,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 595
+        },
+        {
+          "path": "/api/catalog/auctions/164/view",
+          "method": "POST",
+          "durationMs": 199,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 435
+        },
+        {
+          "path": "/api/catalog/activity?codes=164%2C163",
+          "method": "GET",
+          "durationMs": 157,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 734
+        },
+        {
+          "path": "/api/catalog/auctions?page=2&q=QA+client+flow+077a690&sort=code&status=live&view=home",
+          "method": "GET",
+          "durationMs": 225,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 3664
+        },
+        {
+          "path": "/api/catalog/activity?codes=172",
+          "method": "GET",
+          "durationMs": 181,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 575
+        },
+        {
+          "path": "/api/catalog/activity?codes=172%2C173",
+          "method": "GET",
+          "durationMs": 189,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 734
+        },
+        {
+          "path": "/api/catalog/activity?codes=172%2C171",
+          "method": "GET",
+          "durationMs": 170,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 734
+        },
+        {
+          "path": "/api/my-bids?page=1&view=all",
+          "method": "GET",
+          "durationMs": 263,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 13347
+        },
+        {
+          "path": "/api/profile",
+          "method": "GET",
+          "durationMs": 172,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 789
+        },
+        {
+          "path": "/api/wallet",
+          "method": "GET",
+          "durationMs": 197,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 545
+        },
+        {
+          "path": "/api/catalog/activity?codes=171%2C172",
+          "method": "GET",
+          "durationMs": 185,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 734
+        },
+        {
+          "path": "/api/wallet",
+          "method": "GET",
+          "durationMs": 186,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 543
+        },
+        {
+          "path": "/api/catalog/activity?codes=171%2C172",
+          "method": "GET",
+          "durationMs": 184,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 734
+        },
+        {
+          "path": "/api/catalog/auctions/171/view",
+          "method": "POST",
+          "durationMs": 184,
+          "status": 200,
+          "cacheControl": "private, no-store, max-age=0",
+          "transferBytes": 435
+        }
+      ],
+      "scripts": 34,
+      "images": 15,
+      "rsc": 15
+    },
+    "winnersBoundary": {
+      "authenticatedStatus": 200,
+      "cacheControl": "private, no-store, max-age=0",
+      "liveFixtureExcluded": true,
+      "settledWinnersOnly": true,
+      "winnerPhonesOmitted": true,
+      "total": 12,
+      "totalPages": 1,
+      "pageSize": 12,
+      "pagination": "one page",
+      "freshRepeatDedicatedGets": 0
+    }
+  },
+  "anonymousWinnersStatus": 401,
+  "heroPublicAssets": [
+    {
+      "path": "/images/lowwin-home-banner-en.webp",
+      "status": 200
+    },
+    {
+      "path": "/images/lowwin-home-banner-am.webp",
+      "status": 200
+    }
+  ]
+}

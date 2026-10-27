@@ -19,7 +19,7 @@ import {customerDepositFailures} from '../lib/deposit-outcome';
 import {depositFeedback} from './deposit-feedback';
 import {startDepositPolling,paymentPollRetryAfter} from './deposit-polling';
 import {receiptImageKey} from './receipt-image-key';
-import {invalidatePrivateQueries,setPrivateQueryIdentity} from './private-query-cache';
+import {invalidatePrivateQueries,setPrivateQueryIdentity,WALLET_QUERY_SCOPES} from './private-query-cache';
 import styles from './wallet-page.module.css';
 
 type Account={id:string;policyId:string;version:number;name:string;number:string;holder:string;numerator:string;denominator:string;minCents:string;maxCents:string;terms:string};
@@ -52,7 +52,7 @@ function Funding({view,onContinue}:{view:FundingView;onContinue?:()=>void}){
    if(updated.status==='VERIFYING')return {};
    setIntent(updated);query.reload();
    const feedback=depositFeedback(updated,w);inform(feedback.message,feedback.kind);
-   if(updated.status==='CREDITED'){if(queryIdentity)invalidatePrivateQueries(queryIdentity);window.dispatchEvent(new Event('lowin-wallet-updated'));window.dispatchEvent(new Event('lowin-alerts'));void refreshMe()}
+   if(updated.status==='CREDITED'){if(queryIdentity)invalidatePrivateQueries(queryIdentity,WALLET_QUERY_SCOPES);window.dispatchEvent(new Event('lowin-wallet-updated'));window.dispatchEvent(new Event('lowin-alerts'));void refreshMe()}
    return {done:true};
   },()=>document.visibilityState==='visible',()=>{
    if(!cancelled)inform(w('Verification is still pending. Reopen your deposits to check the result.'),'info');
@@ -94,7 +94,7 @@ function Funding({view,onContinue}:{view:FundingView;onContinue?:()=>void}){
    setIntent(updated);const feedback=depositFeedback(updated,w);inform(feedback.message,feedback.kind);
    query.reload();
    if(updated.status==='CREDITED'){
-    if(queryIdentity)invalidatePrivateQueries(queryIdentity);
+    if(queryIdentity)invalidatePrivateQueries(queryIdentity,WALLET_QUERY_SCOPES);
     window.dispatchEvent(new Event('lowin-wallet-updated'));window.dispatchEvent(new Event('lowin-alerts'));
     void refreshMe().catch(()=>setMessage(`${updated.points} ${w('ETB credited. Receipt recorded.')} ${w('Reopen the wallet to refresh your balance.')}`));
    }

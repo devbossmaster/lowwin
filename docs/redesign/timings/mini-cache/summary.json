@@ -1,0 +1,136 @@
+{
+  "baseline": "3ce6ab097b16327fee26278d3614ae61d1b427bb",
+  "buildId": "l6j_C2vpX7qNUV3H94WZe",
+  "productionMeasured": false,
+  "method": "Median across both widths; visible / complete ms; Playwright response body and header sizes, not verified wire bandwidth. Fixture growth and scheduling affect totals.",
+  "results": {
+    "Cold Home ready": {
+      "normal": {
+        "before": "1966",
+        "after": "1534"
+      },
+      "slow": {
+        "before": "5446",
+        "after": "5550"
+      }
+    },
+    "First bid sheet": {
+      "normal": {
+        "before": "394 / 434",
+        "after": "423 / 488"
+      },
+      "slow": {
+        "before": "350 / 390",
+        "after": "360 / 791"
+      }
+    },
+    "Repeated bid sheet": {
+      "normal": {
+        "before": "120 / 165",
+        "after": "144 / 193"
+      },
+      "slow": {
+        "before": "110 / 148",
+        "after": "156 / 210"
+      }
+    },
+    "First result sheet": {
+      "normal": {
+        "before": "504 / 550",
+        "after": "152 / 722"
+      },
+      "slow": {
+        "before": "1028 / 1064",
+        "after": "138 / 784"
+      }
+    },
+    "Repeated result sheet": {
+      "normal": {
+        "before": "100 / 136",
+        "after": "132 / 322"
+      },
+      "slow": {
+        "before": "96 / 132",
+        "after": "127 / 315"
+      }
+    },
+    "First auction browser": {
+      "normal": {
+        "before": "196 / 232",
+        "after": "174 / 218"
+      },
+      "slow": {
+        "before": "103 / 496",
+        "after": "128 / 538"
+      }
+    },
+    "Warm Winners": {
+      "normal": {
+        "before": "102 / 465",
+        "after": "106 / 673"
+      },
+      "slow": {
+        "before": "80 / 899",
+        "after": "94 / 924"
+      }
+    },
+    "Warm My Bids": {
+      "normal": {
+        "before": "130 / 326",
+        "after": "89 / 283"
+      },
+      "slow": {
+        "before": "423 / 714",
+        "after": "260 / 683"
+      }
+    },
+    "Warm Profile": {
+      "normal": {
+        "before": "125 / 302",
+        "after": "79 / 316"
+      },
+      "slow": {
+        "before": "284 / 838",
+        "after": "244 / 798"
+      }
+    },
+    "Warm Home return": {
+      "normal": {
+        "before": "424 / 610",
+        "after": "255 / 460"
+      },
+      "slow": {
+        "before": "434 / 632",
+        "after": "424 / 623"
+      }
+    },
+    "Whole flow requests": {
+      "normal": {
+        "before": "104",
+        "after": "105"
+      },
+      "slow": {
+        "before": "105",
+        "after": "110"
+      }
+    },
+    "Recorded response bytes": {
+      "normal": {
+        "before": "936.0 KiB",
+        "after": "832.1 KiB"
+      },
+      "slow": {
+        "before": "851.1 KiB",
+        "after": "1058.8 KiB"
+      }
+    }
+  },
+  "checks": {
+    "typecheck": "pass",
+    "productionBuild": "pass",
+    "focusedUnitTests": 44,
+    "finalBrowserTests": 6,
+    "additionalFocusedMobileChecks": "Header, Home restoration, result/participant pagination and late selection passed in preceding focused runs.",
+    "mechanicalUiFindings": 0
+  }
+}

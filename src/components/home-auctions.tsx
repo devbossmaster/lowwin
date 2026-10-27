@@ -9,12 +9,13 @@ import {usePrivateQuery} from './private-query';
 import {isPrivateQueryIdentity,readPrivateQuery,seedPrivateQuery} from './private-query-cache';
 import {useTelegram} from './telegram-provider';
 import {miniNavigationState} from './mini-navigation-state';
+import {catalogBatchUrl} from '@/lib/catalog-query';
 import styles from './home-banner.module.css';
 type Batch=Awaited<ReturnType<typeof listAuctions>>;
 export function homeAuctionHref(query:CatalogQuery,patch:Partial<CatalogQuery>={}){
  const next={...query,...patch},params=new URLSearchParams();if(next.category)params.set('category',next.category);if(next.sort!=='code')params.set('sort',next.sort);if(next.q)params.set('q',next.q);return '/'+(params.size?'?'+params:'');
 }
-function batchHref(query:CatalogQuery,page:number){return '/api/catalog/auctions?'+new URLSearchParams({view:'home',status:'live',sort:query.sort,page:String(page),...(query.category?{category:query.category}:{}),...(query.q?{q:query.q}:{})})}
+const batchHref=catalogBatchUrl;
 function restoredFeed(identity:string|null,initial:Batch,query:CatalogQuery){
  const cached=identity?readPrivateQuery<Batch>(identity,batchHref(query,1)):null;
  const base=cached&&Date.parse(cached.value.serverNow)>=Date.parse(initial.serverNow)?cached.value:initial;
@@ -34,8 +35,10 @@ function HomeAuctionFeed({initial,query,identity}:{initial:Batch;query:CatalogQu
  const {language}=useMiniLocale(),sortRow=useRef<HTMLElement>(null);
  const [restored]=useState(()=>restoredFeed(identity,initial,query));
  const [items,setItems]=useState(restored.items),[serverNow,setServerNow]=useState(restored.serverNow),[serverObservedAt,setServerObservedAt]=useState(restored.serverObservedAt),[page,setPage]=useState(restored.page),[totalPages,setTotalPages]=useState(restored.totalPages),[busy,setBusy]=useState(false),pending=useRef(false);
+ const firstBatch=usePrivateQuery<Batch>(batchHref(query,1),{initialData:initial});
  const batch=usePrivateQuery<Batch>(batchHref(query,page),{enabled:page>1});
  const lastInitial=useRef(initial);
+ useEffect(()=>{const data=firstBatch.data;if(!data)return;const codes=new Set(data.items.map(item=>item.code));setItems(previous=>[...data.items,...previous.slice(10).filter(item=>!codes.has(item.code))]);setServerNow(data.serverNow);setServerObservedAt(firstBatch.updatedAt);setTotalPages(data.totalPages)},[firstBatch.data,firstBatch.updatedAt]);
  useEffect(()=>{if(lastInitial.current===initial)return;lastInitial.current=initial;const codes=new Set(initial.items.map(item=>item.code));setItems(previous=>[...initial.items,...previous.slice(10).filter(item=>!codes.has(item.code))]);setServerNow(initial.serverNow);setServerObservedAt(Date.now());setTotalPages(initial.totalPages)},[initial]);
  useEffect(()=>{if(!identity||!isPrivateQueryIdentity(identity))return;const key=batchHref(query,1),saved=readPrivateQuery<Batch>(identity,key);if(!saved||Date.parse(initial.serverNow)>Date.parse(saved.value.serverNow))seedPrivateQuery(identity,key,initial)},[identity,initial,query]);
  useEffect(()=>{miniNavigationState.rememberPage(identity,homeAuctionHref(query),page)},[identity,query,page]);

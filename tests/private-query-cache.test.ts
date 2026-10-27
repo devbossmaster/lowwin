@@ -1,5 +1,5 @@
 import {describe,expect,it,vi} from 'vitest';
-import {privateQueryKey,invalidatePrivateQueries,loadPrivateJson,ObsoletePrivateQueryError,PrivateAuthorizationError,readPrivateQuery,SessionPrivateQueryCache,setPrivateQueryIdentity} from '../src/components/private-query-cache';
+import {privateQueryKey,invalidatePrivateQueries,loadPrivateJson,ObsoletePrivateQueryError,PrivateAuthorizationError,readPrivateQuery,SessionPrivateQueryCache,setPrivateQueryIdentity,getMiniQueryClient,seedPrivateQuery,retainPrivateQuery} from '../src/components/private-query-cache';
 
 describe('session private query cache',()=>{
  it('seeds the verified bootstrap without another read and rejects another identity',async()=>{
@@ -87,6 +87,38 @@ describe('session private query cache',()=>{
 });
 
 describe('private cache navigation regressions',()=>{
+ it('refreshes only confirmed mutation resources while unrelated reads keep running',async()=>{
+  const cache=new SessionPrivateQueryCache();cache.setIdentity('a');
+  cache.seed('a','/api/wallet',100);cache.seed('a','/api/results/winners?page=1',{items:['settled']});
+  let complete!:(value:string)=>void,signal!:AbortSignal;
+  const profile=cache.load('a','/api/profile',abort=>{signal=abort;return new Promise<string>(resolve=>{complete=resolve})});
+  cache.invalidate('a',['/api/wallet']);expect(signal.aborted).toBe(false);
+  expect(cache.read('a','/api/wallet')).toMatchObject({value:100,fresh:false});
+  expect(cache.read('a','/api/results/winners?page=1')?.fresh).toBe(true);
+  complete('current profile');await expect(profile).resolves.toBe('current profile');
+ });
+ it('does not let an older in-flight read or older server seed replace a committed snapshot',async()=>{
+  const cache=new SessionPrivateQueryCache();cache.setIdentity('a');let complete!:(value:number)=>void;
+  const old=cache.load('a','/api/wallet',()=>new Promise<number>(resolve=>{complete=resolve}));
+  const obsolete=expect(old).rejects.toBeInstanceOf(ObsoletePrivateQueryError);
+  const committedAt=Date.now();cache.seed('a','/api/wallet',70,committedAt);complete(100);await obsolete;
+  cache.seed('a','/api/wallet',100,committedAt-1);expect(cache.read('a','/api/wallet')?.value).toBe(70);
+ });
+ it('shares a browser client, scopes server clients, and cancels only an unused selected read',async()=>{
+  expect(getMiniQueryClient()).not.toBe(getMiniQueryClient());
+  vi.stubGlobal('window',{});setPrivateQueryIdentity('selected');
+  try{
+   expect(getMiniQueryClient()).toBe(getMiniQueryClient());
+   let complete!:(value:Response)=>void,signal!:AbortSignal;
+   vi.stubGlobal('fetch',vi.fn((_url:string,options:RequestInit)=>{signal=options.signal!;return new Promise<Response>(resolve=>{complete=resolve})}));
+   const first=retainPrivateQuery('selected','/api/results/42/breakdown?page=1',true),second=retainPrivateQuery('selected','/api/results/42/breakdown?page=1',true);
+   const request=loadPrivateJson('selected','/api/results/42/breakdown?page=1'),cancelled=expect(request).rejects.toBeDefined();
+   first();expect(signal.aborted).toBe(false);second();expect(signal.aborted).toBe(true);complete(Response.json({items:['late']}));await cancelled;
+   expect(readPrivateQuery('selected','/api/results/42/breakdown?page=1')).toBeNull();
+   seedPrivateQuery('selected','/api/results/winners?page=1',{items:['confirmed']});
+   expect(getMiniQueryClient().getQueryCache().find({queryKey:['lowin-private','selected','/api/results/winners','page=1','']})?.gcTime).toBe(1800000);
+  }finally{setPrivateQueryIdentity(null);vi.unstubAllGlobals()}
+ });
  it('aborts obsolete reads when an account changes, without exposing their payload',async()=>{
   const cache=new SessionPrivateQueryCache();cache.setIdentity('old');
   let finish!:(value:string)=>void,captured:AbortSignal|undefined;

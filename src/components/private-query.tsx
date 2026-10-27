@@ -6,9 +6,10 @@ import { IdentityState } from './identity-state';
 import {MiniPhrase} from './mini-locale';
 import {CustomerLoading} from './loading-spinner';
 import {customerLoadingCopy} from './customer-loading-copy';
-import {loadPrivateJson,privateQueryKey,readPrivateQuery,subscribePrivateQueries} from './private-query-cache';
+import {loadPrivateJson,privateQueryKey,readPrivateQuery,retainPrivateQuery,seedPrivateQuery,subscribePrivateQueries} from './private-query-cache';
+import {matchesPrivateResource,miniQueryPolicy} from './mini-query-policy';
 import styles from './private-query.module.css';
-export function usePrivateQuery<T>(url:string,{pollMs=0,enabled=true,freshnessMs,language,keepPreviousData=false}:{pollMs?:number;enabled?:boolean;freshnessMs?:number;language?:string;keepPreviousData?:boolean}={}) {
+export function usePrivateQuery<T>(url:string,{pollMs=0,enabled=true,freshnessMs,language,keepPreviousData=false,initialData,initialUpdatedAt,cancelOnUnmount=false}:{pollMs?:number;enabled?:boolean;freshnessMs?:number;language?:string;keepPreviousData?:boolean;initialData?:T;initialUpdatedAt?:number;cancelOnUnmount?:boolean}={}) {
   const {status,queryIdentity}=useTelegram();
   const key=privateQueryKey(url,language),request=JSON.stringify([queryIdentity,key]);
   const [feedback,setFeedback]=useState({request:'',error:'',fetching:false}),[retry,setRetry]=useState(0),[,setRevision]=useState(0);
@@ -18,6 +19,8 @@ export function usePrivateQuery<T>(url:string,{pollMs=0,enabled=true,freshnessMs
     const forceRetry=retry>lastRetry.current;lastRetry.current=retry;
     setFeedback({request,error:'',fetching:false});
     if(!enabled||status!=='authenticated'||!queryIdentity)return;
+    const release=retainPrivateQuery(queryIdentity,url,cancelOnUnmount);
+    if(initialData!==undefined&&!readPrivateQuery(queryIdentity,url,{language,freshnessMs}))seedPrivateQuery(queryIdentity,url,initialData,initialUpdatedAt);
     let active=true,sequence=0;
     const options={freshnessMs,language};
     const refresh=(force=false)=>{
@@ -31,6 +34,7 @@ export function usePrivateQuery<T>(url:string,{pollMs=0,enabled=true,freshnessMs
     const unsubscribe=subscribePrivateQueries(event=>{
       if(!active||event.identity!==queryIdentity&&event.kind!=='session'&&event.kind!=='authorization')return;
       if(event.kind==='stored'&&event.keys&&!event.keys.includes(key))return;
+      if(event.kind==='mutation'&&event.keys&&!event.keys.some(scope=>matchesPrivateResource(key,scope)))return;
       setRevision(value=>value+1);
       if(event.identity===queryIdentity&&event.kind==='mutation')refresh(true);
     });
@@ -39,18 +43,18 @@ export function usePrivateQuery<T>(url:string,{pollMs=0,enabled=true,freshnessMs
     // while Home's header is unmounted. Every reader shares the same request.
     const walletChanged=()=>refresh(true);
     if(url==='/api/wallet')window.addEventListener('lowin-wallet-updated',walletChanged);
-    const visible=()=>{if(document.visibilityState==='visible')refresh()};
+    const visible=()=>{if(document.visibilityState==='visible')refresh(miniQueryPolicy(url).refreshOnResume)};
     document.addEventListener('visibilitychange',visible);
     window.addEventListener('focus',visible);
     window.addEventListener('online',visible);
     const timer=pollMs?setInterval(()=>{if(document.visibilityState==='visible')refresh()},pollMs):null;
-    return()=>{active=false;unsubscribe();window.removeEventListener('lowin-wallet-updated',walletChanged);document.removeEventListener('visibilitychange',visible);window.removeEventListener('focus',visible);window.removeEventListener('online',visible);if(timer)clearInterval(timer)};
-  },[url,status,queryIdentity,retry,pollMs,enabled,freshnessMs,language,key,request]);
+    return()=>{active=false;unsubscribe();release();window.removeEventListener('lowin-wallet-updated',walletChanged);document.removeEventListener('visibilitychange',visible);window.removeEventListener('focus',visible);window.removeEventListener('online',visible);if(timer)clearInterval(timer)};
+  },[url,status,queryIdentity,retry,pollMs,enabled,freshnessMs,language,key,request,initialData,initialUpdatedAt,cancelOnUnmount]);
   const snapshot=enabled&&status==='authenticated'&&queryIdentity?readPrivateQuery<T>(queryIdentity,url,{freshnessMs,language}):null;
   useEffect(()=>{if(snapshot&&queryIdentity)previous.current={identity:queryIdentity,url,language};else if(status!=='authenticated')previous.current=null},[snapshot?.value,queryIdentity,url,language,status]);
   const prior=previous.current;
   const retained=keepPreviousData&&!snapshot&&enabled&&status==='authenticated'&&queryIdentity&&prior?.identity===queryIdentity&&prior.language===language&&prior.url.split('?',1)[0]===url.split('?',1)[0]?readPrivateQuery<T>(queryIdentity,prior.url,{freshnessMs,language}):null;
-  const isPlaceholderData=!snapshot&&!!retained,data=snapshot?.value??retained?.value??null;
+  const isPlaceholderData=!snapshot&&!!retained,data=snapshot?.value??retained?.value??(enabled&&status==='authenticated'?initialData??null:null);
   const error=enabled&&feedback.request===request?feedback.error:'',fetching=enabled&&feedback.request===request&&feedback.fetching;
   const reload=useCallback(()=>setRetry(value=>value+1),[]);
   return {data,updatedAt:snapshot?.updatedAt??retained?.updatedAt??0,error,status:enabled?status:'disabled',fetching:fetching||isPlaceholderData&&!error,isPlaceholderData,reload};

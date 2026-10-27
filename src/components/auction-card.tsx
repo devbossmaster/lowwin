@@ -1,5 +1,5 @@
 'use client';
-import {useRef,useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import {ArrowUpRight,Clock3,Ticket} from 'lucide-react';
 import type {CatalogAuction} from '@/modules/auctions/catalog';
 import {CatalogImage} from './catalog-image';
@@ -12,9 +12,11 @@ import BidSheet from './bid-sheet';
 import {IntentPrefetchLink} from './intent-prefetch-link';
 import {useTelegram} from './telegram-provider';
 import {prefetchAuctionIntent} from './mini-prefetch';
+import {seedAuctionQuery} from './auction-query';
 export function AuctionCard({auction:initialAuction,serverNow,serverObservedAt,priority=false}:{auction:CatalogAuction;serverNow?:string;serverObservedAt?:number;priority?:boolean;onFavoriteChanged?:()=>void}){
  const [bidding,setBidding]=useState(false),ref=useRef<HTMLElement>(null);
  const {queryIdentity}=useTelegram();
+ useEffect(()=>seedAuctionQuery(queryIdentity,initialAuction),[queryIdentity,initialAuction]);
  const warmBid=()=>prefetchAuctionIntent(queryIdentity,initialAuction.slug);
  const {activity,refreshActivity}=useAuctionActivity(initialAuction.code,{element:ref,record:true});
  useAuctionRefresh(activity,initialAuction.status,Boolean(initialAuction.result));

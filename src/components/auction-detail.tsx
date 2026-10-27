@@ -20,15 +20,19 @@ const ArifPayReturn=dynamic(()=>import('./arifpay-return').then(module=>module.A
 import {MiniCategoryName,MiniPhrase,useMiniLocale} from './mini-locale';
 import styles from './auction-detail.module.css';
 import {useAuctionActivity,useAuctionRefresh} from './auction-activity';
+import {auctionDetailUrl} from './auction-query';
+import {usePrivateQuery} from './private-query';
 
 export function AuctionDetail({auction:initialAuction,serverNow}:{auction:CatalogAuction;serverNow:string}){
+ const detail=usePrivateQuery<CatalogAuction>(auctionDetailUrl(initialAuction.slug),{initialData:initialAuction});
+ const known=detail.data??initialAuction;
  const [bidding,setBidding]=useState(false);
  const {queryIdentity}=useTelegram();
  const warmBid=()=>prefetchAuctionIntent(queryIdentity,initialAuction.slug);
  useEffect(()=>{if(window.location.hash==='#bid-review')setBidding(true)},[]);
  const {activity,views,refreshActivity}=useAuctionActivity(initialAuction.code,{record:true});
  useAuctionRefresh(activity,initialAuction.status,Boolean(initialAuction.result));
- const auction={...initialAuction,status:activity?.status??initialAuction.status,viewCount:views??initialAuction.viewCount,bidCount:activity?.bids??initialAuction.bidCount,startsAt:activity?.startsAt??initialAuction.startsAt,endsAt:activity?.endsAt??initialAuction.endsAt};
+ const auction={...known,status:activity?.status??known.status,viewCount:views??known.viewCount,bidCount:activity?.bids??known.bidCount,startsAt:activity?.startsAt??known.startsAt,endsAt:activity?.endsAt??known.endsAt};
  const {language}=useMiniLocale(),am=language==='am',live=auction.status==='live',upcoming=auction.status==='upcoming';
  const title=am?(auction.product.titleAm?.trim()||auction.product.title):auction.product.title;
  const condition=am?(auction.product.conditionAm?.trim()||auction.product.condition):auction.product.condition;

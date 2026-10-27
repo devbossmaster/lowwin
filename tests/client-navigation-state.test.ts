@@ -5,6 +5,11 @@ import {invalidatePrivateQueries,loadPrivateJson,prefetchPrivateQuery,readPrivat
 
 afterEach(()=>{setPrivateQueryIdentity(null);vi.unstubAllGlobals();vi.useRealTimers()});
 describe('session-local navigation coordinates',()=>{
+ it('retains result sort and participant pages only for the current session',()=>{
+  const memory=new SessionNavigationState();memory.setIdentity('a');memory.rememberResult('a','42',{page:2,sort:'picked',jump:false});memory.rememberPage('a','result:42:50',2);
+  expect(memory.result('a','42')).toEqual({page:2,sort:'picked',jump:false});expect(memory.page('a','result:42:50')).toBe(2);
+  memory.setIdentity('b');expect(memory.result('b','42')).toEqual({page:1,sort:'amount',jump:false});expect(memory.page('b','result:42:50')).toBe(1);
+ });
  it('matches encoded filter URLs while preserving their original destination spelling',()=>{
   const memory=new SessionNavigationState();memory.setIdentity('a');memory.remember('a','/?q=QA%20client%20flow&sort=fee-low',3202);
   const saved=memory.visit('a','/');expect(saved?.href).toBe('/?q=QA%20client%20flow&sort=fee-low');

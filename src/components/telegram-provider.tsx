@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import Script from 'next/script';
 import {usePathname} from 'next/navigation';
 import {MINI_AUTH_TIMEOUT_MS,TelegramLaunchError,miniAuthError,signInTelegram,signOutMiniAccount,type MiniAccount} from '@/lib/mini-auth-client';
-import {loadPrivateJson,seedPrivateQuery,setPrivateQueryIdentity,subscribePrivateQueries} from './private-query-cache';
+import {invalidatePrivateQueries,loadPrivateJson,seedPrivateQuery,setPrivateQueryIdentity,subscribePrivateQueries} from './private-query-cache';
 type WebApp = { BackButton?:{isVisible?:boolean;show:()=>void;hide:()=>void;onClick:(handler:()=>void)=>void;offClick:(handler:()=>void)=>void};initData?: string; platform?:string; ready: () => void; expand?:()=>void; requestFullscreen?:()=>void; close?:()=>void; openTelegramLink?:(url:string)=>void; requestContact?:(callback:(shared:boolean)=>void)=>void; isVersionAtLeast?:(version:string)=>boolean; setHeaderColor?: (color: string) => void; setBackgroundColor?: (color: string) => void };
 declare global { interface Window { Telegram?: { WebApp?: WebApp } } }
 type Me = MiniAccount;
@@ -16,6 +16,7 @@ export function TelegramProvider({ children, devEnabled, botUrl, requireLaunch=f
   const [verifyingTelegram, setVerifyingTelegram] = useState(false);
   const [queryIdentity,setQueryIdentity]=useState<string|null>(null);
   const identityRef=useRef<string|null>(null);
+  const accountRef=useRef<Me|null>(null);
   const refreshSequence=useRef(0);
   const accountUpdatedAt=useRef(0);
   const [me, setMe] = useState<Me | null>(null);
@@ -27,12 +28,15 @@ export function TelegramProvider({ children, devEnabled, botUrl, requireLaunch=f
   const authenticating=useRef(false);
   const clearAccount=useCallback(()=>{
     refreshSequence.current++;
-    identityRef.current=null;setPrivateQueryIdentity(null);setQueryIdentity(null);setMe(null);
+    identityRef.current=null;accountRef.current=null;setPrivateQueryIdentity(null);setQueryIdentity(null);setMe(null);
   },[]);
   const acceptAccount=useCallback((account:Me)=>{
+    const profileChanged=accountRef.current?.user.id===account.user.id&&JSON.stringify(accountRef.current.user)!==JSON.stringify(account.user);
+    accountRef.current=account;
     const identity=account.user.id+':'+(account.sessionKey??String(attemptSequence.current));
     identityRef.current=identity;accountUpdatedAt.current=Date.now();
     setPrivateQueryIdentity(identity);seedPrivateQuery(identity,'/api/me',account);setQueryIdentity(identity);setMe(account);
+    if(profileChanged)invalidatePrivateQueries(identity,['/api/profile']);
   },[]);
   const refreshMe=useCallback(async()=>{
     const attempt=attemptSequence.current,sequence=++refreshSequence.current;

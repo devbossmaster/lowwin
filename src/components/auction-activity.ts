@@ -3,10 +3,15 @@ import {useCallback,useEffect,useRef,useState,type RefObject} from 'react';
 import {useRouter} from 'next/navigation';
 import {useTelegram} from './telegram-provider';
 import type {AuctionActivity} from '@/modules/auctions/activity';
-import {subscribePrivateQueries} from './private-query-cache';
+import {getMiniQueryClient,subscribePrivateQueries} from './private-query-cache';
 
 type Listener=(value:AuctionActivity)=>void;
-const listeners=new Map<string,Set<Listener>>(),values=new Map<string,AuctionActivity>(),recording=new Set<string>();
+const listeners=new Map<string,Set<Listener>>(),recording=new Set<string>();
+// Counter payloads share the browser QueryClient; maps below hold subscriptions only.
+const values={
+ get(code:string){const state=getMiniQueryClient().getQueryState<AuctionActivity>(['lowin-public','auction-activity',code]);return state&&Date.now()-state.dataUpdatedAt<60000?state.data:undefined},
+ set(code:string,value:AuctionActivity){const client=getMiniQueryClient();client.setQueryDefaults(['lowin-public','auction-activity'],{staleTime:15000,gcTime:60000});client.setQueryData(['lowin-public','auction-activity',code],value)},
+};
 let timer:ReturnType<typeof setTimeout>|null=null,controller:AbortController|null=null,failures=0;
 function publish(value:AuctionActivity){
  const previous=values.get(value.code);
@@ -35,12 +40,12 @@ async function poll(){
  finally{clearTimeout(timeout);if(controller===current)controller=null;schedule(Math.min(60000,ACTIVITY_POLL_MS*(1+failures)))}
 }
 function visibility(){if(document.hidden){if(timer!==null)clearTimeout(timer);timer=null;controller?.abort()}else schedule(0)}
-subscribePrivateQueries(event=>{if(event.kind==='mutation')schedule(0)});
+subscribePrivateQueries(event=>{if(event.kind==='mutation'&&(!event.keys||event.keys.some(scope=>scope==='/api/catalog/auctions'||scope.startsWith('/api/auctions'))))schedule(0)});
 function subscribe(code:string,listener:Listener){
  const first=listeners.size===0;let group=listeners.get(code);if(!group){group=new Set();listeners.set(code,group)}group.add(listener);
  const existing=values.get(code);if(existing)listener(existing);
  if(first){document.addEventListener('visibilitychange',visibility);window.addEventListener('focus',visibility);window.addEventListener('online',visibility)}schedule(0);
- return()=>{group!.delete(listener);if(!group!.size){listeners.delete(code);values.delete(code)}if(!listeners.size){if(timer!==null)clearTimeout(timer);timer=null;controller?.abort();document.removeEventListener('visibilitychange',visibility);window.removeEventListener('focus',visibility);window.removeEventListener('online',visibility)}};
+ return()=>{group!.delete(listener);if(!group!.size)listeners.delete(code);if(!listeners.size){if(timer!==null)clearTimeout(timer);timer=null;controller?.abort();document.removeEventListener('visibilitychange',visibility);window.removeEventListener('focus',visibility);window.removeEventListener('online',visibility)}};
 }
 export function useAuctionActivity(code:string,{element,record=false}:{element?:RefObject<Element|null>;record?:boolean}={}){
  const {me,status:identityStatus}=useTelegram(),viewerId=me?.user.id;

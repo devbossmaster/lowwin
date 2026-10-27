@@ -1,5 +1,5 @@
 'use client';
-import {prefetchPrivateQuery,subscribePrivateQueries} from './private-query-cache';
+import {miniReadsBusy,prefetchPrivateQuery,subscribePrivateQueries} from './private-query-cache';
 
 /** Shared metadata budget; no response payloads and no eager detail/participant reads. */
 export class IntentPrefetchBudget{
@@ -35,6 +35,7 @@ export function privateIntentDestination(target:string){
  return null;
 }
 export function prefetchMiniIntent(identity:string|null,target:string,prefetchRoute:(url:string)=>void){
+ if(miniReadsBusy())return;
  const connection=typeof navigator==='undefined'?null:(navigator as Navigator&{connection?:{saveData?:boolean;effectiveType?:string}}).connection;
  if(connection?.saveData||connection?.effectiveType==='2g'||connection?.effectiveType==='slow-2g')return;
  let parsed:URL;try{parsed=new URL(target,'https://lowwin.invalid')}catch{return}if(parsed.origin!=='https://lowwin.invalid')return;
@@ -45,6 +46,7 @@ export function prefetchMiniIntent(identity:string|null,target:string,prefetchRo
 }
 /** Card action intent shares the route budget and respects constrained connections. */
 export function prefetchAuctionIntent(identity:string|null,slug:string,{details=false}:{details?:boolean}={}){
+ if(miniReadsBusy())return;
  if(!identity||!/^[-a-z0-9]{1,120}$/.test(slug))return;
  const connection=typeof navigator==='undefined'?null:(navigator as Navigator&{connection?:{saveData?:boolean;effectiveType?:string}}).connection;
  if(connection?.saveData||connection?.effectiveType==='2g'||connection?.effectiveType==='slow-2g')return;
