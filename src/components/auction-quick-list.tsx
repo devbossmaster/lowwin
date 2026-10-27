@@ -48,7 +48,13 @@ function PlayerAuctionBrowser({className,showLabel}:{className?:string;showLabel
   if(!open)return;
   return subscribePrivateQueries(event=>{if(event.identity===queryIdentity&&event.kind==='stored'&&event.keys?.some(key=>key.startsWith('/api/catalog/auctions?')&&key.includes('view=quick')))setRevision(value=>value+1)});
  },[open,queryIdentity]);
- useEffect(()=>{if(open&&viewport.current)viewport.current.scrollTop=scroll.current[mode]},[open,mode]);
+ useEffect(()=>{
+  if(!open||!viewport.current)return;
+  const element=viewport.current,position=scroll.current[mode];
+  // Restore after the native modal has opened and assigned its initial focus.
+  const frame=requestAnimationFrame(()=>{element.scrollTop=position});
+  return()=>cancelAnimationFrame(frame);
+ },[open,mode]);
  function warm(next:Mode){
   const connection=(navigator as Navigator&{connection?:{saveData?:boolean;effectiveType?:string}}).connection;
   if(connection?.saveData||['slow-2g','2g'].includes(connection?.effectiveType??''))return;
@@ -58,13 +64,18 @@ function PlayerAuctionBrowser({className,showLabel}:{className?:string;showLabel
   if(queryIdentity&&!readPrivateQuery<Batch>(queryIdentity,quickAuctionUrl(mode,1)))setPages(previous=>({...previous,[mode]:1}));
   setOpen(true);warm(mode);
  }
+ function close(){
+  // A final scroll event can still be queued when Escape or Back dismisses us.
+  if(viewport.current)scroll.current[mode]=viewport.current.scrollTop;
+  setOpen(false);
+ }
  function refresh(){
   scroll.current[mode]=0;if(viewport.current)viewport.current.scrollTop=0;
   setPages(previous=>({...previous,[mode]:1}));query.reload();summary.reload();
  }
  function dismissCurrentLink(event:MouseEvent<HTMLAnchorElement>,href:string){
   const destination=new URL(href,location.href),current=new URL(location.href);destination.searchParams.sort();current.searchParams.sort();
-  if(destination.pathname===current.pathname&&destination.search===current.search){event.preventDefault();setOpen(false)}
+  if(destination.pathname===current.pathname&&destination.search===current.search){event.preventDefault();close()}
  }
  const snapshots=Array.from({length:pages[mode]},(_,index)=>queryIdentity?readPrivateQuery<Batch>(queryIdentity,quickAuctionUrl(mode,index+1)):null);
  const batches=snapshots.filter((snapshot):snapshot is NonNullable<typeof snapshot>=>!!snapshot);
@@ -72,8 +83,8 @@ function PlayerAuctionBrowser({className,showLabel}:{className?:string;showLabel
  useEffect(()=>{if(open&&pages[mode]>1&&!snapshots[0]&&!query.fetching){scroll.current[mode]=0;setPages(previous=>({...previous,[mode]:1}))}},[open,mode,pages,query.updatedAt,query.fetching,!!snapshots[0]]);
  return <div>
   <button ref={trigger} className={`${headerStyles.trigger} ${className??''}`} type="button" aria-label={`${text('Browse auctions','ጨረታዎችን ይመልከቱ')}${count!==undefined?`, ${count} ${text('live','ክፍት')}`:''}`} aria-haspopup="dialog" aria-expanded={open} onPointerEnter={()=>warm(mode)} onFocus={()=>warm(mode)} onTouchStart={()=>warm(mode)} onClick={show}><Gavel size={17} strokeWidth={1.75} aria-hidden="true"/>{showLabel&&<span>{text('Auctions','ጨረታዎች')}</span>}{count!==undefined&&<span className={headerStyles.badge} data-live-auction-indicator aria-hidden="true">{count>99?'99+':count}</span>}</button>
-  {open&&<AccountSheet title={text('Auctions','ጨረታዎች')} onClose={()=>setOpen(false)} returnFocusRef={trigger} headerActions={<button type="button" aria-label={text('Refresh auctions','ጨረታዎችን አድስ')} disabled={query.fetching} onClick={refresh}><RefreshCw size={18} aria-hidden="true"/></button>} footer={<IntentPrefetchLink className={styles.browseAll} href={`/auctions/all?status=${mode}`} onClick={event=>dismissCurrentLink(event,`/auctions/all?status=${mode}`)}><Search size={16} aria-hidden="true"/>{text('Browse all auctions','ሁሉንም ጨረታዎች ይመልከቱ')}</IntentPrefetchLink>}>
-   <Suspense fallback={null}><SheetRouteObserver onNavigate={()=>setOpen(false)}/></Suspense>
+  {open&&<AccountSheet title={text('Auctions','ጨረታዎች')} onClose={close} returnFocusRef={trigger} headerActions={<button type="button" aria-label={text('Refresh auctions','ጨረታዎችን አድስ')} disabled={query.fetching} onClick={refresh}><RefreshCw size={18} aria-hidden="true"/></button>} footer={<IntentPrefetchLink className={styles.browseAll} href={`/auctions/all?status=${mode}`} onClick={event=>dismissCurrentLink(event,`/auctions/all?status=${mode}`)}><Search size={16} aria-hidden="true"/>{text('Browse all auctions','ሁሉንም ጨረታዎች ይመልከቱ')}</IntentPrefetchLink>}>
+   <Suspense fallback={null}><SheetRouteObserver onNavigate={close}/></Suspense>
    <div className={styles.panel}>
     <div className={styles.tabs} role="tablist" aria-label={text('Auction status','የጨረታ ሁኔታ')}>{(['live','upcoming'] as const).map(value=><button key={value} type="button" role="tab" id={`quick-${value}`} aria-controls="quick-auction-panel" aria-selected={mode===value} tabIndex={mode===value?0:-1} onPointerEnter={()=>warm(value)} onFocus={()=>warm(value)} onTouchStart={()=>warm(value)} onClick={()=>setMode(value)} onKeyDown={event=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){event.preventDefault();const next=event.key==='Home'?'live':event.key==='End'?'upcoming':mode==='live'?'upcoming':'live';setMode(next);document.getElementById(`quick-${next}`)?.focus()}}}>{value==='live'?<Gavel size={15} aria-hidden="true"/>:<Clock3 size={15} aria-hidden="true"/>}{text(value==='live'?'Live':'Upcoming',value==='live'?'ክፍት':'የሚመጡ')}<span>{data&&mode===value?data.total:value==='live'?summary.data?.totalLive??'—':summary.data?.totalUpcoming??'—'}</span></button>)}</div>
     <p className={styles.caption} role="status">{query.error?text(data?'Showing saved auctions. Refresh failed.':'Could not load auctions. Please retry.',data?'የተቀመጡ ጨረታዎች ይታያሉ። ማደስ አልተሳካም።':'ጨረታዎችን ማምጣት አልተቻለም። እንደገና ይሞክሩ።'):query.fetching&&data?text('Updating auctions…','ጨረታዎች በማደስ ላይ…'):text('Schedules shown in Addis Ababa time','ጊዜዎች በአዲስ አበባ ሰዓት ናቸው')}</p>
