@@ -121,8 +121,8 @@ jobs:
       DATABASE_URL: postgresql://lowin_test:fixture_only@127.0.0.1:5432/lowin_test
       DIRECT_URL: postgresql://lowin_test:fixture_only@127.0.0.1:5432/lowin_test
       REDESIGN_PRODUCTION: '1'
-      REDESIGN_TLS_KEY: ${{ runner.temp }}/lowwin-redesign-key.pem
-      REDESIGN_TLS_CERT: ${{ runner.temp }}/lowwin-redesign-cert.pem
+      REDESIGN_TLS_KEY: /tmp/lowwin-redesign-key.pem
+      REDESIGN_TLS_CERT: /tmp/lowwin-redesign-cert.pem
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
