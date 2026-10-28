@@ -106,3 +106,9 @@ Use only a known compatible prior artifact: preserve Chapa storage/guards and th
 ## Release evidence
 
 The release owner records the exact commit/PR, hosted CI, deployed TEST resources, migration-plan review, actual merchant delivery and physical Telegram acceptance here. A prepared runbook or a mocked test is not a completed deployment or acceptance record.
+
+[PR #12](https://github.com/devbossmaster/lowwin/pull/12) contains the reviewed fixes. TEST web, bot and Chapa recovery worker were deployed together at `5d158eaf49596135d550dda53d41944022494e6b`; both local and public health endpoints reported that exact revision. All TEST live flags remained false. Only the previous verified TEST recovery process was retired; production and unrelated services were untouched.
+
+That candidate's [hosted run](https://github.com/devbossmaster/lowwin/actions/runs/40779292951) passed the independent dependency audit (zero vulnerabilities), static/secrets scan (66 rules, 921 files, zero findings, maintained Telegram runtime coverage verified), foundation (1370 tests in 128 files, typecheck and production build), admin browser and Chapa browser jobs. The full redesign browser job was still running when this evidence was recorded; final changes require their own hosted results.
+
+Merchant TEST top-up, bid acceptance and operator-confirmed Telegram return passed, with zero ledger/receipt reconciliation drift. Authenticated webhook delivery and duplicate handling remain blocked by the actual provider signing-contract discrepancy documented in the [checkout follow-up](chapa-checkout-fixes-2026-10-29.md). Do not activate live payments or call the TEST acceptance complete while that discrepancy remains. The exact production candidate and committed migration hashes are prepared privately in `.local/chapa-fix/production-release-manifest.json`; the actual deployed rollback revision still needs to be inventoried from the production host before release.

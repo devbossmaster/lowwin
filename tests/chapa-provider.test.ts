@@ -101,6 +101,11 @@ describe('Chapa v2 authenticated webhook hints',()=>{
   expect(parseChapaWebhook({...event,meta:{note:'optional'}})?.meta).toEqual({note:'optional'});
   for(const meta of ['',[],123,false])expect(parseChapaWebhook({...event,meta})).toBeNull();
  });
+ it('retains a provider payment hint with null merchant reference without changing its reported amount',()=>{
+  const event={webhook_type:'payment',event:'payment.success',status:'success',mode:'test',merchant_reference:null,chapa_reference:'CHLocal123',amount:1029,currency:'ETB'};
+  expect(parseChapaWebhook(event)).toMatchObject({merchantReference:undefined,chapaReference:'CHLocal123',amountCents:'1029',mode:'test'});
+  for(const merchant_reference of ['',[],{},123,false])expect(parseChapaWebhook({...event,merchant_reference})).toBeNull();
+ });
 });
 
 describe('Chapa v2 bounded merchant transport',()=>{

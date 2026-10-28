@@ -52,6 +52,18 @@ describe('Chapa HTTP authorization and durable webhook boundary',()=>{
   expect(f.transaction).toHaveBeenCalledTimes(1);expect(f.verify).not.toHaveBeenCalled();expect(f.create).not.toHaveBeenCalled();expect(globalThis.fetch).not.toHaveBeenCalled();
  });
  it('verifies exact raw bytes including BOM, deduplicates delivery, and only queues an authoritative lookup',async()=>{const bytes=Buffer.concat([Buffer.from([0xef,0xbb,0xbf]),Buffer.from(JSON.stringify(hint))]);for(let i=0;i<2;i++)expect((await webhook(signed(hint,{bytes}))).status).toBe(200);expect(f.update).toHaveBeenCalledTimes(1);expect(f.update).toHaveBeenCalledWith({where:{id,creditJournalId:null},data:{nextCheckAt:expect.any(Date),reason:'PROVIDER_EVENT_RECEIVED'}});expect(f.verify).not.toHaveBeenCalled();expect(f.create).not.toHaveBeenCalled();expect(globalThis.fetch).not.toHaveBeenCalled();const data=f.event.mock.calls[0][0].data[0];expect(Object.keys(data).sort()).toEqual(['bodyHash','chapaReference','configurationFingerprint','event','merchantReference','mode'].sort())});
+ it('durably acknowledges and deduplicates authenticated null-merchant hints without locating or crediting a payment',async()=>{
+  const event={...hint,merchant_reference:null,amount:1029};
+  for(let i=0;i<2;i++)expect((await webhook(signed(event))).status).toBe(200);
+  expect(f.hashes.size).toBe(1);expect(f.event).toHaveBeenCalledTimes(2);
+  expect(f.event.mock.calls[0][0].data[0]).toMatchObject({merchantReference:undefined,chapaReference:hint.chapa_reference,mode:'test',event:'payment.success'});
+  expect(f.find).not.toHaveBeenCalled();expect(f.update).not.toHaveBeenCalled();expect(f.audit).not.toHaveBeenCalled();
+  expect(f.verify).not.toHaveBeenCalled();expect(f.create).not.toHaveBeenCalled();expect(globalThis.fetch).not.toHaveBeenCalled();
+ });
+ it('rejects authenticated malformed merchant references before recording or looking up any event',async()=>{
+  for(const merchant_reference of ['',[],{},123,false])expect((await webhook(signed({...hint,merchant_reference}))).status).toBe(400);
+  expect(f.transaction).not.toHaveBeenCalled();expect(f.event).not.toHaveBeenCalled();expect(f.find).not.toHaveBeenCalled();expect(f.update).not.toHaveBeenCalled();
+ });
  it.each(['FAILED','CANCELLED','EXPIRED','NEEDS_REVIEW'])('keeps verified %s status when an older payment event arrives',async status=>{
   const order={id,mode:'test',chapaReference:'CHtestreference',amountCents:1000n,currency:'ETB',status,creditJournalId:null,reason:'PAYMENT_NOT_COMPLETED'};
   f.find.mockResolvedValue(order);f.update.mockImplementation(async({where,data})=>{if(order.creditJournalId===where.creditJournalId)Object.assign(order,data);return {count:1}});
