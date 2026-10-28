@@ -10,6 +10,10 @@ import type {ChapaCheckoutView,ChapaIntent} from '../../src/lib/chapa-client';
 async function fixture(page:Page,am:boolean){
  const db=new PrismaClient({datasourceUrl:process.env.TEST_DATABASE_URL});
  const telegramId=randomInt(8000000000,8900000000),auction=await bidAuction(db,{fee:10,ruleVersion:'lowest-unique-v4',isDemo:false,endDelayMs:3600000}),title='Recovery fixture '+randomUUID().slice(0,7);
+ // Each scenario represents a separate customer. Keep its address stable while
+ // isolating it from other scenarios sharing the loopback test server; the
+ // application's persistent authentication rate limiter remains enabled.
+ await page.setExtraHTTPHeaders({'x-forwarded-for':`198.18.${Math.floor(telegramId%65536/256)}.${telegramId%256}`});
  await db.product.update({where:{id:auction.productId!},data:{title,titleAm:title,images:{create:{path:'/images/lowwin-demo-headphones.webp',alt:'Synthetic checkout regression fixture',sourceType:'ORIGINAL'}}}});
  await verifyFixtureContact(db,telegramId);
  await page.context().addCookies([{name:'lowwin-language',value:am?'am':'en',domain:'localhost',path:'/'}]);

@@ -4,6 +4,16 @@ Create one Coolify resource per template and paste the matching variables into
 its Environment Variables screen. Replace every `<...>` placeholder privately.
 Never commit real values.
 
+## Current Chapa v2 deployment
+
+New payment work uses Chapa v2. See the [TEST and production-preparation runbook](../../docs/payments/chapa-release-2026-10-29.md). The historical Verify.et instructions below do not activate Chapa and must not be used to turn on new legacy funding.
+
+Create a separate reviewed TEST `lowwin-chapa` resource using the paused variable inventory in that runbook, build `npm run db:generate`, and start `npm run worker:chapa`. For systemd, the existing template supports `lowwin@chapa.service` with `/etc/lowwin/chapa.env`. Keep creation/recovery/live flags false until the target, schema, merchant TEST key and webhook have been reviewed; do not start a paused/unconfigured worker in a restart loop. Environment files remain outside the release commit.
+
+The worker uses the same TEST database, Chapa key/mode, origins, bot identity, phone-encryption keys and applicable referral schema flag as the TEST web app. A copied or rotated key cannot recover another credential's immutable attempts. Give its restricted runtime URL `connection_limit=1` and `pool_timeout=20`; never give it the migration/owner URL. Production preparation needs production-specific values with every activation flag off, not a TEST key copied into production.
+
+## Historical funding notes
+
 - For this fresh database, generate independent new auth, webhook, phone,
   delivery, MFA, and runtime-login secrets. Save them in a password manager and
   keep an encrypted off-server backup from day one.
