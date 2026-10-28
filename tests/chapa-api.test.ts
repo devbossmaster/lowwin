@@ -7,6 +7,7 @@ vi.mock('../src/modules/payments/session',()=>({requirePaymentSession:f.auth}));
 vi.mock('../src/modules/payments/chapa',()=>({createChapaCheckout:f.create,getChapaCheckout:f.read,listChapaCheckouts:f.list,verifyChapaCheckout:f.verify,walletBidsEnabled:()=>f.enabled,publicChapaAvailability:()=>({enabled:false,configured:false,mode:'test',walletBidsEnabled:f.enabled,minTopup:'1.00',maxTopup:'43200.00',reason:'Not configured'})}));
 vi.mock('../src/modules/auctions/bids',async original=>({...await original<typeof import('../src/modules/auctions/bids')>(),submitBidInTransaction:f.submit}));
 import {PrivateApiError} from '../src/modules/auth/private-api';
+import {measureChapa} from '../src/modules/payments/chapa-timing';
 import {ChapaError} from '../src/modules/payments/chapa-provider';
 import {GET as availability} from '../src/app/api/payments/chapa/route';
 import {GET as list,POST as create} from '../src/app/api/payments/chapa/checkouts/route';
@@ -28,12 +29,55 @@ beforeEach(()=>{
 });
 afterEach(()=>{vi.unstubAllEnvs();vi.restoreAllMocks()});
 describe('Chapa HTTP authorization and durable webhook boundary',()=>{
+ it('separates authentication, database and provider timings on private mutation responses',async()=>{
+  f.create.mockImplementation(async()=>{await measureChapa('database',async()=>undefined);await measureChapa('initialize',async()=>undefined);return {id,status:'PENDING'}});
+  const initialized=await create(request('/api/payments/chapa/checkouts',{key:randomUUID(),purpose:'TOP_UP',amount:'10.00'}));
+  for(const phase of ['auth','database','initialize','checkout','total'])expect(initialized.headers.get('Server-Timing')).toMatch(new RegExp(`(?:^|, )${phase};dur=\\d+\\.\\d`));
+  expect(initialized.headers.get('cache-control')).toContain('private, no-store');
+  f.verify.mockImplementation(async()=>{await measureChapa('database',async()=>undefined);await measureChapa('verify',async()=>undefined);return {id,status:'PENDING'}});
+  const checked=await verify(request('/api/payments/chapa/checkouts/'+id,{}),{params:Promise.resolve({id})});
+  for(const phase of ['auth','database','verify','checkout','total'])expect(checked.headers.get('Server-Timing')).toMatch(new RegExp(`(?:^|, )${phase};dur=\\d+\\.\\d`));
+  expect(checked.headers.get('Server-Timing')).not.toContain('initialize;');
+  f.auth.mockRejectedValue(new PrivateApiError(401,'Sign in'));
+  const denied=await verify(request('/api/payments/chapa/checkouts/'+id,{}),{params:Promise.resolve({id})});expect(denied.status).toBe(401);expect(denied.headers.get('Server-Timing')).toMatch(/^auth;dur=/);expect(denied.headers.get('Server-Timing')).not.toContain('verify;');
+ });
  it('keeps config/list/owned reads private and forwards authenticated ownership',async()=>{for(const response of [await availability(request('/api/payments/chapa')),await list(request('/api/payments/chapa/checkouts')),await read(request('/api/payments/chapa/checkouts/'+id),{params:Promise.resolve({id})})]){expect(response.status).toBe(200);expect(response.headers.get('cache-control')).toContain('private, no-store');expect(response.headers.get('vary')).toBe('Cookie')}expect(f.read).toHaveBeenCalledWith(expect.anything(),'owner-user',id)});
+ it('filters owned payment history by purpose while keeping default history and private responses',async()=>{
+  for(const purpose of [undefined,'TOP_UP','BID']){
+   const response=await list(request('/api/payments/chapa/checkouts'+(purpose?'?purpose='+purpose:'')));
+   expect(response.status).toBe(200);expect(response.headers.get('cache-control')).toContain('private, no-store');expect(response.headers.get('vary')).toBe('Cookie');
+   expect(f.list).toHaveBeenLastCalledWith(expect.anything(),'owner-user',purpose);
+  }
+ });
+ it('rejects invalid, repeated or identity-supplied history filters instead of broadening the query',async()=>{
+  for(const query of ['purpose=OTHER','purpose=top_up','purpose=','purpose=TOP_UP&purpose=BID','purpose=TOP_UP&userId=other-user','userId=other-user']){
+   const response=await list(request('/api/payments/chapa/checkouts?'+query));
+   expect(response.status).toBe(422);expect(response.headers.get('cache-control')).toContain('private, no-store');expect(response.headers.get('vary')).toBe('Cookie');
+  }
+  expect(f.list).not.toHaveBeenCalled();
+ });
  it('requires same-origin session authority for creation/verification and never trusts supplied user identity',async()=>{const body={key:randomUUID(),purpose:'TOP_UP',amount:'10.00'},r=await create(request('/api/payments/chapa/checkouts',body));expect(r.status).toBe(202);expect(f.create).toHaveBeenCalledWith(expect.anything(),'owner-user',body,f.reauthorize);expect((await verify(request('/api/payments/chapa/checkouts/'+id,{}),{params:Promise.resolve({id})})).status).toBe(200);expect(f.verify).toHaveBeenCalledWith(expect.anything(),id,'owner-user',f.reauthorize);expect((await create(request('/api/payments/chapa/checkouts',body,'https://other.test'))).status).toBe(403)});
  it('fails closed on missing sessions and owned resource mismatch',async()=>{f.user.mockRejectedValue(new PrivateApiError(401,'Sign in'));expect((await list(request('/api/payments/chapa/checkouts'))).status).toBe(401);f.auth.mockRejectedValue(new PrivateApiError(401,'Sign in'));expect((await create(request('/api/payments/chapa/checkouts',{}))).status).toBe(401);f.user.mockResolvedValue('other-user');f.read.mockRejectedValue(new ChapaError(404,'NOT_FOUND','Payment not found.'));expect((await read(request('/api/payments/chapa/checkouts/'+id),{params:Promise.resolve({id})})).status).toBe(404)});
  it('does not let unsigned callbacks/returns mutate or verify money',async()=>{expect((await callbackPost()).status).toBe(202);const redirect=await callbackGet(request('/api/payments/chapa/callback?checkout='+id+'&return=https://other.test'));expect(redirect.status).toBe(303);expect(redirect.headers.get('location')).toBe(origin+'/payments/chapa/return?checkout='+id);expect(f.transaction).not.toHaveBeenCalled();expect(f.verify).not.toHaveBeenCalled();expect(f.create).not.toHaveBeenCalled()});
  it('rejects missing or invalid signature before any event or checkout access',async()=>{for(const signature of ['', 'a'.repeat(64)])expect((await webhook(signed(hint,{signature}))).status).toBe(401);expect(f.transaction).not.toHaveBeenCalled()});
+ it('accepts signed null metadata only as an optional recovery hint and rejects malformed values',async()=>{
+  expect((await webhook(signed({...hint,meta:null}))).status).toBe(200);expect(f.update).toHaveBeenCalledTimes(1);
+  for(const meta of ['',[],123,false])expect((await webhook(signed({...hint,meta}))).status).toBe(400);
+  expect(f.transaction).toHaveBeenCalledTimes(1);expect(f.verify).not.toHaveBeenCalled();expect(f.create).not.toHaveBeenCalled();expect(globalThis.fetch).not.toHaveBeenCalled();
+ });
  it('verifies exact raw bytes including BOM, deduplicates delivery, and only queues an authoritative lookup',async()=>{const bytes=Buffer.concat([Buffer.from([0xef,0xbb,0xbf]),Buffer.from(JSON.stringify(hint))]);for(let i=0;i<2;i++)expect((await webhook(signed(hint,{bytes}))).status).toBe(200);expect(f.update).toHaveBeenCalledTimes(1);expect(f.update).toHaveBeenCalledWith({where:{id,creditJournalId:null},data:{nextCheckAt:expect.any(Date),reason:'PROVIDER_EVENT_RECEIVED'}});expect(f.verify).not.toHaveBeenCalled();expect(f.create).not.toHaveBeenCalled();expect(globalThis.fetch).not.toHaveBeenCalled();const data=f.event.mock.calls[0][0].data[0];expect(Object.keys(data).sort()).toEqual(['bodyHash','chapaReference','configurationFingerprint','event','merchantReference','mode'].sort())});
+ it('durably acknowledges and deduplicates authenticated null-merchant hints without locating or crediting a payment',async()=>{
+  const event={...hint,merchant_reference:null,amount:1029};
+  for(let i=0;i<2;i++)expect((await webhook(signed(event))).status).toBe(200);
+  expect(f.hashes.size).toBe(1);expect(f.event).toHaveBeenCalledTimes(2);
+  expect(f.event.mock.calls[0][0].data[0]).toMatchObject({merchantReference:undefined,chapaReference:hint.chapa_reference,mode:'test',event:'payment.success'});
+  expect(f.find).not.toHaveBeenCalled();expect(f.update).not.toHaveBeenCalled();expect(f.audit).not.toHaveBeenCalled();
+  expect(f.verify).not.toHaveBeenCalled();expect(f.create).not.toHaveBeenCalled();expect(globalThis.fetch).not.toHaveBeenCalled();
+ });
+ it('rejects authenticated malformed merchant references before recording or looking up any event',async()=>{
+  for(const merchant_reference of ['',[],{},123,false])expect((await webhook(signed({...hint,merchant_reference}))).status).toBe(400);
+  expect(f.transaction).not.toHaveBeenCalled();expect(f.event).not.toHaveBeenCalled();expect(f.find).not.toHaveBeenCalled();expect(f.update).not.toHaveBeenCalled();
+ });
  it.each(['FAILED','CANCELLED','EXPIRED','NEEDS_REVIEW'])('keeps verified %s status when an older payment event arrives',async status=>{
   const order={id,mode:'test',chapaReference:'CHtestreference',amountCents:1000n,currency:'ETB',status,creditJournalId:null,reason:'PAYMENT_NOT_COMPLETED'};
   f.find.mockResolvedValue(order);f.update.mockImplementation(async({where,data})=>{if(order.creditJournalId===where.creditJournalId)Object.assign(order,data);return {count:1}});
@@ -50,6 +94,33 @@ describe('Chapa HTTP authorization and durable webhook boundary',()=>{
   expect(globalThis.fetch).not.toHaveBeenCalled();
  });
  it('rejects mode mismatch and never schedules amount/currency/reference mismatch',async()=>{expect((await webhook(signed({...hint,mode:'live'}))).status).toBe(400);expect(f.transaction).not.toHaveBeenCalled();for(const change of [{amount:'2000'},{currency:'USD'},{chapa_reference:'CHanother'}])expect((await webhook(signed({...hint,...change}))).status).toBe(200);expect(f.update).not.toHaveBeenCalled()});
+ it('queues the final payment reference for a historical TEST hosted session without trusting it as payment proof',async()=>{
+  const session='TESTlegacySession123';
+  f.find.mockResolvedValue({id,mode:'test',chapaReference:session,checkoutUrl:`https://checkout.chapa.global/test/payment/hosted/${session}`,amountCents:1000n,currency:'ETB'});
+  expect((await webhook(signed(hint))).status).toBe(200);
+  expect(f.update).toHaveBeenCalledWith({where:{id,creditJournalId:null},data:{nextCheckAt:expect.any(Date),reason:'PROVIDER_EVENT_RECEIVED'}});
+  expect(f.verify).not.toHaveBeenCalled();expect(f.create).not.toHaveBeenCalled();expect(globalThis.fetch).not.toHaveBeenCalled();
+ });
+ it.each([
+  {mode:'test',chapaReference:'CHdifferentFinal',checkoutUrl:'https://checkout.chapa.global/test/payment/hosted/TESTlegacySession123'},
+  {mode:'test',chapaReference:'TESTlegacySession123',checkoutUrl:'https://checkout.chapa.global/test/payment/hosted/TESTdifferentSession'},
+  {mode:'test',chapaReference:'TESTlegacySession123',checkoutUrl:'https://other.test/test/payment/hosted/TESTlegacySession123'},
+ ])('does not use the historical TEST exception for a mismatched stored reference or environment: %o',async stored=>{
+  f.find.mockResolvedValue({id,...stored,amountCents:1000n,currency:'ETB'});
+  expect((await webhook(signed(hint))).status).toBe(200);expect(f.update).not.toHaveBeenCalled();
+  expect(f.verify).not.toHaveBeenCalled();expect(f.create).not.toHaveBeenCalled();expect(globalThis.fetch).not.toHaveBeenCalled();
+ });
+ it('never applies the historical TEST reference exception to LIVE payments',async()=>{
+  for(const [name,value] of Object.entries({APP_ENV:'production',NODE_ENV:'production',CHAPA_MODE:'live',CHAPA_PRIVATE_KEY:'CHAPA_LIVE_'+'a'.repeat(40),CHAPA_LIVE_ENABLED:'true',CHAPA_MERCHANT_REVIEWED:'true',DEV_POINTS_ENABLED:'false'}))vi.stubEnv(name,value);
+  const session='TESTlegacySession123';f.find.mockResolvedValue({id,mode:'live',chapaReference:session,checkoutUrl:`https://checkout.chapa.global/test/payment/hosted/${session}`,amountCents:1000n,currency:'ETB'});
+  expect((await webhook(signed({...hint,mode:'live'}))).status).toBe(200);expect(f.find).toHaveBeenCalledTimes(1);expect(f.update).not.toHaveBeenCalled();
+  expect(f.verify).not.toHaveBeenCalled();expect(f.create).not.toHaveBeenCalled();expect(globalThis.fetch).not.toHaveBeenCalled();
+ });
+ it('still requires matching webhook amount and currency for historical TEST session recovery',async()=>{
+  const session='TESTlegacySession123';f.find.mockResolvedValue({id,mode:'test',chapaReference:session,checkoutUrl:`https://checkout.chapa.global/test/payment/hosted/${session}`,amountCents:1000n,currency:'ETB'});
+  for(const change of [{amount:'2000'},{currency:'USD'}])expect((await webhook(signed({...hint,...change}))).status).toBe(200);
+  expect(f.update).not.toHaveBeenCalled();expect(f.verify).not.toHaveBeenCalled();expect(globalThis.fetch).not.toHaveBeenCalled();
+ });
  it('retains nonpayment events for staff review without changing wallets or checkout',async()=>{expect((await webhook(signed({...hint,webhook_type:'refund',event:'refund.success'}))).status).toBe(200);expect(f.audit).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({action:'CHAPA_NONPAYMENT_EVENT_REVIEW'})}));expect(f.update).not.toHaveBeenCalled();expect(f.verify).not.toHaveBeenCalled()});
  it('enables wallet submission only explicitly and rejects client financial fields',async()=>{const context={params:Promise.resolve({slug:'real-auction'})},body={key:randomUUID(),amount:'3.60',feeVersion:1};expect((await bid(request('/api/auctions/real-auction/bids',body),context)).status).toBe(410);expect(f.submit).not.toHaveBeenCalled();f.enabled=true;expect((await bid(request('/api/auctions/real-auction/bids',{...body,userId:'other',feePoints:'0',balance:'99999'}),context)).status).toBe(422);expect(f.submit).not.toHaveBeenCalled();expect((await bid(request('/api/auctions/real-auction/bids',body),context)).status).toBe(200);expect(f.reauthorize).toHaveBeenCalledTimes(1);expect(f.submit).toHaveBeenCalledWith(expect.anything(),{...body,userId:'owner-user',auctionSlug:'real-auction'})});
 });

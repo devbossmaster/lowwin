@@ -1,0 +1,30 @@
+{
+  "name": "@lowwin/better-auth-telegram",
+  "version": "2.0.1-lowwin.1",
+  "private": true,
+  "type": "module",
+  "description": "Reviewed Mini App compatibility fork of better-auth-telegram 2.0.1 for Better Auth 1.7.14",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js"
+    }
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "LICENSE",
+    "README.md"
+  ],
+  "peerDependencies": {
+    "better-auth": "1.7.14"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vcode-sh/better-auth-telegram.git"
+  }
+}

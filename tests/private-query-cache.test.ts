@@ -1,7 +1,25 @@
 import {describe,expect,it,vi} from 'vitest';
-import {privateQueryKey,invalidatePrivateQueries,loadPrivateJson,ObsoletePrivateQueryError,PrivateAuthorizationError,readPrivateQuery,SessionPrivateQueryCache,setPrivateQueryIdentity,getMiniQueryClient,seedPrivateQuery,retainPrivateQuery,PAYMENT_QUERY_SCOPES,confirmedBidQueryScopes} from '../src/components/private-query-cache';
+import {privateQueryKey,invalidatePrivateQueries,loadPrivateJson,ObsoletePrivateQueryError,PrivateAuthorizationError,readPrivateQuery,SessionPrivateQueryCache,setPrivateQueryIdentity,getMiniQueryClient,seedPrivateQuery,retainPrivateQuery,PAYMENT_QUERY_SCOPES,confirmedBidQueryScopes,confirmedChapaQueryScopes} from '../src/components/private-query-cache';
+import type {ChapaCheckoutView} from '../src/lib/chapa-client';
 
 describe('session private query cache',()=>{
+ it('refreshes authoritative bid resources from a return page, preserving other auctions and accounts',()=>{
+  const cache=new SessionPrivateQueryCache();cache.setIdentity('owner:session');
+  const affected=['/api/wallet','/api/me','/api/my-bids?page=2','/api/payments/chapa/checkouts','/api/wallet/top-ups?page=2','/api/catalog/auctions?view=home','/api/catalog/auctions/paid-auction','/api/auctions/paid-auction/bids','/api/auctions/paid-auction/discount-quote?feeVersion=2','/api/profile','/api/referrals/coupons'];
+  const untouched=['/api/auctions/other-auction/bids','/api/results/completed?page=2'];
+  for(const key of [...affected,...untouched])cache.seed('owner:session',key,{saved:true});
+  const order={purpose:'BID',auctionSlug:'paid-auction',status:'BID_ACCEPTED',fundsPreserved:false,receipt:{bid:{id:'accepted'}}} as ChapaCheckoutView;
+  const scopes=confirmedChapaQueryScopes(order)!;cache.invalidate('owner:session',scopes);
+  for(const key of affected)expect(cache.read('owner:session',key),key).toMatchObject({value:{saved:true},fresh:false});
+  for(const key of untouched)expect(cache.read('owner:session',key)?.fresh,key).toBe(true);
+  cache.setIdentity('other:session');cache.seed('other:session','/api/wallet',{available:'7.00'});cache.invalidate('owner:session',scopes);
+  expect(cache.read('other:session','/api/wallet')).toMatchObject({value:{available:'7.00'},fresh:true});
+ });
+ it('never invalidates from a redirect or pending provider state, and refreshes preserved late payments',()=>{
+  for(const status of ['PENDING','SUBMITTING','SUCCESS','NEEDS_REVIEW'])expect(confirmedChapaQueryScopes({purpose:'BID',auctionSlug:'paid-auction',status,fundsPreserved:false,receipt:null} as ChapaCheckoutView)).toBeNull();
+  expect(confirmedChapaQueryScopes({purpose:'BID',auctionSlug:'paid-auction',status:'NEEDS_REVIEW',fundsPreserved:true,receipt:null} as ChapaCheckoutView)).toEqual(expect.arrayContaining(['/api/my-bids','/api/wallet','/api/auctions/paid-auction','/api/referrals']));
+  expect(confirmedChapaQueryScopes({purpose:'TOP_UP',auctionSlug:null,status:'CREDITED',fundsPreserved:false,receipt:null} as ChapaCheckoutView)).toEqual(expect.arrayContaining([...PAYMENT_QUERY_SCOPES,'/api/profile']));
+ });
  it('reconciles confirmed payments across history and balances while retaining the last authoritative amounts',async()=>{
   const cache=new SessionPrivateQueryCache();cache.setIdentity('a:session');
   for(const [key,value] of [['/api/wallet',{available:'10.00'}],['/api/payments/chapa/checkouts',{items:[{status:'PENDING'}]}],['/api/wallet/top-ups?page=2',{items:[]}],['/api/profile',{name:'Saved name'}]] as const)cache.seed('a:session',key,value);

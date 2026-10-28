@@ -26,6 +26,13 @@ export function chapaCheckoutUrl(value:string|null|undefined):string|null{
  try{if(!value||/[\u0000-\u0020\\]/.test(value))return null;const url=new URL(value);return url.protocol==='https:'&&url.hostname==='checkout.chapa.global'&&!url.port&&!url.username&&!url.password&&!url.hash&&url.pathname.length>1?url.href:null}catch{return null}
 }
 export function chapaConfirmed(order:Pick<ChapaCheckoutView,'purpose'|'status'|'fundsPreserved'|'receipt'>){return order.fundsPreserved||order.purpose==='TOP_UP'&&order.status==='CREDITED'||order.purpose==='BID'&&order.status==='BID_ACCEPTED'&&!!order.receipt}
+/** Recovery initialization needs the saved intent, even if the first response
+ * supplied an ID without a URL. Review/terminal orders must only be checked. */
+export function chapaCanResumeCheckout(attempt:ChapaAttempt|null,order:ChapaCheckoutView|null){
+ if(!attempt)return false;
+ if(!order)return !attempt.orderId;
+ return !order.checkoutUrl&&!chapaConfirmed(order)&&['SUBMITTING','PENDING'].includes(order.status)&&(!order.reason||['INITIALIZATION_PENDING','PROVIDER_CONFIRMATION_REQUIRED','PROVIDER_EVENT_RECEIVED'].includes(order.reason));
+}
 export function chapaRecoverable(order:Pick<ChapaCheckoutView,'status'|'fundsPreserved'>){return !order.fundsPreserved&&!['CREDITED','BID_ACCEPTED','FAILED','CANCELLED','EXPIRED','BLOCKED','INCOMPLETE'].includes(order.status)}
 export class ChapaClientError extends Error{constructor(message:string,readonly status=0,readonly code='UNAVAILABLE'){super(message)}}
 export async function requestChapaJson<T>(url:string,options:RequestInit={},signal?:AbortSignal,timeoutMs=15000):Promise<T>{

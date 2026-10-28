@@ -8,7 +8,7 @@ import {creditDevelopmentPoints,ensureWallet,reconcile,seedPlatformAccounts} fro
 import {reconcileChapaReceipts} from '../src/modules/payments/chapa-reconcile';
 import {submitBid,submitBidInTransaction} from '../src/modules/auctions/bids';
 import {createChapaCheckout,getChapaCheckout,listChapaCheckouts,verifyChapaCheckout} from '../src/modules/payments/chapa';
-import {chapaAvailability,type ChapaCreate,type ChapaTransport} from '../src/modules/payments/chapa-provider';
+import {chapaAvailability,chapaConfigurationFingerprint,type ChapaCreate,type ChapaTransport} from '../src/modules/payments/chapa-provider';
 import {TEST_TOKEN} from './helpers';
 
 const database=process.env.CHAPA_TEST_DATABASE_URL;
@@ -55,9 +55,10 @@ describe.skipIf(!database)('Chapa v2 hosted payments on disposable PostgreSQL',(
  it('waits for a TEST session payment and credits its final reference once with an empty processor field',async()=>{
   const f=await payment({amount:'100',testSession:true}),order=await f.start();
   expect((await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}})).chapaReference).toBeNull();
-  f.setStatus('PENDING');f.setMutation(row=>({...row,chapa_reference:null,processor_reference:null}));
+  const customer={first_name:null,last_name:null,email:null,phone_number:null};
+  f.setStatus('PENDING');f.setMutation(row=>({...row,chapa_reference:null,processor_reference:null,customer}));
   expect((await f.verify(order.id)).status).toBe('PENDING');expect(await balance(f.userId)).toBe('0');
-  f.setStatus('SUCCESS');f.setMutation(row=>({...row,processor_reference:''}));
+  f.setStatus('SUCCESS');f.setMutation(row=>({...row,processor_reference:'',customer}));
   expect((await f.verify(order.id)).status).toBe('CREDITED');await f.verify(order.id);
   expect(await balance(f.userId)).toBe('100');const saved=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});expect(saved.chapaReference).toBe(f.reference);expect(saved.processorReference).toBeNull();expect(await db.journal.count({where:{reference:`chapa:${saved.merchantReference}`}})).toBe(1);
   expect(await reconcileChapaReceipts(db)).toEqual([]);
@@ -74,8 +75,38 @@ describe.skipIf(!database)('Chapa v2 hosted payments on disposable PostgreSQL',(
  it('requires exact amount, currency, merchant/reference, mode and supplied attempt metadata',async()=>{
   for(const change of [{amount:999},{currency:'USD'},{merchant_reference:'wrong-reference'},{chapa_reference:'CHwrong'},{mode:'live'},{meta:{lowwin_attempt:randomUUID()}}]){const f=await payment(),order=await f.start();f.setMutation(row=>({...row,...change}));expect(await f.verify(order.id)).toMatchObject({status:'NEEDS_REVIEW',reason:'EVIDENCE_MISMATCH',fundsPreserved:false});expect(await balance(f.userId)).toBe('0');expect(await db.operation.count({where:{userId:f.userId,scope:'CHAPA_RECEIPT'}})).toBe(0)}expect(await reconcile(db)).toEqual([]);
  });
+ it('credits minimal requests with omitted, empty, or unrelated optional metadata',async()=>{
+  for(const meta of [undefined,null,{}, {provider_note:'optional metadata'}]){
+   const f=await payment(),order=await f.start();f.setMutation(row=>({...row,meta}));expect((await f.verify(order.id)).status).toBe('CREDITED');await f.verify(order.id);
+   expect(await balance(f.userId)).toBe('10');expect(await db.operation.count({where:{userId:f.userId,scope:'CHAPA_RECEIPT'}})).toBe(1);
+  }
+  expect(await reconcile(db)).toEqual([]);expect(await reconcileChapaReceipts(db)).toEqual([]);
+ });
+ it('checks metadata supplied by immutable historical initializations',async()=>{
+  for(const variant of ['matching','missing-expected','conflicting-order','conflicting-attempt'] as const){
+   const userId=(await verifiedReferralUser(db)).id,id=randomUUID(),merchantReference='LW'+randomUUID().replaceAll('-','').slice(0,18),reference='CH'+randomUUID().replaceAll('-','');
+   const meta={lowwin_attempt:id,order_id:'historical-order'};
+   await db.chapaCheckout.create({data:{id,userId,key:randomUUID(),purpose:'TOP_UP',mode:'test',credentialFingerprint:chapaConfigurationFingerprint()!,requestHash:'a'.repeat(64),merchantReference,chapaReference:reference,amountCents:1000n,initialization:{amountCents:'1000',merchantReference,idempotencyKey:`lowwin:${id}`,meta},checkoutUrl:`https://checkout.chapa.global/${reference}`,status:'PENDING',expiresAt:new Date(Date.now()+86400000)}});
+   const returned=variant==='matching'?{...meta,note:'provider'}:variant==='missing-expected'?{}:variant==='conflicting-order'?{...meta,order_id:'another-order'}:{...meta,lowwin_attempt:randomUUID()};
+   const transport:ChapaTransport={create:async()=>{throw Error('Historical initialization must not be replayed')},lookup:async()=>({status:'success',data:{chapa_reference:reference,merchant_reference:merchantReference,amount:1000,currency:'ETB',status:'SUCCESS',mode:'test',meta:returned}}),methods:async()=>({})};
+   await due(id);const result=await verifyChapaCheckout(db,id,userId,undefined,transport);expect(result.status).toBe(variant==='matching'?'CREDITED':'NEEDS_REVIEW');expect(await balance(userId)).toBe(variant==='matching'?'10':'0');
+  }
+  expect(await reconcile(db)).toEqual([]);expect(await reconcileChapaReceipts(db)).toEqual([]);
+ });
  it('enforces owned reads and verification and avoids querying an unconfigured history table',async()=>{
   const f=await payment(),order=await f.start(),other=(await verifiedReferralUser(db)).id;await expect(getChapaCheckout(db,other,order.id)).rejects.toMatchObject({status:404,code:'NOT_FOUND'});await expect(verifyChapaCheckout(db,order.id,other,undefined,f.transport)).rejects.toMatchObject({status:404,code:'NOT_FOUND'});expect((await listChapaCheckouts(db,f.userId)).items.map(r=>r.id)).toEqual([order.id]);expect((await listChapaCheckouts(db,other)).items).toEqual([]);process.env.CHAPA_SCHEMA_READY='false';expect(await listChapaCheckouts(db,f.userId)).toEqual({items:[]});expect(f.lookup).not.toHaveBeenCalled();
+ });
+ it('keeps an owned pending top-up visible when more than twenty newer bid payments exist',async()=>{
+  const f=await payment(),topup=await f.start(),auction=await realReferralAuction(db,10),newer=new Date(Date.now()+1000);
+  await db.chapaCheckout.createMany({data:Array.from({length:21},(_,index)=>{
+   const id=randomUUID(),merchantReference='LW'+randomUUID().replaceAll('-','').slice(0,18);
+   return {id,userId:f.userId,key:randomUUID(),purpose:'BID',mode:'test',credentialFingerprint:chapaConfigurationFingerprint()!,requestHash:'a'.repeat(64),merchantReference,amountCents:1000n,initialization:{amountCents:'1000',merchantReference,idempotencyKey:`lowwin:${id}`},auctionId:auction.id,auctionSlug:auction.slug!,bidNumber:((100+index)/100).toFixed(2),feeVersion:1,grossFee:'10',status:'PENDING',createdAt:newer,expiresAt:new Date(Date.now()+86400000)};
+  })});
+  const all=await listChapaCheckouts(db,f.userId),bids=await listChapaCheckouts(db,f.userId,'BID'),topups=await listChapaCheckouts(db,f.userId,'TOP_UP');
+  expect(all.items).toHaveLength(20);expect(all.items.every(row=>row.purpose==='BID')).toBe(true);expect(bids.items).toHaveLength(20);
+  expect(topups.items.map(row=>row.id)).toEqual([topup.id]);expect(topups.items[0].status).toBe('PENDING');
+  const other=(await verifiedReferralUser(db)).id;expect((await listChapaCheckouts(db,other,'TOP_UP')).items).toEqual([]);
+  expect(await balance(f.userId)).toBe('0');expect(await db.operation.count({where:{userId:f.userId,scope:'CHAPA_RECEIPT'}})).toBe(0);expect(f.lookup).not.toHaveBeenCalled();
  });
  it('deduplicates concurrent and refreshed keys for an unresolved top-up or bid intent',async()=>{
   for(const purpose of ['TOP_UP','BID'] as const){const f=await payment({purpose}),orders=await Promise.all([f.start(),f.start()]);expect(orders[0].id).toBe(orders[1].id);expect(f.create).toHaveBeenCalledTimes(1);const again=await createChapaCheckout(db,f.userId,{...f.input,key:randomUUID()},undefined,f.transport);expect(again.id).toBe(orders[0].id);expect(f.create).toHaveBeenCalledTimes(1);await expect(createChapaCheckout(db,f.userId,{...f.input,amount:'17.00'},undefined,f.transport)).rejects.toMatchObject({status:409,code:'KEY_REUSED'})}

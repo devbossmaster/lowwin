@@ -52,6 +52,22 @@ describe('Chapa v2 payment evidence and hosted URL',()=>{
    expect(parseChapaEvidence({...verified(),data:{...verified().data,chapa_reference,status:'PENDING',processor_reference:null}})).toMatchObject({status:'PENDING',chapaReference:null});
   }
  });
+ it('normalizes null optional verification metadata without accepting malformed metadata',()=>{
+  for(const meta of [undefined,null])expect(parseChapaEvidence({...verified(),data:{...verified().data,meta}})).toMatchObject({status:'SUCCESS',meta:undefined});
+  for(const meta of [{},{provider_note:'optional'},{lowwin_attempt:'an-explicit-attempt'}])expect(parseChapaEvidence({...verified(),data:{...verified().data,meta}})?.meta).toEqual(meta);
+  for(const meta of ['',[],123,false])expect(parseChapaEvidence({...verified(),data:{...verified().data,meta}})).toBeNull();
+ });
+ it('accepts uncollected null payer details in pending and completed hosted responses',()=>{
+  const customer={first_name:null,last_name:null,email:null,phone_number:null};
+  for(const status of ['PENDING','SUCCESS']){
+   const raw={...verified(),data:{...verified().data,status,customer,chapa_reference:status==='SUCCESS'?'CHLocal123':null,processor_reference:null,meta:null}};
+   expect(parseChapaEvidence(raw)).toMatchObject({status,merchantReference:create.merchantReference,amountCents:'12345',currency:'ETB',customer:{first_name:undefined,last_name:undefined,email:undefined,phone_number:undefined}});
+   expect(raw.data.customer).toEqual(customer);
+  }
+  expect(parseChapaEvidence({...verified(),data:{...verified().data,customer,chapa_reference:null}})).toBeNull();
+  for(const change of [{amount:123.45},{merchant_reference:''},{currency:'etb'},{status:'success'},{mode:'unknown'}])expect(parseChapaEvidence({...verified(),data:{...verified().data,customer,...change}})).toBeNull();
+  for(const invalid of [123,false,[],{},'x'.repeat(255)])expect(parseChapaEvidence({...verified(),data:{...verified().data,customer:{...customer,email:invalid}}})).toBeNull();
+ });
  it('keeps the TEST checkout session token separate from the final payment reference',()=>{
   const checkout_url='https://checkout.chapa.global/test/payment/hosted/TEST123456';
   expect(createdChapaSession({status:'success',data:{checkout_url}})).toMatchObject({checkoutUrl:checkout_url,checkoutReference:'TEST123456',chapaReference:null});
@@ -75,9 +91,24 @@ describe('Chapa v2 authenticated webhook hints',()=>{
   expect(verifyChapaWebhook(raw,signature,secret)).toBe(true);expect(verifyChapaWebhook(raw,signature.toUpperCase(),secret)).toBe(true);expect(verifyChapaWebhook(JSON.stringify(JSON.parse(raw.toString('utf8'))),signature,secret)).toBe(false);
   for(const header of [null,undefined,'',signature.slice(1),signature+'0','x'.repeat(64),'sha256='+signature,signature+', '+signature])expect(verifyChapaWebhook(raw,header,secret)).toBe(false);expect(verifyChapaWebhook(raw,signature,'different-webhook-secret-thirty-two-bytes')).toBe(false);expect(verifyChapaWebhook(raw,signature,'short')).toBe(false);
  });
+ it('rejects a constant secret proof that does not authenticate the event body',()=>{
+  const signature=createHmac('sha256',secret).update(secret).digest('hex');
+  for(const amount of [1000,1029])expect(verifyChapaWebhook(JSON.stringify({webhook_type:'payment',event:'payment.success',status:'success',amount}),signature,secret)).toBe(false);
+ });
  it('does not confuse lowercase webhook success with uppercase verification completion',()=>{
   const event={webhook_type:'payment',event:'payment.success',status:'success',mode:'test',amount:'12345',currency:'ETB',merchant_reference:create.merchantReference,chapa_reference:'CHLocal123',updated_at:'2026-10-26T10:01:00Z'};
   expect(parseChapaWebhook(event)).toMatchObject({type:'payment',event:'payment.success',status:'success',mode:'test',amountCents:'12345'});expect(parseChapaWebhook({...event,status:'SUCCESS'})).toBeNull();expect(parseChapaEvidence(event)).toBeNull();expect(parseChapaWebhook({...event,amount:'123.45'})).toBeNull();
+ });
+ it('normalizes null webhook metadata while rejecting nonobject values',()=>{
+  const event={webhook_type:'payment',event:'payment.success',status:'success'};
+  for(const meta of [undefined,null])expect(parseChapaWebhook({...event,meta})).toMatchObject({type:'payment',meta:undefined});
+  expect(parseChapaWebhook({...event,meta:{note:'optional'}})?.meta).toEqual({note:'optional'});
+  for(const meta of ['',[],123,false])expect(parseChapaWebhook({...event,meta})).toBeNull();
+ });
+ it('retains a provider payment hint with null merchant reference without changing its reported amount',()=>{
+  const event={webhook_type:'payment',event:'payment.success',status:'success',mode:'test',merchant_reference:null,chapa_reference:'CHLocal123',amount:1029,currency:'ETB'};
+  expect(parseChapaWebhook(event)).toMatchObject({merchantReference:undefined,chapaReference:'CHLocal123',amountCents:'1029',mode:'test'});
+  for(const merchant_reference of ['',[],{},123,false])expect(parseChapaWebhook({...event,merchant_reference})).toBeNull();
  });
 });
 
@@ -96,7 +127,7 @@ describe('Chapa v2 bounded merchant transport',()=>{
  });
  it('rejects invalid amounts, keys, identity or external return URLs before contacting Chapa',async()=>{
   const fetcher=vi.fn<typeof fetch>(),transport=createChapaTransport({env:environment(),fetcher});
-  for(const patch of [{amountCents:'99'},{amountCents:'100.00'},{amountCents:'9007199254740992'},{merchantReference:'A'.repeat(21)},{idempotencyKey:'bad\r\nheader'},{returnUrl:'https://evil.test/return'},{callbackUrl:'http://lowwin.test/webhook'},{customer:{card_number:'do-not-collect'}}])await expect(transport.create({...create,...patch} as unknown as Parameters<typeof transport.create>[0])).rejects.toMatchObject({status:422});
+  for(const patch of [{amountCents:'99'},{amountCents:'100.00'},{amountCents:'9007199254740992'},{merchantReference:'A'.repeat(21)},{idempotencyKey:'bad\r\nheader'},{returnUrl:'https://evil.test/return'},{callbackUrl:'http://lowwin.test/webhook'},{customer:{card_number:'do-not-collect'}},{customer:{phone_number:null}}])await expect(transport.create({...create,...patch} as unknown as Parameters<typeof transport.create>[0])).rejects.toMatchObject({status:422});
   expect(fetcher).not.toHaveBeenCalled();await expect(createChapaTransport({env:environment({CHAPA_ENABLED:'false'}),fetcher}).create(create)).rejects.toMatchObject({status:503,code:'PAYMENT_UNAVAILABLE'});expect(fetcher).not.toHaveBeenCalled();
  });
  it('uses the merchant-authenticated verify/method paths and rejects caller-controlled paths',async()=>{

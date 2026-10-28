@@ -57,11 +57,27 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm audit --audit-level=low
+  static-secrets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.13'
       - run: pip install semgrep==1.178.0
       - run: semgrep scan --config p/ci --config p/secrets --metrics=off --error --json-output=security-results.json
+      - name: Require Telegram authentication source scan coverage
+        run: |
+          python - <<'PY'
+          import json
+          with open('security-results.json', encoding='utf-8') as report:
+              scanned = json.load(report).get('paths', {}).get('scanned', [])
+          required = 'vendor/better-auth-telegram/index.js'
+          if not any(path.replace('\\', '/').removeprefix('./') == required for path in scanned):
+              raise SystemExit('Telegram authentication runtime was not scanned')
+          print('Telegram authentication runtime scan coverage verified')
+          PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:

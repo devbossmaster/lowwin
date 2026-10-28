@@ -2,6 +2,7 @@
 import {QueryClient} from '@tanstack/react-query';
 import {miniNavigationState} from './mini-navigation-state';
 import {matchesPrivateResource,miniQueryPolicy} from './mini-query-policy';
+import {chapaConfirmed,type ChapaCheckoutView} from '@/lib/chapa-client';
 
 export type CacheEvent={identity:string|null;kind:'session'|'stored'|'mutation'|'authorization';keys?:readonly string[]};
 type ReadValue<T>={value:T;fresh:boolean;updatedAt:number};
@@ -135,6 +136,12 @@ export function invalidatePrivateQueries(identity:string,scopes?:readonly string
 export const WALLET_QUERY_SCOPES=['/api/wallet','/api/me','/api/alerts'] as const;
 export const PAYMENT_QUERY_SCOPES=[...WALLET_QUERY_SCOPES,'/api/payments/chapa/checkouts','/api/wallet/top-ups'] as const;
 export function confirmedBidQueryScopes(slug?:string){return [...PAYMENT_QUERY_SCOPES,'/api/my-bids','/api/profile','/api/catalog/auctions','/api/referrals',slug?`/api/auctions/${encodeURIComponent(slug)}`:'/api/auctions']}
+/** A return page can resolve either payment purpose. The committed order,
+ * never the screen or redirect parameters, determines affected resources. */
+export function confirmedChapaQueryScopes(order:ChapaCheckoutView){
+ if(!chapaConfirmed(order))return null;
+ return order.purpose==='BID'?confirmedBidQueryScopes(order.auctionSlug??undefined):[...PAYMENT_QUERY_SCOPES,'/api/profile'];
+}
 export function cancelPrivateQuery(identity:string,url:string){if(cache.isCurrent(identity))void cache.queryClient.cancelQueries({queryKey:['lowin-private',identity,...privateResourceParts(privateQueryKey(url))],exact:true})}
 /** Cancel an unused selected resource without cancelling another mounted reader. */
 export function retainPrivateQuery(identity:string,url:string,cancelOnUnused=false){

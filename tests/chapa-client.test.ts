@@ -1,9 +1,17 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
-import {chapaCheckoutUrl,chapaConfirmed,chapaRecoverable,clearChapaAttempt,clearChapaAttempts,readChapaAttempt,requestChapaJson,writeChapaAttempt,type ChapaAttempt} from '../src/lib/chapa-client';
+import {chapaCheckoutUrl,chapaConfirmed,chapaCanResumeCheckout,chapaRecoverable,clearChapaAttempt,clearChapaAttempts,readChapaAttempt,requestChapaJson,writeChapaAttempt,type ChapaAttempt,type ChapaCheckoutView} from '../src/lib/chapa-client';
 const uuid='0f55aaab-2222-4444-8888-123456789012',attempt:ChapaAttempt={version:1,intent:{purpose:'BID',key:uuid,auctionSlug:'fixture-auction',amount:'3.60',feeVersion:1}};
 function storage(){const values=new Map<string,string>();return {getItem:(key:string)=>values.get(key)??null,setItem:(key:string,value:string)=>{values.set(key,value)},removeItem:(key:string)=>{values.delete(key)}}}
 afterEach(()=>{vi.unstubAllGlobals();vi.useRealTimers()});
 describe('Chapa client recovery and display boundaries',()=>{
+ it('resumes ambiguous initialization with its saved intent both before and after an ID is returned',()=>{
+  const known={...attempt,orderId:uuid},pending={id:uuid,purpose:'BID',status:'PENDING',reason:'INITIALIZATION_PENDING',checkoutUrl:null,fundsPreserved:false,receipt:null} as ChapaCheckoutView;
+  expect(chapaCanResumeCheckout(attempt,null)).toBe(true);expect(chapaCanResumeCheckout(known,pending)).toBe(true);
+  expect(chapaCanResumeCheckout(known,null)).toBe(false);expect(chapaCanResumeCheckout(null,pending)).toBe(false);
+  expect(chapaCanResumeCheckout(known,{...pending,checkoutUrl:'https://checkout.chapa.global/CH-reference'})).toBe(false);
+  for(const status of ['NEEDS_REVIEW','CREDITED','BID_ACCEPTED','FAILED','CANCELLED','EXPIRED'])expect(chapaCanResumeCheckout(known,{...pending,status})).toBe(false);
+  expect(chapaCanResumeCheckout(known,{...pending,reason:'EVIDENCE_MISMATCH'})).toBe(false);
+ });
  it('preserves the original intent and key only within its authenticated scope',()=>{const s=storage();writeChapaAttempt(s,'session-one:bid:fixture-auction',attempt);expect(readChapaAttempt(s,'session-one:bid:fixture-auction')).toEqual(attempt);expect(readChapaAttempt(s,'session-two:bid:fixture-auction')).toBeNull();const read=readChapaAttempt(s,'session-one:bid:fixture-auction')!;read.intent.amount='99';expect(readChapaAttempt(s,'session-one:bid:fixture-auction')?.intent.amount).toBe('3.60');clearChapaAttempt(s,'session-one:bid:fixture-auction');expect(readChapaAttempt(s,'session-one:bid:fixture-auction')).toBeNull()});
  it('rejects corrupt, injected, inexact and incomplete stored intents',()=>{const s=storage();for(const value of ['{',JSON.stringify({version:1,intent:{key:uuid,purpose:'BID',amount:'3.60'}}),JSON.stringify({...attempt,intent:{...attempt.intent,amount:'1e3'}}),JSON.stringify({...attempt,intent:{...attempt.intent,fee:'0.01'}}),JSON.stringify({...attempt,orderId:'not-a-uuid'})]){s.setItem('key',value);expect(readChapaAttempt(s,'key')).toBeNull()}writeChapaAttempt(s,'topup',{version:1,intent:{purpose:'TOP_UP',key:uuid,amount:'100.00'}});expect(readChapaAttempt(s,'topup')?.intent.purpose).toBe('TOP_UP')});
  it('retains in-memory recovery when browser storage is denied',()=>{const s={getItem:()=>{throw Error('denied')},setItem:()=>{throw Error('denied')},removeItem:()=>{throw Error('denied')}};expect(()=>writeChapaAttempt(s,'key',attempt)).not.toThrow();expect(readChapaAttempt(s,'key')).toBeNull();expect(()=>clearChapaAttempt(s,'key')).not.toThrow()});
