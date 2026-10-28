@@ -1,14 +1,21 @@
 'use client';
 import Link from 'next/link';
+import {useEffect} from 'react';
+import {useRouter} from 'next/navigation';
 import {ShieldCheck} from 'lucide-react';
 import {useMiniLocale} from './mini-locale';
 import {useTelegram} from './telegram-provider';
 import {TelegramBotLink} from './telegram-bot-link';
 import {ChapaPaymentStatus,useChapaPayment} from './chapa-payment';
-import {chapaBotReturnLink,chapaReturnPath} from '@/lib/chapa-return-link';
+import {chapaBotReturnLink,chapaOriginPath,chapaReturnPath} from '@/lib/chapa-return-link';
+import {CustomerLoading} from './loading-spinner';
 import styles from './bid-payment-sheet.module.css';
 
-function OwnedReturn({id}:{id:string}){const payment=useChapaPayment('return:'+id,id);return <ChapaPaymentStatus payment={payment}/>}
+function OwnedReturn({id}:{id:string}){
+ const payment=useChapaPayment('return:'+id,id),router=useRouter(),destination=payment.order?chapaOriginPath(payment.order):null;
+ useEffect(()=>{if(destination)router.replace(destination,{scroll:false})},[destination,router]);
+ return destination?<CustomerLoading compact en="Opening your payment…" am="ክፍያዎን በመክፈት ላይ…"/>:<ChapaPaymentStatus payment={payment}/>;
+}
 export function ChapaReturn({id}:{id:string|null}){
  const {status,queryIdentity,botUrl}=useTelegram(),{language}=useMiniLocale(),text=(en:string,am:string)=>language==='am'?am:en;
  const returnPath=chapaReturnPath(id),botReturn=chapaBotReturnLink(botUrl,id)??botUrl;

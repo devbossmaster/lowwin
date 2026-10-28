@@ -3,6 +3,8 @@ import Link from 'next/link';
 import BidSheet from './bid-sheet';
 import dynamic from 'next/dynamic';
 import {useEffect,useState} from 'react';
+import {useSearchParams} from 'next/navigation';
+import {chapaUuid} from '@/lib/chapa-client';
 import {ChevronDown,Eye,ShieldCheck,Ticket,UsersRound} from 'lucide-react';
 import type {CatalogAuction} from '@/modules/auctions/catalog';
 import {formatEtb,formatAuctionBid} from '@/lib/money';
@@ -26,10 +28,13 @@ import {usePrivateQuery} from './private-query';
 export function AuctionDetail({auction:initialAuction,serverNow}:{auction:CatalogAuction;serverNow:string}){
  const detail=usePrivateQuery<CatalogAuction>(auctionDetailUrl(initialAuction.slug),{initialData:initialAuction});
  const known=detail.data??initialAuction;
- const [bidding,setBidding]=useState(false);
+ const params=useSearchParams(),candidate=params.get('chapa'),chapaId=params.getAll('chapa').length===1&&candidate&&chapaUuid.test(candidate)?candidate:undefined;
+ const [bidding,setBidding]=useState(!!chapaId),[returnId,setReturnId]=useState(chapaId);
  const {queryIdentity}=useTelegram();
  const warmBid=()=>prefetchAuctionIntent(queryIdentity,initialAuction.slug);
  useEffect(()=>{if(window.location.hash==='#bid-review')setBidding(true)},[]);
+ useEffect(()=>{if(chapaId){setReturnId(chapaId);setBidding(true)}},[chapaId]);
+ const closeBidding=()=>{setBidding(false);setReturnId(undefined);const url=new URL(window.location.href);url.searchParams.delete('chapa');if(url.hash==='#bid-review')url.hash='';window.history.replaceState(window.history.state,'',url.pathname+url.search+url.hash)};
  const {activity,views,refreshActivity}=useAuctionActivity(initialAuction.code,{record:true});
  useAuctionRefresh(activity,initialAuction.status,Boolean(initialAuction.result));
  const auction={...known,status:activity?.status??known.status,viewCount:views??known.viewCount,bidCount:activity?.bids??known.bidCount,startsAt:activity?.startsAt??known.startsAt,endsAt:activity?.endsAt??known.endsAt};
@@ -39,14 +44,15 @@ export function AuctionDetail({auction:initialAuction,serverNow}:{auction:Catalo
  const delivery=am?(auction.fulfillment.summaryAm?.trim()||auction.fulfillment.summary):auction.fulfillment.summary;
  const region=am?(auction.fulfillment.regionAm?.trim()||auction.fulfillment.region):auction.fulfillment.region;
  const date=(value:string)=>new Date(value).toLocaleString('en',{dateStyle:'medium',timeStyle:'short',timeZone:'Africa/Addis_Ababa'});
- if(['closed','cancelled','closing'].includes(auction.status))return <><ArifPayReturn auctionSlug={auction.slug}/>{auction.result?.outcome==='WINNER'&&<WinnerCelebration id={`winner:${auction.code}`}/>}<AuctionResultDetail auction={auction}/></>;
+ const paymentSheet=bidding?<BidSheet auction={auction} serverNow={serverNow} onClose={closeBidding} initialChapaId={returnId}/>:null;
+ if(['closed','cancelled','closing'].includes(auction.status))return <><ArifPayReturn auctionSlug={auction.slug}/>{auction.result?.outcome==='WINNER'&&<WinnerCelebration id={`winner:${auction.code}`}/>}<AuctionResultDetail auction={auction}/>{returnId&&paymentSheet}</>;
  return <article className={styles.page}>
   <ArifPayReturn auctionSlug={auction.slug}/>
   <AuctionGallery images={auction.product.images} title={title} isDemo={auction.isDemo} priority status={<span className={styles.status}><i aria-hidden="true"/><MiniPhrase en={live?'Live':'Upcoming'} am={live?'ክፍት':'የሚመጣ'}/></span>}/>
  <header className={styles.intro}><h2>{title}</h2><p className={styles.code}><span><MiniPhrase en="Auction ID" am="የጨረታ መለያ"/>: <strong>{auction.code}</strong></span><span aria-hidden="true">·</span><Link href={`/auctions/all?category=${encodeURIComponent(auction.category.slug)}`}><MiniCategoryName slug={auction.category.slug} name={auction.category.name} nameAm={auction.category.nameAm}/></Link></p></header>
   <div className={styles.fee}><span><MiniPhrase en="Submission fee" am="የማቅረቢያ ክፍያ"/></span><strong>{formatEtb(auction.terms.entryFeePoints)}</strong></div>
   {live?<div className={styles.bidding} id="bid-review"><button className="primary-button card-action" onPointerEnter={warmBid} onFocus={warmBid} onTouchStart={warmBid} onClick={()=>setBidding(true)}><Ticket size={17}/><MiniPhrase en={Number(auction.terms.entryFeePoints)>0?`Pay ${formatEtb(auction.terms.entryFeePoints)} & bid`:'Bid now'} am={Number(auction.terms.entryFeePoints)>0?`${formatEtb(auction.terms.entryFeePoints)} ከፍለው ይጫረቱ`:'አሁን ይጫረቱ'}/></button><a className={styles.termsLink} href="#auction-terms"><ShieldCheck size={13}/><MiniPhrase en={isSubmissionFeeOnly(auction.terms.ruleVersion)?'Submission fee only · Non-refundable':'Terms and conditions apply'} am={isSubmissionFeeOnly(auction.terms.ruleVersion)?'የማቅረቢያ ክፍያ ብቻ · አይመለስም':'ውሎች እና ሁኔታዎች ተፈጻሚ ይሆናሉ'}/></a></div>:<p className={styles.upcoming}><MiniPhrase en="Bidding opens at the scheduled start time." am="ጨረታው በተወሰነው የመጀመሪያ ጊዜ ይከፈታል።"/></p>}
-  {bidding&&<BidSheet auction={auction} serverNow={serverNow} onClose={()=>setBidding(false)}/>}
+  {paymentSheet}
   <section className={styles.stats} aria-label="Auction activity">
    <p><MiniPhrase en={live?'This auction ends in':upcoming?'This auction starts in':auction.status==='closing'?'Bidding ended':auction.status==='cancelled'?'Auction cancelled':'Auction closed'} am={live?'ጨረታው የሚያበቃው':upcoming?'ጨረታው የሚጀምረው':auction.status==='cancelled'?'ጨረታው ተሰርዟል':'ጨረታው ተጠናቋል'}/></p>
    <div className={styles.clock}>{live||upcoming?<AuctionCountdown target={upcoming?auction.startsAt:auction.endsAt} serverNow={serverNow} label={upcoming?'Starts':'Ends'} showLabel={false} tiles onElapsed={refreshActivity}/>:<strong>{date(auction.endsAt)}</strong>}</div><p className={styles.schedule}><MiniPhrase en={upcoming?'Starts':'Closes'} am={upcoming?'ይጀምራል':'ይዘጋል'}/> <time dateTime={upcoming?auction.startsAt:auction.endsAt}>{date(upcoming?auction.startsAt:auction.endsAt)}</time> EAT</p>

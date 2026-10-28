@@ -91,6 +91,10 @@ describe('Chapa v2 authenticated webhook hints',()=>{
   expect(verifyChapaWebhook(raw,signature,secret)).toBe(true);expect(verifyChapaWebhook(raw,signature.toUpperCase(),secret)).toBe(true);expect(verifyChapaWebhook(JSON.stringify(JSON.parse(raw.toString('utf8'))),signature,secret)).toBe(false);
   for(const header of [null,undefined,'',signature.slice(1),signature+'0','x'.repeat(64),'sha256='+signature,signature+', '+signature])expect(verifyChapaWebhook(raw,header,secret)).toBe(false);expect(verifyChapaWebhook(raw,signature,'different-webhook-secret-thirty-two-bytes')).toBe(false);expect(verifyChapaWebhook(raw,signature,'short')).toBe(false);
  });
+ it('rejects a constant secret proof that does not authenticate the event body',()=>{
+  const signature=createHmac('sha256',secret).update(secret).digest('hex');
+  for(const amount of [1000,1029])expect(verifyChapaWebhook(JSON.stringify({webhook_type:'payment',event:'payment.success',status:'success',amount}),signature,secret)).toBe(false);
+ });
  it('does not confuse lowercase webhook success with uppercase verification completion',()=>{
   const event={webhook_type:'payment',event:'payment.success',status:'success',mode:'test',amount:'12345',currency:'ETB',merchant_reference:create.merchantReference,chapa_reference:'CHLocal123',updated_at:'2026-10-26T10:01:00Z'};
   expect(parseChapaWebhook(event)).toMatchObject({type:'payment',event:'payment.success',status:'success',mode:'test',amountCents:'12345'});expect(parseChapaWebhook({...event,status:'SUCCESS'})).toBeNull();expect(parseChapaEvidence(event)).toBeNull();expect(parseChapaWebhook({...event,amount:'123.45'})).toBeNull();

@@ -1,9 +1,14 @@
 import {describe,expect,it} from 'vitest';
-import {chapaBotReturnLink,chapaReturnPath,chapaReturnStartPath} from '../src/lib/chapa-return-link';
+import {chapaBotReturnLink,chapaOriginPath,chapaReturnPath,chapaReturnStartPath} from '../src/lib/chapa-return-link';
 
 const id='0f55aaab-2222-4444-8888-123456789012';
 
 describe('opaque Chapa Telegram return links',()=>{
+ it('restores a payment surface using only the owned response purpose and auction slug',()=>{
+  expect(chapaOriginPath({id,purpose:'TOP_UP',auctionSlug:null})).toBe(`/profile?topup=1&chapa=${id}#wallet`);
+  expect(chapaOriginPath({id,purpose:'BID',auctionSlug:'original-auction'})).toBe(`/auctions/original-auction?chapa=${id}#bid-review`);
+  for(const order of [{id:'not-an-id',purpose:'TOP_UP',auctionSlug:null},{id,purpose:'OTHER',auctionSlug:null},{id,purpose:'BID',auctionSlug:null},{id,purpose:'BID',auctionSlug:'../admin'},{id,purpose:'BID',auctionSlug:'https://evil.test'}])expect(chapaOriginPath(order)).toBeNull();
+ });
  it('carries only the validated original attempt ID through the existing bot start flow',()=>{
   const link=chapaBotReturnLink('https://t.me/lowwin_fixture_bot?start=lowin',id)!;
   expect(link).toBe(`https://t.me/lowwin_fixture_bot?start=chapa_${id}`);

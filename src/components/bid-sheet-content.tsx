@@ -28,8 +28,8 @@ import {auctionDetailUrl} from './auction-query';
 import styles from './bid-payment-sheet.module.css';
 type BidState=Omit<Awaited<ReturnType<typeof getOwnBidState>>,'wallet'|'previousMax'>&{referralDiscountsAvailable?:boolean};
 type DiscountQuote=Awaited<ReturnType<typeof getBidDiscountQuote>>;
-type Props={auction:BidSheetAuction;serverNow:string;onClose:()=>void;onPhaseChange:(phase:BidSheetPhase)=>void};
-export default function BidSheetContents({auction,serverNow,onClose,onPhaseChange}:Props){
+type Props={auction:BidSheetAuction;serverNow:string;onClose:()=>void;onPhaseChange:(phase:BidSheetPhase)=>void;initialChapaId?:string};
+export default function BidSheetContents({auction,serverNow,onClose,onPhaseChange,initialChapaId}:Props){
  const {language}=useMiniLocale(),am=language==='am',text=(en:string,translated:string)=>am?translated:en;
  const {queryIdentity,refreshMe}=useTelegram();
  const initialFull=isFullAuction(auction)?auction:null;
@@ -37,7 +37,7 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
  const full=(detailQuery.data?.slug===auction.slug?detailQuery.data:null)??initialFull,known=full??auction;
  const query=usePrivateQuery<BidState>(`/api/auctions/${auction.slug}/bids`),wallet=usePrivateQuery<WalletBalance>('/api/wallet',{freshnessMs:15000});
  const refreshEnded=useCallback(()=>{query.reload();detailQuery.reload()},[query.reload,detailQuery.reload]);
- const availability=usePrivateQuery<ChapaAvailability>('/api/payments/chapa',{freshnessMs:15000}),payment=useChapaPayment('bid:'+auction.slug);
+ const availability=usePrivateQuery<ChapaAvailability>('/api/payments/chapa',{freshnessMs:15000}),payment=useChapaPayment('bid:'+auction.slug,initialChapaId);
  const [number,setNumber]=useState(''),[method,setMethod]=useState<'wallet'|'chapa'>('wallet'),id=useId(),state=query.data;
  const [walletBusy,setWalletBusy]=useState(false),[walletError,setWalletError]=useState(''),[receipt,setReceipt]=useState<BidReceipt|null>(null);
  const walletLock=useRef(false),walletAttempt=useRef<{fingerprint:string;key:string}|null>(null);

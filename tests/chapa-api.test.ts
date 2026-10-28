@@ -42,6 +42,20 @@ describe('Chapa HTTP authorization and durable webhook boundary',()=>{
   const denied=await verify(request('/api/payments/chapa/checkouts/'+id,{}),{params:Promise.resolve({id})});expect(denied.status).toBe(401);expect(denied.headers.get('Server-Timing')).toMatch(/^auth;dur=/);expect(denied.headers.get('Server-Timing')).not.toContain('verify;');
  });
  it('keeps config/list/owned reads private and forwards authenticated ownership',async()=>{for(const response of [await availability(request('/api/payments/chapa')),await list(request('/api/payments/chapa/checkouts')),await read(request('/api/payments/chapa/checkouts/'+id),{params:Promise.resolve({id})})]){expect(response.status).toBe(200);expect(response.headers.get('cache-control')).toContain('private, no-store');expect(response.headers.get('vary')).toBe('Cookie')}expect(f.read).toHaveBeenCalledWith(expect.anything(),'owner-user',id)});
+ it('filters owned payment history by purpose while keeping default history and private responses',async()=>{
+  for(const purpose of [undefined,'TOP_UP','BID']){
+   const response=await list(request('/api/payments/chapa/checkouts'+(purpose?'?purpose='+purpose:'')));
+   expect(response.status).toBe(200);expect(response.headers.get('cache-control')).toContain('private, no-store');expect(response.headers.get('vary')).toBe('Cookie');
+   expect(f.list).toHaveBeenLastCalledWith(expect.anything(),'owner-user',purpose);
+  }
+ });
+ it('rejects invalid, repeated or identity-supplied history filters instead of broadening the query',async()=>{
+  for(const query of ['purpose=OTHER','purpose=top_up','purpose=','purpose=TOP_UP&purpose=BID','purpose=TOP_UP&userId=other-user','userId=other-user']){
+   const response=await list(request('/api/payments/chapa/checkouts?'+query));
+   expect(response.status).toBe(422);expect(response.headers.get('cache-control')).toContain('private, no-store');expect(response.headers.get('vary')).toBe('Cookie');
+  }
+  expect(f.list).not.toHaveBeenCalled();
+ });
  it('requires same-origin session authority for creation/verification and never trusts supplied user identity',async()=>{const body={key:randomUUID(),purpose:'TOP_UP',amount:'10.00'},r=await create(request('/api/payments/chapa/checkouts',body));expect(r.status).toBe(202);expect(f.create).toHaveBeenCalledWith(expect.anything(),'owner-user',body,f.reauthorize);expect((await verify(request('/api/payments/chapa/checkouts/'+id,{}),{params:Promise.resolve({id})})).status).toBe(200);expect(f.verify).toHaveBeenCalledWith(expect.anything(),id,'owner-user',f.reauthorize);expect((await create(request('/api/payments/chapa/checkouts',body,'https://other.test'))).status).toBe(403)});
  it('fails closed on missing sessions and owned resource mismatch',async()=>{f.user.mockRejectedValue(new PrivateApiError(401,'Sign in'));expect((await list(request('/api/payments/chapa/checkouts'))).status).toBe(401);f.auth.mockRejectedValue(new PrivateApiError(401,'Sign in'));expect((await create(request('/api/payments/chapa/checkouts',{}))).status).toBe(401);f.user.mockResolvedValue('other-user');f.read.mockRejectedValue(new ChapaError(404,'NOT_FOUND','Payment not found.'));expect((await read(request('/api/payments/chapa/checkouts/'+id),{params:Promise.resolve({id})})).status).toBe(404)});
  it('does not let unsigned callbacks/returns mutate or verify money',async()=>{expect((await callbackPost()).status).toBe(202);const redirect=await callbackGet(request('/api/payments/chapa/callback?checkout='+id+'&return=https://other.test'));expect(redirect.status).toBe(303);expect(redirect.headers.get('location')).toBe(origin+'/payments/chapa/return?checkout='+id);expect(f.transaction).not.toHaveBeenCalled();expect(f.verify).not.toHaveBeenCalled();expect(f.create).not.toHaveBeenCalled()});

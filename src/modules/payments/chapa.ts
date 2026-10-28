@@ -138,8 +138,9 @@ async function initializeChapaCheckout(client:PrismaClient,id:string,transport:C
 export async function getChapaCheckout(client:PrismaClient,userId:string,id:string){
  const order=await measureChapa('database',()=>client.chapaCheckout.findFirst({where:{id:z.string().uuid().parse(id),userId}}));if(!order)throw new ChapaError(404,'NOT_FOUND','Payment not found.');return ownChapaCheckout(order);
 }
-export async function listChapaCheckouts(client:PrismaClient,userId:string){
- if(process.env.CHAPA_SCHEMA_READY!=='true')return {items:[]};return {items:(await client.chapaCheckout.findMany({where:{userId},orderBy:[{createdAt:'desc'},{id:'desc'}],take:20})).map(ownChapaCheckout)};
+export async function listChapaCheckouts(client:PrismaClient,userId:string,purpose?:'TOP_UP'|'BID'){
+ const filter=z.enum(['TOP_UP','BID']).optional().parse(purpose);
+ if(process.env.CHAPA_SCHEMA_READY!=='true')return {items:[]};return {items:(await client.chapaCheckout.findMany({where:{userId,...(filter?{purpose:filter}:{})},orderBy:[{createdAt:'desc'},{id:'desc'}],take:20})).map(ownChapaCheckout)};
 }
 export async function verifyChapaCheckout(client:PrismaClient,id:string,userId?:string,reauthorize?:Authorize,transport:ChapaTransport=chapaTransport){
  requireChapa('recover');z.string().uuid().parse(id);

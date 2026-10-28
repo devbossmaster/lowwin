@@ -82,3 +82,12 @@
 .simpleTopUp .walletStrip{margin-bottom:18px}.simpleTopUp .presets{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:10px 0 20px}.simpleTopUp .presets button{min-width:0;font-size:13px}.simpleTopUp>.method{min-height:52px;border-color:#9d7b21;padding:10px 12px}.simpleTopUp .availability{margin:12px 0 0}.simpleTopUp .methodText strong{font-size:14px}
 .simplePaymentStatus{padding:12px 0 4px}.simplePaymentStatus .paymentStatusIcon{margin-bottom:8px}.simplePaymentStatus>p{margin-bottom:12px}.paymentDetails{margin:14px 0 0;color:#625e54;font-size:11px;text-align:center}.paymentDetails summary{cursor:pointer;min-height:44px;display:flex;justify-content:center;align-items:center;text-decoration:underline;text-underline-offset:3px}.paymentDetails summary:focus-visible{outline:2px solid #96731a;outline-offset:2px}.paymentSpinner{animation:paymentSpin 1s linear infinite}@keyframes paymentSpin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.paymentSpinner{animation:none}}
 .simpleTopUp>.method{display:flex;justify-content:flex-start;gap:10px}.simpleTopUp>.method>.providerLogo{display:grid;flex:0 0 58px;width:58px;min-height:30px}.simpleTopUp>.method>.methodText{display:flex;flex:1;text-align:left}.simpleTopUp>.method>input{display:block;position:static;inset:auto;width:16px;height:16px;opacity:1;appearance:auto}
+/* Keep the number and payment choices visible on compact phones. Expanded
+   descriptions and the keyboard still use the sheet's bounded native scroll. */
+@media(max-width:370px),(max-height:760px){
+ .bidEntry .previewPhoto{height:56px;margin-bottom:6px}
+ .bidEntry .productHeading{margin-bottom:6px}.bidEntry .productTitle{font-size:16px;line-height:1.4}.bidEntry .previewStatus{margin-top:2px}
+ .bidEntry .description{margin-bottom:6px;padding:4px 10px}.bidEntry .description summary{display:flex;align-items:center;gap:8px;min-height:44px}.bidEntry .description summary>span{flex:1;min-width:0;-webkit-line-clamp:1}.bidEntry .description summary b{flex:none;margin:0}.bidEntry .description[open] summary{min-height:44px}
+ .bidEntry .feeStrip{margin-bottom:8px;padding-block:8px}.bidEntry .inputHeading{margin-bottom:3px}.bidEntry .balanceNote{margin-top:6px}
+ .bidEntry .methods{margin-top:6px;padding:8px}.bidEntry .hint{margin-top:6px}
+}
