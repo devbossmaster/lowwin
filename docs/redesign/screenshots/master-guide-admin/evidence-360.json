@@ -1,0 +1,54 @@
+{
+  "measurement": "Optimized local app with real email-password authorization and explicit read-only table fixtures; not a production latency benchmark",
+  "timings": {
+    "credentialToOverviewMs": 1358
+  },
+  "mobileViewport": {
+    "width": 360,
+    "height": 800
+  },
+  "desktopViewport": {
+    "width": 1440,
+    "height": 1000
+  },
+  "realVerifiedAdminSession": true,
+  "mfaAt": null,
+  "sidebarSections": 6,
+  "serverPaginationFixture": 25,
+  "externalServicesInvoked": false,
+  "adminWrites": [],
+  "errors": [],
+  "captures": [
+    "docs/redesign/screenshots/master-guide-admin/overview-1440-360.png",
+    "docs/redesign/screenshots/master-guide-admin/overview-360.png",
+    "docs/redesign/screenshots/master-guide-admin/players-1440-360.png",
+    "docs/redesign/screenshots/master-guide-admin/players-360.png",
+    "docs/redesign/screenshots/master-guide-admin/payments-1440-360.png",
+    "docs/redesign/screenshots/master-guide-admin/payments-360.png",
+    "docs/redesign/screenshots/master-guide-admin/winners-1440-360.png",
+    "docs/redesign/screenshots/master-guide-admin/winners-360.png",
+    "docs/redesign/screenshots/master-guide-admin/broadcast-1440-360.png",
+    "docs/redesign/screenshots/master-guide-admin/broadcast-360.png"
+  ],
+  "reads": [
+    "/api/admin/dashboard",
+    "/api/admin/workspace/players?page=1&q=&status=",
+    "/api/admin/workspace/players?page=2&q=&status=",
+    "/api/admin/users/4a467191-0dd6-4071-afd6-503eff1751d5",
+    "/api/admin/workspace/players?page=1&q=Abebe&status=",
+    "/api/admin/workspace/players?page=1&q=&status=",
+    "/api/admin/workspace/transactions?page=1&q=&status=&sort=newest",
+    "/api/admin/workspace/transactions?page=2&q=&status=&sort=newest",
+    "/api/admin/chapa/ce469ce3-4095-4c18-8bb1-751fa559a693",
+    "/api/admin/workspace/transactions?page=1&q=&status=&sort=amount",
+    "/api/admin/workspace/transactions?page=1&q=Abebe&status=&sort=amount",
+    "/api/admin/workspace/winners?page=1&q=&status=",
+    "/api/admin/workspace/winners?page=2&q=&status=",
+    "/api/admin/workspace/winners?page=1&q=headphones&status=",
+    "/api/admin/notifications?page=1&q="
+  ],
+  "authPosts": [
+    "/api/auth/sign-in/email",
+    "/api/auth/sign-out"
+  ]
+}

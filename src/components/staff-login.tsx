@@ -1,32 +1,61 @@
 'use client';
 import {useEffect,useState} from 'react';
 import {useRouter} from 'next/navigation';
-import {ArrowLeft,Check,Download,KeyRound,ShieldCheck} from 'lucide-react';
-export async function staffRequest(action:string,body:unknown){const response=await fetch(`/api/auth/lowin/staff/${action}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),cache:'no-store'});const data=await response.json();if(!response.ok)throw new Error(data.error??data.message??'Staff authentication failed.');return data}
-type Mode='login'|'invite'|'enroll'|'challenge'|'recover'|'codes'|'forgot'|'reset';
-const titles:Record<Mode,string>={login:'Welcome to your workspace',invite:'Accept your staff invitation',enroll:'Set up your authenticator',challenge:'Verify your sign-in',recover:'Use a recovery code',codes:'Save your recovery codes',forgot:'Reset your password',reset:'Choose a new password'};
-const descriptions:Record<Mode,string>={login:'Sign in with your staff email and password. Your authenticator is required next.',invite:'Choose a password for your assigned role. You will set up an authenticator before entering.',enroll:'Add this key to your authenticator, then enter its six-digit code. Admin access stays locked until verification.',challenge:'Enter the six-digit code from your authenticator. This verifies this sign-in for up to eight hours.',recover:'Enter one of your saved, single-use recovery codes. This signs out existing sessions and requires a new authenticator.',codes:'Store these privately. Each code works once and requires authenticator reenrollment. They are shown only now.',forgot:'We will send a single-use link to your staff email if that account is active.',reset:'The link expires after 30 minutes. Changing your password signs out existing sessions and keeps your authenticator enabled.'};
-export function StaffLogin(){const router=useRouter(),[mode,setMode]=useState<Mode>('login'),[token,setToken]=useState(''),[secret,setSecret]=useState(''),[codes,setCodes]=useState<string[]>([]),[saved,setSaved]=useState(false),[message,setMessage]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[ready,setReady]=useState(false);
- useEffect(()=>{setReady(true);const acceptLink=()=>{const hash=new URLSearchParams(location.hash.slice(1));for(const kind of ['invite','reset'] as const)if(hash.has(kind)){setMode(kind);setToken(hash.get(kind)!);history.replaceState(null,'',location.pathname)}};acceptLink();window.addEventListener('hashchange',acceptLink);return()=>window.removeEventListener('hashchange',acceptLink)},[]);
- function change(next:Mode){setMode(next);setError('');setMessage('')}
- async function submit(event:React.FormEvent<HTMLFormElement>){event.preventDefault();if(busy)return;setBusy(true);setError('');const form=new FormData(event.currentTarget);try{
-  const action=mode==='invite'?'accept-invite':['challenge','enroll','recover'].includes(mode)?'mfa':mode;
-  const body=mode==='invite'||mode==='reset'?{token,password:form.get('password')}:mode==='login'?{email:form.get('email'),password:form.get('password')}:mode==='forgot'?{email:form.get('email')}:{code:form.get('code')};
-  const result=await staffRequest(action,body);setMessage(result.message??'');
-  if(result.mode==='enroll'){const enrollment=await staffRequest('enroll',{});setSecret(enrollment.secret);setMode('enroll')}
-  else if(result.recoveryCodes){setCodes(result.recoveryCodes);setMode('codes')}
-  else if(result.mode==='authenticated'){router.replace('/admin');router.refresh()}
-  else if(result.mode)setMode(result.mode);
- }catch(err){setError(err instanceof Error?err.message:'Sign-in could not be completed. Please retry.')}finally{setBusy(false)}}
- function download(){const url=URL.createObjectURL(new Blob([`Lowwin staff recovery codes\nKeep private. Each code works once.\n\n${codes.join('\n')}\n`],{type:'text/plain'}));const a=document.createElement('a');a.href=url;a.download='lowwin-recovery-codes.txt';a.click();URL.revokeObjectURL(url)}
- return <main id="main" className="admin-access"><div className="admin-access-brand"><div className="admin-brand-name"><img src="/logo.png" alt="" width={44} height={44}/>Lowwin</div><div><h2>Keep the details<br/>under control.</h2><p>Auctions, players and payments.<br/>One considered workspace.</p></div><small><ShieldCheck size={16}/>Invite-only staff access</small></div><section className="admin-access-form"><div className="admin-access-icon"><KeyRound size={23}/></div><h1>{titles[mode]}</h1><p>{descriptions[mode]}</p>
- {secret&&mode==='enroll'&&<div className="admin-secret"><span>Authenticator setup key</span><code>{secret}</code></div>}
- {message&&<p role="status" className="admin-notice">{message}</p>}{error&&<p role="alert" className="admin-error">{error}</p>}
- {mode==='codes'?<><pre className="admin-codes">{codes.join('\n')}</pre><button className="secondary" onClick={download}><Download size={16}/>Download codes</button><label className="admin-check"><input type="checkbox" checked={saved} onChange={e=>setSaved(e.target.checked)}/>I saved my codes in a private place.</label><button disabled={!saved} onClick={()=>{setCodes([]);router.replace('/admin');router.refresh()}}><Check size={16}/>Open workspace</button></>:<form onSubmit={submit} key={mode}>
- {(mode==='login'||mode==='forgot')&&<label>Staff email<input name="email" type="email" autoComplete="username" required autoFocus/></label>}
- {['login','invite','reset'].includes(mode)&&<label>Password<input name="password" aria-label="Password" aria-describedby="staff-password-hint" type="password" minLength={12} maxLength={128} autoComplete={mode==='login'?'current-password':'new-password'} required/><small id="staff-password-hint">At least 12 characters.</small></label>}
- {['challenge','enroll','recover'].includes(mode)&&<label>{mode==='recover'?'Recovery code':'Authenticator code'}<input name="code" autoComplete="one-time-code" inputMode={mode==='recover'?'text':'numeric'} pattern={mode==='recover'?undefined:'[0-9]{6}'} maxLength={mode==='recover'?64:6} required minLength={6} autoFocus/></label>}
- <button disabled={!ready||busy}>{busy?'Please wait…':mode==='forgot'?'Send reset instructions':mode==='login'?'Continue':mode==='recover'?'Recover and reenroll':mode==='enroll'||mode==='challenge'?'Verify sign-in':'Save password'}</button></form>}
- {mode==='login'&&<button className="admin-text-button" onClick={()=>change('forgot')}>Forgot password?</button>}{mode==='challenge'&&<button className="admin-text-button" onClick={()=>change('recover')}>Lost your authenticator? Use a recovery code</button>}{mode==='recover'&&<button className="admin-text-button" onClick={()=>change('challenge')}>Use my authenticator instead</button>}{['forgot','reset','invite'].includes(mode)&&<button className="admin-text-button" onClick={()=>{setToken('');change('login')}}><ArrowLeft size={14}/>Back to sign in</button>}
- <p className="admin-access-note">Password + authenticator, once per sign-in. Sessions expire within eight hours. For lost access without recovery codes, contact your authorized workspace operator.</p></section></main>;
+import {ArrowLeft} from 'lucide-react';
+
+const routes:Record<string,string>={login:'sign-in/email',signup:'sign-up/email',forgot:'request-password-reset',reset:'reset-password',verify:'send-verification-email',logout:'sign-out'};
+export async function staffRequest(action:string,body:unknown){
+ const route=routes[action];if(!route)throw new Error('This authentication action is unavailable.');
+ const response=await fetch(`/api/auth/${route}`,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),cache:'no-store',signal:AbortSignal.timeout(15000)});
+ const data=await response.json().catch(()=>({}));
+ if(!response.ok)throw new Error(data.error?.message??data.error??data.message??'Authentication could not complete. Please retry.');
+ return data;
+}
+
+type Mode='login'|'signup'|'forgot'|'reset'|'verify';
+const titles:Record<Mode,string>={login:'Sign in to Lowwin',signup:'Create your account',forgot:'Reset your password',reset:'Choose a new password',verify:'Check your email'};
+export function StaffLogin(){
+ const router=useRouter(),[mode,setMode]=useState<Mode>('login'),[token,setToken]=useState(''),[email,setEmail]=useState(''),[message,setMessage]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[ready,setReady]=useState(false);
+ useEffect(()=>{
+  setReady(true);const params=new URLSearchParams(location.search),reset=params.get('token');
+  if(reset){setToken(reset);setMode('reset');history.replaceState(null,'',location.pathname)}
+  if(params.get('verified')==='1')setMessage('Email verified. Sign in after your administrator access is approved.');
+  if(params.has('error'))setError('This email link is invalid or expired. Request a new link.');
+ },[]);
+ function change(next:Mode){if(busy)return;setMode(next);setMessage('');setError('');setToken('')}
+ async function submit(event:React.FormEvent<HTMLFormElement>){
+  event.preventDefault();if(busy)return;setBusy(true);setError('');const form=new FormData(event.currentTarget),address=String(form.get('email')??email).trim().toLowerCase();
+  if(address)setEmail(address);
+  const loginUrl=new URL('/admin/login',location.origin);
+  try{
+   if(mode==='login'){
+    await staffRequest('login',{email:address,password:form.get('password'),rememberMe:false});router.replace('/admin');router.refresh();return;
+   }
+   if(mode==='signup'){
+    loginUrl.searchParams.set('verified','1');await staffRequest('signup',{name:String(form.get('name')??'').trim(),email:address,password:form.get('password'),callbackURL:loginUrl.href});
+    setMode('verify');setMessage('We sent a verification link. Your account starts as a member; administrator access is approved separately.');return;
+   }
+   if(mode==='forgot'){
+    await staffRequest('forgot',{email:address,redirectTo:loginUrl.href});setMessage('If this email is registered, a password reset link has been sent.');return;
+   }
+   if(mode==='reset'){
+    await staffRequest('reset',{token,newPassword:form.get('password')});setToken('');setMode('login');setMessage('Password updated. Sign in with your new password.');return;
+   }
+   loginUrl.searchParams.set('verified','1');await staffRequest('verify',{email:address,callbackURL:loginUrl.href});setMessage('If this email needs verification, a new link has been sent.');
+  }catch(cause){setError(cause instanceof Error?cause.message:'Authentication could not complete. Please retry.')}finally{setBusy(false)}
+ }
+ return <main id="main" className="admin-access master-admin-auth"><section className="admin-access-form">
+  <a className="admin-brand-name" href="/admin/login"><img src="/images/lowwin-launch-mark.webp" alt="" width={36} height={36}/>Lowwin</a>
+  <h1>{titles[mode]}</h1>
+  <p>{mode==='login'?'Use your verified email and password.':mode==='signup'?'Register as a member, verify your email, then wait for administrator approval.':mode==='forgot'?'We will email a link to reset your password.':mode==='reset'?'Set a new password for your account.':'Verify your email before requesting administrator access.'}</p>
+  {message&&<p role="status" className="admin-notice">{message}</p>}{error&&<p role="alert" className="admin-error">{error}</p>}
+  <form onSubmit={submit} key={mode}>
+   {mode==='signup'&&<label>Name<input name="name" autoComplete="name" required minLength={2} maxLength={100}/></label>}
+   {mode!=='reset'&&<label>Email<input name="email" type="email" autoComplete="username" defaultValue={email} required maxLength={254} autoFocus/></label>}
+   {['login','signup','reset'].includes(mode)&&<label>Password<input name="password" aria-label="Password" type="password" minLength={12} maxLength={128} autoComplete={mode==='login'?'current-password':'new-password'} required/><small>At least 12 characters.</small></label>}
+   <button disabled={!ready||busy}>{busy?'Please wait...':mode==='login'?'Sign in':mode==='signup'?'Create account':mode==='forgot'?'Send reset link':mode==='reset'?'Save password':'Resend verification email'}</button>
+  </form>
+  {mode==='login'?<div className="admin-auth-links"><button className="admin-text-button" onClick={()=>change('signup')} disabled={busy}>Create an account</button><button className="admin-text-button" onClick={()=>change('forgot')} disabled={busy}>Forgot password?</button><button className="admin-text-button" onClick={()=>change('verify')} disabled={busy}>Verify your email</button></div>:<button className="admin-text-button" onClick={()=>change('login')} disabled={busy}><ArrowLeft size={14}/>Back to sign in</button>}
+  <p className="admin-access-note">Registration does not grant administrator access. Sessions expire within eight hours.</p>
+ </section></main>;
 }

@@ -45,6 +45,18 @@ describe('Chapa v2 payment evidence and hosted URL',()=>{
   for(const amount of ['12345',123.45,-100,NaN,Infinity,Number.MAX_SAFE_INTEGER+1])expect(parseChapaEvidence({...verified(),data:{...verified().data,amount}})).toBeNull();
   const {merchant_reference:_,...data}=verified().data;expect(parseChapaEvidence({status:'success',data:{...data,merchant_referece:create.merchantReference}})).toBeNull();expect(parseChapaEvidence({...verified(),data:{...verified().data,chapa_reference:''}})).toBeNull();
  });
+ it('accepts an empty TEST processor field but still requires a final reference for SUCCESS',()=>{
+  for(const processor_reference of ['',null,undefined])expect(parseChapaEvidence({...verified(),data:{...verified().data,processor_reference}})).toMatchObject({status:'SUCCESS',processorReference:undefined});
+  for(const chapa_reference of [null,undefined]){
+   expect(parseChapaEvidence({...verified(),data:{...verified().data,chapa_reference}})).toBeNull();
+   expect(parseChapaEvidence({...verified(),data:{...verified().data,chapa_reference,status:'PENDING',processor_reference:null}})).toMatchObject({status:'PENDING',chapaReference:null});
+  }
+ });
+ it('keeps the TEST checkout session token separate from the final payment reference',()=>{
+  const checkout_url='https://checkout.chapa.global/test/payment/hosted/TEST123456';
+  expect(createdChapaSession({status:'success',data:{checkout_url}})).toMatchObject({checkoutUrl:checkout_url,checkoutReference:'TEST123456',chapaReference:null});
+  expect(safeChapaCheckoutUrl('https://checkout.chapa.global/TEST123456')).toMatchObject({chapaReference:'TEST123456'});
+ });
  it('returns exact provider URL and dates but rejects open-redirect and reference confusion',()=>{
   expect(createdChapaSession(initialized())).toMatchObject({checkoutUrl:initialized().data.checkout_url,chapaReference:'CHLocal123',createdAt:new Date('2026-10-26T10:00:00Z'),expiresAt:new Date('2026-10-27T10:00:00Z')});
   for(const url of ['http://checkout.chapa.global/CHLocal123','https://checkout.chapa.global.evil.test/CHLocal123','https://user:secret@checkout.chapa.global/CHLocal123','https://checkout.chapa.global:8443/CHLocal123','https://checkout.chapa.global/','https://checkout.chapa.global/CH%2F123','https://checkout.chapa.global/CHLocal123#redirect','https://evil.test/CHLocal123','javascript:alert(1)',' https://checkout.chapa.global/CHLocal123','https://checkout.chapa.global\\@evil.test/CHLocal123'])expect(safeChapaCheckoutUrl(url)).toBeNull();
@@ -73,7 +85,14 @@ describe('Chapa v2 bounded merchant transport',()=>{
  it('sends cents, a stable idempotency key and no card data to the fixed hosted endpoint',async()=>{
   const fetcher=vi.fn<typeof fetch>(async()=>Response.json(initialized())),transport=createChapaTransport({env:environment(),fetcher});await transport.create(create);await transport.create(create);
   expect(fetcher).toHaveBeenCalledTimes(2);const [url,options]=fetcher.mock.calls[0];expect(url).toBe('https://api.chapa.global/v2/payments/hosted');expect(options).toMatchObject({method:'POST',redirect:'error',cache:'no-store',headers:{Authorization:'Bearer '+environment().CHAPA_PRIVATE_KEY,'Idempotency-Key':create.idempotencyKey,'Content-Type':'application/json'}});expect(options?.signal).toBeInstanceOf(AbortSignal);
-  const body=JSON.parse(String(options?.body));expect(body).toMatchObject({amount:12345,currency:'ETB',merchant_reference:create.merchantReference,customer:create.customer,meta:create.meta});expect(body.preferred_payment_methods).toBeUndefined();expect(body.customer.card_number).toBeUndefined();expect(fetcher.mock.calls[1][1]?.headers).toEqual(options?.headers);
+  const body=JSON.parse(String(options?.body));expect(body).toEqual({amount:12345,currency:'ETB',merchant_reference:create.merchantReference});expect(fetcher.mock.calls[1][1]?.body).toBe(options?.body);expect(fetcher.mock.calls[1][1]?.headers).toEqual(options?.headers);
+ });
+ it('leaves payer contact and payment method selection to hosted checkout when omitted',async()=>{
+  const {customer:_,...hosted}=create,fetcher=vi.fn<typeof fetch>(async()=>Response.json(initialized()));
+  await createChapaTransport({env:environment(),fetcher}).create(hosted);
+  const body=JSON.parse(String(fetcher.mock.calls[0][1]?.body));
+  expect(body).not.toHaveProperty('customer');expect(body).not.toHaveProperty('phone_number');expect(body).not.toHaveProperty('preferred_payment_methods');
+  expect(body).toEqual({amount:12345,currency:'ETB',merchant_reference:hosted.merchantReference});
  });
  it('rejects invalid amounts, keys, identity or external return URLs before contacting Chapa',async()=>{
   const fetcher=vi.fn<typeof fetch>(),transport=createChapaTransport({env:environment(),fetcher});

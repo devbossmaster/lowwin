@@ -31,12 +31,12 @@ describe('funding and webhook boundaries',()=>{
 });
 describe('admin assurance boundary',()=>{
   const now=new Date('2026-10-05T12:00:00.000Z');
-  it('requires MFA on the credential login and expires at the eight-hour absolute cap',()=>{
+  it('requires a new email-password marker and expires at the eight-hour absolute cap',()=>{
     expect(ADMIN_SESSION_MS).toBe(8*60*60*1000);expect(ADMIN_CHALLENGE_MS).toBe(15*60*1000);
-    const grant={credentialAt:new Date(now.getTime()-7*3600000),mfaAt:new Date(now.getTime()-6*3600000),expiresAt:new Date(now.getTime()+5*3600000)},session=new Date(now.getTime()+24*3600000);
+    const grant={credentialAt:new Date(now.getTime()-7*3600000),authMethod:'email-password',expiresAt:new Date(now.getTime()+5*3600000)},session=new Date(now.getTime()+24*3600000);
     expect(adminSessionExpiry(grant,session,now)).toEqual(new Date(now.getTime()+3600000));
-    expect(adminSessionExpiry({...grant,mfaAt:null},session,now)).toBeNull();
-    expect(adminSessionExpiry({...grant,mfaAt:new Date(grant.credentialAt.getTime()-1)},session,now)).toBeNull();
+    expect(adminSessionExpiry({...grant,authMethod:'legacy'},session,now)).toBeNull();
+    expect(adminSessionExpiry({...grant,credentialAt:new Date(now.getTime()+1)},session,now)).toBeNull();
     expect(adminSessionExpiry({...grant,credentialAt:new Date(now.getTime()-ADMIN_SESSION_MS)},session,now)).toBeNull();
     expect(adminSessionExpiry(grant,new Date(now.getTime()-1),now)).toBeNull();
   });

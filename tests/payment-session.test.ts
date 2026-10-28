@@ -37,11 +37,24 @@ describe.skipIf(!url)('payment session reauthorization on disposable PostgreSQL'
  }
  it('validates real signed Telegram sessions with one in-transaction read',async()=>{
   const {auth,headers}=await signIn();
+  // Reproduce the previous adapter + binding lookup against the same session
+  // and database, counting real statements rather than estimated round trips.
+  const {createAuth}=await import('../src/modules/auth/server');
+  queries.length=0;const previous=await createAuth(db).api.getSession({headers});
+  expect(previous).not.toBeNull();
+  const binding=await db.session.findUnique({where:{id:previous!.session.id},select:{telegramLaunchId:true,user:{select:{telegramId:true,staffMember:{select:{userId:true}},ownContact:{select:{telegramId:true,botId:true,revokedAt:true,lastFour:true}}}}}});
+  expect(binding?.telegramLaunchId).toBe(binding?.user.telegramId);
+  const previousReads=queries.filter(q=>/^SELECT/i.test(q)).length;
+  queries.length=0;expect(await getMiniSession(headers,db)).not.toBeNull();
+  const currentReads=queries.filter(q=>/^SELECT/i.test(q)).length;
+  expect(currentReads).toBe(1);expect(previousReads).toBeGreaterThan(currentReads);
+  measurements.miniSessionLookup={before:previousReads,after:currentReads};
+  console.info(JSON.stringify({benchmark:'signed-mini-session-db-reads',before:previousReads,after:currentReads}));
   queries.length=0;await db.$transaction(async tx=>{expect(await getMiniSession(headers,tx)).not.toBeNull()});
   const before=queries.filter(q=>/^SELECT/i.test(q)).length;
   queries.length=0;await db.$transaction(auth.reauthorize);
   const after=queries.filter(q=>/^SELECT/i.test(q)).length;
-  expect(after).toBe(1);expect(before).toBeGreaterThan(after);
+  expect(after).toBe(1);expect(before).toBe(1);
   measurements.sessionReauthorization={before,after};
   console.info(JSON.stringify({benchmark:'payment-session-db-reads',before,after}));
  });

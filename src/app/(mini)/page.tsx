@@ -13,8 +13,10 @@ export default async function Home({searchParams}:{searchParams:Promise<Record<s
 }
 async function HomeServerData({query}:{query:CatalogQuery}){
  try{
- const now=await serverNow();
- const [categories,auctions,winners,managed,experience]=await Promise.all([listCategories(now),listAuctions(query,now,10),listCompletedWinners(db,1,12),publicHomeContent(),publicHomeExperience()]);
+ const clock=serverNow();
+ // Only deadline-sensitive catalog reads depend on the database clock. Start
+ // independent public content and settled winners immediately alongside it.
+ const [categories,auctions,winners,managed,experience,now]=await Promise.all([clock.then(at=>listCategories(at)),clock.then(at=>listAuctions(query,at,10)),listCompletedWinners(db,1,12),publicHomeContent(),publicHomeExperience(),clock]);
  const media=resolveLearnMoreMedia(experience?.video??{youtube:process.env.LOWIN_YOUTUBE_URL,local:process.env.LOWIN_HOW_TO_VIDEO_PATH,poster:process.env.LOWIN_HOW_TO_POSTER_PATH});
  return <HomeDataSeed initial={{categories,auctions,winners:{...winners,allowDemo:stagingDemoEnabled()},managed,experience,media,serverNow:now.toISOString()}}/>;
  }catch{return <HomeDataSeed error/>}

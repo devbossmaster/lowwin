@@ -1,6 +1,6 @@
 # Lowin customer design system
 
-The 22 October 2026 customer redesign replaces the prior green visual world. The user's 18 ordered references establish compact mobile rhythm, clear sheets and quiet surfaces; branding and product claims stay original to Lowin. The existing logo remains unchanged. Staff administration retains its separate operational styling and permissions.
+The 22 October 2026 customer redesign replaces the prior green visual world. The user's 18 ordered references establish compact mobile rhythm, clear sheets and quiet surfaces; branding and product claims stay original to Lowin. The existing logo remains unchanged. Staff administration follows [Master Guide Admin](docs/master-guide-admin.md), with its separate compact table workspace and server-enforced access.
 
 ## Direction
 
@@ -40,6 +40,14 @@ Browser and Telegram safe-area insets are respected at the top and bottom. Nativ
 Each auction displays its frozen terms. V4 bid numbers have no currency charge; older auctions retain their own financial policy. No winner is inferred from an elapsed timer. Draws excludes illustrative/test announcements and uses finalized settlements for winners, with masked identity. No winning photos or stories are fabricated.
 
 Private query snapshots are scoped to the authenticated session identity and invalidated after financial mutations. Direct ArifPay checkout is off until reviewed configuration is complete. Pending/needs-review ArifPay requests remain visible on the dedicated Bid payments page. Customer wallets, balance/hold displays and past manual-transfer history are removed; each new entry pays directly through ArifPay. No optimistic acceptance or credit exists. Customer deposit creation is retired; historical evidence, verification workers and staff operations remain.
+
+## Master Guide Admin
+
+The 28 October 2026 admin direction uses six sections: Overview, Auctions and Catalog, Players, Payments, Winners and Broadcast. Keep the existing Lowwin identity, warm white canvas, white bordered tables, near-black selection and restrained gold actions. Use a compact sidebar and top bar with a wide workspace. On 360px and 430px screens, keep column headers and table rows; scroll horizontally within each bordered table rather than overflowing the page or changing records into cards.
+
+Players combines identity, wallet and referral summaries; Payments shows Chapa customer/payment records with details on demand; Winners combines winner, product, won date and delivery status. Broadcast supplies image, message and a Mini App button for the Telegram bot only, without Mini App inbox notifications. Separate refund/compensation/reconciliation, content, reports, settings and onboarding surfaces leave ordinary navigation. Historical financial, audit and settlement evidence is preserved.
+
+Public Better Auth signup creates a member. Resend verifies the email and handles password resets. An authorized database operator sets `User.role='admin'` for a verified staff email with no Telegram identity; the first admin uses this same process. Login is email/password with an eight-hour absolute session cap and current database authorization on pages and APIs. Bootstrap, invitations and 2FA flows are retired. Preserve private session/role cache isolation, scoped invalidation, lazy details and truthful unavailable states. The [canonical guide](docs/master-guide-admin.md) contains the exact promotion SQL and verification boundaries; local implementation does not establish production deployment or actual provider delivery.
 
 ## Verification evidence
 

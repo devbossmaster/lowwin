@@ -55,6 +55,9 @@ export async function notificationContent(tx:DB,row:Pick<Outbox,'kind'|'payload'
  return {userId:p.recipientUserId,kind,title:`${a.isDemo?'DEMO · ':''}${copy[0]}`,body:isSubmissionFeeOnly(a.terms?.ruleVersion)&&['AUCTION_CANCELLED','AUCTION_MINIMUM_CANCELLED'].includes(kind)?'Auction cancelled. Accepted submission fees are non-refundable.':isSubmissionFeeOnly(a.terms?.ruleVersion)&&kind==='AUCTION_CLOSED'?'Your result is ready. The chosen number is not charged.':copy[1],href};
 }
 export async function materializeAlert(tx:DB,row:Pick<Outbox,'key'|'kind'|'payload'>&Partial<Pick<Outbox,'testRunId'>>){
+ // Admin broadcasts are delivered only by the Telegram worker, including jobs
+ // queued by an older release. They never create a Mini App inbox item.
+ if(row.kind==='BROADCAST')return;
  const content=await notificationContent(tx,row);if(!content)return;
 
  await tx.notificationInbox.upsert({where:{key:row.key},create:{key:row.key,userId:content.userId,kind:content.kind,title:content.title,body:content.body,href:content.href,testRunId:row.testRunId},update:{}});
@@ -110,7 +113,8 @@ export async function dispatchOne(client:PrismaClient,bot:Pick<Bot,'api'>){
    const startReminder=row.kind==='AUCTION_UPCOMING'||row.kind==='AUCTION_STARTING_SOON';
    const body=content.body.includes('{name}')?content.body.replaceAll('{name}',name):`${name},\n${content.body}`;
    const text=telegramCampaignText(row.kind,content.title,startReminder?content.body:body,startReminder?name:undefined);
-   const options={reply_markup:{inline_keyboard:[[{text:row.kind==='DEPOSIT_CREDITED'?'View wallet':startReminder?'View auction':'Bid',web_app:{url:link.href}}]]}};
+   const button=row.kind==='BROADCAST'&&'buttonLabel' in content?String(content.buttonLabel):row.kind==='DEPOSIT_CREDITED'?'View wallet':startReminder?'View auction':'Bid';
+   const options={reply_markup:{inline_keyboard:[[{text:button,web_app:{url:link.href}}]]}};
    let sent:{message_id:number};
    const photo=await notificationPhoto(tx,'imageId' in content?content.imageId:undefined,link.origin);
    sent=photo?await bot.api.sendPhoto(chat.chatId,photo,{...options,caption:text}):await bot.api.sendMessage(chat.chatId,text,options);

@@ -6,33 +6,33 @@ import {draftBodySchema} from '../src/modules/admin/operations';
 import {centsToEtb,etbToCents} from '../src/lib/admin-money';
 
 describe('Admin workspace contracts',()=>{
- beforeEach(()=>{vi.stubEnv('ARIFPAY_SCHEMA_READY','true')});
- it('keeps seven primary business areas and private test auctions out of ordinary queues',()=>{
-  expect(adminAreas).toEqual(['Overview','Auctions and Catalog','Players and Wallets','Payments and Refunds','Winners and Deliveries','Content and Messages','Reports and Settings']);
+ beforeEach(()=>{vi.stubEnv('ARIFPAY_SCHEMA_READY','true');vi.stubEnv('CHAPA_SCHEMA_READY','false')});
+ it('keeps six simple primary business areas and private test auctions out of ordinary queues',()=>{
+  expect(adminAreas).toEqual(['Overview','Auctions and Catalog','Players','Payments','Winners','Broadcast']);
   expect(auctionStatusWhere('',new Date())).toMatchObject({testRunId:null});
   expect(auctionStatusWhere('LIVE',new Date())).toMatchObject({testRunId:null});
   expect(auctionStatusWhere('IN_PROGRESS',new Date())).toMatchObject({testRunId:null,status:{in:['SCHEDULED','LIVE']},settlement:{is:null}});
   expect(auctionStatusWhere('CANCELLED',new Date())).toMatchObject({testRunId:null,status:'CANCELLED'});
  });
  it('lands every staff role on its first authorized task',()=>{
-  expect(allowedTasks('OWNER').some(t=>t.href==='/admin/content')).toBe(true);
+  expect(allowedTasks('OWNER').some(t=>t.href==='/admin/content')).toBe(false);
   expect(areaLanding('OWNER','Auctions and Catalog')).toBe('/admin/auctions');
   expect(areaLanding('CATALOG_MANAGER','Auctions and Catalog')).toBe('/admin/auctions');
-  expect(areaLanding('SUPPORT','Players and Wallets')).toBe('/admin/users');
-  expect(areaLanding('FULFILLMENT','Winners and Deliveries')).toBe('/admin/fulfillment');
-  expect(areaLanding('PAYMENTS_OPERATOR','Payments and Refunds')).toBe('/admin/payments');
-  expect(areaLanding('AUDITOR','Winners and Deliveries')).toBe('/admin/results');
+  expect(areaLanding('SUPPORT','Players')).toBe('/admin/users');
+  expect(areaLanding('FULFILLMENT','Winners')).toBe('/admin/fulfillment');
+  expect(areaLanding('PAYMENTS_OPERATOR','Payments')).toBe('/admin/payments');
+  expect(areaLanding('AUDITOR','Winners')).toBe('/admin/fulfillment');
   expect(areaLanding('AUDITOR','Overview')).toBe('/admin');
-  expect(areaLanding('FULFILLMENT','Payments and Refunds')).toBeUndefined();
+  expect(areaLanding('FULFILLMENT','Payments')).toBeUndefined();
   expect(allowedTasks('SUPPORT').some(t=>t.href==='/admin/top-ups/statements')).toBe(false);
   expect(allowedTasks('OWNER').some(t=>t.href==='/admin/support')).toBe(false);
   expect(allowedTasks('OWNER').some(t=>t.href==='/admin/notifications')).toBe(true);
  });
  it('matches deep routes before their parent',()=>{
-  expect(activeTask('/admin/settings/payments').area).toBe('Reports and Settings');
-  expect(allowedTasks('OWNER').filter(t=>t.area==='Payments and Refunds').map(t=>t.label)).toEqual(['Transactions','Refunds & compensation','Reconciliation']);
-  expect(activeTask('/admin/top-ups/example').label).toBe('Transactions');
-  expect(activeTask('/admin/auctions/example/proof').label).toBe('Finalized results');
+  expect(activeTask('/admin/payments/example').area).toBe('Payments');
+  expect(allowedTasks('OWNER').filter(t=>t.area==='Payments').map(t=>t.label)).toEqual(['Payments']);
+  expect(activeTask('/admin/top-ups/example').label).toBe('Payments');
+  expect(activeTask('/admin/auctions/example/proof').label).toBe('Winners');
  });
  it('keeps a failed queue distinct from an empty authorized queue',async()=>{
   const db={arifPayCheckout:{count:vi.fn().mockRejectedValue(Error('offline'))}};
@@ -60,12 +60,12 @@ describe('Admin workspace contracts',()=>{
  });
  it('does not load money or player totals for catalog staff',async()=>{
   const $queryRaw=vi.fn(),db={$queryRaw,auction:{findMany:vi.fn().mockResolvedValue([]),count:vi.fn().mockResolvedValue(0)},category:{findMany:vi.fn().mockResolvedValue([])}};const result=await readOverview(db as unknown as PrismaClient,{id:'catalog',role:'CATALOG_MANAGER',now:new Date()});
-  expect(result.fees).toBeUndefined();expect(result.players).toBeUndefined();expect($queryRaw).not.toHaveBeenCalled();
+  expect(result.fees).toBeUndefined();expect(result.players).toBeUndefined();expect($queryRaw).toHaveBeenCalledTimes(1);expect(String($queryRaw.mock.calls[0][0]?.text)).not.toMatch(/Posting|LedgerAccount|PaymentClaim/);
  });
  it('lets support see player totals without exposing deposit amounts',async()=>{
   const db={arifPayCheckout:{count:vi.fn().mockResolvedValue(0)},$queryRaw:vi.fn().mockResolvedValue([{total:8,today:2,biddersToday:3}])};
   const result=await readOverview(db as unknown as PrismaClient,{id:'support',role:'SUPPORT',now:new Date()});
-  expect(result.players).toEqual({state:'ready',total:8,today:2,biddersToday:3});expect(result.fees).toBeUndefined();expect(db.$queryRaw).toHaveBeenCalledTimes(2);
+  expect(result.players).toEqual({state:'ready',total:8,today:2,biddersToday:3});expect(result.fees).toBeUndefined();expect(db.$queryRaw).toHaveBeenCalledTimes(1);
  });
  it('converts ETB to exact cents without floating point or silent rounding',()=>{
   expect(etbToCents('1.97')).toBe('197');expect(etbToCents('2.34')).toBe('234');expect(etbToCents('999999999.99')).toBe('99999999999');

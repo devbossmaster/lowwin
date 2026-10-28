@@ -23,7 +23,7 @@ export function clearChapaAttempts(storage:Pick<globalThis.Storage,'length'|'key
  try{for(let index=storage.length-1;index>=0;index--){const key=storage.key(index);if(key?.startsWith('lowwin:chapa:')&&(!keepIdentity||!key.startsWith(`lowwin:chapa:${keepIdentity}:`)))storage.removeItem(key)}}catch{}
 }
 export function chapaCheckoutUrl(value:string|null|undefined):string|null{
- try{const url=new URL(value??'');return url.protocol==='https:'&&url.hostname==='checkout.chapa.global'&&!url.port&&!url.username&&!url.password&&url.pathname.length>1?url.href:null}catch{return null}
+ try{if(!value||/[\u0000-\u0020\\]/.test(value))return null;const url=new URL(value);return url.protocol==='https:'&&url.hostname==='checkout.chapa.global'&&!url.port&&!url.username&&!url.password&&!url.hash&&url.pathname.length>1?url.href:null}catch{return null}
 }
 export function chapaConfirmed(order:Pick<ChapaCheckoutView,'purpose'|'status'|'fundsPreserved'|'receipt'>){return order.fundsPreserved||order.purpose==='TOP_UP'&&order.status==='CREDITED'||order.purpose==='BID'&&order.status==='BID_ACCEPTED'&&!!order.receipt}
 export function chapaRecoverable(order:Pick<ChapaCheckoutView,'status'|'fundsPreserved'>){return !order.fundsPreserved&&!['CREDITED','BID_ACCEPTED','FAILED','CANCELLED','EXPIRED','BLOCKED','INCOMPLETE'].includes(order.status)}

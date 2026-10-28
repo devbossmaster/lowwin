@@ -1,5 +1,7 @@
 # Lowwin Owner and staff guide
 
+> Superseded by [Master Guide Admin](master-guide-admin.md). The invitation, bootstrap and MFA instructions below describe the retired system and must not be used for new accounts.
+
 This guide describes current routes and server permissions. Funding availability comes from the current server release gate and versioned receiving accounts; this redesign does not enable funding. A DEMO balance, bid or result is not real money or a real prize. Use a separate staff email identity; staff accounts cannot bid.
 
 ## First sign-in

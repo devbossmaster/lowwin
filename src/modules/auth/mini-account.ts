@@ -4,6 +4,7 @@ import {contactStatus} from './own-contact';
 
 type Client = PrismaClient | Prisma.TransactionClient;
 type Player = {id:string; name:string; image?:string|null};
+type ContactSnapshot = Awaited<ReturnType<typeof contactStatus>>;
 
 // Shared by sign-in and account refresh. Never return cookies or session tokens.
 export function miniSessionKey(sessionId:string){return createHash('sha256').update('lowwin-ui-session:').update(sessionId).digest('hex')}
@@ -17,8 +18,10 @@ export async function readMiniAccount(client:Client, user:Player, sessionId?:str
   };
 }
 
-export async function telegramBootstrap(client:Client, user:Player, telegramId:string, sessionId?:string,verifiedPhoto?:string|null) {
-  const contact = await contactStatus(client,user.id,telegramId);
+export async function telegramBootstrap(client:Client, user:Player, telegramId:string, sessionId?:string,verifiedPhoto?:string|null,contactSnapshot?:ContactSnapshot) {
+  // Reuse only the fresh server-validated launch snapshot for this same identity.
+  // First sign-in and callers without that snapshot still recheck contact here.
+  const contact = contactSnapshot ?? await contactStatus(client,user.id,telegramId);
   if (!contact.verified) return {ok:true as const,status:'contact-required' as const,me:null};
   if(verifiedPhoto!==undefined){
     if((user.image??null)!==verifiedPhoto){

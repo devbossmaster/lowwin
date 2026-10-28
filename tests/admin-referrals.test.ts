@@ -37,10 +37,9 @@ beforeEach(()=>{
 });
 
 describe('referral reward administration boundary',()=>{
- it('exposes the task only to settings-authorized staff and matches its own route',()=>{
-  expect(allowedTasks('OWNER').some(task=>task.href==='/admin/settings/referrals')).toBe(true);
-  for(const role of ['CATALOG_MANAGER','SUPPORT','FULFILLMENT','PAYMENTS_OPERATOR','AUDITOR'] as const)expect(allowedTasks(role).some(task=>task.href==='/admin/settings/referrals')).toBe(false);
-  expect(activeTask('/admin/settings/referrals')).toMatchObject({label:'Referral policy',area:'Reports and Settings'});
+ it('keeps the retired referral settings task out of the simplified workspace',()=>{
+  for(const role of ['OWNER','CATALOG_MANAGER','SUPPORT','FULFILLMENT','PAYMENTS_OPERATOR','AUDITOR'] as const)expect(allowedTasks(role).some(task=>task.href==='/admin/settings/referrals')).toBe(false);
+  expect(activeTask('/admin/settings/referrals')).toMatchObject({label:'Overview',area:'Overview'});
  });
  it('requires a staff session and settings permission before reading policy',async()=>{
   const {db}=fixture();f.authenticated=false;await expect(readReferralAdmin(db,headers)).rejects.toMatchObject({status:401});expect(f.read).not.toHaveBeenCalled();

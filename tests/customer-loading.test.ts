@@ -1,13 +1,17 @@
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
+import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
 import {afterEach,describe,expect,it,vi} from 'vitest';
 
 const state=vi.hoisted(()=>({path:'/profile'}));
-vi.mock('next/navigation',()=>({usePathname:()=>state.path}));
+vi.mock('next/navigation',()=>({usePathname:()=>state.path,useRouter:()=>({refresh:vi.fn()})}));
 vi.mock('../src/components/telegram-provider',()=>({useTelegram:()=>({status:'authenticated',queryIdentity:'fixture'})}));
 vi.mock('../src/components/identity-state',()=>({IdentityState:()=> 'Account verification required.'}));
+vi.mock('../src/components/mini-header',()=>({MiniHeader:()=>createElement('header',null,'Home header')}));
 import {MiniLocaleProvider,type MiniLanguage} from '../src/components/mini-locale';
 import {CustomerLoading,PageLoading} from '../src/components/loading-spinner';
+import {BrandedLaunchLoading,LaunchSplash} from '../src/components/launch-splash';
+import {HomePageContent} from '../src/components/home-page-content';
 import {MiniRouteSkeleton,CatalogSkeleton,BidPanelSkeleton} from '../src/components/mini-route-skeleton';
 import {MiniRouteLoading} from '../src/components/mini-route-loading';
 import {WalletFundingSkeleton} from '../src/components/wallet-funding-skeleton';
@@ -18,6 +22,39 @@ const waiting={status:'authenticated',data:null,error:'',reload:()=>{}};
 afterEach(()=>{state.path='/profile'});
 
 describe('plain customer loading states',()=>{
+ it.each(['en','am'] as const)('shows only a spinner and loading text during launch in %s',language=>{
+  const html=render(createElement(LaunchSplash),language);
+  expect(html.match(/<main\b/g)).toHaveLength(1);
+  expect(html).not.toContain('<img');
+  expect(html.match(/role="status"/g)).toHaveLength(1);
+  expect(html.match(/class="loading-spinner-ring"/g)).toHaveLength(1);
+  expect(html).toContain('aria-busy="true"');
+  expect(html).toContain(language==='en'?'Loading…':'በመጫን ላይ…');
+  expect(html).not.toMatch(/Lowwin|Connecting securely|Opening Lowin|customer-loading/);
+ });
+ it('keeps the embedded Home loader outside a nested main landmark',()=>{
+  state.path='/';
+  for(const element of [createElement(BrandedLaunchLoading),createElement(MiniRouteLoading)]){
+   const html=render(element);
+   expect(html).not.toContain('<img');
+   expect(html.match(/role="status"/g)).toHaveLength(1);
+   expect(html.match(/class="loading-spinner-ring"/g)).toHaveLength(1);
+   expect(html).toContain('Loading…');
+   expect(html).not.toMatch(/<main\b|Home header/);
+  }
+ });
+ it('keeps a stable hidden header slot while cold Home shows the loading spinner',()=>{
+  const client=new QueryClient();
+  const query={q:'',status:'live' as const,sort:'code' as const,page:1};
+  const html=render(createElement(QueryClientProvider,{client},createElement(HomePageContent,{query,children:null})));
+  expect(html).toContain('<div class="home-header-slot" hidden=""><header>Home header</header></div>');
+  expect(html).not.toContain('<img');
+  expect(html.match(/role="status"/g)).toHaveLength(1);
+  expect(html.match(/class="loading-spinner-ring"/g)).toHaveLength(1);
+  expect(html).toContain('Loading…');
+  expect(html).not.toMatch(/<main\b/);
+  client.clear();
+ });
  it('shows one accessible spinner and concise profile text, without placeholder cards',()=>{
   const html=render(createElement(MiniRouteLoading));
   expect(html).toContain('<p>Loading your profile…</p>');

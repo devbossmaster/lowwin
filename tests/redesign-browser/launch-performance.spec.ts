@@ -30,12 +30,14 @@ test('launch transport, fonts and measured account latency',async({browser,extra
    if(slow){const cdp=await context.newCDPSession(page);await cdp.send('Network.enable');await cdp.send('Network.emulateNetworkConditions',{offline:false,latency:150,downloadThroughput:125000,uploadThroughput:64000})}
    await page.route('https://telegram.org/js/telegram-web-app.js',async route=>{await new Promise(resolve=>setTimeout(resolve,250));await route.fulfill({contentType:'application/javascript',body:script})});
    const errors:string[]=[],signins:string[]=[],documents:string[]=[],apiTiming:Promise<string|undefined>[]=[];
+   let signInStartedMs:number|undefined;
    page.on('pageerror',error=>errors.push(error.message));
-   page.on('request',request=>{if(new URL(request.url()).pathname==='/api/auth/telegram/miniapp/signin')signins.push(request.method());if(request.resourceType()==='document')documents.push(new URL(request.url()).pathname)});
+   page.on('request',request=>{if(new URL(request.url()).pathname==='/api/auth/telegram/miniapp/signin'){signins.push(request.method());signInStartedMs=Math.round(performance.now()-started)}if(request.resourceType()==='document')documents.push(new URL(request.url()).pathname)});
    page.on('response',response=>{if(new URL(response.url()).pathname==='/api/auth/telegram/miniapp/signin')apiTiming.push(response.headerValue('server-timing').then(value=>value??undefined))});
    const started=performance.now();await page.goto('/telegram',{waitUntil:'domcontentloaded'});
    await expect(page.getByRole('navigation',{name:'Your navigation'})).toBeVisible();
    const homeReadyMs=Math.round(performance.now()-started);
+   const scripts=await page.evaluate(()=>performance.getEntriesByType('resource').filter(entry=>entry.name.includes('/_next/static/')&&new URL(entry.name).pathname.endsWith('.js')).map(entry=>({asset:new URL(entry.name).pathname,transferBytes:(entry as PerformanceResourceTiming).transferSize,endMs:Math.round(entry.startTime+entry.duration)})));
    await page.evaluate(()=>document.fonts.ready);const fontsReadyMs=Math.round(performance.now()-started);
    await expect(page.locator('#home-headline')).toBeVisible();
    const fonts=await page.evaluate(()=>performance.getEntriesByType('resource').filter(entry=>entry.name.includes('/fonts/')||entry.name.includes('telegram-web-app.js')).map(entry=>({asset:new URL(entry.name).pathname,startMs:Math.round(entry.startTime),durationMs:Math.round(entry.duration),transferBytes:(entry as PerformanceResourceTiming).transferSize})));
@@ -43,7 +45,7 @@ test('launch transport, fonts and measured account latency',async({browser,extra
    const accountMs:number[]=[];
    if(!slow){for(let sample=0;sample<20;sample++){const began=performance.now();expect((await page.request.get('/api/me')).status()).toBe(200);accountMs.push(Math.round(performance.now()-began))}}
    accountMs.sort((a,b)=>a-b);
-   report[slow?'slow':'normal']={homeReadyMs,fontsReadyMs,signInRequests:signins.length,documentRequests:documents,serverTiming:await Promise.all(apiTiming),fonts,accountApiSamples:accountMs.length,accountApiP95Ms:accountMs.length?accountMs[Math.ceil(accountMs.length*.95)-1]:null};
+   report[slow?'slow':'normal']={homeReadyMs,fontsReadyMs,signInStartedMs,signInRequests:signins.length,documentRequests:documents,serverTiming:await Promise.all(apiTiming),initialScriptTransferBytes:scripts.reduce((sum,item)=>sum+item.transferBytes,0),scripts,fonts,accountApiSamples:accountMs.length,accountApiP95Ms:accountMs.length?accountMs[Math.ceil(accountMs.length*.95)-1]:null};
    await page.screenshot({path:`${root}/${phase}-${info.project.name}-${slow?'slow':'normal'}.png`});
    expect(errors).toEqual([]);await context.close();
   }

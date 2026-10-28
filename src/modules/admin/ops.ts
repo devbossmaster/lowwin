@@ -7,13 +7,14 @@ import {queueGlobal} from '../notifications/campaigns';
 import {Prisma,type PrismaClient} from '@prisma/client';
 import {z} from 'zod';
 import {requireAdmin} from './boundary';
-import {permissions,staffRoles,type Permission} from './permissions';
+import {permissions,type Permission} from './permissions';
 import {AdminError} from './errors';
-import {digest,token} from './crypto';
+import {digest} from './crypto';
 import {openContact} from '../fulfillment/crypto';
 import {emailAdapter} from './email';
 import {enqueueAlert} from '../notifications/service';
 import {randomUUID} from 'node:crypto';
+import {broadcastMiniAppPath,broadcastButtonLabel} from '@/lib/broadcast-link';
 import {demoBidAllowed,submitBidInTransaction} from '../auctions/bids';
 import {stagingDemoEnabled} from '../auctions/staging-demo';
 import {closeAuctionInTransaction} from '../auctions/settlement';
@@ -22,9 +23,7 @@ import {RULE_V3,V2_MIN_PARTICIPANTS,V2_FALLBACK_TERMS,V2_CANCELLATION_TERMS,V3_A
 
 const key=z.string().uuid(),reason=z.string().trim().min(5).max(500),uid=z.string().min(1).max(128);
 const schemas={
- broadcast:z.object({key,reason,text:z.string().trim().min(1).max(700),auctionCode:z.string().regex(/^[1-9]\d{0,8}$/).optional(),imageId:z.string().uuid().optional(),confirmation:z.literal('SEND')}).strict(),
- invite:z.object({key,email:z.email().max(254).transform(s=>s.toLowerCase()),role:z.enum(staffRoles),reason}).strict(),
- staff:z.object({key,userId:uid,role:z.enum(staffRoles),active:z.boolean(),reason}).strict(),
+ broadcast:z.object({key,reason,text:z.string().trim().min(1).max(700),auctionCode:z.string().regex(/^[1-9]\d{0,8}$/).optional(),imageId:z.string().uuid().optional(),buttonLabel:z.string().trim().min(1).max(40).refine(v=>!/[\u0000-\u001f\u007f]/.test(v)).optional(),miniAppPath:z.string().max(100).refine(v=>{try{broadcastMiniAppPath(v);return true}catch{return false}},'Choose a supported Mini App page.').optional(),confirmation:z.literal('SEND')}).strict(),
  suspend:z.object({key,userId:uid,suspended:z.boolean(),reason}).strict(),
  deliveryDone:z.object({key,auctionId:z.string().uuid(),version:z.number().int().min(0),reason}).strict(),
  broadcastStop:z.object({key,id:z.string().uuid(),reason}).strict(),
@@ -35,7 +34,7 @@ const schemas={
  testClean:z.object({key,id:z.string().uuid(),confirmation:z.literal('CLEAN TEST RUN'),reason}).strict(),
 };
 export type OpsAction=keyof typeof schemas;
-const commandPermission:Record<OpsAction,Permission>={deliveryDone:'fulfillment',broadcastStop:'jobs',broadcast:'jobs',invite:'team',staff:'team',suspend:'support',fulfillment:'fulfillment',retry:'jobs',testStart:'settings',testFinish:'settings',testClean:'settings'};
+const commandPermission:Record<OpsAction,Permission>={deliveryDone:'fulfillment',broadcastStop:'jobs',broadcast:'jobs',suspend:'support',fulfillment:'fulfillment',retry:'jobs',testStart:'settings',testFinish:'settings',testClean:'settings'};
 export const sectionPermission:Record<string,Permission>={users:'support',results:'audit',fulfillment:'fulfillment',wallets:'wallets',notifications:'jobs',jobs:'jobs',analytics:'audit',audit:'audit',team:'team',settings:'settings'};
 export const serialize=(v:unknown)=>JSON.parse(JSON.stringify(v,(_,x)=>typeof x==='bigint'?x.toString():x));
 export function pageInput(params:URLSearchParams){return z.object({page:z.coerce.number().int().min(1).max(100000).default(1),q:z.string().trim().max(100).default(''),status:z.string().max(40).default(''),category:z.union([z.literal(''),z.string().uuid()]).default('')}).parse(Object.fromEntries(params))}
@@ -46,7 +45,6 @@ export async function opsMutation(client:PrismaClient,headers:Headers,action:Ops
  return client.$transaction(async tx=>{
   // Auction -> wallet (for bidding policy) -> staff. Team lock serializes grants.
   if(action==='fulfillment'||action==='deliveryDone')await tx.$queryRaw`SELECT id FROM "Auction" WHERE id=${(input as {auctionId:string}).auctionId} FOR UPDATE`;
-  if(action==='invite'||action==='staff')await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('admin:team',0))`;
   if('userId' in input)await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${input.userId}`},0))`;
   const owner=await requireAdmin(tx,headers,{permission:commandPermission[action],lock:true});
   const operationKey=`${actor.id}:${input.key}`;await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`admin:${operationKey}`},0))`;
@@ -54,25 +52,14 @@ export async function opsMutation(client:PrismaClient,headers:Headers,action:Ops
   let receipt:Record<string,unknown>={},target='';
   if(action==='broadcast'){
    const d=schemas.broadcast.parse(input);if(owner.role!=='OWNER')throw new AdminError(403,'Only the Owner can broadcast.');
-   let href='/auctions/all';
+   let href=broadcastMiniAppPath(d.miniAppPath??'/');
    if(d.auctionCode){const a=await tx.auction.findUnique({where:{publicCode:Number(d.auctionCode)},select:{slug:true,publishedAt:true,status:true,endsAt:true,isDemo:true}});if(!a?.slug||!a.publishedAt||!['LIVE','SCHEDULED'].includes(a.status)||!a.endsAt||a.endsAt<=owner.now||a.isDemo&&process.env.APP_ENV==='production')throw new AdminError(422,'Choose a published active auction code.');href=`/auctions/${d.auctionCode}`}
    if(d.imageId&&!await tx.managedMedia.findUnique({where:{id:d.imageId},select:{id:true}}))throw new AdminError(422,'Upload a validated image first.');
    const audience=await tx.user.count({where:{telegramId:{not:null},staffMember:{is:null}}});
-   const job=await queueGlobal(tx,`broadcast:${owner.id}:${d.key}`,'BROADCAST',{body:d.text,href,...(d.imageId?{imageId:d.imageId}:{})});
+   const job=await queueGlobal(tx,`broadcast:${owner.id}:${d.key}`,'BROADCAST',{body:d.text,href,buttonLabel:broadcastButtonLabel(d.buttonLabel),telegramOnly:true,...(d.imageId?{imageId:d.imageId}:{})});
    receipt={id:job.id,audience,state:'PENDING'};target=job.id;
   }else if(action==='broadcastStop'){
    const d=schemas.broadcastStop.parse(input);if(owner.role!=='OWNER')throw new AdminError(403,'Only the Owner can stop a broadcast.');receipt=await stopBroadcast(tx,d.id);target=d.id;
-  }else if(action==='invite'){
-   const d=schemas.invite.parse(input);if(await tx.user.findUnique({where:{email:d.email}}))throw new AdminError(409,'Use a separate staff identity.');
-   const mail=emailAdapter(),invitation=token();await tx.staffToken.updateMany({where:{email:d.email,kind:'INVITE',usedAt:null},data:{usedAt:owner.now}});
-   await tx.staffToken.create({data:{tokenHash:digest(invitation),kind:'INVITE',email:d.email,role:d.role,expiresAt:new Date(owner.now.getTime()+86400000)}});
-   const link=new URL('/admin/login',process.env.BETTER_AUTH_URL);link.hash=new URLSearchParams({invite:invitation}).toString();
-   await mail.send({to:d.email,subject:'Your Lowwin staff invitation',text:`Accept within 24 hours: ${link}\nYour role is ${d.role}. Authenticator enrollment is required.`});receipt={invited:true,role:d.role};target='staff-invitation';
-  }else if(action==='staff'){
-   const d=schemas.staff.parse(input);if(d.userId===owner.id)throw new AdminError(403,'You cannot change your own grants.');
-   const member=await tx.staffMember.findUniqueOrThrow({where:{userId:d.userId}});
-   if(member.role==='OWNER'&&member.active&&(!d.active||d.role!=='OWNER')&&await tx.staffMember.count({where:{role:'OWNER',active:true}})<=1)throw new AdminError(409,'The last active Owner must remain.');
-   await tx.staffMember.update({where:{userId:d.userId},data:{role:d.role,active:d.active}});await tx.session.deleteMany({where:{userId:d.userId}});receipt={userId:d.userId,role:d.role,active:d.active,sessionsRevoked:true};target=d.userId;
   }else if(action==='suspend'){
    const d=schemas.suspend.parse(input);if(await tx.staffMember.findUnique({where:{userId:d.userId}}))throw new AdminError(409,'Manage staff access through Team.');
    if(owner.role!=='OWNER')throw new AdminError(403,'Only the Owner can change bidding access.');

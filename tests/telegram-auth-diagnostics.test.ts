@@ -29,7 +29,7 @@ beforeEach(()=>{
     DIRECT_URL:'postgresql://fixture@127.0.0.1:5432/auth_diagnostics_test',BETTER_AUTH_URL:origin,MINI_APP_URL:origin,
     BETTER_AUTH_SECRET:'fixture-only-secret-at-least-thirty-two-characters',TELEGRAM_BOT_TOKEN:TEST_TOKEN,
     TELEGRAM_BOT_USERNAME:'lowin_fixture_bot',TELEGRAM_WEBHOOK_SECRET:'fixture-only-webhook-secret-thirty-two',
-    DEV_IDENTITY_ENABLED:'false',DEV_POINTS_ENABLED:'false',
+    DEV_IDENTITY_ENABLED:'false',DEV_POINTS_ENABLED:'false',REFERRAL_REWARDS_SCHEMA_READY:'false',
   }))vi.stubEnv(name,value);
   mocks.limit.mockReset().mockResolvedValue(true);
   mocks.launchSession.mockReset().mockResolvedValue(null);
@@ -47,12 +47,20 @@ beforeEach(()=>{
 afterEach(()=>{vi.unstubAllEnvs();vi.restoreAllMocks()});
 
 describe('safe Telegram authentication diagnostics',()=>{
-  it('forwards only server-verified photo metadata on a resumed Telegram session',async()=>{
+  it('forwards only server-verified photo metadata and the fresh contact snapshot on a resumed Telegram session',async()=>{
     const photo='https://t.me/i/userpic/320/verified.jpg',user={id:'private-player',name:'Private player',image:null};
-    mocks.launchSession.mockResolvedValue({telegramId:'778899',user,session:{id:'private-session'}});
+    const contactStatus={verified:true,masked:'•••• 1234'};
+    mocks.launchSession.mockResolvedValue({telegramId:'778899',user,session:{id:'private-session'},contactStatus});
     expect((await launch(signedLaunch({user:JSON.stringify({id:778899,first_name:'Private player',photo_url:photo})}),'private-cookie')).status).toBe(200);
-    expect(mocks.bootstrap).toHaveBeenCalledWith(expect.anything(),user,'778899','private-session',photo);
+    expect(mocks.bootstrap).toHaveBeenCalledWith(expect.anything(),user,'778899','private-session',photo,contactStatus);
     expect(mocks.transaction).not.toHaveBeenCalled();
+  });
+  it('does not reuse a contact snapshot from a different signed Telegram identity',async()=>{
+    mocks.launchSession.mockResolvedValue({telegramId:'991122',user:{id:'other-player',name:'Other player'},session:{id:'other-session'},contactStatus:{verified:true,masked:'•••• 1234'}});
+    expect((await launch(signedLaunch({user:JSON.stringify({id:778899,first_name:'Private player'})}),'private-cookie')).status).toBe(200);
+    expect(mocks.transaction).toHaveBeenCalledOnce();
+    expect(mocks.bindContact).toHaveBeenCalledWith(mocks.tx,'private-player','778899');
+    expect(mocks.bootstrap).toHaveBeenCalledWith(mocks.tx,{id:'private-player',name:'Private player'},'778899','private-session',null);
   });
   it('reports initialization errorCode before any session can be issued',async()=>{
     mocks.limit.mockRejectedValue(new Prisma.PrismaClientInitializationError('private connection credentials','6.19.3','P1001'));

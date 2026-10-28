@@ -1,7 +1,19 @@
 import {describe,expect,it,vi} from 'vitest';
-import {privateQueryKey,invalidatePrivateQueries,loadPrivateJson,ObsoletePrivateQueryError,PrivateAuthorizationError,readPrivateQuery,SessionPrivateQueryCache,setPrivateQueryIdentity,getMiniQueryClient,seedPrivateQuery,retainPrivateQuery} from '../src/components/private-query-cache';
+import {privateQueryKey,invalidatePrivateQueries,loadPrivateJson,ObsoletePrivateQueryError,PrivateAuthorizationError,readPrivateQuery,SessionPrivateQueryCache,setPrivateQueryIdentity,getMiniQueryClient,seedPrivateQuery,retainPrivateQuery,PAYMENT_QUERY_SCOPES,confirmedBidQueryScopes} from '../src/components/private-query-cache';
 
 describe('session private query cache',()=>{
+ it('reconciles confirmed payments across history and balances while retaining the last authoritative amounts',async()=>{
+  const cache=new SessionPrivateQueryCache();cache.setIdentity('a:session');
+  for(const [key,value] of [['/api/wallet',{available:'10.00'}],['/api/payments/chapa/checkouts',{items:[{status:'PENDING'}]}],['/api/wallet/top-ups?page=2',{items:[]}],['/api/profile',{name:'Saved name'}]] as const)cache.seed('a:session',key,value);
+  cache.invalidate('a:session',PAYMENT_QUERY_SCOPES);
+  expect(cache.read('a:session','/api/wallet')).toMatchObject({value:{available:'10.00'},fresh:false});
+  expect(cache.read('a:session','/api/payments/chapa/checkouts')?.fresh).toBe(false);
+  expect(cache.read('a:session','/api/wallet/top-ups?page=2')?.fresh).toBe(false);
+  expect(cache.read('a:session','/api/profile')?.fresh).toBe(true);
+  await cache.load('a:session','/api/wallet',async()=>({available:'15.00'}));
+  expect(cache.read('a:session','/api/wallet')).toMatchObject({value:{available:'15.00'},fresh:true});
+  expect(confirmedBidQueryScopes('selected-auction')).toEqual(expect.arrayContaining([...PAYMENT_QUERY_SCOPES,'/api/my-bids','/api/catalog/auctions','/api/auctions/selected-auction']));
+ });
  it('seeds the verified bootstrap without another read and rejects another identity',async()=>{
   const cache=new SessionPrivateQueryCache();cache.setIdentity('account:session');
   cache.seed('account:session','/api/me',{user:{id:'account'}});

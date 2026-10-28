@@ -6,8 +6,6 @@ import {databaseErrorSummary} from '@/lib/database-error';
 import { assertLocalIdentityAccess } from './local-identity';
 import { createAuth } from './server';
 import { miniAppBody, validateTelegramInitData } from './telegram-validation';
-import { staffActions } from './staff-plugin';
-import { staffRateLimit } from '../admin/rate-limit';
 import {bindOwnContact} from './own-contact';
 import {getLaunchSession} from './mini-access';
 import {telegramBootstrap} from './mini-account';
@@ -15,25 +13,33 @@ import {attributeNewReferralInTransaction,referralSchemaReady} from '../referral
 
 export async function handleAuth(request: Request) {
   const path = new URL(request.url).pathname.replace('/api/auth', '');
-  const staffAction=staffActions.find(action=>path===`/lowin/staff/${action}`);
-  if (!((request.method === 'GET' && path === '/get-session') || (request.method === 'POST' && (staffAction||['/telegram/miniapp/signin','/sign-out','/lowin/dev-identity'].includes(path))))) return new Response(null, { status: 404 });
+  const emailPosts=['/sign-up/email','/sign-in/email','/send-verification-email','/request-password-reset','/reset-password'];
+  const allowedGet=path==='/get-session'||path==='/verify-email'||/^\/reset-password\/[A-Za-z0-9_-]+$/.test(path);
+  if (!((request.method==='GET'&&allowedGet)||(request.method==='POST'&&[...emailPosts,'/telegram/miniapp/signin','/sign-out','/lowin/dev-identity'].includes(path))))return new Response(null,{status:404});
   let env;
   try { env = getEnv(); } catch { return Response.json({ error: 'Authentication is not configured yet.' }, { status: 503 }); }
   if (request.method === 'POST' && request.headers.get('origin') !== new URL(env.BETTER_AUTH_URL).origin) return Response.json({ error: 'Invalid origin' }, { status: 403 });
   if(request.method==='POST') {
-    try {const body=await readRequestText(request,staffAction?4096:20000);request=new Request(request.url,{method:request.method,headers:request.headers,body})}
+    try {const body=await readRequestText(request,emailPosts.includes(path)?4096:20000);request=new Request(request.url,{method:request.method,headers:request.headers,body})}
     catch(error){return Response.json({error:error instanceof RequestBodyError?error.message:'Invalid request.'},{status:error instanceof RequestBodyError?error.status:400,headers:{'Cache-Control':'private, no-store'}})}
   }
-  if(staffAction){
-    const headers={'Cache-Control':'private, no-store, max-age=0','Vary':'Cookie'};
-    const started=performance.now();let stage:'rate-limit'|'transaction-start'|'credential-handler'='rate-limit';
+  if(emailPosts.includes(path)||request.method==='GET'&&path!=='/get-session'){
+    const started=performance.now(),headers={'Cache-Control':'private, no-store, max-age=0','Vary':'Cookie','X-Robots-Tag':'noindex'};
     try{
-      if(!await staffRateLimit(db,staffAction,request))return Response.json({error:'Too many attempts. Try again later.'},{status:429,headers});
-      stage='transaction-start';
-      return await db.$transaction(async tx=>{stage='credential-handler';const response=await createAuth(tx).handler(request);if(!response.ok)throw response;const h=new Headers(response.headers);for(const [key,value] of Object.entries(headers))h.set(key,value);return new Response(response.body,{status:response.status,headers:h})},{timeout:20000});
+      // Better Auth owns credential/token checks and persistent rate limits.
+      // Resend HTTP is never wrapped in our interactive database transaction.
+      const response=await createAuth().handler(request),output=new Headers(response.headers);
+      if(response.status>=500)return Response.json({error:'Authentication is temporarily unavailable. Please retry.'},{status:503,headers});
+      for(const [key,value]of Object.entries(headers))output.set(key,value);
+      output.set('Server-Timing',`auth;dur=${Math.round(performance.now()-started)}`);
+      if(path==='/sign-in/email'&&response.ok){
+        const body=await response.json() as {user?:unknown};
+        return Response.json({ok:true,user:body.user},{status:response.status,headers:output});
+      }
+      return new Response(response.body,{status:response.status,headers:output});
     }catch(error){
-      if(!(error instanceof Response)||error.status>=500){const {code,kind,sqlState,reason}=databaseErrorSummary(error);console.warn('Staff authentication unavailable',{action:staffAction,stage,code,kind,...(sqlState?{sqlState}:{}),...(reason?{reason}:{}),elapsedMs:Math.round(performance.now()-started)})}
-      if(error instanceof Response){const body=await error.json().catch(()=>({message:'Staff sign-in failed.'}));return Response.json({error:body.message??'Staff sign-in failed.'},{status:error.status,headers})}return Response.json({error:'Staff authentication is temporarily unavailable.'},{status:503,headers})
+      const {code,kind}=databaseErrorSummary(error);console.warn('Admin authentication unavailable',{stage:'email-auth',code,kind,elapsedMs:Math.round(performance.now()-started)});
+      return Response.json({error:'Authentication is temporarily unavailable. Please retry.'},{status:503,headers});
     }
   }
   if (path === '/telegram/miniapp/signin' || path === '/lowin/dev-identity') {
@@ -63,7 +69,7 @@ export async function handleAuth(request: Request) {
         const current=await getLaunchSession(request.headers);
         if(current?.telegramId===identity) {
           stage='account-bootstrap';
-          const result=await telegramBootstrap(db,current.user,identity,current.session.id,telegramPhoto);
+          const result=await telegramBootstrap(db,current.user,identity,current.session.id,telegramPhoto,current.contactStatus);
           return Response.json(result,{headers:{...responseHeaders,'Server-Timing':`auth;dur=${Math.round(performance.now()-started)}`}});
         }
       }

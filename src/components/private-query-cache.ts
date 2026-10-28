@@ -133,7 +133,8 @@ export function readPrivateQuery<T>(identity:string,url:string,options:{language
 export function subscribePrivateQueries(listener:(event:CacheEvent)=>void){return cache.subscribe(listener)}
 export function invalidatePrivateQueries(identity:string,scopes?:readonly string[]){cache.invalidate(identity,scopes)}
 export const WALLET_QUERY_SCOPES=['/api/wallet','/api/me','/api/alerts'] as const;
-export function confirmedBidQueryScopes(slug?:string){return [...WALLET_QUERY_SCOPES,'/api/my-bids','/api/profile','/api/catalog/auctions','/api/referrals',slug?`/api/auctions/${encodeURIComponent(slug)}`:'/api/auctions']}
+export const PAYMENT_QUERY_SCOPES=[...WALLET_QUERY_SCOPES,'/api/payments/chapa/checkouts','/api/wallet/top-ups'] as const;
+export function confirmedBidQueryScopes(slug?:string){return [...PAYMENT_QUERY_SCOPES,'/api/my-bids','/api/profile','/api/catalog/auctions','/api/referrals',slug?`/api/auctions/${encodeURIComponent(slug)}`:'/api/auctions']}
 export function cancelPrivateQuery(identity:string,url:string){if(cache.isCurrent(identity))void cache.queryClient.cancelQueries({queryKey:['lowin-private',identity,...privateResourceParts(privateQueryKey(url))],exact:true})}
 /** Cancel an unused selected resource without cancelling another mounted reader. */
 export function retainPrivateQuery(identity:string,url:string,cancelOnUnused=false){

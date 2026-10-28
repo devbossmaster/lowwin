@@ -100,7 +100,7 @@ jobs:
           name: admin-workspace
           path: |
             test-results/
-            docs/redesign/screenshots/admin-neutral/
+            docs/redesign/screenshots/master-guide-admin/
           retention-days: 7
   browser-redesign:
     runs-on: ubuntu-latest

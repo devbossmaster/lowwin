@@ -7,7 +7,7 @@
     "node": ">=24 <25"
   },
   "scripts": {
-    "dev": "next dev",
+    "dev": "node --use-env-proxy node_modules/next/dist/bin/next dev",
     "build": "prisma generate && next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
@@ -24,11 +24,9 @@
     "bot:setup": "tsx scripts/setup-bot.ts",
     "worker": "tsx scripts/worker.ts",
     "worker:auctions": "tsx scripts/auction-worker.ts",
-    "admin:bootstrap": "tsx scripts/admin-bootstrap.ts",
     "email:sink": "tsx scripts/email-sink.ts",
     "worker:notifications": "tsx scripts/notification-worker.ts",
     "auction:fee-only": "tsx scripts/auction-submission-fee.ts",
-    "admin:reissue": "tsx scripts/admin-reissue.ts",
     "worker:chapa": "tsx scripts/chapa-worker.ts"
   },
   "dependencies": {

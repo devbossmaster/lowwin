@@ -14,6 +14,7 @@ model User {
   name                String
   email               String?                @unique
   emailVerified       Boolean                @default(false)
+  role                String                 @default("member")
   image               String?
   createdAt           DateTime               @default(now())
   updatedAt           DateTime               @updatedAt
@@ -913,54 +914,25 @@ model AuctionFavorite {
 }
 
 model StaffMember {
-  userId         String               @id
-  user           User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
-  role           String               @default("OWNER")
-  active         Boolean              @default(true)
+  userId         String   @id
+  user           User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  role           String   @default("OWNER")
+  active         Boolean  @default(true)
   secret         String?
   lastCounter    BigInt               @default(-1)
   recoveryHashes String[]
-  createdAt      DateTime             @default(now())
-  trustedDevices StaffTrustedDevice[]
-}
-
-model StaffTrustedDevice {
-  tokenHash String         @id
-  userId    String
-  member    StaffMember    @relation(fields: [userId], references: [userId], onDelete: Cascade)
-  createdAt DateTime       @default(now())
-  expiresAt DateTime
-  sessions  StaffSession[]
-
-  @@index([userId])
+  createdAt      DateTime @default(now())
 }
 
 model StaffSession {
   sessionId         String              @id
   session           Session             @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   credentialAt      DateTime
+  authMethod        String              @default("legacy")
   mfaAt             DateTime?
   expiresAt         DateTime
   pendingSecret     String?
   trustedDeviceHash String?
-  trustedDevice     StaffTrustedDevice? @relation(fields: [trustedDeviceHash], references: [tokenHash], onDelete: SetNull)
-}
-
-model StaffToken {
-  tokenHash String    @id
-  kind      String
-  email     String
-  role      String    @default("OWNER")
-  expiresAt DateTime
-  usedAt    DateTime?
-  createdAt DateTime  @default(now())
-
-  @@index([email, kind])
-}
-
-model OwnerBootstrap {
-  id        String   @id
-  createdAt DateTime @default(now())
 }
 
 model AdminAudit {

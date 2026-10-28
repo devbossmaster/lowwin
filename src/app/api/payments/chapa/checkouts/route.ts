@@ -5,4 +5,8 @@ import {createChapaCheckout,listChapaCheckouts} from '@/modules/payments/chapa';
 import {chapaHttpError} from '@/modules/payments/chapa-http';
 export const runtime='nodejs';
 export async function GET(request:Request){try{return Response.json(await listChapaCheckouts(db,await requireUser(request)),{headers:privateHeaders})}catch(error){return chapaHttpError(error)}}
-export async function POST(request:Request){try{requireMutationOrigin(request);const auth=await requirePaymentSession(request);return Response.json(await createChapaCheckout(db,auth.userId,await smallJson(request),auth.reauthorize),{status:202,headers:privateHeaders})}catch(error){return chapaHttpError(error)}}
+export async function POST(request:Request){
+ const started=performance.now();let authenticatedAt:number|null=null;
+ const timed=(response:Response)=>{const finished=performance.now();response.headers.set('Server-Timing',`auth;dur=${((authenticatedAt??finished)-started).toFixed(1)}${authenticatedAt===null?'':`, checkout;dur=${(finished-authenticatedAt).toFixed(1)}`}, total;dur=${(finished-started).toFixed(1)}`);return response};
+ try{requireMutationOrigin(request);const auth=await requirePaymentSession(request);authenticatedAt=performance.now();return timed(Response.json(await createChapaCheckout(db,auth.userId,await smallJson(request),auth.reauthorize),{status:202,headers:privateHeaders}))}catch(error){return timed(chapaHttpError(error))}
+}

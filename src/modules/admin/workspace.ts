@@ -4,7 +4,7 @@ import {requireAdmin} from './boundary';
 import {AdminError} from './errors';
 import {arifPayAvailability} from '../payments/arifpay-provider';
 import {chapaAvailability} from '../payments/chapa-provider';
-import {readAuctionMaintenance} from '../auctions/maintenance';
+import {readPlayerTable,readChapaTable,readWinnerTable} from './master-table-read';
 function eatDayStart(now:Date){const d=new Date(now.getTime()+3*3600000);return new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate())-3*3600000)}
 const filters=z.object({page:z.coerce.number().int().min(1).max(100000).default(1),q:z.string().trim().max(100).default(''),status:z.string().regex(/^[A-Z_]*$/).max(40).default(''),sort:z.enum(['newest','oldest','amount']).default('newest')});
 export async function tableExists(client:PrismaClient,name:string){const [r]=await client.$queryRaw<{ready:boolean}[]>`SELECT to_regclass(${`public."${name}"`}) IS NOT NULL AS ready`;return r.ready}
@@ -26,20 +26,14 @@ export async function financialSummary(client:PrismaClient,now:Date){
  return r;
 }
 export async function workspaceRead(client:PrismaClient,headers:Headers,section:string,params:URLSearchParams){
- const actor=await requireAdmin(client,headers),f=filters.parse(Object.fromEntries(params)),offset=(f.page-1)*25;
- const allowed=section==='media'?['OWNER','CATALOG_MANAGER']:section==='system'?['OWNER']:['OWNER','PAYMENTS_OPERATOR','AUDITOR',...(section==='transactions'?['SUPPORT']:[])];if(!allowed.includes(actor.role))throw new AdminError(403,'Your staff role cannot access this workspace.');
- const result=(items:unknown[],total:number,extra={})=>({items,total,page:f.page,totalPages:Math.ceil(total/25),serverNow:actor.now.toISOString(),...extra});
- if(section==='system'){const [arifPay,chapa,referrals,maintenance,jobs]=await Promise.all([tableExists(client,'ArifPayCheckout'),tableExists(client,'ChapaCheckout'),tableExists(client,'ReferralCoupon'),readAuctionMaintenance(client),client.outbox.groupBy({by:['state'],_count:{id:true}})]);return {gateway:gatewayStatus(),maintenance,schema:{arifPay,chapa,referrals},jobs,session:{hours:8,rememberedDevice:false,loginMfa:true}};}
- if(section==='financials')return {totals:await financialSummary(client,actor.now),checkedAt:actor.now.toISOString()};
- if(section==='media'){const where=f.q?{sourceCredit:{contains:f.q,mode:'insensitive' as const}}:{};const [items,total]=await Promise.all([client.managedMedia.findMany({where,select:{id:true,mime:true,sourceType:true,sourceCredit:true,createdAt:true},orderBy:[{createdAt:f.sort==='oldest'?'asc':'desc'},{id:f.sort==='oldest'?'asc':'desc'}],skip:offset,take:25}),client.managedMedia.count({where})]);return result(items,total)}
- if(section==='referrals'){if(!await tableExists(client,'ReferralCoupon'))return result([],0,{configured:false});const where=f.q?{ownerUserId:{contains:f.q}}:{};const [items,total]=await Promise.all([client.referralCoupon.findMany({where,select:{id:true,ownerUserId:true,percent:true,createdAt:true,expiresAt:true,redemption:{select:{bidId:true,createdAt:true,discountPoints:true}}},orderBy:[{createdAt:'desc'},{id:'desc'}],skip:offset,take:25}),client.referralCoupon.count({where})]);return result(items,total,{configured:true})}
- if(section==='refunds'){const where:Prisma.OperationWhereInput={scope:{in:['AUCTION_FEE_REFUND','AUCTION_RESET_COMPENSATION','PAYMENT_CORRECTION']},...(f.q?{OR:[{userId:{contains:f.q}},{id:{contains:f.q}}]}:{})};const [rows,total]=await Promise.all([client.operation.findMany({where,select:{id:true,userId:true,scope:true,createdAt:true,journal:{select:{id:true,kind:true,reference:true,postings:{where:{delta:{gt:0},account:{kind:'AVAILABLE'}},select:{delta:true}}}}},orderBy:[{createdAt:'desc'},{id:'desc'}],skip:offset,take:25}),client.operation.count({where})]);return result(rows.map(r=>({id:r.id,userId:r.userId,kind:r.scope,createdAt:r.createdAt,reference:r.journal?.reference??null,journalId:r.journal?.id??null,amount:r.journal?.postings.reduce((sum,p)=>sum.add(p.delta),new Prisma.Decimal(0)).toString()??'0'})),total)}
- if(section!=='transactions')throw new AdminError(404,'Workspace resource not found.');
- const [direct,chapa]=await Promise.all([tableExists(client,'ArifPayCheckout'),tableExists(client,'ChapaCheckout')]);
- const reference=actor.role==='SUPPORT'?Prisma.sql`''::text`:Prisma.sql`COALESCE(right(c."chapaReference",6),'')`;
- const source=Prisma.sql`SELECT t.id,t."userId",CASE WHEN t.provider='ADMIN_CREDIT' THEN 'Historical staff credit' ELSE 'Legacy transfer' END AS provider,t.channel,t.status,CASE WHEN t.status='CREDITED' THEN t.points WHEN t."expectedCents" IS NOT NULL THEN trunc(t."expectedCents"::numeric/100,2) ELSE null END AS amount,t."createdAt",t."journalId",t."reasonCode" AS reason,t."caseState" AS review,COALESCE(right(t.reference,6),'') AS reference,NULL::text AS "bidId",NULL::text AS "auctionId",NULL::text AS purpose,NULL::text AS mode FROM "TopUpIntent" t ${direct?Prisma.sql`UNION ALL SELECT c.id,c."userId",'ArifPay',c.channel,c.status,c.fee,c."createdAt",c."creditJournalId",c.reason,CASE WHEN c.status='NEEDS_REVIEW' THEN 'OPEN' ELSE 'NONE' END,COALESCE(right(c."transactionId",6),''),c."bidId",c."auctionId",'BID','live' FROM "ArifPayCheckout" c`:Prisma.empty} ${chapa?Prisma.sql`UNION ALL SELECT c.id,c."userId",'Chapa',COALESCE(c."paymentMethod",'Hosted checkout'),c.status,trunc(c."amountCents"::numeric/100,2),c."createdAt",c."creditJournalId",c.reason,CASE WHEN c.status='NEEDS_REVIEW' THEN 'OPEN' ELSE 'NONE' END,${reference},c."bidId",c."auctionId",c.purpose,c.mode FROM "ChapaCheckout" c`:Prisma.empty}`;
- const where=Prisma.sql`WHERE (${f.status}='' OR x.status=${f.status}) AND (${f.q}='' OR x.id ILIKE ${'%'+f.q+'%'} OR x."userId" ILIKE ${'%'+f.q+'%'})`;
- const order=f.sort==='oldest'?Prisma.sql`x."createdAt" ASC,x.id ASC`:f.sort==='amount'?Prisma.sql`x.amount DESC NULLS LAST,x.id ASC`:Prisma.sql`x."createdAt" DESC,x.id DESC`;
- const [rows,counts,summary]=await Promise.all([client.$queryRaw<Record<string,unknown>[]>(Prisma.sql`SELECT x.*,x.amount::text AS amount FROM (${source}) x ${where} ORDER BY ${order} LIMIT 25 OFFSET ${offset}`),client.$queryRaw<{count:number}[]>(Prisma.sql`SELECT COUNT(*)::int AS count FROM (${source}) x ${where}`),client.$queryRaw<{status:string;count:number}[]>(Prisma.sql`SELECT status,COUNT(*)::int AS count FROM (${source}) x WHERE (${f.q}='' OR x.id ILIKE ${'%'+f.q+'%'} OR x."userId" ILIKE ${'%'+f.q+'%'}) GROUP BY status ORDER BY status`)]);
- return result(rows,counts[0].count,{gateway:gatewayStatus(),summary});
+ if(!['players','transactions','winners','media'].includes(section))throw new AdminError(404,'Workspace resource not found.');
+ const actor=await requireAdmin(client,headers),f=filters.parse(Object.fromEntries(params));
+ const allowed=section==='media'?['OWNER','CATALOG_MANAGER']:section==='players'?['OWNER','SUPPORT','AUDITOR','PAYMENTS_OPERATOR']:section==='winners'?['OWNER','FULFILLMENT','AUDITOR']:['OWNER','PAYMENTS_OPERATOR','AUDITOR','SUPPORT'];
+ if(!allowed.includes(actor.role))throw new AdminError(403,'Your staff role cannot access this workspace.');
+ if(section==='players')return readPlayerTable(client,actor,f);
+ if(section==='winners')return readWinnerTable(client,actor,f);
+ if(section==='transactions')return {...await readChapaTable(client,actor,f),gateway:gatewayStatus()};
+ const where=f.q?{sourceCredit:{contains:f.q,mode:'insensitive' as const}}:{};
+ const [items,total]=await Promise.all([client.managedMedia.findMany({where,select:{id:true,mime:true,sourceType:true,sourceCredit:true,createdAt:true},orderBy:[{createdAt:f.sort==='oldest'?'asc':'desc'},{id:f.sort==='oldest'?'asc':'desc'}],skip:(f.page-1)*25,take:25}),client.managedMedia.count({where})]);
+ return {items,total,page:f.page,totalPages:Math.ceil(total/25),serverNow:actor.now.toISOString()};
 }

@@ -16,7 +16,9 @@ export async function POST(request:Request){
    if(!hint.merchantReference)return;
    const order=await tx.chapaCheckout.findUnique({where:{merchantReference:hint.merchantReference}});if(!order||order.mode!==health.mode)return;
    if(hint.chapaReference&&order.chapaReference&&hint.chapaReference!==order.chapaReference||hint.amountCents&&hint.amountCents!==order.amountCents.toString()||hint.currency&&hint.currency!==order.currency)return;
-   await tx.chapaCheckout.updateMany({where:{id:order.id,creditJournalId:null},data:{nextCheckAt:new Date(),reason:'PROVIDER_EVENT_RECEIVED',status:'PENDING'}});
+   // A delivery can be older than our last verified state. Queue a fresh
+   // authoritative lookup without replacing that state with a webhook hint.
+   await tx.chapaCheckout.updateMany({where:{id:order.id,creditJournalId:null},data:{nextCheckAt:new Date(),reason:'PROVIDER_EVENT_RECEIVED'}});
   });
   return Response.json({accepted:true},{headers:privateHeaders});
  }catch(error){return Response.json({accepted:false},{status:error instanceof RequestBodyError?error.status:error instanceof SyntaxError?400:503,headers:privateHeaders})}

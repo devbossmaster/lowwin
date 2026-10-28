@@ -9,6 +9,8 @@ REVOKE CREATE ON SCHEMA public FROM PUBLIC,lowwin_runtime;
 GRANT USAGE ON SCHEMA public TO lowwin_runtime;
 DO $$ DECLARE t text; BEGIN
  FOREACH t IN ARRAY ARRAY['user','session','account','verification','rateLimit','TelegramOwnContact','ContactEvent','Wallet','CurrencyConversion','WalletHoldGuard','LedgerAccount','Journal','Posting','Operation','Category','Product','ProductImage','Auction','AuctionTerms','PublicAuctionResult','AuctionHold','Bid','TopUpIntent','PaymentPolicy','PaymentClaim','PaymentAttempt','PaymentStatementEntry','BotUpdate','Outbox','AuctionSettlement','SettlementMovement','PlayerProfile','AuctionFavorite','StaffMember','StaffSession','StaffTrustedDevice','StaffToken','OwnerBootstrap','AdminAudit','AuctionDraft','ManagedMedia','SiteContent','UserRestriction','FulfillmentCase','NotificationPreference','NotificationInbox','BotChat','TestRun','TestRunActor','TelegramMessage'] LOOP
+  -- These obsolete authentication tables are removed by Master Guide Admin.
+  IF t=ANY(ARRAY['StaffTrustedDevice','StaffToken','OwnerBootstrap']) AND to_regclass(format('public.%I',t)) IS NULL THEN CONTINUE; END IF;
   IF EXISTS(SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename=t AND tableowner='lowwin_runtime') THEN RAISE EXCEPTION 'Runtime must not own tables'; END IF;
   EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',t);
   EXECUTE format('GRANT SELECT,INSERT,UPDATE,DELETE ON public.%I TO lowwin_runtime',t);

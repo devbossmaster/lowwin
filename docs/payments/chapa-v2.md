@@ -2,7 +2,7 @@
 
 Lowwin uses Chapa's v2 hosted checkout: the server creates a payment attempt, the customer pays on Chapa's returned checkout page, and the server verifies that same attempt before recording funds or accepting a bid. Lowwin does not collect card numbers, PINs or OTPs. The existing Lowwin wallet, Telegram/contact gate, frozen auction terms, referral discounts and balanced ledger remain the authority for participation.
 
-The merchant API keys have not been provided yet. The integration defaults to disabled. Source implementation, local synthetic checks and provider-sandbox acceptance are different milestones: no merchant charge, production migration, funding activation or live transaction is established by this work.
+Merchant-account verification does not configure or enable this integration. It defaults to disabled until protected credentials and the reviewed environment are ready. Source implementation, local synthetic checks and provider-sandbox acceptance are different milestones: no merchant charge, production migration, funding activation or live transaction is established by this work.
 
 ## Payment flows
 
@@ -41,6 +41,34 @@ App/auth origins must be the same HTTPS origin. A local HTTP development page ca
 Live mode also requires `APP_ENV=production`, `NODE_ENV=production`, a matching `CHAPA_LIVE_…` key, `CHAPA_LIVE_ENABLED=true`, `CHAPA_MERCHANT_REVIEWED=true` and development/demo features disabled. Do not turn on legacy `PAYMENTS_LIVE_ENABLED`, Verify.et, OCR, manual-transfer funding or ArifPay to activate Chapa. Existing ArifPay code and its recovery records are preserved; they are not silently migrated or replayed through Chapa.
 
 Adding a private key alone does not switch on financial operations. Complete the reviewed schema and test configuration first. Merchant-secret values remain on the server. Credential fingerprints bind existing attempts to their original key and mode; a key rotation cannot silently verify old attempts using a different merchant identity. Plan recovery for unresolved attempts before rotating keys, and never edit their stored binding merely to bypass a mismatch.
+
+## Test-mode setup and non-charging readiness
+
+Follow Chapa's [v2 Quick Start](https://docs.chapa.global/docs/v2/getting-started). Keep the merchant dashboard in **TEST** mode. Under **Settings → API Keys**, obtain the server-only v2 private key beginning `CHAPA_TEST_`; store it as `CHAPA_PRIVATE_KEY` in the protected test environment. Public keys and legacy v1 keys are not interchangeable with this v2 private key. Set `CHAPA_MODE=test`, `PAYMENT_GATEWAY=CHAPA`, `CHAPA_CURRENCY=ETB` and `CHAPA_BASE_URL=https://api.chapa.global`. Keep `CHAPA_LIVE_ENABLED=false`, `CHAPA_MERCHANT_REVIEWED=false` and the wallet-spending flags disabled during this setup.
+
+In the granular key dialog, use the name **Lowwin Test**, a **30-day** expiry, and only **Payments Create**, **Payments Hosted Write**, **Payments Read**, and **Payment Methods Read**. Leave **All**, payouts, refunds and banks permissions off. Copy the generated private key directly into the protected server configuration or untracked local `.env`; do not paste it into chat or documentation. This key permits the hosted initialization, verification and read-only method-discovery calls used here.
+
+Use a separate test database and bot. Set `APP_ENV=local` or `test` only with a loopback database; a remote test deployment uses `APP_ENV=staging` and requires the explicit target review `CHAPA_TEST_ENVIRONMENT_REVIEWED=true`. Set both `MINI_APP_URL` and `BETTER_AUTH_URL` to the same reviewed HTTPS staging/tunnel origin. Keep `CHAPA_ENABLED=false` and `CHAPA_RECOVERY_ENABLED=false` while preparing the database. Review and apply the additive Chapa migration to that test target through the migration role, then assert `CHAPA_SCHEMA_READY=true` after the schema review.
+
+Configure a **Signature** webhook in the merchant's TEST dashboard using `https://<test-origin>/api/payments/chapa/webhook`. Set its separate random secret (32–256 characters) as `CHAPA_WEBHOOK_SECRET` on the server. The signed webhook URL has no checkout query parameter. The minimal hosted request omits per-attempt callback and return URLs. Existing callback and return routes remain available for historical attempts; neither route establishes payment success.
+
+Run the offline diagnostic from the repository root:
+
+```powershell
+npx.cmd tsx scripts/check-chapa.ts
+```
+
+It uses Next.js `.env*` precedence and prints only configuration booleans, mode and names of missing/invalid prerequisites. It does not connect to a database or Chapa by default. A passing configuration report does not establish merchant acceptance, webhook delivery or checkout/return behavior.
+
+After the test schema and credentials are reviewed, explicitly set `CHAPA_ENABLED=true` in that test environment to permit test checkout and signed-webhook recovery. Then the optional read-only checks are:
+
+```powershell
+npx.cmd tsx scripts/check-chapa.ts --schema --methods
+```
+
+`--schema` runs the existing receipt reconciliation query and reports only its drift count; it requires configured TEST mode and `CHAPA_SCHEMA_READY=true`. `--methods` makes only `GET /v2/payments/methods` through the bounded server adapter, requires the existing enabled TEST gate, and reports enabled ETB/Ethiopia slugs and integer-cent limits. Neither option overrides flags, accepts LIVE credentials, creates a checkout, verifies a payment, credits funds or starts a worker. A nonzero exit means configuration is incomplete, a requested check is blocked/unavailable, or receipt drift was found. An empty method list is reported as empty; it is not evidence that a payment method is usable.
+
+Complete the actual merchant TEST checkout/webhook/duplicate-delivery and Android/iOS Telegram return tests separately before live review. Start the recovery worker only with the same reviewed test configuration when exercising those test attempts. Do not change live flags merely because the dashboard account has been verified.
 
 ## Lowwin API and worker
 
@@ -84,6 +112,16 @@ The additive migration is `prisma/migrations/202610260002_chapa_hosted_checkout/
 
 ## Provider contract
 
+### Simple hosted flow — 28 October 2026
+
+The wallet sheet starts at 100 ETB, offers four amount presets, shows Chapa selected and keeps one visible Pay action in the sheet footer. Pay initializes checkout and opens the exact returned URL automatically. Telegram opens it externally while keeping the Mini App alive; a normal browser reserves a tab during the click to avoid asynchronous popup blocking. Returning to the app triggers verification and refreshes the wallet after confirmed credit. Pending payment details are collapsed; reopening a saved attempt does not create or reopen checkout automatically.
+
+The hosted body contains only `amount` (integer cents), `currency` and the immutable `merchant_reference`, with the stable `Idempotency-Key` header. Customer data, preferred methods, customization and optional per-request callback/return URLs are omitted. Payers enter their own details on Chapa. The dashboard PAYMENT webhook, recovery worker and foreground verification confirm the result. Close Chapa or return to Telegram after payment; automatic merchant-page redirection is not required for crediting.
+
+The TEST URL route `/test/payment/hosted/TEST…` ends in a checkout session token. It is retained in the URL, while the final payment reference comes from merchant verification. Empty optional TEST processor references are accepted; a successful payment still requires a nonempty final reference and exact merchant, amount, currency and configuration matching. A pending response without a final reference stays pending and never creates credit.
+
+Migration `202610280004_chapa_test_session_reference` supports historical TEST rows which stored that session token in the payment-reference field. It permits a one-time correction only while attaching the matching receipt journal in the same transaction. It does not permit replacement of live references, credited outcomes, amounts, identities or checkout URLs.
+
 The only API origin is `https://api.chapa.global`. The server uses these v2 paths:
 
 | Operation | Endpoint | Authentication |
@@ -96,11 +134,11 @@ Amounts are integer cents: 100.00 ETB is sent as `10000`, not `100` or a floatin
 
 Chapa's top-level verification `status: "success"` means the API operation succeeded. Financial fulfillment requires `data.status === "SUCCESS"` plus exact stored merchant reference, Chapa reference, amount, currency, environment and credential identity. Missing or contradictory evidence stays pending/review. Processing fees, when supplied, are distinct provider costs; do not reduce the customer's recorded paid amount or present wallet deposits as profit.
 
-Use the exact returned checkout URL. The adapter accepts only the documented HTTPS `checkout.chapa.global` host, rejects credentials, nonstandard ports and ambiguous references, and extracts the final path segment as the Chapa reference. It never constructs a checkout URL from a guessed host/reference. Initialization timestamps are optional metadata: validate them when supplied, but do not discard a valid URL-only response or invent a provider expiry.
+Use the exact returned checkout URL. The adapter accepts only the documented HTTPS `checkout.chapa.global` host and rejects credentials, nonstandard ports and ambiguous references. The final path segment is retained as the checkout reference; recognized TEST hosted-session tokens are not treated as final payment references. Merchant verification supplies the final payment reference for those sessions. The adapter never constructs a checkout URL from a guessed host/reference. Initialization timestamps are optional metadata: validate them when supplied, but do not discard a valid URL-only response or invent a provider expiry.
 
-Payment methods are discovered from the merchant API. Present only enabled ETB methods with enabled Ethiopia support and applicable cent limits. Do not assume that M-Pesa, Telebirr, CBE or a specific bank is enabled for the merchant merely because a reference screenshot shows it. Hosted checkout collects the final payment credentials on Chapa. The server supplies the verified customer's contact where a method or high-risk-business flow requires an international phone number; the browser cannot replace it with an unverified identity.
+The optional TEST readiness diagnostic discovers enabled ETB methods with enabled Ethiopia support and applicable cent limits from the merchant API. The customer UI offers Chapa as a provider; it does not fetch or hardcode individual merchant methods. Chapa's hosted checkout presents the final available choices and collects payment credentials, including the payer's phone number when required. Do not assume that M-Pesa, Telebirr, CBE or a specific bank is enabled for the merchant merely because a reference screenshot shows it. Lowwin does not automatically prefill its verified Telegram contact into the optional Chapa customer object. The verified contact remains required for Lowwin access, and the signed-in user and immutable checkout determine wallet ownership; entering a phone on Chapa never changes that identity. A business requiring phone data at initialization needs a supported merchant configuration before activation.
 
-HTTP calls use bounded timeouts, response-size limits, `no-store`, no automatic redirects and sanitized failures. They do not log private keys, full contact details, raw provider bodies or OTPs. Provider HTTP stays outside long-running wallet/auction transactions.
+HTTP calls use bounded timeouts, response-size limits, `no-store`, no automatic redirects and sanitized failures. They do not log private keys, full contact details, raw provider bodies or OTPs. Provider HTTP stays outside long-running wallet/auction transactions. Signed webhook hints schedule verification without overwriting a status established by merchant verification; queued terminal attempts remain eligible for a bounded recovery check.
 
 ## Signed webhooks and the separate callback
 

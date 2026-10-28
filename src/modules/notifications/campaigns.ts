@@ -3,6 +3,7 @@ import {demoBidAllowed} from '../auctions/bids';
 import {stagingDemoEnabled} from '../auctions/staging-demo';
 import {formatEtb} from '@/lib/money';
 import {auctionMaintenance} from '../auctions/maintenance';
+import {broadcastMiniAppPath,broadcastButtonLabel} from '@/lib/broadcast-link';
 
 type Tx=Prisma.TransactionClient;
 export const telegramKinds=['AUCTION_PUBLISHED','AUCTION_UPCOMING','AUCTION_STARTING_SOON','AUCTION_ENDING','AUCTION_RESULT','DEPOSIT_CREDITED','BROADCAST'];
@@ -11,7 +12,7 @@ export function auctionNotificationImageId(presentation:unknown,productPath?:str
  const path=typeof image?.path==='string'?image.path:productPath;
  return /^\/api\/media\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/i.exec(path??'')?.[1];
 }
-export type CampaignPayload={auctionId?:string;recipientUserId?:string;intentId?:string;body?:string;imageId?:string;href?:string;cursor?:string;audienceBefore?:string;rootKey?:string;deliveryKind?:string};
+export type CampaignPayload={auctionId?:string;recipientUserId?:string;intentId?:string;body?:string;imageId?:string;href?:string;buttonLabel?:string;telegramOnly?:boolean;cursor?:string;audienceBefore?:string;rootKey?:string;deliveryKind?:string};
 export function broadcastRoot(row:Pick<Outbox,'kind'|'key'|'payload'>){
  const p=row.payload as CampaignPayload;
  if(row.kind==='GLOBAL_CAMPAIGN'&&p.deliveryKind==='BROADCAST')return p.rootKey??row.key;
@@ -84,8 +85,9 @@ export async function campaignContent(tx:Tx,row:Pick<Outbox,'kind'|'payload'>){
  const p=row.payload as CampaignPayload;if(!p.recipientUserId||!telegramKinds.includes(row.kind))return null;
  const base={userId:p.recipientUserId,kind:row.kind,imageId:undefined as string|undefined};
  if(row.kind==='BROADCAST'){
-  if(!p.body||!p.href||!/^\/(?:auctions\/[-a-z0-9]+|auctions\/all)$/.test(p.href))return null;
-  return {...base,title:'Lowwin update · የLowwin መረጃ',body:p.body,href:p.href,imageId:p.imageId};
+  if(!p.body||!p.href)return null;
+  let href:string,buttonLabel:string;try{href=broadcastMiniAppPath(p.href);buttonLabel=broadcastButtonLabel(p.buttonLabel)}catch{return null}
+  return {...base,title:'Lowwin update · የLowwin መረጃ',body:p.body,href,imageId:p.imageId,buttonLabel};
  }
  if(row.kind==='DEPOSIT_CREDITED'){
   if(!p.intentId)return null;

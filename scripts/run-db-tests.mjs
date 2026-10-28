@@ -14,7 +14,7 @@ if(!['unit','browser','payments','smoke','redesign','admin','chapa'].includes(mo
 // Normal CI supplies no files and still runs every suite with the no-skip gate.
 const files=process.argv.slice(3);
 if(files.length&&(mode!=='unit'||files.some(file=>!/^tests\/[a-z0-9-]+\.test\.ts$/.test(file)||!existsSync(file))))throw Error('Unit subsets must name existing tests/name.test.ts files.');
-const variables=['TEST_DATABASE_URL','BID_TEST_DATABASE_URL','SETTLEMENT_TEST_DATABASE_URL','PERSONAL_TEST_DATABASE_URL','ADMIN_TEST_DATABASE_URL','OPS_TEST_DATABASE_URL','PAYMENT_TEST_DATABASE_URL','ARIFPAY_TEST_DATABASE_URL','CHAPA_TEST_DATABASE_URL','ADMIN_CREDIT_TEST_DATABASE_URL','ACTIVITY_TEST_DATABASE_URL','CATALOG_WORKFLOW_TEST_DATABASE_URL','CATALOG_TEST_DATABASE_URL','REFERRAL_TEST_DATABASE_URL','RESULT_TEST_DATABASE_URL'];
+const variables=['TEST_DATABASE_URL','BID_TEST_DATABASE_URL','SETTLEMENT_TEST_DATABASE_URL','PERSONAL_TEST_DATABASE_URL','ADMIN_TEST_DATABASE_URL','MASTER_ADMIN_TEST_DATABASE_URL','OPS_TEST_DATABASE_URL','PAYMENT_TEST_DATABASE_URL','ARIFPAY_TEST_DATABASE_URL','CHAPA_TEST_DATABASE_URL','ADMIN_CREDIT_TEST_DATABASE_URL','ACTIVITY_TEST_DATABASE_URL','CATALOG_WORKFLOW_TEST_DATABASE_URL','CATALOG_TEST_DATABASE_URL','REFERRAL_TEST_DATABASE_URL','RESULT_TEST_DATABASE_URL'];
 const env={...process.env};
 const admin=new URL(base);admin.pathname='/postgres';
 const client=new Client({connectionString:admin.href});
