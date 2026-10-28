@@ -35,8 +35,7 @@
     "@radix-ui/react-slot": "1.2.4",
     "@tanstack/react-query": "5.104.5",
     "@tesseract.js-data/eng": "1.0.0",
-    "better-auth": "1.6.33",
-    "better-auth-telegram": "2.0.1",
+    "better-auth": "1.7.14",
     "canvas-confetti": "^1.9.4",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
@@ -52,7 +51,8 @@
     "sonner": "2.0.8",
     "tailwind-merge": "3.5.0",
     "tesseract.js": "6.0.1",
-    "zod": "4.6.7"
+    "zod": "4.6.7",
+    "@lowwin/better-auth-telegram": "file:vendor/better-auth-telegram"
   },
   "devDependencies": {
     "@playwright/test": "1.58.2",

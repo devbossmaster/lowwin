@@ -2,7 +2,7 @@ import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
 import { APIError,createAuthEndpoint,createAuthMiddleware } from 'better-auth/api';
 import { setSessionCookie } from 'better-auth/cookies';
-import { telegram } from 'better-auth-telegram';
+import { telegram } from '@lowwin/better-auth-telegram';
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { db } from '@/lib/db';
 import { getEnv } from '@/lib/env';
@@ -44,7 +44,7 @@ export function createAuth(client: PrismaClient | Prisma.TransactionClient = db)
           assertLocalIdentityAccess(new Headers(ctx.headers), ctx.body, process.env, ctx.request?.url);
           const id = 'lowin-local-test-user';
           let user = await ctx.context.internalAdapter.findUserById(id);
-          if (!user) user = await ctx.context.internalAdapter.createUser({ id, name: 'Local test player', email: 'local-test@lowin.invalid', emailVerified: false });
+          if (!user) user = await ctx.context.internalAdapter.createUser({ id, name: 'Local test player', email: 'local-test@lowin.invalid', emailVerified: false }, { method: 'lowin-local-development' });
           const session = await ctx.context.internalAdapter.createSession(user.id);
           await setSessionCookie(ctx, { session, user });
           return ctx.json({ ok: true });

@@ -1,63 +1,55 @@
 # Authentication dependency audit follow-up
 
-Reviewed from `main` at `cfe49150122af9e3f50b2927356dd1bd5beaef8b` on 29 October 2026 (Africa/Nairobi). No production database, account, balance, migration or live-payment setting was changed.
+Reviewed from `main` at `cfe49150122af9e3f50b2927356dd1bd5beaef8b` on 29 October 2026 (Africa/Nairobi), then updated against patched Better Auth 1.7.14. No production or shared TEST database, account, balance, migration or live-payment setting was changed.
 
-## Current CI failure
+## Resolution
 
-[Checks run 40765906290](https://github.com/devbossmaster/lowwin/actions/runs/40765906290), [security job 123089863624](https://github.com/devbossmaster/lowwin/actions/runs/40765906290/job/123089863624), failed at `npm audit --audit-level=low`. Installation succeeded. The audit reported four vulnerable package nodes: two low, one high and one critical. Semgrep was skipped after the audit failure, so the original job provides no static-analysis result.
-
-The local full JSON audit reproduced the same four package nodes. Its complete dependency chain is:
+The full unsuppressed `npm audit --audit-level=low --json` now exits **0**, reporting **zero vulnerabilities**. Better Auth and every installed Better Auth core/adapter package resolve to **1.7.14**. The unsupported upstream Telegram peer was replaced by a small, readable, MIT-licensed Mini App compatibility port, `@lowwin/better-auth-telegram@2.0.1-lowwin.1`, with an exact `better-auth: 1.7.14` peer. There is no vulnerable older authentication copy, npm peer override, unrelated downgrade or advisory suppression.
 
 ```text
 Lowwin
-├─ better-auth-telegram@2.0.1
-│  └─ peer better-auth@1.6.33 (>=1.6.22 <1.7.0)
-└─ better-auth@1.6.33
-   ├─ @better-auth/drizzle-adapter@1.6.33
-   ├─ @better-auth/kysely-adapter@1.6.33
-   └─ @better-auth/prisma-adapter@1.6.33 (the selected runtime adapter)
+├─ @lowwin/better-auth-telegram@2.0.1-lowwin.1 (file:vendor/better-auth-telegram)
+│  └─ better-auth@1.7.14 (deduped exact peer)
+└─ better-auth@1.7.14
+   ├─ @better-auth/core@1.7.14
+   ├─ @better-auth/drizzle-adapter@1.7.14
+   ├─ @better-auth/kysely-adapter@1.7.14
+   └─ @better-auth/prisma-adapter@1.7.14 (selected runtime adapter)
 ```
 
-`better-auth-telegram` is reported through its Better Auth peer, not a separate Telegram-specific advisory. The JSON report additionally identifies the conditional core advisories that the abbreviated CI text does not expand.
+`npm ci --dry-run --ignore-scripts --strict-peer-deps --prefer-offline` also exits 0, validating the package-lock and peer graph without replacing the shared installation. Initial installation emitted an old-peer warning while pruning the removed upstream Telegram package; the final `npm ls` tree is valid and the strict clean-install dry run has no peer warning.
 
-## Applicability to this application
+## Initial CI failure and advisory chains
 
-| Advisory | Affected path | Current Lowwin configuration |
+[Checks run 40765906290](https://github.com/devbossmaster/lowwin/actions/runs/40765906290), [security job 123089863624](https://github.com/devbossmaster/lowwin/actions/runs/40765906290/job/123089863624), failed at `npm audit --audit-level=low`. Installation succeeded. Four vulnerable package nodes were reported: two low, one high and one critical. The old chain was `better-auth-telegram@2.0.1 -> better-auth@1.6.33`, plus the affected transitive Drizzle and Kysely adapters. The Telegram node inherited the Better Auth peer findings; it did not have a separate Telegram-specific advisory.
+
+| Advisory | Affected path and original applicability | Resolution |
 | --- | --- | --- |
-| [GHSA-44jh-23m7-hpcf](https://github.com/advisories/GHSA-44jh-23m7-hpcf), low | Concurrent PostgreSQL database-backed rate limits through affected Drizzle/Kysely adapters; patched Drizzle 1.7.7 / Kysely 1.7.0 | Rate limiting is enabled and database-backed, but `createAuth` selects Prisma. Installed Prisma `incrementOne` uses a conditional update and an atomic increment, rather than the affected adapter path. The isolated PostgreSQL regression sends 24 concurrent password requests against max=5 and requires exactly 5 admissions and 19 rejections. |
-| [GHSA-965c-763c-88jm](https://github.com/advisories/GHSA-965c-763c-88jm), critical | Magic Link plus social/Generic OAuth can share verification storage identifiers; patched 1.7.7 | Magic Link and social/Generic OAuth are not configured. The Magic Link endpoint remains unregistered. Email verification and password reset are different enabled flows and remain covered by their existing tests. |
-| [GHSA-r4xp-prcw-77qf](https://github.com/advisories/GHSA-r4xp-prcw-77qf), high | OAuth Proxy with the documented cookie-state/secret/linking conditions; patched 1.7.7 | OAuth Proxy is not registered and implicit account linking is explicitly disabled. The proxy callback remains unregistered. |
-| [GHSA-q84f-53jg-9ppm](https://github.com/advisories/GHSA-q84f-53jg-9ppm), high | Device Authorization approval without adequate client/permission confirmation; patched 1.7.0-rc.3 | Device Authorization is not enabled. Code and approval endpoints remain unregistered. |
+| [GHSA-44jh-23m7-hpcf](https://github.com/advisories/GHSA-44jh-23m7-hpcf), low | Concurrent PostgreSQL database rate limits in Drizzle/Kysely. Lowwin uses Prisma, whose installed conditional atomic increment was separately checked. | All adapters now 1.7.14. The real PostgreSQL regression still admits exactly 5 requests and rejects 19 of 24 concurrent password requests. |
+| [GHSA-965c-763c-88jm](https://github.com/advisories/GHSA-965c-763c-88jm), critical | Magic Link plus social/Generic OAuth verification identifier confusion. Those optional flows were not enabled. | Core upgraded past the 1.7.7 patch; optional vulnerable routes remain unavailable. |
+| [GHSA-r4xp-prcw-77qf](https://github.com/advisories/GHSA-r4xp-prcw-77qf), high | OAuth Proxy with the documented state/cookie/secret/linking conditions. Proxy was not enabled; implicit linking was disabled. | Core upgraded past the 1.7.7 patch; proxy route remains unavailable and linking remains disabled. |
+| [GHSA-q84f-53jg-9ppm](https://github.com/advisories/GHSA-q84f-53jg-9ppm), high | Device Authorization approval lacked adequate client/permission confirmation. The plugin was not enabled. | Patched 1.7.14 installed; code and approval routes remain unavailable. |
 
-These runtime applicability findings do **not** make the package audit pass or remove the advisories from the dependency tree. They describe why the named exploit paths are not exposed by this configuration. New plugins or adapter changes require a fresh assessment.
+The configuration applicability checks were additional evidence, not a reason to suppress the original audit. The resulting package audit itself is now clean.
 
-## Dependency upgrade follow-up
+## Compatibility and unchanged schema
 
-Registry checks found `better-auth@1.6.33` is the latest published 1.6 maintenance release. The [patched 1.7.7 release](https://github.com/better-auth/better-auth/releases/tag/v1.7.7) exists, but the current [Telegram plugin](https://github.com/vcode-sh/better-auth-telegram/blob/main/package.json) is still 2.0.1 with the explicit peer range `>=1.6.22 <1.7.0` (also confirmed from npm). No compatible maintained Telegram release was available at review time.
+Registry and [upstream package](https://github.com/vcode-sh/better-auth-telegram/blob/main/package.json) checks still show Telegram 2.0.1 declaring `>=1.6.22 <1.7.0`. Instead of coercing that peer, the local port includes only the used Mini App endpoint, schema, configuration and HMAC functions, with focused types and the complete original MIT license. Its README records upstream provenance and the reviewed published artifact SHA256. Generated bundles, source maps, widget/client code, OIDC and bundled JOSE code are excluded. Only `telegram` is exported.
 
-[The current official 1.7 upgrade guide](https://github.com/better-auth/better-auth/blob/main/docs/content/docs/guides/1-7-upgrade-guide.mdx) corrects the initial 1.7.0 release guidance: **1.7.3 reverted the required issuer field**, restoring account identity to `(providerId, accountId)`. A direct upgrade from Lowwin's 1.6 schema to patched 1.7.14 does not require an issuer migration or backfill. The earlier review incorrectly treated the initial 1.7.0 requirement as applying to all 1.7 releases; that conclusion is superseded here.
+The compatibility contract rejects enabling Login Widget, OIDC or Mini App signature-validation bypass, and limits authentication age to the existing 300 seconds. Existing raw-signature and freshness validation, origin/body limits, session binding, contact enrollment, server token redaction, role approval, database rate limiting and financial transaction safeguards remain in place. The local-development provisioner supplies the new 1.7 `createUser` provisioning-source argument; its existing local-only gate remains unchanged.
 
-The remaining compatibility issue is Telegram 2.0.1's declared `<1.7.0` peer. The follow-up evaluates a license-preserving local compatibility package against exact Better Auth 1.7.14 and the existing signed Telegram Mini App, credential, session, origin and database rate-limit regressions. No blind peer override, unrelated downgrade or advisory suppression is authorized. Until those checks and the full unsuppressed audit pass, dependency security remains unresolved.
+**Correction to the initial review:** [the current official 1.7 upgrade guide](https://better-auth.com/docs/guides/1-7-upgrade-guide) and [maintainer account-schema notice](https://better-auth.com/blog/1-7-account-schema) explain that **1.7.3 reverted the required issuer field** introduced by 1.7.0–1.7.2. Upgrading Lowwin directly from 1.6 to 1.7.14 preserves `(providerId, accountId)` and requires no issuer column or identity backfill. Treating the initial 1.7.0 migration requirement as applying to all 1.7 releases was incorrect. No auth schema or migration was added.
 
-## Checks and CI behavior
+The port is deliberately maintained for the current Mini App surface and exact patched version. Future auth upgrades or new Telegram modes require renewed compatibility review and these regressions. Replace it with a maintained compatible upstream release when one becomes available.
 
-`tests/auth-dependency-security.test.ts` exercises the installed library and Prisma adapter against a disposable loopback PostgreSQL database. It checks concurrent password rate limits and confirms that optional vulnerable flows cannot issue a session. Existing tests cover member registration, manual admin approval, email verification, reset-token replay, session revocation, role/origin rejection, signed Telegram authentication, account isolation and payment-session reauthorization.
+## Validation
 
-The pinned Semgrep setup and scan now run in the separate `static-secrets` CI job, independent of the dependency audit job. An audit failure continues to fail its own job and cannot skip static/secrets scanning. The rule packs, scanner version, `--error`, `--metrics=off` and low audit threshold remain unchanged.
+- Full unsuppressed dependency audit: **0 vulnerabilities**, exit 0.
+- Strict clean-install dry run: exit 0; valid lockfile and peer graph.
+- TypeScript typecheck: passed.
+- Focused auth/security run: **112/112 tests across nine suites passed** on fresh disposable loopback PostgreSQL databases. This includes a password hash and signed cookie generated by the pre-upgrade 1.6.33 library, existing Telegram account identity reuse, new signed member creation, forged signature rejection, exact concurrent database rate limiting, signed launch/contact enrollment, payment-session reauthorization, admin email verification, role approval, reset-token replay protection, session revocation and logout.
+- Complete isolated unit/financial suite: running; its final result will be recorded before delivery.
 
-The focused authentication/security run passed **89 tests across eight suites**, including the concurrent Prisma/database rate-limit regression and all eight Master Guide Admin registration/reset/revocation tests. A final `npm audit --audit-level=low --json` still exits **1** with the same four package nodes; dependency security is **not green**. Private local audit and test reports are retained under `.local/chapa-security-followup/` and `.local/launch-fast/speedchecks-chapa-auth-security-final.log`.
+The workflow now runs dependency audit and pinned static/secrets scanning as independent jobs. The first hosted [Semgrep run 40775286320, job 123122881644](https://github.com/devbossmaster/lowwin/actions/runs/40775286320/job/123122881644) completed with **66 rules, 728 files and 0 findings** (artifact 12855015947). That predates the compatibility port and must rerun for the final commit. A previous local scanner attempt timed out at 4 minutes 1 second without a report; it was not counted as passing and was superseded by the hosted result. Do not claim the final hosted security gate passed until the final commit's independent audit and static/secrets jobs complete.
 
-The final two-test installed-dependency suite was rerun successfully after making its session assertion independent of unrelated fixture sessions.
-
-### Local static-scan limitation
-
-The exact pinned scanner was installed in an isolated WSL Ubuntu environment (Python 3.12.3, Linux x86_64). `pip check` returned `No broken requirements found`, the CLI reported `1.178.0`, and its native core reported `1.178.0`. The local equivalent of the CI command was:
-
-```sh
-semgrep scan --config p/ci --config p/secrets --metrics=off --error \
-  --json-output=.local/chapa-security-followup/semgrep.json
-```
-
-The scan produced no output or JSON artifact after **4 minutes 1 second** and was terminated at that bound. Its two native core RPC child processes had started; one repeatedly waited on disk I/O, while the Python parent waited on its pipe. A TLS connection was established, but there is no evidence proving that both remote rule packs finished resolving or that source analysis completed. Therefore this is an **incomplete local static scan**, not a passing scan, a finding-free report, or proof that the remote rule registry alone caused the delay. No source matches or secret values were printed.
-
-The required Semgrep check still needs to complete on the hosted CI runner after this workflow change. Do not mark the security gate green until both the unsuppressed dependency audit and the pinned code/secrets scan pass. The scanner installation and diagnostic artifacts are isolated under `D:\lowwin-chapa-security-validation-20261029` and ignored `.local/chapa-security-followup/`; they do not change application dependencies or authentication behavior.
+Private local audit and test evidence is retained under `.local/chapa-security-followup/` and `.local/launch-fast/`. No merchant TEST acceptance, physical Telegram behavior, deployment or production verification is implied by these isolated checks.
