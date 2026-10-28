@@ -1,0 +1,12 @@
+# Override Semgrep's default vendor/ exclusion: the reviewed Telegram runtime
+# under vendor/better-auth-telegram is application authentication source.
+# Ignore only private work areas, installed dependencies and generated outputs.
+.git/
+node_modules/
+.next/
+.next-ui-*/
+.local/
+.review/
+test-results/
+playwright-report/
+*.tsbuildinfo
