@@ -7,6 +7,7 @@ vi.mock('../src/modules/payments/session',()=>({requirePaymentSession:f.auth}));
 vi.mock('../src/modules/payments/chapa',()=>({createChapaCheckout:f.create,getChapaCheckout:f.read,listChapaCheckouts:f.list,verifyChapaCheckout:f.verify,walletBidsEnabled:()=>f.enabled,publicChapaAvailability:()=>({enabled:false,configured:false,mode:'test',walletBidsEnabled:f.enabled,minTopup:'1.00',maxTopup:'43200.00',reason:'Not configured'})}));
 vi.mock('../src/modules/auctions/bids',async original=>({...await original<typeof import('../src/modules/auctions/bids')>(),submitBidInTransaction:f.submit}));
 import {PrivateApiError} from '../src/modules/auth/private-api';
+import {measureChapa} from '../src/modules/payments/chapa-timing';
 import {ChapaError} from '../src/modules/payments/chapa-provider';
 import {GET as availability} from '../src/app/api/payments/chapa/route';
 import {GET as list,POST as create} from '../src/app/api/payments/chapa/checkouts/route';
@@ -28,11 +29,28 @@ beforeEach(()=>{
 });
 afterEach(()=>{vi.unstubAllEnvs();vi.restoreAllMocks()});
 describe('Chapa HTTP authorization and durable webhook boundary',()=>{
+ it('separates authentication, database and provider timings on private mutation responses',async()=>{
+  f.create.mockImplementation(async()=>{await measureChapa('database',async()=>undefined);await measureChapa('initialize',async()=>undefined);return {id,status:'PENDING'}});
+  const initialized=await create(request('/api/payments/chapa/checkouts',{key:randomUUID(),purpose:'TOP_UP',amount:'10.00'}));
+  for(const phase of ['auth','database','initialize','checkout','total'])expect(initialized.headers.get('Server-Timing')).toMatch(new RegExp(`(?:^|, )${phase};dur=\\d+\\.\\d`));
+  expect(initialized.headers.get('cache-control')).toContain('private, no-store');
+  f.verify.mockImplementation(async()=>{await measureChapa('database',async()=>undefined);await measureChapa('verify',async()=>undefined);return {id,status:'PENDING'}});
+  const checked=await verify(request('/api/payments/chapa/checkouts/'+id,{}),{params:Promise.resolve({id})});
+  for(const phase of ['auth','database','verify','checkout','total'])expect(checked.headers.get('Server-Timing')).toMatch(new RegExp(`(?:^|, )${phase};dur=\\d+\\.\\d`));
+  expect(checked.headers.get('Server-Timing')).not.toContain('initialize;');
+  f.auth.mockRejectedValue(new PrivateApiError(401,'Sign in'));
+  const denied=await verify(request('/api/payments/chapa/checkouts/'+id,{}),{params:Promise.resolve({id})});expect(denied.status).toBe(401);expect(denied.headers.get('Server-Timing')).toMatch(/^auth;dur=/);expect(denied.headers.get('Server-Timing')).not.toContain('verify;');
+ });
  it('keeps config/list/owned reads private and forwards authenticated ownership',async()=>{for(const response of [await availability(request('/api/payments/chapa')),await list(request('/api/payments/chapa/checkouts')),await read(request('/api/payments/chapa/checkouts/'+id),{params:Promise.resolve({id})})]){expect(response.status).toBe(200);expect(response.headers.get('cache-control')).toContain('private, no-store');expect(response.headers.get('vary')).toBe('Cookie')}expect(f.read).toHaveBeenCalledWith(expect.anything(),'owner-user',id)});
  it('requires same-origin session authority for creation/verification and never trusts supplied user identity',async()=>{const body={key:randomUUID(),purpose:'TOP_UP',amount:'10.00'},r=await create(request('/api/payments/chapa/checkouts',body));expect(r.status).toBe(202);expect(f.create).toHaveBeenCalledWith(expect.anything(),'owner-user',body,f.reauthorize);expect((await verify(request('/api/payments/chapa/checkouts/'+id,{}),{params:Promise.resolve({id})})).status).toBe(200);expect(f.verify).toHaveBeenCalledWith(expect.anything(),id,'owner-user',f.reauthorize);expect((await create(request('/api/payments/chapa/checkouts',body,'https://other.test'))).status).toBe(403)});
  it('fails closed on missing sessions and owned resource mismatch',async()=>{f.user.mockRejectedValue(new PrivateApiError(401,'Sign in'));expect((await list(request('/api/payments/chapa/checkouts'))).status).toBe(401);f.auth.mockRejectedValue(new PrivateApiError(401,'Sign in'));expect((await create(request('/api/payments/chapa/checkouts',{}))).status).toBe(401);f.user.mockResolvedValue('other-user');f.read.mockRejectedValue(new ChapaError(404,'NOT_FOUND','Payment not found.'));expect((await read(request('/api/payments/chapa/checkouts/'+id),{params:Promise.resolve({id})})).status).toBe(404)});
  it('does not let unsigned callbacks/returns mutate or verify money',async()=>{expect((await callbackPost()).status).toBe(202);const redirect=await callbackGet(request('/api/payments/chapa/callback?checkout='+id+'&return=https://other.test'));expect(redirect.status).toBe(303);expect(redirect.headers.get('location')).toBe(origin+'/payments/chapa/return?checkout='+id);expect(f.transaction).not.toHaveBeenCalled();expect(f.verify).not.toHaveBeenCalled();expect(f.create).not.toHaveBeenCalled()});
  it('rejects missing or invalid signature before any event or checkout access',async()=>{for(const signature of ['', 'a'.repeat(64)])expect((await webhook(signed(hint,{signature}))).status).toBe(401);expect(f.transaction).not.toHaveBeenCalled()});
+ it('accepts signed null metadata only as an optional recovery hint and rejects malformed values',async()=>{
+  expect((await webhook(signed({...hint,meta:null}))).status).toBe(200);expect(f.update).toHaveBeenCalledTimes(1);
+  for(const meta of ['',[],123,false])expect((await webhook(signed({...hint,meta}))).status).toBe(400);
+  expect(f.transaction).toHaveBeenCalledTimes(1);expect(f.verify).not.toHaveBeenCalled();expect(f.create).not.toHaveBeenCalled();expect(globalThis.fetch).not.toHaveBeenCalled();
+ });
  it('verifies exact raw bytes including BOM, deduplicates delivery, and only queues an authoritative lookup',async()=>{const bytes=Buffer.concat([Buffer.from([0xef,0xbb,0xbf]),Buffer.from(JSON.stringify(hint))]);for(let i=0;i<2;i++)expect((await webhook(signed(hint,{bytes}))).status).toBe(200);expect(f.update).toHaveBeenCalledTimes(1);expect(f.update).toHaveBeenCalledWith({where:{id,creditJournalId:null},data:{nextCheckAt:expect.any(Date),reason:'PROVIDER_EVENT_RECEIVED'}});expect(f.verify).not.toHaveBeenCalled();expect(f.create).not.toHaveBeenCalled();expect(globalThis.fetch).not.toHaveBeenCalled();const data=f.event.mock.calls[0][0].data[0];expect(Object.keys(data).sort()).toEqual(['bodyHash','chapaReference','configurationFingerprint','event','merchantReference','mode'].sort())});
  it.each(['FAILED','CANCELLED','EXPIRED','NEEDS_REVIEW'])('keeps verified %s status when an older payment event arrives',async status=>{
   const order={id,mode:'test',chapaReference:'CHtestreference',amountCents:1000n,currency:'ETB',status,creditJournalId:null,reason:'PAYMENT_NOT_COMPLETED'};

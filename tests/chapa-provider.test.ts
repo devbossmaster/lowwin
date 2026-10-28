@@ -52,6 +52,11 @@ describe('Chapa v2 payment evidence and hosted URL',()=>{
    expect(parseChapaEvidence({...verified(),data:{...verified().data,chapa_reference,status:'PENDING',processor_reference:null}})).toMatchObject({status:'PENDING',chapaReference:null});
   }
  });
+ it('normalizes null optional verification metadata without accepting malformed metadata',()=>{
+  for(const meta of [undefined,null])expect(parseChapaEvidence({...verified(),data:{...verified().data,meta}})).toMatchObject({status:'SUCCESS',meta:undefined});
+  for(const meta of [{},{provider_note:'optional'},{lowwin_attempt:'an-explicit-attempt'}])expect(parseChapaEvidence({...verified(),data:{...verified().data,meta}})?.meta).toEqual(meta);
+  for(const meta of ['',[],123,false])expect(parseChapaEvidence({...verified(),data:{...verified().data,meta}})).toBeNull();
+ });
  it('keeps the TEST checkout session token separate from the final payment reference',()=>{
   const checkout_url='https://checkout.chapa.global/test/payment/hosted/TEST123456';
   expect(createdChapaSession({status:'success',data:{checkout_url}})).toMatchObject({checkoutUrl:checkout_url,checkoutReference:'TEST123456',chapaReference:null});
@@ -78,6 +83,12 @@ describe('Chapa v2 authenticated webhook hints',()=>{
  it('does not confuse lowercase webhook success with uppercase verification completion',()=>{
   const event={webhook_type:'payment',event:'payment.success',status:'success',mode:'test',amount:'12345',currency:'ETB',merchant_reference:create.merchantReference,chapa_reference:'CHLocal123',updated_at:'2026-10-26T10:01:00Z'};
   expect(parseChapaWebhook(event)).toMatchObject({type:'payment',event:'payment.success',status:'success',mode:'test',amountCents:'12345'});expect(parseChapaWebhook({...event,status:'SUCCESS'})).toBeNull();expect(parseChapaEvidence(event)).toBeNull();expect(parseChapaWebhook({...event,amount:'123.45'})).toBeNull();
+ });
+ it('normalizes null webhook metadata while rejecting nonobject values',()=>{
+  const event={webhook_type:'payment',event:'payment.success',status:'success'};
+  for(const meta of [undefined,null])expect(parseChapaWebhook({...event,meta})).toMatchObject({type:'payment',meta:undefined});
+  expect(parseChapaWebhook({...event,meta:{note:'optional'}})?.meta).toEqual({note:'optional'});
+  for(const meta of ['',[],123,false])expect(parseChapaWebhook({...event,meta})).toBeNull();
  });
 });
 

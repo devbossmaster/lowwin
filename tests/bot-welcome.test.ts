@@ -28,6 +28,21 @@ describe('private Telegram welcome',()=>{
   expect(sent[0].payload.text).toBe(CONTACT_REQUEST_MESSAGE);
   expect(sent[0].payload.reply_markup).toEqual(CONTACT_REPLY_KEYBOARD);
  });
+ it('returns the same opaque payment to the authenticated Mini App without reporting success',async()=>{
+  const id='0f55aaab-2222-4444-8888-123456789012';
+  const sent=await send({text:`/start chapa_${id}`},true);
+  expect(sent).toHaveLength(1);expect(sent[0].method).toBe('sendMessage');
+  expect(sent[0].payload.text).toBe('Open Lowwin to check your payment. This link does not confirm payment success.');
+  expect(sent[0].payload.reply_markup).toEqual({inline_keyboard:[[{text:'Check payment',web_app:{url:`http://localhost:3000/payments/chapa/return?checkout=${id}`}}]]});
+ });
+ it('keeps the contact gate for payment links and never treats the link as authentication',async()=>{
+  const sent=await send({text:'/start chapa_0f55aaab-2222-4444-8888-123456789012'});
+  expect(sent).toHaveLength(1);expect(sent[0].payload.reply_markup).toEqual(CONTACT_REPLY_KEYBOARD);
+ });
+ it('ignores malformed payment payloads and retains the ordinary launch destination',async()=>{
+  const sent=await send({text:'/start chapa_0f55aaab-2222-4444-8888-123456789012_status_SUCCESS'},true);
+  expect(sent).toHaveLength(2);expect(sent[1].payload.reply_markup).toEqual({inline_keyboard:[[{text:'🎯 ጨረታ ይጀምሩ',web_app:{url:'http://localhost:3000'}}]]});
+ });
  it.each([
   {from:{id:8,is_bot:false,first_name:'Other'}},
   {from:{id:7,is_bot:true,first_name:'Bot'}},

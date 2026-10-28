@@ -59,7 +59,7 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
  },[applyDiscount,discountQuery.data,discountQuery.updatedAt]);
  const valid=!!state&&!!preview&&!preview.duplicate&&!preview.consecutive&&state.remainingSubmissions>0&&!(applyDiscount&&discountQuery.fetching&&!applied);
  const enabled=method==='wallet'?!!availability.data?.walletBidsEnabled:!!availability.data?.enabled;
- const canPay=valid&&enabled&&!availability.error&&!walletBusy&&!payment.busy&&(method!=='wallet'||balance!==null&&!insufficient&&!wallet.error);
+ const canPay=valid&&enabled&&!availability.error&&!walletBusy&&!payment.busy&&!payment.restoring&&!payment.started&&(method!=='wallet'||balance!==null&&!insufficient&&!wallet.error);
  const submit=async()=>{
   if(!canPay||!state||!queryIdentity||!isPrivateQueryIdentity(queryIdentity)||walletLock.current)return;
   const amount=centsToEtb(etbToCents(number)),couponId=applied?.coupon?.id;

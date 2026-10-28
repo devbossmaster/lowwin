@@ -4,6 +4,7 @@ import { getEnv } from '@/lib/env';
 import {db} from '@/lib/db';
 import {isRegisteredTelegramUser} from '../auth/own-contact';
 import {recordBotReferralStart} from '../referrals/service';
+import {chapaReturnStartPath} from '@/lib/chapa-return-link';
 import {WELCOME_CAPTION,START_BIDDING_ACTION,CONTACT_REQUEST_MESSAGE,CONTACT_REPLY_KEYBOARD,CONTACT_KEYBOARD_REMOVED_MESSAGE} from './onboarding-copy';
 export function createBot({contactVerified}:{contactVerified?:(telegramId:string)=>Promise<boolean>}={}) {
   const env = getEnv();
@@ -13,8 +14,16 @@ export function createBot({contactVerified}:{contactVerified?:(telegramId:string
   bot.command('start', async ctx => {
     if (ctx.chat.type !== 'private') { await ctx.reply('Open a private chat with Lowwin to launch the app.'); return; }
     if(!ctx.from||ctx.from.is_bot||ctx.from.id!==ctx.chat.id||ctx.message?.forward_origin)return;
-    if(ctx.match)await recordBotReferralStart(db,String(ctx.from.id),botId,ctx.match);
+    const paymentReturn=chapaReturnStartPath(ctx.match);
+    if(ctx.match&&!paymentReturn)await recordBotReferralStart(db,String(ctx.from.id),botId,ctx.match);
     if(!await isVerified(String(ctx.from.id))){await ctx.reply(CONTACT_REQUEST_MESSAGE,{reply_markup:CONTACT_REPLY_KEYBOARD});return}
+    if(paymentReturn){
+      const am=ctx.from.language_code?.startsWith('am');
+      // The button carries only an opaque attempt ID. Its owner and payment
+      // state are checked by the normal authenticated payment endpoints.
+      await ctx.reply(am?'ክፍያዎን ለማረጋገጥ Lowwinን ይክፈቱ። ይህ ማስፈንጠሪያ የክፍያ ስኬትን አያረጋግጥም።':'Open Lowwin to check your payment. This link does not confirm payment success.',{reply_markup:new InlineKeyboard().webApp(am?'ክፍያ ያረጋግጡ':'Check payment',new URL(paymentReturn,env.MINI_APP_URL).href)});
+      return;
+    }
     await ctx.reply(CONTACT_KEYBOARD_REMOVED_MESSAGE,{reply_markup:{remove_keyboard:true}});
     const caption=WELCOME_CAPTION;
     const reply_markup=new InlineKeyboard().webApp(START_BIDDING_ACTION,env.MINI_APP_URL);
