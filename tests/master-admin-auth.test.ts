@@ -7,7 +7,10 @@ import {TEST_TOKEN} from './helpers';
 const database=process.env.MASTER_ADMIN_TEST_DATABASE_URL;
 describe.skipIf(!database)('Master Guide Admin on disposable PostgreSQL',()=>{
  let db:PrismaClient,sink:Server,auth:typeof import('../src/modules/auth/handler').handleAuth,requireAdmin:typeof import('../src/modules/admin/boundary').requireAdmin,cookie='',userId='';
- const messages:{to:string;text:string}[]=[],origin='http://localhost:3000',email=`master-${randomUUID()}@lowin.test`,password='Fixture-master-password-12345';
+ const messages:{to:string;text:string}[]=[];
+ const origin='http://localhost:3000';
+ const email=`master-${randomUUID()}@lowin.test`;
+ const password='Fixture-master-password-12345';
  const request=(path:string,body?:unknown,session='')=>new Request(origin+'/api/auth/'+path,{method:body===undefined?'GET':'POST',headers:{origin,'content-type':'application/json','x-forwarded-for':'198.18.72.91',...(session?{cookie:session}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});
  const post=(path:string,body:unknown,session='')=>auth(request(path,body,session));
  const latestLink=()=>messages.at(-1)!.text.match(/https?:[^\s]+/)![0];

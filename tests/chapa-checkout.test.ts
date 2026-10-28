@@ -55,9 +55,10 @@ describe.skipIf(!database)('Chapa v2 hosted payments on disposable PostgreSQL',(
  it('waits for a TEST session payment and credits its final reference once with an empty processor field',async()=>{
   const f=await payment({amount:'100',testSession:true}),order=await f.start();
   expect((await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}})).chapaReference).toBeNull();
-  f.setStatus('PENDING');f.setMutation(row=>({...row,chapa_reference:null,processor_reference:null}));
+  const customer={first_name:null,last_name:null,email:null,phone_number:null};
+  f.setStatus('PENDING');f.setMutation(row=>({...row,chapa_reference:null,processor_reference:null,customer}));
   expect((await f.verify(order.id)).status).toBe('PENDING');expect(await balance(f.userId)).toBe('0');
-  f.setStatus('SUCCESS');f.setMutation(row=>({...row,processor_reference:''}));
+  f.setStatus('SUCCESS');f.setMutation(row=>({...row,processor_reference:'',customer}));
   expect((await f.verify(order.id)).status).toBe('CREDITED');await f.verify(order.id);
   expect(await balance(f.userId)).toBe('100');const saved=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});expect(saved.chapaReference).toBe(f.reference);expect(saved.processorReference).toBeNull();expect(await db.journal.count({where:{reference:`chapa:${saved.merchantReference}`}})).toBe(1);
   expect(await reconcileChapaReceipts(db)).toEqual([]);

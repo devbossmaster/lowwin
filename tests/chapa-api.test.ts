@@ -68,6 +68,33 @@ describe('Chapa HTTP authorization and durable webhook boundary',()=>{
   expect(globalThis.fetch).not.toHaveBeenCalled();
  });
  it('rejects mode mismatch and never schedules amount/currency/reference mismatch',async()=>{expect((await webhook(signed({...hint,mode:'live'}))).status).toBe(400);expect(f.transaction).not.toHaveBeenCalled();for(const change of [{amount:'2000'},{currency:'USD'},{chapa_reference:'CHanother'}])expect((await webhook(signed({...hint,...change}))).status).toBe(200);expect(f.update).not.toHaveBeenCalled()});
+ it('queues the final payment reference for a historical TEST hosted session without trusting it as payment proof',async()=>{
+  const session='TESTlegacySession123';
+  f.find.mockResolvedValue({id,mode:'test',chapaReference:session,checkoutUrl:`https://checkout.chapa.global/test/payment/hosted/${session}`,amountCents:1000n,currency:'ETB'});
+  expect((await webhook(signed(hint))).status).toBe(200);
+  expect(f.update).toHaveBeenCalledWith({where:{id,creditJournalId:null},data:{nextCheckAt:expect.any(Date),reason:'PROVIDER_EVENT_RECEIVED'}});
+  expect(f.verify).not.toHaveBeenCalled();expect(f.create).not.toHaveBeenCalled();expect(globalThis.fetch).not.toHaveBeenCalled();
+ });
+ it.each([
+  {mode:'test',chapaReference:'CHdifferentFinal',checkoutUrl:'https://checkout.chapa.global/test/payment/hosted/TESTlegacySession123'},
+  {mode:'test',chapaReference:'TESTlegacySession123',checkoutUrl:'https://checkout.chapa.global/test/payment/hosted/TESTdifferentSession'},
+  {mode:'test',chapaReference:'TESTlegacySession123',checkoutUrl:'https://other.test/test/payment/hosted/TESTlegacySession123'},
+ ])('does not use the historical TEST exception for a mismatched stored reference or environment: %o',async stored=>{
+  f.find.mockResolvedValue({id,...stored,amountCents:1000n,currency:'ETB'});
+  expect((await webhook(signed(hint))).status).toBe(200);expect(f.update).not.toHaveBeenCalled();
+  expect(f.verify).not.toHaveBeenCalled();expect(f.create).not.toHaveBeenCalled();expect(globalThis.fetch).not.toHaveBeenCalled();
+ });
+ it('never applies the historical TEST reference exception to LIVE payments',async()=>{
+  for(const [name,value] of Object.entries({APP_ENV:'production',NODE_ENV:'production',CHAPA_MODE:'live',CHAPA_PRIVATE_KEY:'CHAPA_LIVE_'+'a'.repeat(40),CHAPA_LIVE_ENABLED:'true',CHAPA_MERCHANT_REVIEWED:'true',DEV_POINTS_ENABLED:'false'}))vi.stubEnv(name,value);
+  const session='TESTlegacySession123';f.find.mockResolvedValue({id,mode:'live',chapaReference:session,checkoutUrl:`https://checkout.chapa.global/test/payment/hosted/${session}`,amountCents:1000n,currency:'ETB'});
+  expect((await webhook(signed({...hint,mode:'live'}))).status).toBe(200);expect(f.find).toHaveBeenCalledTimes(1);expect(f.update).not.toHaveBeenCalled();
+  expect(f.verify).not.toHaveBeenCalled();expect(f.create).not.toHaveBeenCalled();expect(globalThis.fetch).not.toHaveBeenCalled();
+ });
+ it('still requires matching webhook amount and currency for historical TEST session recovery',async()=>{
+  const session='TESTlegacySession123';f.find.mockResolvedValue({id,mode:'test',chapaReference:session,checkoutUrl:`https://checkout.chapa.global/test/payment/hosted/${session}`,amountCents:1000n,currency:'ETB'});
+  for(const change of [{amount:'2000'},{currency:'USD'}])expect((await webhook(signed({...hint,...change}))).status).toBe(200);
+  expect(f.update).not.toHaveBeenCalled();expect(f.verify).not.toHaveBeenCalled();expect(globalThis.fetch).not.toHaveBeenCalled();
+ });
  it('retains nonpayment events for staff review without changing wallets or checkout',async()=>{expect((await webhook(signed({...hint,webhook_type:'refund',event:'refund.success'}))).status).toBe(200);expect(f.audit).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({action:'CHAPA_NONPAYMENT_EVENT_REVIEW'})}));expect(f.update).not.toHaveBeenCalled();expect(f.verify).not.toHaveBeenCalled()});
  it('enables wallet submission only explicitly and rejects client financial fields',async()=>{const context={params:Promise.resolve({slug:'real-auction'})},body={key:randomUUID(),amount:'3.60',feeVersion:1};expect((await bid(request('/api/auctions/real-auction/bids',body),context)).status).toBe(410);expect(f.submit).not.toHaveBeenCalled();f.enabled=true;expect((await bid(request('/api/auctions/real-auction/bids',{...body,userId:'other',feePoints:'0',balance:'99999'}),context)).status).toBe(422);expect(f.submit).not.toHaveBeenCalled();expect((await bid(request('/api/auctions/real-auction/bids',body),context)).status).toBe(200);expect(f.reauthorize).toHaveBeenCalledTimes(1);expect(f.submit).toHaveBeenCalledWith(expect.anything(),{...body,userId:'owner-user',auctionSlug:'real-auction'})});
 });

@@ -34,9 +34,13 @@ const centsPattern=/^(0|[1-9]\d{0,15})$/;
 const centsString=z.string().regex(centsPattern).refine(value=>centsPattern.test(value)&&BigInt(value)<=BigInt(Number.MAX_SAFE_INTEGER));
 const instant=z.iso.datetime({offset:true});
 const customerSchema=z.object({first_name:z.string().max(120).optional(),last_name:z.string().max(120).optional(),email:z.string().max(254).optional(),phone_number:z.string().max(40).optional()});
+// Hosted checkout may return uncollected payer details as null. Normalize only
+// response fields; initialization still accepts only the original string shape.
+const optionalCustomerText=(maximum:number)=>z.string().max(maximum).nullish().transform(value=>value??undefined);
+const verificationCustomerSchema=z.object({first_name:optionalCustomerText(120),last_name:optionalCustomerText(120),email:optionalCustomerText(254),phone_number:optionalCustomerText(40)});
 const metadata=z.record(z.string().max(80),z.unknown());
 const paymentStatus=z.enum(['SUCCESS','PENDING','FAILED','CANCELLED','INCOMPLETE','BLOCKED','AUTH_NEEDED']);
-const verification=z.object({status:z.literal('success'),data:z.object({chapa_reference:reference.nullish(),merchant_reference:merchantReference,amount:cents,currency:z.string().regex(/^[A-Z]{3}$/),status:paymentStatus,payment_method:z.string().max(80).optional(),processor_reference:z.string().max(256).nullish(),service_fee:cents.optional(),customer:customerSchema.optional(),meta:metadata.nullish(),mode:z.enum(['test','live']).optional(),created_at:instant.optional(),updated_at:instant.optional()})});
+const verification=z.object({status:z.literal('success'),data:z.object({chapa_reference:reference.nullish(),merchant_reference:merchantReference,amount:cents,currency:z.string().regex(/^[A-Z]{3}$/),status:paymentStatus,payment_method:z.string().max(80).optional(),processor_reference:z.string().max(256).nullish(),service_fee:cents.optional(),customer:verificationCustomerSchema.optional(),meta:metadata.nullish(),mode:z.enum(['test','live']).optional(),created_at:instant.optional(),updated_at:instant.optional()})});
 export type ChapaEvidence={chapaReference:string|null;merchantReference:string;amountCents:string;currency:string;status:z.infer<typeof paymentStatus>;paymentMethod?:string;processorReference?:string;serviceFeeCents?:string;customer?:z.infer<typeof customerSchema>;meta?:Record<string,unknown>;mode?:ChapaMode;createdAt?:Date;updatedAt?:Date;hash:string};
 /** Operation-level success is not payment success. The caller must require
  * status SUCCESS and match its persisted mode/key/reference/amount/currency. */
