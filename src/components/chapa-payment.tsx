@@ -5,7 +5,7 @@ import {Check,Clock3,LoaderCircle,RefreshCw} from 'lucide-react';
 import {useTelegram} from './telegram-provider';
 import {useMiniLocale} from './mini-locale';
 import {confirmedChapaQueryScopes,invalidatePrivateQueries,isPrivateQueryIdentity,subscribePrivateQueries} from './private-query-cache';
-import {chapaCheckoutUrl,chapaConfirmed,chapaRecoverable,chapaUuid,ChapaClientError,requestChapaJson,type ChapaAttempt,type ChapaCheckoutView,type ChapaIntent} from '@/lib/chapa-client';
+import {clearChapaAttempts,chapaCheckoutUrl,chapaConfirmed,chapaRecoverable,chapaUuid,ChapaClientError,requestChapaJson,type ChapaAttempt,type ChapaCheckoutView,type ChapaIntent} from '@/lib/chapa-client';
 import {formatEtb} from '@/lib/money';
 import {prepareChapaNavigation} from '@/lib/chapa-navigation';
 import styles from './bid-payment-sheet.module.css';
@@ -29,6 +29,7 @@ export function useChapaPayment(scope:string,initialId?:string){
   try{const order=await requestChapaJson<ChapaCheckoutView>(url,options,controller.signal);if(!current(version))return null;receive(order);return order}finally{controllers.current.delete(controller)}
  },[current,receive]);
  useEffect(()=>{
+  try{clearChapaAttempts(window.sessionStorage)}catch{}
   const version=++epoch.current;locked.current=false;invalidated.current=null;const next=empty();stateRef.current=next;setSnapshot(next);
   if(queryIdentity&&initialId&&chapaUuid.test(initialId))void run(`/api/payments/chapa/checkouts/${initialId}`).catch(()=>{if(current(version))update({restoring:false,error:language==='am'?'የክፍያውን ሁኔታ ማምጣት አልተቻለም።':'Payment status could not load. Try again.'})});
   const unsubscribe=subscribePrivateQueries(event=>{if(event.kind==='authorization'||event.kind==='session'&&event.identity!==queryIdentity){epoch.current++;controllers.current.forEach(c=>c.abort())}});

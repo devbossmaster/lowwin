@@ -11,7 +11,7 @@ import {ensureWallet,seedPlatformAccounts} from '../src/modules/wallet/ledger';
 const base=process.env.CHAPA_SCHEMA_TEST_DATABASE_URL??process.env.TEST_DATABASE_URL;
 describe.skipIf(!base)('Chapa additive storage and database guards',()=>{
  let db:PrismaClient,sql:Client,userId:string,auctionId:string,availableId:string,issuanceId:string,existing:unknown;
- const migration='202610260002_chapa_hosted_checkout',compatibility='202610280004_chapa_test_session_reference';
+ const migration='202610290002_chapa_event_transactions';
  const hash='a'.repeat(64),fingerprint='b'.repeat(64);
  const topup=()=>({userId,purpose:'TOP_UP',mode:'test',credentialFingerprint:fingerprint,key:randomUUID(),requestHash:hash,initialization:{currency:'ETB',amount:1000},merchantReference:randomUUID().replaceAll('-','').slice(0,20),amountCents:1000n,currency:'ETB',expiresAt:new Date(Date.now()+86400000)});
  const bid=()=>({...topup(),purpose:'BID',auctionId,auctionSlug:'synthetic-chapa-schema',bidNumber:'1.01',feeVersion:1,grossFee:'10',discountPoints:'1',amountCents:900n});
@@ -20,11 +20,11 @@ describe.skipIf(!base)('Chapa additive storage and database guards',()=>{
   const source=new URL(base!);if(!['127.0.0.1','localhost'].includes(source.hostname)||!source.pathname.endsWith('_test'))throw Error('Disposable loopback _test database required');
   const adminUrl=new URL(source);adminUrl.pathname='/postgres';const admin=new Client({connectionString:adminUrl.href});await admin.connect();const name=`lowwin_chapa_schema_${randomUUID().slice(0,8)}_test`;await admin.query(`CREATE DATABASE "${name}"`);await admin.end();source.pathname='/'+name;
   const schemaDir=path.resolve('.local/chapa-schema-'+name);mkdirSync(path.join(schemaDir,'migrations'),{recursive:true});cpSync('prisma/schema.prisma',path.join(schemaDir,'schema.prisma'));cpSync('prisma/migrations/migration_lock.toml',path.join(schemaDir,'migrations/migration_lock.toml'));
-  for(const entry of readdirSync('prisma/migrations',{withFileTypes:true}))if(entry.isDirectory()&&entry.name!==migration&&entry.name!==compatibility)cpSync(path.join('prisma/migrations',entry.name),path.join(schemaDir,'migrations',entry.name),{recursive:true});
+  for(const entry of readdirSync('prisma/migrations',{withFileTypes:true}))if(entry.isDirectory()&&entry.name!==migration)cpSync(path.join('prisma/migrations',entry.name),path.join(schemaDir,'migrations',entry.name),{recursive:true});
   execFileSync(process.execPath,[createRequire(import.meta.url).resolve('prisma/build/index.js'),'migrate','deploy','--schema',path.join(schemaDir,'schema.prisma')],{env:{...process.env,DATABASE_URL:source.href,DIRECT_URL:source.href,APP_ENV:'local'},stdio:'pipe'});
   db=new PrismaClient({datasourceUrl:source.href});sql=new Client({connectionString:source.href});await sql.connect();userId=randomUUID();await db.user.create({data:{id:userId,name:'Synthetic preserved customer'}});auctionId=(await db.auction.create({data:{code:'SCHEMA-'+randomUUID(),slug:'synthetic-chapa-schema'}})).id;
   await db.$transaction(async tx=>{await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`},0))`;await ensureWallet(tx,userId);await seedPlatformAccounts(tx);availableId=(await tx.ledgerAccount.findUniqueOrThrow({where:{name:`user:${userId}:available`}})).id;issuanceId=(await tx.ledgerAccount.findUniqueOrThrow({where:{name:'platform:issuance'}})).id;const operation=await tx.operation.create({data:{userId,scope:'SYNTHETIC_PRIOR_FUNDS',key:randomUUID(),requestHash:hash,result:{fixture:true}}});await tx.journal.create({data:{operationId:operation.id,kind:'SYNTHETIC_PRIOR_FUNDS',reference:'isolated-schema-preservation',postings:{create:[{accountId:issuanceId,delta:'-25'},{accountId:availableId,delta:'25'}]}}})});
-  existing=await snapshot();await sql.query(readFileSync(`prisma/migrations/${migration}/migration.sql`,'utf8'));await sql.query(readFileSync(`prisma/migrations/${compatibility}/migration.sql`,'utf8'));await sql.query(readFileSync('deploy/runtime-role.sql','utf8'));
+  existing=await snapshot();await sql.query(readFileSync(`prisma/migrations/${migration}/migration.sql`,'utf8'));await sql.query(readFileSync('deploy/runtime-role.sql','utf8'));
  },60000);
  afterAll(async()=>{await db?.$disconnect();await sql?.end()});
  it('adds storage without changing existing customers, funds or ledger evidence',async()=>{expect(await snapshot()).toEqual(existing);expect(await db.chapaCheckout.count()).toBe(0);expect(await db.chapaWebhookEvent.count()).toBe(0)});
@@ -41,8 +41,8 @@ describe.skipIf(!base)('Chapa additive storage and database guards',()=>{
   for(const data of [{mode:'live'},{amountCents:1100n},{initialization:{amount:1100}},{phoneBotId:'another-bot'},{credentialFingerprint:'c'.repeat(64)}])await expect(db.chapaCheckout.update({where:{id:order.id},data})).rejects.toThrow('intent is immutable');
   await expect(db.chapaCheckout.delete({where:{id:order.id}})).rejects.toThrow('cannot be deleted');
  });
- it('prevents a second unresolved bid payment while retaining failed attempts',async()=>{
-  const order=await db.chapaCheckout.create({data:bid()});await expect(db.chapaCheckout.create({data:bid()})).rejects.toMatchObject({code:'P2002'});await db.chapaCheckout.update({where:{id:order.id},data:{status:'FAILED',reason:'SYNTHETIC_PROVIDER_FAILURE'}});await expect(db.chapaCheckout.create({data:bid()})).resolves.toMatchObject({purpose:'BID'});
+ it('retains distinct unfinished bid attempts while unique request keys stay permanent',async()=>{
+  const order=await db.chapaCheckout.create({data:bid()});await expect(db.chapaCheckout.create({data:bid()})).resolves.toMatchObject({purpose:'BID'});await db.chapaCheckout.update({where:{id:order.id},data:{status:'FAILED',reason:'SYNTHETIC_PROVIDER_FAILURE'}});await expect(db.chapaCheckout.create({data:bid()})).resolves.toMatchObject({purpose:'BID'});
  });
  it('binds the first provider reference, URL and checkout validity',async()=>{
   const order=await db.chapaCheckout.create({data:topup()}),created=new Date();await db.chapaCheckout.update({where:{id:order.id},data:{chapaReference:'CH-'+randomUUID(),checkoutUrl:'https://checkout.chapa.global/synthetic',providerCreatedAt:created,status:'PENDING'}});
@@ -66,6 +66,6 @@ describe.skipIf(!base)('Chapa additive storage and database guards',()=>{
  it('keeps browser roles out and grants only required server table operations',async()=>{
   const grants=(await sql.query(`SELECT grantee FROM information_schema.table_privileges WHERE table_schema='public' AND table_name IN ('ChapaCheckout','ChapaWebhookEvent') AND grantee IN ('PUBLIC','anon','authenticated')`)).rows;expect(grants).toEqual([]);
   const rls=(await sql.query(`SELECT relrowsecurity FROM pg_class WHERE relname IN ('ChapaCheckout','ChapaWebhookEvent')`)).rows;expect(rls).toHaveLength(2);expect(rls.every(r=>r.relrowsecurity)).toBe(true);
-  const rights=(await sql.query(`SELECT (has_table_privilege('lowwin_runtime','"ChapaCheckout"','SELECT') AND has_table_privilege('lowwin_runtime','"ChapaCheckout"','INSERT') AND has_table_privilege('lowwin_runtime','"ChapaCheckout"','UPDATE')) AS checkout,has_table_privilege('lowwin_runtime','"ChapaCheckout"','DELETE,TRUNCATE') AS checkout_delete,(has_table_privilege('lowwin_runtime','"ChapaWebhookEvent"','SELECT') AND has_table_privilege('lowwin_runtime','"ChapaWebhookEvent"','INSERT')) AS webhook,has_table_privilege('lowwin_runtime','"ChapaWebhookEvent"','UPDATE,DELETE,TRUNCATE') AS webhook_change`)).rows[0];expect(rights).toEqual({checkout:true,checkout_delete:false,webhook:true,webhook_change:false});
+  const rights=(await sql.query(`SELECT (has_table_privilege('lowwin_runtime','"ChapaCheckout"','SELECT') AND has_table_privilege('lowwin_runtime','"ChapaCheckout"','INSERT') AND has_table_privilege('lowwin_runtime','"ChapaCheckout"','UPDATE')) AS checkout,has_table_privilege('lowwin_runtime','"ChapaCheckout"','DELETE,TRUNCATE') AS checkout_delete,(has_table_privilege('lowwin_runtime','"ChapaWebhookEvent"','SELECT') AND has_table_privilege('lowwin_runtime','"ChapaWebhookEvent"','INSERT')) AS webhook,has_table_privilege('lowwin_runtime','"ChapaWebhookEvent"','DELETE,TRUNCATE') AS webhook_change`)).rows[0];expect(rights).toEqual({checkout:true,checkout_delete:false,webhook:true,webhook_change:false});
  });
 });

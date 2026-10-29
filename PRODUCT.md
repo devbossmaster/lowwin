@@ -15,13 +15,15 @@ The existing v4 fallback remains the earliest accepted bid at the lowest number 
 
 Better Auth user IDs, verified Telegram identity/contact binding, encrypted phone keys and existing balances remain authoritative. Browser data cannot authenticate a customer or confirm a payment. Ledger postings, holds, audit history and admin permissions remain intact.
 
-New manual deposits are retired from customer UI and create/prepare API actions. Customer wallet balances, wallet activity and old transfer history are retired. Every new entry uses direct ArifPay payment; existing balances cannot fund new customer bids. Registered identities and historical financial/audit records remain intact behind restricted staff operations and legacy payment recovery. Older auction rules are not rewritten; unsupported older auctions are read-only for new entries.
+Customers top up their wallet or pay an auction submission fee through Chapa v2 hosted checkout. Pay persists an owned attempt and opens Chapa automatically. Chapa collects payer details. Wallet-funded bidding remains available only behind its existing reviewed gates. The entered bid number is never charged as money. Historical ArifPay and transfer records remain intact.
 
-ArifPay Telebirr and M-PESA direct bid-fee checkout is additive and disabled by default. New charges require explicit server configuration, migration readiness, reviewed merchant setup and activation. An independently verified merchant lookup is required before balanced ledger posting and the existing idempotent bid command. Paid but unaccepted bids preserve funds for review. Neither a redirect, callback body nor a USSD prompt proves payment.
+Closing a waiting sheet changes only the UI. Transactions lists owned top-ups and bid-payment attempts, including unpaid and unresolved attempts. Explicit Start new checkout creates a new frozen command and merchant reference; replaying the same key retains its original attempt. Old attempts can still complete, and every successful incoming payment is accounted for once. Only one bid for the same user, auction and number can be accepted; additional verified funds stay in the wallet.
+
+Authenticated raw-body webhooks create durable event jobs. Merchant verification must report SUCCESS and match the original amount, currency, reference, metadata expectations and configuration before the existing locked ledger/bid command runs. Waiting UI reads only database status for a bounded foreground window. Provider verification is event-driven or manually requested; new attempts are never periodically swept or automatically resumed. Read-only ledger integrity checks stay available.
 
 ## Brand and experience
 
-Use the supplied Lowin logo. Customer screens use warm white, near-black actions and restrained gold; DM Sans Latin and Noto Sans Ethiopic. Home, Draws, centered Auctions, My Bids and Profile form the five-item navigation. There is no Deposit navigation action. Real finalized settlement records supply results. Winner identities are masked; no public winner stories or photos exist without a separate consent and moderation workflow.
+Use the supplied Lowin logo. Customer screens use warm white, near-black actions and restrained gold; DM Sans Latin and Noto Sans Ethiopic. Home, Winners, My Bids, Transactions and Profile form the five-item navigation. There is no Deposit navigation action. Real finalized settlement records supply results. Winner identities are masked; no public winner stories or photos exist without a separate consent and moderation workflow.
 
 ## Release boundary
 
