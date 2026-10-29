@@ -55,6 +55,10 @@ Web, bot and Chapa worker must run matching code/schema and protected configurat
 The worker's `CHAPA_RECOVERY_ENABLED=true` enables durable event processing while
 new checkouts are paused; it does not enable the legacy sweep. Its protected
 configuration must match the web service, including mode, schema and credentials.
+The normal `npm run worker:chapa` command prints a `chapa_worker_configuration`
+JSON record before loading the database. If startup is blocked, read its
+`missingPrerequisites` in Coolify Logs; terminal access and a changed start command
+are unnecessary. It logs setting names and booleans, never credential values.
 
 New initialization snapshots include Chapa's documented HTTPS `return_url` to
 `/payments/chapa/return?checkout=<opaque ID>`. A version marker preserves the

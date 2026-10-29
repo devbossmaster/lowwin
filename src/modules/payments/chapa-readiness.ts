@@ -46,6 +46,13 @@ function missingPrerequisites(raw:Environment,mode:'test'|'live'){
  return missing;
 }
 
+/** Safe startup diagnostics: only booleans, mode and static setting names. */
+export function chapaWorkerConfiguration(raw:Environment){
+ const health=chapaAvailability(raw),missing=missingPrerequisites(raw,health.mode);
+ if(!health.recoveryEnabled&&raw.CHAPA_RECOVERY_ENABLED!=='true')missing.push('CHAPA_RECOVERY_ENABLED');
+ return {event:'chapa_worker_configuration',mode:health.mode,configured:health.configured,recoveryEnabled:health.recoveryEnabled,legacySweepEnabled:raw.CHAPA_LEGACY_SWEEP_ENABLED==='true',missingPrerequisites:missing};
+}
+
 /** Offline by default. Explicit checks are read-only and limited to configured
  * TEST environments; this module never creates or verifies a payment. */
 export async function checkChapaReadiness(raw:Environment,options:Options={},dependencies:Dependencies={}):Promise<ChapaReadiness>{

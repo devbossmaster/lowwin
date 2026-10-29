@@ -1,5 +1,5 @@
 import {describe,expect,it,vi} from 'vitest';
-import {checkChapaReadiness,chapaReadinessPassed} from '../src/modules/payments/chapa-readiness';
+import {checkChapaReadiness,chapaReadinessPassed,chapaWorkerConfiguration} from '../src/modules/payments/chapa-readiness';
 
 function environment(patch:Record<string,string|undefined>={}){
  return {APP_ENV:'local',NODE_ENV:'test',DATABASE_URL:'postgresql://private-user:private-password@127.0.0.1:5432/readiness_test',MINI_APP_URL:'https://lowwin.test',BETTER_AUTH_URL:'https://lowwin.test',PAYMENT_GATEWAY:'CHAPA',CHAPA_SCHEMA_READY:'true',CHAPA_MODE:'test',CHAPA_ENABLED:'true',CHAPA_PRIVATE_KEY:'CHAPA_TEST_'+'a'.repeat(32),CHAPA_WEBHOOK_SECRET:'private-webhook-secret-at-least-thirty-two-characters',...patch};
@@ -7,6 +7,18 @@ function environment(patch:Record<string,string|undefined>={}){
 const method=()=>({name:'Untrusted provider display name',slug:'telebirr',is_mobile_money:true,can_process_payments:true,supported_currencies:{ETB:{default_min:100,default_max:1000000,countries:{ET:{is_enabled:true,min_amount:250,max_amount:500000}}}}});
 
 describe('non-charging Chapa readiness',()=>{
+ it('identifies a disabled worker without requiring a running container or enabling new checkouts',()=>{
+  const raw=environment({CHAPA_ENABLED:'false',CHAPA_LEGACY_SWEEP_ENABLED:'false'});
+  expect(chapaWorkerConfiguration(raw)).toMatchObject({event:'chapa_worker_configuration',configured:true,recoveryEnabled:false,legacySweepEnabled:false,missingPrerequisites:['CHAPA_RECOVERY_ENABLED']});
+  expect(chapaWorkerConfiguration({...raw,CHAPA_RECOVERY_ENABLED:'true'})).toMatchObject({configured:true,recoveryEnabled:true,legacySweepEnabled:false,missingPrerequisites:[]});
+  expect(raw.CHAPA_ENABLED).toBe('false');
+ });
+ it('reports malformed Basic credentials without logging any credential or connection value',()=>{
+  const raw:Record<string,string|undefined>=environment({CHAPA_ENABLED:'false',CHAPA_RECOVERY_ENABLED:'true',CHAPA_WEBHOOK_AUTH:'basic',CHAPA_WEBHOOK_BASIC_USERNAME:'lowwin-webhook',CHAPA_WEBHOOK_BASIC_PASSWORD:'private-short-password'});
+  const report=chapaWorkerConfiguration(raw);
+  expect(report).toMatchObject({configured:false,recoveryEnabled:false,missingPrerequisites:['CHAPA_WEBHOOK_AUTH / BASIC credentials']});
+  for(const secret of [raw.CHAPA_PRIVATE_KEY,raw.CHAPA_WEBHOOK_SECRET,raw.CHAPA_WEBHOOK_BASIC_USERNAME,raw.CHAPA_WEBHOOK_BASIC_PASSWORD,raw.DATABASE_URL,raw.MINI_APP_URL])if(secret)expect(JSON.stringify(report)).not.toContain(secret);
+ });
  it('allows Basic Auth event processing without an unused signature secret and still rejects missing Basic credentials',async()=>{
   const raw=environment({CHAPA_WEBHOOK_SECRET:undefined,CHAPA_WEBHOOK_AUTH:'basic',CHAPA_WEBHOOK_BASIC_USERNAME:'lowwin-webhook',CHAPA_WEBHOOK_BASIC_PASSWORD:'b'.repeat(48),CHAPA_ENABLED:'false',CHAPA_RECOVERY_ENABLED:'true'});
   expect(await checkChapaReadiness(raw)).toMatchObject({configured:true,creationEnabled:false,recoveryEnabled:true,missingPrerequisites:[]});
