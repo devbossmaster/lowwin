@@ -16,8 +16,12 @@ CHAPA_WEBHOOK_BASIC_USERNAME=lowwin-webhook
 CHAPA_WEBHOOK_BASIC_PASSWORD=REPLACE_WITH_SEPARATE_RANDOM_PASSWORD
 ```
 
-Generate a separate random password of 32-256 printable ASCII characters; a
-32-byte base64url value works. Keep it server-only. `CHAPA_WEBHOOK_SECRET` is
+Lowwin accepts a separate random Basic password of 16-256 printable ASCII
+characters. The merchant confirmed that a 16-character password saved in Chapa;
+longer values produced a generic dashboard 500, which does not establish Chapa's
+maximum length. Use 16 random letters/numbers for this deployment and keep the
+exact value in Chapa, web and worker. A saved webhook still needs actual delivery
+and duplicate-handling acceptance. Keep it server-only. `CHAPA_WEBHOOK_SECRET` is
 required only in Signature mode. Basic mode requires its exact username/password;
 the dashboard may still require a Secret Hash field when creating the webhook.
 Keep the merchant API key, payment mode and recovery bindings.

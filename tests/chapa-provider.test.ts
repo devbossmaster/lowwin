@@ -15,7 +15,8 @@ describe('Chapa v2 configuration boundaries',()=>{
   const basic={CHAPA_WEBHOOK_AUTH:'basic',CHAPA_WEBHOOK_BASIC_USERNAME:'lowwin-webhook',CHAPA_WEBHOOK_BASIC_PASSWORD:'p'.repeat(48)};
   expect(chapaAvailability(environment(basic)).configured).toBe(true);
   expect(chapaAvailability(environment({...basic,CHAPA_WEBHOOK_SECRET:undefined}))).toMatchObject({configured:true,recoveryEnabled:true});
-  for(const patch of [{CHAPA_WEBHOOK_AUTH:'legacy'},{CHAPA_WEBHOOK_AUTH:''},{CHAPA_WEBHOOK_BASIC_USERNAME:''},{CHAPA_WEBHOOK_BASIC_USERNAME:'user:name'},{CHAPA_WEBHOOK_BASIC_PASSWORD:'short'},{CHAPA_WEBHOOK_BASIC_PASSWORD:'p'.repeat(257)},{CHAPA_WEBHOOK_BASIC_PASSWORD:'p'.repeat(40)+'\n'}])expect(chapaAvailability(environment({...basic,...patch})).configured).toBe(false);
+  for(const length of [16,24,32,256])expect(chapaAvailability(environment({...basic,CHAPA_WEBHOOK_BASIC_PASSWORD:'p'.repeat(length)})).configured).toBe(true);
+  for(const patch of [{CHAPA_WEBHOOK_AUTH:'legacy'},{CHAPA_WEBHOOK_AUTH:''},{CHAPA_WEBHOOK_BASIC_USERNAME:''},{CHAPA_WEBHOOK_BASIC_USERNAME:'user:name'},{CHAPA_WEBHOOK_BASIC_PASSWORD:'short'},{CHAPA_WEBHOOK_BASIC_PASSWORD:'p'.repeat(15)},{CHAPA_WEBHOOK_BASIC_PASSWORD:'p'.repeat(257)},{CHAPA_WEBHOOK_BASIC_PASSWORD:'p'.repeat(40)+'\n'},{CHAPA_WEBHOOK_BASIC_PASSWORD:'p'.repeat(15)+' '}])expect(chapaAvailability(environment({...basic,...patch})).configured).toBe(false);
  });
  it('stays disabled with no keys and requires every explicit create gate',()=>{
   expect(chapaAvailability({})).toMatchObject({configured:false,enabled:false,recoveryEnabled:false,mode:'test'});

@@ -62,7 +62,7 @@ describe('Chapa HTTP authorization and durable webhook boundary',()=>{
  it('does not let unsigned callbacks/returns mutate or verify money',async()=>{expect((await callbackPost()).status).toBe(202);const redirect=await callbackGet(request('/api/payments/chapa/callback?checkout='+id+'&return=https://other.test'));expect(redirect.status).toBe(303);expect(redirect.headers.get('location')).toBe(origin+'/payments/chapa/return?checkout='+id);expect(f.transaction).not.toHaveBeenCalled();expect(f.verify).not.toHaveBeenCalled();expect(f.create).not.toHaveBeenCalled()});
  it('rejects missing or invalid signature before any event or checkout access',async()=>{for(const signature of ['', 'a'.repeat(64)])expect((await webhook(signed(hint,{signature}))).status).toBe(401);expect(f.transaction).not.toHaveBeenCalled()});
  it('requires explicit Basic Auth before recording, deduplicating and queuing a fee-inclusive hosted event',async()=>{
-  const password='local-basic-password-'+'x'.repeat(40);
+  const password='a1b2c3d4'.repeat(2);
   vi.stubEnv('CHAPA_WEBHOOK_AUTH','basic');vi.stubEnv('CHAPA_WEBHOOK_BASIC_USERNAME','lowwin-webhook');vi.stubEnv('CHAPA_WEBHOOK_BASIC_PASSWORD',password);
   expect((await webhook(signed(hint))).status).toBe(401);expect(f.transaction).not.toHaveBeenCalled();
   const basic=(value:unknown,credentials='lowwin-webhook:'+password)=>new Request(origin+'/api/payments/chapa/webhook',{method:'POST',headers:{'content-type':'application/json',authorization:'Basic '+Buffer.from(credentials).toString('base64')},body:JSON.stringify(value)});

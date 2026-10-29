@@ -19,7 +19,7 @@ export function chapaConfigurationFingerprint(raw:Environment=process.env){retur
 /** Explicit dashboard authentication selection; never fall back between schemes. */
 export function chapaWebhookAuthentication(raw:Environment=process.env){
  const mode=raw.CHAPA_WEBHOOK_AUTH??'signature',username=raw.CHAPA_WEBHOOK_BASIC_USERNAME??'',password=raw.CHAPA_WEBHOOK_BASIC_PASSWORD??'';
- const valid=mode==='signature'||mode==='basic'&&/^[A-Za-z0-9_-]{1,80}$/.test(username)&&password.length>=32&&password.length<=256&&/^[\x21-\x7e]+$/.test(password)&&!/REPLACE|CHANGE_ME/i.test(password);
+ const valid=mode==='signature'||mode==='basic'&&/^[A-Za-z0-9_-]{1,80}$/.test(username)&&password.length>=16&&password.length<=256&&/^[\x21-\x7e]+$/.test(password)&&!/REPLACE|CHANGE_ME/i.test(password);
  return {mode,valid};
 }
 export function chapaWebhookConfigurationFingerprint(raw:Environment=process.env){return chapaHash(raw.CHAPA_WEBHOOK_AUTH==='basic'?JSON.stringify(['basic',raw.CHAPA_WEBHOOK_BASIC_USERNAME,raw.CHAPA_WEBHOOK_BASIC_PASSWORD]):raw.CHAPA_WEBHOOK_SECRET??'')}
