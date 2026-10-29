@@ -1,17 +1,23 @@
-import {chapaConfirmed,chapaRecoverable,type ChapaCheckoutView} from './chapa-client';
+import {ChapaClientError,chapaConfirmed,chapaRecoverable,type ChapaCheckoutView} from './chapa-client';
 
-type Visibility=Pick<Document,'visibilityState'|'addEventListener'|'removeEventListener'>;
+type Events=Pick<EventTarget,'addEventListener'|'removeEventListener'>;
+type Visibility=Events&Pick<Document,'visibilityState'>;
+type Options={onError?:(error:unknown)=>void;onResume?:()=>void;wake?:Events|null};
 
-/** Checks through the owned server endpoint; never derives success locally. */
-export function startChapaPolling(verify:()=>Promise<ChapaCheckoutView|null>,onPause:()=>void,visibility:Visibility=document){
- let active=true,inFlight=false,delay=5000,timer:ReturnType<typeof setTimeout>|undefined;
- const deadline=Date.now()+300000;
+/** Bounded automatic checks of the owned endpoint. Returning to the app wakes a
+ * paused check; no pending/error/redirect is ever converted into success. */
+export function startChapaPolling(verify:()=>Promise<ChapaCheckoutView|null>,onPause:()=>void,visibility:Visibility=document,options:Options={}){
+ let active=true,paused=false,inFlight=false,delay=5000,timer:ReturnType<typeof setTimeout>|undefined;
+ let deadline=Date.now()+300000;
+ const wake=options.wake===undefined?(typeof window==='undefined'?null:window):options.wake;
  const schedule=()=>{
-  if(active&&visibility.visibilityState==='visible')timer=setTimeout(()=>void read(),Math.min(delay,Math.max(0,deadline-Date.now())));
+  clearTimeout(timer);
+  if(active&&!paused&&visibility.visibilityState==='visible')timer=setTimeout(()=>void read(),Math.min(delay,Math.max(0,deadline-Date.now())));
  };
  const read=async()=>{
-  if(!active||inFlight||visibility.visibilityState!=='visible')return;
-  if(Date.now()>=deadline){onPause();stop();return}
+  if(!active||inFlight||paused||visibility.visibilityState!=='visible')return;
+  clearTimeout(timer);
+  if(Date.now()>=deadline){paused=true;onPause();return}
   inFlight=true;
   try{
    const order=await verify();
@@ -20,12 +26,25 @@ export function startChapaPolling(verify:()=>Promise<ChapaCheckoutView|null>,onP
     if(chapaConfirmed(order)||!chapaRecoverable(order)){stop();return}
     delay=Number.isFinite(order.pollAfterMs)?Math.min(60000,Math.max(5000,order.pollAfterMs)):5000;
    }
-  }catch{/* Keep the last authoritative result if verification is unavailable. */}
-  finally{inFlight=false;schedule()}
+  }catch(error){
+   if(!active)return;
+   options.onError?.(error);
+   if(error instanceof ChapaClientError&&[401,403,404].includes(error.status)){stop();return}
+   delay=Math.min(30000,delay*2);
+  }finally{inFlight=false;schedule()}
  };
- const onVisibility=()=>{clearTimeout(timer);if(visibility.visibilityState==='visible')void read()};
- function stop(){active=false;clearTimeout(timer);visibility.removeEventListener('visibilitychange',onVisibility)}
- visibility.addEventListener('visibilitychange',onVisibility);
+ const onWake=()=>{
+  clearTimeout(timer);
+  if(!active||visibility.visibilityState!=='visible')return;
+  if(paused){paused=false;deadline=Date.now()+300000;options.onResume?.()}
+  void read();
+ };
+ function stop(){
+  active=false;clearTimeout(timer);visibility.removeEventListener('visibilitychange',onWake);
+  wake?.removeEventListener('focus',onWake);wake?.removeEventListener('online',onWake);
+ }
+ visibility.addEventListener('visibilitychange',onWake);
+ wake?.addEventListener('focus',onWake);wake?.addEventListener('online',onWake);
  void read();
  return stop;
 }

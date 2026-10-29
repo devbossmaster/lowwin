@@ -7,7 +7,7 @@ const id='0f55aaab-2222-4444-8888-123456789012',bot='https://t.me/lowwin_fixture
 describe('external checkout return to the original owned Mini App payment',()=>{
  it('opens the configured bot with only the checkout ID outside Telegram',()=>{
   const replace=vi.fn();vi.stubGlobal('window',{Telegram:{WebApp:{initData:''}},location:{replace}});
-  expect(returnChapaToBot(bot,id)).toBe(true);expect(replace).toHaveBeenCalledExactlyOnceWith(`${bot}?start=chapa_${id}`);
+  expect(returnChapaToBot(bot,id)).toBe(true);expect(replace).toHaveBeenCalledExactlyOnceWith(`${bot}?startapp=chapa_${id}`);
  });
  it('keeps an existing Telegram Mini App open to restore its owned payment modal',()=>{
   const replace=vi.fn();vi.stubGlobal('window',{Telegram:{WebApp:{initData:'signed-launch'}},location:{replace}});

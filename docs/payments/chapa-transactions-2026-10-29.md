@@ -4,10 +4,12 @@ Pay freezes an owned command, sends the existing minimal v2 hosted request, and
 opens the exact validated checkout URL automatically. Chapa collects the payer's
 details. Wallet-funded bidding continues through the existing bid command.
 
-The waiting sheet reads Lowwin's database only, every five seconds while visible
-for at most five minutes, and refreshes immediately when it becomes visible. Closing it cancels UI requests and timers, without
-changing the payment. There is no saved-session restoration or automatic provider
-verification. An interrupted command can be explicitly replayed with its original
+The waiting sheet automatically checks the owned server endpoint while visible,
+respecting the server's verification cooldown and lease. Each foreground session
+is bounded to five minutes; focus, visibility and network restoration wake checks.
+Closing it cancels UI requests and timers without changing the payment. An explicit
+owned checkout link restores its modal; old session-storage attempts are not reused.
+An interrupted command can be explicitly replayed with its original
 key while that sheet remains open. A deliberate Start new checkout detaches that
 UI and uses a new command key, reference and current server quote. Earlier attempts
 remain eligible for late confirmation. Duplicate bid-number protections preserve
@@ -18,6 +20,58 @@ safe references, known methods and separate provider/fulfillment information.
 Details update automatically from the original owned attempt and can link to a fresh checkout. There is no manual Verify status button.
 My Bids displays unfinished payment attempts separately from accepted totals.
 Accepted Chapa bids link their transaction; failed payment does not close a draw.
+
+## Checkout return and confirmation states
+
+New payment snapshots include the documented HTTPS `return_url` at
+`/payments/chapa/return?checkout=<opaque UUID>`. Historical initialization bodies
+remain immutable. Returning inside Telegram restores the original owned bid or
+top-up modal. Outside Telegram, the return page opens
+`https://t.me/<bot>?startapp=chapa_<UUID>` and retains a bot-chat fallback.
+Configure the production bot's **Main Mini App** in BotFather with the Lowwin URL
+to support that direct app link. Telegram/browser confirmation dialogs may still
+require a tap; real-device automatic return must be checked separately.
+
+The signed launch parameter is a locator. After authentication, Lowwin reads the
+owned checkout before choosing `/profile?...#wallet` or the original auction.
+The return page does not itself launch a duplicate verification request. The
+destination modal checks automatically and invalidates affected private queries
+only after authoritative credit, bid acceptance or preserved funds.
+
+Delayed verification, review and provider failures have distinct messages rather
+than a perpetual loading spinner. A pending payment never blocks a deliberate new
+checkout and is never marked failed merely because the user closes Chapa.
+Reopening checkout uses the existing owned URL; retrying interrupted initialization
+uses the original command and idempotency key. Safe numeric payer phone fields are
+normalized in verification responses without changing financial evidence checks.
+
+An HTTP 200 webhook acknowledges delivery; it does not prove that Lowwin applied
+the payment. To inspect a stuck payment in the WEB terminal without applying funds:
+
+```sh
+npx --no-install tsx scripts/check-chapa-checkout.ts --merchant <merchant-reference> --provider
+```
+
+This reads the checkout and recent event states, optionally GETs Chapa verification,
+and reports matching results without printing keys or payer contact data. It never
+creates a payment, processes an event or credits a wallet. A configuration mismatch,
+unavailable provider lookup or evidence mismatch must be resolved on the server;
+changing the modal cannot establish payment success.
+
+### Local validation, 30 October 2026
+
+- 214 focused unit/API tests and 34 isolated PostgreSQL financial tests passed.
+  Coverage includes concurrent/duplicate verification, late bids, exact money and
+  reference matching, identity isolation, numeric payer contact and original-key retries.
+- All 16 browser scenarios passed across desktop, 360px English and 430px Amharic
+  runs, including direct top-up/bid return, automatic confirmation, review states,
+  interrupted initialization, repeated clicks and older transaction access.
+- TypeScript and the production webpack build passed. Provider and payment status
+  responses in browser checks were mocked; the database was disposable loopback.
+- No production migration, live payment, production credit or deployment was run.
+  Deploy the web and Chapa worker together, then check a new merchant checkout on
+  a real Telegram device. Physical Chapa receipt-to-return navigation remains an
+  external acceptance check; a browser may require confirmation to open Telegram.
 
 ## Durable event processing
 

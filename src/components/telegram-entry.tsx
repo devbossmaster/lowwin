@@ -3,6 +3,7 @@ import {lazy,Suspense,useEffect} from 'react';
 import {usePathname,useRouter} from 'next/navigation';
 import {useTelegram} from './telegram-provider';
 import {miniReturnPath} from '@/lib/mini-return';
+import {chapaReturnStartPath} from '@/lib/chapa-return-link';
 import {LaunchSplash} from './launch-splash';
 const ContactGate=lazy(()=>import('./contact-gate').then(module=>({default:module.ContactGate})));
 const TelegramEntryRecovery=lazy(()=>import('./telegram-entry-recovery'));
@@ -13,6 +14,8 @@ export function TelegramEntry({onComplete}:{onComplete?:()=>void}={}){
   const telegramLaunch=typeof window!=='undefined'&&Boolean(window.Telegram?.WebApp?.initData);
   useEffect(()=>{
     if(status!=='authenticated'||!telegramLaunch)return;
+    const paymentReturn=chapaReturnStartPath(new URLSearchParams(window.Telegram?.WebApp?.initData).get('start_param'));
+    if(paymentReturn){router.replace(paymentReturn,{scroll:false});return}
     if(pathname==='/telegram'){
       const destination=miniReturnPath(new URL(window.location.href).searchParams.get('next'));
       router.replace(destination+(destination.includes('#')?'':window.location.hash));

@@ -1,6 +1,6 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {startChapaPolling} from '../src/lib/chapa-polling';
-import type {ChapaCheckoutView} from '../src/lib/chapa-client';
+import {ChapaClientError,type ChapaCheckoutView} from '../src/lib/chapa-client';
 
 const pending={status:'PENDING',purpose:'TOP_UP',fundsPreserved:false,receipt:null,pollAfterMs:15000} as ChapaCheckoutView;
 function visibility(){
@@ -9,6 +9,29 @@ function visibility(){
 afterEach(()=>vi.useRealTimers());
 
 describe('automatic server-owned Chapa verification',()=>{
+ it('wakes on return from an external checkout and stops after authoritative credit',async()=>{
+  vi.useFakeTimers();const source=visibility(),wake=new EventTarget();
+  const verify=vi.fn().mockResolvedValueOnce(pending).mockResolvedValueOnce({...pending,status:'CREDITED'});
+  const stop=startChapaPolling(verify,vi.fn(),source,{wake});await vi.advanceTimersByTimeAsync(0);
+  wake.dispatchEvent(new Event('focus'));await vi.advanceTimersByTimeAsync(0);
+  expect(verify).toHaveBeenCalledTimes(2);wake.dispatchEvent(new Event('focus'));await vi.advanceTimersByTimeAsync(60000);
+  expect(verify).toHaveBeenCalledTimes(2);stop();
+ });
+ it('shows connection errors, bounds checks, then resumes automatically on foreground',async()=>{
+  vi.useFakeTimers();const source=visibility(),wake=new EventTarget(),pause=vi.fn(),resume=vi.fn(),error=vi.fn();
+  const verify=vi.fn().mockRejectedValue(new Error('offline'));
+  const stop=startChapaPolling(verify,pause,source,{wake,onError:error,onResume:resume});
+  await vi.advanceTimersByTimeAsync(300000);expect(pause).toHaveBeenCalledOnce();expect(error).toHaveBeenCalled();
+  const count=verify.mock.calls.length;await vi.advanceTimersByTimeAsync(60000);expect(verify).toHaveBeenCalledTimes(count);
+  verify.mockResolvedValue({...pending,status:'CREDITED'});wake.dispatchEvent(new Event('online'));await vi.advanceTimersByTimeAsync(0);
+  expect(resume).toHaveBeenCalledOnce();expect(verify).toHaveBeenCalledTimes(count+1);stop();
+ });
+ it('stops failed ownership checks and removes foreground listeners',async()=>{
+  vi.useFakeTimers();const wake=new EventTarget(),error=vi.fn(),verify=vi.fn().mockRejectedValue(new ChapaClientError('Not found',404,'NOT_FOUND'));
+  const stop=startChapaPolling(verify,vi.fn(),visibility(),{wake,onError:error});await vi.advanceTimersByTimeAsync(0);
+  wake.dispatchEvent(new Event('focus'));await vi.advanceTimersByTimeAsync(300000);
+  expect(verify).toHaveBeenCalledOnce();expect(error).toHaveBeenCalledOnce();stop();
+ });
  it('checks immediately, respects the server delay and stops after confirmed credit',async()=>{
   vi.useFakeTimers();const source=visibility(),verify=vi.fn().mockResolvedValueOnce(pending).mockResolvedValueOnce({...pending,status:'CREDITED'});
   const stop=startChapaPolling(verify,vi.fn(),source);

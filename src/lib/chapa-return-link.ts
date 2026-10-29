@@ -26,3 +26,11 @@ export function chapaBotReturnLink(botUrl:string|null|undefined,id:string|null|u
   return url.href;
  }catch{return null}
 }
+
+/** Launch the bot's Main Mini App directly; the bot chat link stays a fallback. */
+export function chapaMiniAppReturnLink(botUrl:string|null|undefined,id:string|null|undefined):string|null{
+ const link=chapaBotReturnLink(botUrl,id);if(!link)return null;
+ const url=new URL(link),payload=url.searchParams.get('start')!;
+ url.searchParams.delete('start');url.searchParams.set('startapp',payload);
+ return url.href;
+}

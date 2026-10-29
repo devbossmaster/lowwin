@@ -1,9 +1,18 @@
 import {describe,expect,it} from 'vitest';
-import {chapaBotReturnLink,chapaOriginPath,chapaReturnPath,chapaReturnStartPath} from '../src/lib/chapa-return-link';
+import {chapaBotReturnLink,chapaMiniAppReturnLink,chapaOriginPath,chapaReturnPath,chapaReturnStartPath} from '../src/lib/chapa-return-link';
 
 const id='0f55aaab-2222-4444-8888-123456789012';
 
 describe('opaque Chapa Telegram return links',()=>{
+ it('opens the Main Mini App with only an opaque attempt and retains the bot fallback',()=>{
+  const bot='https://t.me/lowwin_fixture_bot?start=lowin';
+  const app=chapaMiniAppReturnLink(bot,id)!;
+  expect(app).toBe(`https://t.me/lowwin_fixture_bot?startapp=chapa_${id}`);
+  expect(chapaReturnStartPath(new URL(app).searchParams.get('startapp'))).toBe(chapaReturnPath(id));
+  expect(chapaBotReturnLink(bot,id)).toContain('?start=chapa_');
+  for(const bad of ['https://evil.test/bot','https://t.me/lowwin_fixture_bot?startapp=other'])expect(chapaMiniAppReturnLink(bad,id)).toBeNull();
+  expect(chapaMiniAppReturnLink(bot,id+'&status=SUCCESS')).toBeNull();
+ });
  it('restores a payment surface using only the owned response purpose and auction slug',()=>{
   expect(chapaOriginPath({id,purpose:'TOP_UP',auctionSlug:null})).toBe(`/profile?topup=1&chapa=${id}#wallet`);
   expect(chapaOriginPath({id,purpose:'BID',auctionSlug:'original-auction'})).toBe(`/auctions/original-auction?chapa=${id}#bid-review`);

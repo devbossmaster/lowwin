@@ -50,7 +50,10 @@ const customerSchema=z.object({first_name:z.string().max(120).optional(),last_na
 // Hosted checkout may return uncollected payer details as null. Normalize only
 // response fields; initialization still accepts only the original string shape.
 const optionalCustomerText=(maximum:number)=>z.string().max(maximum).nullish().transform(value=>value??undefined);
-const verificationCustomerSchema=z.object({first_name:optionalCustomerText(120),last_name:optionalCustomerText(120),email:optionalCustomerText(254),phone_number:optionalCustomerText(40)});
+// Chapa deliveries also serialize phone numbers as JSON integers. Payer contact
+// is supplementary response data, never evidence of ownership or payment.
+const verificationPhone=z.union([z.string().max(40),z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).transform(String)]).nullish().transform(value=>value??undefined);
+const verificationCustomerSchema=z.object({first_name:optionalCustomerText(120),last_name:optionalCustomerText(120),email:optionalCustomerText(254),phone_number:verificationPhone});
 const metadata=z.record(z.string().max(80),z.unknown());
 const paymentStatus=z.enum(['SUCCESS','PENDING','FAILED','CANCELLED','INCOMPLETE','BLOCKED','AUTH_NEEDED']);
 const verification=z.object({status:z.literal('success'),data:z.object({chapa_reference:reference.nullish(),merchant_reference:merchantReference,amount:cents,currency:z.string().regex(/^[A-Z]{3}$/),status:paymentStatus,payment_method:z.string().max(80).optional(),processor_reference:z.string().max(256).nullish(),service_fee:cents.optional(),customer:verificationCustomerSchema.optional(),meta:metadata.nullish(),mode:z.enum(['test','live']).optional(),created_at:instant.optional(),updated_at:instant.optional()})});

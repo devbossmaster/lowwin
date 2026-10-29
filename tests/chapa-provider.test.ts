@@ -10,6 +10,17 @@ const initialized=()=>({status:'success',data:{checkout_url:'https://checkout.ch
 const method=(patch:Record<string,unknown>={})=>({name:'Telebirr',slug:'telebirr',is_mobile_money:true,can_process_payments:true,supported_currencies:{ETB:{default_min:100,default_max:1000000,countries:{ET:{is_enabled:true,min_amount:250,max_amount:500000}}}},...patch});
 afterEach(()=>vi.restoreAllMocks());
 
+describe('supplementary payer response normalization',()=>{
+ it('accepts a safe numeric phone without changing exact v2 financial evidence',()=>{
+  const response=verified();
+  const numeric={...response,data:{...response.data,customer:{phone_number:251911111111}}};
+  expect(parseChapaEvidence(numeric)).toMatchObject({amountCents:'12345',merchantReference:create.merchantReference,status:'SUCCESS',customer:{phone_number:'251911111111'}});
+  for(const value of [1.5,-1,Number.MAX_SAFE_INTEGER+1,NaN,Infinity])expect(parseChapaEvidence({...numeric,data:{...numeric.data,customer:{phone_number:value}}})).toBeNull();
+  expect(parseChapaEvidence({...numeric,data:{...numeric.data,amount:'12345'}})).toBeNull();
+  expect(parseChapaEvidence({...numeric,data:{...numeric.data,status:'success'}})).toBeNull();
+ });
+});
+
 describe('Chapa v2 configuration boundaries',()=>{
  it('defaults to raw-body signatures and requires an explicit valid compatibility profile',()=>{
   expect(chapaWebhookSignatureProfile({})).toBe('raw_body');

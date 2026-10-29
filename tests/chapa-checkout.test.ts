@@ -113,6 +113,14 @@ describe.skipIf(!database)('Chapa v2 hosted payments on disposable PostgreSQL',(
  it('requires exact amount, currency, merchant/reference, mode and supplied attempt metadata',async()=>{
   for(const change of [{amount:999},{currency:'USD'},{merchant_reference:'wrong-reference'},{chapa_reference:'CHwrong'},{mode:'live'},{meta:{lowwin_attempt:randomUUID()}}]){const f=await payment(),order=await f.start();f.setMutation(row=>({...row,...change}));expect(await f.verify(order.id)).toMatchObject({status:'NEEDS_REVIEW',reason:'EVIDENCE_MISMATCH',fundsPreserved:false});expect(await balance(f.userId)).toBe('0');expect(await db.operation.count({where:{userId:f.userId,scope:'CHAPA_RECEIPT'}})).toBe(0)}expect(await reconcile(db)).toEqual([]);
  });
+ it('applies verified numeric payer contact once without using that contact as financial proof',async()=>{
+  const f=await payment(),order=await f.start();
+  f.setMutation(row=>({...row,customer:{first_name:'',last_name:'',email:'',phone_number:251911111111}}));
+  expect((await f.verify(order.id)).status).toBe('CREDITED');await f.verify(order.id);
+  expect(await balance(f.userId)).toBe('10');
+  expect(await db.journal.count({where:{reference:`chapa:${f.inputs[0].merchantReference}`}})).toBe(1);
+  expect(await reconcileChapaReceipts(db)).toEqual([]);
+ });
  it('credits minimal requests with omitted, empty, or unrelated optional metadata',async()=>{
   for(const meta of [undefined,null,{}, {provider_note:'optional metadata'}]){
    const f=await payment(),order=await f.start();f.setMutation(row=>({...row,meta}));expect((await f.verify(order.id)).status).toBe('CREDITED');await f.verify(order.id);
