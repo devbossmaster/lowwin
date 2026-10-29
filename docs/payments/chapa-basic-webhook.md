@@ -71,3 +71,32 @@ corresponding dashboard configuration; do not delete attempts or receipts.
 
 References: [webhook security](https://docs.chapa.global/docs/v2/integrations/webhooks),
 [payment verification](https://docs.chapa.global/docs/v2/integrations/verify-payment).
+
+## Diagnose an actual 401 without exposing credentials
+
+The Chapa dashboard's “retry initiated” toast confirms scheduling, not delivery.
+Refresh the transaction and inspect the delivery HTTP status and response. Opening
+the webhook URL in a browser sends GET and normally returns 405; it does not test
+Chapa's authenticated POST.
+
+In the deployed **web** container, run:
+
+```sh
+npx --no-install tsx scripts/check-chapa-webhook-auth.ts
+```
+
+Copy the actual delivery's Authorization value or one-line Headers JSON from
+Chapa into the hidden terminal prompt and press Enter. Do not put it in command
+arguments or paste it into chat. The diagnostic reads only runtime environment
+variables and prints booleans and diagnosis codes; it makes no HTTP, database,
+payment or bot calls and does not load environment files.
+
+`MATCHES_DEPLOYED_BASIC_AUTH` means that copied header matches this container's
+current Basic configuration. A username/password mismatch must be corrected in
+the matching Chapa webhook or web runtime configuration; an old delivery can
+retain old authentication. `RECEIVED_PASSWORD_ENVELOPE_MISMATCH` means the received
+password resembles encoded encrypted metadata and differs from the configured
+password. It is evidence to investigate the delivery configuration/provider,
+not permission to accept that envelope or bypass authentication. Signature mode
+reports that exact raw body bytes and the signature are required; this command
+does not guess a signature from pretty-printed dashboard JSON.

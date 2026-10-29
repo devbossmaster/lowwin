@@ -203,6 +203,16 @@ Only these six selected screenshots and the two sanitized evidence files are com
 
 Machine-readable fixture assertions: [360px evidence](chapa-v2/screenshots/evidence-360.json), [430px evidence](chapa-v2/screenshots/evidence-430.json). No full telephone numbers, real customer identity, keys, tokens, database URLs or fixture credentials are included in these published evidence files.
 
+## Telegram payment confirmations
+
+The hosted return page attempts to open the configured Telegram bot automatically when reached outside the Mini App. It carries only the validated opaque checkout ID. The explicit **Open Lowwin in Telegram** link remains available when a browser requires a user gesture or Telegram asks the user to open/start the bot. Inside the authenticated Mini App, the owned checkout restores the original top-up or auction payment modal and starts automatic server verification. Navigation and return parameters never establish payment success. Existing initialization snapshots and their provider return URLs remain immutable.
+
+A newly verified receipt queues one `CHAPA_PAYMENT_CONFIRMED` outbox job under `chapa:<checkout-id>:telegram-confirmed` in the same database transaction as its balanced credit and final checkout update. Duplicate verification or webhook processing cannot enqueue another job. Returning to a historical paid checkout does not backfill or send a new notification.
+
+Run the existing `npm run worker:notifications` service to deliver the short bilingual amount confirmation and **Open Lowwin** Mini App button. Deploy that worker with the matching web release, bot token, `CHAPA_MODE`, and `MINI_APP_URL`. Delivery rechecks the committed receipt, checkout owner, verified Telegram contact, payment bot binding, and mode. TEST receipts are explicitly marked. If verified bid money is retained in the wallet because the bid could not be accepted, the message says so. This is a plain Telegram receipt without a promotional image or community footer, and it adds no second Mini App inbox item. No schema migration or new environment variable is required.
+
+The existing dispatcher sends only after the payment transaction commits and uses durable retry/blocked-chat handling. Its unique outbox key prevents duplicate enqueue, but Telegram delivery remains at least once: a crash or ambiguous network failure after Telegram accepted a message but before the delivery transaction commits can repeat that message. Such a retry cannot repeat a financial credit or bid.
+
 ## Official references
 
 - [Quick Start](https://docs.chapa.global/docs/v2/getting-started)

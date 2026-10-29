@@ -9,6 +9,7 @@ import {demoBidAllowed} from '../auctions/bids';
 import {existsSync,statSync} from 'node:fs';
 import {resolve} from 'node:path';
 import sharp from 'sharp';
+import {chapaReceiptContent,chapaReceiptKind} from './chapa-receipt';
 type DB=Prisma.TransactionClient;
 const notificationImage=resolve('public/notification.png');
 const composedPhotos=new Map<string,Buffer>();
@@ -43,6 +44,7 @@ export async function notificationPhoto(tx:DB,imageId:string|undefined,origin:st
 }
 const words:Record<string,[string,string]>={AUCTION_MINIMUM_CANCELLED:['Auction cancelled: participant minimum not met','Fewer than two eligible participants entered. All entry fees were refunded and all holds released.'],AUCTION_FALLBACK_WON:['You won: first accepted lowest bid','No amount was unique. Your bid at the lowest amount was accepted first by the database. View your final result and delivery details.'],BID_ACCEPTED:['Bid accepted','Your accepted receipt is ready in My Bids.'],AUCTION_CLOSED:['Auction closed','Your result and released holds are ready to review.'],AUCTION_WON:['You won this auction','Your settled result is ready. Claim instructions are in your wins.'],AUCTION_NO_WINNER:['No unique winner','This auction closed without a winner. Holds were released; disclosed entry fees were retained.'],AUCTION_CANCELLED:['Auction cancelled','Auction holds were released and charged entry fees were refunded.'],FULFILLMENT_UPDATED:['Delivery update','Open your win to review its fulfillment status.'],AUCTION_START:['A saved auction is open','Your saved auction is now open.'],FAVORITE_ENDING:['A saved auction ends soon','Open your saved auction to check its closing time.']};
 export async function notificationContent(tx:DB,row:Pick<Outbox,'kind'|'payload'>){
+ if(row.kind===chapaReceiptKind)return chapaReceiptContent(tx,row);
  if(telegramKinds.includes(row.kind))return campaignContent(tx,row);
  const p=row.payload as {auctionId?:string;recipientUserId?:string};if(!p.recipientUserId||!p.auctionId)return null;
  const a=await tx.auction.findUnique({where:{id:p.auctionId},select:{terms:{select:{ruleVersion:true}},slug:true,code:true,publicCode:true,isDemo:true,isSettlementFixture:true,result:{select:{id:true}},settlement:{select:{decision:true,outcome:true,winnerUserId:true}}}});
@@ -55,9 +57,9 @@ export async function notificationContent(tx:DB,row:Pick<Outbox,'kind'|'payload'
  return {userId:p.recipientUserId,kind,title:`${a.isDemo?'DEMO · ':''}${copy[0]}`,body:isSubmissionFeeOnly(a.terms?.ruleVersion)&&['AUCTION_CANCELLED','AUCTION_MINIMUM_CANCELLED'].includes(kind)?'Auction cancelled. Accepted submission fees are non-refundable.':isSubmissionFeeOnly(a.terms?.ruleVersion)&&kind==='AUCTION_CLOSED'?'Your result is ready. The chosen number is not charged.':copy[1],href};
 }
 export async function materializeAlert(tx:DB,row:Pick<Outbox,'key'|'kind'|'payload'>&Partial<Pick<Outbox,'testRunId'>>){
- // Admin broadcasts are delivered only by the Telegram worker, including jobs
- // queued by an older release. They never create a Mini App inbox item.
- if(row.kind==='BROADCAST')return;
+ // Broadcasts and Chapa receipts are Telegram-only. The payment transaction
+ // retains its existing private alert; delivery must not add another inbox item.
+ if(row.kind==='BROADCAST'||row.kind===chapaReceiptKind)return;
  const content=await notificationContent(tx,row);if(!content)return;
 
  await tx.notificationInbox.upsert({where:{key:row.key},create:{key:row.key,userId:content.userId,kind:content.kind,title:content.title,body:content.body,href:content.href,testRunId:row.testRunId},update:{}});
@@ -103,7 +105,8 @@ export async function dispatchOne(client:PrismaClient,bot:Pick<Bot,'api'>){
   if(row.testRunId){await skip();return true}
   // These are the only automatic Telegram categories. Legacy private inbox
   // receipts remain readable, but their jobs no longer send Telegram messages.
-  if(!telegramKinds.includes(row.kind)){await skip();return true}
+  const paymentReceipt=row.kind===chapaReceiptKind;
+  if(!telegramKinds.includes(row.kind)&&!paymentReceipt){await skip();return true}
   const user=await tx.user.findUnique({where:{id:content.userId},select:{telegramId:true,name:true}}),chat=user?.telegramId?await tx.botChat.findUnique({where:{telegramId:user.telegramId}}):null;
   if(!chat||chat.blocked){await skip();return true}
   const link=new URL(content.href,process.env.MINI_APP_URL);
@@ -112,11 +115,11 @@ export async function dispatchOne(client:PrismaClient,bot:Pick<Bot,'api'>){
    const name=(user?.name??'Lowwin player').replace(/[\r\n\u0000-\u001f]/g,' ').slice(0,80);
    const startReminder=row.kind==='AUCTION_UPCOMING'||row.kind==='AUCTION_STARTING_SOON';
    const body=content.body.includes('{name}')?content.body.replaceAll('{name}',name):`${name},\n${content.body}`;
-   const text=telegramCampaignText(row.kind,content.title,startReminder?content.body:body,startReminder?name:undefined);
-   const button=row.kind==='BROADCAST'&&'buttonLabel' in content?String(content.buttonLabel):row.kind==='DEPOSIT_CREDITED'?'View wallet':startReminder?'View auction':'Bid';
+   const text=paymentReceipt?content.body:telegramCampaignText(row.kind,content.title,startReminder?content.body:body,startReminder?name:undefined);
+   const button=(row.kind==='BROADCAST'||paymentReceipt)&&'buttonLabel' in content?String(content.buttonLabel):row.kind==='DEPOSIT_CREDITED'?'View wallet':startReminder?'View auction':'Bid';
    const options={reply_markup:{inline_keyboard:[[{text:button,web_app:{url:link.href}}]]}};
    let sent:{message_id:number};
-   const photo=await notificationPhoto(tx,'imageId' in content?content.imageId:undefined,link.origin);
+   const photo=paymentReceipt?null:await notificationPhoto(tx,'imageId' in content?content.imageId:undefined,link.origin);
    sent=photo?await bot.api.sendPhoto(chat.chatId,photo,{...options,caption:text}):await bot.api.sendMessage(chat.chatId,text,options);
    const payload=row.payload as {auctionId?:string};
    await tx.telegramMessage.create({data:{outboxId:row.id,auctionId:payload.auctionId,testRunId:row.testRunId,chatId:chat.chatId,messageId:BigInt(sent.message_id)}});

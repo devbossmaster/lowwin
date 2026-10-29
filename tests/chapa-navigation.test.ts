@@ -1,7 +1,27 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
-import {prepareChapaNavigation} from '../src/lib/chapa-navigation';
+import {prepareChapaNavigation,returnChapaToBot} from '../src/lib/chapa-navigation';
 afterEach(()=>vi.unstubAllGlobals());
 const url='https://checkout.chapa.global/test/payment/hosted/TESTfixture';
+const id='0f55aaab-2222-4444-8888-123456789012',bot='https://t.me/lowwin_fixture_bot';
+
+describe('external checkout return to the original owned Mini App payment',()=>{
+ it('opens the configured bot with only the checkout ID outside Telegram',()=>{
+  const replace=vi.fn();vi.stubGlobal('window',{Telegram:{WebApp:{initData:''}},location:{replace}});
+  expect(returnChapaToBot(bot,id)).toBe(true);expect(replace).toHaveBeenCalledExactlyOnceWith(`${bot}?start=chapa_${id}`);
+ });
+ it('keeps an existing Telegram Mini App open to restore its owned payment modal',()=>{
+  const replace=vi.fn();vi.stubGlobal('window',{Telegram:{WebApp:{initData:'signed-launch'}},location:{replace}});
+  expect(returnChapaToBot(bot,id)).toBe(false);expect(replace).not.toHaveBeenCalled();
+ });
+ it.each([[bot,'invalid'],[bot,id+'&status=SUCCESS'],['https://evil.test/bot',id],['https://user:password@t.me/lowwin_fixture_bot',id],[null,id]])('rejects invalid attempt or bot links', (origin,checkout)=>{
+  const replace=vi.fn();vi.stubGlobal('window',{location:{replace}});
+  expect(returnChapaToBot(origin,checkout)).toBe(false);expect(replace).not.toHaveBeenCalled();
+ });
+ it('keeps the explicit Telegram link available if automatic navigation is blocked',()=>{
+  vi.stubGlobal('window',{location:{replace:()=>{throw new Error('blocked')}}});
+  expect(returnChapaToBot(bot,id)).toBe(false);
+ });
+});
 describe('one-click hosted checkout handoff',()=>{
  it('uses Telegram openLink and opens only the validated URL after initialization',()=>{
   const openLink=vi.fn(),open=vi.fn();vi.stubGlobal('window',{Telegram:{WebApp:{openLink}},open});const nav=prepareChapaNavigation();expect(openLink).not.toHaveBeenCalled();expect(nav.open(url)).toBe(true);nav.cancel();expect(openLink).toHaveBeenCalledExactlyOnceWith(url);expect(open).not.toHaveBeenCalled();
