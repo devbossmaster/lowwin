@@ -91,3 +91,5 @@
  .bidEntry .feeStrip{margin-bottom:8px;padding-block:8px}.bidEntry .inputHeading{margin-bottom:3px}.bidEntry .balanceNote{margin-top:6px}
  .bidEntry .methods{margin-top:6px;padding:8px}.bidEntry .hint{margin-top:6px}
 }
+
+.simplePaymentStatus>small{display:block;max-width:36ch;margin:14px auto;color:#68665e;font-size:12px;line-height:1.7}.links>button{min-height:44px;padding:8px;border:0;background:transparent;color:#715719;font:inherit;cursor:pointer}.simplePaymentStatus>h3{overflow-wrap:anywhere}

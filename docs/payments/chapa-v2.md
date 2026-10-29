@@ -1,5 +1,9 @@
 # Chapa v2 hosted payments
 
+The current customer flow and worker contract are described in
+[Checkout and Transactions](chapa-transactions-2026-10-29.md). That update replaces
+saved-checkout restoration and periodic verification for new attempts.
+
 Lowwin uses Chapa's v2 hosted checkout: the server creates a payment attempt, the customer pays on Chapa's returned checkout page, and the server verifies that same attempt before recording funds or accepting a bid. Lowwin does not collect card numbers, PINs or OTPs. The existing Lowwin wallet, Telegram/contact gate, frozen auction terms, referral discounts and balanced ledger remain the authority for participation.
 
 Merchant-account verification does not configure or enable this integration. It defaults to disabled until protected credentials and the reviewed environment are ready. Source implementation, local synthetic checks and provider-sandbox acceptance are different milestones: no merchant charge, production migration, funding activation or live transaction is established by this work.

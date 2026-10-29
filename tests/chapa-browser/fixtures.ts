@@ -25,7 +25,7 @@ export async function fixture(page:Page,am:boolean){
  return {db,auction,title,user,home:'/?q='+encodeURIComponent(title)};
 }
 
-export function pending(intent:ChapaIntent,id=randomUUID()):ChapaCheckoutView{
+export function pending(intent:ChapaIntent,id:string=randomUUID()):ChapaCheckoutView{
  return {id,purpose:intent.purpose,mode:'test',amount:intent.purpose==='TOP_UP'?intent.amount:'10.00',amountCents:intent.purpose==='TOP_UP'?'10000':'1000',currency:'ETB',status:'PENDING',reason:'AWAITING_PAYMENT',checkoutUrl:'https://checkout.chapa.global/CH-recovery-'+id,auctionSlug:intent.purpose==='BID'?intent.auctionSlug:null,bidNumber:intent.purpose==='BID'?intent.amount:null,feeVersion:intent.purpose==='BID'?intent.feeVersion:null,grossFee:intent.purpose==='BID'?'10.00':null,discountPoints:'0',createdAt:new Date().toISOString(),expiresAt:new Date(Date.now()+3600000).toISOString(),pollAfterMs:15000,fundsPreserved:false,receipt:null};
 }
 

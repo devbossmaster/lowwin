@@ -1,5 +1,11 @@
 # Chapa v2: Coolify production preparation
 
+For the current Transactions release, also review additive migration
+`202610290002_chapa_event_transactions` and the
+[event-worker contract](chapa-transactions-2026-10-29.md). The Chapa worker now
+processes durable received events. Keep `CHAPA_LEGACY_SWEEP_ENABLED=false`.
+The historical migration inventory below predates that additive change.
+
 Prepare these settings in the production resource's **Environment Variables** screen. Keep existing database, authentication, Telegram, contact-encryption, Redis and Resend secrets. Add or edit individual variables; do not replace the whole environment with this partial list. Private merchant keys must be server-only, with no `NEXT_PUBLIC_` prefix.
 
 This is a paused deployment configuration. Merchant TEST webhook authentication and provider automatic-return compatibility are still unresolved. Do not enable live charges from this guide.

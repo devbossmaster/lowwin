@@ -9,9 +9,10 @@ import {reconcileChapaReceipts} from '../src/modules/payments/chapa-reconcile';
 import {submitBid,submitBidInTransaction} from '../src/modules/auctions/bids';
 import {createChapaCheckout,getChapaCheckout,listChapaCheckouts,recoverChapaCheckouts,verifyChapaCheckout} from '../src/modules/payments/chapa';
 import {recoveryAuthorizationAction,recoveryAuthorizationKey,recoveryBindingHash,type ChapaRecoveryBinding} from '../src/modules/payments/chapa-recovery-binding';
-import {chapaAvailability,chapaConfigurationFingerprint,type ChapaCreate,type ChapaTransport} from '../src/modules/payments/chapa-provider';
+import {chapaAvailability,chapaConfigurationFingerprint,chapaHash,type ChapaCreate,type ChapaTransport} from '../src/modules/payments/chapa-provider';
 import {processChapaEvent,processChapaEvents} from '../src/modules/payments/chapa-events';
 import {TEST_TOKEN} from './helpers';
+import {getPersonalBids} from '../src/modules/profile/personal';
 
 const database=process.env.CHAPA_TEST_DATABASE_URL;
 const gateway={CHAPA_MODE:'test',CHAPA_SCHEMA_READY:'true',CHAPA_PRIVATE_KEY:'CHAPA_TEST_'+ 'a'.repeat(40),CHAPA_WEBHOOK_SECRET:'local-chapa-signature-secret-thirty-two-characters',CHAPA_ENABLED:'true',CHAPA_RECOVERY_ENABLED:'true',PAYMENT_GATEWAY:'CHAPA',BETTER_AUTH_URL:'https://lowin.ngrok-free.app',MINI_APP_URL:'https://lowin.ngrok-free.app',CHAPA_BASE_URL:'https://api.chapa.global',CHAPA_CURRENCY:'ETB',PAYMENTS_LIVE_ENABLED:'false',CHAPA_LIVE_ENABLED:'false'};
@@ -151,12 +152,19 @@ describe.skipIf(!database)('Chapa v2 hosted payments on disposable PostgreSQL',(
  it('normalizes equivalent top-up amounts but rejects a changed payload for the same key',async()=>{
   const f=await payment({amount:'10'}),order=await f.start();expect((await createChapaCheckout(db,f.userId,{...f.input,amount:'10.00'},undefined,f.transport)).id).toBe(order.id);await expect(createChapaCheckout(db,f.userId,{...f.input,amount:'11.00'},undefined,f.transport)).rejects.toMatchObject({code:'KEY_REUSED'});expect(f.create).toHaveBeenCalledTimes(1);
  });
+ it('keeps historical alias keys bound to their original payment before and after fulfillment',async()=>{
+  const f=await payment(),first=await f.start(),input={...f.input,key:randomUUID()},normalized={...input,amount:'1000'};
+  await db.operation.create({data:{userId:f.userId,scope:'CHAPA_CHECKOUT_ALIAS',key:input.key,requestHash:chapaHash(JSON.stringify(normalized)),result:{checkoutId:first.id}}});
+  expect((await createChapaCheckout(db,f.userId,input,undefined,f.transport)).id).toBe(first.id);await f.verify(first.id);
+  expect(await createChapaCheckout(db,f.userId,input,undefined,f.transport)).toMatchObject({id:first.id,status:'CREDITED'});
+  await expect(createChapaCheckout(db,f.userId,{...input,amount:'11'},undefined,f.transport)).rejects.toMatchObject({code:'KEY_REUSED'});expect(f.create).toHaveBeenCalledTimes(1);expect(await balance(f.userId)).toBe('10');
+ });
  it('replays the exact initialization body and reference after an ambiguous timeout',async()=>{
   const f=await payment();f.failNextInitialization();const first=await f.start();expect(first).toMatchObject({status:'PENDING',reason:'INITIALIZATION_PENDING',checkoutUrl:null});const snapshot=await db.chapaCheckout.findUniqueOrThrow({where:{id:first.id}});
   const retried=await f.start();expect(retried.id).toBe(first.id);expect(f.inputs).toHaveLength(2);expect(f.inputs[1]).toEqual(f.inputs[0]);expect(f.inputs[1]).toEqual(snapshot.initialization);expect(f.inputs[1].merchantReference).toBe(snapshot.merchantReference);expect(f.inputs[1]).not.toHaveProperty('customer');expect(await balance(f.userId)).toBe('0');expect(await db.chapaCheckout.count({where:{userId:f.userId}})).toBe(1);
  });
  it('charges only the submission fee, accepts a bid once and never reserves its number',async()=>{
-  const f=await payment({purpose:'BID',amount:'3.60',fee:30,initialBalance:'5'}),order=await f.start();expect(order.amountCents).toBe('3000');expect(f.inputs[0].amountCents).toBe('3000');const result=await f.verify(order.id);expect(result).toMatchObject({status:'BID_ACCEPTED',bidNumber:'3.6',receipt:{charge:{feePoints:'30',newlyUnavailable:'30'},hold:{extraReserved:'0'}}});expect(await balance(f.userId)).toBe('5');await Promise.all([f.verify(order.id),f.verify(order.id)]);expect(await db.bid.count({where:{auctionId:f.auction!.id,userId:f.userId}})).toBe(1);expect(await db.auctionHold.count({where:{auctionId:f.auction!.id}})).toBe(0);expect(await db.operation.count({where:{userId:f.userId,scope:'CHAPA_RECEIPT'}})).toBe(1);expect(await reconcile(db)).toEqual([]);
+  const f=await payment({purpose:'BID',amount:'3.60',fee:30,initialBalance:'5'}),order=await f.start();expect(order.amountCents).toBe('3000');expect(f.inputs[0].amountCents).toBe('3000');const result=await f.verify(order.id);expect(result).toMatchObject({status:'BID_ACCEPTED',bidNumber:'3.6',receipt:{charge:{feePoints:'30',newlyUnavailable:'30'},hold:{extraReserved:'0'}}});expect((await getPersonalBids(db,f.userId)).items[0].payment).toMatchObject({status:'PAID',method:'CHAPA',checkoutId:order.id});expect(await balance(f.userId)).toBe('5');await Promise.all([f.verify(order.id),f.verify(order.id)]);expect(await db.bid.count({where:{auctionId:f.auction!.id,userId:f.userId}})).toBe(1);expect(await db.auctionHold.count({where:{auctionId:f.auction!.id}})).toBe(0);expect(await db.operation.count({where:{userId:f.userId,scope:'CHAPA_RECEIPT'}})).toBe(1);expect(await reconcile(db)).toEqual([]);
  });
  it('accepts a genuinely earned discount using only its net fee and preserves frozen gross-fee evidence',async()=>{
   const sponsor=await verifiedReferralUser(db),grant=await earnedReferralCoupon(db,sponsor.id),f=await payment({purpose:'BID',userId:sponsor.id,fee:20,couponId:grant.coupon.id}),order=await f.start();expect(order).toMatchObject({grossFee:'20',discountPoints:'2',amountCents:'1800'});const result=await f.verify(order.id);expect(result).toMatchObject({status:'BID_ACCEPTED',receipt:{charge:{feePoints:'20',discountPoints:'2',netFeePoints:'18',newlyUnavailable:'18'}}});expect(await balance(sponsor.id)).toBe('0');expect((await db.bid.findFirstOrThrow({where:{auctionId:f.auction!.id}})).feePoints.toString()).toBe('20');expect(await db.referralRedemption.count({where:{couponId:grant.coupon.id}})).toBe(1);expect(await reconcile(db)).toEqual([]);

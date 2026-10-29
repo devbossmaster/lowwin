@@ -20,7 +20,7 @@ test('fresh bid checkout, read-only waiting, late old result, transactions and m
   await page.goto('/telegram?next='+encodeURIComponent(f.home));await expect(page.getByRole('navigation',{name:'Your navigation'})).toBeVisible();
   const open=()=>page.locator('#discover-auctions .auction-card').first().getByRole('button').click();
   await open();let sheet=page.getByRole('dialog');await sheet.getByRole('textbox',{name:am?'የጨረታ ቁጥርዎ':'Your bid number',exact:true}).fill('3.60');await sheet.getByRole('radio',{name:'Chapa',exact:true}).check();
-  await sheet.locator('[data-payment-action]').evaluate(button=>{(button as HTMLButtonElement).click();(button as HTMLButtonElement).click()});
+  await expect(sheet.locator('[data-payment-action]')).toBeEnabled();await sheet.locator('[data-payment-action]').evaluate(button=>{(button as HTMLButtonElement).click();(button as HTMLButtonElement).click()});
   await expect.poll(()=>page.evaluate(()=>Reflect.get(window,'chapaOpened')?.length??0)).toBe(1);expect(requests).toHaveLength(1);await expect(sheet).toContainText(am?'የክፍያ ማረጋገጫ':'Waiting for payment confirmation');
   await page.evaluate(()=>{window.dispatchEvent(new Event('focus'));document.dispatchEvent(new Event('visibilitychange'))});await expect.poll(()=>reads).toBeGreaterThan(0);expect(verifies).toBe(0);
   mkdirSync('test-results/chapa-ui/transactions',{recursive:true});await page.screenshot({path:'test-results/chapa-ui/transactions/waiting-'+info.project.name+'.png',animations:'disabled'});
