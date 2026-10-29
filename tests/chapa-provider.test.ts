@@ -1,6 +1,6 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {createHmac} from 'node:crypto';
-import {chapaAvailability,chapaConfigurationFingerprint,createdChapaSession,createChapaTransport,isChapaHostedSessionReference,parseChapaEvidence,parseChapaPaymentMethods,parseChapaWebhook,requireChapa,safeChapaCheckoutUrl,verifyChapaWebhook} from '../src/modules/payments/chapa-provider';
+import {chapaAvailability,chapaConfigurationFingerprint,chapaHash,chapaWebhookAmountMatches,chapaWebhookConfigurationFingerprint,createdChapaSession,createChapaTransport,isChapaHostedSessionReference,parseChapaEvidence,parseChapaPaymentMethods,parseChapaWebhook,requireChapa,safeChapaCheckoutUrl,verifyChapaWebhook,verifyChapaWebhookRequest} from '../src/modules/payments/chapa-provider';
 
 const secret='local-only-chapa-webhook-secret-with-thirty-two-bytes';
 function environment(patch:Record<string,string|undefined>={}){return {APP_ENV:'local',NODE_ENV:'test',DATABASE_URL:'postgresql://test:test@127.0.0.1:5432/chapa_provider_test',MINI_APP_URL:'https://lowwin.test',BETTER_AUTH_URL:'https://lowwin.test',PAYMENT_GATEWAY:'CHAPA',CHAPA_SCHEMA_READY:'true',CHAPA_ENABLED:'true',CHAPA_PRIVATE_KEY:'CHAPA_TEST_'+'a'.repeat(32),CHAPA_WEBHOOK_SECRET:secret,...patch}}
@@ -11,6 +11,11 @@ const method=(patch:Record<string,unknown>={})=>({name:'Telebirr',slug:'telebirr
 afterEach(()=>vi.restoreAllMocks());
 
 describe('Chapa v2 configuration boundaries',()=>{
+ it('requires complete explicit Basic Auth configuration and rejects unknown schemes',()=>{
+  const basic={CHAPA_WEBHOOK_AUTH:'basic',CHAPA_WEBHOOK_BASIC_USERNAME:'lowwin-webhook',CHAPA_WEBHOOK_BASIC_PASSWORD:'p'.repeat(48)};
+  expect(chapaAvailability(environment(basic)).configured).toBe(true);
+  for(const patch of [{CHAPA_WEBHOOK_AUTH:'legacy'},{CHAPA_WEBHOOK_AUTH:''},{CHAPA_WEBHOOK_BASIC_USERNAME:''},{CHAPA_WEBHOOK_BASIC_USERNAME:'user:name'},{CHAPA_WEBHOOK_BASIC_PASSWORD:'short'},{CHAPA_WEBHOOK_BASIC_PASSWORD:'p'.repeat(257)},{CHAPA_WEBHOOK_BASIC_PASSWORD:'p'.repeat(40)+'\n'}])expect(chapaAvailability(environment({...basic,...patch})).configured).toBe(false);
+ });
  it('stays disabled with no keys and requires every explicit create gate',()=>{
   expect(chapaAvailability({})).toMatchObject({configured:false,enabled:false,recoveryEnabled:false,mode:'test'});
   expect(chapaAvailability(environment())).toMatchObject({configured:true,enabled:true,recoveryEnabled:true,mode:'test'});
@@ -100,6 +105,31 @@ describe('Chapa v2 authenticated webhook hints',()=>{
  it('rejects a constant secret proof that does not authenticate the event body',()=>{
   const signature=createHmac('sha256',secret).update(secret).digest('hex');
   for(const amount of [1000,1029])expect(verifyChapaWebhook(JSON.stringify({webhook_type:'payment',event:'payment.success',status:'success',amount}),signature,secret)).toBe(false);
+ });
+ it('accepts only the configured HTTP Basic credentials, never a signature fallback',()=>{
+  const raw={...environment(),CHAPA_WEBHOOK_AUTH:'basic',CHAPA_WEBHOOK_BASIC_USERNAME:'lowwin-webhook',CHAPA_WEBHOOK_BASIC_PASSWORD:'p'.repeat(48)},body=Buffer.from('{}');
+  const authorization='Basic '+Buffer.from('lowwin-webhook:'+raw.CHAPA_WEBHOOK_BASIC_PASSWORD).toString('base64');
+  expect(verifyChapaWebhookRequest(body,new Headers({authorization}),raw)).toBe(true);
+  const signature=createHmac('sha256',secret).update(body).digest('hex');
+  for(const authorization of ['', 'Bearer token', 'Basic !!!', 'Basic '+Buffer.from('other:'+raw.CHAPA_WEBHOOK_BASIC_PASSWORD).toString('base64'), 'Basic '+Buffer.from('lowwin-webhook:incorrect').toString('base64'), 'Basic '+Buffer.from('lowwin-webhook:'+raw.CHAPA_WEBHOOK_BASIC_PASSWORD+':extra').toString('base64')])expect(verifyChapaWebhookRequest(body,new Headers({authorization,'x-chapa-signature':signature}),raw)).toBe(false);
+  expect(verifyChapaWebhookRequest(body,new Headers({authorization}),environment())).toBe(false);
+  expect(verifyChapaWebhookRequest(body,new Headers({'x-chapa-signature':signature}),environment())).toBe(true);
+  expect(verifyChapaWebhookRequest(body,new Headers({authorization}),{...raw,CHAPA_WEBHOOK_AUTH:'unknown'})).toBe(false);
+ });
+ it('scopes event deduplication to the selected authentication configuration without changing signature history',()=>{
+  const raw=environment(),original=chapaWebhookConfigurationFingerprint(raw);
+  expect(original).toBe(chapaHash(secret));
+  const basic={...raw,CHAPA_WEBHOOK_AUTH:'basic',CHAPA_WEBHOOK_BASIC_USERNAME:'lowwin-webhook',CHAPA_WEBHOOK_BASIC_PASSWORD:'p'.repeat(48)};
+  expect(chapaWebhookConfigurationFingerprint(basic)).not.toBe(original);
+  expect(chapaWebhookConfigurationFingerprint({...basic,CHAPA_WEBHOOK_BASIC_PASSWORD:'q'.repeat(48)})).not.toBe(chapaWebhookConfigurationFingerprint(basic));
+  expect(chapaConfigurationFingerprint(basic)).toBe(chapaConfigurationFingerprint(raw));
+ });
+ it('routes exact principal or exact fee-inclusive delivery amounts without changing either value',()=>{
+  const raw={webhook_type:'payment',event:'payment.success',status:'success',amount:1029,service_fee:29};
+  const hint=parseChapaWebhook(raw)!;expect(hint).toMatchObject({amountCents:'1029',serviceFeeCents:'29'});expect(chapaWebhookAmountMatches(hint,1000n)).toBe(true);expect(raw.amount).toBe(1029);
+  expect(chapaWebhookAmountMatches({amountCents:'1000',serviceFeeCents:'29'},1000n)).toBe(true);
+  for(const hint of [{amountCents:'1029'},{amountCents:'1029',serviceFeeCents:'28'},{amountCents:'999',serviceFeeCents:'1'},{amountCents:'0',serviceFeeCents:'1000'}])expect(chapaWebhookAmountMatches(hint,1000n)).toBe(false);
+  for(const service_fee of [-1,1.5,'1.5',null,Number.MAX_SAFE_INTEGER+1])expect(parseChapaWebhook({...raw,service_fee})).toBeNull();
  });
  it('does not confuse lowercase webhook success with uppercase verification completion',()=>{
   const event={webhook_type:'payment',event:'payment.success',status:'success',mode:'test',amount:'12345',currency:'ETB',merchant_reference:create.merchantReference,chapa_reference:'CHLocal123',updated_at:'2026-10-26T10:01:00Z'};

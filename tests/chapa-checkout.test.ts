@@ -219,6 +219,16 @@ describe.skipIf(!database)('Chapa v2 hosted payments on disposable PostgreSQL',(
  it('keeps new attempts out of recurring recovery and processes durable events with one receipt',async()=>{
   const f=await payment(),order=await f.start();expect(await recoverChapaCheckouts(db,20,f.transport)).toEqual({checked:0});expect(f.lookup).not.toHaveBeenCalled();const event=await db.chapaWebhookEvent.create({data:{mode:'test',configurationFingerprint:'a'.repeat(64),bodyHash:'b'.repeat(64),merchantReference:f.inputs[0].merchantReference,event:'payment.success',checkoutId:order.id}});await Promise.all([processChapaEvent(db,event.id,f.transport),processChapaEvent(db,event.id,f.transport)]);expect((await getChapaCheckout(db,f.userId,order.id)).status).toBe('CREDITED');expect(f.lookup).toHaveBeenCalledTimes(1);expect(await balance(f.userId)).toBe('10');expect((await db.chapaWebhookEvent.findUniqueOrThrow({where:{id:event.id}})).status).toBe('PROCESSED');expect(await processChapaEvents(db,20,f.transport)).toEqual({checked:0});expect(await reconcileChapaReceipts(db)).toEqual([]);
  });
+ it('never credits a fee-inclusive webhook amount when merchant verification mismatches the principal',async()=>{
+  const f=await payment(),order=await f.start();
+  vi.stubEnv('CHAPA_WEBHOOK_AUTH','basic');vi.stubEnv('CHAPA_WEBHOOK_BASIC_USERNAME','lowwin-webhook');vi.stubEnv('CHAPA_WEBHOOK_BASIC_PASSWORD','isolated-basic-password-'+'p'.repeat(40));
+  f.setMutation(row=>({...row,amount:1029,service_fee:29}));
+  const event=await db.chapaWebhookEvent.create({data:{mode:'test',configurationFingerprint:'d'.repeat(64),bodyHash:chapaHash(randomUUID()),event:'payment.success',checkoutId:order.id}});
+  await processChapaEvent(db,event.id,f.transport);
+  expect((await getChapaCheckout(db,f.userId,order.id)).status).toBe('NEEDS_REVIEW');expect(await balance(f.userId)).toBe('0');expect(await db.operation.count({where:{userId:f.userId,scope:'CHAPA_RECEIPT'}})).toBe(0);
+  f.setMutation(row=>({...row,amount:1000,service_fee:29}));await f.verify(order.id);
+  expect(await balance(f.userId)).toBe('10');expect((await getChapaCheckout(db,f.userId,order.id)).status).toBe('CREDITED');expect(await reconcileChapaReceipts(db)).toEqual([]);
+ });
  it('retains a durable event and last established outcome when merchant verification is unavailable',async()=>{
   const f=await payment(),order=await f.start();f.setStatus('INCOMPLETE');await f.verify(order.id);const event=await db.chapaWebhookEvent.create({data:{mode:'test',configurationFingerprint:'a'.repeat(64),bodyHash:'c'.repeat(64),event:'payment.success',checkoutId:order.id}});f.lookup.mockRejectedValueOnce(Error('private provider detail'));await processChapaEvent(db,event.id,f.transport);const stored=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});expect(stored).toMatchObject({status:'INCOMPLETE',providerStatus:'INCOMPLETE',verificationState:'UNAVAILABLE',creditJournalId:null});expect((await db.chapaWebhookEvent.findUniqueOrThrow({where:{id:event.id}})).status).toBe('QUEUED');expect(await balance(f.userId)).toBe('0');
  });

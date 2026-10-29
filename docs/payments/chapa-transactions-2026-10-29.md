@@ -21,7 +21,9 @@ Accepted Chapa bids link their transaction; failed payment does not close a draw
 
 ## Durable event processing
 
-The webhook authenticates exact raw bytes with HMAC-SHA256 before parsing. A
+The webhook defaults to authenticating exact raw bytes with HMAC-SHA256 before parsing.
+An explicitly configured [Basic Auth dashboard alternative](chapa-basic-webhook.md)
+requires separate protected credentials with no signature fallback. A
 matching delivery is durably deduplicated and queued before provider HTTP. It then
 tries the shared merchant verifier immediately. `npm run worker:chapa` processes
 only received event jobs, with five bounded attempts and leases. It never scans or
