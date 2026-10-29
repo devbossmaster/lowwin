@@ -1,6 +1,6 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {createHmac} from 'node:crypto';
-import {chapaAvailability,chapaConfigurationFingerprint,createdChapaSession,createChapaTransport,parseChapaEvidence,parseChapaPaymentMethods,parseChapaWebhook,requireChapa,safeChapaCheckoutUrl,verifyChapaWebhook} from '../src/modules/payments/chapa-provider';
+import {chapaAvailability,chapaConfigurationFingerprint,createdChapaSession,createChapaTransport,isChapaHostedSessionReference,parseChapaEvidence,parseChapaPaymentMethods,parseChapaWebhook,requireChapa,safeChapaCheckoutUrl,verifyChapaWebhook} from '../src/modules/payments/chapa-provider';
 
 const secret='local-only-chapa-webhook-secret-with-thirty-two-bytes';
 function environment(patch:Record<string,string|undefined>={}){return {APP_ENV:'local',NODE_ENV:'test',DATABASE_URL:'postgresql://test:test@127.0.0.1:5432/chapa_provider_test',MINI_APP_URL:'https://lowwin.test',BETTER_AUTH_URL:'https://lowwin.test',PAYMENT_GATEWAY:'CHAPA',CHAPA_SCHEMA_READY:'true',CHAPA_ENABLED:'true',CHAPA_PRIVATE_KEY:'CHAPA_TEST_'+'a'.repeat(32),CHAPA_WEBHOOK_SECRET:secret,...patch}}
@@ -72,6 +72,12 @@ describe('Chapa v2 payment evidence and hosted URL',()=>{
   const checkout_url='https://checkout.chapa.global/test/payment/hosted/TEST123456';
   expect(createdChapaSession({status:'success',data:{checkout_url}})).toMatchObject({checkoutUrl:checkout_url,checkoutReference:'TEST123456',chapaReference:null});
   expect(safeChapaCheckoutUrl('https://checkout.chapa.global/TEST123456')).toMatchObject({chapaReference:'TEST123456'});
+ });
+ it('keeps a LIVE hosted APW session separate without relaxing final reference checks',()=>{
+  const url='https://checkout.chapa.global/payment/hosted/APW123456';
+  expect(createdChapaSession({status:'success',data:{checkout_url:url}})).toMatchObject({checkoutReference:'APW123456',chapaReference:null});
+  expect(isChapaHostedSessionReference(url,'APW123456','live')).toBe(true);
+  for(const [candidate,value,mode] of [[url,'APWother','live'],[url,'APW123456','test'],['https://checkout.chapa.global/APW123456','APW123456','live'],['https://checkout.chapa.global/payment/hosted/CHfinal','CHfinal','live'],['https://checkout.chapa.global.evil.test/payment/hosted/APW123456','APW123456','live']] as const)expect(isChapaHostedSessionReference(candidate,value,mode)).toBe(false);
  });
  it('returns exact provider URL and dates but rejects open-redirect and reference confusion',()=>{
   expect(createdChapaSession(initialized())).toMatchObject({checkoutUrl:initialized().data.checkout_url,chapaReference:'CHLocal123',createdAt:new Date('2026-10-26T10:00:00Z'),expiresAt:new Date('2026-10-27T10:00:00Z')});

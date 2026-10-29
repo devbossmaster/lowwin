@@ -7,7 +7,8 @@ import {verifiedReferralUser,realReferralAuction,earnedReferralCoupon} from './r
 import {creditDevelopmentPoints,ensureWallet,reconcile,seedPlatformAccounts} from '../src/modules/wallet/ledger';
 import {reconcileChapaReceipts} from '../src/modules/payments/chapa-reconcile';
 import {submitBid,submitBidInTransaction} from '../src/modules/auctions/bids';
-import {createChapaCheckout,getChapaCheckout,listChapaCheckouts,verifyChapaCheckout} from '../src/modules/payments/chapa';
+import {createChapaCheckout,getChapaCheckout,listChapaCheckouts,recoverChapaCheckouts,verifyChapaCheckout} from '../src/modules/payments/chapa';
+import {recoveryAuthorizationAction,recoveryAuthorizationKey,recoveryBindingHash,type ChapaRecoveryBinding} from '../src/modules/payments/chapa-recovery-binding';
 import {chapaAvailability,chapaConfigurationFingerprint,type ChapaCreate,type ChapaTransport} from '../src/modules/payments/chapa-provider';
 import {TEST_TOKEN} from './helpers';
 
@@ -22,17 +23,17 @@ describe.skipIf(!database)('Chapa v2 hosted payments on disposable PostgreSQL',(
   await db.referralPolicy.create({data:{enabled:true,discountPercent:10,expiryDays:30,updatedBy:'isolated-chapa-owner'}});
   expect(chapaAvailability()).toMatchObject({enabled:true,recoveryEnabled:true,mode:'test'});
  },60000);
- afterEach(()=>Object.assign(process.env,gateway));
+ afterEach(()=>{vi.unstubAllEnvs();Object.assign(process.env,gateway);delete process.env.CHAPA_RECOVERY_BINDINGS});
  afterAll(async()=>{await db?.$disconnect();const shared=await import('../src/lib/db');await shared.db.$disconnect()});
  const balance=async(userId:string)=>(await db.ledgerAccount.findUnique({where:{name:`user:${userId}:available`}}))?.balance.toString()??'0';
  const due=async(id:string)=>{await db.chapaCheckout.update({where:{id},data:{nextCheckAt:new Date(0),leaseUntil:null}})};
- async function payment(options:{purpose?:'TOP_UP'|'BID';amount?:string;fee?:number;endDelayMs?:number;userId?:string;couponId?:string;initialBalance?:string;testSession?:boolean}={}){
+ async function payment(options:{purpose?:'TOP_UP'|'BID';amount?:string;fee?:number;endDelayMs?:number;userId?:string;couponId?:string;initialBalance?:string;testSession?:boolean;liveSession?:boolean}={}){
   const userId=options.userId??(await verifiedReferralUser(db,'Synthetic Chapa customer')).id;
   if(options.initialBalance)await creditDevelopmentPoints(db,userId,options.initialBalance,`chapa-test-${randomUUID()}`);
   const auction=options.purpose==='BID'?await realReferralAuction(db,options.fee??30,options.endDelayMs??3600000):null;
   const key=randomUUID(),reference='CH'+randomUUID().replaceAll('-',''),inputs:ChapaCreate[]=[];let created:ChapaCreate|undefined,status='SUCCESS',failInitialization=false,mutate:(row:Record<string,unknown>)=>Record<string,unknown>=row=>row;
-  const create=vi.fn(async(input:ChapaCreate)=>{created=structuredClone(input);inputs.push(created);if(failInitialization){failInitialization=false;throw Error('Ambiguous network timeout after provider received request')}return {status:'success',data:{checkout_url:`https://checkout.chapa.global/${options.testSession?'test/payment/hosted/TEST'+key.replaceAll('-',''):reference}`,created_at:new Date().toISOString(),expires_at:new Date(Date.now()+86400000).toISOString()}}});
-  const lookup=vi.fn(async(paymentReference:string)=>({status:'success',data:mutate({chapa_reference:reference,merchant_reference:created!.merchantReference,amount:Number(created!.amountCents),currency:'ETB',status,payment_method:'telebirr',processor_reference:'SYNTHETIC-'+reference,service_fee:30,mode:'test',meta:created!.meta,created_at:new Date().toISOString(),updated_at:new Date().toISOString()})}));
+  const create=vi.fn(async(input:ChapaCreate)=>{created=structuredClone(input);inputs.push(created);if(failInitialization){failInitialization=false;throw Error('Ambiguous network timeout after provider received request')}return {status:'success',data:{checkout_url:`https://checkout.chapa.global/${options.liveSession?'payment/hosted/APW'+key.replaceAll('-',''):options.testSession?'test/payment/hosted/TEST'+key.replaceAll('-',''):reference}`,created_at:new Date().toISOString(),expires_at:new Date(Date.now()+86400000).toISOString()}}});
+  const lookup=vi.fn(async(paymentReference:string)=>({status:'success',data:mutate({chapa_reference:reference,merchant_reference:created!.merchantReference,amount:Number(created!.amountCents),currency:'ETB',status,payment_method:'telebirr',processor_reference:'SYNTHETIC-'+reference,service_fee:30,mode:options.liveSession?'live':'test',meta:created!.meta,created_at:new Date().toISOString(),updated_at:new Date().toISOString()})}));
   const methods=vi.fn(async()=>({status:'success',data:[]})),transport:ChapaTransport={create,lookup,methods};
   const input=auction?{key,purpose:'BID' as const,auctionSlug:auction.slug!,amount:options.amount??'3.60',feeVersion:1,...(options.couponId?{couponId:options.couponId}:{})}:{key,purpose:'TOP_UP' as const,amount:options.amount??'10.00'};
   const start=()=>createChapaCheckout(db,userId,input,undefined,transport),verify=async(id:string)=>{await due(id);return verifyChapaCheckout(db,id,userId,undefined,transport)};
@@ -71,6 +72,41 @@ describe.skipIf(!database)('Chapa v2 hosted payments on disposable PostgreSQL',(
   f.setMutation(row=>({...row,processor_reference:''}));expect((await f.verify(order.id)).status).toBe('CREDITED');expect(await balance(f.userId)).toBe('10');
   const other=await payment();other.failNextInitialization();const second=await other.start();await db.chapaCheckout.update({where:{id:second.id},data:{chapaReference:'TESTnot-a-session',checkoutUrl:'https://checkout.chapa.global/TESTnot-a-session'}});
   expect((await other.verify(second.id)).status).toBe('NEEDS_REVIEW');expect(await balance(other.userId)).toBe('0');
+ });
+ function liveEnvironment(){for(const [key,value]of Object.entries({APP_ENV:'production',NODE_ENV:'production',CHAPA_MODE:'live',CHAPA_PRIVATE_KEY:'CHAPA_LIVE_'+'b'.repeat(40),CHAPA_MERCHANT_REVIEWED:'true',CHAPA_LIVE_ENABLED:'true',DEV_POINTS_ENABLED:'false'}))vi.stubEnv(key,value)}
+ it('verifies a new LIVE hosted session without binding its APW token as a final payment',async()=>{
+  const user=await verifiedReferralUser(db),f=await payment({userId:user.id,liveSession:true});liveEnvironment();
+  const order=await f.start();expect((await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}})).chapaReference).toBeNull();
+  f.setStatus('PENDING');f.setMutation(row=>({...row,chapa_reference:null}));expect((await f.verify(order.id)).status).toBe('PENDING');expect(await balance(f.userId)).toBe('0');
+  f.setStatus('SUCCESS');f.setMutation(row=>row);await due(order.id);await Promise.all([verifyChapaCheckout(db,order.id,f.userId,undefined,f.transport),verifyChapaCheckout(db,order.id,f.userId,undefined,f.transport)]);
+  expect((await getChapaCheckout(db,f.userId,order.id)).status).toBe('CREDITED');expect(await balance(f.userId)).toBe('10');expect(await db.journal.count({where:{reference:`chapa:${f.inputs[0].merchantReference}`}})).toBe(1);expect(await reconcileChapaReceipts(db)).toEqual([]);
+ });
+ it('recovers a historical LIVE APW token only with exact verified money and a matching receipt',async()=>{
+  const user=await verifiedReferralUser(db),f=await payment({userId:user.id,liveSession:true});liveEnvironment();
+  const order=await f.start(),token=order.checkoutUrl!.split('/').at(-1)!;await db.chapaCheckout.update({where:{id:order.id},data:{chapaReference:token}});
+  await expect(db.chapaCheckout.update({where:{id:order.id},data:{chapaReference:f.reference}})).rejects.toThrow('immutable');
+  const original=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});
+  await expect(db.chapaCheckout.update({where:{id:order.id},data:{credentialFingerprint:'c'.repeat(64)}})).rejects.toThrow('immutable');
+  f.setMutation(row=>({...row,amount:999}));expect((await f.verify(order.id)).status).toBe('NEEDS_REVIEW');expect(await balance(f.userId)).toBe('0');
+  f.setMutation(row=>row);expect((await f.verify(order.id)).status).toBe('CREDITED');await f.verify(order.id);
+  const saved=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});expect(saved.chapaReference).toBe(f.reference);expect(saved.credentialFingerprint).toBe(original.credentialFingerprint);expect(saved.initialization).toEqual(original.initialization);expect(await balance(f.userId)).toBe('10');expect(await reconcile(db)).toEqual([]);expect(await reconcileChapaReceipts(db)).toEqual([]);
+  await expect(db.chapaCheckout.update({where:{id:order.id},data:{chapaReference:'CHdifferent'}})).rejects.toThrow('immutable');
+ });
+ it('recovers one reviewed rotated-key LIVE payment while preserving the original frozen credential',async()=>{
+  const first=await verifiedReferralUser(db),second=await verifiedReferralUser(db),f=await payment({userId:first.id,liveSession:true}),other=await payment({userId:second.id,liveSession:true});liveEnvironment();
+  const order=await f.start(),unapproved=await other.start(),token=order.checkoutUrl!.split('/').at(-1)!;await db.chapaCheckout.update({where:{id:order.id},data:{chapaReference:token}});
+  const original=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});vi.stubEnv('CHAPA_PRIVATE_KEY','CHAPA_LIVE_'+'c'.repeat(40));vi.stubEnv('CHAPA_ENABLED','false');
+  await expect(f.verify(order.id)).rejects.toMatchObject({code:'CONFIGURATION_CHANGED'});expect(f.lookup).not.toHaveBeenCalled();
+  const binding:ChapaRecoveryBinding={checkoutId:order.id,mode:'live',fromFingerprint:original.credentialFingerprint,toFingerprint:chapaConfigurationFingerprint()!,requestHash:original.requestHash,merchantReference:original.merchantReference,amountCents:'1000',currency:'ETB',finalReference:f.reference,expiresAt:new Date(Date.now()+3600000).toISOString()};
+  vi.stubEnv('CHAPA_RECOVERY_BINDINGS',JSON.stringify([binding]));await expect(f.verify(order.id)).rejects.toMatchObject({code:'CONFIGURATION_CHANGED'});
+  await db.adminAudit.create({data:{actorId:'isolated-recovery-operator',action:recoveryAuthorizationAction,target:order.id,operationKey:recoveryAuthorizationKey(binding),requestHash:recoveryBindingHash(binding),details:{binding}}});
+  f.setMutation(row=>({...row,chapa_reference:'CHanother-final'}));expect((await f.verify(order.id)).status).toBe('NEEDS_REVIEW');expect(await balance(f.userId)).toBe('0');
+  f.setMutation(row=>row);await due(order.id);await due(unapproved.id);
+  await Promise.all([recoverChapaCheckouts(db,20,f.transport),verifyChapaCheckout(db,order.id,f.userId,undefined,f.transport)]);
+  expect((await getChapaCheckout(db,f.userId,order.id)).status).toBe('CREDITED');expect(await balance(f.userId)).toBe('10');expect(await balance(other.userId)).toBe('0');
+  expect((await db.chapaCheckout.findUniqueOrThrow({where:{id:unapproved.id}})).attempts).toBe(0);expect(f.create).toHaveBeenCalledTimes(1);
+  const saved=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});expect(saved.credentialFingerprint).toBe(original.credentialFingerprint);expect(saved.requestHash).toBe(original.requestHash);expect(saved.initialization).toEqual(original.initialization);expect(saved.chapaReference).toBe(f.reference);
+  await f.verify(order.id);expect(await balance(f.userId)).toBe('10');expect(await db.journal.count({where:{reference:`chapa:${f.inputs[0].merchantReference}`}})).toBe(1);expect(await reconcile(db)).toEqual([]);expect(await reconcileChapaReceipts(db)).toEqual([]);
  });
  it('requires exact amount, currency, merchant/reference, mode and supplied attempt metadata',async()=>{
   for(const change of [{amount:999},{currency:'USD'},{merchant_reference:'wrong-reference'},{chapa_reference:'CHwrong'},{mode:'live'},{meta:{lowwin_attempt:randomUUID()}}]){const f=await payment(),order=await f.start();f.setMutation(row=>({...row,...change}));expect(await f.verify(order.id)).toMatchObject({status:'NEEDS_REVIEW',reason:'EVIDENCE_MISMATCH',fundsPreserved:false});expect(await balance(f.userId)).toBe('0');expect(await db.operation.count({where:{userId:f.userId,scope:'CHAPA_RECEIPT'}})).toBe(0)}expect(await reconcile(db)).toEqual([]);
