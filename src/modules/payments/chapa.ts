@@ -101,7 +101,8 @@ export async function createChapaCheckout(client:PrismaClient,userId:string,raw:
    auctionId=a.id;bidNumber=body.amount;
   }
   const id=randomUUID(),merchantReference=`LW${randomBytes(9).toString('hex')}`;
-  const initialization:ChapaCreate={amountCents:amountCents.toString(),merchantReference,idempotencyKey:`lowwin:${id}`};
+  const returnUrl=new URL(`/payments/chapa/return?checkout=${id}`,process.env.MINI_APP_URL).toString();
+  const initialization:ChapaCreate={amountCents:amountCents.toString(),merchantReference,idempotencyKey:`lowwin:${id}`,returnUrl,returnUrlVersion:1};
   return tx.chapaCheckout.create({data:{id,userId,purpose:body.purpose,mode:health.mode,credentialFingerprint:health.credentialFingerprint!,key:body.key,requestHash,merchantReference,amountCents,initialization:json(initialization),phoneCipher:contact.phoneCipher,phoneBotId:contact.botId,auctionId,auctionSlug:body.purpose==='BID'?body.auctionSlug:null,bidNumber,grossFee,discountPoints,feeVersion:body.purpose==='BID'?body.feeVersion:null,couponId:body.purpose==='BID'?body.couponId:null,expiresAt:after(86400000)}});
  },PAYMENT_TRANSACTION_OPTIONS));
  if(!paid(order)&&!order.checkoutUrl&&sameConfiguration(order)){const initialized=await initializeChapaCheckout(client,order.id,transport,order);if(initialized)return ownChapaCheckout(initialized);return getChapaCheckout(client,userId,order.id)}

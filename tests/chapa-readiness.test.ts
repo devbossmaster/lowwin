@@ -7,6 +7,11 @@ function environment(patch:Record<string,string|undefined>={}){
 const method=()=>({name:'Untrusted provider display name',slug:'telebirr',is_mobile_money:true,can_process_payments:true,supported_currencies:{ETB:{default_min:100,default_max:1000000,countries:{ET:{is_enabled:true,min_amount:250,max_amount:500000}}}}});
 
 describe('non-charging Chapa readiness',()=>{
+ it('allows Basic Auth event processing without an unused signature secret and still rejects missing Basic credentials',async()=>{
+  const raw=environment({CHAPA_WEBHOOK_SECRET:undefined,CHAPA_WEBHOOK_AUTH:'basic',CHAPA_WEBHOOK_BASIC_USERNAME:'lowwin-webhook',CHAPA_WEBHOOK_BASIC_PASSWORD:'b'.repeat(48),CHAPA_ENABLED:'false',CHAPA_RECOVERY_ENABLED:'true'});
+  expect(await checkChapaReadiness(raw)).toMatchObject({configured:true,creationEnabled:false,recoveryEnabled:true,missingPrerequisites:[]});
+  expect(await checkChapaReadiness({...raw,CHAPA_WEBHOOK_BASIC_PASSWORD:''})).toMatchObject({configured:false,recoveryEnabled:false,missingPrerequisites:['CHAPA_WEBHOOK_AUTH / BASIC credentials']});
+ });
  it('reports missing prerequisites using static names without connecting or disclosing input',async()=>{
   const fetcher=vi.fn<typeof fetch>(),readSchema=vi.fn(),raw=environment({CHAPA_PRIVATE_KEY:'malformed-private-key',CHAPA_WEBHOOK_SECRET:'short-secret',CHAPA_SCHEMA_READY:'false',MINI_APP_URL:'https://private-origin.invalid',DATABASE_URL:'postgresql://private-user:private-password@unreviewed.invalid/private-db'});
   const result=await checkChapaReadiness(raw,{}, {fetcher,readSchema});

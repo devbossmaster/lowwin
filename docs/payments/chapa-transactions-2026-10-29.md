@@ -5,7 +5,7 @@ opens the exact validated checkout URL automatically. Chapa collects the payer's
 details. Wallet-funded bidding continues through the existing bid command.
 
 The waiting sheet reads Lowwin's database only, every five seconds while visible
-for at most two minutes. Closing it cancels UI requests and timers, without
+for at most five minutes, and refreshes immediately when it becomes visible. Closing it cancels UI requests and timers, without
 changing the payment. There is no saved-session restoration or automatic provider
 verification. An interrupted command can be explicitly replayed with its original
 key while that sheet remains open. A deliberate Start new checkout detaches that
@@ -15,7 +15,7 @@ additional verified funds in the wallet instead of accepting another entry.
 
 Transactions at `/payments` lists both purposes with real pagination, test labels,
 safe references, known methods and separate provider/fulfillment information.
-Details can manually verify the original owned attempt or link to a fresh checkout.
+Details update automatically from the original owned attempt and can link to a fresh checkout. There is no manual Verify status button.
 My Bids displays unfinished payment attempts separately from accepted totals.
 Accepted Chapa bids link their transaction; failed payment does not close a draw.
 
@@ -52,7 +52,18 @@ temporary compatibility sweep can cover only flow-version-1 records from the
 previous 30 days; it performs no initialization. Historical attempts remain
 manually verifiable and can receive new signed notifications without that flag.
 Web, bot and Chapa worker must run matching code/schema and protected configuration.
-This change introduces no key, provider-activation or optional callback/return field.
+The worker's `CHAPA_RECOVERY_ENABLED=true` enables durable event processing while
+new checkouts are paused; it does not enable the legacy sweep. Its protected
+configuration must match the web service, including mode, schema and credentials.
+
+New initialization snapshots include Chapa's documented HTTPS `return_url` to
+`/payments/chapa/return?checkout=<opaque ID>`. A version marker preserves the
+minimal request body on retries of historical snapshots. Lowwin checks ownership
+before reopening the original top-up or auction modal. A browser without the
+Telegram session offers the existing Open Lowwin in Telegram handoff. Returning
+never proves payment success. Existing hosted sessions cannot gain a return URL
+retroactively. Merchant TEST checkout and physical Telegram return acceptance of
+this optional field remain required before rollout.
 
 This coding task runs only isolated local databases and mocked provider/browser
 responses. It does not deploy, run production migrations or initiate merchant

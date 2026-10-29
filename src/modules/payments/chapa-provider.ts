@@ -31,7 +31,8 @@ export function chapaAvailability(raw:Environment=process.env){
  const privateKey=new RegExp(`^CHAPA_${mode==='live'?'LIVE':'TEST'}_[A-Za-z0-9_-]{16,240}$`).test(key)&&!/REPLACE|CHANGE_ME|example|fixture/i.test(key);
  const testEnvironment=['local','test','staging'].includes(raw.APP_ENV??'')&&raw.VERCEL_ENV!=='production'&&(localDatabase(raw)||raw.APP_ENV==='staging'&&raw.CHAPA_TEST_ENVIRONMENT_REVIEWED==='true');
  const liveEnvironment=raw.APP_ENV==='production'&&raw.NODE_ENV==='production'&&!['preview','development'].includes(raw.VERCEL_ENV??'')&&raw.CHAPA_MERCHANT_REVIEWED==='true'&&raw.DEV_IDENTITY_ENABLED!=='true'&&raw.DEV_POINTS_ENABLED!=='true'&&raw.STAGING_DEMO_ENABLED!=='true';
- const configured=validMode&&chapaWebhookAuthentication(raw).valid&&raw.CHAPA_SCHEMA_READY==='true'&&privateKey&&secret.length>=32&&secret.length<=256&&!/REPLACE|CHANGE_ME/i.test(secret)&&origins(raw)&&(!raw.CHAPA_BASE_URL||raw.CHAPA_BASE_URL===API_ORIGIN)&&(!raw.CHAPA_CURRENCY||raw.CHAPA_CURRENCY==='ETB')&&(mode==='test'?testEnvironment:liveEnvironment);
+ const webhook=chapaWebhookAuthentication(raw),webhookConfigured=webhook.valid&&(webhook.mode==='basic'||secret.length>=32&&secret.length<=256&&!/REPLACE|CHANGE_ME/i.test(secret));
+ const configured=validMode&&webhookConfigured&&raw.CHAPA_SCHEMA_READY==='true'&&privateKey&&origins(raw)&&(!raw.CHAPA_BASE_URL||raw.CHAPA_BASE_URL===API_ORIGIN)&&(!raw.CHAPA_CURRENCY||raw.CHAPA_CURRENCY==='ETB')&&(mode==='test'?testEnvironment:liveEnvironment);
  const enabled=configured&&raw.PAYMENT_GATEWAY==='CHAPA'&&raw.CHAPA_ENABLED==='true'&&(mode==='test'||raw.CHAPA_LIVE_ENABLED==='true');
  const recoveryEnabled=configured&&(enabled||raw.CHAPA_RECOVERY_ENABLED==='true');
  return {configured,enabled,recoveryEnabled,mode,currency:'ETB' as const,credentialFingerprint:chapaConfigurationFingerprint(raw),reason:enabled?null:'Chapa payments are not available yet. Keep this payment ID if you have already paid.'};
@@ -121,9 +122,9 @@ export function chapaWebhookAmountMatches(hint:{amountCents?:string;serviceFeeCe
  const amount=BigInt(hint.amountCents);return amount===expected||hint.serviceFeeCents!==undefined&&amount===expected+BigInt(hint.serviceFeeCents);
 }
 
-export type ChapaCreate={amountCents:string;merchantReference:string;idempotencyKey:string;returnUrl?:string;callbackUrl?:string;customer?:z.infer<typeof customerSchema>;meta?:Record<string,string>;preferredPaymentMethods?:string[];description?:string};
+export type ChapaCreate={amountCents:string;merchantReference:string;idempotencyKey:string;returnUrl?:string;returnUrlVersion?:1;callbackUrl?:string;customer?:z.infer<typeof customerSchema>;meta?:Record<string,string>;preferredPaymentMethods?:string[];description?:string};
 export type ChapaTransport={create:(input:ChapaCreate)=>Promise<unknown>;lookup:(paymentReference:string)=>Promise<unknown>;methods:()=>Promise<unknown>};
-const createSchema=z.object({amountCents:centsString.refine(v=>centsPattern.test(v)&&BigInt(v)>=100n),merchantReference,idempotencyKey:z.string().regex(/^[A-Za-z0-9:._-]{16,128}$/),returnUrl:z.url().max(2048).optional(),callbackUrl:z.url().max(2048).optional(),customer:customerSchema.strict().optional(),meta:z.record(z.string().max(80),z.string().max(256)).optional(),preferredPaymentMethods:z.array(z.string().regex(/^[a-z0-9_-]{1,80}$/)).min(1).max(10).optional(),description:z.string().trim().min(1).max(200).optional()}).strict();
+const createSchema=z.object({amountCents:centsString.refine(v=>centsPattern.test(v)&&BigInt(v)>=100n),merchantReference,idempotencyKey:z.string().regex(/^[A-Za-z0-9:._-]{16,128}$/),returnUrl:z.url().max(2048).optional(),returnUrlVersion:z.literal(1).optional(),callbackUrl:z.url().max(2048).optional(),customer:customerSchema.strict().optional(),meta:z.record(z.string().max(80),z.string().max(256)).optional(),preferredPaymentMethods:z.array(z.string().regex(/^[a-z0-9_-]{1,80}$/)).min(1).max(10).optional(),description:z.string().trim().min(1).max(200).optional()}).strict();
 async function boundedJson(response:Response){
  const reader=response.body?.getReader();if(!reader)throw new ChapaError(502,'PROVIDER_UNAVAILABLE','Payment confirmation is pending. Check this same payment again.');
  let length=0;const chunks:Uint8Array[]=[];
@@ -146,9 +147,9 @@ export function createChapaTransport(options:{env?:Environment;fetcher?:typeof f
   create:async input=>{const parsed=createSchema.safeParse(input);if(!parsed.success)throw new ChapaError(422,'INVALID_PAYMENT','Check the payment details.');const p=parsed.data;for(const value of [p.returnUrl,p.callbackUrl]){if(!value)continue;const u=new URL(value);let origin:string;try{origin=new URL(raw.MINI_APP_URL??'').origin}catch{throw new ChapaError(503,'PAYMENT_UNAVAILABLE','Chapa payments are not configured.')}if(u.protocol!=='https:'||u.username||u.password||u.origin!==origin)throw new ChapaError(422,'INVALID_PAYMENT','Use the configured secure payment return URL.')}
    // Keep the hosted request minimal. The dashboard PAYMENT webhook and our
    // merchant-authenticated lookup handle crediting; Chapa collects payer data.
-   // Old snapshots may retain optional presentation fields, never financial
-   // replacements. Every retry keeps its original amount, reference and key.
-   return request('/v2/payments/hosted','create',{amount:Number(p.amountCents),currency:'ETB',merchant_reference:p.merchantReference},p.idempotencyKey)},
+   // Only new snapshots explicitly opt into the documented navigation return.
+   // Historical retries retain the minimal wire body, even with old URL fields.
+   return request('/v2/payments/hosted','create',{amount:Number(p.amountCents),currency:'ETB',merchant_reference:p.merchantReference,...(p.returnUrlVersion===1&&p.returnUrl?{return_url:p.returnUrl}:{})},p.idempotencyKey)},
   lookup:async value=>{if(!reference.safeParse(value).success)throw new ChapaError(422,'INVALID_PAYMENT','Invalid payment reference.');return request(`/v2/payments/${encodeURIComponent(value)}/verify`,'recover')},
   methods:()=>request('/v2/payments/methods','create'),
  };

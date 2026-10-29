@@ -4,7 +4,7 @@ import {mkdirSync} from 'node:fs';
 import {fixture,pending} from './fixtures';
 import type {ChapaIntent,ChapaCheckoutView} from '../../src/lib/chapa-client';
 
-test('fresh bid checkout, read-only waiting, late old result, transactions and manual verification',async({page},info)=>{
+test('fresh bid checkout, automatic status, late old result and transactions',async({page},info)=>{
  const am=info.project.name==='430',f=await fixture(page,am),requests:ChapaIntent[]=[],orders:ChapaCheckoutView[]=[];let verifies=0,reads=0;
  try{
   await page.route('**/api/payments/chapa/checkouts**',route=>{
@@ -29,7 +29,8 @@ test('fresh bid checkout, read-only waiting, late old result, transactions and m
   const old=orders[1];Object.assign(old,{status:'BID_ACCEPTED',providerStatus:'SUCCESS',receipt:{bid:{id:randomUUID(),amount:'3.60'}}});
   await expect.poll(()=>page.evaluate(()=>Reflect.get(window,'chapaOpened')?.length??0)).toBe(2);await expect(sheet).not.toContainText(am?'ጨረታው ተቀብሏል':'Bid accepted');await page.keyboard.press('Escape');
   const nav=page.getByRole('navigation',{name:'Your navigation'}),transactions=nav.getByRole('link',{name:am?'ግብይቶች':'Transactions',exact:true});await transactions.click();await expect(transactions).toHaveAttribute('aria-current','page');
-  await expect(page.locator('[data-payment-id]')).toHaveCount(2);await page.locator('[data-payment-id]').first().click();sheet=page.getByRole('dialog');await sheet.getByRole('button',{name:am?'ሁኔታውን ያረጋግጡ':'Verify status',exact:true}).click();expect(verifies).toBe(1);await expect(sheet.getByRole('heading',{name:am?'አልተጠናቀቀም':'Incomplete',exact:true})).toBeVisible();await page.keyboard.press('Escape');
+  await expect(page.locator('[data-payment-id]')).toHaveCount(2);await page.locator('[data-payment-id]').first().click();sheet=page.getByRole('dialog');await expect(sheet.getByRole('button',{name:'Verify status',exact:true})).toHaveCount(0);
+  Object.assign(orders[0],{status:'INCOMPLETE',providerStatus:'INCOMPLETE',verificationState:'VERIFIED'});await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));await expect(sheet.getByRole('heading',{name:am?'አልተጠናቀቀም':'Incomplete',exact:true})).toBeVisible();expect(verifies).toBe(0);await page.keyboard.press('Escape');
   expect(await f.db.bid.count({where:{userId:f.user.id}})).toBe(0);expect(await f.db.chapaCheckout.count({where:{userId:f.user.id}})).toBe(0);await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:'test-results/chapa-ui/transactions/history-'+info.project.name+'.png',animations:'disabled'});
  }finally{await f.db.$disconnect()}
 });

@@ -27,7 +27,7 @@ function missingPrerequisites(raw:Environment,mode:'test'|'live'){
  require('CHAPA_SCHEMA_READY',raw.CHAPA_SCHEMA_READY==='true');
  const key=raw.CHAPA_PRIVATE_KEY??'',secret=raw.CHAPA_WEBHOOK_SECRET??'';
  require('CHAPA_PRIVATE_KEY',new RegExp(`^CHAPA_${mode==='live'?'LIVE':'TEST'}_[A-Za-z0-9_-]{16,240}$`).test(key)&&!/REPLACE|CHANGE_ME|example|fixture/i.test(key));
- require('CHAPA_WEBHOOK_SECRET',secret.length>=32&&secret.length<=256&&!/REPLACE|CHANGE_ME/i.test(secret));
+ if((raw.CHAPA_WEBHOOK_AUTH??'signature')==='signature')require('CHAPA_WEBHOOK_SECRET',secret.length>=32&&secret.length<=256&&!/REPLACE|CHANGE_ME/i.test(secret));
  require('CHAPA_WEBHOOK_AUTH / BASIC credentials',chapaWebhookAuthentication(raw).valid);
  require('MINI_APP_URL / BETTER_AUTH_URL',secureOrigins(raw));
  require('CHAPA_BASE_URL',!raw.CHAPA_BASE_URL||raw.CHAPA_BASE_URL==='https://api.chapa.global');

@@ -17,8 +17,10 @@ CHAPA_WEBHOOK_BASIC_PASSWORD=REPLACE_WITH_SEPARATE_RANDOM_PASSWORD
 ```
 
 Generate a separate random password of 32-256 printable ASCII characters; a
-32-byte base64url value works. Keep it server-only. Keep the existing
-`CHAPA_WEBHOOK_SECRET`, merchant API key, payment mode and recovery bindings.
+32-byte base64url value works. Keep it server-only. `CHAPA_WEBHOOK_SECRET` is
+required only in Signature mode. Basic mode requires its exact username/password;
+the dashboard may still require a Secret Hash field when creating the webhook.
+Keep the merchant API key, payment mode and recovery bindings.
 Changing webhook authentication does not require changing payment credentials.
 Do not enable new payment/live flags to test webhook authentication.
 

@@ -4,7 +4,7 @@ import {chapaAvailability,chapaConfigurationFingerprint,chapaHash,chapaWebhookAm
 
 const secret='local-only-chapa-webhook-secret-with-thirty-two-bytes';
 function environment(patch:Record<string,string|undefined>={}){return {APP_ENV:'local',NODE_ENV:'test',DATABASE_URL:'postgresql://test:test@127.0.0.1:5432/chapa_provider_test',MINI_APP_URL:'https://lowwin.test',BETTER_AUTH_URL:'https://lowwin.test',PAYMENT_GATEWAY:'CHAPA',CHAPA_SCHEMA_READY:'true',CHAPA_ENABLED:'true',CHAPA_PRIVATE_KEY:'CHAPA_TEST_'+'a'.repeat(32),CHAPA_WEBHOOK_SECRET:secret,...patch}}
-const create={amountCents:'12345',merchantReference:'LW123456789012345678',idempotencyKey:'865ab6e0-c5b9-4716-bded-d213669a5fab',returnUrl:'https://lowwin.test/wallet?chapa=attempt',callbackUrl:'https://lowwin.test/api/payments/chapa/webhook',customer:{first_name:'ሙከራ',phone_number:'251911111111'},meta:{attempt_id:'local-attempt'},description:'Lowwin wallet top up'};
+const create={amountCents:'12345',merchantReference:'LW123456789012345678',idempotencyKey:'865ab6e0-c5b9-4716-bded-d213669a5fab',returnUrl:'https://lowwin.test/wallet?chapa=attempt',returnUrlVersion:1 as const,callbackUrl:'https://lowwin.test/api/payments/chapa/webhook',customer:{first_name:'ሙከራ',phone_number:'251911111111'},meta:{attempt_id:'local-attempt'},description:'Lowwin wallet top up'};
 const verified=()=>({status:'success',data:{chapa_reference:'CHLocal123',merchant_reference:create.merchantReference,amount:12345,currency:'ETB',status:'SUCCESS',payment_method:'telebirr',processor_reference:'local-reference',service_fee:370,customer:{phone_number:'251911111111'},meta:{attempt_id:'local-attempt'},mode:'test',created_at:'2026-10-26T10:00:00Z',updated_at:'2026-10-26T10:01:00Z'}});
 const initialized=()=>({status:'success',data:{checkout_url:'https://checkout.chapa.global/CHLocal123?intent=opaque',created_at:'2026-10-26T10:00:00Z',expires_at:'2026-10-27T10:00:00Z'}});
 const method=(patch:Record<string,unknown>={})=>({name:'Telebirr',slug:'telebirr',is_mobile_money:true,can_process_payments:true,supported_currencies:{ETB:{default_min:100,default_max:1000000,countries:{ET:{is_enabled:true,min_amount:250,max_amount:500000}}}},...patch});
@@ -14,6 +14,7 @@ describe('Chapa v2 configuration boundaries',()=>{
  it('requires complete explicit Basic Auth configuration and rejects unknown schemes',()=>{
   const basic={CHAPA_WEBHOOK_AUTH:'basic',CHAPA_WEBHOOK_BASIC_USERNAME:'lowwin-webhook',CHAPA_WEBHOOK_BASIC_PASSWORD:'p'.repeat(48)};
   expect(chapaAvailability(environment(basic)).configured).toBe(true);
+  expect(chapaAvailability(environment({...basic,CHAPA_WEBHOOK_SECRET:undefined}))).toMatchObject({configured:true,recoveryEnabled:true});
   for(const patch of [{CHAPA_WEBHOOK_AUTH:'legacy'},{CHAPA_WEBHOOK_AUTH:''},{CHAPA_WEBHOOK_BASIC_USERNAME:''},{CHAPA_WEBHOOK_BASIC_USERNAME:'user:name'},{CHAPA_WEBHOOK_BASIC_PASSWORD:'short'},{CHAPA_WEBHOOK_BASIC_PASSWORD:'p'.repeat(257)},{CHAPA_WEBHOOK_BASIC_PASSWORD:'p'.repeat(40)+'\n'}])expect(chapaAvailability(environment({...basic,...patch})).configured).toBe(false);
  });
  it('stays disabled with no keys and requires every explicit create gate',()=>{
@@ -149,17 +150,22 @@ describe('Chapa v2 authenticated webhook hints',()=>{
 });
 
 describe('Chapa v2 bounded merchant transport',()=>{
+ it('preserves the minimal hosted body for historical snapshots with optional URL fields',async()=>{
+  const {returnUrlVersion:_,...historical}=create,fetcher=vi.fn<typeof fetch>(async()=>Response.json(initialized()));
+  await createChapaTransport({env:environment(),fetcher}).create(historical);
+  expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toEqual({amount:12345,currency:'ETB',merchant_reference:historical.merchantReference});
+ });
  it('sends cents, a stable idempotency key and no card data to the fixed hosted endpoint',async()=>{
   const fetcher=vi.fn<typeof fetch>(async()=>Response.json(initialized())),transport=createChapaTransport({env:environment(),fetcher});await transport.create(create);await transport.create(create);
   expect(fetcher).toHaveBeenCalledTimes(2);const [url,options]=fetcher.mock.calls[0];expect(url).toBe('https://api.chapa.global/v2/payments/hosted');expect(options).toMatchObject({method:'POST',redirect:'error',cache:'no-store',headers:{Authorization:'Bearer '+environment().CHAPA_PRIVATE_KEY,'Idempotency-Key':create.idempotencyKey,'Content-Type':'application/json'}});expect(options?.signal).toBeInstanceOf(AbortSignal);
-  const body=JSON.parse(String(options?.body));expect(body).toEqual({amount:12345,currency:'ETB',merchant_reference:create.merchantReference});expect(fetcher.mock.calls[1][1]?.body).toBe(options?.body);expect(fetcher.mock.calls[1][1]?.headers).toEqual(options?.headers);
+  const body=JSON.parse(String(options?.body));expect(body).toEqual({amount:12345,currency:'ETB',merchant_reference:create.merchantReference,return_url:create.returnUrl});expect(fetcher.mock.calls[1][1]?.body).toBe(options?.body);expect(fetcher.mock.calls[1][1]?.headers).toEqual(options?.headers);
  });
  it('leaves payer contact and payment method selection to hosted checkout when omitted',async()=>{
   const {customer:_,...hosted}=create,fetcher=vi.fn<typeof fetch>(async()=>Response.json(initialized()));
   await createChapaTransport({env:environment(),fetcher}).create(hosted);
   const body=JSON.parse(String(fetcher.mock.calls[0][1]?.body));
   expect(body).not.toHaveProperty('customer');expect(body).not.toHaveProperty('phone_number');expect(body).not.toHaveProperty('preferred_payment_methods');
-  expect(body).toEqual({amount:12345,currency:'ETB',merchant_reference:hosted.merchantReference});
+  expect(body).toEqual({amount:12345,currency:'ETB',merchant_reference:hosted.merchantReference,return_url:hosted.returnUrl});
  });
  it('rejects invalid amounts, keys, identity or external return URLs before contacting Chapa',async()=>{
   const fetcher=vi.fn<typeof fetch>(),transport=createChapaTransport({env:environment(),fetcher});

@@ -43,7 +43,7 @@ describe.skipIf(!database)('Chapa v2 hosted payments on disposable PostgreSQL',(
  }
  it('persists a private top-up attempt without treating initialization as payment',async()=>{
   const f=await payment({amount:'25.50'}),order=await f.start();expect(order).toMatchObject({purpose:'TOP_UP',mode:'test',amount:'25.50',amountCents:'2550',status:'PENDING'});expect(await balance(f.userId)).toBe('0');expect(await db.operation.count({where:{userId:f.userId,scope:'CHAPA_RECEIPT'}})).toBe(0);expect(f.methods).not.toHaveBeenCalled();
-  expect(f.inputs[0]).toEqual({amountCents:'2550',idempotencyKey:`lowwin:${order.id}`,merchantReference:expect.any(String)});expect(f.inputs[0].merchantReference.length).toBeLessThanOrEqual(20);expect(order).not.toHaveProperty('initialization');expect(order).not.toHaveProperty('phoneCipher');expect(order).not.toHaveProperty('credentialFingerprint');
+  expect(f.inputs[0]).toEqual({amountCents:'2550',idempotencyKey:`lowwin:${order.id}`,merchantReference:expect.any(String),returnUrl:`${gateway.MINI_APP_URL}/payments/chapa/return?checkout=${order.id}`,returnUrlVersion:1});expect(f.inputs[0].merchantReference.length).toBeLessThanOrEqual(20);expect(order).not.toHaveProperty('initialization');expect(order).not.toHaveProperty('phoneCipher');expect(order).not.toHaveProperty('credentialFingerprint');
   expect(f.inputs[0]).not.toHaveProperty('customer');
   const saved=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});expect(saved.phoneCipher).toBeTruthy();expect(saved.phoneBotId).toBeTruthy();
  });
