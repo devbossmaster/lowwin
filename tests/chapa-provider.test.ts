@@ -103,16 +103,22 @@ describe('Chapa v2 payment evidence and hosted URL',()=>{
   expect(createdChapaSession({status:'success',data:{checkout_url}})).toMatchObject({checkoutUrl:checkout_url,checkoutReference:'TEST123456',chapaReference:null});
   expect(safeChapaCheckoutUrl('https://checkout.chapa.global/TEST123456')).toMatchObject({chapaReference:'TEST123456'});
  });
- it.each(['APW','APV'])('keeps a LIVE hosted %s session separate without relaxing final reference checks',prefix=>{
+ it.each(['APW','APV','APQ','APU','APt'])('keeps a LIVE hosted %s session separate without relaxing final reference checks',prefix=>{
   const token=prefix+'123456',url='https://checkout.chapa.global/payment/hosted/'+token;
   expect(createdChapaSession({status:'success',data:{checkout_url:url}})).toMatchObject({checkoutReference:token,chapaReference:null});
   for(const suffix of ['','/','?source=fixture','/?source=fixture'])expect(isChapaHostedSessionReference(url+suffix,token,'live')).toBe(true);
-  for(const [candidate,value,mode] of [[url,prefix+'other','live'],[url,token,'test'],['https://checkout.chapa.global/'+token,token,'live'],['https://checkout.chapa.global/payment/hosted/CHfinal','CHfinal','live'],['https://checkout.chapa.global/payment/hosted/APX123456','APX123456','live'],['https://checkout.chapa.global.evil.test/payment/hosted/'+token,token,'live']] as const)expect(isChapaHostedSessionReference(candidate,value,mode)).toBe(false);
+  for(const [candidate,value,mode] of [[url,prefix+'other','live'],[url,token,'test'],['https://checkout.chapa.global/'+token,token,'live'],['https://checkout.chapa.global/payment/hosted/CHfinal','CHfinal','live'],['https://checkout.chapa.global/payment/hosted/HCfinal','HCfinal','live'],['https://checkout.chapa.global/payment/hosted/opaque_session','opaque_session','live'],['https://checkout.chapa.global.evil.test/payment/hosted/'+token,token,'live']] as const)expect(isChapaHostedSessionReference(candidate,value,mode)).toBe(false);
+ });
+ it('never infers final payment evidence from an otherwise safe new checkout URL',()=>{
+  for(const path of ['/opaque_session-123','/payment/hosted/opaque_session-123','/CHLocal123','/payment/hosted/HCfinal']){
+   const checkoutUrl='https://checkout.chapa.global'+path;
+   expect(createdChapaSession({status:'success',data:{checkout_url:checkoutUrl}})).toMatchObject({checkoutUrl,chapaReference:null});
+  }
  });
  it('returns exact provider URL and dates but rejects open-redirect and reference confusion',()=>{
-  expect(createdChapaSession(initialized())).toMatchObject({checkoutUrl:initialized().data.checkout_url,chapaReference:'CHLocal123',createdAt:new Date('2026-10-26T10:00:00Z'),expiresAt:new Date('2026-10-27T10:00:00Z')});
+  expect(createdChapaSession(initialized())).toMatchObject({checkoutUrl:initialized().data.checkout_url,chapaReference:null,createdAt:new Date('2026-10-26T10:00:00Z'),expiresAt:new Date('2026-10-27T10:00:00Z')});
   for(const url of ['http://checkout.chapa.global/CHLocal123','https://checkout.chapa.global.evil.test/CHLocal123','https://user:secret@checkout.chapa.global/CHLocal123','https://checkout.chapa.global:8443/CHLocal123','https://checkout.chapa.global/','https://checkout.chapa.global/CH%2F123','https://checkout.chapa.global/CHLocal123#redirect','https://evil.test/CHLocal123','javascript:alert(1)',' https://checkout.chapa.global/CHLocal123','https://checkout.chapa.global\\@evil.test/CHLocal123'])expect(safeChapaCheckoutUrl(url)).toBeNull();
-  expect(createdChapaSession({...initialized(),data:{...initialized().data,expires_at:'2026-10-25T10:00:00Z'}})).toBeNull();expect(createdChapaSession({status:'success',data:{checkout_url:initialized().data.checkout_url}})).toMatchObject({checkoutUrl:initialized().data.checkout_url,chapaReference:'CHLocal123',createdAt:undefined,expiresAt:undefined});expect(createdChapaSession({...initialized(),data:{...initialized().data,created_at:'not-a-date'}})).toBeNull();expect(createdChapaSession({...initialized(),data:{...initialized().data,expires_at:'2026-13-01T10:00:00Z'}})).toBeNull();
+  expect(createdChapaSession({...initialized(),data:{...initialized().data,expires_at:'2026-10-25T10:00:00Z'}})).toBeNull();expect(createdChapaSession({status:'success',data:{checkout_url:initialized().data.checkout_url}})).toMatchObject({checkoutUrl:initialized().data.checkout_url,chapaReference:null,createdAt:undefined,expiresAt:undefined});expect(createdChapaSession({...initialized(),data:{...initialized().data,created_at:'not-a-date'}})).toBeNull();expect(createdChapaSession({...initialized(),data:{...initialized().data,expires_at:'2026-13-01T10:00:00Z'}})).toBeNull();
  });
  it('uses only actual enabled ETB/ET methods and their country limits',()=>{
   expect(parseChapaPaymentMethods({status:'success',data:[method()]})).toEqual([{name:'Telebirr',slug:'telebirr',minimumCents:'250',maximumCents:'500000',isMobileMoney:true}]);

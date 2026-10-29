@@ -129,3 +129,6 @@ The source catalog defines 9 categories:
 7. Watches
 8. Phones
 9. Animals
+
+
+ok i want one more thign we haev come a long to implement chapa and we spent long time and big tokens for it and it wokrth finally so i want u to write me a perfect follow up prompt so wehn i create new project and want to intgreate chapa i wont hustlie more because we know th edge cases and way to follow so absed on that i want u to write me detailed prompt for my upocming project to integrete chapa from start to end perfectly 

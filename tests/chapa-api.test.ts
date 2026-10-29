@@ -250,7 +250,7 @@ describe('Chapa HTTP authorization and durable webhook boundary',()=>{
   expect(f.update).toHaveBeenCalledWith({where:{id,creditJournalId:null},data:{nextCheckAt:expect.any(Date),reason:'PROVIDER_EVENT_RECEIVED'}});
   expect(f.verify).not.toHaveBeenCalled();expect(f.create).not.toHaveBeenCalled();expect(globalThis.fetch).not.toHaveBeenCalled();
  });
- it.each(['APW','APV'])('queues a historical LIVE %s session for server verification without applying webhook credit',async prefix=>{
+ it.each(['APW','APV','APQ','APU','APt'])('queues a historical LIVE %s session for server verification without applying webhook credit',async prefix=>{
   for(const [name,value] of Object.entries({APP_ENV:'production',NODE_ENV:'production',CHAPA_MODE:'live',CHAPA_PRIVATE_KEY:'CHAPA_LIVE_'+'a'.repeat(40),CHAPA_LIVE_ENABLED:'true',CHAPA_MERCHANT_REVIEWED:'true',DEV_POINTS_ENABLED:'false'}))vi.stubEnv(name,value);
   const session=prefix+'legacySession123';
   f.find.mockResolvedValue({id,mode:'live',chapaReference:session,checkoutUrl:`https://checkout.chapa.global/payment/hosted/${session}`,amountCents:1000n,currency:'ETB',status:'NEEDS_REVIEW',reason:'EVIDENCE_MISMATCH'});

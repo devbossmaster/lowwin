@@ -75,14 +75,14 @@ export function safeChapaCheckoutUrl(value:string):{checkoutUrl:string;checkoutR
   // Preserve Chapa's exact returned path/query. Never synthesize a checkout URL.
   // Hosted session routes end in a session token. Their final payment reference
   // is supplied by merchant verification after payment, not by this URL.
-  const hostedSession=/^\/test\/payment\/hosted\/TEST[A-Za-z0-9_-]+\/?$/.test(url.pathname)||/^\/payment\/hosted\/AP[VW][A-Za-z0-9_-]+\/?$/.test(url.pathname);
+  const hostedSession=/^\/test\/payment\/hosted\/TEST[A-Za-z0-9_-]+\/?$/.test(url.pathname)||/^\/payment\/hosted\/AP[A-Za-z0-9_-]+\/?$/.test(url.pathname);
   return {checkoutUrl:value,checkoutReference:last,chapaReference:hostedSession?null:last};
  }catch{return null}
 }
 export function isChapaHostedSessionReference(url:string|null,value:string|null,mode:ChapaMode){
  const parsed=url?safeChapaCheckoutUrl(url):null;if(!parsed||parsed.chapaReference!==null||parsed.checkoutReference!==value)return false;
  const path=new URL(parsed.checkoutUrl).pathname;
- return mode==='test'?/^\/test\/payment\/hosted\/TEST[A-Za-z0-9_-]+\/?$/.test(path):/^\/payment\/hosted\/AP[VW][A-Za-z0-9_-]+\/?$/.test(path);
+ return mode==='test'?/^\/test\/payment\/hosted\/TEST[A-Za-z0-9_-]+\/?$/.test(path):/^\/payment\/hosted\/AP[A-Za-z0-9_-]+\/?$/.test(path);
 }
 export function isChapaTestSessionReference(url:string|null,value:string|null){return isChapaHostedSessionReference(url,value,'test')}
 export function createdChapaSession(raw:unknown){
@@ -90,7 +90,10 @@ export function createdChapaSession(raw:unknown){
  const session=safeChapaCheckoutUrl(parsed.data.data.checkout_url);if(!session)return null;const createdAt=parsed.data.data.created_at?new Date(parsed.data.data.created_at):undefined,expiresAt=parsed.data.data.expires_at?new Date(parsed.data.data.expires_at):undefined;
  // Chapa documents these timestamps as optional checkout-validity metadata.
  // Missing dates must not discard a valid returned URL or invent an expiry.
- return createdAt&&expiresAt&&expiresAt<=createdAt?null:{...session,createdAt,expiresAt};
+ // A URL identifies where to pay, never which completed payment to credit.
+ // Bind the final reference only after merchant-authenticated SUCCESS evidence.
+ // This applies to every valid URL shape, independent of session token spelling.
+ return createdAt&&expiresAt&&expiresAt<=createdAt?null:{...session,chapaReference:null,createdAt,expiresAt};
 }
 
 export type ChapaPaymentMethod={slug:string;name:string;minimumCents:string;maximumCents:string;isMobileMoney:boolean};
