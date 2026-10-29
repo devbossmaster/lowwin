@@ -57,13 +57,18 @@ export function safeChapaCheckoutUrl(value:string):{checkoutUrl:string;checkoutR
   const url=new URL(value),last=url.pathname.split('/').filter(Boolean).at(-1);
   if(url.protocol!=='https:'||url.hostname!==CHECKOUT_HOST||url.username||url.password||url.port||url.hash||!last||!reference.safeParse(last).success)return null;
   // Preserve Chapa's exact returned path/query. Never synthesize a checkout URL.
-  // The TEST hosted route ends in a session token. Its final payment reference
+  // Hosted session routes end in a session token. Their final payment reference
   // is supplied by merchant verification after payment, not by this URL.
-  const testSession=/^\/test\/payment\/hosted\/TEST[A-Za-z0-9_-]+\/?$/.test(url.pathname);
-  return {checkoutUrl:value,checkoutReference:last,chapaReference:testSession?null:last};
+  const hostedSession=/^\/test\/payment\/hosted\/TEST[A-Za-z0-9_-]+\/?$/.test(url.pathname)||/^\/payment\/hosted\/APW[A-Za-z0-9_-]+\/?$/.test(url.pathname);
+  return {checkoutUrl:value,checkoutReference:last,chapaReference:hostedSession?null:last};
  }catch{return null}
 }
-export function isChapaTestSessionReference(url:string|null,value:string|null){const parsed=url?safeChapaCheckoutUrl(url):null;return !!parsed&&parsed.chapaReference===null&&parsed.checkoutReference===value}
+export function isChapaHostedSessionReference(url:string|null,value:string|null,mode:ChapaMode){
+ const parsed=url?safeChapaCheckoutUrl(url):null;if(!parsed||parsed.chapaReference!==null||parsed.checkoutReference!==value)return false;
+ const path=new URL(parsed.checkoutUrl).pathname;
+ return mode==='test'?/^\/test\/payment\/hosted\/TEST[A-Za-z0-9_-]+\/?$/.test(path):/^\/payment\/hosted\/APW[A-Za-z0-9_-]+\/?$/.test(path);
+}
+export function isChapaTestSessionReference(url:string|null,value:string|null){return isChapaHostedSessionReference(url,value,'test')}
 export function createdChapaSession(raw:unknown){
  const parsed=z.object({status:z.literal('success'),data:z.object({checkout_url:z.string().max(2048),created_at:instant.optional(),expires_at:instant.optional()})}).safeParse(raw);if(!parsed.success)return null;
  const session=safeChapaCheckoutUrl(parsed.data.data.checkout_url);if(!session)return null;const createdAt=parsed.data.data.created_at?new Date(parsed.data.data.created_at):undefined,expiresAt=parsed.data.data.expires_at?new Date(parsed.data.data.expires_at):undefined;

@@ -1,7 +1,7 @@
 import {db} from '@/lib/db';
 import {readRequestBytes,RequestBodyError} from '@/lib/request-body';
 import {privateHeaders} from '@/modules/auth/private-api';
-import {chapaAvailability,chapaHash,isChapaTestSessionReference,parseChapaWebhook,verifyChapaWebhook} from '@/modules/payments/chapa-provider';
+import {chapaAvailability,chapaHash,isChapaHostedSessionReference,parseChapaWebhook,verifyChapaWebhook} from '@/modules/payments/chapa-provider';
 export const runtime='nodejs';
 export async function POST(request:Request){
  const health=chapaAvailability();if(!health.recoveryEnabled)return Response.json({accepted:false},{status:503,headers:privateHeaders});
@@ -15,11 +15,11 @@ export async function POST(request:Request){
    if(hint.type!=='payment'){await tx.adminAudit.create({data:{actorId:'chapa-webhook',action:'CHAPA_NONPAYMENT_EVENT_REVIEW',target:hint.chapaReference??hint.merchantReference??'unknown',details:{type:hint.type,event:hint.event,mode:health.mode}}});return}
    if(!hint.merchantReference)return;
    const order=await tx.chapaCheckout.findUnique({where:{merchantReference:hint.merchantReference}});if(!order||order.mode!==health.mode)return;
-   // Older TEST intents stored the hosted session token as their reference.
+   // Older intents stored a hosted session token as their reference.
    // Permit only a recovery hint here; verification must establish the final
    // payment reference before its balanced receipt can replace that token.
-   const historicalTestSession=order.mode==='test'&&isChapaTestSessionReference(order.checkoutUrl,order.chapaReference);
-   if(hint.chapaReference&&order.chapaReference&&hint.chapaReference!==order.chapaReference&&!historicalTestSession||hint.amountCents&&hint.amountCents!==order.amountCents.toString()||hint.currency&&hint.currency!==order.currency)return;
+   const hostedSession=isChapaHostedSessionReference(order.checkoutUrl,order.chapaReference,health.mode);
+   if(hint.chapaReference&&order.chapaReference&&hint.chapaReference!==order.chapaReference&&!hostedSession||hint.amountCents&&hint.amountCents!==order.amountCents.toString()||hint.currency&&hint.currency!==order.currency)return;
    // A delivery can be older than our last verified state. Queue a fresh
    // authoritative lookup without replacing that state with a webhook hint.
    await tx.chapaCheckout.updateMany({where:{id:order.id,creditJournalId:null},data:{nextCheckAt:new Date(),reason:'PROVIDER_EVENT_RECEIVED'}});
