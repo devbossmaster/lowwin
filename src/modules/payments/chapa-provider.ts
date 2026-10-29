@@ -75,14 +75,14 @@ export function safeChapaCheckoutUrl(value:string):{checkoutUrl:string;checkoutR
   // Preserve Chapa's exact returned path/query. Never synthesize a checkout URL.
   // Hosted session routes end in a session token. Their final payment reference
   // is supplied by merchant verification after payment, not by this URL.
-  const hostedSession=/^\/test\/payment\/hosted\/TEST[A-Za-z0-9_-]+\/?$/.test(url.pathname)||/^\/payment\/hosted\/APW[A-Za-z0-9_-]+\/?$/.test(url.pathname);
+  const hostedSession=/^\/test\/payment\/hosted\/TEST[A-Za-z0-9_-]+\/?$/.test(url.pathname)||/^\/payment\/hosted\/AP[VW][A-Za-z0-9_-]+\/?$/.test(url.pathname);
   return {checkoutUrl:value,checkoutReference:last,chapaReference:hostedSession?null:last};
  }catch{return null}
 }
 export function isChapaHostedSessionReference(url:string|null,value:string|null,mode:ChapaMode){
  const parsed=url?safeChapaCheckoutUrl(url):null;if(!parsed||parsed.chapaReference!==null||parsed.checkoutReference!==value)return false;
  const path=new URL(parsed.checkoutUrl).pathname;
- return mode==='test'?/^\/test\/payment\/hosted\/TEST[A-Za-z0-9_-]+\/?$/.test(path):/^\/payment\/hosted\/APW[A-Za-z0-9_-]+\/?$/.test(path);
+ return mode==='test'?/^\/test\/payment\/hosted\/TEST[A-Za-z0-9_-]+\/?$/.test(path):/^\/payment\/hosted\/AP[VW][A-Za-z0-9_-]+\/?$/.test(path);
 }
 export function isChapaTestSessionReference(url:string|null,value:string|null){return isChapaHostedSessionReference(url,value,'test')}
 export function createdChapaSession(raw:unknown){

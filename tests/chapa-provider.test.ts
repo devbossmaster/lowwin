@@ -103,11 +103,11 @@ describe('Chapa v2 payment evidence and hosted URL',()=>{
   expect(createdChapaSession({status:'success',data:{checkout_url}})).toMatchObject({checkoutUrl:checkout_url,checkoutReference:'TEST123456',chapaReference:null});
   expect(safeChapaCheckoutUrl('https://checkout.chapa.global/TEST123456')).toMatchObject({chapaReference:'TEST123456'});
  });
- it('keeps a LIVE hosted APW session separate without relaxing final reference checks',()=>{
-  const url='https://checkout.chapa.global/payment/hosted/APW123456';
-  expect(createdChapaSession({status:'success',data:{checkout_url:url}})).toMatchObject({checkoutReference:'APW123456',chapaReference:null});
-  expect(isChapaHostedSessionReference(url,'APW123456','live')).toBe(true);
-  for(const [candidate,value,mode] of [[url,'APWother','live'],[url,'APW123456','test'],['https://checkout.chapa.global/APW123456','APW123456','live'],['https://checkout.chapa.global/payment/hosted/CHfinal','CHfinal','live'],['https://checkout.chapa.global.evil.test/payment/hosted/APW123456','APW123456','live']] as const)expect(isChapaHostedSessionReference(candidate,value,mode)).toBe(false);
+ it.each(['APW','APV'])('keeps a LIVE hosted %s session separate without relaxing final reference checks',prefix=>{
+  const token=prefix+'123456',url='https://checkout.chapa.global/payment/hosted/'+token;
+  expect(createdChapaSession({status:'success',data:{checkout_url:url}})).toMatchObject({checkoutReference:token,chapaReference:null});
+  for(const suffix of ['','/','?source=fixture','/?source=fixture'])expect(isChapaHostedSessionReference(url+suffix,token,'live')).toBe(true);
+  for(const [candidate,value,mode] of [[url,prefix+'other','live'],[url,token,'test'],['https://checkout.chapa.global/'+token,token,'live'],['https://checkout.chapa.global/payment/hosted/CHfinal','CHfinal','live'],['https://checkout.chapa.global/payment/hosted/APX123456','APX123456','live'],['https://checkout.chapa.global.evil.test/payment/hosted/'+token,token,'live']] as const)expect(isChapaHostedSessionReference(candidate,value,mode)).toBe(false);
  });
  it('returns exact provider URL and dates but rejects open-redirect and reference confusion',()=>{
   expect(createdChapaSession(initialized())).toMatchObject({checkoutUrl:initialized().data.checkout_url,chapaReference:'CHLocal123',createdAt:new Date('2026-10-26T10:00:00Z'),expiresAt:new Date('2026-10-27T10:00:00Z')});
