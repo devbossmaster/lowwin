@@ -11,6 +11,9 @@ export type ChapaMode='test'|'live';
 export class ChapaError extends Error {
  constructor(public status:number,public code:string,message:string){super(message);this.name='ChapaError'}
 }
+export class ChapaProviderError extends ChapaError {
+ constructor(readonly httpStatus:number,readonly providerCode:string,readonly definiteRejection:boolean){super(502,'PROVIDER_UNAVAILABLE',httpStatus===429?'Chapa is busy. Please try again later.':'Chapa could not complete this request. View the transaction before trying again.')}
+}
 export const chapaHash=(value:string|Uint8Array)=>createHash('sha256').update(value).digest('hex');
 export function chapaConfigurationFingerprint(raw:Environment=process.env){return raw.CHAPA_PRIVATE_KEY?chapaHash(raw.CHAPA_PRIVATE_KEY):null}
 function origins(raw:Environment){try{const app=new URL(raw.MINI_APP_URL??''),auth=new URL(raw.BETTER_AUTH_URL??'');return app.protocol==='https:'&&auth.protocol==='https:'&&app.origin===auth.origin&&!app.username&&!app.password&&!auth.username&&!auth.password}catch{return false}}
@@ -93,17 +96,20 @@ export function verifyChapaWebhook(rawBody:Uint8Array|string,receivedSignature:s
 }
 const webhookSchema=z.object({webhook_type:z.enum(['payment','refund','payout']),event:z.string().regex(/^[a-z][a-z._]{0,80}$/),status:z.string().regex(/^[a-z][a-z_]{0,40}$/),mode:z.enum(['test','live']).optional(),merchant_reference:merchantReference.nullish(),chapa_reference:reference.optional(),amount:z.union([centsString,cents.transform(String)]).optional(),currency:z.string().regex(/^[A-Z]{3}$/).optional(),meta:metadata.nullish(),updated_at:instant.optional()});
 /** An authenticated webhook is a durable recovery hint, never credit evidence. */
-export function parseChapaWebhook(raw:unknown){const p=webhookSchema.safeParse(raw);if(!p.success)return null;const d=p.data;return {type:d.webhook_type,event:d.event,status:d.status,mode:d.mode,merchantReference:d.merchant_reference??undefined,chapaReference:d.chapa_reference,amountCents:d.amount,currency:d.currency,meta:d.meta??undefined,updatedAt:d.updated_at?new Date(d.updated_at):undefined}}
+export function parseChapaWebhook(raw:unknown){const p=webhookSchema.safeParse(raw);if(!p.success)return null;const d=p.data;const events:Record<string,string>={'payment.success':'success','payment.failed':'failed','payment.cancelled':'cancelled','payment.incomplete':'incomplete','payment.auth_needed':'auth_needed','payment.blocked':'blocked','payment.pending':'pending'};if(d.webhook_type==='payment'&&events[d.event]!==d.status)return null;return {type:d.webhook_type,event:d.event,status:d.status,mode:d.mode,merchantReference:d.merchant_reference??undefined,chapaReference:d.chapa_reference,amountCents:d.amount,currency:d.currency,meta:d.meta??undefined,updatedAt:d.updated_at?new Date(d.updated_at):undefined}}
 
 export type ChapaCreate={amountCents:string;merchantReference:string;idempotencyKey:string;returnUrl?:string;callbackUrl?:string;customer?:z.infer<typeof customerSchema>;meta?:Record<string,string>;preferredPaymentMethods?:string[];description?:string};
 export type ChapaTransport={create:(input:ChapaCreate)=>Promise<unknown>;lookup:(paymentReference:string)=>Promise<unknown>;methods:()=>Promise<unknown>};
 const createSchema=z.object({amountCents:centsString.refine(v=>centsPattern.test(v)&&BigInt(v)>=100n),merchantReference,idempotencyKey:z.string().regex(/^[A-Za-z0-9:._-]{16,128}$/),returnUrl:z.url().max(2048).optional(),callbackUrl:z.url().max(2048).optional(),customer:customerSchema.strict().optional(),meta:z.record(z.string().max(80),z.string().max(256)).optional(),preferredPaymentMethods:z.array(z.string().regex(/^[a-z0-9_-]{1,80}$/)).min(1).max(10).optional(),description:z.string().trim().min(1).max(200).optional()}).strict();
 async function boundedJson(response:Response){
- if(!response.ok){await response.body?.cancel().catch(()=>{});throw new ChapaError(502,'PROVIDER_UNAVAILABLE','Payment confirmation is pending. Check this same payment again.')}
  const reader=response.body?.getReader();if(!reader)throw new ChapaError(502,'PROVIDER_UNAVAILABLE','Payment confirmation is pending. Check this same payment again.');
  let length=0;const chunks:Uint8Array[]=[];
- try{for(;;){const part=await reader.read();if(part.done)break;length+=part.value.byteLength;if(length>MAX_RESPONSE_BYTES){await reader.cancel();throw new Error('Response bound')}chunks.push(part.value)}return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown}
- catch{throw new ChapaError(502,'PROVIDER_UNAVAILABLE','Payment confirmation is pending. Check this same payment again.')}
+ try{for(;;){const part=await reader.read();if(part.done)break;length+=part.value.byteLength;if(length>MAX_RESPONSE_BYTES){await reader.cancel();throw new Error('Response bound')}chunks.push(part.value)}
+  let body:unknown;try{body=JSON.parse(Buffer.concat(chunks).toString('utf8'))}catch{body=null}
+  if(!response.ok){const error=z.object({error:z.object({code:z.string().regex(/^[A-Z][A-Z0-9_]{0,79}$/)}).optional()}).safeParse(body);const code=error.success?error.data.error?.code??'HTTP_ERROR':'HTTP_ERROR';throw new ChapaProviderError(response.status,code,[400,401,403,404,422].includes(response.status))}
+  if(body===null)throw Error('Invalid JSON');return body;
+ }
+ catch(error){if(error instanceof ChapaProviderError)throw error;throw new ChapaError(502,'PROVIDER_UNAVAILABLE','Payment confirmation is pending. Check this same payment again.')}
  finally{reader.releaseLock()}
 }
 export function createChapaTransport(options:{env?:Environment;fetcher?:typeof fetch}={}):ChapaTransport{
@@ -111,7 +117,7 @@ export function createChapaTransport(options:{env?:Environment;fetcher?:typeof f
  const request=async(path:string,operation:'create'|'recover',body?:unknown,key?:string)=>{
   requireChapa(operation,raw);
   try{const response=await (options.fetcher??fetch)(API_ORIGIN+path,{method:body===undefined?'GET':'POST',headers:{Authorization:`Bearer ${raw.CHAPA_PRIVATE_KEY!}`,...(body===undefined?{}:{'Content-Type':'application/json'}),...(key?{'Idempotency-Key':key}:{})},cache:'no-store',redirect:'error',signal:AbortSignal.timeout(10000),...(body===undefined?{}:{body:JSON.stringify(body)})});return await boundedJson(response)}
-  catch{throw new ChapaError(502,'PROVIDER_UNAVAILABLE','Payment confirmation is pending. Check this same payment again.')}
+  catch(error){if(error instanceof ChapaProviderError)throw error;throw new ChapaError(502,'PROVIDER_UNAVAILABLE','Payment confirmation is pending. Check this same payment again.')}
  };
  return {
   create:async input=>{const parsed=createSchema.safeParse(input);if(!parsed.success)throw new ChapaError(422,'INVALID_PAYMENT','Check the payment details.');const p=parsed.data;for(const value of [p.returnUrl,p.callbackUrl]){if(!value)continue;const u=new URL(value);let origin:string;try{origin=new URL(raw.MINI_APP_URL??'').origin}catch{throw new ChapaError(503,'PAYMENT_UNAVAILABLE','Chapa payments are not configured.')}if(u.protocol!=='https:'||u.username||u.password||u.origin!==origin)throw new ChapaError(422,'INVALID_PAYMENT','Use the configured secure payment return URL.')}

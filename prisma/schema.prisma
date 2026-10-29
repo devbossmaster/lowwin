@@ -506,6 +506,11 @@ model ChapaCheckout {
   // A quote snapshot only. Redemption remains owned by the referral command.
   couponId              String?
   status                String    @default("SUBMITTING")
+  flowVersion           Int       @default(2)
+  providerStatus        String?
+  verificationState     String    @default("UNVERIFIED")
+  initializationErrorCode String?
+  initializationHttpStatus Int?
   reason                String?
   creditJournalId       String?   @unique
   creditJournal         Journal?  @relation(fields: [creditJournalId], references: [id], onDelete: Restrict)
@@ -539,10 +544,17 @@ model ChapaWebhookEvent {
   merchantReference        String?
   chapaReference           String?
   event                    String
+  checkoutId               String?
+  status                   String   @default("QUEUED")
+  attempts                 Int      @default(0)
+  nextAttemptAt            DateTime @default(now())
+  leaseUntil               DateTime?
+  completedAt              DateTime?
   receivedAt               DateTime @default(now())
 
   @@unique([mode, configurationFingerprint, bodyHash])
   @@index([merchantReference, receivedAt])
+  @@index([status, nextAttemptAt])
 }
 
 model TopUpIntent {

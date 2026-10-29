@@ -7,7 +7,7 @@ export function customerPageTitle(path:string):readonly [string,string]{
  if(path==='/profile')return ['Profile','መገለጫ'];
  if(path==='/wallet/deposit')return ['Top up wallet','ወደ ዋሌት ገንዘብ ያስገቡ'];
  if(path.startsWith('/wallet'))return ['Wallet','ዋሌት'];
- if(path==='/payments')return ['Bid payments','የጨረታ ክፍያዎች'];
+ if(path==='/payments')return ['Transactions','ግብይቶች'];
  if(path==='/auctions'||path==='/auctions/all'||path.startsWith('/categories/'))return ['Auctions','ጨረታዎች'];
  if(path.startsWith('/auctions/'))return ['Auction details','የጨረታ ዝርዝር'];
  if(path==='/terms')return ['Terms & conditions','ውሎች እና ሁኔታዎች'];

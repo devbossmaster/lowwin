@@ -23,7 +23,7 @@ function TopUp({onClose,returnFocusRef,initialChapaId}:Props){
  const payment=useChapaPayment('topup',initialChapaId),[amount,setAmount]=useState('100'),id=useId(),settings=availability.data;
  const frozen=payment.attempt?.intent.purpose==='TOP_UP'?payment.attempt.intent.amount:null,value=frozen??amount;
  let valid=false,total='';try{const cents=etbToCents(value);valid=/^(0|[1-9]\d{0,15})(?:\.\d{1,2})?$/.test(value)&&cents>=etbToCents(settings?.minTopup??'1')&&cents<=etbToCents(settings?.maxTopup??'43200');total=centsToEtb(cents)}catch{}
- const showStatus=payment.opening||!!initialChapaId||!!payment.order&&(!!payment.order.checkoutUrl||['CREDITED','FAILED','CANCELLED','EXPIRED','NEEDS_REVIEW'].includes(payment.order.status));
+ const showStatus=payment.started;
  const action=!showStatus?<button type="submit" form={id} className={styles.payButton} data-payment-action disabled={!queryIdentity||!valid||!settings?.enabled||payment.busy||payment.restoring}>{payment.busy?text('Opening Chapa…','Chapa በመክፈት ላይ…'):text(`Pay${valid?' '+total+' ETB':''}`,`${valid?total+' ብር ':''}ክፈሉ`)}</button>:undefined;
  const contents=showStatus?<ChapaPaymentStatus payment={payment} onNavigate={onClose}/>:!queryIdentity&&wallet.status!=='loading'?<IdentityState compact/>:<form id={id} className={`${styles.topUp} ${styles.simpleTopUp}`} onSubmit={event=>{event.preventDefault();if(valid&&settings?.enabled&&queryIdentity&&!payment.busy)void payment.create({purpose:'TOP_UP',amount:value,key:crypto.randomUUID()})}}>
   <div className={styles.walletStrip}><span><Wallet size={15} aria-hidden="true"/>{text('Wallet','ዋሌት')}</span><strong>{walletDisplay(wallet.data?.available)??<span className={styles.fieldSkeleton} aria-label={text('Loading wallet balance','የዋሌት ቀሪ ሂሳብ በመጫን ላይ')}/>}</strong></div>
@@ -35,7 +35,7 @@ function TopUp({onClose,returnFocusRef,initialChapaId}:Props){
   {availability.error&&<button className={styles.inlineRetry} type="button" onClick={availability.reload}>{text('Retry','እንደገና')}</button>}
   {payment.error&&<p className={styles.error} role="alert">{payment.error}</p>}
   {payment.order&&!payment.order.checkoutUrl&&!payment.error&&<p className={styles.error} role="status">{text('Chapa could not open. Try Pay again.','Chapa መክፈት አልተቻለም። እንደገና ክፈሉን ይጫኑ።')}</p>}
-  <div className={styles.links}><Link href="/profile#wallet-payments" prefetch={false} onClick={onClose}>{text('Payment history','የክፍያ ታሪክ')}</Link></div>
+  <div className={styles.links}><Link href="/payments" prefetch={false} onClick={onClose}>{text('Payment history','የክፍያ ታሪክ')}</Link></div>
   {!onClose&&action}
  </form>;
  return onClose?<AccountSheet size="payment" title={<MiniPhrase en="Top up wallet" am="ወደ ዋሌት ገንዘብ ያስገቡ"/>} onClose={onClose} returnFocusRef={returnFocusRef} footer={action}>{contents}</AccountSheet>:<section className={styles.page}><h1><MiniPhrase en="Top up wallet" am="ወደ ዋሌት ገንዘብ ያስገቡ"/></h1>{contents}</section>;

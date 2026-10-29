@@ -10,6 +10,7 @@ import {submitBid,submitBidInTransaction} from '../src/modules/auctions/bids';
 import {createChapaCheckout,getChapaCheckout,listChapaCheckouts,recoverChapaCheckouts,verifyChapaCheckout} from '../src/modules/payments/chapa';
 import {recoveryAuthorizationAction,recoveryAuthorizationKey,recoveryBindingHash,type ChapaRecoveryBinding} from '../src/modules/payments/chapa-recovery-binding';
 import {chapaAvailability,chapaConfigurationFingerprint,type ChapaCreate,type ChapaTransport} from '../src/modules/payments/chapa-provider';
+import {processChapaEvent,processChapaEvents} from '../src/modules/payments/chapa-events';
 import {TEST_TOKEN} from './helpers';
 
 const database=process.env.CHAPA_TEST_DATABASE_URL;
@@ -46,7 +47,7 @@ describe.skipIf(!database)('Chapa v2 hosted payments on disposable PostgreSQL',(
   const saved=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});expect(saved.phoneCipher).toBeTruthy();expect(saved.phoneBotId).toBeTruthy();
  });
  it('does not confuse operation success with successful payment or credit unsuccessful states',async()=>{
-  for(const status of ['PENDING','AUTH_NEEDED','FAILED','CANCELLED','INCOMPLETE','BLOCKED']){const f=await payment(),order=await f.start();f.setStatus(status);const result=await f.verify(order.id);expect(result.status).toBe(status==='INCOMPLETE'?'EXPIRED':status==='BLOCKED'?'FAILED':status);expect(await balance(f.userId)).toBe('0');expect(await db.operation.count({where:{userId:f.userId,scope:'CHAPA_RECEIPT'}})).toBe(0)}
+  for(const status of ['PENDING','AUTH_NEEDED','FAILED','CANCELLED','INCOMPLETE','BLOCKED']){const f=await payment(),order=await f.start();f.setStatus(status);const result=await f.verify(order.id);expect(result.status).toBe(status);expect(await balance(f.userId)).toBe('0');expect(await db.operation.count({where:{userId:f.userId,scope:'CHAPA_RECEIPT'}})).toBe(0)}
  });
  it('credits exact verified cents once with one balanced journal and one private alert',async()=>{
   const f=await payment({amount:'25.50',initialBalance:'7'}),order=await f.start();await due(order.id);await Promise.all([verifyChapaCheckout(db,order.id,f.userId,undefined,f.transport),verifyChapaCheckout(db,order.id,f.userId,undefined,f.transport)]);
@@ -130,7 +131,7 @@ describe.skipIf(!database)('Chapa v2 hosted payments on disposable PostgreSQL',(
   expect(await reconcile(db)).toEqual([]);expect(await reconcileChapaReceipts(db)).toEqual([]);
  });
  it('enforces owned reads and verification and avoids querying an unconfigured history table',async()=>{
-  const f=await payment(),order=await f.start(),other=(await verifiedReferralUser(db)).id;await expect(getChapaCheckout(db,other,order.id)).rejects.toMatchObject({status:404,code:'NOT_FOUND'});await expect(verifyChapaCheckout(db,order.id,other,undefined,f.transport)).rejects.toMatchObject({status:404,code:'NOT_FOUND'});expect((await listChapaCheckouts(db,f.userId)).items.map(r=>r.id)).toEqual([order.id]);expect((await listChapaCheckouts(db,other)).items).toEqual([]);process.env.CHAPA_SCHEMA_READY='false';expect(await listChapaCheckouts(db,f.userId)).toEqual({items:[]});expect(f.lookup).not.toHaveBeenCalled();
+  const f=await payment(),order=await f.start(),other=(await verifiedReferralUser(db)).id;await expect(getChapaCheckout(db,other,order.id)).rejects.toMatchObject({status:404,code:'NOT_FOUND'});await expect(verifyChapaCheckout(db,order.id,other,undefined,f.transport)).rejects.toMatchObject({status:404,code:'NOT_FOUND'});expect((await listChapaCheckouts(db,f.userId)).items.map(r=>r.id)).toEqual([order.id]);expect((await listChapaCheckouts(db,other)).items).toEqual([]);process.env.CHAPA_SCHEMA_READY='false';expect(await listChapaCheckouts(db,f.userId)).toEqual({items:[],page:1,nextPage:null});expect(f.lookup).not.toHaveBeenCalled();
  });
  it('keeps an owned pending top-up visible when more than twenty newer bid payments exist',async()=>{
   const f=await payment(),topup=await f.start(),auction=await realReferralAuction(db,10),newer=new Date(Date.now()+1000);
@@ -144,19 +145,8 @@ describe.skipIf(!database)('Chapa v2 hosted payments on disposable PostgreSQL',(
   const other=(await verifiedReferralUser(db)).id;expect((await listChapaCheckouts(db,other,'TOP_UP')).items).toEqual([]);
   expect(await balance(f.userId)).toBe('0');expect(await db.operation.count({where:{userId:f.userId,scope:'CHAPA_RECEIPT'}})).toBe(0);expect(f.lookup).not.toHaveBeenCalled();
  });
- it('deduplicates concurrent and refreshed keys for an unresolved top-up or bid intent',async()=>{
-  for(const purpose of ['TOP_UP','BID'] as const){const f=await payment({purpose}),orders=await Promise.all([f.start(),f.start()]);expect(orders[0].id).toBe(orders[1].id);expect(f.create).toHaveBeenCalledTimes(1);const again=await createChapaCheckout(db,f.userId,{...f.input,key:randomUUID()},undefined,f.transport);expect(again.id).toBe(orders[0].id);expect(f.create).toHaveBeenCalledTimes(1);await expect(createChapaCheckout(db,f.userId,{...f.input,amount:'17.00'},undefined,f.transport)).rejects.toMatchObject({status:409,code:'KEY_REUSED'})}
- });
- it('binds coalesced request keys after a lost response and terminal payment',async()=>{
-  for(const purpose of ['TOP_UP','BID'] as const){
-   const f=await payment({purpose}),first=await f.start(),secondInput={...f.input,key:randomUUID()};
-   await createChapaCheckout(db,f.userId,secondInput,undefined,f.transport); // The response never reaches the caller.
-   const committed=await f.verify(first.id);expect(committed.status).toBe(purpose==='TOP_UP'?'CREDITED':'BID_ACCEPTED');
-   const retry=await createChapaCheckout(db,f.userId,secondInput,undefined,f.transport);expect(retry.id).toBe(first.id);expect(retry.status).toBe(committed.status);
-   await expect(createChapaCheckout(db,f.userId,{...secondInput,amount:'17.00'},undefined,f.transport)).rejects.toMatchObject({status:409,code:'KEY_REUSED'});
-   const alias=await db.operation.findUniqueOrThrow({where:{userId_scope_key:{userId:f.userId,scope:'CHAPA_CHECKOUT_ALIAS',key:secondInput.key}},include:{journal:true}});expect(alias.result).toEqual({checkoutId:first.id});expect(alias.journal).toBeNull();expect(f.create).toHaveBeenCalledTimes(1);expect(await db.chapaCheckout.count({where:{userId:f.userId}})).toBe(1);expect(await balance(f.userId)).toBe(purpose==='TOP_UP'?'10':'0');
-  }
-  expect(await reconcile(db)).toEqual([]);expect(await reconcileChapaReceipts(db)).toEqual([]);
+ it('deduplicates transport replay but creates fresh explicit attempts while older payments are pending',async()=>{
+  for(const purpose of ['TOP_UP','BID'] as const){const f=await payment({purpose}),orders=await Promise.all([f.start(),f.start()]);expect(orders[0].id).toBe(orders[1].id);expect(f.create).toHaveBeenCalledTimes(1);const fresh=await createChapaCheckout(db,f.userId,{...f.input,key:randomUUID()},undefined,f.transport);expect(fresh.id).not.toBe(orders[0].id);expect(f.create).toHaveBeenCalledTimes(2);expect(f.inputs[0].merchantReference).not.toBe(f.inputs[1].merchantReference);expect(f.inputs[0].idempotencyKey).not.toBe(f.inputs[1].idempotencyKey);await expect(createChapaCheckout(db,f.userId,{...f.input,amount:'17.00'},undefined,f.transport)).rejects.toMatchObject({code:'KEY_REUSED'})}
  });
  it('normalizes equivalent top-up amounts but rejects a changed payload for the same key',async()=>{
   const f=await payment({amount:'10'}),order=await f.start();expect((await createChapaCheckout(db,f.userId,{...f.input,amount:'10.00'},undefined,f.transport)).id).toBe(order.id);await expect(createChapaCheckout(db,f.userId,{...f.input,amount:'11.00'},undefined,f.transport)).rejects.toMatchObject({code:'KEY_REUSED'});expect(f.create).toHaveBeenCalledTimes(1);
@@ -218,4 +208,17 @@ describe.skipIf(!database)('Chapa v2 hosted payments on disposable PostgreSQL',(
   },{timeout:10000})).rejects.toThrow('ROLLBACK_CHAPA_RECONCILIATION_FIXTURE');
   expect(await reconcileChapaReceipts(db)).toEqual([]);expect(await reconcile(db)).toEqual([]);
  });
+ it('keeps new attempts out of recurring recovery and processes durable events with one receipt',async()=>{
+  const f=await payment(),order=await f.start();expect(await recoverChapaCheckouts(db,20,f.transport)).toEqual({checked:0});expect(f.lookup).not.toHaveBeenCalled();const event=await db.chapaWebhookEvent.create({data:{mode:'test',configurationFingerprint:'a'.repeat(64),bodyHash:'b'.repeat(64),merchantReference:f.inputs[0].merchantReference,event:'payment.success',checkoutId:order.id}});await Promise.all([processChapaEvent(db,event.id,f.transport),processChapaEvent(db,event.id,f.transport)]);expect((await getChapaCheckout(db,f.userId,order.id)).status).toBe('CREDITED');expect(f.lookup).toHaveBeenCalledTimes(1);expect(await balance(f.userId)).toBe('10');expect((await db.chapaWebhookEvent.findUniqueOrThrow({where:{id:event.id}})).status).toBe('PROCESSED');expect(await processChapaEvents(db,20,f.transport)).toEqual({checked:0});expect(await reconcileChapaReceipts(db)).toEqual([]);
+ });
+ it('retains a durable event and last established outcome when merchant verification is unavailable',async()=>{
+  const f=await payment(),order=await f.start();f.setStatus('INCOMPLETE');await f.verify(order.id);const event=await db.chapaWebhookEvent.create({data:{mode:'test',configurationFingerprint:'a'.repeat(64),bodyHash:'c'.repeat(64),event:'payment.success',checkoutId:order.id}});f.lookup.mockRejectedValueOnce(Error('private provider detail'));await processChapaEvent(db,event.id,f.transport);const stored=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});expect(stored).toMatchObject({status:'INCOMPLETE',providerStatus:'INCOMPLETE',verificationState:'UNAVAILABLE',creditJournalId:null});expect((await db.chapaWebhookEvent.findUniqueOrThrow({where:{id:event.id}})).status).toBe('QUEUED');expect(await balance(f.userId)).toBe('0');
+ });
+ it('paginates both purposes beyond twenty attempts without exposing another owner',async()=>{
+  const f=await payment(),order=await f.start(),base=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});for(let i=0;i<21;i++){const id=randomUUID();await db.chapaCheckout.create({data:{userId:f.userId,purpose:'TOP_UP',mode:'test',credentialFingerprint:base.credentialFingerprint,key:randomUUID(),requestHash:base.requestHash,initialization:{amountCents:'1000'},merchantReference:'LW'+id.replaceAll('-','').slice(0,18),amountCents:1000n,expiresAt:base.expiresAt}})}const first=await listChapaCheckouts(db,f.userId),second=await listChapaCheckouts(db,f.userId,undefined,2);expect(first.items).toHaveLength(20);expect(first.nextPage).toBe(2);expect(second.items).toHaveLength(2);expect(second.nextPage).toBeNull();expect(new Set([...first.items,...second.items].map(row=>row.id)).size).toBe(22);expect((await listChapaCheckouts(db,(await verifiedReferralUser(db)).id)).items).toEqual([]);
+ });
+ it('accepts only one bid across separately paid retry attempts and preserves the other payment',async()=>{
+  const f=await payment({purpose:'BID',fee:10,testSession:true}),first=await f.start(),second=await createChapaCheckout(db,f.userId,{...f.input,key:randomUUID()},undefined,f.transport);const bodies=new Map(f.inputs.map(body=>[body.merchantReference,body]));f.lookup.mockImplementation(async ref=>({status:'success',data:{status:'SUCCESS',merchant_reference:ref,chapa_reference:'CH'+ref,amount:Number(bodies.get(ref)!.amountCents),currency:'ETB',mode:'test'}}));await f.verify(second.id);expect((await f.verify(first.id)).fundsPreserved).toBe(true);expect(await db.bid.count({where:{userId:f.userId,auctionId:f.auction!.id}})).toBe(1);expect(await balance(f.userId)).toBe('10');expect(await db.operation.count({where:{userId:f.userId,scope:'CHAPA_RECEIPT'}})).toBe(2);expect(await reconcileChapaReceipts(db)).toEqual([]);
+ });
+
 });

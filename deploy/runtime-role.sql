@@ -53,7 +53,7 @@ DO $$ DECLARE t text; BEGIN
    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',t);
    EXECUTE format('REVOKE ALL ON public.%I FROM lowwin_runtime',t);
    EXECUTE format('GRANT SELECT,INSERT ON public.%I TO lowwin_runtime',t);
-   IF t='ChapaCheckout' THEN EXECUTE format('GRANT UPDATE ON public.%I TO lowwin_runtime',t); END IF;
+   IF t='ChapaCheckout' OR EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name=t AND column_name='nextAttemptAt') THEN EXECUTE format('GRANT UPDATE ON public.%I TO lowwin_runtime',t); END IF;
    IF NOT EXISTS(SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename=t AND policyname='lowwin_server_access') THEN
     EXECUTE format('CREATE POLICY lowwin_server_access ON public.%I TO lowwin_runtime USING (true) WITH CHECK (true)',t);
    END IF;

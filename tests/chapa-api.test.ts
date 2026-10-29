@@ -1,6 +1,7 @@
 import {beforeEach,afterEach,describe,it,expect,vi} from 'vitest';
 import {createHmac,randomUUID} from 'node:crypto';
-const f=vi.hoisted(()=>({user:vi.fn(),auth:vi.fn(),read:vi.fn(),list:vi.fn(),create:vi.fn(),verify:vi.fn(),transaction:vi.fn(),event:vi.fn(),find:vi.fn(),update:vi.fn(),audit:vi.fn(),reauthorize:vi.fn(),submit:vi.fn(),enabled:false,hashes:new Set<string>()}));
+const f=vi.hoisted(()=>({user:vi.fn(),auth:vi.fn(),read:vi.fn(),list:vi.fn(),create:vi.fn(),process:vi.fn(),verify:vi.fn(),transaction:vi.fn(),event:vi.fn(),find:vi.fn(),update:vi.fn(),audit:vi.fn(),reauthorize:vi.fn(),submit:vi.fn(),enabled:false,hashes:new Set<string>()}));
+vi.mock('../src/modules/payments/chapa-events',()=>({processChapaEvent:f.process}));
 vi.mock('../src/lib/db',()=>({db:{$transaction:f.transaction}}));
 vi.mock('../src/modules/auth/private-api',async original=>({...await original<typeof import('../src/modules/auth/private-api')>(),requireUser:f.user}));
 vi.mock('../src/modules/payments/session',()=>({requirePaymentSession:f.auth}));
@@ -22,7 +23,7 @@ const hint={webhook_type:'payment',event:'payment.success',status:'success',mode
 beforeEach(()=>{
  vi.clearAllMocks();f.hashes.clear();f.enabled=false;
  for(const [name,value] of Object.entries({APP_ENV:'local',NODE_ENV:'test',DATABASE_URL:'postgresql://nobody:synthetic@127.0.0.1:5432/chapa_test',BETTER_AUTH_URL:origin,MINI_APP_URL:origin,PAYMENT_GATEWAY:'CHAPA',CHAPA_ENABLED:'true',CHAPA_RECOVERY_ENABLED:'true',CHAPA_SCHEMA_READY:'true',CHAPA_MODE:'test',CHAPA_PRIVATE_KEY:'CHAPA_TEST_'+'a'.repeat(40),CHAPA_WEBHOOK_SECRET:secret,DEV_IDENTITY_ENABLED:'false',STAGING_DEMO_ENABLED:'false'}))vi.stubEnv(name,value);
- f.user.mockResolvedValue('owner-user');f.auth.mockResolvedValue({userId:'owner-user',reauthorize:f.reauthorize});f.reauthorize.mockResolvedValue(undefined);f.list.mockResolvedValue({items:[]});f.read.mockResolvedValue({id,status:'PENDING'});f.create.mockResolvedValue({id,status:'PENDING'});f.verify.mockResolvedValue({id,status:'PENDING'});
+ f.process.mockResolvedValue(true);f.user.mockResolvedValue('owner-user');f.auth.mockResolvedValue({userId:'owner-user',reauthorize:f.reauthorize});f.reauthorize.mockResolvedValue(undefined);f.list.mockResolvedValue({items:[]});f.read.mockResolvedValue({id,status:'PENDING'});f.create.mockResolvedValue({id,status:'PENDING'});f.verify.mockResolvedValue({id,status:'PENDING'});
  f.event.mockImplementation(async({data}:{data:{bodyHash:string}[]})=>{const hash=data[0].bodyHash;if(f.hashes.has(hash))return {count:0};f.hashes.add(hash);return {count:1}});f.find.mockResolvedValue({id,mode:'test',chapaReference:'CHtestreference',amountCents:1000n,currency:'ETB'});f.update.mockResolvedValue({count:1});f.audit.mockResolvedValue({});f.submit.mockResolvedValue({bid:{id:'accepted'},wallet:{available:'10',held:'0'}});
  f.transaction.mockImplementation(async(run:(tx:unknown)=>Promise<unknown>)=>run({chapaWebhookEvent:{createMany:f.event},chapaCheckout:{findUnique:f.find,updateMany:f.update},adminAudit:{create:f.audit},auction:{findUnique:async()=>({terms:{ruleVersion:'lowest-unique-v4'}})}}));
  vi.spyOn(globalThis,'fetch').mockRejectedValue(Error('Unexpected provider request'));
@@ -46,7 +47,7 @@ describe('Chapa HTTP authorization and durable webhook boundary',()=>{
   for(const purpose of [undefined,'TOP_UP','BID']){
    const response=await list(request('/api/payments/chapa/checkouts'+(purpose?'?purpose='+purpose:'')));
    expect(response.status).toBe(200);expect(response.headers.get('cache-control')).toContain('private, no-store');expect(response.headers.get('vary')).toBe('Cookie');
-   expect(f.list).toHaveBeenLastCalledWith(expect.anything(),'owner-user',purpose);
+   expect(f.list).toHaveBeenLastCalledWith(expect.anything(),'owner-user',purpose,1,false);
   }
  });
  it('rejects invalid, repeated or identity-supplied history filters instead of broadening the query',async()=>{
@@ -65,7 +66,7 @@ describe('Chapa HTTP authorization and durable webhook boundary',()=>{
   for(const meta of ['',[],123,false])expect((await webhook(signed({...hint,meta}))).status).toBe(400);
   expect(f.transaction).toHaveBeenCalledTimes(1);expect(f.verify).not.toHaveBeenCalled();expect(f.create).not.toHaveBeenCalled();expect(globalThis.fetch).not.toHaveBeenCalled();
  });
- it('verifies exact raw bytes including BOM, deduplicates delivery, and only queues an authoritative lookup',async()=>{const bytes=Buffer.concat([Buffer.from([0xef,0xbb,0xbf]),Buffer.from(JSON.stringify(hint))]);for(let i=0;i<2;i++)expect((await webhook(signed(hint,{bytes}))).status).toBe(200);expect(f.update).toHaveBeenCalledTimes(1);expect(f.update).toHaveBeenCalledWith({where:{id,creditJournalId:null},data:{nextCheckAt:expect.any(Date),reason:'PROVIDER_EVENT_RECEIVED'}});expect(f.verify).not.toHaveBeenCalled();expect(f.create).not.toHaveBeenCalled();expect(globalThis.fetch).not.toHaveBeenCalled();const data=f.event.mock.calls[0][0].data[0];expect(Object.keys(data).sort()).toEqual(['bodyHash','chapaReference','configurationFingerprint','event','merchantReference','mode'].sort())});
+ it('verifies exact raw bytes including BOM, deduplicates delivery, and only queues an authoritative lookup',async()=>{const bytes=Buffer.concat([Buffer.from([0xef,0xbb,0xbf]),Buffer.from(JSON.stringify(hint))]);for(let i=0;i<2;i++)expect((await webhook(signed(hint,{bytes}))).status).toBe(200);expect(f.update).toHaveBeenCalledTimes(1);expect(f.update).toHaveBeenCalledWith({where:{id,creditJournalId:null},data:{nextCheckAt:expect.any(Date),reason:'PROVIDER_EVENT_RECEIVED'}});expect(f.verify).not.toHaveBeenCalled();expect(f.create).not.toHaveBeenCalled();expect(globalThis.fetch).not.toHaveBeenCalled();const data=f.event.mock.calls[0][0].data[0];expect(data).toMatchObject({checkoutId:id,status:'QUEUED'});expect(f.process).toHaveBeenCalledTimes(1)});
  it('durably acknowledges and deduplicates authenticated null-merchant hints without locating or crediting a payment',async()=>{
   const event={...hint,merchant_reference:null,amount:1029};
   for(let i=0;i<2;i++)expect((await webhook(signed(event))).status).toBe(200);
@@ -90,7 +91,7 @@ describe('Chapa HTTP authorization and durable webhook boundary',()=>{
   const {recoverChapaCheckouts}=await vi.importActual<typeof import('../src/modules/payments/chapa')>('../src/modules/payments/chapa');
   const findMany=vi.fn().mockResolvedValue([]),client={chapaCheckout:{findMany}};
   expect(await recoverChapaCheckouts(client as unknown as Parameters<typeof recoverChapaCheckouts>[0])).toEqual({checked:0});
-  expect(findMany).toHaveBeenCalledWith(expect.objectContaining({where:{creditJournalId:null,OR:[{status:{in:expect.any(Array)}},{reason:'PROVIDER_EVENT_RECEIVED'}],createdAt:{gte:expect.any(Date)},nextCheckAt:{lte:expect.any(Date)}},take:20}));
+  expect(findMany).not.toHaveBeenCalled();
   expect(globalThis.fetch).not.toHaveBeenCalled();
  });
  it('rejects mode mismatch and never schedules amount/currency/reference mismatch',async()=>{expect((await webhook(signed({...hint,mode:'live'}))).status).toBe(400);expect(f.transaction).not.toHaveBeenCalled();for(const change of [{amount:'2000'},{currency:'USD'},{chapa_reference:'CHanother'}])expect((await webhook(signed({...hint,...change}))).status).toBe(200);expect(f.update).not.toHaveBeenCalled()});
@@ -121,6 +122,6 @@ describe('Chapa HTTP authorization and durable webhook boundary',()=>{
   for(const change of [{amount:'2000'},{currency:'USD'}])expect((await webhook(signed({...hint,...change}))).status).toBe(200);
   expect(f.update).not.toHaveBeenCalled();expect(f.verify).not.toHaveBeenCalled();expect(globalThis.fetch).not.toHaveBeenCalled();
  });
- it('retains nonpayment events for staff review without changing wallets or checkout',async()=>{expect((await webhook(signed({...hint,webhook_type:'refund',event:'refund.success'}))).status).toBe(200);expect(f.audit).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({action:'CHAPA_NONPAYMENT_EVENT_REVIEW'})}));expect(f.update).not.toHaveBeenCalled();expect(f.verify).not.toHaveBeenCalled()});
+ it('retains nonpayment events for staff review without changing wallets or checkout',async()=>{expect((await webhook(signed({...hint,webhook_type:'refund',event:'refund.success'}))).status).toBe(200);expect(f.event.mock.calls[0][0].data[0].status).toBe('IGNORED');expect(f.update).not.toHaveBeenCalled();expect(f.verify).not.toHaveBeenCalled()});
  it('enables wallet submission only explicitly and rejects client financial fields',async()=>{const context={params:Promise.resolve({slug:'real-auction'})},body={key:randomUUID(),amount:'3.60',feeVersion:1};expect((await bid(request('/api/auctions/real-auction/bids',body),context)).status).toBe(410);expect(f.submit).not.toHaveBeenCalled();f.enabled=true;expect((await bid(request('/api/auctions/real-auction/bids',{...body,userId:'other',feePoints:'0',balance:'99999'}),context)).status).toBe(422);expect(f.submit).not.toHaveBeenCalled();expect((await bid(request('/api/auctions/real-auction/bids',body),context)).status).toBe(200);expect(f.reauthorize).toHaveBeenCalledTimes(1);expect(f.submit).toHaveBeenCalledWith(expect.anything(),{...body,userId:'owner-user',auctionSlug:'real-auction'})});
 });

@@ -141,7 +141,7 @@ describe('Chapa v2 bounded merchant transport',()=>{
  });
  it('sanitizes HTTP/network/body errors without provider details or private key leakage',async()=>{
   for(const response of [new Response('secret-provider-body',{status:401}),new Response('not json'),new Response('x'.repeat(65537))]){
-   const transport=createChapaTransport({env:environment(),fetcher:vi.fn(async()=>response)});await expect(transport.lookup('CHLocal123')).rejects.toMatchObject({status:502,code:'PROVIDER_UNAVAILABLE',message:'Payment confirmation is pending. Check this same payment again.'});
+   const transport=createChapaTransport({env:environment(),fetcher:vi.fn(async()=>response)});await expect(transport.lookup('CHLocal123')).rejects.toMatchObject({status:502,code:'PROVIDER_UNAVAILABLE'});
   }
   const transport=createChapaTransport({env:environment(),fetcher:vi.fn(async()=>{throw Error('private-key-and-customer-details')})});await expect(transport.lookup('CHLocal123')).rejects.not.toThrow('private-key-and-customer-details');
  });

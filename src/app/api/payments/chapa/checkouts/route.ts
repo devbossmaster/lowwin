@@ -10,9 +10,11 @@ export const runtime='nodejs';
 export async function GET(request:Request){
  try{
   const userId=await requireUser(request),query=new URL(request.url).searchParams;
-  if([...query.keys()].some(key=>key!=='purpose')||query.getAll('purpose').length>1)throw new ChapaError(422,'INVALID_INPUT','Check the supplied payment filters.');
+  if([...query.keys()].some(key=>!['purpose','page','view'].includes(key)||query.getAll(key).length>1))throw new ChapaError(422,'INVALID_INPUT','Check the supplied payment filters.');
   const purpose=z.enum(['TOP_UP','BID']).optional().parse(query.get('purpose')??undefined);
-  return Response.json(await listChapaCheckouts(db,userId,purpose),{headers:privateHeaders});
+  const page=z.coerce.number().int().min(1).max(10000).parse(query.get('page')??1),view=z.enum(['all','unaccepted']).parse(query.get('view')??'all');
+  if(view==='unaccepted'&&purpose!=='BID')throw new ChapaError(422,'INVALID_INPUT','Choose bid payments for this view.');
+  return Response.json(await listChapaCheckouts(db,userId,purpose,page,view==='unaccepted'),{headers:privateHeaders});
  }catch(error){return chapaHttpError(error)}
 }
 export async function POST(request:Request){
