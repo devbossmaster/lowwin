@@ -1,7 +1,7 @@
 # Chapa v2: Coolify production preparation
 
-For the explicit Basic Auth webhook alternative and protected runtime settings,
-see [Basic Auth setup](chapa-basic-webhook.md). Signature remains the default.
+For the Signature-only webhook and protected runtime settings, see
+[Signature setup](chapa-signature-webhook.md).
 
 For the current Transactions release, also review additive migration
 `202610290002_chapa_event_transactions` and the

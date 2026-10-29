@@ -2,16 +2,16 @@ import {db} from '@/lib/db';
 import {randomUUID} from 'node:crypto';
 import {readRequestBytes,RequestBodyError} from '@/lib/request-body';
 import {privateHeaders} from '@/modules/auth/private-api';
-import {chapaAvailability,chapaHash,chapaWebhookAmountMatches,chapaWebhookConfigurationFingerprint,isChapaHostedSessionReference,parseChapaWebhook,verifyChapaWebhookRequest} from '@/modules/payments/chapa-provider';
+import {chapaAvailability,chapaHash,chapaWebhookAmountMatches,chapaWebhookConfigurationFingerprint,isChapaHostedSessionReference,parseChapaWebhook,verifyChapaWebhook} from '@/modules/payments/chapa-provider';
 import {processChapaEvent} from '@/modules/payments/chapa-events';
 export const runtime='nodejs';
 export async function POST(request:Request){
  const health=chapaAvailability();if(!health.recoveryEnabled)return Response.json({accepted:false},{status:503,headers:privateHeaders});
  try{
-  const bytes=await readRequestBytes(request,65536);if(!verifyChapaWebhookRequest(bytes,request.headers))return Response.json({accepted:false},{status:401,headers:privateHeaders});
+  const bytes=await readRequestBytes(request,65536);if(!verifyChapaWebhook(bytes,request.headers.get('x-chapa-signature')))return Response.json({accepted:false},{status:401,headers:privateHeaders});
   const hint=parseChapaWebhook(JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes)));if(!hint||hint.mode&&hint.mode!==health.mode)return Response.json({accepted:false},{status:400,headers:privateHeaders});
-  // Only allowlisted, non-PII hints are retained. Authenticate the configured
-  // scheme first; no browser/callback/webhook success can create money.
+  // Only allowlisted, non-PII hints are retained after raw-body authentication;
+  // no browser/callback/webhook success can create money.
   const job=await db.$transaction(async tx=>{
    const id=randomUUID(),configurationFingerprint=chapaWebhookConfigurationFingerprint(),bodyHash=chapaHash(bytes);
    const order=hint.type==='payment'&&hint.merchantReference?await tx.chapaCheckout.findUnique({where:{merchantReference:hint.merchantReference}}):null;

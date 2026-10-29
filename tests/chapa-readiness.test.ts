@@ -13,16 +13,18 @@ describe('non-charging Chapa readiness',()=>{
   expect(chapaWorkerConfiguration({...raw,CHAPA_RECOVERY_ENABLED:'true'})).toMatchObject({configured:true,recoveryEnabled:true,legacySweepEnabled:false,missingPrerequisites:[]});
   expect(raw.CHAPA_ENABLED).toBe('false');
  });
- it('reports malformed Basic credentials without logging any credential or connection value',()=>{
-  const raw:Record<string,string|undefined>=environment({CHAPA_ENABLED:'false',CHAPA_RECOVERY_ENABLED:'true',CHAPA_WEBHOOK_AUTH:'basic',CHAPA_WEBHOOK_BASIC_USERNAME:'lowwin-webhook',CHAPA_WEBHOOK_BASIC_PASSWORD:'short-password'});
+ it('reports an invalid signature secret without logging any credential or connection value',()=>{
+  const raw:Record<string,string|undefined>=environment({CHAPA_ENABLED:'false',CHAPA_RECOVERY_ENABLED:'true',CHAPA_WEBHOOK_SECRET:'short-secret'});
   const report=chapaWorkerConfiguration(raw);
-  expect(report).toMatchObject({configured:false,recoveryEnabled:false,missingPrerequisites:['CHAPA_WEBHOOK_AUTH / BASIC credentials']});
-  for(const secret of [raw.CHAPA_PRIVATE_KEY,raw.CHAPA_WEBHOOK_SECRET,raw.CHAPA_WEBHOOK_BASIC_USERNAME,raw.CHAPA_WEBHOOK_BASIC_PASSWORD,raw.DATABASE_URL,raw.MINI_APP_URL])if(secret)expect(JSON.stringify(report)).not.toContain(secret);
+  expect(report).toMatchObject({configured:false,recoveryEnabled:false,missingPrerequisites:['CHAPA_WEBHOOK_SECRET']});
+  for(const secret of [raw.CHAPA_PRIVATE_KEY,raw.CHAPA_WEBHOOK_SECRET,raw.DATABASE_URL,raw.MINI_APP_URL])if(secret)expect(JSON.stringify(report)).not.toContain(secret);
  });
- it('allows Basic Auth event processing without an unused signature secret and still rejects missing Basic credentials',async()=>{
-  const raw=environment({CHAPA_WEBHOOK_SECRET:undefined,CHAPA_WEBHOOK_AUTH:'basic',CHAPA_WEBHOOK_BASIC_USERNAME:'lowwin-webhook',CHAPA_WEBHOOK_BASIC_PASSWORD:'b'.repeat(16),CHAPA_ENABLED:'false',CHAPA_RECOVERY_ENABLED:'true'});
-  expect(await checkChapaReadiness(raw)).toMatchObject({configured:true,creationEnabled:false,recoveryEnabled:true,missingPrerequisites:[]});
-  expect(await checkChapaReadiness({...raw,CHAPA_WEBHOOK_BASIC_PASSWORD:''})).toMatchObject({configured:false,recoveryEnabled:false,missingPrerequisites:['CHAPA_WEBHOOK_AUTH / BASIC credentials']});
+ it('blocks webhook recovery with a missing signature secret while preserving the creation pause',async()=>{
+  const raw=environment({CHAPA_WEBHOOK_SECRET:undefined,CHAPA_ENABLED:'false',CHAPA_RECOVERY_ENABLED:'true'}),fetcher=vi.fn<typeof fetch>(),readSchema=vi.fn();
+  expect(await checkChapaReadiness(raw,{schema:true,methods:true},{fetcher,readSchema})).toMatchObject({configured:false,creationEnabled:false,recoveryEnabled:false,missingPrerequisites:['CHAPA_WEBHOOK_SECRET'],schema:{status:'blocked'},methods:{status:'blocked'}});
+  expect(fetcher).not.toHaveBeenCalled();expect(readSchema).not.toHaveBeenCalled();
+  expect(await checkChapaReadiness({...raw,CHAPA_WEBHOOK_SECRET:'fresh-independent-webhook-secret-thirty-two-characters'})).toMatchObject({configured:true,creationEnabled:false,recoveryEnabled:true,missingPrerequisites:[]});
+  expect(raw.CHAPA_ENABLED).toBe('false');
  });
  it('reports missing prerequisites using static names without connecting or disclosing input',async()=>{
   const fetcher=vi.fn<typeof fetch>(),readSchema=vi.fn(),raw=environment({CHAPA_PRIVATE_KEY:'malformed-private-key',CHAPA_WEBHOOK_SECRET:'short-secret',CHAPA_SCHEMA_READY:'false',MINI_APP_URL:'https://private-origin.invalid',DATABASE_URL:'postgresql://private-user:private-password@unreviewed.invalid/private-db'});

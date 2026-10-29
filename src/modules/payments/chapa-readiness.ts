@@ -1,4 +1,4 @@
-import {chapaAvailability,chapaWebhookAuthentication,createChapaTransport,parseChapaPaymentMethods} from './chapa-provider';
+import {chapaAvailability,isChapaWebhookSecret,createChapaTransport,parseChapaPaymentMethods} from './chapa-provider';
 
 type Environment=Record<string,string|undefined>;
 type Options={schema?:boolean;methods?:boolean};
@@ -27,8 +27,7 @@ function missingPrerequisites(raw:Environment,mode:'test'|'live'){
  require('CHAPA_SCHEMA_READY',raw.CHAPA_SCHEMA_READY==='true');
  const key=raw.CHAPA_PRIVATE_KEY??'',secret=raw.CHAPA_WEBHOOK_SECRET??'';
  require('CHAPA_PRIVATE_KEY',new RegExp(`^CHAPA_${mode==='live'?'LIVE':'TEST'}_[A-Za-z0-9_-]{16,240}$`).test(key)&&!/REPLACE|CHANGE_ME|example|fixture/i.test(key));
- if((raw.CHAPA_WEBHOOK_AUTH??'signature')==='signature')require('CHAPA_WEBHOOK_SECRET',secret.length>=32&&secret.length<=256&&!/REPLACE|CHANGE_ME/i.test(secret));
- require('CHAPA_WEBHOOK_AUTH / BASIC credentials',chapaWebhookAuthentication(raw).valid);
+ require('CHAPA_WEBHOOK_SECRET',isChapaWebhookSecret(secret));
  require('MINI_APP_URL / BETTER_AUTH_URL',secureOrigins(raw));
  require('CHAPA_BASE_URL',!raw.CHAPA_BASE_URL||raw.CHAPA_BASE_URL==='https://api.chapa.global');
  require('CHAPA_CURRENCY',!raw.CHAPA_CURRENCY||raw.CHAPA_CURRENCY==='ETB');
@@ -75,7 +74,7 @@ export async function checkChapaReadiness(raw:Environment,options:Options={},dep
    try{
     const found=parseChapaPaymentMethods(await createChapaTransport({env:raw,fetcher:dependencies.fetcher}).methods());
     if(found===null)throw Error();
-    const secrets=[raw.CHAPA_PRIVATE_KEY,raw.CHAPA_WEBHOOK_SECRET,raw.CHAPA_WEBHOOK_BASIC_PASSWORD].filter((value):value is string=>!!value);
+    const secrets=[raw.CHAPA_PRIVATE_KEY,raw.CHAPA_WEBHOOK_SECRET].filter((value):value is string=>!!value);
     report.methods={status:'ok',items:found.map(({slug,minimumCents,maximumCents,isMobileMoney})=>({slug:secrets.some(secret=>slug.includes(secret))?'redacted':slug,minimumCents,maximumCents,isMobileMoney}))};
    }catch{report.methods={status:'unavailable'}}
   }

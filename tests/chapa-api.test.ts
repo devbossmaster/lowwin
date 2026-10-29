@@ -18,13 +18,13 @@ import {POST as webhook} from '../src/app/api/payments/chapa/webhook/route';
 import {POST as bid} from '../src/app/api/auctions/[slug]/bids/route';
 const origin='https://lowwin.test',id=randomUUID(),secret='local-signature-secret-thirty-two-characters',merchant='LW123456789012345678';
 const request=(path:string,body?:unknown,from=origin)=>new Request(origin+path,{method:body===undefined?'GET':'POST',headers:{origin:from,'Content-Type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})});
-const signed=(value:unknown,options:{signature?:string;bytes?:Uint8Array}={})=>{const raw=options.bytes??Buffer.from(JSON.stringify(value));return new Request(origin+'/api/payments/chapa/webhook',{method:'POST',headers:{'content-type':'application/json','x-chapa-signature':options.signature??createHmac('sha256',secret).update(raw).digest('hex')},body:raw as BodyInit})};
+const signed=(value:unknown,options:{signature?:string;bytes?:Uint8Array;signingSecret?:string}={})=>{const raw=options.bytes??Buffer.from(JSON.stringify(value));return new Request(origin+'/api/payments/chapa/webhook',{method:'POST',headers:{'content-type':'application/json','x-chapa-signature':options.signature??createHmac('sha256',options.signingSecret??secret).update(raw).digest('hex')},body:raw as BodyInit})};
 const hint={webhook_type:'payment',event:'payment.success',status:'success',mode:'test',merchant_reference:merchant,chapa_reference:'CHtestreference',amount:'1000',currency:'ETB'};
 beforeEach(()=>{
  vi.clearAllMocks();f.hashes.clear();f.enabled=false;
- for(const [name,value] of Object.entries({APP_ENV:'local',NODE_ENV:'test',DATABASE_URL:'postgresql://nobody:synthetic@127.0.0.1:5432/chapa_test',BETTER_AUTH_URL:origin,MINI_APP_URL:origin,PAYMENT_GATEWAY:'CHAPA',CHAPA_ENABLED:'true',CHAPA_RECOVERY_ENABLED:'true',CHAPA_SCHEMA_READY:'true',CHAPA_MODE:'test',CHAPA_PRIVATE_KEY:'CHAPA_TEST_'+'a'.repeat(40),CHAPA_WEBHOOK_SECRET:secret,CHAPA_WEBHOOK_AUTH:'signature',CHAPA_WEBHOOK_BASIC_USERNAME:'',CHAPA_WEBHOOK_BASIC_PASSWORD:'',DEV_IDENTITY_ENABLED:'false',STAGING_DEMO_ENABLED:'false'}))vi.stubEnv(name,value);
+ for(const [name,value] of Object.entries({APP_ENV:'local',NODE_ENV:'test',DATABASE_URL:'postgresql://nobody:synthetic@127.0.0.1:5432/chapa_test',BETTER_AUTH_URL:origin,MINI_APP_URL:origin,PAYMENT_GATEWAY:'CHAPA',CHAPA_ENABLED:'true',CHAPA_RECOVERY_ENABLED:'true',CHAPA_SCHEMA_READY:'true',CHAPA_MODE:'test',CHAPA_PRIVATE_KEY:'CHAPA_TEST_'+'a'.repeat(40),CHAPA_WEBHOOK_SECRET:secret,DEV_IDENTITY_ENABLED:'false',STAGING_DEMO_ENABLED:'false'}))vi.stubEnv(name,value);
  f.process.mockResolvedValue(true);f.user.mockResolvedValue('owner-user');f.auth.mockResolvedValue({userId:'owner-user',reauthorize:f.reauthorize});f.reauthorize.mockResolvedValue(undefined);f.list.mockResolvedValue({items:[]});f.read.mockResolvedValue({id,status:'PENDING'});f.create.mockResolvedValue({id,status:'PENDING'});f.verify.mockResolvedValue({id,status:'PENDING'});
- f.event.mockImplementation(async({data}:{data:{bodyHash:string}[]})=>{const hash=data[0].bodyHash;if(f.hashes.has(hash))return {count:0};f.hashes.add(hash);return {count:1}});f.find.mockResolvedValue({id,mode:'test',chapaReference:'CHtestreference',amountCents:1000n,currency:'ETB'});f.update.mockResolvedValue({count:1});f.audit.mockResolvedValue({});f.submit.mockResolvedValue({bid:{id:'accepted'},wallet:{available:'10',held:'0'}});
+ f.event.mockImplementation(async({data}:{data:{mode:string;configurationFingerprint:string;bodyHash:string}[]})=>{const row=data[0],key=JSON.stringify([row.mode,row.configurationFingerprint,row.bodyHash]);if(f.hashes.has(key))return {count:0};f.hashes.add(key);return {count:1}});f.find.mockResolvedValue({id,mode:'test',chapaReference:'CHtestreference',amountCents:1000n,currency:'ETB'});f.update.mockResolvedValue({count:1});f.audit.mockResolvedValue({});f.submit.mockResolvedValue({bid:{id:'accepted'},wallet:{available:'10',held:'0'}});
  f.transaction.mockImplementation(async(run:(tx:unknown)=>Promise<unknown>)=>run({chapaWebhookEvent:{createMany:f.event},chapaCheckout:{findUnique:f.find,updateMany:f.update},adminAudit:{create:f.audit},auction:{findUnique:async()=>({terms:{ruleVersion:'lowest-unique-v4'}})}}));
  vi.spyOn(globalThis,'fetch').mockRejectedValue(Error('Unexpected provider request'));
 });
@@ -60,17 +60,44 @@ describe('Chapa HTTP authorization and durable webhook boundary',()=>{
  it('requires same-origin session authority for creation/verification and never trusts supplied user identity',async()=>{const body={key:randomUUID(),purpose:'TOP_UP',amount:'10.00'},r=await create(request('/api/payments/chapa/checkouts',body));expect(r.status).toBe(202);expect(f.create).toHaveBeenCalledWith(expect.anything(),'owner-user',body,f.reauthorize);expect((await verify(request('/api/payments/chapa/checkouts/'+id,{}),{params:Promise.resolve({id})})).status).toBe(200);expect(f.verify).toHaveBeenCalledWith(expect.anything(),id,'owner-user',f.reauthorize);expect((await create(request('/api/payments/chapa/checkouts',body,'https://other.test'))).status).toBe(403)});
  it('fails closed on missing sessions and owned resource mismatch',async()=>{f.user.mockRejectedValue(new PrivateApiError(401,'Sign in'));expect((await list(request('/api/payments/chapa/checkouts'))).status).toBe(401);f.auth.mockRejectedValue(new PrivateApiError(401,'Sign in'));expect((await create(request('/api/payments/chapa/checkouts',{}))).status).toBe(401);f.user.mockResolvedValue('other-user');f.read.mockRejectedValue(new ChapaError(404,'NOT_FOUND','Payment not found.'));expect((await read(request('/api/payments/chapa/checkouts/'+id),{params:Promise.resolve({id})})).status).toBe(404)});
  it('does not let unsigned callbacks/returns mutate or verify money',async()=>{expect((await callbackPost()).status).toBe(202);const redirect=await callbackGet(request('/api/payments/chapa/callback?checkout='+id+'&return=https://other.test'));expect(redirect.status).toBe(303);expect(redirect.headers.get('location')).toBe(origin+'/payments/chapa/return?checkout='+id);expect(f.transaction).not.toHaveBeenCalled();expect(f.verify).not.toHaveBeenCalled();expect(f.create).not.toHaveBeenCalled()});
- it('rejects missing or invalid signature before any event or checkout access',async()=>{for(const signature of ['', 'a'.repeat(64)])expect((await webhook(signed(hint,{signature}))).status).toBe(401);expect(f.transaction).not.toHaveBeenCalled()});
- it('requires explicit Basic Auth before recording, deduplicating and queuing a fee-inclusive hosted event',async()=>{
-  const password='a1b2c3d4'.repeat(2);
-  vi.stubEnv('CHAPA_WEBHOOK_AUTH','basic');vi.stubEnv('CHAPA_WEBHOOK_BASIC_USERNAME','lowwin-webhook');vi.stubEnv('CHAPA_WEBHOOK_BASIC_PASSWORD',password);
-  expect((await webhook(signed(hint))).status).toBe(401);expect(f.transaction).not.toHaveBeenCalled();
-  const basic=(value:unknown,credentials='lowwin-webhook:'+password)=>new Request(origin+'/api/payments/chapa/webhook',{method:'POST',headers:{'content-type':'application/json',authorization:'Basic '+Buffer.from(credentials).toString('base64')},body:JSON.stringify(value)});
-  expect((await webhook(basic(hint,'lowwin-webhook:wrong'))).status).toBe(401);expect(f.transaction).not.toHaveBeenCalled();
+ it('rejects missing, malformed or invalid signatures before any event or checkout access',async()=>{
+  for(const signature of ['', 'a'.repeat(64),'abc','sha256='+'a'.repeat(64),'x'.repeat(64)])expect((await webhook(signed(hint,{signature}))).status).toBe(401);
+  expect(f.transaction).not.toHaveBeenCalled();expect(f.event).not.toHaveBeenCalled();expect(f.process).not.toHaveBeenCalled();
+ });
+ it('never accepts Authorization-only or legacy secret proofs in place of the raw-body signature',async()=>{
+  const legacy=createHmac('sha256',secret).update(secret).digest('hex');
+  const alternatives:Record<string,string>[]=[{authorization:'Basic '+Buffer.from('old-operator:old-password').toString('base64')},{authorization:'Bearer synthetic-token'},{'chapa-signature':legacy},{'x-chapa-signature':legacy}];
+  for(const headers of alternatives){
+   const response=await webhook(new Request(origin+'/api/payments/chapa/webhook',{method:'POST',headers:{'content-type':'application/json',...headers},body:JSON.stringify(hint)}));
+   expect(response.status).toBe(401);expect(await response.json()).toEqual({accepted:false});
+  }
+  expect(f.transaction).not.toHaveBeenCalled();expect(f.event).not.toHaveBeenCalled();expect(f.process).not.toHaveBeenCalled();
+ });
+ it('rejects body tampering and a different signature secret before database access',async()=>{
+  const raw=Buffer.from(JSON.stringify(hint)),signature=createHmac('sha256',secret).update(raw).digest('hex');
+  for(const bytes of [Buffer.from(JSON.stringify({...hint,amount:'2000'})),Buffer.from(' '+raw.toString('utf8')),Buffer.concat([Buffer.from([0xef,0xbb,0xbf]),raw])])expect((await webhook(signed(hint,{bytes,signature}))).status).toBe(401);
+  expect((await webhook(signed(hint,{signingSecret:'another-independent-signature-secret-thirty-two-characters'}))).status).toBe(401);
+  expect(f.transaction).not.toHaveBeenCalled();expect(f.event).not.toHaveBeenCalled();expect(f.process).not.toHaveBeenCalled();
+ });
+ it('requires an independent signature secret even while creation is paused and recovery is enabled',async()=>{
+  vi.stubEnv('CHAPA_ENABLED','false');vi.stubEnv('CHAPA_WEBHOOK_SECRET','');
+  expect((await webhook(signed(hint))).status).toBe(503);expect(f.transaction).not.toHaveBeenCalled();expect(f.process).not.toHaveBeenCalled();
+ });
+ it('records, deduplicates and queues a signed fee-inclusive hosted event without trusting it as credit proof',async()=>{
   const event={...hint,amount:1029,service_fee:29,customer:{phone_number:251911111111}};
-  for(let i=0;i<2;i++){const response=await webhook(basic(event));expect(response.status).toBe(200);expect(await response.json()).toEqual({accepted:true});expect(response.headers.get('cache-control')).toContain('no-store')}
+  for(let i=0;i<2;i++){const response=await webhook(signed(event));expect(response.status).toBe(200);expect(await response.json()).toEqual({accepted:true});expect(response.headers.get('cache-control')).toContain('no-store')}
   expect(f.process).toHaveBeenCalledTimes(1);expect(f.update).toHaveBeenCalledTimes(1);expect(f.event.mock.calls[0][0].data[0]).toMatchObject({checkoutId:id,status:'QUEUED'});
-  expect(JSON.stringify(f.event.mock.calls)).not.toContain(password);expect(JSON.stringify(f.event.mock.calls)).not.toContain('251911111111');expect(f.verify).not.toHaveBeenCalled();expect(f.create).not.toHaveBeenCalled();
+  expect(JSON.stringify(f.event.mock.calls)).not.toContain(secret);expect(JSON.stringify(f.event.mock.calls)).not.toContain('251911111111');expect(f.verify).not.toHaveBeenCalled();expect(f.create).not.toHaveBeenCalled();
+ });
+ it('separates duplicate delivery scopes on secret rotation while rejecting the old signature',async()=>{
+  for(let i=0;i<2;i++)expect((await webhook(signed(hint))).status).toBe(200);
+  const rotated='rotated-independent-signature-secret-thirty-two-characters';vi.stubEnv('CHAPA_WEBHOOK_SECRET',rotated);
+  expect((await webhook(signed(hint))).status).toBe(401);
+  for(let i=0;i<2;i++)expect((await webhook(signed(hint,{signingSecret:rotated}))).status).toBe(200);
+  expect(f.hashes.size).toBe(2);expect(f.process).toHaveBeenCalledTimes(2);expect(f.update).toHaveBeenCalledTimes(2);
+  const first=f.event.mock.calls[0][0].data[0],afterRotation=f.event.mock.calls[2][0].data[0];
+  expect(first.bodyHash).toBe(afterRotation.bodyHash);expect(first.configurationFingerprint).not.toBe(afterRotation.configurationFingerprint);
+  expect(f.verify).not.toHaveBeenCalled();expect(f.create).not.toHaveBeenCalled();expect(globalThis.fetch).not.toHaveBeenCalled();
  });
  it('keeps fee-inclusive hints constrained by currency, reference and exact declared fee',async()=>{
   for(const change of [{service_fee:28},{service_fee:30},{currency:'USD'},{chapa_reference:'CHanother'}])expect((await webhook(signed({...hint,amount:1029,service_fee:29,...change}))).status).toBe(200);

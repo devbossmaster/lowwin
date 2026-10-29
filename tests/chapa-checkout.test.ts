@@ -221,7 +221,6 @@ describe.skipIf(!database)('Chapa v2 hosted payments on disposable PostgreSQL',(
  });
  it('never credits a fee-inclusive webhook amount when merchant verification mismatches the principal',async()=>{
   const f=await payment(),order=await f.start();
-  vi.stubEnv('CHAPA_WEBHOOK_AUTH','basic');vi.stubEnv('CHAPA_WEBHOOK_BASIC_USERNAME','lowwin-webhook');vi.stubEnv('CHAPA_WEBHOOK_BASIC_PASSWORD','isolated-basic-password-'+'p'.repeat(40));
   f.setMutation(row=>({...row,amount:1029,service_fee:29}));
   const event=await db.chapaWebhookEvent.create({data:{mode:'test',configurationFingerprint:'d'.repeat(64),bodyHash:chapaHash(randomUUID()),event:'payment.success',checkoutId:order.id}});
   await processChapaEvent(db,event.id,f.transport);
