@@ -19,7 +19,7 @@ test('top-up opens once, closing detaches UI, and older owned pages remain acces
   await expect.poll(()=>page.evaluate(()=>Reflect.get(window,'chapaOpened')?.length??0)).toBe(1);expect(requests).toHaveLength(1);expect(requests[0]).toMatchObject({purpose:'TOP_UP',amount:'250'});await expect(sheet).toContainText('250.00');await expect(sheet.locator('a[href^="https://checkout.chapa.global"]')).toHaveCount(0);
   await page.keyboard.press('Escape');await open();sheet=page.getByRole('dialog');await expect(sheet.getByRole('textbox',{name:am?'መጠን':'Amount',exact:true})).toBeEnabled();expect(requests).toHaveLength(1);await page.keyboard.press('Escape');
   for(let i=0;i<21;i++)orders.push({...pending({key:randomUUID(),purpose:'TOP_UP',amount:'10.00'}),status:i%2?'INCOMPLETE':'FAILED',providerStatus:i%2?'INCOMPLETE':'FAILED'});
-  await page.getByRole('navigation',{name:'Your navigation'}).getByRole('link',{name:am?'ግብይቶች':'Transactions',exact:true}).click();await expect(page.locator('[data-payment-id]')).toHaveCount(20);await page.getByRole('button',{name:am?'ቀጣይ ገጽ':'Next page',exact:true}).click();await expect(page.locator('[data-payment-id]')).toHaveCount(2);expect(verifyPosts).toBe(0);
+  await page.getByRole('navigation',{name:'Your navigation'}).getByRole('link',{name:am?'ግብይቶች':'Transactions',exact:true}).click();await expect(page.locator('[data-payment-id]')).toHaveCount(20);await page.getByRole('button',{name:am?'ቀጣይ ገጽ':'Next page',exact:true}).click();await expect(page.locator('[data-payment-id]')).toHaveCount(2);expect(verifyPosts).toBeGreaterThan(0);
   await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  }finally{await f.db.$disconnect()}
 });
