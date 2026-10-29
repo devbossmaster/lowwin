@@ -14,12 +14,13 @@ const sign=(bytes:Uint8Array|string,key=secret)=>createHmac('sha256',key).update
 
 describe('offline Chapa Signature diagnosis',()=>{
  it('reports runtime configuration without guessing delivery authentication',()=>{
-  expect(chapaWebhookSignatureConfiguration(environment)).toEqual({configuredAuth:'signature',secretPresent:true,configurationValid:true,diagnosis:'SIGNATURE_CONFIGURATION_VALID'});
+  expect(chapaWebhookSignatureConfiguration(environment)).toEqual({configuredAuth:'signature',signatureProfile:'raw_body',secretPresent:true,configurationValid:true,diagnosis:'SIGNATURE_CONFIGURATION_VALID'});
   expect(chapaWebhookSignatureConfiguration({})).toMatchObject({secretPresent:false,configurationValid:false,diagnosis:'MISSING_WEBHOOK_SECRET'});
   for(const value of ['short','s'.repeat(257),'CHANGE_ME'+'s'.repeat(40)])expect(chapaWebhookSignatureConfiguration({CHAPA_WEBHOOK_SECRET:value})).toMatchObject({configurationValid:false,diagnosis:'INVALID_WEBHOOK_SECRET'});
+  expect(chapaWebhookSignatureConfiguration({...environment,CHAPA_WEBHOOK_SIGNATURE_PROFILE:'unknown-private-profile'})).toMatchObject({signatureProfile:null,configurationValid:false,diagnosis:'INVALID_SIGNATURE_PROFILE'});
  });
  it('uses the production validator on exact original bytes including whitespace and BOM',()=>{
-  for(const bytes of [body,Buffer.concat([Buffer.from([0xef,0xbb,0xbf]),body])])expect(diagnoseChapaWebhookSignature(bytes,sign(bytes),environment)).toMatchObject({authenticationAccepted:true,diagnosis:'MATCHES_RAW_BODY_SIGNATURE',legacyConstantSignatureRejected:false});
+  for(const bytes of [body,Buffer.concat([Buffer.from([0xef,0xbb,0xbf]),body])])expect(diagnoseChapaWebhookSignature(bytes,sign(bytes),environment)).toMatchObject({authenticationAccepted:true,bodyIntegrityVerified:true,diagnosis:'MATCHES_RAW_BODY_SIGNATURE',legacyConstantSignatureRejected:false});
  });
  it('rejects changed bytes, reserialized JSON and a different secret',()=>{
   const signature=sign(body);
@@ -30,7 +31,14 @@ describe('offline Chapa Signature diagnosis',()=>{
   const result=diagnoseChapaWebhookSignature(body,signature,environment);expect(result.authenticationAccepted).toBe(false);expect(result.diagnosis).toBe(signature?'INVALID_SIGNATURE_FORMAT':'MISSING_SIGNATURE');
  });
  it('detects a legacy secret-on-secret constant only as a rejected delivery',()=>{
-  expect(diagnoseChapaWebhookSignature(body,sign(secret),environment)).toMatchObject({authenticationAccepted:false,legacyConstantSignatureRejected:true,diagnosis:'LEGACY_CONSTANT_SIGNATURE_REJECTED'});
+  expect(diagnoseChapaWebhookSignature(body,sign(secret),environment)).toMatchObject({authenticationAccepted:false,bodyIntegrityVerified:false,legacyConstantSignatureRejected:true,diagnosis:'LEGACY_CONSTANT_SIGNATURE_REJECTED'});
+ });
+ it('accepts legacy proof only under explicit selection and never claims body integrity',()=>{
+  const legacy={...environment,CHAPA_WEBHOOK_SIGNATURE_PROFILE:'legacy_secret'};
+  for(const bytes of [body,Buffer.from('{"status":"forged-hint"}')])expect(diagnoseChapaWebhookSignature(bytes,sign(secret),legacy)).toMatchObject({signatureProfile:'legacy_secret',authenticationAccepted:true,bodyIntegrityVerified:false,legacyConstantSignatureRejected:false,diagnosis:'MATCHES_LEGACY_SECRET_PROOF'});
+  expect(diagnoseChapaWebhookSignature(body,sign(body),legacy)).toMatchObject({authenticationAccepted:false,bodyIntegrityVerified:false,diagnosis:'SIGNATURE_MISMATCH'});
+  expect(diagnoseChapaWebhookSignature(body,sign('wrong-secret'),legacy).authenticationAccepted).toBe(false);
+  expect(diagnoseChapaWebhookSignature(body,sign(secret),{...legacy,CHAPA_WEBHOOK_SIGNATURE_PROFILE:'unknown'})).toMatchObject({configurationValid:false,authenticationAccepted:false,bodyIntegrityVerified:false,diagnosis:'INVALID_SIGNATURE_PROFILE'});
  });
  it('bounds body input and never returns private input or derived hashes',()=>{
   const signature=sign(body),result=diagnoseChapaWebhookSignature(body,signature,environment),output=JSON.stringify(result);
@@ -45,7 +53,7 @@ const script=fileURLToPath(new URL('../scripts/check-chapa-webhook-signature.ts'
 const tsx=createRequire(import.meta.url).resolve('tsx/cli');
 function temporaryDirectory(){const directory=mkdtempSync(join(tmpdir(),'lowwin-webhook-signature-test-'));directories.push(directory);return directory}
 function run(args:string[]=[],runtime:Record<string,string|undefined>=environment,cwd=process.cwd()){
- const env={...process.env,CHAPA_WEBHOOK_SECRET:undefined,...runtime};
+ const env={...process.env,CHAPA_WEBHOOK_SECRET:undefined,CHAPA_WEBHOOK_SIGNATURE_PROFILE:undefined,...runtime};
  const result=spawnSync(process.execPath,[tsx,script,...args],{cwd,env,encoding:'utf8',timeout:10000});
  expect(result.error).toBeUndefined();return result;
 }
@@ -67,6 +75,15 @@ describe('Signature diagnostic operator command',()=>{
   expect(JSON.parse(run(['--body-file','private-missing-path']).stderr).error).toBe('INVALID_OPTIONS');
   const result=run(['--body-file','private-missing-path','--signature-file','private-missing-signature']);
   expect(result.status).toBe(1);expect(JSON.parse(result.stderr).error).toBe('DIAGNOSTIC_FILE_UNAVAILABLE');expect(result.stdout+result.stderr).not.toContain('private-missing');
+ });
+ it('reports the selected legacy profile without claiming payload verification',()=>{
+  const directory=temporaryDirectory(),bodyFile=join(directory,'raw.bin'),signatureFile=join(directory,'signature.txt');
+  writeFileSync(bodyFile,body);writeFileSync(signatureFile,sign(secret));
+  const args=['--body-file',bodyFile,'--signature-file',signatureFile];
+  expect(JSON.parse(run(args).stdout)).toMatchObject({authenticationAccepted:false,bodyIntegrityVerified:false,diagnosis:'LEGACY_CONSTANT_SIGNATURE_REJECTED'});
+  const result=run(args,{...environment,CHAPA_WEBHOOK_SIGNATURE_PROFILE:'legacy_secret'});
+  expect(result.status).toBe(0);expect(JSON.parse(result.stdout)).toMatchObject({signatureProfile:'legacy_secret',authenticationAccepted:true,bodyIntegrityVerified:false,diagnosis:'MATCHES_LEGACY_SECRET_PROOF'});
+  for(const privateValue of [secret,sign(secret),body.toString(),'private-fixture'])expect(result.stdout+result.stderr).not.toContain(privateValue);
  });
  it('rejects oversized exports before hashing or showing their contents',()=>{
   const directory=temporaryDirectory(),bodyFile=join(directory,'oversized.bin'),signatureFile=join(directory,'signature.txt');writeFileSync(bodyFile,Buffer.alloc(65537,120));writeFileSync(signatureFile,sign(body));

@@ -1,4 +1,4 @@
-import {chapaAvailability,isChapaWebhookSecret,createChapaTransport,parseChapaPaymentMethods} from './chapa-provider';
+import {chapaAvailability,chapaWebhookSignatureProfile,isChapaWebhookSecret,createChapaTransport,parseChapaPaymentMethods} from './chapa-provider';
 
 type Environment=Record<string,string|undefined>;
 type Options={schema?:boolean;methods?:boolean};
@@ -28,6 +28,7 @@ function missingPrerequisites(raw:Environment,mode:'test'|'live'){
  const key=raw.CHAPA_PRIVATE_KEY??'',secret=raw.CHAPA_WEBHOOK_SECRET??'';
  require('CHAPA_PRIVATE_KEY',new RegExp(`^CHAPA_${mode==='live'?'LIVE':'TEST'}_[A-Za-z0-9_-]{16,240}$`).test(key)&&!/REPLACE|CHANGE_ME|example|fixture/i.test(key));
  require('CHAPA_WEBHOOK_SECRET',isChapaWebhookSecret(secret));
+ require('CHAPA_WEBHOOK_SIGNATURE_PROFILE',chapaWebhookSignatureProfile(raw)!==null);
  require('MINI_APP_URL / BETTER_AUTH_URL',secureOrigins(raw));
  require('CHAPA_BASE_URL',!raw.CHAPA_BASE_URL||raw.CHAPA_BASE_URL==='https://api.chapa.global');
  require('CHAPA_CURRENCY',!raw.CHAPA_CURRENCY||raw.CHAPA_CURRENCY==='ETB');

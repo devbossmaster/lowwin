@@ -1,6 +1,6 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {createHmac} from 'node:crypto';
-import {chapaAvailability,chapaConfigurationFingerprint,chapaHash,chapaWebhookAmountMatches,chapaWebhookConfigurationFingerprint,createdChapaSession,createChapaTransport,isChapaHostedSessionReference,parseChapaEvidence,parseChapaPaymentMethods,parseChapaWebhook,requireChapa,safeChapaCheckoutUrl,verifyChapaWebhook} from '../src/modules/payments/chapa-provider';
+import {authenticateChapaWebhook,chapaAvailability,chapaConfigurationFingerprint,chapaHash,chapaWebhookAmountMatches,chapaWebhookConfigurationFingerprint,chapaWebhookSignatureProfile,createdChapaSession,createChapaTransport,isChapaHostedSessionReference,parseChapaEvidence,parseChapaPaymentMethods,parseChapaWebhook,requireChapa,safeChapaCheckoutUrl,verifyChapaWebhook,verifyLegacyChapaWebhook} from '../src/modules/payments/chapa-provider';
 
 const secret='local-only-chapa-webhook-secret-with-thirty-two-bytes';
 function environment(patch:Record<string,string|undefined>={}){return {APP_ENV:'local',NODE_ENV:'test',DATABASE_URL:'postgresql://test:test@127.0.0.1:5432/chapa_provider_test',MINI_APP_URL:'https://lowwin.test',BETTER_AUTH_URL:'https://lowwin.test',PAYMENT_GATEWAY:'CHAPA',CHAPA_SCHEMA_READY:'true',CHAPA_ENABLED:'true',CHAPA_PRIVATE_KEY:'CHAPA_TEST_'+'a'.repeat(32),CHAPA_WEBHOOK_SECRET:secret,...patch}}
@@ -11,6 +11,17 @@ const method=(patch:Record<string,unknown>={})=>({name:'Telebirr',slug:'telebirr
 afterEach(()=>vi.restoreAllMocks());
 
 describe('Chapa v2 configuration boundaries',()=>{
+ it('defaults to raw-body signatures and requires an explicit valid compatibility profile',()=>{
+  expect(chapaWebhookSignatureProfile({})).toBe('raw_body');
+  for(const profile of ['raw_body','legacy_secret']){
+   const raw=environment({CHAPA_WEBHOOK_SIGNATURE_PROFILE:profile});
+   expect(chapaWebhookSignatureProfile(raw)).toBe(profile);expect(chapaAvailability(raw)).toMatchObject({configured:true,enabled:true,recoveryEnabled:true});
+  }
+  for(const profile of ['','legacy','basic','RAW_BODY']){
+   const raw=environment({CHAPA_WEBHOOK_SIGNATURE_PROFILE:profile});
+   expect(chapaWebhookSignatureProfile(raw)).toBeNull();expect(chapaAvailability(raw)).toMatchObject({configured:false,enabled:false,recoveryEnabled:false});
+  }
+ });
  it('requires a separate valid signature secret for creation and recovery',()=>{
   for(const length of [32,64,256])expect(chapaAvailability(environment({CHAPA_WEBHOOK_SECRET:'s'.repeat(length)}))).toMatchObject({configured:true,enabled:true,recoveryEnabled:true});
   for(const value of [undefined,'','short','s'.repeat(31),'s'.repeat(257),'REPLACE_WITH_A_SECRET_THAT_IS_LONG_ENOUGH','CHANGE_ME_TO_A_SECRET_THAT_IS_LONG_ENOUGH']){
@@ -109,6 +120,29 @@ describe('Chapa v2 authenticated webhook hints',()=>{
   const signature=createHmac('sha256',secret).update(secret).digest('hex');
   for(const amount of [1000,1029])expect(verifyChapaWebhook(JSON.stringify({webhook_type:'payment',event:'payment.success',status:'success',amount}),signature,secret)).toBe(false);
  });
+ it('authenticates the reusable legacy proof only in its explicitly selected profile',()=>{
+  const body=Buffer.from('{"webhook_type":"payment"}'),legacy=createHmac('sha256',secret).update(secret).digest('hex');
+  const signed=createHmac('sha256',secret).update(body).digest('hex'),raw=environment(),compatible=environment({CHAPA_WEBHOOK_SIGNATURE_PROFILE:'legacy_secret'});
+  expect(verifyLegacyChapaWebhook(legacy,secret)).toBe(true);
+  for(const received of [null,undefined,'',legacy.slice(1),'g'.repeat(64),'sha256='+legacy,signed])expect(verifyLegacyChapaWebhook(received,secret)).toBe(false);
+  expect(verifyLegacyChapaWebhook(legacy,'a-different-independent-webhook-secret')).toBe(false);
+  expect(authenticateChapaWebhook(body,new Headers({'x-chapa-signature':signed}),raw)).toBe('raw_body');
+  for(const name of ['x-chapa-signature','chapa-signature']){
+   const headers=new Headers({[name]:legacy});
+   expect(authenticateChapaWebhook(body,headers,raw)).toBeNull();
+   expect(authenticateChapaWebhook(body,headers,compatible)).toBe('legacy_secret');
+   // Legacy authentication is deliberately not evidence about the request body.
+   expect(authenticateChapaWebhook(Buffer.from('{"amount":999999}'),headers,compatible)).toBe('legacy_secret');
+  }
+  expect(authenticateChapaWebhook(body,new Headers({'x-chapa-signature':legacy,'chapa-signature':legacy}),compatible)).toBe('legacy_secret');
+  // The documented dual-header delivery intentionally uses two formulas.
+  expect(authenticateChapaWebhook(body,new Headers({'x-chapa-signature':signed,'chapa-signature':legacy}),compatible)).toBe('legacy_secret');
+  // A present invalid primary proof cannot be bypassed by the observed fallback.
+  expect(authenticateChapaWebhook(body,new Headers({'x-chapa-signature':legacy,'chapa-signature':signed}),compatible)).toBeNull();
+  expect(authenticateChapaWebhook(body,new Headers({'x-chapa-signature':signed}),compatible)).toBeNull();
+  expect(authenticateChapaWebhook(body,new Headers({authorization:'Basic '+Buffer.from('old:user').toString('base64')}),compatible)).toBeNull();
+  expect(authenticateChapaWebhook(body,new Headers({'x-chapa-signature':legacy}),{...compatible,CHAPA_WEBHOOK_SIGNATURE_PROFILE:'unknown'})).toBeNull();
+ });
  it('rejects placeholder secrets even when a digest was generated from that same value',()=>{
   const body=Buffer.from('{}');
   for(const placeholder of ['REPLACE_WITH_A_SECRET_THAT_IS_LONG_ENOUGH','CHANGE_ME_TO_A_SECRET_THAT_IS_LONG_ENOUGH']){
@@ -122,6 +156,10 @@ describe('Chapa v2 authenticated webhook hints',()=>{
   expect(chapaWebhookConfigurationFingerprint(rotated)).not.toBe(original);
   expect(chapaWebhookConfigurationFingerprint({...raw,CHAPA_ENABLED:'false'})).toBe(original);
   expect(chapaConfigurationFingerprint(rotated)).toBe(chapaConfigurationFingerprint(raw));
+  const compatible={...raw,CHAPA_WEBHOOK_SIGNATURE_PROFILE:'legacy_secret'};
+  expect(chapaWebhookConfigurationFingerprint(compatible)).not.toBe(original);
+  expect(chapaWebhookConfigurationFingerprint({...compatible,CHAPA_ENABLED:'false'})).toBe(chapaWebhookConfigurationFingerprint(compatible));
+  expect(chapaConfigurationFingerprint(compatible)).toBe(chapaConfigurationFingerprint(raw));
  });
  it('routes exact principal or exact fee-inclusive delivery amounts without changing either value',()=>{
   const raw={webhook_type:'payment',event:'payment.success',status:'success',amount:1029,service_fee:29};

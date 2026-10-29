@@ -17,9 +17,14 @@ export class ChapaProviderError extends ChapaError {
 export const chapaHash=(value:string|Uint8Array)=>createHash('sha256').update(value).digest('hex');
 export function chapaConfigurationFingerprint(raw:Environment=process.env){return raw.CHAPA_PRIVATE_KEY?chapaHash(raw.CHAPA_PRIVATE_KEY):null}
 export function isChapaWebhookSecret(value:unknown):value is string{return typeof value==='string'&&value.length>=32&&value.length<=256&&!/REPLACE|CHANGE_ME/i.test(value)}
+export type ChapaWebhookSignatureProfile='raw_body'|'legacy_secret';
+/** Legacy delivery compatibility is explicit; it never silently replaces v2. */
+export function chapaWebhookSignatureProfile(raw:Environment=process.env):ChapaWebhookSignatureProfile|null{
+ const profile=raw.CHAPA_WEBHOOK_SIGNATURE_PROFILE??'raw_body';return profile==='raw_body'||profile==='legacy_secret'?profile:null;
+}
 // Preserve Signature delivery deduplication across this configuration cleanup.
 // Payment credential bindings are separate and never change with this secret.
-export function chapaWebhookConfigurationFingerprint(raw:Environment=process.env){return chapaHash(raw.CHAPA_WEBHOOK_SECRET??'')}
+export function chapaWebhookConfigurationFingerprint(raw:Environment=process.env){return chapaHash(chapaWebhookSignatureProfile(raw)==='legacy_secret'?JSON.stringify(['legacy_secret',raw.CHAPA_WEBHOOK_SECRET]):raw.CHAPA_WEBHOOK_SECRET??'')}
 function origins(raw:Environment){try{const app=new URL(raw.MINI_APP_URL??''),auth=new URL(raw.BETTER_AUTH_URL??'');return app.protocol==='https:'&&auth.protocol==='https:'&&app.origin===auth.origin&&!app.username&&!app.password&&!auth.username&&!auth.password}catch{return false}}
 function localDatabase(raw:Environment){try{return ['localhost','127.0.0.1','[::1]'].includes(new URL(raw.DATABASE_URL??'').hostname)}catch{return false}}
 export function chapaAvailability(raw:Environment=process.env){
@@ -28,7 +33,7 @@ export function chapaAvailability(raw:Environment=process.env){
  const privateKey=new RegExp(`^CHAPA_${mode==='live'?'LIVE':'TEST'}_[A-Za-z0-9_-]{16,240}$`).test(key)&&!/REPLACE|CHANGE_ME|example|fixture/i.test(key);
  const testEnvironment=['local','test','staging'].includes(raw.APP_ENV??'')&&raw.VERCEL_ENV!=='production'&&(localDatabase(raw)||raw.APP_ENV==='staging'&&raw.CHAPA_TEST_ENVIRONMENT_REVIEWED==='true');
  const liveEnvironment=raw.APP_ENV==='production'&&raw.NODE_ENV==='production'&&!['preview','development'].includes(raw.VERCEL_ENV??'')&&raw.CHAPA_MERCHANT_REVIEWED==='true'&&raw.DEV_IDENTITY_ENABLED!=='true'&&raw.DEV_POINTS_ENABLED!=='true'&&raw.STAGING_DEMO_ENABLED!=='true';
- const webhookConfigured=isChapaWebhookSecret(secret);
+ const webhookConfigured=isChapaWebhookSecret(secret)&&chapaWebhookSignatureProfile(raw)!==null;
  const configured=validMode&&webhookConfigured&&raw.CHAPA_SCHEMA_READY==='true'&&privateKey&&origins(raw)&&(!raw.CHAPA_BASE_URL||raw.CHAPA_BASE_URL===API_ORIGIN)&&(!raw.CHAPA_CURRENCY||raw.CHAPA_CURRENCY==='ETB')&&(mode==='test'?testEnvironment:liveEnvironment);
  const enabled=configured&&raw.PAYMENT_GATEWAY==='CHAPA'&&raw.CHAPA_ENABLED==='true'&&(mode==='test'||raw.CHAPA_LIVE_ENABLED==='true');
  const recoveryEnabled=configured&&(enabled||raw.CHAPA_RECOVERY_ENABLED==='true');
@@ -100,6 +105,24 @@ export function verifyChapaWebhook(rawBody:Uint8Array|string,receivedSignature:s
  // Chapa v2 signs the exact received bytes. Do not parse/serialize first or
  // accept legacy signatures calculated over the secret instead of the body.
  const expected=createHmac('sha256',secret).update(rawBody).digest();return timingSafeEqual(expected,Buffer.from(receivedSignature,'hex'));
+}
+/** Documented legacy shared-secret proof. It authenticates possession of a
+ * reusable credential, not the body; callers may use it only as a lookup hint. */
+export function verifyLegacyChapaWebhook(receivedSignature:string|null|undefined,secret:string|undefined=process.env.CHAPA_WEBHOOK_SECRET){
+ if(!isChapaWebhookSecret(secret)||typeof receivedSignature!=='string'||!/^[a-f0-9]{64}$/i.test(receivedSignature))return false;
+ return timingSafeEqual(createHmac('sha256',secret).update(secret).digest(),Buffer.from(receivedSignature,'hex'));
+}
+export function authenticateChapaWebhook(rawBody:Uint8Array,headers:Headers,raw:Environment=process.env):ChapaWebhookSignatureProfile|null{
+ const profile=chapaWebhookSignatureProfile(raw);if(!profile)return null;
+ const signature=headers.get('x-chapa-signature');
+ if(profile==='raw_body')return verifyChapaWebhook(rawBody,signature,raw.CHAPA_WEBHOOK_SECRET)?profile:null;
+ // v1 documents chapa-signature. The observed v2-shaped delivery uses the same
+ // legacy formula under x-chapa-signature; accept either only in this profile.
+ // A documented v1 delivery may include a different body HMAC in x alongside
+ // the constant proof in chapa-signature. The documented header takes priority;
+ // an invalid primary header must not be bypassed by the observed x variant.
+ const legacy=headers.get('chapa-signature');
+ return verifyLegacyChapaWebhook(legacy??signature,raw.CHAPA_WEBHOOK_SECRET)?profile:null;
 }
 const webhookSchema=z.object({webhook_type:z.enum(['payment','refund','payout']),event:z.string().regex(/^[a-z][a-z._]{0,80}$/),status:z.string().regex(/^[a-z][a-z_]{0,40}$/),mode:z.enum(['test','live']).optional(),merchant_reference:merchantReference.nullish(),chapa_reference:reference.optional(),amount:z.union([centsString,cents.transform(String)]).optional(),service_fee:z.union([centsString,cents.transform(String)]).optional(),currency:z.string().regex(/^[A-Z]{3}$/).optional(),meta:metadata.nullish(),updated_at:instant.optional()});
 /** An authenticated webhook is a durable recovery hint, never credit evidence. */

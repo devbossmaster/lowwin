@@ -21,13 +21,21 @@ Accepted Chapa bids link their transaction; failed payment does not close a draw
 
 ## Durable event processing
 
-The [Signature-only webhook](chapa-signature-webhook.md) authenticates exact raw
-bytes with HMAC-SHA256 before parsing. A matching delivery is durably deduplicated
-and queued before provider HTTP. It then
+The [signature webhook](chapa-signature-webhook.md) defaults to exact raw-body
+HMAC-SHA256 before parsing. Explicit `legacy_secret` compatibility accepts the
+observed reusable secret-on-secret proof only as an untrusted existing-payment
+lookup hint; it does not provide body integrity. The legacy path requires a
+matching stored attempt/environment/currency and atomically reuses one canonical
+job per attempt/profile. Queued hints coalesce; later hints rearm completed jobs
+with a deferred lookup and a 60-second cooldown, including one deferred follow-up
+when a hint arrives during an active lookup. Neither profile uses Basic Auth or
+changes payment API versions. Matched new deliveries are durably deduplicated and queued before provider HTTP. It then
 tries the shared merchant verifier immediately. `npm run worker:chapa` processes
 only received event jobs, with five bounded attempts and leases. It never scans or
 reinitializes new pending checkouts. A verification outage retains the job and
-last provider outcome; customers see Needs verification and can request a manual
+last provider outcome. Verified nonterminal `PENDING` / `AUTH_NEEDED` responses
+remain queued within the same five-attempt bound instead of completing an event
+early; customers see Needs verification and can request a manual
 check. Only matching merchant verification with payment state SUCCESS can invoke
 the existing locked, balanced and idempotent receipt/bid transaction.
 
@@ -53,7 +61,8 @@ manually verifiable and can receive new signed notifications without that flag.
 Web, bot and Chapa worker must run matching code/schema and protected configuration.
 The worker's `CHAPA_RECOVERY_ENABLED=true` enables durable event processing while
 new checkouts are paused; it does not enable the legacy sweep. Its protected
-configuration must match the web service, including mode, schema and credentials.
+configuration must match the web service, including mode, schema, credentials
+and `CHAPA_WEBHOOK_SIGNATURE_PROFILE` (`raw_body` by default).
 The normal `npm run worker:chapa` command prints a `chapa_worker_configuration`
 JSON record before loading the database. If startup is blocked, read its
 `missingPrerequisites` in Coolify Logs; terminal access and a changed start command

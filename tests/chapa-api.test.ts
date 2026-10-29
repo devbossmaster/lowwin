@@ -1,6 +1,7 @@
 import {beforeEach,afterEach,describe,it,expect,vi} from 'vitest';
 import {createHmac,randomUUID} from 'node:crypto';
-const f=vi.hoisted(()=>({user:vi.fn(),auth:vi.fn(),read:vi.fn(),list:vi.fn(),create:vi.fn(),process:vi.fn(),verify:vi.fn(),transaction:vi.fn(),event:vi.fn(),find:vi.fn(),update:vi.fn(),audit:vi.fn(),reauthorize:vi.fn(),submit:vi.fn(),enabled:false,hashes:new Set<string>()}));
+type EventRow={id:string;checkoutId:string|null;merchantReference:string|null;mode:string;configurationFingerprint:string;bodyHash:string;status:string;attempts:number;nextAttemptAt:Date;leaseUntil:Date|null;completedAt:Date|null;receivedAt:Date};
+const f=vi.hoisted(()=>({user:vi.fn(),auth:vi.fn(),read:vi.fn(),list:vi.fn(),create:vi.fn(),process:vi.fn(),verify:vi.fn(),transaction:vi.fn(),event:vi.fn(),eventUpdate:vi.fn(),recent:vi.fn(),lock:vi.fn(),find:vi.fn(),update:vi.fn(),audit:vi.fn(),reauthorize:vi.fn(),submit:vi.fn(),enabled:false,hashes:new Set<string>(),rows:new Map<string,EventRow>()}));
 vi.mock('../src/modules/payments/chapa-events',()=>({processChapaEvent:f.process}));
 vi.mock('../src/lib/db',()=>({db:{$transaction:f.transaction}}));
 vi.mock('../src/modules/auth/private-api',async original=>({...await original<typeof import('../src/modules/auth/private-api')>(),requireUser:f.user}));
@@ -9,7 +10,7 @@ vi.mock('../src/modules/payments/chapa',()=>({createChapaCheckout:f.create,getCh
 vi.mock('../src/modules/auctions/bids',async original=>({...await original<typeof import('../src/modules/auctions/bids')>(),submitBidInTransaction:f.submit}));
 import {PrivateApiError} from '../src/modules/auth/private-api';
 import {measureChapa} from '../src/modules/payments/chapa-timing';
-import {ChapaError} from '../src/modules/payments/chapa-provider';
+import {ChapaError,chapaWebhookConfigurationFingerprint} from '../src/modules/payments/chapa-provider';
 import {GET as availability} from '../src/app/api/payments/chapa/route';
 import {GET as list,POST as create} from '../src/app/api/payments/chapa/checkouts/route';
 import {GET as read,POST as verify} from '../src/app/api/payments/chapa/checkouts/[id]/route';
@@ -20,14 +21,23 @@ const origin='https://lowwin.test',id=randomUUID(),secret='local-signature-secre
 const request=(path:string,body?:unknown,from=origin)=>new Request(origin+path,{method:body===undefined?'GET':'POST',headers:{origin:from,'Content-Type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})});
 const signed=(value:unknown,options:{signature?:string;bytes?:Uint8Array;signingSecret?:string}={})=>{const raw=options.bytes??Buffer.from(JSON.stringify(value));return new Request(origin+'/api/payments/chapa/webhook',{method:'POST',headers:{'content-type':'application/json','x-chapa-signature':options.signature??createHmac('sha256',options.signingSecret??secret).update(raw).digest('hex')},body:raw as BodyInit})};
 const hint={webhook_type:'payment',event:'payment.success',status:'success',mode:'test',merchant_reference:merchant,chapa_reference:'CHtestreference',amount:'1000',currency:'ETB'};
+const legacyProof=createHmac('sha256',secret).update(secret).digest('hex');
+const legacySigned=(value:unknown,headers:Record<string,string>={'x-chapa-signature':legacyProof})=>new Request(origin+'/api/payments/chapa/webhook',{method:'POST',headers:{'content-type':'application/json',...headers},body:JSON.stringify(value)});
 beforeEach(()=>{
- vi.clearAllMocks();f.hashes.clear();f.enabled=false;
- for(const [name,value] of Object.entries({APP_ENV:'local',NODE_ENV:'test',DATABASE_URL:'postgresql://nobody:synthetic@127.0.0.1:5432/chapa_test',BETTER_AUTH_URL:origin,MINI_APP_URL:origin,PAYMENT_GATEWAY:'CHAPA',CHAPA_ENABLED:'true',CHAPA_RECOVERY_ENABLED:'true',CHAPA_SCHEMA_READY:'true',CHAPA_MODE:'test',CHAPA_PRIVATE_KEY:'CHAPA_TEST_'+'a'.repeat(40),CHAPA_WEBHOOK_SECRET:secret,DEV_IDENTITY_ENABLED:'false',STAGING_DEMO_ENABLED:'false'}))vi.stubEnv(name,value);
- f.process.mockResolvedValue(true);f.user.mockResolvedValue('owner-user');f.auth.mockResolvedValue({userId:'owner-user',reauthorize:f.reauthorize});f.reauthorize.mockResolvedValue(undefined);f.list.mockResolvedValue({items:[]});f.read.mockResolvedValue({id,status:'PENDING'});f.create.mockResolvedValue({id,status:'PENDING'});f.verify.mockResolvedValue({id,status:'PENDING'});
- f.event.mockImplementation(async({data}:{data:{mode:string;configurationFingerprint:string;bodyHash:string}[]})=>{const row=data[0],key=JSON.stringify([row.mode,row.configurationFingerprint,row.bodyHash]);if(f.hashes.has(key))return {count:0};f.hashes.add(key);return {count:1}});f.find.mockResolvedValue({id,mode:'test',chapaReference:'CHtestreference',amountCents:1000n,currency:'ETB'});f.update.mockResolvedValue({count:1});f.audit.mockResolvedValue({});f.submit.mockResolvedValue({bid:{id:'accepted'},wallet:{available:'10',held:'0'}});
- f.transaction.mockImplementation(async(run:(tx:unknown)=>Promise<unknown>)=>run({chapaWebhookEvent:{createMany:f.event},chapaCheckout:{findUnique:f.find,updateMany:f.update},adminAudit:{create:f.audit},auction:{findUnique:async()=>({terms:{ruleVersion:'lowest-unique-v4'}})}}));
+ vi.clearAllMocks();f.hashes.clear();f.rows.clear();f.enabled=false;
+ for(const [name,value] of Object.entries({APP_ENV:'local',NODE_ENV:'test',DATABASE_URL:'postgresql://nobody:synthetic@127.0.0.1:5432/chapa_test',BETTER_AUTH_URL:origin,MINI_APP_URL:origin,PAYMENT_GATEWAY:'CHAPA',CHAPA_ENABLED:'true',CHAPA_RECOVERY_ENABLED:'true',CHAPA_SCHEMA_READY:'true',CHAPA_MODE:'test',CHAPA_PRIVATE_KEY:'CHAPA_TEST_'+'a'.repeat(40),CHAPA_WEBHOOK_SECRET:secret,CHAPA_WEBHOOK_SIGNATURE_PROFILE:'raw_body',DEV_IDENTITY_ENABLED:'false',STAGING_DEMO_ENABLED:'false'}))vi.stubEnv(name,value);
+ f.process.mockImplementation(async(_client:unknown,eventId:string)=>{const row=f.rows.get(eventId);if(row){row.nextAttemptAt=new Date(Date.now()+10000);row.attempts=1}return true});f.user.mockResolvedValue('owner-user');f.auth.mockResolvedValue({userId:'owner-user',reauthorize:f.reauthorize});f.reauthorize.mockResolvedValue(undefined);f.list.mockResolvedValue({items:[]});f.read.mockResolvedValue({id,status:'PENDING'});f.create.mockResolvedValue({id,status:'PENDING'});f.verify.mockResolvedValue({id,status:'PENDING'});
+ f.event.mockImplementation(async({data}:{data:(Pick<EventRow,'id'|'mode'|'configurationFingerprint'|'bodyHash'|'status'>&Partial<EventRow>)[]})=>{const row=data[0],key=JSON.stringify([row.mode,row.configurationFingerprint,row.bodyHash]);if(f.hashes.has(key))return {count:0};f.hashes.add(key);f.rows.set(row.id,{checkoutId:null,merchantReference:null,...row,attempts:0,nextAttemptAt:new Date(),leaseUntil:null,completedAt:null,receivedAt:new Date()});return {count:1}});f.find.mockResolvedValue({id,merchantReference:merchant,mode:'test',chapaReference:'CHtestreference',amountCents:1000n,currency:'ETB'});f.update.mockResolvedValue({count:1});f.audit.mockResolvedValue({});f.submit.mockResolvedValue({bid:{id:'accepted'},wallet:{available:'10',held:'0'}});
+ f.recent.mockImplementation(async({where}:any)=>{const row=[...f.rows.values()].find(row=>row.checkoutId===where.checkoutId&&row.merchantReference===where.merchantReference&&row.mode===where.mode&&row.configurationFingerprint===where.configurationFingerprint);return row?{id:row.id}:null});
+ f.lock.mockImplementation(async(query:TemplateStringsArray,...values:unknown[])=>{if(query.join('').includes('"ChapaWebhookEvent"')){const row=f.rows.get(String(values[0]));return row?[{...row}]:[]}return [{creditJournalId:null}]});
+ f.eventUpdate.mockImplementation(async({where,data}:any)=>{const row=f.rows.get(where.id);if(!row)return {count:0};Object.assign(row,data);return {count:1}});
+ f.transaction.mockImplementation(async(run:(tx:unknown)=>Promise<unknown>)=>run({$queryRaw:f.lock,chapaWebhookEvent:{createMany:f.event,findFirst:f.recent,updateMany:f.eventUpdate},chapaCheckout:{findUnique:f.find,updateMany:f.update},adminAudit:{create:f.audit},auction:{findUnique:async()=>({terms:{ruleVersion:'lowest-unique-v4'}})}}));
  vi.spyOn(globalThis,'fetch').mockRejectedValue(Error('Unexpected provider request'));
 });
+function existingLegacyEvent(patch:Partial<EventRow>={}){
+ const row:EventRow={id:'canonical-legacy-event',checkoutId:id,merchantReference:merchant,mode:'test',configurationFingerprint:chapaWebhookConfigurationFingerprint(),bodyHash:'a'.repeat(64),status:'QUEUED',attempts:1,nextAttemptAt:new Date(Date.now()+10000),leaseUntil:null,completedAt:null,receivedAt:new Date(Date.now()-120000),...patch};
+ f.rows.set(row.id,row);return row;
+}
 afterEach(()=>{vi.unstubAllEnvs();vi.restoreAllMocks()});
 describe('Chapa HTTP authorization and durable webhook boundary',()=>{
  it('separates authentication, database and provider timings on private mutation responses',async()=>{
@@ -82,6 +92,102 @@ describe('Chapa HTTP authorization and durable webhook boundary',()=>{
  it('requires an independent signature secret even while creation is paused and recovery is enabled',async()=>{
   vi.stubEnv('CHAPA_ENABLED','false');vi.stubEnv('CHAPA_WEBHOOK_SECRET','');
   expect((await webhook(signed(hint))).status).toBe(503);expect(f.transaction).not.toHaveBeenCalled();expect(f.process).not.toHaveBeenCalled();
+ });
+ it('uses explicitly selected legacy proofs only to queue an existing unpaid attempt for v2 verification',async()=>{
+  vi.stubEnv('CHAPA_WEBHOOK_SIGNATURE_PROFILE','legacy_secret');
+  const event={...hint,amount:1029,service_fee:29,customer:{phone_number:251911111111}};
+  const response=await webhook(legacySigned(event));
+  expect(response.status).toBe(200);expect(await response.json()).toEqual({accepted:true});expect(response.headers.get('cache-control')).toContain('no-store');
+  expect(f.lock).toHaveBeenCalledTimes(1);expect(f.lock.mock.calls[0][0].join('')).toContain('FOR UPDATE');expect(f.lock.mock.calls[0].slice(1)).toEqual([id]);
+  expect(f.recent).toHaveBeenCalledWith({where:{checkoutId:id,merchantReference:merchant,mode:'test',configurationFingerprint:expect.any(String)},orderBy:{receivedAt:'desc'},select:{id:true}});
+  expect(f.event).toHaveBeenCalledTimes(1);expect(f.process).toHaveBeenCalledTimes(1);expect(f.update).toHaveBeenCalledTimes(1);
+  expect(f.event.mock.calls[0][0].data[0]).toMatchObject({checkoutId:id,status:'QUEUED',event:'payment.success'});
+  const persisted=JSON.stringify(f.event.mock.calls);for(const privateValue of [legacyProof,secret,'251911111111'])expect(persisted).not.toContain(privateValue);
+  expect(f.verify).not.toHaveBeenCalled();expect(f.create).not.toHaveBeenCalled();expect(globalThis.fetch).not.toHaveBeenCalled();
+ });
+ it('coalesces alternate legacy bodies under the existing attempt lock instead of multiplying recovery work',async()=>{
+  vi.stubEnv('CHAPA_WEBHOOK_SIGNATURE_PROFILE','legacy_secret');
+  for(const meta of [{note:'first'},{note:'changed-body'},{other:'another-body'}])expect((await webhook(legacySigned({...hint,meta}))).status).toBe(200);
+  expect(f.lock.mock.calls.filter(call=>call[0].join('').includes('"ChapaCheckout"'))).toHaveLength(3);expect(f.recent).toHaveBeenCalledTimes(3);
+  expect(f.event).toHaveBeenCalledTimes(1);expect(f.update).toHaveBeenCalledTimes(1);expect(f.process).toHaveBeenCalledTimes(1);expect(f.hashes.size).toBe(1);
+  expect(f.lock.mock.invocationCallOrder[0]).toBeLessThan(f.recent.mock.invocationCallOrder[0]);expect(f.recent.mock.invocationCallOrder[0]).toBeLessThan(f.event.mock.invocationCallOrder[0]);
+ });
+ it('serializes concurrent changed-body legacy hints into one durable recovery job',async()=>{
+  vi.stubEnv('CHAPA_WEBHOOK_SIGNATURE_PROFILE','legacy_secret');
+  let tail=Promise.resolve();
+  f.transaction.mockImplementation(async(run:(tx:unknown)=>Promise<unknown>)=>{
+   let release=()=>{};
+   const lock=async(...args:unknown[])=>{
+    if((args[0] as TemplateStringsArray).join('').includes('"ChapaWebhookEvent"'))return f.lock(...args);
+    const prior=tail;tail=new Promise<void>(resolve=>{release=resolve});await prior;
+    return f.lock(...args);
+   };
+   try{return await run({$queryRaw:lock,chapaWebhookEvent:{createMany:f.event,findFirst:f.recent,updateMany:f.eventUpdate},chapaCheckout:{findUnique:f.find,updateMany:f.update}})}finally{release()}
+  });
+  const responses=await Promise.all([0,1,2].map(sequence=>webhook(legacySigned({...hint,meta:{sequence}}))));
+  expect(responses.map(response=>response.status)).toEqual([200,200,200]);
+  expect(f.lock.mock.calls.filter(call=>call[0].join('').includes('"ChapaCheckout"'))).toHaveLength(3);expect(f.event).toHaveBeenCalledTimes(1);expect(f.hashes.size).toBe(1);
+  expect(new Set(f.process.mock.calls.map(call=>call[1])).size).toBe(1);
+ });
+ it('coalesces an already queued future legacy check without changing its backoff',async()=>{
+  vi.stubEnv('CHAPA_WEBHOOK_SIGNATURE_PROFILE','legacy_secret');const prior=existingLegacyEvent(),before={...prior};
+  expect((await webhook(legacySigned(hint))).status).toBe(200);
+  expect(prior).toEqual(before);expect(f.event).not.toHaveBeenCalled();expect(f.eventUpdate).not.toHaveBeenCalled();expect(f.update).not.toHaveBeenCalled();expect(f.process).not.toHaveBeenCalled();
+ });
+ it('processes a due canonical queued legacy check instead of creating another job',async()=>{
+  vi.stubEnv('CHAPA_WEBHOOK_SIGNATURE_PROFILE','legacy_secret');const prior=existingLegacyEvent({nextAttemptAt:new Date(0)});
+  expect((await webhook(legacySigned({...hint,meta:{changed:'body'}}))).status).toBe(200);
+  expect(f.event).not.toHaveBeenCalled();expect(f.process).toHaveBeenCalledWith(expect.anything(),prior.id);expect(f.rows.size).toBe(1);
+ });
+ it('rearms a completed failed legacy event when a later success hint arrives inside the cooldown',async()=>{
+  vi.stubEnv('CHAPA_WEBHOOK_SIGNATURE_PROFILE','legacy_secret');
+  const completedAt=new Date(Date.now()-5000),prior=existingLegacyEvent({status:'PROCESSED',attempts:2,completedAt,nextAttemptAt:new Date(0)}),identity={id:prior.id,bodyHash:prior.bodyHash,receivedAt:prior.receivedAt,merchantReference:prior.merchantReference,configurationFingerprint:prior.configurationFingerprint};
+  expect((await webhook(legacySigned({...hint,meta:{later:'success'}}))).status).toBe(200);
+  expect(prior).toMatchObject({...identity,status:'QUEUED',attempts:0,completedAt:null,leaseUntil:null});
+  expect(prior.nextAttemptAt.getTime()).toBe(completedAt.getTime()+60000);expect(f.event).not.toHaveBeenCalled();expect(f.process).not.toHaveBeenCalled();expect(f.rows.size).toBe(1);
+ });
+ it('rearms an exhausted legacy event with a bounded fresh retry budget after its cooldown',async()=>{
+  vi.stubEnv('CHAPA_WEBHOOK_SIGNATURE_PROFILE','legacy_secret');const prior=existingLegacyEvent({status:'NEEDS_VERIFICATION',attempts:5,nextAttemptAt:new Date(0),completedAt:new Date(Date.now()-120000)});
+  expect((await webhook(legacySigned({...hint,meta:{later:'retry'}}))).status).toBe(200);
+  expect(prior.status).toBe('QUEUED');expect(f.eventUpdate).toHaveBeenCalledWith({where:{id:prior.id},data:expect.objectContaining({status:'QUEUED',attempts:0,leaseUntil:null,completedAt:null})});
+  expect(f.event).not.toHaveBeenCalled();expect(f.process).toHaveBeenCalledWith(expect.anything(),prior.id);expect(f.rows.size).toBe(1);
+ });
+ it('preserves an active lease while leaving a durable later-check marker on the canonical event',async()=>{
+  vi.stubEnv('CHAPA_WEBHOOK_SIGNATURE_PROFILE','legacy_secret');const leaseUntil=new Date(Date.now()+30000),prior=existingLegacyEvent({attempts:4,leaseUntil,nextAttemptAt:new Date(0)}),before=Date.now();
+  expect((await webhook(legacySigned({...hint,meta:{during:'verification'}}))).status).toBe(200);
+  expect(prior).toMatchObject({id:prior.id,status:'QUEUED',attempts:4,leaseUntil});expect(prior.nextAttemptAt.getTime()).toBeGreaterThanOrEqual(before+60000);
+  expect(f.event).not.toHaveBeenCalled();expect(f.process).not.toHaveBeenCalled();expect(f.rows.size).toBe(1);
+ });
+ it('does not persist unknown, mismatched or already credited legacy lookup hints',async()=>{
+  vi.stubEnv('CHAPA_WEBHOOK_SIGNATURE_PROFILE','legacy_secret');
+  for(const stored of [null,{id,mode:'live',chapaReference:hint.chapa_reference,amountCents:1000n,currency:'ETB'},{id,mode:'test',chapaReference:'CHwrong',amountCents:1000n,currency:'ETB'}]){
+   f.find.mockResolvedValue(stored);expect((await webhook(legacySigned(hint))).status).toBe(200);
+  }
+  f.find.mockResolvedValue({id,mode:'test',chapaReference:hint.chapa_reference,amountCents:1000n,currency:'ETB',creditJournalId:'prior-credit'});f.lock.mockResolvedValue([{creditJournalId:'prior-credit'}]);
+  expect((await webhook(legacySigned(hint))).status).toBe(200);
+  expect(f.event).not.toHaveBeenCalled();expect(f.recent).not.toHaveBeenCalled();expect(f.update).not.toHaveBeenCalled();expect(f.process).not.toHaveBeenCalled();
+ });
+ it('rechecks committed credit after taking the legacy attempt lock',async()=>{
+  vi.stubEnv('CHAPA_WEBHOOK_SIGNATURE_PROFILE','legacy_secret');f.lock.mockResolvedValue([{creditJournalId:'concurrent-credit'}]);
+  expect((await webhook(legacySigned(hint))).status).toBe(200);
+  expect(f.lock).toHaveBeenCalledTimes(1);expect(f.event).not.toHaveBeenCalled();expect(f.recent).not.toHaveBeenCalled();expect(f.process).not.toHaveBeenCalled();
+ });
+ it('requires explicit legacy environment and currency binding before queuing any hint',async()=>{
+  vi.stubEnv('CHAPA_WEBHOOK_SIGNATURE_PROFILE','legacy_secret');
+  for(const change of [{mode:undefined},{mode:'live'},{currency:undefined},{currency:'USD'},{merchant_reference:undefined},{webhook_type:'refund',event:'payment.fully_refunded',status:'fully_refunded'}])expect((await webhook(legacySigned({...hint,...change}))).status).toBe(400);
+  expect(f.transaction).not.toHaveBeenCalled();expect(f.event).not.toHaveBeenCalled();expect(f.process).not.toHaveBeenCalled();
+ });
+ it('accepts documented dual headers using the primary legacy proof',async()=>{
+  vi.stubEnv('CHAPA_WEBHOOK_SIGNATURE_PROFILE','legacy_secret');
+  const rawSignature=createHmac('sha256',secret).update(JSON.stringify(hint)).digest('hex');
+  expect((await webhook(legacySigned(hint,{'chapa-signature':legacyProof,'x-chapa-signature':rawSignature}))).status).toBe(200);
+  expect(f.process).toHaveBeenCalledTimes(1);expect(f.event).toHaveBeenCalledTimes(1);
+ });
+ it('rejects invalid primary legacy headers and never restores Basic Auth',async()=>{
+  vi.stubEnv('CHAPA_WEBHOOK_SIGNATURE_PROFILE','legacy_secret');
+  const alternatives:Record<string,string>[]=[{authorization:'Basic '+Buffer.from('old:user').toString('base64')},{'x-chapa-signature':legacyProof,'chapa-signature':'a'.repeat(64)}];
+  for(const headers of alternatives)expect((await webhook(legacySigned(hint,headers))).status).toBe(401);
+  expect(f.transaction).not.toHaveBeenCalled();expect(f.process).not.toHaveBeenCalled();
  });
  it('records, deduplicates and queues a signed fee-inclusive hosted event without trusting it as credit proof',async()=>{
   const event={...hint,amount:1029,service_fee:29,customer:{phone_number:251911111111}};

@@ -21,7 +21,7 @@ async function readBoundedFile(path:string,maximum:number){
 async function main(){
  const args=process.argv.slice(2);
  if(args.length===1&&args[0]==='--help'){
-  console.log(`${usage}\nDefault: offline runtime configuration report. To compare a real delivery, export its exact raw HTTP body and x-chapa-signature value into separate private files. A signature file may end in a newline. Pretty-printed dashboard JSON is not the original raw body. No .env files are loaded; no HTTP, database, payment or bot calls are made. Output contains only booleans and diagnosis codes. Never put secrets or signature values in command arguments or chat.`);return;
+  console.log(`${usage}\nDefault: offline runtime configuration report. To compare a delivery, export its exact raw HTTP body and signature value into separate private files. A signature file may end in a newline. The default raw_body profile requires the original bytes; pretty-printed dashboard JSON cannot establish its validity. The explicitly selected legacy_secret profile checks reusable proof only and always reports bodyIntegrityVerified:false; it cannot prove payment or payload integrity. No .env files are loaded; no HTTP, database, payment or bot calls are made. Output contains only safe configuration labels, booleans and diagnosis codes. Never put secrets or signature values in command arguments or chat.`);return;
  }
  if(!args.length){const result=chapaWebhookSignatureConfiguration();console.log(JSON.stringify(result,null,2));if(!result.configurationValid)process.exitCode=1;return}
  if(args.length!==4||args[0]!=='--body-file'||args[2]!=='--signature-file'||!args[1]||!args[3]||args[1].startsWith('--')||args[3].startsWith('--')){

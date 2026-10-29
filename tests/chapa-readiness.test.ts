@@ -7,6 +7,14 @@ function environment(patch:Record<string,string|undefined>={}){
 const method=()=>({name:'Untrusted provider display name',slug:'telebirr',is_mobile_money:true,can_process_payments:true,supported_currencies:{ETB:{default_min:100,default_max:1000000,countries:{ET:{is_enabled:true,min_amount:250,max_amount:500000}}}}});
 
 describe('non-charging Chapa readiness',()=>{
+ it('reports an invalid signature profile and keeps all optional checks offline',async()=>{
+  const raw=environment({CHAPA_WEBHOOK_SIGNATURE_PROFILE:'unrecognized',CHAPA_RECOVERY_ENABLED:'true'}),fetcher=vi.fn<typeof fetch>(),readSchema=vi.fn();
+  const report=await checkChapaReadiness(raw,{schema:true,methods:true},{fetcher,readSchema});
+  expect(report).toMatchObject({configured:false,recoveryEnabled:false,missingPrerequisites:['CHAPA_WEBHOOK_SIGNATURE_PROFILE'],schema:{status:'blocked'},methods:{status:'blocked'}});
+  expect(chapaWorkerConfiguration(raw)).toMatchObject({configured:false,recoveryEnabled:false,missingPrerequisites:['CHAPA_WEBHOOK_SIGNATURE_PROFILE']});
+  expect(fetcher).not.toHaveBeenCalled();expect(readSchema).not.toHaveBeenCalled();
+  expect(await checkChapaReadiness({...raw,CHAPA_WEBHOOK_SIGNATURE_PROFILE:'legacy_secret'})).toMatchObject({configured:true,recoveryEnabled:true,missingPrerequisites:[]});
+ });
  it('identifies a disabled worker without requiring a running container or enabling new checkouts',()=>{
   const raw=environment({CHAPA_ENABLED:'false',CHAPA_LEGACY_SWEEP_ENABLED:'false'});
   expect(chapaWorkerConfiguration(raw)).toMatchObject({event:'chapa_worker_configuration',configured:true,recoveryEnabled:false,legacySweepEnabled:false,missingPrerequisites:['CHAPA_RECOVERY_ENABLED']});

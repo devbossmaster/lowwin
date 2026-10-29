@@ -117,3 +117,15 @@ The bot worker handles commands only. Run `npm run worker:auctions` separately f
 ## Before live launch
 
 Phase 5A adds invite-only Owner administration; the application remains a DEMO preview. Follow the [Owner runbook](docs/owner-runbook.md) for bootstrap, MFA, recovery, publication and cancellation. See [Phase 5A validation](docs/phase5a-validation.md) for migrations, exact test results and remaining release work. Production email is unavailable until a provider is implemented. Later phases must complete fulfillment, notification dispatch and release validation. The owner must review entry fees, holds, no-winner/refund terms, prize eligibility/delivery and local legal/provider requirements. Points alone do not establish legal classification. No provider, ETB rate or legal approval has been invented.
+
+
+The source catalog defines 9 categories:
+1. Home Furniture
+2. Vehicles
+3. Accessories
+4. Computer & Office Equipment
+5. Home Furnishings
+6. Jewelry
+7. Watches
+8. Phones
+9. Animals

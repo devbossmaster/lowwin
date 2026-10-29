@@ -1,7 +1,11 @@
 # Chapa v2: Coolify production preparation
 
-For the Signature-only webhook and protected runtime settings, see
+For the signature profiles and protected runtime settings, see
 [Signature setup](chapa-signature-webhook.md).
+`raw_body` remains the default. Select `legacy_secret` explicitly on WEB and
+the Chapa worker only for the confirmed legacy delivery calculation. It accepts
+a reusable secret proof as a bounded lookup hint and still requires v2 payment
+verification; it does not authenticate the payload contents or restore Basic Auth.
 
 For the current Transactions release, also review additive migration
 `202610290002_chapa_event_transactions` and the
@@ -26,6 +30,7 @@ PAYMENT_GATEWAY=CHAPA
 CHAPA_MODE=live
 CHAPA_BASE_URL=https://api.chapa.global
 CHAPA_CURRENCY=ETB
+CHAPA_WEBHOOK_SIGNATURE_PROFILE=raw_body
 CHAPA_ENABLED=false
 CHAPA_RECOVERY_ENABLED=false
 CHAPA_SCHEMA_READY=false
@@ -43,7 +48,7 @@ DEV_POINTS_ENABLED=false
 STAGING_DEMO_ENABLED=false
 ```
 
-Privately prepare `CHAPA_PRIVATE_KEY` with the production business's `CHAPA_LIVE_…` private key and `CHAPA_WEBHOOK_SECRET` with a separate random secret of 32–256 characters. Make both runtime-only in Coolify. Do not copy the TEST key or rotate a credential used by unresolved attempts. Keep the existing `BETTER_AUTH_SECRET`, production bot token/username/webhook secret, `PHONE_CONTACT_KEY_ID`, `PHONE_CONTACT_KEYS` and `PHONE_CONTACT_HASH_KEY` unchanged. Keep the existing verified Resend sender and API key.
+Privately prepare `CHAPA_PRIVATE_KEY` with the production business's `CHAPA_LIVE_…` private key and `CHAPA_WEBHOOK_SECRET` with a separate random secret of 32–256 characters. Make both runtime-only in Coolify. For this webhook cutover, replace the exposed signing secret and match its exact new value in both resources and the dashboard. Do not copy the TEST API key or rotate a payment API credential used by unresolved attempts. Keep the existing `BETTER_AUTH_SECRET`, production bot token/username/webhook secret, `PHONE_CONTACT_KEY_ID`, `PHONE_CONTACT_KEYS` and `PHONE_CONTACT_HASH_KEY` unchanged. Keep the existing verified Resend sender and API key.
 
 `DATABASE_URL` must use the restricted production runtime login. In normal application resources, `DIRECT_URL` uses that same restricted runtime connection, not a migration/owner login. Keep the migration credential outside application and worker resources. Preserve the current `REFERRAL_REWARDS_SCHEMA_READY` value until its migration and schema have been reviewed; do not turn it on just to remove an error.
 
@@ -60,7 +65,13 @@ Webhook URL: https://lowwin.shop/api/payments/chapa/webhook
 Secret Hash: the exact protected CHAPA_WEBHOOK_SECRET value
 ```
 
-Use the canonical HTTPS hostname without `www` or ngrok. Do not activate live payments until actual TEST delivery authenticates according to the documented raw-body signature contract and duplicate delivery is proven safe. A production hostname does not by itself resolve a signing-contract mismatch.
+Use the canonical HTTPS hostname without `www` or ngrok. Merchant acceptance must
+exercise the selected profile and duplicate delivery separately. If the actual
+header is confirmed to use HMAC(secret, secret), set
+`CHAPA_WEBHOOK_SIGNATURE_PROFILE=legacy_secret` on WEB and worker before the
+controlled compatibility retry; do not claim that this proves v2 raw-body
+signing. A production hostname does not by itself resolve a signing-contract
+mismatch, and local tests do not establish actual merchant delivery.
 
 ## 3. Schema and workers
 
