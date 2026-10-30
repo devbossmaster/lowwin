@@ -59,6 +59,34 @@ describe.skipIf(!database)('Chapa v2 hosted payments on disposable PostgreSQL',(
   const retry=await f.start();expect(retry.id).toBe(order.id);expect(f.inputs).toHaveLength(2);expect(f.inputs[1]).toEqual(f.inputs[0]);
   expect(f.methods).not.toHaveBeenCalled();expect(methods).toHaveBeenCalledTimes(1);expect(await balance(f.userId)).toBe('0');
  });
+ it('reads cooling-down status without a transaction or provider call, then notices committed webhook credit',async()=>{
+  const f=await payment(),order=await f.start(),reauthorize=vi.fn();
+  await db.chapaCheckout.update({where:{id:order.id},data:{nextCheckAt:new Date(Date.now()+60000)}});
+  const transaction=vi.spyOn(db,'$transaction');
+  try{
+   const waiting=await verifyChapaCheckout(db,order.id,f.userId,reauthorize,f.transport);
+   expect(waiting).toMatchObject({status:'PENDING',pollAfterMs:5000});expect(transaction).not.toHaveBeenCalled();expect(reauthorize).not.toHaveBeenCalled();expect(f.lookup).not.toHaveBeenCalled();
+   // An authenticated provider event bypasses the provider cooldown, while
+   // retaining exact evidence and the normal idempotent financial transaction.
+   f.setStatus('SUCCESS');
+   const credited=await verifyChapaCheckout(db,order.id,undefined,undefined,f.transport,true);
+   expect(credited.status).toBe('CREDITED');expect(f.lookup).toHaveBeenCalledOnce();
+   transaction.mockClear();
+   expect((await verifyChapaCheckout(db,order.id,f.userId,reauthorize,f.transport)).status).toBe('CREDITED');
+   expect(transaction).not.toHaveBeenCalled();expect(f.lookup).toHaveBeenCalledOnce();expect(await balance(f.userId)).toBe('10');
+  }finally{transaction.mockRestore()}
+ });
+ it('keeps an active verification lease and account isolation during lightweight status checks',async()=>{
+  const f=await payment(),order=await f.start(),until=new Date(Date.now()+20000);
+  await db.chapaCheckout.update({where:{id:order.id},data:{nextCheckAt:new Date(0),leaseUntil:until}});
+  const transaction=vi.spyOn(db,'$transaction');
+  try{
+   await expect(verifyChapaCheckout(db,order.id,'another-account',undefined,f.transport)).rejects.toMatchObject({status:404});
+   expect((await verifyChapaCheckout(db,order.id,f.userId,undefined,f.transport,true)).status).toBe('PENDING');
+   expect(transaction).not.toHaveBeenCalled();expect(f.lookup).not.toHaveBeenCalled();
+   expect((await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}})).leaseUntil).toEqual(until);
+  }finally{transaction.mockRestore()}
+ });
  it('does not confuse operation success with successful payment or credit unsuccessful states',async()=>{
   for(const status of ['PENDING','AUTH_NEEDED','FAILED','CANCELLED','INCOMPLETE','BLOCKED']){const f=await payment(),order=await f.start();f.setStatus(status);const result=await f.verify(order.id);expect(result.status).toBe(status);expect(await balance(f.userId)).toBe('0');expect(await db.operation.count({where:{userId:f.userId,scope:'CHAPA_RECEIPT'}})).toBe(0);expect(await db.outbox.count({where:{key:`chapa:${order.id}:telegram-confirmed`}})).toBe(0)}
  });

@@ -7,6 +7,7 @@ vi.mock('../src/modules/cache/public-data',()=>({cachedPublicData:(_key:string,_
 import {listAuctions,type CatalogQuery} from '../src/modules/auctions/catalog';
 import {parseBrowseQuery,parseHomeQuery} from '../src/modules/auctions/browse-query';
 import {catalogBatchUrl} from '../src/lib/catalog-query';
+import {homeFilterQuery} from '../src/lib/home-filter-query';
 
 const now=new Date('2026-10-30T12:00:00Z');
 function row(id:string,code:number,featured:boolean,published:string){
@@ -25,6 +26,12 @@ beforeEach(()=>{
 });
 
 describe('Home default featured and newest order',()=>{
+ it('uses identical URL filters for streamed direct links and browser-only navigation',()=>{
+  for(const search of ['','sort=code','sort=ending&category=phones&q=power','sort=bad&category=INVALID','sort=title&search=%20phone%20','q='+('x'.repeat(81)),'sort=fee-low&page=4&status=closed','sort=newest&sort=ending&q=&search=ignored']){
+   const params=new URLSearchParams(search),values:Record<string,string[]>={};params.forEach((_,key)=>values[key]=params.getAll(key));
+   expect(homeFilterQuery(params)).toEqual(parseHomeQuery(values));
+  }
+ });
  it('pins even an older featured auction above every unfeatured one, newest within each group',async()=>{
   const result=await listAuctions(parseHomeQuery({}),now,10);
   expect(result.items.map(item=>item.slug)).toEqual(['featured-new','featured-old','unfeatured-new','tie-high','tie-low','unfeatured-old']);

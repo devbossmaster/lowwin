@@ -4,7 +4,7 @@ import {ImagePlus,Send} from 'lucide-react';
 
 async function command(action:string,input:unknown){
  const response=await fetch('/api/admin/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,input}),cache:'no-store'});
- const body=await response.json();if(!response.ok)throw Error(body.error??'Broadcast could not be queued.');return body;
+ const body=await response.json();if(!response.ok){const reference=typeof body.traceId==='string'&&/^[0-9a-f-]{36}$/i.test(body.traceId)?` Reference: ${body.traceId}`:'';throw Error((body.error??'Broadcast could not be queued.')+reference)}return body;
 }
 export type BroadcastDraft={id:string;text:string;auctionCode:string;imageId:string|null;buttonLabel?:string;miniAppPath?:string};
 const destinations=[['/','Home'],['/auctions/all','Auctions'],['/my-bids','My bids'],['/winners','Winners'],['/profile','Profile']];

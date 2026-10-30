@@ -9,7 +9,6 @@ import {MiniRouteSkeleton} from '@/components/mini-route-skeleton';
 import {useTelegram} from '@/components/telegram-provider';
 import {OfflineRetry} from '@/components/offline-retry';
 import {WalletTopUpTrigger} from '@/components/wallet-top-up-trigger';
-import {ChapaPaymentHistory} from '@/components/chapa-payment-history';
 import {useMiniLocale} from '@/components/mini-locale';
 import {centsToEtb,etbToCents} from '@/lib/money';
 import type {getPlayerProfile} from '@/modules/profile/personal';
@@ -96,7 +95,6 @@ function PlayerProfile(){
         <WalletTopUpTrigger className={styles.topUp} ariaLabel={text('Top up wallet','ወደ ዋሌት ገንዘብ ያስገቡ')}><Plus size={19} aria-hidden="true"/>{text('Top up','ገንዘብ ያስገቡ')}</WalletTopUpTrigger>
         {wallet.error&&<p className={styles.walletError} role="status">{text(wallet.data?'Showing your saved balance.':'Balance unavailable.',wallet.data?'የተቀመጠው ቀሪ ሂሳብ ይታያል።':'ቀሪ ሂሳቡ አይገኝም።')} <button type="button" onClick={wallet.reload}>{text('Retry','እንደገና')}</button></p>}
       </section>
-      <ChapaPaymentHistory/>
       <div className={styles.summary} aria-label={text('Your activity','የእርስዎ እንቅስቃሴ')}>
         <div><span><Gift size={13} aria-hidden="true"/>{text('Available discounts','ያሉ ቅናሾች')}</span><strong className={styles.goldNumber}>{available??'—'}</strong></div>
         <div><span><Ticket size={13} aria-hidden="true"/>{text('Total bids','ጠቅላላ ጨረታዎች')}</span><strong>{data.counts.bids}</strong></div>

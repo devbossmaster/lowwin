@@ -39,6 +39,14 @@ describe('automatic server-owned Chapa verification',()=>{
   await vi.advanceTimersByTimeAsync(1);expect(verify).toHaveBeenCalledTimes(2);
   await vi.advanceTimersByTimeAsync(60000);expect(verify).toHaveBeenCalledTimes(2);stop();
  });
+ it('observes a server-confirmed bid on the five-second status hint rather than the provider cooldown',async()=>{
+  vi.useFakeTimers();const waiting={...pending,purpose:'BID',pollAfterMs:5000} as ChapaCheckoutView;
+  const verify=vi.fn().mockResolvedValueOnce(waiting).mockResolvedValueOnce({...waiting,status:'BID_ACCEPTED',receipt:{bid:{id:'accepted-on-server'}}});
+  const stop=startChapaPolling(verify,vi.fn(),visibility());
+  await vi.advanceTimersByTimeAsync(4999);expect(verify).toHaveBeenCalledOnce();
+  await vi.advanceTimersByTimeAsync(1);expect(verify).toHaveBeenCalledTimes(2);
+  await vi.advanceTimersByTimeAsync(60000);expect(verify).toHaveBeenCalledTimes(2);stop();
+ });
  it('waits while hidden and resumes without overlapping verification calls',async()=>{
   vi.useFakeTimers();const source=visibility();source.visibilityState='hidden';
   let resolve!:(order:ChapaCheckoutView)=>void;const verify=vi.fn(()=>new Promise<ChapaCheckoutView>(r=>{resolve=r}));

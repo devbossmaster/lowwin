@@ -4,7 +4,7 @@ import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
 import {afterEach,describe,expect,it,vi} from 'vitest';
 
 const state=vi.hoisted(()=>({path:'/profile'}));
-vi.mock('next/navigation',()=>({usePathname:()=>state.path,useRouter:()=>({refresh:vi.fn()})}));
+vi.mock('next/navigation',()=>({usePathname:()=>state.path,useSearchParams:()=>new URLSearchParams(),useRouter:()=>({refresh:vi.fn()})}));
 vi.mock('../src/components/telegram-provider',()=>({useTelegram:()=>({status:'authenticated',queryIdentity:'fixture'})}));
 vi.mock('../src/components/identity-state',()=>({IdentityState:()=> 'Account verification required.'}));
 vi.mock('../src/components/mini-header',()=>({MiniHeader:()=>createElement('header',null,'Home header')}));

@@ -3,6 +3,28 @@ import {randomUUID} from 'node:crypto';
 import {mkdirSync,writeFileSync} from 'node:fs';
 import {fixture,pending} from './fixtures';
 
+test('Home category and sort controls update only the auction section and support browser history',async({page})=>{
+ const f=await fixture(page,false),marker=randomUUID();
+ try{
+  await page.goto('/telegram?next='+encodeURIComponent(f.home));
+  await expect(page.locator('.auction-card').filter({hasText:f.title})).toBeVisible();
+  const header=page.locator('.home-header-slot');await expect(header).toBeVisible();
+  await header.evaluate((element,value)=>element.setAttribute('data-preserved-home',value),marker);
+  await page.evaluate(value=>Reflect.set(window,'homeFilterSentinel',value),marker);
+  const categoryRecord=await f.db.category.findUniqueOrThrow({where:{id:f.auction.categoryId!}});
+  const categories=page.getByRole('navigation',{name:'Auction categories'}),category=categories.locator(`a[href*="category=${categoryRecord.slug}"]`),categoryHref=await category.getAttribute('href');
+  expect(categoryHref).toContain('category=');
+  const requests:string[]=[];page.on('request',request=>{if(request.isNavigationRequest()&&request.resourceType()==='document'||new URL(request.url()).searchParams.has('_rsc'))requests.push(request.url())});
+  await category.click();await expect(page).toHaveURL(new RegExp('category='));await expect(category).toHaveAttribute('aria-current','page');
+  await expect(page.locator('.auction-card').filter({hasText:f.title})).toBeVisible();
+  const sorts=page.getByRole('navigation',{name:'Auction sorting'});await sorts.getByRole('link',{name:'Ends soon',exact:true}).click();
+  await expect(page).toHaveURL(/sort=ending/);await expect(sorts.getByRole('link',{name:'Ends soon',exact:true})).toHaveAttribute('aria-current','page');
+  await expect(header).toHaveAttribute('data-preserved-home',marker);expect(await page.evaluate(()=>Reflect.get(window,'homeFilterSentinel'))).toBe(marker);expect(requests).toEqual([]);
+  await page.goBack();await expect(sorts.getByRole('link',{name:'Default',exact:true})).toHaveAttribute('aria-current','page');
+  await expect(category).toHaveAttribute('aria-current','page');await expect(header).toHaveAttribute('data-preserved-home',marker);expect(requests).toEqual([]);
+ }finally{await f.db.$disconnect()}
+});
+
 test('live Home countdown stays running through initial query hydration and reopening',async({page})=>{
  const f=await fixture(page,false);
  try{

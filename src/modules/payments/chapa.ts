@@ -32,6 +32,8 @@ const json=(value:unknown)=>JSON.parse(JSON.stringify(value)) as Prisma.InputJso
 const paid=(order:ChapaCheckout)=>order.creditJournalId!==null;
 const publicInitializationCodes=new Set(['INVALID_FORMAT','INVALID_VALUE','MISSING_REQUIRED_FIELD','INVALID_STATE','NOT_FOUND','PROCESSING_FAILED','UNAUTHORIZED','FORBIDDEN','RATE_LIMITED','HTTP_ERROR']);
 const after=(ms:number)=>new Date(Date.now()+ms);
+// Observe committed webhook results separately from the provider retry schedule.
+const STATUS_REFRESH_MS=5000;
 
 export function walletBidsEnabled(raw:Record<string,string|undefined>=process.env){
  if(raw.WALLET_BIDS_ENABLED!=='true'||raw.DEV_IDENTITY_ENABLED==='true'||raw.STAGING_DEMO_ENABLED==='true')return false;
@@ -41,7 +43,7 @@ export function publicChapaAvailability(){const value=chapaAvailability();void c
 const context={auction:{select:{publicCode:true,status:true,endsAt:true,product:{select:{title:true,titleAm:true}}}}} satisfies Prisma.ChapaCheckoutInclude;
 type OrderContext={auction?:{publicCode:number;status:string;endsAt:Date|null;product:{title:string;titleAm:string|null}|null}|null};
 export function ownChapaCheckout(order:ChapaCheckout&OrderContext){
- return {id:order.id,purpose:order.purpose,mode:order.mode,amount:centsToEtb(order.amountCents),amountCents:order.amountCents.toString(),currency:order.currency,status:order.status,reason:order.reason,providerStatus:order.providerStatus??(paid(order)?'SUCCESS':null),verificationState:order.verificationState,initializationErrorCode:order.initializationErrorCode?(publicInitializationCodes.has(order.initializationErrorCode)?order.initializationErrorCode:'PROVIDER_ERROR'):null,initializationHttpStatus:order.initializationHttpStatus,merchantReference:order.merchantReference,paymentMethod:order.paymentMethod,auctionTitle:order.auction?.product?.title??null,auctionTitleAm:order.auction?.product?.titleAm??null,auctionCode:order.auction?.publicCode?.toString()??null,auctionStatus:order.auction?.status??null,auctionEndsAt:order.auction?.endsAt?.toISOString()??null,checkoutUrl:order.checkoutUrl,auctionSlug:order.auctionSlug,bidNumber:order.bidNumber?.toString()??null,feeVersion:order.feeVersion,grossFee:order.grossFee?.toString()??null,discountPoints:order.discountPoints.toString(),createdAt:order.createdAt.toISOString(),expiresAt:order.expiresAt.toISOString(),pollAfterMs:Math.max(5000,order.nextCheckAt.getTime()-Date.now()),fundsPreserved:paid(order)&&order.status==='NEEDS_REVIEW',receipt:order.receipt};
+ return {id:order.id,purpose:order.purpose,mode:order.mode,amount:centsToEtb(order.amountCents),amountCents:order.amountCents.toString(),currency:order.currency,status:order.status,reason:order.reason,providerStatus:order.providerStatus??(paid(order)?'SUCCESS':null),verificationState:order.verificationState,initializationErrorCode:order.initializationErrorCode?(publicInitializationCodes.has(order.initializationErrorCode)?order.initializationErrorCode:'PROVIDER_ERROR'):null,initializationHttpStatus:order.initializationHttpStatus,merchantReference:order.merchantReference,paymentMethod:order.paymentMethod,auctionTitle:order.auction?.product?.title??null,auctionTitleAm:order.auction?.product?.titleAm??null,auctionCode:order.auction?.publicCode?.toString()??null,auctionStatus:order.auction?.status??null,auctionEndsAt:order.auction?.endsAt?.toISOString()??null,checkoutUrl:order.checkoutUrl,auctionSlug:order.auctionSlug,bidNumber:order.bidNumber?.toString()??null,feeVersion:order.feeVersion,grossFee:order.grossFee?.toString()??null,discountPoints:order.discountPoints.toString(),createdAt:order.createdAt.toISOString(),expiresAt:order.expiresAt.toISOString(),pollAfterMs:STATUS_REFRESH_MS,fundsPreserved:paid(order)&&order.status==='NEEDS_REVIEW',receipt:order.receipt};
 }
 async function eligible(tx:Tx,userId:string){
  const [row]=await tx.$queryRaw<{telegramId:string|null;contactTelegramId:string|null;botId:string|null;phoneCipher:string|null;revokedAt:Date|null;staffId:string|null;suspended:boolean}[]>`SELECT u."telegramId",c."telegramId" AS "contactTelegramId",c."botId",c."phoneCipher",c."revokedAt",s."userId" AS "staffId",COALESCE(r.suspended,false) AS suspended FROM "user" u LEFT JOIN "TelegramOwnContact" c ON c."userId"=u.id LEFT JOIN "StaffMember" s ON s."userId"=u.id LEFT JOIN "UserRestriction" r ON r."userId"=u.id WHERE u.id=${userId}`;
@@ -151,6 +153,11 @@ export async function verifyChapaCheckout(client:PrismaClient,id:string,userId?:
  if(paid(snapshot))return ownChapaCheckout(snapshot);
  const recoveryBinding=sameConfiguration(snapshot)?null:await approvedRecoveryBinding(client,snapshot);
  if(!sameConfiguration(snapshot)&&!recoveryBinding)throw new ChapaError(503,'CONFIGURATION_CHANGED','This payment needs its original Chapa configuration or a reviewed recovery authorization. Keep its payment ID.');
+ const now=Date.now();
+ // Ownership was checked by the authenticated read above. During cooldown this
+ // is a status read only: no lease write, provider call or money mutation. The
+ // later financial transaction still reauthorizes before applying any payment.
+ if(snapshot.leaseUntil&&snapshot.leaseUntil.getTime()>now||!eventCheck&&snapshot.nextCheckAt.getTime()>now)return ownChapaCheckout(snapshot);
  const acquired=await measureChapa('database',()=>client.$transaction(async tx=>{if(reauthorize)await reauthorize(tx);return tx.chapaCheckout.updateMany({where:{id,creditJournalId:null,...(eventCheck?{}:{nextCheckAt:{lte:new Date()}}),OR:[{leaseUntil:null},{leaseUntil:{lte:new Date()}}]},data:{leaseUntil:after(20000),nextCheckAt:after(20000),attempts:{increment:1}}})},PAYMENT_TRANSACTION_OPTIONS));
  if(!acquired.count)return ownChapaCheckout(await measureChapa('database',()=>client.chapaCheckout.findUniqueOrThrow({where:{id}})));
  let raw:unknown;try{raw=await measureChapa('verify',()=>transport.lookup(snapshot.merchantReference))}catch{
