@@ -6,6 +6,8 @@ The entry form uses **Your bid amount**, a compact owned wallet balance, remaini
 
 Typing and pasting cannot add a third decimal place, signs, exponent notation or letters to the bid amount. Rejected edits preserve the previous amount instead of silently rounding a financial instruction. Empty and partial decimal input remain editable; the existing server validation remains authoritative.
 
+The Home wallet capsule retains its compact normal balance layout. Longer amounts place the currency below the number to avoid clipping the tested four-digit balances while retaining the full accessible amount and 44px actions.
+
 Applying a coupon only requests the existing owned discount quote. A coupon is consumed atomically after an accepted bid, not by Apply, failed payment, a retry or viewing checkout. Counts exclude expired and redeemed coupons and remain valid for previously earned coupons when new referral awards are paused. The current rules already allow 1.01, 1.02 and 1.03, reject 1.04 completing a four-cent run, and allow 1.05 when 1.04 is absent. Both server and database protections remain in force.
 
 Wallet submission shows a spinner beside **Submitting**, disables repeated submission and keeps its original idempotency key. Existing complete wallets avoid two account-initialization upserts; the route's redundant auction read is replaced by the same restriction on the locked auction row. Missing/incomplete wallets retain the initialization fallback. Authorization, auction/wallet/hold locks, frozen fee checks, duplicate checks and balanced ledger commit remain authoritative. The route exposes authentication and checkout durations in `Server-Timing`; no production latency or throughput improvement is claimed from local tests.

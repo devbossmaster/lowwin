@@ -7,6 +7,7 @@ import {bidAuction} from '../bid-fixtures';
 import {verifyFixtureContact} from '../contact-fixtures';
 import {signedLaunch} from '../helpers';
 import {reconcile} from '../../src/modules/wallet/ledger';
+import {formatEtb} from '../../src/lib/money';
 
 test('homepage, final results, nested Back, live batches and Winners navigation',async({page},info)=>{
  page.setDefaultTimeout(30000);const db=new PrismaClient({datasourceUrl:process.env.TEST_DATABASE_URL});
@@ -36,7 +37,8 @@ test('homepage, final results, nested Back, live batches and Winners navigation'
   const categoryBeforeSort=new URL(page.url()).searchParams.get('category');await sortLinks.last().click();await expect(page).toHaveURL(/sort=fee-high/);await expect(sortLinks.last()).toHaveAttribute('aria-current','page');await expect(sortLinks.last()).toBeInViewport({ratio:1});expect(new URL(page.url()).searchParams.get('q')).toBe(marker);expect(new URL(page.url()).searchParams.get('category')).toBe(categoryBeforeSort);
   await sortLinks.first().click();await expect(sortLinks.first()).toHaveAttribute('aria-current','page');await expect(cards).toHaveCount(10);
   const firstCard=cards.first(),art=await firstCard.locator('.auction-card-art').boundingBox();expect(art!.width/art!.height).toBeCloseTo(2.3,1);await expect(firstCard.locator('.auction-card-win')).toHaveText('Win');
-  const bidAction=firstCard.getByRole('button',{name:'Pay ETB 1.00 & bid',exact:true});expect((await bidAction.boundingBox())!.height).toBeGreaterThanOrEqual(46);await bidAction.click();await expect(page.getByRole('dialog')).toBeVisible();await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);
+  const firstTitle=(await firstCard.locator('h3').innerText()).trim(),firstIndex=Number(firstTitle.slice(`${marker} item `.length));expect(Number.isInteger(firstIndex)).toBe(true);expect(firstIndex).toBeGreaterThanOrEqual(1);expect(firstIndex).toBeLessThanOrEqual(12);expect(firstTitle).toBe(`${marker} item ${firstIndex}`);
+  const bidAction=firstCard.getByRole('button',{name:`Pay ${formatEtb(String(firstIndex))} & bid`,exact:true});expect((await bidAction.boundingBox())!.height).toBeGreaterThanOrEqual(46);await bidAction.click();await expect(page.getByRole('dialog')).toBeVisible();await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);
   const selection=await page.locator('#recent-winners,nav[aria-label="Auction categories"],#discover-auctions,#how-lowwin-works').evaluateAll(nodes=>nodes.map(node=>node.id||node.getAttribute('aria-label')));expect(selection).toEqual(['Auction categories','discover-auctions','recent-winners','how-lowwin-works']);
   await page.getByRole('button',{name:'Load more',exact:true}).click();await expect(cards).toHaveCount(12);expect(new Set(await cards.locator('h3').allTextContents()).size).toBe(12);
   await page.getByRole('navigation',{name:'Auction sorting'}).getByRole('link',{name:'Lowest fee',exact:true}).click();await expect(cards).toHaveCount(10);await expect(page).toHaveURL(/sort=fee-low/);expect(new URL(page.url()).searchParams.get('q')).toBe(marker);
