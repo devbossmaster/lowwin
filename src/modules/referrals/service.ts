@@ -18,6 +18,17 @@ export async function getReferralPolicy(client:DB,raw:Record<string,string|undef
  return policy?{configured:true,enabled:policy.enabled,discountPercent:policy.discountPercent,expiryDays:policy.expiryDays,version:policy.version,updatedAt:policy.updatedAt.toISOString()}:{...draftPolicy};
 }
 async function databaseNow(tx:DB){return (await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AT TIME ZONE 'UTC' AS now`)[0].now}
+/** Exact private count, independent of the bounded coupon-picker page. Pausing
+ * new rewards does not invalidate an already earned, unused coupon. */
+export async function availableReferralCouponCount(client:DB,userId:string,now:Date,raw:Record<string,string|undefined>=process.env):Promise<number|null>{
+ if(!referralSchemaReady(raw))return null;
+ const rows=await client.$queryRaw<Array<{count:number}>>`
+  SELECT count(c.id)::int AS count FROM "ReferralPolicy" p
+  LEFT JOIN "ReferralCoupon" c ON c."ownerUserId"=${userId} AND c."expiresAt">${now}
+   AND NOT EXISTS(SELECT 1 FROM "ReferralRedemption" r WHERE r."couponId"=c.id)
+  WHERE p.id='default' GROUP BY p.id`;
+ return rows[0]?.count??null;
+}
 function referralToken(payload:string|undefined|null){return typeof payload==='string'?/^ref_([A-Za-z0-9_-]{12})$/.exec(payload)?.[1]??null:null}
 async function eligibleSponsor(tx:DB,userId:string){const user=await tx.user.findUnique({where:{id:userId},select:{telegramId:true}});return !!user?.telegramId&&!userId.startsWith('demo-showcase-')&&!await tx.testRunActor.findFirst({where:{userId}})&&!await tx.staffMember.findUnique({where:{userId}})&&!await tx.userRestriction.findFirst({where:{userId,suspended:true}})}
 function emptyOverview(){return {configured:false,enabled:false,shareUrl:null as string|null,discountPercent:null as number|null,expiryDays:null as number|null,counts:{signedUp:0,qualified:0,earned:0,available:0},coupons:[] as Array<{id:string;percent:number;expiresAt:string;status:'AVAILABLE'|'USED'|'EXPIRED'}>}}

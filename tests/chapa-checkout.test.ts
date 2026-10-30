@@ -90,6 +90,17 @@ describe.skipIf(!database)('Chapa v2 hosted payments on disposable PostgreSQL',(
  it('does not confuse operation success with successful payment or credit unsuccessful states',async()=>{
   for(const status of ['PENDING','AUTH_NEEDED','FAILED','CANCELLED','INCOMPLETE','BLOCKED']){const f=await payment(),order=await f.start();f.setStatus(status);const result=await f.verify(order.id);expect(result.status).toBe(status);expect(await balance(f.userId)).toBe('0');expect(await db.operation.count({where:{userId:f.userId,scope:'CHAPA_RECEIPT'}})).toBe(0);expect(await db.outbox.count({where:{key:`chapa:${order.id}:telegram-confirmed`}})).toBe(0)}
  });
+ it('stores only an allowlisted reason after exact verification without changing funds',async()=>{
+  const f=await payment(),order=await f.start();f.setStatus('FAILED');f.setMutation(row=>({...row,reason:'INSUFFICIENT_BALANCE'}));
+  expect(await f.verify(order.id)).toMatchObject({status:'FAILED',providerStatus:'FAILED',verificationState:'VERIFIED',providerReasonCode:'INSUFFICIENT_FUNDS'});
+  expect((await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}})).reason).toBe('CHAPA_INSUFFICIENT_FUNDS');expect(await balance(f.userId)).toBe('0');
+ });
+ it('does not store a failure reason from pending or mismatched evidence and still accepts a later success once',async()=>{
+  const f=await payment(),order=await f.start();f.setStatus('PENDING');f.setMutation(row=>({...row,reason:'INVALID_PIN'}));
+  expect(await f.verify(order.id)).toMatchObject({status:'PENDING',providerReasonCode:null});expect(await balance(f.userId)).toBe('0');
+  f.setStatus('FAILED');f.setMutation(row=>({...row,amount:999,reason:'INVALID_PIN'}));expect(await f.verify(order.id)).toMatchObject({status:'NEEDS_REVIEW',reason:'EVIDENCE_MISMATCH',providerReasonCode:null});expect(await balance(f.userId)).toBe('0');
+  f.setStatus('SUCCESS');f.setMutation(row=>({...row,reason:'INVALID_PIN'}));expect(await f.verify(order.id)).toMatchObject({status:'CREDITED',providerReasonCode:null});await f.verify(order.id);expect(await balance(f.userId)).toBe('10');expect(await db.operation.count({where:{userId:f.userId,scope:'CHAPA_RECEIPT'}})).toBe(1);
+ });
  it('credits exact verified cents once with one balanced journal and one private alert',async()=>{
   const f=await payment({amount:'25.50',initialBalance:'7'}),order=await f.start();await due(order.id);await Promise.all([verifyChapaCheckout(db,order.id,f.userId,undefined,f.transport),verifyChapaCheckout(db,order.id,f.userId,undefined,f.transport)]);
   expect((await getChapaCheckout(db,f.userId,order.id)).status).toBe('CREDITED');expect(await balance(f.userId)).toBe('32.5');expect(f.lookup).toHaveBeenCalledTimes(1);await f.verify(order.id);expect(f.lookup).toHaveBeenCalledTimes(1);

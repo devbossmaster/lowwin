@@ -1,9 +1,9 @@
 import {afterAll,beforeAll,describe,expect,it} from 'vitest';
-import {PrismaClient} from '@prisma/client';
+import {Prisma,PrismaClient} from '@prisma/client';
 import {execFileSync} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {bidAuction,bidUser} from './bid-fixtures';
-import {submitBid,submitBidInTransaction} from '../src/modules/auctions/bids';
+import {getOwnBidState,submitBid,submitBidInTransaction} from '../src/modules/auctions/bids';
 import {cancelAuction,closeAuction} from '../src/modules/auctions/settlement';
 import {getWalletView} from '../src/modules/wallet/view';
 import {reconcile} from '../src/modules/wallet/ledger';
@@ -12,11 +12,11 @@ import {adoptSubmissionFee} from '../src/modules/auctions/adopt-submission-fee';
 
 const url=process.env.BID_TEST_DATABASE_URL;
 describe.skipIf(!url)('submission-fee-only bidding on disposable PostgreSQL',()=>{
- let db:PrismaClient;
+ let db:PrismaClient<Prisma.PrismaClientOptions,'query'>;const queries:Array<{query:string;params:string}>=[];
  beforeAll(()=>{
   const u=new URL(url!);if(!['127.0.0.1','localhost'].includes(u.hostname)||!u.pathname.endsWith('_test'))throw Error('Disposable loopback database required');
   Object.assign(process.env,{DATABASE_URL:url,DIRECT_URL:url,NODE_ENV:'test',APP_ENV:'local',DEV_POINTS_ENABLED:'true'});
-  execFileSync(process.execPath,['node_modules/prisma/build/index.js','migrate','deploy'],{env:process.env,stdio:'pipe'});db=new PrismaClient();
+  execFileSync(process.execPath,['node_modules/prisma/build/index.js','migrate','deploy'],{env:process.env,stdio:'pipe'});db=new PrismaClient({log:[{level:'query',emit:'event'}]});db.$on('query',event=>queries.push(event));
  },60000);
  afterAll(async()=>{await db?.$disconnect()});
  const auction=(fee=30,endDelayMs=60000)=>bidAuction(db,{ruleVersion:'lowest-unique-v4',fee,endDelayMs});
@@ -38,6 +38,36 @@ describe.skipIf(!url)('submission-fee-only bidding on disposable PostgreSQL',()=
   await expect(submitBid(db,{userId:u,auctionSlug:a.slug!,amount:'3.60',key:randomUUID()})).rejects.toMatchObject({code:'RETRYABLE_CONFLICT'});
   for(const n of ['0.99','1.001'])await expect(bid(u,a.slug!,n)).rejects.toThrow();
   expect(await balance(u)).toEqual({available:'29.99',held:'0'});expect(await db.bid.count({where:{auctionId:a.id}})).toBe(0);
+ });
+ it('uses existing accounts without repeating account-name initialization reads, while retaining its hold-state lock',async()=>{
+  const a=await auction(2),u=await bidUser(db,'10');queries.length=0;
+  const receipt=await bid(u,a.slug!,'1.01');
+  expect(queries.some(row=>row.query.includes('lock_wallet_hold_state'))).toBe(true);
+  expect(queries.filter(row=>row.query.includes('"LedgerAccount"')&&row.params.includes(`user:${u}:`))).toEqual([]);
+  expect(receipt.wallet).toEqual({available:'8',held:'0'});expect(await reconcile(db)).toEqual([]);
+ });
+ it('initializes a missing or incomplete wallet before accepting a zero-fee bid',async()=>{
+  const a=await auction(0);
+  for(const incomplete of [false,true]){
+   const u=await bidUser(db,'0');if(incomplete)await db.wallet.create({data:{userId:u}});
+   expect((await bid(u,a.slug!,'1.05')).wallet).toEqual({available:'0',held:'0'});
+   expect(await db.ledgerAccount.count({where:{wallet:{userId:u},kind:{in:['AVAILABLE','HELD']}}})).toBe(2);
+  }
+  expect(await reconcile(db)).toEqual([]);
+ });
+ it('rejects legacy wallet submissions before replay or a new debit',async()=>{
+  const a=await bidAuction(db,{fee:2}),u=await bidUser(db,'100'),input={userId:u,auctionSlug:a.slug!,amount:'1',key:randomUUID(),feeVersion:1};
+  await submitBid(db,input);const before=await balance(u);
+  for(const key of [input.key,randomUUID()])await expect(db.$transaction(tx=>submitBidInTransaction(tx,{...input,key},process.env,{submissionFeeOnly:true}))).rejects.toMatchObject({code:'AUCTION_CLOSED'});
+  expect(await balance(u)).toEqual(before);expect(await db.bid.count({where:{auctionId:a.id,userId:u}})).toBe(1);expect(await reconcile(db)).toEqual([]);
+ });
+ it('accepts three adjacent cent numbers, rejects the fourth without charge, and allows the next gap',async()=>{
+  const a=await auction(1),u=await bidUser(db,'10');
+  for(const number of ['1.01','1.02','1.03'])await bid(u,a.slug!,number);
+  await expect(bid(u,a.slug!,'1.04')).rejects.toMatchObject({code:'CONSECUTIVE_LIMIT'});
+  expect(await balance(u)).toEqual({available:'7',held:'0'});await bid(u,a.slug!,'1.05');
+  expect((await getOwnBidState(db,u,a.slug!)).ownBids.map(row=>row.amount)).toEqual(['1.01','1.02','1.03','1.05']);
+  expect(await balance(u)).toEqual({available:'6',held:'0'});expect(await reconcile(db)).toEqual([]);
  });
  it('allows large chosen numbers with a small fee and rejects own duplicates',async()=>{
   const a=await auction(2.5),u=await bidUser(db,'5');await bid(u,a.slug!,'99999999.99');

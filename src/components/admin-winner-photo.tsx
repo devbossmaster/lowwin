@@ -2,6 +2,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {ImagePlus,RotateCcw} from 'lucide-react';
 import {ErrorNotice,useAdminMutation} from './admin-ui';
+import {WINNER_IMAGE_HEIGHT,WINNER_IMAGE_WIDTH} from '@/lib/winner-image';
 import styles from './admin-winner-photo.module.css';
 
 export type WinnerPhotoRecord={auctionId:string;winnerPhotoPath?:string|null;winnerPhotoId?:string|null;winnerPhotoVersion?:number};
@@ -28,9 +29,10 @@ export default function AdminWinnerPhoto({winner,onSaved}:{winner:WinnerPhotoRec
  return <section className={styles.panel} aria-labelledby="winner-photo-heading">
   <h3 id="winner-photo-heading">Winner photo</h3>
   <p>The result banner uses the product image until you add a photo. You can save a photo before publishing the result. The calculated winner stays unchanged.</p>
-  {(preview||winner.winnerPhotoPath)&&<img className={styles.preview} src={preview??winner.winnerPhotoPath!} alt={preview?'Selected winner photo preview':'Published winner photo'}/>}
+  <p id="winner-photo-crop-help">Use a {WINNER_IMAGE_WIDTH} × {WINNER_IMAGE_HEIGHT} landscape image (2.3:1). New photos are center-cropped without stretching. Keep the face in the center and check the right-hand photo area below before saving.</p>
+  {(preview||winner.winnerPhotoPath)&&<figure className={styles.previewFigure}><div className={styles.preview} data-winner-crop-preview><div className={styles.previewCopy} aria-hidden="true"><span>Winner</span><strong>Result details</strong></div><div className={styles.previewPhoto}><div className={preview?styles.canonicalCrop:undefined}><img src={preview??winner.winnerPhotoPath!} width={WINNER_IMAGE_WIDTH} height={WINNER_IMAGE_HEIGHT} alt={preview?'Selected winner photo banner crop':'Saved winner photo banner crop'}/></div></div></div><figcaption>Banner preview · result details stay on the left; the photograph stays on the right.</figcaption></figure>}
   <form className="admin-form" onSubmit={event=>{event.preventDefault();void save()}}>
-   <label>Choose winner photo<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={event=>{setFile(event.currentTarget.files?.[0]??null);setImageId(null);setConsent(false);setError('');mutation.clear()}}/><small>JPEG, PNG or WebP · up to 2 MiB. Leave space around the person.</small></label>
+   <label>Choose winner photo<input type="file" accept="image/jpeg,image/png,image/webp" aria-describedby="winner-photo-crop-help" disabled={busy} onChange={event=>{setFile(event.currentTarget.files?.[0]??null);setImageId(null);setConsent(false);setError('');mutation.clear()}}/><small>JPEG, PNG or WebP · up to 2 MiB · saved as a {WINNER_IMAGE_WIDTH} × {WINNER_IMAGE_HEIGHT} PNG.</small></label>
    {file&&<><label className="admin-check"><input type="checkbox" checked={consent} disabled={busy} onChange={event=>setConsent(event.currentTarget.checked)}/>The winner agreed to publish this photo, and I have permission to use it.</label><label>Update note<input value={reason} onChange={event=>setReason(event.currentTarget.value)} disabled={busy} minLength={5} maxLength={500} required placeholder="Prize handover photo"/></label><button disabled={busy||!consent||reason.trim().length<5}><ImagePlus size={16}/>{busy?'Saving photo…':winner.winnerPhotoId?'Replace winner photo':'Save winner photo'}</button></>}
   </form>
   {winner.winnerPhotoId&&<button type="button" className="secondary" disabled={busy} onClick={()=>void save(true)}><RotateCcw size={16}/>{busy?'Saving…':'Use product image again'}</button>}

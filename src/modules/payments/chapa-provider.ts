@@ -1,5 +1,6 @@
 import {createHash,createHmac,timingSafeEqual} from 'node:crypto';
 import {z} from 'zod';
+import {chapaReasonStatuses,safeChapaPaymentReason,type ChapaPaymentReasonCode} from '@/lib/chapa-payment-reason';
 
 // Chapa v2 uses one API origin for test and live; the private key selects the
 // environment. This is deliberately not a caller-controlled fetch destination.
@@ -56,8 +57,8 @@ const verificationPhone=z.union([z.string().max(40),z.number().int().nonnegative
 const verificationCustomerSchema=z.object({first_name:optionalCustomerText(120),last_name:optionalCustomerText(120),email:optionalCustomerText(254),phone_number:verificationPhone});
 const metadata=z.record(z.string().max(80),z.unknown());
 const paymentStatus=z.enum(['SUCCESS','PENDING','FAILED','CANCELLED','INCOMPLETE','BLOCKED','AUTH_NEEDED']);
-const verification=z.object({status:z.literal('success'),data:z.object({chapa_reference:reference.nullish(),merchant_reference:merchantReference,amount:cents,currency:z.string().regex(/^[A-Z]{3}$/),status:paymentStatus,payment_method:z.string().max(80).optional(),processor_reference:z.string().max(256).nullish(),service_fee:cents.optional(),customer:verificationCustomerSchema.optional(),meta:metadata.nullish(),mode:z.enum(['test','live']).optional(),created_at:instant.optional(),updated_at:instant.optional()})});
-export type ChapaEvidence={chapaReference:string|null;merchantReference:string;amountCents:string;currency:string;status:z.infer<typeof paymentStatus>;paymentMethod?:string;processorReference?:string;serviceFeeCents?:string;customer?:z.infer<typeof customerSchema>;meta?:Record<string,unknown>;mode?:ChapaMode;createdAt?:Date;updatedAt?:Date;hash:string};
+const verification=z.object({status:z.literal('success'),data:z.object({chapa_reference:reference.nullish(),merchant_reference:merchantReference,amount:cents,currency:z.string().regex(/^[A-Z]{3}$/),status:paymentStatus,reason:z.unknown().optional(),payment_method:z.string().max(80).optional(),processor_reference:z.string().max(256).nullish(),service_fee:cents.optional(),customer:verificationCustomerSchema.optional(),meta:metadata.nullish(),mode:z.enum(['test','live']).optional(),created_at:instant.optional(),updated_at:instant.optional()})});
+export type ChapaEvidence={chapaReference:string|null;merchantReference:string;amountCents:string;currency:string;status:z.infer<typeof paymentStatus>;reasonCode?:ChapaPaymentReasonCode;paymentMethod?:string;processorReference?:string;serviceFeeCents?:string;customer?:z.infer<typeof customerSchema>;meta?:Record<string,unknown>;mode?:ChapaMode;createdAt?:Date;updatedAt?:Date;hash:string};
 /** Operation-level success is not payment success. The caller must require
  * status SUCCESS and match its persisted mode/key/reference/amount/currency. */
 export function parseChapaEvidence(raw:unknown):ChapaEvidence|null{
@@ -65,7 +66,7 @@ export function parseChapaEvidence(raw:unknown):ChapaEvidence|null{
  // TEST verification can omit a processor reference, and unfinished checkouts
  // have no payment reference yet. SUCCESS always requires the final reference.
  if(d.status==='SUCCESS'&&!d.chapa_reference)return null;
- return {chapaReference:d.chapa_reference??null,merchantReference:d.merchant_reference,amountCents:String(d.amount),currency:d.currency,status:d.status,paymentMethod:d.payment_method,processorReference:d.processor_reference||undefined,serviceFeeCents:d.service_fee===undefined?undefined:String(d.service_fee),customer:d.customer,meta:d.meta??undefined,mode:d.mode,createdAt:d.created_at?new Date(d.created_at):undefined,updatedAt:d.updated_at?new Date(d.updated_at):undefined,hash:chapaHash(JSON.stringify(raw))};
+ return {chapaReference:d.chapa_reference??null,merchantReference:d.merchant_reference,amountCents:String(d.amount),currency:d.currency,status:d.status,reasonCode:chapaReasonStatuses.has(d.status)?safeChapaPaymentReason(d.reason)??undefined:undefined,paymentMethod:d.payment_method,processorReference:d.processor_reference||undefined,serviceFeeCents:d.service_fee===undefined?undefined:String(d.service_fee),customer:d.customer,meta:d.meta??undefined,mode:d.mode,createdAt:d.created_at?new Date(d.created_at):undefined,updatedAt:d.updated_at?new Date(d.updated_at):undefined,hash:chapaHash(JSON.stringify(raw))};
 }
 export function safeChapaCheckoutUrl(value:string):{checkoutUrl:string;checkoutReference:string;chapaReference:string|null}|null{
  try{

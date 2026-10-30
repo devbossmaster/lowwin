@@ -10,7 +10,7 @@ import { Prisma, type PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { adjustAuctionHoldInTransaction } from '@/modules/wallet/holds';
 import { ensureWallet, pointsSchema, seedPlatformAccounts } from '@/modules/wallet/ledger';
-import {lockReferralDiscountInTransaction,qualifyReferralInTransaction,redeemReferralInTransaction,referralSchemaReady,ReferralError} from '../referrals/service';
+import {availableReferralCouponCount,lockReferralDiscountInTransaction,qualifyReferralInTransaction,redeemReferralInTransaction,referralSchemaReady,ReferralError} from '../referrals/service';
 
 const bidInputSchema = z.object({
   userId:z.string().min(1).max(128),
@@ -45,7 +45,7 @@ export function demoBidAllowed(raw:Record<string,string|undefined>=process.env) 
       && ['127.0.0.1','localhost','[::1]'].includes(url.hostname) && url.pathname.endsWith('_test');
   } catch {return false;}
 }
-export async function submitBidInTransaction(tx:Prisma.TransactionClient,input:BidInput,raw:Record<string,string|undefined>=process.env):Promise<BidReceipt> {
+export async function submitBidInTransaction(tx:Prisma.TransactionClient,input:BidInput,raw:Record<string,string|undefined>=process.env,options:{submissionFeeOnly?:boolean}={}):Promise<BidReceipt> {
   const command=bidInputSchema.parse(input);
   if(await auctionMaintenance(tx))fail('AUCTIONS_PAUSED',503,'Auctions are temporarily paused for maintenance. Your existing funds and bids are preserved.');
   const {userId,auctionSlug,amount,key,feeVersion,couponId}=command;
@@ -54,8 +54,9 @@ export async function submitBidInTransaction(tx:Prisma.TransactionClient,input:B
   // Global order for writers: auction row -> wallet advisory key -> wallet hold
   // guard/projections. The SQL Bid trigger re-locks the auction row and stamps
   // acceptance time after any wait. Never retry only part of this transaction.
-  const locked=await tx.$queryRaw<{id:string}[]>`SELECT id FROM "Auction" WHERE slug=${auctionSlug} FOR UPDATE`;
+  const locked=await tx.$queryRaw<{id:string;ruleVersion:string|null}[]>`SELECT a.id,t."ruleVersion" FROM "Auction" a LEFT JOIN "AuctionTerms" t ON t."auctionId"=a.id WHERE a.slug=${auctionSlug} FOR UPDATE OF a`;
   if(!locked.length)fail('AUCTION_NOT_FOUND',404,'Auction not found.');
+  if(options.submissionFeeOnly&&!isSubmissionFeeOnly(locked[0].ruleVersion??undefined))fail('AUCTION_CLOSED',409,'This auction keeps its original payment terms.');
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`}, 0))`;
   try{await assertPlayerContact(tx,userId)}catch{fail('CONTACT_REQUIRED',403,'Share your own contact in Telegram before bidding.')}
   const previous=await tx.operation.findUnique({where:{userId_scope_key:{userId,scope:'BID',key}}});
@@ -84,8 +85,17 @@ export async function submitBidInTransaction(tx:Prisma.TransactionClient,input:B
   if(usesDecimalBids(terms.ruleVersion)&&createsFourConsecutiveAmounts(own.map(b=>parseBidCents(b.amount.toString())),parseBidCents(amount.toString())))fail('CONSECUTIVE_LIMIT',422,'Leave a gap after three consecutive numbers separated by 0.01.');
   if(own.length>=terms.maxDistinctBids)fail('CAP_REACHED',409,'You have reached the 100 distinct-bid limit for this auction.');
 
-  const wallet=await ensureWallet(tx,userId);
-  const accounts=await tx.ledgerAccount.findMany({where:{walletId:wallet.id}});
+  // Most bidders already have both accounts. Keep the same hold-state lock,
+  // avoiding account upserts on this path; initialize incomplete wallets using
+  // the original helper before any balance, posting or hold can be changed.
+  let wallet=await tx.wallet.findUnique({where:{userId}});
+  if(wallet)await tx.$executeRaw`SELECT lock_wallet_hold_state(${wallet.id})`;
+  else wallet=await ensureWallet(tx,userId);
+  let accounts=await tx.ledgerAccount.findMany({where:{walletId:wallet.id}});
+  if(!accounts.some(account=>account.kind==='AVAILABLE')||!accounts.some(account=>account.kind==='HELD')){
+    wallet=await ensureWallet(tx,userId);
+    accounts=await tx.ledgerAccount.findMany({where:{walletId:wallet.id}});
+  }
   const available=accounts.find(account=>account.kind==='AVAILABLE')!;
   const held=accounts.find(account=>account.kind==='HELD')!;
   const hold=await tx.auctionHold.findUnique({where:{walletId_auctionId:{walletId:wallet.id,auctionId:auction.id}}});
@@ -153,14 +163,15 @@ export async function getOwnBidState(client:PrismaClient,userId:string,auctionSl
     if(!auction||!auction.publishedAt||!auction.terms)fail('AUCTION_NOT_FOUND',404,'Auction not found.');
     const clock=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AT TIME ZONE 'UTC' AS now`;
     const now=clock[0].now;
-    const [wallet,bids]=await Promise.all([
+    const [wallet,bids,couponAvailableCount]=await Promise.all([
       includeWallet?tx.wallet.findUnique({where:{userId},include:{accounts:true,holds:{where:{auctionId:auction.id}}}}):Promise.resolve(null),
       tx.bid.findMany({where:{userId,auctionId:auction.id},orderBy:[{acceptedAt:'asc'},{id:'asc'}],select:{id:true,amount:true,acceptedAt:true}}),
+      availableReferralCouponCount(tx,userId,now,raw),
     ]);
     const terms=auction.terms,fee=auction.feeRevisions[0],previousMax=wallet?.holds[0]?.points??0n;
     if(!fee)fail('AUCTION_CLOSED',409,'Published auction fee is unavailable.');
     const restricted=!!await tx.staffMember.findUnique({where:{userId}})||(await tx.userRestriction.findUnique({where:{userId}}))?.suspended;
-    return {auctionCode:auction.code,referralDiscountsAvailable:referralSchemaReady(raw),open:!restricted&&['SCHEDULED','LIVE'].includes(auction.status)&&auction.publishedAt<=now&&!!auction.startsAt&&!!auction.endsAt&&auction.startsAt<=now&&now<auction.endsAt&&(!auction.isDemo||demoBidAllowed(raw)||auction.isSettlementFixture&&stagingDemoUser(userId,raw)),
+    return {auctionCode:auction.code,referralDiscountsAvailable:referralSchemaReady(raw),couponAvailableCount,open:!restricted&&['SCHEDULED','LIVE'].includes(auction.status)&&auction.publishedAt<=now&&!!auction.startsAt&&!!auction.endsAt&&auction.startsAt<=now&&now<auction.endsAt&&(!auction.isDemo||demoBidAllowed(raw)||auction.isSettlementFixture&&stagingDemoUser(userId,raw)),
       serverNow:now.toISOString(),isDemo:auction.isDemo,
       terms:{version:fee.version,ruleVersion:terms.ruleVersion,minParticipants:terms.minParticipants,minPoints:terms.minPoints.toString(),maxPoints:terms.maxPoints?.toString()??null,stepPoints:terms.stepPoints.toString(),entryFeePoints:fee.feePoints.toString(),maxDistinctBids:terms.maxDistinctBids},
       wallet:{available:(wallet?.accounts.find(account=>account.kind==='AVAILABLE')?.balance??0n).toString(),held:(wallet?.accounts.find(account=>account.kind==='HELD')?.balance??0n).toString()},

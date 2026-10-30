@@ -5,8 +5,8 @@ import {execFileSync} from 'node:child_process';
 import {randomInt,randomUUID} from 'node:crypto';
 import {mkdirSync,readFileSync,writeFileSync} from 'node:fs';
 import {contactBotId} from '../src/modules/auth/own-contact';
-import {attributeNewReferralInTransaction,getBidDiscountQuote,getReferralOverview,getReferralPolicy,recordBotReferralStart,referralPolicySchema} from '../src/modules/referrals/service';
-import {submitBid,submitBidInTransaction} from '../src/modules/auctions/bids';
+import {attributeNewReferralInTransaction,availableReferralCouponCount,getBidDiscountQuote,getReferralOverview,getReferralPolicy,recordBotReferralStart,referralPolicySchema} from '../src/modules/referrals/service';
+import {getOwnBidState,submitBid,submitBidInTransaction} from '../src/modules/auctions/bids';
 import {creditDevelopmentPoints,reconcile} from '../src/modules/wallet/ledger';
 import {verifyFixtureContact} from './contact-fixtures';
 import {signedLaunch} from './helpers';
@@ -101,7 +101,24 @@ describe.skipIf(!url)('referral rewards on isolated PostgreSQL',()=>{
  it('can quote an owned unspent reward beyond the bounded twenty-item selection list',async()=>{
   const owner=await verifiedReferralUser(db,'Large referral collection fixture');let last='';for(let index=0;index<21;index++)last=(await earnedReferralCoupon(db,owner.id)).coupon.id;
   const auction=await realReferralAuction(db,20),quote=await getBidDiscountQuote(db,owner.id,auction.slug!,last);expect(quote.availableCoupons).toHaveLength(20);expect(quote.availableCoupons.some(c=>c.id===last)).toBe(false);expect(quote.coupon?.id).toBe(last);expect(quote.discountPoints).toBe('2');expect((await getReferralOverview(db,owner.id)).counts.available).toBe(21);expect(await reconcile(db)).toEqual([]);
+  expect((await getOwnBidState(db,owner.id,auction.slug!)).couponAvailableCount).toBe(21);
  },20000);
+ it('counts owned available coupons exactly and consumes one only after a committed bid',async()=>{
+  const owner=await verifiedReferralUser(db),first=await earnedReferralCoupon(db,owner.id);await earnedReferralCoupon(db,owner.id);
+  const auction=await realReferralAuction(db,20),state=()=>getOwnBidState(db,owner.id,auction.slug!,process.env,false);
+  expect((await state()).couponAvailableCount).toBe(2);
+  expect((await getOwnBidState(db,other.id,auction.slug!,process.env,false)).couponAvailableCount).toBe((await getReferralOverview(db,other.id)).counts.available);
+  await getBidDiscountQuote(db,owner.id,auction.slug!,first.coupon.id);expect((await state()).couponAvailableCount).toBe(2);
+  const input={userId:owner.id,auctionSlug:auction.slug!,amount:'61',feeVersion:1,key:randomUUID(),couponId:first.coupon.id};
+  await expect(submitBid(db,input)).rejects.toMatchObject({code:'INSUFFICIENT_POINTS'});expect((await state()).couponAvailableCount).toBe(2);
+  await creditDevelopmentPoints(db,owner.id,'100',`referral-count-${randomUUID()}`);const receipt=await submitBid(db,input);expect((await state()).couponAvailableCount).toBe(1);
+  expect(await submitBid(db,input)).toEqual(receipt);expect((await state()).couponAvailableCount).toBe(1);expect(await db.referralRedemption.count({where:{couponId:first.coupon.id}})).toBe(1);
+  expect((await getOwnBidState(db,owner.id,auction.slug!,{REFERRAL_REWARDS_SCHEMA_READY:'false'},false)).couponAvailableCount).toBeNull();
+  expect(await availableReferralCouponCount(db,owner.id,new Date(Date.now()+31*86400000))).toBe(0);
+  await db.referralPolicy.update({where:{id:'default'},data:{enabled:false,version:{increment:1}}});
+  try{expect((await state()).couponAvailableCount).toBe(1)}finally{await db.referralPolicy.update({where:{id:'default'},data:{enabled:true,version:{increment:1}}})}
+  expect(await reconcile(db)).toEqual([]);
+ });
  it('leaves a real unused preview reward for mobile UI checks and reconciles cleanly',async()=>{
   const preview=await verifiedReferralUser(db,'Referral UI fixture');await creditDevelopmentPoints(db,preview.id,'100',`referral-fixture-${randomUUID()}`);const grant=await earnedReferralCoupon(db,preview.id),auction=await realReferralAuction(db,20);
   mkdirSync('.local',{recursive:true});writeFileSync('.local/referral-preview-fixture.json',JSON.stringify({userId:preview.id,telegramId:preview.telegramId,couponId:grant.coupon.id,auctionSlug:auction.slug,auctionCode:auction.publicCode},null,2)+'\n');expect(await reconcile(db)).toEqual([]);

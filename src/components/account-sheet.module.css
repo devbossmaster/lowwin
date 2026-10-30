@@ -15,3 +15,9 @@
 .footer:empty{display:none}
 @keyframes arrive{from{transform:translateY(24px);opacity:.8}to{transform:translateY(0);opacity:1}}
 @media(prefers-reduced-motion:reduce){.sheet[open]{animation:none}}
+.sheet[data-layout=bid-entry]{height:min(740px,calc(var(--sheet-viewport-height,100dvh) - max(24px,env(safe-area-inset-top,0px),var(--tg-safe-area-inset-top,0px))));max-height:calc(var(--sheet-viewport-height,100dvh) - max(24px,env(safe-area-inset-top,0px),var(--tg-safe-area-inset-top,0px)))}
+.sheet[data-layout=bid-entry] .header{padding-block:4px 6px}
+.sheet[data-layout=bid-entry] .header h2{display:flex;align-items:center;flex-wrap:wrap;gap:8px;font-size:18px}
+.sheet[data-layout=bid-entry] .body{padding-bottom:6px;flex:1}
+.sheet[data-layout=bid-entry] .footer{padding-top:7px}
+.sheet[data-layout=bid-entry][data-keyboard-open=true] :global([data-sheet-preview]),.sheet[data-layout=bid-entry][data-keyboard-open=true] :global([data-bid-description]){display:none}

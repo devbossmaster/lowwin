@@ -1,7 +1,7 @@
 ﻿'use client';
 import {lazy,Suspense,useState} from 'react';
 import {AdminLink} from './admin-query';
-import {Check,Phone} from 'lucide-react';
+import {Check,Gift,Phone} from 'lucide-react';
 import {useAdminAccess} from './admin-shell';
 import {AdminHeading,Empty,ErrorNotice,Pagination,Status,eat,useAdminRead,useAdminMutation,useQueueParams} from './admin-ui';
 import {AdminDrawer} from './admin-drawer';
@@ -21,8 +21,8 @@ function useQueue<T>(section:string){const queue=useQueueParams();return useAdmi
 const money=(amount:string|null|undefined)=>amount==null?'Unavailable':formatEtb(amount);
 export function AdminPeople({section}:{section:'users'|'fulfillment'}){return <div className="admin-people">{section==='users'?<Players/>:<Winners/>}</div>}
 
-function Players(){const query=useQueue<Player>('players'),[selected,setSelected]=useState<string|null>(null);return <>
- <AdminHeading title="Players" refresh={query.reload}/><Filters placeholder="Name, username, phone or player ID" statuses={[["ACTIVE","Active"],["SUSPENDED","Suspended"]]}/>
+function Players(){const query=useQueue<Player>('players'),access=useAdminAccess(),[selected,setSelected]=useState<string|null>(null);return <>
+ <AdminHeading title="Players" refresh={query.reload}>{access.permissions.includes('settings')&&<AdminLink className="admin-button secondary" href="/admin/users/referrals"><Gift size={16} aria-hidden="true"/>Referral rewards setup</AdminLink>}</AdminHeading><Filters placeholder="Name, username, phone or player ID" statuses={[["ACTIVE","Active"],["SUSPENDED","Suspended"]]}/>
  <ErrorNotice error={query.error} retry={query.reload}/>{!query.data&&query.loading&&<div className="admin-loading"><LoadingSpinner label="Loading players…"/></div>}
  {query.data&&<><div className="admin-table-wrap master-table" role="region" aria-label="Players and wallets" tabIndex={0}><table><thead><tr><th>Player</th><th>Phone</th><th className="admin-money">Available</th><th className="admin-money">Held</th><th>Bids / wins</th><th>Referrals</th><th>Status</th><th>Joined</th><th>Action</th></tr></thead><tbody>{query.data.items.map(p=><tr key={p.id}><td><Name player={p}/></td><td><Contact player={p}/></td><td className="admin-money">{money(p.available)}</td><td className="admin-money">{money(p.held)}</td><td>{p.bidCount} / {p.winCount}</td><td>{p.referralCount??'—'}<small>{p.couponCount??'—'} rewards</small></td><td><Status value={p.suspended?'SUSPENDED':'ACTIVE'}/></td><td><time>{eat(p.createdAt)}</time></td><td><button className="secondary" onClick={()=>setSelected(p.id)}>Details</button></td></tr>)}</tbody></table>{!query.data.items.length&&<Empty title="No players found">Try another search.</Empty>}</div><Pages data={query.data}/></>}
  {selected&&<PlayerDetails key={selected} id={selected} close={()=>setSelected(null)} saved={()=>{query.reload();setSelected(null)}}/>}

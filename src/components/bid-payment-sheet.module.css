@@ -129,3 +129,50 @@
 .longPaymentWait .paymentSummary>div{padding-block:6px;font-size:13px}
 .longPaymentWait .statusActions .payButton{background:var(--mini-action,#c9a227);color:#181815;font-size:13px;font-weight:700}
 @media(max-width:370px),(max-height:760px){.bidEntry .previewPhoto{height:64px}.productDescription{padding:8px 11px 2px;margin-bottom:8px}.productDescription p{font-size:11px}.productDescription button{min-height:32px}.bidEntry .productTitle{font-size:17px}.bidEntry .balanceNote{margin-block:7px}.longPaymentWait .paymentStatusIcon{width:58px;height:58px;margin-bottom:16px}.longPaymentWait h3{font-size:21px}.longPaymentWait .statusMessage{font-size:13px}}
+
+/* Compact bid entry: reserve the complete form before private reads finish. */
+.headerStatus{display:inline-flex;align-items:center;min-height:22px;padding:3px 8px;border-radius:999px;background:#f1e5b7;color:#664b0d;font-size:10px;font-weight:700;line-height:1;letter-spacing:0}
+.bidEntry .previewPhoto{height:116px;margin-bottom:7px;border-radius:14px}
+.bidEntry .productHeading{margin:0 0 8px}
+.bidEntry .productTitle{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:18px;line-height:1.35;font-weight:700}
+.bidEntry .productDescription{display:flex;align-items:center;gap:10px;min-height:44px;box-sizing:border-box;margin:0 0 8px;padding:0 12px;border-radius:16px}
+.bidEntry .productDescription p{flex:1;min-width:0;-webkit-line-clamp:1;font-size:12px;line-height:1.5}
+.bidEntry .productDescription p[data-expanded=true]{display:block;max-height:72px;overflow-y:auto;padding-block:6px;overscroll-behavior:contain}
+.bidEntry .productDescription button{flex:none;min-height:44px;padding:0;font-size:11px}
+.bidEntry .productDescription button:disabled{visibility:hidden}
+.bidEntry .feeStrip{grid-template-columns:minmax(0,1fr) auto auto;gap:7px;margin-bottom:9px;padding:8px 10px;border-radius:18px;min-height:54px;box-sizing:border-box}
+.bidEntry .feeStrip>div>strong{font-size:20px;font-weight:750}
+.bidCount{gap:3px;padding:5px 7px;font-size:12px;font-weight:650}
+.bidCount strong{font-size:14px;font-weight:800;font-variant-numeric:tabular-nums}
+.bidEntry .inputHeading{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:3px 8px;min-height:22px;margin-bottom:4px}
+.bidEntry .inputLabel{font-size:13px;font-weight:650;color:#4f4c44}
+.inlineBalance{display:inline-flex;align-items:center;gap:4px;color:#625e54;font-size:11px;line-height:1.4;white-space:nowrap}
+.inlineBalance strong{font-weight:700;font-variant-numeric:tabular-nums}
+.bidEntry .amountInput{min-height:46px}
+.bidEntry .amountInput input{height:44px;font-size:17px;font-weight:600}
+.bidEntry .amountInput input::placeholder{font-size:14px}
+.entryMeta{display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:22px;margin:2px 0 5px}
+.entryMeta .range{margin:0;font-size:10px;line-height:1.4}
+.entryMeta .remaining{margin:0;font-size:10px;font-weight:600;white-space:nowrap}
+.bidEntry .earnedDiscount{min-height:44px;box-sizing:border-box;gap:8px;margin:0 0 6px;padding:0 3px;color:#715719}
+.bidEntry .earnedDiscount>svg{width:20px;height:20px}
+.bidEntry .earnedDiscount strong{display:flex;align-items:center;gap:7px;font-size:14px;font-weight:700}
+.couponCount{display:inline-grid;place-items:center;min-width:23px;height:23px;border-radius:50%;background:#f1e5bd;color:#664b0d;font-size:13px;font-weight:800;font-variant-numeric:tabular-nums}
+.bidEntry .earnedDiscount small{display:block;font-size:10px;line-height:1.3}
+.bidEntry .earnedDiscount button{min-height:44px;min-width:55px;padding:0 8px;font-size:13px;font-weight:750}
+.bidEntry .earnedDiscount button:disabled{opacity:.45;cursor:not-allowed}
+.bidEntry .methods{padding:8px 9px;margin-top:0;border-radius:19px}
+.bidEntry .methods legend{font-size:11px;padding-bottom:5px}
+.methodChoices{gap:8px}
+.bidEntry .walletRow{display:flex;align-items:stretch;gap:5px}
+.bidEntry .methods .method{min-height:44px;padding:6px 8px}
+.bidEntry .walletRow .method{flex:1;min-width:0;justify-content:center;padding:6px 5px;gap:4px}
+.bidEntry .methods .methodText strong{font-size:12px;font-weight:650}
+.bidEntry .walletRow .separateTopUp{position:static;display:grid;place-items:center;flex:0 0 44px;min-width:44px;min-height:44px;padding:0;border:1px solid #d7c68e;border-radius:12px;background:#fff9e8;color:#715719;text-decoration:none}
+.bidEntry .walletRow .separateTopUp:hover{background:#f2e6bd}
+.bidEntry .walletRow .separateTopUp[aria-disabled=true]{opacity:.5;cursor:not-allowed}
+.bidEntry .hint{margin:7px 0 0;font-size:10px;line-height:1.45}
+.bidEntry .error{font-size:11px;line-height:1.4;margin-top:5px}
+@media(max-width:370px){.bidEntry .feeStrip{gap:5px;padding-inline:9px}.bidEntry .feeStrip>div>strong{font-size:18px}.bidCount{font-size:11px;padding-inline:5px}.bidCount strong{font-size:13px}.bidEntry .feeTiming :global(.countdown){font-size:9px}.bidEntry .walletRow{gap:4px}.bidEntry .methodChoices{gap:6px}.bidEntry .walletRow .methodIcon{width:16px;height:16px}.bidEntry .walletRow .methodIcon svg{width:16px;height:16px}}
+@media(min-height:900px){.bidEntry .previewPhoto{height:140px}}
+@media(max-height:700px){.bidEntry .previewPhoto{height:56px;margin-bottom:5px}.bidEntry .productHeading{margin-bottom:5px}.bidEntry .productTitle{font-size:16px;line-height:1.3}.bidEntry .productDescription{margin-bottom:6px}.bidEntry .feeStrip{margin-bottom:6px;min-height:50px;padding-block:6px}.bidEntry .hint{margin-top:5px}.bidEntry .earnedDiscount{margin-bottom:4px}.entryMeta{margin-bottom:2px}}
