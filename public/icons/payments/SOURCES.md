@@ -1,5 +1,7 @@
 Payment provider logos displayed to identify payment methods. Original provider files, downloaded 2026-09-28.
 
+- cbebirr.svg: CBE Birr transparent logo from Chapa's EthiopianLogos collection, https://github.com/Chapa-Et/ethiopianlogos/blob/main/logos/cbe_birr_light/cbe_birr_light.svg (retrieved 2026-10-30). Used to identify the wallet, distinct from the CBE bank logo below.
+
 - Telebirr: https://apps.ethiotelecom.et/apps/
 - CBE: https://combanketh.et/home
 

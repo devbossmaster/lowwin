@@ -1,17 +1,60 @@
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {Prisma,PrismaClient,Outbox} from '@prisma/client';
-import {chapaReceiptContent,chapaReceiptKind,queueChapaReceipt} from '../src/modules/notifications/chapa-receipt';
+import {chapaPaymentAlertRecipient,chapaReceiptContent,chapaReceiptKind,queueChapaReceipt} from '../src/modules/notifications/chapa-receipt';
 import {dispatchOne,materializeAlert} from '../src/modules/notifications/service';
 
 const id='5ed925b4-41fa-418a-8a65-22e530ed07c4',botId='123456789',userId='receipt-owner';
-const receipt=()=>({id,userId,purpose:'TOP_UP',status:'CREDITED',providerStatus:'SUCCESS',verificationState:'VERIFIED',creditJournalId:'balanced-receipt',bidId:null,receipt:null,currency:'ETB',amountCents:1000n,mode:'test',phoneBotId:botId,user:{telegramId:'900000001',ownContact:{telegramId:'900000001',botId,revokedAt:null}}});
+const receipt=()=>({id,userId,purpose:'TOP_UP',status:'CREDITED',providerStatus:'SUCCESS',verificationState:'VERIFIED',creditJournalId:'balanced-receipt',bidId:null,receipt:null,currency:'ETB',amountCents:1000n,mode:'test',phoneBotId:botId,merchantReference:'LWfixture1234567890',chapaReference:'CHfixture',user:{telegramId:'900000001',ownContact:{telegramId:'900000001',botId,revokedAt:null}}});
 const row=()=>({id:'receipt-outbox',key:`chapa:${id}:telegram-confirmed`,kind:chapaReceiptKind,payload:{checkoutId:id,recipientUserId:userId},state:'PENDING',attempts:0,nextAttemptAt:new Date(0),createdAt:new Date(0),sentAt:null,lastError:null,settlementId:null,testRunId:null}) as Outbox;
 function contentTx(order:unknown=receipt()){return {chapaCheckout:{findUnique:vi.fn(async()=>order)}} as unknown as Prisma.TransactionClient}
 
-beforeEach(()=>{vi.stubEnv('TELEGRAM_BOT_TOKEN',botId+':receipt-fixture-token');vi.stubEnv('CHAPA_MODE','test');vi.stubEnv('MINI_APP_URL','https://lowwin.test')});
+beforeEach(()=>{vi.stubEnv('TELEGRAM_BOT_TOKEN',botId+':receipt-fixture-token');vi.stubEnv('CHAPA_MODE','test');vi.stubEnv('MINI_APP_URL','https://lowwin.test');vi.stubEnv('CHAPA_PAYMENT_ALERT_TELEGRAM_ID','')});
 afterEach(()=>vi.unstubAllEnvs());
 
 describe('verified Chapa Telegram receipts',()=>{
+ it.each(['','@cryptonbozz','-1001234567','0','123:token',' 123','123\n','4503599627370496'])('rejects unsafe merchant alert destination %j',value=>{
+  vi.stubEnv('CHAPA_PAYMENT_ALERT_TELEGRAM_ID',value);expect(chapaPaymentAlertRecipient()).toBeNull();
+ });
+ it('queues one separate merchant alert alongside the customer receipt on repeated verification',async()=>{
+  vi.stubEnv('CHAPA_PAYMENT_ALERT_TELEGRAM_ID','900000002');
+  const jobs=new Map<string,unknown>(),tx={outbox:{upsert:vi.fn(async({where,create})=>{if(!jobs.has(where.key))jobs.set(where.key,create);return jobs.get(where.key)})}} as unknown as Prisma.TransactionClient;
+  await queueChapaReceipt(tx,receipt());await queueChapaReceipt(tx,receipt());expect(jobs.size).toBe(2);
+  expect(jobs.get(`chapa:${id}:merchant-confirmed:900000002`)).toMatchObject({kind:chapaReceiptKind,payload:{checkoutId:id,recipientUserId:userId,merchantRecipientTelegramId:'900000002'}});
+ });
+ it('does not queue merchant alerts for unverified or pending funds even when configured',async()=>{
+  vi.stubEnv('CHAPA_PAYMENT_ALERT_TELEGRAM_ID','900000002');const upsert=vi.fn(),tx={outbox:{upsert}} as unknown as Prisma.TransactionClient;
+  for(const change of [{creditJournalId:null},{providerStatus:'PENDING'},{verificationState:'MISMATCH'},{status:'PENDING'}])await queueChapaReceipt(tx,{...receipt(),...change});
+  expect(upsert).not.toHaveBeenCalled();
+ });
+ it('renders a private merchant alert without customer contact details or a customer-owned return link',async()=>{
+  vi.stubEnv('CHAPA_PAYMENT_ALERT_TELEGRAM_ID','900000002');
+  const content=await chapaReceiptContent(contentTx(),{...row(),payload:{...row().payload as object,merchantRecipientTelegramId:'900000002'}});
+  expect(content).toMatchObject({recipientTelegramId:'900000002',merchantAlert:true,href:'/admin/payments',buttonLabel:'View payments'});
+  expect(content?.body).toContain('TEST · Payment received: 10.00 ETB');expect(content?.body).toContain('Wallet deposit');expect(content?.body).toContain('CHfixture');
+  expect(content?.body).not.toContain('900000001');expect(content?.body).not.toContain(userId);
+ });
+ it('rechecks merchant recipient configuration and cannot redirect a queued alert to another account',async()=>{
+  const job={...row(),payload:{...row().payload as object,merchantRecipientTelegramId:'900000002'}};
+  for(const target of ['','900000003','@cryptonbozz']){vi.stubEnv('CHAPA_PAYMENT_ALERT_TELEGRAM_ID',target);expect(await chapaReceiptContent(contentTx(),job)).toBeNull()}
+ });
+ it('does not send merchant alerts for a different payment mode or bot',async()=>{
+  vi.stubEnv('CHAPA_PAYMENT_ALERT_TELEGRAM_ID','900000002');const job={...row(),payload:{...row().payload as object,merchantRecipientTelegramId:'900000002'}};
+  for(const change of [{mode:'live'},{phoneBotId:'another-bot'},{chapaReference:null},{creditJournalId:null}])expect(await chapaReceiptContent(contentTx({...receipt(),...change}),job)).toBeNull();
+ });
+ it('delivers a merchant alert only to its started private chat with an admin URL and no second inbox item',async()=>{
+  vi.stubEnv('CHAPA_PAYMENT_ALERT_TELEGRAM_ID','900000002');const job={...row(),payload:{...row().payload as object,merchantRecipientTelegramId:'900000002'}};
+  const f=dispatchFixture([job]);f.tx.botChat.findUnique.mockResolvedValue({telegramId:'900000002',chatId:'900000002',blocked:false});
+  await dispatchOne(f.client,f.bot,{kind:chapaReceiptKind});expect(f.tx.user.findUnique).not.toHaveBeenCalled();expect(f.tx.botChat.findUnique).toHaveBeenCalledWith({where:{telegramId:'900000002'}});
+  expect(f.sendMessage).toHaveBeenCalledWith('900000002',expect.stringContaining('Payment received: 10.00 ETB'),{reply_markup:{inline_keyboard:[[{text:'View payments',url:'https://lowwin.test/admin/payments'}]]}});
+  expect(f.tx.notificationInbox.upsert).not.toHaveBeenCalled();expect(job.state).toBe('SENT');await dispatchOne(f.client,f.bot,{kind:chapaReceiptKind});expect(f.sendMessage).toHaveBeenCalledTimes(1);
+ });
+ it('does not deliver merchant alerts into a group or blocked chat',async()=>{
+  vi.stubEnv('CHAPA_PAYMENT_ALERT_TELEGRAM_ID','900000002');
+  for(const chat of [{telegramId:'900000002',chatId:'-100123',blocked:false},{telegramId:'900000002',chatId:'900000002',blocked:true}]){
+   const job={...row(),payload:{...row().payload as object,merchantRecipientTelegramId:'900000002'}},f=dispatchFixture([job]);f.tx.botChat.findUnique.mockResolvedValue(chat);
+   await dispatchOne(f.client,f.bot);expect(f.sendMessage).not.toHaveBeenCalled();expect(job.state).toBe('SKIPPED');
+  }
+ });
  it('enqueues only one immutable job for duplicate confirmation attempts',async()=>{
   const jobs=new Map<string,unknown>(),upsert=vi.fn(async({where,create}:{where:{key:string};create:unknown})=>{if(!jobs.has(where.key))jobs.set(where.key,create);return jobs.get(where.key)}),tx={outbox:{upsert}} as unknown as Prisma.TransactionClient;
   await queueChapaReceipt(tx,receipt());await queueChapaReceipt(tx,receipt());

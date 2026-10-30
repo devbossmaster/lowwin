@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 import {useId,useState,type RefObject} from 'react';
 import Link from 'next/link';
 import {Wallet} from 'lucide-react';
@@ -8,7 +8,7 @@ import {usePrivateQuery} from './private-query';
 import {useTelegram} from './telegram-provider';
 import {IdentityState} from './identity-state';
 import {ChapaPaymentStatus,useChapaPayment} from './chapa-payment';
-import {ChapaLogo} from './chapa-logo';
+import {HostedPaymentLogos} from './hosted-payment-logos';
 import {centsToEtb,etbToCents} from '@/lib/money';
 import type {ChapaAvailability} from '@/lib/chapa-client';
 import type {WalletBalance} from '@/modules/wallet/balance';
@@ -30,7 +30,7 @@ function TopUp({onClose,returnFocusRef,initialChapaId}:Props){
   <label className={styles.inputLabel} htmlFor={`${id}-amount`}>{text('Amount','መጠን')}</label><div className={styles.amountInput}><input id={`${id}-amount`} inputMode="decimal" autoComplete="off" maxLength={19} value={value} disabled={payment.busy||!!frozen} onChange={event=>setAmount(event.target.value)} aria-describedby={`${id}-notice`}/><span>ETB</span></div>
   <div className={styles.presets} aria-label={text('Suggested top-up amounts','የገንዘብ ማስገቢያ መጠኖች')}>{['100','250','500','1000'].map(preset=><button key={preset} type="button" aria-pressed={value===preset} disabled={payment.busy||!!frozen} onClick={()=>setAmount(preset)}>{Number(preset).toLocaleString('en-ET')}</button>)}</div>
   {value&&!valid&&<p className={styles.error}>{text(`Enter ${settings?.minTopup??'1.00'}–${settings?.maxTopup??'43,200.00'} ETB.`,`${settings?.minTopup??'1.00'}–${settings?.maxTopup??'43,200.00'} ብር ያስገቡ።`)}</p>}
-  <label className={`${styles.method} ${styles.selected}`}><span className={styles.providerLogo}><ChapaLogo/></span><span className={styles.methodText}><strong>Chapa</strong></span><input type="radio" name={`${id}-provider`} value="chapa" checked readOnly aria-label="Chapa"/></label>
+  <label className={`${styles.method} ${styles.selected}`}><HostedPaymentLogos/><span className={styles.methodText}><strong>Chapa</strong></span><input type="radio" name={`${id}-provider`} value="chapa" checked readOnly aria-label="Chapa"/></label>
   <p id={`${id}-notice`} className={styles.availability} role="status">{settings?.enabled?text(settings.mode==='test'?'Test mode · no real money.':'Enter your payment details on Chapa.',settings.mode==='test'?'የሙከራ ክፍያ · እውነተኛ ገንዘብ አይከፈልም።':'የክፍያ መረጃዎን በChapa ያስገቡ።'):availability.error?text('Could not load Chapa.','Chapa መጫን አልተቻለም።'):settings?text('Chapa is unavailable.','Chapa አልተገኘም።'):text('Loading Chapa…','Chapa በመጫን ላይ…')}</p>
   {availability.error&&<button className={styles.inlineRetry} type="button" onClick={availability.reload}>{text('Retry','እንደገና')}</button>}
   {payment.error&&<p className={styles.error} role="alert">{payment.error}</p>}

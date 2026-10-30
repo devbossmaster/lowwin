@@ -114,8 +114,12 @@ export async function dispatchOne(client:PrismaClient,bot:Pick<Bot,'api'>,filter
   // receipts remain readable, but their jobs no longer send Telegram messages.
   const paymentReceipt=row.kind===chapaReceiptKind;
   if(!telegramKinds.includes(row.kind)&&!paymentReceipt){await skip();return true}
-  const user=await tx.user.findUnique({where:{id:content.userId},select:{telegramId:true,name:true}}),chat=user?.telegramId?await tx.botChat.findUnique({where:{telegramId:user.telegramId}}):null;
+  const merchantAlert='merchantAlert' in content&&content.merchantAlert===true;
+  const user=merchantAlert?null:await tx.user.findUnique({where:{id:content.userId},select:{telegramId:true,name:true}});
+  const recipient=merchantAlert&&'recipientTelegramId' in content?content.recipientTelegramId:user?.telegramId;
+  const chat=recipient?await tx.botChat.findUnique({where:{telegramId:recipient}}):null;
   if(!chat||chat.blocked){await skip(row.kind==='BROADCAST'?(chat?'CHAT_BLOCKED':'CHAT_NOT_STARTED'):null);return true}
+  if(merchantAlert&&chat.chatId!==recipient){await skip('PRIVATE_CHAT_REQUIRED');return true}
   const link=new URL(content.href,process.env.MINI_APP_URL);
   if(link.protocol!=='https:'){await skip();return true}
   try{
@@ -124,7 +128,7 @@ export async function dispatchOne(client:PrismaClient,bot:Pick<Bot,'api'>,filter
    const body=content.body.includes('{name}')?content.body.replaceAll('{name}',name):`${name},\n${content.body}`;
    const text=paymentReceipt?content.body:'telegramCaption' in content&&typeof content.telegramCaption==='string'?content.telegramCaption:telegramCampaignText(row.kind,content.title,startReminder?content.body:body,startReminder?name:undefined);
    const button='buttonLabel' in content?String(content.buttonLabel):row.kind==='DEPOSIT_CREDITED'?'View wallet':startReminder?'View auction':'Bid';
-   const options={reply_markup:{inline_keyboard:[[{text:button,web_app:{url:link.href}}]]}};
+   const options={reply_markup:{inline_keyboard:[[merchantAlert?{text:button,url:link.href}:{text:button,web_app:{url:link.href}}]]}};
    let sent:{message_id:number};
    // Auction alerts use the actual frozen/product image unchanged. If it is
    // absent, send text; a generic notification banner is never a product photo.
