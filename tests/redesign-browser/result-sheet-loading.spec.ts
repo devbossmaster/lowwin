@@ -26,7 +26,7 @@ test('result previews open immediately and keep content during slow pagination',
    else{initialRequests++;await initial.pending}
    await route.continue();
   });
-  await winner.click();const result=page.getByRole('dialog',{name:am?'የመጨረሻ ውጤት':'Final result',exact:true});await expect(result).toBeVisible();await expect(result.locator('img')).toBeVisible();await expect(result).toContainText(am?'የሙከራ ዕቃ · የተጠናቀቀ ጨረታ':fixture.title);expect(participantRequests).toBe(0);await result.locator('[data-result-breakdown]').scrollIntoViewIfNeeded();await expect.poll(()=>scriptRequests).toBeGreaterThan(0);await page.waitForTimeout(600);
+  await winner.click();const result=page.getByRole('dialog',{name:am?'የመጨረሻ ውጤት':'Final result',exact:true});await expect(result).toBeVisible();const productImage=result.locator('[data-winner-banner][data-photo="product"]').getByRole('img',{name:am?'የሙከራ ዕቃ · የተጠናቀቀ ጨረታ':fixture.title,exact:true});await expect(productImage).toHaveCount(1);await expect(productImage).toBeVisible();await expect(result).toContainText(am?'የሙከራ ዕቃ · የተጠናቀቀ ጨረታ':fixture.title);expect(participantRequests).toBe(0);await result.locator('[data-result-breakdown]').scrollIntoViewIfNeeded();await expect.poll(()=>scriptRequests).toBeGreaterThan(0);await page.waitForTimeout(600);
   await expect(result).toBeVisible();await expect(page.locator('.loading-spinner-ring,.customer-loading')).toHaveCount(0);
   scripts.release();await expect.poll(()=>initialRequests).toBeGreaterThan(0);await page.waitForTimeout(600);
   await expect(result).toBeVisible();await expect(page.locator('.loading-spinner-ring,.customer-loading')).toHaveCount(0);await page.screenshot({path:info.outputPath('waiting.png')});

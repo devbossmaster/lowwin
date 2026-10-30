@@ -29,8 +29,8 @@ test('settled winner banner uses product, publishes a consented photo, and reset
   // An abstract synthetic PNG proves the upload/crop path without inventing a person.
   const png=await sharp({create:{width:400,height:600,channels:3,background:'#c9a227'}}).png().toBuffer();
   await editor.getByLabel('Choose winner photo').setInputFiles({name:'synthetic-photo-fixture.png',mimeType:'image/png',buffer:png});
-  const publish=editor.getByRole('button',{name:'Publish winner photo',exact:true});await expect(publish).toBeDisabled();
-  await editor.getByRole('checkbox').check();await expect(publish).toBeEnabled();await publish.click();
+  const save=editor.getByRole('button',{name:'Save winner photo',exact:true});await expect(save).toBeDisabled();
+  await editor.getByRole('checkbox').check();await expect(save).toBeEnabled();await save.click();
   await expect(editor).toHaveCount(0);
   const saved=await f.db.winnerPresentation.findUniqueOrThrow({where:{auctionId:result.auction.id}});expect(saved.version).toBe(1);expect(saved.consentActorId).toBe(actorId);expect(saved.consentConfirmedAt).not.toBeNull();
   await page.reload();await expect(banner).toHaveAttribute('data-photo','winner');

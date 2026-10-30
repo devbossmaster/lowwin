@@ -1,7 +1,7 @@
 import {test,expect} from '../isolated-browser';
 import {PrismaClient} from '@prisma/client';
 import {randomInt,randomUUID} from 'node:crypto';
-import {mkdirSync,readFileSync} from 'node:fs';
+import {mkdirSync} from 'node:fs';
 import {signedLaunch} from '../helpers';
 import {verifyFixtureContact} from '../contact-fixtures';
 import {creditDevelopmentPoints,reconcile} from '../../src/modules/wallet/ledger';
@@ -14,7 +14,7 @@ test('account header: real balance, destinations, avatar fallback, language and 
  try{
   const id=randomInt(9800000000,9900000000);await verifyFixtureContact(db,id);
   await page.route('https://telegram.org/**',route=>route.fulfill({body:''}));
-  await page.route('https://header-avatar.example.test/**',route=>route.fulfill(failAvatar?{status:404,body:''}:{contentType:'image/png',body:readFileSync('public/logo.png')}));
+  await page.route('https://header-avatar.example.test/**',route=>route.fulfill(failAvatar?{status:404,body:''}:{contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGM4uUj9PwAGXAKS+wdFZgAAAABJRU5ErkJggg==','base64')}));
   await page.addInitScript(({data})=>{window.Telegram={WebApp:{initData:data,ready(){},expand(){},setHeaderColor(){},setBackgroundColor(){}}};},{data:signedLaunch({user:JSON.stringify({id,first_name:name,photo_url:'https://header-avatar.example.test/avatar.png'})},process.env.TELEGRAM_BOT_TOKEN)});
   await page.goto('/');await expect(page.locator('#home-headline')).toBeVisible();const header=page.getByRole('banner',{name:'Mini App header'});
   await expect(header.locator('[data-header-balance]')).toHaveText('0.00 ETB');

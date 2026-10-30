@@ -1,6 +1,6 @@
 import {createHash,createHmac,timingSafeEqual} from 'node:crypto';
 import {z} from 'zod';
-import {chapaReasonStatuses,safeChapaPaymentReason,type ChapaPaymentReasonCode} from '@/lib/chapa-payment-reason';
+import {chapaReasonStatuses,safeChapaPaymentReason,type ChapaPaymentReasonCode} from '../../lib/chapa-payment-reason';
 
 // Chapa v2 uses one API origin for test and live; the private key selects the
 // environment. This is deliberately not a caller-controlled fetch destination.

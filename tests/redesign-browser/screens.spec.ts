@@ -142,7 +142,7 @@ test('authenticated mobile screens and local timing evidence', async ({page, bro
         await expect(zero.locator('#bid-review').getByRole('button')).toBeVisible();
         await zero.locator('#bid-review').getByRole('button').click();
         const zeroSheet=zero.getByRole('dialog',{name:'Place your bid',exact:true});await zeroSheet.getByLabel('Your bid amount', {exact: true}).fill('7.31');
-        await expect(zeroSheet.getByRole('radio',{name:'Wallet balance',exact:true})).toBeChecked();await expect(zeroSheet).toContainText('Your balance is below this submission fee.');await expect(zeroSheet.locator('[data-payment-action]')).toBeDisabled();
+        await expect(zeroSheet.getByRole('radio',{name:'Wallet balance',exact:true})).toBeChecked();await expect(zeroSheet.getByRole('status').filter({hasText:/^Insufficient balance\./})).toHaveText('Insufficient balance. Top-ups are not available yet.');await expect(zeroSheet.locator('[data-payment-action]')).toBeDisabled();
         await zero.screenshot({path: `${root}/checkout-disabled-${info.project.name}-en.png`});
         // Current Wallet/Chapa controls remain read-only until merchant
         // activation. Provider recovery/idempotency stays covered by DB tests;

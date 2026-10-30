@@ -67,6 +67,11 @@ async function compactEntryScenario(page:Page,name:string){
   await product.getByRole('button',{name:'Show less',exact:true}).scrollIntoViewIfNeeded();await expect(product.getByRole('button',{name:'Show less',exact:true})).toBeInViewport();expect(Math.abs((await modalGeometry(dialog)).height-readyGeometry.height)).toBeLessThanOrEqual(2);
   await product.getByRole('button',{name:'Show less',exact:true}).click();
   await input.fill('10');await input.pressSequentially('.75',{delay:5});await expect(input).toHaveValue('10.75');
+  await input.pressSequentially('9e-');await expect(input).toHaveValue('10.75');
+  await input.fill('11.999');await expect(input).toHaveValue('10.75');
+  await input.fill('');await input.pressSequentially('12.');await expect(input).toHaveValue('12.');await expect(dialog.locator('[data-payment-action]')).toBeDisabled();
+  await input.pressSequentially('50');await expect(input).toHaveValue('12.50');await expect(dialog.locator('[data-payment-action]')).toBeEnabled();
+  await input.fill('10.75');
   await input.focus();await page.setViewportSize({...viewport,height:Math.min(430,viewport.height-180)});
   await expect(dialog).toHaveAttribute('data-keyboard-open','true');await expect(input).toBeInViewport({ratio:1});await expect(dialog.locator('[data-payment-action]')).toBeInViewport({ratio:1});await expect(input).toHaveValue('10.75');
   await page.setViewportSize(viewport);await input.blur();await expect(dialog).toHaveAttribute('data-keyboard-open','false');await expectCompactFit(dialog);

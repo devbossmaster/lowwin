@@ -9,7 +9,10 @@ import {bidAuction} from '../bid-fixtures';
 test('browse filters survive navigation and private screens reuse a fresh read',async({page},info)=>{
  const client=new PrismaClient({datasourceUrl:process.env.TEST_DATABASE_URL});
  const root='docs/redesign/screenshots/workflow';mkdirSync(root,{recursive:true});
- const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
+ const errors:string[]=[];let reads=0;page.on('pageerror',error=>errors.push(error.message));
+ // Intent prefetch may warm Profile before it is clicked. Count that real read
+ // from the start of this browser session, rather than missing the warm-up.
+ page.on('request',request=>{if(new URL(request.url()).pathname==='/api/profile')reads++});
  const marker=`Workflow ${randomUUID().slice(0,8)}`;
  try{
   const id=randomInt(9100000000,9400000000);await verifyFixtureContact(client,id);
@@ -49,7 +52,6 @@ test('browse filters survive navigation and private screens reuse a fresh read',
   await page.screenshot({path:`${root}/draws-${info.project.name}-en.png`});
   // Compile first, then count real requests within the profile freshness window.
   await page.goto('/my-bids');await expect(page.getByRole('heading',{name:'My Bids',exact:true})).toBeVisible();
-  let reads=0;page.on('request',request=>{if(new URL(request.url()).pathname==='/api/profile')reads++});
   const nav=page.getByRole('navigation',{name:'Your navigation'});
   await nav.getByRole('link',{name:'Profile',exact:true}).click();await expect(page.getByRole('button',{name:'Edit',exact:true})).toBeVisible();
   const initial=reads;expect(initial).toBe(1);

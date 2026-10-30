@@ -5,6 +5,7 @@ import {acceptOwnContact,contactBotId,isRegisteredTelegramUser} from '../auth/ow
 import {InlineKeyboard} from 'grammy';
 import {getEnv} from '@/lib/env';
 import {CONTACT_ALREADY_VERIFIED_MESSAGE,CONTACT_VERIFIED_MESSAGE,START_BIDDING_ACTION,CONTACT_KEYBOARD_REMOVED_MESSAGE} from './onboarding-copy';
+import {sendWelcomeBanner} from './welcome-banner';
 export async function processOneUpdate(client: PrismaClient, bot: Bot, contactVerification?:Map<string,boolean>) {
   return client.$transaction(async tx => {
     const rows = await tx.$queryRaw<Array<{ updateId: bigint; payload: unknown; attempts: number;botId:string|null }>>`
@@ -20,7 +21,7 @@ export async function processOneUpdate(client: PrismaClient, bot: Bot, contactVe
       if(contact==='VERIFIED'||contact==='ALREADY_VERIFIED'){
         const recipient=String(m?.from?.id);
         await bot.api.sendMessage(recipient,CONTACT_KEYBOARD_REMOVED_MESSAGE,{reply_markup:{remove_keyboard:true}});
-        await bot.api.sendMessage(recipient,contact==='VERIFIED'?CONTACT_VERIFIED_MESSAGE:CONTACT_ALREADY_VERIFIED_MESSAGE,{reply_markup:new InlineKeyboard().webApp(START_BIDDING_ACTION,getEnv().MINI_APP_URL)});
+        await sendWelcomeBanner(bot.api,recipient,contact==='VERIFIED'?CONTACT_VERIFIED_MESSAGE:CONTACT_ALREADY_VERIFIED_MESSAGE,new InlineKeyboard().webApp(START_BIDDING_ACTION,getEnv().MINI_APP_URL));
       }
       if(!contact){
         const telegramId=m?.from&&Number.isSafeInteger(m.from.id)?String(m.from.id):null;
