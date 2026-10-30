@@ -5,10 +5,10 @@ import {useMiniPage} from './mini-query-state';
 import {usePrivateQuery,PrivateState} from './private-query';
 import type {listCompletedWinners} from '@/modules/auctions/results';
 import {winnersQueryUrl} from '@/lib/catalog-query';
-import styles from './winners-client-list.module.css';
+import {MiniRouteSkeleton} from './mini-route-skeleton';
 
 export type WinnersData=Awaited<ReturnType<typeof listCompletedWinners>>&{allowDemo:boolean};
-export function WinnersListLoading(){return <p className={styles.loading} role="status"><MiniPhrase en="Loading confirmed winners…" am="የተረጋገጡ አሸናፊዎችን በመጫን ላይ…"/></p>}
+export function WinnersListLoading(){return <MiniRouteSkeleton variant="winners" compact/>}
 export function WinnersClientList({initial,carousel=false}:{initial?:WinnersData;carousel?:boolean}={}){
  const [savedPage,setPage]=useMiniPage(),page=carousel?1:savedPage,query=usePrivateQuery<WinnersData>(winnersQueryUrl(page),{keepPreviousData:true,initialData:initial}),data=query.data,busy=query.isPlaceholderData;
  return <div data-winners-ready={!!data&&!busy||undefined}>

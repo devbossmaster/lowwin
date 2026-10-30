@@ -72,8 +72,11 @@ export async function readWinnerTable(client:PrismaClient,actor:Actor,f:Filters)
   client.$queryRaw<{count:number}[]>(Prisma.sql`SELECT COUNT(*)::int AS count ${from} WHERE ${where}`),
  ]);
  const ids=[...new Set(rows.flatMap(row=>row.winnerUserId?[row.winnerUserId]:[]))];
- const winners=ids.length?await client.user.findMany({where:{id:{in:ids}},select:identity}):[];
- const items=rows.map(row=>{const winner=winners.find(value=>value.id===row.winnerUserId),presentation=row.presentation as {title?:string}|null;return {auctionId:row.auctionId,publicCode:row.publicCode,code:row.code,title:presentation?.title??row.title??'Auction',completedAt:row.completedAt,winner:winner?contact(winner):null,winningAmount:row.winningAmount,ruleVersion:row.ruleVersion,state:row.state,version:row.version,tracking:row.tracking,note:row.note,assignedTo:row.assignedTo,deliveredAt:row.deliveredAt}});
+ const [winners,photos]=await Promise.all([
+  ids.length?client.user.findMany({where:{id:{in:ids}},select:identity}):[],
+  rows.length?client.winnerPresentation.findMany({where:{auctionId:{in:rows.map(row=>row.auctionId)}},select:{auctionId:true,imageId:true,version:true}}):[],
+ ]);
+ const items=rows.map(row=>{const winner=winners.find(value=>value.id===row.winnerUserId),presentation=row.presentation as {title?:string}|null,photo=photos.find(value=>value.auctionId===row.auctionId);return {auctionId:row.auctionId,publicCode:row.publicCode,code:row.code,title:presentation?.title??row.title??'Auction',completedAt:row.completedAt,winner:winner?contact(winner):null,winningAmount:row.winningAmount,ruleVersion:row.ruleVersion,state:row.state,version:row.version,tracking:row.tracking,note:row.note,assignedTo:row.assignedTo,deliveredAt:row.deliveredAt,winnerPhotoPath:photo?.imageId?`/api/media/${photo.imageId}`:null,winnerPhotoId:photo?.imageId??null,winnerPhotoVersion:photo?.version??0}});
  await audit(client,actor,'MASTER_WINNER_TABLE_READ',items.length);
  return pageResult(items,counts[0].count,f.page,actor.now);
 }

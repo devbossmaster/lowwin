@@ -1,4 +1,5 @@
 'use client';
+import {LOWWIN_LOGO_SRC} from '@/lib/brand';
 import {useState} from 'react';
 import {RotateCcw,ArrowUpRight} from 'lucide-react';
 import {useTelegram} from './telegram-provider';
@@ -11,7 +12,7 @@ export default function TelegramEntryRecovery(){
   const [handedOff,setHandedOff]=useState(false);
   const [reloading,setReloading]=useState(false);
   return <main id="main" className={`telegram-entry ${styles.screen}`}>
-    <img src="/logo.png?v=forest-1" alt="Lowwin" width={112} height={112} className={styles.logo}/>
+    <img src={LOWWIN_LOGO_SRC} data-lowwin-logo alt="Lowwin" width={112} height={112} className={styles.logo}/>
     <h1>{needsReopen?'Reopen Lowwin':error?'Let’s try again':'Open Lowwin'}</h1>
     <p role={error?'alert':undefined}>{error||'Continue through our Telegram bot.'}</p>
     <div className={styles.actions}>

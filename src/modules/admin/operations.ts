@@ -26,7 +26,7 @@ export const draftBodySchema=z.object({productId:id,startsAt:z.iso.datetime(),en
 const schemas={
   category:z.object({key,id:id.optional(),version,name:text(80),nameAm:text(80),slug:text(80).regex(/^[a-z0-9-]+$/),description:text(600),descriptionAm:text(600),visible:z.boolean(),requiresEligibilityReview:z.boolean()}).strict(),
   product:z.object({key,id:id.optional(),version,title:text(120),titleAm:localized(120),slug:text(100).regex(/^[a-z0-9-]+$/),description:text(1500),descriptionAm:localized(1500),condition:text(100),conditionAm:localized(100),categoryId:id,isDemo:z.boolean(),visible:z.boolean(),imageIds:z.array(id).max(8)}).strict(),
-  media:z.object({key,mime:z.enum(['image/png','image/jpeg','image/webp']),data:z.string().max(2800000).regex(/^[A-Za-z0-9+/]+={0,2}$/),sourceType:z.enum(['ORIGINAL','LICENSED','SUPPLIED']).default('SUPPLIED'),sourceCredit:z.string().trim().max(300).default(''),rightsConfirmed:z.literal(true).optional()}).strict(),
+  media:z.object({key,mime:z.enum(['image/png','image/jpeg','image/webp']),data:z.string().max(2800000).regex(/^[A-Za-z0-9+/]+={0,2}$/),sourceType:z.enum(['ORIGINAL','LICENSED','SUPPLIED']).default('SUPPLIED'),sourceCredit:z.string().trim().max(300).default(''),purpose:z.enum(['CATALOG','WINNER_PHOTO']).default('CATALOG'),rightsConfirmed:z.literal(true).optional()}).strict(),
   content:z.object({key,id:z.enum(['home','faq','experience','terms','privacy']),version,body:z.unknown()}).strict(),
   draft:z.object({key,auctionId:id.optional(),version,body:draftBodySchema}).strict(),
   publish:z.object({key,auctionId:id,version}).strict(),
@@ -93,16 +93,21 @@ export async function adminMutation(client:PrismaClient,headers:Headers,action:A
       if(categoryId){await tx.$queryRaw`SELECT id FROM "Category" WHERE id=${categoryId} FOR UPDATE`;const current=await tx.category.findUniqueOrThrow({where:{id:categoryId}});if(current.version!==expected)throw new AdminError(409,'Category changed. Reload before saving.');if(await tx.auction.count({where:{categoryId,publishedAt:{not:null}}}))throw new AdminError(409,'Published inventory is frozen. Create a replacement category.');receipt=await tx.category.update({where:{id:categoryId},data:{...fields,version:{increment:1}}})}
       else {if(expected!==0)throw new AdminError(409,'New category must use version zero.');receipt=await tx.category.create({data:fields})}target=(receipt as {id:string}).id;
     }else if(action==='media'){
-      const data=schemas.media.parse(input),bytes=Buffer.from(data.data,'base64');if(bytes.length>2097152)throw new AdminError(422,'Images must be at most 2 MiB.');
+      const data=schemas.media.parse(input);
+      if(data.purpose==='WINNER_PHOTO'){
+        assertPermission(actor.role,'fulfillment');
+        if(actor.role!=='OWNER'||data.rightsConfirmed!==true)throw new AdminError(403,'Only an administrator may upload an authorized winner photograph.');
+      }
+      const bytes=Buffer.from(data.data,'base64');if(bytes.length>2097152)throw new AdminError(422,'Images must be at most 2 MiB.');
       const actual=bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))?'image/png':bytes[0]===255&&bytes[1]===216&&bytes[2]===255?'image/jpeg':bytes.toString('ascii',0,4)==='RIFF'&&bytes.toString('ascii',8,12)==='WEBP'?'image/webp':null;
       if(actual!==data.mime)throw new AdminError(422,'Image content and declared type do not match. SVG and scripts are not accepted.');
       let clean:Buffer;try{clean=await sharp(bytes,{limitInputPixels:16000000,animated:false}).rotate().resize({width:2400,height:2400,fit:'inside',withoutEnlargement:true}).png().toBuffer()}catch{throw new AdminError(422,'Image could not be decoded safely.')}
       if(clean.length>2097152)throw new AdminError(422,'Re-encoded image exceeds 2 MiB.');
-      const media=await tx.managedMedia.create({data:{bytes:Uint8Array.from(clean),mime:'image/png',sourceType:data.sourceType,sourceCredit:data.sourceCredit},select:{id:true,mime:true,sourceType:true,sourceCredit:true}});target=media.id;receipt={...media,path:`/api/media/${media.id}`};
+      const media=await tx.managedMedia.create({data:{bytes:Uint8Array.from(clean),mime:'image/png',sourceType:data.sourceType,sourceCredit:data.sourceCredit,purpose:data.purpose},select:{id:true,mime:true,sourceType:true,sourceCredit:true,purpose:true}});target=media.id;receipt={...media,path:`/api/media/${media.id}`};
     }else if(action==='product'){
       const data=schemas.product.parse(input),{key:_,id:productId,version:expected,imageIds,...fields}=data;
       if(new Set(imageIds).size!==imageIds.length)throw new AdminError(422,'Duplicate images are not allowed.');
-      const media=await tx.managedMedia.findMany({where:{id:{in:imageIds}},select:{id:true,sourceType:true,sourceCredit:true}});if(media.length!==imageIds.length)throw new AdminError(422,'Use uploaded validated images.');
+      const media=await tx.managedMedia.findMany({where:{id:{in:imageIds},purpose:'CATALOG'},select:{id:true,sourceType:true,sourceCredit:true}});if(media.length!==imageIds.length)throw new AdminError(422,'Use uploaded catalog images; winner photographs cannot be reused.');
       if(productId){await tx.$queryRaw`SELECT id FROM "Product" WHERE id=${productId} FOR UPDATE`;const current=await tx.product.findUniqueOrThrow({where:{id:productId}});if(current.version!==expected)throw new AdminError(409,'Product changed. Reload before saving.');if(current.isDemo&&!fields.isDemo)throw new AdminError(409,'DEMO inventory cannot become real inventory.');if(await tx.auction.count({where:{productId,publishedAt:{not:null}}}))throw new AdminError(409,'Published inventory is frozen. Create a replacement product.');await tx.product.update({where:{id:productId},data:{...fields,version:{increment:1}}});await tx.productImage.deleteMany({where:{productId}});target=productId}
       else {if(expected!==0)throw new AdminError(409,'New product must use version zero.');target=(await tx.product.create({data:fields})).id}
       for(const [sortOrder,mediaId] of imageIds.entries()){const image=media.find(item=>item.id===mediaId)!;await tx.productImage.create({data:{productId:target,path:`/api/media/${image.id}`,alt:fields.title,sourceType:image.sourceType,sourceCredit:image.sourceCredit,sortOrder}})}
@@ -162,7 +167,7 @@ export async function adminMutation(client:PrismaClient,headers:Headers,action:A
       if(auction.controlVersion!==data.version)throw new AdminError(409,'Auction controls changed. Reload before saving.');
       if(!auction.publishedAt||!['LIVE','SCHEDULED'].includes(auction.status)||auction.settlement||auction.result||!auction.product)throw new AdminError(409,'Presentation can change only for an open, unsettled published auction.');
       if(new Set(data.imageIds).size!==data.imageIds.length)throw new AdminError(422,'Duplicate images are not allowed.');
-      const media=await tx.managedMedia.findMany({where:{id:{in:data.imageIds}},select:{id:true,sourceType:true,sourceCredit:true}});if(media.length!==data.imageIds.length)throw new AdminError(422,'Use uploaded validated images.');
+      const media=await tx.managedMedia.findMany({where:{id:{in:data.imageIds},purpose:'CATALOG'},select:{id:true,sourceType:true,sourceCredit:true}});if(media.length!==data.imageIds.length)throw new AdminError(422,'Use uploaded catalog images; winner photographs cannot be reused.');
       const current=auction.presentation??{title:auction.product.title,titleAm:auction.product.titleAm,description:auction.product.description,descriptionAm:auction.product.descriptionAm,condition:auction.product.condition,conditionAm:auction.product.conditionAm,images:auction.product.images.map(image=>({path:image.path,alt:image.alt,sourceType:image.sourceType,sourceCredit:image.sourceCredit}))};
       const presentation={title:data.title,titleAm:data.titleAm||null,description:data.description,descriptionAm:data.descriptionAm||null,condition:data.condition,conditionAm:data.conditionAm||null,images:data.imageIds.map(mediaId=>{const image=media.find(item=>item.id===mediaId)!;return {path:`/api/media/${image.id}`,alt:data.title,sourceType:image.sourceType,sourceCredit:image.sourceCredit}})};
       const controlVersion=auction.controlVersion+1;

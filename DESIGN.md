@@ -51,4 +51,12 @@ Public Better Auth signup creates a member. Resend verifies the email and handle
 
 ## Verification evidence
 
+### 30 October 2026 customer refinement
+
+The supplied `public/logonew.png` now replaces the previous mark. Customer headers use a versioned 2,392-byte WebP derivative; launch uses the same small mark with a spinner and localized Loading text. The original PNG is preserved. Route transitions use distinct, neutral skeleton geometry for each page; modal sections retain compact loading states and existing cached content remains visible during refreshes.
+
+The warm white, near-black and gold palette remains. Customer account, bids, transactions and catalog surfaces have consistent rounded panels, readable secondary text, tabular amounts, visible keyboard focus and contained mobile layouts. A signed payment launch resolves the owned checkout directly to the original top-up or canonical auction modal. A five-minute customer window ends the waiting presentation without declaring a payment failed or changing the provider's expiry; a later verified payment still applies through the existing ledger safeguards.
+
+Telegram deposit receipts follow committed server credit. Auction bot messages use the actual product photo where available, concise title, relevant EAT time and one Mini App action. Chapa controls its hosted checkout appearance and the actual browser redirect; Lowwin does not replace its provider URL or infer success from a return link.
+
 See `docs/redesign/` for screenshots, local measurements, comparison notes and release limitations. `docs/arifpay-checkout.md` specifies the provider contract, activation and recovery safeguards. These documents distinguish local verification from production and physical WebView evidence.

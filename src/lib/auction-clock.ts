@@ -2,13 +2,18 @@
 export class AuctionClockAnchors{
  private anchors=new Map<string,number>();
  constructor(private readonly limit=64){}
+ private receipt(observedAt:number|undefined,clientNow:number){
+  // Query initialData has updatedAt=0 until hydration stores its first receipt.
+  // Zero is "not observed", not an epoch timestamp to subtract from now.
+  return Number.isFinite(observedAt)&&observedAt!>0?Math.min(observedAt!,clientNow):undefined;
+ }
  initial(target:string,serverNow:string,observedAt:number|undefined,clientNow:number){
-  const known=this.anchors.get(serverNow),received=Number.isFinite(observedAt)?Math.min(observedAt!,clientNow):undefined;
+  const known=this.anchors.get(serverNow),received=this.receipt(observedAt,clientNow);
   const anchor=known===undefined?received:received===undefined?known:Math.min(known,received);
   return this.remaining(target,serverNow,anchor??clientNow,clientNow);
  }
  observe(serverNow:string,observedAt:number|undefined,clientNow:number){
-  const prior=this.anchors.get(serverNow),received=Number.isFinite(observedAt)?Math.min(observedAt!,clientNow):clientNow;
+  const prior=this.anchors.get(serverNow),received=this.receipt(observedAt,clientNow)??clientNow;
   const anchor=prior===undefined?received:Math.min(prior,received);
   this.anchors.delete(serverNow);this.anchors.set(serverNow,anchor);
   while(this.anchors.size>this.limit)this.anchors.delete(this.anchors.keys().next().value!);

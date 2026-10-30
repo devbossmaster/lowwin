@@ -7,10 +7,15 @@ import {broadcastMiniAppPath,broadcastButtonLabel} from '@/lib/broadcast-link';
 
 type Tx=Prisma.TransactionClient;
 export const telegramKinds=['AUCTION_PUBLISHED','AUCTION_UPCOMING','AUCTION_STARTING_SOON','AUCTION_ENDING','AUCTION_RESULT','DEPOSIT_CREDITED','BROADCAST'];
-export function auctionNotificationImageId(presentation:unknown,productPath?:string){
+/** Only a published product's own local image may accompany its auction alert. */
+export function auctionNotificationImagePath(presentation:unknown,productPath?:string){
  const image=typeof presentation==='object'&&presentation!==null&&'images' in presentation&&Array.isArray(presentation.images)?presentation.images[0]:null;
  const path=typeof image?.path==='string'?image.path:productPath;
- return /^\/api\/media\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/i.exec(path??'')?.[1];
+ if(!path||path.includes('..'))return undefined;
+ return /^\/api\/media\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(path)||/^\/(?:images|products)\/[A-Za-z0-9/_-]+\.(?:webp|png|jpe?g)$/i.test(path)?path:undefined;
+}
+export function auctionNotificationImageId(presentation:unknown,productPath?:string){
+ return /^\/api\/media\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/i.exec(auctionNotificationImagePath(presentation,productPath)??'')?.[1];
 }
 export type CampaignPayload={auctionId?:string;recipientUserId?:string;intentId?:string;body?:string;imageId?:string;href?:string;buttonLabel?:string;telegramOnly?:boolean;cursor?:string;audienceBefore?:string;rootKey?:string;deliveryKind?:string};
 export function broadcastRoot(row:Pick<Outbox,'kind'|'key'|'payload'>){
@@ -83,7 +88,7 @@ async function scheduleGlobalAlertsInTransaction(client:Tx){
 }
 export async function campaignContent(tx:Tx,row:Pick<Outbox,'kind'|'payload'>){
  const p=row.payload as CampaignPayload;if(!p.recipientUserId||!telegramKinds.includes(row.kind))return null;
- const base={userId:p.recipientUserId,kind:row.kind,imageId:undefined as string|undefined};
+ const base={userId:p.recipientUserId,kind:row.kind,imageId:undefined as string|undefined,imagePath:undefined as string|undefined};
  if(row.kind==='BROADCAST'){
   if(!p.body||!p.href)return null;
   let href:string,buttonLabel:string;try{href=broadcastMiniAppPath(p.href);buttonLabel=broadcastButtonLabel(p.buttonLabel)}catch{return null}
@@ -99,27 +104,31 @@ export async function campaignContent(tx:Tx,row:Pick<Outbox,'kind'|'payload'>){
  if(!p.auctionId)return null;
  const a=await tx.auction.findUnique({where:{id:p.auctionId},select:{slug:true,publicCode:true,publishedAt:true,startsAt:true,endsAt:true,status:true,isDemo:true,isSettlementFixture:true,testRunId:true,presentation:true,product:{select:{title:true,visible:true,images:{orderBy:{sortOrder:'asc'},take:1,select:{path:true}}}},result:{select:{id:true}},settlement:{select:{outcome:true}}}});
  if(!a?.publishedAt||!a.slug||a.result||a.testRunId||a.isDemo&&(!a.isSettlementFixture||!(demoBidAllowed()||stagingDemoEnabled())))return null;
+ const [{now}]=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`;
+ if(a.publishedAt>now)return null;
  const presentation=a.presentation as {title?:unknown;images?:{path?:unknown}[]}|null;const title=typeof presentation?.title==='string'?presentation.title:a.product?.title;
+ base.imagePath=auctionNotificationImagePath(presentation,a.product?.images?.[0]?.path);
  base.imageId=auctionNotificationImageId(presentation,a.product?.images?.[0]?.path);
- const prefix=a.isDemo?'DEMO · ':'',item=`${title??'Auction'} · #${a.publicCode}`;
+ const prefix=a.isDemo?'DEMO · ':'',item=`${title??'Auction'} · #${a.publicCode}`,shortItem=(title??'Auction').replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim().slice(0,120),code=a.publicCode===null?'':`\n#${a.publicCode}`;
+ const when=(date:Date)=>new Intl.DateTimeFormat('en-GB',{dateStyle:'medium',timeStyle:'short',timeZone:'Africa/Addis_Ababa'}).format(date)+' EAT';
+ const action={buttonLabel:'View auction · ጨረታውን ይመልከቱ',href:`/auctions/${a.slug}`};
  if(row.kind==='AUCTION_RESULT'){
   if(!a.settlement)return null;
   if(a.settlement.outcome==='CANCELLED')return null;
   const outcome=a.settlement.outcome==='WINNER'?'A winner has been announced. See the final result.\nአሸናፊው ታውቋል። የመጨረሻ ውጤቱን ይመልከቱ።':'The auction closed without a winner.\nጨረታው ያለ አሸናፊ ተዘግቷል።';
-  return {...base,title:`${prefix}Auction finished · ጨረታው ተጠናቋል`,body:`${item}\n${outcome}\n${new URL(`/winners/${a.publicCode}`,process.env.MINI_APP_URL).href}`,href:`/auctions/${a.slug}`};
+  return {...base,...action,title:`${prefix}Auction finished · ጨረታው ተጠናቋል`,body:`${item}\n${outcome}\n${new URL(`/winners/${a.publicCode}`,process.env.MINI_APP_URL).href}`,telegramCaption:`🏁 ${prefix}${shortItem}\n${a.settlement.outcome==='WINNER'?'Winner announced · አሸናፊው ታውቋል':'Closed without a winner · ያለ አሸናፊ ተዘግቷል'}${a.endsAt?'\n⏰ '+when(a.endsAt):''}${code}`};
  }
- const [{now}]=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`;
  if(!['LIVE','SCHEDULED'].includes(a.status)||!a.product?.visible||!a.endsAt||a.endsAt<=now)return null;
  if(row.kind==='AUCTION_UPCOMING'||row.kind==='AUCTION_STARTING_SOON'){
   if(a.settlement||!a.startsAt)return null;
   const remaining=a.startsAt.getTime()-now.getTime();
   if(remaining<=0||remaining>=86400000)return null;
   if(row.kind==='AUCTION_UPCOMING'?remaining<=3600000:remaining>3600000)return null;
-  const options={dateStyle:'medium',timeStyle:'short',timeZone:'Africa/Addis_Ababa'} as const;
-  const when=new Intl.DateTimeFormat('en-GB',options).format(a.startsAt),whenAm=new Intl.DateTimeFormat('am-ET',options).format(a.startsAt);
   const hour=row.kind==='AUCTION_STARTING_SOON';
-  return {...base,title:`${prefix}${hour?'⏰ Bidding opens within 1 hour':'⏰ Bidding opens within 24 hours'}\n${hour?'ጨረታው በ1 ሰዓት ውስጥ ይጀምራል':'ጨረታው በ24 ሰዓት ውስጥ ይጀምራል'}`,body:`${item}\nOpens: ${when} EAT\nየሚጀምርበት ጊዜ፦ ${whenAm} EAT\n${hour?'Get ready to bid when it opens.':'Preview the item before bidding opens.'}\n${hour?'ሲከፈት ለመጫረት ይዘጋጁ።':'ጨረታው ከመጀመሩ በፊት ዕቃውን ይመልከቱ።'}`,href:`/auctions/${a.slug}`};
+  const options={dateStyle:'medium',timeStyle:'short',timeZone:'Africa/Addis_Ababa'} as const;
+  const whenEn=new Intl.DateTimeFormat('en-GB',options).format(a.startsAt),whenAm=new Intl.DateTimeFormat('am-ET',options).format(a.startsAt);
+  return {...base,...action,title:`${prefix}${hour?'⏰ Bidding opens within 1 hour':'⏰ Bidding opens within 24 hours'}\n${hour?'ጨረታው በ1 ሰዓት ውስጥ ይጀምራል':'ጨረታው በ24 ሰዓት ውስጥ ይጀምራል'}`,body:`${item}\nOpens: ${whenEn} EAT\nየሚጀምርበት ጊዜ፦ ${whenAm} EAT\n${hour?'Get ready to bid when it opens.':'Preview the item before bidding opens.'}\n${hour?'ሲከፈት ለመጫረት ይዘጋጁ።':'ጨረታው ከመጀመሩ በፊት ዕቃውን ይመልከቱ።'}`,telegramCaption:`⏰ ${prefix}${shortItem}\n${hour?'Opens within 1 hour · በ1 ሰዓት ውስጥ ይጀምራል':'Opens within 24 hours · በ24 ሰዓት ውስጥ ይጀምራል'}\n🗓 ${when(a.startsAt)}${code}`};
  }
  if(row.kind==='AUCTION_ENDING'&&(!a.startsAt||a.startsAt>now||a.endsAt.getTime()-now.getTime()>=86400000))return null;
- return {...base,title:prefix+(row.kind==='AUCTION_ENDING'?'Less than one day left · ከአንድ ቀን ያነሰ ጊዜ ቀርቷል':'New auction · አዲስ ጨረታ'),body:`${item}\n${row.kind==='AUCTION_ENDING'?'Check the closing time and place your bid.\nየመዝጊያ ሰዓቱን ይመልከቱና ጨረታዎን ያቅርቡ።':'View the item and its auction terms.\nዕቃውንና የጨረታውን ውሎች ይመልከቱ።'}`,href:`/auctions/${a.slug}`};
+ return {...base,...action,title:prefix+(row.kind==='AUCTION_ENDING'?'Less than one day left · ከአንድ ቀን ያነሰ ጊዜ ቀርቷል':'New auction · አዲስ ጨረታ'),body:`${item}\n${row.kind==='AUCTION_ENDING'?'Check the closing time and place your bid.\nየመዝጊያ ሰዓቱን ይመልከቱና ጨረታዎን ያቅርቡ።':'View the item and its auction terms.\nዕቃውንና የጨረታውን ውሎች ይመልከቱ።'}`,telegramCaption:row.kind==='AUCTION_ENDING'?`⌛ ${prefix}${shortItem}\nEnds · ይዘጋል: ${when(a.endsAt)}${code}`:`📣 ${prefix}${shortItem}\nNew auction · አዲስ ጨረታ${a.startsAt?'\n🗓 '+when(a.startsAt):''}${code}`};
 }

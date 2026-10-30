@@ -7,4 +7,19 @@ describe('local countdown receipt anchors',()=>{
  it('uses a cached query receipt timestamp even on first mount',()=>{const c=new AuctionClockAnchors(),a=c.observe(now,1000,9000);expect(c.remaining(end,now,a,9000)).toBe(52000);expect(c.observe(now,7000,11000)).toBe(1000)});
  it('uses a fresh server sample without double subtracting cache age',()=>{const c=new AuctionClockAnchors(),later='2026-10-25T10:00:10Z',a=c.observe(later,11000,11000);expect(c.remaining(end,later,a,14000)).toBe(47000)});
  it('bounds anchors and never reports negative remaining time',()=>{const c=new AuctionClockAnchors(2);for(const key of ['a','b','c'])c.observe(key,undefined,1000);expect(c.size).toBe(2);expect(c.remaining(end,now,1000,70000)).toBe(0);expect(c.remaining('invalid',now,1000,2000)).toBe(0)});
+ it.each([0,-1,NaN,Infinity])('ignores an unobserved or invalid query receipt (%s)',observedAt=>{
+  const c=new AuctionClockAnchors(),clientNow=Date.parse('2026-10-30T00:33:00Z');
+  const liveNow='2026-10-30T00:33:00Z',liveEnd='2026-11-20T00:33:00Z';
+  expect(c.initial(liveEnd,liveNow,observedAt,clientNow)).toBe(21*86400000);
+  const anchor=c.observe(liveNow,observedAt,clientNow);
+  expect(c.remaining(liveEnd,liveNow,anchor,clientNow+2000)).toBe(21*86400000-2000);
+ });
+ it('does not poison a live auction anchor when initialData hydrates with updatedAt zero',()=>{
+  const c=new AuctionClockAnchors(),clientNow=Date.parse(now);
+  c.observe(now,0,clientNow);
+  const hydrated=c.observe(now,clientNow+1000,clientNow+1000);
+  expect(c.remaining(end,now,hydrated,clientNow+1000)).toBe(59000);
+  expect(c.initial(end,now,0,clientNow+2000)).toBe(58000);
+  expect(c.remaining(end,now,hydrated,clientNow+60000)).toBe(0);
+ });
 });

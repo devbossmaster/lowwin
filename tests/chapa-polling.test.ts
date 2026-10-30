@@ -65,4 +65,31 @@ describe('automatic server-owned Chapa verification',()=>{
   const stop=startChapaPolling(verify,pause,visibility());stop();resolve(pending);
   await vi.advanceTimersByTimeAsync(300000);expect(verify).toHaveBeenCalledTimes(1);expect(pause).not.toHaveBeenCalled();
  });
+ it('uses the saved deadline rather than granting another five minutes on reopen',async()=>{
+  vi.useFakeTimers();const now=Date.now(),pause=vi.fn(),verify=vi.fn().mockResolvedValue(pending);
+  const stop=startChapaPolling(verify,pause,visibility(),{deadlineAt:now+10000,wake:null});
+  await vi.advanceTimersByTimeAsync(9999);expect(verify).toHaveBeenCalledTimes(1);expect(pause).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(1);expect(pause).toHaveBeenCalledOnce();
+  await vi.advanceTimersByTimeAsync(300000);expect(verify).toHaveBeenCalledTimes(1);stop();
+  const reopenedPause=vi.fn(),reopened=startChapaPolling(verify,reopenedPause,visibility(),{deadlineAt:now+10000,wake:null});
+  await vi.advanceTimersByTimeAsync(0);expect(verify).toHaveBeenCalledTimes(2);expect(reopenedPause).toHaveBeenCalledOnce();
+  await vi.advanceTimersByTimeAsync(300000);expect(verify).toHaveBeenCalledTimes(2);reopened();
+ });
+ it('does one check after an ended session returns from background and accepts a late credit',async()=>{
+  vi.useFakeTimers();const now=Date.now(),source=visibility(),wake=new EventTarget(),pause=vi.fn(),resume=vi.fn();
+  const verify=vi.fn().mockResolvedValueOnce(pending).mockResolvedValueOnce({...pending,status:'CREDITED'});
+  const stop=startChapaPolling(verify,pause,source,{deadlineAt:now+60000,wake,onResume:resume});
+  await vi.advanceTimersByTimeAsync(0);source.visibilityState='hidden';source.dispatchEvent(new Event('visibilitychange'));
+  await vi.advanceTimersByTimeAsync(120000);expect(verify).toHaveBeenCalledTimes(1);
+  source.visibilityState='visible';source.dispatchEvent(new Event('visibilitychange'));await vi.advanceTimersByTimeAsync(0);
+  expect(verify).toHaveBeenCalledTimes(2);expect(pause).toHaveBeenCalledOnce();expect(resume).not.toHaveBeenCalled();
+  wake.dispatchEvent(new Event('focus'));await vi.advanceTimersByTimeAsync(300000);expect(verify).toHaveBeenCalledTimes(2);stop();
+ });
+ it('does not extend an ended deadline when repeated foreground events find payment still pending',async()=>{
+  vi.useFakeTimers();const source=visibility(),wake=new EventTarget(),pause=vi.fn(),verify=vi.fn().mockResolvedValue(pending);
+  const stop=startChapaPolling(verify,pause,source,{deadlineAt:Date.now()-1,wake});
+  await vi.advanceTimersByTimeAsync(0);expect(pause).toHaveBeenCalledOnce();expect(verify).toHaveBeenCalledTimes(1);
+  wake.dispatchEvent(new Event('focus'));await vi.advanceTimersByTimeAsync(0);expect(verify).toHaveBeenCalledTimes(2);
+  await vi.advanceTimersByTimeAsync(300000);expect(verify).toHaveBeenCalledTimes(2);expect(pause).toHaveBeenCalledOnce();stop();
+ });
 });

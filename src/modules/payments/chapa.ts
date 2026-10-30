@@ -15,6 +15,7 @@ import {matchesChapaMetadata} from './chapa-metadata';
 import {ChapaError,ChapaProviderError,chapaAvailability,chapaConfigurationFingerprint,chapaHash,chapaTransport,createdChapaSession,isChapaHostedSessionReference,parseChapaEvidence,requireChapa,type ChapaCreate,type ChapaTransport} from './chapa-provider';
 import {approvedRecoveryBinding,chapaRecoveryBindings} from './chapa-recovery-binding';
 import {queueChapaReceipt} from '../notifications/chapa-receipt';
+import {chapaMethodCatalog} from './chapa-methods';
 
 type Tx=Prisma.TransactionClient;
 type Authorize=(tx:Tx)=>Promise<void>;
@@ -36,7 +37,7 @@ export function walletBidsEnabled(raw:Record<string,string|undefined>=process.en
  if(raw.WALLET_BIDS_ENABLED!=='true'||raw.DEV_IDENTITY_ENABLED==='true'||raw.STAGING_DEMO_ENABLED==='true')return false;
  return raw.APP_ENV==='production'||raw.VERCEL_ENV==='production'?raw.NODE_ENV==='production'&&raw.WALLET_BIDS_LIVE_ENABLED==='true'&&raw.DEV_POINTS_ENABLED!=='true':['local','test','staging'].includes(raw.APP_ENV??'');
 }
-export function publicChapaAvailability(){const value=chapaAvailability();return {enabled:value.enabled,configured:value.configured,mode:value.mode,walletBidsEnabled:walletBidsEnabled(),minTopup:'1.00',maxTopup:'43200.00',reason:value.reason}}
+export function publicChapaAvailability(){const value=chapaAvailability();void chapaMethodCatalog.refresh();return {enabled:value.enabled,configured:value.configured,mode:value.mode,walletBidsEnabled:walletBidsEnabled(),minTopup:'1.00',maxTopup:'43200.00',reason:value.reason}}
 const context={auction:{select:{publicCode:true,status:true,endsAt:true,product:{select:{title:true,titleAm:true}}}}} satisfies Prisma.ChapaCheckoutInclude;
 type OrderContext={auction?:{publicCode:number;status:string;endsAt:Date|null;product:{title:string;titleAm:string|null}|null}|null};
 export function ownChapaCheckout(order:ChapaCheckout&OrderContext){
@@ -103,7 +104,7 @@ export async function createChapaCheckout(client:PrismaClient,userId:string,raw:
   }
   const id=randomUUID(),merchantReference=`LW${randomBytes(9).toString('hex')}`;
   const returnUrl=new URL(`/payments/chapa/return?checkout=${id}`,process.env.MINI_APP_URL).toString();
-  const initialization:ChapaCreate={amountCents:amountCents.toString(),merchantReference,idempotencyKey:`lowwin:${id}`,returnUrl,returnUrlVersion:1};
+  const initialization:ChapaCreate={amountCents:amountCents.toString(),merchantReference,idempotencyKey:`lowwin:${id}`,returnUrl,returnUrlVersion:1,...chapaMethodCatalog.preferences(amountCents)};
   return tx.chapaCheckout.create({data:{id,userId,purpose:body.purpose,mode:health.mode,credentialFingerprint:health.credentialFingerprint!,key:body.key,requestHash,merchantReference,amountCents,initialization:json(initialization),phoneCipher:contact.phoneCipher,phoneBotId:contact.botId,auctionId,auctionSlug:body.purpose==='BID'?body.auctionSlug:null,bidNumber,grossFee,discountPoints,feeVersion:body.purpose==='BID'?body.feeVersion:null,couponId:body.purpose==='BID'?body.couponId:null,expiresAt:after(86400000)}});
  },PAYMENT_TRANSACTION_OPTIONS));
  if(!paid(order)&&!order.checkoutUrl&&sameConfiguration(order)){const initialized=await initializeChapaCheckout(client,order.id,transport,order);if(initialized)return ownChapaCheckout(initialized);return getChapaCheckout(client,userId,order.id)}

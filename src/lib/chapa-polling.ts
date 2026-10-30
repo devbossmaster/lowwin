@@ -2,22 +2,24 @@ import {ChapaClientError,chapaConfirmed,chapaRecoverable,type ChapaCheckoutView}
 
 type Events=Pick<EventTarget,'addEventListener'|'removeEventListener'>;
 type Visibility=Events&Pick<Document,'visibilityState'>;
-type Options={onError?:(error:unknown)=>void;onResume?:()=>void;wake?:Events|null};
+type Options={onError?:(error:unknown)=>void;onResume?:()=>void;wake?:Events|null;deadlineAt?:number|null};
 
 /** Bounded automatic checks of the owned endpoint. Returning to the app wakes a
  * paused check; no pending/error/redirect is ever converted into success. */
 export function startChapaPolling(verify:()=>Promise<ChapaCheckoutView|null>,onPause:()=>void,visibility:Visibility=document,options:Options={}){
  let active=true,paused=false,inFlight=false,delay=5000,timer:ReturnType<typeof setTimeout>|undefined;
- let deadline=Date.now()+300000;
+ const fixedDeadline=typeof options.deadlineAt==='number'&&Number.isFinite(options.deadlineAt)?options.deadlineAt:null;
+ let deadline=Math.min(Date.now()+300000,fixedDeadline??Infinity);
  const wake=options.wake===undefined?(typeof window==='undefined'?null:window):options.wake;
  const schedule=()=>{
   clearTimeout(timer);
   if(active&&!paused&&visibility.visibilityState==='visible')timer=setTimeout(()=>void read(),Math.min(delay,Math.max(0,deadline-Date.now())));
  };
- const read=async()=>{
-  if(!active||inFlight||paused||visibility.visibilityState!=='visible')return;
+ const pause=()=>{if(!paused){paused=true;onPause()}};
+ const read=async(checkAfterDeadline=false)=>{
+  if(!active||inFlight||paused&&!checkAfterDeadline||visibility.visibilityState!=='visible')return;
   clearTimeout(timer);
-  if(Date.now()>=deadline){paused=true;onPause();return}
+  if(Date.now()>=deadline){pause();if(!checkAfterDeadline)return}
   inFlight=true;
   try{
    const order=await verify();
@@ -31,11 +33,14 @@ export function startChapaPolling(verify:()=>Promise<ChapaCheckoutView|null>,onP
    options.onError?.(error);
    if(error instanceof ChapaClientError&&[401,403,404].includes(error.status)){stop();return}
    delay=Math.min(30000,delay*2);
-  }finally{inFlight=false;schedule()}
+  }finally{inFlight=false;if(active&&Date.now()>=deadline)pause();schedule()}
  };
  const onWake=()=>{
   clearTimeout(timer);
   if(!active||visibility.visibilityState!=='visible')return;
+  // Reopening or returning after the customer window gets one fresh server
+  // check for a late success, without starting another five-minute loop.
+  if(fixedDeadline!==null&&Date.now()>=deadline){pause();void read(true);return}
   if(paused){paused=false;deadline=Date.now()+300000;options.onResume?.()}
   void read();
  };
@@ -45,6 +50,6 @@ export function startChapaPolling(verify:()=>Promise<ChapaCheckoutView|null>,onP
  }
  visibility.addEventListener('visibilitychange',onWake);
  wake?.addEventListener('focus',onWake);wake?.addEventListener('online',onWake);
- void read();
+ void read(true);
  return stop;
 }

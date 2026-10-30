@@ -44,6 +44,7 @@ model User {
   referralCoupons     ReferralCoupon[]
   referralRedemptions ReferralRedemption[]
   referralRegistrationProof ReferralRegistrationProof?
+  winnerPhotoConsents WinnerPresentation[] @relation("WinnerPhotoConsent")
 
   @@map("user")
 }
@@ -308,6 +309,7 @@ model Auction {
   terms               AuctionTerms?
   result              PublicAuctionResult?
   settlement          AuctionSettlement?
+  winnerPresentation  WinnerPresentation?
   // Explicit opt-in for freshly scheduled local DEMO fixtures; old seeds stay false.
   isSettlementFixture Boolean                  @default(false)
   closeAttempts       Int                      @default(0)
@@ -974,7 +976,24 @@ model ManagedMedia {
   mime         String
   sourceType   String
   sourceCredit String
+  purpose      String   @default("CATALOG")
   createdAt    DateTime @default(now())
+  winnerPresentations WinnerPresentation[]
+}
+
+// Editable announcement media stays separate from immutable auction/result facts.
+model WinnerPresentation {
+  auctionId          String @id
+  auction            Auction @relation(fields: [auctionId], references: [id], onDelete: Restrict)
+  imageId            String?
+  image              ManagedMedia? @relation(fields: [imageId], references: [id], onDelete: Restrict)
+  consentConfirmedAt DateTime?
+  consentActorId     String?
+  consentActor       User? @relation("WinnerPhotoConsent", fields: [consentActorId], references: [id], onDelete: Restrict)
+  version            Int @default(1)
+  updatedAt          DateTime @updatedAt
+
+  @@index([imageId])
 }
 
 model SiteContent {

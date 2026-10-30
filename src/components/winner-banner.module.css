@@ -1,0 +1,19 @@
+@font-face{font-family:'Lowwin Winner Display';src:url('/fonts/sora-latin-800.woff2') format('woff2');font-style:normal;font-weight:800;font-display:swap}
+.banner{position:relative;isolation:isolate;display:grid;grid-template-columns:56% 44%;width:100%;aspect-ratio:1840/800;min-width:0;overflow:hidden;background:#242218;color:#fff;container-type:inline-size;text-align:left}
+.image{grid-column:2;grid-row:1;min-width:0;overflow:hidden;background:#f0eee6}
+.image>img{display:block!important;width:100%!important;height:100%!important;margin:0!important}
+.image>.product{object-fit:contain!important;padding:5%;background:#f0eee6}
+.image>.person{object-fit:cover!important;object-position:center 30%}
+.copy{z-index:1;grid-column:1;grid-row:1;display:flex;flex-direction:column;align-items:flex-start;min-width:0;gap:clamp(3px,1.15cqw,6px);padding:clamp(10px,3.1cqw,16px) clamp(10px,3.1cqw,16px);background:#242218}
+.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 7px;border-radius:14px;background:#e9c24e;color:#211b08;font-size:clamp(8px,2.3cqw,11px);font-weight:700;line-height:1.2;text-transform:uppercase;white-space:nowrap}
+.badge>svg{width:1.1em;height:1.1em;flex:none}
+.title{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;max-width:100%;font-family:'Lowwin Winner Display','Lowwin Ethiopic',sans-serif;font-size:clamp(13px,4.5cqw,23px);font-weight:800;line-height:1.1;letter-spacing:-.025em;overflow-wrap:anywhere;text-wrap:balance}
+.result{display:grid;gap:1px;max-width:100%;margin-top:auto}
+.resultLabel{color:#f0dfab;font-size:clamp(8px,2.3cqw,11px);font-weight:500;line-height:1.2}
+.value{display:block;max-width:100%;padding:1px 5px 2px;background:#e9c24e;color:#211b08;font-family:'Lowwin Winner Display','Lowwin Ethiopic',sans-serif;font-size:clamp(18px,7cqw,36px);font-weight:800;line-height:1.05;letter-spacing:-.025em;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.value[data-long]{font-size:clamp(13px,4.9cqw,25px)}
+.footer{display:flex;align-items:center;gap:5px;min-width:0;margin-top:2px;color:#fff;font-size:clamp(7px,2.05cqw,10px);line-height:1.15;font-weight:700;overflow-wrap:anywhere}
+.footer>img{display:block!important;flex:none;width:19px!important;height:19px!important;object-fit:contain!important}
+.footer small{display:block;margin-top:1px;color:#f0dfab;font-size:.75em;letter-spacing:.08em;font-weight:500}
+@container(max-width:300px){.copy{padding:8px;gap:2px}.badge{padding:2px 5px;font-size:8px}.title{font-size:13px;line-height:1.06}.resultLabel{font-size:7px}.value{padding:1px 4px;font-size:18px;line-height:1.02}.value[data-long]{font-size:12px}.footer{margin-top:1px;font-size:7px}.footer>img{width:14px!important;height:14px!important}}
+@media(prefers-reduced-motion:reduce){.banner{scroll-behavior:auto}}

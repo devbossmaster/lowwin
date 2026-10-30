@@ -23,8 +23,10 @@ describe('bounded quick-auction catalog route',()=>{
   it('loads only the tiny aggregate for summary',async()=>{
     const response=await GET(request('view=summary'));expect(await response.json()).toEqual({totalLive:2,totalUpcoming:1,serverNow:'2026-10-26T00:00:00.000Z'});expect(f.summary).toHaveBeenCalledTimes(1);expect(f.quick).not.toHaveBeenCalled();expect(f.list).not.toHaveBeenCalled();expect(response.headers.get('cache-control')).toBe('no-store');
   });
-  it('keeps Home and default browse contracts unchanged',async()=>{
-    await GET(request('view=home&status=closed&page=3'));expect(f.list).toHaveBeenLastCalledWith({q:'',status:'live',sort:'code',page:3},undefined,10);
+  it('uses featured Home defaults while preserving explicit sorts and browse code ordering',async()=>{
+    await GET(request('view=home&status=closed&page=3'));expect(f.list).toHaveBeenLastCalledWith({q:'',status:'live',sort:'featured',page:3},undefined,10);
+    await GET(request('view=home&status=live&sort=ending&category=phones&page=2'));expect(f.list).toHaveBeenLastCalledWith({q:'',status:'live',sort:'ending',category:'phones',page:2},undefined,10);
+    await GET(request('view=home&sort=code'));expect(f.list).toHaveBeenLastCalledWith({q:'',status:'live',sort:'code',page:1},undefined,10);
     await GET(request('status=upcoming'));expect(f.list).toHaveBeenLastCalledWith({q:'',status:'upcoming',sort:'code',page:1});expect(f.quick).not.toHaveBeenCalled();expect(f.summary).not.toHaveBeenCalled();
   });
   it.each(['quick','summary'])('returns a retryable no-store error for a failed %s read',async view=>{

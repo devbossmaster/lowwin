@@ -140,9 +140,9 @@ export function chapaWebhookAmountMatches(hint:{amountCents?:string;serviceFeeCe
  const amount=BigInt(hint.amountCents);return amount===expected||hint.serviceFeeCents!==undefined&&amount===expected+BigInt(hint.serviceFeeCents);
 }
 
-export type ChapaCreate={amountCents:string;merchantReference:string;idempotencyKey:string;returnUrl?:string;returnUrlVersion?:1;callbackUrl?:string;customer?:z.infer<typeof customerSchema>;meta?:Record<string,string>;preferredPaymentMethods?:string[];description?:string};
+export type ChapaCreate={amountCents:string;merchantReference:string;idempotencyKey:string;returnUrl?:string;returnUrlVersion?:1;callbackUrl?:string;customer?:z.infer<typeof customerSchema>;meta?:Record<string,string>;preferredPaymentMethods?:string[];preferredPaymentMethodsVersion?:1;description?:string};
 export type ChapaTransport={create:(input:ChapaCreate)=>Promise<unknown>;lookup:(paymentReference:string)=>Promise<unknown>;methods:()=>Promise<unknown>};
-const createSchema=z.object({amountCents:centsString.refine(v=>centsPattern.test(v)&&BigInt(v)>=100n),merchantReference,idempotencyKey:z.string().regex(/^[A-Za-z0-9:._-]{16,128}$/),returnUrl:z.url().max(2048).optional(),returnUrlVersion:z.literal(1).optional(),callbackUrl:z.url().max(2048).optional(),customer:customerSchema.strict().optional(),meta:z.record(z.string().max(80),z.string().max(256)).optional(),preferredPaymentMethods:z.array(z.string().regex(/^[a-z0-9_-]{1,80}$/)).min(1).max(10).optional(),description:z.string().trim().min(1).max(200).optional()}).strict();
+const createSchema=z.object({amountCents:centsString.refine(v=>centsPattern.test(v)&&BigInt(v)>=100n),merchantReference,idempotencyKey:z.string().regex(/^[A-Za-z0-9:._-]{16,128}$/),returnUrl:z.url().max(2048).optional(),returnUrlVersion:z.literal(1).optional(),callbackUrl:z.url().max(2048).optional(),customer:customerSchema.strict().optional(),meta:z.record(z.string().max(80),z.string().max(256)).optional(),preferredPaymentMethods:z.array(z.string().regex(/^[a-z0-9_-]{1,80}$/)).min(1).max(10).optional(),preferredPaymentMethodsVersion:z.literal(1).optional(),description:z.string().trim().min(1).max(200).optional()}).strict();
 async function boundedJson(response:Response){
  const reader=response.body?.getReader();if(!reader)throw new ChapaError(502,'PROVIDER_UNAVAILABLE','Payment confirmation is pending. Check this same payment again.');
  let length=0;const chunks:Uint8Array[]=[];
@@ -165,9 +165,9 @@ export function createChapaTransport(options:{env?:Environment;fetcher?:typeof f
   create:async input=>{const parsed=createSchema.safeParse(input);if(!parsed.success)throw new ChapaError(422,'INVALID_PAYMENT','Check the payment details.');const p=parsed.data;for(const value of [p.returnUrl,p.callbackUrl]){if(!value)continue;const u=new URL(value);let origin:string;try{origin=new URL(raw.MINI_APP_URL??'').origin}catch{throw new ChapaError(503,'PAYMENT_UNAVAILABLE','Chapa payments are not configured.')}if(u.protocol!=='https:'||u.username||u.password||u.origin!==origin)throw new ChapaError(422,'INVALID_PAYMENT','Use the configured secure payment return URL.')}
    // Keep the hosted request minimal. The dashboard PAYMENT webhook and our
    // merchant-authenticated lookup handle crediting; Chapa collects payer data.
-   // Only new snapshots explicitly opt into the documented navigation return.
+   // Only new versioned snapshots opt into navigation return or reviewed method preferences.
    // Historical retries retain the minimal wire body, even with old URL fields.
-   return request('/v2/payments/hosted','create',{amount:Number(p.amountCents),currency:'ETB',merchant_reference:p.merchantReference,...(p.returnUrlVersion===1&&p.returnUrl?{return_url:p.returnUrl}:{})},p.idempotencyKey)},
+   return request('/v2/payments/hosted','create',{amount:Number(p.amountCents),currency:'ETB',merchant_reference:p.merchantReference,...(p.returnUrlVersion===1&&p.returnUrl?{return_url:p.returnUrl}:{}),...(p.preferredPaymentMethodsVersion===1&&p.preferredPaymentMethods?{preferred_payment_methods:p.preferredPaymentMethods}:{})},p.idempotencyKey)},
   lookup:async value=>{if(!reference.safeParse(value).success)throw new ChapaError(422,'INVALID_PAYMENT','Invalid payment reference.');return request(`/v2/payments/${encodeURIComponent(value)}/verify`,'recover')},
   methods:()=>request('/v2/payments/methods','create'),
  };

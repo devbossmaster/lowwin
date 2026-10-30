@@ -1,14 +1,14 @@
 import {Suspense} from 'react';
 import {HomePageContent,HomeDataSeed} from '@/components/home-page-content';
 import {publicHomeContent,publicHomeExperience} from '@/modules/admin/public-content';
-import {parseBrowseQuery} from '@/modules/auctions/browse-query';
+import {parseHomeQuery} from '@/modules/auctions/browse-query';
 import {resolveLearnMoreMedia} from '@/lib/learn-more-media';
 import {db} from '@/lib/db';
 import {listCompletedWinners} from '@/modules/auctions/results';
 import {stagingDemoEnabled} from '@/modules/auctions/staging-demo';
 import {listAuctions,listCategories,serverNow,type CatalogQuery} from '@/modules/auctions/catalog';
 export default async function Home({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}){
- const params=await searchParams,query=parseBrowseQuery({...params,status:'live',sort:params.sort??'code',page:'1'});
+ const params=await searchParams,query=parseHomeQuery(params);
  return <HomePageContent key={JSON.stringify(query)} query={query}><Suspense fallback={null}><HomeServerData query={query}/></Suspense></HomePageContent>;
 }
 async function HomeServerData({query}:{query:CatalogQuery}){

@@ -72,12 +72,15 @@ export async function enqueueAlert(tx:DB,input:{key:string;kind:string;auctionId
 export const scheduleAlerts=scheduleGlobalAlerts;
 /** Row lock is held during a bounded external call. Crash after send but before
  * commit may repeat a message; never repeats a ledger operation. */
-export async function dispatchOne(client:PrismaClient,bot:Pick<Bot,'api'>){
+export async function dispatchOne(client:PrismaClient,bot:Pick<Bot,'api'>,filter?:{kind:typeof chapaReceiptKind}){
+ if(filter&&filter.kind!==chapaReceiptKind)throw Error('Unsupported notification dispatch filter');
  return client.$transaction(async tx=>{
   // The shared barrier is held until this bounded delivery finishes. A reset
   // halt waits for current deliveries, then prevents new claims or fan-out.
   if(await auctionMaintenance(tx))return false;
-  const rows=await tx.$queryRaw<Outbox[]>`SELECT * FROM "Outbox" WHERE state='PENDING' AND "nextAttemptAt"<=clock_timestamp() ORDER BY "nextAttemptAt",id FOR UPDATE SKIP LOCKED LIMIT 1`;
+  const rows=filter
+   ?await tx.$queryRaw<Outbox[]>`SELECT * FROM "Outbox" WHERE state='PENDING' AND kind=${filter.kind} AND "nextAttemptAt"<=clock_timestamp() ORDER BY "nextAttemptAt",id FOR UPDATE SKIP LOCKED LIMIT 1`
+   :await tx.$queryRaw<Outbox[]>`SELECT * FROM "Outbox" WHERE state='PENDING' AND "nextAttemptAt"<=clock_timestamp() ORDER BY "nextAttemptAt",id FOR UPDATE SKIP LOCKED LIMIT 1`;
   const row=rows[0];if(!row)return false;
   const root=broadcastRoot(row);
   if(root){
@@ -115,11 +118,15 @@ export async function dispatchOne(client:PrismaClient,bot:Pick<Bot,'api'>){
    const name=(user?.name??'Lowwin player').replace(/[\r\n\u0000-\u001f]/g,' ').slice(0,80);
    const startReminder=row.kind==='AUCTION_UPCOMING'||row.kind==='AUCTION_STARTING_SOON';
    const body=content.body.includes('{name}')?content.body.replaceAll('{name}',name):`${name},\n${content.body}`;
-   const text=paymentReceipt?content.body:telegramCampaignText(row.kind,content.title,startReminder?content.body:body,startReminder?name:undefined);
-   const button=(row.kind==='BROADCAST'||paymentReceipt)&&'buttonLabel' in content?String(content.buttonLabel):row.kind==='DEPOSIT_CREDITED'?'View wallet':startReminder?'View auction':'Bid';
+   const text=paymentReceipt?content.body:'telegramCaption' in content&&typeof content.telegramCaption==='string'?content.telegramCaption:telegramCampaignText(row.kind,content.title,startReminder?content.body:body,startReminder?name:undefined);
+   const button='buttonLabel' in content?String(content.buttonLabel):row.kind==='DEPOSIT_CREDITED'?'View wallet':startReminder?'View auction':'Bid';
    const options={reply_markup:{inline_keyboard:[[{text:button,web_app:{url:link.href}}]]}};
    let sent:{message_id:number};
-   const photo=paymentReceipt?null:await notificationPhoto(tx,'imageId' in content?content.imageId:undefined,link.origin);
+   // Auction alerts use the actual frozen/product image unchanged. If it is
+   // absent, send text; a generic notification banner is never a product photo.
+   const photo=paymentReceipt?null:row.kind.startsWith('AUCTION_')
+    ?('imagePath' in content&&typeof content.imagePath==='string'?new URL(content.imagePath,link.origin).href:null)
+    :await notificationPhoto(tx,'imageId' in content?content.imageId:undefined,link.origin);
    sent=photo?await bot.api.sendPhoto(chat.chatId,photo,{...options,caption:text}):await bot.api.sendMessage(chat.chatId,text,options);
    const payload=row.payload as {auctionId?:string};
    await tx.telegramMessage.create({data:{outboxId:row.id,auctionId:payload.auctionId,testRunId:row.testRunId,chatId:chat.chatId,messageId:BigInt(sent.message_id)}});

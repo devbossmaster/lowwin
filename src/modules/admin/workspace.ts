@@ -33,7 +33,7 @@ export async function workspaceRead(client:PrismaClient,headers:Headers,section:
  if(section==='players')return readPlayerTable(client,actor,f);
  if(section==='winners')return readWinnerTable(client,actor,f);
  if(section==='transactions')return {...await readChapaTable(client,actor,f),gateway:gatewayStatus()};
- const where=f.q?{sourceCredit:{contains:f.q,mode:'insensitive' as const}}:{};
+ const where={purpose:'CATALOG',...(f.q?{sourceCredit:{contains:f.q,mode:'insensitive' as const}}:{})};
  const [items,total]=await Promise.all([client.managedMedia.findMany({where,select:{id:true,mime:true,sourceType:true,sourceCredit:true,createdAt:true},orderBy:[{createdAt:f.sort==='oldest'?'asc':'desc'},{id:f.sort==='oldest'?'asc':'desc'}],skip:(f.page-1)*25,take:25}),client.managedMedia.count({where})]);
  return {items,total,page:f.page,totalPages:Math.ceil(total/25),serverNow:actor.now.toISOString()};
 }

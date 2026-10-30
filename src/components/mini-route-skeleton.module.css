@@ -1,28 +1,77 @@
-.root{width:100%;max-width:480px;min-height:calc(100dvh - 120px);margin:0 auto;padding:18px 16px 36px;background:#fff;color:#000;--bone:#e7ece8;--bone-hi:#f4f7f4}.bone{display:block;min-width:0;border-radius:8px;background:linear-gradient(100deg,var(--bone) 22%,var(--bone-hi) 40%,var(--bone) 62%);background-size:300% 100%;animation:shimmer 1.4s ease-in-out infinite}.catalog{display:grid;gap:26px}.filters{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:8px}.filters .bone{height:42px;border:1px solid #e4e9e5;border-radius:10px}.auctionSection{min-width:0}.sectionHeading{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:0 0 12px}.headingTitle{width:56%;height:22px}.headingAction{width:72px;height:32px}.carousel{display:flex;gap:14px;overflow:hidden;scrollbar-width:none}.auctionCard{flex:0 0 min(86%,340px);min-width:0;overflow:hidden;border:1px solid #e4e9e5;border-radius:15px;background:#fff}.auctionImage{position:relative;height:210px;background:#f5f7f5}.productImage{position:absolute;inset:22px 24% 22px 24%;border-radius:12px}.statusPill,.viewsPill{position:absolute;z-index:1;top:11px;width:58px;height:28px;border-radius:8px}.statusPill{left:11px}.viewsPill{right:11px;width:54px}.favorite{position:absolute;right:12px;bottom:12px;width:46px;height:46px;border-radius:50%;background:#f7f9f7}.auctionBody{display:grid;gap:11px;padding:14px}.categoryLine{width:31%;height:12px}.productTitle{width:86%;height:23px}.facts{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:11px 0;border-block:1px solid #edf0ed}.facts .bone{height:30px}.countdown{width:70%;height:15px}.bidControl{display:grid;grid-template-columns:42px 1fr 42px;gap:4px;height:48px;padding:3px;border:1px solid #e2e8e3;border-radius:10px}.bidControl .bone{border-radius:7px}.actionButton{height:48px;border-radius:10px;background:#e3ece5}.categoryTitle{display:grid;gap:9px;margin:2px 0}.pageTitle{width:63%;height:30px}.pageSubtitle{width:76%;height:15px}.home{display:grid;gap:25px}.homeHero{display:grid;gap:13px;margin:-18px -16px 0;padding:28px 20px 22px;background:#181815}.homeHero .bone{background:linear-gradient(100deg,#168f16 22%,#39a239 40%,#168f16 62%);background-size:300% 100%}.homeTitle{width:82%;height:42px}.homeSubtitle{width:68%;height:18px}.rule{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}.rule .bone{height:34px;border-radius:8px;background:#1e921e}.homeAction{width:100%;height:48px;margin-top:5px;background:#e8f0e8!important}.homeSection{min-width:0}.homeCards{display:flex;gap:14px;overflow:hidden}.homeCards .auctionCard{flex-basis:80%}.detail{display:grid;gap:14px;margin:-18px -16px 0;padding:18px 16px 34px;background:linear-gradient(to bottom,#181815 0 230px,#f5f7f5 230px)}.detailTop{display:flex;align-items:center;justify-content:space-between}.detailBack{width:88px;height:38px;background:#188e18}.gallery{width:100%;aspect-ratio:1/1;border-radius:16px;background:#f1f4f1}.thumbnails{display:flex;gap:10px;overflow:hidden}.thumbnails .bone{flex:0 0 72px;height:72px;border-radius:10px}.detailInfo{display:grid;gap:13px;padding:8px 2px}.detailTitle{width:90%;height:30px}.detailCode{width:45%;height:15px}.detailFee{display:flex;justify-content:space-between;gap:16px;padding:16px 12px;border-radius:12px;background:#f0f3f0}.detailFee .bone{width:38%;height:20px}.detailBid{display:grid;gap:12px;padding:16px;border:1px solid #e5e9e5;border-radius:14px;background:#fff}.detailLabel{width:45%;height:17px}.detailHint{width:58%;height:12px}.detailActions{display:flex;gap:10px}.detailActions .bone{flex:1;height:44px}.winners{margin:-18px -16px 0}.winnerHero{display:grid;justify-items:center;gap:12px;padding:32px 20px 22px;background:#181815}.winnerHero .bone{background:linear-gradient(100deg,#168f16 22%,#39a239 40%,#168f16 62%);background-size:300% 100%}.winnerHeroTitle{width:48%;height:36px}.winnerHeroCopy{width:84%;height:34px}.winnerStats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;width:100%;margin-top:8px}.winnerStats .bone{height:48px;border-radius:10px;background:#168f16}.winnerList{display:grid;gap:16px;padding:20px 16px 32px}.winnerCard{overflow:hidden;border:1px solid #e7ebe7;border-radius:14px;background:#fff}.winnerImage{width:100%;height:190px;border-radius:0;background:#f3f6f3}.winnerBody{display:grid;gap:11px;padding:15px}.winnerTitle{width:78%;height:22px}.winnerDetail{width:100%;height:42px}.winnerDetail:nth-last-child(2){width:82%}.winnerDetail .bone{height:16px}.winnerCard .actionButton{margin-top:3px}.winnerDetail{display:grid;gap:14px;padding:18px 16px}.winnerDetail .gallery{margin-bottom:6px}.profile{display:grid;gap:19px;padding:5px 2px 30px}.profileHeading{display:grid;grid-template-columns:54px 1fr 56px;align-items:center;gap:12px}.avatar{width:52px;height:52px;border-radius:50%}.profileName{width:78%;height:23px}.profileBio{width:54%;height:13px;margin-top:7px}.profileEdit{height:42px}.profileWallet{display:grid;gap:12px;padding:20px;border-radius:15px;background:#181815}.profileWallet .bone{background:linear-gradient(100deg,#168f16 22%,#39a239 40%,#168f16 62%);background-size:300% 100%}.walletLabel{width:48%;height:15px}.walletAmount{width:68%;height:33px}.profileCounts{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.profileCounts .bone{height:70px}.profileLinks{display:grid;gap:10px}.profileLinks .bone{height:50px}.alerts{margin:-18px -16px 0}.alertHero{display:grid;gap:12px;padding:25px 20px 20px;background:#181815}.alertHero .bone{background:linear-gradient(100deg,#168f16 22%,#39a239 40%,#168f16 62%);background-size:300% 100%}.alertTitle{width:58%;height:28px}.alertCopy{width:85%;height:15px}.alertStats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:5px}.alertStats .bone{height:46px;background:#168f16}.alertList{background:#fff}.alertList article{display:grid;grid-template-columns:40px minmax(0,1fr);gap:12px;padding:18px 14px;border-bottom:1px solid #edf0ed}.alertIcon{width:38px;height:38px;border-radius:50%}.alertList article>div{display:grid;align-content:start;gap:9px;padding-top:4px}.alertLine{width:70%;height:16px}.alertText{width:100%;height:13px}.alertTextShort{width:68%;height:13px}.personal{display:grid;gap:16px;padding:4px 0 30px}.personal>.pageTitle{margin-bottom:7px}.personal .auctionCard{width:100%}.bidTabs,.walletTabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:4px;border-radius:12px;background:#f3f5f3}.bidTabs .bone,.walletTabs .bone{height:42px}.personalBid{display:grid;grid-template-columns:92px minmax(0,1fr);gap:14px;padding:13px;border:1px solid #e4e9e5;border-radius:14px;background:#fff}.personalImage{height:100px;background:#f2f5f2}.personalBid>div{display:grid;align-content:start;gap:11px;padding-top:5px}.personalBid .productTitle{width:90%;height:20px}.bidAmount{width:48%;height:24px}.bidMetadata{width:75%;height:14px}.wallet{display:grid;gap:18px;padding:4px 0 32px}.walletBalance{display:grid;gap:12px;padding:22px;border:1px solid #ebefeb;border-radius:16px;background:#f8faf8}.walletAmount{width:72%;height:40px}.walletAction{width:128px;height:42px;border-radius:22px}.walletSection{display:grid;gap:13px;padding-top:6px}.walletSectionTitle{width:42%;height:24px}.paymentMethods{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.paymentMethods .bone{height:88px;border:1px solid #e4e9e5;border-radius:14px}.walletField{height:72px;border:1px solid #e4e9e5;border-radius:12px}.walletSubmit{height:48px;border-radius:22px;background:#e3ece5}.article{display:grid;gap:18px;padding:6px 2px 35px}.article .pageTitle{height:34px}.articleIntro{width:84%;height:20px;margin-bottom:6px}.article section{display:grid;gap:10px}.articleHeading{width:50%;height:22px}.articleLine{width:100%;height:13px}.articleLineShort{width:74%;height:13px}.inline{display:grid;gap:11px;width:100%;padding:12px 0 18px}.inlineHeading{width:42%;height:18px}.inlineLine{width:92%;height:14px}.inlineLineShort{width:66%;height:14px}
-@keyframes shimmer{to{background-position:-120% 0}}
-@media(max-width:370px){.root{padding-inline:12px}.homeHero,.detail,.winners,.alerts{margin-inline:-12px}.auctionImage{height:190px}.winnerImage{height:170px}.personalBid{grid-template-columns:78px minmax(0,1fr);gap:11px}.personalImage{height:88px}.wallet{gap:14px}}
-@media(min-width:420px){.auctionImage{height:224px}.winnerImage{height:220px}}
-@media(prefers-reduced-motion:reduce){.bone{animation:none;background:#e8ede8}.homeHero .bone,.winnerHero .bone,.alertHero .bone,.profileWallet .bone{background:#168f16}.rule .bone,.winnerStats .bone,.alertStats .bone{background:#168f16}}
-
-.auctionCard{flex-basis:100%;max-width:460px}.homeCards .auctionCard{flex-basis:100%}
-@media(max-width:370px){.winnerList{padding-inline:12px}}
-@media(min-width:420px){.winnerList{padding-inline:18px}}
-
-.auctionImage{height:clamp(185px,56vw,255px)}.auctionBody{padding:14px 17px 17px}.winnerImage{height:215px}.winnerBody{padding:17px 16px 18px}
-
-@media(min-width:420px){.winnerImage{height:245px}}
-
-/* Match the full-width personal cards instead of the former compact rows. */
-.personalCard{min-width:0;overflow:hidden;border:1px solid #e4e9e5;border-radius:16px;background:#fff}
-.personalCard .auctionImage{height:clamp(185px,56vw,255px)}
-.filters{display:flex;gap:8px;overflow:hidden}.filters .bone{flex:1;height:39px;border-radius:20px}
-.root:has(>.detailBid){min-height:0;padding:0;background:transparent}
-
-/* Align with the compact profile and wallet surfaces, including their row rhythm. */
-.profileHeading{padding-bottom:20px;border-bottom:1px solid #e4e9e5}
-.profileWallet{min-height:150px;background:#f5f8f5;border:1px solid #dce6de}
-.profileWallet .bone{background:linear-gradient(100deg,var(--bone) 22%,var(--bone-hi) 40%,var(--bone) 62%);background-size:300% 100%}
-.profileCaption{width:62%;height:14px}.profileLinks{gap:6px}.profileLinks .bone{height:50px}
-.root:has(>.wallet){background:#f3f4f8}.walletBalance{background:#fff}.walletTabs{border-radius:30px;background:#fff}.walletTabs .bone{border-radius:24px}
-.paymentLabel{width:46%;height:16px;margin-top:8px}
-@media(prefers-reduced-motion:reduce){.profileWallet .bone{animation:none;background:#e8ede8}}
+.root{--bone:#e6e3da;--bone-light:#eeece5;width:100%;max-width:480px;min-width:0;min-height:calc(100dvh - 152px);margin-inline:auto;padding:18px 16px 32px;background:var(--mini-canvas,#f5f4ef);border-radius:0;color:var(--mini-ink,#181815);overflow:hidden;contain:paint}
+.compact{min-height:0;padding:8px 0 16px;background:transparent}
+.bone{display:block;min-width:0;border-radius:6px;background:var(--bone);animation:breathe 1.8s ease-in-out infinite}
+.stack{display:grid;gap:18px;min-width:0}
+.heading{display:grid;gap:10px;margin-bottom:8px}
+.title{width:67%;height:28px}
+.subtitle{width:78%;height:14px}
+.sectionTitle{width:48%;height:20px}
+.search{width:100%;height:48px;border-radius:24px;background:var(--bone-light)}
+.chips{display:flex;gap:8px;overflow:hidden}
+.chips>.bone{height:36px;flex:0 0 24%;border-radius:24px;background:var(--bone-light)}
+.chips>.bone:first-child{flex-basis:16%;background:var(--bone)}
+.catalogTools{display:flex;justify-content:space-between;align-items:center;gap:14px}
+.catalogTools>.bone:first-child{width:32%;height:16px}
+.catalogTools>.bone:last-child{width:42%;height:32px;border-radius:20px}
+.auctionCard{overflow:hidden;border-radius:16px;background:#fff}
+.productImage{width:100%;aspect-ratio:1840/800;border-radius:0;background:#dfdcd2}
+.auctionBody{display:grid;justify-items:center;gap:12px;padding:18px 12px 14px}
+.productTitle{width:78%;height:20px}
+.facts{display:flex;gap:8px;width:100%}
+.facts>.bone{height:28px;flex:1;border-radius:16px;background:var(--bone-light)}
+.button{width:100%;height:48px;border-radius:24px;background:#dedacf}
+.caption{width:62%;height:10px;background:var(--bone-light)}
+.home{display:grid;gap:22px}
+.hero{display:grid;align-content:end;gap:11px;min-height:220px;margin:-18px -16px 0;padding:30px 18px 20px;background:#25241f}
+.hero .bone{background:#49473d}
+.heroTitle{width:55%;height:58px}
+.heroCopy{width:46%;height:25px}
+.heroActions{display:flex;gap:10px;margin-top:8px}
+.heroActions>.bone{width:42%;height:44px;border-radius:24px;background:#6b6040}
+.heroActions>.bone+span{background:#ddd9cf}
+.gallery{width:100%;aspect-ratio:1840/800;border-radius:16px;background:#dfdcd2}
+.thumbnails{display:flex;gap:9px;overflow:hidden}
+.thumbnails>.bone{width:58px;height:48px;flex:none;border-radius:10px}
+.prose{display:grid;gap:9px}
+.prose>.bone{height:12px;width:100%;background:var(--bone-light)}
+.prose>.bone:last-child{width:72%}
+.resultCard{overflow:hidden;border-radius:16px;background:#fff}
+.resultImage{width:100%;aspect-ratio:1840/800;border-radius:0}
+.resultBody{display:grid;gap:13px;padding:18px}
+.resultPerson{width:47%;height:18px}
+.resultIdentity{display:flex;align-items:center;gap:14px;padding-block:8px}
+.avatar{width:68px;height:68px;flex:none;border-radius:50%;background:#dcd8cc}
+.summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.summary>.bone{height:64px;border-radius:12px;background:var(--bone-light)}
+.rows{display:grid;gap:0;overflow:hidden;border-radius:16px;background:#fff}
+.row{display:flex;align-items:center;gap:12px;min-width:0;min-height:106px;padding:18px 12px;border-bottom:1px solid var(--bone-light)}
+.row:last-child{border-bottom:0}
+.rowIcon{width:40px;height:40px;flex:none;border-radius:50%;background:var(--bone-light)}
+.bidNumber{width:60px;height:64px;flex:none;border-radius:12px}
+.rowText{display:grid;gap:9px;flex:1;min-width:0}
+.rowText>.bone{height:13px;width:94%}
+.rowText>.bone:nth-child(2){width:72%;height:10px;background:var(--bone-light)}
+.rowText>.bone:nth-child(3){width:53%;height:9px;background:var(--bone-light)}
+.rowStatus{width:58px;height:24px;flex:none;border-radius:12px;background:var(--bone-light)}
+.pagination{width:132px;height:36px;justify-self:center;margin-top:4px;border-radius:20px}
+.transactionHead{display:flex;align-items:center;justify-content:space-between;gap:18px}
+.transactionHead>.subtitle{width:62%}
+.refresh{width:38px;height:38px;border-radius:50%}
+.identity{display:flex;align-items:center;gap:14px;min-height:112px;padding:20px;border-radius:16px;background:#25241f}
+.identity .bone{background:#656257}
+.identity .avatar{width:64px;height:64px;border-radius:18px;background:#49473d}
+.balance{display:grid;gap:14px;min-height:178px;padding:22px 18px;border-radius:20px;background:#25241f}
+.balanceLabel{width:34%;height:14px;background:#656257}
+.balanceAmount{width:58%;height:34px;background:#827c6c}
+.balance .facts{margin-top:7px}
+.balance .facts>.bone{height:38px;background:#49473d}
+.panel{display:grid;gap:16px;padding:20px 16px;border-radius:16px;background:#fff}
+.supportRows{display:grid;gap:12px;margin-top:8px}
+.supportRows>.bone{height:64px;border-radius:14px;background:var(--bone-light)}
+.accordions{display:grid;gap:12px}
+.accordions>div{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:22px 16px;border-radius:14px;background:#fff}
+.accordions .bone:first-child{height:16px;width:76%}
+.accordions .bone:last-child{height:18px;width:18px;border-radius:50%}
+.legalSection{display:grid;gap:16px;padding-block:8px}
+@keyframes breathe{0%,100%{opacity:.65}50%{opacity:1}}
+@media(prefers-reduced-motion:reduce){.bone{animation:none}}

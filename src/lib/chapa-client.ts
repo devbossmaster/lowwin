@@ -26,6 +26,18 @@ export function chapaCheckoutUrl(value:string|null|undefined):string|null{
  try{if(!value||/[\u0000-\u0020\\]/.test(value))return null;const url=new URL(value);return url.protocol==='https:'&&url.hostname==='checkout.chapa.global'&&!url.port&&!url.username&&!url.password&&!url.hash&&url.pathname.length>1?url.href:null}catch{return null}
 }
 export function chapaConfirmed(order:Pick<ChapaCheckoutView,'purpose'|'status'|'fundsPreserved'|'receipt'>){return order.fundsPreserved||order.purpose==='TOP_UP'&&order.status==='CREDITED'||order.purpose==='BID'&&order.status==='BID_ACCEPTED'&&!!order.receipt}
+export const CHAPA_CHECKOUT_SESSION_MS=5*60*1000;
+/** A customer checkout window is not a provider payment outcome. Keep this
+ * deadline tied to the saved attempt so reopening cannot extend it. */
+export function chapaSessionDeadline(order:Pick<ChapaCheckoutView,'createdAt'|'expiresAt'>):number|null{
+ const created=Date.parse(order.createdAt),providerExpiry=Date.parse(order.expiresAt);
+ const deadlines=[Number.isFinite(created)?created+CHAPA_CHECKOUT_SESSION_MS:NaN,providerExpiry].filter(Number.isFinite);
+ return deadlines.length?Math.min(...deadlines):null;
+}
+export function chapaSessionEnded(order:ChapaCheckoutView,now=Date.now()){
+ if(chapaConfirmed(order)||order.providerStatus==='SUCCESS'||!['SUBMITTING','PENDING','AUTH_NEEDED'].includes(order.status))return false;
+ const deadline=chapaSessionDeadline(order);return deadline!==null&&now>=deadline;
+}
 /** Recovery initialization needs the saved intent, even if the first response
  * supplied an ID without a URL. Review/terminal orders must only be checked. */
 export function chapaCanResumeCheckout(attempt:ChapaAttempt|null,order:ChapaCheckoutView|null){

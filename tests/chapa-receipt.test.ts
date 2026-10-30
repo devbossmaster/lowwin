@@ -73,4 +73,50 @@ describe('verified Chapa Telegram receipts',()=>{
   expect(chat).toBe(order.user.telegramId);expect(text).toMatch(/^✅ TEST · 10\.00 ETB/);expect(text).not.toContain('Player name');expect(text).not.toContain('@LowWinChat');
   expect(options.reply_markup.inline_keyboard[0][0]).toEqual({text:expect.stringContaining('Open Lowwin'),web_app:{url:`https://lowwin.test/payments/chapa/return?checkout=${id}`}});
  });
+ it('claims only Chapa receipts with the filtered worker and leaves other jobs untouched',async()=>{
+  const unrelated=['GLOBAL_CAMPAIGN','BROADCAST','AUCTION_PUBLISHED','TELEGRAM_DELETE'].map((kind,index)=>({...row(),id:`other-${index}`,kind}));
+  const job=row(),fixture=dispatchFixture([...unrelated,job]);
+  expect(await dispatchOne(fixture.client,fixture.bot,{kind:chapaReceiptKind})).toBe(true);
+  expect(job.state).toBe('SENT');expect(unrelated.every(other=>other.state==='PENDING')).toBe(true);
+  expect(await dispatchOne(fixture.client,fixture.bot,{kind:chapaReceiptKind})).toBe(false);
+  expect(fixture.sendMessage).toHaveBeenCalledTimes(1);
+  const [query,kind]=fixture.tx.$queryRaw.mock.calls[0];
+  expect(query.join('?')).toContain('kind=?');expect(kind).toBe(chapaReceiptKind);
+  expect(query.join('?')).toContain('FOR UPDATE SKIP LOCKED');
+ });
+ it('retries the same rate-limited receipt only when due and never resends a sent job',async()=>{
+  const job=row(),fixture=dispatchFixture([job]);
+  fixture.sendMessage.mockRejectedValueOnce({error_code:429,parameters:{retry_after:60}});
+  await dispatchOne(fixture.client,fixture.bot,{kind:chapaReceiptKind});
+  expect(job).toMatchObject({state:'PENDING',attempts:1,lastError:'RATE_LIMIT'});
+  expect(await dispatchOne(fixture.client,fixture.bot,{kind:chapaReceiptKind})).toBe(false);
+  job.nextAttemptAt=new Date(0);
+  await dispatchOne(fixture.client,fixture.bot,{kind:chapaReceiptKind});
+  expect(job).toMatchObject({id:'receipt-outbox',state:'SENT',attempts:2,lastError:null});
+  expect(await dispatchOne(fixture.client,fixture.bot,{kind:chapaReceiptKind})).toBe(false);
+  expect(fixture.sendMessage).toHaveBeenCalledTimes(2);expect(fixture.tx.telegramMessage.create).toHaveBeenCalledTimes(1);
+ });
+ it('rejects unsupported filtered dispatch before touching the database',async()=>{
+  const fixture=dispatchFixture([]);
+  await expect(dispatchOne(fixture.client,fixture.bot,{kind:'BROADCAST'} as never)).rejects.toThrow('Unsupported notification dispatch filter');
+  expect(fixture.tx.$queryRaw).not.toHaveBeenCalled();
+ });
 });
+
+function dispatchFixture(jobs:Outbox[]){
+ const sendMessage=vi.fn(async()=>({message_id:42})),sendPhoto=vi.fn(),order=receipt();
+ const tx={
+  $executeRaw:vi.fn(async()=>0),adminAudit:{findFirst:vi.fn(async()=>null)},
+  $queryRaw:vi.fn(async(query:TemplateStringsArray,...values:unknown[])=>jobs.filter(job=>job.state==='PENDING'&&job.nextAttemptAt.getTime()<=Date.now()&&(!query.join('').includes('kind=')||job.kind===values[0])).slice(0,1)),
+  chapaCheckout:{findUnique:vi.fn(async()=>order)},
+  outbox:{update:vi.fn(async({where,data}:{where:{id:string};data:Record<string,unknown>})=>{
+   const job=jobs.find(item=>item.id===where.id)!;
+   const attempts=typeof data.attempts==='object'?job.attempts+1:data.attempts;
+   return Object.assign(job,data,attempts===undefined?{}:{attempts});
+  })},
+  user:{findUnique:vi.fn(async()=>({telegramId:order.user.telegramId,name:'Player name'}))},
+  botChat:{findUnique:vi.fn(async()=>({telegramId:order.user.telegramId,chatId:order.user.telegramId,blocked:false}))},
+  telegramMessage:{create:vi.fn(async()=>({id:'message'}))},notificationInbox:{upsert:vi.fn()},
+ };
+ return {tx,sendMessage,sendPhoto,client:{$transaction:async(callback:(value:unknown)=>unknown)=>callback(tx)} as unknown as PrismaClient,bot:{api:{sendMessage,sendPhoto}} as never};
+}

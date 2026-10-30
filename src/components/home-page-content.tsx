@@ -19,7 +19,7 @@ import {OfflineRetry} from './offline-retry';
 import {WinnersClientList,type WinnersData} from './winners-client-list';
 import {isPrivateQueryIdentity,readPrivateQuery,seedPrivateQuery} from './private-query-cache';
 import {useTelegram} from './telegram-provider';
-import {BrandedLaunchLoading} from './launch-splash';
+import {MiniRouteSkeleton} from './mini-route-skeleton';
 import styles from './home-banner.module.css';
 
 type Shell={managed:Awaited<ReturnType<typeof publicHomeContent>>;experience:Awaited<ReturnType<typeof publicHomeExperience>>;media:ReturnType<typeof resolveLearnMoreMedia>;serverNow:string};
@@ -42,7 +42,7 @@ export function HomePageContent({query,children}:{query:CatalogQuery;children:Re
  const view=initial??shell.data;
  useEffect(()=>{if(initial&&queryIdentity&&isPrivateQueryIdentity(queryIdentity))seedPrivateQuery(queryIdentity,'/api/catalog/categories',initial.categories)},[initial,queryIdentity]);
  const failure=<p role="status"><MiniPhrase en="Home could not refresh." am="መነሻውን ማደስ አልተቻለም።"/> <button className="retry-action" onClick={()=>router.refresh()}><MiniPhrase en="Retry" am="እንደገና ይሞክሩ"/></button></p>;
- const content=!view||!categories||!auctions||!winners?(error?failure:<BrandedLaunchLoading/>):<><OfflineRetry/>{error&&failure}<HomeHero copy={resolveHomeCopy(view.managed)} media={view.media} experience={view.experience}/>
+ const content=!view||!categories||!auctions||!winners?(error?failure:<MiniRouteSkeleton path="/"/>):<><OfflineRetry/>{error&&failure}<HomeHero copy={resolveHomeCopy(view.managed)} media={view.media} experience={view.experience}/>
   <HomeCategories categories={categories} query={query} home/><HomeAuctions key={`${query.category??'all'}:${query.sort}:${query.q}`} initial={auctions} query={query}/>
   <section id="recent-winners" tabIndex={-1} className={styles.winnersSection} style={{scrollMarginTop:20}}><div className={styles.heading}><h2><MiniPhrase en="Recent winners" am="የቅርብ አሸናፊዎች"/></h2><Link href="/winners"><MiniPhrase en="View all" am="ሁሉንም ይመልከቱ"/><ArrowRight/></Link></div><WinnersClientList initial={winners} carousel/></section><HomeHowItWorks media={view.media} experience={view.experience}/>
  </>;

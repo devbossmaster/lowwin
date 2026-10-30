@@ -24,4 +24,20 @@ describe('payment modal states follow server evidence',()=>{
   expect(chapaPaymentPhase({...state,order:{...pending,purpose:'BID',status:'NEEDS_REVIEW',fundsPreserved:true}})).toBe('preserved');
   for(const status of ['FAILED','CANCELLED','BLOCKED','INCOMPLETE'])expect(chapaPaymentPhase({...state,order:{...pending,status}})).toBe('failed');
  });
+ it('ends an unpaid customer window from the original saved time, including after reopening',()=>{
+  const created=Date.parse('2026-10-30T10:00:00Z'),order={...pending,createdAt:new Date(created).toISOString(),expiresAt:new Date(created+86400000).toISOString()};
+  expect(chapaPaymentPhase({...state,order,now:created+299999})).toBe('confirming');
+  expect(chapaPaymentPhase({...state,order,now:created+300000})).toBe('session-ended');
+  expect(chapaPaymentPhase({...state,order,paused:false,now:created+3600000})).toBe('session-ended');
+  expect(order.status).toBe('PENDING');expect(order.providerStatus).toBe('PENDING');
+ });
+ it('honors an earlier provider expiry and lets late authoritative success replace the ended screen',()=>{
+  const created=Date.parse('2026-10-30T10:00:00Z'),order={...pending,createdAt:new Date(created).toISOString(),expiresAt:new Date(created+60000).toISOString()};
+  const expired={...state,order,now:created+60000};
+  expect(chapaPaymentPhase(expired)).toBe('session-ended');
+  expect(chapaPaymentPhase({...expired,order:{...order,providerStatus:'SUCCESS'}})).toBe('applying');
+  expect(chapaPaymentPhase({...expired,order:{...order,status:'CREDITED'}})).toBe('confirmed');
+  expect(chapaPaymentPhase({...expired,order:{...order,verificationState:'MISMATCH'}})).toBe('review');
+  expect(chapaPaymentPhase({...expired,order:{...order,status:'FAILED'}})).toBe('failed');
+ });
 });

@@ -79,6 +79,26 @@ The fixes add no new migration. The production snapshot has four pending histori
 
 Prepare a separate Coolify `lowwin-chapa` resource at the same reviewed commit as web and bot. Build: `npm run db:generate`. Start: `npm run worker:chapa`. No public domain or port. Give it the same protected Chapa, bot, origin, contact-key and applicable referral configuration, with a restricted database URL using `connection_limit=1&pool_timeout=20`. Keep it stopped while recovery is disabled. Preserve the existing bot resource's `npm run worker` command; this change does not require starting unrelated auction or notification workers.
 
+The Chapa worker also delivers committed `CHAPA_PAYMENT_CONFIRMED` Telegram receipts. Its existing `TELEGRAM_BOT_TOKEN`, `MINI_APP_URL` and `CHAPA_MODE` must match WEB; startup reports `chapa_receipt_delivery_configuration` with `enabled: true` when a bot client is configured. It claims only Chapa receipts, so it cannot start broadcasts or auction alerts. No extra worker, migration or environment flag is required for these receipts. Auction campaign scheduling/delivery still uses the existing notification worker. Receipt jobs are unique and retries preserve the same job, but a crash after Telegram accepts a message and before the database commit can repeat the message without repeating the financial credit.
+
+### Optional hosted method preference
+
+Keep `CHAPA_PREFERRED_PAYMENT_METHODS` empty until a merchant TEST checkout has demonstrated compatibility with Chapa's optional [`preferred_payment_methods`](https://docs.chapa.global/docs/v2/integrations/accept-payment). Inspect the configured merchant's [actual capabilities](https://docs.chapa.global/docs/v2/integrations/payment-methods) with this read-only WEB-terminal command (requires the existing configured Chapa creation environment):
+
+```sh
+npx --no-install tsx scripts/check-chapa-methods.ts
+```
+
+The command only GETs enabled ETB/Ethiopia method names, slugs and cent limits. Use returned slugs, never guess a CBE name. The merchant's observed LIVE catalog enables `telebirr`, `cbebirr`, `mpesa` and `awashbirr`; a separate CBE Bank transfer method was absent. Once merchant TEST compatibility is reviewed, set this on WEB after deploying:
+
+```ini
+CHAPA_PREFERRED_PAYMENT_METHODS=telebirr,cbebirr,mpesa,awashbirr
+```
+
+This requests Telebirr first while retaining every other enabled method that supports the payment amount. Chapa controls its hosted visual order and which rails the merchant can use. The actual country-specific limits override general defaults: the observed catalog allows Telebirr/CBEbirr from 1 ETB, M-Pesa from 5 ETB and Awashbirr from 10 ETB. Capabilities are refreshed rather than hardcoded. Enable missing banks in the Chapa merchant dashboard before expecting them in checkout.
+
+Existing availability reads warm a credential/mode-bound, five-minute process cache without blocking the UI. Cold, expired, failed or unsupported catalogs keep the minimal request; creation adds no provider GET inside a financial transaction or checkout waterfall. Only a new intent with a fresh validated catalog persists a versioned preference. Changing environment values or catalog contents never changes an existing intent's replay body or idempotency key. No migration is needed.
+
 ## 4. Activation and rollback gates
 
 Before a later explicit live activation: all final hosted checks green, final exact-commit TEST deployment checked, actual TEST webhook and duplicate delivery accepted, original bid/top-up return and same-attempt Resume verified on Telegram, schema/grants/reconciliation reviewed, and matching web/bot/recovery workers ready. The failed optional `return_url` trial means automatic provider return is not yet certified; existing intents keep their minimal immutable requests.

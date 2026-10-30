@@ -14,17 +14,18 @@ export function TelegramEntry({onComplete}:{onComplete?:()=>void}={}){
   const telegramLaunch=typeof window!=='undefined'&&Boolean(window.Telegram?.WebApp?.initData);
   useEffect(()=>{
     if(status!=='authenticated'||!telegramLaunch)return;
-    const paymentReturn=chapaReturnStartPath(new URLSearchParams(window.Telegram?.WebApp?.initData).get('start_param'));
-    if(paymentReturn){router.replace(paymentReturn,{scroll:false});return}
+    // The mounted ChapaLaunchRouter resolves startapp once for this identity.
+    // Replaying it here would reopen a dismissed payment on later navigation.
     if(pathname==='/telegram'){
+      if(chapaReturnStartPath(new URLSearchParams(window.Telegram?.WebApp?.initData).get('start_param')))return;
       const destination=miniReturnPath(new URL(window.location.href).searchParams.get('next'));
       router.replace(destination+(destination.includes('#')?'':window.location.hash));
     }else if(onComplete){
       onComplete();
     }else{
       // A bot button may open an auction before a bound session exists.
-      // Sign in here, then reload the original path instead of losing it.
-      window.location.reload();
+      // Refresh the server's session view without remounting the query/return gate.
+      router.refresh();
     }
   },[status,telegramLaunch,pathname,onComplete,router]);
   if(status==='contact-required')return <Suspense fallback={<LaunchSplash/>}><ContactGate/></Suspense>;

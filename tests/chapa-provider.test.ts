@@ -220,6 +220,17 @@ describe('Chapa v2 bounded merchant transport',()=>{
   expect(body).not.toHaveProperty('customer');expect(body).not.toHaveProperty('phone_number');expect(body).not.toHaveProperty('preferred_payment_methods');
   expect(body).toEqual({amount:12345,currency:'ETB',merchant_reference:hosted.merchantReference,return_url:hosted.returnUrl});
  });
+ it('sends only explicitly versioned persisted method preferences and keeps historical retries minimal',async()=>{
+  const fetcher=vi.fn<typeof fetch>(async()=>Response.json(initialized())),transport=createChapaTransport({env:environment(),fetcher});
+  const historical={...create,preferredPaymentMethods:['telebirr','cbebirr']};
+  await transport.create(historical);
+  expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).not.toHaveProperty('preferred_payment_methods');
+  const reviewed={...historical,preferredPaymentMethodsVersion:1 as const};
+  await transport.create(reviewed);await transport.create(reviewed);
+  expect(JSON.parse(String(fetcher.mock.calls[1][1]?.body)).preferred_payment_methods).toEqual(['telebirr','cbebirr']);
+  expect(fetcher.mock.calls[2][1]?.body).toBe(fetcher.mock.calls[1][1]?.body);
+  expect(fetcher.mock.calls[2][1]?.headers).toEqual(fetcher.mock.calls[1][1]?.headers);
+ });
  it('rejects invalid amounts, keys, identity or external return URLs before contacting Chapa',async()=>{
   const fetcher=vi.fn<typeof fetch>(),transport=createChapaTransport({env:environment(),fetcher});
   for(const patch of [{amountCents:'99'},{amountCents:'100.00'},{amountCents:'9007199254740992'},{merchantReference:'A'.repeat(21)},{idempotencyKey:'bad\r\nheader'},{returnUrl:'https://evil.test/return'},{callbackUrl:'http://lowwin.test/webhook'},{customer:{card_number:'do-not-collect'}},{customer:{phone_number:null}}])await expect(transport.create({...create,...patch} as unknown as Parameters<typeof transport.create>[0])).rejects.toMatchObject({status:422});

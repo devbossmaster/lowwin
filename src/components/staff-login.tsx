@@ -1,4 +1,5 @@
 'use client';
+import {LOWWIN_LOGO_SRC} from '@/lib/brand';
 import {useEffect,useState} from 'react';
 import {useRouter} from 'next/navigation';
 import {ArrowLeft} from 'lucide-react';
@@ -45,7 +46,7 @@ export function StaffLogin(){
   }catch(cause){setError(cause instanceof Error?cause.message:'Authentication could not complete. Please retry.')}finally{setBusy(false)}
  }
  return <main id="main" className="admin-access master-admin-auth"><section className="admin-access-form">
-  <a className="admin-brand-name" href="/admin/login"><img src="/images/lowwin-launch-mark.webp" alt="" width={36} height={36}/>Lowwin</a>
+  <a className="admin-brand-name" href="/admin/login"><img src={LOWWIN_LOGO_SRC} data-lowwin-logo alt="" width={36} height={36}/>Lowwin</a>
   <h1>{titles[mode]}</h1>
   <p>{mode==='login'?'Use your verified email and password.':mode==='signup'?'Register as a member, verify your email, then wait for administrator approval.':mode==='forgot'?'We will email a link to reset your password.':mode==='reset'?'Set a new password for your account.':'Verify your email before requesting administrator access.'}</p>
   {message&&<p role="status" className="admin-notice">{message}</p>}{error&&<p role="alert" className="admin-error">{error}</p>}

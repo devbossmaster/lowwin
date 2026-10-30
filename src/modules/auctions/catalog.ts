@@ -18,6 +18,7 @@ export const publicAuctionSelect = {
   terms:{select:{version:true,ruleVersion:true,minParticipants:true,minPoints:true,maxPoints:true,stepPoints:true,entryFeePoints:true,maxDistinctBids:true,noWinnerTerms:true,cancellationTerms:true,fulfillmentSnapshot:true}},
   feeRevisions:{orderBy:[{effectiveAt:'desc' as const},{version:'desc' as const}],take:1,select:{version:true,feePoints:true}},
   result:{select:{outcome:true,winningPoints:true,explanation:true,isDemo:true,closedAt:true,publishedAt:true}},
+  winnerPresentation:{select:{imageId:true,consentConfirmedAt:true,image:{select:{purpose:true}}}},
   settlement:{select:{decision:true,outcome:true,winningPoints:true,completedAt:true,winner:{select:{ownContact:{select:{lastFour:true,revokedAt:true}}}}}},
 } satisfies Prisma.AuctionSelect;
 type AuctionRow = Prisma.AuctionGetPayload<{ select: typeof publicAuctionSelect }>;
@@ -26,7 +27,7 @@ export const catalogQuerySchema = z.object({
   q: z.string().trim().max(80).optional().default(''),
   status: z.enum(['all','live','upcoming','closing','closed']).optional().default('all'),
   category: z.preprocess(value=>value===''?undefined:value,z.string().regex(/^[a-z0-9-]{1,80}$/).optional()),
-  sort: z.enum(['code','ending','newest','title','fee-low','fee-high']).optional().default('code'),
+  sort: z.enum(['featured','code','ending','newest','title','fee-low','fee-high']).optional().default('code'),
   page: z.coerce.number().int().min(1).max(1000).optional().default(1),
 });
 export type CatalogQuery = z.infer<typeof catalogQuerySchema>;
@@ -75,11 +76,13 @@ export function toPublicAuction(row: AuctionRow, now: Date) {
     demoLabel:row.isDemo?'DEMO · settled test':null,winnerDisplay:null,
     winnerPhoneMasked:settled.outcome==='WINNER'&&settled.winner?.ownContact&&!settled.winner.ownContact.revokedAt&&/^\d{4}$/.test(settled.winner.ownContact.lastFour)?`********${settled.winner.ownContact.lastFour.slice(-2)}`:null,
     acceptedBidCount:row.acceptedBidCount,
+    winnerPhotoPath:!row.isDemo&&settled.outcome==='WINNER'&&row.winnerPresentation?.imageId&&row.winnerPresentation.image?.purpose==='WINNER_PHOTO'&&row.winnerPresentation.consentConfirmedAt&&row.winnerPresentation.consentConfirmedAt<=now?`/api/media/${row.winnerPresentation.imageId}`:null,
   }:status==='closed'&&row.result&&row.result.publishedAt<=now?{
     outcome:row.result.outcome,winningPoints:row.result.winningPoints?.toString()??null,
     decision:null,explanation:legacyTermsInEtb(row.result.explanation),isDemo:row.result.isDemo,closedAt:row.result.closedAt.toISOString(),source:'ILLUSTRATIVE' as const,
     demoLabel:'DEMO example',winnerDisplay:null,winnerPhoneMasked:null,
     acceptedBidCount:null,
+    winnerPhotoPath:null,
   }:null;
   return {
     slug:row.slug!,code:row.publicCode.toString(),status,publishedAt:row.publishedAt!.toISOString(),featured:row.featured,isDemo:row.isDemo,bidCount:row.acceptedBidCount,
@@ -117,7 +120,7 @@ export async function listAuctions(input: CatalogQuery, now?: Date, pageSize = 6
   // Prisma timestamps are UTC without a zone. Bind ISO text explicitly so
   // a non-UTC database session cannot shift raw SQL deadlines by hours.
   const sqlAt=at.toISOString();
-  const orderBy: Prisma.AuctionOrderByWithRelationInput[] = query.sort==='code' ? [{publicCode:'asc'}] : query.sort==='newest' ? [{publishedAt:'desc'},{id:'asc'}] : query.sort==='title' ? [{product:{title:'asc'}},{id:'asc'}] : query.status==='closed' ? [{endsAt:'desc'},{id:'asc'}] : query.status==='upcoming' ? [{startsAt:'asc'},{id:'asc'}] : [{endsAt:'asc'},{id:'asc'}];
+  const orderBy: Prisma.AuctionOrderByWithRelationInput[] = query.sort==='featured' ? [{featured:'desc'},{publishedAt:'desc'},{publicCode:'desc'},{id:'asc'}] : query.sort==='code' ? [{publicCode:'asc'}] : query.sort==='newest' ? [{publishedAt:'desc'},{id:'asc'}] : query.sort==='title' ? [{product:{title:'asc'}},{id:'asc'}] : query.status==='closed' ? [{endsAt:'desc'},{id:'asc'}] : query.status==='upcoming' ? [{startsAt:'asc'},{id:'asc'}] : [{endsAt:'asc'},{id:'asc'}];
   let rows: AuctionRow[];
   let total: number;
   if(query.sort==='fee-low'||query.sort==='fee-high'){

@@ -3,9 +3,10 @@ import {cookies,headers} from 'next/headers';
 import {MiniLocaleProvider,MiniPhrase} from '@/components/mini-locale';
 import {MiniIdentityBoundary} from '@/components/mini-identity-boundary';
 import {assertLocalIdentitySurface} from '@/modules/auth/local-identity';
+import {LOWWIN_ICON_SRC} from '@/lib/brand';
 import './globals.css';
 import '@/components/mini-redesign.css';
-export const metadata: Metadata = { title: { default: 'Lowwin — A little different wins', template: '%s · Lowwin' }, description: 'The lowest unique ETB bid wins. Discover a different way to bid with Lowwin.' };
+export const metadata: Metadata = { title: { default: 'Lowwin — A little different wins', template: '%s · Lowwin' }, description: 'The lowest unique ETB bid wins. Discover a different way to bid with Lowwin.',icons:{icon:LOWWIN_ICON_SRC,apple:LOWWIN_ICON_SRC} };
 export const viewport: Viewport = { width: 'device-width', initialScale: 1, viewportFit: 'cover', themeColor: '#FFFFFF' };
 export const dynamic = 'force-dynamic';
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

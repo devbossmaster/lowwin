@@ -11,5 +11,5 @@ export function MiniIdentityBoundary({children,devEnabled,botUrl}:{children:Reac
  const path=usePathname();
  if(path==='/admin'||path.startsWith('/admin/'))return children;
  preinit(TELEGRAM_SDK_URL,{as:'script',fetchPriority:'high'});
- return <MiniQueryProvider><TelegramProvider devEnabled={devEnabled} botUrl={botUrl} requireLaunch={!devEnabled}><ChapaLaunchRouter/>{children}</TelegramProvider></MiniQueryProvider>;
+ return <MiniQueryProvider><TelegramProvider devEnabled={devEnabled} botUrl={botUrl} requireLaunch={!devEnabled}><ChapaLaunchRouter>{children}</ChapaLaunchRouter></TelegramProvider></MiniQueryProvider>;
 }

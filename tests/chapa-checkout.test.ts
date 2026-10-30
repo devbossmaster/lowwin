@@ -13,6 +13,7 @@ import {chapaAvailability,chapaConfigurationFingerprint,chapaHash,type ChapaCrea
 import {processChapaEvent,processChapaEvents} from '../src/modules/payments/chapa-events';
 import {TEST_TOKEN} from './helpers';
 import {getPersonalBids} from '../src/modules/profile/personal';
+import {chapaMethodCatalog} from '../src/modules/payments/chapa-methods';
 
 const database=process.env.CHAPA_TEST_DATABASE_URL;
 const gateway={CHAPA_MODE:'test',CHAPA_SCHEMA_READY:'true',CHAPA_PRIVATE_KEY:'CHAPA_TEST_'+ 'a'.repeat(40),CHAPA_WEBHOOK_SECRET:'local-chapa-signature-secret-thirty-two-characters',CHAPA_ENABLED:'true',CHAPA_RECOVERY_ENABLED:'true',PAYMENT_GATEWAY:'CHAPA',BETTER_AUTH_URL:'https://lowin.ngrok-free.app',MINI_APP_URL:'https://lowin.ngrok-free.app',CHAPA_BASE_URL:'https://api.chapa.global',CHAPA_CURRENCY:'ETB',PAYMENTS_LIVE_ENABLED:'false',CHAPA_LIVE_ENABLED:'false'};
@@ -46,6 +47,17 @@ describe.skipIf(!database)('Chapa v2 hosted payments on disposable PostgreSQL',(
   expect(f.inputs[0]).toEqual({amountCents:'2550',idempotencyKey:`lowwin:${order.id}`,merchantReference:expect.any(String),returnUrl:`${gateway.MINI_APP_URL}/payments/chapa/return?checkout=${order.id}`,returnUrlVersion:1});expect(f.inputs[0].merchantReference.length).toBeLessThanOrEqual(20);expect(order).not.toHaveProperty('initialization');expect(order).not.toHaveProperty('phoneCipher');expect(order).not.toHaveProperty('credentialFingerprint');
   expect(f.inputs[0]).not.toHaveProperty('customer');
   const saved=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});expect(saved.phoneCipher).toBeTruthy();expect(saved.phoneBotId).toBeTruthy();
+ });
+ it('persists reviewed merchant preferences only on a new intent and replays them unchanged after an ambiguous timeout',async()=>{
+  vi.stubEnv('CHAPA_PREFERRED_PAYMENT_METHODS','telebirr');
+  const f=await payment(),method=(slug:string)=>({name:slug,slug,can_process_payments:true,supported_currencies:{ETB:{default_min:100,default_max:100000,countries:{ET:{is_enabled:true}}}}});
+  const methods=vi.fn(async()=>({status:'success',data:[method('awashbirr'),method('telebirr'),method('cbebirr')]}));
+  await chapaMethodCatalog.refresh(process.env,{...f.transport,methods});f.failNextInitialization();
+  const order=await f.start(),saved=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});
+  expect(saved.initialization).toMatchObject({preferredPaymentMethods:['telebirr','awashbirr','cbebirr'],preferredPaymentMethodsVersion:1});
+  vi.stubEnv('CHAPA_PREFERRED_PAYMENT_METHODS','cbebirr');
+  const retry=await f.start();expect(retry.id).toBe(order.id);expect(f.inputs).toHaveLength(2);expect(f.inputs[1]).toEqual(f.inputs[0]);
+  expect(f.methods).not.toHaveBeenCalled();expect(methods).toHaveBeenCalledTimes(1);expect(await balance(f.userId)).toBe('0');
  });
  it('does not confuse operation success with successful payment or credit unsuccessful states',async()=>{
   for(const status of ['PENDING','AUTH_NEEDED','FAILED','CANCELLED','INCOMPLETE','BLOCKED']){const f=await payment(),order=await f.start();f.setStatus(status);const result=await f.verify(order.id);expect(result.status).toBe(status);expect(await balance(f.userId)).toBe('0');expect(await db.operation.count({where:{userId:f.userId,scope:'CHAPA_RECEIPT'}})).toBe(0);expect(await db.outbox.count({where:{key:`chapa:${order.id}:telegram-confirmed`}})).toBe(0)}

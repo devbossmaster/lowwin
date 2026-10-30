@@ -3,7 +3,8 @@ import {useEffect,useId,useState,useSyncExternalStore} from 'react';
 import {createPortal} from 'react-dom';
 import {usePathname} from 'next/navigation';
 import {useMiniLocale} from './mini-locale';
-import {customerLoadingCopy,type CustomerLoadingCopy} from './customer-loading-copy';
+import type {CustomerLoadingCopy} from './customer-loading-copy';
+import {MiniRouteSkeleton} from './mini-route-skeleton';
 const pages=new Set<string>();
 const listeners=new Set<()=>void>();
 const subscribe=(listener:()=>void)=>{listeners.add(listener);return()=>{listeners.delete(listener)}};
@@ -16,7 +17,8 @@ export function LoadingSpinner({label,className='',decorative=false}:{label?:str
  return <span className={`loading-spinner ${className}`} role={decorative?undefined:'status'} aria-hidden={decorative||undefined}><span className="loading-spinner-ring" aria-hidden="true"/>{!decorative&&<span className="sr-only">{label??(language==='am'?'በመጫን ላይ…':'Loading…')}</span>}</span>;
 }
 export function CustomerLoading({en='Loading…',am='በመጫን ላይ…',compact=false}:Partial<CustomerLoadingCopy>&{compact?:boolean}){
- const {language}=useMiniLocale(),message=language==='am'?am:en;
+ const {language}=useMiniLocale(),path=usePathname(),message=language==='am'?am:en;
+ if(!compact&&!path?.startsWith('/admin'))return <MiniRouteSkeleton path={path??'/'}/>;
  return <div className={`customer-loading${compact?' customer-loading-compact':''}`} role="status" aria-live="polite" aria-busy="true"><LoadingSpinner decorative/><p>{message}</p></div>;
 }
 /** One overlay for concurrent page requests; mounted outside filtered page ancestors. */
@@ -34,6 +36,6 @@ export function PageLoading(){
   announce();
   return()=>{pages.delete(id);if(!pages.size){for(const [node,prior] of inertRoots)node.inert=prior;inertRoots.clear()}announce()};
  },[id,admin]);
- if(!admin)return <CustomerLoading {...customerLoadingCopy(pathname??'/')}/>;
+ if(!admin)return <MiniRouteSkeleton path={pathname??'/'}/>;
  return mounted&&active===id?createPortal(<div className="page-loading-backdrop" aria-busy="true"><div className="page-loading-indicator"><LoadingSpinner/></div></div>,document.body):null;
 }

@@ -18,6 +18,18 @@ describe('opaque Chapa Telegram return links',()=>{
   expect(chapaOriginPath({id,purpose:'BID',auctionSlug:'original-auction'})).toBe(`/auctions/original-auction?chapa=${id}#bid-review`);
   for(const order of [{id:'not-an-id',purpose:'TOP_UP',auctionSlug:null},{id,purpose:'OTHER',auctionSlug:null},{id,purpose:'BID',auctionSlug:null},{id,purpose:'BID',auctionSlug:'../admin'},{id,purpose:'BID',auctionSlug:'https://evil.test'}])expect(chapaOriginPath(order)).toBeNull();
  });
+ it('returns directly to the owned canonical numeric auction code without a slug redirect',()=>{
+  expect(chapaOriginPath({id,purpose:'BID',auctionSlug:'original-auction',auctionCode:'9001'})).toBe(`/auctions/9001?chapa=${id}#bid-review`);
+  expect(chapaOriginPath({id,purpose:'BID',auctionSlug:null,auctionCode:'2147483647'})).toBe(`/auctions/2147483647?chapa=${id}#bid-review`);
+  expect(chapaOriginPath({id,purpose:'TOP_UP',auctionSlug:'original-auction',auctionCode:'9001'})).toBe(`/profile?topup=1&chapa=${id}#wallet`);
+  for(const order of [{id:'invalid',purpose:'BID'},{id,purpose:'OTHER'}])expect(chapaOriginPath({...order,auctionSlug:'original-auction',auctionCode:'9001'})).toBeNull();
+ });
+ it('falls back to a validated historical slug when the public code is missing or invalid',()=>{
+  for(const auctionCode of [undefined,null,'','0','-1','01','1.5','2147483648','9007199254740992','../admin','https://evil.test','123?status=SUCCESS','1\n']){
+   expect(chapaOriginPath({id,purpose:'BID',auctionSlug:'original-auction',auctionCode})).toBe(`/auctions/original-auction?chapa=${id}#bid-review`);
+   expect(chapaOriginPath({id,purpose:'BID',auctionSlug:null,auctionCode})).toBeNull();
+  }
+ });
  it('carries only the validated original attempt ID through the existing bot start flow',()=>{
   const link=chapaBotReturnLink('https://t.me/lowwin_fixture_bot?start=lowin',id)!;
   expect(link).toBe(`https://t.me/lowwin_fixture_bot?start=chapa_${id}`);

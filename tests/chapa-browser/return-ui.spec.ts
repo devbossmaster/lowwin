@@ -78,7 +78,7 @@ test('an interrupted initialization retries the original key and opens only one 
 
 test('a bid return reopens its product modal and accepts only a server-confirmed receipt',async({page},info)=>{
  const am=info.project.name==='430',id=randomUUID(),f=await fixture(page,am,'chapa_'+id);
- const order={...pending({purpose:'BID',key:id,auctionSlug:f.auction.slug!,amount:'3.60',feeVersion:1},id),auctionTitle:f.title};
+ const order={...pending({purpose:'BID',key:id,auctionSlug:f.auction.slug!,amount:'3.60',feeVersion:1},id),auctionTitle:f.title,auctionCode:String(f.auction.publicCode)};
  let complete=false,creates=0;
  try{
   await page.route('**/api/payments/chapa/checkouts**',route=>{
@@ -91,7 +91,7 @@ test('a bid return reopens its product modal and accepts only a server-confirmed
   });
   await page.goto('/telegram');const sheet=page.getByRole('dialog');
   await expect(sheet.locator('[data-payment-state="confirming"]')).toBeVisible();
-  await expect(page).toHaveURL(new RegExp('/auctions/(?:'+f.auction.slug+'|'+f.auction.publicCode+')\\?chapa='+id));
+  await expect(page).toHaveURL(new RegExp('/auctions/'+f.auction.publicCode+'\\?chapa='+id));
   await expect(sheet).toContainText(f.title);
   complete=true;await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
   await expect(sheet.locator('[data-payment-state="confirmed"]')).toBeVisible();

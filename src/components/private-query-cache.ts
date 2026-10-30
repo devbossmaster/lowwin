@@ -10,8 +10,11 @@ type ReadValue<T>={value:T;fresh:boolean;updatedAt:number};
 export class ObsoletePrivateQueryError extends Error {
   constructor(){super('This private response belongs to an earlier session.');this.name='ObsoletePrivateQueryError'}
 }
-export class PrivateAuthorizationError extends Error {
-  constructor(message:string,readonly status:401|403){super(message);this.name='PrivateAuthorizationError'}
+export class PrivateQueryError extends Error {
+  constructor(message:string,readonly status:number){super(message);this.name='PrivateQueryError'}
+}
+export class PrivateAuthorizationError extends PrivateQueryError {
+  constructor(message:string,readonly status:401|403){super(message,status);this.name='PrivateAuthorizationError'}
 }
 
 /** Display snapshots only, bounded to this tab and authenticated session. No browser storage. */
@@ -169,7 +172,7 @@ export async function loadPrivateJson<T>(identity:string,url:string,{force=false
     if(!response.ok){
       const message=body&&typeof body.error==='string'?body.error:'Could not load this page.';
       if(response.status===401||response.status===403)throw new PrivateAuthorizationError(message,response.status);
-      throw new Error(message);
+      throw new PrivateQueryError(message,response.status);
     }
     return body as T;
   },{force,freshnessMs:freshnessMs??privateQueryFreshness(url),retentionMs:miniQueryPolicy(url).retainMs});

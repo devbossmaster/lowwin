@@ -1,0 +1,7 @@
+.panel{display:grid;gap:14px;margin-top:28px;padding-top:24px;border-top:1px solid #e8e5dc}
+.panel h3{margin:0;color:#181815;font-size:18px;line-height:1.4}
+.panel p,.panel small{margin:0;color:#68665e;font-size:13px;line-height:1.6}
+.preview{display:block;width:min(100%,260px);max-height:300px;object-fit:contain;object-position:center;border-radius:12px;background:#f3f1ea}
+.panel input[type=file]{max-width:100%;padding:12px 0}
+.panel input[type=checkbox]{flex:none}
+.panel button{min-height:44px}

@@ -6,6 +6,7 @@ import {formatEtb} from '@/lib/money';
 import {AccountSheet} from './account-sheet';
 import {CatalogImage} from './catalog-image';
 import {MiniPhrase,useMiniLocale} from './mini-locale';
+import {WinnerBanner,winnerBannerData} from './winner-banner';
 import styles from './winner-results.module.css';
 
 const Breakdown=dynamic(()=>import('./result-sheet-content'),{loading:()=> <p role="status"><MiniPhrase en="Loading bid numbers…" am="የጨረታ ቁጥሮችን በመጫን ላይ…"/></p>});
@@ -15,7 +16,7 @@ export default function ResultSheet({auction,onClose,returnFocusRef}:{auction:Ca
  const title=am?auction.product.titleAm||auction.product.title:auction.product.title;
  useEffect(()=>{const node=section.current;if(!node)return;const observer=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting)){setVisible(true);observer.disconnect()}},{rootMargin:'0px'});observer.observe(node);return()=>observer.disconnect()},[]);
  return <AccountSheet title={<MiniPhrase en="Final result" am="የመጨረሻ ውጤት"/>} onClose={onClose} returnFocusRef={returnFocusRef}>
-  <div className={styles.detailPhoto}><CatalogImage src={auction.product.images[0]?.path} alt={title}/></div><h3 className={styles.title}>{title}</h3>
+  <div className={winnerBannerData(auction)?styles.detailBanner:styles.detailPhoto}>{winnerBannerData(auction)?<WinnerBanner auction={auction}/>:<CatalogImage src={auction.product.images[0]?.path} alt={title}/>}</div><h3 className={styles.title}>{title}</h3>
   <p className={styles.date}><MiniPhrase en="Completed" am="ተጠናቋል"/> · {auction.code} · <MiniPhrase en="Submission fee" am="የማቅረቢያ ክፍያ"/> {formatEtb(auction.terms.entryFeePoints)}</p>
   <div ref={section} data-result-breakdown tabIndex={-1}>{visible?<Breakdown key={auction.code} code={auction.code}/>:<p><MiniPhrase en="Bid numbers" am="የጨረታ ቁጥሮች"/></p>}</div>
  </AccountSheet>;

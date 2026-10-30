@@ -1,0 +1,39 @@
+# Customer refinement, 30 October 2026
+
+This change preserves Lowwin's existing customer layout, warm white/black/gold brand, authentication and financial rules.
+
+- `public/logonew.png` is retained at 1,344,521 bytes. The display derivative is `/images/lowwin-logo-20261030.webp` (2,392 bytes); the 180px icon is `/images/lowwin-icon-20261030.png` (15,545 bytes). Routes never download the original for the header or launch mark.
+- Launch uses the small mark, spinner and localized Loading text. Page routes use resource-specific skeletons, without modal skeletons or a provider remount. Existing populated queries remain visible while refreshing.
+- Main Mini App payment links read the owned checkout once and share that response with the destination modal. Bid returns prefer the authoritative numeric auction code to avoid an extra slug redirect. The entry component no longer replays a dismissed payment or reloads the full application after sign-in.
+- An unpaid customer checkout window ends five minutes after the saved creation time, or earlier if Chapa's expiry says so. Idle history labels update automatically. The UI says Checkout session ended; it does not write FAILED/EXPIRED or cancel a provider payment. Reopening/foreground still checks for a late server-confirmed outcome. Starting another attempt does not cancel an older payment.
+- The existing Chapa worker now drains only committed `CHAPA_PAYMENT_CONFIRMED` receipt jobs as well as payment events. Auction bot captions use the product's own image, short title, relevant EAT time and one Mini App button. Ordinary notification scheduling stays in its existing worker.
+
+The loading, branding and return-flow refinement adds no dependency, environment flag or database migration. The additional winner-photo feature does require a migration, and optional Chapa payment-method priority has an environment setting; both are described in [Winner announcements](winner-announcements.md). Redeploy WEB and the Chapa worker from the same reviewed commit; keep its bot token, Mini App origin and Chapa mode aligned. Actual Telegram receipt delivery and physical-device handoff require post-deployment acceptance; local tests use mocked sends and isolated PostgreSQL. A send/commit crash may repeat a Telegram message, without repeating financial credit.
+
+Home's Default order puts featured auctions first, then orders each featured/unfeatured group by newest publication. The database applies this order before pagination. Explicit New, Ends soon and fee sorts keep their existing behavior, and independent browse ordering is preserved.
+
+Live countdowns ignore a query's uninitialized `updatedAt=0` receipt. Previously the first hydrated Home/browse response could anchor the timer to 1970 and keep displaying Auction ended even while the authoritative status was LIVE. The shared receipt clock now treats missing/invalid receipts as unobserved, retaining valid cache age and genuine expiry. No schedule, auction status or financial rule is changed. The follow-up clock/Home/catalog/policy batch passed 38 tests. The production build was rerun successfully after this fix, followed by a passing 360px browser regression covering first authentication, query hydration and reopening Home.
+
+## Telegram notification triggers
+
+The seven main campaign kinds comprise five auction notices and two other notices:
+
+- **Published:** queued when an administrator publishes the auction.
+- **Upcoming:** a published, unsettled auction starts in more than 1 hour and less than 24 hours.
+- **Starting soon:** it starts in more than 0 minutes and at most 1 hour.
+- **Ending:** bidding has started and the auction ends in less than 24 hours, with no settlement/result yet.
+- **Result:** queued after final settlement; cancelled auctions remain silent.
+- **Deposit credited:** sent to the owner after a top-up is actually credited. Chapa's committed `CHAPA_PAYMENT_CONFIRMED` receipt jobs use their existing separate delivery path.
+- **Broadcast:** an administrator explicitly sends a Telegram campaign.
+
+Keep `npm run worker:notifications` running for ordinary auction scheduling and delivery. It scans scheduled reminders once per minute and drains the durable outbox; delivery-time checks suppress outdated notices. The Chapa worker also drains its committed payment receipts. Source configuration and local checks do not establish that the production worker is running or that Telegram has delivered a message.
+
+Chapa's hosted `.global` checkout is provider-owned. Its older `.co` layout cannot be reproduced by Lowwin CSS or a substituted checkout domain. Lowwin continues using the returned v2 checkout URL. Lowwin can resume the original payment after Chapa redirects, but cannot force the provider receipt page to execute its return URL.
+
+Initial validation: 402 focused tests passed across 22 files, including isolated PostgreSQL payment/ledger and Telegram authentication checks. The loading suites were rechecked separately (38 tests) after the last loading-state refinement. The desktop, 360px and 430px browser batch passed all 25 checks; it exercised top-up and bid returns, original-intent retry, late credit after the customer window, ownership failures, modal dismissal and contained page widths. Generated screenshots and reports stay outside source control under `test-results/chapa-ui` and `.local`.
+
+Final combined validation after Home ordering, winner photos and method preferences: **510 tests passed across 33 files, with no skipped tests**. This includes isolated PostgreSQL credit, concurrency, late-payment, authentication and winner-photo guards. Prisma validate/generate passed, and the final production webpack build completed including TypeScript and page generation. The new winner-photo browser scenario passed against that production build: product banner at 360/430/1280px, real admin sign-in, consent-gated upload, Amharic presentation, reset, removed-photo 404 and unchanged settlement. The earlier development attempt hit a cold media-route compilation timeout and disk-cache ENOSPC; only generated test caches were cleared before successful production validation. No production database or payment was changed.
+
+The controlled return/expiry/foreground scenario used one owned GET, two verification requests, zero new checkouts and zero intermediate `/payments/chapa/return` route requests. Its development-server modal-open timings were 4,716ms desktop, 2,369ms at 360px and 2,251ms at 430px. These are after-change local observations, not a before/after latency comparison or a production/physical-Telegram benchmark. The logo derivative reduces the supplied source's transferred image bytes by 99.82% when used for the display mark.
+
+The design detector found one existing accent-border warning in untouched `help-pages.css`; no unrelated restyling was applied. The Impeccable project metadata is older than the current application and was left unchanged.

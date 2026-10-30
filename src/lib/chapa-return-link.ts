@@ -10,11 +10,15 @@ export function chapaReturnStartPath(payload:string|null|undefined):string|null{
 }
 
 /** Use only an owned server response to choose the original payment surface. */
-export function chapaOriginPath(order:{id:string;purpose:string;auctionSlug:string|null}):string|null{
+export function chapaOriginPath(order:{id:string;purpose:string;auctionSlug:string|null;auctionCode?:string|null}):string|null{
  if(!chapaReturnPath(order.id))return null;
  const id=order.id.toLowerCase();
  if(order.purpose==='TOP_UP')return `/profile?topup=1&chapa=${id}#wallet`;
- return order.purpose==='BID'&&order.auctionSlug&&/^[a-z0-9-]{1,120}$/.test(order.auctionSlug)?`/auctions/${order.auctionSlug}?chapa=${id}#bid-review`:null;
+ // The owned response supplies the canonical public code. Prefer it so return
+ // does not visit a slug route and wait for another server redirect.
+ const code=order.auctionCode,target=typeof code==='string'&&/^[1-9]\d{0,9}$/.test(code)&&Number(code)<=2147483647?code:
+  order.auctionSlug&&/^[a-z0-9-]{1,120}$/.test(order.auctionSlug)?order.auctionSlug:null;
+ return order.purpose==='BID'&&target?`/auctions/${target}?chapa=${id}#bid-review`:null;
 }
 
 export function chapaBotReturnLink(botUrl:string|null|undefined,id:string|null|undefined):string|null{

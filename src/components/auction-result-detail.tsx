@@ -6,6 +6,7 @@ import {formatEtb,formatAuctionBid} from '@/lib/money';
 import {AuctionGallery} from './auction-gallery';
 import {MiniCategoryName,MiniPhrase,useMiniLocale} from './mini-locale';
 import {ProductDescription} from './product-description';
+import {WinnerBanner,winnerBannerData} from './winner-banner';
 import styles from './auction-result-detail.module.css';
 
 export function AuctionResultDetail({auction}:{auction:CatalogAuction}){
@@ -17,7 +18,7 @@ export function AuctionResultDetail({auction}:{auction:CatalogAuction}){
   const outcome=!result?(am?'ጨረታው አብቋል':'Auction ended'):winner?(am?'ተጠናቋል':'Completed'):result.outcome==='NO_WINNER'?(am?'አሸናፊ የለም':'No winner'):(am?'ጨረታው ተሰርዟል':'Auction cancelled');
   return <article className={styles.page}>
     <Link className={styles.back} href="/winners/all"><ArrowLeft size={19}/><MiniPhrase en="All results" am="ሁሉም ውጤቶች"/></Link>
-    <AuctionGallery images={auction.product.images} title={title} isDemo={auction.isDemo}/>
+    {winnerBannerData(auction)?<WinnerBanner auction={auction} priority/>:<AuctionGallery images={auction.product.images} title={title} isDemo={auction.isDemo}/>}
     <header className={styles.intro}><h1>{title}</h1><p><span><MiniPhrase en="Auction code" am="የጨረታ ኮድ"/>: <strong>{auction.code}</strong></span><span aria-hidden="true">·</span><MiniCategoryName slug={auction.category.slug} name={auction.category.name} nameAm={auction.category.nameAm}/></p></header>
     {Number(auction.terms.entryFeePoints)>0&&<div className={styles.fee}><span><MiniPhrase en="Submission fee" am="የጨረታ አገልግሎት ክፍያ"/></span><strong>{formatEtb(auction.terms.entryFeePoints)}</strong></div>}
     <section className={styles.summary} data-testid="result-summary" aria-label={am?'የጨረታ ውጤት':'Auction result'}>
