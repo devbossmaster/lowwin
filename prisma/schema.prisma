@@ -784,8 +784,21 @@ model AuctionSettlement {
   proof            Json
   movements        SettlementMovement[]
   outbox           Outbox[]
+  publication      ResultPublication?
 
   @@unique([actorId, key])
+}
+
+// Announcement approval is separate from immutable financial settlement.
+// No winner, bid or amount override is accepted by the publication command.
+model ResultPublication {
+  settlementId String            @id
+  settlement   AuctionSettlement @relation(fields: [settlementId], references: [id], onDelete: Restrict)
+  publishedAt  DateTime          @default(dbgenerated("(clock_timestamp() AT TIME ZONE 'UTC')")) @db.Timestamp(6)
+  actorId      String?
+  proofHash    String
+  reason       String
+  historical   Boolean           @default(false)
 }
 
 model SettlementMovement {

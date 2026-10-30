@@ -2,6 +2,7 @@ import {randomInt,randomUUID} from 'node:crypto';
 import type {PrismaClient} from '@prisma/client';
 import {bidAuction,bidUser} from './bid-fixtures';
 import {submitBid} from '../src/modules/auctions/bids';
+import {publishFixtureResult} from './publish-result-fixture';
 import {closeAuction} from '../src/modules/auctions/settlement';
 import {contactBotId,encryptPhone,phoneHash} from '../src/modules/auth/own-contact';
 
@@ -27,5 +28,6 @@ export async function richFinalResult(db:PrismaClient){
  await new Promise(resolve=>setTimeout(resolve,Math.max(0,auction.endsAt!.getTime()-Date.now()+40)));
  const settlement=await closeAuction(db,auction.id);
  if(settlement.outcome!=='WINNER'||settlement.winningPoints?.toString()!=='100')throw Error('Fixture settlement mismatch');
+ await publishFixtureResult(db,auction.id);
  return {auction,settlement,users,phone,phones,title,code:String(auction.publicCode)};
 }

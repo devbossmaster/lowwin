@@ -29,13 +29,13 @@ export async function getResultBreakdown(client:PrismaClient,code:string,input:Q
   const [{now}]=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`;
   const numeric=/^[1-9]\d*$/.test(code)&&Number.isSafeInteger(Number(code))?Number(code):null;
   const row=await tx.auction.findFirst({where:{AND:[publicWhere(now),finalizedDemoFilter(),{status:{in:['CLOSED','CANCELLED']},settlement:{is:{completedAt:{lte:now}}}},{OR:[{code},...(numeric?[{publicCode:numeric}]:[])]}]},select:{...publicAuctionSelect,id:true,settlement:{select:{...publicAuctionSelect.settlement.select,cutoff:true,acceptanceCutoff:true,acceptedCount:true,winningBid:{select:{feePoints:true}},winner:{select:{ownContact:{select:{lastFour:true,botId:true,phoneCipher:true,revokedAt:true}}}}}}}});
-  if(!row?.settlement)return null;
+  if(!row?.settlement?.publication||row.settlement.publication.publishedAt>now)return null;
   const settlement=row.settlement,filter=Prisma.sql`"auctionId"=${row.id} AND "acceptedAt"<${settlement.cutoff}${settlement.acceptanceCutoff===null?Prisma.empty:Prisma.sql` AND "acceptanceOrder"<=${settlement.acceptanceCutoff}`}`;
   const [totals]=await tx.$queryRaw<Totals[]>(Prisma.sql`SELECT count(*)::int AS bids,count(DISTINCT "userId")::int AS players,count(DISTINCT amount)::int AS amounts,count(DISTINCT "feePoints")::int AS fees FROM "Bid" WHERE ${filter}`);
   if(totals.bids!==settlement.acceptedCount)throw Error('Final result count mismatch');
   const auction=toPublicAuction(row,now);
   if(auction.result)auction.result.winnerPhoneMasked=maskedContact(settlement.winner?.ownContact);
-  const metadata={auction,announcedAt:settlement.completedAt.toISOString(),entryFee:settlement.winningBid?.feePoints.toString()??row.terms!.entryFeePoints.toString(),variableFees:totals.fees>1,totalBids:totals.bids,totalPlayers:totals.players,totalAmounts:totals.amounts,pageSize:20 as const};
+  const metadata={auction,announcedAt:settlement.publication!.publishedAt.toISOString(),entryFee:settlement.winningBid?.feePoints.toString()??row.terms!.entryFeePoints.toString(),variableFees:totals.fees>1,totalBids:totals.bids,totalPlayers:totals.players,totalAmounts:totals.amounts,pageSize:20 as const};
   if(query.amount!==undefined){
    const amount=new Prisma.Decimal(query.amount);
    const [count]=await tx.$queryRaw<{bids:number;players:number}[]>(Prisma.sql`SELECT count(*)::int AS bids,count(DISTINCT "userId")::int AS players FROM "Bid" WHERE ${filter} AND amount=${amount}`);

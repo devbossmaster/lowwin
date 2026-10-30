@@ -24,7 +24,7 @@ export async function GET(request:Request,{params}:{params:Promise<{path:string[
 export async function POST(request:Request,{params}:{params:Promise<{path:string[]}>}){let action:string|undefined;try{
   requireMutationOrigin(request);if((await params).path.join('/')!=='command')throw new AdminError(404,'Admin command not found.');
   let raw:string;try{raw=await readRequestText(request,2900000)}catch(error){if(error instanceof RequestBodyError)throw new AdminError(error.status,error.message);throw error}
-  const body=z.object({action:z.enum(['category','product','media','draft','publish','fee','deadline','presentation','deleteDraft','deleteProduct','removeCancelled','cancel','replace','suspend','deliveryDone','winnerPhoto','broadcastStop','fulfillment','retry','broadcast']),input:z.unknown()}).strict().parse(JSON.parse(raw));
+  const body=z.object({action:z.enum(['category','product','media','draft','publish','fee','deadline','presentation','deleteDraft','deleteProduct','removeCancelled','cancel','replace','suspend','deliveryDone','resultPublish','winnerPhoto','broadcastStop','fulfillment','retry','broadcast']),input:z.unknown()}).strict().parse(JSON.parse(raw));
   action=body.action;
-  return json(['suspend','deliveryDone','winnerPhoto','broadcastStop','fulfillment','retry','broadcast'].includes(body.action)?await opsMutation(db,request.headers,body.action as OpsAction,body.input):await adminMutation(db,request.headers,body.action as Parameters<typeof adminMutation>[2],body.input));
+  return json(['suspend','deliveryDone','resultPublish','winnerPhoto','broadcastStop','fulfillment','retry','broadcast'].includes(body.action)?await opsMutation(db,request.headers,body.action as OpsAction,body.input):await adminMutation(db,request.headers,body.action as Parameters<typeof adminMutation>[2],body.input));
 }catch(error){return failure(error,'POST',action)}}

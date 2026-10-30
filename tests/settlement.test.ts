@@ -6,6 +6,7 @@ import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { bidAuction,bidUser } from './bid-fixtures';
 import { submitBid,submitBidInTransaction } from '../src/modules/auctions/bids';
+import {publishFixtureResult} from './publish-result-fixture';
 import { cancelAuction,cancelAuctionInTransaction,closeAuction,closeAuctionInTransaction,processDueAuction,type CancelInput } from '../src/modules/auctions/settlement';
 import { reconcile } from '../src/modules/wallet/ledger';
 import { adjustAuctionHold } from '../src/modules/wallet/holds';
@@ -96,7 +97,7 @@ describe.skipIf(!url)('atomic closing and cancellation on disposable PostgreSQL'
     await Promise.all(Array.from({length:4},()=>processDueAuction(client)));
     const settled=await client.auctionSettlement.findUniqueOrThrow({where:{auctionId:a.id}});
     expect(await client.auctionSettlement.count({where:{auctionId:a.id}})).toBe(1);
-    expect(await client.outbox.count({where:{settlementId:settled.id}})).toBe(2);
+    expect(await client.outbox.count({where:{settlementId:settled.id}})).toBe(0);
     const before=await snapshot(a.id);const replay=await Promise.all([closeAuction(client,a.id),closeAuction(client,a.id)]);
     expect(replay.every(result=>result.id===settled.id)).toBe(true);expect(await snapshot(a.id)).toEqual(before);expect(await reconcile(client)).toEqual([]);
   });
@@ -178,6 +179,7 @@ describe.skipIf(!url)('atomic closing and cancellation on disposable PostgreSQL'
     await expect(client.settlementMovement.update({where:{id:result.movements[0].id},data:{releasedPoints:new MoneyPrisma.Decimal("99")}})).rejects.toThrow();
     const other=await bidUser(client),wallet=await client.wallet.findUniqueOrThrow({where:{userId:other}});
     await expect(client.settlementMovement.create({data:{settlementId:result.id,userId:other,walletId:wallet.id,holdBefore:new MoneyPrisma.Decimal("0"),chargedPoints:new MoneyPrisma.Decimal("0"),releasedPoints:new MoneyPrisma.Decimal("0"),refundedFees:new MoneyPrisma.Decimal("0")}})).rejects.toThrow('Cannot append movements');
+    expect(await client.outbox.count({where:{settlementId:result.id}})).toBe(0);await publishFixtureResult(client,a.id);
     const intents=await client.outbox.findMany({where:{settlementId:result.id}});expect(JSON.stringify(intents)).not.toMatch(/amount|winningPoints|frequency|telegramId|winnerUserId/);
     await expect(client.outbox.update({where:{id:intents[0].id},data:{payload:{changed:true}}})).rejects.toThrow();
     expect(JSON.stringify(await getAuction(a.slug!))).not.toMatch(/amountFrequencies|winnerUserId|winningBidId|recipientUserId|requestHash|proof/);

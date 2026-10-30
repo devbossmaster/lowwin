@@ -41,6 +41,11 @@ describe('referral reward administration boundary',()=>{
   for(const role of ['OWNER','CATALOG_MANAGER','SUPPORT','FULFILLMENT','PAYMENTS_OPERATOR','AUDITOR'] as const)expect(allowedTasks(role).some(task=>task.href==='/admin/settings/referrals')).toBe(false);
   expect(activeTask('/admin/settings/referrals')).toMatchObject({label:'Overview',area:'Overview'});
  });
+ it('exposes guarded referral setup inside Players only to settings administrators',()=>{
+  expect(allowedTasks('OWNER').find(task=>task.href==='/admin/users/referrals')).toMatchObject({label:'Referral rewards',area:'Players',permission:'settings'});
+  for(const role of ['CATALOG_MANAGER','SUPPORT','FULFILLMENT','PAYMENTS_OPERATOR','AUDITOR'] as const)expect(allowedTasks(role).some(task=>task.href==='/admin/users/referrals')).toBe(false);
+  expect(activeTask('/admin/users/referrals')).toMatchObject({label:'Referral rewards',area:'Players'});
+ });
  it('requires a staff session and settings permission before reading policy',async()=>{
   const {db}=fixture();f.authenticated=false;await expect(readReferralAdmin(db,headers)).rejects.toMatchObject({status:401});expect(f.read).not.toHaveBeenCalled();
   f.authenticated=true;f.role='AUDITOR';await expect(readReferralAdmin(db,headers)).rejects.toMatchObject({status:403});expect(f.read).not.toHaveBeenCalled();

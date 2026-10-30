@@ -43,6 +43,8 @@
 .referralStats span{color:#68665e;font-size:11px;line-height:1.5;overflow-wrap:anywhere}
 .inlineNotice{margin:9px 0 0;color:#715719;font-size:11px;line-height:1.65}
 .count{flex:none;max-width:45%;padding:4px 8px;border-radius:14px;background:#eeece6;color:#514d43;font-size:10px;line-height:1.45;font-variant-numeric:tabular-nums;text-align:center}
+.referralState{flex:none;padding:4px 8px;border-radius:14px;background:#eeece6;color:#514d43;font-size:10px;font-weight:600;line-height:1.45}.referralState[data-active]{background:#f4ecd3;color:#705416}
+.useDiscount{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:44px;margin-top:10px;color:#705416;font-size:12px;font-weight:650;text-decoration:none}.useDiscount:hover{text-decoration:underline;text-underline-offset:3px}
 .emptyRewards{margin:13px 0 0;color:#68665e;font-size:12px;line-height:1.8}
 .discounts{display:grid;gap:10px;margin:14px 0 0;padding:0;list-style:none}
 .discounts li{display:flex;align-items:center;gap:11px;padding:14px 12px;border-radius:12px;background:#f6f2e7}

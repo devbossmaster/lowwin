@@ -27,7 +27,7 @@ export function startChapaHistoryClock(orders:readonly ChapaCheckoutView[],refre
  visibility.addEventListener('visibilitychange',tick);wake.addEventListener('focus',tick);schedule();
  return()=>{active=false;clearTimeout(timer);visibility.removeEventListener('visibilitychange',tick);wake.removeEventListener('focus',tick)};
 }
-function TransactionDetails({order,onClose,trigger}:{order:ChapaCheckoutView;onClose:()=>void;trigger:React.RefObject<HTMLElement|null>}){
+export function ChapaTransactionDetails({order,onClose,trigger}:{order:ChapaCheckoutView;onClose:()=>void;trigger:React.RefObject<HTMLElement|null>}){
  const payment=useChapaPayment('transaction:'+order.id,order.id),{language}=useMiniLocale(),am=language==='am',current=payment.order??order;
  const fresh=current.purpose==='TOP_UP'?'/wallet/deposit':current.auctionSlug?`/auctions/${current.auctionCode??current.auctionSlug}#bid-review`:null;
  return <AccountSheet size="payment" title={am?'የግብይት ዝርዝር':'Transaction details'} onClose={onClose} returnFocusRef={trigger}>
@@ -57,6 +57,6 @@ function OwnedHistory({purpose,unaccepted,fullPage}:{purpose?:'TOP_UP'|'BID';una
    </button></li>)}</ul>
    {(page>1||query.data.nextPage)&&<nav className={styles.pagination} aria-label={text('Transaction pages','የግብይት ገጾች')}><button type="button" disabled={page<=1||query.fetching} aria-label={text('Previous page','ያለፈው ገጽ')} onClick={()=>setPage(page-1)}><ChevronLeft size={18}/></button><span>{page}</span><button type="button" disabled={!query.data.nextPage||query.fetching} aria-label={text('Next page','ቀጣይ ገጽ')} onClick={()=>setPage(query.data!.nextPage!)}><ChevronRight size={18}/></button></nav>}
   </>}
-  {selected&&query.status==='authenticated'&&<TransactionDetails key={selected.id} order={selected} onClose={()=>setSelected(null)} trigger={trigger}/>}
+  {selected&&query.status==='authenticated'&&<ChapaTransactionDetails key={selected.id} order={selected} onClose={()=>setSelected(null)} trigger={trigger}/>}
  </section>;
 }

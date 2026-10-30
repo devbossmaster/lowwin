@@ -20,7 +20,7 @@ function fixture(change:Record<string,unknown>={}){
  let presentation:null|Record<string,unknown>=null,audit:null|Record<string,unknown>=null;
  const tx={
   $queryRaw:vi.fn(async()=>[]),$executeRaw:vi.fn(async()=>0),
-  auction:{findUnique:vi.fn(async()=>({status:'CLOSED',isDemo:false,testRunId:null,publishedAt:new Date('2026-10-29'),settlement:{outcome:'WINNER',winnerUserId:'winner',completedAt:new Date('2026-10-29T23:00:00Z')},...change}))},
+  auction:{findUnique:vi.fn(async()=>({status:'CLOSED',isDemo:false,testRunId:null,publishedAt:new Date('2026-10-29'),settlement:{publication:{publishedAt:new Date('2026-01-01')},outcome:'WINNER',winnerUserId:'winner',completedAt:new Date('2026-10-29T23:00:00Z')},...change}))},
   fulfillmentCase:{findUnique:vi.fn(async()=>({assignedTo:'staff'}))},
   managedMedia:{findUnique:vi.fn(async()=>({id:imageId,purpose:'WINNER_PHOTO'})),findFirst:vi.fn(async()=>null),findMany:vi.fn(async()=>[]),create:vi.fn(async({data}:{data:Record<string,unknown>})=>({id:imageId,...data}))},
   winnerPresentation:{findUnique:vi.fn(async()=>presentation),upsert:vi.fn(async({create,update}:{create:Record<string,unknown>;update:Record<string,unknown>})=>{presentation=presentation?{...presentation,...update,version:Number(presentation.version)+1}:{...create,version:1};return presentation})},
@@ -40,8 +40,8 @@ describe('editable, consented winner announcement media',()=>{
  });
  it.each([
   {status:'LIVE'}, {isDemo:true}, {testRunId:'fixture-test-run'}, {publishedAt:null},
-  {settlement:null},{settlement:{outcome:'NO_WINNER',winnerUserId:null,completedAt:new Date('2026-10-29')}},
-  {settlement:{outcome:'WINNER',winnerUserId:'winner',completedAt:new Date('2026-11-01')}},
+  {settlement:null},{settlement:{publication:{publishedAt:new Date('2026-01-01')},outcome:'NO_WINNER',winnerUserId:null,completedAt:new Date('2026-10-29')}},
+  {settlement:{publication:{publishedAt:new Date('2026-01-01')},outcome:'WINNER',winnerUserId:'winner',completedAt:new Date('2026-11-01')}},
  ])('rejects an ineligible result without writing media: %j',async change=>{
   const {tx,db}=fixture(change);await expect(saveWinnerPhoto(db,actor(),input())).rejects.toMatchObject({status:409});expect(tx.winnerPresentation.upsert).not.toHaveBeenCalled();
  });
@@ -107,7 +107,7 @@ function publicRow(change:Record<string,unknown>={}){
  return {slug:'original-item',code:'AUCTION-42',publicCode:42,status:'CLOSED',publishedAt:new Date('2026-10-29'),startsAt:new Date('2026-10-29'),endsAt:new Date('2026-10-29T23:00:00Z'),featured:false,isDemo:false,acceptedBidCount:2,publicViewCount:0n,presentation:null,fulfillmentSummary:'Collect item',fulfillmentSummaryAm:null,fulfillmentRegion:'Addis Ababa',fulfillmentRegionAm:null,
  product:{title:'Original product',titleAm:null,description:'Original description',descriptionAm:null,condition:'New',conditionAm:null,images:[{path:'/images/product.webp',alt:'Product',sourceType:'ORIGINAL',sourceCredit:null}]},category:{slug:'accessories',name:'Accessories',nameAm:null},
  terms:{version:1,ruleVersion:'lowest-unique-v4',minParticipants:2,minPoints:new Prisma.Decimal(1),maxPoints:null,stepPoints:new Prisma.Decimal('0.01'),entryFeePoints:new Prisma.Decimal(10),maxDistinctBids:100,noWinnerTerms:'Terms',cancellationTerms:'Terms',fulfillmentSnapshot:'Snapshot'},feeRevisions:[],result:null,
- settlement:{outcome:'WINNER',decision:'LOWEST_UNIQUE',winningPoints:new Prisma.Decimal('2.27'),completedAt:new Date('2026-10-29T23:00:00Z'),winner:{ownContact:{lastFour:'1234',revokedAt:null}}},winnerPresentation:{imageId,consentConfirmedAt:new Date('2026-10-29T23:30:00Z'),image:{purpose:'WINNER_PHOTO'}},...change} as Parameters<typeof toPublicAuction>[0];
+ settlement:{publication:{publishedAt:new Date('2026-01-01')},outcome:'WINNER',decision:'LOWEST_UNIQUE',winningPoints:new Prisma.Decimal('2.27'),completedAt:new Date('2026-10-29T23:00:00Z'),winner:{ownContact:{lastFour:'1234',revokedAt:null}}},winnerPresentation:{imageId,consentConfirmedAt:new Date('2026-10-29T23:30:00Z'),image:{purpose:'WINNER_PHOTO'}},...change} as Parameters<typeof toPublicAuction>[0];
 }
 describe('public winner photo privacy',()=>{
  it('exposes only the consented managed-media path after a real settled win',()=>{

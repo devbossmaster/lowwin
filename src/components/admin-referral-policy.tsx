@@ -14,7 +14,8 @@ export function AdminReferralPolicy(){
   {data&&policy&&<div className={styles.workspace}>
    <section className="admin-panel">
     <div className={styles.heading}><div><h2>Reward settings</h2><p>{policy.version?`Version ${policy.version} · Updated ${eat(policy.updatedAt)}`:'Draft defaults · No policy has been saved'}</p></div><span className={`admin-status ${!policy.enabled?'is-caution':''}`}>{policy.enabled?'New rewards enabled':'New rewards paused'}</span></div>
-    {!data.schemaReady&&<p className="admin-notice">Referral rewards storage is not configured. Complete the reviewed setup before saving.</p>}
+    {!data.schemaReady&&<p className="admin-notice">Referral rewards storage is not configured. Apply the referral migration and runtime grants, then set REFERRAL_REWARDS_SCHEMA_READY=true on Web, the bot and payment workers. No rewards are enabled by that setting alone.</p>}
+    {data.schemaReady&&!policy.configured&&<p className="admin-notice">Ready to configure. Review the existing 10% / 30-day draft below, check “Allow new referral rewards”, add a reason and save to start new invitations.</p>}
     <form key={policy.version} className="admin-form" onChange={()=>{setDirty(true);setSaved(null);mutation.clear()}} onSubmit={async event=>{
      event.preventDefault();const form=new FormData(event.currentTarget);
      const receipt=await mutation.run<ReferralPolicyReceipt>('save-policy',{version:policy.version,discountPercent:Number(form.get('discountPercent')),expiryDays:Number(form.get('expiryDays')),enabled:form.get('enabled')==='on',reason:String(form.get('reason')??'')});

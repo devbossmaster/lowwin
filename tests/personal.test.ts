@@ -8,6 +8,7 @@ import { bidAuction } from './bid-fixtures';
 import { signedLaunch,TEST_TOKEN } from './helpers';
 import { seedCatalog } from '../scripts/seed-catalog';
 import { submitBid } from '../src/modules/auctions/bids';
+import {publishFixtureResult} from './publish-result-fixture';
 import { closeAuction,cancelAuction } from '../src/modules/auctions/settlement';
 import { creditDevelopmentPoints,reconcile } from '../src/modules/wallet/ledger';
 let listPublicResults:typeof import('../src/modules/auctions/results').listPublicResults, getPublicResult:typeof import('../src/modules/auctions/results').getPublicResult;
@@ -46,7 +47,7 @@ describe.skipIf(!url)('Phase 4B public outcomes and private pages on PostgreSQL'
     await cancelAuction(client,{auctionId:cancelled.id,actor:{id:'fixture-owner',permission:'auction:cancel'},reason:'DEMO private page test',key:randomUUID()});
     const [{now}]=await client.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`;
     await new Promise(resolve=>setTimeout(resolve,Math.max(0,noWinner.endsAt!.getTime()-now.getTime()+40)));
-    await closeAuction(client,winner.id);await closeAuction(client,noWinner.id);
+    await closeAuction(client,winner.id);await closeAuction(client,noWinner.id);for(const a of [winner,noWinner,cancelled])await publishFixtureResult(client,a.id);
   },60000);
   afterAll(async()=>{await client?.$disconnect();const {db}=await import('../src/lib/db');await db.$disconnect()});
   it('projects settled, cancelled, no-winner and pending outcomes without guessing',async()=>{
@@ -66,7 +67,7 @@ describe.skipIf(!url)('Phase 4B public outcomes and private pages on PostgreSQL'
     const response=await route.GET(request(`/api/results/${publicCode(winner)}`),{params:Promise.resolve({auctionCode:publicCode(winner)})});
     expect(response.status).toBe(200);expect(response.headers.get('cache-control')).toContain('no-store');const body=await response.json();
     expect(Object.keys(body).sort()).toEqual(['slug','code','status','publishedAt','featured','isDemo','startsAt','endsAt','bidCount','viewCount','product','category','fulfillment','terms','result'].sort());
-    expect(Object.keys(body.result).sort()).toEqual(['decision','outcome','winningPoints','explanation','isDemo','closedAt','source','demoLabel','winnerDisplay','winnerPhoneMasked','acceptedBidCount'].sort());
+    expect(Object.keys(body.result).sort()).toEqual(['decision','outcome','winningPoints','explanation','isDemo','closedAt','source','demoLabel','winnerDisplay','winnerPhoneMasked','winnerPhotoPath','acceptedBidCount'].sort());
     const settlement=await client.auctionSettlement.findUniqueOrThrow({where:{auctionId:winner.id},include:{movements:true}});
     expect(settlement.proof).toHaveProperty('amountFrequencies');
     const serialized=JSON.stringify(body);
@@ -187,7 +188,7 @@ describe.skipIf(!url)('Phase 4B public outcomes and private pages on PostgreSQL'
   it('shows genuine settled draws, honest pending/cancelled states and no illustrative winners',async()=>{
     const completed=await bidAuction(client,{isDemo:false,endDelayMs:2500}),waiting=await bidAuction(client,{isDemo:false,endDelayMs:-1000}),cancel=await bidAuction(client,{isDemo:false}),upcoming=await bidAuction(client,{isDemo:false,startOffsetMs:10000});
     await bid(first.id,completed,2);await cancelAuction(client,{auctionId:cancel.id,actor:{id:'fixture-owner',permission:'auction:cancel'},reason:'Disposable genuine-result regression',key:randomUUID()});
-    await new Promise(resolve=>setTimeout(resolve,Math.max(0,completed.endsAt!.getTime()-Date.now()+30)));await closeAuction(client,completed.id);
+    await new Promise(resolve=>setTimeout(resolve,Math.max(0,completed.endsAt!.getTime()-Date.now()+30)));await closeAuction(client,completed.id);await publishFixtureResult(client,completed.id);await publishFixtureResult(client,cancel.id);
     const {listDraws}=await import('../src/modules/auctions/draws');const past=await listDraws('past');
     expect(past.items.find(item=>item.code===publicCode(completed))?.result).toMatchObject({outcome:'WINNER',source:'SETTLED',winnerDisplay:null});
     expect(past.items.find(item=>item.code===publicCode(waiting))).toMatchObject({status:'closing',result:null});

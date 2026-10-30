@@ -10,16 +10,16 @@ type ResultQuery=z.infer<typeof resultQuerySchema>;
 export function listCompletedWinners(client:PrismaClient,page=1,pageSize=12){
  return cachedPublicData(`completed-winners:${page}:${pageSize}`,5000,()=>client.$transaction(async tx=>{
   const [{now}]=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`;
-  const where:Prisma.AuctionWhereInput={AND:[publicWhere(now),finalizedDemoFilter(),{status:'CLOSED',settlement:{is:{outcome:'WINNER',winningPoints:{not:null},completedAt:{lte:now}}}}]};
+  const where:Prisma.AuctionWhereInput={AND:[publicWhere(now),finalizedDemoFilter(),{status:'CLOSED',settlement:{is:{outcome:'WINNER',winningPoints:{not:null},completedAt:{lte:now},publication:{is:{publishedAt:{lte:now}}}}}}]};
   const [rows,total]=await Promise.all([tx.auction.findMany({where,select:publicAuctionSelect,orderBy:[{settlement:{completedAt:'desc'}},{id:'desc'}],take:pageSize,skip:(page-1)*pageSize}),tx.auction.count({where})]);
   return {items:rows.map(row=>{const auction=toPublicAuction(row,now);if(auction.result)auction.result.winnerPhoneMasked=null;return auction}),total,page,totalPages:Math.ceil(total/pageSize),serverNow:now.toISOString()};
  },{isolationLevel:Prisma.TransactionIsolationLevel.RepeatableRead,maxWait:10000,timeout:20000}));
 }
 function outcomeWhere(status:ResultQuery['status'],now:Date):Prisma.AuctionWhereInput {
-  if(status==='pending')return {status:{in:['LIVE','SCHEDULED']},settlement:{is:null},result:{is:null},endsAt:{lte:now}};
+  if(status==='pending')return {result:{is:null},endsAt:{lte:now},OR:[{status:{in:['LIVE','SCHEDULED']},settlement:{is:null}},{settlement:{is:{publication:{is:null}}}}]};
   if(status==='all')return {OR:[{settlement:{isNot:null}},{result:{is:{publishedAt:{lte:now}}}},{endsAt:{lte:now}}]};
   const outcome=status.toUpperCase() as 'WINNER'|'NO_WINNER'|'CANCELLED';
-  return {OR:[{settlement:{is:{outcome}}},{result:{is:{outcome,publishedAt:{lte:now}}}}]};
+  return {OR:[{settlement:{is:{outcome,publication:{is:{publishedAt:{lte:now}}}}}},{result:{is:{outcome,publishedAt:{lte:now}}}}]};
 }
 export async function listPublicResults(client:PrismaClient,input:Partial<ResultQuery>={}) {
   const query=resultQuerySchema.parse(input);

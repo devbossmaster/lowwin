@@ -1,2 +1,2 @@
-import {redirect} from 'next/navigation';
-export default function Page(){redirect('/admin/fulfillment')}
+import {AdminResults} from '@/components/admin-results';
+export default function Page(){return <AdminResults/>}

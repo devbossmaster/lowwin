@@ -141,10 +141,13 @@ async function initializeChapaCheckout(client:PrismaClient,id:string,transport:C
 export async function getChapaCheckout(client:PrismaClient,userId:string,id:string){
  const order=await measureChapa('database',()=>client.chapaCheckout.findFirst({where:{id:z.string().uuid().parse(id),userId},include:context}));if(!order)throw new ChapaError(404,'NOT_FOUND','Payment not found.');return ownChapaCheckout(order);
 }
-export async function listChapaCheckouts(client:PrismaClient,userId:string,purpose?:'TOP_UP'|'BID',page=1,unaccepted=false){
+export async function listChapaCheckouts(client:PrismaClient,userId:string,purpose?:'TOP_UP'|'BID',page=1,unaccepted=false,statusFilter:'all'|'pending'|'failed'='all'){
  const filter=z.enum(['TOP_UP','BID']).optional().parse(purpose);page=z.number().int().min(1).max(10000).parse(page);
+ const state=z.enum(['all','pending','failed']).parse(statusFilter);
+ if(state!=='all'&&(!unaccepted||filter!=='BID'))throw new ChapaError(422,'INVALID_INPUT','Choose unaccepted bid payments for this filter.');
  if(process.env.CHAPA_SCHEMA_READY!=='true')return {items:[],page,nextPage:null};
- const rows=await client.chapaCheckout.findMany({where:{userId,...(filter?{purpose:filter}:{}),...(unaccepted?{purpose:'BID',bidId:null}:{})},orderBy:[{createdAt:'desc'},{id:'desc'}],skip:(page-1)*20,take:21,include:context});
+ const terminal=['FAILED','CANCELLED','INCOMPLETE','EXPIRED','BLOCKED'];
+ const rows=await client.chapaCheckout.findMany({where:{userId,...(filter?{purpose:filter}:{}),...(unaccepted?{purpose:'BID',bidId:null}:{}),...(state==='all'?{}:{creditJournalId:null,status:state==='failed'?{in:terminal}:{notIn:terminal}})},orderBy:[{createdAt:'desc'},{id:'desc'}],skip:(page-1)*20,take:21,include:context});
  return {items:rows.slice(0,20).map(ownChapaCheckout),page,nextPage:rows.length>20?page+1:null};
 }
 export async function verifyChapaCheckout(client:PrismaClient,id:string,userId?:string,reauthorize?:Authorize,transport:ChapaTransport=chapaTransport,eventCheck=false){

@@ -27,11 +27,11 @@ export default function AdminWinnerPhoto({winner,onSaved}:{winner:WinnerPhotoRec
  }
  return <section className={styles.panel} aria-labelledby="winner-photo-heading">
   <h3 id="winner-photo-heading">Winner photo</h3>
-  <p>The result banner uses the product image until you add a photo. Your photo appears on the right; the winning result stays unchanged.</p>
+  <p>The result banner uses the product image until you add a photo. You can save a photo before publishing the result. The calculated winner stays unchanged.</p>
   {(preview||winner.winnerPhotoPath)&&<img className={styles.preview} src={preview??winner.winnerPhotoPath!} alt={preview?'Selected winner photo preview':'Published winner photo'}/>}
   <form className="admin-form" onSubmit={event=>{event.preventDefault();void save()}}>
    <label>Choose winner photo<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={event=>{setFile(event.currentTarget.files?.[0]??null);setImageId(null);setConsent(false);setError('');mutation.clear()}}/><small>JPEG, PNG or WebP · up to 2 MiB. Leave space around the person.</small></label>
-   {file&&<><label className="admin-check"><input type="checkbox" checked={consent} disabled={busy} onChange={event=>setConsent(event.currentTarget.checked)}/>The winner agreed to publish this photo, and I have permission to use it.</label><label>Update note<input value={reason} onChange={event=>setReason(event.currentTarget.value)} disabled={busy} minLength={5} maxLength={500} required placeholder="Prize handover photo"/></label><button disabled={busy||!consent||reason.trim().length<5}><ImagePlus size={16}/>{busy?'Saving photo…':winner.winnerPhotoId?'Replace winner photo':'Publish winner photo'}</button></>}
+   {file&&<><label className="admin-check"><input type="checkbox" checked={consent} disabled={busy} onChange={event=>setConsent(event.currentTarget.checked)}/>The winner agreed to publish this photo, and I have permission to use it.</label><label>Update note<input value={reason} onChange={event=>setReason(event.currentTarget.value)} disabled={busy} minLength={5} maxLength={500} required placeholder="Prize handover photo"/></label><button disabled={busy||!consent||reason.trim().length<5}><ImagePlus size={16}/>{busy?'Saving photo…':winner.winnerPhotoId?'Replace winner photo':'Save winner photo'}</button></>}
   </form>
   {winner.winnerPhotoId&&<button type="button" className="secondary" disabled={busy} onClick={()=>void save(true)}><RotateCcw size={16}/>{busy?'Saving…':'Use product image again'}</button>}
   <ErrorNotice error={error||mutation.error}/>

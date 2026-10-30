@@ -4,6 +4,7 @@ import {execFileSync} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {bidAuction,bidUser} from './bid-fixtures';
 import {submitBid} from '../src/modules/auctions/bids';
+import {publishFixtureResult} from './publish-result-fixture';
 import {closeAuction} from '../src/modules/auctions/settlement';
 import {reconcile} from '../src/modules/wallet/ledger';
 import {saveWinnerPhoto} from '../src/modules/admin/winner-photo';
@@ -36,6 +37,7 @@ describe.skipIf(!url)('winner presentation on isolated PostgreSQL',()=>{
   vi.doMock('../src/lib/db',()=>({db}));
   const media=await import('../src/app/api/media/[id]/route');
   const read=(id:string)=>media.GET(new Request(`https://lowwin.test/api/media/${id}`),{params:Promise.resolve({id})});
+  expect((await read(image)).status).toBe(404);await publishFixtureResult(db,auction.id);
   const shown=await read(image);expect(shown.status).toBe(200);expect(shown.headers.get('cache-control')).toContain('no-store');expect((await shown.arrayBuffer()).byteLength).toBeGreaterThan(0);
   const row=await db.auction.findUniqueOrThrow({where:{id:auction.id},select:publicAuctionSelect});expect(toPublicAuction(row,new Date()).result?.winnerPhotoPath).toBe(`/api/media/${image}`);
   expect(await save(1,second)).toMatchObject({version:2,imageId:second});expect((await read(image)).status).toBe(404);expect((await read(second)).status).toBe(200);

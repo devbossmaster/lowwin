@@ -19,7 +19,7 @@ describe('staging result visibility keeps finality and normal exclusions',()=>{
   environment();const {tx,client}=database();await listCompletedWinners(client);
   expect(tx.auction.findMany.mock.calls[0][0].where.AND).toEqual(expect.arrayContaining([
    {OR:[{isDemo:false},{isDemo:true,isSettlementFixture:true}]},
-   {status:'CLOSED',settlement:{is:{outcome:'WINNER',winningPoints:{not:null},completedAt:{lte:now}}}},
+   {status:'CLOSED',settlement:{is:{outcome:'WINNER',winningPoints:{not:null},completedAt:{lte:now},publication:{is:{publishedAt:{lte:now}}}}}},
   ]));
  });
  it('retains final settlement gating before any bid aggregates in the breakdown',async()=>{

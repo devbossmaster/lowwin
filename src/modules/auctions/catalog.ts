@@ -19,7 +19,7 @@ export const publicAuctionSelect = {
   feeRevisions:{orderBy:[{effectiveAt:'desc' as const},{version:'desc' as const}],take:1,select:{version:true,feePoints:true}},
   result:{select:{outcome:true,winningPoints:true,explanation:true,isDemo:true,closedAt:true,publishedAt:true}},
   winnerPresentation:{select:{imageId:true,consentConfirmedAt:true,image:{select:{purpose:true}}}},
-  settlement:{select:{decision:true,outcome:true,winningPoints:true,completedAt:true,winner:{select:{ownContact:{select:{lastFour:true,revokedAt:true}}}}}},
+  settlement:{select:{publication:{select:{publishedAt:true}},decision:true,outcome:true,winningPoints:true,completedAt:true,winner:{select:{ownContact:{select:{lastFour:true,revokedAt:true}}}}}},
 } satisfies Prisma.AuctionSelect;
 type AuctionRow = Prisma.AuctionGetPayload<{ select: typeof publicAuctionSelect }>;
 const presentationSchema=z.object({title:z.string(),titleAm:z.string().nullable().optional(),description:z.string(),descriptionAm:z.string().nullable().optional(),condition:z.string(),conditionAm:z.string().nullable().optional(),images:z.array(z.object({path:z.string(),alt:z.string(),sourceType:z.string(),sourceCredit:z.string().nullable().optional()}))}).strict();
@@ -68,7 +68,7 @@ export function toPublicAuction(row: AuctionRow, now: Date) {
   const status = effectiveStatus(row,now);
   const presentation=presentationSchema.safeParse(row.presentation);
   const product=presentation.success?presentation.data:row.product!;
-  const settled=row.settlement;
+  const settled=row.settlement?.publication&&row.settlement.publication.publishedAt<=now?row.settlement:null;
   const result=settled&&['closed','cancelled'].includes(status)?{
     outcome:settled.outcome,winningPoints:settled.winningPoints?.toString()??null,
     decision:settled.decision,explanation:resultExplanation(settled.outcome,settled.decision,row.terms?.ruleVersion),

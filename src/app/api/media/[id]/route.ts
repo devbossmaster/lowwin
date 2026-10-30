@@ -13,7 +13,7 @@ export async function GET(request:Request,{params}:{params:Promise<{id:string}>}
   const published=await db.productImage.findFirst({where:{path:`/api/media/${id}`,product:{visible:true,category:{visible:true},auctions:{some:{publishedAt:{not:null}}}}},select:{id:true}});
   if(!published){
    const now=new Date();
-   const winnerPhoto=await db.managedMedia.findFirst({where:{id,purpose:'WINNER_PHOTO',winnerPresentations:{some:{consentConfirmedAt:{lte:now},auction:{is:{AND:[publicWhere(now),{status:'CLOSED',isDemo:false,testRunId:null,settlement:{is:{outcome:'WINNER',winnerUserId:{not:null},completedAt:{lte:now}}}}]}}}}},select:{bytes:true}});
+   const winnerPhoto=await db.managedMedia.findFirst({where:{id,purpose:'WINNER_PHOTO',winnerPresentations:{some:{consentConfirmedAt:{lte:now},auction:{is:{AND:[publicWhere(now),{status:'CLOSED',isDemo:false,testRunId:null,settlement:{is:{outcome:'WINNER',winnerUserId:{not:null},completedAt:{lte:now},publication:{is:{publishedAt:{lte:now}}}}}}]}}}}},select:{bytes:true}});
    // Unlike a frozen product image, this consented announcement can be removed.
    // Recheck eligibility on every read and never store it in the immutable cache.
    if(winnerPhoto)return new Response(winnerPhoto.bytes,{headers:{'Content-Type':'image/png','X-Content-Type-Options':'nosniff','Content-Disposition':'inline','Cache-Control':'private, no-store, max-age=0','Vary':'Cookie'}});

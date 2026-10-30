@@ -41,8 +41,9 @@ export async function expandCampaign(tx:Tx,row:Outbox){
  }
  // A cancellation queued by an older app version must not fan out after deploy.
  if(row.kind==='AUCTION_FINALIZED'||p.deliveryKind==='AUCTION_RESULT'){
-  const settlement=p.auctionId?await tx.auctionSettlement.findUnique({where:{auctionId:p.auctionId},select:{outcome:true}}):null;
-  if(settlement?.outcome==='CANCELLED'){
+  const settlement=p.auctionId?await tx.auctionSettlement.findUnique({where:{auctionId:p.auctionId},select:{outcome:true,publication:{select:{publishedAt:true}}}}):null;
+  if(!settlement?.publication){await tx.outbox.update({where:{id:row.id},data:{state:'SKIPPED',lastError:'RESULT_NOT_PUBLISHED'}});return 0}
+  if(settlement.outcome==='CANCELLED'){
    await tx.outbox.update({where:{id:row.id},data:{state:'SKIPPED',lastError:'CANCELLATION_SILENT'}});
    return 0;
   }
@@ -102,7 +103,7 @@ export async function campaignContent(tx:Tx,row:Pick<Outbox,'kind'|'payload'>){
   return {...base,title:'Deposit successful · ገንዘቡ ገብቷል',body:`${formatEtb(t.points)} has been added to your wallet.\n${formatEtb(t.points)} ወደ ሂሳብዎ ገብቷል።`,href:'/wallet'};
  }
  if(!p.auctionId)return null;
- const a=await tx.auction.findUnique({where:{id:p.auctionId},select:{slug:true,publicCode:true,publishedAt:true,startsAt:true,endsAt:true,status:true,isDemo:true,isSettlementFixture:true,testRunId:true,presentation:true,product:{select:{title:true,visible:true,images:{orderBy:{sortOrder:'asc'},take:1,select:{path:true}}}},result:{select:{id:true}},settlement:{select:{outcome:true}}}});
+ const a=await tx.auction.findUnique({where:{id:p.auctionId},select:{slug:true,publicCode:true,publishedAt:true,startsAt:true,endsAt:true,status:true,isDemo:true,isSettlementFixture:true,testRunId:true,presentation:true,product:{select:{title:true,visible:true,images:{orderBy:{sortOrder:'asc'},take:1,select:{path:true}}}},result:{select:{id:true}},settlement:{select:{outcome:true,publication:{select:{publishedAt:true}}}}}});
  if(!a?.publishedAt||!a.slug||a.result||a.testRunId||a.isDemo&&(!a.isSettlementFixture||!(demoBidAllowed()||stagingDemoEnabled())))return null;
  const [{now}]=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`;
  if(a.publishedAt>now)return null;
@@ -113,7 +114,7 @@ export async function campaignContent(tx:Tx,row:Pick<Outbox,'kind'|'payload'>){
  const when=(date:Date)=>new Intl.DateTimeFormat('en-GB',{dateStyle:'medium',timeStyle:'short',timeZone:'Africa/Addis_Ababa'}).format(date)+' EAT';
  const action={buttonLabel:'View auction · ጨረታውን ይመልከቱ',href:`/auctions/${a.slug}`};
  if(row.kind==='AUCTION_RESULT'){
-  if(!a.settlement)return null;
+  if(!a.settlement?.publication||a.settlement.publication.publishedAt>now)return null;
   if(a.settlement.outcome==='CANCELLED')return null;
   const outcome=a.settlement.outcome==='WINNER'?'A winner has been announced. See the final result.\nአሸናፊው ታውቋል። የመጨረሻ ውጤቱን ይመልከቱ።':'The auction closed without a winner.\nጨረታው ያለ አሸናፊ ተዘግቷል።';
   return {...base,...action,title:`${prefix}Auction finished · ጨረታው ተጠናቋል`,body:`${item}\n${outcome}\n${new URL(`/winners/${a.publicCode}`,process.env.MINI_APP_URL).href}`,telegramCaption:`🏁 ${prefix}${shortItem}\n${a.settlement.outcome==='WINNER'?'Winner announced · አሸናፊው ታውቋል':'Closed without a winner · ያለ አሸናፊ ተዘግቷል'}${a.endsAt?'\n⏰ '+when(a.endsAt):''}${code}`};

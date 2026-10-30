@@ -5,6 +5,7 @@ import {createRequire} from 'node:module';
 import {randomInt,randomUUID} from 'node:crypto';
 import {bidAuction,bidUser} from './bid-fixtures';
 import {submitBid} from '../src/modules/auctions/bids';
+import {publishFixtureResult} from './publish-result-fixture';
 import {closeAuction,cancelAuction} from '../src/modules/auctions/settlement';
 import {getPersonalBids} from '../src/modules/profile/personal';
 import {reconcile} from '../src/modules/wallet/ledger';
@@ -26,7 +27,7 @@ describe.skipIf(!url)('accepted My Bids accuracy on isolated PostgreSQL',()=>{
   ownProviderBid=accepted[0].bid.id;wrongOwnerBid=accepted[1].bid.id;providerRef='fixture-provider-'+randomUUID();
   const winner=await bidAuction(db,{fee:3,isDemo:false,endDelayMs:1800});await submitBid(db,{userId:first,auctionSlug:winner.slug!,amount:'4',key:randomUUID()});await submitBid(db,{userId:second,auctionSlug:winner.slug!,amount:'5',key:randomUUID()});
   const cancelled=await bidAuction(db,{fee:4,isDemo:false});await submitBid(db,{userId:first,auctionSlug:cancelled.slug!,amount:'8',key:randomUUID()});await cancelAuction(db,{auctionId:cancelled.id,actor:{id:'fixture-owner',permission:'auction:cancel'},reason:'Isolated My Bids cancellation fixture',key:randomUUID()});
-  await new Promise(resolve=>setTimeout(resolve,Math.max(0,winner.endsAt!.getTime()-Date.now()+30)));await closeAuction(db,winner.id);
+  await new Promise(resolve=>setTimeout(resolve,Math.max(0,winner.endsAt!.getTime()-Date.now()+30)));await closeAuction(db,winner.id);await publishFixtureResult(db,winner.id);await publishFixtureResult(db,cancelled.id);
   const credit=(userId:string)=>db.journal.findFirstOrThrow({where:{kind:'DEV_CREDIT',operation:{userId}},select:{id:true}});
   for(const [userId,bidId,amount,transactionId] of [[first,ownProviderBid,'1',providerRef],[second,wrongOwnerBid,'2','other-customer-secret-reference-'+randomUUID()]] as const){const journal=await credit(userId);await db.arifPayCheckout.create({data:{userId,auctionId:live.id,auctionSlug:live.slug!,key:randomUUID(),requestHash:'fixture-read-projection',bidNumber:amount,feeVersion:1,fee:2,channel:'TELEBIRR',phoneCipher:'private-fixture-cipher',phoneHash:'private-fixture-hash',nonce:randomUUID(),sessionId:randomUUID(),transactionId,status:'BID_ACCEPTED',creditJournalId:journal.id,bidId,expiresAt:new Date(Date.now()+600000)}})}
   await db.arifPayCheckout.create({data:{userId:first,auctionId:live.id,auctionSlug:live.slug!,key:randomUUID(),requestHash:'failed-attempt-must-not-count',bidNumber:'999',feeVersion:1,fee:2,channel:'MPESA',phoneCipher:'failed-attempt-private-cipher',phoneHash:'failed-attempt-private-hash',nonce:randomUUID(),status:'FAILED',expiresAt:new Date(Date.now()+600000)}});
@@ -40,7 +41,7 @@ describe.skipIf(!url)('accepted My Bids accuracy on isolated PostgreSQL',()=>{
  });
  it('projects only supported own payment evidence, never a gateway flow for other wallet bids',async()=>{
   const pages=await Promise.all([getPersonalBids(db,first,{page:1}),getPersonalBids(db,first,{page:2})]),rows=pages.flatMap(page=>page.items);
-  expect(rows.find(row=>row.id===ownProviderBid)?.payment).toEqual({status:'PAID',method:'ARIFPAY_TELEBIRR',transactionRef:providerRef});expect(rows.find(row=>row.id===wrongOwnerBid)?.payment).toEqual({status:'PAID',method:'WALLET',transactionRef:null});expect(rows.filter(row=>row.id!==ownProviderBid).every(row=>row.payment.method==='WALLET'&&row.payment.transactionRef===null)).toBe(true);
+  expect(rows.find(row=>row.id===ownProviderBid)?.payment).toEqual({checkoutId:null,status:'PAID',method:'ARIFPAY_TELEBIRR',transactionRef:providerRef});expect(rows.find(row=>row.id===wrongOwnerBid)?.payment).toEqual({checkoutId:null,status:'PAID',method:'WALLET',transactionRef:null});expect(rows.filter(row=>row.id!==ownProviderBid).every(row=>row.payment.method==='WALLET'&&row.payment.transactionRef===null)).toBe(true);
   const payload=JSON.stringify(pages);for(const privateValue of [second,'private-fixture-cipher','private-fixture-hash','other-customer-secret-reference','failed-attempt-private-cipher'])expect(payload).not.toContain(privateValue);
   expect(await reconcile(db)).toEqual([]);
  });

@@ -15,12 +15,12 @@ function schedulerClient(data:Record<string,unknown>,halted=false):PrismaClient{
 
 describe('upcoming auction reminders',()=>{
  it('suppresses queued cancellation results for the bot and Mini App bell',async()=>{
-  const cancelled=auction({status:'CANCELLED',settlement:{outcome:'CANCELLED',decision:'OWNER_CANCELLED'}});
+  const cancelled=auction({status:'CANCELLED',settlement:{outcome:'CANCELLED',decision:'OWNER_CANCELLED',publication:{publishedAt:now}}});
   const result={kind:'AUCTION_RESULT',payload:{auctionId:'auction-1',recipientUserId:'player-1'}};
   expect(await campaignContent(transaction(cancelled),result)).toBeNull();
   expect(await notificationContent(transaction(cancelled),{kind:'AUCTION_CANCELLED',payload:{auctionId:'auction-1',recipientUserId:'player-1'}})).toBeNull();
 
-  const tx={auctionSettlement:{findUnique:vi.fn(async()=>({outcome:'CANCELLED'}))},user:{findMany:vi.fn()},outbox:{createMany:vi.fn(),update:vi.fn()}} as unknown as Prisma.TransactionClient;
+  const tx={auctionSettlement:{findUnique:vi.fn(async()=>({outcome:'CANCELLED',publication:{publishedAt:now}}))},user:{findMany:vi.fn()},outbox:{createMany:vi.fn(),update:vi.fn()}} as unknown as Prisma.TransactionClient;
   const root:Outbox={id:'cancelled-root',key:'settlement:cancelled:completed',kind:'AUCTION_FINALIZED',createdAt:now,payload:{auctionId:'auction-1'},testRunId:null,state:'PENDING',attempts:0,nextAttemptAt:now,sentAt:null,lastError:null,settlementId:'cancelled'};
   expect(await expandCampaign(tx,root)).toBe(0);
   expect(tx.user.findMany).not.toHaveBeenCalled();
@@ -29,7 +29,7 @@ describe('upcoming auction reminders',()=>{
  it('keeps completed winner results available for bot delivery',async()=>{
   vi.stubEnv('MINI_APP_URL','https://lowwin.example');
   try{
-   const completed=auction({status:'CLOSED',settlement:{outcome:'WINNER'}});
+   const completed=auction({status:'CLOSED',settlement:{outcome:'WINNER',publication:{publishedAt:now}}});
    const content=await campaignContent(transaction(completed),{kind:'AUCTION_RESULT',payload:{auctionId:'auction-1',recipientUserId:'player-1'}});
    expect(content?.body).toContain('A winner has been announced.');
   }finally{vi.unstubAllEnvs()}

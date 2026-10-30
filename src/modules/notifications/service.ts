@@ -10,6 +10,7 @@ import {existsSync,statSync} from 'node:fs';
 import {resolve} from 'node:path';
 import sharp from 'sharp';
 import {chapaReceiptContent,chapaReceiptKind} from './chapa-receipt';
+import {expandParticipantResults} from './participant-results';
 type DB=Prisma.TransactionClient;
 const notificationImage=resolve('public/notification.png');
 const composedPhotos=new Map<string,Buffer>();
@@ -47,8 +48,9 @@ export async function notificationContent(tx:DB,row:Pick<Outbox,'kind'|'payload'
  if(row.kind===chapaReceiptKind)return chapaReceiptContent(tx,row);
  if(telegramKinds.includes(row.kind))return campaignContent(tx,row);
  const p=row.payload as {auctionId?:string;recipientUserId?:string};if(!p.recipientUserId||!p.auctionId)return null;
- const a=await tx.auction.findUnique({where:{id:p.auctionId},select:{terms:{select:{ruleVersion:true}},slug:true,code:true,publicCode:true,isDemo:true,isSettlementFixture:true,result:{select:{id:true}},settlement:{select:{decision:true,outcome:true,winnerUserId:true}}}});
+ const a=await tx.auction.findUnique({where:{id:p.auctionId},select:{terms:{select:{ruleVersion:true}},slug:true,code:true,publicCode:true,isDemo:true,isSettlementFixture:true,result:{select:{id:true}},settlement:{select:{publication:{select:{publishedAt:true}},decision:true,outcome:true,winnerUserId:true}}}});
  if(!a||a.result||a.isDemo&&(!a.isSettlementFixture||!(demoBidAllowed()||stagingDemoEnabled())))return null;
+ if(a.settlement&&!a.settlement.publication&&row.kind!=='BID_ACCEPTED')return null;
  // Older cancellation jobs may still be pending when the new code is deployed.
  if(a.settlement?.outcome==='CANCELLED'&&row.kind==='AUCTION_CANCELLED')return null;
  const kind=row.kind==='AUCTION_CANCELLED'&&a.settlement?.decision==='MINIMUM_PARTICIPANTS'?'AUCTION_MINIMUM_CANCELLED':row.kind==='AUCTION_CLOSED'?(a.settlement?.winnerUserId===p.recipientUserId?(a.settlement.decision==='FIRST_ACCEPTED_LOWEST'?'AUCTION_FALLBACK_WON':'AUCTION_WON'):a.settlement?.outcome==='NO_WINNER'?'AUCTION_NO_WINNER':row.kind):row.kind;
@@ -101,6 +103,7 @@ export async function dispatchOne(client:PrismaClient,bot:Pick<Bot,'api'>,filter
    }catch(error){const code=(error as {error_code?:number}).error_code,attempts=row.attempts+1,terminal=code===400||code===403||attempts>=4;await tx.telegramMessage.update({where:{id:record.id},data:{deletionState:terminal?'UNAVAILABLE':'FAILED',deletionAttemptedAt:new Date(),deletionError:code===400?'DELETE_WINDOW_OR_MESSAGE_UNAVAILABLE':code===403?'CHAT_BLOCKED':'DELETE_RETRY'}});await tx.outbox.update({where:{id:row.id},data:{state:terminal?'FAILED':'PENDING',attempts,lastError:'TELEGRAM_DELETE_FAILED',nextAttemptAt:new Date(Date.now()+Math.min(3600,2**attempts*5)*1000)}})}
    return true;
   }
+  if(row.kind==='AUCTION_PARTICIPANTS'){await expandParticipantResults(tx,row);return true}
   if(row.kind==='GLOBAL_CAMPAIGN'||row.kind==='AUCTION_FINALIZED'){await expandCampaign(tx,row);return true}
   const content=await notificationContent(tx,row);
   if(!content){await skip();return true}

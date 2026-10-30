@@ -91,12 +91,12 @@ test('authenticated mobile screens and local timing evidence', async ({page, bro
       await page.goto(`/auctions/${auction.slug}`);
       await page.locator('#bid-review').getByRole('button').click();
       const bidSheet = page.getByRole('dialog', {name: 'Place your bid',exact:true});
-      await expect(bidSheet.getByLabel('Your bid number', {exact: true})).toBeVisible();
-      await bidSheet.getByLabel('Your bid number', {exact: true}).fill('3.60');
+      await expect(bidSheet.getByLabel('Your bid amount', {exact: true})).toBeVisible();
+      await bidSheet.getByLabel('Your bid amount', {exact: true}).fill('3.60');
       await page.screenshot({path: `${root}/bid-sheet-${info.project.name}-en.png`});
       const original = page.viewportSize()!;
       await page.setViewportSize({width: original.width, height: 450});
-      await bidSheet.getByLabel('Your bid number', {exact: true}).focus();
+      await bidSheet.getByLabel('Your bid amount', {exact: true}).focus();
       await page.screenshot({path: `${root}/bid-sheet-short-viewport-${info.project.name}.png`});
       await expect.poll(() => page.evaluate(() => {const el = document.activeElement!.getBoundingClientRect(); return el.top >= 0 && el.bottom <= innerHeight;})).toBe(true);
       await page.setViewportSize(original);
@@ -141,16 +141,16 @@ test('authenticated mobile screens and local timing evidence', async ({page, bro
         await expect(zero.getByRole('navigation', {name: 'Your navigation'})).toBeVisible();
         await expect(zero.locator('#bid-review').getByRole('button')).toBeVisible();
         await zero.locator('#bid-review').getByRole('button').click();
-        const zeroSheet=zero.getByRole('dialog',{name:'Place your bid',exact:true});await zeroSheet.getByLabel('Your bid number', {exact: true}).fill('7.31');
+        const zeroSheet=zero.getByRole('dialog',{name:'Place your bid',exact:true});await zeroSheet.getByLabel('Your bid amount', {exact: true}).fill('7.31');
         await expect(zeroSheet.getByRole('radio',{name:'Wallet balance',exact:true})).toBeChecked();await expect(zeroSheet).toContainText('Your balance is below this submission fee.');await expect(zeroSheet.locator('[data-payment-action]')).toBeDisabled();
         await zero.screenshot({path: `${root}/checkout-disabled-${info.project.name}-en.png`});
         // Current Wallet/Chapa controls remain read-only until merchant
         // activation. Provider recovery/idempotency stays covered by DB tests;
         // this browser verifies actual visible options and balance recovery.
         const financialPosts:string[]=[];zero.on('request',request=>{if(request.method()==='POST'&&/\/api\/(?:auctions\/[^/]+\/bids|payments\/|wallet\/top-ups)/.test(new URL(request.url()).pathname))financialPosts.push(request.url())});
-        await zeroSheet.getByRole('radio',{name:'Chapa',exact:true}).check();await expect(zeroSheet.locator('[data-payment-action]')).toContainText('with Chapa');await expect(zeroSheet.locator('[data-payment-action]')).toBeDisabled();
+        await zeroSheet.getByRole('radio',{name:'Chapa',exact:true}).check();await expect(zeroSheet.locator('[data-payment-action]')).toContainText('& bid');await expect(zeroSheet.locator('[data-payment-action]')).toBeDisabled();
         await zero.screenshot({path: `${root}/checkout-options-fixture-${info.project.name}.png`});
-        await zeroSheet.getByRole('link',{name:'Top up wallet',exact:true}).click();const topUp=zero.getByRole('dialog',{name:'Top up wallet',exact:true});await expect(topUp).toBeVisible();await topUp.getByRole('button',{name:'100.00 ETB',exact:true}).click();await expect(topUp.locator('[data-payment-action]')).toBeDisabled();await zero.keyboard.press('Escape');await expect(topUp).toHaveCount(0);await expect(zeroSheet.getByLabel('Your bid number',{exact:true})).toHaveValue('7.31');
+        await zeroSheet.getByRole('link',{name:'Top up wallet',exact:true}).click();const topUp=zero.getByRole('dialog',{name:'Top up wallet',exact:true});await expect(topUp).toBeVisible();await topUp.getByRole('button',{name:'100.00 ETB',exact:true}).click();await expect(topUp.locator('[data-payment-action]')).toBeDisabled();await zero.keyboard.press('Escape');await expect(topUp).toHaveCount(0);await expect(zeroSheet.getByLabel('Your bid amount',{exact:true})).toHaveValue('7.31');
         let balanceRefreshes=0;await zero.route('**/api/wallet',route=>{balanceRefreshes++;return route.fulfill({status:503,json:{error:'Explicit balance transport fixture'}})});await zero.evaluate(()=>window.dispatchEvent(new Event('lowin-wallet-updated')));await expect(zeroSheet).toContainText('Showing the saved balance. Refresh failed.');expect(balanceRefreshes).toBe(1);await expect(zeroSheet.locator('[data-payment-action]')).toBeDisabled();
         await zero.unroute('**/api/wallet');await zeroSheet.getByRole('button',{name:'Retry',exact:true}).click();await expect(zeroSheet.getByText('Showing the saved balance. Refresh failed.',{exact:false})).toHaveCount(0);await expect(zeroSheet.locator('[data-payment-action]')).toBeDisabled();expect(financialPosts).toEqual([]);
         const zeroUser = await client.user.findUniqueOrThrow({where: {telegramId: String(zeroId)}});

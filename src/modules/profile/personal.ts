@@ -10,7 +10,7 @@ export const displayProfileSchema=z.object({displayName:z.string().trim().min(1)
 export const pageSchema=z.coerce.number().int().min(1).max(1000).default(1);
 export const personalQuerySchema=z.object({view:z.enum(['all','live','history']).default('all'),page:pageSchema}).strict();
 const liveWhere=(now:Date):Prisma.AuctionWhereInput=>({status:{in:['LIVE','SCHEDULED']},endsAt:{gt:now},settlement:{is:null}});
-const ownAuctionSelect={terms:{select:{ruleVersion:true}},code:true,publicCode:true,publicViewCount:true,slug:true,status:true,endsAt:true,isDemo:true,product:{select:{title:true,titleAm:true,images:{orderBy:{sortOrder:'asc'},take:1,select:{path:true,alt:true}}}},settlement:{select:{decision:true,outcome:true,winningBidId:true,completedAt:true}}} satisfies Prisma.AuctionSelect;
+const ownAuctionSelect={terms:{select:{ruleVersion:true}},code:true,publicCode:true,publicViewCount:true,slug:true,status:true,endsAt:true,isDemo:true,product:{select:{title:true,titleAm:true,images:{orderBy:{sortOrder:'asc'},take:1,select:{path:true,alt:true}}}},settlement:{select:{publication:{select:{publishedAt:true}},decision:true,outcome:true,winningBidId:true,completedAt:true}}} satisfies Prisma.AuctionSelect;
 export async function getPersonalBids(client:PrismaClient,userId:string,input:unknown={}) {
   const query=personalQuerySchema.parse(input);
   return client.$transaction(async tx=>{
@@ -20,7 +20,7 @@ export async function getPersonalBids(client:PrismaClient,userId:string,input:un
       tx.bid.findMany({where,orderBy:[{acceptedAt:'desc'},{id:'desc'}],skip:(query.page-1)*20,take:20,select:{id:true,amount:true,acceptedAt:true,feePoints:true,auction:{select:ownAuctionSelect},operation:{select:{journal:{select:{kind:true,postings:{select:{delta:true,account:{select:{kind:true,wallet:{select:{userId:true}}}}}}}}}}}}),
       tx.$queryRaw<{total:number;active:number;won:number}[]>`SELECT count(*)::int AS total,
         (count(*) FILTER (WHERE a.status IN ('LIVE','SCHEDULED') AND a."endsAt">(${now}::timestamptz AT TIME ZONE 'UTC') AND s.id IS NULL))::int AS active,
-        (count(*) FILTER (WHERE s.outcome='WINNER' AND s."winningBidId"=b.id))::int AS won
+        (count(*) FILTER (WHERE s.outcome='WINNER' AND s."winningBidId"=b.id AND EXISTS (SELECT 1 FROM "ResultPublication" rp WHERE rp."settlementId"=s.id AND rp."publishedAt"<=${now})))::int AS won
         FROM "Bid" b JOIN "Auction" a ON a.id=b."auctionId"
         LEFT JOIN "AuctionSettlement" s ON s."auctionId"=a.id WHERE b."userId"=${userId}`,
     ]);
@@ -31,7 +31,7 @@ export async function getPersonalBids(client:PrismaClient,userId:string,input:un
     const discounts=referralSchemaReady()&&rows.length?await tx.referralRedemption.findMany({where:{userId,bidId:{in:rows.map(bid=>bid.id)}},select:{bidId:true,grossFeePoints:true,discountPoints:true,coupon:{select:{percent:true}}}}):[];
     const chapa=process.env.CHAPA_SCHEMA_READY==='true'&&rows.length?await tx.chapaCheckout.findMany({where:{userId,bidId:{in:rows.map(bid=>bid.id)},status:'BID_ACCEPTED',creditJournalId:{not:null}},select:{id:true,bidId:true,merchantReference:true,paymentMethod:true,amountCents:true}}):[];
     return {items:rows.map(bid=>{
-      const result=bid.auction.settlement;
+      const result=bid.auction.settlement?.publication&&bid.auction.settlement.publication.publishedAt<=now?bid.auction.settlement:null;
       const outcome=result?(result.outcome==='WINNER'?(result.winningBidId===bid.id?'WON':'LOST'):result.outcome):bid.auction.status==='CANCELLED'?'CANCELLED':bid.auction.status==='CLOSED'||bid.auction.endsAt&&bid.auction.endsAt<=now?'PENDING':'LIVE';
       const journal=bid.operation.journal,paid=bid.feePoints.gt(0)&&journal?.kind==='BID_FEE'&&journal.postings.some(posting=>posting.account.kind==='AVAILABLE'&&posting.account.wallet?.userId===userId&&posting.delta.eq(bid.feePoints.negated()))&&journal.postings.some(posting=>posting.account.kind==='FEES'&&posting.delta.eq(bid.feePoints));
       const provider=providers.find(order=>order.bidId===bid.id&&order.fee.eq(bid.feePoints)&&!!order.transactionId);
@@ -49,7 +49,7 @@ export async function getPlayerProfile(client:PrismaClient,userId:string) {
     const [user,bids,liveBids,wins,favorites]=await Promise.all([
       tx.user.findUniqueOrThrow({where:{id:userId},select:{name:true,playerProfile:{select:{displayName:true,bio:true}}}}),
       tx.bid.count({where:{userId}}),tx.bid.count({where:{userId,auction:liveWhere(now)}}),
-      tx.auctionSettlement.count({where:{winnerUserId:userId,outcome:'WINNER'}}),
+      tx.auctionSettlement.count({where:{winnerUserId:userId,outcome:'WINNER',publication:{is:{publishedAt:{lte:now}}}}}),
       tx.auctionFavorite.count({where:{userId,auction:publicWhere(now)}}),
     ]);
     return {displayName:user.playerProfile?.displayName??user.name,bio:user.playerProfile?.bio??'',counts:{bids,liveBids,historyBids:bids-liveBids,wins,favorites}};
@@ -70,7 +70,7 @@ export async function editPlayerProfile(client:PrismaClient,userId:string,input:
 }
 export async function getPersonalWins(client:PrismaClient,userId:string,page=1) {
   page=pageSchema.parse(page);
-  const where={winnerUserId:userId,outcome:'WINNER' as const};
+  const where={winnerUserId:userId,outcome:'WINNER' as const,publication:{is:{publishedAt:{lte:new Date()}}}};
   const [rows,total]=await client.$transaction([
     client.auctionSettlement.findMany({where,orderBy:[{completedAt:'desc'},{id:'asc'}],skip:(page-1)*6,take:6,select:{ruleVersion:true,decision:true,auctionId:true,winningBidId:true,winningPoints:true,completedAt:true,auction:{select:{code:true,publicCode:true,publicViewCount:true,slug:true,isDemo:true,product:{select:{title:true,titleAm:true,images:{orderBy:{sortOrder:'asc'},take:1,select:{path:true,alt:true}}}}}}}}),client.auctionSettlement.count({where}),
   ]);

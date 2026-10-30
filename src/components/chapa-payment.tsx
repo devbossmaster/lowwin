@@ -6,7 +6,7 @@ import {useTelegram} from './telegram-provider';
 import {useMiniLocale} from './mini-locale';
 import {confirmedChapaQueryScopes,invalidatePrivateQueries,isPrivateQueryIdentity,loadPrivateJson,PrivateQueryError,subscribePrivateQueries} from './private-query-cache';
 import {clearChapaAttempts,chapaCanResumeCheckout,chapaCheckoutUrl,chapaConfirmed,chapaRecoverable,chapaSessionDeadline,chapaSessionEnded,chapaUuid,ChapaClientError,requestChapaJson,type ChapaAttempt,type ChapaCheckoutView,type ChapaIntent} from '@/lib/chapa-client';
-import {chapaPaymentPhase} from '@/lib/chapa-status';
+import {CHAPA_LONG_WAIT_MS,chapaLongWait,chapaPaymentPhase} from '@/lib/chapa-status';
 import {formatEtb} from '@/lib/money';
 import {prepareChapaNavigation} from '@/lib/chapa-navigation';
 import {startChapaPolling} from '@/lib/chapa-polling';
@@ -76,14 +76,16 @@ export function chapaStatusLabel(order:ChapaCheckoutView,am=false){
 export function ChapaPaymentStatus({payment,onNavigate,readOnly=false}:{payment:ReturnType<typeof useChapaPayment>;onNavigate?:()=>void;readOnly?:boolean}){
  const {language}=useMiniLocale(),am=language==='am',text=(en:string,translated:string)=>am?translated:en,order=payment.order;
  const [now,setNow]=useState(()=>Date.now()),deadline=order?chapaSessionDeadline(order):null;
+ const waitingSince=order?Date.parse(order.createdAt)+CHAPA_LONG_WAIT_MS:NaN;
  useEffect(()=>{
   const refresh=()=>setNow(Date.now());refresh();
-  const timer=deadline===null?undefined:setTimeout(refresh,Math.max(0,deadline-Date.now()+1));
+  const timers=[deadline,waitingSince].filter((value):value is number=>typeof value==='number'&&Number.isFinite(value)&&value>Date.now()).map(value=>setTimeout(refresh,Math.max(0,value-Date.now()+1)));
   document.addEventListener('visibilitychange',refresh);window.addEventListener('focus',refresh);
-  return()=>{clearTimeout(timer);document.removeEventListener('visibilitychange',refresh);window.removeEventListener('focus',refresh)};
- },[order?.id,deadline]);
+  return()=>{timers.forEach(clearTimeout);document.removeEventListener('visibilitychange',refresh);window.removeEventListener('focus',refresh)};
+ },[order?.id,deadline,waitingSince]);
  const phase=chapaPaymentPhase({...payment,now}),finished=phase==='confirmed'||phase==='preserved';
- const spinning=['opening','restoring','confirming','applying'].includes(phase);
+ const longWait=chapaLongWait(order,now)&&['confirming','applying','pending','session-ended','unavailable','authorization'].includes(phase);
+ const spinning=!longWait&&['opening','restoring','confirming','applying'].includes(phase);
  const attention=['review','failed','unavailable','interrupted','preserved','access'].includes(phase);
  const headings:Record<typeof phase,[string,string]>={
   access:['Reopen your Lowwin account','የLowwin መለያዎን እንደገና ይክፈቱ'],
@@ -117,21 +119,22 @@ export function ChapaPaymentStatus({payment,onNavigate,readOnly=false}:{payment:
  };
  const url=order&&!finished&&['PENDING','AUTH_NEEDED'].includes(order.status)&&!['review','unavailable','applying','access','session-ended'].includes(phase)&&(payment.handoff==='failed'||!payment.attempt)&&Date.parse(order.expiresAt)>now?chapaCheckoutUrl(order.checkoutUrl):null;
  const retryOriginal=phase!=='session-ended'&&!payment.busy&&chapaCanResumeCheckout(payment.attempt,order);
- return <section className={`${styles.paymentStatus} ${styles.smoothPaymentStatus}`} data-payment-state={phase}>
-  <div className={styles.paymentStatusIcon} data-tone={attention?'attention':finished?'success':'pending'}>{spinning?<LoaderCircle className={styles.paymentSpinner} size={26} aria-hidden="true"/>:attention?<TriangleAlert size={25} aria-hidden="true"/>:finished?<Check size={26} aria-hidden="true"/>:<Clock3 size={26} aria-hidden="true"/>}</div>
-  <div role="status" aria-live="polite" aria-atomic="true"><h3>{headings[phase][am?1:0]}</h3></div>
-  {order&&<p className={styles.paymentTotal}>{formatEtb(order.amount)}{order.mode==='test'&&<span>{text('Test payment','የሙከራ ክፍያ')}</span>}</p>}
-  <p className={styles.statusMessage}>{messages[phase][am?1:0]}</p>
-  {order&&<dl className={styles.paymentSummary}><div><dt>{text('For','ለ')}</dt><dd>{text(order.purpose==='TOP_UP'?'Wallet top-up':'Bid submission',order.purpose==='TOP_UP'?'የዋሌት ገቢ':'ጨረታ ማቅረቢያ')}</dd></div>{order.auctionTitle&&<div><dt>{text('Product','ዕቃ')}</dt><dd>{am?order.auctionTitleAm||order.auctionTitle:order.auctionTitle}</dd></div>}{order.bidNumber&&<div><dt>{text('Your number','የእርስዎ ቁጥር')}</dt><dd>#{order.bidNumber}</dd></div>}</dl>}
+ return <section className={`${styles.paymentStatus} ${styles.smoothPaymentStatus}${longWait?' '+styles.longPaymentWait:''}`} data-payment-state={phase} data-payment-long-wait={longWait||undefined}>
+  <div className={styles.paymentStatusIcon} data-tone={attention?'attention':finished?'success':'pending'}>{longWait?<Clock3 size={32} aria-hidden="true"/>:spinning?<LoaderCircle className={styles.paymentSpinner} size={26} aria-hidden="true"/>:attention?<TriangleAlert size={25} aria-hidden="true"/>:finished?<Check size={26} aria-hidden="true"/>:<Clock3 size={26} aria-hidden="true"/>}</div>
+  <div role="status" aria-live="polite" aria-atomic="true"><h3>{longWait?text('This is taking a bit longer','ይህ ትንሽ እየዘገየ ነው'):headings[phase][am?1:0]}</h3></div>
+  {order&&!longWait&&<p className={styles.paymentTotal}>{formatEtb(order.amount)}{order.mode==='test'&&<span>{text('Test payment','የሙከራ ክፍያ')}</span>}</p>}
+  <p className={styles.statusMessage}>{longWait?text(`Your payment has not been confirmed yet. You don’t need to wait here—check ${order?.purpose==='BID'?'My Bids':'Transactions'} in a moment. We’ll notify you when it’s confirmed. If you already paid, please don’t pay again.`,`ክፍያዎ ገና አልተረጋገጠም። እዚህ መጠበቅ አያስፈልግም፤ በጥቂት ጊዜ የጨረታዎን ወይም የግብይትዎን ሁኔታ ይመልከቱ። ሲረጋገጥ እናሳውቅዎታለን። ከከፈሉ ድጋሚ አይክፈሉ።`):messages[phase][am?1:0]}</p>
+  {order&&<dl className={styles.paymentSummary}>{order.auctionTitle?<div><dt>{text('Auction','ጨረታ')}</dt><dd>{am?order.auctionTitleAm||order.auctionTitle:order.auctionTitle}</dd></div>:<div><dt>{text('For','ለ')}</dt><dd>{text(order.purpose==='TOP_UP'?'Wallet top-up':'Bid submission',order.purpose==='TOP_UP'?'የዋሌት ገቢ':'ጨረታ ማቅረቢያ')}</dd></div>}{order.bidNumber&&<div><dt>{text('Your bid amount','የጨረታ መጠንዎ')}</dt><dd>{order.bidNumber}</dd></div>}<div><dt>{text(order.purpose==='BID'?(finished?'Fee paid':'Submission fee'):'Top-up amount',order.purpose==='BID'?'የማስገቢያ ክፍያ':'የዋሌት ገቢ መጠን')}</dt><dd>{formatEtb(order.amount)}</dd></div><div><dt>{text(finished?'Paid with':'Payment method',finished?'የተከፈለበት':'የክፍያ መንገድ')}</dt><dd>{order.paymentMethod||'Chapa'}</dd></div></dl>}
   {payment.error&&<p className={styles.statusError} role="alert">{am?'የክፍያ ሁኔታውን ማግኘት አልተቻለም።':payment.error}</p>}
   <div className={styles.statusActions}>
+   {longWait&&<><Link className={styles.payButton} href={order?.purpose==='BID'?'/my-bids':'/payments'} onClick={onNavigate}>{text(order?.purpose==='BID'?'Go to My Bids':'View Transactions',order?.purpose==='BID'?'የእኔ ጨረታዎች':'ግብይቶችን ይመልከቱ')}</Link>{onNavigate&&<button type="button" className={styles.checkPayment} onClick={onNavigate}>{text('Close','ዝጋ')}</button>}</>}
    {finished&&(onNavigate?<button type="button" className={styles.payButton} onClick={onNavigate}>{text('Done','ተጠናቋል')}</button>:<Link className={styles.payButton} href={order?.status==='BID_ACCEPTED'?'/my-bids':'/profile#wallet'}>{text(order?.status==='BID_ACCEPTED'?'View My Bids':'Back to wallet',order?.status==='BID_ACCEPTED'?'የእኔ ጨረታዎች':'ወደ ዋሌት')}</Link>)}
-   {url&&<a className={styles.payButton} href={url} target="_blank" rel="noopener noreferrer" onClick={event=>{event.preventDefault();const nav=prepareChapaNavigation();try{nav.open(url)}finally{nav.cancel()}}}>{text('Continue checkout','ክፍያውን ይቀጥሉ')}<ArrowUpRight size={16} aria-hidden="true"/></a>}
+   {url&&<a className={longWait?styles.checkPayment:styles.payButton} href={url} target="_blank" rel="noopener noreferrer" onClick={event=>{event.preventDefault();const nav=prepareChapaNavigation();try{nav.open(url)}finally{nav.cancel()}}}>{text('Continue checkout','ክፍያውን ይቀጥሉ')}<ArrowUpRight size={16} aria-hidden="true"/></a>}
    {retryOriginal&&<button type="button" className={styles.checkPayment} onClick={()=>void payment.create(payment.attempt!.intent)}>{text('Retry original request','የመጀመሪያውን ጥያቄ ይድገሙ')}</button>}
    {!order&&!payment.attempt&&!payment.restoring&&!payment.busy&&<button type="button" className={styles.checkPayment} onClick={()=>void payment.check()}>{text('Try opening again','እንደገና ክፈት')}</button>}
-   {!readOnly&&payment.canStartAgain&&<button type="button" className={styles.checkPayment} onClick={payment.startAgain}>{text(finished?'Top up again':'Start new checkout',finished?'እንደገና ገንዘብ ያስገቡ':'አዲስ ክፍያ ይጀምሩ')}</button>}
+   {!readOnly&&payment.canStartAgain&&(!longWait||phase==='session-ended')&&<button type="button" className={styles.checkPayment} onClick={payment.startAgain}>{text(finished?'Top up again':'Start new checkout',finished?'እንደገና ገንዘብ ያስገቡ':'አዲስ ክፍያ ይጀምሩ')}</button>}
   </div>
-  {!finished&&order&&phase!=='failed'&&<small className={styles.savedPaymentNote}>{text('Starting another checkout does not cancel this payment.','ሌላ ክፍያ መጀመር ይህን ክፍያ አይሰርዝም።')}</small>}
+  {!finished&&order&&phase!=='failed'&&(!longWait||phase==='session-ended')&&<small className={styles.savedPaymentNote}>{text('Starting another checkout does not cancel this payment.','ሌላ ክፍያ መጀመር ይህን ክፍያ አይሰርዝም።')}</small>}
   {order&&<details className={styles.paymentDetails}><summary>{text('Payment details','የክፍያ ዝርዝሮች')}</summary><small className={styles.paymentReference}>{order.merchantReference??order.id}</small>{order.providerStatus&&<p>Chapa: {order.providerStatus}</p>}{order.paymentMethod&&<p>{text('Method','መንገድ')}: {order.paymentMethod}</p>}{order.reason&&['review','unavailable'].includes(phase)&&<p>{text('Confirmation','ማረጋገጫ')}: {order.reason}</p>}{order.initializationErrorCode&&<p>{text('Checkout','ክፍያ')}: {order.initializationErrorCode}</p>}</details>}
   <div className={styles.links}><Link href="/payments" prefetch={false} onClick={onNavigate}>{text('View Transactions','ግብይቶችን ይመልከቱ')}</Link>{order?.status==='BID_ACCEPTED'&&<Link href="/my-bids" onClick={onNavigate}>{text('My Bids','የእኔ ጨረታዎች')}</Link>}</div>
  </section>;

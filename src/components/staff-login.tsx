@@ -3,6 +3,7 @@ import {LOWWIN_LOGO_SRC} from '@/lib/brand';
 import {useEffect,useState} from 'react';
 import {useRouter} from 'next/navigation';
 import {ArrowLeft} from 'lucide-react';
+import {StaffPasswordField} from './staff-password-field';
 
 const routes:Record<string,string>={login:'sign-in/email',signup:'sign-up/email',forgot:'request-password-reset',reset:'reset-password',verify:'send-verification-email',logout:'sign-out'};
 export async function staffRequest(action:string,body:unknown){
@@ -53,7 +54,7 @@ export function StaffLogin(){
   <form onSubmit={submit} key={mode}>
    {mode==='signup'&&<label>Name<input name="name" autoComplete="name" required minLength={2} maxLength={100}/></label>}
    {mode!=='reset'&&<label>Email<input name="email" type="email" autoComplete="username" defaultValue={email} required maxLength={254} autoFocus/></label>}
-   {['login','signup','reset'].includes(mode)&&<label>Password<input name="password" aria-label="Password" type="password" minLength={12} maxLength={128} autoComplete={mode==='login'?'current-password':'new-password'} required/><small>At least 12 characters.</small></label>}
+   {['login','signup','reset'].includes(mode)&&<label>Password<StaffPasswordField key={mode} autoComplete={mode==='login'?'current-password':'new-password'}/><small>At least 12 characters.</small></label>}
    <button disabled={!ready||busy}>{busy?'Please wait...':mode==='login'?'Sign in':mode==='signup'?'Create account':mode==='forgot'?'Send reset link':mode==='reset'?'Save password':'Resend verification email'}</button>
   </form>
   {mode==='login'?<div className="admin-auth-links"><button className="admin-text-button" onClick={()=>change('signup')} disabled={busy}>Create an account</button><button className="admin-text-button" onClick={()=>change('forgot')} disabled={busy}>Forgot password?</button><button className="admin-text-button" onClick={()=>change('verify')} disabled={busy}>Verify your email</button></div>:<button className="admin-text-button" onClick={()=>change('login')} disabled={busy}><ArrowLeft size={14}/>Back to sign in</button>}

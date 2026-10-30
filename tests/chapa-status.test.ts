@@ -1,10 +1,17 @@
 import {describe,expect,it} from 'vitest';
-import {chapaPaymentPhase} from '../src/lib/chapa-status';
+import {CHAPA_LONG_WAIT_MS,chapaLongWait,chapaPaymentPhase} from '../src/lib/chapa-status';
 import type {ChapaCheckoutView} from '../src/lib/chapa-client';
 
 const pending={purpose:'TOP_UP',status:'PENDING',providerStatus:'PENDING',verificationState:'UNVERIFIED',fundsPreserved:false,receipt:null} as ChapaCheckoutView;
 const state={order:pending,opening:false,restoring:false,paused:false,error:''};
 describe('payment modal states follow server evidence',()=>{
+ it('uses a quieter long-wait view after 90 seconds without changing or hiding authoritative states',()=>{
+  const created=Date.parse('2026-10-30T10:00:00Z'),order={...pending,createdAt:new Date(created).toISOString()};
+  expect(CHAPA_LONG_WAIT_MS).toBe(90000);expect(chapaLongWait(order,created+89999)).toBe(false);expect(chapaLongWait(order,created+90000)).toBe(true);
+  expect(order.status).toBe('PENDING');expect(chapaLongWait({...order,status:'CREDITED'},created+90000)).toBe(false);
+  for(const status of ['NEEDS_REVIEW','FAILED','CANCELLED','BLOCKED'])expect(chapaLongWait({...order,status},created+90000)).toBe(false);
+  expect(chapaLongWait({...order,createdAt:'invalid'},created+90000)).toBe(false);
+ });
  it('keeps redirects and provider success separate from applied Lowwin credit',()=>{
   expect(chapaPaymentPhase(state)).toBe('confirming');
   expect(chapaPaymentPhase({...state,order:{...pending,providerStatus:'SUCCESS'}})).toBe('applying');

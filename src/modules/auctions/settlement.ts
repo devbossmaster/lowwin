@@ -1,5 +1,4 @@
 import {RULE_V1,RULE_V2,RULE_V3,RULE_V4,isSubmissionFeeOnly,usesDecimalBids} from './rules';
-import {materializeAlert} from '../notifications/service';
 import { createHash,randomUUID } from 'node:crypto';
 import { Prisma,type PrismaClient } from '@prisma/client';
 import { z } from 'zod';
@@ -99,13 +98,9 @@ async function completeLocked(tx:Prisma.TransactionClient,auctionId:string,cance
     ...(v2?{decision,participantCount,acceptanceCutoff:auction.bidSequence}:{}),
     actorId:cancellation?.actor.id,reason:minimumCancellation?'MINIMUM_PARTICIPANTS':cancellation?.reason,key:cancellation?.key,requestHash,proof,
     movements:{create:movements},
-    // No amounts, frequencies, names, Telegram IDs or winning guesses in intents.
-    // Phase 5 resolves recipient preferences and performs external delivery.
-    // Cancellation remains in settlement, ledger and admin audit records. It
-    // must not enqueue either the global bot result or private bell alerts.
-    outbox:{create:cancelled?[]:[{key:`settlement:${settlementId}:completed`,kind:'AUCTION_FINALIZED',payload:{auctionId,settlementId,outcome},testRunId:auction.testRunId},...userIds.map(userId=>({key:`settlement:${settlementId}:user:${userId}`,kind:'AUCTION_CLOSED',payload:{auctionId,settlementId,recipientUserId:userId},testRunId:auction.testRunId}))]},
+    // Settlement releases funds immediately; only an explicit reviewed admin
+    // publication may create result announcement and participant alert intents.
   },include:settlementInclude});
-  for(const row of await tx.outbox.findMany({where:{settlementId:settled.id}}))await materializeAlert(tx,row);
   return settled;
 }
 

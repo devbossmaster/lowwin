@@ -1,5 +1,6 @@
 import {db} from '@/lib/db';
 import {randomUUID} from 'node:crypto';
+import {after} from 'next/server';
 import {readRequestBytes,RequestBodyError} from '@/lib/request-body';
 import {privateHeaders} from '@/modules/auth/private-api';
 import {authenticateChapaWebhook,chapaAvailability,chapaHash,chapaWebhookAmountMatches,chapaWebhookConfigurationFingerprint,isChapaHostedSessionReference,parseChapaWebhook} from '@/modules/payments/chapa-provider';
@@ -59,9 +60,10 @@ export async function POST(request:Request){
    await tx.chapaCheckout.updateMany({where:{id:order!.id,creditJournalId:null},data:{nextCheckAt:new Date(),reason:'PROVIDER_EVENT_RECEIVED'}});
    return id;
   });
-  // Durable receipt precedes provider HTTP. A temporary verification failure
-  // leaves a bounded event job for the worker, even after the modal closes.
-  if(job)await processChapaEvent(db,job).catch(()=>false);
+  // Acknowledge the committed delivery before provider HTTP. Next keeps the
+  // first verification off the response path; the durable worker owns retries
+  // if this process stops or the provider is temporarily unavailable.
+  if(job)after(async()=>{await processChapaEvent(db,job).catch(()=>false)});
   return Response.json({accepted:true},{headers:privateHeaders});
  }catch(error){return Response.json({accepted:false},{status:error instanceof RequestBodyError?error.status:error instanceof SyntaxError?400:503,headers:privateHeaders})}
 }

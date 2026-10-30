@@ -100,3 +100,32 @@
 .statusActions{display:grid;gap:8px}.statusActions .payButton{display:flex;align-items:center;justify-content:center;gap:8px;margin:0;min-height:48px}.statusActions .checkPayment{width:100%;min-height:46px;margin:0}.smoothPaymentStatus .statusError{padding:10px 12px;margin:0 0 14px;border-radius:12px;background:#fbede9;color:#8b3022;text-align:left;font-size:12px;line-height:1.6;overflow-wrap:anywhere}.savedPaymentNote{display:block;max-width:38ch;margin:12px auto 0;color:#625e54;font-size:11px;line-height:1.6}.smoothPaymentStatus .paymentDetails{margin:8px 0 0}.smoothPaymentStatus .links{margin-top:4px;gap:20px}.paymentSummary ::selection,.smoothPaymentStatus ::selection{background:#eee0ac;color:#251e0c}
 .simpleTopUp .amountInput{min-height:60px}.simpleTopUp .amountInput input{font-size:24px;font-weight:650;font-variant-numeric:tabular-nums}.simpleTopUp .presets button{min-height:44px}.simpleTopUp .amountInput input:focus-visible{outline:none}.simpleTopUp .amountInput:focus-within{outline:2px solid #96731a;outline-offset:2px}
 @media(max-width:370px),(max-height:700px){.smoothPaymentStatus{padding-top:10px}.smoothPaymentStatus .paymentStatusIcon{width:44px;height:44px;margin-bottom:12px}.smoothPaymentStatus h3{font-size:18px}.smoothPaymentStatus .statusMessage{margin-bottom:14px}.paymentSummary{margin-bottom:14px;padding-block:8px}}
+
+/* The entry form has one stable presentation from the first card click. */
+.productDescription{margin:0 0 12px;padding:11px 13px 4px;border-radius:22px;background:#eeece8;color:#625e54}
+.productDescription p{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin:0;font-size:12px;line-height:1.65;white-space:pre-line;overflow-wrap:anywhere}
+.productDescription p[data-expanded=true]{display:block}
+.productDescription button{display:flex;align-items:center;gap:4px;min-height:36px;padding:3px 0;border:0;background:transparent;color:#715719;font:inherit;font-size:11px;font-weight:650;cursor:pointer}
+.productDescription button[aria-expanded=true] svg{transform:rotate(180deg)}
+.productDescription button:focus-visible,.separateTopUp:focus-visible{outline:2px solid #96731a;outline-offset:2px;border-radius:8px}
+.bidEntry .balanceNote{align-items:center;gap:8px;margin:10px 0}
+.bidEntry .balanceNote>p{flex:1;min-width:0}
+.bidEntry .balanceNote strong{font-weight:650}
+.bidEntry .balanceNote>p>span{display:block;color:#68665e;font-size:10px}
+.bidEntry .balanceNote .separateTopUp{display:flex;align-items:center;justify-content:center;gap:4px;flex:none;min-height:44px;padding:0 10px;border-radius:12px;background:#f7f1de;color:#715719;font-size:11px;font-weight:650;text-decoration:none}
+.bidEntry .walletRow .method{padding:7px 12px;justify-content:center}
+.bidEntry .methods .methodText{display:flex;flex:initial}
+.bidEntry .methods .methodText strong{font-size:12px;font-weight:600}
+.bidEntry .productTitle{font-size:19px;font-weight:650}
+.bidEntry .previewPhoto{height:90px}
+.bidEntry .amountInput input{font-size:16px;font-weight:500}
+.bidEntry .amountInput input::placeholder{font-size:13px;font-weight:500}
+.bidPayButton{background:var(--mini-action,#c9a227);color:var(--mini-action-ink,#181815);font-size:14px;font-weight:700}
+.bidPayButton:disabled{background:#e5d293;color:#4e4325}
+.longPaymentWait .paymentStatusIcon{width:72px;height:72px;margin-bottom:22px;background:#eee7d3;color:#37301b}
+.longPaymentWait h3{font-size:23px;font-weight:650;letter-spacing:-.025em}
+.longPaymentWait .statusMessage{font-size:14px;line-height:1.75;color:#68665e}
+.longPaymentWait .paymentSummary{margin-top:24px;padding-block:14px}
+.longPaymentWait .paymentSummary>div{padding-block:6px;font-size:13px}
+.longPaymentWait .statusActions .payButton{background:var(--mini-action,#c9a227);color:#181815;font-size:13px;font-weight:700}
+@media(max-width:370px),(max-height:760px){.bidEntry .previewPhoto{height:64px}.productDescription{padding:8px 11px 2px;margin-bottom:8px}.productDescription p{font-size:11px}.productDescription button{min-height:32px}.bidEntry .productTitle{font-size:17px}.bidEntry .balanceNote{margin-block:7px}.longPaymentWait .paymentStatusIcon{width:58px;height:58px;margin-bottom:16px}.longPaymentWait h3{font-size:21px}.longPaymentWait .statusMessage{font-size:13px}}

@@ -20,7 +20,7 @@ export async function readAuctionActivity(client:PrismaClient,codes:number[]){
     (SELECT count(DISTINCT b."userId")::int FROM "Bid" b WHERE b."auctionId"=a.id) AS bidders,
     a.status,a."startsAt",a."endsAt",
     clock_timestamp() AT TIME ZONE 'UTC' AS now,
-    (a.status IN ('CLOSED','CANCELLED') AND (EXISTS (SELECT 1 FROM "AuctionSettlement" s WHERE s."auctionId"=a.id)
+    (a.status IN ('CLOSED','CANCELLED') AND (EXISTS (SELECT 1 FROM "AuctionSettlement" s JOIN "ResultPublication" rp ON rp."settlementId"=s.id WHERE s."auctionId"=a.id AND rp."publishedAt"<=clock_timestamp() AT TIME ZONE 'UTC')
      OR EXISTS (SELECT 1 FROM "PublicAuctionResult" r WHERE r."auctionId"=a.id AND r."publishedAt"<=clock_timestamp() AT TIME ZONE 'UTC'))) AS "resultReady"
    FROM "Auction" a WHERE a."publicCode" IN (${Prisma.join(codes)}) AND ${visibleAuction}`;
   return rows.map(row=>({code:row.code,views:row.views,bids:row.bids,bidders:row.bidders,status:effectiveStatus(row,row.now),startsAt:row.startsAt.toISOString(),endsAt:row.endsAt.toISOString(),resultReady:row.resultReady} satisfies AuctionActivity));
