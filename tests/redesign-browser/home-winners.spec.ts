@@ -7,6 +7,7 @@ import {bidAuction} from '../bid-fixtures';
 import {verifyFixtureContact} from '../contact-fixtures';
 import {signedLaunch} from '../helpers';
 import {reconcile} from '../../src/modules/wallet/ledger';
+import {formatEtb} from '../../src/lib/money';
 
 test('homepage, final results, nested Back, live batches and Winners navigation',async({page},info)=>{
  page.setDefaultTimeout(30000);const db=new PrismaClient({datasourceUrl:process.env.TEST_DATABASE_URL});
@@ -23,7 +24,7 @@ test('homepage, final results, nested Back, live batches and Winners navigation'
    window.Telegram={WebApp:{initData:launch,BackButton:back,ready(){},expand(){},setHeaderColor(){},setBackgroundColor(){}}};
   },{launch:signedLaunch({user:JSON.stringify({id,first_name:'Homepage QA'})},process.env.TELEGRAM_BOT_TOKEN)});
   await page.goto('/telegram?next='+encodeURIComponent('/?q='+encodeURIComponent(marker)));
-  const navigation=page.getByRole('navigation',{name:'Your navigation'});await expect(navigation).toBeVisible();await expect(navigation.getByRole('link')).toHaveCount(4);
+  const navigation=page.getByRole('navigation',{name:'Your navigation'});await expect(navigation).toBeVisible();await expect(navigation.getByRole('link')).toHaveCount(5);const transactions=navigation.getByRole('link',{name:'Transactions',exact:true});await expect(transactions).toHaveAttribute('href','/payments');
   await expect(navigation.getByRole('link',{name:'Home',exact:true})).toHaveAttribute('aria-current','page');
   const cards=page.locator('#discover-auctions .auction-card');await expect(cards).toHaveCount(10);
   const sortNav=page.getByRole('navigation',{name:'Auction sorting'}),sortLinks=sortNav.getByRole('link');await expect(sortLinks).toHaveCount(5);
@@ -36,7 +37,8 @@ test('homepage, final results, nested Back, live batches and Winners navigation'
   const categoryBeforeSort=new URL(page.url()).searchParams.get('category');await sortLinks.last().click();await expect(page).toHaveURL(/sort=fee-high/);await expect(sortLinks.last()).toHaveAttribute('aria-current','page');await expect(sortLinks.last()).toBeInViewport({ratio:1});expect(new URL(page.url()).searchParams.get('q')).toBe(marker);expect(new URL(page.url()).searchParams.get('category')).toBe(categoryBeforeSort);
   await sortLinks.first().click();await expect(sortLinks.first()).toHaveAttribute('aria-current','page');await expect(cards).toHaveCount(10);
   const firstCard=cards.first(),art=await firstCard.locator('.auction-card-art').boundingBox();expect(art!.width/art!.height).toBeCloseTo(2.3,1);await expect(firstCard.locator('.auction-card-win')).toHaveText('Win');
-  const bidAction=firstCard.getByRole('button',{name:'Pay ETB 1.00 & bid',exact:true});expect((await bidAction.boundingBox())!.height).toBeGreaterThanOrEqual(46);await bidAction.click();await expect(page.getByRole('dialog')).toBeVisible();await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);
+  const firstTitle=(await firstCard.locator('h3').innerText()).trim(),firstIndex=Number(firstTitle.slice(`${marker} item `.length));expect(Number.isInteger(firstIndex)).toBe(true);expect(firstIndex).toBeGreaterThanOrEqual(1);expect(firstIndex).toBeLessThanOrEqual(12);expect(firstTitle).toBe(`${marker} item ${firstIndex}`);
+  const bidAction=firstCard.getByRole('button',{name:`Pay ${formatEtb(String(firstIndex))} & bid`,exact:true});expect((await bidAction.boundingBox())!.height).toBeGreaterThanOrEqual(46);await bidAction.click();await expect(page.getByRole('dialog')).toBeVisible();await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);
   const selection=await page.locator('#recent-winners,nav[aria-label="Auction categories"],#discover-auctions,#how-lowwin-works').evaluateAll(nodes=>nodes.map(node=>node.id||node.getAttribute('aria-label')));expect(selection).toEqual(['Auction categories','discover-auctions','recent-winners','how-lowwin-works']);
   await page.getByRole('button',{name:'Load more',exact:true}).click();await expect(cards).toHaveCount(12);expect(new Set(await cards.locator('h3').allTextContents()).size).toBe(12);
   await page.getByRole('navigation',{name:'Auction sorting'}).getByRole('link',{name:'Lowest fee',exact:true}).click();await expect(cards).toHaveCount(10);await expect(page).toHaveURL(/sort=fee-low/);expect(new URL(page.url()).searchParams.get('q')).toBe(marker);
@@ -62,7 +64,7 @@ test('homepage, final results, nested Back, live batches and Winners navigation'
   await page.locator('#recent-winners').getByRole('link',{name:'View all',exact:true}).click();await expect(page).toHaveURL(/\/winners$/);await expect(page.getByRole('heading',{name:'Winners',exact:true})).toBeVisible();await expect(page.getByRole('link',{name:'Upcoming',exact:true})).toHaveCount(0);await expect(navigation.getByRole('link',{name:'Winners',exact:true})).toHaveAttribute('aria-current','page');await page.screenshot({path:`${root}/winners-${info.project.name}-en.png`});
   await page.locator('[data-customer-page-header]').getByRole('button',{name:'Back',exact:true}).click();await expect(page.locator('#home-headline')).toBeAttached();await page.getByRole('banner',{name:'Mini App header'}).getByRole('button',{name:/^Browse auctions/}).click();await page.getByRole('dialog',{name:'Auctions',exact:true}).getByRole('link',{name:'Browse all auctions',exact:true}).click();await expect(page.getByRole('navigation',{name:'Auction status'}).getByRole('link')).toHaveCount(2);
   await page.getByRole('textbox',{name:'Search auctions'}).fill(marker);await page.getByRole('button',{name:'Search',exact:true}).click();await page.getByRole('navigation',{name:'Auction status'}).getByRole('link',{name:'Upcoming',exact:true}).click();await expect(page.locator('.auction-card')).toHaveCount(0);
-  await navigation.getByRole('link',{name:'My Bids',exact:true}).click();await expect(page).toHaveURL(/\/my-bids$/);await navigation.getByRole('link',{name:'Profile',exact:true}).click();await expect(page).toHaveURL(/\/profile$/);
+  await transactions.click();await expect(page).toHaveURL(/\/payments$/);await expect(transactions).toHaveAttribute('aria-current','page');await navigation.getByRole('link',{name:'My Bids',exact:true}).click();await expect(page).toHaveURL(/\/my-bids$/);await navigation.getByRole('link',{name:'Profile',exact:true}).click();await expect(page).toHaveURL(/\/profile$/);
   await page.goto('/?q='+encodeURIComponent(marker));const header=page.getByRole('banner',{name:'Mini App header'});await header.getByRole('button',{name:'Language: English',exact:true}).click();await page.getByRole('menuitemradio',{name:'አማርኛ',exact:true}).click();await expect(page.locator('html')).toHaveAttribute('lang','am');await expect(page.getByRole('navigation',{name:'Your navigation'})).toContainText('አሸናፊዎች');
   await checkSortFit('am');await checkGuide('am');await cards.first().scrollIntoViewIfNeeded();await page.screenshot({path:`${root}/auction-card-${info.project.name}-am.png`});
   await page.locator('#home-headline').scrollIntoViewIfNeeded();await page.screenshot({path:`${root}/home-${info.project.name}-am.png`});

@@ -47,7 +47,7 @@ export function MiniHeader(){
  };
  return <header className={styles.header} role="banner" aria-label="Mini App header">
   <Link href="/" className={styles.brand} aria-label={am?'Lowwin መነሻ':'Lowwin Home'}><img src={LOWWIN_LOGO_SRC} width={28} height={28} alt="" data-lowwin-logo/><span className={styles.brandName}>Lowwin</span></Link>
-  <div className={styles.balancePill}>
+  <div className={styles.balancePill} data-long-balance={amount!==null&&amount.length>6||undefined}>
    <Link href="/wallet" prefetch={false} className={styles.balance} aria-label={`${am?'ዋሌት':'Wallet'}${amount!==null?`, ${amount} ETB`:''}`} aria-busy={wallet.fetching||undefined} title={amount!==null?`${amount} ETB`:am?'ቀሪ ሂሳቡን ለማየት ዋሌትን ይክፈቱ':'Open Wallet to check your balance'}><Wallet size={14} strokeWidth={1.75} aria-hidden="true"/><span data-header-balance><span className={styles.balanceAmount}>{amount??'—'}</span>{' '}<small>ETB</small></span></Link>
    <WalletTopUpTrigger className={styles.addFunds} ariaLabel={am?'ገንዘብ ያስገቡ':'Deposit'}><Plus size={15} strokeWidth={1.75} aria-hidden="true"/></WalletTopUpTrigger>
   </div>

@@ -85,7 +85,7 @@ jobs:
           path: security-results.json
           retention-days: 7
   browser-admin:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
       postgres:
@@ -119,7 +119,7 @@ jobs:
             docs/redesign/screenshots/master-guide-admin/
           retention-days: 7
   browser-redesign:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     services:
       postgres:
@@ -167,7 +167,7 @@ jobs:
             docs/redesign/screenshots/
           retention-days: 7
   browser-chapa:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     services:
       postgres:

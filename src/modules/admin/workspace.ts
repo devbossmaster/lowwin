@@ -6,7 +6,7 @@ import {arifPayAvailability} from '../payments/arifpay-provider';
 import {chapaAvailability} from '../payments/chapa-provider';
 import {readPlayerTable,readChapaTable,readWinnerTable} from './master-table-read';
 function eatDayStart(now:Date){const d=new Date(now.getTime()+3*3600000);return new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate())-3*3600000)}
-const filters=z.object({page:z.coerce.number().int().min(1).max(100000).default(1),q:z.string().trim().max(100).default(''),status:z.string().regex(/^[A-Z_]*$/).max(40).default(''),sort:z.enum(['newest','oldest','amount']).default('newest')});
+const filters=z.object({page:z.coerce.number().int().min(1).max(100000).default(1),q:z.string().trim().max(100).default(''),status:z.string().regex(/^[A-Z_]*$/).max(40).default(''),sort:z.enum(['newest','oldest','amount']).default('newest'),view:z.enum(['completed','unfinished','review','failed','all']).optional(),purpose:z.enum(['','TOP_UP','BID']).default('')});
 export async function tableExists(client:PrismaClient,name:string){const [r]=await client.$queryRaw<{ready:boolean}[]>`SELECT to_regclass(${`public."${name}"`}) IS NOT NULL AS ready`;return r.ready}
 export function gatewayStatus(raw:Record<string,string|undefined>=process.env){
  const arif=arifPayAvailability(raw),chapa=chapaAvailability(raw),selected=raw.PAYMENT_GATEWAY==='ARIFPAY'?'ArifPay':raw.PAYMENT_GATEWAY==='CHAPA'?'Chapa':null;

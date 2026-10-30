@@ -10,7 +10,7 @@ const FooterTarget=createContext<HTMLElement|null>(null);
 export function AccountSheetFooter({children}:{children:ReactNode}){const target=useContext(FooterTarget);return target?createPortal(children,target):null}
 
 /** Native modal focus containment, Escape handling, and focus restoration. Mount only while open. */
-export function AccountSheet({title,onClose,children,footer,footerPortal=false,headerActions,returnFocusRef,size='content'}:{title:ReactNode;onClose:()=>void;children:ReactNode;footer?:ReactNode;footerPortal?:boolean;headerActions?:ReactNode;returnFocusRef?:RefObject<HTMLElement|null>;size?:'content'|'payment'}){
+export function AccountSheet({title,onClose,children,footer,footerPortal=false,headerActions,returnFocusRef,size='content',layout}:{title:ReactNode;onClose:()=>void;children:ReactNode;footer?:ReactNode;footerPortal?:boolean;headerActions?:ReactNode;returnFocusRef?:RefObject<HTMLElement|null>;size?:'content'|'payment';layout?:'bid-entry'}){
   const dismiss=useSheetBack(onClose);
   const dialog=useRef<HTMLDialogElement>(null),closeButton=useRef<HTMLButtonElement>(null),close=useRef(onClose),titleId=useId();
   const {language}=useMiniLocale();
@@ -38,10 +38,10 @@ export function AccountSheet({title,onClose,children,footer,footerPortal=false,h
     fitViewport();window.addEventListener('resize',fitViewport);viewport?.addEventListener('resize',fitViewport);element?.addEventListener('focusin',fitViewport);
     return()=>{cancelAnimationFrame(frame);window.removeEventListener('resize',fitViewport);viewport?.removeEventListener('resize',fitViewport);element?.removeEventListener('focusin',fitViewport);element?.close();document.body.style.overflow=scroll;requestAnimationFrame(()=>{const target=returnFocusRef?.current??previous;if(target?.isConnected)target.focus({preventScroll:true})})};
   },[]);
-  return <dialog ref={dialog} className={styles.sheet} data-size={size} aria-labelledby={titleId} onCancel={event=>{event.preventDefault();close.current()}} onClick={event=>{if(event.target===event.currentTarget){const box=event.currentTarget.getBoundingClientRect();if(event.clientX<box.left||event.clientX>box.right||event.clientY<box.top||event.clientY>box.bottom)close.current()}}}>
+  return <dialog ref={dialog} className={styles.sheet} data-size={size} data-layout={layout} aria-labelledby={titleId} onCancel={event=>{event.preventDefault();close.current()}} onClick={event=>{if(event.target===event.currentTarget){const box=event.currentTarget.getBoundingClientRect();if(event.clientX<box.left||event.clientX>box.right||event.clientY<box.top||event.clientY>box.bottom)close.current()}}}>
     <div className={styles.handle} aria-hidden="true"/>
     <header className={styles.header}><h2 id={titleId}>{title}</h2><div className={styles.headerActions}>{headerActions}<button ref={closeButton} type="button" onClick={dismiss} aria-label={language==='am'?'ዝጋ':'Close'}><X size={19} aria-hidden="true"/></button></div></header>
-    <FooterTarget.Provider value={footerTarget}><div className={styles.body}>{children}</div></FooterTarget.Provider>
-    {(footer||footerPortal)&&<footer ref={footerPortal?setFooterTarget:undefined} className={styles.footer}>{footer}</footer>}
+    <FooterTarget.Provider value={footerTarget}><div className={styles.body} data-sheet-body>{children}</div></FooterTarget.Provider>
+    {(footer||footerPortal)&&<footer ref={footerPortal?setFooterTarget:undefined} className={styles.footer} data-sheet-footer>{footer}</footer>}
   </dialog>;
 }

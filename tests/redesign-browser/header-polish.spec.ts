@@ -21,8 +21,7 @@ test('compact header, language keyboard controls and banner assets',async({page}
   await page.goto('/profile');
   const header=page.getByRole('banner',{name:'Mini App header'});
   await expect(header).toHaveCount(0);
-  await expect(page.getByText('Loading your profile…',{exact:true})).toBeVisible();
-  await expect(page.locator('.private-skeleton,.mini-route-skeleton')).toHaveCount(0);
+  const profileSkeleton=page.locator('[data-route-skeleton="profile"]');await expect(profileSkeleton).toBeVisible();await expect(profileSkeleton).toHaveAttribute('role','status');await expect(profileSkeleton).toHaveAttribute('aria-busy','true');await expect(profileSkeleton).toContainText('Loading page…');await expect(profileSkeleton.locator('[data-skeleton-part="profile-identity"]')).toHaveCount(1);await expect(profileSkeleton.locator('[data-skeleton-part="wallet"]')).toHaveCount(1);
   await page.screenshot({path:`${root}/profile-loading-${info.project.name}-en.png`});releaseProfile();await expect(page.locator('[data-profile-ready=true]')).toBeVisible();await expect(page.getByRole('heading',{name:'Profile',exact:true})).toHaveCount(1);await page.goto('/');await expect(header).toBeVisible();
   const bell=header.getByRole('button',{name:/^Notifications/});await expect(bell).toHaveAccessibleName('Notifications, 7 unread');
   await bell.click();const notifications=page.getByRole('dialog',{name:'Notifications'});await expect(notifications).toBeVisible();await page.keyboard.press('Escape');await expect(bell).toBeFocused();

@@ -4,6 +4,7 @@ import {RULE_V4,V4_NUMBER_TERMS,V2_MIN_PARTICIPANTS,V2_FALLBACK_TERMS,V4_CANCELL
 import { randomUUID } from 'node:crypto';
 import { Prisma,type PrismaClient } from '@prisma/client';
 import sharp from 'sharp';
+import {WINNER_IMAGE_HEIGHT,WINNER_IMAGE_WIDTH} from '@/lib/winner-image';
 import { z } from 'zod';
 import {opsRead,sectionPermission,pageInput} from './ops';
 import {assertPermission,permissions} from './permissions';
@@ -101,7 +102,7 @@ export async function adminMutation(client:PrismaClient,headers:Headers,action:A
       const bytes=Buffer.from(data.data,'base64');if(bytes.length>2097152)throw new AdminError(422,'Images must be at most 2 MiB.');
       const actual=bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))?'image/png':bytes[0]===255&&bytes[1]===216&&bytes[2]===255?'image/jpeg':bytes.toString('ascii',0,4)==='RIFF'&&bytes.toString('ascii',8,12)==='WEBP'?'image/webp':null;
       if(actual!==data.mime)throw new AdminError(422,'Image content and declared type do not match. SVG and scripts are not accepted.');
-      let clean:Buffer;try{clean=await sharp(bytes,{limitInputPixels:16000000,animated:false}).rotate().resize({width:2400,height:2400,fit:'inside',withoutEnlargement:true}).png().toBuffer()}catch{throw new AdminError(422,'Image could not be decoded safely.')}
+      let clean:Buffer;try{const decoded=sharp(bytes,{limitInputPixels:16000000,animated:false}).rotate();clean=await (data.purpose==='WINNER_PHOTO'?decoded.resize(WINNER_IMAGE_WIDTH,WINNER_IMAGE_HEIGHT,{fit:'cover',position:'centre'}).png({compressionLevel:9}):decoded.resize({width:2400,height:2400,fit:'inside',withoutEnlargement:true}).png()).toBuffer();if(data.purpose==='WINNER_PHOTO'&&clean.length>2097152)clean=await sharp(clean).png({palette:true,quality:90,compressionLevel:9,effort:7}).toBuffer()}catch{throw new AdminError(422,'Image could not be decoded safely.')}
       if(clean.length>2097152)throw new AdminError(422,'Re-encoded image exceeds 2 MiB.');
       const media=await tx.managedMedia.create({data:{bytes:Uint8Array.from(clean),mime:'image/png',sourceType:data.sourceType,sourceCredit:data.sourceCredit,purpose:data.purpose},select:{id:true,mime:true,sourceType:true,sourceCredit:true,purpose:true}});target=media.id;receipt={...media,path:`/api/media/${media.id}`};
     }else if(action==='product'){

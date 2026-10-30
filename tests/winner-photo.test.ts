@@ -9,6 +9,7 @@ import {AdminError} from '../src/modules/admin/errors';
 import {adminMutation} from '../src/modules/admin/operations';
 import {workspaceRead} from '../src/modules/admin/workspace';
 import sharp from 'sharp';
+import {WINNER_IMAGE_HEIGHT,WINNER_IMAGE_WIDTH} from '../src/lib/winner-image';
 
 const f=vi.hoisted(()=>({now:new Date('2026-10-30T01:00:00Z')}));
 vi.mock('../src/modules/admin/boundary',()=>({requireAdmin:vi.fn(async()=>({id:'staff',role:'OWNER',sessionId:'staff-session',now:f.now}))}));
@@ -83,6 +84,27 @@ describe('permanent winner-media purpose separation',()=>{
   const catalog=fixture();expect(await adminMutation(catalog.client,new Headers(),'media',await upload())).toMatchObject({purpose:'CATALOG'});
   const personal=fixture();expect(await adminMutation(personal.client,new Headers(),'media',await upload('WINNER_PHOTO'))).toMatchObject({purpose:'WINNER_PHOTO'});
   expect(personal.tx.managedMedia.create).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({purpose:'WINNER_PHOTO'})}));
+  const catalogBytes=catalog.tx.managedMedia.create.mock.calls[0][0].data.bytes as Uint8Array,personalBytes=personal.tx.managedMedia.create.mock.calls[0][0].data.bytes as Uint8Array;
+  expect(await sharp(catalogBytes).metadata()).toMatchObject({format:'png',width:8,height:8});
+  expect(await sharp(personalBytes).metadata()).toMatchObject({format:'png',width:WINNER_IMAGE_WIDTH,height:WINNER_IMAGE_HEIGHT});
+  expect(personalBytes.byteLength).toBeLessThanOrEqual(2097152);
+ });
+ it('center-crops portrait photos into the landscape canvas without stretching the whole portrait',async()=>{
+  const band=async(color:string)=>sharp({create:{width:300,height:250,channels:3,background:color}}).png().toBuffer();
+  const portrait=await sharp({create:{width:300,height:900,channels:3,background:'#0000ff'}}).composite([{input:await band('#ff0000'),top:0,left:0},{input:await band('#00ff00'),top:650,left:0}]).png().toBuffer();
+  const personal=fixture(),body={...await upload('WINNER_PHOTO'),data:portrait.toString('base64')};
+  await adminMutation(personal.client,new Headers(),'media',body);
+  const bytes=personal.tx.managedMedia.create.mock.calls[0][0].data.bytes as Uint8Array;
+  expect(await sharp(bytes).metadata()).toMatchObject({format:'png',width:1840,height:800});
+  const colors=await sharp(bytes).stats();
+  expect(colors.channels[0].max).toBe(0);expect(colors.channels[1].max).toBe(0);expect(colors.channels[2].min).toBe(255);
+ });
+ it('keeps a detailed photo within the existing 2 MiB PNG storage limit',async()=>{
+  const pixels=Buffer.alloc(1840*800*3);let seed=17;for(let index=0;index<pixels.length;index++){seed=(Math.imul(seed,1664525)+1013904223)|0;pixels[index]=seed>>>24}
+  const jpeg=await sharp(pixels,{raw:{width:1840,height:800,channels:3}}).jpeg({quality:85}).toBuffer();expect(jpeg.length).toBeLessThan(2097152);
+  const personal=fixture();await adminMutation(personal.client,new Headers(),'media',{...await upload('WINNER_PHOTO'),mime:'image/jpeg',data:jpeg.toString('base64')});
+  const bytes=personal.tx.managedMedia.create.mock.calls[0][0].data.bytes as Uint8Array;
+  expect(bytes.byteLength).toBeLessThanOrEqual(2097152);expect(await sharp(bytes).metadata()).toMatchObject({format:'png',width:1840,height:800});
  });
  it('rechecks current owner permission before accepting a winner-photo upload',async()=>{
   const {client,tx}=fixture();vi.mocked(requireAdmin).mockResolvedValueOnce({...actor(),sessionId:'staff-session'} as Awaited<ReturnType<typeof requireAdmin>>).mockResolvedValueOnce({...actor(),role:'CATALOG_MANAGER',sessionId:'staff-session'} as Awaited<ReturnType<typeof requireAdmin>>);

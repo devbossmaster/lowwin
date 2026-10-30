@@ -65,13 +65,18 @@ describe.skipIf(!url)('live public activity on disposable PostgreSQL',()=>{
   expect((await client.auction.findUniqueOrThrow({where:{id:auction.id}})).publicViewCount).toBe(0n);
  });
 
- it('changes from ended to a ready result only after the worker commits one settlement',async()=>{
+ it('keeps a committed settlement private until its result is explicitly published',async()=>{
   const auction=await bidAuction(client,{endDelayMs:1800}),user=await bidUser(client);
   await submitBid(client,{userId:user,auctionSlug:auction.slug!,amount:'4',key:randomUUID()});
   expect((await readAuctionActivity(client,[auction.publicCode]))[0]).toMatchObject({bids:1,bidders:1,status:'live',resultReady:false});
   await new Promise(resolve=>setTimeout(resolve,Math.max(0,auction.endsAt!.getTime()-Date.now()+30)));
   expect((await readAuctionActivity(client,[auction.publicCode]))[0]).toMatchObject({status:'closing',resultReady:false});
   expect(await processDueAuction(client)).toMatchObject({status:'settled',auctionId:auction.id});
+  expect((await readAuctionActivity(client,[auction.publicCode]))[0]).toMatchObject({status:'closed',resultReady:false});
+  const settlement=await client.auctionSettlement.findUniqueOrThrow({where:{auctionId:auction.id}});
+  expect(await client.resultPublication.count({where:{settlementId:settlement.id}})).toBe(0);
+  // Publication is an explicit fixture fact, separate from automatic settlement.
+  await client.resultPublication.create({data:{settlementId:settlement.id,proofHash:'synthetic-activity-publication',reason:'Reviewed result publication fixture'}});
   expect((await readAuctionActivity(client,[auction.publicCode]))[0]).toMatchObject({status:'closed',resultReady:true});
   expect(await client.auctionSettlement.count({where:{auctionId:auction.id}})).toBe(1);
   expect(await processDueAuction(client)).toEqual({status:'idle'});

@@ -5,8 +5,8 @@ import {getMiniSession} from '@/modules/auth/mini-access';
 import { BidError, getOwnBidState,submitBidInTransaction } from '@/modules/auctions/bids';
 import {requirePaymentSession} from '@/modules/payments/session';
 import {walletBidsEnabled} from '@/modules/payments/chapa';
-import {isSubmissionFeeOnly} from '@/modules/auctions/rules';
 import {PAYMENT_TRANSACTION_OPTIONS} from '@/modules/payments/timing';
+import {measureChapa,timedChapaResponse} from '@/modules/payments/chapa-timing';
 
 export const runtime='nodejs';
 async function userId(request:Request) {
@@ -30,12 +30,12 @@ export async function GET(request:Request,{params}:{params:Promise<{slug:string}
   } catch(error){return errorResponse(error)}
 }
 export async function POST(request:Request,{params}:{params:Promise<{slug:string}>}) {
-  try {
+  return timedChapaResponse(async()=>{try {
     requireMutationOrigin(request);
-    const auth=await requirePaymentSession(request);
+    const auth=await measureChapa('auth',()=>requirePaymentSession(request));
     if(!walletBidsEnabled())return Response.json({error:'Wallet bidding is not available yet.',code:'WALLET_BIDS_DISABLED'},{status:410,headers:privateHeaders});
     const body=z.object({key:z.string().uuid(),amount:z.string().regex(/^(0|[1-9]\d{0,15})(?:\.\d{1,2})?$/),feeVersion:z.number().int().min(1),couponId:z.string().uuid().optional()}).strict().parse(await smallJson(request)),{slug}=await params;
-    const receipt=await db.$transaction(async tx=>{await auth.reauthorize(tx);const auction=await tx.auction.findUnique({where:{slug},select:{terms:{select:{ruleVersion:true}}}});if(!isSubmissionFeeOnly(auction?.terms?.ruleVersion))throw new BidError('AUCTION_CLOSED',409,'This auction keeps its original payment terms.');return submitBidInTransaction(tx,{...body,userId:auth.userId,auctionSlug:slug})},PAYMENT_TRANSACTION_OPTIONS);
+    const receipt=await measureChapa('checkout',()=>db.$transaction(async tx=>{await auth.reauthorize(tx);return submitBidInTransaction(tx,{...body,userId:auth.userId,auctionSlug:slug},process.env,{submissionFeeOnly:true})},PAYMENT_TRANSACTION_OPTIONS));
     return Response.json(receipt,{headers:privateHeaders});
-  } catch(error){return errorResponse(error)}
+  } catch(error){return errorResponse(error)}});
 }

@@ -4,6 +4,7 @@ import {randomInt} from 'node:crypto';
 import {mkdirSync} from 'node:fs';
 import {signedLaunch} from '../helpers';
 import {verifyFixtureContact} from '../contact-fixtures';
+import {LOWWIN_LOGO_SRC} from '../../src/lib/brand';
 
 const sdk='https://telegram.org/js/telegram-web-app.js';
 async function launchFixture(){
@@ -16,7 +17,7 @@ async function launchFixture(){
  }finally{await db.$disconnect()}
 }
 
-test('spinner and loading text wait for a delayed SDK, then sign in once and preserve the destination',async({page},info)=>{
+test('brand logo, spinner and loading text wait for a delayed SDK, then sign in once and preserve the destination',async({page},info)=>{
  const launch=await launchFixture();let release!:()=>void;
  const gate=new Promise<void>(resolve=>{release=resolve});
  const errors:string[]=[],documents:string[]=[];let signins=0,sdkRequests=0;
@@ -27,7 +28,7 @@ test('spinner and loading text wait for a delayed SDK, then sign in once and pre
  try{
   await page.goto('/telegram?next='+encodeURIComponent('/?sort=newest#discover-auctions'),{waitUntil:'domcontentloaded'});
   const splash=page.locator('.launch-loader');
-  await expect(splash).toBeVisible();await expect(splash.locator('img')).toHaveCount(0);await expect(splash.locator('p')).toHaveText('Loading…');
+  await expect(splash).toBeVisible();const logo=splash.getByRole('img',{name:'Lowwin',exact:true});await expect(logo).toHaveCount(1);await expect(logo).toBeVisible();await expect(logo).toHaveAttribute('src',LOWWIN_LOGO_SRC);await expect(splash.locator('p')).toHaveText('Loading…');
   await expect(splash.getByRole('status')).toHaveCount(1);
   await expect(splash.locator('.loading-spinner-ring')).toHaveCSS('animation-name','none');
   await page.waitForTimeout(1000);await expect(splash).toBeVisible();expect(signins).toBe(0);

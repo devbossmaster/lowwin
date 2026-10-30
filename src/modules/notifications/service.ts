@@ -11,6 +11,7 @@ import {resolve} from 'node:path';
 import sharp from 'sharp';
 import {chapaReceiptContent,chapaReceiptKind} from './chapa-receipt';
 import {expandParticipantResults} from './participant-results';
+import {sendBroadcastPhoto} from './broadcast-photo';
 type DB=Prisma.TransactionClient;
 const notificationImage=resolve('public/notification.png');
 const composedPhotos=new Map<string,Buffer>();
@@ -92,7 +93,7 @@ export async function dispatchOne(client:PrismaClient,bot:Pick<Bot,'api'>,filter
    if(!locked)return false;
    if(await broadcastStopped(tx,root)){await tx.outbox.update({where:{id:row.id},data:{state:'SKIPPED',lastError:'CAMPAIGN_STOPPED'}});return true}
   }
-  const skip=()=>tx.outbox.update({where:{id:row.id},data:{state:'SKIPPED',lastError:null}});
+  const skip=(reason:string|null=null)=>tx.outbox.update({where:{id:row.id},data:{state:'SKIPPED',lastError:reason}});
   if(row.kind==='TELEGRAM_DELETE'){
    const payload=row.payload as {telegramMessageId?:string};const record=payload.telegramMessageId?await tx.telegramMessage.findUnique({where:{id:payload.telegramMessageId}}):null;
    if(!record||!['QUEUED','FAILED'].includes(record.deletionState)){await skip();return true}
@@ -114,7 +115,7 @@ export async function dispatchOne(client:PrismaClient,bot:Pick<Bot,'api'>,filter
   const paymentReceipt=row.kind===chapaReceiptKind;
   if(!telegramKinds.includes(row.kind)&&!paymentReceipt){await skip();return true}
   const user=await tx.user.findUnique({where:{id:content.userId},select:{telegramId:true,name:true}}),chat=user?.telegramId?await tx.botChat.findUnique({where:{telegramId:user.telegramId}}):null;
-  if(!chat||chat.blocked){await skip();return true}
+  if(!chat||chat.blocked){await skip(row.kind==='BROADCAST'?(chat?'CHAT_BLOCKED':'CHAT_NOT_STARTED'):null);return true}
   const link=new URL(content.href,process.env.MINI_APP_URL);
   if(link.protocol!=='https:'){await skip();return true}
   try{
@@ -130,7 +131,11 @@ export async function dispatchOne(client:PrismaClient,bot:Pick<Bot,'api'>,filter
    const photo=paymentReceipt?null:row.kind.startsWith('AUCTION_')
     ?('imagePath' in content&&typeof content.imagePath==='string'?new URL(content.imagePath,link.origin).href:null)
     :await notificationPhoto(tx,'imageId' in content?content.imageId:undefined,link.origin);
-   sent=photo?await bot.api.sendPhoto(chat.chatId,photo,{...options,caption:text}):await bot.api.sendMessage(chat.chatId,text,options);
+   if(photo&&row.kind==='BROADCAST'){
+    const imageId='imageId' in content?content.imageId:undefined;
+    const photoKey=`${link.origin}:${imageId??'default'}:${existsSync(notificationImage)?statSync(notificationImage).mtimeMs:'remote'}`;
+    sent=await sendBroadcastPhoto(bot.api,chat.chatId,photo,{...options,caption:text},photoKey);
+   }else sent=photo?await bot.api.sendPhoto(chat.chatId,photo,{...options,caption:text}):await bot.api.sendMessage(chat.chatId,text,options);
    const payload=row.payload as {auctionId?:string};
    await tx.telegramMessage.create({data:{outboxId:row.id,auctionId:payload.auctionId,testRunId:row.testRunId,chatId:chat.chatId,messageId:BigInt(sent.message_id)}});
    await tx.outbox.update({where:{id:row.id},data:{state:'SENT',sentAt:new Date(),attempts:{increment:1},lastError:null}});
