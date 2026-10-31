@@ -66,6 +66,14 @@ describe('Chapa v2 configuration boundaries',()=>{
 });
 
 describe('Chapa v2 payment evidence and hosted URL',()=>{
+ it.each(['telebirr','mpesa','cbebirr','awashbirr'])('normalizes verified combined failure for %s without interpreting it as paid or a precise cancellation',payment_method=>{
+  const raw={...verified(),data:{...verified().data,status:'FAILED_OR_CANCELLED',payment_method,reason:null}};
+  expect(parseChapaEvidence(raw)).toMatchObject({status:'FAILED',reasonCode:'PAYMENT_FAILED_OR_CANCELLED',paymentMethod:payment_method,amountCents:'12345',merchantReference:create.merchantReference});
+  expect(raw.data.status).toBe('FAILED_OR_CANCELLED');
+  expect(parseChapaEvidence({...raw,data:{...raw.data,reason:'INSUFFICIENT_BALANCE'}})).toMatchObject({status:'FAILED',reasonCode:'INSUFFICIENT_FUNDS'});
+  for(const status of ['failed_or_cancelled','FAILED_OR_CANCELED','FAILED_OR_CANCELLED_UNKNOWN'])expect(parseChapaEvidence({...raw,data:{...raw.data,status}})).toBeNull();
+  expect(parseChapaEvidence({...raw,data:{...raw.data,amount:'12345'}})).toBeNull();
+ });
  it('preserves integer cents and keeps operation success separate from paid status',()=>{
   expect(parseChapaEvidence(verified())).toMatchObject({status:'SUCCESS',amountCents:'12345',currency:'ETB',merchantReference:create.merchantReference,chapaReference:'CHLocal123',serviceFeeCents:'370',mode:'test'});
   for(const status of ['PENDING','FAILED','CANCELLED','INCOMPLETE','BLOCKED','AUTH_NEEDED'])expect(parseChapaEvidence({...verified(),data:{...verified().data,status}})?.status).toBe(status);
@@ -128,6 +136,15 @@ describe('Chapa v2 payment evidence and hosted URL',()=>{
 });
 
 describe('Chapa v2 authenticated webhook hints',()=>{
+ it.each(['telebirr','mpesa','cbebirr','awashbirr'])('accepts the observed combined failure hint for %s only with its exact event/status pair',payment_method=>{
+  const raw={webhook_type:'payment',event:'payment.failed_or_cancelled',status:'failed_or_cancelled',mode:'live',currency:'ETB',amount:10250,service_fee:250,merchant_reference:'LWCombinedFailure01',chapa_reference:'CHCombinedFailure01',payment_method};
+  const hint=parseChapaWebhook(raw);
+  expect(hint).toMatchObject({type:'payment',event:'payment.failed_or_cancelled',status:'failed_or_cancelled',mode:'live',amountCents:'10250',serviceFeeCents:'250'});
+  expect(chapaWebhookAmountMatches(hint!,10000n)).toBe(true);
+  expect(parseChapaEvidence(raw)).toBeNull();
+  for(const change of [{event:'payment.failed'},{event:'payment.cancelled'},{status:'failed'},{status:'cancelled'},{status:'success'},{status:'FAILED_OR_CANCELLED'}])expect(parseChapaWebhook({...raw,...change})).toBeNull();
+  expect(parseChapaWebhook({...raw,webhook_type:'refund'})?.type).toBe('refund');
+ });
  it('authenticates exact UTF-8 bytes with the configured webhook secret and constant-length hex',()=>{
   const raw=Buffer.from('{ "webhook_type": "payment", "meta": {"label":"ሙከራ"} }'),signature=createHmac('sha256',secret).update(raw).digest('hex');
   expect(verifyChapaWebhook(raw,signature,secret)).toBe(true);expect(verifyChapaWebhook(raw,signature.toUpperCase(),secret)).toBe(true);expect(verifyChapaWebhook(JSON.stringify(JSON.parse(raw.toString('utf8'))),signature,secret)).toBe(false);

@@ -76,6 +76,29 @@ test('an interrupted initialization retries the original key and opens only one 
  }finally{await f.db.$disconnect()}
 });
 
+for(const outcome of ['provider-success','past-validity'] as const)test(`checkout handoff does not reopen ${outcome}`,async({page},info)=>{
+ const am=info.project.name==='430',f=await fixture(page,am);let creates=0,checks=0,order:ChapaCheckoutView|null=null;
+ try{
+  await page.route('**/api/payments/chapa/checkouts**',route=>{
+   const request=route.request(),collection=new URL(request.url()).pathname.endsWith('/checkouts');
+   if(collection&&request.method()==='GET')return route.fulfill({json:{items:order?[order]:[],page:1,nextPage:null}});
+   if(collection){
+    const intent=request.postDataJSON() as ChapaIntent;creates++;
+    order={...pending(intent,intent.key),providerStatus:outcome==='provider-success'?'SUCCESS':'PENDING',verificationState:'VERIFIED',...(outcome==='past-validity'?{expiresAt:new Date(Date.now()-1000).toISOString()}:{})};
+   }else checks++;
+   return route.fulfill({json:order});
+  });
+  await page.goto('/telegram?next='+encodeURIComponent(f.home));await expect(page.getByRole('navigation',{name:'Your navigation'})).toBeVisible();
+  await page.getByRole('link',{name:am?'ገንዘብ ያስገቡ':'Deposit',exact:true}).click();const sheet=page.getByRole('dialog');
+  await sheet.locator('[data-payment-action]').click();
+  await expect(sheet.locator(`[data-payment-state="${outcome==='provider-success'?'applying':'confirming'}"]`)).toBeVisible();
+  expect(creates).toBe(1);expect(await page.evaluate(()=>Reflect.get(window,'chapaOpened')?.length??0)).toBe(0);
+  await expect(sheet.getByRole('link',{name:am?'ክፍያውን ይቀጥሉ':'Continue checkout',exact:true})).toHaveCount(0);
+  await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect.poll(()=>checks).toBeGreaterThan(0);
+  expect(creates).toBe(1);
+ }finally{await f.db.$disconnect()}
+});
+
 test('a bid return reopens its product modal and accepts only a server-confirmed receipt',async({page},info)=>{
  const am=info.project.name==='430',id=randomUUID(),f=await fixture(page,am,'chapa_'+id);
  const order={...pending({purpose:'BID',key:id,auctionSlug:f.auction.slug!,amount:'3.60',feeVersion:1},id),auctionTitle:f.title,auctionCode:String(f.auction.publicCode)};

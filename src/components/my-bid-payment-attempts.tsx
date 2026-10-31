@@ -1,9 +1,9 @@
 'use client';
-import {useEffect,useRef,useState} from 'react';
+import {useRef,useState} from 'react';
 import {ChevronLeft,ChevronRight,RefreshCw} from 'lucide-react';
 import {usePrivateQuery,PrivateState} from './private-query';
 import {useMiniLocale} from './mini-locale';
-import {ChapaTransactionDetails,startChapaHistoryClock} from './chapa-payment-history';
+import {ChapaTransactionDetails} from './chapa-payment-history';
 import {chapaStatusLabel} from './chapa-payment';
 import {chapaConfirmed,type ChapaCheckoutView} from '@/lib/chapa-client';
 import {formatEtb} from '@/lib/money';
@@ -17,8 +17,7 @@ type Page={items:ChapaCheckoutView[];page:number;nextPage:number|null};
 export function MyBidPaymentAttempts({filter}:{filter:BidPaymentAttemptFilter}){
  const {language}=useMiniLocale(),am=language==='am',text=(en:string,translated:string)=>am?translated:en;
  const [page,setPage]=useMiniPage('paymentPage'),[selected,setSelected]=useState<ChapaCheckoutView|null>(null),trigger=useRef<HTMLElement|null>(null);
- const query=usePrivateQuery<Page>(`/api/payments/chapa/checkouts?purpose=BID&page=${page}&view=unaccepted${filter==='all'?'':'&status='+filter}`,{keepPreviousData:true,freshnessMs:5000,pollMs:15000,cancelOnUnmount:true}),[,tick]=useState(0);
- useEffect(()=>query.data?startChapaHistoryClock(query.data.items,()=>tick(value=>value+1)):undefined,[query.data]);
+ const query=usePrivateQuery<Page>(`/api/payments/chapa/checkouts?purpose=BID&page=${page}&view=unaccepted${filter==='all'?'':'&status='+filter}`,{keepPreviousData:true,freshnessMs:5000,pollMs:15000,cancelOnUnmount:true});
  const date=new Intl.DateTimeFormat(am?'am-ET':'en-ET',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZone:'Africa/Addis_Ababa'});
  const emptyCopy={all:['No bid payment attempts yet.','የጨረታ ክፍያ ሙከራዎች ገና የሉም።'],pending:['No pending bid payments.','በመጠባበቅ ላይ ያሉ የጨረታ ክፍያዎች የሉም።'],failed:['No failed bid payments.','ያልተሳኩ የጨረታ ክፍያዎች የሉም።'],cancelled:['No cancelled bid payments.','የተሰረዙ የጨረታ ክፍያዎች የሉም።'],review:['No bid payments need review.','ግምገማ የሚያስፈልጋቸው የጨረታ ክፍያዎች የሉም።']} satisfies Record<BidPaymentAttemptFilter,[string,string]>;
  return <section className={styles.attempts} aria-label={text('Bid payment attempts','የጨረታ ክፍያ ሙከራዎች')} data-bid-payment-attempts>

@@ -3,7 +3,6 @@ import {centsToEtb} from '@/lib/money';
 import {contactBotId,decryptPhone,normalizePhone,phoneHash} from '../auth/own-contact';
 import {AdminError} from './errors';
 import type {StaffRole} from './permissions';
-import {CHAPA_CHECKOUT_SESSION_MS} from '@/lib/chapa-client';
 
 const identity={id:true,name:true,telegramId:true,telegramUsername:true,createdAt:true,
  ownContact:{select:{telegramId:true,botId:true,phoneCipher:true,revokedAt:true}}} satisfies Prisma.UserSelect;
@@ -61,13 +60,12 @@ export async function readChapaTable(client:PrismaClient,actor:Actor,f:Filters){
  const grouped:Prisma.ChapaCheckoutWhereInput=view==='completed'?{status:{in:['CREDITED','BID_ACCEPTED']},creditJournalId:{not:null}}:view==='unfinished'?{status:{in:['SUBMITTING','PENDING','VERIFYING','AUTH_NEEDED']}}:view==='review'?{status:'NEEDS_REVIEW'}:view==='failed'?{status:{in:['FAILED','CANCELLED','EXPIRED','INCOMPLETE','BLOCKED']}}:{};
  const where:Prisma.ChapaCheckoutWhereInput={AND:[grouped,...(f.status?[{status:f.status}]:[]),...(f.purpose?[{purpose:f.purpose}]:[]),...(f.q?[{OR:[{id:{contains:f.q,mode:'insensitive' as const}},{user:playerSearch(f.q)}]}]:[])]};
  const orderBy:Prisma.ChapaCheckoutOrderByWithRelationInput[]=f.sort==='amount'?[{amountCents:'desc'},{id:'asc'}]:[{createdAt:f.sort==='oldest'?'asc':'desc'},{id:'asc'}];
- const [rows,total]=await Promise.all([client.chapaCheckout.findMany({where,select:{id:true,userId:true,purpose:true,mode:true,amountCents:true,currency:true,status:true,providerStatus:true,reason:true,creditJournalId:true,bidId:true,auctionId:true,paymentMethod:true,createdAt:true,expiresAt:true,user:{select:identity}},orderBy,skip:(f.page-1)*take,take}),client.chapaCheckout.count({where})]);
+ const [rows,total]=await Promise.all([client.chapaCheckout.findMany({where,select:{id:true,userId:true,purpose:true,mode:true,amountCents:true,currency:true,status:true,providerStatus:true,reason:true,creditJournalId:true,bidId:true,auctionId:true,paymentMethod:true,createdAt:true,user:{select:identity}},orderBy,skip:(f.page-1)*take,take}),client.chapaCheckout.count({where})]);
  const items=rows.map(row=>{
   const creditApplied=!!row.creditJournalId;
-  // Ending the customer's five-minute session is display-only. A pending
-  // provider payment can still complete later; never rewrite it as failed.
-  const sessionEnded=!creditApplied&&row.providerStatus!=='SUCCESS'&&['SUBMITTING','PENDING','AUTH_NEEDED'].includes(row.status)&&actor.now.getTime()>=Math.min(row.createdAt.getTime()+CHAPA_CHECKOUT_SESSION_MS,row.expiresAt?.getTime()??Infinity);
-  return {id:row.id,userId:row.userId,provider:'Chapa',channel:row.paymentMethod??'Hosted checkout',status:row.status,providerStatus:row.providerStatus,creditApplied,sessionEnded,typeLabel:row.purpose==='BID'?creditApplied?'Bid payment':'Bid payment attempt':creditApplied?'Wallet deposit':'Deposit attempt',amount:centsToEtb(row.amountCents),currency:row.currency,createdAt:row.createdAt,journalId:actor.role==='SUPPORT'?null:row.creditJournalId,reason:row.reason&&/^[A-Z0-9_]{1,64}$/.test(row.reason)?row.reason:null,review:row.status==='NEEDS_REVIEW'?'OPEN':'NONE',reference:'',bidId:row.bidId,auctionId:row.auctionId,purpose:row.purpose,mode:row.mode,user:contact(row.user)};
+  // A browser checking timeout is not a provider payment outcome. Keep the
+  // last server-verified state visible in the admin table too.
+  return {id:row.id,userId:row.userId,provider:'Chapa',channel:row.paymentMethod??'Hosted checkout',status:row.status,providerStatus:row.providerStatus,creditApplied,typeLabel:row.purpose==='BID'?creditApplied?'Bid payment':'Bid payment attempt':creditApplied?'Wallet deposit':'Deposit attempt',amount:centsToEtb(row.amountCents),currency:row.currency,createdAt:row.createdAt,journalId:actor.role==='SUPPORT'?null:row.creditJournalId,reason:row.reason&&/^[A-Z0-9_]{1,64}$/.test(row.reason)?row.reason:null,review:row.status==='NEEDS_REVIEW'?'OPEN':'NONE',reference:'',bidId:row.bidId,auctionId:row.auctionId,purpose:row.purpose,mode:row.mode,user:contact(row.user)};
  });
  await audit(client,actor,'MASTER_CHAPA_TABLE_READ',items.length);
  return {...pageResult(items,total,f.page,actor.now),configured:true,summary:[]};

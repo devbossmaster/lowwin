@@ -60,16 +60,17 @@ describe('Master Guide Admin bounded tables',()=>{
    expect(db.chapaCheckout.count).toHaveBeenLastCalledWith({where:query?.where});
   }
  });
- it('labels unconfirmed records as attempts and derives ended sessions without altering provider status or committed review funds',async()=>{
+ it('keeps aged unconfirmed attempts pending without inventing expired sessions or changing committed review funds',async()=>{
   const row={id:'payment',userId:'player',purpose:'TOP_UP',mode:'live',amountCents:1000n,currency:'ETB',status:'PENDING',providerStatus:'PENDING',reason:null,creditJournalId:null,bidId:null,auctionId:null,paymentMethod:'telebirr',createdAt:new Date(now.getTime()-300000),expiresAt:new Date(now.getTime()+3600000),user:identity()};
   const rows=[row,{...row,id:'newer',createdAt:new Date(now.getTime()-299999)},{...row,id:'applying',providerStatus:'SUCCESS'},{...row,id:'review',purpose:'BID',status:'NEEDS_REVIEW',providerStatus:'SUCCESS',creditJournalId:'preserved-journal'},{...row,id:'paid',status:'CREDITED',creditJournalId:'journal'},{...row,id:'failed',purpose:'BID',status:'FAILED'}];
   const db={chapaCheckout:{findMany:vi.fn(async()=>rows),count:vi.fn(async()=>rows.length)},adminAudit:{create:vi.fn()}};
   const result=await readChapaTable(db as unknown as PrismaClient,{...actor,role:'SUPPORT'},{...f,view:'all'});
-  expect(result.items[0]).toMatchObject({typeLabel:'Deposit attempt',status:'PENDING',providerStatus:'PENDING',sessionEnded:true,creditApplied:false});
-  expect(result.items[1].sessionEnded).toBe(false);expect(result.items[2].sessionEnded).toBe(false);
-  expect(result.items[3]).toMatchObject({typeLabel:'Bid payment',status:'NEEDS_REVIEW',review:'OPEN',creditApplied:true,sessionEnded:false,journalId:null});
-  expect(result.items[4]).toMatchObject({typeLabel:'Wallet deposit',creditApplied:true,sessionEnded:false});
-  expect(result.items[5]).toMatchObject({typeLabel:'Bid payment attempt',status:'FAILED',sessionEnded:false});
+  expect(result.items[0]).toMatchObject({typeLabel:'Deposit attempt',status:'PENDING',providerStatus:'PENDING',creditApplied:false});
+  for(const item of result.items)expect(item).not.toHaveProperty('sessionEnded');
+  expect(result.items[1].status).toBe('PENDING');expect(result.items[2].providerStatus).toBe('SUCCESS');
+  expect(result.items[3]).toMatchObject({typeLabel:'Bid payment',status:'NEEDS_REVIEW',review:'OPEN',creditApplied:true,journalId:null});
+  expect(result.items[4]).toMatchObject({typeLabel:'Wallet deposit',creditApplied:true});
+  expect(result.items[5]).toMatchObject({typeLabel:'Bid payment attempt',status:'FAILED'});
   expect(JSON.stringify(result)).not.toMatch(/preserved-journal|private-cipher|phoneCipher|initialization|checkoutUrl/);
   expect(db.chapaCheckout).not.toHaveProperty('update');
  });

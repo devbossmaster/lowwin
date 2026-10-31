@@ -1,9 +1,18 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
-import {chapaCheckoutUrl,chapaConfirmed,chapaCanResumeCheckout,chapaRecoverable,clearChapaAttempt,clearChapaAttempts,readChapaAttempt,requestChapaJson,writeChapaAttempt,type ChapaAttempt,type ChapaCheckoutView} from '../src/lib/chapa-client';
+import {CHAPA_CHECKOUT_POLL_MS,chapaCheckoutUrl,chapaConfirmed,chapaCanResumeCheckout,chapaPollingDeadline,chapaPollingPaused,chapaRecoverable,clearChapaAttempt,clearChapaAttempts,readChapaAttempt,requestChapaJson,writeChapaAttempt,type ChapaAttempt,type ChapaCheckoutView} from '../src/lib/chapa-client';
 const uuid='0f55aaab-2222-4444-8888-123456789012',attempt:ChapaAttempt={version:1,intent:{purpose:'BID',key:uuid,auctionSlug:'fixture-auction',amount:'3.60',feeVersion:1}};
 function storage(){const values=new Map<string,string>();return {getItem:(key:string)=>values.get(key)??null,setItem:(key:string,value:string)=>{values.set(key,value)},removeItem:(key:string)=>{values.delete(key)}}}
 afterEach(()=>{vi.unstubAllGlobals();vi.useRealTimers()});
 describe('Chapa client recovery and display boundaries',()=>{
+ it('bounds foreground checks independently from checkout validity and keeps the original pending outcome',()=>{
+  const created=Date.parse('2026-10-31T10:00:00Z'),order={purpose:'TOP_UP',status:'PENDING',providerStatus:'PENDING',fundsPreserved:false,receipt:null,createdAt:new Date(created).toISOString(),expiresAt:new Date(created+60000).toISOString()} as ChapaCheckoutView;
+  expect(CHAPA_CHECKOUT_POLL_MS).toBe(300000);expect(chapaPollingDeadline(order)).toBe(created+300000);
+  expect(chapaPollingPaused(order,created+60000)).toBe(false);expect(chapaPollingPaused(order,created+300000)).toBe(true);
+  expect(order.status).toBe('PENDING');expect(order.providerStatus).toBe('PENDING');
+  expect(chapaPollingDeadline({...order,createdAt:'invalid'})).toBeNull();
+  for(const status of ['FAILED','CANCELLED','INCOMPLETE','CREDITED'])expect(chapaPollingPaused({...order,status},created+600000)).toBe(false);
+  expect(chapaPollingPaused({...order,providerStatus:'SUCCESS'},created+600000)).toBe(false);
+ });
  it('resumes ambiguous initialization with its saved intent both before and after an ID is returned',()=>{
   const known={...attempt,orderId:uuid},pending={id:uuid,purpose:'BID',status:'PENDING',reason:'INITIALIZATION_PENDING',checkoutUrl:null,fundsPreserved:false,receipt:null} as ChapaCheckoutView;
   expect(chapaCanResumeCheckout(attempt,null)).toBe(true);expect(chapaCanResumeCheckout(known,pending)).toBe(true);

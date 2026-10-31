@@ -30,6 +30,15 @@ beforeEach(()=>{f.enabled=true;vi.clearAllMocks();vi.useFakeTimers();vi.setSyste
 afterEach(()=>{vi.useRealTimers();vi.restoreAllMocks()});
 
 describe('durable Chapa event confirmation',()=>{
+ it.each(['PENDING','FAILED','SUCCESS'])('uses merchant verification rather than a combined failure hint for authoritative %s',async status=>{
+  const state=fixture();state.event.event='payment.failed_or_cancelled';
+  f.verify.mockImplementation(async()=>{Object.assign(state.checkout,{providerStatus:status,verificationState:'VERIFIED',status:status==='SUCCESS'?'CREDITED':status,...(status==='SUCCESS'?{creditJournalId:'canonical-credit'}:{})})});
+  expect(await processChapaEvent(state.client,state.event.id)).toBe(status!=='PENDING');
+  expect(state.event.status).toBe(status==='PENDING'?'QUEUED':'PROCESSED');
+  expect(state.checkout.creditJournalId).toBe(status==='SUCCESS'?'canonical-credit':null);
+  expect(f.verify).toHaveBeenCalledOnce();
+  if(status!=='PENDING'){expect(await processChapaEvent(state.client,state.event.id)).toBe(false);expect(f.verify).toHaveBeenCalledOnce()}
+ });
  it.each(['PENDING','AUTH_NEEDED'])('keeps verified %s responses queued until a final result instead of trusting the success hint',async status=>{
   const state=fixture();f.verify.mockImplementation(async()=>{Object.assign(state.checkout,{providerStatus:status,verificationState:'VERIFIED',status})});
   expect(await processChapaEvent(state.client,state.event.id)).toBe(false);

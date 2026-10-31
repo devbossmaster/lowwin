@@ -1,32 +1,18 @@
 'use client';
 import Link from 'next/link';
 import {ChevronLeft,ChevronRight,Clock3,Minus,Plus,RefreshCw,ReceiptText} from 'lucide-react';
-import {useEffect,useRef,useState} from 'react';
+import {useRef,useState} from 'react';
 import {usePrivateQuery,PrivateState} from './private-query';
 import {useMiniLocale} from './mini-locale';
 import {useTelegram} from './telegram-provider';
 import {AccountSheet} from './account-sheet';
 import {ChapaPaymentStatus,chapaStatusLabel,useChapaPayment} from './chapa-payment';
-import {chapaConfirmed,chapaSessionDeadline,type ChapaCheckoutView} from '@/lib/chapa-client';
+import {chapaConfirmed,type ChapaCheckoutView} from '@/lib/chapa-client';
 import {formatEtb} from '@/lib/money';
 import {useMiniPage} from './mini-query-state';
 import styles from './chapa-payment-history.module.css';
 
 type Page={items:ChapaCheckoutView[];page:number;nextPage:number|null};
-type HistoryVisibility=Pick<Document,'visibilityState'|'addEventListener'|'removeEventListener'>;
-/** Update saved row labels when their customer windows end. This clock only
- * rerenders owned data; provider verification and financial status stay server-owned. */
-export function startChapaHistoryClock(orders:readonly ChapaCheckoutView[],refresh:()=>void,visibility:HistoryVisibility=document,wake:Pick<EventTarget,'addEventListener'|'removeEventListener'>=window){
- let active=true,timer:ReturnType<typeof setTimeout>|undefined;
- const schedule=()=>{
-  clearTimeout(timer);if(!active||visibility.visibilityState!=='visible')return;
-  const now=Date.now(),deadlines=orders.filter(order=>!chapaConfirmed(order)&&order.providerStatus!=='SUCCESS'&&['SUBMITTING','PENDING','AUTH_NEEDED'].includes(order.status)).map(chapaSessionDeadline).filter((deadline):deadline is number=>deadline!==null&&deadline>now);
-  if(deadlines.length)timer=setTimeout(tick,Math.min(...deadlines)-now+1);
- };
- const tick=()=>{if(!active||visibility.visibilityState!=='visible')return;refresh();schedule()};
- visibility.addEventListener('visibilitychange',tick);wake.addEventListener('focus',tick);schedule();
- return()=>{active=false;clearTimeout(timer);visibility.removeEventListener('visibilitychange',tick);wake.removeEventListener('focus',tick)};
-}
 export function ChapaTransactionDetails({order,onClose,trigger}:{order:ChapaCheckoutView;onClose:()=>void;trigger:React.RefObject<HTMLElement|null>}){
  const payment=useChapaPayment('transaction:'+order.id,order.id),{language}=useMiniLocale(),am=language==='am',current=payment.order??order;
  const fresh=current.purpose==='TOP_UP'?'/wallet/deposit':current.auctionSlug?`/auctions/${current.auctionCode??current.auctionSlug}#bid-review`:null;
@@ -44,8 +30,6 @@ function OwnedHistory({purpose,unaccepted,fullPage}:{purpose?:'TOP_UP'|'BID';una
  const [selected,setSelected]=useState<ChapaCheckoutView|null>(null),trigger=useRef<HTMLElement|null>(null);
  const url=`/api/payments/chapa/checkouts?${purpose?'purpose='+purpose+'&':''}page=${page}${unaccepted?'&view=unaccepted':''}`;
  const query=usePrivateQuery<Page>(url,{keepPreviousData:true,freshnessMs:5000}),date=new Intl.DateTimeFormat(am?'am-ET':'en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'Africa/Addis_Ababa'});
- const [,refreshSessionLabels]=useState(0);
- useEffect(()=>query.data?startChapaHistoryClock(query.data.items,()=>refreshSessionLabels(value=>value+1)):undefined,[query.data]);
  return <section id={fullPage?'transactions':'wallet-payments'} className={`${styles.history} ${fullPage?styles.fullPage:''}`} aria-labelledby={unaccepted?'bid-payments-title':'transactions-title'} data-payment-history>
   <div className={styles.heading}><h2 className={fullPage?'sr-only':undefined} id={unaccepted?'bid-payments-title':'transactions-title'}>{text(unaccepted?'Bid payment attempts':'Transactions',unaccepted?'የጨረታ ክፍያ ሙከራዎች':'ግብይቶች')}</h2><button type="button" onClick={query.reload} disabled={query.fetching} aria-label={text('Refresh transactions','ግብይቶችን ያድሱ')}><RefreshCw size={16} aria-hidden="true"/></button></div>
   <PrivateState query={query}/>

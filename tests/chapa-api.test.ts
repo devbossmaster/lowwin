@@ -41,6 +41,28 @@ function existingLegacyEvent(patch:Partial<EventRow>={}){
 }
 afterEach(()=>{vi.unstubAllEnvs();vi.restoreAllMocks()});
 describe('Chapa HTTP authorization and durable webhook boundary',()=>{
+ it.each(['telebirr','mpesa','cbebirr','awashbirr'])('durably accepts and deduplicates a %s combined failure hint without changing financial state',async payment_method=>{
+  const tasks:(()=>Promise<void>)[]=[];f.after.mockImplementation(task=>tasks.push(task));
+  const order={id,merchantReference:merchant,mode:'test',chapaReference:hint.chapa_reference,amountCents:10000n,currency:'ETB',status:'PENDING',creditJournalId:null};
+  f.find.mockResolvedValue(order);
+  const event={...hint,event:'payment.failed_or_cancelled',status:'failed_or_cancelled',payment_method,amount:10250,service_fee:250,reason:'private bank detail',customer:{phone_number:251911111111}};
+  for(let index=0;index<2;index++){
+   const response=await webhook(signed(event));expect(response.status).toBe(200);expect(await response.json()).toEqual({accepted:true});expect(response.headers.get('cache-control')).toContain('no-store');
+  }
+  expect(f.hashes.size).toBe(1);expect(tasks).toHaveLength(1);expect(f.process).not.toHaveBeenCalled();
+  expect(f.event.mock.calls[0][0].data[0]).toMatchObject({checkoutId:id,event:'payment.failed_or_cancelled',status:'QUEUED'});
+  expect(f.update).toHaveBeenCalledOnce();expect(f.update).toHaveBeenCalledWith({where:{id,creditJournalId:null},data:{nextCheckAt:expect.any(Date),reason:'PROVIDER_EVENT_RECEIVED'}});
+  expect(order).toMatchObject({status:'PENDING',creditJournalId:null});
+  for(const secretValue of ['private bank detail','251911111111',secret])expect(JSON.stringify(f.event.mock.calls)).not.toContain(secretValue);
+  expect(f.verify).not.toHaveBeenCalled();expect(f.create).not.toHaveBeenCalled();expect(f.submit).not.toHaveBeenCalled();expect(globalThis.fetch).not.toHaveBeenCalled();
+  await tasks[0]();expect(f.process).toHaveBeenCalledOnce();
+ });
+ it('rejects invalid combined-event authentication or a contradictory event/status pair before reading a checkout',async()=>{
+  const event={...hint,event:'payment.failed_or_cancelled',status:'failed_or_cancelled'};
+  expect((await webhook(signed(event,{signature:'a'.repeat(64)}))).status).toBe(401);
+  for(const change of [{status:'success'},{status:'failed'},{status:'cancelled'},{event:'payment.success'},{event:'payment.failed'},{event:'payment.cancelled'}])expect((await webhook(signed({...event,...change}))).status).toBe(400);
+  expect(f.transaction).not.toHaveBeenCalled();expect(f.event).not.toHaveBeenCalled();expect(f.find).not.toHaveBeenCalled();expect(f.process).not.toHaveBeenCalled();
+ });
  it('acknowledges durable receipt before scheduling provider verification after the response',async()=>{
   const tasks:(()=>Promise<void>)[]=[];f.after.mockImplementation(task=>tasks.push(task));
   const response=await webhook(signed(hint));

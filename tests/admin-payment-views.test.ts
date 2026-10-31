@@ -18,9 +18,9 @@ describe('clear admin Chapa payment views',()=>{
   const html=render();expect(f.path).toContain('view=completed');expect(html).toContain('aria-current="page">Completed');
   for(const label of ['Unfinished','Needs review','Failed','All types','Wallet deposits','Bid payments'])expect(html).toContain(label);
  });
- it('keeps unfinished bid attempts separate from confirmed deposits and never calls an ended session failed',()=>{
+ it('keeps unfinished bid attempts pending even if a stale response includes the old session-ended flag',()=>{
   f.params=new URLSearchParams({view:'unfinished',purpose:'BID'});f.items=[{id:'attempt',purpose:'BID',typeLabel:'Bid payment attempt',createdAt:'2026-10-30T09:00:00Z',amount:'10',status:'PENDING',creditApplied:false,sessionEnded:true}];
-  const html=render();expect(f.path).toContain('view=unfinished');expect(f.path).toContain('purpose=BID');expect(html).toContain('Bid payment attempt');expect(html).toContain('Requested amount');expect(html).toContain('Session ended');expect(html).not.toContain('>FAILED<');
+  const html=render();expect(f.path).toContain('view=unfinished');expect(f.path).toContain('purpose=BID');expect(html).toContain('Bid payment attempt');expect(html).toContain('Requested amount');expect(html).toContain('>PENDING<');expect(html).not.toContain('Session ended');expect(html).not.toContain('>FAILED<');
  });
  it('keeps committed review payments visible with their review outcome',()=>{
   f.params=new URLSearchParams({view:'review'});f.items=[{id:'preserved',purpose:'BID',typeLabel:'Bid payment',createdAt:'2026-10-30T09:00:00Z',amount:'10',status:'NEEDS_REVIEW',creditApplied:true,sessionEnded:false}];

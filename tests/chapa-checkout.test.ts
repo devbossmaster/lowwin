@@ -95,6 +95,25 @@ describe.skipIf(!database)('Chapa v2 hosted payments on disposable PostgreSQL',(
   expect(await f.verify(order.id)).toMatchObject({status:'FAILED',providerStatus:'FAILED',verificationState:'VERIFIED',providerReasonCode:'INSUFFICIENT_FUNDS'});
   expect((await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}})).reason).toBe('CHAPA_INSUFFICIENT_FUNDS');expect(await balance(f.userId)).toBe('0');
  });
+ it.each(['telebirr','mpesa','cbebirr','awashbirr'])('records a verified %s combined failure without funds or bid, then reconciles a later success exactly once',async payment_method=>{
+  const sponsor=await verifiedReferralUser(db),grant=await earnedReferralCoupon(db,sponsor.id),f=await payment({purpose:'BID',userId:sponsor.id,fee:10,couponId:grant.coupon.id}),order=await f.start();
+  expect(order.amountCents).toBe('900');
+  f.setStatus('FAILED_OR_CANCELLED');f.setMutation(row=>({...row,payment_method}));
+  const failed=await f.verify(order.id);
+  expect(failed).toMatchObject({status:'FAILED',providerStatus:'FAILED',verificationState:'VERIFIED',providerReasonCode:'PAYMENT_FAILED_OR_CANCELLED',fundsPreserved:false});
+  const stored=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});
+  expect(stored).toMatchObject({reason:'CHAPA_PAYMENT_FAILED_OR_CANCELLED',creditJournalId:null,bidId:null});
+  expect(await balance(f.userId)).toBe('0');expect(await db.bid.count({where:{userId:f.userId,auctionId:f.auction!.id}})).toBe(0);
+  expect(await db.referralRedemption.count({where:{couponId:grant.coupon.id}})).toBe(0);
+  expect(await db.operation.count({where:{userId:f.userId,scope:'CHAPA_RECEIPT'}})).toBe(0);expect(await db.outbox.count({where:{key:`chapa:${order.id}:telegram-confirmed`}})).toBe(0);
+  f.setMutation(row=>({...row,payment_method,amount:999}));expect(await f.verify(order.id)).toMatchObject({status:'NEEDS_REVIEW',reason:'EVIDENCE_MISMATCH',providerReasonCode:null});expect(await balance(f.userId)).toBe('0');
+  f.setStatus('SUCCESS');f.setMutation(row=>({...row,payment_method}));
+  expect(await f.verify(order.id)).toMatchObject({status:'BID_ACCEPTED',providerStatus:'SUCCESS',verificationState:'VERIFIED',providerReasonCode:null});
+  const calls=f.lookup.mock.calls.length;await f.verify(order.id);expect(f.lookup).toHaveBeenCalledTimes(calls);
+  expect(await db.bid.count({where:{userId:f.userId,auctionId:f.auction!.id}})).toBe(1);expect(await db.operation.count({where:{userId:f.userId,scope:'CHAPA_RECEIPT'}})).toBe(1);
+  expect(await db.referralRedemption.count({where:{couponId:grant.coupon.id}})).toBe(1);
+  expect(await balance(f.userId)).toBe('0');expect(await reconcileChapaReceipts(db)).toEqual([]);expect(await reconcile(db)).toEqual([]);
+ });
  it('does not store a failure reason from pending or mismatched evidence and still accepts a later success once',async()=>{
   const f=await payment(),order=await f.start();f.setStatus('PENDING');f.setMutation(row=>({...row,reason:'INVALID_PIN'}));
   expect(await f.verify(order.id)).toMatchObject({status:'PENDING',providerReasonCode:null});expect(await balance(f.userId)).toBe('0');

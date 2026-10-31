@@ -40,7 +40,7 @@ test('live Home countdown stays running through initial query hydration and reop
  }finally{await f.db.$disconnect()}
 });
 
-test('payment launch goes directly to its modal with one owned read and automatic session timeout',async({page},info)=>{
+test('payment launch goes directly to its modal with one owned read and bounded automatic checking',async({page},info)=>{
  const id=randomUUID(),am=info.project.name==='430',f=await fixture(page,am,'chapa_'+id);
  let reads=0,checks=0,creates=0,complete=false;
  const order=pending({key:id,purpose:'TOP_UP',amount:'10.00'},id),returnRoutes:string[]=[];
@@ -59,7 +59,8 @@ test('payment launch goes directly to its modal with one owned read and automati
   const openedMs=Date.now()-started;
   expect(reads).toBe(1);expect(creates).toBe(0);expect(returnRoutes).toEqual([]);
   await page.clock.fastForward(300001);
-  await expect(sheet.locator('[data-payment-state="session-ended"]')).toBeVisible();
+  await expect(sheet.locator('[data-payment-state="pending"]')).toBeVisible();
+  await expect(sheet).not.toContainText('Checkout session ended');
   await expect(sheet.getByRole('button',{name:/Verify status|Check payment/i})).toHaveCount(0);
   complete=true;const before=checks;await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
   await expect(sheet.locator('[data-payment-state="confirmed"]')).toBeVisible();
