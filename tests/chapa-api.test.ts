@@ -76,13 +76,13 @@ describe('Chapa HTTP authorization and durable webhook boundary',()=>{
   }
   expect(f.list).not.toHaveBeenCalled();
  });
- it('forwards only owned pending/failed unaccepted bid filters and rejects ambiguous statuses',async()=>{
-  for(const status of ['pending','failed']){
+ it('forwards only owned unaccepted bid subfilters and rejects ambiguous statuses',async()=>{
+  for(const status of ['pending','failed','cancelled','review']){
    const response=await list(request('/api/payments/chapa/checkouts?purpose=BID&view=unaccepted&page=2&status='+status));
    expect(response.status).toBe(200);expect(response.headers.get('cache-control')).toContain('private, no-store');expect(f.list).toHaveBeenLastCalledWith(expect.anything(),'owner-user','BID',2,true,status);
   }
   f.list.mockClear();
-  for(const query of ['status=failed','purpose=TOP_UP&status=failed','purpose=BID&status=pending','purpose=BID&view=unaccepted&status=review','purpose=BID&view=unaccepted&status=failed&status=pending','purpose=BID&view=unaccepted&status=failed&userId=other'])expect((await list(request('/api/payments/chapa/checkouts?'+query))).status).toBe(422);
+  for(const query of ['status=failed','purpose=TOP_UP&status=failed','purpose=BID&status=pending','purpose=BID&view=unaccepted&status=unknown','purpose=BID&view=unaccepted&status=failed&status=pending','purpose=BID&view=unaccepted&status=failed&userId=other'])expect((await list(request('/api/payments/chapa/checkouts?'+query))).status).toBe(422);
   expect(f.list).not.toHaveBeenCalled();
  });
  it('requires same-origin session authority for creation/verification and never trusts supplied user identity',async()=>{const body={key:randomUUID(),purpose:'TOP_UP',amount:'10.00'},r=await create(request('/api/payments/chapa/checkouts',body));expect(r.status).toBe(202);expect(f.create).toHaveBeenCalledWith(expect.anything(),'owner-user',body,f.reauthorize);expect((await verify(request('/api/payments/chapa/checkouts/'+id,{}),{params:Promise.resolve({id})})).status).toBe(200);expect(f.verify).toHaveBeenCalledWith(expect.anything(),id,'owner-user',f.reauthorize);expect((await create(request('/api/payments/chapa/checkouts',body,'https://other.test'))).status).toBe(403)});

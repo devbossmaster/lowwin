@@ -115,7 +115,10 @@ export async function submitBidInTransaction(tx:Prisma.TransactionClient,input:B
   const bid=await tx.bid.create({data:{id:bidId,userId,auctionId:auction.id,amount,termsVersion:fee.version,feePoints:fee.feePoints,feeRevisionId:fee.id,operationId}});
   await tx.auction.update({where:{id:auction.id},data:{acceptedBidCount:{increment:1}}});
   if(extraReserved.gt(0))await adjustAuctionHoldInTransaction(tx,{userId,auctionId:auction.id,direction:'RESERVE',points:extraReserved.toString(),key:`bid-hold:${createHash('sha256').update(`${userId}:${key}`).digest('hex')}`,reference:`bid:${bid.id}`});
-  if(fee.feePoints.gt(0))await seedPlatformAccounts(tx);
+  // Platform accounts are immutable. Normal purchases only read the existing
+  // fee account; retain initialization for an empty/incomplete installation.
+  let feeAccount=fee.feePoints.gt(0)?await tx.ledgerAccount.findUnique({where:{name:'platform:fees'},select:{id:true}}):null;
+  if(fee.feePoints.gt(0)&&!feeAccount){await seedPlatformAccounts(tx);feeAccount=await tx.ledgerAccount.findUniqueOrThrow({where:{name:'platform:fees'},select:{id:true}})}
   const receipt:BidReceipt={
     bid:{id:bid.id,auctionCode:auction.code,auctionSlug,amount:amount.toString(),acceptedAt:bid.acceptedAt.toISOString(),termsVersion:fee.version,feePoints:fee.feePoints.toString()},
     hold:{previousMax:previousMax.toString(),newMax:previousMax.add(extraReserved).toString(),extraReserved:extraReserved.toString()},
@@ -127,9 +130,8 @@ export async function submitBidInTransaction(tx:Prisma.TransactionClient,input:B
   await tx.operation.create({data:{id:operationId,userId,scope:'BID',key,requestHash,result:receipt}});
   if(discount)await redeemReferralInTransaction(tx,userId,bid.id,auction.id,discount);
   if(fee.feePoints.gt(0)){
-    const fees=await tx.ledgerAccount.findUniqueOrThrow({where:{name:'platform:fees'}});
     await tx.journal.create({data:{operationId,kind:'BID_FEE',reference:`bid:${bid.id}`,postings:{create:[
-      {accountId:available.id,delta:fee.feePoints.negated()},{accountId:fees.id,delta:fee.feePoints},
+      {accountId:available.id,delta:fee.feePoints.negated()},{accountId:feeAccount!.id,delta:fee.feePoints},
     ]}}});
   }
   await enqueueAlert(tx,{key:`bid:${bid.id}:accepted`,kind:'BID_ACCEPTED',auctionId:auction.id,userId});

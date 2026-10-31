@@ -34,7 +34,7 @@ const paid=(order:ChapaCheckout)=>order.creditJournalId!==null;
 const publicInitializationCodes=new Set(['INVALID_FORMAT','INVALID_VALUE','MISSING_REQUIRED_FIELD','INVALID_STATE','NOT_FOUND','PROCESSING_FAILED','UNAUTHORIZED','FORBIDDEN','RATE_LIMITED','HTTP_ERROR']);
 const after=(ms:number)=>new Date(Date.now()+ms);
 // Observe committed webhook results separately from the provider retry schedule.
-const STATUS_REFRESH_MS=5000;
+const STATUS_REFRESH_MS=2000;
 
 export function walletBidsEnabled(raw:Record<string,string|undefined>=process.env){
  if(raw.WALLET_BIDS_ENABLED!=='true'||raw.DEV_IDENTITY_ENABLED==='true'||raw.STAGING_DEMO_ENABLED==='true')return false;
@@ -62,6 +62,22 @@ function initializationInput(order:ChapaCheckout):ChapaCreate{
  return order.initialization as unknown as ChapaCreate;
 }
 function sameConfiguration(order:ChapaCheckout){const value=chapaAvailability();return value.mode===order.mode&&chapaConfigurationFingerprint()===order.credentialFingerprint}
+
+/** The outer payment transaction already owns the wallet advisory key. Keep
+ * projection locking before reading balances, without rewriting complete accounts. */
+async function paymentCreditAccounts(tx:Tx,userId:string){
+ let wallet=await tx.wallet.findUnique({where:{userId},select:{id:true}});
+ if(wallet)await tx.$executeRaw`SELECT lock_wallet_hold_state(${wallet.id})`;
+ else{wallet=await ensureWallet(tx,userId);await seedPlatformAccounts(tx)}
+ const read=()=>tx.ledgerAccount.findMany({where:{OR:[{walletId:wallet!.id},{name:'platform:issuance'}]},select:{id:true,name:true,kind:true,walletId:true}});
+ let accounts=await read();
+ if(!accounts.some(a=>a.walletId===wallet!.id&&a.kind==='AVAILABLE')||!accounts.some(a=>a.walletId===wallet!.id&&a.kind==='HELD')||!accounts.some(a=>a.name==='platform:issuance')){
+  wallet=await ensureWallet(tx,userId);await seedPlatformAccounts(tx);accounts=await read();
+ }
+ const available=accounts.find(a=>a.walletId===wallet!.id&&a.kind==='AVAILABLE'),issuance=accounts.find(a=>a.name==='platform:issuance');
+ if(!available||!issuance)throw new ChapaError(503,'PAYMENT_UNAVAILABLE','The payment accounts could not be loaded. Retry this same payment.');
+ return {available,issuance};
+}
 
 /** Persist the intent BEFORE provider HTTP. All retries reuse this exact body,
  * reference and idempotency key, including an ambiguous initialization timeout. */
@@ -142,13 +158,13 @@ async function initializeChapaCheckout(client:PrismaClient,id:string,transport:C
 export async function getChapaCheckout(client:PrismaClient,userId:string,id:string){
  const order=await measureChapa('database',()=>client.chapaCheckout.findFirst({where:{id:z.string().uuid().parse(id),userId},include:context}));if(!order)throw new ChapaError(404,'NOT_FOUND','Payment not found.');return ownChapaCheckout(order);
 }
-export async function listChapaCheckouts(client:PrismaClient,userId:string,purpose?:'TOP_UP'|'BID',page=1,unaccepted=false,statusFilter:'all'|'pending'|'failed'='all'){
+export async function listChapaCheckouts(client:PrismaClient,userId:string,purpose?:'TOP_UP'|'BID',page=1,unaccepted=false,statusFilter:'all'|'pending'|'failed'|'cancelled'|'review'='all'){
  const filter=z.enum(['TOP_UP','BID']).optional().parse(purpose);page=z.number().int().min(1).max(10000).parse(page);
- const state=z.enum(['all','pending','failed']).parse(statusFilter);
+ const state=z.enum(['all','pending','failed','cancelled','review']).parse(statusFilter);
  if(state!=='all'&&(!unaccepted||filter!=='BID'))throw new ChapaError(422,'INVALID_INPUT','Choose unaccepted bid payments for this filter.');
  if(process.env.CHAPA_SCHEMA_READY!=='true')return {items:[],page,nextPage:null};
- const terminal=['FAILED','CANCELLED','INCOMPLETE','EXPIRED','BLOCKED'];
- const rows=await client.chapaCheckout.findMany({where:{userId,...(filter?{purpose:filter}:{}),...(unaccepted?{purpose:'BID',bidId:null}:{}),...(state==='all'?{}:{creditJournalId:null,status:state==='failed'?{in:terminal}:{notIn:terminal}})},orderBy:[{createdAt:'desc'},{id:'desc'}],skip:(page-1)*20,take:21,include:context});
+ const statuses={pending:['SUBMITTING','PENDING','VERIFYING','AUTH_NEEDED'],failed:['FAILED','INCOMPLETE','EXPIRED','BLOCKED'],cancelled:['CANCELLED'],review:['NEEDS_REVIEW']} as const;
+ const rows=await client.chapaCheckout.findMany({where:{userId,...(filter?{purpose:filter}:{}),...(unaccepted?{purpose:'BID',bidId:null}:{}),...(state==='all'?{}:{...(state==='review'?{}:{creditJournalId:null}),status:{in:[...statuses[state]]}})},orderBy:[{createdAt:'desc'},{id:'desc'}],skip:(page-1)*20,take:21,include:context});
  return {items:rows.slice(0,20).map(ownChapaCheckout),page,nextPage:rows.length>20?page+1:null};
 }
 export async function verifyChapaCheckout(client:PrismaClient,id:string,userId?:string,reauthorize?:Authorize,transport:ChapaTransport=chapaTransport,eventCheck=false){
@@ -185,9 +201,7 @@ export async function verifyChapaCheckout(client:PrismaClient,id:string,userId?:
   if(!proof.chapaReference)throw new ChapaError(502,'EVIDENCE_MISMATCH','Payment confirmation is pending.');
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`chapa-reference:${proof.chapaReference}`},0))`;
   if(await tx.chapaCheckout.findFirst({where:{chapaReference:proof.chapaReference,id:{not:id}}}))return ownChapaCheckout(await tx.chapaCheckout.update({where:{id},data:{status:'NEEDS_REVIEW',reason:'DUPLICATE_PROVIDER_REFERENCE',leaseUntil:null,nextCheckAt:after(60000)}}));
-  await ensureWallet(tx,order.userId);await seedPlatformAccounts(tx);
-  const amount=new Prisma.Decimal(centsToEtb(order.amountCents)),accounts=await tx.ledgerAccount.findMany({where:{name:{in:[`user:${order.userId}:available`,'platform:issuance']}},select:{id:true,name:true}}),available=accounts.find(account=>account.name===`user:${order.userId}:available`),issuance=accounts.find(account=>account.name==='platform:issuance');
-  if(!available||!issuance)throw new ChapaError(503,'PAYMENT_UNAVAILABLE','The payment accounts could not be loaded. Retry this same payment.');
+  const {available,issuance}=await paymentCreditAccounts(tx,order.userId),amount=new Prisma.Decimal(centsToEtb(order.amountCents));
   const operation=await tx.operation.create({data:{userId:order.userId,scope:'CHAPA_RECEIPT',key:order.id,requestHash:proof.hash,result:{checkoutId:id,merchantReference:order.merchantReference,chapaReference:proof.chapaReference,mode:order.mode,amountCents:order.amountCents.toString(),currency:'ETB'}}});
   const journal=await tx.journal.create({data:{operationId:operation.id,kind:'CHAPA_RECEIPT',reference:`chapa:${order.merchantReference}`,postings:{create:[{accountId:issuance.id,delta:amount.negated()},{accountId:available.id,delta:amount}]}}});
   let receipt:BidReceipt|null=null,reason:string|null=null;

@@ -13,7 +13,7 @@ export async function GET(request:Request){
   if([...query.keys()].some(key=>!['purpose','page','view','status'].includes(key)||query.getAll(key).length>1))throw new ChapaError(422,'INVALID_INPUT','Check the supplied payment filters.');
   const purpose=z.enum(['TOP_UP','BID']).optional().parse(query.get('purpose')??undefined);
   const page=z.coerce.number().int().min(1).max(10000).parse(query.get('page')??1),view=z.enum(['all','unaccepted']).parse(query.get('view')??'all');
-  const status=z.enum(['all','pending','failed']).parse(query.get('status')??'all');
+  const status=z.enum(['all','pending','failed','cancelled','review']).parse(query.get('status')??'all');
   if(view==='unaccepted'&&purpose!=='BID')throw new ChapaError(422,'INVALID_INPUT','Choose bid payments for this view.');
   if(status!=='all'&&(view!=='unaccepted'||purpose!=='BID'))throw new ChapaError(422,'INVALID_INPUT','Choose unaccepted bid payments for this filter.');
   return Response.json(await (status==='all'?listChapaCheckouts(db,userId,purpose,page,view==='unaccepted'):listChapaCheckouts(db,userId,purpose,page,true,status)),{headers:privateHeaders});

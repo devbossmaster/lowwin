@@ -12,7 +12,7 @@ import {useMiniLocale} from './mini-locale';
 import {formatAuctionBid,formatEtb,etbToCents} from '@/lib/money';
 import {isSubmissionFeeOnly} from '@/modules/auctions/rules';
 import {useTelegram} from './telegram-provider';
-import {acceptedBidView,bidFeeNotice,myBidsFilter,type MyBidsFilter} from './my-bids-copy';
+import {acceptedBidView,bidFeeNotice,myBidsSelection,type MyBidsFilter,type MyBidsSection} from './my-bids-copy';
 import {MiniBidRowsSkeleton} from './mini-route-skeleton';
 import styles from './my-bids-page.module.css';
 
@@ -25,7 +25,7 @@ export function bidOutcomeLabel(outcome:string,am:boolean){
 }
 function paymentOf(bid:Bid):Bid["payment"]{return bid.payment??{status:etbToCents(bid.feePoints)===0n?"NOT_REQUIRED":"UNAVAILABLE",method:null,transactionRef:null,checkoutId:null}}
 function paymentLabel(status:Bid['payment']['status'],am:boolean){return status==='PAID'?(am?'ክፍያው ተከፍሏል':'Fee paid'):status==='NOT_REQUIRED'?(am?'ክፍያ የለም':'No fee'):(am?'የክፍያ ዝርዝር አይገኝም':'Payment details unavailable')}
-function paymentMethod(method:Bid['payment']['method'],am:boolean){return method==='CHAPA'?'Chapa':method==='WALLET'?(am?'የዋሌት ቀሪ ሂሳብ':'Wallet balance'):method==='ARIFPAY_TELEBIRR'?'ArifPay · Telebirr':method==='ARIFPAY_MPESA'?'ArifPay · M-PESA':null}
+function paymentMethod(method:Bid['payment']['method'],am:boolean){return method==='CHAPA'?(am?'የመስመር ላይ ክፍያ':'Online payment'):method==='WALLET'?(am?'የዋሌት ቀሪ ሂሳብ':'Wallet balance'):method==='ARIFPAY_TELEBIRR'?'ArifPay · Telebirr':method==='ARIFPAY_MPESA'?'ArifPay · M-PESA':null}
 const shortId=(id:string)=>id.length>16?`${id.slice(0,8)}…${id.slice(-4)}`:id;
 
 export function MyBidsPage({initialView='all'}:{initialView?:View}){
@@ -36,21 +36,23 @@ function PlayerBids({initialView}:{initialView:View}){
  const {queryIdentity}=useTelegram();
  const {language}=useMiniLocale(),am=language==='am',text=(en:string,translated:string)=>am?translated:en;
  const {params,set}=useMiniQueryState(),[page,setPage]=useMiniPage(),[selected,setSelected]=useState<Bid|null>(null),trigger=useRef<HTMLElement|null>(null);
- const requested=params.get('view')??initialView,filter=myBidsFilter(params.get('status'),requested),view=acceptedBidView(filter,requested),showAccepted=filter!=='pending'&&filter!=='failed';
+ const requested=params.get('view')??initialView,{section,filter}=myBidsSelection(params.get('section'),params.get('status'),requested),view=acceptedBidView(filter,requested),showAccepted=section==='accepted';
  const query=usePrivateQuery<Data>(`/api/my-bids?view=${view}&page=${showAccepted?page:1}`,{pollMs:30000,keepPreviousData:true}),data=query.data,busy=query.isPlaceholderData;
  const profile=usePrivateQuery<Awaited<ReturnType<typeof getPlayerProfile>>>('/api/profile');
- useEffect(()=>setSelected(null),[filter,page]);
+ useEffect(()=>setSelected(null),[section,filter,page]);
  const receipt=selected?(data?.items.find(item=>item.id===selected.id)??selected):null;
  const title=(bid:Bid)=>am?bid.auction.titleAm||bid.auction.title:bid.auction.title;
  const bidNumber=(bid:Bid)=>formatAuctionBid(bid.amount,bid.auction.ruleVersion).replace(/^ETB\s*/, '');
  const date=(value:string)=>new Date(value).toLocaleString(am?'am-ET':'en-ET',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',timeZone:'Africa/Addis_Ababa'});
  const coupons=profile.data?.referral?.configured?profile.data.referral.counts.available:'—';
  const summary=[{label:text('Total','ጠቅላላ'),value:data?(data.counts.total??data.counts.live+data.counts.history):undefined},{label:text('Active','በሂደት ላይ'),value:data?(data.counts.active??data.counts.live):undefined},{label:text('Won','ያሸነፉ'),value:data?.counts.won},{label:text('Coupons','ኩፖኖች'),value:coupons}];
- const filters:Array<[MyBidsFilter,string,string]>=[['all','All','ሁሉም'],['active','Active','በሂደት ላይ'],['successful','Successful','የተሳኩ'],['pending','Pending','በመጠባበቅ ላይ'],['failed','Failed','ያልተሳኩ']];
+ const filters:Array<[MyBidsFilter,string,string]>=section==='accepted'?[['all','All','ሁሉም'],['active','Active','በሂደት ላይ'],['completed','Completed','የተጠናቀቁ']]:[['all','All','ሁሉም'],['pending','Pending','በመጠባበቅ ላይ'],['failed','Failed','ያልተሳኩ'],['cancelled','Cancelled','የተሰረዙ'],['review','Needs review','ግምገማ የሚያስፈልጋቸው']];
+ const chooseSection=(next:MyBidsSection)=>{setSelected(null);set({section:next==='accepted'?null:next,status:null,view:null,page:null,paymentPage:null})};
  return <><OfflineRetry/><section className={styles.page} data-my-bids-ready={!!data&&!busy||undefined}>
   <div className={styles.summary} data-my-bids-summary aria-label={text('Accepted bid summary','የተቀበሉ ጨረታዎች ማጠቃለያ')} aria-busy={!data&&query.status==='authenticated'}>{summary.map(item=><div key={item.label}><span>{item.label}</span><strong>{item.value??<span className={styles.skeleton} aria-label={text('Loading','በመጫን ላይ')}/>}</strong></div>)}</div>
-  <div className={styles.tabs} role="group" aria-label={text('Bid status','የጨረታ ሁኔታ')}>{filters.map(([tab,en,translated])=><button type="button" key={tab} aria-pressed={filter===tab} onClick={()=>{setSelected(null);set({status:tab==='all'?null:tab,view:null,page:null,paymentPage:null})}}>{text(en,translated)}</button>)}</div>
-  {(filter==='all'||filter==='pending'||filter==='failed')&&<MyBidPaymentAttempts key={`${queryIdentity}:${filter}`} filter={filter}/>}
+  <div className={styles.sections} role="group" aria-label={text('Bid records','የጨረታ መዝገቦች')}><button type="button" aria-pressed={section==='accepted'} onClick={()=>chooseSection('accepted')}>{text('Accepted bids','የተቀበሉ ጨረታዎች')}</button><button type="button" aria-pressed={section==='attempts'} onClick={()=>chooseSection('attempts')}>{text('Payment attempts','የክፍያ ሙከራዎች')}</button></div>
+  <div className={styles.tabs} role="group" aria-label={text('Bid status','የጨረታ ሁኔታ')}>{filters.map(([tab,en,translated])=><button type="button" key={tab} aria-pressed={filter===tab} onClick={()=>{setSelected(null);set({section:section==='accepted'?null:section,status:tab==='all'?null:tab,view:null,page:null,paymentPage:null})}}>{text(en,translated)}</button>)}</div>
+  {section==='attempts'&&<MyBidPaymentAttempts key={`${queryIdentity}:${filter}`} filter={filter}/>}
   {showAccepted&&<>{(data||query.error||!['loading','authenticated'].includes(query.status))&&<PrivateState query={query} variant="bids"/>}
   {['loading','authenticated'].includes(query.status)&&!data&&!query.error&&<MiniBidRowsSkeleton/>}
   {query.status==='authenticated'&&data&&<>

@@ -43,6 +43,7 @@ describe.skipIf(!url)('submission-fee-only bidding on disposable PostgreSQL',()=
   const a=await auction(2),u=await bidUser(db,'10');queries.length=0;
   const receipt=await bid(u,a.slug!,'1.01');
   expect(queries.some(row=>row.query.includes('lock_wallet_hold_state'))).toBe(true);
+  expect(queries.some(row=>row.query.startsWith('INSERT INTO "public"."LedgerAccount"'))).toBe(false);
   expect(queries.filter(row=>row.query.includes('"LedgerAccount"')&&row.params.includes(`user:${u}:`))).toEqual([]);
   expect(receipt.wallet).toEqual({available:'8',held:'0'});expect(await reconcile(db)).toEqual([]);
  });

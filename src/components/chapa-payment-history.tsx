@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import {ChevronLeft,ChevronRight,RefreshCw,ReceiptText} from 'lucide-react';
+import {ChevronLeft,ChevronRight,Clock3,Minus,Plus,RefreshCw,ReceiptText} from 'lucide-react';
 import {useEffect,useRef,useState} from 'react';
 import {usePrivateQuery,PrivateState} from './private-query';
 import {useMiniLocale} from './mini-locale';
@@ -51,10 +51,17 @@ function OwnedHistory({purpose,unaccepted,fullPage}:{purpose?:'TOP_UP'|'BID';una
   <PrivateState query={query}/>
   {query.status==='authenticated'&&query.data&&<>
    {!query.data.items.length&&<div className={styles.notice}><ReceiptText size={24} aria-hidden="true"/><p>{text(unaccepted?'No unfinished bid payments.':'Your top-ups and bid payments will appear here.',unaccepted?'ያልተጠናቀቁ የጨረታ ክፍያዎች የሉም።':'የዋሌት ገቢዎችና የጨረታ ክፍያዎች እዚህ ይታያሉ።')}</p></div>}
-   <ul className={styles.list} aria-busy={query.fetching}>{query.data.items.map(order=><li key={order.id}><button type="button" className={styles.row} data-payment-id={order.id} disabled={query.isPlaceholderData} onClick={event=>{trigger.current=event.currentTarget;setSelected(order)}}>
-    <span className={styles.details}><strong>{formatEtb(order.amount)}</strong><span>{text(order.purpose==='TOP_UP'?'Wallet top-up':'Bid submission fee',order.purpose==='TOP_UP'?'የዋሌት ገቢ':'የጨረታ ማቅረቢያ ክፍያ')}{order.mode==='test'&&<> · {text('Test','ሙከራ')}</>}</span>{order.purpose==='BID'&&<span>{am?order.auctionTitleAm||order.auctionTitle||order.auctionSlug:order.auctionTitle||order.auctionSlug} · #{order.bidNumber}</span>}<time dateTime={order.createdAt}>{date.format(new Date(order.createdAt))}</time></span>
-    <span className={styles.actions}><span className={styles.status} data-confirmed={chapaConfirmed(order)}>{chapaStatusLabel(order,am)}</span><ChevronRight size={16} aria-hidden="true"/></span>
-   </button></li>)}</ul>
+   <ul className={styles.list} aria-busy={query.fetching}>{query.data.items.map(order=>{
+    // Signs describe committed money movement, never a checkout request or redirect.
+    const confirmed=chapaConfirmed(order),direction=confirmed?(order.fundsPreserved||order.purpose==='TOP_UP'?'incoming':'outgoing'):'none';
+    const Icon=direction==='incoming'?Plus:direction==='outgoing'?Minus:Clock3;
+    const tone=confirmed?'confirmed':['FAILED','BLOCKED','INCOMPLETE','EXPIRED'].includes(order.status)?'failed':order.status==='CANCELLED'?'cancelled':'pending';
+    return <li key={order.id}><button type="button" className={styles.row} data-payment-id={order.id} data-direction={direction} disabled={query.isPlaceholderData} onClick={event=>{trigger.current=event.currentTarget;setSelected(order)}}>
+     <span className={styles.movement} aria-hidden="true"><Icon size={20} strokeWidth={1.8}/></span>
+     <span className={styles.details}><strong>{text(order.fundsPreserved?'Payment saved to wallet':order.purpose==='TOP_UP'?'Wallet top-up':'Bid submission fee',order.fundsPreserved?'ክፍያው በዋሌትዎ ገብቷል':order.purpose==='TOP_UP'?'የዋሌት ገቢ':'የጨረታ ማቅረቢያ ክፍያ')}</strong>{order.purpose==='BID'&&<span className={styles.product}>{am?order.auctionTitleAm||order.auctionTitle||order.auctionSlug:order.auctionTitle||order.auctionSlug}{order.bidNumber&&<> · #{order.bidNumber}</>}</span>}<time dateTime={order.createdAt}>{date.format(new Date(order.createdAt))}</time>{order.mode==='test'&&<span className={styles.test}>{text('Test payment','የሙከራ ክፍያ')}</span>}</span>
+     <span className={styles.actions}><strong className={styles.amount}><span className="sr-only">{direction==='incoming'?text('Money in: ','የገባ ገንዘብ፦ '):direction==='outgoing'?text('Money out: ','የወጣ ገንዘብ፦ '):text('Payment amount: ','የክፍያ መጠን፦ ')}</span><span aria-hidden="true">{direction==='incoming'?'+':direction==='outgoing'?'−':''}</span>{formatEtb(order.amount)}</strong><span className={styles.status} data-tone={tone}>{chapaStatusLabel(order,am)}</span></span>
+    </button></li>;
+   })}</ul>
    {(page>1||query.data.nextPage)&&<nav className={styles.pagination} aria-label={text('Transaction pages','የግብይት ገጾች')}><button type="button" disabled={page<=1||query.fetching} aria-label={text('Previous page','ያለፈው ገጽ')} onClick={()=>setPage(page-1)}><ChevronLeft size={18}/></button><span>{page}</span><button type="button" disabled={!query.data.nextPage||query.fetching} aria-label={text('Next page','ቀጣይ ገጽ')} onClick={()=>setPage(query.data!.nextPage!)}><ChevronRight size={18}/></button></nav>}
   </>}
   {selected&&query.status==='authenticated'&&<ChapaTransactionDetails key={selected.id} order={selected} onClose={()=>setSelected(null)} trigger={trigger}/>}

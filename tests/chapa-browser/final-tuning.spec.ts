@@ -2,6 +2,7 @@ import {test,expect,type Locator,type Page} from '@playwright/test';
 import {randomUUID} from 'node:crypto';
 import {mkdirSync,writeFileSync} from 'node:fs';
 import {fixture,pending} from './fixtures';
+import type {ChapaCheckoutView} from '../../src/lib/chapa-client';
 
 async function modalGeometry(dialog:Locator){
  return dialog.evaluate(node=>{
@@ -33,7 +34,7 @@ async function compactEntryScenario(page:Page,name:string){
   await dialog.evaluate((node,value)=>node.setAttribute('data-stable-modal',value),marker);
   const header=dialog.locator(':scope>header');await expect(header.getByText('Live',{exact:true})).toBeVisible();await expect(dialog.getByText('Live',{exact:true})).toHaveCount(1);
   await expect(dialog.getByRole('group',{name:'Select payment method'})).toBeVisible();await expect(dialog.getByRole('radio')).toHaveCount(2);
-  await input.fill('4.25');await dialog.getByRole('radio',{name:'Chapa',exact:true}).check();
+  await input.fill('4.25');await dialog.getByRole('radio',{name:'Online payment',exact:true}).check();
   await expect(dialog.locator('[data-payment-action]')).toBeDisabled();
   release();await expect(dialog.locator('[data-payment-action]')).toBeEnabled();
   await expect(dialog).toHaveAttribute('data-stable-modal',marker);await expect(input).toHaveValue('4.25');
@@ -55,7 +56,7 @@ async function compactEntryScenario(page:Page,name:string){
   const payment=dialog.getByRole('group',{name:'Select payment method'}),topUp=payment.getByRole('link',{name:'Top up wallet',exact:true});await expect(topUp).toHaveCount(1);expect(await topUp.evaluate(node=>node.closest('label')===null)).toBe(true);
   const plusBox=await topUp.boundingBox();expect(plusBox!.width).toBeGreaterThanOrEqual(44);expect(plusBox!.height).toBeGreaterThanOrEqual(44);
   await topUp.click();const topup=page.getByRole('dialog',{name:'Top up wallet',exact:true});await expect(topup).toBeVisible();
-  await page.keyboard.press('Escape');await expect(input).toHaveValue('4.25');await expect(dialog.getByRole('radio',{name:'Chapa',exact:true})).toBeChecked();await expect(dialog.getByRole('radio',{name:'Wallet balance',exact:true})).not.toBeChecked();await expect(dialog).toHaveAttribute('data-stable-modal',marker);
+  await page.keyboard.press('Escape');await expect(input).toHaveValue('4.25');await expect(dialog.getByRole('radio',{name:'Online payment',exact:true})).toBeChecked();await expect(dialog.getByRole('radio',{name:'Wallet balance',exact:true})).not.toBeChecked();await expect(dialog).toHaveAttribute('data-stable-modal',marker);
   await expectCompactFit(dialog);
   mkdirSync('test-results/chapa-ui/final-tuning',{recursive:true});await page.screenshot({path:`test-results/chapa-ui/final-tuning/bid-${name}.png`,animations:'disabled'});await photo.screenshot({path:`test-results/chapa-ui/final-tuning/bid-photo-${name}.png`,animations:'disabled'});
   const modalBox=await dialog.boundingBox(),bottomTop=Math.max(0,labelBox!.y-6);await page.screenshot({path:`test-results/chapa-ui/final-tuning/bid-bottom-${name}.png`,animations:'disabled',clip:{x:modalBox!.x,y:bottomTop,width:modalBox!.width,height:modalBox!.y+modalBox!.height-bottomTop}});
@@ -144,17 +145,20 @@ test('a long pending bid stays honest, checks automatically and accepts a later 
 });
 
 test('My Bids filters payment attempts without counting them as accepted bids',async({page},info)=>{
- const f=await fixture(page,false),orders=['PENDING','FAILED','NEEDS_REVIEW'].map((status,index)=>({...pending({key:randomUUID(),purpose:'BID',auctionSlug:f.auction.slug!,amount:String(index+2),feeVersion:1}),status,auctionTitle:f.title,merchantReference:'LW'+randomUUID().replaceAll('-','').slice(0,18),...(status==='NEEDS_REVIEW'?{verificationState:'MISMATCH'}:{})}));
+ const f=await fixture(page,false),orders=['PENDING','FAILED','NEEDS_REVIEW','CANCELLED'].map((status,index)=>({...pending({key:randomUUID(),purpose:'BID',auctionSlug:f.auction.slug!,amount:String(index+2),feeVersion:1}),status,auctionTitle:f.title,merchantReference:'LW'+randomUUID().replaceAll('-','').slice(0,18),...(status==='NEEDS_REVIEW'?{verificationState:'MISMATCH'}:{})}));
  try{
   await page.route('**/api/payments/chapa/checkouts**',route=>{
    const url=new URL(route.request().url());
    if(!url.pathname.endsWith('/checkouts'))return route.fulfill({json:orders.find(row=>row.id===url.pathname.split('/').at(-1))});
-   const status=url.searchParams.get('status'),items=status==='failed'?orders.filter(row=>row.status==='FAILED'):status==='pending'?orders.filter(row=>row.status!=='FAILED'):orders;
+   const status=url.searchParams.get('status'),match={failed:'FAILED',pending:'PENDING',cancelled:'CANCELLED',review:'NEEDS_REVIEW'}[status??''],items=match?orders.filter(row=>row.status===match):orders;
    return route.fulfill({json:{items,page:1,nextPage:null}});
   });
   await page.goto('/telegram?next='+encodeURIComponent('/my-bids'));
-  await expect(page.locator('[data-payment-id]')).toHaveCount(3);
+  const sections=page.getByRole('group',{name:'Bid records'});
+  await expect(sections.getByRole('button',{name:'Accepted bids',exact:true})).toHaveAttribute('aria-pressed','true');await expect(page.locator('[data-payment-id]')).toHaveCount(0);
+  await sections.getByRole('button',{name:'Payment attempts',exact:true}).click();await expect(page.locator('[data-payment-id]')).toHaveCount(4);
   const filters=page.getByRole('group',{name:'Bid status'});
+  for(const label of ['All','Pending','Failed','Cancelled','Needs review'])await expect(filters.getByRole('button',{name:label,exact:true})).toBeInViewport({ratio:1});
   await filters.getByRole('button',{name:'Failed',exact:true}).click();await expect(page).toHaveURL(/status=failed/);
   await expect(page.locator('[data-payment-id]')).toHaveCount(1);await expect(page.locator('[data-payment-id]')).toContainText('Payment failed');
   await expect(page.locator('[data-my-bids-summary] strong').first()).toHaveText('0');
@@ -162,10 +166,38 @@ test('My Bids filters payment attempts without counting them as accepted bids',a
   await page.locator('[data-payment-id]').click();const detail=page.getByRole('dialog',{name:'Transaction details',exact:true});await expect(detail).toBeVisible();await expect(detail).toContainText('Payment failed');
   await page.screenshot({path:`test-results/chapa-ui/final-tuning/bid-detail-${info.project.name}.png`,animations:'disabled'});
   await page.keyboard.press('Escape');
-  await filters.getByRole('button',{name:'Pending',exact:true}).click();await expect(page.locator('[data-payment-id]')).toHaveCount(2);
+  await filters.getByRole('button',{name:'Pending',exact:true}).click();await expect(page.locator('[data-payment-id]')).toHaveCount(1);
   await expect(page.locator('[data-payment-id]').filter({hasText:'Payment failed'})).toHaveCount(0);
-  await filters.getByRole('button',{name:'Successful',exact:true}).click();await expect(page.locator('[data-payment-id]')).toHaveCount(0);
+  await filters.getByRole('button',{name:'Cancelled',exact:true}).click();await expect(page.locator('[data-payment-id]')).toHaveCount(1);await expect(page.locator('[data-payment-id]')).toContainText('Cancelled');
+  await filters.getByRole('button',{name:'Needs review',exact:true}).click();await expect(page.locator('[data-payment-id]')).toHaveCount(1);await expect(page.locator('[data-payment-id]')).toContainText('Needs verification');
+  await page.reload();await expect(filters.getByRole('button',{name:'Needs review',exact:true})).toHaveAttribute('aria-pressed','true');await expect(page.locator('[data-payment-id]')).toHaveCount(1);
+  await sections.getByRole('button',{name:'Accepted bids',exact:true}).click();await expect(page.locator('[data-payment-id]')).toHaveCount(0);await expect(page).not.toHaveURL(/section=attempts/);
+  await filters.getByRole('button',{name:'Completed',exact:true}).click();await expect(page).toHaveURL(/status=completed/);await expect(page.locator('[data-payment-id]')).toHaveCount(0);
+  await page.goBack();await expect(filters.getByRole('button',{name:'All',exact:true})).toHaveAttribute('aria-pressed','true');
   await expect(page.locator('[data-my-bids-summary] strong').first()).toHaveText('0');
   await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ }finally{await f.db.$disconnect()}
+});
+
+test('Transactions signs and colors follow committed money movement and preserve payment details',async({page},info)=>{
+ const am=info.project.name==='430',f=await fixture(page,am),credit={...pending({key:randomUUID(),purpose:'TOP_UP',amount:'250.00'}),status:'CREDITED',providerStatus:'SUCCESS'},debit={...pending({key:randomUUID(),purpose:'BID',auctionSlug:f.auction.slug!,amount:'4.25',feeVersion:1}),status:'BID_ACCEPTED',providerStatus:'SUCCESS',auctionTitle:'Rugga’s 45W 20,000mAh Power Bank',auctionTitleAm:'የ20,000mAh ፓወር ባንክ',receipt:{bid:{id:randomUUID(),amount:'4.25'}} as ChapaCheckoutView['receipt']};
+ const orders=[credit,debit,pending({key:randomUUID(),purpose:'TOP_UP',amount:'100.00'}),{...pending({key:randomUUID(),purpose:'TOP_UP',amount:'50.00'}),status:'FAILED',providerStatus:'FAILED'},{...pending({key:randomUUID(),purpose:'TOP_UP',amount:'50.00'}),status:'CANCELLED',providerStatus:'CANCELLED'},{...pending({key:randomUUID(),purpose:'BID',auctionSlug:f.auction.slug!,amount:'7.25',feeVersion:1}),status:'NEEDS_REVIEW',fundsPreserved:true,auctionTitle:'Headphones',auctionTitleAm:'የጆሮ ማዳመጫ'}];
+ try{
+  await page.route('**/api/payments/chapa/checkouts**',route=>{
+   const url=new URL(route.request().url());if(url.pathname.endsWith('/checkouts'))return route.fulfill({json:{items:orders,page:1,nextPage:null}});
+   const order=orders.find(order=>order.id===url.pathname.split('/').at(-1));return route.fulfill({status:order?200:404,json:order??{error:'Not found'}});
+  });
+  await page.goto('/telegram?next='+encodeURIComponent('/payments'));
+  const rows=page.locator('[data-payment-history] [data-payment-id]');await expect(rows).toHaveCount(6);
+  await expect(rows.nth(0)).toHaveAttribute('data-direction','incoming');await expect(rows.nth(0)).toContainText('+ETB 250.00');
+  await expect(rows.nth(1)).toHaveAttribute('data-direction','outgoing');await expect(rows.nth(1)).toContainText('−ETB 10.00');
+  for(const index of [2,3,4]){await expect(rows.nth(index)).toHaveAttribute('data-direction','none');await expect(rows.nth(index)).not.toContainText('+ETB');await expect(rows.nth(index)).not.toContainText('−ETB')}
+  await expect(rows.nth(5)).toHaveAttribute('data-direction','incoming');await expect(rows.nth(5)).toContainText(am?'ክፍያው በዋሌትዎ ገብቷል':'Payment saved to wallet');
+  expect(await rows.nth(0).locator('strong').last().evaluate(node=>getComputedStyle(node).color)).toBe('rgb(23, 107, 69)');expect(await rows.nth(1).locator('strong').last().evaluate(node=>getComputedStyle(node).color)).toBe('rgb(162, 56, 46)');
+  await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  for(const row of await rows.all())expect((await row.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  mkdirSync('test-results/chapa-ui/transactions',{recursive:true});await page.screenshot({path:`test-results/chapa-ui/transactions/polished-${info.project.name}.png`,fullPage:true,animations:'disabled'});
+  await rows.first().click();const detail=page.getByRole('dialog',{name:am?'የግብይት ዝርዝር':'Transaction details',exact:true});await expect(detail).toBeVisible();await expect(detail).toContainText(am?'ዋሌት ገብቷል':'Wallet credited');await page.keyboard.press('Escape');await expect(rows.first()).toBeFocused();
+  expect(await f.db.chapaCheckout.count({where:{userId:f.user.id}})).toBe(0);expect(await f.db.bid.count({where:{userId:f.user.id}})).toBe(0);
  }finally{await f.db.$disconnect()}
 });

@@ -1,7 +1,7 @@
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {PrismaClient} from '@prisma/client';
 import {listChapaCheckouts} from '../src/modules/payments/chapa';
-import {acceptedBidView,myBidsFilter} from '../src/components/my-bids-copy';
+import {acceptedBidView,myBidsFilter,myBidsSelection} from '../src/components/my-bids-copy';
 
 const previous=process.env.CHAPA_SCHEMA_READY;
 beforeEach(()=>{process.env.CHAPA_SCHEMA_READY='true'});
@@ -11,13 +11,17 @@ const database=()=>{const findMany=vi.fn().mockResolvedValue([]);return {findMan
 describe('owned My Bids payment filters',()=>{
  it('filters failed attempts before pagination and retains ownership and no accepted bid',async()=>{
   const {db,findMany}=database();await listChapaCheckouts(db,'verified-player','BID',2,true,'failed');
-  expect(findMany).toHaveBeenCalledWith(expect.objectContaining({where:{userId:'verified-player',purpose:'BID',bidId:null,creditJournalId:null,status:{in:['FAILED','CANCELLED','INCOMPLETE','EXPIRED','BLOCKED']}},skip:20,take:21,orderBy:[{createdAt:'desc'},{id:'desc'}]}));
+  expect(findMany).toHaveBeenCalledWith(expect.objectContaining({where:{userId:'verified-player',purpose:'BID',bidId:null,creditJournalId:null,status:{in:['FAILED','INCOMPLETE','EXPIRED','BLOCKED']}},skip:20,take:21,orderBy:[{createdAt:'desc'},{id:'desc'}]}));
  });
  it('keeps pending, review and customer-session expiry separate from provider failure',async()=>{
   const {db,findMany}=database();await listChapaCheckouts(db,'verified-player','BID',1,true,'pending');
   const where=findMany.mock.calls[0][0].where;
-  expect(where).toMatchObject({userId:'verified-player',purpose:'BID',bidId:null,creditJournalId:null,status:{notIn:['FAILED','CANCELLED','INCOMPLETE','EXPIRED','BLOCKED']}});
-  expect(where.status.notIn).not.toContain('NEEDS_REVIEW');expect(where).not.toHaveProperty('createdAt');expect(where).not.toHaveProperty('expiresAt');
+  expect(where).toMatchObject({userId:'verified-player',purpose:'BID',bidId:null,creditJournalId:null,status:{in:['SUBMITTING','PENDING','VERIFYING','AUTH_NEEDED']}});
+  expect(where.status.in).not.toContain('NEEDS_REVIEW');expect(where.status.in).not.toContain('CANCELLED');expect(where).not.toHaveProperty('createdAt');expect(where).not.toHaveProperty('expiresAt');
+ });
+ it('separates cancelled attempts and includes preserved funds in the review section',async()=>{
+  const {db,findMany}=database();await listChapaCheckouts(db,'verified-player','BID',1,true,'cancelled');expect(findMany.mock.calls[0][0].where).toEqual({userId:'verified-player',purpose:'BID',bidId:null,creditJournalId:null,status:{in:['CANCELLED']}});
+  await listChapaCheckouts(db,'verified-player','BID',2,true,'review');expect(findMany.mock.calls[1][0]).toMatchObject({where:{userId:'verified-player',purpose:'BID',bidId:null,status:{in:['NEEDS_REVIEW']}},skip:20});expect(findMany.mock.calls[1][0].where).not.toHaveProperty('creditJournalId');
  });
  it('keeps all unaccepted payments visible without counting them as accepted records',async()=>{
   const {db,findMany}=database();expect(await listChapaCheckouts(db,'verified-player','BID',1,true)).toEqual({items:[],page:1,nextPage:null});
@@ -35,7 +39,13 @@ describe('owned My Bids payment filters',()=>{
 });
 
 describe('My Bids navigation state',()=>{
- it.each(['all','active','successful','pending','failed'] as const)('retains the explicit %s filter',filter=>expect(myBidsFilter(filter)).toBe(filter));
+ it.each(['all','active','completed','successful','pending','failed','cancelled','review'] as const)('retains the explicit %s filter',filter=>expect(myBidsFilter(filter)).toBe(filter));
+ it('opens accepted bids by default while preserving old attempt and history links',()=>{
+  expect(myBidsSelection(null,null)).toEqual({section:'accepted',filter:'all'});expect(myBidsSelection(null,'successful')).toEqual({section:'accepted',filter:'all'});
+  expect(myBidsSelection(null,'pending')).toEqual({section:'attempts',filter:'pending'});expect(myBidsSelection(null,null,'history')).toEqual({section:'accepted',filter:'completed'});
+  expect(myBidsSelection('attempts','active')).toEqual({section:'attempts',filter:'all'});expect(myBidsSelection('accepted','failed')).toEqual({section:'accepted',filter:'all'});
+  expect(acceptedBidView('completed',null)).toBe('history');
+ });
  it('preserves legacy active/history links while keeping accepted reads scoped',()=>{
   expect(myBidsFilter(null,'live')).toBe('active');expect(myBidsFilter(null,'history')).toBe('successful');expect(myBidsFilter('invalid','live')).toBe('active');
   expect(acceptedBidView('active',null)).toBe('live');expect(acceptedBidView('successful','history')).toBe('history');expect(acceptedBidView('successful',null)).toBe('all');

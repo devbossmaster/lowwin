@@ -14,6 +14,24 @@ function schedulerClient(data:Record<string,unknown>,halted=false):PrismaClient{
 }
 
 describe('upcoming auction reminders',()=>{
+ it('announces a published upcoming auction even when it starts more than a day later',async()=>{
+  const content=await campaignContent(transaction(auction({startsAt:new Date(now.getTime()+3*86400000)})),{...row,kind:'AUCTION_PUBLISHED'});
+  expect(content?.title).toContain('New auction');expect(content?.body).toContain('Fixture phone');expect(content?.href).toBe('/auctions/fixture-phone');
+ });
+ it('queues the closing-day reminder only once per schedule version across repeated ticks',async()=>{
+  const saved=new Map<string,unknown>(),createMany=vi.fn(async({data}:{data:Array<{key:string}>})=>{let count=0;for(const job of data)if(!saved.has(job.key)){saved.set(job.key,job);count++}return {count}});
+  const findMany=vi.fn(async({where}:{where:{startsAt:{lte?:Date}}})=>where.startsAt.lte?.getTime()===now.getTime()?[{id:'auction-1',isDemo:false,isSettlementFixture:false,controlVersion:7}]:[]);
+  const client=schedulerClient({$queryRaw:vi.fn(async()=>[{now}]),auction:{findMany},outbox:{createMany}});
+  expect(await scheduleGlobalAlerts(client)).toBe(1);expect(await scheduleGlobalAlerts(client)).toBe(0);
+  expect(saved.get('global:ending:auction-1:v7')).toMatchObject({payload:{deliveryKind:'AUCTION_ENDING',audienceBefore:now.toISOString()}});
+ });
+ it.each([1,86399999])('sends the closing-day notice only while a live auction has less than a day remaining (%i ms)',async offset=>{
+  const content=await campaignContent(transaction(auction({startsAt:new Date(now.getTime()-60000),endsAt:new Date(now.getTime()+offset)})),{...row,kind:'AUCTION_ENDING'});
+  expect(content?.title).toContain('Less than one day left');
+ });
+ it.each([0,86400000,86400001])('does not send a closing-day notice outside its exact window (%i ms)',async offset=>{
+  expect(await campaignContent(transaction(auction({startsAt:new Date(now.getTime()-60000),endsAt:new Date(now.getTime()+offset)})),{...row,kind:'AUCTION_ENDING'})).toBeNull();
+ });
  it('suppresses queued cancellation results for the bot and Mini App bell',async()=>{
   const cancelled=auction({status:'CANCELLED',settlement:{outcome:'CANCELLED',decision:'OWNER_CANCELLED',publication:{publishedAt:now}}});
   const result={kind:'AUCTION_RESULT',payload:{auctionId:'auction-1',recipientUserId:'player-1'}};

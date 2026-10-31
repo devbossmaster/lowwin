@@ -119,6 +119,20 @@ describe.skipIf(!url)('referral rewards on isolated PostgreSQL',()=>{
   try{expect((await state()).couponAvailableCount).toBe(1)}finally{await db.referralPolicy.update({where:{id:'default'},data:{enabled:true,version:{increment:1}}})}
   expect(await reconcile(db)).toEqual([]);
  });
+ it('keeps the first trusted invitation during duplicate starts and later competing invitations',async()=>{
+  const first=await getReferralOverview(db,sponsor.id),second=await getReferralOverview(db,other.id),payload=new URL(first.shareUrl!).searchParams.get('start')!,otherPayload=new URL(second.shareUrl!).searchParams.get('start')!,tid=String(randomInt(8000000000,8900000000));
+  const starts=await Promise.all([recordBotReferralStart(db,tid,contactBotId(),payload),recordBotReferralStart(db,tid,contactBotId(),payload)]);expect(starts.filter(Boolean)).toHaveLength(1);
+  expect(await recordBotReferralStart(db,tid,contactBotId(),otherPayload)).toBe(false);expect(await db.referralPendingSignup.count({where:{botId:contactBotId(),telegramId:tid}})).toBe(1);
+  await verifyFixtureContact(db,Number(tid));const user=await db.user.findUniqueOrThrow({where:{telegramId:tid}});expect(await db.referralSignup.findUnique({where:{referredUserId:user.id}})).toMatchObject({referrerUserId:sponsor.id,firstBidId:null});expect(await db.referralCoupon.count({where:{referredUserId:user.id}})).toBe(0);
+ });
+ it('rejects wrong-bot and malformed invitation starts without creating attribution',async()=>{
+  const overview=await getReferralOverview(db,sponsor.id),payload=new URL(overview.shareUrl!).searchParams.get('start')!,tid=String(randomInt(8000000000,8900000000));
+  expect(await recordBotReferralStart(db,tid,'999999999',payload)).toBe(false);expect(await recordBotReferralStart(db,tid,contactBotId(),payload+'tampered')).toBe(false);expect(await db.referralPendingSignup.count({where:{telegramId:tid}})).toBe(0);
+ });
+ it('returns a complete valid invitation URL and no link for an invalid bot configuration',async()=>{
+  const overview=await getReferralOverview(db,sponsor.id),url=new URL(overview.shareUrl!);expect(url.origin).toBe('https://t.me');expect(url.pathname).toBe('/'+process.env.TELEGRAM_BOT_USERNAME);expect(url.searchParams.get('start')).toMatch(/^ref_[A-Za-z0-9_-]{12}$/);
+  expect((await getReferralOverview(db,sponsor.id,{...process.env,TELEGRAM_BOT_USERNAME:'wrong/bot'})).shareUrl).toBeNull();
+ });
  it('leaves a real unused preview reward for mobile UI checks and reconciles cleanly',async()=>{
   const preview=await verifiedReferralUser(db,'Referral UI fixture');await creditDevelopmentPoints(db,preview.id,'100',`referral-fixture-${randomUUID()}`);const grant=await earnedReferralCoupon(db,preview.id),auction=await realReferralAuction(db,20);
   mkdirSync('.local',{recursive:true});writeFileSync('.local/referral-preview-fixture.json',JSON.stringify({userId:preview.id,telegramId:preview.telegramId,couponId:grant.coupon.id,auctionSlug:auction.slug,auctionCode:auction.publicCode},null,2)+'\n');expect(await reconcile(db)).toEqual([]);

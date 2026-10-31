@@ -19,13 +19,13 @@ test('fresh bid checkout, automatic status, late old result and transactions',as
   });
   await page.goto('/telegram?next='+encodeURIComponent(f.home));await expect(page.getByRole('navigation',{name:'Your navigation'})).toBeVisible();
   const open=()=>page.locator('#discover-auctions .auction-card').first().getByRole('button').click();
-  await open();let sheet=page.getByRole('dialog');await sheet.getByRole('textbox',{name:am?'የጨረታ መጠንዎ':'Your bid amount',exact:true}).fill('3.60');await sheet.getByRole('radio',{name:'Chapa',exact:true}).check();
+  await open();let sheet=page.getByRole('dialog');await sheet.getByRole('textbox',{name:am?'የጨረታ መጠንዎ':'Your bid amount',exact:true}).fill('3.60');await sheet.getByRole('radio',{name:'Online payment',exact:true}).check();
   await expect(sheet.locator('[data-payment-action]')).toBeEnabled();await sheet.locator('[data-payment-action]').evaluate(button=>{(button as HTMLButtonElement).click();(button as HTMLButtonElement).click()});
   await expect.poll(()=>page.evaluate(()=>Reflect.get(window,'chapaOpened')?.length??0)).toBe(1);expect(requests).toHaveLength(1);await expect(sheet).toContainText(am?'የክፍያ ማረጋገጫ':'Waiting for payment confirmation');
   await page.evaluate(()=>{window.dispatchEvent(new Event('focus'));document.dispatchEvent(new Event('visibilitychange'))});await expect.poll(()=>verifies).toBeGreaterThan(0);
   mkdirSync('test-results/chapa-ui/transactions',{recursive:true});await page.screenshot({path:'test-results/chapa-ui/transactions/waiting-'+info.project.name+'.png',animations:'disabled'});
   await page.keyboard.press('Escape');await open();sheet=page.getByRole('dialog');await expect(sheet.getByRole('textbox',{name:am?'የጨረታ መጠንዎ':'Your bid amount',exact:true})).toBeEnabled();await expect(sheet).not.toContainText('Resume checkout');
-  await sheet.getByRole('textbox',{name:am?'የጨረታ መጠንዎ':'Your bid amount',exact:true}).fill('3.60');await sheet.getByRole('radio',{name:'Chapa',exact:true}).check();await sheet.locator('[data-payment-action]').click();await expect.poll(()=>requests.length).toBe(2);expect(requests[0].key).not.toBe(requests[1].key);
+  await sheet.getByRole('textbox',{name:am?'የጨረታ መጠንዎ':'Your bid amount',exact:true}).fill('3.60');await sheet.getByRole('radio',{name:'Online payment',exact:true}).check();await sheet.locator('[data-payment-action]').click();await expect.poll(()=>requests.length).toBe(2);expect(requests[0].key).not.toBe(requests[1].key);
   const old=orders[1];Object.assign(old,{status:'BID_ACCEPTED',providerStatus:'SUCCESS',receipt:{bid:{id:randomUUID(),amount:'3.60'}}});
   await expect.poll(()=>page.evaluate(()=>Reflect.get(window,'chapaOpened')?.length??0)).toBe(2);await expect(sheet).not.toContainText(am?'ጨረታው ተቀብሏል':'Bid accepted');await page.keyboard.press('Escape');
   const nav=page.getByRole('navigation',{name:'Your navigation'}),transactions=nav.getByRole('link',{name:am?'ግብይቶች':'Transactions',exact:true});await transactions.click();await expect(transactions).toHaveAttribute('aria-current','page');

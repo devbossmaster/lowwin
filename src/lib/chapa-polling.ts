@@ -10,10 +10,12 @@ export function startChapaPolling(verify:()=>Promise<ChapaCheckoutView|null>,onP
  let active=true,paused=false,inFlight=false,delay=5000,timer:ReturnType<typeof setTimeout>|undefined;
  const fixedDeadline=typeof options.deadlineAt==='number'&&Number.isFinite(options.deadlineAt)?options.deadlineAt:null;
  let deadline=Math.min(Date.now()+300000,fixedDeadline??Infinity);
+ let fastUntil=Date.now()+30000;
  const wake=options.wake===undefined?(typeof window==='undefined'?null:window):options.wake;
  const schedule=()=>{
   clearTimeout(timer);
-  if(active&&!paused&&visibility.visibilityState==='visible')timer=setTimeout(()=>void read(),Math.min(delay,Math.max(0,deadline-Date.now())));
+  const interval=Math.max(delay,Date.now()<fastUntil?2000:5000);
+  if(active&&!paused&&visibility.visibilityState==='visible')timer=setTimeout(()=>void read(),Math.min(interval,Math.max(0,deadline-Date.now())));
  };
  const pause=()=>{if(!paused){paused=true;onPause()}};
  const read=async(checkAfterDeadline=false)=>{
@@ -26,7 +28,7 @@ export function startChapaPolling(verify:()=>Promise<ChapaCheckoutView|null>,onP
    if(!active)return;
    if(order){
     if(chapaConfirmed(order)||!chapaRecoverable(order)){stop();return}
-    delay=Number.isFinite(order.pollAfterMs)?Math.min(60000,Math.max(5000,order.pollAfterMs)):5000;
+    delay=Number.isFinite(order.pollAfterMs)?Math.min(60000,Math.max(2000,order.pollAfterMs)):5000;
    }
   }catch(error){
    if(!active)return;
@@ -38,6 +40,7 @@ export function startChapaPolling(verify:()=>Promise<ChapaCheckoutView|null>,onP
  const onWake=()=>{
   clearTimeout(timer);
   if(!active||visibility.visibilityState!=='visible')return;
+  fastUntil=Date.now()+30000;
   // Reopening or returning after the customer window gets one fresh server
   // check for a late success, without starting another five-minute loop.
   if(fixedDeadline!==null&&Date.now()>=deadline){pause();void read(true);return}

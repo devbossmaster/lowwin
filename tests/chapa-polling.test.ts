@@ -9,6 +9,16 @@ function visibility(){
 afterEach(()=>vi.useRealTimers());
 
 describe('automatic server-owned Chapa verification',()=>{
+ it('observes committed results in two seconds, then reduces idle reads after thirty seconds',async()=>{
+  vi.useFakeTimers();const source=visibility(),wake=new EventTarget(),waiting={...pending,pollAfterMs:2000},verify=vi.fn().mockResolvedValue(waiting);
+  const stop=startChapaPolling(verify,vi.fn(),source,{wake});await vi.advanceTimersByTimeAsync(1999);expect(verify).toHaveBeenCalledOnce();
+  await vi.advanceTimersByTimeAsync(1);expect(verify).toHaveBeenCalledTimes(2);
+  await vi.advanceTimersByTimeAsync(28000);expect(verify).toHaveBeenCalledTimes(16);
+  await vi.advanceTimersByTimeAsync(4999);expect(verify).toHaveBeenCalledTimes(16);await vi.advanceTimersByTimeAsync(1);expect(verify).toHaveBeenCalledTimes(17);
+  source.visibilityState='hidden';source.dispatchEvent(new Event('visibilitychange'));await vi.advanceTimersByTimeAsync(10000);expect(verify).toHaveBeenCalledTimes(17);
+  verify.mockResolvedValue({...waiting,status:'CREDITED'});source.visibilityState='visible';wake.dispatchEvent(new Event('focus'));await vi.advanceTimersByTimeAsync(0);expect(verify).toHaveBeenCalledTimes(18);
+  await vi.advanceTimersByTimeAsync(60000);expect(verify).toHaveBeenCalledTimes(18);stop();
+ });
  it('wakes on return from an external checkout and stops after authoritative credit',async()=>{
   vi.useFakeTimers();const source=visibility(),wake=new EventTarget();
   const verify=vi.fn().mockResolvedValueOnce(pending).mockResolvedValueOnce({...pending,status:'CREDITED'});

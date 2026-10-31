@@ -12,6 +12,7 @@ import sharp from 'sharp';
 import {chapaReceiptContent,chapaReceiptKind} from './chapa-receipt';
 import {expandParticipantResults} from './participant-results';
 import {sendBroadcastPhoto} from './broadcast-photo';
+import {auctionPhoto} from './auction-photo';
 type DB=Prisma.TransactionClient;
 const notificationImage=resolve('public/notification.png');
 const composedPhotos=new Map<string,Buffer>();
@@ -132,12 +133,13 @@ export async function dispatchOne(client:PrismaClient,bot:Pick<Bot,'api'>,filter
    let sent:{message_id:number};
    // Auction alerts use the actual frozen/product image unchanged. If it is
    // absent, send text; a generic notification banner is never a product photo.
+   const auctionImage=row.kind.startsWith('AUCTION_')&&'imagePath' in content&&typeof content.imagePath==='string'?content.imagePath:null;
    const photo=paymentReceipt?null:row.kind.startsWith('AUCTION_')
-    ?('imagePath' in content&&typeof content.imagePath==='string'?new URL(content.imagePath,link.origin).href:null)
+    ?(auctionImage?await auctionPhoto(tx,auctionImage):null)
     :await notificationPhoto(tx,'imageId' in content?content.imageId:undefined,link.origin);
-   if(photo&&row.kind==='BROADCAST'){
+   if(photo&&(row.kind==='BROADCAST'||auctionImage)){
     const imageId='imageId' in content?content.imageId:undefined;
-    const photoKey=`${link.origin}:${imageId??'default'}:${existsSync(notificationImage)?statSync(notificationImage).mtimeMs:'remote'}`;
+    const photoKey=auctionImage?`auction:${link.origin}:${auctionImage}`:`${link.origin}:${imageId??'default'}:${existsSync(notificationImage)?statSync(notificationImage).mtimeMs:'remote'}`;
     sent=await sendBroadcastPhoto(bot.api,chat.chatId,photo,{...options,caption:text},photoKey);
    }else sent=photo?await bot.api.sendPhoto(chat.chatId,photo,{...options,caption:text}):await bot.api.sendMessage(chat.chatId,text,options);
    const payload=row.payload as {auctionId?:string};

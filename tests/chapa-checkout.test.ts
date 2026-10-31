@@ -65,7 +65,7 @@ describe.skipIf(!database)('Chapa v2 hosted payments on disposable PostgreSQL',(
   const transaction=vi.spyOn(db,'$transaction');
   try{
    const waiting=await verifyChapaCheckout(db,order.id,f.userId,reauthorize,f.transport);
-   expect(waiting).toMatchObject({status:'PENDING',pollAfterMs:5000});expect(transaction).not.toHaveBeenCalled();expect(reauthorize).not.toHaveBeenCalled();expect(f.lookup).not.toHaveBeenCalled();
+   expect(waiting).toMatchObject({status:'PENDING',pollAfterMs:2000});expect(transaction).not.toHaveBeenCalled();expect(reauthorize).not.toHaveBeenCalled();expect(f.lookup).not.toHaveBeenCalled();
    // An authenticated provider event bypasses the provider cooldown, while
    // retaining exact evidence and the normal idempotent financial transaction.
    f.setStatus('SUCCESS');
@@ -305,6 +305,15 @@ describe.skipIf(!database)('Chapa v2 hosted payments on disposable PostgreSQL',(
  });
  it('paginates both purposes beyond twenty attempts without exposing another owner',async()=>{
   const f=await payment(),order=await f.start(),base=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});for(let i=0;i<21;i++){const id=randomUUID();await db.chapaCheckout.create({data:{userId:f.userId,purpose:'TOP_UP',mode:'test',credentialFingerprint:base.credentialFingerprint,key:randomUUID(),requestHash:base.requestHash,initialization:{amountCents:'1000'},merchantReference:'LW'+id.replaceAll('-','').slice(0,18),amountCents:1000n,expiresAt:base.expiresAt}})}const first=await listChapaCheckouts(db,f.userId),second=await listChapaCheckouts(db,f.userId,undefined,2);expect(first.items).toHaveLength(20);expect(first.nextPage).toBe(2);expect(second.items).toHaveLength(2);expect(second.nextPage).toBeNull();expect(new Set([...first.items,...second.items].map(row=>row.id)).size).toBe(22);expect((await listChapaCheckouts(db,(await verifiedReferralUser(db)).id)).items).toEqual([]);
+ });
+ it('repairs incomplete wallet projections before credit and still credits only once',async()=>{
+  for(const partial of [false,true]){
+   const f=await payment(),wallet=await db.wallet.create({data:{userId:f.userId}});
+   if(partial)await db.ledgerAccount.create({data:{walletId:wallet.id,name:`user:${f.userId}:available`,kind:'AVAILABLE'}});
+   const order=await f.start(),first=await f.verify(order.id);expect(first.status).toBe('CREDITED');expect((await f.verify(order.id)).status).toBe('CREDITED');
+   expect(await balance(f.userId)).toBe('10');expect(await db.ledgerAccount.count({where:{walletId:wallet.id,kind:{in:['AVAILABLE','HELD']}}})).toBe(2);expect(await db.operation.count({where:{userId:f.userId,scope:'CHAPA_RECEIPT'}})).toBe(1);
+  }
+  expect(await reconcile(db)).toEqual([]);expect(await reconcileChapaReceipts(db)).toEqual([]);
  });
  it('accepts only one bid across separately paid retry attempts and preserves the other payment',async()=>{
   const f=await payment({purpose:'BID',fee:10,testSession:true}),first=await f.start(),second=await createChapaCheckout(db,f.userId,{...f.input,key:randomUUID()},undefined,f.transport);const bodies=new Map(f.inputs.map(body=>[body.merchantReference,body]));f.lookup.mockImplementation(async ref=>({status:'success',data:{status:'SUCCESS',merchant_reference:ref,chapa_reference:'CH'+ref,amount:Number(bodies.get(ref)!.amountCents),currency:'ETB',mode:'test'}}));await f.verify(second.id);expect((await f.verify(first.id)).fundsPreserved).toBe(true);expect(await db.bid.count({where:{userId:f.userId,auctionId:f.auction!.id}})).toBe(1);expect(await balance(f.userId)).toBe('10');expect(await db.operation.count({where:{userId:f.userId,scope:'CHAPA_RECEIPT'}})).toBe(2);expect(await reconcileChapaReceipts(db)).toEqual([]);
