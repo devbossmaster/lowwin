@@ -19,6 +19,7 @@ function fixture(item=auction()){
   $executeRaw:vi.fn(async()=>0),adminAudit:{findFirst:vi.fn(async()=>null)},
   $queryRaw:vi.fn(async(query:TemplateStringsArray)=>query.join('').includes('FROM "Outbox"')?(row.state==='PENDING'?[row]:[]):[{now}]),
   auction:{findUnique:vi.fn(async()=>item)},notificationInbox:{upsert:vi.fn()},
+  winnerPresentation:{findFirst:vi.fn(async()=>null as Record<string,unknown>|null)},
   user:{findUnique:vi.fn(async()=>({telegramId:'900000001',name:'Player name'}))},
   botChat:{findUnique:vi.fn(async()=>({telegramId:'900000001',chatId:'900000001',blocked:false}))},
   outbox:{update:vi.fn(async({data}:{data:Record<string,unknown>})=>Object.assign(row,data))},
@@ -48,6 +49,17 @@ describe('concise auction Telegram messages',()=>{
  it('keeps Telegram rate-limit backoff without sending a duplicate text message',async()=>{
   const f=fixture();f.sendPhoto.mockRejectedValueOnce({error_code:429,parameters:{retry_after:20}});await dispatchOne(f.client,f.bot);
   expect(f.row.state).toBe('PENDING');expect(f.row.lastError).toBe('RATE_LIMIT');expect(f.row.attempts).toBe(1);expect(f.sendPhoto).toHaveBeenCalledOnce();expect(f.sendMessage).not.toHaveBeenCalled();
+ });
+ it('uploads the approved winner photo for a published result and never resends a completed job',async()=>{
+  const winnerId=randomUUID(),f=fixture(auction({status:'CLOSED',endsAt:new Date(now.getTime()-1000),settlement:{outcome:'WINNER',winnerUserId:'winner',completedAt:new Date(now.getTime()-1000),publication:{publishedAt:now}}}));f.row.kind='AUCTION_RESULT';
+  f.tx.winnerPresentation.findFirst.mockResolvedValue({imageId:winnerId,consentConfirmedAt:now,image:{purpose:'WINNER_PHOTO'}});
+  await dispatchOne(f.client,f.bot);expect(f.sendPhoto).toHaveBeenCalledOnce();expect(f.sendPhoto).toHaveBeenCalledWith('900000001',expect.any(InputFile),expect.objectContaining({caption:expect.stringContaining('Winner announced')}));expect(f.tx.managedMedia.findUnique).toHaveBeenCalledWith({where:{id:winnerId},select:{bytes:true}});
+  expect(await dispatchOne(f.client,f.bot)).toBe(false);expect(f.sendPhoto).toHaveBeenCalledOnce();
+ });
+ it('falls back to the product photo when a consented winner image cannot be decoded',async()=>{
+  const winnerId=randomUUID(),f=fixture(auction({status:'CLOSED',endsAt:new Date(now.getTime()-1000),settlement:{outcome:'WINNER',winnerUserId:'winner',completedAt:new Date(now.getTime()-1000),publication:{publishedAt:now}}}));f.row.kind='AUCTION_RESULT';
+  f.tx.winnerPresentation.findFirst.mockResolvedValue({imageId:winnerId,consentConfirmedAt:now,image:{purpose:'WINNER_PHOTO'}});f.tx.managedMedia.findUnique.mockResolvedValueOnce({bytes:Buffer.from('corrupt-photo')});
+  await dispatchOne(f.client,f.bot);expect(f.row.state).toBe('SENT');expect(f.sendPhoto).toHaveBeenCalledOnce();expect(f.sendMessage).not.toHaveBeenCalled();
  });
  it.each([{publishedAt:null},{publishedAt:new Date(now.getTime()+1)},{testRunId:'private'},{product:{visible:false}},{isDemo:true}])('never delivers unavailable or nonpublic product content %j',async change=>{
   const f=fixture(auction(change));await dispatchOne(f.client,f.bot);

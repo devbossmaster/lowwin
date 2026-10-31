@@ -133,10 +133,13 @@ export async function dispatchOne(client:PrismaClient,bot:Pick<Bot,'api'>,filter
    let sent:{message_id:number};
    // Auction alerts use the actual frozen/product image unchanged. If it is
    // absent, send text; a generic notification banner is never a product photo.
-   const auctionImage=row.kind.startsWith('AUCTION_')&&'imagePath' in content&&typeof content.imagePath==='string'?content.imagePath:null;
-   const photo=paymentReceipt?null:row.kind.startsWith('AUCTION_')
+   let auctionImage=row.kind.startsWith('AUCTION_')&&'imagePath' in content&&typeof content.imagePath==='string'?content.imagePath:null;
+   let photo=paymentReceipt?null:row.kind.startsWith('AUCTION_')
     ?(auctionImage?await auctionPhoto(tx,auctionImage):null)
     :await notificationPhoto(tx,'imageId' in content?content.imageId:undefined,link.origin);
+   if(!photo&&row.kind==='AUCTION_RESULT'&&'fallbackImagePath' in content&&typeof content.fallbackImagePath==='string'){
+    auctionImage=content.fallbackImagePath;photo=await auctionPhoto(tx,auctionImage);
+   }
    if(photo&&(row.kind==='BROADCAST'||auctionImage)){
     const imageId='imageId' in content?content.imageId:undefined;
     const photoKey=auctionImage?`auction:${link.origin}:${auctionImage}`:`${link.origin}:${imageId??'default'}:${existsSync(notificationImage)?statSync(notificationImage).mtimeMs:'remote'}`;

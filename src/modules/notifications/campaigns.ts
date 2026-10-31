@@ -4,6 +4,7 @@ import {stagingDemoEnabled} from '../auctions/staging-demo';
 import {formatEtb} from '@/lib/money';
 import {auctionMaintenance} from '../auctions/maintenance';
 import {broadcastMiniAppPath,broadcastButtonLabel} from '@/lib/broadcast-link';
+import {publicWhere} from '../auctions/catalog';
 
 type Tx=Prisma.TransactionClient;
 export const telegramKinds=['AUCTION_PUBLISHED','AUCTION_UPCOMING','AUCTION_STARTING_SOON','AUCTION_ENDING','AUCTION_RESULT','DEPOSIT_CREDITED','BROADCAST'];
@@ -89,7 +90,7 @@ async function scheduleGlobalAlertsInTransaction(client:Tx){
 }
 export async function campaignContent(tx:Tx,row:Pick<Outbox,'kind'|'payload'>){
  const p=row.payload as CampaignPayload;if(!p.recipientUserId||!telegramKinds.includes(row.kind))return null;
- const base={userId:p.recipientUserId,kind:row.kind,imageId:undefined as string|undefined,imagePath:undefined as string|undefined};
+ const base={userId:p.recipientUserId,kind:row.kind,imageId:undefined as string|undefined,imagePath:undefined as string|undefined,fallbackImagePath:undefined as string|undefined};
  if(row.kind==='BROADCAST'){
   if(!p.body||!p.href)return null;
   let href:string,buttonLabel:string;try{href=broadcastMiniAppPath(p.href);buttonLabel=broadcastButtonLabel(p.buttonLabel)}catch{return null}
@@ -103,7 +104,7 @@ export async function campaignContent(tx:Tx,row:Pick<Outbox,'kind'|'payload'>){
   return {...base,title:'Deposit successful · ገንዘቡ ገብቷል',body:`${formatEtb(t.points)} has been added to your wallet.\n${formatEtb(t.points)} ወደ ሂሳብዎ ገብቷል።`,href:'/wallet'};
  }
  if(!p.auctionId)return null;
- const a=await tx.auction.findUnique({where:{id:p.auctionId},select:{slug:true,publicCode:true,publishedAt:true,startsAt:true,endsAt:true,status:true,isDemo:true,isSettlementFixture:true,testRunId:true,presentation:true,product:{select:{title:true,visible:true,images:{orderBy:{sortOrder:'asc'},take:1,select:{path:true}}}},result:{select:{id:true}},settlement:{select:{outcome:true,publication:{select:{publishedAt:true}}}}}});
+ const a=await tx.auction.findUnique({where:{id:p.auctionId},select:{slug:true,publicCode:true,publishedAt:true,startsAt:true,endsAt:true,status:true,isDemo:true,isSettlementFixture:true,testRunId:true,presentation:true,product:{select:{title:true,visible:true,images:{orderBy:{sortOrder:'asc'},take:1,select:{path:true}}}},result:{select:{id:true}},settlement:{select:{outcome:true,winnerUserId:true,completedAt:true,publication:{select:{publishedAt:true}}}}}});
  if(!a?.publishedAt||!a.slug||a.result||a.testRunId||a.isDemo&&(!a.isSettlementFixture||!(demoBidAllowed()||stagingDemoEnabled())))return null;
  const [{now}]=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`;
  if(a.publishedAt>now)return null;
@@ -116,6 +117,16 @@ export async function campaignContent(tx:Tx,row:Pick<Outbox,'kind'|'payload'>){
  if(row.kind==='AUCTION_RESULT'){
   if(!a.settlement?.publication||a.settlement.publication.publishedAt>now)return null;
   if(a.settlement.outcome==='CANCELLED')return null;
+  // Only a genuine published win may announce a person's consented photo.
+  // Read the current presentation for each recipient so replacement/removal
+  // affects unsent jobs, without resending already delivered announcements.
+  if(!a.isDemo&&a.status==='CLOSED'&&a.settlement.outcome==='WINNER'&&a.settlement.winnerUserId&&a.settlement.completedAt<=now){
+   const winnerPhoto=await tx.winnerPresentation.findFirst({where:{auctionId:p.auctionId,auction:{is:publicWhere(now)}},select:{imageId:true,consentConfirmedAt:true,image:{select:{purpose:true}}}});
+   if(winnerPhoto?.imageId&&winnerPhoto.image?.purpose==='WINNER_PHOTO'&&winnerPhoto.consentConfirmedAt&&winnerPhoto.consentConfirmedAt<=now){
+    const path=auctionNotificationImagePath({images:[{path:`/api/media/${winnerPhoto.imageId}`}]});
+    if(path){base.fallbackImagePath=base.imagePath;base.imagePath=path;base.imageId=winnerPhoto.imageId}
+   }
+  }
   const outcome=a.settlement.outcome==='WINNER'?'A winner has been announced. See the final result.\nአሸናፊው ታውቋል። የመጨረሻ ውጤቱን ይመልከቱ።':'The auction closed without a winner.\nጨረታው ያለ አሸናፊ ተዘግቷል።';
   return {...base,...action,title:`${prefix}Auction finished · ጨረታው ተጠናቋል`,body:`${item}\n${outcome}\n${new URL(`/winners/${a.publicCode}`,process.env.MINI_APP_URL).href}`,telegramCaption:`🏁 ${prefix}${shortItem}\n${a.settlement.outcome==='WINNER'?'Winner announced · አሸናፊው ታውቋል':'Closed without a winner · ያለ አሸናፊ ተዘግቷል'}${a.endsAt?'\n⏰ '+when(a.endsAt):''}${code}`};
  }
