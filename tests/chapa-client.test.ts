@@ -21,6 +21,14 @@ describe('Chapa client recovery and display boundaries',()=>{
   for(const status of ['NEEDS_REVIEW','CREDITED','BID_ACCEPTED','FAILED','CANCELLED','EXPIRED'])expect(chapaCanResumeCheckout(known,{...pending,status})).toBe(false);
   expect(chapaCanResumeCheckout(known,{...pending,reason:'EVIDENCE_MISMATCH'})).toBe(false);
  });
+ it('allows an original missing-reference retry after an ambiguous timeout but never replays a state-conflicting intent',()=>{
+  const known={...attempt,orderId:uuid},pending={id:uuid,purpose:'BID',status:'PENDING',reason:'PROVIDER_REFERENCE_UNAVAILABLE',checkoutUrl:null,fundsPreserved:false,receipt:null,initializationIssue:'temporary'} as ChapaCheckoutView;
+  const saved=structuredClone(known);
+  expect(chapaCanResumeCheckout(known,pending)).toBe(true);
+  expect(known).toEqual(saved);
+  expect(chapaCanResumeCheckout(known,{...pending,initializationIssue:'state'})).toBe(false);
+  expect(chapaCanResumeCheckout(known,{...pending,checkoutUrl:'https://checkout.chapa.global/CH-reference'})).toBe(false);
+ });
  it('preserves the original intent and key only within its authenticated scope',()=>{const s=storage();writeChapaAttempt(s,'session-one:bid:fixture-auction',attempt);expect(readChapaAttempt(s,'session-one:bid:fixture-auction')).toEqual(attempt);expect(readChapaAttempt(s,'session-two:bid:fixture-auction')).toBeNull();const read=readChapaAttempt(s,'session-one:bid:fixture-auction')!;read.intent.amount='99';expect(readChapaAttempt(s,'session-one:bid:fixture-auction')?.intent.amount).toBe('3.60');clearChapaAttempt(s,'session-one:bid:fixture-auction');expect(readChapaAttempt(s,'session-one:bid:fixture-auction')).toBeNull()});
  it('rejects corrupt, injected, inexact and incomplete stored intents',()=>{const s=storage();for(const value of ['{',JSON.stringify({version:1,intent:{key:uuid,purpose:'BID',amount:'3.60'}}),JSON.stringify({...attempt,intent:{...attempt.intent,amount:'1e3'}}),JSON.stringify({...attempt,intent:{...attempt.intent,fee:'0.01'}}),JSON.stringify({...attempt,orderId:'not-a-uuid'})]){s.setItem('key',value);expect(readChapaAttempt(s,'key')).toBeNull()}writeChapaAttempt(s,'topup',{version:1,intent:{purpose:'TOP_UP',key:uuid,amount:'100.00'}});expect(readChapaAttempt(s,'topup')?.intent.purpose).toBe('TOP_UP')});
  it('retains in-memory recovery when browser storage is denied',()=>{const s={getItem:()=>{throw Error('denied')},setItem:()=>{throw Error('denied')},removeItem:()=>{throw Error('denied')}};expect(()=>writeChapaAttempt(s,'key',attempt)).not.toThrow();expect(readChapaAttempt(s,'key')).toBeNull();expect(()=>clearChapaAttempt(s,'key')).not.toThrow()});

@@ -9,7 +9,7 @@ import {reconcileChapaReceipts} from '../src/modules/payments/chapa-reconcile';
 import {submitBid,submitBidInTransaction} from '../src/modules/auctions/bids';
 import {createChapaCheckout,getChapaCheckout,listChapaCheckouts,recoverChapaCheckouts,verifyChapaCheckout} from '../src/modules/payments/chapa';
 import {recoveryAuthorizationAction,recoveryAuthorizationKey,recoveryBindingHash,type ChapaRecoveryBinding} from '../src/modules/payments/chapa-recovery-binding';
-import {chapaAvailability,chapaConfigurationFingerprint,chapaHash,type ChapaCreate,type ChapaTransport} from '../src/modules/payments/chapa-provider';
+import {chapaAvailability,chapaConfigurationFingerprint,chapaHash,ChapaProviderError,type ChapaCreate,type ChapaTransport} from '../src/modules/payments/chapa-provider';
 import {processChapaEvent,processChapaEvents} from '../src/modules/payments/chapa-events';
 import {TEST_TOKEN} from './helpers';
 import {getPersonalBids} from '../src/modules/profile/personal';
@@ -251,6 +251,76 @@ describe.skipIf(!database)('Chapa v2 hosted payments on disposable PostgreSQL',(
  it('replays the exact initialization body and reference after an ambiguous timeout',async()=>{
   const f=await payment();f.failNextInitialization();const first=await f.start();expect(first).toMatchObject({status:'PENDING',reason:'INITIALIZATION_PENDING',checkoutUrl:null});const snapshot=await db.chapaCheckout.findUniqueOrThrow({where:{id:first.id}});
   const retried=await f.start();expect(retried.id).toBe(first.id);expect(f.inputs).toHaveLength(2);expect(f.inputs[1]).toEqual(f.inputs[0]);expect(f.inputs[1]).toEqual(snapshot.initialization);expect(f.inputs[1].merchantReference).toBe(snapshot.merchantReference);expect(f.inputs[1]).not.toHaveProperty('customer');expect(await balance(f.userId)).toBe('0');expect(await db.chapaCheckout.count({where:{userId:f.userId}})).toBe(1);
+ });
+ it('verifies an initialization conflict using its original reference without replaying hosted creation after later lookup errors',async()=>{
+  const f=await payment(),initialize=f.create.getMockImplementation()!;
+  f.create.mockImplementationOnce(async input=>{await initialize(input);throw new ChapaProviderError(409,'INVALID_STATE',false)});
+  const first=await f.start(),saved=await db.chapaCheckout.findUniqueOrThrow({where:{id:first.id}});
+  expect(first).toMatchObject({status:'PENDING',checkoutUrl:null,initializationIssue:'state'});
+  expect(saved).toMatchObject({initializationHttpStatus:409,initializationErrorCode:'INVALID_STATE',creditJournalId:null});
+  expect(first).not.toHaveProperty('initializationErrorCode');expect(first).not.toHaveProperty('initializationHttpStatus');
+  for(const [status,code] of [[404,'NOT_FOUND'],[500,'PROCESSING_FAILED']] as const){
+   f.lookup.mockRejectedValueOnce(new ChapaProviderError(status,code,status===404));
+   expect(await f.verify(first.id)).toMatchObject({status:'PENDING',verificationState:'UNAVAILABLE'});
+   expect((await f.start()).id).toBe(first.id);expect(f.create).toHaveBeenCalledOnce();
+   expect((await db.chapaCheckout.findUniqueOrThrow({where:{id:first.id}})).initialization).toEqual(saved.initialization);
+   expect(await balance(f.userId)).toBe('0');
+  }
+  expect(await f.verify(first.id)).toMatchObject({status:'CREDITED',providerStatus:'SUCCESS'});
+  await f.verify(first.id);expect(f.create).toHaveBeenCalledOnce();expect(await balance(f.userId)).toBe('10');
+  expect(await db.operation.count({where:{userId:f.userId,scope:'CHAPA_RECEIPT'}})).toBe(1);expect(await reconcile(db)).toEqual([]);
+ });
+ it('retries a transient initialization error with identical payment identity and clears its old diagnostics after checkout opens',async()=>{
+  const f=await payment(),initialize=f.create.getMockImplementation()!;
+  f.create.mockImplementationOnce(async input=>{await initialize(input);throw new ChapaProviderError(500,'PROCESSING_FAILED',false)});
+  const first=await f.start(),before=await db.chapaCheckout.findUniqueOrThrow({where:{id:first.id}});
+  expect(first).toMatchObject({status:'PENDING',checkoutUrl:null,initializationIssue:'temporary'});
+  expect(before).toMatchObject({initializationErrorCode:'PROCESSING_FAILED',initializationHttpStatus:500,creditJournalId:null});
+  expect(first).not.toHaveProperty('initializationErrorCode');expect(first).not.toHaveProperty('initializationHttpStatus');
+  const retried=await f.start(),after=await db.chapaCheckout.findUniqueOrThrow({where:{id:first.id}});
+  expect(retried).toMatchObject({id:first.id,status:'PENDING',initializationIssue:null,checkoutUrl:expect.any(String)});
+  expect(f.create).toHaveBeenCalledTimes(2);expect(f.inputs[1]).toEqual(f.inputs[0]);expect(after.initialization).toEqual(before.initialization);
+  expect(after).toMatchObject({merchantReference:before.merchantReference,initializationErrorCode:null,initializationHttpStatus:null,creditJournalId:null});
+  expect(await balance(f.userId)).toBe('0');expect(await db.operation.count({where:{userId:f.userId,scope:'CHAPA_RECEIPT'}})).toBe(0);
+ });
+ it.each(['timeout','500'] as const)('can replay the original ambiguous %s initialization after a temporary verification404 without replacing the payment',async failure=>{
+  const f=await payment();
+  if(failure==='timeout')f.failNextInitialization();
+  else{const initialize=f.create.getMockImplementation()!;f.create.mockImplementationOnce(async input=>{await initialize(input);throw new ChapaProviderError(500,'PROCESSING_FAILED',false)})}
+  const first=await f.start(),saved=await db.chapaCheckout.findUniqueOrThrow({where:{id:first.id}});
+  f.lookup.mockRejectedValueOnce(new ChapaProviderError(404,'NOT_FOUND',true));
+  expect(await f.verify(first.id)).toMatchObject({id:first.id,status:'PENDING',verificationState:'UNAVAILABLE',reason:'PROVIDER_REFERENCE_UNAVAILABLE'});
+  const retry=await f.start();expect(retry).toMatchObject({id:first.id,status:'PENDING',checkoutUrl:expect.any(String)});
+  expect(f.create).toHaveBeenCalledTimes(2);expect(f.inputs[1]).toEqual(f.inputs[0]);
+  const after=await db.chapaCheckout.findUniqueOrThrow({where:{id:first.id}});
+  expect(after.initialization).toEqual(saved.initialization);expect(after.merchantReference).toBe(saved.merchantReference);
+  expect(await db.chapaCheckout.count({where:{userId:f.userId}})).toBe(1);expect(await balance(f.userId)).toBe('0');
+ });
+ it.each([[400,'INVALID_VALUE','request'],[401,'UNAUTHORIZED','configuration'],[403,'FORBIDDEN','configuration'],[404,'NOT_FOUND','reference']] as const)('keeps initialization HTTP %s / %s as an uncredited checkout issue with protected diagnostics',async(status,code,issue)=>{
+  const f=await payment(),initialize=f.create.getMockImplementation()!;
+  f.create.mockImplementationOnce(async input=>{await initialize(input);throw new ChapaProviderError(status,code,true)});
+  const first=await f.start();
+  expect(first).toMatchObject({status:'NEEDS_REVIEW',reason:'INITIALIZATION_REJECTED',initializationIssue:issue,checkoutUrl:null});
+  expect(first).not.toHaveProperty('initializationErrorCode');expect(first).not.toHaveProperty('initializationHttpStatus');
+  const saved=await db.chapaCheckout.findUniqueOrThrow({where:{id:first.id}});expect(saved).toMatchObject({initializationErrorCode:code,initializationHttpStatus:status,creditJournalId:null});
+  await f.start();expect(f.create).toHaveBeenCalledOnce();expect(await balance(f.userId)).toBe('0');expect(await db.operation.count({where:{userId:f.userId,scope:'CHAPA_RECEIPT'}})).toBe(0);
+ });
+ it.each([
+  [401,'UNAUTHORIZED','PROVIDER_CONFIGURATION_REQUIRED',300000],
+  [403,'FORBIDDEN','PROVIDER_CONFIGURATION_REQUIRED',300000],
+  [404,'NOT_FOUND','PROVIDER_REFERENCE_UNAVAILABLE',60000],
+  [409,'INVALID_STATE','PROVIDER_STATE_UNAVAILABLE',60000],
+  [400,'INVALID_VALUE','PROVIDER_REQUEST_REJECTED',60000],
+  [500,'PROCESSING_FAILED','PROVIDER_CONFIRMATION_REQUIRED',30000],
+  [429,'RATE_LIMITED','PROVIDER_CONFIRMATION_REQUIRED',60000],
+ ] as const)('preserves an unpaid attempt during verification HTTP %s / %s and uses bounded category backoff',async(status,code,reason,delay)=>{
+  const f=await payment(),order=await f.start(),before=Date.now();
+  f.lookup.mockRejectedValueOnce(new ChapaProviderError(status,code,[400,401,403,404].includes(status)));
+  const result=await f.verify(order.id),saved=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});
+  expect(result).toMatchObject({status:'PENDING',providerStatus:null,verificationState:'UNAVAILABLE',reason});
+  expect(saved.nextCheckAt.getTime()).toBeGreaterThanOrEqual(before+delay);expect(saved.nextCheckAt.getTime()).toBeLessThanOrEqual(Date.now()+delay);
+  expect(saved).toMatchObject({creditJournalId:null,bidId:null,leaseUntil:null});expect(await balance(f.userId)).toBe('0');
+  expect(await db.operation.count({where:{userId:f.userId,scope:'CHAPA_RECEIPT'}})).toBe(0);
  });
  it('charges only the submission fee, accepts a bid once and never reserves its number',async()=>{
   const f=await payment({purpose:'BID',amount:'3.60',fee:30,initialBalance:'5'}),order=await f.start();expect(order.amountCents).toBe('3000');expect(f.inputs[0].amountCents).toBe('3000');const result=await f.verify(order.id);expect(result).toMatchObject({status:'BID_ACCEPTED',bidNumber:'3.6',receipt:{charge:{feePoints:'30',newlyUnavailable:'30'},hold:{extraReserved:'0'}}});expect((await getPersonalBids(db,f.userId)).items[0].payment).toMatchObject({status:'PAID',method:'CHAPA',checkoutId:order.id});expect(await balance(f.userId)).toBe('5');await Promise.all([f.verify(order.id),f.verify(order.id)]);expect(await db.bid.count({where:{auctionId:f.auction!.id,userId:f.userId}})).toBe(1);expect(await db.auctionHold.count({where:{auctionId:f.auction!.id}})).toBe(0);expect(await db.outbox.count({where:{key:`chapa:${order.id}:telegram-confirmed`}})).toBe(1);expect(await db.operation.count({where:{userId:f.userId,scope:'CHAPA_RECEIPT'}})).toBe(1);expect(await reconcile(db)).toEqual([]);

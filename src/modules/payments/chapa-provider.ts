@@ -1,6 +1,7 @@
 import {createHash,createHmac,timingSafeEqual} from 'node:crypto';
 import {z} from 'zod';
 import {chapaReasonStatuses,safeChapaPaymentReason,type ChapaPaymentReasonCode} from '../../lib/chapa-payment-reason';
+import {classifyChapaApiError,type ChapaApiErrorCategory} from '../../lib/chapa-api-error';
 
 // Chapa v2 uses one API origin for test and live; the private key selects the
 // environment. This is deliberately not a caller-controlled fetch destination.
@@ -13,7 +14,16 @@ export class ChapaError extends Error {
  constructor(public status:number,public code:string,message:string){super(message);this.name='ChapaError'}
 }
 export class ChapaProviderError extends ChapaError {
- constructor(readonly httpStatus:number,readonly providerCode:string,readonly definiteRejection:boolean){super(502,'PROVIDER_UNAVAILABLE',httpStatus===429?'Chapa is busy. Please try again later.':'Chapa could not complete this request. View the transaction before trying again.')}
+ readonly category:ChapaApiErrorCategory;
+ readonly definiteRejection:boolean;
+ constructor(readonly httpStatus:number,readonly providerCode:string,_legacyDefiniteRejection?:boolean){
+  super(502,'PROVIDER_UNAVAILABLE',httpStatus===429?'Chapa is busy. Please try again later.':'Chapa could not complete this request. View the transaction before trying again.');
+  this.category=classifyChapaApiError(httpStatus,providerCode);
+  // A duplicate/invalid-state response may refer to an operation already
+  // accepted by Chapa. Reconcile its original reference rather than declaring
+  // payment failure or replaying initialization indefinitely.
+  this.definiteRejection=['request','reference','configuration'].includes(this.category);
+ }
 }
 export const chapaHash=(value:string|Uint8Array)=>createHash('sha256').update(value).digest('hex');
 export function chapaConfigurationFingerprint(raw:Environment=process.env){return raw.CHAPA_PRIVATE_KEY?chapaHash(raw.CHAPA_PRIVATE_KEY):null}
@@ -155,7 +165,7 @@ async function boundedJson(response:Response){
  let length=0;const chunks:Uint8Array[]=[];
  try{for(;;){const part=await reader.read();if(part.done)break;length+=part.value.byteLength;if(length>MAX_RESPONSE_BYTES){await reader.cancel();throw new Error('Response bound')}chunks.push(part.value)}
   let body:unknown;try{body=JSON.parse(Buffer.concat(chunks).toString('utf8'))}catch{body=null}
-  if(!response.ok){const error=z.object({error:z.object({code:z.string().regex(/^[A-Z][A-Z0-9_]{0,79}$/)}).optional()}).safeParse(body);const code=error.success?error.data.error?.code??'HTTP_ERROR':'HTTP_ERROR';throw new ChapaProviderError(response.status,code,[400,401,403,404,422].includes(response.status))}
+  if(!response.ok){const error=z.object({error:z.object({code:z.string().regex(/^[A-Z][A-Z0-9_]{0,79}$/)}).optional()}).safeParse(body);const code=error.success?error.data.error?.code??'HTTP_ERROR':'HTTP_ERROR';throw new ChapaProviderError(response.status,code)}
   if(body===null)throw Error('Invalid JSON');return body;
  }
  catch(error){if(error instanceof ChapaProviderError)throw error;throw new ChapaError(502,'PROVIDER_UNAVAILABLE','Payment confirmation is pending. Check this same payment again.')}

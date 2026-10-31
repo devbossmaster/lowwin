@@ -3,6 +3,7 @@ import {PrismaClient} from '@prisma/client';
 import {runtimeDatabaseUrl} from '../src/lib/database-config';
 import {chapaConfigurationFingerprint,chapaTransport,ChapaProviderError,isChapaHostedSessionReference,parseChapaEvidence} from '../src/modules/payments/chapa-provider';
 import {matchesChapaMetadata} from '../src/modules/payments/chapa-metadata';
+import {classifyChapaApiError} from '../src/lib/chapa-api-error';
 
 /** Read-only: inspects one checkout and optionally GETs Chapa verification.
  * Never creates a checkout, processes a webhook, or applies a ledger credit. */
@@ -15,7 +16,9 @@ async function main(){
   const order=await db.chapaCheckout.findFirst({where:flag==='--checkout'?{id:value}:{merchantReference:value}});
   if(!order){console.log(JSON.stringify({found:false}));return}
   const events=await db.chapaWebhookEvent.findMany({where:{checkoutId:order.id},select:{status:true,attempts:true,nextAttemptAt:true,completedAt:true},orderBy:{receivedAt:'desc'},take:5});
-  const report:Record<string,unknown>={found:true,checkoutId:order.id,mode:order.mode,status:order.status,reason:order.reason,providerStatus:order.providerStatus,verificationState:order.verificationState,creditApplied:!!order.creditJournalId,credentialMatches:order.credentialFingerprint===chapaConfigurationFingerprint(),nextCheckAt:order.nextCheckAt,leaseUntil:order.leaseUntil,events};
+  const diagnosticCodes=new Set(['INVALID_FORMAT','INVALID_VALUE','MISSING_REQUIRED_FIELD','INVALID_STATE','NOT_FOUND','PROCESSING_FAILED','UNAUTHORIZED','FORBIDDEN','RATE_LIMITED','HTTP_ERROR']);
+  const initialization=order.initializationErrorCode||order.initializationHttpStatus?{http:order.initializationHttpStatus,code:diagnosticCodes.has(order.initializationErrorCode??'')?order.initializationErrorCode:'HTTP_ERROR',category:classifyChapaApiError(order.initializationHttpStatus,order.initializationErrorCode)}:null;
+  const report:Record<string,unknown>={found:true,checkoutId:order.id,mode:order.mode,status:order.status,reason:order.reason,providerStatus:order.providerStatus,verificationState:order.verificationState,creditApplied:!!order.creditJournalId,credentialMatches:order.credentialFingerprint===chapaConfigurationFingerprint(),initialization,nextCheckAt:order.nextCheckAt,leaseUntil:order.leaseUntil,events};
   if(rest.includes('--provider')){
    try{
     const raw=await chapaTransport.lookup(order.merchantReference),proof=parseChapaEvidence(raw);

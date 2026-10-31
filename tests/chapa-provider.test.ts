@@ -1,6 +1,6 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {createHmac} from 'node:crypto';
-import {authenticateChapaWebhook,chapaAvailability,chapaConfigurationFingerprint,chapaHash,chapaWebhookAmountMatches,chapaWebhookConfigurationFingerprint,chapaWebhookSignatureProfile,createdChapaSession,createChapaTransport,isChapaHostedSessionReference,parseChapaEvidence,parseChapaPaymentMethods,parseChapaWebhook,requireChapa,safeChapaCheckoutUrl,verifyChapaWebhook,verifyLegacyChapaWebhook} from '../src/modules/payments/chapa-provider';
+import {authenticateChapaWebhook,chapaAvailability,chapaConfigurationFingerprint,chapaHash,chapaWebhookAmountMatches,chapaWebhookConfigurationFingerprint,chapaWebhookSignatureProfile,ChapaProviderError,createdChapaSession,createChapaTransport,isChapaHostedSessionReference,parseChapaEvidence,parseChapaPaymentMethods,parseChapaWebhook,requireChapa,safeChapaCheckoutUrl,verifyChapaWebhook,verifyLegacyChapaWebhook} from '../src/modules/payments/chapa-provider';
 
 const secret='local-only-chapa-webhook-secret-with-thirty-two-bytes';
 function environment(patch:Record<string,string|undefined>={}){return {APP_ENV:'local',NODE_ENV:'test',DATABASE_URL:'postgresql://test:test@127.0.0.1:5432/chapa_provider_test',MINI_APP_URL:'https://lowwin.test',BETTER_AUTH_URL:'https://lowwin.test',PAYMENT_GATEWAY:'CHAPA',CHAPA_SCHEMA_READY:'true',CHAPA_ENABLED:'true',CHAPA_PRIVATE_KEY:'CHAPA_TEST_'+'a'.repeat(32),CHAPA_WEBHOOK_SECRET:secret,...patch}}
@@ -220,6 +220,30 @@ describe('Chapa v2 authenticated webhook hints',()=>{
 });
 
 describe('Chapa v2 bounded merchant transport',()=>{
+ it.each([
+  [400,'INVALID_FORMAT','request',true],[400,'INVALID_VALUE','request',true],[400,'MISSING_REQUIRED_FIELD','request',true],
+  [404,'NOT_FOUND','reference',true],[400,'NOT_FOUND','reference',true],
+  [409,'INVALID_STATE','state',false],[409,'RESOURCE_CONFLICT','state',false],[400,'INVALID_STATE','state',false],[422,'INVALID_STATE','state',false],
+  [401,'INVALID_STATE','configuration',true],[403,'FORBIDDEN','configuration',true],
+  [500,'PROCESSING_FAILED','temporary',false],[500,'INVALID_STATE','temporary',false],[429,'NOT_FOUND','temporary',false],
+ ] as const)('classifies v2 HTTP %s / %s by status and machine code as %s',async(httpStatus,code,category,definiteRejection)=>{
+  for(const message of ['Payment failed','Transaction reference has been used before','private payer 251911111111; PIN 1234']){
+   const fetcher=vi.fn<typeof fetch>(async()=>Response.json({status:'error',message,error:{code,details:{privateEmail:'payer@example.test'}}},{status:httpStatus}));
+   const transport=createChapaTransport({env:environment(),fetcher});
+   const error=await transport.create(create).catch(cause=>cause);
+   expect(error).toBeInstanceOf(ChapaProviderError);
+   if(!(error instanceof ChapaProviderError))throw Error('Expected a sanitized provider error');
+   expect(error).toMatchObject({httpStatus,providerCode:code,category,definiteRejection,status:502,code:'PROVIDER_UNAVAILABLE'});
+   expect(error.message).not.toContain(message);expect(JSON.stringify(error)).not.toMatch(/251911111111|PIN 1234|payer@example|privateEmail/);
+   expect(fetcher).toHaveBeenCalledOnce();
+  }
+ });
+ it('does not derive a v2 code from human-readable message text or structured error details',async()=>{
+  for(const error of [undefined,{code:null},{code:'invalid_state'},{code:'INVALID_STATE\r\nprivate'},{details:{code:'INVALID_STATE'}}]){
+   const fetcher=vi.fn<typeof fetch>(async()=>Response.json({status:'error',message:'Transaction reference has been used before; INVALID_STATE',error},{status:400}));
+   await expect(createChapaTransport({env:environment(),fetcher}).create(create)).rejects.toMatchObject({httpStatus:400,providerCode:'HTTP_ERROR',category:'request',definiteRejection:true});
+  }
+ });
  it('preserves the minimal hosted body for historical snapshots with optional URL fields',async()=>{
   const {returnUrlVersion:_,...historical}=create,fetcher=vi.fn<typeof fetch>(async()=>Response.json(initialized()));
   await createChapaTransport({env:environment(),fetcher}).create(historical);

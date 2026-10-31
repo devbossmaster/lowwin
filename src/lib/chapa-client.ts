@@ -1,7 +1,8 @@
 import type {BidReceipt} from '@/modules/auctions/bids';
+import type {ChapaApiErrorCategory} from './chapa-api-error';
 
 export type ChapaIntent={key:string;purpose:'TOP_UP';amount:string}|{key:string;purpose:'BID';auctionSlug:string;amount:string;feeVersion:number;couponId?:string};
-export type ChapaCheckoutView={providerStatus?:string|null;providerReasonCode?:string|null;verificationState?:string;initializationErrorCode?:string|null;initializationHttpStatus?:number|null;merchantReference?:string;paymentMethod?:string|null;auctionTitle?:string|null;auctionTitleAm?:string|null;auctionCode?:string|null;auctionStatus?:string|null;auctionEndsAt?:string|null;id:string;purpose:'TOP_UP'|'BID';mode:'test'|'live';amount:string;amountCents:string;currency:'ETB';status:string;reason:string|null;checkoutUrl:string|null;auctionSlug:string|null;bidNumber:string|null;feeVersion:number|null;grossFee:string|null;discountPoints:string;createdAt:string;expiresAt:string;pollAfterMs:number;fundsPreserved:boolean;receipt:BidReceipt|null};
+export type ChapaCheckoutView={providerStatus?:string|null;providerReasonCode?:string|null;verificationState?:string;initializationIssue?:ChapaApiErrorCategory|null;merchantReference?:string;paymentMethod?:string|null;auctionTitle?:string|null;auctionTitleAm?:string|null;auctionCode?:string|null;auctionStatus?:string|null;auctionEndsAt?:string|null;id:string;purpose:'TOP_UP'|'BID';mode:'test'|'live';amount:string;amountCents:string;currency:'ETB';status:string;reason:string|null;checkoutUrl:string|null;auctionSlug:string|null;bidNumber:string|null;feeVersion:number|null;grossFee:string|null;discountPoints:string;createdAt:string;expiresAt:string;pollAfterMs:number;fundsPreserved:boolean;receipt:BidReceipt|null};
 export type ChapaAvailability={enabled:boolean;configured:boolean;mode:'test'|'live';walletBidsEnabled:boolean;minTopup:string;maxTopup:string;reason:string|null};
 export type ChapaAttempt={version:1;intent:ChapaIntent;orderId?:string};
 type Storage=Pick<globalThis.Storage,'getItem'|'setItem'|'removeItem'>;
@@ -41,7 +42,8 @@ export function chapaPollingPaused(order:ChapaCheckoutView,now=Date.now()){
 export function chapaCanResumeCheckout(attempt:ChapaAttempt|null,order:ChapaCheckoutView|null){
  if(!attempt)return false;
  if(!order)return !attempt.orderId;
- return !order.checkoutUrl&&!chapaConfirmed(order)&&['SUBMITTING','PENDING'].includes(order.status)&&(!order.reason||['INITIALIZATION_PENDING','PROVIDER_CONFIRMATION_REQUIRED','PROVIDER_EVENT_RECEIVED'].includes(order.reason));
+ if(order.initializationIssue==='state')return false;
+ return !order.checkoutUrl&&!chapaConfirmed(order)&&['SUBMITTING','PENDING'].includes(order.status)&&(!order.reason||['INITIALIZATION_PENDING','PROVIDER_CONFIRMATION_REQUIRED','PROVIDER_REFERENCE_UNAVAILABLE','PROVIDER_EVENT_RECEIVED'].includes(order.reason));
 }
 export function chapaRecoverable(order:Pick<ChapaCheckoutView,'status'|'fundsPreserved'>){return !order.fundsPreserved&&!['CREDITED','BID_ACCEPTED','FAILED','CANCELLED','EXPIRED','BLOCKED','INCOMPLETE'].includes(order.status)}
 export class ChapaClientError extends Error{constructor(message:string,readonly status=0,readonly code='UNAVAILABLE'){super(message)}}
