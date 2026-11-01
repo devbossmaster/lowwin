@@ -13,7 +13,7 @@ vi.mock('../src/components/admin-ui',()=>({
 import {AdminRecords} from '../src/components/admin-neutral-workspace';
 const render=()=>renderToStaticMarkup(createElement(AdminRecords,{section:'transactions'}));
 beforeEach(()=>{f.params=new URLSearchParams();f.items=[];f.path=''});
-describe('clear admin Chapa payment views',()=>{
+describe('clear admin payment views',()=>{
  it('opens completed records first and offers independent payment purpose filters',()=>{
   const html=render();expect(f.path).toContain('view=completed');expect(html).toContain('aria-current="page">Completed');
   for(const label of ['Unfinished','Needs review','Failed','All types','Wallet deposits','Bid payments'])expect(html).toContain(label);
@@ -25,5 +25,11 @@ describe('clear admin Chapa payment views',()=>{
  it('keeps committed review payments visible with their review outcome',()=>{
   f.params=new URLSearchParams({view:'review'});f.items=[{id:'preserved',purpose:'BID',typeLabel:'Bid payment',createdAt:'2026-10-30T09:00:00Z',amount:'10',status:'NEEDS_REVIEW',creditApplied:true,sessionEnded:false}];
   const html=render();expect(html).toContain('Bid payment');expect(html).toContain('NEEDS_REVIEW');expect(html).not.toContain('Requested amount');expect(html).not.toContain('Session ended');
+ });
+ it('shows wallet fee payments alongside Chapa deposits with an explicit method column',()=>{
+  f.items=[{id:'wallet-bid',source:'wallet',provider:'Wallet',channel:'Wallet',purpose:'BID',typeLabel:'Bid payment',amount:'45',status:'BID_ACCEPTED',creditApplied:true,createdAt:'2026-11-01T10:00:00Z'},{id:'chapa-deposit',source:'chapa',provider:'Chapa',channel:'telebirr',purpose:'TOP_UP',typeLabel:'Wallet deposit',amount:'100',status:'CREDITED',creditApplied:true,createdAt:'2026-11-01T09:00:00Z'}];
+  const html=render();expect(html).toContain('aria-label="Payments"');expect(html).toContain('<th>Method</th>');
+  expect(html).toContain('<strong>Wallet</strong>');expect(html).toContain('<strong>Chapa</strong>');expect(html).toContain('telebirr');
+  expect(html).toContain('Bid payment');expect(html).toContain('Wallet deposit');expect(html).toContain('45.00');expect(html).not.toContain('Requested amount');
  });
 });

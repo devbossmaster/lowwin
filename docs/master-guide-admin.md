@@ -47,13 +47,13 @@ Every admin page and API checks the current database role, verified email, activ
 | Overview | `/admin` | Small work summary and active auctions |
 | Auctions and Catalog | `/admin/auctions` | Existing auction, product, category and validated media management |
 | Players | `/admin/users` | One table with identity, verified contact availability, available/held balances, bids/wins, referral counts, status and joined date; details on demand |
-| Payments | `/admin/payments` | Chapa payments: name, Telegram username, phone, amount, purpose, date and status; payment details on demand |
+| Payments | `/admin/payments` | Wallet-paid bid fees and Chapa payments: name, Telegram username, phone, amount, purpose, method, date and status; payment details on demand |
 | Winners | `/admin/fulfillment` | Winner, phone, product, date won and delivery status; details and delivery completion |
 | Broadcast | `/admin/notifications` | Message, optional image, Mini App button and delivery history |
 
 Use Lowwin's existing logo, DM Sans/Ethiopic support, warm white canvas, white tables, near-black selection and restrained gold actions. Desktop uses a compact sidebar and shallow top bar with a wide workspace. On 360px/430px screens, the navigation becomes a drawer and dense tables scroll horizontally **inside their bordered containers**. Preserve column headers, search, pagination, refresh, keyboard focus and detail drawers.
 
-Remove separate wallet/journal/referral tabs, refund/compensation/reconciliation views, finalized-results/delivery tabs, content editing, reports, settings and staff-onboarding controls from ordinary navigation. This is a scoped interface and access-flow replacement: financial records, immutable settlement rules and server-side validation remain intact. Chapa-only payment display does not activate a gateway or delete older provider evidence.
+Remove separate wallet/journal/referral tabs, refund/compensation/reconciliation views, finalized-results/delivery tabs, content editing, reports, settings and staff-onboarding controls from ordinary navigation. This is a scoped interface and access-flow replacement: financial records, immutable settlement rules and server-side validation remain intact. Payments combines completed wallet bid fees with Chapa records without counting a Chapa-funded accepted bid twice. Wallet details are read-only and distinguish the gross fee, coupon discount and actual deduction; deposits remain separate from bid fees. The display does not activate a gateway or delete older provider evidence.
 
 ## Broadcast and correctness
 

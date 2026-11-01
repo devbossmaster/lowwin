@@ -12,6 +12,8 @@ Lowwin keeps Chapa v2 hosted checkout, server verification and ledger fulfillmen
 - Safe reasons include insufficient funds, incorrect PIN/OTP, unregistered payment account, blocked/cancelled/expired authorization. Arbitrary provider text, customer data, HTML and internal errors are never echoed. Unavailable verification retains the last state rather than inventing a failure.
 - Events may arrive late or out of order. A failure hint can resolve to a current verified success; an already committed credit is never reversed by a later failure event. Duplicate deliveries and concurrent checks cannot duplicate the ledger receipt or accepted bid.
 
+Chapa support confirmed on 31 October 2026 that its current v2 dashboard signs the webhook secret with that same secret. For those deliveries, explicitly set `CHAPA_WEBHOOK_SIGNATURE_PROFILE=legacy_secret`; its name identifies the signing formula, not the payment API version. Checkout creation and verification remain v2. Keep `raw_body` for deliveries that follow the published v2 raw-body formula. Do not pre-hash `CHAPA_WEBHOOK_SECRET` or change profiles automatically. Support confirmation does not give the reusable signature payload integrity, so these deliveries remain coalesced lookup hints and all financial effects still require a fresh matching verification response.
+
 ## Waiting and expiry
 
 Five minutes bounds active browser checking from the saved attempt; it is not evidence of provider expiry. Longer waits use a quiet saved-payment presentation. Pending rows remain pending in customer history and admin views. Foreground return/reopening requests a fresh authoritative check without starting an endless loop. The durable event worker retries provider checks with bounded backoff.

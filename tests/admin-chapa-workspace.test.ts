@@ -12,7 +12,7 @@ function fixture(tables:string[]=[]){
   if(!('text' in query)){const table=String(values[0]).replace(/^public\."|"$/g,'');readiness.push(table);return [{ready:tables.includes(table)}];}
   queries.push(query);
   if(query.text.startsWith('WITH fees')||query.text.includes('WITH fees AS'))return [{grossFees:'0',discounts:'0',refunds:'0',netFees:'0',deposits:'0',available:'0',held:'0',count:0,todayEtb:'0'}];
-  if(query.text.includes('COUNT(*)::int AS count FROM ('))return [{count:0}];
+  if(query.text.includes('COUNT(*)::int AS count FROM (')||query.text.includes('COUNT(*)::int AS count FROM payments'))return [{count:0}];
   return [];
  }),chapaCheckout:{findMany:vi.fn(async()=>[]),count:vi.fn(async()=>0)},outbox:{groupBy:vi.fn(async()=>[])}};
  return {db:mock as unknown as PrismaClient,mock,queries,readiness};
@@ -28,13 +28,13 @@ describe('Chapa admin workspace compatibility',()=>{
   expect(gatewayStatus({...raw,CHAPA_ENABLED:'false',CHAPA_RECOVERY_ENABLED:'true'})).toMatchObject({state:'Recovery only',chapa:{enabled:false,recoveryEnabled:true}});
   expect(JSON.stringify(gatewayStatus(raw))).not.toMatch(/CHAPA_TEST_|credentialFingerprint|local-only-secret/);
  });
- it('does not inspect schemas or query absent Chapa storage on ordinary navigation',async()=>{
+ it('reads wallet payments without inspecting schemas or querying absent Chapa storage',async()=>{
   const {db,queries,readiness,mock}=fixture();const result=await workspaceRead(db,new Headers(),'transactions',new URLSearchParams());
-  expect(result).toMatchObject({configured:false,items:[]});expect(readiness).toEqual([]);expect(queries).toEqual([]);expect(mock.chapaCheckout.findMany).not.toHaveBeenCalled();
+  expect(result).toMatchObject({configured:true,chapaConfigured:false,items:[]});expect(readiness).toEqual([]);expect(queries).toHaveLength(2);for(const query of queries){expect(query.text).not.toContain('ChapaCheckout');expect(query.text).toContain('BID_FEE')}expect(mock.chapaCheckout.findMany).not.toHaveBeenCalled();
  });
- it('lists bounded Chapa rows only after the reviewed schema gate',async()=>{
-  vi.stubEnv('CHAPA_SCHEMA_READY','true');const {db,mock,readiness}=fixture(['ChapaCheckout','ArifPayCheckout']);await workspaceRead(db,new Headers(),'transactions',new URLSearchParams({page:'2',sort:'amount'}));
-  expect(mock.chapaCheckout.findMany).toHaveBeenCalledWith(expect.objectContaining({take:25,skip:25,orderBy:[{amountCents:'desc'},{id:'asc'}]}));expect(readiness).toEqual([]);
+ it('globally paginates wallet and Chapa sources after the reviewed schema gate',async()=>{
+  vi.stubEnv('CHAPA_SCHEMA_READY','true');const {db,mock,readiness,queries}=fixture(['ChapaCheckout','ArifPayCheckout']);await workspaceRead(db,new Headers(),'transactions',new URLSearchParams({page:'2',sort:'amount'}));
+  expect(queries[0].text).toContain('UNION ALL');expect(queries[0].text).toContain('ORDER BY amount DESC,"createdAt" DESC,id ASC,source ASC LIMIT 25 OFFSET');expect(queries[0].values).toContain(25);expect(mock.chapaCheckout.findMany).not.toHaveBeenCalled();expect(readiness).toEqual([]);
   expect(JSON.stringify(mock.chapaCheckout.findMany.mock.calls)).not.toMatch(/checkoutUrl|credentialFingerprint|initialization|merchantReference|processorReference/);
  });
  it('does not select provider reference suffixes for Support',async()=>{

@@ -8,7 +8,7 @@ import {mkdirSync,writeFileSync} from 'node:fs';
 // Nothing in this suite sends email, broadcasts, provider requests or ledger writes.
 const password='Master-guide-fixture-password-12345';
 const now='2026-10-28T09:00:00.000Z';
-const screenshotRoot='docs/redesign/screenshots/master-guide-admin';
+const screenshotRoot=process.env.ADMIN_PAYMENT_SCREENSHOT_DIR??'docs/redesign/screenshots/master-guide-admin';
 test.use({actionTimeout:15000,navigationTimeout:30000});
 
 function fixtureDatabase(){
@@ -66,7 +66,7 @@ test('Master Guide Admin uses a real verified admin session and compact responsi
  const errors:string[]=[],reads:string[]=[],authPosts:string[]=[],writes:string[]=[],captures:string[]=[];
  const timings:Record<string,number>={};
  const players=Array.from({length:30},(_,index)=>({id:randomUUID(),name:index===0?'Abebe Tesfaye':`Fixture player ${index+1}`,telegramId:String(880000+index),telegramUsername:index===0?'abebe_fixture':`fixture_${index+1}`,phone:`+251911${String(index).padStart(6,'0')}`,phoneUnavailable:false,createdAt:now,bidCount:index+2,winCount:index===0?1:0,suspended:false,available:'125.50',held:'0',referralCount:2,couponCount:1}));
- const payments=players.map((user,index)=>({id:randomUUID(),userId:user.id,provider:'Chapa',channel:'telebirr',purpose:'TOP_UP',mode:'test',status:index===0?'CREDITED':'PENDING',amount:String(125+index),createdAt:now,journalId:index===0?randomUUID():null,reason:null,review:false,reference:`fixture-${index}`,bidId:null,auctionId:null,user:{id:user.id,name:user.name,telegramUsername:user.telegramUsername,phone:user.phone,phoneUnavailable:false}}));
+ const payments=players.map((user,index)=>({id:randomUUID(),userId:user.id,source:index===1?'wallet':'chapa',provider:index===1?'Wallet':'Chapa',channel:index===1?'Wallet':'telebirr',purpose:index===1?'BID':'TOP_UP',typeLabel:index===1?'Bid payment':'Wallet deposit',creditApplied:true,mode:index===1?'live':'test',status:index===1?'BID_ACCEPTED':'CREDITED',amount:String(125+index),createdAt:now,journalId:randomUUID(),reason:null,review:false,reference:`fixture-${index}`,bidId:null,auctionId:null,user:{id:user.id,name:user.name,telegramUsername:user.telegramUsername,phone:user.phone,phoneUnavailable:false}}));
  const winners=players.map((winner,index)=>({auctionId:randomUUID(),publicCode:4000+index,code:String(4000+index),title:index===0?'Studio headphones':`Fixture prize ${index+1}`,completedAt:now,winner:{id:winner.id,name:winner.name,telegramUsername:winner.telegramUsername,phone:winner.phone,phoneUnavailable:false},state:'PENDING',version:1,tracking:null,assignedTo:null,deliveredAt:null}));
  const queue=(items:unknown[],url:URL)=>{const pageNumber=Math.max(1,Number(url.searchParams.get('page'))||1);return {items:items.slice((pageNumber-1)*25,pageNumber*25),total:items.length,page:pageNumber,totalPages:Math.max(1,Math.ceil(items.length/25)),serverNow:now,configured:true}};
  const capturePair=async(name:string,region?:Locator)=>{
@@ -94,6 +94,7 @@ test('Master Guide Admin uses a real verified admin session and compact responsi
   else if(path==='/api/admin/workspace/winners')body=queue(winners.filter(item=>!q||`${item.winner.name} ${item.title} ${item.code}`.toLowerCase().includes(q)),url);
   else if(path.startsWith('/api/admin/users/'))body=players.find(item=>item.id===path.split('/').pop());
   else if(path.startsWith('/api/admin/chapa/')){const item=payments.find(row=>row.id===path.split('/').pop());if(item)body={item:{...item,playerName:item.user.name,amountCents:String(Number(item.amount)*100),currency:'ETB',updatedAt:now,credited:item.status==='CREDITED',bidAccepted:false,paymentMethod:'telebirr',canCheck:false,references:{merchant:item.reference,chapa:'CH-fixture-reference',processor:null}},health:{schemaReady:true,configured:true,recoveryEnabled:false,mode:'test',reason:null}}}
+  else if(path.startsWith('/api/admin/payments/wallet-bids/')){const item=payments.find(row=>row.id===path.split('/').pop()&&row.source==='wallet');if(item)body={item:{...item,playerName:item.user.name,amountCents:String(Number(item.amount)*100),grossFee:item.amount,discountPoints:'0',title:'Power Bank',auctionCode:'LW-5',currency:'ETB',paymentMethod:'Wallet',paid:true,bidAccepted:true,canCheck:false}}}
   else if(path==='/api/admin/notifications')body={items:[],total:0,page:1,totalPages:1};
   if(body===undefined)return route.continue();
   return route.fulfill({status:200,contentType:'application/json',headers:{'cache-control':'private, no-store'},body:JSON.stringify(body)});
@@ -128,13 +129,18 @@ test('Master Guide Admin uses a real verified admin session and compact responsi
   const playerReads=reads.filter(path=>path.startsWith('/api/admin/workspace/players')).length;await page.getByRole('button',{name:'Refresh',exact:true}).click();await expect.poll(()=>reads.filter(path=>path.startsWith('/api/admin/workspace/players')).length).toBeGreaterThan(playerReads);
 
   await navigate(page,'Payments');await expect(page.getByRole('heading',{name:'Payments',exact:true})).toBeVisible();
-  const paymentTable=page.getByRole('region',{name:'Chapa payments',exact:true});await expect(paymentTable.locator('tbody tr')).toHaveCount(25);
+  const paymentTable=page.getByRole('region',{name:'Payments',exact:true});await expect(paymentTable.locator('tbody tr')).toHaveCount(25);
+  await expect(paymentTable.getByRole('columnheader',{name:'Method',exact:true})).toBeVisible();await expect(paymentTable.locator('tbody tr').nth(1)).toContainText('Wallet');
   await expect(paymentTable.locator('tbody tr').first()).toContainText('Abebe Tesfaye');await expect(paymentTable.locator('tbody tr').first()).toContainText('@abebe_fixture');await expect(paymentTable.locator('tbody tr').first()).toContainText(players[0].phone);await expect(paymentTable).not.toContainText(/Legacy transfer|Compensation|Reconciliation/);
   await capturePair('payments',paymentTable);
   await page.getByRole('button',{name:'Next',exact:true}).click();await expect(paymentTable.locator('tbody tr')).toHaveCount(5);await page.getByRole('button',{name:'Previous',exact:true}).click();await expect(paymentTable.locator('tbody tr')).toHaveCount(25);
   await paymentTable.locator('tbody tr').first().getByRole('button',{name:'Details',exact:true}).click();
   const paymentDetail=page.getByRole('dialog',{name:'Payment details',exact:true});await expect(paymentDetail).toContainText('Abebe Tesfaye');await expect(paymentDetail.getByText('Credited',{exact:true}).first()).toBeVisible();await expect(paymentDetail.getByRole('button',{name:'Check with Chapa',exact:true})).toHaveCount(0);
-  await paymentDetail.getByRole('button',{name:'Close details',exact:true}).click();await page.getByRole('combobox',{name:/^Sort/}).selectOption('amount');await expect(paymentTable.locator('tbody tr').first()).toContainText('Fixture player 30');
+  await paymentDetail.getByRole('button',{name:'Close details',exact:true}).click();
+  await paymentTable.locator('tbody tr').nth(1).getByRole('button',{name:'Details',exact:true}).click();
+  await expect(paymentDetail).toContainText('Paid from wallet');await expect(paymentDetail).toContainText('Power Bank');await expect(paymentDetail.getByRole('button',{name:'Check with Chapa',exact:true})).toHaveCount(0);
+  await paymentDetail.getByRole('button',{name:'Close details',exact:true}).click();
+  await page.getByRole('combobox',{name:/^Sort/}).selectOption('amount');await expect(paymentTable.locator('tbody tr').first()).toContainText('Fixture player 30');
   await page.getByRole('searchbox',{name:'Search',exact:true}).fill('Abebe');await page.getByRole('button',{name:'Search',exact:true}).click();await expect(paymentTable.locator('tbody tr')).toHaveCount(1);
 
   await navigate(page,'Winners');await expect(page.getByRole('heading',{name:'Winners',exact:true})).toBeVisible();
