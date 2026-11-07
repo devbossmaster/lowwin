@@ -95,7 +95,7 @@ export function chapaStatusLabel(order:ChapaCheckoutView,am=false){
  if(order.verificationState==='UNAVAILABLE')return am?'ማረጋገጥ ያስፈልጋል':'Needs verification';
  return (labels[order.status]??labels.PENDING)[am?1:0];
 }
-export function ChapaPaymentStatus({payment,onNavigate,readOnly=false}:{payment:ReturnType<typeof useChapaPayment>;onNavigate?:()=>void;readOnly?:boolean}){
+export function ChapaPaymentStatus({payment,onNavigate,onStartAgain,readOnly=false}:{payment:ReturnType<typeof useChapaPayment>;onNavigate?:()=>void;onStartAgain?:()=>void;readOnly?:boolean}){
  const {language}=useMiniLocale(),am=language==='am',text=(en:string,translated:string)=>am?translated:en,order=payment.order;
  const [now,setNow]=useState(()=>Date.now()),deadline=order?chapaPollingDeadline(order):null;
  const waitingSince=order?Date.parse(order.createdAt)+CHAPA_LONG_WAIT_MS:NaN;
@@ -162,7 +162,7 @@ export function ChapaPaymentStatus({payment,onNavigate,readOnly=false}:{payment:
    {url&&<a className={longWait?styles.checkPayment:styles.payButton} href={url} target="_blank" rel="noopener noreferrer" onClick={event=>{event.preventDefault();const nav=prepareChapaNavigation();try{nav.open(url)}finally{nav.cancel()}}}>{text('Continue checkout','ክፍያውን ይቀጥሉ')}<ArrowUpRight size={16} aria-hidden="true"/></a>}
    {retryOriginal&&<button type="button" className={styles.checkPayment} onClick={()=>void payment.create(payment.attempt!.intent)}>{text('Retry original request','የመጀመሪያውን ጥያቄ ይድገሙ')}</button>}
    {!order&&!payment.attempt&&!payment.restoring&&!payment.busy&&<button type="button" className={styles.checkPayment} onClick={()=>void payment.check()}>{text('Try opening again','እንደገና ክፈት')}</button>}
-   {!readOnly&&payment.canStartAgain&&(!longWait||checkingPaused)&&<button type="button" className={styles.checkPayment} onClick={payment.startAgain}>{text(finished?'Top up again':'Start new checkout',finished?'እንደገና ገንዘብ ያስገቡ':'አዲስ ክፍያ ይጀምሩ')}</button>}
+   {!readOnly&&payment.canStartAgain&&(!longWait||checkingPaused)&&<button type="button" className={styles.checkPayment} onClick={onStartAgain??payment.startAgain}>{text(finished?'Top up again':'Start new checkout',finished?'እንደገና ገንዘብ ያስገቡ':'አዲስ ክፍያ ይጀምሩ')}</button>}
   </div>
   {!finished&&order&&phase!=='failed'&&(!longWait||checkingPaused)&&<small className={styles.savedPaymentNote}>{text('Starting another checkout does not cancel this payment.','ሌላ ክፍያ መጀመር ይህን ክፍያ አይሰርዝም።')}</small>}
   {order&&<details className={styles.paymentDetails}><summary>{text('Payment details','የክፍያ ዝርዝሮች')}</summary><small className={styles.paymentReference}>{order.merchantReference??order.id}</small><p>{text('Payment status','የክፍያ ሁኔታ')}: {chapaStatusLabel(order,am)}</p>{order.paymentMethod&&<p>{text('Method','መንገድ')}: {order.paymentMethod}</p>}{order.payerPhoneMasked&&<p>{text('Payment phone','የክፍያ ስልክ')}: {order.payerPhoneMasked}</p>}{!!order.batchNumbers?.length&&<p>{text('Bid amounts','የጨረታ መጠኖች')}: {order.batchNumbers.join(' · ')}</p>}{order.purpose==='BID'&&<p>{text('Fulfillment','የጨረታ ሁኔታ')}: {order.status==='BID_ACCEPTED'&&order.receipt?text('All selected bids accepted','ሁሉም የተመረጡ ጨረታዎች ተቀብለዋል'):order.fundsPreserved?text('Funds in wallet; bids not accepted','ገንዘቡ በዋሌት ገብቷል፤ ጨረታዎች አልተቀበሉም'):text('Bids not accepted yet','ጨረታዎች ገና አልተቀበሉም')}</p>}</details>}

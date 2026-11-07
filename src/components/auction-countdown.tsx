@@ -1,5 +1,5 @@
 'use client';
-import {memo,useEffect,useRef,useState} from 'react';
+import {memo,useEffect,useRef,useState,type CSSProperties} from 'react';
 import {useMiniLocale} from './mini-locale';
 import {AuctionClockAnchors} from '@/lib/auction-clock';
 import {countdownUnits} from '@/lib/countdown-units';
@@ -7,9 +7,22 @@ import styles from './auction-countdown.module.css';
 const clocks=new AuctionClockAnchors();
 
 const Flap=memo(function Flap({value,label,animate}:{value:string;label:string;animate:boolean}){
- const [last,setLast]=useState({value,flip:false});
- if(last.value!==value)setLast({value,flip:animate});
- return <span className={styles.unit} data-countdown-unit><strong className={styles.tile}><span>{value}</span>{last.flip&&animate&&<span key={value} className={styles.flip} aria-hidden="true">{value}</span>}</strong><small>{label}</small></span>;
+ const [frame,setFrame]=useState<{value:string;previous:string|null}>({value,previous:null});
+ if(frame.value!==value)setFrame({value,previous:animate?frame.value:null});
+ else if(!animate&&frame.previous!==null)setFrame({value,previous:null});
+ const previous=animate&&frame.value===value?frame.previous:null;
+ const finish=()=>setFrame(current=>current.value===value&&current.previous!==null?{value,previous:null}:current);
+ return <span className={styles.unit} data-countdown-unit data-countdown-value={value}>
+  <strong className={styles.tile} data-countdown-tile aria-hidden="true" style={{'--flap-digits':value.length} as CSSProperties}>
+   <span className={`${styles.half} ${styles.upper}`}><span>{value}</span></span>
+   <span className={`${styles.half} ${styles.lower}`}><span>{previous??value}</span></span>
+   {previous!==null&&<span key={value} className={styles.leaves}>
+    <span className={`${styles.half} ${styles.upper} ${styles.outgoing}`} data-countdown-flip="outgoing"><span>{previous}</span></span>
+    <span className={`${styles.half} ${styles.lower} ${styles.incoming}`} data-countdown-flip="incoming" onAnimationEnd={finish}><span>{value}</span></span>
+   </span>}
+  </strong>
+  <span className="sr-only">{value}</span><small>{label}</small>
+ </span>;
 });
 
 /** Visual updates stay inside this timer. Hidden/offscreen intervals pause;

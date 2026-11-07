@@ -22,6 +22,18 @@ test('batch review includes the uncommitted amount and sends one direct charge w
   await page.goto('/telegram?next='+encodeURIComponent(f.home));const card=page.locator('.auction-card').filter({hasText:f.title});await card.getByRole('button').click();const dialog=page.getByRole('dialog'),input=dialog.getByRole('textbox',{name:am?'የጨረታ መጠንዎ':'Your bid amount',exact:true});
   await expect(input).toBeEnabled();await input.fill('2');await dialog.getByRole('button',{name:am?'የጨረታ መጠን ጨምር':'Add bid amount',exact:true}).click();await input.fill('3');await dialog.getByRole('button',{name:am?'የጨረታ መጠን ጨምር':'Add bid amount',exact:true}).click();await input.fill('4');await expect(dialog.locator('[data-payment-action]')).toBeEnabled();await dialog.locator('[data-payment-action]').click();
   await expect(dialog.locator('[data-bid-review]')).toBeVisible();expect(quotes).toHaveLength(1);expect(quotes[0]).toMatchObject({numbers:['2.00','3.00','4.00']});await expect(dialog.locator('[data-bid-review]')).toContainText('30.00');
+  const review=dialog.locator('[data-bid-review]'),funding=review.locator('[data-funding-selector]'),originalViewport=page.viewportSize()!;
+  await expect(funding.locator('img')).toHaveCount(3);await expect.poll(()=>funding.locator('img').evaluateAll(nodes=>nodes.every(node=>(node as HTMLImageElement).complete&&(node as HTMLImageElement).naturalWidth>0))).toBe(true);
+  await expect(review).not.toContainText(am?'የኩፖን ቅናሽ':'Coupon savings');
+  for(const width of [320,originalViewport.width]){
+   await page.setViewportSize({...originalViewport,width});
+   const online=await funding.getByRole('radio',{name:am?'የመስመር ላይ ክፍያ':'Online payment',exact:true}).locator('..').boundingBox(),wallet=await funding.getByRole('radio',{name:am?'የዋሌት ቀሪ ሂሳብ':'Wallet balance',exact:true}).locator('..').boundingBox(),plus=await funding.getByRole('link',{name:am?'ወደ ዋሌት ገንዘብ ያስገቡ':'Top up wallet',exact:true}).boundingBox();
+   expect(online!.x+online!.width).toBeLessThanOrEqual(wallet!.x);expect(wallet!.x+wallet!.width).toBeLessThanOrEqual(plus!.x);expect(plus!.width).toBeGreaterThanOrEqual(44);expect(plus!.height).toBeGreaterThanOrEqual(44);
+   for(const radio of await funding.getByRole('radio').all())await expect(radio).toHaveCSS('opacity','0');
+   for(const image of await funding.locator('img').all()){const box=await image.boundingBox();expect(box!.width).toBeGreaterThanOrEqual(20);expect(box!.height).toBeGreaterThanOrEqual(20)}
+   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+   await page.screenshot({path:info.outputPath(`bid-review-methods-${width}.png`),animations:'disabled'});
+  }
   await dialog.getByRole('radio',{name:am?'የመስመር ላይ ክፍያ':'Online payment',exact:true}).check();await dialog.locator('[data-payment-action]').click();await expect(dialog.locator('[data-direct-checkout]')).toBeVisible();await expect(dialog.getByRole('textbox',{name:am?'የክፍያ ስልክ ቁጥር':'Payment phone number'})).toHaveValue('911652904');
   expect(await dialog.getByRole('radio').evaluateAll(nodes=>nodes.map(node=>(node as HTMLInputElement).value))).toEqual(['telebirr','mpesa','cbebirr']);await expect(dialog.locator('[data-direct-checkout] img')).toHaveCount(3);await expect.poll(()=>dialog.locator('[data-direct-checkout] img').evaluateAll(nodes=>nodes.every(node=>(node as HTMLImageElement).complete&&(node as HTMLImageElement).naturalWidth>0))).toBe(true);await page.screenshot({path:info.outputPath('direct-phone-methods.png'),animations:'disabled'});await dialog.locator('[data-payment-action]').evaluate(node=>{(node as HTMLButtonElement).click();(node as HTMLButtonElement).click()});await expect.poll(()=>commands.length).toBe(1);expect(commands[0]).toMatchObject({purpose:'BID',paymentMethod:'telebirr',phone:'251911652904',batchId:expect.any(String)});
   await expect(dialog).toContainText(am?'ክፍያውን በስልክዎ ይፍቀዱ':'Approve the payment on your phone');expect(await page.evaluate(()=>Reflect.get(window,'chapaOpened')??[])).toEqual([]);await expect(dialog.locator('input[autocomplete="one-time-code"]')).toHaveCount(0);await expect(dialog.locator('[data-direct-approval=phone]')).toBeVisible();await expect(page.getByRole('dialog')).toHaveCount(1);await expect(dialog.locator('input[type=password]')).toHaveCount(0);await page.screenshot({path:info.outputPath('direct-phone-approval.png'),animations:'disabled'});paid=true;await expect(dialog.locator('[data-payment-state="confirmed"]')).toBeVisible();expect(verifyRequests).toBeGreaterThan(0);await expect(dialog).toContainText('2.00');await expect(dialog).toContainText('4.00');expect(commands).toHaveLength(1);expect(await f.db.bid.count({where:{userId:f.user.id}})).toBe(0);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
@@ -56,4 +68,66 @@ test('a delayed verification response cannot replace confirmed OTP payment with 
   await otp.fill('123456');await dialog.getByRole('button',{name:am?'ኮዱን ያረጋግጡ':'Confirm OTP',exact:true}).click();await expect(dialog.locator('[data-payment-state="confirmed"]')).toBeVisible();release();await page.waitForTimeout(1500);
   await expect(dialog.locator('[data-payment-state="confirmed"]')).toBeVisible();await expect(otp).toHaveCount(0);expect(commands).toBe(1);expect(authorizations).toBe(1);expect(await page.evaluate(()=>Reflect.get(window,'chapaOpened')??[])).toEqual([]);
  }finally{release();await f.cleanup()}
+});
+
+test('an unconfirmed direct initialization stays connecting and retries the same persisted request',async({page},info)=>{
+ const am=info.project.name==='430',f=await setup(page,am),commands:ChapaDirectIntent[]=[];let order:ChapaCheckoutView|null=null;
+ try{
+  await page.route('**/api/payments/chapa/direct',route=>{
+   const command=route.request().postDataJSON() as ChapaDirectIntent;commands.push(command);
+   const ready=directOrder(command,'USSD');
+   order=commands.length===1?{...ready,status:'SUBMITTING',authType:null,authorizationReference:null,providerStatus:null,verificationState:'UNAVAILABLE'}:{...ready,id:order!.id};
+   return route.fulfill({status:202,json:order});
+  });
+  await page.route('**/api/payments/chapa/checkouts/**',route=>route.fulfill({json:order}));
+  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await startTopup(page,am);await dialog.locator('[data-payment-action]').click();
+  const connecting=dialog.locator('[data-direct-approval="connecting"]');await expect(connecting).toBeVisible();
+  await expect(connecting.getByRole('status')).toContainText(am?'በመገናኘት':'Connecting');
+  await expect(connecting).not.toContainText(am?'ክፍያውን በስልክዎ ይፍቀዱ':'Approve the payment on your phone');
+  await expect(dialog.locator('input[autocomplete="one-time-code"]')).toHaveCount(0);
+  expect((await connecting.boundingBox())!.height).toBeLessThan(430);await page.screenshot({path:info.outputPath('direct-initialization-connecting.png'),animations:'disabled'});
+  await connecting.getByRole('button',{name:am?'የመጀመሪያውን ጥያቄ ይድገሙ':'Retry original request',exact:true}).click();
+  await expect.poll(()=>commands.length).toBe(2);expect(commands[1]).toEqual(commands[0]);await expect(dialog.locator('[data-direct-approval="phone"]')).toBeVisible();
+  expect(await page.evaluate(()=>Reflect.get(window,'chapaOpened')??[])).toEqual([]);
+ }finally{await f.cleanup()}
+});
+
+test('a terminal bid attempt starts a fresh reviewed order only after explicit user actions',async({page},info)=>{
+ const am=info.project.name==='430',f=await setup(page,am),quotes:BidBatchQuote[]=[],commands:ChapaDirectIntent[]=[];let order:ChapaCheckoutView|null=null,first:ChapaCheckoutView|null=null;
+ try{
+  await page.route('**/api/payments/chapa/batches/quote',route=>{
+   const body=route.request().postDataJSON() as {numbers:string[]};
+   const quote:BidBatchQuote={id:randomUUID(),quoteHash:'b'.repeat(64),auctionSlug:f.auction.slug!,feeVersion:1,ruleVersion:'lowest-unique-v4',lines:body.numbers.map((number,position)=>({position,number,grossFee:'10.00',discount:'0.00',netFee:'10.00'})),entryCount:body.numbers.length,total:(body.numbers.length*10).toFixed(2),totalCents:String(body.numbers.length*1000),grossTotal:(body.numbers.length*10).toFixed(2),discountTotal:'0.00',status:'QUOTED'};
+   quotes.push(quote);return route.fulfill({json:quote});
+  });
+  await page.route('**/api/payments/chapa/direct',route=>{
+   const command=route.request().postDataJSON() as ChapaDirectIntent;commands.push(command);const ready=directOrder(command,'USSD',quotes.at(-1)!);
+   order=commands.length===1?{...ready,status:'CANCELLED',providerStatus:'CANCELLED',providerReasonCode:'PAYMENT_CANCELLED'}:ready;
+   if(!first)first=structuredClone(order);return route.fulfill({json:order});
+  });
+  await page.route('**/api/payments/chapa/checkouts/**',route=>route.fulfill({json:order}));
+  await page.goto('/telegram?next='+encodeURIComponent(f.home));await page.locator('.auction-card').filter({hasText:f.title}).getByRole('button').click();const dialog=page.getByRole('dialog');
+  await dialog.getByRole('textbox',{name:am?'የጨረታ መጠንዎ':'Your bid amount',exact:true}).fill('2');await dialog.locator('[data-payment-action]').click();
+  await expect(dialog.locator('[data-bid-review]')).toBeVisible();await dialog.getByRole('radio',{name:am?'የመስመር ላይ ክፍያ':'Online payment',exact:true}).check();await dialog.locator('[data-payment-action]').click();await dialog.locator('[data-payment-action]').click();
+  await expect(dialog.locator('[data-payment-state="failed"]')).toBeVisible();expect(commands).toHaveLength(1);expect(quotes).toHaveLength(1);
+  await dialog.getByRole('button',{name:am?'አዲስ ክፍያ ይጀምሩ':'Start new checkout',exact:true}).click();
+  await expect(dialog.locator('[data-bid-entry]')).toBeVisible();await expect(dialog.getByRole('button',{name:am?'2.00 ያስተካክሉ':'Edit 2.00',exact:true})).toBeVisible();expect(quotes).toHaveLength(1);expect(commands).toHaveLength(1);
+  await dialog.locator('[data-payment-action]').click();await expect.poll(()=>quotes.length).toBe(2);expect(quotes[1].id).not.toBe(quotes[0].id);
+  await dialog.getByRole('radio',{name:am?'የመስመር ላይ ክፍያ':'Online payment',exact:true}).check();await dialog.locator('[data-payment-action]').click();await dialog.locator('[data-payment-action]').click();
+  await expect.poll(()=>commands.length).toBe(2);expect(commands[1].key).not.toBe(commands[0].key);expect(commands[1]).toMatchObject({purpose:'BID',batchId:quotes[1].id});expect(commands[0]).toMatchObject({purpose:'BID',batchId:quotes[0].id});
+  await expect(dialog.locator('[data-direct-approval="phone"]')).toBeVisible();expect(first).toMatchObject({status:'CANCELLED',providerStatus:'CANCELLED'});expect(await f.db.bid.count({where:{userId:f.user.id}})).toBe(0);expect(await page.evaluate(()=>Reflect.get(window,'chapaOpened')??[])).toEqual([]);
+ }finally{await f.cleanup()}
+});
+
+test('verified provider PIN feedback stays on the same USSD attempt and clears after confirmation',async({page},info)=>{
+ const am=info.project.name==='430',f=await setup(page,am),commands:ChapaDirectIntent[]=[];let order:ChapaCheckoutView|null=null,paid=false;
+ try{
+  await page.route('**/api/payments/chapa/direct',route=>{const command=route.request().postDataJSON() as ChapaDirectIntent;commands.push(command);order={...directOrder(command,'USSD'),providerReasonCode:'INVALID_PIN',pollAfterMs:1000};return route.fulfill({json:order})});
+  await page.route('**/api/payments/chapa/checkouts/**',route=>route.fulfill({json:paid?accepted(order!):order}));
+  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await startTopup(page,am);await dialog.locator('[data-payment-action]').click();
+  await expect(dialog.locator('[data-direct-approval="phone"]')).toBeVisible();await expect(dialog.locator('[data-payment-reason]')).toContainText(am?'PIN ትክክል':'incorrect payment PIN');
+  await expect(dialog.locator('input[type="password"],input[autocomplete="one-time-code"]')).toHaveCount(0);expect(commands).toHaveLength(1);
+  await page.screenshot({path:info.outputPath('direct-provider-pin-feedback.png'),animations:'disabled'});paid=true;
+  await expect(dialog.locator('[data-payment-state="confirmed"]')).toBeVisible();await expect(dialog.locator('[data-payment-reason]')).toHaveCount(0);expect(commands).toHaveLength(1);expect(await page.evaluate(()=>Reflect.get(window,'chapaOpened')??[])).toEqual([]);
+ }finally{await f.cleanup()}
 });

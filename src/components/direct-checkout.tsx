@@ -8,18 +8,18 @@ import {usePrivateQuery} from './private-query';
 import {normalizePaymentPhone,type BidBatchQuote,type DirectPaymentMethods} from '@/lib/bid-batch-client';
 import {chapaConfirmed,chapaRecoverable} from '@/lib/chapa-client';
 import {etbToCents,formatEtb} from '@/lib/money';
-import {chapaRequestReasonMessage} from '@/lib/chapa-payment-reason';
+import {chapaPaymentReasonMessage,chapaRequestReasonMessage} from '@/lib/chapa-payment-reason';
 import styles from './bid-payment-sheet.module.css';
 import ui from './batch-checkout.module.css';
 
 const logos:Record<string,string>={telebirr:'/icons/payments/telebirr.jpg',mpesa:'/icons/payments/mpesa.png',cbebirr:'/icons/payments/cbebirr.svg'};
 const methodNames:Record<string,string>={telebirr:'telebirr',mpesa:'M-Pesa',cbebirr:'CBE Birr',ebirr:'eBirr'};
-type Props={payment:ReturnType<typeof useChapaPayment>;purpose:'BID'|'TOP_UP';amount:string;batch?:BidBatchQuote;onBack?:()=>void;onClose?:()=>void};
+type Props={payment:ReturnType<typeof useChapaPayment>;purpose:'BID'|'TOP_UP';amount:string;batch?:BidBatchQuote;onBack?:()=>void;onClose?:()=>void;onStartAgain?:()=>void};
 const localPhone=(value:string)=>normalizePaymentPhone(value)?.slice(3)??value;
 
 /** The mobile wallet owns its native PIN prompt. Only a provider-requested OTP
  * may appear here; it exists in memory for one explicit authorization request. */
-export default function DirectCheckout({payment,purpose,amount,batch,onBack,onClose}:Props){
+export default function DirectCheckout({payment,purpose,amount,batch,onBack,onClose,onStartAgain}:Props){
  const {language}=useMiniLocale(),am=language==='am',text=(en:string,translated:string)=>am?translated:en,id=useId();
  const [phone,setPhone]=useState(''),[method,setMethod]=useState(''),[otp,setOtp]=useState('');
  const editedPhone=useRef(false),operationKey=useRef(crypto.randomUUID()),order=payment.order;
@@ -30,18 +30,22 @@ export default function DirectCheckout({payment,purpose,amount,batch,onBack,onCl
  useEffect(()=>{setOtp('')},[order?.id]);
  const normalized=normalizePaymentPhone(phone),selected=methods.data?.methods.find(item=>item.slug===method);
  const submit=()=>{if(!normalized||!selected||payment.busy)return;void payment.createDirect(purpose==='BID'&&batch?{key:operationKey.current,purpose:'BID',batchId:batch.id,quoteHash:batch.quoteHash,paymentMethod:method,phone:normalized}:{key:operationKey.current,purpose:'TOP_UP',amount,paymentMethod:method,phone:normalized})};
- const otpNeeded=order?.chargeType==='DIRECT'&&order.authType==='OTP'&&chapaRecoverable(order)&&order.providerStatus!=='SUCCESS'&&!chapaConfirmed(order);
+ const authorizationReady=order?.chargeType==='DIRECT'&&!!order.authorizationReference;
+ const otpNeeded=authorizationReady&&order.authType==='OTP'&&chapaRecoverable(order)&&order.providerStatus!=='SUCCESS'&&!chapaConfirmed(order);
+ const phoneApproval=authorizationReady&&order.authType==='USSD'&&chapaRecoverable(order)&&order.providerStatus!=='SUCCESS'&&!chapaConfirmed(order);
+ const connecting=!authorizationReady&&order?.providerStatus!=='SUCCESS';
  const waiting=order?.chargeType==='DIRECT'&&chapaRecoverable(order)&&!chapaConfirmed(order)&&!payment.paused&&order.verificationState!=='MISMATCH'&&order.status!=='NEEDS_REVIEW';
- if(payment.started&&order?.chargeType!=='DIRECT'&&order)return <ChapaPaymentStatus payment={payment} onNavigate={onClose}/>;
- if(payment.started&&order&&!waiting)return <><ChapaPaymentStatus payment={payment} onNavigate={onClose}/>{order.batchNumbers&&<p className={ui.numbers}>{order.batchNumbers.join(' · ')}</p>}</>;
+ if(payment.started&&order?.chargeType!=='DIRECT'&&order)return <ChapaPaymentStatus payment={payment} onNavigate={onClose} onStartAgain={onStartAgain}/>;
+ if(payment.started&&order&&!waiting)return <><ChapaPaymentStatus payment={payment} onNavigate={onClose} onStartAgain={onStartAgain}/>{order.batchNumbers&&<p className={ui.numbers}>{order.batchNumbers.join(' · ')}</p>}</>;
  const total=formatEtb(order?.amount??amount);
+ const providerReason=order?chapaPaymentReasonMessage(order,am):null;
  const errors=<>
-  {payment.error&&<p role="alert" className={styles.error}>{payment.error}</p>}
+  {(payment.error||providerReason)&&<p role="alert" className={styles.error} data-payment-reason>{payment.error||providerReason}</p>}
   {order?.initializationReasonCode&&<p role="alert" className={styles.error}>{chapaRequestReasonMessage(order.initializationReasonCode,am)} {text('Check the original payment in Transactions before starting another charge.','ሌላ ክፍያ ከመጀመርዎ በፊት የመጀመሪያውን ክፍያ በግብይቶች ይመልከቱ።')}</p>}
  </>;
  return <section className={ui.checkout} data-direct-checkout>
   {onBack&&!payment.started&&<button className={ui.back} type="button" onClick={onBack}><ArrowLeft size={16}/> {text('Back to review','ወደ ግምገማ ይመለሱ')}</button>}
-  <p className={ui.checkoutIntro}>{text('Choose a payment method and approve the request on your phone.','የክፍያ መንገድ ይምረጡና በስልክዎ የሚመጣውን ጥያቄ ያረጋግጡ።')}</p>
+  {!payment.started&&<p className={ui.checkoutIntro}>{text('Choose a payment method and approve the request on your phone.','የክፍያ መንገድ ይምረጡና በስልክዎ የሚመጣውን ጥያቄ ያረጋግጡ።')}</p>}
   {!payment.started?<form className={ui.paymentPanel} id={id} onSubmit={event=>{event.preventDefault();submit()}}>
    <label className="sr-only" htmlFor={`${id}-phone`}>{text('Payment phone number','የክፍያ ስልክ ቁጥር')}</label>
    <div className={ui.phoneField} data-valid={!!normalized}>
@@ -62,12 +66,12 @@ export default function DirectCheckout({payment,purpose,amount,batch,onBack,onCl
    {batch&&<p className={ui.paymentSummary}>{text(`${batch.entryCount} bid${batch.entryCount===1?'':'s'} · submission fees`,`${batch.entryCount} ጨረታዎች · የማስገቢያ ክፍያ`)}</p>}
    {errors}
    <button className={`${styles.payButton} ${ui.checkoutPay}`} data-payment-action type="submit" disabled={!selected||!normalized||methods.fetching||payment.busy}>{text(`Pay ${total}`,`${total} ይክፈሉ`)}</button>
-  </form>:<div className={`${ui.paymentPanel} ${ui.waitingPanel}`} data-direct-approval={otpNeeded?'otp':'phone'}>
+  </form>:<div className={`${ui.paymentPanel} ${ui.waitingPanel}`} data-direct-approval={otpNeeded?'otp':phoneApproval?'phone':connecting?'connecting':'confirming'}>
    <div className={ui.approval}>
     {otpNeeded?<Smartphone size={34} className={ui.approvalPhone} aria-hidden="true"/>:<LoaderCircle size={42} className={ui.spin} aria-hidden="true"/>}
-    <h3 role="status">{text(!order?'Sending your payment request…':otpNeeded?'Enter your verification code':order.providerStatus==='SUCCESS'?'Confirming your payment…':'Approve the payment on your phone',!order?'የክፍያ ጥያቄዎን በመላክ ላይ…':otpNeeded?'የማረጋገጫ ኮዱን ያስገቡ':order.providerStatus==='SUCCESS'?'ክፍያዎን በማረጋገጥ ላይ…':'ክፍያውን በስልክዎ ይፍቀዱ')}</h3>
-    <p>{text(otpNeeded?'Use the one-time code sent by your payment provider. Never enter your wallet PIN here.':!order?'Please wait while we connect to your payment provider.':order.providerStatus==='SUCCESS'?'Your payment was received. We are updating Lowwin.':'Complete the payment prompt on your phone. This sheet updates automatically.',otpNeeded?'ከክፍያ አቅራቢዎ የተላከውን ኮድ ብቻ ያስገቡ። የዋሌት ፒን እዚህ አያስገቡ።':!order?'ከክፍያ አቅራቢዎ ጋር እስክንገናኝ ድረስ ይጠብቁ።':order.providerStatus==='SUCCESS'?'ክፍያዎ ደርሷል። Lowwinን በማዘመን ላይ ነን።':'በስልክዎ የመጣውን የክፍያ ጥያቄ ያረጋግጡ። ይህ ገጽ በራሱ ይዘምናል።')}</p>
-    {order?.payerPhoneMasked&&<span className={ui.approvalDetails}>{order.payerPhoneMasked} · {total}</span>}
+    <h3 role="status">{text(otpNeeded?'Enter your verification code':phoneApproval?'Approve the payment on your phone':connecting?'Connecting to your payment provider…':'Confirming your payment…',otpNeeded?'የማረጋገጫ ኮዱን ያስገቡ':phoneApproval?'ክፍያውን በስልክዎ ይፍቀዱ':connecting?'ከክፍያ አቅራቢዎ ጋር በመገናኘት ላይ…':'ክፍያዎን በማረጋገጥ ላይ…')}</h3>
+    <p>{text(otpNeeded?'Use the one-time code sent by your payment provider. Never enter your wallet PIN here.':phoneApproval?'Complete the payment prompt on your phone. This sheet updates automatically.':connecting?'The payment request is not confirmed yet. We are checking the original request.':order?.providerStatus==='SUCCESS'?'Your payment was received. We are updating Lowwin.':'We are checking the latest response from your payment provider. This sheet updates automatically.',otpNeeded?'ከክፍያ አቅራቢዎ የተላከውን ኮድ ብቻ ያስገቡ። የዋሌት ፒን እዚህ አያስገቡ።':phoneApproval?'በስልክዎ የመጣውን የክፍያ ጥያቄ ያረጋግጡ። ይህ ገጽ በራሱ ይዘምናል።':connecting?'የክፍያ ጥያቄው ገና አልተረጋገጠም። የመጀመሪያውን ጥያቄ በማረጋገጥ ላይ ነን።':order?.providerStatus==='SUCCESS'?'ክፍያዎ ደርሷል። Lowwinን በማዘመን ላይ ነን።':'ከክፍያ አቅራቢዎ የሚመጣውን ምላሽ በማረጋገጥ ላይ ነን። ይህ ገጽ በራሱ ይዘምናል።')}</p>
+    <span className={ui.approvalDetails}>{order?.payerPhoneMasked&&<>{order.payerPhoneMasked} · </>}{total}</span>
    </div>
    {otpNeeded&&<form className={ui.otpForm} onSubmit={event=>{event.preventDefault();const code=otp;setOtp('');void payment.authorize(code)}}><label className={ui.label} htmlFor={`${id}-otp`}>{text('One-time code','የአንድ ጊዜ ኮድ')}</label><input className={ui.phone} id={`${id}-otp`} type="password" inputMode="numeric" autoComplete="one-time-code" maxLength={10} value={otp} onChange={event=>{if(/^\d{0,10}$/.test(event.target.value))setOtp(event.target.value)}} disabled={payment.busy}/><button className={styles.payButton} type="submit" disabled={payment.busy||!/^\d{4,10}$/.test(otp)}>{payment.busy&&<LoaderCircle className={ui.spin} size={18}/>} {text('Confirm OTP','ኮዱን ያረጋግጡ')}</button></form>}
    {(!order||!order.authorizationReference)&&!payment.busy&&payment.directAttempt&&<button className={styles.checkPayment} type="button" onClick={()=>void payment.createDirect(payment.directAttempt!)}>{text('Retry original request','የመጀመሪያውን ጥያቄ ይድገሙ')}</button>}

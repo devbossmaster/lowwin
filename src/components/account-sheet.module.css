@@ -19,6 +19,7 @@
 .sheet[data-layout=checkout] .body{padding:0 20px 20px;flex:1}
 .sheet[data-layout=checkout] .header button{width:44px;height:44px;background:#eeede7}
 .sheet[data-layout=checkout][data-keyboard-open=true]{min-height:0}
+.sheet[data-layout=checkout]:has(:global([data-direct-approval])){min-height:0}
 @keyframes arrive{from{transform:translateY(24px);opacity:.8}to{transform:translateY(0);opacity:1}}
 @media(prefers-reduced-motion:reduce){.sheet[open]{animation:none}}
 .sheet[data-layout=bid-entry]{height:min(740px,calc(var(--sheet-viewport-height,100dvh) - max(24px,env(safe-area-inset-top,0px),var(--tg-safe-area-inset-top,0px))));max-height:calc(var(--sheet-viewport-height,100dvh) - max(24px,env(safe-area-inset-top,0px),var(--tg-safe-area-inset-top,0px)))}
