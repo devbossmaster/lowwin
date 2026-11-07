@@ -10,7 +10,7 @@ export function miniReturnPath(value:string|null|undefined):string{
    if(url.hash||url.searchParams.getAll('checkout').length!==1||[...url.searchParams.keys()].some(key=>key!=='checkout'))return '/';
    return chapaReturnPath(url.searchParams.get('checkout'))??'/';
   }
-  const customer=/^\/(?:auctions(?:\/[A-Za-z0-9-]{1,120})?|categories\/[a-z0-9-]{1,80}|draws|my-bids|winning-bids|wallet(?:\/deposit)?|payments|profile(?:\/(?:favorites|alerts|wins|support))?|winners(?:\/[A-Za-z0-9-]{1,120})?|faq|terms|privacy)?$/;
+  const customer=/^\/(?:auctions(?:\/[A-Za-z0-9-]{1,120})?|categories\/[a-z0-9-]{1,80}|draws|my-bids|winning-bids|wallet(?:\/deposit)?|payments|profile(?:\/(?:favorites|alerts|wins|support))?|winners(?:\/[A-Za-z0-9-]{1,120})?|how-it-works|faq|terms|privacy)?$/;
   return customer.test(url.pathname)?url.pathname+url.search+url.hash:'/';
  }catch{return '/'}
 }

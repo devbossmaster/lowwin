@@ -1,10 +1,6 @@
-import {db} from '@/lib/db';
 import {getLaunchSession,localMiniPreview} from '@/modules/auth/mini-access';
 import {databaseErrorSummary} from '@/lib/database-error';
 import {privateHeaders,privateError,PrivateApiError,requireMutationOrigin} from '@/modules/auth/private-api';
-import {createBot} from '@/modules/bot/bot';
-import {CONTACT_REPLY_KEYBOARD,CONTACT_REQUEST_MESSAGE} from '@/modules/bot/onboarding-copy';
-import {allowContactRequest} from '@/modules/auth/contact-request-limit';
 export const runtime='nodejs';
 type ContactStage='origin'|'session-read'|'contact-status'|'rate-limit'|'bot-send';
 function contactRequest(method:'GET'|'POST'){
@@ -40,10 +36,7 @@ export async function POST(request:Request){const timing=contactRequest('POST');
  if(!session.telegramId)throw new PrivateApiError(403,'A verified Telegram launch is required.');
  timing.enter('contact-status');
  if(session.contactStatus.verified)return timing.done(Response.json({verified:true},{headers:privateHeaders}));
- timing.enter('rate-limit');
- const allowed=await allowContactRequest(db,session.user.id);
- if(!allowed)throw new PrivateApiError(429,'Contact request already sent. Check the bot or retry in a minute.');
- timing.enter('bot-send');
- await createBot().api.sendMessage(session.telegramId,CONTACT_REQUEST_MESSAGE,{reply_markup:CONTACT_REPLY_KEYBOARD});
- return timing.done(Response.json({sent:true},{headers:privateHeaders}));
+ // The old contact-first reply keyboard is retired. Consent now belongs to
+ // Telegram's native requestContact modal, opened only by the user's tap.
+ return timing.done(Response.json({error:'Share your contact using the Log in sheet inside Telegram.',code:'NATIVE_CONTACT_REQUIRED'},{status:410,headers:privateHeaders}));
 }catch(error){return timing.failed(error)}}

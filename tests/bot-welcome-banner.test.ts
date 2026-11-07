@@ -39,13 +39,16 @@ describe('public welcome banner delivery without real Telegram requests',()=>{
  });
 });
 
-describe('post-contact launch banner',()=>{
- it.each([['VERIFIED',CONTACT_VERIFIED_MESSAGE],['ALREADY_VERIFIED',CONTACT_ALREADY_VERIFIED_MESSAGE]])('keeps the %s contact result and launch action on a photo',async(result,caption)=>{
-  f.contact.mockResolvedValue(result);const send=api(),update=vi.fn(),handled=vi.fn(),tx={$queryRaw:vi.fn(async()=>[{updateId:1n,attempts:0,botId:'fixture-bot',payload:{message:{chat:{id:7,type:'private'},from:{id:7}}}}]),botUpdate:{update}};
-  const client={$transaction:(run:(value:unknown)=>Promise<unknown>)=>run(tx)} as unknown as PrismaClient;
+describe('post-contact durable delivery',()=>{
+ it.each(['VERIFIED','ALREADY_VERIFIED'])('commits %s without waiting for Telegram/media and queues only the first confirmation',async result=>{
+  f.contact.mockResolvedValue(result);const send=api(),update=vi.fn(),enqueue=vi.fn(),handled=vi.fn();
+  const tx={$queryRaw:vi.fn(async()=>[{updateId:1n,attempts:0,botId:'fixture-bot',payload:{message:{chat:{id:7,type:'private'},from:{id:7}}}}]),botUpdate:{update},outbox:{upsert:enqueue}};
+  let committed=false;
+  const client={$transaction:async(run:(value:unknown)=>Promise<unknown>)=>{const result=await run(tx);committed=true;return result}} as unknown as PrismaClient;
   const {processOneUpdate}=await import('../src/modules/bot/worker');expect(await processOneUpdate(client,{api:send,handleUpdate:handled} as unknown as Bot)).toBe(true);
-  expect(send.sendMessage).toHaveBeenCalledExactlyOnceWith('7',CONTACT_KEYBOARD_REMOVED_MESSAGE,{reply_markup:{remove_keyboard:true}});
-  expect(send.sendPhoto).toHaveBeenCalledTimes(1);expect(send.sendPhoto.mock.calls[0][2]).toMatchObject({caption,reply_markup:{inline_keyboard:[[{text:START_BIDDING_ACTION,web_app:{url:'https://lowwin.test/telegram'}}]]}});
-  expect(handled).not.toHaveBeenCalled();expect(update).toHaveBeenCalledWith(expect.objectContaining({data:{processedAt:expect.any(Date),payload:{},lastError:null}}));
+  expect(committed).toBe(true);expect(send.sendMessage).not.toHaveBeenCalled();expect(send.sendPhoto).not.toHaveBeenCalled();expect(handled).not.toHaveBeenCalled();
+  expect(enqueue).toHaveBeenCalledTimes(result==='VERIFIED'?1:0);
+  if(result==='VERIFIED')expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({create:expect.objectContaining({kind:'CONTACT_CONFIRMED',payload:{telegramId:'7',botId:'fixture-bot'}})}));
+  expect(update).toHaveBeenCalledWith(expect.objectContaining({data:{processedAt:expect.any(Date),payload:{},lastError:null}}));
  });
 });

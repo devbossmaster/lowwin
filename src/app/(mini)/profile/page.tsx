@@ -1,7 +1,7 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
 import dynamic from 'next/dynamic';
-import {Check,ChevronRight,Copy,Gift,Mail,MapPin,Pencil,Plus,Share2,ShieldCheck,Ticket,UsersRound,Wallet} from 'lucide-react';
+import {Bell,Check,ChevronRight,Copy,Gift,Mail,MapPin,Pencil,Plus,Share2,ShieldCheck,Ticket,UsersRound,Wallet} from 'lucide-react';
 import {IntentPrefetchLink as Link} from '@/components/intent-prefetch-link';
 import {invalidatePrivateQueries} from '@/components/private-query-cache';
 import {usePrivateQuery,PrivateState} from '@/components/private-query';
@@ -32,6 +32,8 @@ export default function Profile(){
 function PlayerProfile(){
   const query=usePrivateQuery<ProfileData>('/api/profile'),data=query.data;
   const wallet=usePrivateQuery<WalletBalance>('/api/wallet',{freshnessMs:15000});
+  const alerts=usePrivateQuery<{unread:number}>('/api/alerts?summary=1',{pollMs:300000});
+  useEffect(()=>{const refresh=()=>alerts.reload();window.addEventListener('lowin-alerts',refresh);return()=>window.removeEventListener('lowin-alerts',refresh)},[alerts.reload]);
   const {language}=useMiniLocale(),am=language==='am',text=(en:string,translated:string)=>am?translated:en;
   const {refreshMe,me,queryIdentity,signOut}=useTelegram();
   const [editing,setEditing]=useState(false),[saving,setSaving]=useState(false),[message,setMessage]=useState('');
@@ -99,6 +101,7 @@ function PlayerProfile(){
         <div><span><Gift size={13} aria-hidden="true"/>{text('Available discounts','ያሉ ቅናሾች')}</span><strong className={styles.goldNumber}>{available??'—'}</strong></div>
         <div><span><Ticket size={13} aria-hidden="true"/>{text('Total bids','ጠቅላላ ጨረታዎች')}</span><strong>{data.counts.bids}</strong></div>
       </div>
+      <Link href="/profile/alerts" className={styles.notifications}><Bell size={19} aria-hidden="true"/><span>{text('Notifications','ማሳወቂያዎች')}</span>{alerts.data&&alerts.data.unread>0&&<strong data-unread-indicator aria-label={text(`${alerts.data.unread} unread`,`${alerts.data.unread} ያልተነበቡ`)}>{alerts.data.unread>99?'99+':alerts.data.unread}</strong>}<ChevronRight size={18} aria-hidden="true"/></Link>
       <section className={styles.panel} aria-labelledby="refer-heading">
         <div className={styles.panelHeading}><h2 id="refer-heading"><UsersRound size={17} aria-hidden="true"/>{text('Refer & earn','ይጋብዙ እና ያግኙ')}</h2><span className={styles.referralState} data-active={referralActive||undefined}>{referralActive?text('Active','ንቁ'):knownRewards&&!referral?.enabled?text('Paused','ቆሟል'):text('Unavailable','አይገኝም')}</span></div>
         <p className={styles.description}>{referralActive&&typeof referral?.discountPercent==='number'?text(`Share your link. When a new friend registers with it and makes their first accepted bid, you earn one ${referral.discountPercent}% discount on a submission fee.`,`ሊንክዎን ያጋሩ። አዲስ ጓደኛዎ በሊንኩ ተመዝግቦ የመጀመሪያ ጨረታው ሲቀበል፣ ለአንድ የማስገቢያ ክፍያ ${referral.discountPercent}% ቅናሽ ያገኛሉ።`):knownRewards&&!referral?.enabled?text('New invitations are paused. Your earned discounts keep their original expiry.','አዲስ ግብዣዎች ቆመዋል። ያገኟቸው ቅናሾች የመጀመሪያ የማብቂያ ቀናቸውን ይይዛሉ።'):text('Your invitation link and reward terms will appear here when Refer & earn is ready.','የመጋበዣ ሊንክዎ እና የሽልማት ውሎች አገልግሎቱ ሲዘጋጅ እዚህ ይታያሉ።')}</p>

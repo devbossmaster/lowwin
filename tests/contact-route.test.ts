@@ -144,41 +144,9 @@ describe('contact route bound-session snapshot and safe diagnostics',()=>{
     expectPrivateTiming(response);expect(console.warn).not.toHaveBeenCalled();
   });
 
-  it('checks the server-bound user with the limiter before sending to its bound Telegram identity',async()=>{
+  it('retires contact-first bot keyboards without sending or accepting browser contact proof',async()=>{
     const response=await POST(request('POST'));
-    expect(response.status).toBe(200);expect(await response.json()).toEqual({sent:true});
-    expectNoContactLookup();expect(mocks.requestLimit).toHaveBeenCalledExactlyOnceWith(db,'private-player');
-    expect(mocks.requestLimit.mock.invocationCallOrder[0]).toBeLessThan(mocks.sendMessage.mock.invocationCallOrder[0]);
-    expect(mocks.sendMessage).toHaveBeenCalledExactlyOnceWith('987654321',CONTACT_REQUEST_MESSAGE,{reply_markup:CONTACT_REPLY_KEYBOARD});
-    expectPrivateTiming(response);expect(console.warn).not.toHaveBeenCalled();
-  });
-
-  it('returns 429 without another bot message while the durable rate limit is active',async()=>{
-    mocks.requestLimit.mockResolvedValue(false);
-    const response=await POST(request('POST'));
-    expect(response.status).toBe(429);
-    expect(await response.json()).toEqual({error:'Contact request already sent. Check the bot or retry in a minute.'});
-    expectNoContactLookup();expect(mocks.requestLimit).toHaveBeenCalledExactlyOnceWith(db,'private-player');expect(mocks.createBot).not.toHaveBeenCalled();
-    expectPrivateTiming(response);expect(console.warn).not.toHaveBeenCalled();
-  });
-
-  it('reports bot failure at its fixed stage without exposing the bot token or recipient',async()=>{
-    mocks.sendMessage.mockRejectedValue(new Error('https://api.telegram.org/botprivate-bot-token/sendMessage recipient 987654321 +251911111111'));
-    const response=await POST(request('POST'));
-    expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({error:'This information is temporarily unavailable.'});
-    expectSafeWarning('POST','bot-send');expectNoContactLookup();expectPrivateTiming(response);
-    expect(mocks.requestLimit).toHaveBeenCalledExactlyOnceWith(db,'private-player');
-  });
-
-  it('reports limiter failure at its fixed stage and never sends a bot request',async()=>{
-    mocks.requestLimit.mockRejectedValue(new Prisma.PrismaClientKnownRequestError('private-player private-password private-db.example',{
-      code:'P2024',clientVersion:'6.19.3',
-    }));
-    const response=await POST(request('POST'));
-    expect(response.status).toBe(503);expect(await response.json()).toEqual({error:'This information is temporarily unavailable.'});
-    expectSafeWarning('POST','rate-limit','P2024','PrismaClientKnownRequestError');
-    expectNoContactLookup();expectPrivateTiming(response);expect(mocks.requestLimit).toHaveBeenCalledExactlyOnceWith(db,'private-player');
-    expect(mocks.createBot).not.toHaveBeenCalled();expect(mocks.sendMessage).not.toHaveBeenCalled();
+    expect(response.status).toBe(410);expect(await response.json()).toEqual({error:'Share your contact using the Log in sheet inside Telegram.',code:'NATIVE_CONTACT_REQUIRED'});
+    expectNoContactLookup();expect(mocks.requestLimit).not.toHaveBeenCalled();expect(mocks.createBot).not.toHaveBeenCalled();expect(mocks.sendMessage).not.toHaveBeenCalled();expectPrivateTiming(response);
   });
 });

@@ -18,8 +18,8 @@ import {resolveHomeCopy} from './home-copy';
 import {MiniPhrase} from './mini-locale';
 import {OfflineRetry} from './offline-retry';
 import {WinnersClientList,type WinnersData} from './winners-client-list';
-import {isPrivateQueryIdentity,readPrivateQuery,seedPrivateQuery} from './private-query-cache';
-import {useTelegram} from './telegram-provider';
+import {readPublicQuery,seedPublicQuery} from './public-query-cache';
+
 import {MiniRouteSkeleton} from './mini-route-skeleton';
 import styles from './home-banner.module.css';
 
@@ -34,15 +34,15 @@ export function HomeDataSeed({initial,error,auctionHref}:StreamedHome){
 export function HomePageContent({query:seedQuery,children}:{query:CatalogQuery;children:ReactNode}){
  const query=homeFilterQuery(useSearchParams());
  const [{initial,error,auctionHref},setStreamed]=useState<StreamedHome>({}),router=useRouter();
- const {queryIdentity}=useTelegram(),client=useQueryClient();
- const key=['lowin-private',queryIdentity??'pending','home-shell'] as const;
- const shell=useQuery<Shell>({queryKey:key,queryFn:skipToken,enabled:false,staleTime:60000,gcTime:600000,initialData:queryIdentity&&initial?{managed:initial.managed,experience:initial.experience,media:initial.media,serverNow:initial.serverNow}:undefined});
- useEffect(()=>{if(!initial||!queryIdentity)return;const saved=client.getQueryData<Shell>(key);if(!saved||Date.parse(saved.serverNow)<Date.parse(initial.serverNow))client.setQueryData<Shell>(key,{managed:initial.managed,experience:initial.experience,media:initial.media,serverNow:initial.serverNow})},[initial,queryIdentity,client,key.join('|')]);
- const categories=initial?.categories??(queryIdentity?readPrivateQuery<HomeData['categories']>(queryIdentity,'/api/catalog/categories')?.value:null);
- const auctions=(homeAuctionHref(query)===(auctionHref??homeAuctionHref(seedQuery))?initial?.auctions:undefined)??(queryIdentity?readPrivateQuery<HomeData['auctions']>(queryIdentity,catalogBatchUrl(query,1))?.value:undefined);
- const winners=initial?.winners??(queryIdentity?readPrivateQuery<WinnersData>(queryIdentity,winnersQueryUrl())?.value:null);
+ const client=useQueryClient();
+ const key=['lowin-public','home-shell'] as const;
+ const shell=useQuery<Shell>({queryKey:key,queryFn:skipToken,enabled:false,staleTime:60000,gcTime:600000,initialData:initial?{managed:initial.managed,experience:initial.experience,media:initial.media,serverNow:initial.serverNow}:undefined});
+ useEffect(()=>{if(!initial)return;const saved=client.getQueryData<Shell>(key);if(!saved||Date.parse(saved.serverNow)<Date.parse(initial.serverNow))client.setQueryData<Shell>(key,{managed:initial.managed,experience:initial.experience,media:initial.media,serverNow:initial.serverNow})},[initial,client,key.join('|')]);
+ const categories=initial?.categories??readPublicQuery<HomeData['categories']>('/api/catalog/categories')?.value;
+ const auctions=(homeAuctionHref(query)===(auctionHref??homeAuctionHref(seedQuery))?initial?.auctions:undefined)??readPublicQuery<HomeData['auctions']>(catalogBatchUrl(query,1))?.value;
+ const winners=initial?.winners??readPublicQuery<WinnersData>(winnersQueryUrl())?.value;
  const view=initial??shell.data;
- useEffect(()=>{if(initial&&queryIdentity&&isPrivateQueryIdentity(queryIdentity))seedPrivateQuery(queryIdentity,'/api/catalog/categories',initial.categories)},[initial,queryIdentity]);
+ useEffect(()=>{if(initial)seedPublicQuery('/api/catalog/categories',initial.categories)},[initial]);
  const failure=<p role="status"><MiniPhrase en="Home could not refresh." am="መነሻውን ማደስ አልተቻለም።"/> <button className="retry-action" onClick={()=>router.refresh()}><MiniPhrase en="Retry" am="እንደገና ይሞክሩ"/></button></p>;
  const content=!view||!categories||!winners?(error?failure:<MiniRouteSkeleton path="/"/>):<><OfflineRetry/>{error&&failure}<HomeHero copy={resolveHomeCopy(view.managed)} media={view.media} experience={view.experience}/>
   <HomeCategories categories={categories} query={query} home/><HomeAuctions key={`${query.category??'all'}:${query.sort}:${query.q}`} initial={auctions} query={query}/>

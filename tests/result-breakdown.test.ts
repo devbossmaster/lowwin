@@ -56,9 +56,9 @@ describe.skipIf(!database)('final result API on disposable PostgreSQL',()=>{
   expect((await listCompletedWinners(db,1,96)).items.some(row=>row.code===fixture.code)).toBe(true);
   expect((await listCompletedWinners(db,1,96)).items.every(row=>row.status==='closed'&&!row.isDemo&&row.result?.source==='SETTLED'&&row.result.outcome==='WINNER')).toBe(true);
  });
- it('requires authenticated access, validates paging, and sends private no-store headers',async()=>{
+ it('publishes aggregate groups while requiring authentication for participant contacts',async()=>{
   const request=(suffix='')=>new Request(`http://localhost/api/results/${fixture.code}/breakdown${suffix}`),params={params:Promise.resolve({auctionCode:fixture.code})};
-  auth.mockResolvedValueOnce(null);expect((await GET(request(),params)).status).toBe(401);
+  auth.mockResolvedValueOnce(null);expect((await GET(request('?amount=2'),params)).status).toBe(401);
   expect((await GET(request('?pageSize=200'),params)).status).toBe(422);
   const response=await GET(request(),params);expect(response.status).toBe(200);expect(response.headers.get('cache-control')).toContain('no-store');expect(response.headers.get('vary')).toBe('Cookie');
  });

@@ -33,7 +33,7 @@ test('live Home countdown stays running through initial query hydration and reop
   const card=page.locator('.auction-card').filter({hasText:f.title}),timer=card.getByRole('timer');
   await expect(card.locator('.status-live')).toBeVisible();await expect(timer).toBeVisible();
   await page.clock.runFor(2500);
-  await expect(timer).not.toContainText('Auction ended');await expect(timer).toContainText(/\d+h.*\d+m/);
+  await expect(timer).not.toContainText('Auction ended');await expect(timer.locator('[data-countdown-unit]')).toHaveCount(4);
   await page.goto('/profile');await expect(page.locator('#main')).toBeVisible();
   await page.goto(f.home);await expect(timer).toBeVisible();await page.clock.runFor(2000);
   await expect(timer).not.toContainText('Auction ended');await expect(card.getByRole('button',{name:/Pay .* & bid/})).toBeEnabled();

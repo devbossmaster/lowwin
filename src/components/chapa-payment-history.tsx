@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import {ChevronLeft,ChevronRight,Clock3,Minus,Plus,RefreshCw,ReceiptText} from 'lucide-react';
 import {useRef,useState} from 'react';
 import {usePrivateQuery,PrivateState} from './private-query';
@@ -13,11 +14,12 @@ import {useMiniPage} from './mini-query-state';
 import styles from './chapa-payment-history.module.css';
 
 type Page={items:ChapaCheckoutView[];page:number;nextPage:number|null};
+const DirectCheckout=dynamic(()=>import('./direct-checkout'),{ssr:false});
 export function ChapaTransactionDetails({order,onClose,trigger}:{order:ChapaCheckoutView;onClose:()=>void;trigger:React.RefObject<HTMLElement|null>}){
  const payment=useChapaPayment('transaction:'+order.id,order.id),{language}=useMiniLocale(),am=language==='am',current=payment.order??order;
  const fresh=current.purpose==='TOP_UP'?'/wallet/deposit':current.auctionSlug?`/auctions/${current.auctionCode??current.auctionSlug}#bid-review`:null;
  return <AccountSheet size="payment" title={am?'የግብይት ዝርዝር':'Transaction details'} onClose={onClose} returnFocusRef={trigger}>
-  <ChapaPaymentStatus payment={payment} onNavigate={onClose} readOnly/>
+  {current.chargeType==='DIRECT'?<DirectCheckout payment={payment} purpose={current.purpose} amount={current.amount} batch={current.batch??undefined} onClose={onClose}/>:<ChapaPaymentStatus payment={payment} onNavigate={onClose} readOnly/>}
   {fresh&&(!chapaConfirmed(current)||current.purpose==='TOP_UP')&&<div className={styles.retry}><Link href={fresh} onClick={onClose}>{am?'አዲስ ክፍያ ይጀምሩ':'Start new checkout'}</Link>{!chapaConfirmed(current)&&<p>{am?'የቀድሞው ክፍያ አሁንም ሊጠናቀቅ ይችላል።':'The previous payment may still complete.'}</p>}</div>}
  </AccountSheet>;
 }
@@ -42,7 +44,7 @@ function OwnedHistory({purpose,unaccepted,fullPage}:{purpose?:'TOP_UP'|'BID';una
     const tone=confirmed?'confirmed':['FAILED','BLOCKED','INCOMPLETE','EXPIRED'].includes(order.status)?'failed':order.status==='CANCELLED'?'cancelled':'pending';
     return <li key={order.id}><button type="button" className={styles.row} data-payment-id={order.id} data-direction={direction} disabled={query.isPlaceholderData} onClick={event=>{trigger.current=event.currentTarget;setSelected(order)}}>
      <span className={styles.movement} aria-hidden="true"><Icon size={20} strokeWidth={1.8}/></span>
-     <span className={styles.details}><strong>{text(order.fundsPreserved?'Payment saved to wallet':order.purpose==='TOP_UP'?'Wallet top-up':'Bid submission fee',order.fundsPreserved?'ክፍያው በዋሌትዎ ገብቷል':order.purpose==='TOP_UP'?'የዋሌት ገቢ':'የጨረታ ማቅረቢያ ክፍያ')}</strong>{order.purpose==='BID'&&<span className={styles.product}>{am?order.auctionTitleAm||order.auctionTitle||order.auctionSlug:order.auctionTitle||order.auctionSlug}{order.bidNumber&&<> · #{order.bidNumber}</>}</span>}<time dateTime={order.createdAt}>{date.format(new Date(order.createdAt))}</time>{order.mode==='test'&&<span className={styles.test}>{text('Test payment','የሙከራ ክፍያ')}</span>}</span>
+     <span className={styles.details}><strong>{text(order.fundsPreserved?'Payment saved to wallet':order.purpose==='TOP_UP'?'Wallet top-up':'Bid submission fee',order.fundsPreserved?'ክፍያው በዋሌትዎ ገብቷል':order.purpose==='TOP_UP'?'የዋሌት ገቢ':'የጨረታ ማቅረቢያ ክፍያ')}</strong>{order.purpose==='BID'&&<span className={styles.product}>{am?order.auctionTitleAm||order.auctionTitle||order.auctionSlug:order.auctionTitle||order.auctionSlug}{order.batchNumbers?.length?<> · {order.batchNumbers.length} {text('bids','ጨረታዎች')} · {order.batchNumbers.join(' / ')}</>:order.bidNumber&&<> · #{order.bidNumber}</>}</span>}<time dateTime={order.createdAt}>{date.format(new Date(order.createdAt))}</time>{order.mode==='test'&&<span className={styles.test}>{text('Test payment','የሙከራ ክፍያ')}</span>}</span>
      <span className={styles.actions}><strong className={styles.amount}><span className="sr-only">{direction==='incoming'?text('Money in: ','የገባ ገንዘብ፦ '):direction==='outgoing'?text('Money out: ','የወጣ ገንዘብ፦ '):text('Payment amount: ','የክፍያ መጠን፦ ')}</span><span aria-hidden="true">{direction==='incoming'?'+':direction==='outgoing'?'−':''}</span>{formatEtb(order.amount)}</strong><span className={styles.status} data-tone={tone}>{chapaStatusLabel(order,am)}</span></span>
     </button></li>;
    })}</ul>

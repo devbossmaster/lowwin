@@ -5,15 +5,16 @@ import {usePathname,useSearchParams} from 'next/navigation';
 import {CalendarDays,Clock3,Gavel,RefreshCw,Search} from 'lucide-react';
 import type {getAuctionSummary,listQuickAuctions} from '@/modules/auctions/catalog';
 import {formatEtb} from '@/lib/money';
-import {mergeQuickAuctionPages} from '@/lib/quick-auction-pages';
+import {mergeQuickAuctionPages,quickAuctionSnapshotChanged} from '@/lib/quick-auction-pages';
 import {quickAuctionResource} from './quick-auction-query';
 import {AccountSheet} from './account-sheet';
 import {AuctionCountdown} from './auction-countdown';
 import {CatalogImage} from './catalog-image';
 import {IntentPrefetchLink} from './intent-prefetch-link';
 import {useMiniLocale} from './mini-locale';
-import {usePrivateQuery} from './private-query';
-import {loadPrivateJson,prefetchPrivateQuery,readPrivateQuery,subscribePrivateQueries} from './private-query-cache';
+import {usePublicQuery} from './public-query';
+import {prefetchPublicQuery,readPublicQuery,publicQueryKey} from './public-query-cache';
+import {useQueryClient} from '@tanstack/react-query';
 import {useTelegram} from './telegram-provider';
 import {prefetchAuctionIntent} from './mini-prefetch';
 import BidSheet from './bid-sheet';
@@ -32,25 +33,24 @@ function SheetRouteObserver({onNavigate}:{onNavigate:()=>void}){
 }
 
 export function AuctionQuickList({className,showLabel=false}:{className?:string;showLabel?:boolean}){
- const {queryIdentity}=useTelegram();
- return <PlayerAuctionBrowser key={queryIdentity??'guest'} className={className} showLabel={showLabel}/>;
+ return <PlayerAuctionBrowser className={className} showLabel={showLabel}/>;
 }
 function PlayerAuctionBrowser({className,showLabel}:{className?:string;showLabel:boolean}){
  const {language}=useMiniLocale(),am=language==='am',text=(en:string,translated:string)=>am?translated:en;
- const {queryIdentity}=useTelegram(),path=usePathname();
+ const {queryIdentity}=useTelegram(),path=usePathname(),client=useQueryClient();
  const [open,setOpen]=useState(false),[mode,setMode]=useState<Mode>('live'),[pages,setPages]=useState({live:1,upcoming:1});
  const [selected,setSelected]=useState<{auction:Batch['items'][number];serverNow:string}|null>(null);
  const [,setRevision]=useState(0),trigger=useRef<HTMLButtonElement>(null),viewport=useRef<HTMLDivElement>(null),scroll=useRef({live:0,upcoming:0});
- const summary=usePrivateQuery<Awaited<ReturnType<typeof getAuctionSummary>>>(summaryUrl,{freshnessMs:30000,pollMs:60000});
- const query=usePrivateQuery<Batch>(quickAuctionResource(queryIdentity,mode,pages[mode]),{enabled:open});
- const refreshPage=useCallback((page:number)=>{if(queryIdentity)void loadPrivateJson(queryIdentity,quickAuctionResource(queryIdentity,mode,page),{force:true}).catch(()=>{});summary.reload()},[queryIdentity,mode,summary.reload]);
+ const summary=usePublicQuery<Awaited<ReturnType<typeof getAuctionSummary>>>(summaryUrl,{freshnessMs:30000,pollMs:60000});
+ const query=usePublicQuery<Batch>(quickAuctionResource(queryIdentity,mode,pages[mode]),{enabled:open});
+ const refreshPage=useCallback((page:number)=>{void client.invalidateQueries({queryKey:publicQueryKey(quickAuctionResource(null,mode,page)),exact:true});summary.reload()},[client,mode,summary.reload]);
  const expiryCallbacks=useMemo(()=>Array.from({length:pages[mode]},(_,index)=>()=>refreshPage(index+1)),[pages[mode],refreshPage]);
  const count=summary.data?.totalLive;
  useEffect(()=>{setOpen(false);setSelected(null)},[path]);
  useEffect(()=>{
   if(!open)return;
-  return subscribePrivateQueries(event=>{if(event.identity===queryIdentity&&event.kind==='stored'&&event.keys?.some(key=>key.startsWith('/api/catalog/auctions?')&&(key.includes('view=quick')||key.includes('view=home'))))setRevision(value=>value+1)});
- },[open,queryIdentity]);
+  return client.getQueryCache().subscribe(event=>{if(quickAuctionSnapshotChanged(event))setRevision(value=>value+1)});
+ },[open,client]);
  useEffect(()=>{
   if(!open||!viewport.current)return;
   const element=viewport.current,position=scroll.current[mode];
@@ -61,10 +61,10 @@ function PlayerAuctionBrowser({className,showLabel}:{className?:string;showLabel
  function warm(next:Mode){
   const connection=(navigator as Navigator&{connection?:{saveData?:boolean;effectiveType?:string}}).connection;
   if(connection?.saveData||['slow-2g','2g'].includes(connection?.effectiveType??''))return;
-  void prefetchPrivateQuery(queryIdentity,quickAuctionResource(queryIdentity,next,1));
+  void prefetchPublicQuery(quickAuctionResource(null,next,1));
  }
  function show(){
-  if(queryIdentity&&!readPrivateQuery<Batch>(queryIdentity,quickAuctionResource(queryIdentity,mode,1)))setPages(previous=>({...previous,[mode]:1}));
+  if(!readPublicQuery<Batch>(quickAuctionResource(null,mode,1)))setPages(previous=>({...previous,[mode]:1}));
   setOpen(true);warm(mode);
  }
  function close(){
@@ -80,7 +80,7 @@ function PlayerAuctionBrowser({className,showLabel}:{className?:string;showLabel
   const destination=new URL(href,location.href),current=new URL(location.href);destination.searchParams.sort();current.searchParams.sort();
   if(destination.pathname===current.pathname&&destination.search===current.search){event.preventDefault();close()}
  }
- const snapshots=Array.from({length:pages[mode]},(_,index)=>queryIdentity?readPrivateQuery<Batch>(queryIdentity,quickAuctionResource(queryIdentity,mode,index+1)):null);
+ const snapshots=Array.from({length:pages[mode]},(_,index)=>readPublicQuery<Batch>(quickAuctionResource(null,mode,index+1)));
  const batches=snapshots.filter((snapshot):snapshot is NonNullable<typeof snapshot>=>!!snapshot);
  const data=mergeQuickAuctionPages(batches.map(batch=>batch.value),mode),loading=!data&&!query.error,busy=query.fetching||!snapshots.at(-1)&&!query.error;
  useEffect(()=>{if(open&&pages[mode]>1&&!snapshots[0]&&!query.fetching){scroll.current[mode]=0;setPages(previous=>({...previous,[mode]:1}))}},[open,mode,pages,query.updatedAt,query.fetching,!!snapshots[0]]);

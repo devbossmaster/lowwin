@@ -1,8 +1,7 @@
 'use client';
 import Link from 'next/link';
 import {useEffect,useId,useRef,useState,type KeyboardEvent as ReactKeyboardEvent} from 'react';
-import {Check,ChevronDown,Languages,Plus,UserRound,Wallet} from 'lucide-react';
-import {AlertBell} from './alert-bell';
+import {Check,ChevronDown,CirclePlay,Languages,LogIn,Plus,UserRound,Wallet} from 'lucide-react';
 import {AuctionQuickList} from './auction-quick-list';
 import {WalletTopUpTrigger} from './wallet-top-up-trigger';
 import {useTelegram} from './telegram-provider';
@@ -15,7 +14,7 @@ import {LOWWIN_LOGO_SRC} from '@/lib/brand';
 
 export function MiniHeader(){
  const {language,setLanguage,t}=useMiniLocale();
- const {status,me}=useTelegram(),am=language==='am';
+ const {status,me,openRegistration}=useTelegram(),am=language==='am';
  const wallet=usePrivateQuery<WalletBalance>('/api/wallet',{freshnessMs:15000,pollMs:60000});
  const [failedPhoto,setFailedPhoto]=useState<string|null>(null);
  const name=status==='authenticated'?me?.user.name.trim()??'':'';
@@ -47,13 +46,13 @@ export function MiniHeader(){
  };
  return <header className={styles.header} role="banner" aria-label="Mini App header">
   <Link href="/" className={styles.brand} aria-label={am?'Lowwin መነሻ':'Lowwin Home'}><img src={LOWWIN_LOGO_SRC} width={28} height={28} alt="" data-lowwin-logo/><span className={styles.brandName}>Lowwin</span></Link>
-  <div className={styles.balancePill} data-long-balance={amount!==null&&amount.length>6||undefined}>
+  {status==='authenticated'?<div className={styles.balancePill} data-long-balance={amount!==null&&amount.length>6||undefined}>
    <Link href="/wallet" prefetch={false} className={styles.balance} aria-label={`${am?'ዋሌት':'Wallet'}${amount!==null?`, ${amount} ETB`:''}`} aria-busy={wallet.fetching||undefined} title={amount!==null?`${amount} ETB`:am?'ቀሪ ሂሳቡን ለማየት ዋሌትን ይክፈቱ':'Open Wallet to check your balance'}><Wallet size={14} strokeWidth={1.75} aria-hidden="true"/><span data-header-balance><span className={styles.balanceAmount}>{amount??'—'}</span>{' '}<small>ETB</small></span></Link>
    <WalletTopUpTrigger className={styles.addFunds} ariaLabel={am?'ገንዘብ ያስገቡ':'Deposit'}><Plus size={15} strokeWidth={1.75} aria-hidden="true"/></WalletTopUpTrigger>
-  </div>
+  </div>:<button className={styles.login} type="button" onClick={openRegistration}><LogIn size={14} aria-hidden="true"/>{am?'ይግቡ':'Log in'}</button>}
   <nav className={styles.actions} aria-label={am?'የመለያ ቁጥጥሮች':'Account controls'}>
   <AuctionQuickList className={styles.icon}/>
-  <AlertBell className={styles.icon}/>
+  <Link href="/how-it-works" prefetch={false} className={styles.icon} aria-label={am?'Lowwin እንዴት ይሠራል':'How Lowwin works'}><CirclePlay size={18} aria-hidden="true"/></Link>
   <div className={styles.language} ref={languageRef}>
    <button ref={languageButtonRef} type="button" className={styles.languageButton} aria-label={`${t('language')}: ${language==='en'?'English':'አማርኛ'}`} aria-haspopup="menu" aria-controls={languageMenuId} aria-expanded={languageOpen} onClick={()=>setLanguageOpen(open=>!open)} onKeyDown={event=>{if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();setLanguageOpen(true)}}}><Languages size={16} strokeWidth={1.75} aria-hidden="true"/><span aria-hidden="true">{language==='en'?'EN':'አማ'}</span><ChevronDown className={styles.languageChevron} data-open={languageOpen} size={10} strokeWidth={1.75} aria-hidden="true"/></button>
    {languageOpen&&<div ref={languageMenuRef} id={languageMenuId} className={styles.languageMenu} role="menu" aria-label={t('language')} onKeyDown={moveLanguageFocus}>{([['en','English'],['am','አማርኛ']] as const).map(([value,label])=><button type="button" role="menuitemradio" aria-checked={language===value} className={styles.languageOption} key={value} lang={value} onClick={()=>{setLanguage(value as MiniLanguage);setLanguageOpen(false);languageButtonRef.current?.focus()}}><span>{label}</span>{language===value&&<Check size={15} strokeWidth={1.75} aria-hidden="true"/>}</button>)}</div>}

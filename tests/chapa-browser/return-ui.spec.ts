@@ -1,126 +1,35 @@
 import {test,expect} from '@playwright/test';
 import {randomUUID} from 'node:crypto';
-import {mkdirSync} from 'node:fs';
 import {fixture,pending} from './fixtures';
-import type {ChapaCheckoutView,ChapaIntent} from '../../src/lib/chapa-client';
 
-test('a Main Mini App payment link restores the original top-up and automatically shows credit',async({page},info)=>{
+// Historical hosted orders still reopen and verify; new initiation is covered
+// by direct-checkout.spec. A return link never creates or proves a payment.
+for(const purpose of ['TOP_UP','BID'] as const)test(`existing hosted ${purpose} return restores its owned modal and waits for verified fulfillment`,async({page},info)=>{
  const am=info.project.name==='430',id=randomUUID(),f=await fixture(page,am,'chapa_'+id);
- let verifies=0,creates=0,complete=false;
- const order=pending({key:id,purpose:'TOP_UP',amount:'100.00'},id);
+ const order={...pending(purpose==='TOP_UP'?{key:id,purpose,amount:'100.00'}:{purpose,key:id,auctionSlug:f.auction.slug!,amount:'3.60',feeVersion:1},id),auctionTitle:f.title,auctionCode:String(f.auction.publicCode)};
+ let complete=false,creates=0,checks=0;
  try{
-  await page.route('**/api/payments/chapa/checkouts**',route=>{
-   const request=route.request();
-   if(request.method()==='GET'&&new URL(request.url()).pathname.endsWith('/checkouts'))return route.fulfill({json:{items:[order],page:1,nextPage:null}});
-   if(request.method()==='POST'&&new URL(request.url()).pathname.endsWith('/checkouts')){creates++;return route.abort()}
-   if(request.method()==='POST')verifies++;
-   return route.fulfill({json:{...order,...(complete?{status:'CREDITED',providerStatus:'SUCCESS',verificationState:'VERIFIED'}:{})}});
-  });
-  await page.goto('/telegram');const sheet=page.getByRole('dialog');
-  await expect(sheet.locator('[data-payment-state="confirming"]')).toBeVisible();
-  await expect(page).toHaveURL(new RegExp('/profile\\?(?:topup=1&)?chapa='+id));
-  await expect(sheet.getByRole('button',{name:/Verify status|Check payment/i})).toHaveCount(0);
-  await expect.poll(()=>verifies).toBe(1);expect(creates).toBe(0);
-  complete=true;await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
-  await expect(sheet.locator('[data-payment-state="confirmed"]')).toBeVisible();
-  await expect(sheet.getByRole('button',{name:am?'ተጠናቋል':'Done',exact:true})).toBeVisible();
-  await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-  mkdirSync('test-results/chapa-ui/modal',{recursive:true});
-  await page.screenshot({path:'test-results/chapa-ui/modal/credited-'+info.project.name+'.png',animations:'disabled'});
-  await sheet.getByRole('button',{name:am?'ተጠናቋል':'Done',exact:true}).click();await expect(sheet).toHaveCount(0);
+  await page.route('**/api/payments/chapa/checkouts**',route=>{const request=route.request(),url=new URL(request.url());if(url.pathname.endsWith('/checkouts')){if(request.method()==='POST'){creates++;return route.abort()}return route.fulfill({json:{items:[order],page:1,nextPage:null}})}if(request.method()==='POST')checks++;return route.fulfill({json:{...order,...(complete?{status:purpose==='TOP_UP'?'CREDITED':'BID_ACCEPTED',providerStatus:'SUCCESS',verificationState:'VERIFIED',...(purpose==='BID'?{receipt:{bid:{id:randomUUID(),amount:'3.60'}}}:{})}:{})}})});
+  await page.goto('/telegram');const sheet=page.getByRole('dialog');await expect(sheet.locator('[data-payment-state="confirming"]')).toBeVisible();
+  await expect(page).toHaveURL(purpose==='TOP_UP'?new RegExp('/profile\\?(?:topup=1&)?chapa='+id):new RegExp('/auctions/'+f.auction.publicCode+'\\?chapa='+id));
+  await expect(sheet.getByRole('button',{name:/Verify status|Check payment/i})).toHaveCount(0);await expect.poll(()=>checks).toBeGreaterThan(0);expect(creates).toBe(0);
+  complete=true;await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect(sheet.locator('[data-payment-state="confirmed"]')).toBeVisible();
+  if(purpose==='BID')await expect(sheet.getByRole('heading',{name:am?'ጨረታው ተቀብሏል':'Bid accepted',exact:true})).toBeVisible();
+  await sheet.getByRole('button',{name:am?'ተጠናቋል':'Done',exact:true}).click();await expect(sheet).toHaveCount(0);expect(creates).toBe(0);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  }finally{await f.db.$disconnect()}
 });
 
-test('verification problems show a useful state and automatically recover on foreground',async({page},info)=>{
- const am=info.project.name==='430',f=await fixture(page,am);let order:ChapaCheckoutView|null=null,phase='unavailable',creates=0;
+test('an owned historical payment preserves unavailable and review states, then reconciles on foreground',async({page},info)=>{
+ const am=info.project.name==='430',id=randomUUID(),f=await fixture(page,am,'chapa_'+id),order=pending({key:id,purpose:'TOP_UP',amount:'100'},id);let phase='unavailable',creates=0;
  try{
-  await page.route('**/api/payments/chapa/checkouts**',route=>{
-   const request=route.request(),url=new URL(request.url());
-   if(url.pathname.endsWith('/checkouts')&&request.method()==='GET')return route.fulfill({json:{items:order?[order]:[],page:1,nextPage:null}});
-   if(url.pathname.endsWith('/checkouts')&&request.method()==='POST'){creates++;order=pending(request.postDataJSON() as ChapaIntent);return route.fulfill({json:order})}
-   if(!order)return route.fulfill({status:404,json:{error:'Not found',code:'NOT_FOUND'}});
-   return route.fulfill({json:{...order,...(phase==='unavailable'?{verificationState:'UNAVAILABLE',reason:'PROVIDER_CONFIRMATION_REQUIRED'}:phase==='review'?{status:'NEEDS_REVIEW',verificationState:'MISMATCH',reason:'EVIDENCE_MISMATCH'}:{status:'CREDITED',providerStatus:'SUCCESS',verificationState:'VERIFIED'})}});
-  });
-  await page.goto('/telegram?next='+encodeURIComponent(f.home));await expect(page.getByRole('navigation',{name:'Your navigation'})).toBeVisible();
-  await page.getByRole('link',{name:am?'ገንዘብ ያስገቡ':'Deposit',exact:true}).click();
-  const sheet=page.getByRole('dialog');await sheet.locator('[data-payment-action]').click();
-  await expect(sheet.locator('[data-payment-state="unavailable"]')).toBeVisible();
-  await expect(sheet.locator('[data-payment-state] svg[class*="paymentSpinner"]')).toHaveCount(0);
-  phase='review';await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
-  await expect(sheet.locator('[data-payment-state="review"]')).toBeVisible();
-  mkdirSync('test-results/chapa-ui/modal',{recursive:true});
-  await page.screenshot({path:'test-results/chapa-ui/modal/review-'+info.project.name+'.png',animations:'disabled'});
-  phase='credited';await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
-  await expect(sheet.locator('[data-payment-state="confirmed"]')).toBeVisible();expect(creates).toBe(1);
+  await page.route('**/api/payments/chapa/checkouts**',route=>{const req=route.request(),collection=new URL(req.url()).pathname.endsWith('/checkouts');if(collection&&req.method()==='POST'){creates++;return route.abort()}return route.fulfill({json:{...order,...(phase==='unavailable'?{verificationState:'UNAVAILABLE',reason:'PROVIDER_CONFIRMATION_REQUIRED'}:phase==='review'?{status:'NEEDS_REVIEW',verificationState:'MISMATCH',reason:'EVIDENCE_MISMATCH'}:{status:'CREDITED',providerStatus:'SUCCESS',verificationState:'VERIFIED'})}})});
+  await page.goto('/telegram');const sheet=page.getByRole('dialog');await expect(sheet.locator('[data-payment-state="unavailable"]')).toBeVisible();
+  phase='review';await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect(sheet.locator('[data-payment-state="review"]')).toBeVisible();
+  phase='credited';await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect(sheet.locator('[data-payment-state="confirmed"]')).toBeVisible();expect(creates).toBe(0);
  }finally{await f.db.$disconnect()}
 });
 
-test('an interrupted initialization retries the original key and opens only one checkout',async({page},info)=>{
- const am=info.project.name==='430',f=await fixture(page,am),intents:ChapaIntent[]=[];
- try{
-  await page.route('**/api/payments/chapa/checkouts**',async route=>{
-   const request=route.request();
-   if(new URL(request.url()).pathname.endsWith('/checkouts')){
-    const intent=request.postDataJSON() as ChapaIntent;intents.push(intent);
-    if(intents.length===1)return route.abort('connectionreset');
-    return route.fulfill({json:pending(intent,intents[0].key)});
-   }
-   return route.fulfill({json:pending(intents[0],intents[0].key)});
-  });
-  await page.goto('/telegram?next='+encodeURIComponent(f.home));await expect(page.getByRole('navigation',{name:'Your navigation'})).toBeVisible();
-  await page.getByRole('link',{name:am?'ገንዘብ ያስገቡ':'Deposit',exact:true}).click();const sheet=page.getByRole('dialog');
-  await sheet.locator('[data-payment-action]').click();
-  await sheet.getByRole('button',{name:am?'የመጀመሪያውን ጥያቄ ይድገሙ':'Retry original request',exact:true}).click();
-  await expect.poll(()=>page.evaluate(()=>Reflect.get(window,'chapaOpened')?.length??0)).toBe(1);
-  expect(intents).toHaveLength(2);expect(intents[1]).toEqual(intents[0]);
- }finally{await f.db.$disconnect()}
-});
-
-for(const outcome of ['provider-success','past-validity'] as const)test(`checkout handoff does not reopen ${outcome}`,async({page},info)=>{
- const am=info.project.name==='430',f=await fixture(page,am);let creates=0,checks=0,order:ChapaCheckoutView|null=null;
- try{
-  await page.route('**/api/payments/chapa/checkouts**',route=>{
-   const request=route.request(),collection=new URL(request.url()).pathname.endsWith('/checkouts');
-   if(collection&&request.method()==='GET')return route.fulfill({json:{items:order?[order]:[],page:1,nextPage:null}});
-   if(collection){
-    const intent=request.postDataJSON() as ChapaIntent;creates++;
-    order={...pending(intent,intent.key),providerStatus:outcome==='provider-success'?'SUCCESS':'PENDING',verificationState:'VERIFIED',...(outcome==='past-validity'?{expiresAt:new Date(Date.now()-1000).toISOString()}:{})};
-   }else checks++;
-   return route.fulfill({json:order});
-  });
-  await page.goto('/telegram?next='+encodeURIComponent(f.home));await expect(page.getByRole('navigation',{name:'Your navigation'})).toBeVisible();
-  await page.getByRole('link',{name:am?'ገንዘብ ያስገቡ':'Deposit',exact:true}).click();const sheet=page.getByRole('dialog');
-  await sheet.locator('[data-payment-action]').click();
-  await expect(sheet.locator(`[data-payment-state="${outcome==='provider-success'?'applying':'confirming'}"]`)).toBeVisible();
-  expect(creates).toBe(1);expect(await page.evaluate(()=>Reflect.get(window,'chapaOpened')?.length??0)).toBe(0);
-  await expect(sheet.getByRole('link',{name:am?'ክፍያውን ይቀጥሉ':'Continue checkout',exact:true})).toHaveCount(0);
-  await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect.poll(()=>checks).toBeGreaterThan(0);
-  expect(creates).toBe(1);
- }finally{await f.db.$disconnect()}
-});
-
-test('a bid return reopens its product modal and accepts only a server-confirmed receipt',async({page},info)=>{
- const am=info.project.name==='430',id=randomUUID(),f=await fixture(page,am,'chapa_'+id);
- const order={...pending({purpose:'BID',key:id,auctionSlug:f.auction.slug!,amount:'3.60',feeVersion:1},id),auctionTitle:f.title,auctionCode:String(f.auction.publicCode)};
- let complete=false,creates=0;
- try{
-  await page.route('**/api/payments/chapa/checkouts**',route=>{
-   const request=route.request(),url=new URL(request.url());
-   if(url.pathname.endsWith('/checkouts')){
-    if(request.method()==='POST'){creates++;return route.abort()}
-    return route.fulfill({json:{items:[order],page:1,nextPage:null}});
-   }
-   return route.fulfill({json:{...order,...(complete?{status:'BID_ACCEPTED',providerStatus:'SUCCESS',verificationState:'VERIFIED',receipt:{bid:{id:randomUUID(),amount:'3.60'}}}:{})}});
-  });
-  await page.goto('/telegram');const sheet=page.getByRole('dialog');
-  await expect(sheet.locator('[data-payment-state="confirming"]')).toBeVisible();
-  await expect(page).toHaveURL(new RegExp('/auctions/'+f.auction.publicCode+'\\?chapa='+id));
-  await expect(sheet).toContainText(f.title);
-  complete=true;await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
-  await expect(sheet.locator('[data-payment-state="confirmed"]')).toBeVisible();
-  await expect(sheet.getByRole('heading',{name:am?'ጨረታው ተቀብሏል':'Bid accepted',exact:true})).toBeVisible();
-  expect(creates).toBe(0);
-  mkdirSync('test-results/chapa-ui/modal',{recursive:true});
-  await page.screenshot({path:'test-results/chapa-ui/modal/bid-accepted-'+info.project.name+'.png',animations:'disabled'});
- }finally{await f.db.$disconnect()}
+for(const outcome of ['provider-success','past-validity'] as const)test(`existing hosted checkout does not relaunch for ${outcome}`,async({page},info)=>{
+ const id=randomUUID(),f=await fixture(page,info.project.name==='430','chapa_'+id),order={...pending({key:id,purpose:'TOP_UP',amount:'100'},id),providerStatus:outcome==='provider-success'?'SUCCESS':'PENDING',verificationState:'VERIFIED',...(outcome==='past-validity'?{expiresAt:new Date(Date.now()-1000).toISOString()}:{})};let creates=0;
+ try{await page.route('**/api/payments/chapa/checkouts**',route=>{if(new URL(route.request().url()).pathname.endsWith('/checkouts')&&route.request().method()==='POST'){creates++;return route.abort()}return route.fulfill({json:order})});await page.goto('/telegram');const sheet=page.getByRole('dialog');await expect(sheet.locator(`[data-payment-state="${outcome==='provider-success'?'applying':'confirming'}"]`)).toBeVisible();expect(creates).toBe(0);expect(await page.evaluate(()=>Reflect.get(window,'chapaOpened')?.length??0)).toBe(0);await expect(sheet.getByRole('link',{name:/Continue checkout|ክፍያውን ይቀጥሉ/})).toHaveCount(0)}finally{await f.db.$disconnect()}
 });

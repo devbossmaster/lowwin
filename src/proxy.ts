@@ -2,6 +2,7 @@ import {NextRequest,NextResponse} from 'next/server';
 import {getMiniSession,localMiniPreview} from '@/modules/auth/mini-access';
 import {miniReturnPath} from '@/lib/mini-return';
 import {resolveLearnMoreMedia} from '@/lib/learn-more-media';
+import {isPublicMiniPage,isPublicMiniRead,isMiniAccountShell} from '@/lib/mini-public-routes';
 
 // These handlers enforce getMiniSession/requireUser themselves before any
 // private read or mutation. Do not run another full session lookup in Proxy.
@@ -10,11 +11,15 @@ const publicAssets=new Set(['/images/lowwin-logo-20261030.webp','/images/lowwin-
 
 export async function proxy(request:NextRequest) {
   const path=request.nextUrl.pathname;
+  if((request.method==='GET'||request.method==='HEAD')&&(isPublicMiniPage(path)||isMiniAccountShell(path))||isPublicMiniRead(path,request.method))return NextResponse.next();
   if(path==='/api/health/live')return NextResponse.next();
   // Hosted returns are public guidance; callback never mutates money and the
   // webhook authenticates exact bytes itself. Owned checkout APIs authorize in
   // their handlers, avoiding duplicate session reads here.
   if(path==='/payments/chapa/return'||path==='/api/payments/chapa/callback'||path==='/api/payments/chapa/webhook'||path==='/api/payments/chapa'||path==='/api/payments/chapa/checkouts'||/^\/api\/payments\/chapa\/checkouts\/[0-9a-f-]{36}$/i.test(path))return NextResponse.next();
+  // Direct/batch handlers require the owned payment session themselves. Keep
+  // the same boundary without paying for another session lookup in Proxy.
+  if(path==='/api/payments/chapa/direct'||path==='/api/payments/chapa/methods'||path==='/api/payments/chapa/batches/quote'||/^\/api\/payments\/chapa\/batches\/[0-9a-f-]{36}\/wallet$/i.test(path)||/^\/api\/payments\/chapa\/checkouts\/[0-9a-f-]{36}\/authorize$/i.test(path))return NextResponse.next();
   // Public onboarding artwork must load before a Telegram session exists.
   // Keep this exact allowlist separate from all protected Mini App data.
   if(publicAssets.has(path))return NextResponse.next();

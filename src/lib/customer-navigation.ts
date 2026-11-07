@@ -1,6 +1,7 @@
 export const CUSTOMER_HISTORY_MARK='lowwinCustomerPage';
 type PageMark={version:1;identity:string;href:string;previous:boolean};
 export function customerPageTitle(path:string):readonly [string,string]{
+ if(path==='/how-it-works')return ['How it works','እንዴት እንደሚሠራ'];
  if(path==='/winners'||path==='/winners/all'||path==='/draws')return ['Winners','አሸናፊዎች'];
  if(path.startsWith('/winners/'))return ['Auction result','የጨረታ ውጤት'];
  if(path==='/my-bids')return ['My Bids','የእኔ ጨረታዎች'];

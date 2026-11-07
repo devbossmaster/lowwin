@@ -5,10 +5,10 @@ import {ArrowDownUp} from 'lucide-react';
 import type {CatalogQuery,listAuctions} from '@/modules/auctions/catalog';
 import {AuctionCard} from './auction-card';
 import {MiniPhrase,useMiniLocale} from './mini-locale';
-import {usePrivateQuery} from './private-query';
-import {isPrivateQueryIdentity,readPrivateQuery,seedPrivateQuery} from './private-query-cache';
-import {useTelegram} from './telegram-provider';
-import {miniNavigationState} from './mini-navigation-state';
+import {usePublicQuery} from './public-query';
+import {readPublicQuery,seedPublicQuery} from './public-query-cache';
+
+import {publicMiniNavigationState as miniNavigationState} from './mini-navigation-state';
 import {catalogBatchUrl} from '@/lib/catalog-query';
 import {homeAuctionHref} from '@/lib/home-filter-query';
 export {homeAuctionHref} from '@/lib/home-filter-query';
@@ -17,31 +17,31 @@ import styles from './home-banner.module.css';
 type Batch=Awaited<ReturnType<typeof listAuctions>>;
 const batchHref=catalogBatchUrl;
 function restoredFeed(identity:string|null,initial:Batch|undefined,query:CatalogQuery){
- const cached=identity?readPrivateQuery<Batch>(identity,batchHref(query,1)):null;
+ const cached=readPublicQuery<Batch>(batchHref(query,1));
  const base=cached&&(!initial||Date.parse(cached.value.serverNow)>=Date.parse(initial.serverNow))?cached.value:initial;
  if(!base)return {items:[],page:1,totalPages:0,serverNow:new Date().toISOString(),serverObservedAt:Date.now()};
  let items=base.items,page=1,totalPages=base.totalPages,serverNow=base.serverNow,serverObservedAt=cached&&base===cached.value?cached.updatedAt:Date.now();
  const desired=Math.min(miniNavigationState.page(identity,homeAuctionHref(query)),totalPages);
  for(let next=2;identity&&next<=desired;next++){
-  const saved=readPrivateQuery<Batch>(identity,batchHref(query,next));if(!saved)break;
+  const saved=readPublicQuery<Batch>(batchHref(query,next));if(!saved)break;
   const codes=new Set(items.map(item=>item.code));items=[...items,...saved.value.items.filter(item=>!codes.has(item.code))];page=next;totalPages=saved.value.totalPages;
   serverNow=saved.value.serverNow;serverObservedAt=saved.updatedAt;
  }
  return {items,page,totalPages,serverNow,serverObservedAt};
 }
 export function HomeAuctions(props:{initial?:Batch;query:CatalogQuery}){
- const {queryIdentity}=useTelegram();return <HomeAuctionFeed key={`${queryIdentity??'guest'}:${homeAuctionHref(props.query)}`} {...props} identity={queryIdentity}/>;
+ return <HomeAuctionFeed key={homeAuctionHref(props.query)} {...props} identity="public"/>;
 }
 function HomeAuctionFeed({initial,query,identity}:{initial?:Batch;query:CatalogQuery;identity:string|null}){
  const {language}=useMiniLocale(),sortRow=useRef<HTMLElement>(null);
  const [restored]=useState(()=>restoredFeed(identity,initial,query));
  const [items,setItems]=useState(restored.items),[serverNow,setServerNow]=useState(restored.serverNow),[serverObservedAt,setServerObservedAt]=useState(restored.serverObservedAt),[page,setPage]=useState(restored.page),[totalPages,setTotalPages]=useState(restored.totalPages),[busy,setBusy]=useState(false),pending=useRef(false);
- const firstBatch=usePrivateQuery<Batch>(batchHref(query,1),{initialData:initial});
- const batch=usePrivateQuery<Batch>(batchHref(query,page),{enabled:page>1});
+ const firstBatch=usePublicQuery<Batch>(batchHref(query,1),{initialData:initial});
+ const batch=usePublicQuery<Batch>(batchHref(query,page),{enabled:page>1});
  const lastInitial=useRef(initial);
  useEffect(()=>{const data=firstBatch.data;if(!data)return;const codes=new Set(data.items.map(item=>item.code));setItems(previous=>[...data.items,...previous.slice(10).filter(item=>!codes.has(item.code))]);setServerNow(data.serverNow);setServerObservedAt(firstBatch.updatedAt);setTotalPages(data.totalPages)},[firstBatch.data,firstBatch.updatedAt]);
  useEffect(()=>{if(!initial||lastInitial.current===initial)return;lastInitial.current=initial;const codes=new Set(initial.items.map(item=>item.code));setItems(previous=>[...initial.items,...previous.slice(10).filter(item=>!codes.has(item.code))]);setServerNow(initial.serverNow);setServerObservedAt(Date.now());setTotalPages(initial.totalPages)},[initial]);
- useEffect(()=>{if(!initial||!identity||!isPrivateQueryIdentity(identity))return;const key=batchHref(query,1),saved=readPrivateQuery<Batch>(identity,key);if(!saved||Date.parse(initial.serverNow)>Date.parse(saved.value.serverNow))seedPrivateQuery(identity,key,initial)},[identity,initial,query]);
+ useEffect(()=>{if(!initial)return;const key=batchHref(query,1),saved=readPublicQuery<Batch>(key);if(!saved||Date.parse(initial.serverNow)>Date.parse(saved.value.serverNow))seedPublicQuery(key,initial)},[identity,initial,query]);
  useEffect(()=>{miniNavigationState.rememberPage(identity,homeAuctionHref(query),page)},[identity,query,page]);
  useEffect(()=>{const row=sortRow.current,selected=row?.querySelector<HTMLElement>('[aria-current="page"]');if(!row||!selected)return;const left=selected.getBoundingClientRect().left-row.getBoundingClientRect().left;if(left<16)row.scrollLeft+=left-16;else if(left+selected.offsetWidth>row.clientWidth-16)row.scrollLeft+=left+selected.offsetWidth-row.clientWidth+16},[query.sort,language]);
  useEffect(()=>{if(page<=1||!batch.data)return;const data=batch.data;setItems(previous=>{const codes=new Set(previous.map(item=>item.code)),updates=new Map(data.items.map(item=>[item.code,item]));return [...previous.map(item=>updates.get(item.code)??item),...data.items.filter(item=>!codes.has(item.code))]});setServerNow(data.serverNow);setServerObservedAt(batch.updatedAt);setTotalPages(data.totalPages);pending.current=false;setBusy(false)},[batch.data,batch.updatedAt,page]);

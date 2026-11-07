@@ -12,6 +12,7 @@ beforeEach(()=>{vi.stubEnv('TELEGRAM_BOT_TOKEN',botId+':receipt-fixture-token');
 afterEach(()=>vi.unstubAllEnvs());
 
 describe('verified Chapa Telegram receipts',()=>{
+ it('reports every accepted number in one committed batch receipt',async()=>{const order={...receipt(),purpose:'BID',status:'BID_ACCEPTED',bidId:'first-bid',amountCents:3000n,receipt:{receipts:[{bid:{id:'first-bid',amount:'2.00'}},{bid:{id:'second-bid',amount:'3.00'}},{bid:{id:'third-bid',amount:'4.00'}}]}};const content=await chapaReceiptContent(contentTx(order),row());expect(content?.body).toContain('3 bids accepted');expect(content?.body).toContain('2.00 · 3.00 · 4.00');expect(content?.body).toContain('30.00 ETB')});
  it.each(['','@cryptonbozz','-1001234567','0','123:token',' 123','123\n','4503599627370496'])('rejects unsafe merchant alert destination %j',value=>{
   vi.stubEnv('CHAPA_PAYMENT_ALERT_TELEGRAM_ID',value);expect(chapaPaymentAlertRecipient()).toBeNull();
  });

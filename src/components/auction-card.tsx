@@ -1,6 +1,6 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
-import {ArrowUpRight,Clock3,Ticket} from 'lucide-react';
+import {ArrowUpRight,Clock3,Eye,Ticket} from 'lucide-react';
 import type {CatalogAuction} from '@/modules/auctions/catalog';
 import {CatalogImage} from './catalog-image';
 import {AuctionCountdown} from './auction-countdown';
@@ -13,20 +13,23 @@ import {IntentPrefetchLink} from './intent-prefetch-link';
 import {useTelegram} from './telegram-provider';
 import {prefetchAuctionIntent} from './mini-prefetch';
 import {seedAuctionQuery} from './auction-query';
+import badges from './auction-card-badges.module.css';
 export function AuctionCard({auction:initialAuction,serverNow,serverObservedAt,priority=false}:{auction:CatalogAuction;serverNow?:string;serverObservedAt?:number;priority?:boolean;onFavoriteChanged?:()=>void}){
  const [bidding,setBidding]=useState(false),ref=useRef<HTMLElement>(null);
  const {queryIdentity}=useTelegram();
  useEffect(()=>seedAuctionQuery(queryIdentity,initialAuction),[queryIdentity,initialAuction]);
  const warmBid=()=>prefetchAuctionIntent(queryIdentity,initialAuction.slug);
- const {activity,refreshActivity}=useAuctionActivity(initialAuction.code,{element:ref,record:true});
+ const {activity,views,refreshActivity}=useAuctionActivity(initialAuction.code,{element:ref,record:true});
  useAuctionRefresh(activity,initialAuction.status,Boolean(initialAuction.result));
  const auction={...initialAuction,status:activity?.status??initialAuction.status,startsAt:activity?.startsAt??initialAuction.startsAt,endsAt:activity?.endsAt??initialAuction.endsAt,bidCount:activity?.bids??initialAuction.bidCount};
  const {language}=useMiniLocale(),am=language==='am',live=auction.status==='live',upcoming=auction.status==='upcoming';
  const detail=`/auctions/${auction.code}`,title=am?(auction.product.titleAm?.trim()||auction.product.title):auction.product.title;
  const statusText={live:am?'ክፍት':'Live',upcoming:am?'የሚመጣ':'Upcoming',closing:am?'ውጤት በመጠባበቅ':'Result pending',closed:am?'ተጠናቋል':'Completed',cancelled:am?'ተሰርዟል':'Cancelled'}[auction.status];
  const fee=formatEtb(auction.terms.entryFeePoints),hasFee=etbToCents(auction.terms.entryFeePoints)>0n;
- return <article className="auction-card" ref={ref}>
-  <IntentPrefetchLink className="auction-card-art" href={detail} aria-label={title}><CatalogImage src={auction.product.images[0]?.path} alt={title} priority={priority}/><span className={`status-tag status-${auction.status}`}>{statusText}</span>{auction.isDemo&&<span className="demo-ribbon">DEMO</span>}{(live||upcoming)&&<span className="auction-card-win"><MiniPhrase en="Win" am="ያሸንፉ"/></span>}</IntentPrefetchLink>
+ const recordedViews=views??initialAuction.viewCount;
+ let viewLabel='—';try{if(/^\d+$/.test(recordedViews))viewLabel=BigInt(recordedViews).toLocaleString(am?'am-ET':'en-ET')}catch{}
+ return <article className={`auction-card ${badges.card}`} ref={ref}>
+  <IntentPrefetchLink className="auction-card-art" href={detail} aria-label={title}><CatalogImage src={auction.product.images[0]?.path} alt={title} priority={priority}/><span className={`status-tag status-${auction.status}`}>{statusText}</span><span className={badges.views} aria-label={am?`${viewLabel} የተመዘገቡ እይታዎች`:`${viewLabel} recorded views`}><Eye size={13} aria-hidden="true"/><span className={badges.count}>{viewLabel}</span></span>{auction.isDemo&&<span className="demo-ribbon">DEMO</span>}{(live||upcoming)&&<span className="auction-card-win"><MiniPhrase en="Win" am="ያሸንፉ"/></span>}</IntentPrefetchLink>
   <div className="auction-card-body"><h3><IntentPrefetchLink href={detail}>{title}</IntentPrefetchLink></h3><div className="card-facts"><span className="card-fee"><MiniPhrase en="Fee" am="ክፍያ"/> <strong>{fee}</strong></span><span className="card-clock"><Clock3 size={13} aria-hidden="true"/>{(live||upcoming)&&serverNow?<AuctionCountdown target={upcoming?auction.startsAt:auction.endsAt} serverNow={serverNow} observedAt={serverObservedAt} label={upcoming?'Starts':'Ends'} showLabel={false} onElapsed={refreshActivity}/>:statusText}</span></div>
    {live?<button className="primary-button card-action" onPointerEnter={warmBid} onFocus={warmBid} onTouchStart={warmBid} onClick={()=>setBidding(true)}><Ticket size={16} aria-hidden="true"/><MiniPhrase en={hasFee?`Pay ${fee} & bid`:'Bid now'} am={hasFee?`${fee} ከፍለው ይጫረቱ`:'አሁን ይጫረቱ'}/></button>:<IntentPrefetchLink className="secondary-button card-action" href={detail}><MiniPhrase en={upcoming?'View auction':'View result'} am={upcoming?'ጨረታውን ይመልከቱ':'ውጤቱን ይመልከቱ'}/><ArrowUpRight size={16} aria-hidden="true"/></IntentPrefetchLink>}
    <p className="card-disclosure"><MiniPhrase en={hasFee?(isSubmissionFeeOnly(auction.terms.ruleVersion)?'Submission fee is non-refundable':'See auction terms'):'No entry fee'} am={hasFee?(isSubmissionFeeOnly(auction.terms.ruleVersion)?'የማስገቢያ ክፍያው ተመላሽ አይሆንም':'የጨረታ ውሎችን ይመልከቱ'):'የመግቢያ ክፍያ የለም'}/></p>

@@ -33,7 +33,7 @@ DO $$ DECLARE t text; BEGIN
    END IF;
   END IF;
  END LOOP;
- FOREACH t IN ARRAY ARRAY['VerifyRequest','VerifyWebhookEvent','ArifPayCheckout','ReferralPolicy','ReferralPendingSignup','ReferralSignup','WinnerPresentation'] LOOP
+ FOREACH t IN ARRAY ARRAY['VerifyRequest','VerifyWebhookEvent','ArifPayCheckout','ReferralPolicy','ReferralPendingSignup','ReferralSignup','WinnerPresentation','BidBatchOrder'] LOOP
   IF EXISTS(SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename=t) THEN
    IF EXISTS(SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename=t AND tableowner='lowwin_runtime') THEN RAISE EXCEPTION 'Runtime must not own tables'; END IF;
    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',t);

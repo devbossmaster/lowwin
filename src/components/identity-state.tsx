@@ -6,10 +6,12 @@ import { useTelegram } from './telegram-provider';
 import { Button } from './ui/button';
 import { useState } from 'react';
 import { TelegramBotLink } from './telegram-bot-link';
+import {MiniPhrase} from './mini-locale';
 export function IdentityState({ compact = false }: { compact?: boolean }) {
-  const { status, me, error, needsReopen, retry, devLogin, devEnabled, botUrl } = useTelegram();
+  const { status, me, error, needsReopen, retry, devLogin, devEnabled, botUrl,openRegistration } = useTelegram();
   const [accessKey, setAccessKey] = useState('');
   if (status === 'loading') return <PageLoading/>;
+  if(status==='contact-required')return <section className={`identity-state ${compact?'compact':''}`}><h2><MiniPhrase en="Log in to continue" am="ለመቀጠል ይግቡ"/></h2><p><MiniPhrase en="Your personal information stays private. You can keep browsing auctions." am="የግል መረጃዎ በደህንነት ይጠበቃል። ጨረታዎችን መመልከት መቀጠል ይችላሉ።"/></p><Button onClick={openRegistration}><MiniPhrase en="Log in" am="ይግቡ"/></Button></section>;
   if (status === 'authenticated') return <div className="verified-line"><ShieldCheck size={18}/><span>Welcome, {me?.user.name}. You’re signed in.</span></div>;
   return <section className={`identity-state ${compact ? 'compact' : ''}`} aria-live="polite">
     <div className="identity-heading"><Send size={20}/><h2>{status === 'error' ? 'Let’s reconnect' : 'Your Lowwin starts in Telegram'}</h2></div>

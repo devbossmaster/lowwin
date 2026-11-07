@@ -184,6 +184,8 @@ jobs:
       TEST_DATABASE_URL: postgresql://lowin_test:fixture_only@127.0.0.1:5432/lowin_test
       DATABASE_URL: postgresql://lowin_test:fixture_only@127.0.0.1:5432/lowin_test
       DIRECT_URL: postgresql://lowin_test:fixture_only@127.0.0.1:5432/lowin_test
+      NOV7_TLS_KEY: /tmp/lowwin-nov7-key.pem
+      NOV7_TLS_CERT: /tmp/lowwin-nov7-cert.pem
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
@@ -196,9 +198,23 @@ jobs:
       # Creates a fresh loopback database and migrates it. The spec creates its
       # own synthetic fixtures and mocks payment responses; no merchant keys.
       - run: node scripts/run-db-tests.mjs chapa
+      # The public-entry and direct-charge changes also run against shipped
+      # production bundles, on their own fresh DB and temporary localhost TLS.
+      - name: Create temporary localhost TLS for production browser checks
+        run: |
+          umask 077
+          openssl req -x509 -newkey rsa:2048 -nodes \
+            -keyout "$NOV7_TLS_KEY" -out "$NOV7_TLS_CERT" \
+            -days 1 -subj '/CN=localhost' \
+            -addext 'subjectAltName=DNS:localhost,IP:127.0.0.1'
+      - run: node scripts/run-db-tests.mjs nov7
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
           name: chapa-checkout-ui
-          path: test-results/chapa-ui/
+          path: |
+            test-results/chapa-ui/
+            test-results/nov7-runs/
+            test-results/nov7-evidence/
+            test-results/release/nov7-databases.json
           retention-days: 7

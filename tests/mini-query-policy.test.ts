@@ -1,19 +1,20 @@
-import {describe,expect,it} from 'vitest';
+import {describe,expect,it,vi} from 'vitest';
 import {MINI_QUERY_POLICIES,miniQueryPolicy,matchesPrivateResource} from '../src/components/mini-query-policy';
 import {catalogBatchUrl,winnersQueryUrl} from '../src/lib/catalog-query';
 import {quickAuctionResource} from '../src/components/quick-auction-query';
-import {seedPrivateQuery,setPrivateQueryIdentity} from '../src/components/private-query-cache';
+import {setPrivateQueryIdentity} from '../src/components/private-query-cache';
+import {seedPublicQuery} from '../src/components/public-query-cache';
 
 describe('Mini App resource contracts',()=>{
- it('reuses a matching Home batch in compact browsing, without crossing filters or identities',()=>{
-  setPrivateQueryIdentity('a');
+ it('reuses public Home batches across login while preserving filter and page identity',()=>{
+  vi.stubGlobal('window',{});setPrivateQueryIdentity('a');
   try{
    const query={status:'live',sort:'code',page:1,q:''} as const,url=catalogBatchUrl(query);
-   seedPrivateQuery('a',catalogBatchUrl({...query,q:'phone'}),{items:[]});expect(quickAuctionResource('a','live')).toContain('view=quick');
-   seedPrivateQuery('a',url,{items:[]});expect(quickAuctionResource('a','live')).toBe(url);
+   seedPublicQuery(catalogBatchUrl({...query,q:'phone'}),{items:[]});expect(quickAuctionResource('a','live')).toContain('view=quick');
+   seedPublicQuery(url,{items:[]});expect(quickAuctionResource('a','live')).toBe(url);
    expect(quickAuctionResource('a','live',2)).toContain('view=quick');expect(quickAuctionResource('a','upcoming')).toContain('view=quick');
-   setPrivateQueryIdentity('b');expect(quickAuctionResource('b','live')).toContain('view=quick');
-  }finally{setPrivateQueryIdentity(null)}
+   setPrivateQueryIdentity('b');expect(quickAuctionResource('b','live')).toBe(url);
+  }finally{setPrivateQueryIdentity(null);vi.unstubAllGlobals()}
  });
  it('gives live financial data shorter finite freshness than immutable results',()=>{
   expect(miniQueryPolicy('/api/wallet').staleMs).toBeLessThan(miniQueryPolicy('/api/results/42/breakdown?page=1').staleMs);

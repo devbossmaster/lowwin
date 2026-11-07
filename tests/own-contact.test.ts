@@ -55,40 +55,36 @@ describe.skipIf(!url)('required own-contact boundary',()=>{
   expect(await db.session.count({where:{userId:user.id}})).toBe(1);
   expect((await contactStatus(db,user.id)).verified).toBe(true);
  });
- it('confirms a verified bot contact once with an Amharic Mini App button',async()=>{
+ it('commits contact without Telegram calls and deduplicates its durable confirmation',async()=>{
   const id=next(),updateId=next(),{processOneUpdate}=await import('../src/modules/bot/worker');
   await db.botUpdate.updateMany({where:{processedAt:null},data:{processedAt:new Date(),payload:{}}});
   expect((await receive({update_id:updateId,message:message(id)})).status).toBe(200);
-  const sent=vi.fn(async(..._args:unknown[])=>({message_id:1})),photos=vi.fn(async(..._args:unknown[])=>({message_id:1}));
-  const bot={api:{sendMessage:sent,sendPhoto:photos},handleUpdate:vi.fn()} as unknown as Bot;
-  expect(await processOneUpdate(db,bot)).toBe(true);
-  expect(sent).toHaveBeenCalledTimes(1);expect(photos).toHaveBeenCalledTimes(1);
-  expect(sent.mock.calls[0]).toEqual([String(id),CONTACT_KEYBOARD_REMOVED_MESSAGE,{reply_markup:{remove_keyboard:true}}]);
-  expect(photos.mock.calls[0]?.[0]).toBe(String(id));
-  expect(photos.mock.calls[0]?.[2]).toMatchObject({caption:CONTACT_VERIFIED_MESSAGE});
-  expect(JSON.stringify(photos.mock.calls[0]?.[2])).toContain(START_BIDDING_ACTION);
-  expect((await db.telegramOwnContact.findUnique({where:{botId_telegramId:{botId:contactBotId(),telegramId:String(id)}}}))?.revokedAt).toBeNull();
-  expect((await db.botUpdate.findUniqueOrThrow({where:{updateId:BigInt(updateId)}})).processedAt).not.toBeNull();
-  const repeatUpdateId=next();
-  expect((await receive({update_id:repeatUpdateId,message:message(id)})).status).toBe(200);
-  expect(await processOneUpdate(db,bot)).toBe(true);
-  expect(sent).toHaveBeenCalledTimes(2);expect(photos).toHaveBeenCalledTimes(2);
-  expect(sent.mock.calls[1]).toEqual([String(id),CONTACT_KEYBOARD_REMOVED_MESSAGE,{reply_markup:{remove_keyboard:true}}]);
-  expect(photos.mock.calls[1]?.[2]).toMatchObject({caption:CONTACT_ALREADY_VERIFIED_MESSAGE});
-  expect(JSON.stringify(photos.mock.calls[1]?.[2])).toContain(START_BIDDING_ACTION);
-  expect(await db.user.count({where:{telegramId:String(id)}})).toBe(1);
-  expect(await db.telegramOwnContact.count({where:{botId:contactBotId(),telegramId:String(id)}})).toBe(1);
+  const sent=vi.fn(async()=>{throw Error('slow/failed Telegram must not block contact')}),bot={api:{sendMessage:sent,sendPhoto:sent},handleUpdate:vi.fn()} as unknown as Bot;
+  expect(await processOneUpdate(db,bot)).toBe(true);expect(sent).not.toHaveBeenCalled();
+  const user=await db.user.findUniqueOrThrow({where:{telegramId:String(id)}});
+  expect((await contactStatus(db,user.id)).verified).toBe(true);
+  const key=`contact-confirmed:${contactBotId()}:${id}`;
+  expect(await db.outbox.count({where:{key,kind:'CONTACT_CONFIRMED'}})).toBe(1);
+  // The existing durable notification worker handles the optional confirmation
+  // later. Contact status was already available even with Telegram failing.
+  const {dispatchOne}=await import('../src/modules/notifications/service');
+  await db.outbox.update({where:{key},data:{nextAttemptAt:new Date(0)}});
+  const delivered=vi.fn(async()=>({message_id:1}));
+  expect(await dispatchOne(db,{api:{sendMessage:delivered}} as unknown as Bot)).toBe(true);
+  expect(delivered).toHaveBeenCalledExactlyOnceWith(String(id),expect.stringContaining('registered with Lowwin'),expect.objectContaining({reply_markup:{inline_keyboard:[[{text:'Open Lowwin',web_app:{url:'http://localhost:3000'}}]]}}));
+  expect((await db.outbox.findUniqueOrThrow({where:{key}})).state).toBe('SENT');
+  const repeatUpdateId=next();expect((await receive({update_id:repeatUpdateId,message:message(id)})).status).toBe(200);
+  expect(await processOneUpdate(db,bot)).toBe(true);expect(sent).not.toHaveBeenCalled();
+  expect(await db.outbox.count({where:{key}})).toBe(1);expect(await db.user.count({where:{telegramId:String(id)}})).toBe(1);
  });
- it('fallback sends an own-contact reply keyboard only to the signed private identity, without unlocking Home',async()=>{
+ it('retired fallback never shares contact or sends a bot keyboard and keeps own-contact proof required',async()=>{
   const id=next(),{handleAuth}=await import('../src/modules/auth/handler'),{POST,GET}=await import('../src/app/api/onboarding/contact/route');
   const signed=await handleAuth(new Request('http://localhost:3000/api/auth/telegram/miniapp/signin',{method:'POST',headers:{origin:'http://localhost:3000','content-type':'application/json'},body:JSON.stringify({initData:signedLaunch({user:JSON.stringify({id,first_name:'Fallback fixture'})})})}));
   expect(signed.status).toBe(200);const cookie=signed.headers.getSetCookie().map(v=>v.split(';')[0]).join('; ');
   const request=(headers:Record<string,string>)=>new Request('http://localhost:3000/api/onboarding/contact',{method:'POST',headers});
   expect((await POST(request({origin:'http://localhost:3000','x-telegram-user-id':String(id)}))).status).toBe(401);
   expect((await POST(request({cookie,origin:'https://evil.invalid'}))).status).toBe(403);
-  sendMessage.mockClear();const sent=await POST(request({cookie,origin:'http://localhost:3000'}));expect(sent.status).toBe(200);expect(sent.headers.get('cache-control')).toContain('no-store');
-  expect(sendMessage).toHaveBeenCalledOnce();expect(sendMessage.mock.calls[0]).toEqual([String(id),CONTACT_REQUEST_MESSAGE,{reply_markup:{keyboard:[[{text:'📱 የስልክ ቁጥሬን አጋራ',request_contact:true}]],resize_keyboard:true,input_field_placeholder:'የስልክ ቁጥሬን አጋራ',one_time_keyboard:true}}]);
-  expect((await POST(request({cookie,origin:'http://localhost:3000'}))).status).toBe(429);expect(sendMessage).toHaveBeenCalledOnce();
+  sendMessage.mockClear();expect((await POST(request({cookie,origin:'http://localhost:3000'}))).status).toBe(410);expect(sendMessage).not.toHaveBeenCalled();
   expect((await (await GET(new Request('http://localhost:3000/api/onboarding/contact',{headers:{cookie}}))).json()).verified).toBe(false);
   const {GET:me}=await import('../src/app/api/me/route');expect((await me(new Request('http://localhost:3000/api/me',{headers:{cookie}}))).status).toBe(401);
  });

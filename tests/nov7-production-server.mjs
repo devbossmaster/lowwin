@@ -1,0 +1,14 @@
+import {readFileSync} from 'node:fs';
+import {createServer} from 'node:https';
+import {resolve} from 'node:path';
+import next from 'next';
+const database=new URL(process.env.DATABASE_URL??'');
+if(process.env.APP_ENV!=='local'||!['127.0.0.1','localhost'].includes(database.hostname)||!database.pathname.endsWith('_test'))throw Error('Only an isolated loopback test database is allowed');
+const port=Number(process.env.NOV7_PORT??3157),directory=resolve(process.env.NOV7_SOURCE_DIR??'.');
+if(!Number.isSafeInteger(port)||port<1024||port>65535)throw Error('Invalid browser-test port');
+process.env.NODE_ENV='production';
+const app=next({dev:false,dir:directory,hostname:'localhost',port});
+await app.prepare();
+const server=createServer({key:readFileSync(process.env.NOV7_TLS_KEY??'.local/navigation-key.pem'),cert:readFileSync(process.env.NOV7_TLS_CERT??'.local/navigation-cert.pem')},app.getRequestHandler());
+server.listen(port,'127.0.0.1',()=>console.log('Isolated optimized browser server ready'));
+const close=()=>{server.closeAllConnections();server.close(()=>process.exit(0));setTimeout(()=>process.exit(0),2000).unref()};process.on('SIGTERM',close);process.on('SIGINT',close);

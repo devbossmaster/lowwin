@@ -5,25 +5,27 @@ import {ArrowUpRight,Check,Clock3,LoaderCircle,TriangleAlert} from 'lucide-react
 import {useTelegram} from './telegram-provider';
 import {useMiniLocale} from './mini-locale';
 import {confirmedChapaQueryScopes,invalidatePrivateQueries,isPrivateQueryIdentity,loadPrivateJson,PrivateQueryError,subscribePrivateQueries} from './private-query-cache';
-import {clearChapaAttempts,chapaCanResumeCheckout,chapaCheckoutUrl,chapaConfirmed,chapaRecoverable,chapaPollingDeadline,chapaPollingPaused,chapaUuid,ChapaClientError,requestChapaJson,type ChapaAttempt,type ChapaCheckoutView,type ChapaIntent} from '@/lib/chapa-client';
+import {acceptChapaSnapshot,clearChapaAttempts,chapaCanResumeCheckout,chapaCheckoutUrl,chapaConfirmed,chapaRecoverable,chapaPollingDeadline,chapaPollingPaused,chapaUuid,ChapaClientError,requestChapaJson,type ChapaAttempt,type ChapaCheckoutView,type ChapaIntent} from '@/lib/chapa-client';
 import {CHAPA_LONG_WAIT_MS,chapaLongWait,chapaPaymentPhase} from '@/lib/chapa-status';
-import {chapaPaymentReasonMessage} from '@/lib/chapa-payment-reason';
+import {chapaPaymentReasonMessage,chapaRequestReasonMessage} from '@/lib/chapa-payment-reason';
 import {formatEtb} from '@/lib/money';
 import {prepareChapaNavigation} from '@/lib/chapa-navigation';
 import {startChapaPolling} from '@/lib/chapa-polling';
+import type {ChapaDirectIntent} from '@/lib/bid-batch-client';
 import styles from './bid-payment-sheet.module.css';
 
-type Snapshot={identity:string|null;attempt:ChapaAttempt|null;order:ChapaCheckoutView|null;error:string;errorCode:string|null;busy:boolean;restoring:boolean;paused:boolean;active:boolean;handoff:'idle'|'opening'|'opened'|'failed'};
+type Snapshot={identity:string|null;attempt:ChapaAttempt|null;directAttempt:ChapaDirectIntent|null;order:ChapaCheckoutView|null;error:string;errorCode:string|null;busy:boolean;restoring:boolean;paused:boolean;active:boolean;handoff:'idle'|'opening'|'opened'|'failed'};
 /** Restores only an explicit, owned checkout ID from a return link. */
 export function useChapaPayment(scope:string,initialId?:string){
  const {queryIdentity,refreshMe}=useTelegram(),{language}=useMiniLocale();
- const empty=():Snapshot=>({identity:queryIdentity,attempt:null,order:null,error:'',errorCode:null,busy:false,restoring:!!initialId,paused:false,active:!!initialId,handoff:'idle'});
+ const empty=():Snapshot=>({identity:queryIdentity,attempt:null,directAttempt:null,order:null,error:'',errorCode:null,busy:false,restoring:!!initialId,paused:false,active:!!initialId,handoff:'idle'});
  const [snapshot,setSnapshot]=useState<Snapshot>(empty),state=snapshot.identity===queryIdentity?snapshot:empty(),stateRef=useRef(state);stateRef.current=state;
  const epoch=useRef(0),controllers=useRef(new Set<AbortController>()),locked=useRef(false),invalidated=useRef<string|null>(null);
  const current=useCallback((version:number)=>version===epoch.current&&isPrivateQueryIdentity(queryIdentity),[queryIdentity]);
  const update=useCallback((value:Partial<Snapshot>)=>{stateRef.current={...stateRef.current,...value};setSnapshot(s=>s.identity===queryIdentity?{...s,...value}:s)},[queryIdentity]);
  const receive=useCallback((order:ChapaCheckoutView)=>{
   if(scope==='topup'&&order.purpose!=='TOP_UP'||scope.startsWith('bid:')&&(order.purpose!=='BID'||order.auctionSlug!==scope.slice(4)))throw new ChapaClientError('Payment not found.',404,'NOT_FOUND');
+  if(!acceptChapaSnapshot(stateRef.current.order,order))return;
   update({order,error:'',errorCode:null,restoring:false});const scopes=confirmedChapaQueryScopes(order);
   if(queryIdentity&&scopes&&invalidated.current!==order.id){invalidated.current=order.id;invalidatePrivateQueries(queryIdentity,scopes);void refreshMe().catch(()=>{})}
  },[scope,update,queryIdentity,refreshMe]);
@@ -57,13 +59,32 @@ export function useChapaPayment(scope:string,initialId?:string){
   catch(cause){if(current(version))update({errorCode:cause instanceof ChapaClientError?cause.code:'UNAVAILABLE',error:language==='am'?'ግንኙነቱ ተቋርጧል። ይህንኑ ጥያቄ እንደገና ይሞክሩ ወይም ግብይቶችን ይመልከቱ።':cause instanceof ChapaClientError?cause.message:'Connection interrupted. Retry this request or view Transactions.'})}
   finally{navigation.cancel();if(current(version)){locked.current=false;update({busy:false,handoff:stateRef.current.handoff==='opening'?'failed':stateRef.current.handoff})}}
  },[queryIdentity,current,update,run,language]);
+ // New direct charges never leave Lowwin. Freeze the original request in memory
+ // before HTTP; an interrupted response must retry that same operation/key.
+ const createDirect=useCallback(async(intent:ChapaDirectIntent)=>{
+  if(!queryIdentity||locked.current||!isPrivateQueryIdentity(queryIdentity))return;
+  const version=epoch.current,next=stateRef.current.directAttempt??intent;
+  if(stateRef.current.order&&(stateRef.current.order.authorizationReference||chapaConfirmed(stateRef.current.order)||!['SUBMITTING','PENDING'].includes(stateRef.current.order.status)))return;
+  locked.current=true;update({directAttempt:next,busy:true,active:true,error:'',errorCode:null,paused:false});
+  try{const order=await run('/api/payments/chapa/direct',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(next)});if(current(version)&&order)invalidatePrivateQueries(queryIdentity,['/api/payments/chapa/checkouts','/api/my-bids'])}
+  catch(cause){if(current(version)){const rejected=cause instanceof ChapaClientError&&['TERMS_CHANGED','INVALID_PHONE','METHOD_UNAVAILABLE','PAYMENT_STARTED','CONTACT_REQUIRED','AUCTIONS_PAUSED'].includes(cause.code);update({...(rejected?{active:false,directAttempt:null}:{}),errorCode:cause instanceof ChapaClientError?cause.code:'UNAVAILABLE',error:cause instanceof ChapaClientError?cause.message:language==='am'?'ይህ ክፍያ ገና አልተረጋገጠም። በግብይቶች ይመልከቱ።':"We haven't confirmed this payment yet. Retry the original request or check Transactions."})}}
+  finally{if(current(version)){locked.current=false;update({busy:false})}}
+ },[queryIdentity,current,update,run,language]);
+ const authorize=useCallback(async(otp?:string)=>{
+  const order=stateRef.current.order;if(!order||order.chargeType!=='DIRECT'||locked.current||!queryIdentity||!isPrivateQueryIdentity(queryIdentity))return;
+  if(order.authType==='OTP'&&(!otp||!/^\d{4,10}$/.test(otp)))return;
+  const version=epoch.current;locked.current=true;update({busy:true,error:'',errorCode:null});
+  try{await run(`/api/payments/chapa/checkouts/${order.id}/authorize`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(order.authType==='OTP'?{otp}:{})})}
+  catch(cause){if(current(version))update({errorCode:cause instanceof ChapaClientError?cause.code:'UNAVAILABLE',error:cause instanceof ChapaClientError?(chapaRequestReasonMessage(cause.code,language==='am')??cause.message):language==='am'?'ፈቃዱን ማረጋገጥ አልተቻለም። የክፍያውን ሁኔታ ይመልከቱ።':'Authorization could not be confirmed. Check the original payment status before trying again.'})}
+  finally{if(current(version)){locked.current=false;update({busy:false})}}
+ },[queryIdentity,current,update,run,language]);
  const check=useCallback(async()=>{
   const id=stateRef.current.order?.id??initialId;if(!id||locked.current||!queryIdentity||!isPrivateQueryIdentity(queryIdentity))return;
   const version=epoch.current;locked.current=true;update({busy:true,error:'',errorCode:null});try{await run(`/api/payments/chapa/checkouts/${id}`,{method:'POST'})}catch(cause){if(current(version))update({errorCode:cause instanceof ChapaClientError?cause.code:'UNAVAILABLE',error:language==='am'?'ማረጋገጥ አልተቻለም። የመጨረሻው ሁኔታ ተጠብቋል።':'Verification is unavailable. The last known payment status is preserved.'})}finally{if(current(version)){locked.current=false;update({busy:false,restoring:false})}}
  },[queryIdentity,initialId,current,update,run,language]);
  const canStartAgain=!state.busy&&!state.restoring&&state.active&&(!state.order||!chapaConfirmed(state.order)||state.order.purpose==='TOP_UP'&&state.order.status==='CREDITED');
  const startAgain=()=>{if(!canStartAgain||locked.current)return;epoch.current++;controllers.current.forEach(c=>c.abort());controllers.current.clear();invalidated.current=null;const next={...empty(),active:false,restoring:false};stateRef.current=next;setSnapshot(next)};
- return {...state,opening:state.handoff==='opening',started:state.active,create,check,canStartAgain,startAgain};
+ return {...state,opening:state.handoff==='opening',started:state.active,create,createDirect,authorize,check,canStartAgain,startAgain};
 }
 export function chapaStatusLabel(order:ChapaCheckoutView,am=false){
  const labels:Record<string,[string,string]>={CREDITED:['Wallet credited','ዋሌት ገብቷል'],BID_ACCEPTED:['Bid accepted','ጨረታው ተቀብሏል'],PENDING:['Pending','በመጠባበቅ ላይ'],SUBMITTING:['Initiating checkout','ክፍያ በመጀመር ላይ'],FAILED:['Payment failed','ክፍያው አልተሳካም'],CANCELLED:['Cancelled','ተሰርዟል'],INCOMPLETE:['Incomplete','አልተጠናቀቀም'],EXPIRED:['Not completed','አልተጠናቀቀም'],AUTH_NEEDED:['Authorization required','ፈቃድ ያስፈልጋል'],BLOCKED:['Payment blocked','ክፍያው ታግዷል']};
@@ -144,7 +165,7 @@ export function ChapaPaymentStatus({payment,onNavigate,readOnly=false}:{payment:
    {!readOnly&&payment.canStartAgain&&(!longWait||checkingPaused)&&<button type="button" className={styles.checkPayment} onClick={payment.startAgain}>{text(finished?'Top up again':'Start new checkout',finished?'እንደገና ገንዘብ ያስገቡ':'አዲስ ክፍያ ይጀምሩ')}</button>}
   </div>
   {!finished&&order&&phase!=='failed'&&(!longWait||checkingPaused)&&<small className={styles.savedPaymentNote}>{text('Starting another checkout does not cancel this payment.','ሌላ ክፍያ መጀመር ይህን ክፍያ አይሰርዝም።')}</small>}
-  {order&&<details className={styles.paymentDetails}><summary>{text('Payment details','የክፍያ ዝርዝሮች')}</summary><small className={styles.paymentReference}>{order.merchantReference??order.id}</small><p>{text('Payment status','የክፍያ ሁኔታ')}: {chapaStatusLabel(order,am)}</p>{order.paymentMethod&&<p>{text('Method','መንገድ')}: {order.paymentMethod}</p>}</details>}
+  {order&&<details className={styles.paymentDetails}><summary>{text('Payment details','የክፍያ ዝርዝሮች')}</summary><small className={styles.paymentReference}>{order.merchantReference??order.id}</small><p>{text('Payment status','የክፍያ ሁኔታ')}: {chapaStatusLabel(order,am)}</p>{order.paymentMethod&&<p>{text('Method','መንገድ')}: {order.paymentMethod}</p>}{order.payerPhoneMasked&&<p>{text('Payment phone','የክፍያ ስልክ')}: {order.payerPhoneMasked}</p>}{!!order.batchNumbers?.length&&<p>{text('Bid amounts','የጨረታ መጠኖች')}: {order.batchNumbers.join(' · ')}</p>}{order.purpose==='BID'&&<p>{text('Fulfillment','የጨረታ ሁኔታ')}: {order.status==='BID_ACCEPTED'&&order.receipt?text('All selected bids accepted','ሁሉም የተመረጡ ጨረታዎች ተቀብለዋል'):order.fundsPreserved?text('Funds in wallet; bids not accepted','ገንዘቡ በዋሌት ገብቷል፤ ጨረታዎች አልተቀበሉም'):text('Bids not accepted yet','ጨረታዎች ገና አልተቀበሉም')}</p>}</details>}
   <div className={styles.links}><Link href="/payments" prefetch={false} onClick={onNavigate}>{text('View Transactions','ግብይቶችን ይመልከቱ')}</Link>{order?.status==='BID_ACCEPTED'&&<Link href="/my-bids" onClick={onNavigate}>{text('My Bids','የእኔ ጨረታዎች')}</Link>}</div>
  </section>;
 }

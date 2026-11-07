@@ -1,5 +1,7 @@
 'use client';
 import {miniReadsBusy,prefetchPrivateQuery,subscribePrivateQueries} from './private-query-cache';
+import {prefetchPublicQuery} from './public-query-cache';
+import {isPublicMiniRead} from '@/lib/mini-public-routes';
 
 /** Shared metadata budget; no response payloads and no eager detail/participant reads. */
 export class IntentPrefetchBudget{
@@ -42,16 +44,20 @@ export function prefetchMiniIntent(identity:string|null,target:string,prefetchRo
  target=parsed.pathname+parsed.search;
  if(!budget.allow(identity,target))return;
  prefetchRoute(target);
- const data=privateIntentDestination(target);if(data)void prefetchPrivateQuery(identity,data);
+ const data=privateIntentDestination(target);if(data){if(isPublicMiniRead(new URL(data,'https://lowwin.invalid').pathname))void prefetchPublicQuery(data);else void prefetchPrivateQuery(identity,data)}
 }
 /** Card action intent shares the route budget and respects constrained connections. */
 export function prefetchAuctionIntent(identity:string|null,slug:string,{details=false}:{details?:boolean}={}){
  if(miniReadsBusy())return;
- if(!identity||!/^[-a-z0-9]{1,120}$/.test(slug))return;
+ if(!/^[-a-z0-9]{1,120}$/.test(slug))return;
  const connection=typeof navigator==='undefined'?null:(navigator as Navigator&{connection?:{saveData?:boolean;effectiveType?:string}}).connection;
  if(connection?.saveData||connection?.effectiveType==='2g'||connection?.effectiveType==='slow-2g')return;
  if(!budget.allow(identity,`bid:${slug}`))return;
- if(details)void prefetchPrivateQuery(identity,`/api/catalog/auctions/${slug}`);
- void prefetchPrivateQuery(identity,`/api/auctions/${slug}/bids`);
- if(!details)void prefetchPrivateQuery(identity,'/api/wallet');
+ // Reserve the already-authorized private read first. Starting a public fetch
+ // first would make the private cache's low-priority busy guard skip it.
+ if(identity){
+  void prefetchPrivateQuery(identity,`/api/auctions/${slug}/bids`);
+  if(!details)void prefetchPrivateQuery(identity,'/api/wallet');
+ }
+ if(details)void prefetchPublicQuery(`/api/catalog/auctions/${slug}`);
 }

@@ -7,6 +7,7 @@ import {allowIdentityRequest} from '@/lib/rate-limit';
 import {chapaAvailability,chapaHash} from '../payments/chapa-provider';
 import {verifyChapaCheckout} from '../payments/chapa';
 import {PAYMENT_TRANSACTION_OPTIONS} from '../payments/timing';
+import {batchLines} from '../auctions/batch';
 
 export const chapaAdminRoles:readonly StaffRole[]=['OWNER','PAYMENTS_OPERATOR','AUDITOR','SUPPORT'];
 const writers:readonly StaffRole[]=['OWNER','PAYMENTS_OPERATOR'];
@@ -14,7 +15,7 @@ function allow(role:StaffRole,write=false){if(!(write?writers:chapaAdminRoles).i
 const checkSchema=z.object({id:z.uuid(),key:z.uuid(),reason:z.string().trim().min(12).max(300)}).strict();
 // Never select a checkout URL, ciphertext, raw evidence, initialization or receipt.
 // The fingerprint is used only for server-side eligibility and is never returned.
-const selection={id:true,userId:true,purpose:true,mode:true,credentialFingerprint:true,auctionId:true,auctionSlug:true,bidNumber:true,grossFee:true,discountPoints:true,feeVersion:true,amountCents:true,currency:true,status:true,reason:true,bidId:true,creditJournalId:true,merchantReference:true,chapaReference:true,processorReference:true,paymentMethod:true,attempts:true,nextCheckAt:true,expiresAt:true,createdAt:true,updatedAt:true,user:{select:{name:true}},auction:{select:{code:true,presentation:true,product:{select:{title:true}},terms:{select:{ruleVersion:true}}}}} satisfies Prisma.ChapaCheckoutSelect;
+const selection={id:true,userId:true,purpose:true,mode:true,credentialFingerprint:true,chargeType:true,batchId:true,authType:true,auctionId:true,auctionSlug:true,bidNumber:true,grossFee:true,discountPoints:true,feeVersion:true,amountCents:true,currency:true,status:true,reason:true,bidId:true,creditJournalId:true,merchantReference:true,chapaReference:true,processorReference:true,paymentMethod:true,attempts:true,nextCheckAt:true,expiresAt:true,createdAt:true,updatedAt:true,user:{select:{name:true}},auction:{select:{code:true,presentation:true,product:{select:{title:true}},terms:{select:{ruleVersion:true}}}}} satisfies Prisma.ChapaCheckoutSelect;
 type Row=Prisma.ChapaCheckoutGetPayload<{select:typeof selection}>;
 function safeReason(value:string|null){return value&&/^[A-Z0-9_]{1,64}$/.test(value)?value:null;}
 function health(){const value=chapaAvailability();return {schemaReady:process.env.CHAPA_SCHEMA_READY==='true',configured:value.configured,recoveryEnabled:value.recoveryEnabled,mode:value.mode,reason:value.reason};}
@@ -30,7 +31,8 @@ export async function readChapaAdmin(client:PrismaClient,headers:Headers,id:stri
  const row=await client.chapaCheckout.findUnique({where:{id:z.uuid().parse(id)},select:selection});
  if(!row)throw new AdminError(404,'Chapa payment not found.');
  await client.adminAudit.create({data:{actorId:actor.id,action:'CHAPA_DETAILS_READ',target:row.id,details:{}}});
- return {item:view(row,actor.role),health:health()};
+ const batch=row.batchId?await client.bidBatchOrder.findFirst({where:{id:row.batchId,userId:row.userId},select:{id:true,lines:true,status:true,totalCents:true}}):null;
+ return {item:{...view(row,actor.role),chargeType:row.chargeType,batch:batch?{id:batch.id,lines:batchLines(batch),status:batch.status,totalCents:String(batch.totalCents)}:null},health:health()};
 }
 export type ChapaAdminDetail=Awaited<ReturnType<typeof readChapaAdmin>>;
 
@@ -56,7 +58,7 @@ export async function checkChapaAdmin(client:PrismaClient,headers:Headers,input:
  if(previous)return previous;
  // Provider HTTP stays outside our audit transactions. The existing command
  // reauthorizes again inside the transaction that can credit money or accept a bid.
- await verifyChapaCheckout(client,body.id,undefined,async tx=>{await reauthorize(tx)});
+ await verifyChapaCheckout(client,body.id,undefined,async tx=>{await reauthorize(tx)},undefined,true);
  return client.$transaction(async tx=>{
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${operationKey},0))`;
   const current=await reauthorize(tx),completed=await tx.adminAudit.findUnique({where:{operationKey:resultKey}});

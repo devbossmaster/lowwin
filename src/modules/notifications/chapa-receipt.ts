@@ -45,13 +45,15 @@ export async function chapaReceiptContent(tx:Prisma.TransactionClient,row:Pick<O
  const outcome=receiptOutcome(order),botId=process.env.TELEGRAM_BOT_TOKEN?.split(':')[0],contact=order.user.ownContact;
  if(!outcome||!botId||order.phoneBotId!==botId||order.mode!==(process.env.CHAPA_MODE??'test'))return null;
  const amount=centsToEtb(order.amountCents),prefix=order.mode==='test'?'TEST · ':'';
+ const batchReceipts=order.receipt&&typeof order.receipt==='object'&&!Array.isArray(order.receipt)?order.receipt.receipts:null;
+ const numbers=Array.isArray(batchReceipts)&&batchReceipts.length>1&&batchReceipts.length<=100?batchReceipts.map(item=>item&&typeof item==='object'&&!Array.isArray(item)&&item.bid&&typeof item.bid==='object'&&!Array.isArray(item.bid)?item.bid.amount:null).filter((value):value is string=>typeof value==='string'&&/^\d{1,16}(?:\.\d{1,2})?$/.test(value)):[];
  if('merchantRecipientTelegramId' in payload){
   const recipient=chapaPaymentAlertRecipient();
   if(!recipient||payload.merchantRecipientTelegramId!==recipient||!order.chapaReference)return null;
-  const purpose=outcome==='wallet'?'Wallet deposit':outcome==='bid'?'Bid payment · bid accepted':'Bid payment · funds kept in wallet';
+  const purpose=outcome==='wallet'?'Wallet deposit':outcome==='bid'?numbers.length>1?`Bid payment · ${numbers.length} bids accepted`:'Bid payment · bid accepted':'Bid payment · funds kept in wallet';
   return {userId:order.userId,kind:chapaReceiptKind,title:'Payment received',body:`✅ ${prefix}Payment received: ${amount} ETB\n${purpose}\nMerchant reference: ${order.merchantReference}\nChapa reference: ${order.chapaReference}`,href:'/admin/payments',buttonLabel:'View payments',recipientTelegramId:recipient,merchantAlert:true as const};
  }
  if(!order.user.telegramId||!contact||contact.revokedAt||contact.botId!==botId||contact.telegramId!==order.user.telegramId)return null;
- const body=outcome==='wallet'?`✅ ${prefix}${amount} ETB credited to your wallet.\n${amount} ብር ወደ ዋሌትዎ ገብቷል።`:outcome==='bid'?`✅ ${prefix}${amount} ETB payment confirmed. Bid accepted.\nየ${amount} ብር ክፍያ ተረጋግጧል። ጨረታዎ ተቀብሏል።`:`✅ ${prefix}${amount} ETB credited to your wallet. This bid was not accepted.\n${amount} ብር ወደ ዋሌትዎ ገብቷል። ጨረታው አልተቀበለም።`;
+ const body=outcome==='wallet'?`✅ ${prefix}${amount} ETB credited to your wallet.\n${amount} ብር ወደ ዋሌትዎ ገብቷል።`:outcome==='bid'?numbers.length>1?`✅ ${prefix}${amount} ETB payment confirmed. ${numbers.length} bids accepted.\nየ${amount} ብር ክፍያ ተረጋግጧል። ${numbers.length} ጨረታዎች ተቀብለዋል።\n${numbers.join(' · ')}`:`✅ ${prefix}${amount} ETB payment confirmed. Bid accepted.\nየ${amount} ብር ክፍያ ተረጋግጧል። ጨረታዎ ተቀብሏል።`:`✅ ${prefix}${amount} ETB credited to your wallet. This bid was not accepted.\n${amount} ብር ወደ ዋሌትዎ ገብቷል። ጨረታው አልተቀበለም።`;
  return {userId:order.userId,kind:chapaReceiptKind,title:'Payment confirmed',body,href:chapaReturnPath(order.id)!,buttonLabel:'🎯 Open Lowwin · Lowwinን ይክፈቱ'};
 }

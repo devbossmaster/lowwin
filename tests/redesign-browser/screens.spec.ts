@@ -11,6 +11,7 @@ import {creditDevelopmentPoints, reconcile} from '../../src/modules/wallet/ledge
 const stage = process.env.REDESIGN_STAGE ?? 'after';
 const root = process.env.REDESIGN_CAPTURE_DIR ?? `docs/redesign/screenshots/${stage}`;
 const origin = process.env.BETTER_AUTH_URL!;
+function previewQuote(auctionSlug:string,numbers:string[]){return {id:randomUUID(),quoteHash:'a'.repeat(64),auctionSlug,feeVersion:1,ruleVersion:'lowest-unique-v4',lines:numbers.map((number,position)=>({position,number,grossFee:'30.00',discount:'0.00',netFee:'30.00'})),entryCount:numbers.length,total:(30*numbers.length).toFixed(2),totalCents:String(3000*numbers.length),grossTotal:(30*numbers.length).toFixed(2),discountTotal:'0.00',status:'QUOTED'}}
 
 test('authenticated mobile screens and local timing evidence', async ({page, browser}, info) => {
   const client = new PrismaClient({datasourceUrl: process.env.TEST_DATABASE_URL});
@@ -26,6 +27,7 @@ test('authenticated mobile screens and local timing evidence', async ({page, bro
     await client.product.update({where: {id: auction.productId!}, data: {title: 'DEMO wireless headphones', images: {create: {path: '/catalog/accessory.svg', alt: 'DEMO headphones illustration', sourceType: 'ORIGINAL'}}}});
     await verifyFixtureContact(client, telegramId);
     await page.route('https://telegram.org/**', route => route.fulfill({body: ''}));
+    await page.route('**/api/payments/chapa/batches/quote',route=>route.fulfill({json:previewQuote(auction.slug!,route.request().postDataJSON().numbers)}));
     await page.addInitScript(({data}) => {window.Telegram = {WebApp: {initData: data, ready() {}, expand() {}, setHeaderColor() {}, setBackgroundColor() {}}};}, {data: launch});
     // Compile the authentication handler before the timed browser launch. No session is created here.
     await page.request.post('/api/auth/telegram/miniapp/signin', {headers: {origin}, data: {initData: ''}, timeout: 120000});
@@ -71,7 +73,7 @@ test('authenticated mobile screens and local timing evidence', async ({page, bro
       await page.goto('/');
       await expect(page.getByRole('button', {name: 'Learn more',exact:true}).first()).toBeVisible();
       await page.getByRole('button', {name: 'Learn more',exact:true}).first().click();
-      const learn = page.getByRole('dialog', {name: 'A little different wins'});
+      const learn = page.getByRole('dialog', {name: 'How Lowwin works'});
       await expect(learn).toBeVisible();
       await expect(learn.locator('ol > li')).toHaveCount(3);
       await expect(learn.locator('iframe')).toHaveCount(0);
@@ -81,7 +83,7 @@ test('authenticated mobile screens and local timing evidence', async ({page, bro
       await page.getByRole('link', {name: 'Recent winners', exact: true}).click();
       await expect(page.locator('#recent-winners')).toBeFocused();
       await expect(page.locator('#recent-winners')).toBeInViewport();
-      await page.getByRole('button', {name: /^Notifications/}).click();
+      await page.getByRole('navigation',{name:'Your navigation'}).getByRole('link',{name:'Profile',exact:true}).click();await page.getByRole('link',{name:/^Notifications/}).click();
       const notifications = page.getByRole('dialog', {name: 'Notifications'});
       await expect(notifications).toBeVisible();
       for (const filter of ['All', 'Winners', 'Payments']) await expect(notifications.getByRole('button', {name: filter, exact: true})).toBeVisible();
@@ -100,8 +102,8 @@ test('authenticated mobile screens and local timing evidence', async ({page, bro
       await page.screenshot({path: `${root}/bid-sheet-short-viewport-${info.project.name}.png`});
       await expect.poll(() => page.evaluate(() => {const el = document.activeElement!.getBoundingClientRect(); return el.top >= 0 && el.bottom <= innerHeight;})).toBe(true);
       await page.setViewportSize(original);
-      await expect(bidSheet.getByRole('radio',{name:'Wallet balance',exact:true})).toBeChecked();await expect(bidSheet).toContainText('1000.00 ETB');await bidSheet.getByRole('radio',{name:'Online payment',exact:true}).check();
-      await expect(bidSheet.locator('[data-payment-action]')).toBeDisabled();await expect(bidSheet).toContainText('Payments are not available yet.');
+      await expect(bidSheet.getByRole('radio',{name:'Wallet balance',exact:true})).toBeChecked();await expect(bidSheet.locator('[data-bid-balance]')).toHaveText(/1000(?:\.00)? ETB/);await bidSheet.getByRole('radio',{name:'Online payment',exact:true}).check();
+      await expect(bidSheet.locator('[data-payment-action]')).toHaveText('View bids');await expect(bidSheet.locator('[data-payment-action]')).toBeEnabled();await bidSheet.locator('[data-payment-action]').click();const pricedReview=page.getByRole('dialog',{name:'Review bids',exact:true});await expect(pricedReview.locator('[data-bid-review]')).toBeVisible();await expect(pricedReview).toContainText('ETB 30.00');await expect(pricedReview.locator('[data-payment-action]')).toBeDisabled();
       expect(await client.bid.count({where:{auctionId:auction.id,userId:user.id}})).toBe(0);
       expect((await client.ledgerAccount.findUniqueOrThrow({where:{name:`user:${user.id}:available`}})).balance.toString()).toBe('1000');
       await page.screenshot({path:`${root}/checkout-disabled-funded-${info.project.name}-en.png`});
@@ -136,23 +138,24 @@ test('authenticated mobile screens and local timing evidence', async ({page, bro
       try {
         const zero = await zeroContext.newPage();
         await zero.route('https://telegram.org/**', route => route.fulfill({body: ''}));
+        await zero.route('**/api/payments/chapa/batches/quote',route=>route.fulfill({json:previewQuote(auction.slug!,route.request().postDataJSON().numbers)}));
         await zero.addInitScript(({data}) => {window.Telegram = {WebApp: {initData: data, ready() {}, expand() {}, setHeaderColor() {}, setBackgroundColor() {}}};}, {data: signedLaunch({user: JSON.stringify({id: zeroId, first_name: 'Zero balance fixture'})}, process.env.TELEGRAM_BOT_TOKEN)});
         await zero.goto(`/auctions/${auction.slug}`);
         await expect(zero.getByRole('navigation', {name: 'Your navigation'})).toBeVisible();
         await expect(zero.locator('#bid-review').getByRole('button')).toBeVisible();
         await zero.locator('#bid-review').getByRole('button').click();
         const zeroSheet=zero.getByRole('dialog',{name:'Place your bid',exact:true});await zeroSheet.getByLabel('Your bid amount', {exact: true}).fill('7.31');
-        await expect(zeroSheet.getByRole('radio',{name:'Wallet balance',exact:true})).toBeChecked();await expect(zeroSheet.getByRole('status').filter({hasText:/^Insufficient balance\./})).toHaveText('Insufficient balance. Top-ups are not available yet.');await expect(zeroSheet.locator('[data-payment-action]')).toBeDisabled();
+        await expect(zeroSheet.getByRole('radio',{name:'Wallet balance',exact:true})).toBeChecked();await expect(zeroSheet.locator('[data-payment-action]')).toHaveText('View bids');await expect(zeroSheet.locator('[data-payment-action]')).toBeEnabled();await zeroSheet.locator('[data-payment-action]').click();const zeroReview=zero.getByRole('dialog',{name:'Review bids',exact:true});await expect(zeroReview).toContainText('Insufficient Lowwin wallet balance.');await expect(zeroReview.locator('[data-payment-action]')).toBeDisabled();
         await zero.screenshot({path: `${root}/checkout-disabled-${info.project.name}-en.png`});
         // Current Wallet/Chapa controls remain read-only until merchant
         // activation. Provider recovery/idempotency stays covered by DB tests;
         // this browser verifies actual visible options and balance recovery.
-        const financialPosts:string[]=[];zero.on('request',request=>{if(request.method()==='POST'&&/\/api\/(?:auctions\/[^/]+\/bids|payments\/|wallet\/top-ups)/.test(new URL(request.url()).pathname))financialPosts.push(request.url())});
-        await zeroSheet.getByRole('radio',{name:'Online payment',exact:true}).check();await expect(zeroSheet.locator('[data-payment-action]')).toContainText('& bid');await expect(zeroSheet.locator('[data-payment-action]')).toBeDisabled();
+        const financialPosts:string[]=[];zero.on('request',request=>{if(request.method()==='POST'&&!new URL(request.url()).pathname.endsWith('/batches/quote')&&/\/api\/(?:auctions\/[^/]+\/bids|payments\/|wallet\/top-ups)/.test(new URL(request.url()).pathname))financialPosts.push(request.url())});
+        await zeroReview.getByRole('radio',{name:'Online payment',exact:true}).check();await expect(zeroReview.locator('[data-payment-action]')).toHaveText('Continue to payment');await expect(zeroReview.locator('[data-payment-action]')).toBeDisabled();
         await zero.screenshot({path: `${root}/checkout-options-fixture-${info.project.name}.png`});
-        await zeroSheet.getByRole('link',{name:'Top up wallet',exact:true}).click();const topUp=zero.getByRole('dialog',{name:'Top up wallet',exact:true});await expect(topUp).toBeVisible();await topUp.getByRole('button',{name:'100',exact:true}).click();await expect(topUp.getByRole('textbox',{name:'Amount',exact:true})).toHaveValue('100');await expect(topUp.locator('[data-payment-action]')).toBeDisabled();await zero.keyboard.press('Escape');await expect(topUp).toHaveCount(0);await expect(zeroSheet.getByLabel('Your bid amount',{exact:true})).toHaveValue('7.31');
-        let balanceRefreshes=0;await zero.route('**/api/wallet',route=>{balanceRefreshes++;return route.fulfill({status:503,json:{error:'Explicit balance transport fixture'}})});await zero.evaluate(()=>window.dispatchEvent(new Event('lowin-wallet-updated')));await expect(zeroSheet).toContainText('Showing the saved balance. Refresh failed.');expect(balanceRefreshes).toBe(1);await expect(zeroSheet.locator('[data-payment-action]')).toBeDisabled();
-        await zero.unroute('**/api/wallet');await zeroSheet.getByRole('button',{name:'Retry',exact:true}).click();await expect(zeroSheet.getByText('Showing the saved balance. Refresh failed.',{exact:false})).toHaveCount(0);await expect(zeroSheet.locator('[data-payment-action]')).toBeDisabled();expect(financialPosts).toEqual([]);
+        await zeroReview.getByRole('button',{name:'Edit bid amounts',exact:true}).click();await zeroSheet.getByRole('button',{name:'Remove 7.31',exact:true}).click();await zeroSheet.getByLabel('Your bid amount',{exact:true}).fill('7.31');await zeroSheet.getByRole('link',{name:'Top up wallet',exact:true}).click();const topUp=zero.getByRole('dialog',{name:'Top up wallet',exact:true});await expect(topUp).toBeVisible();await topUp.getByRole('button',{name:'100',exact:true}).click();await expect(topUp.getByRole('textbox',{name:'Amount',exact:true})).toHaveValue('100');await expect(topUp.locator('[data-payment-action]')).toBeDisabled();await zero.keyboard.press('Escape');await expect(topUp).toHaveCount(0);await expect(zeroSheet.getByLabel('Your bid amount',{exact:true})).toHaveValue('7.31');
+        let balanceRefreshes=0;await zero.route('**/api/wallet',route=>{balanceRefreshes++;return route.fulfill({status:503,json:{error:'Explicit balance transport fixture'}})});await zero.evaluate(()=>window.dispatchEvent(new Event('lowin-wallet-updated')));await expect(zeroSheet).toContainText('Showing the saved balance. Refresh failed.');expect(balanceRefreshes).toBe(1);await expect(zeroSheet.locator('[data-payment-action]')).toBeEnabled();
+        await zero.unroute('**/api/wallet');await zeroSheet.getByRole('button',{name:'Retry',exact:true}).click();await expect(zeroSheet.getByText('Showing the saved balance. Refresh failed.',{exact:false})).toHaveCount(0);await expect(zeroSheet.locator('[data-payment-action]')).toBeEnabled();expect(financialPosts).toEqual([]);
         const zeroUser = await client.user.findUniqueOrThrow({where: {telegramId: String(zeroId)}});
         expect(await client.arifPayCheckout.count({where: {userId: zeroUser.id}})).toBe(0);expect(await client.bid.count({where:{userId:zeroUser.id}})).toBe(0);
       } finally {await zeroContext.close();}
@@ -247,26 +250,34 @@ test('authenticated mobile screens and local timing evidence', async ({page, bro
   } finally {await client.$disconnect();}
 });
 
-test('launch failure exits the spinner and Retry opens the app', async ({page}, info) => {
+test('a background launch failure preserves public browsing and explicit reconnect restores the account', async ({page}, info) => {
   test.skip(stage !== 'after', 'Final recovery regression');
   const client = new PrismaClient({datasourceUrl: process.env.TEST_DATABASE_URL});
   try {
     const telegramId = randomInt(8000000000, 9000000000);
+    await page.setExtraHTTPHeaders({'x-forwarded-for':`198.19.${Math.floor(telegramId%65536/256)}.${telegramId%256}`});
     await verifyFixtureContact(client, telegramId);
     await page.route('https://telegram.org/**', route => route.fulfill({body: ''}));
-    await page.addInitScript(({data}) => {window.Telegram = {WebApp: {initData: data, ready() {}, expand() {}, setHeaderColor() {}, setBackgroundColor() {}}};}, {data: signedLaunch({user: JSON.stringify({id: telegramId, first_name: 'Recovery fixture'})}, process.env.TELEGRAM_BOT_TOKEN)});
+    await page.addInitScript(({data}) => {localStorage.setItem('lowwin:introduction:v1','dismissed');window.Telegram = {WebApp: {initData: data, ready() {}, expand() {}, setHeaderColor() {}, setBackgroundColor() {}}};}, {data: signedLaunch({user: JSON.stringify({id: telegramId, first_name: 'Recovery fixture'})}, process.env.TELEGRAM_BOT_TOKEN)});
     let release!: () => void;
     const gate = new Promise<void>(resolve => {release = resolve;});
     await page.route('**/api/auth/telegram/miniapp/signin', async route => {await gate; await route.fulfill({status: 503, json: {error: 'Connection interrupted. Please retry.'}});});
     await page.goto('/telegram');
-    await expect(page.locator('.launch-loader')).toBeVisible();
+    await expect(page.locator('#home-headline')).toBeVisible();
+    await expect(page.locator('.launch-loader')).toHaveCount(0);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
     await page.screenshot({path: `${root}/launch-loading-${info.project.name}.png`});
     release();
-    await expect(page.getByRole('button', {name: 'Retry connection'})).toBeVisible();
+    await page.getByRole('banner',{name:'Mini App header'}).getByRole('button',{name:'Log in',exact:true}).click();
+    const registration=page.getByRole('dialog',{name:'Log in to Lowwin',exact:true});
+    await expect(registration.getByRole('button', {name: 'Reconnect',exact:true})).toBeEnabled();
+    await expect(registration.getByRole('alert')).toContainText('Connection interrupted');
     await expect(page.locator('.launch-loader')).toHaveCount(0);
     await page.screenshot({path: `${root}/launch-error-${info.project.name}.png`});
     await page.unroute('**/api/auth/telegram/miniapp/signin');
-    await page.getByRole('button', {name: 'Retry connection'}).click();
+    await registration.getByRole('button', {name: 'Reconnect',exact:true}).click();
+    await expect(registration).toHaveCount(0);
+    await expect(page.locator('[data-header-balance]')).toBeVisible();
     await expect(page.getByRole('navigation', {name: 'Your navigation'})).toBeVisible();
   } finally {await client.$disconnect();}
 });

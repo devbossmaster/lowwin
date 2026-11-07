@@ -1,8 +1,11 @@
 import {PrismaClient} from '@prisma/client';
 import {execFileSync} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
-import {existsSync} from 'node:fs';
+import {cpSync,mkdtempSync,rmSync} from 'node:fs';
 import {createRequire} from 'node:module';
+import {tmpdir} from 'node:os';
+import {join,resolve,sep} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {allowContactRequest} from '../src/modules/auth/contact-request-limit';
 
@@ -33,13 +36,21 @@ describe.skipIf(!url)('atomic contact-request cooldown on disposable PostgreSQL'
     if (!['127.0.0.1', 'localhost'].includes(target.hostname) || !target.pathname.endsWith('_test')) {
       throw Error('Explicit disposable loopback TEST_DATABASE_URL ending in _test required');
     }
-    // Prisma must not discover connection settings from a developer .env file.
-    if (existsSync('.env') || existsSync('prisma/.env')) {
-      throw Error('Run this suite from an env-file-free test checkout with explicit TEST_DATABASE_URL');
-    }
+    // Run Prisma from an owned, env-file-free schema copy so it cannot discover
+    // a developer .env, even when this isolated suite is run from the workspace.
     const env: NodeJS.ProcessEnv = {...process.env, DATABASE_URL: url!, DIRECT_URL: url!, APP_ENV: 'local', NODE_ENV: 'test'};
     const prismaCli = createRequire(import.meta.url).resolve('prisma/build/index.js');
-    execFileSync(process.execPath, [prismaCli, 'migrate', 'deploy'], {env, stdio: 'pipe'});
+    const temporaryRoot=resolve(tmpdir()),migrationDir=mkdtempSync(join(temporaryRoot,'lowwin-contact-limiter-'));
+    try {
+      const schemaDir=fileURLToPath(new URL('../prisma/',import.meta.url));
+      cpSync(join(schemaDir,'schema.prisma'),join(migrationDir,'schema.prisma'));
+      cpSync(join(schemaDir,'migrations'),join(migrationDir,'migrations'),{recursive:true});
+      execFileSync(process.execPath, [prismaCli, 'migrate', 'deploy','--schema',join(migrationDir,'schema.prisma')], {cwd:migrationDir,env, stdio: 'pipe'});
+    } finally {
+      const target=resolve(migrationDir);
+      if(!target.startsWith(temporaryRoot+sep)||!target.slice(temporaryRoot.length+1).startsWith('lowwin-contact-limiter-'))throw Error('Unexpected migration fixture directory');
+      rmSync(target,{recursive:true,force:true});
+    }
     db = new PrismaClient({datasourceUrl: url});
     otherClient = new PrismaClient({datasourceUrl: url});
   }, 60000);

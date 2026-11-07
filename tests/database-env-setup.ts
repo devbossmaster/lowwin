@@ -14,6 +14,7 @@ const group: Record<string, string> = {
   'admin-wallet-credit.test.ts': 'ADMIN_CREDIT_TEST_DATABASE_URL',
   'auction-activity.test.ts': 'ACTIVITY_TEST_DATABASE_URL', 'arifpay-checkout.test.ts': 'ARIFPAY_TEST_DATABASE_URL',
   'chapa-checkout.test.ts':'CHAPA_TEST_DATABASE_URL',
+  'chapa-direct-batch.test.ts':'CHAPA_DIRECT_TEST_DATABASE_URL',
   'catalog-workflow.test.ts': 'CATALOG_WORKFLOW_TEST_DATABASE_URL',
   'catalog.test.ts': 'CATALOG_TEST_DATABASE_URL',
   'referral-rewards.test.ts': 'REFERRAL_TEST_DATABASE_URL',

@@ -491,6 +491,14 @@ model ChapaCheckout {
   key                   String
   requestHash           String
   initialization        Json
+  chargeType            String    @default("HOSTED")
+  batchId               String?   @unique
+  authType              String?
+  authorizationReference String?
+  providerRequestId     String?
+  payerPhoneCipher      String?
+  validationAttempts    Int       @default(0)
+  reconcileUntil        DateTime?
   phoneCipher           String?
   phoneBotId            String?
   merchantReference     String    @unique
@@ -533,6 +541,32 @@ model ChapaCheckout {
 
   @@unique([userId, key])
   @@index([status, nextCheckAt])
+  @@index([userId, createdAt])
+}
+
+// Immutable server-priced ordered entries. Mutable status/receipt records only
+// committed all-or-none fulfillment; no client total is financial authority.
+model BidBatchOrder {
+  id             String   @id @default(uuid())
+  userId         String
+  key            String
+  requestHash    String
+  quoteHash      String
+  auctionId      String
+  auctionSlug    String
+  ruleVersion    String
+  feeVersion     Int
+  lines          Json
+  totalCents     BigInt
+  grossCents     BigInt
+  discountCents  BigInt
+  couponId       String?
+  status         String   @default("QUOTED")
+  receipt        Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([userId, key])
   @@index([userId, createdAt])
 }
 

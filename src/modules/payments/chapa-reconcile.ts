@@ -62,7 +62,7 @@ export async function reconcileChapaReceipts(client:PrismaClient|Prisma.Transact
      OR p.purpose='BID' AND p.status='NEEDS_REVIEW' AND p."bidId" IS NULL AND p.receipt IS NULL AND p.reason IS NOT NULL
     )
    UNION ALL
-   SELECT 'checkout:'||p.id,'BID_RECEIPT' FROM paid p WHERE p.status='BID_ACCEPTED' AND (
+   SELECT 'checkout:'||p.id,'BID_RECEIPT' FROM paid p WHERE p.status='BID_ACCEPTED' AND p."batchId" IS NULL AND (
     p.bid_user IS DISTINCT FROM p."userId" OR p.bid_auction IS DISTINCT FROM p."auctionId"
     OR p.bid_operation_user IS DISTINCT FROM p."userId" OR p.bid_scope IS DISTINCT FROM 'BID'
     OR p.bid_amount IS DISTINCT FROM p."bidNumber" OR p.bid_fee IS DISTINCT FROM p."grossFee"
@@ -78,6 +78,26 @@ export async function reconcileChapaReceipts(client:PrismaClient|Prisma.Transact
     OR p.receipt->'charge'->>'newlyUnavailable' IS DISTINCT FROM trim_scale(p.net_fee)::text
     OR p.receipt->'charge'->>'couponId' IS DISTINCT FROM p."couponId"
     OR p.receipt->'hold'->>'extraReserved' IS DISTINCT FROM '0'
+   )
+   UNION ALL
+   SELECT 'checkout:'||p.id,'BID_RECEIPT' FROM paid p
+   LEFT JOIN "BidBatchOrder" batch ON batch.id=p."batchId"
+   WHERE p.status='BID_ACCEPTED' AND p."batchId" IS NOT NULL AND (
+    batch.id IS NULL OR batch.status<>'ACCEPTED' OR batch."userId"<>p."userId" OR batch."auctionId"<>p."auctionId"
+    OR batch."totalCents"<>p."amountCents" OR batch.receipt IS DISTINCT FROM p.receipt
+    OR jsonb_array_length(p.receipt->'receipts')<>jsonb_array_length(batch.lines)
+    OR (p.receipt->'charge'->>'netFeePoints')::numeric<>p.net_fee
+    OR EXISTS (
+     SELECT 1 FROM jsonb_array_elements(batch.lines) line
+     LEFT JOIN LATERAL (SELECT p.receipt->'receipts'->((line->>'position')::integer) AS r) item ON true
+     LEFT JOIN "Bid" b ON b.id=item.r->'bid'->>'id'
+     LEFT JOIN "Operation" child ON child.id=b."operationId"
+     WHERE b.id IS NULL OR b."userId"<>p."userId" OR b."auctionId"<>p."auctionId"
+      OR b.amount<>(line->>'number')::numeric OR b."feePoints"<>(line->>'grossFee')::numeric
+      OR b."termsVersion"<>batch."feeVersion" OR child.scope<>'BID' OR child."userId"<>p."userId"
+      OR COALESCE(item.r->'charge'->>'netFeePoints',item.r->'charge'->>'feePoints')::numeric<>(line->>'netFee')::numeric
+      OR item.r->'charge'->>'couponId' IS DISTINCT FROM line->>'couponId'
+    )
    )
   ) SELECT 'CHAPA_RECEIPT' AS kind,name,code FROM findings ORDER BY name,code`;
 }

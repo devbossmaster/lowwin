@@ -8,7 +8,7 @@ vi.mock('next/navigation',()=>({useSearchParams:()=>new URLSearchParams()}));
 vi.mock('next/dynamic',()=>({default:()=>()=>null}));
 vi.mock('../src/components/auction-activity',()=>({useAuctionActivity:()=>({activity:state.activity,views:null,refreshActivity:()=>{}}),useAuctionRefresh:()=>{}}));
 vi.mock('../src/components/telegram-provider',()=>({useTelegram:()=>({queryIdentity:null})}));
-vi.mock('../src/components/private-query',()=>({usePrivateQuery:()=>({data:null})}));
+vi.mock('../src/components/public-query',()=>({usePublicQuery:()=>({data:null})}));
 vi.mock('../src/components/auction-gallery',()=>({AuctionGallery:()=>null}));
 vi.mock('../src/components/auction-share',()=>({AuctionShare:()=>null}));
 import {AuctionDetail} from '../src/components/auction-detail';

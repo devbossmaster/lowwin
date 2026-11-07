@@ -1,4 +1,5 @@
 'use client';
+import {isPublicMiniPage} from '@/lib/mini-public-routes';
 
 type Visit={href:string;scrollY:number;at:number};
 type Progress={page:number;at:number};
@@ -51,7 +52,14 @@ export class SessionNavigationState{
  }
 }
 export const miniNavigationState=new SessionNavigationState();
+/** Public coordinates contain no user payload and survive login/account changes. */
+export const publicMiniNavigationState=new SessionNavigationState();
+publicMiniNavigationState.setIdentity('public');
 export function rememberCurrentMiniRoute(identity:string|null){
- if(typeof window!=='undefined')miniNavigationState.remember(identity,location.pathname+location.search+location.hash,window.scrollY);
+ if(typeof window!=='undefined'){
+  const href=location.pathname+location.search+location.hash;
+  if(isPublicMiniPage(location.pathname))publicMiniNavigationState.remember('public',href,window.scrollY);
+  else miniNavigationState.remember(identity,href,window.scrollY);
+ }
 }
-export function rememberedMiniDestination(identity:string|null,href:string){return miniNavigationState.visit(identity,href)?.href??href}
+export function rememberedMiniDestination(identity:string|null,href:string){return publicMiniNavigationState.visit('public',href)?.href??miniNavigationState.visit(identity,href)?.href??href}

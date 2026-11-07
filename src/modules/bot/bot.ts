@@ -1,45 +1,23 @@
 import { Bot, InlineKeyboard } from 'grammy';
 import { getEnv } from '@/lib/env';
 import {db} from '@/lib/db';
-import {isRegisteredTelegramUser} from '../auth/own-contact';
 import {recordBotReferralStart} from '../referrals/service';
 import {chapaReturnStartPath} from '@/lib/chapa-return-link';
-import {centsToEtb} from '@/lib/money';
-import {WELCOME_CAPTION,START_BIDDING_ACTION,CONTACT_REQUEST_MESSAGE,CONTACT_REPLY_KEYBOARD,CONTACT_KEYBOARD_REMOVED_MESSAGE} from './onboarding-copy';
-import {sendWelcomeBanner} from './welcome-banner';
-export function createBot({contactVerified}:{contactVerified?:(telegramId:string)=>Promise<boolean>}={}) {
+export function createBot(_options:{contactVerified?:(telegramId:string)=>Promise<boolean>}={}) {
   const env = getEnv();
   const bot = new Bot(env.TELEGRAM_BOT_TOKEN, { client: { timeoutSeconds: 20 } });
   const botId=env.TELEGRAM_BOT_TOKEN.split(':')[0];
-  const isVerified=contactVerified??(telegramId=>isRegisteredTelegramUser(db,telegramId,botId));
+
   bot.command('start', async ctx => {
     if (ctx.chat.type !== 'private') { await ctx.reply('Open a private chat with Lowwin to launch the app.'); return; }
     if(!ctx.from||ctx.from.is_bot||ctx.from.id!==ctx.chat.id||ctx.message?.forward_origin)return;
     const paymentReturn=chapaReturnStartPath(ctx.match);
     if(ctx.match&&!paymentReturn)await recordBotReferralStart(db,String(ctx.from.id),botId,ctx.match);
-    if(!await isVerified(String(ctx.from.id))){await sendWelcomeBanner(ctx.api,ctx.chat.id,CONTACT_REQUEST_MESSAGE,CONTACT_REPLY_KEYBOARD);return}
-    if(paymentReturn){
-      const am=ctx.from.language_code?.startsWith('am');
-      const checkoutId=new URL(paymentReturn,env.MINI_APP_URL).searchParams.get('checkout')!;
-      const order=await db.chapaCheckout.findFirst({where:{id:checkoutId,user:{telegramId:String(ctx.from.id)},phoneBotId:botId},select:{purpose:true,status:true,creditJournalId:true,bidId:true,amountCents:true,currency:true,mode:true}});
-      const credited=order?.currency==='ETB'&&!!order.creditJournalId&&order.purpose==='TOP_UP'&&order.status==='CREDITED';
-      const accepted=order?.currency==='ETB'&&!!order.creditJournalId&&!!order.bidId&&order.purpose==='BID'&&order.status==='BID_ACCEPTED';
-      if(credited||accepted){
-        const amount=centsToEtb(order!.amountCents);
-        const modeLabel=order!.mode==='test'?(am?'ሙከራ (TEST) · ':'TEST · '):'';
-        const text=modeLabel+(credited?(am?`${amount} ETB ወደ ዋሌትዎ ገብቷል።`:`${amount} ETB credited to your wallet.`):(am?`የ${amount} ETB ክፍያ ተረጋግጧል። ጨረታዎን ተቀብለናል።`:`${amount} ETB payment confirmed. Your bid was accepted.`));
-        await ctx.reply(text,{reply_markup:new InlineKeyboard().webApp(am?'Lowwinን ይክፈቱ':'Open Lowwin',new URL(paymentReturn,env.MINI_APP_URL).href)});
-        return;
-      }
-      // The button carries only an opaque attempt ID. Its owner and payment
-      // state are checked by the normal authenticated payment endpoints.
-      await ctx.reply(am?'ክፍያዎን ለማረጋገጥ Lowwinን ይክፈቱ። ይህ ማስፈንጠሪያ የክፍያ ስኬትን አያረጋግጥም።':'Open Lowwin to check your payment. This link does not confirm payment success.',{reply_markup:new InlineKeyboard().webApp(am?'ክፍያ ያረጋግጡ':'Check payment',new URL(paymentReturn,env.MINI_APP_URL).href)});
-      return;
-    }
-    await ctx.reply(CONTACT_KEYBOARD_REMOVED_MESSAGE,{reply_markup:{remove_keyboard:true}});
-    const caption=WELCOME_CAPTION;
-    const reply_markup=new InlineKeyboard().webApp(START_BIDDING_ACTION,env.MINI_APP_URL);
-    await sendWelcomeBanner(ctx.api,ctx.chat.id,caption,reply_markup);
+    // Only an opaque attempt id enters the link. Owned APIs, not a bot start
+    // parameter, establish payment ownership and confirm financial outcomes.
+    const destination=paymentReturn?new URL(paymentReturn,env.MINI_APP_URL).href:env.MINI_APP_URL;
+    const am=ctx.from.language_code?.startsWith('am');
+    await ctx.reply(am?'እንኳን ወደ Lowwin በደህና መጡ! ጨረታዎችን ይመልከቱ፣ ለመጫረት ሲዘጋጁ ይግቡ።':'Welcome to Lowwin! Browse auctions and log in when you are ready to bid.',{reply_markup:new InlineKeyboard().webApp('Open Lowwin',destination)});
   });
   bot.command('help', async ctx => { await ctx.reply(ctx.from?.language_code?.startsWith('am')?
     'አዲስ የv3 ጨረታዎች፦ ዝቅተኛው መጠን 1.00 ብር ነው፤ እስከ ሁለት የአስርዮሽ ቦታዎች ይፈቀዳሉ። 1.01፣ 1.02 እና 1.03 ካቀረቡ 1.04ን ይዝለሉ፤ 1.05 ይፈቀዳል። የቀድሞ v1/v2 ጨረታዎች የድሮ የመጠን ደንቦቻቸውን ይከተላሉ። ቢያንስ ሁለት መስፈርቱን የሚያሟሉ ሰዎች ጨረታቸው መቀበል አለበት። ከሁለት ያነሱ ከሆኑ፣ ወይም ጨረታ ካልቀረበ፣ በመዝጊያ ሰዓቱ ጨረታው ይሰረዛል፤ የመግቢያ ክፍያዎች እና የተያዘው ገንዘብ ሁሉ ይመለሳሉ።\n\nአንድ ጊዜ ብቻ ከቀረቡት መጠኖች ዝቅተኛው ያሸንፋል። ልዩ መጠን ከሌለ ብቻ፣ ዝቅተኛውን መጠን ያቀረቡት መካከል ጨረታው በመረጃ ቋቱ መጀመሪያ የተቀበለለት ሰው ያሸንፋል። አሮጌ የv1 ጨረታዎች የቀድሞ ደንባቸውን ይከተላሉ፤ ልዩ መጠን ከሌለ አሸናፊ የላቸውም።\n\nእስከ 100 የተለያዩ መጠኖችን ማቅረብ ይችላሉ። ትልቁ ጨረታዎ ብቻ ይያዛል፤ ለወደፊት ጨረታዎች ተጨማሪ ክፍያ የለም። የቀድሞ ክፍያዎች በደረሰኞቻቸው ይቆያሉ። ከማረጋገጥዎ በፊት የጨረታውን ውሎች ያንብቡ። /start በመጠቀም ይክፈቱ።':

@@ -37,3 +37,5 @@ export function chapaPaymentReasonMessage(order:{status:string;providerStatus?:s
  if(order.verificationState!=='VERIFIED'||order.status!==order.providerStatus||!chapaReasonStatuses.has(order.providerStatus??''))return null;
  const code=safeChapaPaymentReason(order.providerReasonCode);return code?messages[code][am?1:0]:null;
 }
+/** A request error explains the provider's response; it is not verified paid/failed evidence. */
+export function chapaRequestReasonMessage(value:unknown,am=false){const code=safeChapaPaymentReason(value);return code?messages[code][am?1:0]:null}

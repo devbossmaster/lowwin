@@ -5,7 +5,6 @@ import {useTelegram} from './telegram-provider';
 import {miniReturnPath} from '@/lib/mini-return';
 import {chapaReturnStartPath} from '@/lib/chapa-return-link';
 import {LaunchSplash} from './launch-splash';
-const ContactGate=lazy(()=>import('./contact-gate').then(module=>({default:module.ContactGate})));
 const TelegramEntryRecovery=lazy(()=>import('./telegram-entry-recovery'));
 
 export function TelegramEntry({onComplete}:{onComplete?:()=>void}={}){
@@ -13,14 +12,15 @@ export function TelegramEntry({onComplete}:{onComplete?:()=>void}={}){
   const {status}=useTelegram();
   const telegramLaunch=typeof window!=='undefined'&&Boolean(window.Telegram?.WebApp?.initData);
   useEffect(()=>{
+    if(pathname==='/telegram'){
+      const payment=chapaReturnStartPath(new URLSearchParams(window.Telegram?.WebApp?.initData).get('start_param'));
+      const destination=payment??miniReturnPath(new URL(window.location.href).searchParams.get('next'));
+      router.replace(destination+(destination.includes('#')?'':window.location.hash));return;
+    }
     if(status!=='authenticated'||!telegramLaunch)return;
     // The mounted ChapaLaunchRouter resolves startapp once for this identity.
     // Replaying it here would reopen a dismissed payment on later navigation.
-    if(pathname==='/telegram'){
-      if(chapaReturnStartPath(new URLSearchParams(window.Telegram?.WebApp?.initData).get('start_param')))return;
-      const destination=miniReturnPath(new URL(window.location.href).searchParams.get('next'));
-      router.replace(destination+(destination.includes('#')?'':window.location.hash));
-    }else if(onComplete){
+    if(onComplete){
       onComplete();
     }else{
       // A bot button may open an auction before a bound session exists.
@@ -28,7 +28,7 @@ export function TelegramEntry({onComplete}:{onComplete?:()=>void}={}){
       router.refresh();
     }
   },[status,telegramLaunch,pathname,onComplete,router]);
-  if(status==='contact-required')return <Suspense fallback={<LaunchSplash/>}><ContactGate/></Suspense>;
+  if(pathname==='/telegram')return null;
   if(status==='loading'||(status==='authenticated'&&telegramLaunch))return <LaunchSplash complete={status==='authenticated'}/>;
   return <Suspense fallback={<LaunchSplash/>}><TelegramEntryRecovery/></Suspense>;
 }

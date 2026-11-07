@@ -7,6 +7,7 @@ import {MiniPhrase,useMiniLocale} from './mini-locale';
 import styles from './home-banner.module.css';
 import type {LearnMoreMedia} from '@/lib/learn-more-media';
 import type {HomeExperience} from '@/modules/admin/content-schema';
+import {FirstVisitIntroduction} from './first-visit-introduction';
 // Keep the current page visible while the sheet's code loads.
 const LearnMoreSheet=dynamic(()=>import('./learn-more-sheet'),{loading:()=>null});
 type Copy={headline:string;headlineAm:string;lead:string;leadAm:string};
@@ -27,5 +28,6 @@ export function HomeHero({copy,videoId,media,experience}:{copy:Copy;videoId?:str
    <small className={styles.illustration}><MiniPhrase en="Illustrative scene" am="ለማሳያ የተዘጋጀ ምስል"/></small>
   </section>
   {learn&&<LearnMoreSheet onClose={()=>setLearn(false)} videoId={videoId} media={media} intro={experience?{en:experience.learnIntroEn,am:experience.learnIntroAm}:undefined} returnFocusRef={learnButton}/>}
+  <FirstVisitIntroduction enabled={!learn} media={media} intro={experience?{en:experience.learnIntroEn,am:experience.learnIntroAm}:undefined}/>
  </>;
 }

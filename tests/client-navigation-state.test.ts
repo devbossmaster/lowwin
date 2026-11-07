@@ -1,3 +1,4 @@
+import {readPublicQuery} from '../src/components/public-query-cache';
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {SessionNavigationState,miniNavigationState,miniRouteKey} from '../src/components/mini-navigation-state';
 import {IntentPrefetchBudget,privateIntentDestination,prefetchMiniIntent,prefetchAuctionIntent} from '../src/components/mini-prefetch';
@@ -99,11 +100,17 @@ describe('bounded user-intent warming',()=>{
   expect(urls.filter(url=>url==='/api/wallet')).toHaveLength(1);
  });
  it('warms only the chosen quick card details and own entry state in the existing cache',async()=>{
-  setPrivateQueryIdentity('quick-card-intent');vi.stubGlobal('navigator',{connection:{effectiveType:'4g'}});
+  vi.stubGlobal('window',{});setPrivateQueryIdentity('quick-card-intent');vi.stubGlobal('navigator',{connection:{effectiveType:'4g'}});
   const request=vi.fn(async(_url:string)=>Response.json({code:'42'}));vi.stubGlobal('fetch',request);
   prefetchAuctionIntent('quick-card-intent','phone-42',{details:true});await new Promise(resolve=>setTimeout(resolve,0));
   prefetchAuctionIntent('quick-card-intent','phone-42',{details:true});await new Promise(resolve=>setTimeout(resolve,0));
-  expect(request.mock.calls.map(call=>String(call[0]))).toEqual(['/api/catalog/auctions/phone-42','/api/auctions/phone-42/bids']);
-  expect(readPrivateQuery('quick-card-intent','/api/catalog/auctions/phone-42')?.value).toEqual({code:'42'});
+  expect(request.mock.calls.map(call=>String(call[0]))).toEqual(['/api/auctions/phone-42/bids','/api/catalog/auctions/phone-42']);
+  expect(readPublicQuery('/api/catalog/auctions/phone-42')?.value).toEqual({code:'42'});
+ });
+ it('warms public guest details without requesting a balance or own bid state',async()=>{
+  vi.stubGlobal('window',{});vi.stubGlobal('navigator',{connection:{effectiveType:'4g'}});
+  const request=vi.fn(async(_url:string)=>Response.json({code:'guest-43'}));vi.stubGlobal('fetch',request);
+  prefetchAuctionIntent(null,'guest-43',{details:true});await new Promise(resolve=>setTimeout(resolve,0));
+  expect(request.mock.calls.map(call=>String(call[0]))).toEqual(['/api/catalog/auctions/guest-43']);
  });
 });

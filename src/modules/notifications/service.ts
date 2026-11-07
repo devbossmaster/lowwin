@@ -95,6 +95,19 @@ export async function dispatchOne(client:PrismaClient,bot:Pick<Bot,'api'>,filter
    if(await broadcastStopped(tx,root)){await tx.outbox.update({where:{id:row.id},data:{state:'SKIPPED',lastError:'CAMPAIGN_STOPPED'}});return true}
   }
   const skip=(reason:string|null=null)=>tx.outbox.update({where:{id:row.id},data:{state:'SKIPPED',lastError:reason}});
+  if(row.kind==='CONTACT_CONFIRMED'){
+   const p=row.payload as {telegramId?:string;botId?:string};
+   const botId=process.env.TELEGRAM_BOT_TOKEN?.split(':')[0];
+   const contact=p.telegramId&&p.botId&&p.botId===botId?await tx.telegramOwnContact.findUnique({where:{botId_telegramId:{botId:p.botId,telegramId:p.telegramId}}}):null;
+   if(!contact||contact.revokedAt||!contact.userId){await skip();return true}
+   const url=process.env.MINI_APP_URL;
+   if(!url){await skip();return true}
+   try{
+    await bot.api.sendMessage(p.telegramId!,'You are registered with Lowwin. Open the app to continue.\nበLowwin ተመዝግበዋል። ለመቀጠል መተግበሪያውን ይክፈቱ።',{reply_markup:{inline_keyboard:[[{text:'Open Lowwin',web_app:{url}}]]}});
+    await tx.outbox.update({where:{id:row.id},data:{state:'SENT',sentAt:new Date(),attempts:{increment:1},lastError:null}});
+   }catch(error){const e=error as {error_code?:number;parameters?:{retry_after?:number}},attempts=row.attempts+1;await tx.outbox.update({where:{id:row.id},data:{state:e.error_code===403||e.error_code===400||attempts>=8?'FAILED':'PENDING',attempts,lastError:'CONTACT_MESSAGE_RETRY',nextAttemptAt:new Date(Date.now()+(e.error_code===429?Math.max(1,Math.min(86400,Number(e.parameters?.retry_after)||60)):Math.min(3600,2**attempts*5))*1000)}})}
+   return true;
+  }
   if(row.kind==='TELEGRAM_DELETE'){
    const payload=row.payload as {telegramMessageId?:string};const record=payload.telegramMessageId?await tx.telegramMessage.findUnique({where:{id:payload.telegramMessageId}}):null;
    if(!record||!['QUEUED','FAILED'].includes(record.deletionState)){await skip();return true}

@@ -3,17 +3,17 @@ import {useEffect,useRef,useState,type RefObject} from 'react';
 import {ChevronRight,Trophy} from 'lucide-react';
 import {AccountSheet} from './account-sheet';
 import {useMiniLocale,MiniPhrase} from './mini-locale';
-import {usePrivateQuery,PrivateState} from './private-query';
-import {useTelegram} from './telegram-provider';
-import {miniNavigationState} from './mini-navigation-state';
+import {usePublicQuery} from './public-query';
+import {PrivateState,usePrivateQuery} from './private-query';
+import {publicMiniNavigationState as miniNavigationState} from './mini-navigation-state';
 import {formatAuctionBid,formatEtb} from '@/lib/money';
 import {isSubmissionFeeOnly} from '@/modules/auctions/rules';
 import type {ResultBreakdown} from '@/modules/auctions/result-breakdown';
 import styles from './winner-results.module.css';
 
-/** Keep only the current identity's same-result content during pagination. */
+/** Retain only the same published result during aggregate pagination. */
 function useReadyResultQuery(url:string){
- const query=usePrivateQuery<ResultBreakdown>(url,{cancelOnUnmount:true}),{queryIdentity}=useTelegram();
+ const query=usePublicQuery<ResultBreakdown>(url,{cancelOnUnmount:true}),queryIdentity='public';
  const [previous,setPrevious]=useState<{identity:string;data:ResultBreakdown}|null>(null);
  useEffect(()=>{
   if(query.status==='authenticated'&&queryIdentity&&query.data)setPrevious({identity:queryIdentity,data:query.data});
@@ -26,20 +26,20 @@ function Pager({page,totalPages,change,disabled=false}:{page:number;totalPages:n
  return totalPages>1?<nav className={styles.pager} aria-label="Result pages"><button disabled={disabled||page<=1} onClick={()=>change(page-1)}><MiniPhrase en="Previous" am="ወደ ኋላ"/></button><span>{page} / {totalPages}</span><button disabled={disabled||page>=totalPages} onClick={()=>change(page+1)}><MiniPhrase en="Next" am="ቀጣይ"/></button></nav>:null;
 }
 function ParticipantSheet({code,amount,onClose,returnFocusRef}:{code:string;amount:string;onClose:()=>void;returnFocusRef:RefObject<HTMLElement|null>}){
- const {language}=useMiniLocale(),{queryIdentity}=useTelegram(),am=language==='am',pageKey=`result:${code}:${amount}`,[page,setPage]=useState(()=>miniNavigationState.page(queryIdentity,pageKey));
+ const {language}=useMiniLocale(),queryIdentity='public',am=language==='am',pageKey=`result:${code}:${amount}`,[page,setPage]=useState(()=>miniNavigationState.page(queryIdentity,pageKey));
  useEffect(()=>miniNavigationState.rememberPage(queryIdentity,pageKey,page),[queryIdentity,pageKey,page]);
- const query=useReadyResultQuery(`/api/results/${encodeURIComponent(code)}/breakdown?amount=${encodeURIComponent(amount)}&page=${page}`),data=query.data?.kind==='participants'?query.data:null;
- return <AccountSheet title={<MiniPhrase en="Bid details" am="የጨረታ ዝርዝር"/>} onClose={onClose} returnFocusRef={returnFocusRef}>{!data&&!query.error?<p role="status"><MiniPhrase en="Loading participants…" am="ተሳታፊዎችን በመጫን ላይ…"/></p>:<PrivateState query={query}/>}<h3 className={styles.amountTitle}>{data?formatAuctionBid(data.amount,data.auction.terms.ruleVersion):amount}</h3>{data&&<>
+ const state=usePrivateQuery<ResultBreakdown>(`/api/results/${encodeURIComponent(code)}/breakdown?amount=${encodeURIComponent(amount)}&page=${page}`,{keepPreviousData:true,cancelOnUnmount:true}),query={...state,pending:!state.data&&!state.error},data=query.data?.kind==='participants'?query.data:null;
+ return <AccountSheet title={<MiniPhrase en="Bid details" am="የጨረታ ዝርዝር"/>} onClose={onClose} returnFocusRef={returnFocusRef}>{query.status==='authenticated'&&!data&&!query.error?<p role="status"><MiniPhrase en="Loading participants…" am="ተሳታፊዎችን በመጫን ላይ…"/></p>:<PrivateState query={query}/>}<h3 className={styles.amountTitle}>{data?formatAuctionBid(data.amount,data.auction.terms.ruleVersion):amount}</h3>{data&&<>
   <div className={styles.stats}><span><strong>{data.bidCount}</strong><MiniPhrase en="Bids" am="ጨረታዎች"/></span><span><strong>{data.playerCount}</strong><MiniPhrase en="Players" am="ተጫራቾች"/></span><span><strong>{data.unique?<MiniPhrase en="Unique" am="ልዩ"/>:<MiniPhrase en="Repeated" am="የተደገመ"/>}</strong>{data.winner&&<MiniPhrase en={isSubmissionFeeOnly(data.auction.terms.ruleVersion)?'Winning number':'Winning amount'} am={isSubmissionFeeOnly(data.auction.terms.ruleVersion)?'ያሸነፈው ቁጥር':'ያሸነፈው መጠን'}/>}</span></div>
   <h3 className={styles.subheading}><MiniPhrase en="Participants" am="ተሳታፊዎች"/></h3><ul className={styles.people}>{data.participants.map((person,index)=><li key={`${person.submittedAt}:${index}`}><strong>{person.phoneMasked??'—'}</strong><time dateTime={person.submittedAt}>{new Date(person.submittedAt).toLocaleString(am?'am-ET':'en-ET',{dateStyle:'medium',timeStyle:'medium',timeZone:'Africa/Addis_Ababa'})}</time></li>)}</ul>
   <Pager page={data.page} totalPages={data.totalPages} change={setPage} disabled={query.pending}/>
  </>}</AccountSheet>;
 }
 export default function ResultBreakdownContent({code}:{code:string}){
- const {language}=useMiniLocale(),{queryIdentity}=useTelegram(),am=language==='am',[view,setView]=useState(()=>miniNavigationState.result(queryIdentity,code)),{page,sort,jump}=view,[amount,setAmount]=useState<string|null>(null),amountTrigger=useRef<HTMLElement|null>(null);
+ const {language}=useMiniLocale(),queryIdentity='public',am=language==='am',[view,setView]=useState(()=>miniNavigationState.result(queryIdentity,code)),{page,sort,jump}=view,[amount,setAmount]=useState<string|null>(null),amountTrigger=useRef<HTMLElement|null>(null);
  useEffect(()=>miniNavigationState.rememberResult(queryIdentity,code,view),[queryIdentity,code,view]);
  const query=useReadyResultQuery(`/api/results/${encodeURIComponent(code)}/breakdown?page=${page}&sort=${sort}${jump?'&jump=winner':''}`),data=query.data?.kind==='amounts'?query.data:null;
- return <>{!data&&!query.error?<p role="status"><MiniPhrase en="Loading bid numbers…" am="የጨረታ ቁጥሮችን በመጫን ላይ…"/></p>:<PrivateState query={query}/>}<div data-result-breakdown-ready={!!data&&!query.pending||undefined}>{data&&<>
+ return <>{query.status==='authenticated'&&!data&&!query.error?<p role="status"><MiniPhrase en="Loading bid numbers…" am="የጨረታ ቁጥሮችን በመጫን ላይ…"/></p>:<PrivateState query={query}/>}<div data-result-breakdown-ready={!!data&&!query.pending||undefined}>{data&&<>
   <dl className={styles.facts}><div><dt><MiniPhrase en={isSubmissionFeeOnly(data.auction.terms.ruleVersion)?'Winning number':'Winning amount'} am={isSubmissionFeeOnly(data.auction.terms.ruleVersion)?'ያሸነፈው ቁጥር':'ያሸነፈው መጠን'}/></dt><dd>{data.auction.result?.winningPoints?formatAuctionBid(data.auction.result.winningPoints,data.auction.terms.ruleVersion):'—'}</dd></div><div><dt><MiniPhrase en="Winner" am="አሸናፊ"/></dt><dd>{data.auction.result?.winnerPhoneMasked??'—'}</dd></div><div><dt><MiniPhrase en="Auction ID" am="የጨረታ መለያ"/></dt><dd>{data.auction.code}</dd></div><div><dt><MiniPhrase en="Winning entry fee" am="የአሸናፊው ጨረታ ክፍያ"/></dt><dd>{formatEtb(data.entryFee)}</dd></div></dl>
   <div className={styles.stats}><span><strong>{data.totalBids}</strong><MiniPhrase en="Total bids" am="ጠቅላላ ጨረታዎች"/></span><span><strong>{data.totalPlayers}</strong><MiniPhrase en="Total players" am="ጠቅላላ ተጫራቾች"/></span></div>
   <p className={styles.note}>{isSubmissionFeeOnly(data.auction.terms.ruleVersion)?<MiniPhrase en="Bid numbers are not charged. Only the disclosed submission fee applies." am="የጨረታ ቁጥሮች ገንዘብ አይደሉም። የተገለጸው የማስገቢያ ክፍያ ብቻ ይከፈላል።"/>:<MiniPhrase en="This auction follows its own frozen fee and winner-payment terms." am="ይህ ጨረታ የራሱን የተቀመጡ የክፍያ እና የአሸናፊ ክፍያ ውሎች ይከተላል።"/>}{data.variableFees&&<> <MiniPhrase en="Submission fees varied; the fee above belongs to the winning entry." am="የማስገቢያ ክፍያዎች ይለያዩ ነበር፤ ከላይ የሚታየው ያሸነፈው ጨረታ ክፍያ ነው።"/></>}</p>

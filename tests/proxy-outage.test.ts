@@ -13,11 +13,17 @@ describe('private access during database outages',()=>{
     access.getMiniSession.mockResolvedValue(null);
     for(const path of ['/api/payments/chapa/webhook/extra','/api/payments/chapa/callback/extra','/api/payments/chapa/checkouts/not-a-uuid','/api/payments/chapa/checkouts/11111111-1111-4111-a111-111111111111/extra'])expect((await proxy(new NextRequest('http://localhost'+path))).status).toBe(401);
   });
-  it('preserves a customer deep link through the Telegram entry without allowing other destinations',async()=>{
+  it('renders a public auction deep link without waiting for a Telegram identity lookup',async()=>{
     access.getMiniSession.mockResolvedValue(null);
     const response=await proxy(new NextRequest('https://localhost/auctions/123?checkout=11111111-1111-4111-a111-111111111111'));
-    const location=new URL(response.headers.get('location')!);
-    expect(location.pathname).toBe('/telegram');expect(location.searchParams.get('next')).toBe('/auctions/123?checkout=11111111-1111-4111-a111-111111111111');
+    expect(response.headers.get('x-middleware-next')).toBe('1');expect(access.getMiniSession).not.toHaveBeenCalled();
+  });
+  it('delegates exact direct-charge routes to their session-guarded handlers without a duplicate auth read',async()=>{
+    access.getMiniSession.mockRejectedValue(Error('Private authentication is unavailable'));
+    const id='11111111-1111-4111-a111-111111111111';
+    for(const path of ['/api/payments/chapa/direct','/api/payments/chapa/methods?amountCents=1000','/api/payments/chapa/batches/quote',`/api/payments/chapa/batches/${id}/wallet`,`/api/payments/chapa/checkouts/${id}/authorize`])expect((await proxy(new NextRequest('http://localhost'+path))).headers.get('x-middleware-next')).toBe('1');
+    expect(access.getMiniSession).not.toHaveBeenCalled();access.getMiniSession.mockResolvedValue(null);
+    for(const path of ['/api/payments/chapa/direct/extra','/api/payments/chapa/batches/not-a-uuid/wallet',`/api/payments/chapa/checkouts/${id}/authorize/extra`])expect((await proxy(new NextRequest('http://localhost'+path))).status).toBe(401);
   });
   it('does not run database auth for known public assets or already guarded APIs',async()=>{
     access.getMiniSession.mockRejectedValue(new Error('Private authentication is unavailable'));
@@ -28,22 +34,22 @@ describe('private access during database outages',()=>{
   });
   it('keeps unmatched API paths and private media protected',async()=>{
     access.getMiniSession.mockResolvedValue(null);
-    for(const path of ['/api/favorites/phone/private','/api/media/123','/private.png','/images/private.webp','/images/lowin-family-hero.webp/private','/fonts/private.woff2','/fonts/dm-sans-latin-400.woff2/private','/api/payments/arifpay/checkouts/11111111-1111-4111-a111-111111111111/private','/api/payments/arifpay/webhook/private','/api/catalog/auctions','/api/payments/verify-et/webhook/extra','/webhooks/verify','/webhooks/verify/extra','/webhooks/other'])expect((await proxy(new NextRequest(`http://localhost${path}`))).status).toBe(path.startsWith('/api/')?401:307);
+    for(const path of ['/api/favorites/phone/private','/api/media/123','/private.png','/images/private.webp','/images/lowin-family-hero.webp/private','/fonts/private.woff2','/fonts/dm-sans-latin-400.woff2/private','/api/payments/arifpay/checkouts/11111111-1111-4111-a111-111111111111/private','/api/payments/arifpay/webhook/private','/api/payments/verify-et/webhook/extra','/webhooks/verify','/webhooks/verify/extra','/webhooks/other'])expect((await proxy(new NextRequest(`http://localhost${path}`))).status).toBe(path.startsWith('/api/')?401:307);
   });
   it('keeps an unavailable session check closed and tells APIs to retry',async()=>{
     access.getMiniSession.mockRejectedValue({code:'P1001'});
-    const response=await proxy(new NextRequest('http://localhost/api/results'));
+    const response=await proxy(new NextRequest('http://localhost/api/private-unknown'));
     expect(response.status).toBe(503);expect(response.headers.get('retry-after')).toBe('5');
     expect(response.headers.get('cache-control')).toContain('no-store');
     expect(await response.json()).toEqual({error:'Connection interrupted. Please retry.'});
   });
   it('still denies unauthenticated API requests',async()=>{
     access.getMiniSession.mockResolvedValue(null);
-    expect((await proxy(new NextRequest('http://localhost/api/results'))).status).toBe(401);
+    expect((await proxy(new NextRequest('http://localhost/api/private-unknown'))).status).toBe(401);
   });
   it('offers retry without a sign-in redirect during an outage',async()=>{
     access.getMiniSession.mockRejectedValue({code:'P1001'});
-    const response=await proxy(new NextRequest('http://localhost/profile'));
+    const response=await proxy(new NextRequest('http://localhost/private-unknown'));
     expect(response.status).toBe(503);expect(response.headers.get('location')).toBeNull();expect(await response.text()).toContain('Retry');
   });
   it('allows a verified session and leaves public entry available without database work',async()=>{

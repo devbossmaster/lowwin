@@ -45,9 +45,9 @@ describe.skipIf(!url)('Master Guide Admin operations and private alerts',()=>{
   const a=await bidAuction(db);await expect(submitBid(db,{userId:ownerId,auctionSlug:a.slug!,amount:'2',key:randomUUID()})).rejects.toMatchObject({code:'BIDDING_RESTRICTED'});
   expect((await get('dashboard',outsider+'; role=admin')).status).toBe(403);expect((await cmd('invite',{key:randomUUID(),email:'retired@lowin.test',role:'OWNER',reason:'Retired onboarding'})).status).toBe(422);
  });
- it('excludes legacy deposits from the Chapa-only workspace without deleting their evidence',async()=>{
+ it('excludes legacy deposits from the unified payment workspace without deleting their evidence',async()=>{
   const userId=await bidUser(db);await db.topUpIntent.createMany({data:Array.from({length:31},()=>({userId,key:randomUUID(),provider:'VERIFY_ET',channel:'telebirr',status:'NEEDS_REVIEW',points:0,amountFromReceipt:true,policyVersion:'isolated-legacy-fixture',receivingAccount:'0911111111',expiresAt:new Date(Date.now()+3600000),quoteSnapshot:{minCents:'100',maxCents:'100000',earliestTransferAt:new Date(Date.now()-3600000).toISOString()}}))});
-  const response=await get(`workspace/transactions?q=${userId}`);expect(response.headers.get('cache-control')).toContain('private, no-store');const result=await okay(response);expect(result).toMatchObject({configured:false,items:[],total:0,summary:[]});expect(await db.topUpIntent.count({where:{userId}})).toBe(31);
+  const response=await get(`workspace/transactions?q=${userId}`);expect(response.headers.get('cache-control')).toContain('private, no-store');const result=await okay(response);expect(result).toMatchObject({configured:true,chapaConfigured:false,items:[],total:0,summary:[]});expect(await db.topUpIntent.count({where:{userId}})).toBe(31);
   expect(JSON.stringify(result)).not.toMatch(/phoneCipher|phoneHash|rawProvider|receivingAccount|0911111111/);expect((await get('workspace/transactions',outsider)).status).toBe(403);expect((await get('workspace/transactions','')).status).toBe(401);expect((await get('workspace/transactions?page=0')).status).toBe(422);
  });
  it('paginates categories on the server without changing draft selector compatibility',async()=>{

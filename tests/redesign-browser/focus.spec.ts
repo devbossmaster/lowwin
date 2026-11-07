@@ -18,7 +18,7 @@ test('sheet returns keyboard focus to its trigger', async ({page}) => {
     await expect(trigger).toBeVisible();
     await trigger.focus();
     await trigger.click();
-    const dialog = page.getByRole('dialog', {name: 'A little different wins'});
+    const dialog = page.getByRole('dialog', {name: 'How Lowwin works'});
     await expect(dialog).toBeVisible();
     await dialog.getByRole('button', {name: 'Close', exact: true}).click();
     await expect(trigger).toBeFocused({timeout: 5000});
