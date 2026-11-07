@@ -11,18 +11,22 @@ import {createDirectMethodCatalog,directMethodCatalog} from './chapa-direct-meth
 import {eligible,getChapaCheckout,ownChapaCheckout,verifyChapaCheckout} from './chapa';
 import {PAYMENT_TRANSACTION_OPTIONS} from './timing';
 import {measureChapa} from './chapa-timing';
+import {classifyChapaApiError} from '@/lib/chapa-api-error';
+import {paymentPhoneProblem,paymentPhoneProblemMessage} from '@/lib/payment-phone';
 
 type Authorize=(tx:Prisma.TransactionClient)=>Promise<void>;
 const common={key:z.string().uuid(),paymentMethod:z.enum(['telebirr','mpesa','cbebirr','ebirr']),phone:z.string().min(9).max(40)};
 const input=z.discriminatedUnion('purpose',[z.object({...common,purpose:z.literal('BID'),batchId:z.string().uuid(),quoteHash:z.string().regex(/^[a-f0-9]{64}$/)}).strict(),z.object({...common,purpose:z.literal('TOP_UP'),amount:z.string().regex(/^(0|[1-9]\d{0,7})(?:\.\d{1,2})?$/)}).strict()]);
 export function normalizePaymentPhone(value:string){let normalized:string;try{const compact=value.trim().replace(/[ ()-]/g,'');normalized=normalizePhone(/^[79]\d{8}$/.test(compact)?`+251${compact}`:compact)}catch{throw new ChapaError(422,'INVALID_PHONE','Enter a valid Ethiopian payment phone number.')}if(!/^\+251[79]\d{8}$/.test(normalized))throw new ChapaError(422,'INVALID_PHONE','Enter a valid Ethiopian payment phone number.');return normalized.slice(1)}
 export function maskedPayerPhone(order:Pick<ChapaCheckout,'payerPhoneCipher'|'phoneBotId'>){try{const phone=decryptPhone(order.payerPhoneCipher!,order.phoneBotId!);return `${phone.slice(0,3)}*****${phone.slice(-4)}`}catch{return null}}
-export async function directMethodsForUser(client:PrismaClient,userId:string,amountCents?:bigint){const [methods,contact]=await Promise.all([directMethodCatalog.get(amountCents),client.telegramOwnContact.findUnique({where:{userId},select:{phoneCipher:true,botId:true,revokedAt:true}})]);let paymentPhone:string|undefined;try{if(contact&&!contact.revokedAt&&contact.botId===contactBotId())paymentPhone=normalizePaymentPhone(decryptPhone(contact.phoneCipher,contact.botId))}catch{}return {methods,...(paymentPhone?{paymentPhone}:{})}}
+export async function directMethodsForUser(_client:PrismaClient,_userId:string,amountCents?:bigint){return {methods:await directMethodCatalog.get(amountCents)}}
 /** Persist first; a transport timeout always resumes this exact key/reference. */
 export async function createDirectCheckout(client:PrismaClient,userId:string,raw:unknown,reauthorize?:Authorize,transport:ChapaTransport=chapaTransport){
  const health=requireChapa(),body=input.parse(raw),phone=normalizePaymentPhone(body.phone),requestHash=chapaHash(JSON.stringify({...body,phone:phoneHash(`+${phone}`)}));
  const previous=await client.chapaCheckout.findUnique({where:{userId_key:{userId,key:body.key}}});
  if(previous){if(previous.requestHash!==requestHash||previous.chargeType!=='DIRECT')throw new ChapaError(409,'KEY_REUSED','Retry the original payment details.');return initializeDirectCheckout(client,previous,userId,reauthorize,transport)}
+ const phoneProblem=paymentPhoneProblem(phone,body.paymentMethod);
+ if(phoneProblem)throw new ChapaError(422,'INVALID_PHONE',paymentPhoneProblemMessage(phoneProblem));
  const capabilities=await (transport===chapaTransport?directMethodCatalog:createDirectMethodCatalog(transport)).get();
  const order=await measureChapa('database',()=>client.$transaction(async tx=>{
   if(body.purpose==='BID'){const snapshot=await tx.bidBatchOrder.findFirst({where:{id:body.batchId,userId}});if(!snapshot)throw new ChapaError(404,'NOT_FOUND','Order not found.');await tx.$queryRaw`SELECT id FROM "Auction" WHERE id=${snapshot.auctionId} FOR UPDATE`}
@@ -49,6 +53,10 @@ export async function initializeDirectCheckout(client:PrismaClient,order:ChapaCh
  if(order.userId!==userId)throw new ChapaError(404,'NOT_FOUND','Payment not found.');
  const health=requireChapa();if(order.mode!==health.mode||order.credentialFingerprint!==health.credentialFingerprint)throw new ChapaError(503,'CONFIGURATION_CHANGED','Check this original payment with its original configuration.');
  if(order.creditJournalId||order.authorizationReference)return ownChapaCheckout(order);
+ // A structured validation rejection did not initialize this immutable request.
+ // Keep its record, and require an explicit corrected attempt rather than
+ // repeatedly sending the rejected phone/method under the original key.
+ if(classifyChapaApiError(order.initializationHttpStatus,order.initializationErrorCode)==='request')return getChapaCheckout(client,userId,order.id);
  // An old unknown intent is reconciled by reference, never blindly re-created.
  if(Date.now()-order.createdAt.getTime()>86400000)return verifyChapaCheckout(client,order.id,userId,reauthorize,transport,true);
  const acquired=await client.$transaction(async tx=>{if(reauthorize)await reauthorize(tx);if(await auctionMaintenance(tx))throw new ChapaError(503,'AUCTIONS_PAUSED','New payments are paused.');
@@ -63,7 +71,12 @@ export async function initializeDirectCheckout(client:PrismaClient,order:ChapaCh
   const initialization=order.initialization as Record<string,unknown>,raw=await measureChapa('initialize',()=>transport.direct!({amountCents:String(order.amountCents),merchantReference:order.merchantReference,idempotencyKey:String(initialization.idempotencyKey),paymentMethod:order.paymentMethod!,phone:decryptPhone(order.payerPhoneCipher!,order.phoneBotId!)})),created=createdChapaDirect(raw);
   if(!created)throw new ChapaError(502,'PROVIDER_UNAVAILABLE','We have not confirmed this payment yet. Check Transactions.');
   await client.chapaCheckout.updateMany({where:{id:order.id,creditJournalId:null,authorizationReference:null},data:{authorizationReference:created.reference,providerRequestId:created.requestId,authType:created.authType,status:'AUTH_NEEDED',providerCreatedAt:created.createdAt??null,...(created.expiresAt?{expiresAt:created.expiresAt}:{}),leaseUntil:null,nextCheckAt:new Date(),initializationErrorCode:null,initializationHttpStatus:null}});
- }catch(error){await client.chapaCheckout.updateMany({where:{id:order.id,creditJournalId:null,authorizationReference:null},data:{leaseUntil:null,status:'PENDING',reason:'PROVIDER_CONFIRMATION_REQUIRED',verificationState:'UNAVAILABLE',nextCheckAt:new Date(Date.now()+15000),initializationErrorCode:error instanceof ChapaProviderError?error.paymentReason??error.providerCode:null,initializationHttpStatus:error instanceof ChapaProviderError?error.httpStatus:null}})}
+ }catch(error){
+  // HTTP validation errors describe the initialization request, not a verified
+  // financial outcome. Unknown/temporary/conflicting replies remain recoverable.
+  const rejected=error instanceof ChapaProviderError&&error.category==='request';
+  await client.chapaCheckout.updateMany({where:{id:order.id,creditJournalId:null,authorizationReference:null},data:{leaseUntil:null,status:rejected?'NEEDS_REVIEW':'PENDING',reason:rejected?'INITIALIZATION_REJECTED':'PROVIDER_CONFIRMATION_REQUIRED',verificationState:'UNAVAILABLE',nextCheckAt:new Date(Date.now()+(rejected?300000:15000)),initializationErrorCode:error instanceof ChapaProviderError?error.paymentReason??error.providerCode:null,initializationHttpStatus:error instanceof ChapaProviderError?error.httpStatus:null}});
+ }
  return getChapaCheckout(client,userId,order.id);
 }
 /** OTP lives only in this stack frame. Never retry this mutation automatically. */

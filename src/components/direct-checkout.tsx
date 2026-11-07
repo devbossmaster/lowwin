@@ -6,7 +6,8 @@ import {ChapaPaymentStatus,useChapaPayment} from './chapa-payment';
 import {useMiniLocale} from './mini-locale';
 import {usePrivateQuery} from './private-query';
 import {normalizePaymentPhone,type BidBatchQuote,type DirectPaymentMethods} from '@/lib/bid-batch-client';
-import {chapaConfirmed,chapaRecoverable} from '@/lib/chapa-client';
+import {chapaConfirmed,chapaDirectRequestRejected,chapaRecoverable} from '@/lib/chapa-client';
+import {paymentPhoneProblem,paymentPhoneProblemMessage} from '@/lib/payment-phone';
 import {etbToCents,formatEtb} from '@/lib/money';
 import {chapaPaymentReasonMessage,chapaRequestReasonMessage} from '@/lib/chapa-payment-reason';
 import styles from './bid-payment-sheet.module.css';
@@ -22,19 +23,18 @@ const localPhone=(value:string)=>normalizePaymentPhone(value)?.slice(3)??value;
 export default function DirectCheckout({payment,purpose,amount,batch,onBack,onClose,onStartAgain}:Props){
  const {language}=useMiniLocale(),am=language==='am',text=(en:string,translated:string)=>am?translated:en,id=useId();
  const [phone,setPhone]=useState(''),[method,setMethod]=useState(''),[otp,setOtp]=useState('');
- const editedPhone=useRef(false),operationKey=useRef(crypto.randomUUID()),order=payment.order;
+ const operationKey=useRef(crypto.randomUUID()),order=payment.order;
  useEffect(()=>{if(!payment.started)operationKey.current=crypto.randomUUID()},[payment.started]);
  const methods=usePrivateQuery<DirectPaymentMethods>(`/api/payments/chapa/methods?amountCents=${etbToCents(amount)}`,{enabled:!payment.started,freshnessMs:60000});
- useEffect(()=>{if(!editedPhone.current&&methods.data?.paymentPhone)setPhone(localPhone(methods.data.paymentPhone))},[methods.data?.paymentPhone]);
  useEffect(()=>{if(methods.data&&!methods.data.methods.some(item=>item.slug===method))setMethod(methods.data.methods[0]?.slug??'')},[methods.data,method]);
  useEffect(()=>{setOtp('')},[order?.id]);
- const normalized=normalizePaymentPhone(phone),selected=methods.data?.methods.find(item=>item.slug===method);
+ const phoneProblem=paymentPhoneProblem(phone,method),normalized=phoneProblem?null:normalizePaymentPhone(phone),selected=methods.data?.methods.find(item=>item.slug===method);
  const submit=()=>{if(!normalized||!selected||payment.busy)return;void payment.createDirect(purpose==='BID'&&batch?{key:operationKey.current,purpose:'BID',batchId:batch.id,quoteHash:batch.quoteHash,paymentMethod:method,phone:normalized}:{key:operationKey.current,purpose:'TOP_UP',amount,paymentMethod:method,phone:normalized})};
  const authorizationReady=order?.chargeType==='DIRECT'&&!!order.authorizationReference;
  const otpNeeded=authorizationReady&&order.authType==='OTP'&&chapaRecoverable(order)&&order.providerStatus!=='SUCCESS'&&!chapaConfirmed(order);
  const phoneApproval=authorizationReady&&order.authType==='USSD'&&chapaRecoverable(order)&&order.providerStatus!=='SUCCESS'&&!chapaConfirmed(order);
  const connecting=!authorizationReady&&order?.providerStatus!=='SUCCESS';
- const waiting=order?.chargeType==='DIRECT'&&chapaRecoverable(order)&&!chapaConfirmed(order)&&!payment.paused&&order.verificationState!=='MISMATCH'&&order.status!=='NEEDS_REVIEW';
+ const waiting=order?.chargeType==='DIRECT'&&chapaRecoverable(order)&&!chapaDirectRequestRejected(order)&&!chapaConfirmed(order)&&!payment.paused&&order.verificationState!=='MISMATCH'&&order.status!=='NEEDS_REVIEW';
  if(payment.started&&order?.chargeType!=='DIRECT'&&order)return <ChapaPaymentStatus payment={payment} onNavigate={onClose} onStartAgain={onStartAgain}/>;
  if(payment.started&&order&&!waiting)return <><ChapaPaymentStatus payment={payment} onNavigate={onClose} onStartAgain={onStartAgain}/>{order.batchNumbers&&<p className={ui.numbers}>{order.batchNumbers.join(' · ')}</p>}</>;
  const total=formatEtb(order?.amount??amount);
@@ -47,12 +47,13 @@ export default function DirectCheckout({payment,purpose,amount,batch,onBack,onCl
   {onBack&&!payment.started&&<button className={ui.back} type="button" onClick={onBack}><ArrowLeft size={16}/> {text('Back to review','ወደ ግምገማ ይመለሱ')}</button>}
   {!payment.started&&<p className={ui.checkoutIntro}>{text('Choose a payment method and approve the request on your phone.','የክፍያ መንገድ ይምረጡና በስልክዎ የሚመጣውን ጥያቄ ያረጋግጡ።')}</p>}
   {!payment.started?<form className={ui.paymentPanel} id={id} onSubmit={event=>{event.preventDefault();submit()}}>
-   <label className="sr-only" htmlFor={`${id}-phone`}>{text('Payment phone number','የክፍያ ስልክ ቁጥር')}</label>
+   <label className={ui.label} htmlFor={`${id}-phone`}>{text('Payment phone number','የክፍያ ስልክ ቁጥር')}</label>
    <div className={ui.phoneField} data-valid={!!normalized}>
     <span className={ui.country} aria-hidden="true"><svg viewBox="0 0 30 21" width="25" height="18"><path fill="#159447" d="M0 0h30v7H0z"/><path fill="#f7d33b" d="M0 7h30v7H0z"/><path fill="#df3837" d="M0 14h30v7H0z"/><circle cx="15" cy="10.5" r="6.3" fill="#1473b9"/><path d="m15 5.2 3.1 9.6-8.2-6h10.2l-8.2 6Z" fill="none" stroke="#f7d33b" strokeWidth=".65"/></svg> +251</span>
-    <input className={ui.phoneInput} id={`${id}-phone`} type="tel" inputMode="tel" autoComplete="tel-national" value={phone} maxLength={18} onChange={event=>{editedPhone.current=true;setPhone(localPhone(event.target.value))}} placeholder="9•• ••• ••••" aria-invalid={!!phone&&!normalized||undefined} aria-describedby={`${id}-phone-help`}/>
+    <input className={ui.phoneInput} id={`${id}-phone`} type="tel" inputMode="tel" autoComplete="off" value={phone} maxLength={18} onChange={event=>setPhone(localPhone(event.target.value))} placeholder="7•• / 9•• ••• •••" aria-invalid={!!phone&&!!phoneProblem||undefined} aria-describedby={`${id}-phone-help${phone&&phoneProblem?' '+id+'-phone-error':''}`}/>
     {normalized&&<ShieldCheck className={ui.phoneVerified} size={23} aria-hidden="true"/>}
    </div>
+   {phone&&phoneProblem&&<p id={`${id}-phone-error`} className={styles.error} data-payment-phone-error role="alert">{paymentPhoneProblemMessage(phoneProblem,am)}</p>}
    <p className="sr-only" id={`${id}-phone-help`}>{text('Enter the phone registered with your selected payment method. Your Lowwin account phone stays the same.','በመረጡት የክፍያ መንገድ የተመዘገበውን ስልክ ያስገቡ። የLowwin መለያዎ ስልክ አይቀየርም።')}</p>
    <fieldset className={ui.providerGrid}><legend className="sr-only">{text('Select payment method','የክፍያ መንገድ ይምረጡ')}</legend>
     {methods.data?.methods.map(item=><label key={item.slug} data-selected={method===item.slug}>

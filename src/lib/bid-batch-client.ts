@@ -40,9 +40,4 @@ export function validateBidDraft(values:readonly string[],rules:BidDraftRules):{
 export type DirectPaymentMethod={slug:string;name:string;minAmountCents?:string;maxAmountCents?:string};
 export type DirectPaymentMethods={methods:DirectPaymentMethod[];paymentPhone?:string|null};
 export type ChapaDirectIntent=({key:string;paymentMethod:string;phone:string;purpose:'TOP_UP';amount:string}|{key:string;paymentMethod:string;phone:string;purpose:'BID';batchId:string;quoteHash:string});
-export function normalizePaymentPhone(raw:string):string|null{
- const digits=raw.replace(/[\s()-]/g,'').replace(/^\+/, '');
- if(/^0[79]\d{8}$/.test(digits))return '251'+digits.slice(1);
- if(/^[79]\d{8}$/.test(digits))return '251'+digits;
- return /^251[79]\d{8}$/.test(digits)?digits:null;
-}
+export {normalizePaymentPhone} from './payment-phone';

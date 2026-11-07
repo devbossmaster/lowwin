@@ -10,7 +10,7 @@ import {createDirectCheckout,authorizeDirectCheckout,reconcileDirectCheckouts} f
 import {getChapaCheckout,verifyChapaCheckout} from '../src/modules/payments/chapa';
 import {submitBid} from '../src/modules/auctions/bids';
 import {reconcileChapaReceipts} from '../src/modules/payments/chapa-reconcile';
-import {type ChapaDirectCreate,type ChapaTransport} from '../src/modules/payments/chapa-provider';
+import {ChapaProviderError,type ChapaDirectCreate,type ChapaTransport} from '../src/modules/payments/chapa-provider';
 import {TEST_TOKEN} from './helpers';
 
 const database=process.env.CHAPA_DIRECT_TEST_DATABASE_URL??process.env.CHAPA_TEST_DATABASE_URL;
@@ -43,6 +43,10 @@ describe.skipIf(!database)('direct charges and atomic batches on isolated Postgr
  it('rejects the whole wallet order on insufficient funds without partial bids or charges',async()=>{const f=await fixture({initialBalance:'99'});await expect(payBidBatchWallet(db,f.user,f.quote.id,{quoteHash:f.quote.quoteHash})).rejects.toMatchObject({code:'INSUFFICIENT_POINTS'});expect(await balance(f.user)).toBe('99');expect(await db.bid.count({where:{userId:f.user,auctionId:f.auction.id}})).toBe(0)});
  it('fulfills a zero-fee order atomically without a provider or an enabled wallet gate',async()=>{const f=await fixture({fee:0});process.env.WALLET_BIDS_ENABLED='false';try{expect(f.quote.totalCents).toBe('0');const result=await payBidBatchWallet(db,f.user,f.quote.id,{quoteHash:f.quote.quoteHash});expect(result.receipts).toHaveLength(3);expect(f.direct).not.toHaveBeenCalled();expect(await balance(f.user)).toBe('0')}finally{process.env.WALLET_BIDS_ENABLED='true'}});
  it('rejects a provider subminimum amount instead of silently increasing it',async()=>{const f=await fixture({numbers:['2'],fee:0.5});await expect(f.start()).rejects.toMatchObject({code:'METHOD_UNAVAILABLE'});expect(f.direct).not.toHaveBeenCalled();expect(await db.chapaCheckout.count({where:{userId:f.user}})).toBe(0)});
+ it.each([['mpesa','0911652904'],['mpesa','+251911652904'],['telebirr','0713339196'],['telebirr','+251713339196']])('rejects a new %s intent with an unsupported phone prefix before any provider request',async(paymentMethod,phone)=>{
+  const f=await fixture();await expect(createDirectCheckout(db,f.user,{...f.command,paymentMethod,phone},undefined,f.transport)).rejects.toMatchObject({status:422,code:'INVALID_PHONE'});
+  expect(f.transport.methods).not.toHaveBeenCalled();expect(f.direct).not.toHaveBeenCalled();expect(await db.chapaCheckout.count({where:{userId:f.user}})).toBe(0);expect(await balance(f.user)).toBe('0');
+ });
  it('applies one coupon to only one line and consumes it once across the batch',async()=>{const f=await fixture({initialBalance:'145',coupon:true});expect(f.quote.lines.map(line=>line.discount)).toEqual(['5.00','0.00','0.00']);expect(f.quote.total).toBe('145.00');await payBidBatchWallet(db,f.user,f.quote.id,{quoteHash:f.quote.quoteHash});expect(await balance(f.user)).toBe('0');expect(await db.referralRedemption.count({where:{couponId:f.coupon!.id}})).toBe(1)});
  it('checks combined consecutive amounts regardless of draft ordering and accepted submissions',async()=>{const f=await fixture({numbers:['2']});await expect(quoteBidBatch(db,f.user,{key:randomUUID(),auctionSlug:f.auction.slug,numbers:['1.04','1.01','1.03','1.02'],feeVersion:1})).rejects.toMatchObject({code:'CONSECUTIVE_LIMIT'});await expect(quoteBidBatch(db,f.user,{key:randomUUID(),auctionSlug:f.auction.slug,numbers:['2','2.00'],feeVersion:1})).rejects.toMatchObject({code:'OWN_DUPLICATE'});await expect(quoteBidBatch(db,f.user,{key:randomUUID(),auctionSlug:f.auction.slug,numbers:['3'],feeVersion:99})).rejects.toMatchObject({code:'TERMS_CHANGED'})});
  it('uses one external charge for three entries and settles duplicate concurrent verification once',async()=>{
@@ -57,6 +61,19 @@ describe.skipIf(!database)('direct charges and atomic batches on isolated Postgr
  it.each(['amount','method','reference'])('rejects verified %s evidence conflicting with the original intent',async field=>{const f=await fixture(),order=await f.start();f.alter(data=>({...data,...(field==='amount'?{amount:14999}:field==='method'?{payment_method:'mpesa'}:{chapa_reference:'CHother'})}));expect(await f.verify(order.id)).toMatchObject({status:'NEEDS_REVIEW',reason:'EVIDENCE_MISMATCH'});expect(await balance(f.user)).toBe('0');expect(await db.bid.count({where:{userId:f.user,auctionId:f.auction.id}})).toBe(0)});
  it('recovers a lost initialization response using the original key, and isolates owner and payer binding',async()=>{
   const f=await fixture();f.fail();const order=await f.start();expect(order.status).toBe('PENDING');const retry=await f.start();expect(retry.id).toBe(order.id);expect(f.direct.mock.calls[0][0]).toEqual(f.direct.mock.calls[1][0]);await expect(getChapaCheckout(db,'other-account',order.id)).rejects.toMatchObject({status:404});f.alter(d=>({...d,customer:{phone_number:'251911111111'}}));expect(await f.verify(order.id)).toMatchObject({status:'NEEDS_REVIEW',reason:'EVIDENCE_MISMATCH'});expect(await balance(f.user)).toBe('0');
+ });
+ it.each(['INVALID_FORMAT','INVALID_VALUE','MISSING_REQUIRED_FIELD'])('stops replaying a structured %s initialization rejection without claiming a paid failure',async code=>{
+  const f=await fixture();f.direct.mockRejectedValueOnce(new ChapaProviderError(400,code));
+  const rejected=await f.start();expect(rejected).toMatchObject({status:'NEEDS_REVIEW',reason:'INITIALIZATION_REJECTED',initializationIssue:'request',verificationState:'UNAVAILABLE',authorizationReference:null,providerStatus:null});
+  expect(f.direct).toHaveBeenCalledOnce();expect((await f.start()).id).toBe(rejected.id);expect(f.direct).toHaveBeenCalledOnce();
+  const stored=await db.chapaCheckout.findUniqueOrThrow({where:{id:rejected.id}});expect(stored).toMatchObject({initializationErrorCode:code,initializationHttpStatus:400,creditJournalId:null});
+  expect(await balance(f.user)).toBe('0');expect(await db.bid.count({where:{userId:f.user}})).toBe(0);
+ });
+ it.each([[409,'INVALID_STATE'],[429,'RATE_LIMITED'],[500,'PROCESSING_FAILED']] as const)('keeps HTTP%s %s uncertain and recovers only the original direct intent',async(http,code)=>{
+  const f=await fixture();f.direct.mockRejectedValueOnce(new ChapaProviderError(http,code));
+  const pending=await f.start();expect(pending).toMatchObject({status:'PENDING',reason:'PROVIDER_CONFIRMATION_REQUIRED',verificationState:'UNAVAILABLE',authorizationReference:null,providerStatus:null});
+  const retried=await f.start();expect(retried.id).toBe(pending.id);expect(f.direct).toHaveBeenCalledTimes(2);expect(f.direct.mock.calls[0][0]).toEqual(f.direct.mock.calls[1][0]);
+  expect(await balance(f.user)).toBe('0');expect(await db.bid.count({where:{userId:f.user}})).toBe(0);
  });
  it('does not credit operation success, verifies safe failed reasons and automatically resumes missing-webhook USSD',async()=>{
   const f=await fixture(),order=await f.start();f.setStatus('PENDING');expect(await f.verify(order.id)).toMatchObject({status:'PENDING'});expect(await balance(f.user)).toBe('0');f.setStatus('SUCCESS');await due(order.id);expect((await reconcileDirectCheckouts(db,20,f.transport)).checked).toBeGreaterThan(0);expect((await getChapaCheckout(db,f.user,order.id)).status).toBe('BID_ACCEPTED');expect(f.validate).toHaveBeenCalled();

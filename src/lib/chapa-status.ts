@@ -1,4 +1,4 @@
-import {chapaConfirmed,chapaPollingPaused,type ChapaCheckoutView} from './chapa-client';
+import {chapaConfirmed,chapaDirectRequestRejected,chapaPollingPaused,type ChapaCheckoutView} from './chapa-client';
 
 export const CHAPA_LONG_WAIT_MS=90000;
 /** A quieter presentation after waiting; never changes the payment outcome. */
@@ -16,6 +16,7 @@ export function chapaPaymentPhase({order,opening,restoring,paused,error,errorCod
  if(restoring)return 'restoring';
  if(errorCode&&['UNAUTHORIZED','FORBIDDEN','NOT_FOUND'].includes(errorCode))return 'access';
  if(!order)return 'interrupted';
+ if(chapaDirectRequestRejected(order))return 'review';
  if(errorCode==='CONFIGURATION_CHANGED'||order?.verificationState==='MISMATCH'||order?.status==='NEEDS_REVIEW'||order?.status==='BID_ACCEPTED'&&!order.receipt)return 'review';
  if(order&&['FAILED','CANCELLED','INCOMPLETE','EXPIRED','BLOCKED'].includes(order.status))return 'failed';
  if(order.providerStatus==='SUCCESS')return 'applying';

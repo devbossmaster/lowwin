@@ -5,7 +5,7 @@ import {ArrowUpRight,Check,Clock3,LoaderCircle,TriangleAlert} from 'lucide-react
 import {useTelegram} from './telegram-provider';
 import {useMiniLocale} from './mini-locale';
 import {confirmedChapaQueryScopes,invalidatePrivateQueries,isPrivateQueryIdentity,loadPrivateJson,PrivateQueryError,subscribePrivateQueries} from './private-query-cache';
-import {acceptChapaSnapshot,clearChapaAttempts,chapaCanResumeCheckout,chapaCheckoutUrl,chapaConfirmed,chapaRecoverable,chapaPollingDeadline,chapaPollingPaused,chapaUuid,ChapaClientError,requestChapaJson,type ChapaAttempt,type ChapaCheckoutView,type ChapaIntent} from '@/lib/chapa-client';
+import {acceptChapaSnapshot,clearChapaAttempts,chapaCanResumeCheckout,chapaCheckoutUrl,chapaConfirmed,chapaDirectRequestRejected,chapaRecoverable,chapaPollingDeadline,chapaPollingPaused,chapaUuid,ChapaClientError,requestChapaJson,type ChapaAttempt,type ChapaCheckoutView,type ChapaIntent} from '@/lib/chapa-client';
 import {CHAPA_LONG_WAIT_MS,chapaLongWait,chapaPaymentPhase} from '@/lib/chapa-status';
 import {chapaPaymentReasonMessage,chapaRequestReasonMessage} from '@/lib/chapa-payment-reason';
 import {formatEtb} from '@/lib/money';
@@ -40,7 +40,7 @@ export function useChapaPayment(scope:string,initialId?:string){
   const unsubscribe=subscribePrivateQueries(event=>{if(event.kind==='authorization'||event.kind==='session'&&event.identity!==queryIdentity){epoch.current++;controllers.current.forEach(c=>c.abort())}});
   return()=>{epoch.current++;controllers.current.forEach(c=>c.abort());controllers.current.clear();unsubscribe()};
  },[queryIdentity,scope,initialId]);
- const orderId=state.order?.id,confirmed=!!state.order&&chapaConfirmed(state.order),waiting=!!state.order&&chapaRecoverable(state.order);
+ const orderId=state.order?.id,confirmed=!!state.order&&chapaConfirmed(state.order),waiting=!!state.order&&chapaRecoverable(state.order)&&!chapaDirectRequestRejected(state.order);
  const pollingDeadline=state.order?chapaPollingDeadline(state.order):null;
  useEffect(()=>{
   if(!orderId||!queryIdentity||confirmed||!waiting)return;
@@ -108,13 +108,13 @@ export function ChapaPaymentStatus({payment,onNavigate,onStartAgain,readOnly=fal
  const phase=chapaPaymentPhase({...payment,now}),finished=phase==='confirmed'||phase==='preserved',checkingPaused=!!order&&chapaPollingPaused(order,now);
  const providerReason=order?chapaPaymentReasonMessage(order,am):null;
  const initializationCopy={
-  request:['Checkout could not start. Check the amount before starting a new checkout.','ክፍያው ሊጀመር አልቻለም። አዲስ ክፍያ ከመጀመርዎ በፊት መጠኑን ያረጋግጡ።'],
+  request:['Checkout could not start. Check the phone number, payment method and amount before trying again.','ክፍያው ሊጀመር አልቻለም። እንደገና ከመሞከርዎ በፊት የስልክ ቁጥሩን፣ የክፍያ መንገዱንና መጠኑን ያረጋግጡ።'],
   reference:['The original payment needs confirmation. Keep its reference and do not pay again if you were debited.','የመጀመሪያው ክፍያ ማረጋገጫ ይፈልጋል። ማጣቀሻውን ያስቀምጡ፤ ገንዘብ ከተቀነሰብዎ ድጋሚ አይክፈሉ።'],
   state:['The original payment needs confirmation. Keep its reference and do not pay again if you were debited.','የመጀመሪያው ክፍያ ማረጋገጫ ይፈልጋል። ማጣቀሻውን ያስቀምጡ፤ ገንዘብ ከተቀነሰብዎ ድጋሚ አይክፈሉ።'],
   configuration:['Checkout is currently unavailable. Keep this payment reference while we resolve it.','ክፍያ ለጊዜው አይገኝም። ችግሩ እስኪፈታ ድረስ የክፍያውን ማጣቀሻ ያስቀምጡ።'],
   temporary:['Checkout is temporarily unavailable. Retry the original request to continue the same payment.','ክፍያ ለጊዜው አይገኝም። ያንኑ ክፍያ ለመቀጠል የመጀመሪያውን ጥያቄ እንደገና ይሞክሩ።'],
  } as const;
- const initializationRejected=phase==='review'&&order?.reason==='INITIALIZATION_REJECTED'&&order.providerStatus!=='SUCCESS';
+ const initializationRejected=phase==='review'&&!!order&&(order.reason==='INITIALIZATION_REJECTED'||chapaDirectRequestRejected(order))&&order.providerStatus!=='SUCCESS';
  const initializationMessage=order&&!finished&&!order.checkoutUrl&&order.providerStatus!=='SUCCESS'&&(phase!=='review'||initializationRejected)&&order.verificationState!=='MISMATCH'&&['SUBMITTING','PENDING','NEEDS_REVIEW'].includes(order.status)&&order.initializationIssue?initializationCopy[order.initializationIssue]?.[am?1:0]:null;
  const longWait=!providerReason&&!initializationMessage&&chapaLongWait(order,now)&&['confirming','applying','pending','unavailable'].includes(phase);
  const spinning=!longWait&&['opening','restoring','confirming','applying'].includes(phase);

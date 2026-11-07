@@ -15,7 +15,7 @@ const render=(value:ChapaCheckoutView,patch:Partial<ReturnType<typeof useChapaPa
 
 describe('safe reasons from matched merchant verification',()=>{
  it.each([
-  ['request','Check the amount'],
+  ['request','Check the phone number, payment method and amount'],
   ['reference','The original payment needs confirmation'],
   ['state','The original payment needs confirmation'],
   ['configuration','Keep this payment reference'],
@@ -32,7 +32,7 @@ describe('safe reasons from matched merchant verification',()=>{
   const rejected=order({status:'NEEDS_REVIEW',reason:'INITIALIZATION_REJECTED',providerStatus:null,providerReasonCode:null,verificationState:'UNVERIFIED',checkoutUrl:null,initializationIssue:'request'});
   const html=render(rejected);expect(html).toContain('Checkout could not start');expect(html).not.toContain('Payment needs review');expect(html).not.toContain('INITIALIZATION_REJECTED');
   const review=render({...rejected,reason:'EVIDENCE_MISMATCH',verificationState:'MISMATCH'});
-  expect(review).toContain('Payment needs review');expect(review).not.toContain('Check the amount');expect(review).not.toContain('EVIDENCE_MISMATCH');
+  expect(review).toContain('Payment needs review');expect(review).not.toContain('Check the phone number');expect(review).not.toContain('EVIDENCE_MISMATCH');
  });
  it('keeps a committed receipt above stale initialization problems',()=>{
   const paid=order({status:'CREDITED',providerStatus:'SUCCESS',verificationState:'VERIFIED',reason:'INITIALIZATION_REJECTED',providerReasonCode:null,initializationIssue:'configuration'});

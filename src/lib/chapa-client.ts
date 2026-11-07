@@ -29,6 +29,11 @@ export function chapaCheckoutUrl(value:string|null|undefined):string|null{
  try{if(!value||/[\u0000-\u0020\\]/.test(value))return null;const url=new URL(value);return url.protocol==='https:'&&url.hostname==='checkout.chapa.global'&&!url.port&&!url.username&&!url.password&&!url.hash&&url.pathname.length>1?url.href:null}catch{return null}
 }
 export function chapaConfirmed(order:Pick<ChapaCheckoutView,'purpose'|'status'|'fundsPreserved'|'receipt'>){return order.fundsPreserved||order.purpose==='TOP_UP'&&order.status==='CREDITED'||order.purpose==='BID'&&order.status==='BID_ACCEPTED'&&!!order.receipt}
+/** A structured rejected initialization is not an outstanding phone prompt.
+ * Historical rows may still say PENDING; verified outcomes take precedence. */
+export function chapaDirectRequestRejected(order:ChapaCheckoutView|null){
+ return !!order&&order.chargeType==='DIRECT'&&!order.authorizationReference&&!chapaConfirmed(order)&&!order.providerStatus&&order.verificationState!=='MISMATCH'&&['SUBMITTING','PENDING','NEEDS_REVIEW'].includes(order.status)&&order.initializationIssue==='request';
+}
 /** Concurrent status/OTP responses can arrive in a different order. Never
  * replace authoritative completion with an older unconfirmed snapshot. */
 export function acceptChapaSnapshot(previous:ChapaCheckoutView|null,next:ChapaCheckoutView){
@@ -53,7 +58,7 @@ export function chapaPollingPaused(order:ChapaCheckoutView,now=Date.now()){
 export function chapaCanResumeCheckout(attempt:ChapaAttempt|null,order:ChapaCheckoutView|null){
  if(!attempt)return false;
  if(!order)return !attempt.orderId;
- if(order.initializationIssue==='state')return false;
+ if(order.initializationIssue==='state'||chapaDirectRequestRejected(order))return false;
  return !order.checkoutUrl&&!chapaConfirmed(order)&&['SUBMITTING','PENDING'].includes(order.status)&&(!order.reason||['INITIALIZATION_PENDING','PROVIDER_CONFIRMATION_REQUIRED','PROVIDER_REFERENCE_UNAVAILABLE','PROVIDER_EVENT_RECEIVED'].includes(order.reason));
 }
 export function chapaRecoverable(order:Pick<ChapaCheckoutView,'status'|'fundsPreserved'>){return !order.fundsPreserved&&!['CREDITED','BID_ACCEPTED','FAILED','CANCELLED','EXPIRED','BLOCKED','INCOMPLETE'].includes(order.status)}

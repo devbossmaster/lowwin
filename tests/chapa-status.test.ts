@@ -1,10 +1,22 @@
 import {describe,expect,it} from 'vitest';
 import {CHAPA_LONG_WAIT_MS,chapaLongWait,chapaPaymentPhase} from '../src/lib/chapa-status';
-import type {ChapaCheckoutView} from '../src/lib/chapa-client';
+import {chapaDirectRequestRejected,type ChapaCheckoutView} from '../src/lib/chapa-client';
 
 const pending={purpose:'TOP_UP',status:'PENDING',providerStatus:'PENDING',verificationState:'UNVERIFIED',fundsPreserved:false,receipt:null} as ChapaCheckoutView;
 const state={order:pending,opening:false,restoring:false,paused:false,error:''};
 describe('payment modal states follow server evidence',()=>{
+ it('stops waiting for new and historical rejected direct requests without overriding verified outcomes',()=>{
+  const rejected={...pending,chargeType:'DIRECT' as const,authorizationReference:null,providerStatus:null,initializationIssue:'request' as const,verificationState:'UNAVAILABLE'};
+  for(const status of ['SUBMITTING','PENDING','NEEDS_REVIEW']){
+   const order={...rejected,status};expect(chapaDirectRequestRejected(order)).toBe(true);expect(chapaPaymentPhase({...state,order})).toBe('review');
+  }
+  expect(chapaDirectRequestRejected({...rejected,authorizationReference:'CH-accepted',status:'AUTH_NEEDED'})).toBe(false);
+  expect(chapaDirectRequestRejected({...rejected,initializationIssue:'temporary'})).toBe(false);
+  expect(chapaDirectRequestRejected({...rejected,providerStatus:'SUCCESS'})).toBe(false);
+  expect(chapaPaymentPhase({...state,order:{...rejected,providerStatus:'SUCCESS'}})).toBe('applying');
+  expect(chapaPaymentPhase({...state,order:{...rejected,status:'CREDITED'}})).toBe('confirmed');
+  expect(chapaDirectRequestRejected({...rejected,verificationState:'MISMATCH'})).toBe(false);
+ });
  it('uses a quieter long-wait view after 90 seconds without changing or hiding authoritative states',()=>{
   const created=Date.parse('2026-10-30T10:00:00Z'),order={...pending,createdAt:new Date(created).toISOString()};
   expect(CHAPA_LONG_WAIT_MS).toBe(90000);expect(chapaLongWait(order,created+89999)).toBe(false);expect(chapaLongWait(order,created+90000)).toBe(true);

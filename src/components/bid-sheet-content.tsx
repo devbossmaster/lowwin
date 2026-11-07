@@ -12,6 +12,7 @@ import {etbToCents,formatEtb} from '@/lib/money';
 import {normalizeBidDraft,normalizePaymentPhone,previewBidFees,validateBidDraft,type BidBatchQuote,type BidBatchReceipt,type BidDraftError,type DirectPaymentMethods} from '@/lib/bid-batch-client';
 import {ChapaClientError,requestChapaJson,type ChapaAvailability} from '@/lib/chapa-client';
 import {usableBidDiscount} from '@/lib/bid-discount-preview';
+import {paymentPhoneProblem,paymentPhoneProblemMessage} from '@/lib/payment-phone';
 import {AccountSheetFooter} from './account-sheet';
 import {BidSheetPreview,isFullAuction,type BidSheetAuction} from './bid-sheet-preview';
 import type {BidSheetPhase} from './bid-sheet';
@@ -51,7 +52,7 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
  const [method,setMethod]=useState<Method>('telebirr'),[phone,setPhone]=useState('');
  const [quote,setQuote]=useState<BidBatchQuote|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const [receipt,setReceipt]=useState<BidBatchReceipt|null>(null),[expanded,setExpanded]=useState(false),[applyCoupon,setApplyCoupon]=useState(false),[walletRetry,setWalletRetry]=useState(false);
- const id=useId(),lock=useRef(false),generation=useRef(0),phoneEdited=useRef(false),controllers=useRef(new Set<AbortController>());
+ const id=useId(),lock=useRef(false),generation=useRef(0),controllers=useRef(new Set<AbortController>());
  const quoteAttempt=useRef<{fingerprint:string;key:string;quote?:BidBatchQuote;paymentKey:string}|null>(null);
  const authenticated=!!queryIdentity,active=known.status==='live'&&(!state||state.open),current=isSubmissionFeeOnly(terms.ruleVersion);
  const methods=usePrivateQuery<DirectPaymentMethods>('/api/payments/chapa/methods',{enabled:authenticated&&active&&!payment.started,freshnessMs:60000});
@@ -66,7 +67,7 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
  const fingerprint=JSON.stringify(body),priced=recoveryQuote??(quoteAttempt.current?.fingerprint===fingerprint?quote:null);
  const preview=previewBidFees(draft.numbers.length,terms.entryFeePoints,coupon?.discountPoints??'0');
  const total=priced?.total??preview.total,totalCents=etbToCents(total),zero=totalCents===0n;
- const normalizedPhone=normalizePaymentPhone(phone),frozen=busy||walletRetry;
+ const phoneProblem=paymentPhoneProblem(phone,method),normalizedPhone=phoneProblem?null:normalizePaymentPhone(phone),frozen=busy||walletRetry;
  const methodAvailable=(slug:string)=>{
   const item=methods.data?.methods.find(item=>item.slug===slug);
   const amount=draft.numbers.length?totalCents:etbToCents(terms.entryFeePoints);
@@ -77,7 +78,6 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
  const copy:Record<BidDraftError,[string,string]>={precision:['Enter a number with at most two decimals.','እስከ ሁለት አስርዮሽ ያለው ቁጥር ያስገቡ።'],range:['Choose an amount within the displayed range and step.','በሚታየው ክልል እና ልዩነት ውስጥ መጠን ይምረጡ።'],duplicate:['This amount is already selected or submitted.','ይህ መጠን ተመርጧል ወይም ቀድሞ ቀርቧል።'],consecutive:['Only 3 consecutive amounts. Skip at least one step.','ከሦስት በላይ ተከታታይ ቁጥሮች አይፈቀዱም።'],limit:['You have reached the remaining submission limit.','የቀሩትን የጨረታ ገደብ ደርሰዋል።']};
  const description=full?(am?full.product.descriptionAm||full.product.description:full.product.description):null;
  const refreshEnded=useCallback(()=>{own.reload();detail.reload()},[own.reload,detail.reload]);
- useEffect(()=>{if(!phoneEdited.current&&methods.data?.paymentPhone)setPhone(normalizePaymentPhone(methods.data.paymentPhone)?.slice(3)??'')},[methods.data?.paymentPhone]);
  useEffect(()=>{const version=++generation.current;return()=>{if(generation.current===version)generation.current++;controllers.current.forEach(c=>c.abort());controllers.current.clear()}},[queryIdentity]);
  useEffect(()=>{onPhaseChange(receipt?'receipt':payment.started?'payment':'entry')},[receipt,payment.started,onPhaseChange]);
  const add=()=>{if(frozen)return;if(draft.error){setError(text(...copy[draft.error]));return}if(!input)return;setNumbers(draft.numbers);setInput('');setEditing(null);setError('')};
@@ -141,11 +141,11 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
     {!!numbers.length&&<div className={`${ui.chips} ${simple.chips}`} aria-label={text('Selected bid amounts','የተመረጡ የጨረታ መጠኖች')}>{numbers.map((number,index)=><span key={index} className={ui.chip}><button disabled={frozen} type="button" aria-label={text(`Edit ${number}`,`${number} ያስተካክሉ`)} onClick={()=>{setEditing(index);setInput(number);setError('')}}>{number}</button><button disabled={frozen} type="button" aria-label={text(`Remove ${number}`,`${number} ያስወግዱ`)} onClick={()=>{setNumbers(values=>values.filter((_,i)=>i!==index));setEditing(null);setInput('');setError('')}}><X size={13}/></button></span>)}</div>}
     <div className={styles.earnedDiscount} data-active={applyCoupon} data-bid-coupons><Ticket size={20}/><strong>{text('Coupons','ኩፖኖች')} <span className={styles.couponCount}>{couponCount??'—'}</span></strong><button type="button" disabled={frozen||!applyCoupon&&(!state?.referralDiscountsAvailable||!couponCount)} onClick={()=>setApplyCoupon(value=>!value)}>{text(applyCoupon?'Remove':'Apply',applyCoupon?'አስወግድ':'ተግብር')}</button></div>
     {applyCoupon&&<p className={ui.draftNote}>{coupon?text(`${coupon.coupon!.percent}% off one bid fee.`,`${coupon.coupon!.percent}% ቅናሽ በአንድ ጨረታ ክፍያ።`):text(discount.fetching?'Checking coupon…':'No eligible coupon. Remove it or retry.',discount.fetching?'ኩፖን በመፈተሽ ላይ…':'ተስማሚ ኩፖን የለም። ያስወግዱ ወይም ይድገሙ።')}</p>}
+    {method!=='wallet'&&(!draft.numbers.length||!zero)&&<div className={simple.phone}><label htmlFor={`${id}-phone`}>{text('Payment phone number','የክፍያ ስልክ ቁጥር')}</label><div><span aria-hidden="true">+251</span><input id={`${id}-phone`} type="tel" inputMode="tel" autoComplete="off" maxLength={18} disabled={frozen} value={phone} onChange={event=>{setPhone(normalizePaymentPhone(event.target.value)?.slice(3)??event.target.value);setError('')}} placeholder="7•• / 9•• ••• •••" aria-invalid={!!phone&&!!phoneProblem||undefined} aria-describedby={phone&&phoneProblem?`${id}-phone-error`:undefined}/></div>{phone&&phoneProblem&&<p id={`${id}-phone-error`} className={styles.error} data-payment-phone-error role="alert">{paymentPhoneProblemMessage(phoneProblem,am)}</p>}</div>}
     <fieldset className={simple.methods} disabled={frozen} data-funding-selector><legend><CreditCard size={14}/>{text('Select payment method','የክፍያ መንገድ ይምረጡ')}</legend><div className={simple.methodGrid}>
      {providers.map(provider=><label key={provider.slug} className={simple.method} data-selected={method===provider.slug} data-provider={provider.slug} data-unavailable={authenticated&&!methodAvailable(provider.slug)}><input type="radio" name={`${id}-method`} value={provider.slug} checked={method===provider.slug} onChange={()=>{setMethod(provider.slug);setError('')}} disabled={authenticated&&!!methods.data&&!methodAvailable(provider.slug)} aria-label={provider.name}/><img src={provider.image} alt="" width={32} height={27}/><strong>{provider.name}</strong></label>)}
      <label className={simple.method} data-selected={method==='wallet'} data-provider="wallet"><input type="radio" name={`${id}-method`} value="wallet" checked={method==='wallet'} onChange={()=>{setMethod('wallet');setError('')}} aria-label={text('Wallet','ዋሌት')}/><Wallet size={22} aria-hidden="true"/><strong>{text('Wallet','ዋሌት')}</strong></label>
     </div></fieldset>
-    {method!=='wallet'&&!zero&&<div className={simple.phone}><label htmlFor={`${id}-phone`}>{text('Payment phone number','የክፍያ ስልክ ቁጥር')}</label><div><span aria-hidden="true">+251</span><input id={`${id}-phone`} type="tel" inputMode="tel" autoComplete="tel-national" maxLength={18} disabled={frozen} value={phone} onChange={event=>{phoneEdited.current=true;setPhone(normalizePaymentPhone(event.target.value)?.slice(3)??event.target.value);setError('')}} placeholder="9•• ••• ••••" aria-invalid={!!phone&&!normalizedPhone||undefined}/></div></div>}
     {method==='wallet'&&authenticated&&<p className={simple.walletHelp}>{insufficient?text('Need more balance?','ተጨማሪ ቀሪ ሂሳብ ይፈልጋሉ?'):text('Pay with your Lowwin balance.','በLowwin ቀሪ ሂሳብዎ ይክፈሉ።')} <WalletTopUpTrigger disabled={frozen} ariaLabel={text('Top up wallet','ወደ ዋሌት ገንዘብ ያስገቡ')}>{text('Top up','ገንዘብ ያስገቡ')} <Plus size={14}/></WalletTopUpTrigger></p>}
     <p className={styles.hint}>{text('Only the bid fee is charged. Submission fees are non-refundable.','የሚከፈለው የጨረታ ክፍያ ብቻ ነው። የማስገቢያ ክፍያዎች አይመለሱም።')}</p>
     {authenticated&&!enabled&&!zero&&<p className={styles.availability} role="status">{method!=='wallet'&&availability.data?.enabled?text(methods.data?'This method is unavailable for this total. Choose another.':'Loading payment methods…',methods.data?'ለዚህ ጠቅላላ ክፍያ ይህ መንገድ አይገኝም። ሌላ ይምረጡ።':'የክፍያ መንገዶች በመጫን ላይ…'):text('Payments are currently unavailable.','ክፍያዎች በአሁኑ ጊዜ አይገኙም።')}{(methods.error||availability.error)&&<button type="button" className={styles.inlineRetry} onClick={()=>{methods.reload();availability.reload()}}>{text('Retry','እንደገና')}</button>}</p>}
