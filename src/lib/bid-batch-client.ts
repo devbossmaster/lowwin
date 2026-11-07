@@ -5,6 +5,16 @@ import type {BidReceipt} from '@/modules/auctions/bids';
 export type BidBatchLine={position:number;number:string;grossFee:string;discount:string;netFee:string};
 export type BidBatchQuote={id:string;quoteHash:string;auctionSlug:string;feeVersion:number;ruleVersion:string;lines:BidBatchLine[];entryCount:number;total:string;totalCents:string;grossTotal:string;discountTotal:string;status:string};
 export type BidBatchReceipt={batch:BidBatchQuote;receipts:Array<Pick<BidReceipt,'bid'|'charge'>>;wallet?:{available:string;held:string}};
+export type BidFeePreview={entryCount:number;grossTotal:string;discountTotal:string;total:string;totalCents:string};
+/** Display only. A validated coupon discounts one entry, never the entire batch.
+ * The server quote remains authoritative before any payment is submitted. */
+export function previewBidFees(entryCount:number,entryFeePoints:string,discountPoints='0'):BidFeePreview{
+ if(!Number.isSafeInteger(entryCount)||entryCount<0||entryCount>100)throw new RangeError('Choose between zero and 100 entries.');
+ const fee=etbToCents(entryFeePoints),coupon=etbToCents(discountPoints);
+ if(fee<0n||coupon<0n||coupon>fee)throw new RangeError('The discount must fit one submission fee.');
+ const gross=fee*BigInt(entryCount),discount=entryCount?coupon:0n,total=gross-discount;
+ return {entryCount,grossTotal:centsToEtb(gross),discountTotal:centsToEtb(discount),total:centsToEtb(total),totalCents:String(total)};
+}
 export type BidDraftRules={minPoints:string;maxPoints:string|null;stepPoints:string;remainingSubmissions:number;ownBids:readonly {amount:string}[]};
 export type BidDraftError='precision'|'range'|'duplicate'|'consecutive'|'limit';
 export function normalizeBidDraft(value:string):string|null{

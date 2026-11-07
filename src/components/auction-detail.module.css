@@ -13,3 +13,4 @@
 @media(max-width:370px){.page{padding-inline:12px}.gallery{margin-inline:-12px}.stats,.description,.facts,.terms,.actions{padding:16px 14px}.clock :global(.countdown){gap:7px}.fee strong{font-size:22px}}
 @media(prefers-reduced-motion:reduce){.page button{transition:none}}
 .page .bidding :global(.card-action){background:#181815;color:#e6bf50;--surface-ink:#e6bf50}.page .bidding :global(.card-action:hover){background:#29271f;color:#e6bf50}
+.share.shareIcon{width:44px;padding:0}
