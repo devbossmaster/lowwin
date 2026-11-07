@@ -55,14 +55,23 @@ describe('bounded user-intent warming',()=>{
   expect(privateIntentDestination('/my-bids')).toBe('/api/my-bids?view=all&page=1');
   expect(privateIntentDestination('/my-bids?view=history&page=2')).toBe('/api/my-bids?view=history&page=2');
   expect(privateIntentDestination('/profile')).toBe('/api/profile');
+  expect(privateIntentDestination('/payments')).toBe('/api/payments/chapa/checkouts?page=1');
+  expect(privateIntentDestination('/payments?page=3')).toBe('/api/payments/chapa/checkouts?page=3');
+  expect(privateIntentDestination('/payments?page=-2')).toBe('/api/payments/chapa/checkouts?page=1');
+  expect(privateIntentDestination('/payments?page=10001')).toBe('/api/payments/chapa/checkouts?page=10000');
   expect(privateIntentDestination('/winners')).toBe('/api/results/winners?page=1');expect(privateIntentDestination('/winners?page=3')).toBe('/api/results/winners?page=3');expect(privateIntentDestination('/api/results/1/breakdown?amount=50')).toBeNull();
   expect(privateIntentDestination('https://other.example/profile')).toBeNull();
  });
- it('coalesces intent and the actual destination into one private no-store request',async()=>{
+ it.each([
+  ['/profile','/api/profile'],['/payments?page=2','/api/payments/chapa/checkouts?page=2'],
+ ])('coalesces intent and opening %s into one private no-store request',async(target,url)=>{
   setPrivateQueryIdentity('intent');let finish!:(response:Response)=>void;
   const request=vi.fn((_url:string,_options?:RequestInit)=>new Promise<Response>(resolve=>{finish=resolve}));vi.stubGlobal('fetch',request);
-  const warm=prefetchPrivateQuery('intent','/api/profile'),open=loadPrivateJson('intent','/api/profile');expect(request).toHaveBeenCalledTimes(1);
-  finish(Response.json({name:'Actual profile'}));await Promise.all([warm,open]);await prefetchPrivateQuery('intent','/api/profile');expect(request).toHaveBeenCalledTimes(1);expect(request.mock.calls[0][1]).toMatchObject({cache:'no-store'});
+  const router=vi.fn();prefetchMiniIntent('intent',target,router);
+  const open=loadPrivateJson('intent',url);expect(request).toHaveBeenCalledTimes(1);expect(router).toHaveBeenCalledWith(target);
+  finish(Response.json({items:[{id:'owned-display'}]}));await open;await prefetchPrivateQuery('intent',url);
+  expect(request).toHaveBeenCalledTimes(1);expect(request.mock.calls[0]).toMatchObject([url,{cache:'no-store'}]);
+  setPrivateQueryIdentity('other');expect(readPrivateQuery('other',url)).toBeNull();
  });
  it('caps speculative concurrent API reads without blocking an explicit destination request',async()=>{
   setPrivateQueryIdentity('a');const finish=new Map<string,(response:Response)=>void>();

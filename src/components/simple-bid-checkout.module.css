@@ -6,7 +6,14 @@
 .entry .description p[data-expanded=true]{display:block;max-height:150px;overflow-y:auto}
 .entry .description button{display:inline-flex;align-items:center;gap:3px;min-height:28px;margin-top:1px;padding:0;border:0;background:none;color:#76580d;font:inherit;font-size:11px;font-weight:650;cursor:pointer}
 .entry .description button:focus-visible{outline:2px solid #96731a;outline-offset:3px;border-radius:3px}
-.entry .fee{margin-bottom:10px;border-radius:23px;padding:9px 12px}
+.entry .fee[data-bid-fee-summary]{display:flex;flex-wrap:wrap;gap:8px 12px;margin-bottom:10px;border-radius:20px;padding:10px 12px}
+.entry .fee>[data-bid-fee]{flex:1 0 auto;max-width:100%}
+.entry .fee>[data-bid-count]{flex:0 0 auto;max-width:100%;margin-inline-start:auto;white-space:normal}
+.entry .fee>[data-bid-count] strong{white-space:nowrap}
+.entry .fee>[data-bid-timer]{display:flex;flex:1 0 100%;justify-content:space-between;gap:12px;min-width:0;padding-top:8px;border-top:1px solid #dcd8cf;white-space:normal}
+.timerLabel{display:inline-flex;align-items:center;gap:5px;min-width:0;color:#625e54;font-size:11px;font-weight:550;line-height:1.5}
+.timerLabel svg{flex-shrink:0;color:#806114}
+.entry .fee>[data-bid-timer] :global(.countdown){flex-shrink:0;gap:5px;line-height:1}
 .entry .fee>div>strong{font-size:20px}
 .chips{max-height:90px;overflow-y:auto;overscroll-behavior:contain;margin:4px 0 6px}
 .chips button{min-height:44px}
@@ -44,6 +51,6 @@
 .pay:hover:not(:disabled){background:#ac8515}
 .pay:disabled{background:#e7d597;color:#5f532c}
 .methods:disabled{opacity:.7}
-@media(max-width:350px){.entry :global([data-sheet-preview]) h3{font-size:16px}.method{gap:6px;padding-inline:9px}.method strong{font-size:11px}.entry .fee{grid-template-columns:minmax(0,1fr) auto;gap:5px;padding-inline:9px}.entry .fee>div{grid-column:1;grid-row:1 / span 2}.entry .fee>span{justify-self:end}.entry .fee>span:last-child{grid-column:2;grid-row:2}.entry .fee>div>strong{font-size:18px}}
+@media(max-width:350px){.entry :global([data-sheet-preview]) h3{font-size:16px}.method{gap:6px;padding-inline:9px}.method strong{font-size:11px}.entry .fee{gap:7px 8px;padding-inline:10px}.entry .fee>div>strong{font-size:18px}.timerLabel{font-size:10px}}
 @media(max-height:750px){.entry :global([data-sheet-preview])>div:first-child{height:75px}.entry .description{padding-block:7px;margin-bottom:7px}.entry .description p{-webkit-line-clamp:1}.entry .fee{padding-block:7px;margin-bottom:7px}}
 @media(min-height:900px){.entry :global([data-sheet-preview])>div:first-child{height:116px}}

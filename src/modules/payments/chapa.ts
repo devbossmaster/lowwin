@@ -178,7 +178,7 @@ export async function listChapaCheckouts(client:PrismaClient,userId:string,purpo
  const rows=await client.chapaCheckout.findMany({where:{userId,...(filter?{purpose:filter}:{}),...(unaccepted?{purpose:'BID',bidId:null}:{}),...(state==='all'?{}:{...(state==='review'?{}:{creditJournalId:null}),status:{in:[...statuses[state]]}})},orderBy:[{createdAt:'desc'},{id:'desc'}],skip:(page-1)*20,take:21,include:context});
  return {items:rows.slice(0,20).map(ownChapaCheckout),page,nextPage:rows.length>20?page+1:null};
 }
-export async function verifyChapaCheckout(client:PrismaClient,id:string,userId?:string,reauthorize?:Authorize,transport:ChapaTransport=chapaTransport,eventCheck=false){
+export async function verifyChapaCheckout(client:PrismaClient,id:string,userId?:string,reauthorize?:Authorize,transport:ChapaTransport=chapaTransport,eventCheck:boolean|'webhook'=false){
  requireChapa('recover');z.string().uuid().parse(id);
  const snapshot=await measureChapa('database',()=>client.chapaCheckout.findFirst({where:{id,...(userId?{userId}:{})}}));if(!snapshot)throw new ChapaError(404,'NOT_FOUND','Payment not found.');
  if(paid(snapshot))return ownChapaCheckout(snapshot);
@@ -192,9 +192,10 @@ export async function verifyChapaCheckout(client:PrismaClient,id:string,userId?:
  const acquired=await measureChapa('database',()=>client.$transaction(async tx=>{if(reauthorize)await reauthorize(tx);return tx.chapaCheckout.updateMany({where:{id,creditJournalId:null,...(eventCheck?{}:{nextCheckAt:{lte:new Date()}}),OR:[{leaseUntil:null},{leaseUntil:{lte:new Date()}}]},data:{leaseUntil:after(45000),nextCheckAt:after(45000),attempts:{increment:1}}})},PAYMENT_TRANSACTION_OPTIONS));
  if(!acquired.count)return ownChapaCheckout(await measureChapa('database',()=>client.chapaCheckout.findUniqueOrThrow({where:{id}})));
  let raw:unknown;try{
-  // USSD validation is a safe bounded status operation. OTPs are submitted only
-  // by the explicit owned authorization mutation and are never replayed here.
-  if(snapshot.chargeType==='DIRECT'&&snapshot.authType==='USSD'&&snapshot.authorizationReference&&transport.validate)try{await measureChapa('validate',()=>transport.validate!({reference:snapshot.authorizationReference!,paymentMethod:snapshot.paymentMethod!}))}catch{/* Final merchant verification remains authoritative. */}
+  // USSD polling refreshes the provider's charge state. An authenticated event
+  // already signals a state change, so verify it without another validation
+  // round trip. OTPs belong only to the explicit authorization mutation.
+  if(eventCheck!=='webhook'&&snapshot.chargeType==='DIRECT'&&snapshot.authType==='USSD'&&snapshot.authorizationReference&&transport.validate)try{await measureChapa('validate',()=>transport.validate!({reference:snapshot.authorizationReference!,paymentMethod:snapshot.paymentMethod!}))}catch{/* Final merchant verification remains authoritative. */}
   raw=await measureChapa('verify',()=>transport.lookup(snapshot.merchantReference))}catch(error){
   const category=error instanceof ChapaProviderError?error.category:'temporary';
   const policy={configuration:{reason:'PROVIDER_CONFIGURATION_REQUIRED',delay:300000},reference:{reason:'PROVIDER_REFERENCE_UNAVAILABLE',delay:60000},state:{reason:'PROVIDER_STATE_UNAVAILABLE',delay:60000},request:{reason:'PROVIDER_REQUEST_REJECTED',delay:60000},temporary:{reason:'PROVIDER_CONFIRMATION_REQUIRED',delay:error instanceof ChapaProviderError&&error.httpStatus===429?60000:30000}}[category];
@@ -222,7 +223,14 @@ export async function verifyChapaCheckout(client:PrismaClient,id:string,userId?:
   // Pending/failed verification may expose a session or provisional reference.
   // Only terminal SUCCESS can bind the immutable final payment reference.
   const proof=evidence!,fields={chapaReference:proof.status==='SUCCESS'?proof.chapaReference:order.chapaReference,paymentMethod:order.chargeType==='DIRECT'?order.paymentMethod:proof.paymentMethod??null,processorReference:proof.processorReference??null,serviceFeeCents:proof.serviceFeeCents===undefined?null:BigInt(proof.serviceFeeCents),evidenceHash:proof.hash,providerStatus:proof.status,verificationState:'VERIFIED',leaseUntil:null};
-  if(proof.status!=='SUCCESS')return ownChapaCheckout(await tx.chapaCheckout.update({where:{id},data:{...fields,status:proof.status,reason:proof.reasonCode?`CHAPA_${proof.reasonCode}`:'PAYMENT_NOT_COMPLETED',nextCheckAt:after(proof.status==='PENDING'||proof.status==='AUTH_NEEDED'?Math.min(300000,15000*Math.max(1,Math.floor(order.attempts/4))):300000)}}));
+  if(proof.status!=='SUCCESS'){
+   // Keep the initial polling cadence while a direct authorization is open.
+   // Growing backoff here can delay a prompt cancellation.
+   // Expired authorization and request errors retain their recovery backoff.
+   const waiting=proof.status==='PENDING'||proof.status==='AUTH_NEEDED',activeDirect=order.chargeType==='DIRECT'&&order.expiresAt.getTime()>Date.now();
+   const delay=waiting?activeDirect?15000:Math.min(300000,15000*Math.max(1,Math.floor(order.attempts/4))):300000;
+   return ownChapaCheckout(await tx.chapaCheckout.update({where:{id},data:{...fields,status:proof.status,reason:proof.reasonCode?`CHAPA_${proof.reasonCode}`:'PAYMENT_NOT_COMPLETED',nextCheckAt:after(delay)}}));
+  }
   if(!proof.chapaReference)throw new ChapaError(502,'EVIDENCE_MISMATCH','Payment confirmation is pending.');
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`chapa-reference:${proof.chapaReference}`},0))`;
   if(await tx.chapaCheckout.findFirst({where:{chapaReference:proof.chapaReference,id:{not:id}}}))return ownChapaCheckout(await tx.chapaCheckout.update({where:{id},data:{status:'NEEDS_REVIEW',reason:'DUPLICATE_PROVIDER_REFERENCE',leaseUntil:null,nextCheckAt:after(60000)}}));

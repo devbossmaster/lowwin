@@ -3,7 +3,7 @@ import { Prisma, type PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { publicAuctionSelect,publicWhere,toPublicAuction } from '../auctions/catalog';
 import { PrivateApiError } from '../auth/private-api';
-import {ownProfileContact} from './account-contact';
+import {ownProfileContactSelect,profileContactDisplay} from './account-contact';
 import {getReferralOverview,referralSchemaReady} from '../referrals/service';
 
 export const displayProfileSchema=z.object({displayName:z.string().trim().min(1).max(60).regex(/^[^\p{Cc}\p{Cf}]+$/u),bio:z.string().trim().max(160).regex(/^[^\p{Cc}\p{Cf}]*$/u),contactEmail:z.string().trim().max(254).refine(value=>value===''||z.email().safeParse(value).success).optional(),city:z.string().trim().max(80).regex(/^[^\p{Cc}\p{Cf}]*$/u).optional()}).strict();
@@ -44,22 +44,25 @@ export async function getPersonalBids(client:PrismaClient,userId:string,input:un
   },{isolationLevel:Prisma.TransactionIsolationLevel.RepeatableRead});
 }
 export async function getPlayerProfile(client:PrismaClient,userId:string) {
+  const ready=referralSchemaReady();
+  const detailsSelect={displayName:true,bio:true,...(ready?{contactEmail:true,city:true}:{})} satisfies Prisma.PlayerProfileSelect;
   const profile=client.$transaction(async tx=>{
     const [{now}]=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`;
-    const [user,bids,liveBids,wins,favorites]=await Promise.all([
-      tx.user.findUniqueOrThrow({where:{id:userId},select:{name:true,playerProfile:{select:{displayName:true,bio:true}}}}),
-      tx.bid.count({where:{userId}}),tx.bid.count({where:{userId,auction:liveWhere(now)}}),
-      tx.auctionSettlement.count({where:{winnerUserId:userId,outcome:'WINNER',publication:{is:{publishedAt:{lte:now}}}}}),
-      tx.auctionFavorite.count({where:{userId,auction:publicWhere(now)}}),
+    // Filtered relation counts and the owner-only contact share the user lookup.
+    // Promise.all inside an interactive transaction still uses one connection;
+    // fewer statements remove round trips while preserving the same snapshot.
+    const [user,liveBids]=await Promise.all([
+      tx.user.findUniqueOrThrow({where:{id:userId},relationLoadStrategy:'join',select:{
+        name:true,telegramId:true,playerProfile:{select:detailsSelect},ownContact:{select:ownProfileContactSelect},
+        _count:{select:{bids:true,wonSettlements:{where:{outcome:'WINNER',publication:{is:{publishedAt:{lte:now}}}}},favorites:{where:{auction:publicWhere(now)}}}},
+      }}),
+      tx.bid.count({where:{userId,auction:liveWhere(now)}}),
     ]);
-    return {displayName:user.playerProfile?.displayName??user.name,bio:user.playerProfile?.bio??'',counts:{bids,liveBids,historyBids:bids-liveBids,wins,favorites}};
+    const bids=user._count.bids,contact=profileContactDisplay(user.ownContact?{...user.ownContact,user:{telegramId:user.telegramId}}:null);
+    return {displayName:user.playerProfile?.displayName??user.name,bio:user.playerProfile?.bio??'',counts:{bids,liveBids,historyBids:bids-liveBids,wins:user._count.wonSettlements,favorites:user._count.favorites},...contact,contactEmail:user.playerProfile?.contactEmail??'',city:user.playerProfile?.city??'',contactDetailsEditable:ready};
   },{isolationLevel:Prisma.TransactionIsolationLevel.RepeatableRead});
-  const [base,contact,details,referral]=await Promise.all([
-    profile,ownProfileContact(client,userId),
-    referralSchemaReady()?client.playerProfile.findUnique({where:{userId},select:{contactEmail:true,city:true}}):Promise.resolve(null),
-    getReferralOverview(client,userId),
-  ]);
-  return {...base,...contact,contactEmail:details?.contactEmail??'',city:details?.city??'',contactDetailsEditable:referralSchemaReady(),referral};
+  const [base,referral]=await Promise.all([profile,getReferralOverview(client,userId)]);
+  return {...base,referral};
 }
 export async function editPlayerProfile(client:PrismaClient,userId:string,input:unknown) {
   const fields=displayProfileSchema.parse(input);

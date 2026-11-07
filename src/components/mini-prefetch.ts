@@ -25,6 +25,10 @@ subscribePrivateQueries(event=>{if(event.kind==='session'||event.kind==='authori
 export function privateIntentDestination(target:string){
  let url:URL;try{url=new URL(target,'https://lowwin.invalid')}catch{return null}if(url.origin!=='https://lowwin.invalid')return null;
  if(url.pathname==='/profile')return '/api/profile';
+ if(url.pathname==='/payments'){
+  const raw=Number(url.searchParams.get('page')??1),page=Number.isSafeInteger(raw)&&raw>0?Math.min(raw,10000):1;
+  return `/api/payments/chapa/checkouts?page=${page}`;
+ }
  if(url.pathname==='/winners'){
   const raw=Number(url.searchParams.get('page')??1),page=Number.isSafeInteger(raw)&&raw>0?Math.min(raw,10000):1;
   return `/api/results/winners?page=${page}`;

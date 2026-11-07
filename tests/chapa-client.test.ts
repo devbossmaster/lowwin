@@ -1,9 +1,16 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
-import {CHAPA_CHECKOUT_POLL_MS,chapaCheckoutUrl,chapaConfirmed,chapaCanResumeCheckout,chapaPollingDeadline,chapaPollingPaused,chapaRecoverable,clearChapaAttempt,clearChapaAttempts,readChapaAttempt,requestChapaJson,writeChapaAttempt,type ChapaAttempt,type ChapaCheckoutView} from '../src/lib/chapa-client';
+import {CHAPA_CHECKOUT_POLL_MS,acceptChapaSnapshot,chapaCheckoutUrl,chapaConfirmed,chapaCanResumeCheckout,chapaPollingDeadline,chapaPollingPaused,chapaRecoverable,clearChapaAttempt,clearChapaAttempts,readChapaAttempt,requestChapaJson,writeChapaAttempt,type ChapaAttempt,type ChapaCheckoutView} from '../src/lib/chapa-client';
 const uuid='0f55aaab-2222-4444-8888-123456789012',attempt:ChapaAttempt={version:1,intent:{purpose:'BID',key:uuid,auctionSlug:'fixture-auction',amount:'3.60',feeVersion:1}};
 function storage(){const values=new Map<string,string>();return {getItem:(key:string)=>values.get(key)??null,setItem:(key:string,value:string)=>{values.set(key,value)},removeItem:(key:string)=>{values.delete(key)}}}
 afterEach(()=>{vi.unstubAllGlobals();vi.useRealTimers()});
 describe('Chapa client recovery and display boundaries',()=>{
+ it.each(['FAILED','CANCELLED','INCOMPLETE','EXPIRED','BLOCKED'])('does not reopen %s from a delayed pre-cancellation read, but accepts a late verified credit',status=>{
+  const terminal={id:uuid,purpose:'TOP_UP',status,providerStatus:status,verificationState:'VERIFIED',fundsPreserved:false,receipt:null} as ChapaCheckoutView;
+  for(const nextStatus of ['SUBMITTING','PENDING','AUTH_NEEDED'])expect(acceptChapaSnapshot(terminal,{...terminal,status:nextStatus,providerStatus:nextStatus})).toBe(false);
+  expect(acceptChapaSnapshot(terminal,{...terminal,status:'CREDITED',providerStatus:'SUCCESS'})).toBe(true);
+  expect(acceptChapaSnapshot(terminal,{...terminal,status:'PENDING',providerStatus:'SUCCESS'})).toBe(true);
+  expect(acceptChapaSnapshot(terminal,{...terminal,id:'other-checkout',status:'AUTH_NEEDED'})).toBe(true);
+ });
  it('bounds foreground checks independently from checkout validity and keeps the original pending outcome',()=>{
   const created=Date.parse('2026-10-31T10:00:00Z'),order={purpose:'TOP_UP',status:'PENDING',providerStatus:'PENDING',fundsPreserved:false,receipt:null,createdAt:new Date(created).toISOString(),expiresAt:new Date(created+60000).toISOString()} as ChapaCheckoutView;
   expect(CHAPA_CHECKOUT_POLL_MS).toBe(300000);expect(chapaPollingDeadline(order)).toBe(created+300000);

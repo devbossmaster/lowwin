@@ -1,28 +1,18 @@
 'use client';
-import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import {ChevronLeft,ChevronRight,Clock3,Minus,Plus,RefreshCw,ReceiptText} from 'lucide-react';
 import {useRef,useState} from 'react';
 import {usePrivateQuery,PrivateState} from './private-query';
 import {useMiniLocale} from './mini-locale';
 import {useTelegram} from './telegram-provider';
-import {AccountSheet} from './account-sheet';
-import {ChapaPaymentStatus,chapaStatusLabel,useChapaPayment} from './chapa-payment';
+import {chapaStatusLabel} from '@/lib/chapa-status-label';
 import {chapaConfirmed,type ChapaCheckoutView} from '@/lib/chapa-client';
 import {formatEtb} from '@/lib/money';
 import {useMiniPage} from './mini-query-state';
 import styles from './chapa-payment-history.module.css';
 
 type Page={items:ChapaCheckoutView[];page:number;nextPage:number|null};
-const DirectCheckout=dynamic(()=>import('./direct-checkout'),{ssr:false});
-export function ChapaTransactionDetails({order,onClose,trigger}:{order:ChapaCheckoutView;onClose:()=>void;trigger:React.RefObject<HTMLElement|null>}){
- const payment=useChapaPayment('transaction:'+order.id,order.id),{language}=useMiniLocale(),am=language==='am',current=payment.order??order;
- const fresh=current.purpose==='TOP_UP'?'/wallet/deposit':current.auctionSlug?`/auctions/${current.auctionCode??current.auctionSlug}#bid-review`:null;
- return <AccountSheet size="payment" title={am?'የግብይት ዝርዝር':'Transaction details'} onClose={onClose} returnFocusRef={trigger}>
-  {current.chargeType==='DIRECT'?<DirectCheckout payment={payment} purpose={current.purpose} amount={current.amount} batch={current.batch??undefined} onClose={onClose}/>:<ChapaPaymentStatus payment={payment} onNavigate={onClose} readOnly/>}
-  {fresh&&(!chapaConfirmed(current)||current.purpose==='TOP_UP')&&<div className={styles.retry}><Link href={fresh} onClick={onClose}>{am?'አዲስ ክፍያ ይጀምሩ':'Start new checkout'}</Link>{!chapaConfirmed(current)&&<p>{am?'የቀድሞው ክፍያ አሁንም ሊጠናቀቅ ይችላል።':'The previous payment may still complete.'}</p>}</div>}
- </AccountSheet>;
-}
+export const ChapaTransactionDetails=dynamic(()=>import('./chapa-transaction-details').then(module=>module.ChapaTransactionDetails),{ssr:false});
 export function ChapaPaymentHistory({purpose,unaccepted=false,fullPage=false}:{purpose?:'TOP_UP'|'BID';unaccepted?:boolean;fullPage?:boolean}={}){
  const {queryIdentity}=useTelegram();return <OwnedHistory key={queryIdentity??'guest'} purpose={purpose} unaccepted={unaccepted} fullPage={fullPage}/>;
 }

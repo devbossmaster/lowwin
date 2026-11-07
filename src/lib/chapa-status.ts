@@ -3,7 +3,7 @@ import {chapaConfirmed,chapaDirectRequestRejected,chapaPollingPaused,type ChapaC
 export const CHAPA_LONG_WAIT_MS=90000;
 /** A quieter presentation after waiting; never changes the payment outcome. */
 export function chapaLongWait(order:ChapaCheckoutView|null,now=Date.now()){
- if(!order||chapaConfirmed(order)||!['PENDING','SUBMITTING'].includes(order.status))return false;
+ if(!order||chapaConfirmed(order)||!(['PENDING','SUBMITTING'].includes(order.status)||order.status==='AUTH_NEEDED'&&order.chargeType==='DIRECT'&&order.authType==='USSD'))return false;
  const created=Date.parse(order.createdAt);return Number.isFinite(created)&&now>=created+CHAPA_LONG_WAIT_MS;
 }
 

@@ -2,11 +2,12 @@
 import Link from 'next/link';
 import {useEffect,useId,useRef,useState} from 'react';
 import {ArrowLeft,Check,LoaderCircle,LockKeyhole,ShieldCheck,Smartphone} from 'lucide-react';
-import {ChapaPaymentStatus,useChapaPayment} from './chapa-payment';
+import {ChapaPaymentStatus,useChapaPayment,useChapaPaymentClock} from './chapa-payment';
 import {useMiniLocale} from './mini-locale';
 import {usePrivateQuery} from './private-query';
 import {normalizePaymentPhone,type BidBatchQuote,type DirectPaymentMethods} from '@/lib/bid-batch-client';
-import {chapaConfirmed,chapaDirectRequestRejected,chapaRecoverable} from '@/lib/chapa-client';
+import {chapaConfirmed,chapaDirectRequestRejected,chapaPollingPaused,chapaRecoverable} from '@/lib/chapa-client';
+import {chapaLongWait} from '@/lib/chapa-status';
 import {paymentPhoneProblem,paymentPhoneProblemMessage} from '@/lib/payment-phone';
 import {etbToCents,formatEtb} from '@/lib/money';
 import {chapaPaymentReasonMessage,chapaRequestReasonMessage} from '@/lib/chapa-payment-reason';
@@ -24,6 +25,7 @@ export default function DirectCheckout({payment,purpose,amount,batch,onBack,onCl
  const {language}=useMiniLocale(),am=language==='am',text=(en:string,translated:string)=>am?translated:en,id=useId();
  const [phone,setPhone]=useState(''),[method,setMethod]=useState(''),[otp,setOtp]=useState('');
  const operationKey=useRef(crypto.randomUUID()),order=payment.order;
+ const now=useChapaPaymentClock(order);
  useEffect(()=>{if(!payment.started)operationKey.current=crypto.randomUUID()},[payment.started]);
  const methods=usePrivateQuery<DirectPaymentMethods>(`/api/payments/chapa/methods?amountCents=${etbToCents(amount)}`,{enabled:!payment.started,freshnessMs:60000});
  useEffect(()=>{if(methods.data&&!methods.data.methods.some(item=>item.slug===method))setMethod(methods.data.methods[0]?.slug??'')},[methods.data,method]);
@@ -34,7 +36,7 @@ export default function DirectCheckout({payment,purpose,amount,batch,onBack,onCl
  const otpNeeded=authorizationReady&&order.authType==='OTP'&&chapaRecoverable(order)&&order.providerStatus!=='SUCCESS'&&!chapaConfirmed(order);
  const phoneApproval=authorizationReady&&order.authType==='USSD'&&chapaRecoverable(order)&&order.providerStatus!=='SUCCESS'&&!chapaConfirmed(order);
  const connecting=!authorizationReady&&order?.providerStatus!=='SUCCESS';
- const waiting=order?.chargeType==='DIRECT'&&chapaRecoverable(order)&&!chapaDirectRequestRejected(order)&&!chapaConfirmed(order)&&!payment.paused&&order.verificationState!=='MISMATCH'&&order.status!=='NEEDS_REVIEW';
+ const waiting=order?.chargeType==='DIRECT'&&chapaRecoverable(order)&&!chapaDirectRequestRejected(order)&&!chapaConfirmed(order)&&!payment.paused&&!chapaPollingPaused(order,now)&&!chapaLongWait(order,now)&&order.verificationState!=='MISMATCH'&&order.status!=='NEEDS_REVIEW'&&(!authorizationReady||order.verificationState!=='UNAVAILABLE');
  if(payment.started&&order?.chargeType!=='DIRECT'&&order)return <ChapaPaymentStatus payment={payment} onNavigate={onClose} onStartAgain={onStartAgain}/>;
  if(payment.started&&order&&!waiting)return <><ChapaPaymentStatus payment={payment} onNavigate={onClose} onStartAgain={onStartAgain}/>{order.batchNumbers&&<p className={ui.numbers}>{order.batchNumbers.join(' · ')}</p>}</>;
  const total=formatEtb(order?.amount??amount);
@@ -69,7 +71,7 @@ export default function DirectCheckout({payment,purpose,amount,batch,onBack,onCl
    <button className={`${styles.payButton} ${ui.checkoutPay}`} data-payment-action type="submit" disabled={!selected||!normalized||methods.fetching||payment.busy}>{text(`Pay ${total}`,`${total} ይክፈሉ`)}</button>
   </form>:<div className={`${ui.paymentPanel} ${ui.waitingPanel}`} data-direct-approval={otpNeeded?'otp':phoneApproval?'phone':connecting?'connecting':'confirming'}>
    <div className={ui.approval}>
-    {otpNeeded?<Smartphone size={34} className={ui.approvalPhone} aria-hidden="true"/>:<LoaderCircle size={42} className={ui.spin} aria-hidden="true"/>}
+    {otpNeeded||phoneApproval?<Smartphone size={34} className={ui.approvalPhone} aria-hidden="true"/>:<LoaderCircle size={42} className={ui.spin} aria-hidden="true"/>}
     <h3 role="status">{text(otpNeeded?'Enter your verification code':phoneApproval?'Approve the payment on your phone':connecting?'Connecting to your payment provider…':'Confirming your payment…',otpNeeded?'የማረጋገጫ ኮዱን ያስገቡ':phoneApproval?'ክፍያውን በስልክዎ ይፍቀዱ':connecting?'ከክፍያ አቅራቢዎ ጋር በመገናኘት ላይ…':'ክፍያዎን በማረጋገጥ ላይ…')}</h3>
     <p>{text(otpNeeded?'Use the one-time code sent by your payment provider. Never enter your wallet PIN here.':phoneApproval?'Complete the payment prompt on your phone. This sheet updates automatically.':connecting?'The payment request is not confirmed yet. We are checking the original request.':order?.providerStatus==='SUCCESS'?'Your payment was received. We are updating Lowwin.':'We are checking the latest response from your payment provider. This sheet updates automatically.',otpNeeded?'ከክፍያ አቅራቢዎ የተላከውን ኮድ ብቻ ያስገቡ። የዋሌት ፒን እዚህ አያስገቡ።':phoneApproval?'በስልክዎ የመጣውን የክፍያ ጥያቄ ያረጋግጡ። ይህ ገጽ በራሱ ይዘምናል።':connecting?'የክፍያ ጥያቄው ገና አልተረጋገጠም። የመጀመሪያውን ጥያቄ በማረጋገጥ ላይ ነን።':order?.providerStatus==='SUCCESS'?'ክፍያዎ ደርሷል። Lowwinን በማዘመን ላይ ነን።':'ከክፍያ አቅራቢዎ የሚመጣውን ምላሽ በማረጋገጥ ላይ ነን። ይህ ገጽ በራሱ ይዘምናል።')}</p>
     <span className={ui.approvalDetails}>{order?.payerPhoneMasked&&<>{order.payerPhoneMasked} · </>}{total}</span>

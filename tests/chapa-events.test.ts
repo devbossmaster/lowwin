@@ -42,7 +42,7 @@ describe('durable Chapa event confirmation',()=>{
  it.each(['PENDING','AUTH_NEEDED'])('keeps verified %s responses queued until a final result instead of trusting the success hint',async status=>{
   const state=fixture();f.verify.mockImplementation(async()=>{Object.assign(state.checkout,{providerStatus:status,verificationState:'VERIFIED',status})});
   expect(await processChapaEvent(state.client,state.event.id)).toBe(false);
-  expect(f.verify).toHaveBeenCalledWith(state.client,state.checkout.id,undefined,undefined,expect.anything(),true);
+  expect(f.verify).toHaveBeenCalledWith(state.client,state.checkout.id,undefined,undefined,expect.anything(),'webhook');
   expect(state.checkout.creditJournalId).toBeNull();expect(state.event).toMatchObject({status:'QUEUED',attempts:1,completedAt:null,leaseUntil:null});
   expect(state.event.nextAttemptAt.getTime()).toBeGreaterThan(start.getTime());
   expect(await processChapaEvent(state.client,state.event.id)).toBe(false);expect(f.verify).toHaveBeenCalledTimes(1);

@@ -40,6 +40,9 @@ export function acceptChapaSnapshot(previous:ChapaCheckoutView|null,next:ChapaCh
  if(!previous||previous.id!==next.id)return true;
  if(chapaConfirmed(previous)&&!chapaConfirmed(next))return false;
  if(previous.providerStatus==='SUCCESS'&&next.providerStatus!=='SUCCESS'&&!chapaConfirmed(next))return false;
+ // A slower pre-cancellation read must not restart a completed phone prompt.
+ // A later server-verified success can still reconcile a late payment.
+ if(!chapaRecoverable(previous)&&['SUBMITTING','PENDING','AUTH_NEEDED'].includes(next.status)&&next.providerStatus!=='SUCCESS'&&!chapaConfirmed(next))return false;
  const before=Date.parse(previous.updatedAt??''),after=Date.parse(next.updatedAt??'');
  return !Number.isFinite(before)||!Number.isFinite(after)||after>=before;
 }

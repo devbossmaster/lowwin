@@ -1,6 +1,8 @@
 import {test,expect,type Locator,type Page} from '@playwright/test';
-import {randomUUID} from 'node:crypto';
+import {randomInt,randomUUID} from 'node:crypto';
 import {fixture,pending} from '../chapa-browser/fixtures';
+import {verifyFixtureContact} from '../contact-fixtures';
+import {signedLaunch} from '../helpers';
 import type {ChapaCheckoutView,ChapaIntent} from '../../src/lib/chapa-client';
 import type {BidBatchQuote,BidBatchReceipt,ChapaDirectIntent} from '../../src/lib/bid-batch-client';
 
@@ -227,4 +229,102 @@ test('verified provider PIN feedback stays on the same USSD attempt and clears a
   await page.screenshot({path:info.outputPath('direct-provider-pin-feedback.png'),animations:'disabled'});paid=true;
   await expect(dialog.locator('[data-payment-state="confirmed"]')).toBeVisible();await expect(dialog.locator('[data-payment-reason]')).toHaveCount(0);expect(commands).toHaveLength(1);expect(await page.evaluate(()=>Reflect.get(window,'chapaOpened')??[])).toEqual([]);
  }finally{await f.cleanup()}
+});
+
+test('a cancelled USSD attempt stops phone approval and never starts another charge automatically',async({page},info)=>{
+ const am=info.project.name==='430',f=await setup(page,am);let order:ChapaCheckoutView|null=null,charges=0,checks=0,release!:()=>void;
+ const gate=new Promise<void>(resolve=>{release=resolve});
+ try{
+  await page.route('**/api/payments/chapa/direct',route=>{charges++;order={...directOrder(route.request().postDataJSON() as ChapaDirectIntent,'USSD'),pollAfterMs:1000};return route.fulfill({json:order})});
+  await page.route('**/api/payments/chapa/checkouts/**',async route=>{checks++;await gate;return route.fulfill({json:{...order!,status:'CANCELLED',providerStatus:'CANCELLED',providerReasonCode:'PAYMENT_CANCELLED',updatedAt:new Date().toISOString()}}).catch(()=>{})});
+  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await startTopup(page,am);await dialog.locator('[data-payment-action]').click();
+  const approval=dialog.locator('[data-direct-approval="phone"]');await expect(approval).toBeVisible();await expect(approval.locator('.lucide-smartphone')).toBeVisible();await expect(approval.locator('.lucide-loader-circle')).toHaveCount(0);
+  await expect.poll(()=>checks).toBe(1);release();await expect(dialog.locator('[data-payment-state="failed"]')).toBeVisible();await expect(approval).toHaveCount(0);await expect(dialog.locator('.lucide-loader-circle')).toHaveCount(0);await expect(page.locator('[data-header-balance]')).toContainText('25.00');
+  await page.screenshot({path:info.outputPath('ussd-cancelled.png'),animations:'disabled'});await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await page.waitForTimeout(2200);expect(checks).toBe(1);expect(charges).toBe(1);await expect(dialog.locator('[data-payment-state="confirmed"]')).toHaveCount(0);
+ }finally{release();await f.cleanup()}
+});
+
+test('a delayed authorization snapshot cannot restart a server-cancelled payment prompt',async({page},info)=>{
+ const am=info.project.name==='430',f=await setup(page,am);let order:ChapaCheckoutView|null=null,charges=0,authorizations=0,checks=0,release!:()=>void;
+ const gate=new Promise<void>(resolve=>{release=resolve});
+ try{
+  await page.route('**/api/payments/chapa/direct',route=>{charges++;order=directOrder(route.request().postDataJSON() as ChapaDirectIntent,'OTP');return route.fulfill({json:order})});
+  await page.route('**/api/payments/chapa/checkouts/**',async route=>{
+   if(new URL(route.request().url()).pathname.endsWith('/authorize')){authorizations++;return route.fulfill({json:{...order!,status:'CANCELLED',providerStatus:'CANCELLED',providerReasonCode:'PAYMENT_CANCELLED'}})}
+   checks++;const earlier={...order!};await gate;await route.fulfill({json:earlier}).catch(()=>{});
+  });
+  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await startTopup(page,am);await dialog.locator('[data-payment-action]').click();const otp=dialog.locator('input[autocomplete="one-time-code"]');await expect(otp).toBeVisible();await expect.poll(()=>checks).toBe(1);
+  await otp.fill('123456');await dialog.getByRole('button',{name:am?'ኮዱን ያረጋግጡ':'Confirm OTP',exact:true}).click();await expect(dialog.locator('[data-payment-state="failed"]')).toBeVisible();release();await page.waitForTimeout(1200);
+  await expect(dialog.locator('[data-payment-state="failed"]')).toBeVisible();await expect(dialog.locator('[data-direct-approval],input[autocomplete="one-time-code"],.lucide-loader-circle')).toHaveCount(0);expect(charges).toBe(1);expect(authorizations).toBe(1);
+ }finally{release();await f.cleanup()}
+});
+
+test('a long USSD wait stays quiet while automatic checks continue and late verified credit applies',async({page},info)=>{
+ const am=info.project.name==='430',f=await setup(page,am);let order:ChapaCheckoutView|null=null,charges=0,checks=0,paid=false;
+ try{
+  await page.route('**/api/payments/chapa/direct',route=>{charges++;order={...directOrder(route.request().postDataJSON() as ChapaDirectIntent,'USSD'),createdAt:new Date(Date.now()-91000).toISOString(),pollAfterMs:1000};return route.fulfill({json:order})});
+  await page.route('**/api/payments/chapa/checkouts/**',route=>{checks++;return route.fulfill({json:paid?accepted(order!):order})});
+  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await startTopup(page,am);await dialog.locator('[data-payment-action]').click();
+  const longWait=dialog.locator('[data-payment-long-wait="true"]');await expect(longWait).toBeVisible();await expect(longWait.getByRole('status')).toContainText(am?'ይህ ትንሽ እየዘገየ ነው':'This is taking a bit longer');await expect(dialog.locator('[data-direct-approval],.lucide-loader-circle')).toHaveCount(0);
+  await page.screenshot({path:info.outputPath('ussd-long-wait.png'),animations:'disabled'});await expect.poll(()=>checks).toBeGreaterThanOrEqual(2);expect(charges).toBe(1);paid=true;
+  await expect(dialog.locator('[data-payment-state="confirmed"]')).toBeVisible();await expect(longWait).toHaveCount(0);expect(charges).toBe(1);expect(await f.db.chapaCheckout.count({where:{userId:f.user.id}})).toBe(0);
+ }finally{await f.cleanup()}
+});
+
+test('unavailable USSD verification preserves the attempt without an active phone approval spinner',async({page},info)=>{
+ const am=info.project.name==='430',f=await setup(page,am);let order:ChapaCheckoutView|null=null,charges=0,checks=0,paid=false;
+ try{
+  await page.route('**/api/payments/chapa/direct',route=>{charges++;order={...directOrder(route.request().postDataJSON() as ChapaDirectIntent,'USSD'),verificationState:'UNAVAILABLE',pollAfterMs:1000};return route.fulfill({json:order})});
+  await page.route('**/api/payments/chapa/checkouts/**',route=>{checks++;return route.fulfill({json:paid?accepted(order!):order})});
+  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await startTopup(page,am);await dialog.locator('[data-payment-action]').click();await expect(dialog.locator('[data-payment-state="unavailable"]')).toBeVisible();await expect(dialog.locator('[data-direct-approval],.lucide-loader-circle')).toHaveCount(0);expect(charges).toBe(1);
+  await page.screenshot({path:info.outputPath('ussd-verification-unavailable.png'),animations:'disabled'});await expect.poll(()=>checks).toBeGreaterThanOrEqual(2);paid=true;await expect(dialog.locator('[data-payment-state="confirmed"]')).toBeVisible();expect(charges).toBe(1);
+ }finally{await f.cleanup()}
+});
+
+test('an expired foreground window stops phone approval and a later focus checks the original payment once',async({page},info)=>{
+ const am=info.project.name==='430',f=await setup(page,am);let order:ChapaCheckoutView|null=null,charges=0,checks=0,paid=false;
+ try{
+  await page.route('**/api/payments/chapa/direct',route=>{charges++;order={...directOrder(route.request().postDataJSON() as ChapaDirectIntent,'USSD'),createdAt:new Date(Date.now()-301000).toISOString(),pollAfterMs:1000};return route.fulfill({json:order})});
+  await page.route('**/api/payments/chapa/checkouts/**',route=>{checks++;return route.fulfill({json:paid?accepted(order!):order})});
+  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await startTopup(page,am);await dialog.locator('[data-payment-action]').click();await expect(dialog.locator('[data-payment-long-wait="true"]')).toBeVisible();await expect(dialog.locator('[data-direct-approval],.lucide-loader-circle')).toHaveCount(0);
+  await expect.poll(()=>checks).toBe(1);await page.waitForTimeout(2200);expect(checks).toBe(1);expect(charges).toBe(1);paid=true;await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect(dialog.locator('[data-payment-state="confirmed"]')).toBeVisible();expect(checks).toBe(2);expect(charges).toBe(1);
+ }finally{await f.cleanup()}
+});
+
+test('the bid fee and total bids remain clear of animated countdown tiles at every mobile width',async({page},info)=>{
+ const am=info.project.name==='430',f=await setup(page,am);
+ try{
+  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await openBid(page,f.title),summary=dialog.locator('[data-bid-fee-summary]');
+  for(const width of [320,360,430]){
+   await page.setViewportSize({width,height:info.project.name==='430'?932:800});await expect(summary).toBeVisible();await expect(summary.locator('[data-bid-timer] [data-countdown-tile]')).toHaveCount(4);
+   for(const count of ['31','1,234,567']){
+    // Stress localized geometry without inventing accepted financial records.
+    await summary.locator('[data-bid-count] strong').evaluate((node,value)=>{node.textContent=value},count);
+    const bounds=await summary.boundingBox(),fee=await summary.locator('[data-bid-fee]').boundingBox(),bids=await summary.locator('[data-bid-count]').boundingBox(),timer=await summary.locator('[data-bid-timer]').boundingBox();
+    expect(fee!.x+fee!.width<=bids!.x+1||fee!.y+fee!.height<=bids!.y+1).toBe(true);expect(timer!.y).toBeGreaterThanOrEqual(Math.max(fee!.y+fee!.height,bids!.y+bids!.height));
+    for(const element of [fee!,bids!,timer!]){expect(element.x).toBeGreaterThanOrEqual(bounds!.x);expect(element.x+element.width).toBeLessThanOrEqual(bounds!.x+bounds!.width)}
+    for(const tile of await summary.locator('[data-countdown-tile]').all()){const rect=await tile.boundingBox();expect(rect!.x).toBeGreaterThanOrEqual(timer!.x);expect(rect!.x+rect!.width).toBeLessThanOrEqual(timer!.x+timer!.width)}
+    await expect(summary.locator('[data-bid-fee] strong')).toContainText('10.00');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:info.outputPath('bid-fee-countdown-'+width+'-'+count.replaceAll(',','')+'.png'),animations:'disabled'});
+   }
+  }
+ }finally{await f.cleanup()}
+});
+
+test('an old direct payment response stays isolated after the signed Telegram account changes',async({page},info)=>{
+ const am=info.project.name==='430',f=await setup(page,am),secondId=randomInt(8900000000,8990000000),id=randomUUID();
+ const order={...pending({key:id,purpose:'TOP_UP',amount:'10.00'},id),chargeType:'DIRECT' as const,authType:'USSD' as const,authorizationReference:'CH-'+id,checkoutUrl:null,status:'AUTH_NEEDED',providerStatus:'AUTH_NEEDED',verificationState:'VERIFIED',merchantReference:'LW-owned-first-account'};
+ await verifyFixtureContact(f.db,secondId);const secondUser=await f.db.user.findUniqueOrThrow({where:{telegramId:String(secondId)}});let second=false,reads=0,charges=0,release!:()=>void;
+ const gate=new Promise<void>(resolve=>{release=resolve});
+ try{
+  await page.route('**/api/payments/chapa/direct',route=>{charges++;return route.abort()});
+  await page.route('**/api/payments/chapa/checkouts**',async route=>{
+   if(new URL(route.request().url()).pathname.endsWith('/checkouts'))return route.fulfill({json:{items:second?[]:[order],page:1,nextPage:null}});
+   if(route.request().method()==='POST')return route.fulfill({json:order});
+   reads++;await gate;await route.fulfill({json:order}).catch(()=>{});
+  });
+  await page.goto('/telegram?next='+encodeURIComponent(f.home));await expect(page.locator('[data-header-balance]')).toContainText('25.00');const nav=page.getByRole('navigation',{name:'Your navigation'});await nav.getByRole('link',{name:am?'ግብይቶች':'Transactions',exact:true}).click();await expect(page.locator('[data-payment-id]')).toHaveCount(1);await page.locator('[data-payment-id]').click();await expect.poll(()=>reads).toBe(1);await page.keyboard.press('Escape');
+  second=true;const launch=signedLaunch({user:JSON.stringify({id:secondId,first_name:'Second account fixture'})},process.env.TELEGRAM_BOT_TOKEN);await page.evaluate(launch=>{window.Telegram!.WebApp!.initData=launch},launch);
+  const switched=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/auth/telegram/miniapp/signin'&&response.request().method()==='POST');await nav.getByRole('link',{name:am?'መነሻ':'Home',exact:true}).click();const account=await(await switched).json();expect(account.me.user.id).toBe(secondUser.id);release();
+  await expect(page.locator('[data-header-balance]')).toBeVisible();await nav.getByRole('link',{name:am?'ግብይቶች':'Transactions',exact:true}).click();await expect(page.locator('[data-payment-id]')).toHaveCount(0);await expect(page.locator('#transactions')).not.toContainText('LW-owned-first-account');await expect(page.locator('[data-direct-approval]')).toHaveCount(0);expect(charges).toBe(0);
+ }finally{release();await f.cleanup()}
 });

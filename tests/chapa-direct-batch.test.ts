@@ -8,6 +8,7 @@ import {creditDevelopmentPoints,reconcile} from '../src/modules/wallet/ledger';
 import {quoteBidBatch,payBidBatchWallet} from '../src/modules/auctions/batch';
 import {createDirectCheckout,authorizeDirectCheckout,reconcileDirectCheckouts} from '../src/modules/payments/chapa-direct';
 import {getChapaCheckout,verifyChapaCheckout} from '../src/modules/payments/chapa';
+import {processChapaEvent} from '../src/modules/payments/chapa-events';
 import {submitBid} from '../src/modules/auctions/bids';
 import {reconcileChapaReceipts} from '../src/modules/payments/chapa-reconcile';
 import {ChapaProviderError,type ChapaDirectCreate,type ChapaTransport} from '../src/modules/payments/chapa-provider';
@@ -77,6 +78,39 @@ describe.skipIf(!database)('direct charges and atomic batches on isolated Postgr
  });
  it('does not credit operation success, verifies safe failed reasons and automatically resumes missing-webhook USSD',async()=>{
   const f=await fixture(),order=await f.start();f.setStatus('PENDING');expect(await f.verify(order.id)).toMatchObject({status:'PENDING'});expect(await balance(f.user)).toBe('0');f.setStatus('SUCCESS');await due(order.id);expect((await reconcileDirectCheckouts(db,20,f.transport)).checked).toBeGreaterThan(0);expect((await getChapaCheckout(db,f.user,order.id)).status).toBe('BID_ACCEPTED');expect(f.validate).toHaveBeenCalled();
+ });
+ it.each(['CANCELLED','FAILED_OR_CANCELLED'])('verifies a %s webhook without waiting for another USSD validation and never credits it',async status=>{
+  const f=await fixture(),order=await f.start();f.setStatus(status);
+  await db.chapaCheckout.update({where:{id:order.id},data:{nextCheckAt:new Date(Date.now()+300000)}});
+  const event=await db.chapaWebhookEvent.create({data:{mode:'test',configurationFingerprint:'a'.repeat(64),bodyHash:randomUUID().replaceAll('-','').repeat(2),merchantReference:order.merchantReference,event:status==='CANCELLED'?'payment.cancelled':'payment.failed_or_cancelled',checkoutId:order.id,nextAttemptAt:new Date(0)}});
+  expect(await processChapaEvent(db,event.id,f.transport)).toBe(true);
+  expect(f.validate).not.toHaveBeenCalled();expect(f.lookup).toHaveBeenCalledOnce();
+  expect(await getChapaCheckout(db,f.user,order.id)).toMatchObject({status:status==='CANCELLED'?'CANCELLED':'FAILED',providerStatus:status==='CANCELLED'?'CANCELLED':'FAILED',verificationState:'VERIFIED'});
+  expect((await db.chapaWebhookEvent.findUniqueOrThrow({where:{id:event.id}})).status).toBe('PROCESSED');
+  expect(await balance(f.user)).toBe('0');expect(await db.bid.count({where:{userId:f.user}})).toBe(0);expect(await db.operation.count({where:{userId:f.user,scope:'CHAPA_RECEIPT'}})).toBe(0);
+ });
+ it.each(['PENDING','AUTH_NEEDED'])('keeps an active direct %s prompt on the initial fifteen-second cadence while retaining USSD validation',async status=>{
+  const f=await fixture(),order=await f.start();f.setStatus(status);
+  await db.chapaCheckout.update({where:{id:order.id},data:{attempts:20}});
+  const before=Date.now();expect(await f.verify(order.id)).toMatchObject({status,verificationState:'VERIFIED'});
+  const stored=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});
+  expect(stored.nextCheckAt.getTime()).toBeGreaterThanOrEqual(before+15000);expect(stored.nextCheckAt.getTime()).toBeLessThanOrEqual(Date.now()+15000);
+  expect(f.validate).toHaveBeenCalledOnce();expect(f.lookup).toHaveBeenCalledOnce();expect(await balance(f.user)).toBe('0');
+ });
+ it('retains growing recovery backoff after the direct authorization expires without claiming a failed payment',async()=>{
+  const f=await fixture(),order=await f.start();f.setStatus('PENDING');
+  await db.chapaCheckout.update({where:{id:order.id},data:{attempts:20,expiresAt:new Date(0)}});
+  const before=Date.now();expect(await f.verify(order.id)).toMatchObject({status:'PENDING',verificationState:'VERIFIED'});
+  const stored=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});
+  expect(stored.nextCheckAt.getTime()).toBeGreaterThanOrEqual(before+75000);expect(stored.nextCheckAt.getTime()).toBeLessThanOrEqual(Date.now()+75000);
+  expect(f.validate).toHaveBeenCalledOnce();expect(await balance(f.user)).toBe('0');
+ });
+ it.each([[409,'INVALID_STATE',60000],[429,'RATE_LIMITED',60000],[500,'PROCESSING_FAILED',30000]] as const)('preserves HTTP%s %s recovery delay for an active direct prompt',async(http,code,delay)=>{
+  const f=await fixture(),order=await f.start();f.lookup.mockRejectedValueOnce(new ChapaProviderError(http,code));
+  const before=Date.now();expect(await f.verify(order.id)).toMatchObject({status:'AUTH_NEEDED',providerStatus:null,verificationState:'UNAVAILABLE'});
+  const stored=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});
+  expect(stored.nextCheckAt.getTime()).toBeGreaterThanOrEqual(before+delay);expect(stored.nextCheckAt.getTime()).toBeLessThanOrEqual(Date.now()+delay);
+  expect(await balance(f.user)).toBe('0');expect(await db.bid.count({where:{userId:f.user}})).toBe(0);
  });
  it.each(['FAILED','CANCELLED','INCOMPLETE','BLOCKED'])('records an authenticated %s outcome without accepting bids and can reconcile a later success once',async status=>{const f=await fixture(),order=await f.start();f.setStatus(status);f.alter(data=>({...data,reason:status==='FAILED'?'INSUFFICIENT_BALANCE':status==='CANCELLED'?'PAYMENT_CANCELLED':undefined}));const failed=await f.verify(order.id);expect(failed.status).toBe(status);expect(await balance(f.user)).toBe('0');expect(await db.bid.count({where:{userId:f.user}})).toBe(0);if(status==='FAILED')expect(failed.providerReasonCode).toBe('INSUFFICIENT_FUNDS');f.setStatus('SUCCESS');expect(await f.verify(order.id)).toMatchObject({status:'BID_ACCEPTED'});await f.verify(order.id);expect(await db.operation.count({where:{userId:f.user,scope:'CHAPA_RECEIPT'}})).toBe(1);expect(await db.bid.count({where:{userId:f.user,auctionId:f.auction.id}})).toBe(3);expect(await balance(f.user)).toBe('0')});
  it('requires OTP only on an owned OTP intent and never automatically replays it',async()=>{

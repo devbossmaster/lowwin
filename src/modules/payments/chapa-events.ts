@@ -17,7 +17,7 @@ export async function processChapaEvent(client:PrismaClient,id:string,transport:
   const current=await client.chapaCheckout.findUniqueOrThrow({where:{id:event.checkoutId}});
   if(current.creditJournalId){verified=credited=true;return true}
   if(current.leaseUntil&&current.leaseUntil>new Date())return false;
-  await verifyChapaCheckout(client,current.id,undefined,undefined,transport,true);
+  await verifyChapaCheckout(client,current.id,undefined,undefined,transport,'webhook');
   const result=await client.chapaCheckout.findUniqueOrThrow({where:{id:current.id}});
   // A verified but still pending payment needs another bounded lookup. An early
   // provider read must not consume the only notification before SUCCESS exists.

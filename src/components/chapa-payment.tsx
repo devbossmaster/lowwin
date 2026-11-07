@@ -11,6 +11,8 @@ import {chapaPaymentReasonMessage,chapaRequestReasonMessage} from '@/lib/chapa-p
 import {formatEtb} from '@/lib/money';
 import {prepareChapaNavigation} from '@/lib/chapa-navigation';
 import {startChapaPolling} from '@/lib/chapa-polling';
+import {chapaStatusLabel} from '@/lib/chapa-status-label';
+export {chapaStatusLabel} from '@/lib/chapa-status-label';
 import type {ChapaDirectIntent} from '@/lib/bid-batch-client';
 import styles from './bid-payment-sheet.module.css';
 
@@ -26,8 +28,8 @@ export function useChapaPayment(scope:string,initialId?:string){
  const receive=useCallback((order:ChapaCheckoutView)=>{
   if(scope==='topup'&&order.purpose!=='TOP_UP'||scope.startsWith('bid:')&&(order.purpose!=='BID'||order.auctionSlug!==scope.slice(4)))throw new ChapaClientError('Payment not found.',404,'NOT_FOUND');
   if(!acceptChapaSnapshot(stateRef.current.order,order))return;
-  update({order,error:'',errorCode:null,restoring:false});const scopes=confirmedChapaQueryScopes(order);
-  if(queryIdentity&&scopes&&invalidated.current!==order.id){invalidated.current=order.id;invalidatePrivateQueries(queryIdentity,scopes);void refreshMe().catch(()=>{})}
+  update({order,error:'',errorCode:null,restoring:false});const confirmedScopes=confirmedChapaQueryScopes(order),scopes=confirmedScopes??(!chapaRecoverable(order)?['/api/payments/chapa/checkouts','/api/my-bids']:null),revision=`${order.id}:${confirmedScopes?'confirmed':order.status}`;
+  if(queryIdentity&&scopes&&invalidated.current!==revision){invalidated.current=revision;invalidatePrivateQueries(queryIdentity,scopes);if(confirmedScopes)void refreshMe().catch(()=>{})}
  },[scope,update,queryIdentity,refreshMe]);
  const run=useCallback(async(url:string,options:RequestInit={})=>{
   const version=epoch.current,controller=new AbortController();controllers.current.add(controller);
@@ -86,17 +88,8 @@ export function useChapaPayment(scope:string,initialId?:string){
  const startAgain=()=>{if(!canStartAgain||locked.current)return;epoch.current++;controllers.current.forEach(c=>c.abort());controllers.current.clear();invalidated.current=null;const next={...empty(),active:false,restoring:false};stateRef.current=next;setSnapshot(next)};
  return {...state,opening:state.handoff==='opening',started:state.active,create,createDirect,authorize,check,canStartAgain,startAgain};
 }
-export function chapaStatusLabel(order:ChapaCheckoutView,am=false){
- const labels:Record<string,[string,string]>={CREDITED:['Wallet credited','ዋሌት ገብቷል'],BID_ACCEPTED:['Bid accepted','ጨረታው ተቀብሏል'],PENDING:['Pending','በመጠባበቅ ላይ'],SUBMITTING:['Initiating checkout','ክፍያ በመጀመር ላይ'],FAILED:['Payment failed','ክፍያው አልተሳካም'],CANCELLED:['Cancelled','ተሰርዟል'],INCOMPLETE:['Incomplete','አልተጠናቀቀም'],EXPIRED:['Not completed','አልተጠናቀቀም'],AUTH_NEEDED:['Authorization required','ፈቃድ ያስፈልጋል'],BLOCKED:['Payment blocked','ክፍያው ታግዷል']};
- if(order.fundsPreserved)return am?'ክፍያው ደርሷል — ጨረታው አልተቀበለም':'Payment received — bid not accepted';
- if(chapaConfirmed(order))return (labels[order.status]??labels.PENDING)[am?1:0];
- if(order.reason==='INITIALIZATION_REJECTED')return am?'ክፍያው ሊጀመር አልቻለም':'Checkout could not start';
- if(order.verificationState==='MISMATCH'||order.status==='NEEDS_REVIEW')return am?'ማረጋገጥ ያስፈልጋል':'Needs verification';
- if(order.verificationState==='UNAVAILABLE')return am?'ማረጋገጥ ያስፈልጋል':'Needs verification';
- return (labels[order.status]??labels.PENDING)[am?1:0];
-}
-export function ChapaPaymentStatus({payment,onNavigate,onStartAgain,readOnly=false}:{payment:ReturnType<typeof useChapaPayment>;onNavigate?:()=>void;onStartAgain?:()=>void;readOnly?:boolean}){
- const {language}=useMiniLocale(),am=language==='am',text=(en:string,translated:string)=>am?translated:en,order=payment.order;
+/** One-shot display deadlines also apply to the native phone approval view. */
+export function useChapaPaymentClock(order:ChapaCheckoutView|null){
  const [now,setNow]=useState(()=>Date.now()),deadline=order?chapaPollingDeadline(order):null;
  const waitingSince=order?Date.parse(order.createdAt)+CHAPA_LONG_WAIT_MS:NaN;
  useEffect(()=>{
@@ -105,6 +98,11 @@ export function ChapaPaymentStatus({payment,onNavigate,onStartAgain,readOnly=fal
   document.addEventListener('visibilitychange',refresh);window.addEventListener('focus',refresh);
   return()=>{timers.forEach(clearTimeout);document.removeEventListener('visibilitychange',refresh);window.removeEventListener('focus',refresh)};
  },[order?.id,deadline,waitingSince]);
+ return now;
+}
+export function ChapaPaymentStatus({payment,onNavigate,onStartAgain,readOnly=false}:{payment:ReturnType<typeof useChapaPayment>;onNavigate?:()=>void;onStartAgain?:()=>void;readOnly?:boolean}){
+ const {language}=useMiniLocale(),am=language==='am',text=(en:string,translated:string)=>am?translated:en,order=payment.order;
+ const now=useChapaPaymentClock(order);
  const phase=chapaPaymentPhase({...payment,now}),finished=phase==='confirmed'||phase==='preserved',checkingPaused=!!order&&chapaPollingPaused(order,now);
  const providerReason=order?chapaPaymentReasonMessage(order,am):null;
  const initializationCopy={
@@ -116,7 +114,7 @@ export function ChapaPaymentStatus({payment,onNavigate,onStartAgain,readOnly=fal
  } as const;
  const initializationRejected=phase==='review'&&!!order&&(order.reason==='INITIALIZATION_REJECTED'||chapaDirectRequestRejected(order))&&order.providerStatus!=='SUCCESS';
  const initializationMessage=order&&!finished&&!order.checkoutUrl&&order.providerStatus!=='SUCCESS'&&(phase!=='review'||initializationRejected)&&order.verificationState!=='MISMATCH'&&['SUBMITTING','PENDING','NEEDS_REVIEW'].includes(order.status)&&order.initializationIssue?initializationCopy[order.initializationIssue]?.[am?1:0]:null;
- const longWait=!providerReason&&!initializationMessage&&chapaLongWait(order,now)&&['confirming','applying','pending','unavailable'].includes(phase);
+ const longWait=!providerReason&&!initializationMessage&&chapaLongWait(order,now)&&['authorization','confirming','applying','pending','unavailable'].includes(phase);
  const spinning=!longWait&&['opening','restoring','confirming','applying'].includes(phase);
  const attention=['review','failed','unavailable','interrupted','preserved','access'].includes(phase);
  const headings:Record<typeof phase,[string,string]>={
