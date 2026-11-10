@@ -41,6 +41,18 @@ function existingLegacyEvent(patch:Partial<EventRow>={}){
 }
 afterEach(()=>{vi.unstubAllEnvs();vi.restoreAllMocks()});
 describe('Chapa HTTP authorization and durable webhook boundary',()=>{
+ it.each([
+  {status:'NEEDS_REVIEW',verificationState:'MISMATCH',providerStatus:null,reason:'EVIDENCE_MISMATCH'},
+  {status:'CANCELLED',verificationState:'VERIFIED',providerStatus:'CANCELLED',reason:'PROVIDER_CANCELLED'},
+  {status:'PENDING',verificationState:'UNVERIFIED',providerStatus:null,reason:null},
+ ])('queues a fresh notification without overwriting $status evidence',async evidence=>{
+  const tasks:(()=>Promise<void>)[]=[];f.after.mockImplementation(task=>tasks.push(task));
+  const order={id,merchantReference:merchant,mode:'test',chapaReference:hint.chapa_reference,amountCents:1000n,currency:'ETB',creditJournalId:null,nextCheckAt:new Date(Date.now()+60000),...evidence};
+  f.find.mockResolvedValue(order);f.update.mockImplementation(async({data}:any)=>{Object.assign(order,data);return {count:1}});
+  expect((await webhook(signed(hint))).status).toBe(200);
+  expect(order).toMatchObject(evidence);expect(order.nextCheckAt.getTime()).toBeLessThanOrEqual(Date.now());
+  expect(tasks).toHaveLength(1);expect(f.process).not.toHaveBeenCalled();expect(f.hashes.size).toBe(1);
+ });
  it.each(['telebirr','mpesa','cbebirr','awashbirr'])('durably accepts and deduplicates a %s combined failure hint without changing financial state',async payment_method=>{
   const tasks:(()=>Promise<void>)[]=[];f.after.mockImplementation(task=>tasks.push(task));
   const order={id,merchantReference:merchant,mode:'test',chapaReference:hint.chapa_reference,amountCents:10000n,currency:'ETB',status:'PENDING',creditJournalId:null};
@@ -51,7 +63,7 @@ describe('Chapa HTTP authorization and durable webhook boundary',()=>{
   }
   expect(f.hashes.size).toBe(1);expect(tasks).toHaveLength(1);expect(f.process).not.toHaveBeenCalled();
   expect(f.event.mock.calls[0][0].data[0]).toMatchObject({checkoutId:id,event:'payment.failed_or_cancelled',status:'QUEUED'});
-  expect(f.update).toHaveBeenCalledOnce();expect(f.update).toHaveBeenCalledWith({where:{id,creditJournalId:null},data:{nextCheckAt:expect.any(Date),reason:'PROVIDER_EVENT_RECEIVED'}});
+  expect(f.update).toHaveBeenCalledOnce();expect(f.update).toHaveBeenCalledWith({where:{id,creditJournalId:null},data:{nextCheckAt:expect.any(Date)}});
   expect(order).toMatchObject({status:'PENDING',creditJournalId:null});
   for(const secretValue of ['private bank detail','251911111111',secret])expect(JSON.stringify(f.event.mock.calls)).not.toContain(secretValue);
   expect(f.verify).not.toHaveBeenCalled();expect(f.create).not.toHaveBeenCalled();expect(f.submit).not.toHaveBeenCalled();expect(globalThis.fetch).not.toHaveBeenCalled();
@@ -254,7 +266,7 @@ describe('Chapa HTTP authorization and durable webhook boundary',()=>{
   for(const meta of ['',[],123,false])expect((await webhook(signed({...hint,meta}))).status).toBe(400);
   expect(f.transaction).toHaveBeenCalledTimes(1);expect(f.verify).not.toHaveBeenCalled();expect(f.create).not.toHaveBeenCalled();expect(globalThis.fetch).not.toHaveBeenCalled();
  });
- it('verifies exact raw bytes including BOM, deduplicates delivery, and only queues an authoritative lookup',async()=>{const bytes=Buffer.concat([Buffer.from([0xef,0xbb,0xbf]),Buffer.from(JSON.stringify(hint))]);for(let i=0;i<2;i++)expect((await webhook(signed(hint,{bytes}))).status).toBe(200);expect(f.update).toHaveBeenCalledTimes(1);expect(f.update).toHaveBeenCalledWith({where:{id,creditJournalId:null},data:{nextCheckAt:expect.any(Date),reason:'PROVIDER_EVENT_RECEIVED'}});expect(f.verify).not.toHaveBeenCalled();expect(f.create).not.toHaveBeenCalled();expect(globalThis.fetch).not.toHaveBeenCalled();const data=f.event.mock.calls[0][0].data[0];expect(data).toMatchObject({checkoutId:id,status:'QUEUED'});expect(f.process).toHaveBeenCalledTimes(1)});
+ it('verifies exact raw bytes including BOM, deduplicates delivery, and only queues an authoritative lookup',async()=>{const bytes=Buffer.concat([Buffer.from([0xef,0xbb,0xbf]),Buffer.from(JSON.stringify(hint))]);for(let i=0;i<2;i++)expect((await webhook(signed(hint,{bytes}))).status).toBe(200);expect(f.update).toHaveBeenCalledTimes(1);expect(f.update).toHaveBeenCalledWith({where:{id,creditJournalId:null},data:{nextCheckAt:expect.any(Date)}});expect(f.verify).not.toHaveBeenCalled();expect(f.create).not.toHaveBeenCalled();expect(globalThis.fetch).not.toHaveBeenCalled();const data=f.event.mock.calls[0][0].data[0];expect(data).toMatchObject({checkoutId:id,status:'QUEUED'});expect(f.process).toHaveBeenCalledTimes(1)});
  it('durably acknowledges and deduplicates authenticated null-merchant hints without locating or crediting a payment',async()=>{
   const event={...hint,merchant_reference:null,amount:1029};
   for(let i=0;i<2;i++)expect((await webhook(signed(event))).status).toBe(200);
@@ -271,8 +283,8 @@ describe('Chapa HTTP authorization and durable webhook boundary',()=>{
   const order={id,mode:'test',chapaReference:'CHtestreference',amountCents:1000n,currency:'ETB',status,creditJournalId:null,reason:'PAYMENT_NOT_COMPLETED'};
   f.find.mockResolvedValue(order);f.update.mockImplementation(async({where,data})=>{if(order.creditJournalId===where.creditJournalId)Object.assign(order,data);return {count:1}});
   expect((await webhook(signed({...hint,event:'payment.incomplete',status:'incomplete',updated_at:'2026-01-01T00:00:00Z'}))).status).toBe(200);
-  expect(order).toMatchObject({status,creditJournalId:null,reason:'PROVIDER_EVENT_RECEIVED',nextCheckAt:expect.any(Date)});
-  expect(f.update).toHaveBeenCalledWith({where:{id,creditJournalId:null},data:{nextCheckAt:expect.any(Date),reason:'PROVIDER_EVENT_RECEIVED'}});
+  expect(order).toMatchObject({status,creditJournalId:null,reason:'PAYMENT_NOT_COMPLETED',nextCheckAt:expect.any(Date)});
+  expect(f.update).toHaveBeenCalledWith({where:{id,creditJournalId:null},data:{nextCheckAt:expect.any(Date)}});
   expect(f.verify).not.toHaveBeenCalled();expect(globalThis.fetch).not.toHaveBeenCalled();
  });
  it('includes webhook-queued terminal payments in bounded background verification without reclassifying them',async()=>{
@@ -287,7 +299,7 @@ describe('Chapa HTTP authorization and durable webhook boundary',()=>{
   const session='TESTlegacySession123';
   f.find.mockResolvedValue({id,mode:'test',chapaReference:session,checkoutUrl:`https://checkout.chapa.global/test/payment/hosted/${session}`,amountCents:1000n,currency:'ETB'});
   expect((await webhook(signed(hint))).status).toBe(200);
-  expect(f.update).toHaveBeenCalledWith({where:{id,creditJournalId:null},data:{nextCheckAt:expect.any(Date),reason:'PROVIDER_EVENT_RECEIVED'}});
+  expect(f.update).toHaveBeenCalledWith({where:{id,creditJournalId:null},data:{nextCheckAt:expect.any(Date)}});
   expect(f.verify).not.toHaveBeenCalled();expect(f.create).not.toHaveBeenCalled();expect(globalThis.fetch).not.toHaveBeenCalled();
  });
  it.each(['APW','APV','APQ','APU','APt'])('queues a historical LIVE %s session for server verification without applying webhook credit',async prefix=>{
@@ -295,7 +307,7 @@ describe('Chapa HTTP authorization and durable webhook boundary',()=>{
   const session=prefix+'legacySession123';
   f.find.mockResolvedValue({id,mode:'live',chapaReference:session,checkoutUrl:`https://checkout.chapa.global/payment/hosted/${session}`,amountCents:1000n,currency:'ETB',status:'NEEDS_REVIEW',reason:'EVIDENCE_MISMATCH'});
   expect((await webhook(signed({...hint,mode:'live',amount:1029,service_fee:29}))).status).toBe(200);
-  expect(f.update).toHaveBeenCalledWith({where:{id,creditJournalId:null},data:{nextCheckAt:expect.any(Date),reason:'PROVIDER_EVENT_RECEIVED'}});
+  expect(f.update).toHaveBeenCalledWith({where:{id,creditJournalId:null},data:{nextCheckAt:expect.any(Date)}});
   expect(f.verify).not.toHaveBeenCalled();expect(f.create).not.toHaveBeenCalled();expect(globalThis.fetch).not.toHaveBeenCalled();
  });
  it.each([

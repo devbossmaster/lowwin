@@ -88,3 +88,45 @@
 @keyframes wallet-spin{to{transform:rotate(360deg)}}
 @media(max-width:350px){.balance{padding:17px}.method{gap:6px;padding-left:9px}.method[data-selected=true]{padding-left:8px}.method img{width:29px}.method[data-provider=mpesa] img{width:35px}.method strong{font-size:12px}.entry{grid-template-columns:32px minmax(0,1fr) auto;gap:7px}.movement{width:32px;height:32px}.entryAmount{font-size:12px}}
 @media(prefers-reduced-motion:reduce){.spin{animation:none}}
+
+/* Top-up checkout only; wallet overview keeps its existing layout. */
+.topUpTitle{justify-content:flex-start;gap:9px;padding-inline-start:0;text-align:start}
+.topUpTitle svg{position:static;flex:none}
+.topUp .walletStrip{gap:10px;margin-bottom:16px;padding:10px 12px;background:#f5f3ec;border-radius:12px}
+.topUp .walletStrip>span{gap:6px;font-size:12px;line-height:1.5}
+.topUp .walletStrip>span svg{flex:none;color:#8b6a1c}
+.topUp .walletStrip strong{font-size:14px;line-height:1.45;letter-spacing:-.01em}
+.topUp .amountLabel{margin-bottom:7px;font-size:13px;font-weight:650}
+.topUp .amountField{min-height:52px;padding-inline:14px;border-color:#d9d5ca;border-radius:14px}
+.topUp .amountField input{min-height:50px;font-size:25px;font-weight:750;letter-spacing:-.025em}
+.topUp .amountField:has(input[aria-invalid=true]),.topUp .phoneField:has(input[aria-invalid=true]){border-color:#a03928}
+.topUp .presets{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin:10px 0 19px}
+.topUp .presets button{min-width:0;min-height:44px;padding:8px;border-radius:11px;background:#fff;border-color:#e3dfd3;font-size:13px;font-weight:650}
+.topUp .presets button:hover{background:#f6f3e8;border-color:#b7a36a}
+.topUp .presets button[aria-pressed=true]{border-color:#aa8520;background:#f8f1d7;color:#715719}
+.topUp .methods legend{display:flex;align-items:center;gap:6px;margin-bottom:9px;color:#5f5c51;font-size:12px;font-weight:650}
+.topUp .methods legend svg{flex:none;color:#8b6a1c}
+.topUp .methodGrid{grid-template-columns:repeat(auto-fit,minmax(80px,1fr));gap:8px}
+.topUp .method{flex-direction:column;justify-content:center;gap:7px;min-height:84px;padding:13px 6px 10px;border:1px solid #e0dcd0;border-radius:13px;background:#fff;text-align:center}
+.topUp .method[data-selected=true]{padding:13px 6px 10px;border-color:#a27c16;background:#fbf7e8;box-shadow:inset 0 0 0 1px #a27c16}
+.topUp .method[data-unavailable=true]{background:#f4f2eb;color:#766f60}
+.topUp .method img{width:40px;height:29px}
+.topUp .method[data-provider=mpesa] img{width:51px}
+.topUp .method[data-provider=cbebirr] img{width:43px}
+.topUp .method strong{font-size:12px;line-height:1.35;font-weight:650}
+.topUp .methodCheck{top:5px;right:5px;box-sizing:border-box;width:17px;height:17px;padding:2px;border-radius:50%;background:#a27c16;color:#fff}
+.topUp .phone{margin-top:17px}
+.topUp .phone>label{margin-bottom:7px;font-size:13px;font-weight:650}
+.topUp .phoneField{min-height:48px;border-color:#d9d5ca;border-radius:13px}
+.topUp .phoneField input{min-height:46px;font-weight:550}
+.phoneHint{margin:6px 1px 0;color:#68665e;font-size:11px;line-height:1.6}
+.topUp .loading{justify-content:flex-start;gap:7px;min-height:46px;margin:5px 0;font-size:12px}
+.topUp .loading svg{flex:none;color:#8b6a1c}
+.topUp .error{margin-top:8px;font-size:12px;line-height:1.65}
+.topUp .retry{min-height:40px;padding:4px;font-size:12px}
+.topUpNote{display:flex;align-items:flex-start;gap:7px;margin:16px 0 0;padding-top:12px;border-top:1px solid #ece8dc;color:#68665e;font-size:11px;line-height:1.6}
+.topUpNote svg{flex:none;margin-top:2px;color:#8b6a1c}
+.topUpPay{min-height:48px;border-radius:14px;background:#181815;color:#fff;font-size:14px;font-weight:700;letter-spacing:-.01em}
+.topUpPay:hover:not(:disabled){background:#34332b}
+.topUpPay:disabled{border-color:#e1ddd2;background:#eae7de;color:#777162}
+@media(max-width:350px){.topUp .walletStrip{padding:9px 10px}.topUp .walletStrip>span{font-size:11px}.topUp .walletStrip strong{font-size:13px}.topUp .methodGrid{gap:6px}.topUp .method{padding-inline:4px}.topUp .method[data-selected=true]{padding-inline:4px}.topUp .method strong{font-size:11px}.topUp .phone{margin-top:14px}}

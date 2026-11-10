@@ -15,6 +15,7 @@ import styles from './bid-payment-progress.module.css';
 export type BidPaymentSummary={auctionTitle:string;auctionTitleAm?:string|null;numbers:string[];total:string|null;provider:string|null;phone:string|null};
 export type PaymentProgressProps={purpose?:'BID'|'TOP_UP';footerPortal?:boolean;payment:ReturnType<typeof useChapaPayment>;summary:BidPaymentSummary;preparing?:boolean;walletRetry?:boolean;receipt?:BidBatchReceipt|null;error?:string;onRetry:()=>void;onClose?:()=>void;onRetryWallet?:()=>void;onRetryOriginal?:()=>void};
 const providerNames:Record<string,string>={telebirr:'telebirr',cbebirr:'CBE Birr',mpesa:'M-Pesa',ebirr:'eBirr',wallet:'Lowwin Wallet'};
+const providerImages:Record<string,string>={telebirr:'/icons/payments/telebirr.jpg',cbebirr:'/icons/payments/cbebirr.svg',mpesa:'/icons/payments/mpesa.png'};
 
 /** Shared bid/deposit presentation. Every action reuses the original payment
  * hook; this surface never creates an operation key or a polling loop. */
@@ -41,7 +42,10 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
  const canRetry=terminal&&bidPaymentCanRetry(order)&&payment.canStartAgain&&!busy;
  const applicationDelayed=phase==='confirming'&&bidPaymentApplicationDelayed(order,payment.paused,now);
  const canRetryOriginal=phase==='uncertain'&&!busy&&!!payment.directAttempt&&bidPaymentCanRetryOriginal(order);
- const canCheck=(phase==='uncertain'||applicationDelayed||payment.paused&&phase==='authorization'&&!otpNeeded)&&(!!order||payment.started&&!payment.directAttempt&&!walletRetry)&&!finished&&!terminal;
+ // A slow display clock is not a reason to ask the customer to verify. The
+ // existing poller owns active checks; expose recovery only when it is paused
+ // or the original request has an uncertain outcome.
+ const canCheck=(phase==='uncertain'||payment.paused&&(phase==='confirming'||phase==='authorization'&&!otpNeeded))&&(!!order||payment.started&&!payment.directAttempt&&!walletRetry)&&!finished&&!terminal;
  const normalWaiting=!finished&&!terminal&&!otpNeeded&&!canCheck&&!canRetryOriginal&&!(phase==='uncertain'&&walletRetry&&onRetryWallet)&&!!onClose;
  const headings:Record<BidPaymentProgressPhase,[string,string]>={
   preparing:['Processing your payment','ክፍያዎን በማስኬድ ላይ'],
@@ -84,9 +88,9 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
    {(safeReason||requestReason||invalidOtp)&&!finished&&<p className={styles.reason} role="alert" data-payment-reason>{invalidOtp?text('That code was not accepted. Check the code and try again.','ኮዱ አልተቀበለም። ኮዱን ያረጋግጡና እንደገና ይሞክሩ።'):safeReason??requestReason}</p>}
    {connectionDelayed&&<p className={styles.connection} role="status" data-payment-connection>{text('Checking is delayed. We’ll resume on this same payment.','ማረጋገጡ ዘግይቷል። ይህንኑ ክፍያ ማረጋገጥ እንቀጥላለን።')}</p>}
    <dl className={styles.summary}>
-    {deposit?<div><dt>{text('For','ለ')}</dt><dd>{text('Wallet top-up','የዋሌት ገቢ')}</dd></div>:<><div><dt>{text('Auction','ጨረታ')}</dt><dd className={styles.auction}>{title}</dd></div><div><dt>{text(numbers.length===1?'Bid amount':'Bids','የጨረታ መጠን')}</dt><dd>{numbers.length===1?numbers[0]:numbers.length?text(`${numbers.length} selected`,`${numbers.length} ተመርጠዋል`):'—'}</dd></div></>}
+    {deposit?<div><dt>{text('For','ለ')}</dt><dd>{text('Wallet top-up','የዋሌት ገቢ')}</dd></div>:<><div><dt>{text('Auction','ጨረታ')}</dt><dd className={styles.auction}>{title}</dd></div><div><dt>{text(numbers.length===1?'Bid amount':'Bids',numbers.length===1?'የጨረታ መጠን':'ጨረታዎች')}</dt><dd>{numbers.length===1?numbers[0]:numbers.length?text(`${numbers.length} selected`,`${numbers.length} ተመርጠዋል`):'—'}</dd></div></>}
     <div className={styles.total}><dt>{text(finished?'Paid':'Total payable',finished?'የተከፈለ':'ጠቅላላ ክፍያ')}</dt><dd>{total===null?'—':formatEtb(total)}</dd></div>
-    <div><dt>{text('Payment','ክፍያ')}</dt><dd>{providerName}{phone&&<span className={styles.phone}>{phone}</span>}</dd></div>
+    <div><dt>{text('Payment','ክፍያ')}</dt><dd><span className={styles.provider}>{provider&&providerImages[provider]&&<img src={providerImages[provider]} width={24} height={22} alt=""/>}{providerName}</span>{phone&&<span className={styles.phone}>{phone}</span>}</dd></div>
    </dl>
    {otpNeeded&&<form className={styles.otp} id={`${id}-otp-form`} onSubmit={event=>{event.preventDefault();if(busy||!/^\d{4,10}$/.test(otp))return;const code=otp;setOtp('');void payment.authorize(code)}}>
     <label htmlFor={`${id}-otp`}>{text('One-time code','የአንድ ጊዜ ኮድ')}</label>

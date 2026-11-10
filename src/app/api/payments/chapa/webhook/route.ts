@@ -57,7 +57,7 @@ export async function POST(request:Request){
    if(!valid)return null;
    // A delivery can be older than our last verified state. Queue a fresh
    // authoritative lookup without replacing that state with a webhook hint.
-   await tx.chapaCheckout.updateMany({where:{id:order!.id,creditJournalId:null},data:{nextCheckAt:new Date(),reason:'PROVIDER_EVENT_RECEIVED'}});
+   await tx.chapaCheckout.updateMany({where:{id:order!.id,creditJournalId:null},data:{nextCheckAt:new Date()}});
    return id;
   });
   // Acknowledge the committed delivery before provider HTTP. Next keeps the

@@ -16,6 +16,13 @@ function render(purpose:'BID'|'TOP_UP',payment=base,am=false){return renderToSta
 beforeEach(()=>{clock.now=started});
 describe('shared bid and deposit status surface',()=>{
  for(const purpose of ['BID','TOP_UP'] as const){
+  it(`${purpose} keeps active authorization and fulfillment automatic after the display deadline`,()=>{
+   clock.now=started+95000;
+   for(const current of [order,{...order,providerStatus:'SUCCESS',verificationState:'VERIFIED',status:'PENDING'} as ChapaCheckoutView]){
+    const html=render(purpose,{...base,order:current,error:'Temporary verification error',errorCode:'UNAVAILABLE'});
+    expect(html).toContain('Total payable');expect(html).not.toContain('Check payment');expect(html).not.toContain('Try again');expect(html).not.toContain('Retry original');expect(html).not.toContain('Confirm code');
+   }
+  });
   it(`${purpose} keeps accepted authorization primary through transient verification errors, pauses and the old display deadline`,()=>{
    clock.now=started+95000;const html=render(purpose,{...base,paused:true,error:'Temporary verification error',errorCode:'UNAVAILABLE'});
    expect(html).toContain('Waiting for authorization…');expect(html).toContain('Approve the payment request on your phone.');expect(html).toContain('data-payment-progress="authorization"');expect(html).toContain('data-payment-connection');expect(html).toContain('Total payable');expect(html).toContain('Check payment');expect(html).not.toContain('Payment not confirmed yet');expect(html).not.toContain('Payment not completed');expect(html).not.toContain('Try again');expect(html).not.toContain('<ol');expect(html).not.toContain('Confirm code');expect(html).not.toContain('0912345678');
