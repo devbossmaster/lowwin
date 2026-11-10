@@ -4,6 +4,7 @@ import {runtimeDatabaseUrl} from '../src/lib/database-config';
 import {chapaConfigurationFingerprint,chapaTransport,ChapaProviderError,isChapaHostedSessionReference,parseChapaEvidence} from '../src/modules/payments/chapa-provider';
 import {matchesChapaMetadata} from '../src/modules/payments/chapa-metadata';
 import {classifyChapaApiError} from '../src/lib/chapa-api-error';
+import {chapaAmountDiagnostic} from '../src/modules/payments/chapa-amount-diagnostic';
 
 /** Read-only: inspects one checkout and optionally GETs Chapa verification.
  * Never creates a checkout, processes a webhook, or applies a ledger credit. */
@@ -18,10 +19,11 @@ async function main(){
   const events=await db.chapaWebhookEvent.findMany({where:{checkoutId:order.id},select:{status:true,attempts:true,nextAttemptAt:true,completedAt:true},orderBy:{receivedAt:'desc'},take:5});
   const diagnosticCodes=new Set(['INVALID_FORMAT','INVALID_VALUE','MISSING_REQUIRED_FIELD','INVALID_STATE','NOT_FOUND','PROCESSING_FAILED','UNAUTHORIZED','FORBIDDEN','RATE_LIMITED','HTTP_ERROR']);
   const initialization=order.initializationErrorCode||order.initializationHttpStatus?{http:order.initializationHttpStatus,code:diagnosticCodes.has(order.initializationErrorCode??'')?order.initializationErrorCode:'HTTP_ERROR',category:classifyChapaApiError(order.initializationHttpStatus,order.initializationErrorCode)}:null;
-  const report:Record<string,unknown>={found:true,checkoutId:order.id,mode:order.mode,status:order.status,reason:order.reason,providerStatus:order.providerStatus,verificationState:order.verificationState,creditApplied:!!order.creditJournalId,credentialMatches:order.credentialFingerprint===chapaConfigurationFingerprint(),initialization,nextCheckAt:order.nextCheckAt,leaseUntil:order.leaseUntil,events};
+  const report:Record<string,unknown>={found:true,checkoutId:order.id,mode:order.mode,status:order.status,reason:order.reason,providerStatus:order.providerStatus,verificationState:order.verificationState,creditApplied:!!order.creditJournalId,credentialMatches:order.credentialFingerprint===chapaConfigurationFingerprint(),initialization,amounts:chapaAmountDiagnostic(order),nextCheckAt:order.nextCheckAt,leaseUntil:order.leaseUntil,events};
   if(rest.includes('--provider')){
    try{
     const raw=await chapaTransport.lookup(order.merchantReference),proof=parseChapaEvidence(raw);
+    report.amounts=chapaAmountDiagnostic(order,proof);
     report.provider={evidenceValid:!!proof,...(proof?{status:proof.status,matches:{merchant:proof.merchantReference===order.merchantReference,amount:proof.amountCents===String(order.amountCents),currency:proof.currency===order.currency,mode:!proof.mode||proof.mode===order.mode,reference:!proof.chapaReference||!order.chapaReference||proof.chapaReference===order.chapaReference||isChapaHostedSessionReference(order.checkoutUrl,order.chapaReference,order.mode as 'test'|'live'),metadata:matchesChapaMetadata(order.initialization,proof.meta,order.id)}}:{})};
    }catch(error){report.provider=error instanceof ChapaProviderError?{http:error.httpStatus,code:error.providerCode}:{unavailable:true}}
   }

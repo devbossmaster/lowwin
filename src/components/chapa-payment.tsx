@@ -40,7 +40,7 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
   if(queryIdentity&&stateRef.current.directAttempt)retainPaymentRetryDraft(getMiniQueryClient(),queryIdentity,order.id,stateRef.current.directAttempt);
   if(retainOriginal&&queryIdentity){
    const intent=stateRef.current.directAttempt;
-   if(chapaConfirmed(order)||bidPaymentCanRetry(order))clearChapaOriginalAttempt(getMiniQueryClient(),queryIdentity,scope,intent?{intentKey:intent.key}:{orderId:order.id});
+   if(chapaConfirmed(order))clearChapaOriginalAttempt(getMiniQueryClient(),queryIdentity,scope,intent?{intentKey:intent.key}:{orderId:order.id});
    else if(intent)retainChapaOriginalAttempt(getMiniQueryClient(),queryIdentity,scope,intent,order.id);
   }
   update({order,recoveryId:order.id,error:'',errorCode:null,restoring:false});const confirmedScopes=confirmedChapaQueryScopes(order),scopes=confirmedScopes??(!chapaRecoverable(order)?['/api/payments/chapa/checkouts','/api/my-bids','/api/transactions']:null),revision=`${order.id}:${confirmedScopes?'confirmed':order.status}`;
@@ -115,11 +115,12 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
   const id=stateRef.current.order?.id??stateRef.current.recoveryId??initialId;if(!id||locked.current||!queryIdentity||!isPrivateQueryIdentity(queryIdentity))return;
   const version=epoch.current;locked.current=true;update({busy:true,error:'',errorCode:null});try{return await run(`/api/payments/chapa/checkouts/${id}`,{method:'POST'})}catch(cause){if(current(version))update({errorCode:cause instanceof ChapaClientError?cause.code:'UNAVAILABLE',error:language==='am'?'ማረጋገጥ አልተቻለም። የመጨረሻው ሁኔታ ተጠብቋል።':'Verification is unavailable. The last known payment status is preserved.'});return null}finally{if(current(version)){locked.current=false;update({busy:false,restoring:false})}}
  },[queryIdentity,initialId,current,update,run,language]);
- const canStartAgain=!state.busy&&!state.restoring&&state.active&&(!state.order||!chapaConfirmed(state.order)||state.order.purpose==='TOP_UP'&&state.order.status==='CREDITED');
+ // A failed read is not permission to drop an unresolved immutable command.
+ const canStartAgain=!state.busy&&!state.restoring&&state.active&&!!state.order&&(bidPaymentCanRetry(state.order)||state.order.purpose==='TOP_UP'&&state.order.status==='CREDITED'&&chapaConfirmed(state.order));
  const startAgain=()=>{if(!canStartAgain||locked.current)return;if(retainOriginal&&queryIdentity)clearChapaOriginalAttempt(getMiniQueryClient(),queryIdentity,scope,stateRef.current.directAttempt?{intentKey:stateRef.current.directAttempt.key}:{orderId:stateRef.current.order?.id??stateRef.current.recoveryId??undefined});epoch.current++;controllers.current.forEach(c=>c.abort());controllers.current.clear();invalidated.current=null;uiTiming.current=null;const next=empty(false);stateRef.current=next;setSnapshot(next)};
  return {...state,opening:state.handoff==='opening',started:state.active,create,createDirect,authorize,check,canStartAgain,startAgain,beginTiming,markPresented};
 }
-/** One-shot display deadlines also apply to the native phone approval view. */
+/** One-shot health hints never change the accepted provider authorization. */
 export function useChapaPaymentClock(order:ChapaCheckoutView|null){
  const [now,setNow]=useState(()=>Date.now()),deadline=order?chapaPollingDeadline(order):null;
  const waitingSince=order?Date.parse(order.createdAt)+CHAPA_LONG_WAIT_MS:NaN;

@@ -1,9 +1,9 @@
-import {chapaConfirmed,chapaDirectRequestRejected,chapaPollingPaused,type ChapaCheckoutView} from './chapa-client';
+import {chapaAwaitingAuthorization,chapaVerifiedTerminal,chapaConfirmed,chapaDirectRequestRejected,chapaPollingPaused,type ChapaCheckoutView} from './chapa-client';
 
 export const CHAPA_LONG_WAIT_MS=90000;
 /** A quieter presentation after waiting; never changes the payment outcome. */
 export function chapaLongWait(order:ChapaCheckoutView|null,now=Date.now()){
- if(!order||chapaConfirmed(order)||!(['PENDING','SUBMITTING'].includes(order.status)||order.status==='AUTH_NEEDED'&&order.chargeType==='DIRECT'&&order.authType==='USSD'))return false;
+ if(!order||chapaConfirmed(order)||chapaAwaitingAuthorization(order)||!['PENDING','SUBMITTING'].includes(order.status))return false;
  const created=Date.parse(order.createdAt);return Number.isFinite(created)&&now>=created+CHAPA_LONG_WAIT_MS;
 }
 
@@ -18,8 +18,9 @@ export function chapaPaymentPhase({order,opening,restoring,paused,error,errorCod
  if(!order)return 'interrupted';
  if(chapaDirectRequestRejected(order))return 'review';
  if(errorCode==='CONFIGURATION_CHANGED'||order?.verificationState==='MISMATCH'||order?.status==='NEEDS_REVIEW'||order?.status==='BID_ACCEPTED'&&!order.receipt)return 'review';
- if(order&&['FAILED','CANCELLED','INCOMPLETE','EXPIRED','BLOCKED'].includes(order.status))return 'failed';
+ if(chapaVerifiedTerminal(order))return 'failed';
  if(order.providerStatus==='SUCCESS')return 'applying';
+ if(chapaAwaitingAuthorization(order))return 'authorization';
  if(error||order?.verificationState==='UNAVAILABLE')return 'unavailable';
  if(order.status==='AUTH_NEEDED')return 'authorization';
  if(chapaPollingPaused(order,now)||paused)return 'pending';

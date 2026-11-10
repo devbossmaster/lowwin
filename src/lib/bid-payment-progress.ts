@@ -1,4 +1,4 @@
-import {chapaConfirmed,chapaDirectRequestRejected,chapaPollingPaused,chapaRecoverable,type ChapaCheckoutView} from './chapa-client';
+import {chapaAwaitingAuthorization,chapaVerifiedTerminal,chapaConfirmed,chapaDirectRequestRejected,chapaPollingPaused,type ChapaCheckoutView} from './chapa-client';
 import {CHAPA_LONG_WAIT_MS,chapaLongWait} from './chapa-status';
 import {normalizePaymentPhone} from './payment-phone';
 
@@ -10,8 +10,7 @@ type ProgressState={order:ChapaCheckoutView|null;busy:boolean;restoring:boolean;
 export function bidPaymentCanRetry(order:ChapaCheckoutView|null){
  if(!order||order.fundsPreserved||chapaConfirmed(order)||order.providerStatus==='SUCCESS'||order.verificationState==='MISMATCH')return false;
  if(order.reason==='INITIALIZATION_REJECTED'&&chapaDirectRequestRejected(order))return true;
- if(['FAILED','CANCELLED','INCOMPLETE','BLOCKED'].includes(order.status))return true;
- return order.status==='EXPIRED'&&order.providerStatus==='EXPIRED'&&order.verificationState==='VERIFIED';
+ return ['FAILED','CANCELLED','INCOMPLETE','EXPIRED','BLOCKED','FAILED_OR_CANCELLED'].includes(order.status)&&chapaVerifiedTerminal(order);
 }
 
 /** Retry only the frozen direct intent when initialization has no accepted
@@ -27,6 +26,12 @@ export function bidPaymentApplicationDelayed(order:ChapaCheckoutView|null,paused
  if(!order||order.providerStatus!=='SUCCESS'||chapaConfirmed(order))return false;
  return paused||chapaPollingPaused(order,now)||chapaLongWait(order,now)||now>=Date.parse(order.createdAt)+CHAPA_LONG_WAIT_MS;
 }
+/** Connection health is secondary to accepted provider state. It cannot
+ * authorize a fresh attempt or imply that a phone prompt was cancelled. */
+export function bidPaymentConnectionDelayed(state:ProgressState){
+ const order=state.order;
+ return !!order&&!chapaConfirmed(order)&&!chapaVerifiedTerminal(order)&&(!!state.error||order.verificationUnavailable===true||order.verificationState==='UNAVAILABLE'||state.paused||chapaPollingPaused(order,state.now)||chapaLongWait(order,state.now)||(state.now??Date.now())>=Date.parse(order.createdAt)+CHAPA_LONG_WAIT_MS);
+}
 
 /** Presentation only: a received provider payment is still confirming until
  * Lowwin returns an accepted-bid receipt. OTP errors retain the same form. */
@@ -40,13 +45,12 @@ export function bidPaymentProgressPhase(state:ProgressState):BidPaymentProgressP
  if(state.walletRetry)return 'uncertain';
  if(errorCode&&['UNAUTHORIZED','FORBIDDEN','NOT_FOUND','CONFIGURATION_CHANGED'].includes(errorCode))return 'uncertain';
  if(!order)return state.busy||state.restoring?'connecting':'uncertain';
- if(order.verificationState==='MISMATCH'||order.status==='NEEDS_REVIEW'||order.status==='BID_ACCEPTED'||order.status==='EXPIRED'||chapaDirectRequestRejected(order))return 'uncertain';
+ if(order.verificationState==='MISMATCH'||order.status==='NEEDS_REVIEW'||chapaDirectRequestRejected(order))return 'uncertain';
  if(order.providerStatus==='SUCCESS')return 'confirming';
+ if(order.status==='BID_ACCEPTED'||order.status==='EXPIRED')return 'uncertain';
  if(state.busy&&!order.authorizationReference&&['SUBMITTING','PENDING'].includes(order.status))return 'connecting';
- const otp=order.chargeType==='DIRECT'&&order.authType==='OTP'&&!!order.authorizationReference&&chapaRecoverable(order);
- if(otp&&(!error||errorCode==='INVALID_OTP'))return 'authorization';
+ if(chapaAwaitingAuthorization(order))return 'authorization';
  if(error||order.verificationState==='UNAVAILABLE'||state.paused||chapaPollingPaused(order,state.now)||chapaLongWait(order,state.now))return 'uncertain';
- if(order.authorizationReference&&order.authType==='USSD'&&chapaRecoverable(order))return 'authorization';
  if(!order.authorizationReference&&['SUBMITTING','PENDING'].includes(order.status))return 'connecting';
  return 'confirming';
 }

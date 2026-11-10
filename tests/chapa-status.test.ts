@@ -29,10 +29,10 @@ describe('payment modal states follow server evidence',()=>{
   expect(chapaPaymentPhase({...state,order:{...pending,providerStatus:'SUCCESS'}})).toBe('applying');
   expect(chapaPaymentPhase({...state,order:{...pending,status:'CREDITED'},error:'stale error',opening:true})).toBe('confirmed');
  });
- it('shows a long-wait state for native phone approval after 90 seconds without claiming cancellation or hiding OTP entry',()=>{
-  const created=Date.parse('2026-11-07T10:00:00Z'),order={...pending,chargeType:'DIRECT' as const,authType:'USSD' as const,status:'AUTH_NEEDED',providerStatus:'AUTH_NEEDED',createdAt:new Date(created).toISOString()};
+ it('keeps accepted native authorization visible beyond display deadlines without hiding OTP entry',()=>{
+  const created=Date.parse('2026-11-07T10:00:00Z'),order={...pending,chargeType:'DIRECT' as const,authType:'USSD' as const,authorizationReference:'accepted-original',status:'AUTH_NEEDED',providerStatus:'AUTH_NEEDED',verificationState:'VERIFIED',createdAt:new Date(created).toISOString()};
   expect(chapaLongWait(order,created+89999)).toBe(false);
-  expect(chapaLongWait(order,created+90000)).toBe(true);
+  expect(chapaLongWait(order,created+90000)).toBe(false);
   expect(chapaLongWait({...order,authType:'OTP'},created+90000)).toBe(false);
   expect(chapaLongWait({...order,status:'CANCELLED',providerStatus:'CANCELLED'},created+90000)).toBe(false);
   expect(chapaPaymentPhase({...state,order})).toBe('authorization');
@@ -51,7 +51,7 @@ describe('payment modal states follow server evidence',()=>{
  it('requires a bid receipt, preserves late-payment funds and honors provider failures',()=>{
   expect(chapaPaymentPhase({...state,order:{...pending,purpose:'BID',status:'BID_ACCEPTED'}})).not.toBe('confirmed');
   expect(chapaPaymentPhase({...state,order:{...pending,purpose:'BID',status:'NEEDS_REVIEW',fundsPreserved:true}})).toBe('preserved');
-  for(const status of ['FAILED','CANCELLED','BLOCKED','INCOMPLETE'])expect(chapaPaymentPhase({...state,order:{...pending,status}})).toBe('failed');
+  for(const status of ['FAILED','CANCELLED','BLOCKED','INCOMPLETE'])expect(chapaPaymentPhase({...state,order:{...pending,status,providerStatus:status,verificationState:'VERIFIED'}})).toBe('failed');
  });
  it('pauses automatic checks after five minutes without inventing a checkout expiry or failure',()=>{
   const created=Date.parse('2026-10-30T10:00:00Z'),order={...pending,createdAt:new Date(created).toISOString(),expiresAt:new Date(created+86400000).toISOString()};
@@ -67,8 +67,8 @@ describe('payment modal states follow server evidence',()=>{
   expect(chapaPaymentPhase({...expired,order:{...order,providerStatus:'SUCCESS'}})).toBe('applying');
   expect(chapaPaymentPhase({...expired,order:{...order,status:'CREDITED'}})).toBe('confirmed');
   expect(chapaPaymentPhase({...expired,order:{...order,verificationState:'MISMATCH'}})).toBe('review');
-  expect(chapaPaymentPhase({...expired,order:{...order,status:'FAILED'}})).toBe('failed');
-  for(const status of ['CANCELLED','INCOMPLETE','BLOCKED'])expect(chapaPaymentPhase({...expired,order:{...order,status}})).toBe('failed');
+  expect(chapaPaymentPhase({...expired,order:{...order,status:'FAILED',providerStatus:'FAILED',verificationState:'VERIFIED'}})).toBe('failed');
+  for(const status of ['CANCELLED','INCOMPLETE','BLOCKED'])expect(chapaPaymentPhase({...expired,order:{...order,status,providerStatus:status,verificationState:'VERIFIED'}})).toBe('failed');
  });
  it('keeps the required provider authorization visible after automatic checks pause',()=>{
   const created=Date.parse('2026-10-31T10:00:00Z'),order={...pending,status:'AUTH_NEEDED',providerStatus:'AUTH_NEEDED',createdAt:new Date(created).toISOString(),expiresAt:new Date(created+86400000).toISOString()};

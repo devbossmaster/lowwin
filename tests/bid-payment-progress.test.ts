@@ -37,17 +37,17 @@ describe('bid-only progress follows the owned payment outcome',()=>{
  });
  it('waits for committed bid evidence after provider success, and distinguishes preserved funds',()=>{
   expect(bidPaymentProgressPhase({...state,order:{...pending,providerStatus:'SUCCESS'}})).toBe('confirming');
-  expect(bidPaymentProgressPhase({...state,order:{...pending,status:'BID_ACCEPTED',providerStatus:'SUCCESS'}})).toBe('uncertain');
+  expect(bidPaymentProgressPhase({...state,order:{...pending,status:'BID_ACCEPTED',providerStatus:'SUCCESS'}})).toBe('confirming');
   expect(bidPaymentProgressPhase({...state,order:{...pending,status:'BID_ACCEPTED',receipt:{bid:{id:'accepted'}} as ChapaCheckoutView['receipt']}})).toBe('success');
   expect(bidPaymentProgressPhase({...state,order:{...pending,status:'NEEDS_REVIEW',fundsPreserved:true}})).toBe('preserved');
   expect(bidPaymentProgressPhase({...state,hasReceipt:true,error:'stale connection error'})).toBe('success');
  });
- it('keeps OTP authorization available for invalid codes and paused polling, but checks unknown authorization errors first',()=>{
+ it('keeps accepted authorization available during transport errors, display deadlines and paused polling',()=>{
   const order={...pending,status:'AUTH_NEEDED',providerStatus:'AUTH_NEEDED',authType:'OTP' as const,authorizationReference:'original-reference'};
   expect(bidPaymentProgressPhase({...state,order,paused:true,now:created+900000})).toBe('authorization');
   expect(bidPaymentProgressPhase({...state,order,error:'Invalid code',errorCode:'INVALID_OTP'})).toBe('authorization');
-  expect(bidPaymentProgressPhase({...state,order,error:'Connection interrupted',errorCode:'UNAVAILABLE'})).toBe('uncertain');
-  expect(bidPaymentProgressPhase({...state,order:{...order,authType:'USSD'},now:created+90000})).toBe('uncertain');
+  expect(bidPaymentProgressPhase({...state,order,error:'Connection interrupted',errorCode:'UNAVAILABLE'})).toBe('authorization');
+  expect(bidPaymentProgressPhase({...state,order:{...order,authType:'USSD'},now:created+90000})).toBe('authorization');
  });
  it('does not present a phone prompt for an unaccepted or interrupted initialization',()=>{
   expect(bidPaymentProgressPhase({...state,order:null,preparing:true})).toBe('preparing');

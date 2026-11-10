@@ -1,5 +1,5 @@
 'use client';
-import {useId,useRef,useState,type RefObject} from 'react';
+import {useEffect,useId,useRef,useState,type RefObject} from 'react';
 import {Check,LoaderCircle,Wallet} from 'lucide-react';
 import {AccountSheet,AccountSheetFooter} from './account-sheet';
 import {useMiniLocale} from './mini-locale';
@@ -12,17 +12,20 @@ import {normalizePaymentPhone,type DirectPaymentMethods} from '@/lib/bid-batch-c
 import {paymentPhoneProblem,paymentPhoneProblemMessage} from '@/lib/payment-phone';
 import {chapaConfirmed,type ChapaAvailability} from '@/lib/chapa-client';
 import {bidPaymentCanRetry} from '@/lib/bid-payment-progress';
+import {getMiniQueryClient} from './private-query-cache';
+import {readPaymentRetryDraft} from '@/lib/payment-retry-draft';
 import type {WalletBalance} from '@/modules/wallet/balance';
 import styles from './wallet-sheet.module.css';
 
 const providers=[{slug:'telebirr',name:'telebirr',image:'/icons/payments/telebirr.jpg'},{slug:'cbebirr',name:'CBE Birr',image:'/icons/payments/cbebirr.svg'},{slug:'mpesa',name:'M-Pesa',image:'/icons/payments/mpesa.png'}] as const;
 export function walletDisplay(value?:string){try{return value===undefined?null:`${centsToEtb(etbToCents(value))} ETB`}catch{return null}}
-type Props={onClose?:()=>void;returnFocusRef?:RefObject<HTMLElement|null>;initialChapaId?:string;retryDraft?:{amount:string;paymentMethod:string;phone:string};embedded?:boolean};
-function TopUp({onClose,returnFocusRef,initialChapaId,retryDraft,embedded=false}:Props){
+type Props={onClose?:()=>void;returnFocusRef?:RefObject<HTMLElement|null>;initialChapaId?:string;retryDraft?:{amount:string;paymentMethod:string;phone:string};embedded?:boolean;onProgressChange?:(active:boolean)=>void};
+function TopUp({onClose,returnFocusRef,initialChapaId,retryDraft,embedded=false,onProgressChange}:Props){
  const {language}=useMiniLocale(),am=language==='am',text=(en:string,translated:string)=>am?translated:en;
  const {queryIdentity,openRegistration}=useTelegram(),authenticated=!!queryIdentity;
  const payment=useChapaPayment('topup',initialChapaId,{retainOriginal:true}),original=payment.directAttempt?.purpose==='TOP_UP'?payment.directAttempt:null;
  const [amount,setAmount]=useState(()=>original?.amount??retryDraft?.amount??'100'),[method,setMethod]=useState(()=>original?.paymentMethod??retryDraft?.paymentMethod??''),[phone,setPhone]=useState(()=>normalizePaymentPhone(original?.phone??retryDraft?.phone??'')?.slice(3)??''),id=useId(),submitting=useRef(false);
+ useEffect(()=>{onProgressChange?.(payment.started);return()=>onProgressChange?.(false)},[payment.started,onProgressChange]);
  const wallet=usePrivateQuery<WalletBalance>('/api/wallet',{enabled:authenticated,freshnessMs:15000});
  const availability=usePrivateQuery<ChapaAvailability>('/api/payments/chapa',{enabled:authenticated&&!payment.started,freshnessMs:15000});
  const methods=usePrivateQuery<DirectPaymentMethods>('/api/payments/chapa/methods',{enabled:authenticated&&!payment.started,freshnessMs:60000}),settings=availability.data;
@@ -33,10 +36,20 @@ function TopUp({onClose,returnFocusRef,initialChapaId,retryDraft,embedded=false}
  const phoneProblem=paymentPhoneProblem(phone,method),normalizedPhone=phoneProblem?null:normalizePaymentPhone(phone);
  const ready=valid&&!!settings?.enabled&&!!method&&allowed(method)&&!!normalizedPhone&&!payment.busy;
  const presets=['10','100','250','500','1000','10000'].filter(value=>{try{return !!settings&&etbToCents(value)>=etbToCents(settings.minTopup)&&etbToCents(value)<=etbToCents(settings.maxTopup)}catch{return false}});
- const retry=()=>{if(!payment.canStartAgain||!payment.order||!chapaConfirmed(payment.order)&&!bidPaymentCanRetry(payment.order))return;payment.startAgain();methods.reload();availability.reload()};
+ const retry=async()=>{
+  if(!payment.canStartAgain||!bidPaymentCanRetry(payment.order)||submitting.current)return;
+  submitting.current=true;
+  try{
+   const current=await payment.check();if(!current||!bidPaymentCanRetry(current))return;
+   const saved=queryIdentity?readPaymentRetryDraft(getMiniQueryClient(),queryIdentity,current.id):null;
+   setAmount(current.amount);setMethod(current.paymentMethod??method);
+   if(saved?.phone)setPhone(normalizePaymentPhone(saved.phone)?.slice(3)??'');
+   payment.startAgain();methods.reload();availability.reload();
+  }finally{submitting.current=false}
+ };
  const pay=async()=>{if(!authenticated){openRegistration();return}if(!ready||!normalizedPhone||submitting.current)return;submitting.current=true;try{await payment.createDirect({key:crypto.randomUUID(),purpose:'TOP_UP',amount:total,paymentMethod:method,phone:normalizedPhone})}finally{submitting.current=false}};
  const action=<button className={styles.pay} type="submit" form={id} data-payment-action disabled={authenticated?!ready:!amount}>{text(authenticated?`Top up ${formatEtb(total)}`:'Log in to top up',authenticated?`${formatEtb(total)} ያስገቡ`:'ገንዘብ ለማስገባት ይግቡ')}</button>;
- const contents=payment.started?<WalletTopUpProgress payment={payment} amount={initialChapaId&&!payment.order?null:total} provider={method} phone={phone} onRetry={retry} onClose={onClose} footerPortal={!!onClose}/>:<form id={id} className={styles.topUp} data-wallet-top-up onSubmit={event=>{event.preventDefault();void pay()}}>
+ const contents=payment.started?<WalletTopUpProgress payment={payment} amount={initialChapaId&&!payment.order?null:total} provider={method} phone={phone} onRetry={()=>void retry()} onClose={onClose} footerPortal={!!onClose}/>:<form id={id} className={styles.topUp} data-wallet-top-up onSubmit={event=>{event.preventDefault();void pay()}}>
   <div className={styles.walletStrip}><span><Wallet size={16}/>{text('Available balance','ለመጠቀም ያለ ቀሪ ሂሳብ')}</span><strong data-wallet-top-up-balance>{walletDisplay(wallet.data?.available)??(authenticated?<span className={styles.placeholder} aria-label={text('Loading balance','ቀሪ ሂሳብ በመጫን ላይ')}/>:text('Log in','ይግቡ'))}</strong></div>
   <label className={styles.amountLabel} htmlFor={`${id}-amount`}>{text('Amount to top up','የሚያስገቡት መጠን')}</label><div className={styles.amountField}><input id={`${id}-amount`} inputMode="decimal" autoComplete="off" maxLength={19} value={amount} aria-invalid={!!amount&&!!settings&&!valid||undefined} onChange={event=>{if(/^\d{0,16}(?:\.\d{0,2})?$/.test(event.target.value))setAmount(event.target.value)}}/><span>ETB</span></div>
   <div className={styles.presets} aria-label={text('Suggested top-up amounts','የገንዘብ ማስገቢያ መጠኖች')}>{presets.map(preset=><button key={preset} type="button" aria-pressed={amount===preset} onClick={()=>setAmount(preset)}>{Number(preset).toLocaleString('en-ET')}</button>)}</div>
@@ -53,7 +66,7 @@ function TopUp({onClose,returnFocusRef,initialChapaId,retryDraft,embedded=false}
   {onClose?<AccountSheetFooter>{action}</AccountSheetFooter>:action}
  </form>;
  const title=<span className={styles.title}><Wallet size={19}/>{text('Top up wallet','ገንዘብ ያስገቡ')}</span>;
- return embedded?contents:onClose?<AccountSheet size="payment" title={title} onClose={onClose} returnFocusRef={returnFocusRef} footerPortal>{contents}</AccountSheet>:<section className={styles.page}><h1>{title}</h1>{contents}</section>;
+ return embedded?contents:onClose?<AccountSheet size="payment" title={payment.started?text('Payment','ክፍያ'):title} presentation={payment.started?'centered':undefined} onClose={onClose} returnFocusRef={returnFocusRef} footerPortal>{contents}</AccountSheet>:<section className={styles.page}><h1>{title}</h1>{contents}</section>;
 }
 export default function WalletTopUpSheet(props:Props&{onClose:()=>void}){const {queryIdentity}=useTelegram();return <TopUp key={`${queryIdentity??'guest'}:${props.initialChapaId??''}`} {...props}/>}
 export function WalletTopUpPage(){const {queryIdentity}=useTelegram();return <TopUp key={queryIdentity??'guest'}/>}

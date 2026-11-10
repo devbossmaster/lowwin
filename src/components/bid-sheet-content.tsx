@@ -179,8 +179,8 @@ export default function BidSheetContents({auction,onClose,onPhaseChange,initialC
   payment.startAgain();setQuote(null);quoteAttempt.current=null;setWalletRetry(false);
   setNumbers(selection);setInput('');setEditing(null);setError('');setStep('review');own.reload();if(applyCoupon)discount.reload();
  };
- useEffect(()=>{onDismissChange?.(payment.started&&bidPaymentCanRetry(payment.order)?()=>void startNewBidPayment():null);return()=>onDismissChange?.(null)},[payment.started,payment.order,payment.canStartAgain,onDismissChange]);
- if(receipt||busy||walletRetry||payment.started)return <BidPaymentProgress payment={payment} preparing={busy} walletRetry={walletRetry} receipt={receipt} error={error} summary={{auctionTitle:known.product.title,auctionTitleAm:known.product.titleAm,numbers:quote?.lines.map(line=>line.number)??selectedNumbers,total:quote?.total??(directDraft&&'approvedTotal'in directDraft?directDraft.approvedTotal:payment.started?null:total),provider:directDraft?.paymentMethod??(payment.started&&!quote?null:zero?'coupon':method),phone:directDraft?.phone??(external?phone:null)}} onRetry={()=>void startNewBidPayment()} onRetryWallet={()=>void pay()} onRetryOriginal={()=>void retryOriginalDirect()} onClose={()=>{if(bidPaymentCanRetry(payment.order))void startNewBidPayment();else onClose()}}/>;
+ useEffect(()=>{onDismissChange?.(null)},[onDismissChange]);
+ if(receipt||busy||walletRetry||payment.started)return <BidPaymentProgress payment={payment} preparing={busy} walletRetry={walletRetry} receipt={receipt} error={error} summary={{auctionTitle:known.product.title,auctionTitleAm:known.product.titleAm,numbers:quote?.lines.map(line=>line.number)??selectedNumbers,total:quote?.total??(directDraft&&'approvedTotal'in directDraft?directDraft.approvedTotal:payment.started?null:total),provider:directDraft?.paymentMethod??(payment.started&&!quote?null:zero?'coupon':method),phone:directDraft?.phone??(external?phone:null)}} onRetry={()=>void startNewBidPayment()} onRetryWallet={()=>void pay()} onRetryOriginal={()=>void retryOriginalDirect()} onClose={onClose}/>;
 
  return <>
   <AccountSheetFooter>

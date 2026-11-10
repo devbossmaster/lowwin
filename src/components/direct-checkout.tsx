@@ -11,6 +11,8 @@ import {chapaLongWait} from '@/lib/chapa-status';
 import {paymentPhoneProblem,paymentPhoneProblemMessage} from '@/lib/payment-phone';
 import {etbToCents,formatEtb} from '@/lib/money';
 import {chapaPaymentReasonMessage,chapaRequestReasonMessage} from '@/lib/chapa-payment-reason';
+import {bidPaymentCanRetry} from '@/lib/bid-payment-progress';
+import PaymentProgress from './payment-progress';
 import styles from './bid-payment-sheet.module.css';
 import ui from './batch-checkout.module.css';
 
@@ -42,6 +44,9 @@ export default function DirectCheckout({payment,purpose,amount,batch,onBack,onCl
  const phoneApproval=authorizationReady&&order.authType==='USSD'&&chapaRecoverable(order)&&order.providerStatus!=='SUCCESS'&&!chapaConfirmed(order);
  const connecting=!authorizationReady&&order?.providerStatus!=='SUCCESS';
  const waiting=order?.chargeType==='DIRECT'&&chapaRecoverable(order)&&!chapaDirectRequestRejected(order)&&!chapaConfirmed(order)&&!payment.paused&&!chapaPollingPaused(order,now)&&!chapaLongWait(order,now)&&order.verificationState!=='MISMATCH'&&order.status!=='NEEDS_REVIEW'&&(!authorizationReady||order.verificationState!=='UNAVAILABLE');
+ // Restored direct payments use the same status surface as a new bid/deposit;
+ // this read path never creates another charge or adds a second polling loop.
+ if(payment.started&&(!order||order.chargeType==='DIRECT'))return <PaymentProgress purpose={purpose} footerPortal={false} payment={payment} summary={{auctionTitle:order?.auctionTitle??'',auctionTitleAm:order?.auctionTitleAm,numbers:order?.batchNumbers??batch?.lines.map(line=>line.number)??(order?.bidNumber?[order.bidNumber]:[]),total:order?.amount??amount,provider:order?.paymentMethod??payment.directAttempt?.paymentMethod??method,phone:payment.directAttempt?.phone??phone}} onClose={onClose} onRetry={()=>{void (async()=>{if(!bidPaymentCanRetry(payment.order))return;const checked=await payment.check();if(checked&&bidPaymentCanRetry(checked)){if(onStartAgain)onStartAgain();else payment.startAgain()}})()}}/>;
  if(payment.started&&order?.chargeType!=='DIRECT'&&order)return <ChapaPaymentStatus payment={payment} onNavigate={onClose} onStartAgain={onStartAgain}/>;
  if(payment.started&&order&&!waiting)return <><ChapaPaymentStatus payment={payment} onNavigate={onClose} onStartAgain={onStartAgain}/>{order.batchNumbers&&<p className={ui.numbers}>{order.batchNumbers.join(' · ')}</p>}</>;
  const total=formatEtb(order?.amount??amount);

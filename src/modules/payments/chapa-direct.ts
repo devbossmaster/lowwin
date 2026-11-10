@@ -125,7 +125,10 @@ async function dispatchDirectCheckout(client:PrismaClient,order:ChapaCheckout,us
   markChapaDispatch();const raw=await measureChapa('initialize',()=>transport.direct!(request)),created=createdChapaDirect(raw);
   if(!created)throw new ChapaError(502,'PROVIDER_UNAVAILABLE','We have not confirmed this payment yet. Check Transactions.');
   const authorization={authorizationReference:created.reference,providerRequestId:created.requestId,authType:created.authType,providerCreatedAt:created.createdAt??null,...(created.expiresAt?{expiresAt:created.expiresAt}:{})};
-  const rows=await measureChapa('persist',()=>client.chapaCheckout.updateManyAndReturn({where:writable,data:{...authorization,status:'AUTH_NEEDED',leaseUntil:null,nextCheckAt:new Date(),initializationErrorCode:null,initializationHttpStatus:null}}));
+  // The replay has now supplied valid authorization data for this immutable
+  // request. Supersede only the old initialization transport error; this narrow
+  // predicate cannot reset verified outcomes, mismatches or credited payments.
+  const rows=await measureChapa('persist',()=>client.chapaCheckout.updateManyAndReturn({where:writable,data:{...authorization,status:'AUTH_NEEDED',reason:null,verificationState:'UNVERIFIED',leaseUntil:null,nextCheckAt:new Date(),initializationErrorCode:null,initializationHttpStatus:null}}));
   if(rows[0])return ownChapaCheckout(rows[0]);
   // A verified pending/auth-needed hint can race initialization. Preserve its
   // authoritative outcome and lease; add only the missing authorization data.

@@ -200,8 +200,12 @@ export async function verifyChapaCheckout(client:PrismaClient,id:string,userId?:
   const category=error instanceof ChapaProviderError?error.category:'temporary';
   const policy={configuration:{reason:'PROVIDER_CONFIGURATION_REQUIRED',delay:300000},reference:{reason:'PROVIDER_REFERENCE_UNAVAILABLE',delay:60000},state:{reason:'PROVIDER_STATE_UNAVAILABLE',delay:60000},request:{reason:'PROVIDER_REQUEST_REJECTED',delay:60000},temporary:{reason:'PROVIDER_CONFIRMATION_REQUIRED',delay:error instanceof ChapaProviderError&&error.httpStatus===429?60000:30000}}[category];
   // HTTP errors describe this API request, not whether the customer paid.
-  // Preserve the last outcome and reconcile later; never mark it failed here.
-  await measureChapa('database',()=>client.chapaCheckout.updateMany({where:{id,creditJournalId:null},data:{leaseUntil:null,nextCheckAt:after(policy.delay),reason:policy.reason,verificationState:'UNAVAILABLE'}}));return getChapaCheckout(client,snapshot.userId,id);
+  // Keep verified provider state/reason and genuine mismatches authoritative,
+  // including evidence that arrived while this HTTP request was in flight.
+  const schedule={leaseUntil:null,nextCheckAt:after(policy.delay)};
+  const recorded=await measureChapa('database',()=>client.chapaCheckout.updateMany({where:{id,creditJournalId:null,status:{in:pending},providerStatus:null,verificationState:{in:['UNVERIFIED','UNAVAILABLE']}},data:{...schedule,reason:policy.reason,verificationState:'UNAVAILABLE'}}));
+  if(!recorded.count)await measureChapa('database',()=>client.chapaCheckout.updateMany({where:{id,creditJournalId:null},data:schedule}));
+  return {...await getChapaCheckout(client,snapshot.userId,id),verificationUnavailable:true};
  }
  const evidence=parseChapaEvidence(raw);
  let directBinding=true;
