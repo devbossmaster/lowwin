@@ -6,9 +6,11 @@ import {processOneVerifyRequest} from '../src/modules/payments/service';
 import {notificationSettings} from '../src/modules/notifications/settings';
 import {installTelegramRateLimit} from '../src/modules/notifications/telegram-rate';
 import {runNotificationLanes} from '../src/modules/notifications/worker-lanes';
+import {notificationDatabaseSnapshot,notificationTimingSnapshot} from '../src/modules/notifications/diagnostics';
 
 const settings=notificationSettings();
-const client=(connections:number)=>{const database=new URL(process.env.DATABASE_URL!);database.searchParams.set('connection_limit',String(connections));database.searchParams.set('pool_timeout','20');return new PrismaClient({datasourceUrl:database.href})};
+let sqlStatements=0,sqlDurationMs=0;
+const client=(connections:number)=>{const database=new URL(process.env.DATABASE_URL!);database.searchParams.set('connection_limit',String(connections));database.searchParams.set('pool_timeout','20');const db=new PrismaClient({datasourceUrl:database.href,log:[{emit:'event',level:'query'}]});db.$on('query',event=>{sqlStatements++;sqlDurationMs+=event.duration});return db};
 // Separate small pools prevent slow legacy verification from consuming the
 // delivery/scheduling connection. Default total: 4+2+1 = seven connections.
 const deliveryDb=client(settings.NOTIFICATION_SEND_CONCURRENCY),jobsDb=client(2),verificationDb=client(1);
@@ -18,7 +20,17 @@ const shutdown=new AbortController();
 process.on('SIGINT',()=>shutdown.abort());process.on('SIGTERM',()=>shutdown.abort());
 const shouldContinue=()=>!shutdown.signal.aborted;
 
-console.info('notification_worker_configuration',{concurrency:settings.NOTIFICATION_SEND_CONCURRENCY,personalLanes:1,botRate:settings.TELEGRAM_SENDS_PER_SECOND,bulkRate:settings.TELEGRAM_BULK_SENDS_PER_SECOND,maximumDatabaseConnections:settings.NOTIFICATION_SEND_CONCURRENCY+3,paidBroadcasts:false});
+const sourceRevision=process.env.SOURCE_COMMIT??process.env.COOLIFY_BUILD_COMMIT??process.env.GIT_COMMIT;
+console.info('notification_worker_configuration',{revision:sourceRevision&&/^[0-9a-f]{7,40}$/i.test(sourceRevision)?sourceRevision:'unreported',processId:process.pid,concurrency:settings.NOTIFICATION_SEND_CONCURRENCY,personalLanes:1,botRate:settings.TELEGRAM_SENDS_PER_SECOND,bulkRate:settings.TELEGRAM_BULK_SENDS_PER_SECOND,privateChatIntervalMs:settings.TELEGRAM_PRIVATE_CHAT_INTERVAL_MS,groupChatIntervalMs:settings.TELEGRAM_GROUP_CHAT_INTERVAL_MS,rateMaxWaitMs:settings.TELEGRAM_RATE_MAX_WAIT_MS,maximumDatabaseConnections:settings.NOTIFICATION_SEND_CONCURRENCY+3,paidBroadcasts:false});
+let reporting=false;
+const metrics=setInterval(async()=>{
+ if(reporting||shutdown.signal.aborted)return;reporting=true;
+ const sql={statements:sqlStatements,durationMs:sqlDurationMs};sqlStatements=0;sqlDurationMs=0;
+ const timings=notificationTimingSnapshot(true);
+ try{console.info('notification_worker_window',JSON.stringify({...timings,sql,...await notificationDatabaseSnapshot(jobsDb)}))}
+ catch{console.warn('notification_worker_metrics_unavailable',JSON.stringify({...timings,sql}))}
+ finally{reporting=false}
+},60_000);metrics.unref();
 try{
  await runNotificationLanes({
   schedule:async()=>{await scheduleAlerts(jobsDb);if(shouldContinue())await jobsDb.fulfillmentCase.updateMany({where:{contactDeleteAt:{lte:new Date()},contactCipher:{not:null}},data:{contactCipher:null}});return true},
@@ -28,4 +40,4 @@ try{
   // call cannot impose a barrier on every other lane or the personal lane.
   send:priority=>shouldContinue()?dispatchBatch(deliveryDb,bot,{limit:priority?1:2,concurrency:1,priority,shouldContinue}):Promise.resolve(0),
  },settings,shutdown.signal,lane=>console.error('notification_lane_retry',{lane}));
-}finally{await Promise.all([deliveryDb.$disconnect(),jobsDb.$disconnect(),verificationDb.$disconnect()])}
+}finally{clearInterval(metrics);await Promise.all([deliveryDb.$disconnect(),jobsDb.$disconnect(),verificationDb.$disconnect()])}

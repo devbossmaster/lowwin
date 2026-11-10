@@ -1,6 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {mkdir,readFile,rename,unlink,writeFile} from 'node:fs/promises';
 import {isAbsolute,join,resolve} from 'node:path';
+import {MEDIA_RENDITION_VERSION,type MediaRendition} from '@/lib/media-renditions';
 
 function cacheDirectory(){
  const configured=process.env.LOWWIN_MEDIA_CACHE_DIR?.trim();
@@ -8,13 +9,13 @@ function cacheDirectory(){
  if(process.env.APP_ENV==='production'&&!isAbsolute(configured))throw new Error('LOWWIN_MEDIA_CACHE_DIR must be an absolute path in production.');
  return resolve(configured);
 }
-function pathFor(directory:string,id:string){return join(directory,`${id}.png`)}
-export async function readPublishedMedia(id:string){
+function pathFor(directory:string,id:string,rendition?:MediaRendition){return join(directory,rendition?`${id}.v${MEDIA_RENDITION_VERSION}.${rendition}.webp`:`${id}.png`)}
+export async function readPublishedMedia(id:string,rendition?:MediaRendition){
  const directory=cacheDirectory();if(!directory)return null;
- try{return await readFile(pathFor(directory,id))}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')console.error('Published media cache read failed.');return null}
+ try{return await readFile(pathFor(directory,id,rendition))}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')console.error('Published media cache read failed.');return null}
 }
-export async function storePublishedMedia(id:string,bytes:Uint8Array){
+export async function storePublishedMedia(id:string,bytes:Uint8Array,rendition?:MediaRendition){
  const directory=cacheDirectory();if(!directory)return;
- const destination=pathFor(directory,id),temporary=join(directory,`.${id}.${randomUUID()}.tmp`);
+ const destination=pathFor(directory,id,rendition),temporary=join(directory,`.${id}.${randomUUID()}.tmp`);
  try{await mkdir(directory,{recursive:true,mode:0o750});await writeFile(temporary,bytes,{flag:'wx',mode:0o640});await rename(temporary,destination)}catch{console.error('Published media cache write failed.')}finally{await unlink(temporary).catch(()=>{})}
 }

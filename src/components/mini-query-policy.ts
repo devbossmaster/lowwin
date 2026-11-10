@@ -5,11 +5,13 @@ export const MINI_QUERY_POLICIES={
  detail:{staleMs:15000,retainMs:600000,refreshOnResume:true},
  account:{staleMs:60000,retainMs:600000,refreshOnResume:false},
  wallet:{staleMs:5000,retainMs:60000,refreshOnResume:true},
+ transactions:{staleMs:30000,retainMs:600000,refreshOnResume:false},
  bids:{staleMs:15000,retainMs:300000,refreshOnResume:true},
  private:{staleMs:30000,retainMs:600000,refreshOnResume:false},
 } as const;
 export function miniQueryPolicy(url:string){
  const path=url.split(/[?#]/,1)[0];
+ if(path==='/api/transactions'||path==='/api/payments/chapa/checkouts')return MINI_QUERY_POLICIES.transactions;
  if(path==='/api/my-bids'&&['finished','history'].includes(new URL(url,'https://lowwin.invalid').searchParams.get('view')??''))return MINI_QUERY_POLICIES.historical;
  if(path.startsWith('/api/wallet')||path==='/api/me'||path.startsWith('/api/payments/'))return MINI_QUERY_POLICIES.wallet;
  if(path.startsWith('/api/results/'))return MINI_QUERY_POLICIES.historical;

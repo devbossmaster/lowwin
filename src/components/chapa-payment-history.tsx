@@ -10,18 +10,19 @@ import {chapaConfirmed,type ChapaCheckoutView} from '@/lib/chapa-client';
 import {formatEtb} from '@/lib/money';
 import {useMiniPage} from './mini-query-state';
 import styles from './chapa-payment-history.module.css';
+import {TransactionsPage} from './transactions-page';
 
 type Page={items:ChapaCheckoutView[];page:number;nextPage:number|null};
 export const ChapaTransactionDetails=dynamic(()=>import('./chapa-transaction-details').then(module=>module.ChapaTransactionDetails),{ssr:false});
 export function ChapaPaymentHistory({purpose,unaccepted=false,fullPage=false}:{purpose?:'TOP_UP'|'BID';unaccepted?:boolean;fullPage?:boolean}={}){
- const {queryIdentity}=useTelegram();return <OwnedHistory key={queryIdentity??'guest'} purpose={purpose} unaccepted={unaccepted} fullPage={fullPage}/>;
+ const {queryIdentity}=useTelegram();return fullPage?<TransactionsPage/>:<OwnedHistory key={queryIdentity??'guest'} purpose={purpose} unaccepted={unaccepted} fullPage={false}/>;
 }
 function OwnedHistory({purpose,unaccepted,fullPage}:{purpose?:'TOP_UP'|'BID';unaccepted:boolean;fullPage:boolean}){
  const {language}=useMiniLocale(),am=language==='am',text=(en:string,translated:string)=>am?translated:en;
  const [routePage,setRoutePage]=useMiniPage(),[localPage,setLocalPage]=useState(1),page=fullPage?routePage:localPage,setPage=fullPage?setRoutePage:setLocalPage;
  const [selected,setSelected]=useState<ChapaCheckoutView|null>(null),trigger=useRef<HTMLElement|null>(null);
  const url=`/api/payments/chapa/checkouts?${purpose?'purpose='+purpose+'&':''}page=${page}${unaccepted?'&view=unaccepted':''}`;
- const query=usePrivateQuery<Page>(url,{keepPreviousData:true,freshnessMs:5000}),date=new Intl.DateTimeFormat(am?'am-ET':'en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'Africa/Addis_Ababa'});
+ const query=usePrivateQuery<Page>(url,{keepPreviousData:true}),date=new Intl.DateTimeFormat(am?'am-ET':'en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'Africa/Addis_Ababa'});
  return <section id={fullPage?'transactions':'wallet-payments'} className={`${styles.history} ${fullPage?styles.fullPage:''}`} aria-labelledby={unaccepted?'bid-payments-title':'transactions-title'} data-payment-history>
   <div className={styles.heading}><h2 className={fullPage?'sr-only':undefined} id={unaccepted?'bid-payments-title':'transactions-title'}>{text(unaccepted?'Bid payment attempts':'Transactions',unaccepted?'የጨረታ ክፍያ ሙከራዎች':'ግብይቶች')}</h2><button type="button" onClick={query.reload} disabled={query.fetching} aria-label={text('Refresh transactions','ግብይቶችን ያድሱ')}><RefreshCw size={16} aria-hidden="true"/></button></div>
   <PrivateState query={query}/>

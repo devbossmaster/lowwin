@@ -32,6 +32,12 @@ describe('private access during database outages',()=>{
     }
     expect(access.getMiniSession).not.toHaveBeenCalled();
   });
+  it('delegates only exact transaction routes to their owner-guarded handlers',async()=>{
+    access.getMiniSession.mockRejectedValue(Error('Private authentication is unavailable'));
+    for(const path of ['/api/transactions?type=BID','/api/transactions/wallet/11111111-1111-4111-a111-111111111111'])expect((await proxy(new NextRequest('http://localhost'+path))).headers.get('x-middleware-next')).toBe('1');
+    expect(access.getMiniSession).not.toHaveBeenCalled();access.getMiniSession.mockResolvedValue(null);
+    for(const path of ['/api/transactions/extra','/api/transactions/wallet/not-an-id','/api/transactions/wallet/11111111-1111-4111-a111-111111111111/extra'])expect((await proxy(new NextRequest('http://localhost'+path))).status).toBe(401);
+  });
   it('keeps unmatched API paths and private media protected',async()=>{
     access.getMiniSession.mockResolvedValue(null);
     for(const path of ['/api/favorites/phone/private','/api/media/123','/private.png','/images/private.webp','/images/lowin-family-hero.webp/private','/fonts/private.woff2','/fonts/dm-sans-latin-400.woff2/private','/api/payments/arifpay/checkouts/11111111-1111-4111-a111-111111111111/private','/api/payments/arifpay/webhook/private','/api/payments/verify-et/webhook/extra','/webhooks/verify','/webhooks/verify/extra','/webhooks/other'])expect((await proxy(new NextRequest(`http://localhost${path}`))).status).toBe(path.startsWith('/api/')?401:307);

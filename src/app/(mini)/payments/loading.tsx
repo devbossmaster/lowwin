@@ -1,3 +1,3 @@
-import {MiniRouteSkeleton} from '@/components/mini-route-skeleton';
+import {TransactionsSkeleton} from '@/components/transactions-page';
 
-export default function Loading(){return <MiniRouteSkeleton variant="payments"/>}
+export default function Loading(){return <TransactionsSkeleton/>}

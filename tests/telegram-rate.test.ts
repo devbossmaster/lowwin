@@ -5,7 +5,7 @@ import {execFileSync} from 'node:child_process';
 import {createRequire} from 'node:module';
 import type {Api,Transformer} from 'grammy';
 import {notificationSettings} from '../src/modules/notifications/settings';
-import {canonicalTelegramChatId,installTelegramRateLimit,recordTelegramCooldown,reserveTelegramSend,telegramRateTransformer,TelegramRateDeferredError,withTelegramSendPolicy} from '../src/modules/notifications/telegram-rate';
+import {canonicalTelegramChatId,installTelegramRateLimit,recordTelegramCooldown,reserveTelegramSend,telegramRateTransformer,TelegramRateDeferredError,withTelegramSendPolicy,telegramPolicyApi} from '../src/modules/notifications/telegram-rate';
 
 describe('notification rate configuration',()=>{
  it('uses conservative ordinary limits and leaves capacity for personal messages',()=>{
@@ -21,7 +21,17 @@ describe('notification rate configuration',()=>{
   const transformer=use.mock.calls[0][0] as Transformer,next=vi.fn();await expect(transformer(next as never,'sendMessage',{chat_id:1,text:'test',allow_paid_broadcast:true})).rejects.toThrow('Paid Telegram broadcasting is disabled');expect(next).not.toHaveBeenCalled();
  });
  it('runs Stop/ownership policy even with a simulated non-Grammy sender',async()=>{
-  const send=vi.fn();await expect(withTelegramSendPolicy({beforeSend:()=>{throw Error('STOPPED')}},send)).rejects.toThrow('STOPPED');expect(send).not.toHaveBeenCalled();
+  const send=vi.fn();await expect(withTelegramSendPolicy({beforeSend:()=>{throw Error('STOPPED')}},()=>telegramPolicyApi({sendMessage:send}).sendMessage())).rejects.toThrow('STOPPED');expect(send).not.toHaveBeenCalled();
+ });
+ it('does no eager gate during preparation and gates each actual fallback attempt once',async()=>{
+  const gate=vi.fn(),send=vi.fn().mockRejectedValueOnce({error_code:400}).mockResolvedValue({message_id:1}),api=telegramPolicyApi({sendPhoto:send});
+  await withTelegramSendPolicy({beforeSend:gate},async()=>{
+   expect(gate).not.toHaveBeenCalled();
+   await expect(api.sendPhoto()).rejects.toMatchObject({error_code:400});
+   expect(gate).toHaveBeenCalledTimes(1);
+   await api.sendPhoto();
+  });
+  expect(gate).toHaveBeenCalledTimes(2);expect(send).toHaveBeenCalledTimes(2);
  });
 });
 
@@ -79,6 +89,6 @@ describe.skipIf(!url)('shared PostgreSQL Telegram budget',()=>{
   const response=await transformer(next as never,'sendMessage',{chat_id:123,text:'fixture'});expect(response.ok).toBe(false);expect(next).toHaveBeenCalledTimes(1);
   expect((await reserveTelegramSend(second,id,'456','high',settings)).waitMs).toBeGreaterThan(2800);
   let checks=0;const noSend=vi.fn(),stopped=telegramRateTransformer(db,bot(),settings);
-  await expect(withTelegramSendPolicy({beforeSend:()=>{if(++checks===2)throw Error('STOPPED')}},()=>stopped(noSend as never,'sendMessage',{chat_id:123,text:'fixture'}))).rejects.toThrow('STOPPED');expect(noSend).not.toHaveBeenCalled();
+  await expect(withTelegramSendPolicy({beforeSend:()=>{checks++;throw Error('STOPPED')}},()=>stopped(noSend as never,'sendMessage',{chat_id:123,text:'fixture'}))).rejects.toThrow('STOPPED');expect(noSend).not.toHaveBeenCalled();expect(checks).toBe(1);
  });
 });

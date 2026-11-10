@@ -1,4 +1,5 @@
 .countdown{display:inline-flex;align-items:center;justify-content:center;gap:4px;font-variant-numeric:tabular-nums;line-height:1}
+.inline{display:inline-block;min-inline-size:11ch;font-variant-numeric:tabular-nums;white-space:nowrap;line-height:1.4}
 .label{font-size:10px;color:#68665e;margin-right:4px}
 .unit{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0}
 .tile{--flap-width:26px;--flap-height:28px;position:relative;display:block;box-sizing:border-box;width:var(--flap-width);min-width:calc(var(--flap-digits,2)*.64em + .68em);height:var(--flap-height);border:1px solid #d8d3c6;border-radius:6px;background:#e5e1d6;color:#282419;font-size:13px;font-weight:750;box-shadow:0 3px 6px #3025110c;perspective:160px;isolation:isolate}

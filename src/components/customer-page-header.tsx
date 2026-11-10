@@ -18,6 +18,6 @@ export function CustomerPageHeader(){
  }
  return <header className={styles.header} aria-label={am?'የገጽ ራስጌ':'Page header'} data-customer-page-header>
   <button type="button" className={styles.back} onClick={back} aria-label={am?'ተመለስ':'Back'}><ArrowLeft size={19} strokeWidth={1.75}/></button>
-  <h1>{title[am?1:0]}</h1><div className={styles.language}><MiniLanguageMenu/></div>
+  <h1>{title[am?1:0]}</h1><div className={styles.language}>{path==='/payments'?<span data-transactions-header-action/>:<MiniLanguageMenu/>}</div>
  </header>;
 }

@@ -1,13 +1,14 @@
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {PrismaClient,type Outbox} from '@prisma/client';
-import type {Bot} from 'grammy';
-import {InputFile} from 'grammy';
+import {Bot,InputFile} from 'grammy';
 import {randomUUID} from 'node:crypto';
 import {claimNotifications,claimLogicalDelivery,finishClaim} from '../src/modules/notifications/leases';
 import {dispatchBatch,expandPendingCampaigns} from '../src/modules/notifications/dispatch';
 import {stopBroadcast,broadcastHistory} from '../src/modules/admin/broadcast-history';
 import {sendBroadcastPhoto,TelegramMediaDeferredError} from '../src/modules/notifications/broadcast-photo';
 import {TEST_TOKEN} from './helpers';
+import {installTelegramRateLimit} from '../src/modules/notifications/telegram-rate';
+import {notificationTimingSnapshot} from '../src/modules/notifications/diagnostics';
 
 const url=process.env.TEST_DATABASE_URL;
 describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated transport only',()=>{
@@ -75,6 +76,27 @@ describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated t
   await db.outbox.update({where:{id:row.id},data:{nextAttemptAt:new Date(0)}});await db.botChat.update({where:{telegramId:users[0].telegramId},data:{blocked:true}});
   await dispatchBatch(db,fake(send),{limit:1});saved=await db.outbox.findUniqueOrThrow({where:{id:row.id}});expect(saved.state).toBe('SKIPPED');expect(send).toHaveBeenCalledTimes(1);
  });
+ it('uses one durable gate after a real shared-budget wait and observes Stop before HTTP',async()=>{
+  const rootKey=`broadcast:${randomUUID()}`,root=await db.outbox.create({data:{key:rootKey,kind:'GLOBAL_CAMPAIGN',state:'SENT',payload:{deliveryKind:'BROADCAST',rootKey}}}),row=await job('BROADCAST',0,rootKey);
+  await db.telegramRateBudget.upsert({where:{botId:'123456789'},create:{botId:'123456789',nextSendAt:new Date(Date.now()+1000)},update:{nextSendAt:new Date(Date.now()+1000),nextBulkAt:new Date(0),cooldownUntil:null,bulkWaitingUntil:null}});
+  const send=vi.fn(async()=>({ok:true,result:{message_id:105,photo:[{file_id:'simulated-file'}]}})),bot=new Bot(TEST_TOKEN);
+  bot.api.config.use(async()=>await send() as never);installTelegramRateLimit(bot.api,db,TEST_TOKEN);notificationTimingSnapshot(true);
+  const sending=dispatchBatch(db,bot,{limit:1,concurrency:1});
+  for(let i=0;i<100;i++){if((await db.telegramRateBudget.findUnique({where:{botId:'123456789'}}))?.bulkWaitingUntil)break;await new Promise(r=>setTimeout(r,5))}
+  expect(notificationTimingSnapshot().stages.gate).toBeUndefined();
+  await db.$transaction(tx=>stopBroadcast(tx,root.id));await sending;
+  expect(send).not.toHaveBeenCalled();expect(notificationTimingSnapshot().stages.gate.count).toBe(1);
+  expect(await db.outbox.findUniqueOrThrow({where:{id:row.id}})).toMatchObject({state:'SKIPPED',lastError:'CAMPAIGN_STOPPED'});
+ });
+ it('rechecks recipient role on a rejected cached-photo fallback with one gate per HTTP attempt',async()=>{
+  await job('BROADCAST');const send=vi.fn(async()=>({message_id:106,photo:[{file_id:'cached-for-fallback'}]}));await dispatchBatch(db,fake(send),{limit:1});
+  const row=await job('BROADCAST',1);send.mockImplementationOnce(async()=>{await db.user.update({where:{id:users[1].id},data:{role:'admin'}});throw {error_code:400}});send.mockClear();notificationTimingSnapshot(true);
+  try{
+   await dispatchBatch(db,fake(send),{limit:1});
+   expect(send).toHaveBeenCalledTimes(1);expect(notificationTimingSnapshot().stages.gate.count).toBe(2);expect(notificationTimingSnapshot().stages.http.count).toBe(1);
+   expect(await db.outbox.findUniqueOrThrow({where:{id:row.id}})).toMatchObject({state:'SKIPPED',lastError:'RECIPIENT_INELIGIBLE'});
+  }finally{await db.user.update({where:{id:users[1].id},data:{role:'member'}})}
+ });
  it('retains an accepted-send lease on acknowledgement failure rather than immediately resending',async()=>{
   const row=await job('CONTACT_CONFIRMED');const send=vi.fn(async()=>({message_id:103}));
   const original=db.$transaction.bind(db);let transactions=0;
@@ -85,11 +107,8 @@ describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated t
  });
  it('renews a nearly expired owner before HTTP so another worker cannot reclaim the in-flight send',async()=>{
   const row=await job('CONTACT_CONFIRMED'),began=deferred(),release=deferred();let shortened=false;
-  const nearExpiry=db.$extends({query:{outbox:{async findFirst({args,query}){
-   const found=await query(args);
-   if(found&&!shortened&&args.where?.leaseToken){shortened=true;const leaseUntil=new Date(Date.now()+25);await db.outbox.update({where:{id:row.id},data:{leaseUntil}});return {...found,leaseUntil}}
-   return found;
-  }}}});
+  const original=db.$transaction.bind(db);let transactions=0;
+  const nearExpiry=new Proxy(db,{get(target,key){if(key==='$transaction')return async(...args:Parameters<typeof db.$transaction>)=>{if(++transactions===2&&!shortened){shortened=true;await db.outbox.update({where:{id:row.id},data:{leaseUntil:new Date(Date.now()+25)}})}return (original as (...input:unknown[])=>unknown)(...args)};const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value}});
   const send=vi.fn(async()=>{const saved=await db.outbox.findUniqueOrThrow({where:{id:row.id}});expect(saved.leaseUntil!.getTime()-Date.now()).toBeGreaterThan(90_000);began.resolve();await release.promise;return {message_id:104}});
   const sending=dispatchBatch(nearExpiry as unknown as PrismaClient,fake(send),{limit:1});await began.promise;
   expect(await claimNotifications(db,{limit:1})).toEqual([]);release.resolve();await sending;expect(send).toHaveBeenCalledTimes(1);

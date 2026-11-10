@@ -28,6 +28,8 @@ export async function proxy(request:NextRequest) {
   // The media handler authorizes unpublished uploads with a verified staff
   // session and serves published product photos. Staff do not have Mini sessions.
   if(/^\/api\/media\/[0-9a-f-]{36}$/i.test(path))return NextResponse.next();
+  // Transactions authorize the owner in their handlers, like wallet history.
+  if(path==='/api/transactions'||/^\/api\/transactions\/wallet\/[0-9a-f-]{36}$/i.test(path))return NextResponse.next();
   if(/^\/api\/results\/[A-Za-z0-9-]{1,120}\/breakdown$/.test(path)||guardedApis.has(path)||/^\/api\/payments\/arifpay\/checkouts\/[0-9a-f-]{36}$/i.test(path)||/^\/api\/favorites\/[a-z0-9-]{1,120}$/.test(path)||/^\/api\/auctions\/[a-z0-9-]{1,120}\/(bids|discount-quote)$/.test(path))return NextResponse.next();
   // Verify.et calls these exact endpoints without a Telegram session. The route
   // validates its signed raw body before accepting a test or payment event.

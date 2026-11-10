@@ -105,6 +105,77 @@ node --import tsx scripts/measure-notification-delivery.mjs
 
 ## Release and remaining limits
 
+### November 10 latency follow-up
+
+The supplied live configuration log confirms four send lanes, one personal lane,
+20/s bot and16/s bulk budgets, a seven-connection configured maximum, and paid
+broadcasts disabled. It does **not** confirm the deployed revision, successful
+lease migration, replica count or observed live throughput. No connected
+Coolify/SSH access was available for this follow-up. Those items still require
+sanitized deployment/migration evidence and a representative live60-second
+window; the local results below cannot establish the live bottleneck.
+
+The eager preparation gate was removed. Each actual HTTP attempt now performs
+one durable gate after shared rate waiting, including the second attempt after a
+cached-photo400. The maintenance barrier is acquired first; one current-state
+query then checks maintenance, ownership/expiry, Stop, recipient block/role,
+contact, result subscription/publication and relevant auction timing. Near-expiry
+renewal remains atomic with any logical-delivery lease. No HTTP or rate waiting
+holds a transaction. Campaign preparation is bounded to64 entries/one second per
+client; successful immutable bot/content photo IDs are bounded to32 entries/60
+seconds, with provider400 invalidation. Concurrency and rate defaults are unchanged.
+
+`notification_worker_window` now emits60-second accepted-send rate, uncertain
+acknowledgements, stage timings, SQL count/duration, oldest due queue age, pending/
+retry/in-flight counts and database activity. Timings include pool waiting;
+Prisma SQL durations do not. Stage p50/p95 values use at most512 recent samples.
+Database activity is explicitly database-wide, separate from configured worker
+connection limits. Logs retain no message, recipient, SQL text, token or URL.
+The configuration log includes process ID and an optional sanitized source hash
+from `SOURCE_COMMIT`, `COOLIFY_BUILD_COMMIT` or `GIT_COMMIT`; absent hashes are
+reported as `unreported`.
+
+The same-condition comparison used exact baseline
+`0ca25b2551cfdae3a601af4b5bbb881ffc74549a`,1,500 queued broadcast recipients,
+12 personal notifications, identical four-lane/four-delivery-connection execution,
+20/16 budgets,75ms intercepted Telegram latency, and two60-second windows on
+loopback PostgreSQL. Both used the same migrated disposable database and fresh
+campaign/rate/media state. No Telegram request left the process.
+
+| Measurement | Baseline | Follow-up |
+|---|---:|---:|
+| HTTP starts per second |13.70|13.65|
+| Client SQL statements per accepted send |34.71|19.94|
+| Durable gate calls |1,653|822|
+| Mean individual gate duration |9.5ms|4.9ms|
+| Preparation p95 |1.5ms|1.4ms|
+| Shared rate wait p95 |275.0ms|327.2ms|
+| HTTP p95 |84.5ms|88.7ms|
+| Acknowledgement p95 |7.0ms|7.3ms|
+| Personal queue-to-HTTP p50 / p95 |164.8 /395.3ms|146.9 /633.4ms|
+| Oldest pending queue age p95 |57.6s|57.7s|
+| Longest sampled idle transaction |20.2ms|13.7ms|
+
+This demonstrates42.6% fewer SQL statements per accepted send and one gate per
+attempt, **not a measured local throughput increase**. Rate waiting dominates
+these local windows; personal tail latency varied and worsened in this sample.
+Remote database/transport observations are required before changing rates or
+concurrency. Observed peak database-wide connections were6/7, including fixture
+connections; these are not measurements of the production worker's pool usage.
+
+An intentionally held30-second history snapshot lagged actual sent rows by402
+and403 deliveries respectively. This demonstrates continued delivery behind a
+stale snapshot; it is not a measurement of the live admin screen. The checked-in
+admin screen already polls visible active campaigns every five seconds.
+
+```powershell
+$env:NOTIFICATION_BENCHMARK_DATABASE_URL='postgresql://test_user@127.0.0.1:PORT/fresh_latency_test'
+node --import tsx scripts/measure-notification-latency.mjs
+```
+
+The script rejects populated/remote/non-test databases and writes its complete
+local report to `.local/notification-latency-results.json`.
+
 Apply the additive migration before starting updated senders. Stop/drain old
 notification workers before starting new ones: old versions do not honor the new
 lease fields or shared rate budgets. Update WEB, bot/payment senders and the

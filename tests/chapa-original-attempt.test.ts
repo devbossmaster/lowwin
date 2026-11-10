@@ -1,9 +1,24 @@
 import {describe,expect,it} from 'vitest';
 import {SessionPrivateQueryCache} from '../src/components/private-query-cache';
 import {clearChapaOriginalAttempt,readChapaOriginalAttempt,retainChapaOriginalAttempt} from '../src/lib/chapa-original-attempt';
+import type {BidBatchQuote} from '../src/lib/bid-batch-client';
 
 const intent={key:'a2345678-1234-4234-8234-123456789012',purpose:'TOP_UP' as const,amount:'250.00',paymentMethod:'telebirr',phone:'251911000001'};
 describe('tab-scoped original top-up command',()=>{
+ it('retains the reviewed bid total and numbers before a response supplies an order ID',()=>{
+  const cache=new SessionPrivateQueryCache();cache.setIdentity('owner:session');const bid={key:intent.key,purpose:'BID' as const,batchId:'immutable-batch',quoteHash:'reviewed-hash',paymentMethod:'mpesa',phone:'251713339196'},quote={id:'immutable-batch',auctionSlug:'owned-auction',lines:[{number:'4.25'},{number:'8.00'}],total:'100.00'} as BidBatchQuote;
+  retainChapaOriginalAttempt(cache.queryClient,'owner:session','bid:owned-auction',bid,undefined,quote);
+  retainChapaOriginalAttempt(cache.queryClient,'owner:session','bid:owned-auction',bid);
+  expect(readChapaOriginalAttempt(cache.queryClient,'owner:session','bid:owned-auction')).toEqual({intent:bid,bidQuote:quote});
+  retainChapaOriginalAttempt(cache.queryClient,'owner:session','bid:owned-auction',bid,'owned-order');expect(readChapaOriginalAttempt(cache.queryClient,'owner:session','bid:owned-auction')).toEqual({intent:bid,bidQuote:quote,orderId:'owned-order'});
+ });
+ it('retains the original bid operation per auction and freezes its selected numbers',()=>{
+  const cache=new SessionPrivateQueryCache();cache.setIdentity('owner:session');const numbers=['2.00','4.25'];
+  const bid={key:intent.key,purpose:'BID' as const,auctionSlug:'owned-auction',numbers,feeVersion:1,paymentMethod:'telebirr',phone:intent.phone,approvedTotal:'20.00'};
+  retainChapaOriginalAttempt(cache.queryClient,'owner:session','bid:owned-auction',bid,'owned-bid-order');numbers.push('8.00');
+  expect(readChapaOriginalAttempt(cache.queryClient,'owner:session','bid:owned-auction')).toEqual({intent:{...bid,numbers:['2.00','4.25']},orderId:'owned-bid-order'});
+  expect(readChapaOriginalAttempt(cache.queryClient,'owner:session','bid:other-auction')).toBeNull();cache.setIdentity(null);expect(readChapaOriginalAttempt(cache.queryClient,'owner:session','bid:owned-auction')).toBeNull();
+ });
  it('retains the frozen original key and fields when a sheet unmounts or display data invalidates',()=>{
   const cache=new SessionPrivateQueryCache();cache.setIdentity('owner:session');
   const draft={...intent};retainChapaOriginalAttempt(cache.queryClient,'owner:session','topup',draft);

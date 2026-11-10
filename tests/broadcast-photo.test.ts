@@ -1,6 +1,7 @@
 import {describe,expect,it,vi} from 'vitest';
 import {InputFile} from 'grammy';
 import {sendBroadcastPhoto} from '../src/modules/notifications/broadcast-photo';
+import type {PrismaClient} from '@prisma/client';
 
 const result=(fileId='largest-file')=>({message_id:42,photo:[{file_id:'small-file'},{file_id:fileId}]});
 const options=(caption:string)=>({caption,reply_markup:{inline_keyboard:[[{text:'Open Lowwin',web_app:{url:'https://lowwin.test/'}}]]}});
@@ -40,5 +41,17 @@ describe('broadcast photo transport reuse',()=>{
   for(let i=0;i<33;i++)await sendBroadcastPhoto(api,'chat',photo,options('Fixture'),`image-${i}`);
   await sendBroadcastPhoto(api,'chat',photo,options('Old image'),'image-0');
   expect(sendPhoto.mock.calls.at(-1)![1]).toBe(photo);
+ });
+ it('bounds persistent-ID reads across recipients and refreshes a provider-rejected memory hit once',async()=>{
+  const findUnique=vi.fn().mockResolvedValueOnce({fileId:'old-id'}).mockResolvedValue({fileId:null}),updateMany=vi.fn().mockResolvedValue({count:1}),query=vi.fn().mockResolvedValue([{botId:'123'}]);
+  const client={telegramMediaCache:{findUnique,updateMany},$queryRaw:query} as unknown as PrismaClient;
+  const sendPhoto=vi.fn().mockResolvedValueOnce(result('old-id')).mockRejectedValueOnce({error_code:400}).mockResolvedValue(result('fresh-id'));
+  const api={sendPhoto} as never,prepare=vi.fn(async()=>new InputFile(Buffer.from('fixture')));
+  await sendBroadcastPhoto(api,'one',prepare,options('One'),'immutable',{client,botId:'123'});
+  expect(findUnique).toHaveBeenCalledTimes(1);expect(prepare).not.toHaveBeenCalled();
+  await sendBroadcastPhoto(api,'two',prepare,options('Two'),'immutable',{client,botId:'123'});
+  await sendBroadcastPhoto(api,'three',prepare,options('Three'),'immutable',{client,botId:'123'});
+  expect(findUnique).toHaveBeenCalledTimes(2);expect(prepare).toHaveBeenCalledTimes(1);
+  expect(sendPhoto.mock.calls.map(call=>call[1])).toEqual(['old-id','old-id',expect.any(InputFile),'fresh-id']);
  });
 });

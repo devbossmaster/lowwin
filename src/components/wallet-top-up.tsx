@@ -17,12 +17,12 @@ import styles from './wallet-sheet.module.css';
 
 const providers=[{slug:'telebirr',name:'telebirr',image:'/icons/payments/telebirr.jpg'},{slug:'cbebirr',name:'CBE Birr',image:'/icons/payments/cbebirr.svg'},{slug:'mpesa',name:'M-Pesa',image:'/icons/payments/mpesa.png'}] as const;
 export function walletDisplay(value?:string){try{return value===undefined?null:`${centsToEtb(etbToCents(value))} ETB`}catch{return null}}
-type Props={onClose?:()=>void;returnFocusRef?:RefObject<HTMLElement|null>;initialChapaId?:string};
-function TopUp({onClose,returnFocusRef,initialChapaId}:Props){
+type Props={onClose?:()=>void;returnFocusRef?:RefObject<HTMLElement|null>;initialChapaId?:string;retryDraft?:{amount:string;paymentMethod:string;phone:string};embedded?:boolean};
+function TopUp({onClose,returnFocusRef,initialChapaId,retryDraft,embedded=false}:Props){
  const {language}=useMiniLocale(),am=language==='am',text=(en:string,translated:string)=>am?translated:en;
  const {queryIdentity,openRegistration}=useTelegram(),authenticated=!!queryIdentity;
  const payment=useChapaPayment('topup',initialChapaId,{retainOriginal:true}),original=payment.directAttempt?.purpose==='TOP_UP'?payment.directAttempt:null;
- const [amount,setAmount]=useState(()=>original?.amount??'100'),[method,setMethod]=useState(()=>original?.paymentMethod??''),[phone,setPhone]=useState(()=>original?normalizePaymentPhone(original.phone)?.slice(3)??'':''),id=useId(),submitting=useRef(false);
+ const [amount,setAmount]=useState(()=>original?.amount??retryDraft?.amount??'100'),[method,setMethod]=useState(()=>original?.paymentMethod??retryDraft?.paymentMethod??''),[phone,setPhone]=useState(()=>normalizePaymentPhone(original?.phone??retryDraft?.phone??'')?.slice(3)??''),id=useId(),submitting=useRef(false);
  const wallet=usePrivateQuery<WalletBalance>('/api/wallet',{enabled:authenticated,freshnessMs:15000});
  const availability=usePrivateQuery<ChapaAvailability>('/api/payments/chapa',{enabled:authenticated&&!payment.started,freshnessMs:15000});
  const methods=usePrivateQuery<DirectPaymentMethods>('/api/payments/chapa/methods',{enabled:authenticated&&!payment.started,freshnessMs:60000}),settings=availability.data;
@@ -53,7 +53,7 @@ function TopUp({onClose,returnFocusRef,initialChapaId}:Props){
   {onClose?<AccountSheetFooter>{action}</AccountSheetFooter>:action}
  </form>;
  const title=<span className={styles.title}><Wallet size={19}/>{text('Top up wallet','ገንዘብ ያስገቡ')}</span>;
- return onClose?<AccountSheet size="payment" title={title} onClose={onClose} returnFocusRef={returnFocusRef} footerPortal>{contents}</AccountSheet>:<section className={styles.page}><h1>{title}</h1>{contents}</section>;
+ return embedded?contents:onClose?<AccountSheet size="payment" title={title} onClose={onClose} returnFocusRef={returnFocusRef} footerPortal>{contents}</AccountSheet>:<section className={styles.page}><h1>{title}</h1>{contents}</section>;
 }
 export default function WalletTopUpSheet(props:Props&{onClose:()=>void}){const {queryIdentity}=useTelegram();return <TopUp key={`${queryIdentity??'guest'}:${props.initialChapaId??''}`} {...props}/>}
 export function WalletTopUpPage(){const {queryIdentity}=useTelegram();return <TopUp key={queryIdentity??'guest'}/>}

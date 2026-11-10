@@ -11,63 +11,37 @@ import {hasResultSubscription} from './result-audience';
 import {auctionPhoto} from './auction-photo';
 import {sendBroadcastPhoto,TelegramMediaDeferredError} from './broadcast-photo';
 import {claimNotifications,claimExpansion,claimLogicalDelivery,finishClaim,highPriorityKinds,type ClaimedNotification} from './leases';
-import {withTelegramSendPolicy,TelegramRateDeferredError} from './telegram-rate';
+import {withTelegramSendPolicy,telegramPolicyApi,TelegramRateDeferredError} from './telegram-rate';
+import {beforeNotificationSend,DeliveryGate,type RecipientGate} from './send-gate';
+import {recordNotificationTiming,recordNotificationAccepted,recordNotificationUncertain,timeNotification} from './diagnostics';
 
 type BotApi=Pick<Bot,'api'>;
 type Content=Awaited<ReturnType<typeof notificationContent>>;
 type BatchContext={content:Map<string,Promise<Content>>;shouldContinue:()=>boolean};
-type RecipientGate={telegramId:string;chatId:string;userId?:string;excludeStaff?:boolean};
-class DeliveryGate extends Error{constructor(readonly reason:string,readonly retry:boolean){super(reason)}}
+const campaignContentByClient=new WeakMap<PrismaClient,Map<string,{until:number;value:Promise<Content>}>>();
 const notificationImage=resolve('public/notification.png');
 const botId=()=>process.env.TELEGRAM_BOT_TOKEN?.split(':')[0]??'';
-
-/** Every actual HTTP attempt (including cached-photo fallback) rechecks durable
- * state after any shared rate wait. The transaction ends before network I/O. */
-async function beforeSend(client:PrismaClient,row:ClaimedNotification,context:BatchContext,logicalKey?:string,recipient?:RecipientGate){
- if(!context.shouldContinue())throw new DeliveryGate('WORKER_STOPPING',true);
- return client.$transaction(async tx=>{
-  if(await auctionMaintenance(tx))throw new DeliveryGate('MAINTENANCE_PAUSED',true);
-  const [{now}]=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`;
-  const current=await tx.outbox.findFirst({where:{id:row.id,state:'PENDING',leaseToken:row.leaseToken,leaseUntil:{gt:now}},select:{id:true,leaseUntil:true}});
-  if(!current)throw new DeliveryGate('CLAIM_REPLACED',true);
-  const root=broadcastRoot(row);
-  if(root&&await broadcastStopped(tx,root))throw new DeliveryGate('CAMPAIGN_STOPPED',false);
-  if(logicalKey&&!await tx.telegramDeliveryLease.findFirst({where:{key:logicalKey,leaseToken:row.leaseToken,sentAt:null,leaseUntil:{gt:now}},select:{key:true}}))throw new DeliveryGate('CLAIM_REPLACED',true);
-  const p=row.payload as {recipientUserId?:string;auctionId?:string};
-  if(recipient){
-   const chat=await tx.botChat.findUnique({where:{telegramId:recipient.telegramId},select:{blocked:true,chatId:true}});
-   if(!chat||chat.blocked||chat.chatId!==recipient.chatId)throw new DeliveryGate(chat?.blocked?'CHAT_BLOCKED':'CHAT_NOT_STARTED',false);
-   if(recipient.excludeStaff&&recipient.userId){
-    const user=await tx.user.findUnique({where:{id:recipient.userId},select:{role:true,telegramId:true,staffMember:{select:{userId:true}}}});
-    if(!user||user.telegramId!==recipient.telegramId||user.role==='admin'||user.staffMember)throw new DeliveryGate('RECIPIENT_INELIGIBLE',false);
-   }
-  }
-  if(row.kind==='CONTACT_CONFIRMED'){
-   const p=row.payload as {botId:string;telegramId:string},contact=await tx.telegramOwnContact.findUnique({where:{botId_telegramId:p},select:{revokedAt:true,userId:true}});
-   if(!contact||contact.revokedAt||!contact.userId)throw new DeliveryGate('CONTACT_REVOKED',false);
-  }
-  if(row.kind==='AUCTION_RESULT'&&p.recipientUserId&&!await hasResultSubscription(tx,p.recipientUserId))throw new DeliveryGate('RESULT_RECIPIENT_INELIGIBLE',false);
-  if(['AUCTION_PUBLISHED','AUCTION_UPCOMING','AUCTION_STARTING_SOON','AUCTION_ENDING'].includes(row.kind)&&p.auctionId){
-   const a=await tx.auction.findUnique({where:{id:p.auctionId},select:{status:true,endsAt:true,product:{select:{visible:true}}}});
-   if(!a||!['LIVE','SCHEDULED'].includes(a.status)||!a.endsAt||a.endsAt<=now||!a.product?.visible)throw new DeliveryGate('AUCTION_RETIRED',false);
-  }
-  // Never begin a bounded HTTP request near claim expiry. Renew only current
-  // ownership, including the result alias lease, after all rate waits/checks.
-  if(!current.leaseUntil||current.leaseUntil.getTime()-now.getTime()<45_000){
-   const renewed=new Date(now.getTime()+120_000);
-   if(!(await tx.outbox.updateMany({where:{id:row.id,state:'PENDING',leaseToken:row.leaseToken},data:{leaseUntil:renewed}})).count)throw new DeliveryGate('CLAIM_REPLACED',true);
-   if(logicalKey&&!(await tx.telegramDeliveryLease.updateMany({where:{key:logicalKey,leaseToken:row.leaseToken,sentAt:null},data:{leaseUntil:renewed}})).count)throw new DeliveryGate('CLAIM_REPLACED',true);
-   row.leaseUntil=renewed;
-  }
- },{timeout:5000,maxWait:5000});
-}
+const beforeSend=(client:PrismaClient,row:ClaimedNotification,context:BatchContext,logicalKey?:string,recipient?:RecipientGate)=>beforeNotificationSend(client,row,context.shouldContinue,logicalKey,recipient);
 
 async function getContent(client:PrismaClient,row:ClaimedNotification,context:BatchContext){
  if(!telegramKinds.includes(row.kind)||row.kind==='DEPOSIT_CREDITED')return notificationContent(client,row);
  const p=row.payload as Record<string,unknown>,{recipientUserId,...shared}=p;
  const key=row.kind+':'+JSON.stringify(shared);
  let promise=context.content.get(key);
- if(!promise){promise=notificationContent(client,row);context.content.set(key,promise)}
+ if(!promise){
+  let cache=campaignContentByClient.get(client);if(!cache){cache=new Map();campaignContentByClient.set(client,cache)}
+  const saved=cache.get(key);
+  if(saved&&saved.until>performance.now())promise=saved.value;
+  else{
+   promise=notificationContent(client,row);
+   if(cache.size>=64)cache.delete(cache.keys().next().value!);
+   const entry={until:performance.now()+1000,value:promise};cache.set(key,entry);
+   // Never retain failed/missing preparation. Every actual send still reads
+   // ownership, recipient and auction eligibility at the durable gate.
+   promise.then(value=>{if(!value&&cache.get(key)===entry)cache.delete(key)},()=>{if(cache.get(key)===entry)cache.delete(key)});
+  }
+  context.content.set(key,promise);
+ }
  const value=await promise;
  return value&&typeof recipientUserId==='string'?{...value,userId:recipientUserId}:value;
 }
@@ -89,6 +63,7 @@ async function fail(client:PrismaClient,row:ClaimedNotification,error:unknown,ch
 
 async function dispatchClaim(client:PrismaClient,bot:BotApi,row:ClaimedNotification,context:BatchContext){
  const skip=(lastError:string|null=null)=>finishClaim(client,row,{state:'SKIPPED',lastError});
+ const preparingAt=performance.now();
  let recipientTelegramId:string|undefined;
  let acceptedByTelegram=false;
  try{
@@ -98,9 +73,10 @@ async function dispatchClaim(client:PrismaClient,bot:BotApi,row:ClaimedNotificat
    recipientTelegramId=p.telegramId;
    const chat=await client.botChat.findUnique({where:{telegramId:p.telegramId!},select:{chatId:true}});
    if(!chat){await skip('CHAT_NOT_STARTED');return}
+   recordNotificationTiming('preparation',performance.now()-preparingAt);
    const sent=await withTelegramSendPolicy({priority:'high',beforeSend:()=>beforeSend(client,row,context,undefined,{telegramId:p.telegramId!,chatId:chat.chatId})},()=>bot.api.sendMessage(p.telegramId!,'You are registered with Lowwin. Open the app to continue.\nበLowwin ተመዝግበዋል። ለመቀጠል መተግበሪያውን ይክፈቱ።',{reply_markup:{inline_keyboard:[[{text:'Open Lowwin',web_app:{url:process.env.MINI_APP_URL!}}]]}}));
-   acceptedByTelegram=true;
-   await finishClaim(client,row,{state:'SENT',sentAt:new Date(),attempts:{increment:1},lastError:null},sent?.message_id?{chatId:p.telegramId!,messageId:sent.message_id}:undefined);return;
+   acceptedByTelegram=true;recordNotificationAccepted();
+   await timeNotification('acknowledgement',()=>finishClaim(client,row,{state:'SENT',sentAt:new Date(),attempts:{increment:1},lastError:null},sent?.message_id?{chatId:p.telegramId!,messageId:sent.message_id}:undefined));return;
   }
   if(row.kind==='TELEGRAM_DELETE'){
    const p=row.payload as {telegramMessageId?:string},record=p.telegramMessageId?await client.telegramMessage.findUnique({where:{id:p.telegramMessageId}}):null;
@@ -157,14 +133,16 @@ async function dispatchClaim(client:PrismaClient,bot:BotApi,row:ClaimedNotificat
    return photo;
   };
   const gate:RecipientGate={telegramId:chat.telegramId,chatId:chat.chatId,userId:content.userId,excludeStaff:row.kind==='BROADCAST'||row.kind.startsWith('AUCTION_')};
+  recordNotificationTiming('preparation',performance.now()-preparingAt);
   const sent=await withTelegramSendPolicy({priority:highPriorityKinds.includes(row.kind)?'high':'bulk',beforeSend:()=>beforeSend(client,row,context,logicalKey,gate)},async()=>{
-   const photo=paymentReceipt?null:await sendBroadcastPhoto(bot.api,chat.chatId,preparePhoto,{...options,caption:text},photoKey,{client,botId:botId()});
+   const photo=paymentReceipt?null:await sendBroadcastPhoto(bot.api,chat.chatId,()=>timeNotification('mediaPreparation',preparePhoto),{...options,caption:text},photoKey,{client,botId:botId()});
    return photo??bot.api.sendMessage(chat.chatId,text,options);
   });
-  acceptedByTelegram=true;
-  await finishClaim(client,row,{state:'SENT',sentAt:new Date(),attempts:{increment:1},lastError:null},{chatId:chat.chatId,messageId:sent.message_id,auctionId:payload.auctionId,logicalKey});
+  acceptedByTelegram=true;recordNotificationAccepted();
+  await timeNotification('acknowledgement',()=>finishClaim(client,row,{state:'SENT',sentAt:new Date(),attempts:{increment:1},lastError:null},{chatId:chat.chatId,messageId:sent.message_id,auctionId:payload.auctionId,logicalKey}));
  }catch(error){
   if(acceptedByTelegram){
+   recordNotificationUncertain();
    // Telegram has no idempotent send API. A failed acknowledgement must retain
    // its lease rather than immediately resend an already accepted message.
    await client.outbox.updateMany({where:{id:row.id,state:'PENDING',leaseToken:row.leaseToken},data:{lastError:'ACKNOWLEDGEMENT_UNCERTAIN',nextAttemptAt:row.leaseUntil}}).catch(()=>{});
@@ -176,7 +154,8 @@ async function dispatchClaim(client:PrismaClient,bot:BotApi,row:ClaimedNotificat
 
 export async function dispatchBatch(client:PrismaClient,bot:BotApi,options:{limit?:number;concurrency?:number;priority?:'high'|'bulk';shouldContinue?:()=>boolean;kind?:string}={}){
  const shouldContinue=options.shouldContinue??(()=>true);if(!shouldContinue())return 0;
- const rows=await claimNotifications(client,options),context:BatchContext={content:new Map(),shouldContinue};
+ const rows=await timeNotification('claim',()=>claimNotifications(client,options)),context:BatchContext={content:new Map(),shouldContinue};
+ bot={api:telegramPolicyApi(bot.api)};
  let index=0;const lanes=Math.max(1,Math.min(8,Math.floor(options.concurrency??4),rows.length));
  await Promise.all(Array.from({length:lanes},async()=>{for(;;){const row=rows[index++];if(!row)return;await dispatchClaim(client,bot,row,context)}}));
  return rows.length;

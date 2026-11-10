@@ -3,6 +3,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 import type {PrismaClient} from '@prisma/client';
 import type {Api,Transformer} from 'grammy';
 import {notificationSettings,type NotificationSettings} from './settings';
+import {recordNotificationTiming,timeNotification} from './diagnostics';
 
 export type TelegramSendPriority='high'|'bulk';
 type SendPolicy={priority?:TelegramSendPriority;beforeSend?:()=>Promise<void>|void};
@@ -10,7 +11,19 @@ const policies=new AsyncLocalStorage<SendPolicy>();
 const installed=new WeakSet<object>();
 
 /** Propagates delivery ownership/Stop checks through photo helpers and API calls. */
-export function withTelegramSendPolicy<T>(policy:SendPolicy,operation:()=>Promise<T>){return policies.run(policy,async()=>{await policy.beforeSend?.();return operation()})}
+export function withTelegramSendPolicy<T>(policy:SendPolicy,operation:()=>Promise<T>){return policies.run(policy,operation)}
+
+/** Real APIs run the gate in their installed transformer. This facade keeps
+ * uninstrumented adapters/test transports gated per actual attempt too, without
+ * running a duplicate gate before content/media preparation. */
+export function telegramPolicyApi<T extends object>(api:T):T{
+ if(installed.has(api))return api;
+ return new Proxy(api,{get(target,key){
+  const value=Reflect.get(target,key);
+  if(typeof key!=='string'||!meteredMethods.has(key)||typeof value!=='function')return value;
+  return async(...args:unknown[])=>{await timeNotification('gate',async()=>{await policies.getStore()?.beforeSend?.()});return timeNotification('http',()=>value.apply(target,args))};
+ }});
+}
 export class TelegramRateDeferredError extends Error{
  readonly code='TELEGRAM_RATE_DEFERRED';
  constructor(readonly retryAt:Date){super('Telegram delivery is waiting for the shared rate budget')}
@@ -67,19 +80,19 @@ export function telegramRateTransformer(client:PrismaClient,botId:string,setting
   if(fields.allow_paid_broadcast===true)throw Error('Paid Telegram broadcasting is disabled');
   if(!meteredMethods.has(method)||fields.chat_id===undefined)return prev(method,payload,signal);
   const chatId=canonicalTelegramChatId(String(fields.chat_id)),policy=policies.getStore(),started=performance.now();
-  while(true){
+  try{while(true){
    if(signal?.aborted)throw Error('Telegram delivery aborted');
    const grant=await reserveTelegramSend(client,botId,chatId,policy?.priority??'high',settings);
    if(grant.granted)break;
    const remaining=settings.TELEGRAM_RATE_MAX_WAIT_MS-(performance.now()-started);
    if(grant.waitMs>remaining||remaining<=0)throw new TelegramRateDeferredError(grant.retryAt);
    await waitForRate(Math.min(250,grant.waitMs+Math.floor(Math.random()*6)),signal);
-  }
+  }}finally{recordNotificationTiming('rate',performance.now()-started)}
   // Quota polling performs no HTTP. Recheck durable ownership/Stop once after
   // waiting, immediately before transport, rather than on every denied slot.
-  await policy?.beforeSend?.();
+  await timeNotification('gate',async()=>{await policy?.beforeSend?.()});
   try{
-   const response=await prev(method,payload,signal);
+   const response=await timeNotification('http',()=>prev(method,payload,signal));
    if(!response.ok&&response.error_code===429)await recordTelegramCooldown(client,botId,response.parameters?.retry_after);
    return response;
   }catch(error){

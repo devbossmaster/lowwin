@@ -3,9 +3,15 @@ import {redirect} from 'next/navigation';
 import {db} from '@/lib/db';
 import {getMiniSession} from '@/modules/auth/mini-access';
 import {ChapaPaymentHistory} from '@/components/chapa-payment-history';
+import {Suspense} from 'react';
 
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export default async function Payments({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}){
+type Props={searchParams:Promise<Record<string,string|string[]|undefined>>};
+export default function Payments(props:Props){
+ if(process.env.ARIFPAY_SCHEMA_READY!=='true')return <ChapaPaymentHistory fullPage/>;
+ return <Suspense fallback={<ChapaPaymentHistory fullPage/>}><LegacyPaymentReturn {...props}/></Suspense>;
+}
+async function LegacyPaymentReturn({searchParams}:Props){
  const params=await searchParams,values=[params.checkout,params.checkoutId,params.id].filter(value=>value!==undefined);
  if(process.env.ARIFPAY_SCHEMA_READY==='true'&&values.length===1&&typeof values[0]==='string'&&uuid.test(values[0])){
   const current=await getMiniSession(await headers());

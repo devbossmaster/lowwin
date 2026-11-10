@@ -6,12 +6,15 @@ type PhotoApi=Pick<Bot['api'],'sendPhoto'>;
 type Photo=Parameters<PhotoApi['sendPhoto']>[1];
 type Options=Parameters<PhotoApi['sendPhoto']>[2];
 const photosByBot=new WeakMap<PhotoApi,Map<string,string>>();
+const persistentIds=new WeakMap<PrismaClient,Map<string,{fileId:string;until:number}>>();
 type Source=Photo|(()=>Promise<Photo|null>);
 export class TelegramMediaDeferredError extends Error{constructor(readonly retryAt:Date){super('Telegram media upload is already in progress')}}
 type Persistent={client:PrismaClient;botId:string};
 
 async function persistentPhoto(api:PhotoApi,chatId:string,source:Source,options:Options,contentKey:string,{client,botId}:Persistent,refresh=true):Promise<Awaited<ReturnType<PhotoApi['sendPhoto']>>|null>{
- const key=createHash('sha256').update(contentKey).digest('hex'),where={botId_contentKey:{botId,contentKey:key}},saved=await client.telegramMediaCache.findUnique({where,select:{fileId:true}});
+ const key=createHash('sha256').update(contentKey).digest('hex'),where={botId_contentKey:{botId,contentKey:key}},memoryKey=botId+':'+key;
+ let memory=persistentIds.get(client);if(!memory){memory=new Map();persistentIds.set(client,memory)}
+ const cached=memory.get(memoryKey),saved=cached&&cached.until>performance.now()?cached:await client.telegramMediaCache.findUnique({where,select:{fileId:true}});
  const token=randomUUID();let owner=false;
  if(!saved?.fileId){
   const acquired=await client.$queryRaw<{botId:string}[]>`INSERT INTO "TelegramMediaCache" ("botId","contentKey","uploadToken","uploadLeaseUntil","updatedAt") VALUES (${botId},${key},${token},clock_timestamp()+interval '120 seconds',clock_timestamp()) ON CONFLICT("botId","contentKey") DO UPDATE SET "uploadToken"=EXCLUDED."uploadToken","uploadLeaseUntil"=EXCLUDED."uploadLeaseUntil","updatedAt"=clock_timestamp() WHERE "TelegramMediaCache"."fileId" IS NULL AND ("TelegramMediaCache"."uploadToken" IS NULL OR "TelegramMediaCache"."uploadLeaseUntil"<=clock_timestamp()) RETURNING "botId"`;
@@ -25,9 +28,14 @@ async function persistentPhoto(api:PhotoApi,chatId:string,source:Source,options:
   // A cache acknowledgement cannot turn an accepted Telegram send into a
   // transport failure. Delivery state/message ID are committed separately.
   if(owner&&typeof fileId==='string'&&fileId.length>0&&fileId.length<=512)await client.telegramMediaCache.updateMany({where:{botId,contentKey:key,uploadToken:token},data:{fileId,uploadToken:null,uploadLeaseUntil:null}}).catch(()=>{});
+  if(typeof fileId==='string'&&fileId.length>0&&fileId.length<=512){
+   if(memory.size>=32&&!memory.has(memoryKey))memory.delete(memory.keys().next().value!);
+   memory.set(memoryKey,{fileId,until:performance.now()+60_000});
+  }
   return sent;
  }catch(error){
   if(saved?.fileId&&refresh&&(error as {error_code?:number}).error_code===400){
+   memory.delete(memoryKey);
    await client.telegramMediaCache.updateMany({where:{botId,contentKey:key,fileId:saved.fileId},data:{fileId:null}});
    return persistentPhoto(api,chatId,source,options,contentKey,{client,botId},false);
   }

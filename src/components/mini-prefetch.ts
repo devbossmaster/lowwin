@@ -28,7 +28,8 @@ export function privateIntentDestination(target:string){
  if(url.pathname==='/profile')return '/api/profile';
  if(url.pathname==='/payments'){
   const raw=Number(url.searchParams.get('page')??1),page=Number.isSafeInteger(raw)&&raw>0?Math.min(raw,10000):1;
-  return `/api/payments/chapa/checkouts?page=${page}`;
+  const type=['TOP_UP','BID'].includes(url.searchParams.get('type')??'')?url.searchParams.get('type')!:'ALL',q=(url.searchParams.get('q')??'').slice(0,100);
+  return `/api/transactions?${new URLSearchParams({page:String(Math.min(page,1000)),type,...(q?{q}:{})})}`;
  }
  if(url.pathname==='/winners'){
   const raw=Number(url.searchParams.get('page')??1),page=Number.isSafeInteger(raw)&&raw>0?Math.min(raw,10000):1;

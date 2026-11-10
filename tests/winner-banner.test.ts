@@ -32,7 +32,7 @@ describe('authoritative winner announcement banner',()=>{
  });
  it('replaces only the image with the server-approved photograph and retains the recorded result',()=>{
   const item=auction({result:{...auction().result,winnerPhotoPath:photo}}),before=structuredClone(item),html=render(item);
-  expect(html).toContain(`src="${photo}"`);expect(html).toContain('data-photo="winner"');expect(html).toContain('Winner photograph for Rugass');expect(html).toContain('0.54');expect(item).toEqual(before);
+  expect(html).toContain(`src="${photo}?v=1&amp;rendition=image-920"`);expect(html).toContain('data-photo="winner"');expect(html).toContain('Winner photograph for Rugass');expect(html).toContain('0.54');expect(item).toEqual(before);
  });
  it('falls back to the product when photo metadata is missing, removed or an unsafe URL',()=>{
   for(const winnerPhotoPath of [null,undefined,'https://other.example/person.jpg','/api/media/../../private','/images/unapproved-person.png']){
@@ -42,7 +42,7 @@ describe('authoritative winner announcement banner',()=>{
  });
  it('uses an approved complete banner as-is without reinterpreting it as a portrait',()=>{
   const item=auction({result:{...auction().result,winnerPhotoPath:photo,winnerBannerPath:'/api/media/155a36cf-cf33-4415-b45d-809e06b5c96b'}}),html=render(item);
-  expect(html).toContain('data-photo="banner"');expect(html).toContain('src="/api/media/155a36cf-cf33-4415-b45d-809e06b5c96b"');expect(html).not.toContain(`src="${photo}"`);expect(html).not.toContain('Winning number');
+  expect(html).toContain('data-photo="banner"');expect(html).toContain('src="/api/media/155a36cf-cf33-4415-b45d-809e06b5c96b?v=1&amp;rendition=image-920"');expect(html).not.toContain(photo);expect(html).not.toContain('Winning number');
  });
  it('uses localized product and result wording while preserving the same winning value',()=>{
   const html=render(auction(),'am');expect(html).toContain('አሸናፊ');expect(html).toContain('ሩጋስ');expect(html).toContain('ያሸነፈው ቁጥር');expect(html).toContain('0.54');

@@ -8,6 +8,7 @@ import {CustomerLoading} from './loading-spinner';
 import {customerLoadingCopy} from './customer-loading-copy';
 import {loadPrivateJson,privateQueryKey,readPrivateQuery,retainPrivateQuery,seedPrivateQuery,subscribePrivateQueries} from './private-query-cache';
 import {matchesPrivateResource,miniQueryPolicy} from './mini-query-policy';
+import {createResumeGate} from '@/lib/query-resume';
 import styles from './private-query.module.css';
 export function usePrivateQuery<T>(url:string,{pollMs=0,enabled=true,freshnessMs,language,keepPreviousData=false,initialData,initialUpdatedAt,cancelOnUnmount=false}:{pollMs?:number;enabled?:boolean;freshnessMs?:number;language?:string;keepPreviousData?:boolean;initialData?:T;initialUpdatedAt?:number;cancelOnUnmount?:boolean}={}) {
   const {status,queryIdentity}=useTelegram();
@@ -43,7 +44,8 @@ export function usePrivateQuery<T>(url:string,{pollMs=0,enabled=true,freshnessMs
     // while Home's header is unmounted. Every reader shares the same request.
     const walletChanged=()=>refresh(true);
     if(url==='/api/wallet')window.addEventListener('lowin-wallet-updated',walletChanged);
-    const visible=()=>{if(document.visibilityState==='visible')refresh(miniQueryPolicy(url).refreshOnResume)};
+    const resumeAllowed=createResumeGate();
+    const visible=()=>{if(document.visibilityState==='visible'&&resumeAllowed())refresh(miniQueryPolicy(url).refreshOnResume)};
     document.addEventListener('visibilitychange',visible);
     window.addEventListener('focus',visible);
     window.addEventListener('online',visible);
