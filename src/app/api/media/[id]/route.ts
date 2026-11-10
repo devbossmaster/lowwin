@@ -13,16 +13,17 @@ export async function GET(request:Request,{params}:{params:Promise<{id:string}>}
   const published=await db.productImage.findFirst({where:{path:`/api/media/${id}`,product:{visible:true,category:{visible:true},auctions:{some:{publishedAt:{not:null}}}}},select:{id:true}});
   if(!published){
    const now=new Date();
-   const winnerPhoto=await db.managedMedia.findFirst({where:{id,purpose:'WINNER_PHOTO',winnerPresentations:{some:{consentConfirmedAt:{lte:now},auction:{is:{AND:[publicWhere(now),{status:'CLOSED',isDemo:false,testRunId:null,settlement:{is:{outcome:'WINNER',winnerUserId:{not:null},completedAt:{lte:now},publication:{is:{publishedAt:{lte:now}}}}}}]}}}}},select:{bytes:true}});
+   const eligibleAuction={is:{AND:[publicWhere(now),{status:'CLOSED',isDemo:false,testRunId:null,settlement:{is:{outcome:'WINNER',winnerUserId:{not:null},completedAt:{lte:now},publication:{is:{publishedAt:{lte:now}}}}}}]}};
+   const winnerMedia=await db.managedMedia.findFirst({where:{id,OR:[{purpose:'WINNER_PHOTO',winnerPresentations:{some:{presentationMode:'PHOTO',consentConfirmedAt:{lte:now},auction:eligibleAuction}}},{purpose:'WINNER_BANNER',winnerBannerPresentations:{some:{presentationMode:'BANNER',bannerConsentConfirmedAt:{lte:now},auction:eligibleAuction}}}]},select:{bytes:true,mime:true}});
    // Unlike a frozen product image, this consented announcement can be removed.
    // Recheck eligibility on every read and never store it in the immutable cache.
-   if(winnerPhoto)return new Response(winnerPhoto.bytes,{headers:{'Content-Type':'image/png','X-Content-Type-Options':'nosniff','Content-Disposition':'inline','Cache-Control':'private, no-store, max-age=0','Vary':'Cookie'}});
+   if(winnerMedia)return new Response(winnerMedia.bytes,{headers:{'Content-Type':winnerMedia.mime,'X-Content-Type-Options':'nosniff','Content-Disposition':'inline','Cache-Control':'private, no-store, max-age=0','Vary':'Cookie'}});
   }
   let preview:Awaited<ReturnType<typeof requireAdmin>>|null=null;
   if(!published)try{preview=await requireAdmin(db,request.headers,{permission:'catalog'})}catch{return new Response(null,{status:404,headers:adminHeaders})}
   const media=await db.managedMedia.findUnique({where:{id}});if(!media)return new Response(null,{status:404});
   if(published&&media.purpose!=='CATALOG')return new Response(null,{status:404,headers:adminHeaders});
-  if(!published&&media.purpose==='WINNER_PHOTO')try{if(preview?.role!=='OWNER')throw Error('Denied');assertPermission(preview.role,'fulfillment')}catch{return new Response(null,{status:404,headers:adminHeaders})}
+  if(!published&&['WINNER_PHOTO','WINNER_BANNER'].includes(media.purpose))try{if(preview?.role!=='OWNER')throw Error('Denied');assertPermission(preview.role,'fulfillment')}catch{return new Response(null,{status:404,headers:adminHeaders})}
   if(published)await storePublishedMedia(id,media.bytes);
-  return new Response(media.bytes,{headers:published?publicHeaders:{'Content-Type':'image/png','X-Content-Type-Options':'nosniff','Content-Disposition':'inline','Cache-Control':adminHeaders['Cache-Control']}});
+  return new Response(media.bytes,{headers:published?publicHeaders:{'Content-Type':media.mime??'image/png','X-Content-Type-Options':'nosniff','Content-Disposition':'inline','Cache-Control':adminHeaders['Cache-Control']}});
 }

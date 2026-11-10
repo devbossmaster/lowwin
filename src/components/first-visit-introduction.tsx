@@ -15,6 +15,9 @@ export function FirstVisitIntroduction({enabled=true,...props}:TutorialProps&{en
   const id=window.setTimeout(()=>{if(!document.querySelector('dialog[open]'))setOpen(true)},400);
   return()=>window.clearTimeout(id);
  },[enabled,registrationOpen]);
- const close=()=>{try{dismissIntroduction(localStorage)}catch{}setOpen(false)};
- return open?<IntroductionSheet {...props} onClose={close}/>:null;
+ const remember=()=>{try{dismissIntroduction(localStorage)}catch{}};
+ const close=()=>{remember();setOpen(false)};
+ // Let route navigation unmount the sheet. Closing it before Next commits the
+ // destination races the sheet's history cleanup and can return to Home.
+ return open?<IntroductionSheet {...props} onClose={close} onExplore={remember}/>:null;
 }

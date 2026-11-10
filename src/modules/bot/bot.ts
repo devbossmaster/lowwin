@@ -3,9 +3,12 @@ import { getEnv } from '@/lib/env';
 import {db} from '@/lib/db';
 import {recordBotReferralStart} from '../referrals/service';
 import {chapaReturnStartPath} from '@/lib/chapa-return-link';
+import {sendWelcomeBanner} from './welcome-banner';
+import {installTelegramRateLimit} from '../notifications/telegram-rate';
 export function createBot(_options:{contactVerified?:(telegramId:string)=>Promise<boolean>}={}) {
   const env = getEnv();
   const bot = new Bot(env.TELEGRAM_BOT_TOKEN, { client: { timeoutSeconds: 20 } });
+  installTelegramRateLimit(bot.api,db,env.TELEGRAM_BOT_TOKEN);
   const botId=env.TELEGRAM_BOT_TOKEN.split(':')[0];
 
   bot.command('start', async ctx => {
@@ -17,7 +20,8 @@ export function createBot(_options:{contactVerified?:(telegramId:string)=>Promis
     // parameter, establish payment ownership and confirm financial outcomes.
     const destination=paymentReturn?new URL(paymentReturn,env.MINI_APP_URL).href:env.MINI_APP_URL;
     const am=ctx.from.language_code?.startsWith('am');
-    await ctx.reply(am?'እንኳን ወደ Lowwin በደህና መጡ! ጨረታዎችን ይመልከቱ፣ ለመጫረት ሲዘጋጁ ይግቡ።':'Welcome to Lowwin! Browse auctions and log in when you are ready to bid.',{reply_markup:new InlineKeyboard().webApp('Open Lowwin',destination)});
+    const caption=am?'እንኳን ወደ Lowwin በደህና መጡ! ጨረታዎችን ይመልከቱ፣ ለመጫረት ሲዘጋጁ ይግቡ።':'Welcome to Lowwin! Browse auctions and log in when you are ready to bid.';
+    await sendWelcomeBanner(ctx.api,ctx.chat.id,caption,new InlineKeyboard().webApp('Open Lowwin',destination),am?'am':'en');
   });
   bot.command('help', async ctx => { await ctx.reply(ctx.from?.language_code?.startsWith('am')?
     'አዲስ የv3 ጨረታዎች፦ ዝቅተኛው መጠን 1.00 ብር ነው፤ እስከ ሁለት የአስርዮሽ ቦታዎች ይፈቀዳሉ። 1.01፣ 1.02 እና 1.03 ካቀረቡ 1.04ን ይዝለሉ፤ 1.05 ይፈቀዳል። የቀድሞ v1/v2 ጨረታዎች የድሮ የመጠን ደንቦቻቸውን ይከተላሉ። ቢያንስ ሁለት መስፈርቱን የሚያሟሉ ሰዎች ጨረታቸው መቀበል አለበት። ከሁለት ያነሱ ከሆኑ፣ ወይም ጨረታ ካልቀረበ፣ በመዝጊያ ሰዓቱ ጨረታው ይሰረዛል፤ የመግቢያ ክፍያዎች እና የተያዘው ገንዘብ ሁሉ ይመለሳሉ።\n\nአንድ ጊዜ ብቻ ከቀረቡት መጠኖች ዝቅተኛው ያሸንፋል። ልዩ መጠን ከሌለ ብቻ፣ ዝቅተኛውን መጠን ያቀረቡት መካከል ጨረታው በመረጃ ቋቱ መጀመሪያ የተቀበለለት ሰው ያሸንፋል። አሮጌ የv1 ጨረታዎች የቀድሞ ደንባቸውን ይከተላሉ፤ ልዩ መጠን ከሌለ አሸናፊ የላቸውም።\n\nእስከ 100 የተለያዩ መጠኖችን ማቅረብ ይችላሉ። ትልቁ ጨረታዎ ብቻ ይያዛል፤ ለወደፊት ጨረታዎች ተጨማሪ ክፍያ የለም። የቀድሞ ክፍያዎች በደረሰኞቻቸው ይቆያሉ። ከማረጋገጥዎ በፊት የጨረታውን ውሎች ያንብቡ። /start በመጠቀም ይክፈቱ።':

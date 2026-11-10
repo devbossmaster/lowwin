@@ -2,6 +2,7 @@
 import {miniReadsBusy,prefetchPrivateQuery,subscribePrivateQueries} from './private-query-cache';
 import {prefetchPublicQuery} from './public-query-cache';
 import {isPublicMiniRead} from '@/lib/mini-public-routes';
+import {myBidListView,myBidsQueryUrl} from './my-bids-list-copy';
 
 /** Shared metadata budget; no response payloads and no eager detail/participant reads. */
 export class IntentPrefetchBudget{
@@ -34,9 +35,9 @@ export function privateIntentDestination(target:string){
   return `/api/results/winners?page=${page}`;
  }
  if(url.pathname==='/my-bids'){
-  const raw=Number(url.searchParams.get('page')??1),page=Number.isSafeInteger(raw)&&raw>0?Math.min(raw,10000):1;
-  const view=url.searchParams.get('view'),safeView=view==='live'||view==='history'?view:'all';
-  return `/api/my-bids?view=${safeView}&page=${page}`;
+  const raw=Number(url.searchParams.get('page')??1),page=Number.isSafeInteger(raw)&&raw>0?Math.min(raw,1000):1;
+  const view=myBidListView(url.searchParams.get('view'),url.searchParams.get('status')),language=typeof document==='undefined'?'en':document.documentElement.lang;
+  return myBidsQueryUrl(view,page,language);
  }
  return null;
 }

@@ -2,10 +2,11 @@ import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {Prisma,PrismaClient,Outbox} from '@prisma/client';
 import {chapaPaymentAlertRecipient,chapaReceiptContent,chapaReceiptKind,queueChapaReceipt} from '../src/modules/notifications/chapa-receipt';
 import {dispatchOne,materializeAlert} from '../src/modules/notifications/service';
+import {notificationDispatchFixture} from './notification-dispatch-fixture';
 
 const id='5ed925b4-41fa-418a-8a65-22e530ed07c4',botId='123456789',userId='receipt-owner';
 const receipt=()=>({id,userId,purpose:'TOP_UP',status:'CREDITED',providerStatus:'SUCCESS',verificationState:'VERIFIED',creditJournalId:'balanced-receipt',bidId:null,receipt:null,currency:'ETB',amountCents:1000n,mode:'test',phoneBotId:botId,merchantReference:'LWfixture1234567890',chapaReference:'CHfixture',user:{telegramId:'900000001',ownContact:{telegramId:'900000001',botId,revokedAt:null}}});
-const row=()=>({id:'receipt-outbox',key:`chapa:${id}:telegram-confirmed`,kind:chapaReceiptKind,payload:{checkoutId:id,recipientUserId:userId},state:'PENDING',attempts:0,nextAttemptAt:new Date(0),createdAt:new Date(0),sentAt:null,lastError:null,settlementId:null,testRunId:null}) as Outbox;
+const row=()=>({id:'receipt-outbox',key:`chapa:${id}:telegram-confirmed`,kind:chapaReceiptKind,payload:{checkoutId:id,recipientUserId:userId},state:'PENDING',attempts:0,nextAttemptAt:new Date(0),createdAt:new Date(0),sentAt:null,lastError:null,leaseToken:null,leaseUntil:null,claimedAt:null,settlementId:null,testRunId:null}) as Outbox;
 function contentTx(order:unknown=receipt()){return {chapaCheckout:{findUnique:vi.fn(async()=>order)}} as unknown as Prisma.TransactionClient}
 
 beforeEach(()=>{vi.stubEnv('TELEGRAM_BOT_TOKEN',botId+':receipt-fixture-token');vi.stubEnv('CHAPA_MODE','test');vi.stubEnv('MINI_APP_URL','https://lowwin.test');vi.stubEnv('CHAPA_PAYMENT_ALERT_TELEGRAM_ID','')});
@@ -100,17 +101,7 @@ describe('verified Chapa Telegram receipts',()=>{
   await materializeAlert(tx,row());expect(upsert).not.toHaveBeenCalled();
  });
  it('sends a plain receipt through the existing worker and does not resend its completed job',async()=>{
-  const job=row(),order=receipt(),sendMessage=vi.fn(async()=>({message_id:42})),sendPhoto=vi.fn();
-  const tx={
-   $executeRaw:vi.fn(async()=>0),adminAudit:{findFirst:vi.fn(async()=>null)},
-   $queryRaw:vi.fn(async()=>job.state==='PENDING'?[job]:[]),chapaCheckout:{findUnique:vi.fn(async()=>order)},
-   outbox:{update:vi.fn(async({data}:{data:Record<string,unknown>})=>Object.assign(job,data))},
-   user:{findUnique:vi.fn(async()=>({telegramId:order.user.telegramId,name:'Player name'}))},
-   botChat:{findUnique:vi.fn(async()=>({telegramId:order.user.telegramId,chatId:order.user.telegramId,blocked:false}))},
-   telegramMessage:{create:vi.fn(async()=>({id:'message'}))},notificationInbox:{upsert:vi.fn()},
-  };
-  const client={$transaction:async(callback:(value:unknown)=>unknown)=>callback(tx)} as unknown as PrismaClient;
-  const bot={api:{sendMessage,sendPhoto}} as never;
+  const job=row(),order=receipt(),f=dispatchFixture([job]),{sendMessage,sendPhoto,tx,client,bot}=f;
   expect(await dispatchOne(client,bot)).toBe(true);expect(job.state).toBe('SENT');expect(await dispatchOne(client,bot)).toBe(false);
   expect(sendMessage).toHaveBeenCalledTimes(1);expect(sendPhoto).not.toHaveBeenCalled();expect(tx.notificationInbox.upsert).not.toHaveBeenCalled();
   const [chat,text,options]=sendMessage.mock.calls[0] as unknown as [string,string,{reply_markup:{inline_keyboard:Array<Array<{text:string;web_app:{url:string}}>>}}];
@@ -124,9 +115,9 @@ describe('verified Chapa Telegram receipts',()=>{
   expect(job.state).toBe('SENT');expect(unrelated.every(other=>other.state==='PENDING')).toBe(true);
   expect(await dispatchOne(fixture.client,fixture.bot,{kind:chapaReceiptKind})).toBe(false);
   expect(fixture.sendMessage).toHaveBeenCalledTimes(1);
-  const [query,kind]=fixture.tx.$queryRaw.mock.calls[0];
-  expect(query.join('?')).toContain('kind=?');expect(kind).toBe(chapaReceiptKind);
-  expect(query.join('?')).toContain('FOR UPDATE SKIP LOCKED');
+  const query=fixture.tx.$queryRaw.mock.calls.map(call=>call[0]).find(value=>'sql' in value&&value.sql.includes('FOR UPDATE SKIP LOCKED')) as Prisma.Sql;
+  expect(query.sql).toContain('kind=?');expect(query.values).toContain(chapaReceiptKind);
+  expect(query.sql).toContain('FOR UPDATE SKIP LOCKED');
  });
  it('retries the same rate-limited receipt only when due and never resends a sent job',async()=>{
   const job=row(),fixture=dispatchFixture([job]);
@@ -138,7 +129,7 @@ describe('verified Chapa Telegram receipts',()=>{
   await dispatchOne(fixture.client,fixture.bot,{kind:chapaReceiptKind});
   expect(job).toMatchObject({id:'receipt-outbox',state:'SENT',attempts:2,lastError:null});
   expect(await dispatchOne(fixture.client,fixture.bot,{kind:chapaReceiptKind})).toBe(false);
-  expect(fixture.sendMessage).toHaveBeenCalledTimes(2);expect(fixture.tx.telegramMessage.create).toHaveBeenCalledTimes(1);
+  expect(fixture.sendMessage).toHaveBeenCalledTimes(2);expect(fixture.tx.telegramMessage.upsert).toHaveBeenCalledTimes(1);
  });
  it('rejects unsupported filtered dispatch before touching the database',async()=>{
   const fixture=dispatchFixture([]);
@@ -149,18 +140,6 @@ describe('verified Chapa Telegram receipts',()=>{
 
 function dispatchFixture(jobs:Outbox[]){
  const sendMessage=vi.fn(async()=>({message_id:42})),sendPhoto=vi.fn(),order=receipt();
- const tx={
-  $executeRaw:vi.fn(async()=>0),adminAudit:{findFirst:vi.fn(async()=>null)},
-  $queryRaw:vi.fn(async(query:TemplateStringsArray,...values:unknown[])=>jobs.filter(job=>job.state==='PENDING'&&job.nextAttemptAt.getTime()<=Date.now()&&(!query.join('').includes('kind=')||job.kind===values[0])).slice(0,1)),
-  chapaCheckout:{findUnique:vi.fn(async()=>order)},
-  outbox:{update:vi.fn(async({where,data}:{where:{id:string};data:Record<string,unknown>})=>{
-   const job=jobs.find(item=>item.id===where.id)!;
-   const attempts=typeof data.attempts==='object'?job.attempts+1:data.attempts;
-   return Object.assign(job,data,attempts===undefined?{}:{attempts});
-  })},
-  user:{findUnique:vi.fn(async()=>({telegramId:order.user.telegramId,name:'Player name'}))},
-  botChat:{findUnique:vi.fn(async()=>({telegramId:order.user.telegramId,chatId:order.user.telegramId,blocked:false}))},
-  telegramMessage:{create:vi.fn(async()=>({id:'message'}))},notificationInbox:{upsert:vi.fn()},
- };
- return {tx,sendMessage,sendPhoto,client:{$transaction:async(callback:(value:unknown)=>unknown)=>callback(tx)} as unknown as PrismaClient,bot:{api:{sendMessage,sendPhoto}} as never};
+ const base=notificationDispatchFixture(jobs),tx=Object.assign(base.tx,{chapaCheckout:{findUnique:vi.fn(async()=>order)}});
+ return {tx,sendMessage,sendPhoto,client:base.client,bot:{api:{sendMessage,sendPhoto}} as never};
 }

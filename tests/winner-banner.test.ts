@@ -40,6 +40,10 @@ describe('authoritative winner announcement banner',()=>{
    expect(data?.photo).toBeNull();expect(data?.image).toBe('/images/lowwin-demo-headphones.webp');
   }
  });
+ it('uses an approved complete banner as-is without reinterpreting it as a portrait',()=>{
+  const item=auction({result:{...auction().result,winnerPhotoPath:photo,winnerBannerPath:'/api/media/155a36cf-cf33-4415-b45d-809e06b5c96b'}}),html=render(item);
+  expect(html).toContain('data-photo="banner"');expect(html).toContain('src="/api/media/155a36cf-cf33-4415-b45d-809e06b5c96b"');expect(html).not.toContain(`src="${photo}"`);expect(html).not.toContain('Winning number');
+ });
  it('uses localized product and result wording while preserving the same winning value',()=>{
   const html=render(auction(),'am');expect(html).toContain('አሸናፊ');expect(html).toContain('ሩጋስ');expect(html).toContain('ያሸነፈው ቁጥር');expect(html).toContain('0.54');
   expect(winnerBannerData(auction({product:{...auction().product,titleAm:'  '}}),true)?.title).toBe('Rugass 20,000 mAh power bank');

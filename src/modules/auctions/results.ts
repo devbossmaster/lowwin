@@ -11,8 +11,8 @@ export function listCompletedWinners(client:PrismaClient,page=1,pageSize=12){
  return cachedPublicData(`completed-winners:${page}:${pageSize}`,5000,()=>client.$transaction(async tx=>{
   const [{now}]=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`;
   const where:Prisma.AuctionWhereInput={AND:[publicWhere(now),finalizedDemoFilter(),{status:'CLOSED',settlement:{is:{outcome:'WINNER',winningPoints:{not:null},completedAt:{lte:now},publication:{is:{publishedAt:{lte:now}}}}}}]};
-  const [rows,total]=await Promise.all([tx.auction.findMany({where,select:publicAuctionSelect,orderBy:[{settlement:{completedAt:'desc'}},{id:'desc'}],take:pageSize,skip:(page-1)*pageSize}),tx.auction.count({where})]);
-  return {items:rows.map(row=>{const auction=toPublicAuction(row,now);if(auction.result)auction.result.winnerPhoneMasked=null;return auction}),total,page,totalPages:Math.ceil(total/pageSize),serverNow:now.toISOString()};
+  const [rows,total]=await Promise.all([tx.auction.findMany({where,select:publicAuctionSelect,orderBy:[{settlement:{publication:{publishedAt:'desc'}}},{id:'desc'}],take:pageSize,skip:(page-1)*pageSize}),tx.auction.count({where})]);
+  return {items:rows.map(row=>toPublicAuction(row,now)),total,page,totalPages:Math.ceil(total/pageSize),serverNow:now.toISOString()};
  },{isolationLevel:Prisma.TransactionIsolationLevel.RepeatableRead,maxWait:10000,timeout:20000}));
 }
 function outcomeWhere(status:ResultQuery['status'],now:Date):Prisma.AuctionWhereInput {

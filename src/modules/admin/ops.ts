@@ -20,9 +20,10 @@ import {stagingDemoEnabled} from '../auctions/staging-demo';
 import {closeAuctionInTransaction} from '../auctions/settlement';
 import {creditTestRunPoints} from '../wallet/ledger';
 import {RULE_V3,V2_MIN_PARTICIPANTS,V2_FALLBACK_TERMS,V2_CANCELLATION_TERMS,V3_AMOUNT_TERMS} from '../auctions/rules';
-import {winnerPhotoSchema,saveWinnerPhoto} from './winner-photo';
+import {winnerPhotoSchema} from './winner-photo';
+import {winnerBannerSchema,saveWinnerBanner} from './winner-banner';
 import {clearPublicDataCache} from '../cache/public-data';
-import {resultPublishSchema,publishResult,readResultReview} from './result-publication';
+import {resultPublishSchema,readResultReview} from './result-publication';
 
 const key=z.string().uuid(),reason=z.string().trim().min(5).max(500),uid=z.string().min(1).max(128);
 const schemas={
@@ -30,6 +31,7 @@ const schemas={
  suspend:z.object({key,userId:uid,suspended:z.boolean(),reason}).strict(),
  deliveryDone:z.object({key,auctionId:z.string().uuid(),version:z.number().int().min(0),reason}).strict(),
  winnerPhoto:winnerPhotoSchema,
+ winnerBanner:winnerBannerSchema,
  resultPublish:resultPublishSchema,
  broadcastStop:z.object({key,id:z.string().uuid(),reason}).strict(),
  fulfillment:z.object({key,auctionId:z.string().uuid(),version:z.number().int().min(0),state:z.enum(['PENDING','CLAIMED','PACKING','SHIPPED','DELIVERED','DISPUTED']),tracking:z.string().trim().max(160),reason,assignedTo:uid.nullable().optional()}).strict(),
@@ -39,17 +41,19 @@ const schemas={
  testClean:z.object({key,id:z.string().uuid(),confirmation:z.literal('CLEAN TEST RUN'),reason}).strict(),
 };
 export type OpsAction=keyof typeof schemas;
-const commandPermission:Record<OpsAction,Permission>={resultPublish:'audit',deliveryDone:'fulfillment',winnerPhoto:'fulfillment',broadcastStop:'jobs',broadcast:'jobs',suspend:'support',fulfillment:'fulfillment',retry:'jobs',testStart:'settings',testFinish:'settings',testClean:'settings'};
+const commandPermission:Record<OpsAction,Permission>={resultPublish:'audit',deliveryDone:'fulfillment',winnerPhoto:'fulfillment',winnerBanner:'fulfillment',broadcastStop:'jobs',broadcast:'jobs',suspend:'support',fulfillment:'fulfillment',retry:'jobs',testStart:'settings',testFinish:'settings',testClean:'settings'};
 export const sectionPermission:Record<string,Permission>={users:'support',results:'audit',fulfillment:'fulfillment',wallets:'wallets',notifications:'jobs',jobs:'jobs',analytics:'audit',audit:'audit',team:'team',settings:'settings'};
 export const serialize=(v:unknown)=>JSON.parse(JSON.stringify(v,(_,x)=>typeof x==='bigint'?x.toString():x));
 export function pageInput(params:URLSearchParams){return z.object({page:z.coerce.number().int().min(1).max(100000).default(1),q:z.string().trim().max(100).default(''),status:z.string().max(40).default(''),category:z.union([z.literal(''),z.string().uuid()]).default('')}).parse(Object.fromEntries(params))}
 export async function opsMutation(client:PrismaClient,headers:Headers,action:OpsAction,raw:unknown){
  if(!Object.hasOwn(schemas,action))throw new AdminError(404,'Unknown staff command.');
- const input=schemas[action].parse(raw),actor=await requireAdmin(client,headers,{permission:commandPermission[action]}),hash=digest(JSON.stringify({action,input}));
+ const actor=await requireAdmin(client,headers,{permission:commandPermission[action]});
+ if(action==='resultPublish'||action==='winnerPhoto')throw new AdminError(410,'Results publish automatically. Only Winners banners can be edited.');
+ const input=schemas[action].parse(raw),hash=digest(JSON.stringify({action,input}));
  if(action==='suspend'&&actor.role!=='OWNER')throw new AdminError(403,'Only the Owner can change bidding access.');
  const result=await client.$transaction(async tx=>{
   // Auction -> wallet (for bidding policy) -> staff. Team lock serializes grants.
-  if(action==='fulfillment'||action==='deliveryDone'||action==='winnerPhoto'||action==='resultPublish')await tx.$queryRaw`SELECT id FROM "Auction" WHERE id=${(input as {auctionId:string}).auctionId} FOR UPDATE`;
+  if(action==='fulfillment'||action==='deliveryDone'||action==='winnerBanner')await tx.$queryRaw`SELECT id FROM "Auction" WHERE id=${(input as {auctionId:string}).auctionId} FOR UPDATE`;
   if('userId' in input)await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${input.userId}`},0))`;
   const owner=await requireAdmin(tx,headers,{permission:commandPermission[action],lock:true});
   const operationKey=`${actor.id}:${input.key}`;await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`admin:${operationKey}`},0))`;
@@ -69,10 +73,8 @@ export async function opsMutation(client:PrismaClient,headers:Headers,action:Ops
    const d=schemas.suspend.parse(input);if(await tx.staffMember.findUnique({where:{userId:d.userId}}))throw new AdminError(409,'Manage staff access through Team.');
    if(owner.role!=='OWNER')throw new AdminError(403,'Only the Owner can change bidding access.');
    await tx.userRestriction.upsert({where:{userId:d.userId},create:{userId:d.userId,suspended:d.suspended,reason:d.reason},update:{suspended:d.suspended,reason:d.reason}});receipt={userId:d.userId,suspended:d.suspended};target=d.userId;
-  }else if(action==='resultPublish'){
-   receipt=await publishResult(tx,owner,schemas.resultPublish.parse(input));target=(input as {auctionId:string}).auctionId;
-  }else if(action==='winnerPhoto'){
-   receipt=await saveWinnerPhoto(tx,owner,schemas.winnerPhoto.parse(input));target=(input as {auctionId:string}).auctionId;
+  }else if(action==='winnerBanner'){
+   receipt=await saveWinnerBanner(tx,owner,schemas.winnerBanner.parse(input));target=(input as {auctionId:string}).auctionId;
   }else if(action==='deliveryDone'){
    const d=schemas.deliveryDone.parse(input),settled=await tx.auctionSettlement.findUnique({where:{auctionId:d.auctionId}}),previous=await tx.fulfillmentCase.findUnique({where:{auctionId:d.auctionId}});
    if(settled?.outcome!=='WINNER'||!settled.winnerUserId)throw new AdminError(409,'A settled winner is required.');
@@ -119,7 +121,7 @@ export async function opsMutation(client:PrismaClient,headers:Headers,action:Ops
   }
   await tx.adminAudit.create({data:{actorId:owner.id,action:`OPS_${action.toUpperCase()}`,target,operationKey,requestHash:hash,details:{sessionId:owner.sessionId,reason:input.reason,receipt:serialize(receipt)}}});return receipt;
  },{timeout:30000,maxWait:10000});
- if(action==='winnerPhoto'||action==='resultPublish')await clearPublicDataCache();
+ if(action==='winnerBanner')await clearPublicDataCache();
  return result;
 }
 export async function opsRead(client:PrismaClient,headers:Headers,path:string[],params:URLSearchParams){

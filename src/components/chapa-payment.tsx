@@ -4,7 +4,7 @@ import {useCallback,useEffect,useRef,useState} from 'react';
 import {ArrowUpRight,Check,Clock3,LoaderCircle,TriangleAlert} from 'lucide-react';
 import {useTelegram} from './telegram-provider';
 import {useMiniLocale} from './mini-locale';
-import {confirmedChapaQueryScopes,invalidatePrivateQueries,isPrivateQueryIdentity,loadPrivateJson,PrivateQueryError,subscribePrivateQueries} from './private-query-cache';
+import {confirmedChapaQueryScopes,getMiniQueryClient,invalidatePrivateQueries,isPrivateQueryIdentity,loadPrivateJson,PrivateQueryError,subscribePrivateQueries} from './private-query-cache';
 import {acceptChapaSnapshot,clearChapaAttempts,chapaCanResumeCheckout,chapaCheckoutUrl,chapaConfirmed,chapaDirectRequestRejected,chapaRecoverable,chapaPollingDeadline,chapaPollingPaused,chapaUuid,ChapaClientError,requestChapaJson,type ChapaAttempt,type ChapaCheckoutView,type ChapaIntent} from '@/lib/chapa-client';
 import {CHAPA_LONG_WAIT_MS,chapaLongWait,chapaPaymentPhase} from '@/lib/chapa-status';
 import {chapaPaymentReasonMessage,chapaRequestReasonMessage} from '@/lib/chapa-payment-reason';
@@ -12,36 +12,49 @@ import {formatEtb} from '@/lib/money';
 import {prepareChapaNavigation} from '@/lib/chapa-navigation';
 import {startChapaPolling} from '@/lib/chapa-polling';
 import {chapaStatusLabel} from '@/lib/chapa-status-label';
+import {chapaDirectCreationRejected} from '@/lib/chapa-direct-request';
+import {bidPaymentCanRetry} from '@/lib/bid-payment-progress';
+import {clearChapaOriginalAttempt,readChapaOriginalAttempt,retainChapaOriginalAttempt} from '@/lib/chapa-original-attempt';
 export {chapaStatusLabel} from '@/lib/chapa-status-label';
-import type {ChapaDirectIntent} from '@/lib/bid-batch-client';
+import type {BidBatchQuote,ChapaDirectIntent} from '@/lib/bid-batch-client';
+import {beginPaymentUiTiming,type PaymentUiTiming} from '@/lib/payment-ui-timing';
 import styles from './bid-payment-sheet.module.css';
 
-type Snapshot={identity:string|null;attempt:ChapaAttempt|null;directAttempt:ChapaDirectIntent|null;order:ChapaCheckoutView|null;error:string;errorCode:string|null;busy:boolean;restoring:boolean;paused:boolean;active:boolean;handoff:'idle'|'opening'|'opened'|'failed'};
+type Snapshot={identity:string|null;attempt:ChapaAttempt|null;directAttempt:ChapaDirectIntent|null;recoveryId:string|null;order:ChapaCheckoutView|null;error:string;errorCode:string|null;busy:boolean;restoring:boolean;paused:boolean;active:boolean;handoff:'idle'|'opening'|'opened'|'failed'};
 /** Restores only an explicit, owned checkout ID from a return link. */
-export function useChapaPayment(scope:string,initialId?:string){
+export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=false}:{retainOriginal?:boolean}={}){
  const {queryIdentity,refreshMe}=useTelegram(),{language}=useMiniLocale();
- const empty=():Snapshot=>({identity:queryIdentity,attempt:null,directAttempt:null,order:null,error:'',errorCode:null,busy:false,restoring:!!initialId,paused:false,active:!!initialId,handoff:'idle'});
- const [snapshot,setSnapshot]=useState<Snapshot>(empty),state=snapshot.identity===queryIdentity?snapshot:empty(),stateRef=useRef(state);stateRef.current=state;
+ const retained=()=>retainOriginal&&scope==='topup'&&!initialId&&queryIdentity&&isPrivateQueryIdentity(queryIdentity)?readChapaOriginalAttempt(getMiniQueryClient(),queryIdentity,scope):null;
+ const empty=(restore=true):Snapshot=>{const saved=restore?retained():null,recoveryId=restore?initialId??saved?.orderId??null:null;return {identity:queryIdentity,attempt:null,directAttempt:saved?.intent??null,recoveryId,order:null,error:'',errorCode:null,busy:false,restoring:!!recoveryId,paused:false,active:!!recoveryId||!!saved,handoff:'idle'}};
+ const [snapshot,setSnapshot]=useState<Snapshot>(()=>empty()),state=snapshot.identity===queryIdentity?snapshot:empty(),stateRef=useRef(state);stateRef.current=state;
  const epoch=useRef(0),controllers=useRef(new Set<AbortController>()),locked=useRef(false),invalidated=useRef<string|null>(null);
+ const uiTiming=useRef<PaymentUiTiming|null>(null);
+ const beginTiming=useCallback((fresh=false)=>{if(fresh||!uiTiming.current)uiTiming.current=beginPaymentUiTiming()},[]);
+ const markPresented=useCallback((stage:'feedback'|'authorization'|'confirmed')=>{uiTiming.current?.mark(stage);if(stage==='confirmed')uiTiming.current?.mark('code-confirmed')},[]);
  const current=useCallback((version:number)=>version===epoch.current&&isPrivateQueryIdentity(queryIdentity),[queryIdentity]);
  const update=useCallback((value:Partial<Snapshot>)=>{stateRef.current={...stateRef.current,...value};setSnapshot(s=>s.identity===queryIdentity?{...s,...value}:s)},[queryIdentity]);
  const receive=useCallback((order:ChapaCheckoutView)=>{
   if(scope==='topup'&&order.purpose!=='TOP_UP'||scope.startsWith('bid:')&&(order.purpose!=='BID'||order.auctionSlug!==scope.slice(4)))throw new ChapaClientError('Payment not found.',404,'NOT_FOUND');
   if(!acceptChapaSnapshot(stateRef.current.order,order))return;
-  update({order,error:'',errorCode:null,restoring:false});const confirmedScopes=confirmedChapaQueryScopes(order),scopes=confirmedScopes??(!chapaRecoverable(order)?['/api/payments/chapa/checkouts','/api/my-bids']:null),revision=`${order.id}:${confirmedScopes?'confirmed':order.status}`;
+  if(retainOriginal&&scope==='topup'&&queryIdentity){
+   const intent=stateRef.current.directAttempt;
+   if(chapaConfirmed(order)||bidPaymentCanRetry(order))clearChapaOriginalAttempt(getMiniQueryClient(),queryIdentity,scope,intent?{intentKey:intent.key}:{orderId:order.id});
+   else if(intent?.purpose==='TOP_UP')retainChapaOriginalAttempt(getMiniQueryClient(),queryIdentity,scope,intent,order.id);
+  }
+  update({order,recoveryId:order.id,error:'',errorCode:null,restoring:false});const confirmedScopes=confirmedChapaQueryScopes(order),scopes=confirmedScopes??(!chapaRecoverable(order)?['/api/payments/chapa/checkouts','/api/my-bids']:null),revision=`${order.id}:${confirmedScopes?'confirmed':order.status}`;
   if(queryIdentity&&scopes&&invalidated.current!==revision){invalidated.current=revision;invalidatePrivateQueries(queryIdentity,scopes);if(confirmedScopes)void refreshMe().catch(()=>{})}
- },[scope,update,queryIdentity,refreshMe]);
+ },[scope,update,queryIdentity,refreshMe,retainOriginal]);
  const run=useCallback(async(url:string,options:RequestInit={})=>{
   const version=epoch.current,controller=new AbortController();controllers.current.add(controller);
   try{const order=await requestChapaJson<ChapaCheckoutView>(url,options,controller.signal);if(!current(version))return null;receive(order);return order}finally{controllers.current.delete(controller)}
  },[current,receive]);
  useEffect(()=>{
   try{clearChapaAttempts(window.sessionStorage)}catch{}
-  const version=++epoch.current;locked.current=false;invalidated.current=null;const next=empty();stateRef.current=next;setSnapshot(next);
-  if(queryIdentity&&initialId&&chapaUuid.test(initialId))void loadPrivateJson<ChapaCheckoutView>(queryIdentity,`/api/payments/chapa/checkouts/${initialId.toLowerCase()}`,{freshnessMs:5000}).then(order=>{if(current(version))receive(order)}).catch(cause=>{if(current(version))update({restoring:false,errorCode:cause instanceof ChapaClientError?cause.code:cause instanceof PrivateQueryError?({401:'UNAUTHORIZED',403:'FORBIDDEN',404:'NOT_FOUND'}[cause.status]??'UNAVAILABLE'):'UNAVAILABLE',error:language==='am'?'የክፍያውን ሁኔታ ማምጣት አልተቻለም።':'Payment status could not load. Try again.'})});
+  const version=++epoch.current;locked.current=false;invalidated.current=null;uiTiming.current=null;const next=empty();stateRef.current=next;setSnapshot(next);
+  if(queryIdentity&&next.recoveryId&&chapaUuid.test(next.recoveryId))void loadPrivateJson<ChapaCheckoutView>(queryIdentity,`/api/payments/chapa/checkouts/${next.recoveryId.toLowerCase()}`,{freshnessMs:5000}).then(order=>{if(current(version))receive(order)}).catch(cause=>{if(current(version))update({restoring:false,errorCode:cause instanceof ChapaClientError?cause.code:cause instanceof PrivateQueryError?({401:'UNAUTHORIZED',403:'FORBIDDEN',404:'NOT_FOUND'}[cause.status]??'UNAVAILABLE'):'UNAVAILABLE',error:language==='am'?'የክፍያውን ሁኔታ ማምጣት አልተቻለም።':'Payment status could not load. Try again.'})});
   const unsubscribe=subscribePrivateQueries(event=>{if(event.kind==='authorization'||event.kind==='session'&&event.identity!==queryIdentity){epoch.current++;controllers.current.forEach(c=>c.abort())}});
   return()=>{epoch.current++;controllers.current.forEach(c=>c.abort());controllers.current.clear();unsubscribe()};
- },[queryIdentity,scope,initialId]);
+ },[queryIdentity,scope,initialId,retainOriginal]);
  const orderId=state.order?.id,confirmed=!!state.order&&chapaConfirmed(state.order),waiting=!!state.order&&chapaRecoverable(state.order)&&!chapaDirectRequestRejected(state.order);
  const pollingDeadline=state.order?chapaPollingDeadline(state.order):null;
  useEffect(()=>{
@@ -67,26 +80,42 @@ export function useChapaPayment(scope:string,initialId?:string){
   if(!queryIdentity||locked.current||!isPrivateQueryIdentity(queryIdentity))return;
   const version=epoch.current,next=stateRef.current.directAttempt??intent;
   if(stateRef.current.order&&(stateRef.current.order.authorizationReference||chapaConfirmed(stateRef.current.order)||!['SUBMITTING','PENDING'].includes(stateRef.current.order.status)))return;
-  locked.current=true;update({directAttempt:next,busy:true,active:true,error:'',errorCode:null,paused:false});
-  try{const order=await run('/api/payments/chapa/direct',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(next)});if(current(version)&&order)invalidatePrivateQueries(queryIdentity,['/api/payments/chapa/checkouts','/api/my-bids'])}
-  catch(cause){if(current(version)){const rejected=cause instanceof ChapaClientError&&['TERMS_CHANGED','INVALID_PHONE','METHOD_UNAVAILABLE','PAYMENT_STARTED','CONTACT_REQUIRED','AUCTIONS_PAUSED'].includes(cause.code);update({...(rejected?{active:false,directAttempt:null}:{}),errorCode:cause instanceof ChapaClientError?cause.code:'UNAVAILABLE',error:cause instanceof ChapaClientError?cause.message:language==='am'?'ይህ ክፍያ ገና አልተረጋገጠም። በግብይቶች ይመልከቱ።':"We haven't confirmed this payment yet. Retry the original request or check Transactions."})}}
+  if(retainOriginal&&scope==='topup'&&next.purpose==='TOP_UP')retainChapaOriginalAttempt(getMiniQueryClient(),queryIdentity,scope,next,stateRef.current.order?.id??stateRef.current.recoveryId??undefined);
+  if(!stateRef.current.directAttempt)beginTiming(true);locked.current=true;update({directAttempt:next,busy:true,active:true,error:'',errorCode:null,paused:false});
+  try{
+   uiTiming.current?.mark('request');
+   if(next.purpose==='BID'&&'auctionSlug'in next){
+    const controller=new AbortController();controllers.current.add(controller);
+    try{
+     const result=await requestChapaJson<{kind:'payment';order:ChapaCheckoutView}|{kind:'quote';quote:BidBatchQuote}>('/api/payments/chapa/direct/bid',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(next)},controller.signal);
+     if(!current(version))return;
+     if(result.kind==='quote'){
+      if(result.quote.auctionSlug!==scope.slice(4))throw new ChapaClientError('Payment not found.',404,'NOT_FOUND');
+      update({active:false,directAttempt:null,error:'',errorCode:null});return result.quote;
+     }
+     receive(result.order);invalidatePrivateQueries(queryIdentity,['/api/payments/chapa/checkouts','/api/my-bids']);
+    }finally{controllers.current.delete(controller)}
+   }else{const order=await run('/api/payments/chapa/direct',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(next)});if(current(version)&&order)invalidatePrivateQueries(queryIdentity,['/api/payments/chapa/checkouts','/api/my-bids'])}
+  }
+  catch(cause){if(current(version)){const rejected=chapaDirectCreationRejected(cause);if(rejected&&retainOriginal)clearChapaOriginalAttempt(getMiniQueryClient(),queryIdentity,scope,{intentKey:next.key});update({...(rejected?{active:false,directAttempt:null}:{}),errorCode:cause instanceof ChapaClientError?cause.code:'UNAVAILABLE',error:cause instanceof ChapaClientError?cause.message:language==='am'?'ይህ ክፍያ ገና አልተረጋገጠም። በግብይቶች ይመልከቱ።':"We haven't confirmed this payment yet. Retry the original request or check Transactions."})}}
   finally{if(current(version)){locked.current=false;update({busy:false})}}
- },[queryIdentity,current,update,run,language]);
+ },[queryIdentity,current,update,run,language,beginTiming,receive,scope,retainOriginal]);
  const authorize=useCallback(async(otp?:string)=>{
   const order=stateRef.current.order;if(!order||order.chargeType!=='DIRECT'||locked.current||!queryIdentity||!isPrivateQueryIdentity(queryIdentity))return;
   if(order.authType==='OTP'&&(!otp||!/^\d{4,10}$/.test(otp)))return;
   const version=epoch.current;locked.current=true;update({busy:true,error:'',errorCode:null});
+  if(order.authType==='OTP')uiTiming.current?.codeSubmitted();
   try{await run(`/api/payments/chapa/checkouts/${order.id}/authorize`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(order.authType==='OTP'?{otp}:{})})}
   catch(cause){if(current(version))update({errorCode:cause instanceof ChapaClientError?cause.code:'UNAVAILABLE',error:cause instanceof ChapaClientError?(chapaRequestReasonMessage(cause.code,language==='am')??cause.message):language==='am'?'ፈቃዱን ማረጋገጥ አልተቻለም። የክፍያውን ሁኔታ ይመልከቱ።':'Authorization could not be confirmed. Check the original payment status before trying again.'})}
   finally{if(current(version)){locked.current=false;update({busy:false})}}
  },[queryIdentity,current,update,run,language]);
  const check=useCallback(async()=>{
-  const id=stateRef.current.order?.id??initialId;if(!id||locked.current||!queryIdentity||!isPrivateQueryIdentity(queryIdentity))return;
+  const id=stateRef.current.order?.id??stateRef.current.recoveryId??initialId;if(!id||locked.current||!queryIdentity||!isPrivateQueryIdentity(queryIdentity))return;
   const version=epoch.current;locked.current=true;update({busy:true,error:'',errorCode:null});try{await run(`/api/payments/chapa/checkouts/${id}`,{method:'POST'})}catch(cause){if(current(version))update({errorCode:cause instanceof ChapaClientError?cause.code:'UNAVAILABLE',error:language==='am'?'ማረጋገጥ አልተቻለም። የመጨረሻው ሁኔታ ተጠብቋል።':'Verification is unavailable. The last known payment status is preserved.'})}finally{if(current(version)){locked.current=false;update({busy:false,restoring:false})}}
  },[queryIdentity,initialId,current,update,run,language]);
  const canStartAgain=!state.busy&&!state.restoring&&state.active&&(!state.order||!chapaConfirmed(state.order)||state.order.purpose==='TOP_UP'&&state.order.status==='CREDITED');
- const startAgain=()=>{if(!canStartAgain||locked.current)return;epoch.current++;controllers.current.forEach(c=>c.abort());controllers.current.clear();invalidated.current=null;const next={...empty(),active:false,restoring:false};stateRef.current=next;setSnapshot(next)};
- return {...state,opening:state.handoff==='opening',started:state.active,create,createDirect,authorize,check,canStartAgain,startAgain};
+ const startAgain=()=>{if(!canStartAgain||locked.current)return;if(retainOriginal&&queryIdentity)clearChapaOriginalAttempt(getMiniQueryClient(),queryIdentity,scope,stateRef.current.directAttempt?{intentKey:stateRef.current.directAttempt.key}:{orderId:stateRef.current.order?.id??stateRef.current.recoveryId??undefined});epoch.current++;controllers.current.forEach(c=>c.abort());controllers.current.clear();invalidated.current=null;uiTiming.current=null;const next=empty(false);stateRef.current=next;setSnapshot(next)};
+ return {...state,opening:state.handoff==='opening',started:state.active,create,createDirect,authorize,check,canStartAgain,startAgain,beginTiming,markPresented};
 }
 /** One-shot display deadlines also apply to the native phone approval view. */
 export function useChapaPaymentClock(order:ChapaCheckoutView|null){

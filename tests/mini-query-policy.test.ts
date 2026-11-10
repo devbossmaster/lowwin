@@ -20,6 +20,8 @@ describe('Mini App resource contracts',()=>{
   expect(miniQueryPolicy('/api/wallet').staleMs).toBeLessThan(miniQueryPolicy('/api/results/42/breakdown?page=1').staleMs);
   for(const policy of Object.values(MINI_QUERY_POLICIES)){expect(Number.isFinite(policy.staleMs)).toBe(true);expect(policy.retainMs).toBeGreaterThan(policy.staleMs)}
   expect(miniQueryPolicy('/api/wallet').refreshOnResume).toBe(true);expect(miniQueryPolicy('/api/catalog/auctions/item').refreshOnResume).toBe(true);
+  expect(miniQueryPolicy('/api/my-bids?view=finished&page=1').refreshOnResume).toBe(false);
+  expect(miniQueryPolicy('/api/my-bids?view=live&page=1').staleMs).toBeLessThan(miniQueryPolicy('/api/my-bids?view=finished&page=1').staleMs);
  });
  it('shares matching catalog projections without mixing status or filtered pages',()=>{
   const query={status:'live',sort:'code',page:1,q:'phone',category:'electronics'} as const;

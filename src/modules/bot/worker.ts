@@ -1,7 +1,8 @@
-import type {Bot} from 'grammy';
+import {BotError,type Bot} from 'grammy';
 import type {Update} from 'grammy/types';
 import type {PrismaClient} from '@prisma/client';
 import {acceptOwnContact} from '../auth/own-contact';
+import {TelegramRateDeferredError} from '../notifications/telegram-rate';
 
 /** Contact proof is committed before any optional bot delivery. Ordinary bot
  * commands run after the inbox claim commits, avoiding nested DB queries and
@@ -32,8 +33,18 @@ export async function processOneUpdate(client:PrismaClient,bot:Bot,_contactVerif
  try{
   await bot.handleUpdate(row.payload as Update);
   await client.botUpdate.updateMany({where:{updateId:row.updateId,processedAt:null,nextAttemptAt:lease},data:{processedAt:new Date(),payload:{},lastError:null}});
- }catch{
-  await client.botUpdate.updateMany({where:{updateId:row.updateId,processedAt:null,nextAttemptAt:lease},data:{nextAttemptAt:new Date(Date.now()+Math.min(3600,2**(row.attempts+1))*1000),lastError:'Telegram command delivery failed'}});
+ }catch(error){
+  // grammY wraps middleware/API failures before handleUpdate rejects.
+  const cause=error instanceof BotError?error.error:error;
+  if(cause instanceof TelegramRateDeferredError){
+   // Waiting for another worker's shared quota is not a provider attempt.
+   await client.botUpdate.updateMany({where:{updateId:row.updateId,processedAt:null,nextAttemptAt:lease},data:{attempts:{decrement:1},nextAttemptAt:cause.retryAt,lastError:'Telegram command waiting for shared rate budget'}});
+  }else{
+   const failure=cause as {error_code?:number;parameters?:{retry_after?:number}},terminal=failure.error_code===400||failure.error_code===403;
+   const seconds=failure.error_code===429?Math.max(1,Number(failure.parameters?.retry_after)||60):Math.min(3600,2**(row.attempts+1));
+   await client.botUpdate.updateMany({where:{updateId:row.updateId,processedAt:null,nextAttemptAt:lease},data:terminal?{processedAt:new Date(),payload:{},lastError:failure.error_code===403?'Telegram command chat blocked':'Telegram command rejected'}:{nextAttemptAt:new Date(Date.now()+seconds*1000+Math.floor(Math.random()*250)),lastError:failure.error_code===429?'Telegram command rate limited':'Telegram command delivery failed'}});
+   if(failure.error_code===403){const update=row.payload as Update,m='message' in update?update.message:undefined;if(m)await client.botChat.updateMany({where:{chatId:String(m.chat.id)},data:{blocked:true}})}
+  }
  }
  return true;
 }

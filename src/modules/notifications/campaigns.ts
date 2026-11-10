@@ -1,10 +1,12 @@
-import type {Prisma,PrismaClient,Outbox} from '@prisma/client';
+import {Prisma,type PrismaClient,type Outbox} from '@prisma/client';
 import {demoBidAllowed} from '../auctions/bids';
 import {stagingDemoEnabled} from '../auctions/staging-demo';
 import {formatEtb} from '@/lib/money';
 import {auctionMaintenance} from '../auctions/maintenance';
 import {broadcastMiniAppPath,broadcastButtonLabel} from '@/lib/broadcast-link';
-import {publicWhere} from '../auctions/catalog';
+import {resultRecipientIds} from './result-audience';
+import {resultAnnouncement} from './result-announcement';
+import {safeResultIdentity,maskedResultContact} from '../auctions/result-identity';
 
 type Tx=Prisma.TransactionClient;
 export const telegramKinds=['AUCTION_PUBLISHED','AUCTION_UPCOMING','AUCTION_STARTING_SOON','AUCTION_ENDING','AUCTION_RESULT','DEPOSIT_CREDITED','BROADCAST'];
@@ -18,7 +20,7 @@ export function auctionNotificationImagePath(presentation:unknown,productPath?:s
 export function auctionNotificationImageId(presentation:unknown,productPath?:string){
  return /^\/api\/media\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/i.exec(auctionNotificationImagePath(presentation,productPath)??'')?.[1];
 }
-export type CampaignPayload={auctionId?:string;recipientUserId?:string;intentId?:string;body?:string;imageId?:string;href?:string;buttonLabel?:string;telegramOnly?:boolean;cursor?:string;audienceBefore?:string;rootKey?:string;deliveryKind?:string};
+export type CampaignPayload={auctionId?:string;settlementId?:string;recipientUserId?:string;intentId?:string;body?:string;imageId?:string;imagePath?:string;href?:string;buttonLabel?:string;telegramOnly?:boolean;cursor?:string;audienceBefore?:string;rootKey?:string;deliveryKind?:string};
 export function broadcastRoot(row:Pick<Outbox,'kind'|'key'|'payload'>){
  const p=row.payload as CampaignPayload;
  if(row.kind==='GLOBAL_CAMPAIGN'&&p.deliveryKind==='BROADCAST')return p.rootKey??row.key;
@@ -35,26 +37,26 @@ export async function queueGlobal(tx:Tx,key:string,kind:string,payload:CampaignP
  * bounded by the event time; retrying a page cannot add duplicate deliveries. */
 export async function expandCampaign(tx:Tx,row:Outbox){
  const p=row.payload as CampaignPayload;
- const rootKey=p.rootKey??row.key,before=new Date(p.audienceBefore??row.createdAt.toISOString());
+ let rootKey=p.rootKey??row.key,before=new Date(p.audienceBefore??row.createdAt.toISOString()),resultSettlementId:string|undefined;
  if(broadcastRoot(row)){
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`broadcast:${rootKey}`},0))`;
   if(await broadcastStopped(tx,rootKey)){await tx.outbox.update({where:{id:row.id},data:{state:'SKIPPED',lastError:'CAMPAIGN_STOPPED'}});return 0}
  }
- // A cancellation queued by an older app version must not fan out after deploy.
+ // Publication is the authority for every outcome. Canonical settlement keys
+ // prevent duplicate logical announcements from legacy/retried root intents.
  if(row.kind==='AUCTION_FINALIZED'||p.deliveryKind==='AUCTION_RESULT'){
-  const settlement=p.auctionId?await tx.auctionSettlement.findUnique({where:{auctionId:p.auctionId},select:{outcome:true,publication:{select:{publishedAt:true}}}}):null;
-  if(!settlement?.publication){await tx.outbox.update({where:{id:row.id},data:{state:'SKIPPED',lastError:'RESULT_NOT_PUBLISHED'}});return 0}
-  if(settlement.outcome==='CANCELLED'){
-   await tx.outbox.update({where:{id:row.id},data:{state:'SKIPPED',lastError:'CANCELLATION_SILENT'}});
-   return 0;
-  }
+  const settlement=p.auctionId?await tx.auctionSettlement.findUnique({where:{auctionId:p.auctionId},select:{id:true,outcome:true,publication:{select:{publishedAt:true}}}}):null;
+  if(!settlement?.publication||p.settlementId&&p.settlementId!==settlement.id||row.settlementId&&row.settlementId!==settlement.id){await tx.outbox.update({where:{id:row.id},data:{state:'SKIPPED',lastError:'RESULT_NOT_PUBLISHED'}});return 0}
+  rootKey=`settlement:${settlement.id}:completed`;resultSettlementId=settlement.id;before=settlement.publication.publishedAt;
  }
- const users=await tx.user.findMany({where:{staffMember:{is:null},telegramId:{not:null},createdAt:{lte:before},...(p.cursor?{id:{gt:p.cursor}}:{})},select:{id:true},orderBy:{id:'asc'},take:250});
+ // Only reachable non-staff recipients enter fan-out. A later block or role
+ // change is rechecked again immediately before the external delivery.
+ const users=resultSettlementId?await resultRecipientIds(tx,before,p.cursor):await tx.$queryRaw<{id:string}[]>(Prisma.sql`SELECT u.id FROM "user" u JOIN "BotChat" c ON c."telegramId"=u."telegramId" AND c.blocked=false AND c."startedAt"<=${before} LEFT JOIN "StaffMember" s ON s."userId"=u.id WHERE s."userId" IS NULL AND u.role<>'admin' AND u."createdAt"<=${before} ${p.cursor?Prisma.sql`AND u.id>${p.cursor}`:Prisma.empty} ORDER BY u.id ASC LIMIT 250`);
  const kind=row.kind==='AUCTION_FINALIZED'?'AUCTION_RESULT':p.deliveryKind;
  if(!kind||!telegramKinds.includes(kind))throw Error('Unknown campaign kind');
  const {cursor:_cursor,audienceBefore:_before,rootKey:_root,deliveryKind:_kind,...content}=p;
- if(users.length)await tx.outbox.createMany({data:users.map(user=>({key:`${rootKey}:user:${user.id}`,kind,payload:{...content,rootKey,recipientUserId:user.id},testRunId:row.testRunId})),skipDuplicates:true});
- if(users.length===250){const cursor=users.at(-1)!.id;await tx.outbox.upsert({where:{key:`${rootKey}:after:${cursor}`},create:{key:`${rootKey}:after:${cursor}`,kind:'GLOBAL_CAMPAIGN',payload:{...p,deliveryKind:kind,rootKey,audienceBefore:before.toISOString(),cursor},testRunId:row.testRunId},update:{}})}
+ if(users.length)await tx.outbox.createMany({data:users.map(user=>({key:`${rootKey}:user:${user.id}`,kind,payload:{...content,...(resultSettlementId?{settlementId:resultSettlementId}:{}),rootKey,recipientUserId:user.id},settlementId:resultSettlementId,testRunId:row.testRunId})),skipDuplicates:true});
+ if(users.length===250){const cursor=users.at(-1)!.id;await tx.outbox.upsert({where:{key:`${rootKey}:after:${cursor}`},create:{key:`${rootKey}:after:${cursor}`,kind:'GLOBAL_CAMPAIGN',payload:{...p,...(resultSettlementId?{settlementId:resultSettlementId}:{}),deliveryKind:kind,rootKey,audienceBefore:before.toISOString(),cursor},settlementId:resultSettlementId,testRunId:row.testRunId},update:{}})}
  await tx.outbox.update({where:{id:row.id},data:{state:'SENT',sentAt:new Date()}});
  return users.length;
 }
@@ -104,31 +106,24 @@ export async function campaignContent(tx:Tx,row:Pick<Outbox,'kind'|'payload'>){
   return {...base,title:'Deposit successful · ገንዘቡ ገብቷል',body:`${formatEtb(t.points)} has been added to your wallet.\n${formatEtb(t.points)} ወደ ሂሳብዎ ገብቷል።`,href:'/wallet'};
  }
  if(!p.auctionId)return null;
- const a=await tx.auction.findUnique({where:{id:p.auctionId},select:{slug:true,publicCode:true,publishedAt:true,startsAt:true,endsAt:true,status:true,isDemo:true,isSettlementFixture:true,testRunId:true,presentation:true,product:{select:{title:true,visible:true,images:{orderBy:{sortOrder:'asc'},take:1,select:{path:true}}}},result:{select:{id:true}},settlement:{select:{outcome:true,winnerUserId:true,completedAt:true,publication:{select:{publishedAt:true}}}}}});
+ const a=await tx.auction.findUnique({where:{id:p.auctionId},select:{slug:true,publicCode:true,publishedAt:true,startsAt:true,endsAt:true,status:true,isDemo:true,isSettlementFixture:true,testRunId:true,presentation:true,product:{select:{title:true,titleAm:true,visible:true,images:{orderBy:{sortOrder:'asc'},take:1,select:{path:true}}}},result:{select:{id:true}},settlement:{select:{id:true,outcome:true,ruleVersion:true,decision:true,winningPoints:true,winnerUserId:true,winner:{select:{name:true,telegramUsername:true,ownContact:{select:{botId:true,phoneCipher:true,revokedAt:true}}}},completedAt:true,publication:{select:{publishedAt:true}}}}}});
  if(!a?.publishedAt||!a.slug||a.result||a.testRunId||a.isDemo&&(!a.isSettlementFixture||!(demoBidAllowed()||stagingDemoEnabled())))return null;
  const [{now}]=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`;
  if(a.publishedAt>now)return null;
- const presentation=a.presentation as {title?:unknown;images?:{path?:unknown}[]}|null;const title=typeof presentation?.title==='string'?presentation.title:a.product?.title;
+ const presentation=a.presentation as {title?:unknown;titleAm?:unknown;images?:{path?:unknown}[]}|null;const title=typeof presentation?.title==='string'?presentation.title:a.product?.title;
  base.imagePath=auctionNotificationImagePath(presentation,a.product?.images?.[0]?.path);
  base.imageId=auctionNotificationImageId(presentation,a.product?.images?.[0]?.path);
  const prefix=a.isDemo?'DEMO · ':'',item=`${title??'Auction'} · #${a.publicCode}`,shortItem=(title??'Auction').replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim().slice(0,120),code=a.publicCode===null?'':`\n#${a.publicCode}`;
  const when=(date:Date)=>new Intl.DateTimeFormat('en-GB',{dateStyle:'medium',timeStyle:'short',timeZone:'Africa/Addis_Ababa'}).format(date)+' EAT';
  const action={buttonLabel:'View auction · ጨረታውን ይመልከቱ',href:`/auctions/${a.slug}`};
  if(row.kind==='AUCTION_RESULT'){
-  if(!a.settlement?.publication||a.settlement.publication.publishedAt>now)return null;
-  if(a.settlement.outcome==='CANCELLED')return null;
-  // Only a genuine published win may announce a person's consented photo.
-  // Read the current presentation for each recipient so replacement/removal
-  // affects unsent jobs, without resending already delivered announcements.
-  if(!a.isDemo&&a.status==='CLOSED'&&a.settlement.outcome==='WINNER'&&a.settlement.winnerUserId&&a.settlement.completedAt<=now){
-   const winnerPhoto=await tx.winnerPresentation.findFirst({where:{auctionId:p.auctionId,auction:{is:publicWhere(now)}},select:{imageId:true,consentConfirmedAt:true,image:{select:{purpose:true}}}});
-   if(winnerPhoto?.imageId&&winnerPhoto.image?.purpose==='WINNER_PHOTO'&&winnerPhoto.consentConfirmedAt&&winnerPhoto.consentConfirmedAt<=now){
-    const path=auctionNotificationImagePath({images:[{path:`/api/media/${winnerPhoto.imageId}`}]});
-    if(path){base.fallbackImagePath=base.imagePath;base.imagePath=path;base.imageId=winnerPhoto.imageId}
-   }
-  }
-  const outcome=a.settlement.outcome==='WINNER'?'A winner has been announced. See the final result.\nአሸናፊው ታውቋል። የመጨረሻ ውጤቱን ይመልከቱ።':'The auction closed without a winner.\nጨረታው ያለ አሸናፊ ተዘግቷል።';
-  return {...base,...action,title:`${prefix}Auction finished · ጨረታው ተጠናቋል`,body:`${item}\n${outcome}\n${new URL(`/winners/${a.publicCode}`,process.env.MINI_APP_URL).href}`,telegramCaption:`🏁 ${prefix}${shortItem}\n${a.settlement.outcome==='WINNER'?'Winner announced · አሸናፊው ታውቋል':'Closed without a winner · ያለ አሸናፊ ተዘግቷል'}${a.endsAt?'\n⏰ '+when(a.endsAt):''}${code}`};
+  const settlement=a.settlement;
+  if(!settlement?.publication||settlement.publication.publishedAt>now||settlement.completedAt>now||!['CLOSED','CANCELLED'].includes(a.status)||p.settlementId&&p.settlementId!==settlement.id||a.publicCode===null)return null;
+  // Publication freezes the product image in its durable root intent. Later
+  // Winners-only banners/photos neither change queued messages nor resend them.
+  if(p.imagePath!==undefined){base.imagePath=auctionNotificationImagePath({images:[{path:p.imagePath}]});base.imageId=auctionNotificationImageId({images:[{path:p.imagePath}]})}
+  const copy=resultAnnouncement({title:title??'Auction',titleAm:typeof presentation?.titleAm==='string'?presentation.titleAm:a.product?.titleAm,code:String(a.publicCode),outcome:settlement.outcome,decision:settlement.decision,ruleVersion:settlement.ruleVersion,winningPoints:settlement.winningPoints?.toString()??null,...safeResultIdentity(settlement.winner),phoneMasked:maskedResultContact(settlement.winner?.ownContact),publishedAt:settlement.publication.publishedAt});
+  return copy?{...base,...copy}:null;
  }
  if(!['LIVE','SCHEDULED'].includes(a.status)||!a.product?.visible||!a.endsAt||a.endsAt<=now)return null;
  if(row.kind==='AUCTION_UPCOMING'||row.kind==='AUCTION_STARTING_SOON'){

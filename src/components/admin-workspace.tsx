@@ -1,5 +1,5 @@
 'use client';
-import {adminRequest,refreshAdminPath} from './admin-query';
+import {adminRequest,useAdminQuery} from './admin-query';
 import {isSubmissionFeeOnly} from '@/modules/auctions/rules';
 import {AdminAuctionSummary} from './admin-results';
 import {AdminAuctionDraft} from './admin-auction-draft';
@@ -19,26 +19,29 @@ type Row=Record<string,any>; // JSON-only admin projection; never reused by publ
 const read=(path:string)=>adminRequest<any>(path);
 const command=(action:string,input:Row)=>adminRequest<any>('command',{action,input});
 const date=eat;
+const emptyDraft:Row={};
 function Field({label,name,value='',type='text',required=true}:{label:string;name:string;value?:string;type?:string;required?:boolean}){return <label>{label}<input name={name} defaultValue={value} type={type} step={type==='number'?"0.01":undefined} required={required}/></label>}
 function DataTable({rows,columns}:{rows:Row[];columns:[string,(row:Row)=>React.ReactNode][]}){return <div className="admin-table-wrap"><table><thead><tr>{columns.map(([title])=><th key={title}>{title}</th>)}</tr></thead><tbody>{rows.map((row,index)=><tr key={row.id??row.auctionId??index}>{columns.map(([title,render])=><td key={title}>{render(row)}</td>)}</tr>)}</tbody></table>{!rows.length&&<p className="admin-empty">Nothing here yet.</p>}</div>}
 export function AdminWorkspace({path}:{path:string[]}){
   const access=useAdminAccess(),router=useRouter(),section=path[0]??'dashboard',auctionId=section==='auctions'&&path[1]&&path[1]!=='new'?path[1]:null;
-  const [page,setPage]=useState(1),[q,setQ]=useState(''),[filter,setFilter]=useState(''),[storedData,setData]=useState<Row|Row[]|null>(null),[products,setProducts]=useState<Row[]>([]),[categories,setCategories]=useState<Row[]>([]),[error,setError]=useState(''),[message,setMessage]=useState(''),[busy,setBusy]=useState(false),[uploading,setUploading]=useState(false),[revision,setRevision]=useState(0),[edit,setEdit]=useState<Row|null>(null),[impact,setImpact]=useState<Row|null>(null),[preflight,setPreflight]=useState<Row|null>(null),[auctionTab,setAuctionTab]=useState('details'),[manageTab,setManageTab]=useState('deadline'),[media,setMedia]=useState<string[]>([]),[key,setKey]=useState(''),[draftDirty,setDraftDirty]=useState(false);
+  const [page,setPage]=useState(1),[q,setQ]=useState(''),[filter,setFilter]=useState(''),[products,setProducts]=useState<Row[]>([]),[error,setError]=useState(''),[message,setMessage]=useState(''),[busy,setBusy]=useState(false),[uploading,setUploading]=useState(false),[revision,setRevision]=useState(0),[edit,setEdit]=useState<Row|null>(null),[impact,setImpact]=useState<Row|null>(null),[preflight,setPreflight]=useState<Row|null>(null),[auctionTab,setAuctionTab]=useState('details'),[manageTab,setManageTab]=useState('deadline'),[media,setMedia]=useState<string[]>([]),[key,setKey]=useState(''),[draftDirty,setDraftDirty]=useState(false);
   const location=path.join('/');
-  const [dataLocation,setDataLocation]=useState(location),data=dataLocation===location?storedData:null;
+  const isNew=section==='auctions'&&path[1]==='new',resource=auctionId?`auctions/${auctionId}`:section;
+  const primary=useAdminQuery<Row|Row[]>(`${resource}?${new URLSearchParams({page:String(page),q,status:filter})}`,{enabled:!isNew}),data=isNew?emptyDraft:primary.data;
+  const needsProducts=section==='auctions'&&(isNew||!!data&&!Array.isArray(data)&&!data.publishedAt),lookup=useAdminQuery<{items:Row[]}>('products?lookup=1',{enabled:needsProducts});
   useEffect(()=>{setAuctionTab('details')},[location]);
-  useEffect(()=>{setError('');setDraftDirty(false);setImpact(null);setPreflight(null);setEdit(null);setMedia([]);setKey(crypto.randomUUID());let live=true;(async()=>{try{
-    const resource=section==='dashboard'?'dashboard':auctionId?`auctions/${auctionId}`:section==='auctions'&&path[1]==='new'?'products':section;
-    if(revision)refreshAdminPath(resource);const auxiliary=section==='auctions'?Promise.all([read('products'),read('categories')]):null;const result=await read(`${resource}?${new URLSearchParams({page:String(page),q,status:filter})}`);if(live){setData(result);setDataLocation(location);if(result.publishedAt){const images=result.presentation?.images??result.product?.images??[];setMedia(images.filter((image:Row)=>String(image.path).startsWith('/api/media/')).map((image:Row)=>String(image.path).split('/').at(-1)!))}}
-    if(auxiliary){const [p,c]=await auxiliary;if(result.draft?.body.productId&&!p.items.some((row:Row)=>row.id===result.draft.body.productId))p.items.unshift(await read(`products/${result.draft.body.productId}`));if(live){setProducts(p.items);setCategories(c)}}
-  }catch(err){if(live)setError(err instanceof Error?err.message:'Unable to load.')}})();return()=>{live=false}},[location,revision,page,q,filter]); // section and ID are derived from location.
+  useEffect(()=>{setError('');setDraftDirty(false);setImpact(null);setPreflight(null);setEdit(null);setMedia([]);setProducts([]);setKey(crypto.randomUUID())},[location]);
+  useEffect(()=>{if(revision&&!isNew)primary.reload()},[revision]); // Explicit refresh retains populated tables and local form values.
+  useEffect(()=>{if(primary.error||lookup.error)setError(primary.error||lookup.error)},[primary.error,lookup.error]);
+  useEffect(()=>{if(!data||Array.isArray(data)||!data.publishedAt||draftDirty)return;const images=data.presentation?.images??data.product?.images??[];setMedia(images.filter((image:Row)=>String(image.path).startsWith('/api/media/')).map((image:Row)=>String(image.path).split('/').at(-1)!))},[data,draftDirty]);
+  useEffect(()=>{if(!needsProducts||!lookup.data)return;let active=true;const rows=lookup.data.items,id=!Array.isArray(data)?data?.draft?.body.productId:null;setProducts(previous=>[...rows,...previous.filter(product=>!rows.some(row=>row.id===product.id))]);if(id&&!rows.some(row=>row.id===id))void read(`products/${id}`).then(product=>{if(active)setProducts(previous=>previous.some(row=>row.id===product.id)?previous:[product,...previous])}).catch(err=>{if(active)setError(err.message)});return()=>{active=false}},[needsProducts,lookup.data,data]);
   async function run(task:()=>Promise<void>){setBusy(true);setError('');setMessage('');try{await task()}catch(err){setError(err instanceof Error?err.message:'Please retry.')}finally{setBusy(false)}}
   const findProducts=useCallback(async(query:string)=>{
-    const found:Row[]=(await read(`products?q=${encodeURIComponent(query)}`)).items;
+    const found:Row[]=(await read(`products?lookup=1&q=${encodeURIComponent(query)}`)).items;
     setProducts(previous=>[...found,...previous.filter(product=>!found.some(match=>match.id===product.id))]);
     return found;
   },[]);
-  async function save(action:string,input:Row){const result=await command(action,{...input,key});setKey(crypto.randomUUID());setMessage('Saved. The database confirmed this change.');return result}
+  async function save(action:string,input:Row){const result=await command(action,{...input,key});setDraftDirty(false);setKey(crypto.randomUUID());setMessage('Saved. The database confirmed this change.');return result}
   const list:Row[]=Array.isArray(data)?data:((data as Row)?.items??[]),item=(!Array.isArray(data)?data:null)??{};
   const titles:Row={dashboard:['Overview','Your auction operations, at a glance.'],auctions:['Auction work queue','Choose an item, set the schedule, then publish.'],products:['Products','Describe inventory and attach validated, credited images.'],categories:['Categories','Organize the public catalog. Published inventory is protected.'],content:['Home & FAQ','Plain text content. Auction rules remain visible and unchanged.'],reconciliation:['Ledger reconciliation','Read-only account, journal and hold integrity checks.']};
   const title=auctionId?item.presentation?.title??item.product?.title??products.find(p=>p.id===item.draft?.body.productId)?.title??item.code??'Auction':path[1]==='new'?'Create auction':titles[section]?.[0]??'Admin resource';

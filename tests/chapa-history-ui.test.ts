@@ -15,6 +15,13 @@ function render(overrides:Partial<ChapaCheckoutView>,language:'en'|'am'='en'){
  return renderToStaticMarkup(createElement(MiniLocaleProvider,{initialLanguage:language,children:createElement(ChapaPaymentHistory)}));
 }
 describe('transaction money movement presentation',()=>{
+ it('summarizes only committed payments and provider-confirmed failures',()=>{
+  expect(render({status:'CREDITED'})).toContain('data-payment-summary="done">Done');
+  expect(render({status:'NEEDS_REVIEW',purpose:'BID',fundsPreserved:true})).toContain('data-payment-summary="done">Done');
+  expect(render({status:'FAILED',providerStatus:'FAILED',verificationState:'VERIFIED'})).toContain('data-payment-summary="failed">Failed');
+  expect(render({status:'EXPIRED',providerStatus:'PENDING'})).toContain('data-payment-summary="checking">Checking payment…');
+  expect(render({status:'NEEDS_REVIEW',providerStatus:'SUCCESS',verificationState:'VERIFIED'})).toContain('data-payment-summary="checking">Checking payment…');
+ });
  it('marks committed top-ups as money in with an explicit plus',()=>{
   const html=render({status:'CREDITED'});expect(html).toContain('data-direction="incoming"');expect(html).toContain('Money in: ');expect(html).toContain('aria-hidden="true">+</span>ETB 50.00');expect(html).toContain('Wallet top-up');
  });

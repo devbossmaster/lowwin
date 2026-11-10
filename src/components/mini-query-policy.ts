@@ -10,6 +10,7 @@ export const MINI_QUERY_POLICIES={
 } as const;
 export function miniQueryPolicy(url:string){
  const path=url.split(/[?#]/,1)[0];
+ if(path==='/api/my-bids'&&['finished','history'].includes(new URL(url,'https://lowwin.invalid').searchParams.get('view')??''))return MINI_QUERY_POLICIES.historical;
  if(path.startsWith('/api/wallet')||path==='/api/me'||path.startsWith('/api/payments/'))return MINI_QUERY_POLICIES.wallet;
  if(path.startsWith('/api/results/'))return MINI_QUERY_POLICIES.historical;
  if(path.startsWith('/api/auctions/')||path==='/api/my-bids')return MINI_QUERY_POLICIES.bids;

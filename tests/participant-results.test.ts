@@ -1,7 +1,7 @@
 import {describe,expect,it,vi} from 'vitest';
 import type {Outbox} from '@prisma/client';
 import {expandParticipantResults} from '../src/modules/notifications/participant-results';
-const row:Outbox={id:'job',key:'settlement:s:participants',kind:'AUCTION_PARTICIPANTS',payload:{auctionId:'auction',settlementId:'s'},settlementId:'s',testRunId:null,createdAt:new Date(),sentAt:null,state:'PENDING',attempts:0,nextAttemptAt:new Date(),lastError:null};
+const row:Outbox={id:'job',key:'settlement:s:participants',kind:'AUCTION_PARTICIPANTS',payload:{auctionId:'auction',settlementId:'s'},settlementId:'s',testRunId:null,createdAt:new Date(),sentAt:null,state:'PENDING',attempts:0,nextAttemptAt:new Date(),lastError:null,leaseToken:null,leaseUntil:null,claimedAt:null};
 function transaction(count:number,published=true){return {auctionSettlement:{findFirst:vi.fn().mockResolvedValue(published?{outcome:'WINNER'}:null)},settlementMovement:{findMany:vi.fn().mockResolvedValue(Array.from({length:count},(_,i)=>({userId:`user-${String(i).padStart(4,'0')}`})))},outbox:{createMany:vi.fn(),upsert:vi.fn(),update:vi.fn()}}}
 describe('bounded private result notification fanout',()=>{
  it('expands at most250 participants and persists the next immutable cursor',async()=>{

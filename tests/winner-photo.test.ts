@@ -64,16 +64,16 @@ describe('editable, consented winner announcement media',()=>{
   expect(await saveWinnerPhoto(db,member,input())).toMatchObject({imageId,version:1});
  });
  it('rechecks current admin permission inside the transaction, audits and deduplicates a retry',async()=>{
-  const {tx,client}=fixture(),raw=input();const first=await opsMutation(client,new Headers(),'winnerPhoto',raw);
-  expect(await opsMutation(client,new Headers(),'winnerPhoto',raw)).toEqual(first);expect(tx.winnerPresentation.upsert).toHaveBeenCalledTimes(1);
+  const {tx,client}=fixture(),raw=input();tx.managedMedia.findUnique.mockResolvedValue({id:imageId,purpose:'WINNER_BANNER',mime:'image/webp'} as never);const first=await opsMutation(client,new Headers(),'winnerBanner',raw);
+  expect(await opsMutation(client,new Headers(),'winnerBanner',raw)).toEqual(first);expect(tx.winnerPresentation.upsert).toHaveBeenCalledTimes(1);
   expect(requireAdmin).toHaveBeenCalledWith(expect.anything(),expect.anything(),{permission:'fulfillment',lock:true});
-  expect(tx.adminAudit.create).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({actorId:'staff',action:'OPS_WINNERPHOTO',target:auctionId})}));
+  expect(tx.adminAudit.create).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({actorId:'staff',action:'OPS_WINNERBANNER',target:auctionId})}));
   expect(clearPublicDataCache).toHaveBeenCalledTimes(2);
-  await expect(opsMutation(client,new Headers(),'winnerPhoto',input({imageId:nextImage}))).rejects.toMatchObject({status:409});expect(tx.winnerPresentation.upsert).toHaveBeenCalledTimes(1);
+  await expect(opsMutation(client,new Headers(),'winnerBanner',input({imageId:nextImage}))).rejects.toMatchObject({status:409});expect(tx.winnerPresentation.upsert).toHaveBeenCalledTimes(1);
  });
  it('rejects forbidden callers and attempts to rewrite result fields',async()=>{
   const {client}=fixture();vi.mocked(requireAdmin).mockRejectedValueOnce(new AdminError(403,'Denied'));
-  await expect(opsMutation(client,new Headers(),'winnerPhoto',input())).rejects.toMatchObject({status:403});expect(client.$transaction).not.toHaveBeenCalled();
+  await expect(opsMutation(client,new Headers(),'winnerBanner',input())).rejects.toMatchObject({status:403});expect(client.$transaction).not.toHaveBeenCalled();
   expect(winnerPhotoSchema.safeParse({...input(),winningPoints:'0.01'}).success).toBe(false);
  });
 });
@@ -129,15 +129,15 @@ function publicRow(change:Record<string,unknown>={}){
  return {slug:'original-item',code:'AUCTION-42',publicCode:42,status:'CLOSED',publishedAt:new Date('2026-10-29'),startsAt:new Date('2026-10-29'),endsAt:new Date('2026-10-29T23:00:00Z'),featured:false,isDemo:false,acceptedBidCount:2,publicViewCount:0n,presentation:null,fulfillmentSummary:'Collect item',fulfillmentSummaryAm:null,fulfillmentRegion:'Addis Ababa',fulfillmentRegionAm:null,
  product:{title:'Original product',titleAm:null,description:'Original description',descriptionAm:null,condition:'New',conditionAm:null,images:[{path:'/images/product.webp',alt:'Product',sourceType:'ORIGINAL',sourceCredit:null}]},category:{slug:'accessories',name:'Accessories',nameAm:null},
  terms:{version:1,ruleVersion:'lowest-unique-v4',minParticipants:2,minPoints:new Prisma.Decimal(1),maxPoints:null,stepPoints:new Prisma.Decimal('0.01'),entryFeePoints:new Prisma.Decimal(10),maxDistinctBids:100,noWinnerTerms:'Terms',cancellationTerms:'Terms',fulfillmentSnapshot:'Snapshot'},feeRevisions:[],result:null,
- settlement:{publication:{publishedAt:new Date('2026-01-01')},outcome:'WINNER',decision:'LOWEST_UNIQUE',winningPoints:new Prisma.Decimal('2.27'),completedAt:new Date('2026-10-29T23:00:00Z'),winner:{ownContact:{lastFour:'1234',revokedAt:null}}},winnerPresentation:{imageId,consentConfirmedAt:new Date('2026-10-29T23:30:00Z'),image:{purpose:'WINNER_PHOTO'}},...change} as Parameters<typeof toPublicAuction>[0];
+ settlement:{acceptedCount:2,publication:{publishedAt:new Date('2026-01-01')},outcome:'WINNER',decision:'LOWEST_UNIQUE',winningPoints:new Prisma.Decimal('2.27'),completedAt:new Date('2026-10-29T23:00:00Z'),winner:{name:'Fixture winner',telegramUsername:null,ownContact:null}},winnerPresentation:{version:1,bannerImageId:null,bannerConsentConfirmedAt:null,bannerImage:null,presentationMode:'PHOTO',imageId,consentConfirmedAt:new Date('2026-10-29T23:30:00Z'),image:{purpose:'WINNER_PHOTO'}},...change} as Parameters<typeof toPublicAuction>[0];
 }
 describe('public winner photo privacy',()=>{
  it('exposes only the consented managed-media path after a real settled win',()=>{
   const result=toPublicAuction(publicRow(),f.now);expect(result.result?.winnerPhotoPath).toBe(`/api/media/${imageId}`);
   expect(result.result?.winningPoints).toBe('2.27');expect(result.product.images[0].path).toBe('/images/product.webp');
-  expect(JSON.stringify(result)).not.toMatch(/consentActor|consentConfirmedAt|winnerUserId|staff-session/);expect(result.result?.winnerPhoneMasked).toBe('********34');
+  expect(JSON.stringify(result)).not.toMatch(/consentActor|consentConfirmedAt|winnerUserId|staff-session/);expect(result.result?.winnerPhoneMasked).toBeNull();
  });
- it.each([{winnerPresentation:null},{winnerPresentation:{imageId,consentConfirmedAt:null,image:{purpose:'WINNER_PHOTO'}}},{winnerPresentation:{imageId,consentConfirmedAt:new Date('2026-11-01'),image:{purpose:'WINNER_PHOTO'}}},{winnerPresentation:{imageId,consentConfirmedAt:new Date('2026-10-29'),image:{purpose:'CATALOG'}}},{isDemo:true}])('suppresses photos without eligible public consent: %j',change=>{
+ it.each([{winnerPresentation:null},{winnerPresentation:{version:1,bannerImageId:null,bannerConsentConfirmedAt:null,bannerImage:null,presentationMode:'PHOTO',imageId,consentConfirmedAt:null,image:{purpose:'WINNER_PHOTO'}}},{winnerPresentation:{version:1,bannerImageId:null,bannerConsentConfirmedAt:null,bannerImage:null,presentationMode:'PHOTO',imageId,consentConfirmedAt:new Date('2026-11-01'),image:{purpose:'WINNER_PHOTO'}}},{winnerPresentation:{version:1,bannerImageId:null,bannerConsentConfirmedAt:null,bannerImage:null,presentationMode:'PHOTO',imageId,consentConfirmedAt:new Date('2026-10-29'),image:{purpose:'CATALOG'}}},{isDemo:true}])('suppresses photos without eligible public consent: %j',change=>{
   expect(toPublicAuction(publicRow(change),f.now).result?.winnerPhotoPath).toBeNull();
  });
  it('never attaches a real person photo to illustrative or no-winner results',()=>{

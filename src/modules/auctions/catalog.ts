@@ -5,11 +5,13 @@ import { z } from 'zod';
 import { db } from '@/lib/db';
 import {cachedPublicData} from '@/modules/cache/public-data';
 import {previewTestRunFilter,stagingDemoEnabled} from './staging-demo';
+import {maskedResultContact,safeResultIdentity} from './result-identity';
 
 // SQL selection and DTO mapping are independent allowlists. Never select the
 // settlement proof, participant movements, winning user/bid IDs or raw bids here.
-// Only a masked contact suffix enters the public result; names need a future
-// explicit, verified consent and moderation workflow.
+// Contact ciphertext is read only to apply the server masking policy; it and
+// unrestricted user records never enter the DTO/cache. Public identity fields
+// pass a separate allowlist that rejects phone/email-looking display names.
 export const publicAuctionSelect = {
   slug:true,code:true,publicCode:true,status:true,publishedAt:true,startsAt:true,endsAt:true,featured:true,isDemo:true,acceptedBidCount:true,publicViewCount:true,presentation:true,
   fulfillmentSummary:true,fulfillmentSummaryAm:true,fulfillmentRegion:true,fulfillmentRegionAm:true,
@@ -18,8 +20,8 @@ export const publicAuctionSelect = {
   terms:{select:{version:true,ruleVersion:true,minParticipants:true,minPoints:true,maxPoints:true,stepPoints:true,entryFeePoints:true,maxDistinctBids:true,noWinnerTerms:true,cancellationTerms:true,fulfillmentSnapshot:true}},
   feeRevisions:{orderBy:[{effectiveAt:'desc' as const},{version:'desc' as const}],take:1,select:{version:true,feePoints:true}},
   result:{select:{outcome:true,winningPoints:true,explanation:true,isDemo:true,closedAt:true,publishedAt:true}},
-  winnerPresentation:{select:{imageId:true,consentConfirmedAt:true,image:{select:{purpose:true}}}},
-  settlement:{select:{publication:{select:{publishedAt:true}},decision:true,outcome:true,winningPoints:true,completedAt:true,winner:{select:{ownContact:{select:{lastFour:true,revokedAt:true}}}}}},
+  winnerPresentation:{select:{imageId:true,consentConfirmedAt:true,image:{select:{purpose:true}},presentationMode:true,bannerImageId:true,bannerConsentConfirmedAt:true,version:true,bannerImage:{select:{purpose:true}}}},
+  settlement:{select:{publication:{select:{publishedAt:true}},decision:true,outcome:true,winningPoints:true,completedAt:true,acceptedCount:true,winner:{select:{name:true,telegramUsername:true,ownContact:{select:{botId:true,phoneCipher:true,revokedAt:true}}}}}},
 } satisfies Prisma.AuctionSelect;
 type AuctionRow = Prisma.AuctionGetPayload<{ select: typeof publicAuctionSelect }>;
 const presentationSchema=z.object({title:z.string(),titleAm:z.string().nullable().optional(),description:z.string(),descriptionAm:z.string().nullable().optional(),condition:z.string(),conditionAm:z.string().nullable().optional(),images:z.array(z.object({path:z.string(),alt:z.string(),sourceType:z.string(),sourceCredit:z.string().nullable().optional()}))}).strict();
@@ -73,16 +75,19 @@ export function toPublicAuction(row: AuctionRow, now: Date) {
     outcome:settled.outcome,winningPoints:settled.winningPoints?.toString()??null,
     decision:settled.decision,explanation:resultExplanation(settled.outcome,settled.decision,row.terms?.ruleVersion),
     isDemo:row.isDemo,closedAt:settled.completedAt.toISOString(),source:'SETTLED' as const,
-    demoLabel:row.isDemo?'DEMO · settled test':null,winnerDisplay:null,
-    winnerPhoneMasked:settled.outcome==='WINNER'&&settled.winner?.ownContact&&!settled.winner.ownContact.revokedAt&&/^\d{4}$/.test(settled.winner.ownContact.lastFour)?`********${settled.winner.ownContact.lastFour.slice(-2)}`:null,
-    acceptedBidCount:row.acceptedBidCount,
-    winnerPhotoPath:!row.isDemo&&settled.outcome==='WINNER'&&row.winnerPresentation?.imageId&&row.winnerPresentation.image?.purpose==='WINNER_PHOTO'&&row.winnerPresentation.consentConfirmedAt&&row.winnerPresentation.consentConfirmedAt<=now?`/api/media/${row.winnerPresentation.imageId}`:null,
+    demoLabel:row.isDemo?'DEMO · settled test':null,publishedAt:settled.publication!.publishedAt.toISOString(),winnerDisplay:settled.outcome==='WINNER'?safeResultIdentity(settled.winner).displayName:null,winnerUsername:settled.outcome==='WINNER'?safeResultIdentity(settled.winner).username:null,
+    winnerPhoneMasked:settled.outcome==='WINNER'?maskedResultContact(settled.winner?.ownContact):null,
+    acceptedBidCount:settled.acceptedCount,
+    winnerPhotoPath:!row.isDemo&&settled.outcome==='WINNER'&&row.winnerPresentation?.presentationMode==='PHOTO'&&row.winnerPresentation.imageId&&row.winnerPresentation.image?.purpose==='WINNER_PHOTO'&&row.winnerPresentation.consentConfirmedAt&&row.winnerPresentation.consentConfirmedAt<=now?`/api/media/${row.winnerPresentation.imageId}`:null,
+    winnerBannerPath:!row.isDemo&&settled.outcome==='WINNER'&&row.winnerPresentation?.presentationMode==='BANNER'&&row.winnerPresentation.bannerImageId&&row.winnerPresentation.bannerImage?.purpose==='WINNER_BANNER'&&row.winnerPresentation.bannerConsentConfirmedAt&&row.winnerPresentation.bannerConsentConfirmedAt<=now?`/api/media/${row.winnerPresentation.bannerImageId}`:null,
+    winnerBannerVersion:row.winnerPresentation?.version??0,
   }:status==='closed'&&row.result&&row.result.publishedAt<=now?{
     outcome:row.result.outcome,winningPoints:row.result.winningPoints?.toString()??null,
     decision:null,explanation:legacyTermsInEtb(row.result.explanation),isDemo:row.result.isDemo,closedAt:row.result.closedAt.toISOString(),source:'ILLUSTRATIVE' as const,
-    demoLabel:'DEMO example',winnerDisplay:null,winnerPhoneMasked:null,
+    demoLabel:'DEMO example',publishedAt:row.result.publishedAt.toISOString(),winnerDisplay:null,winnerUsername:null,winnerPhoneMasked:null,
     acceptedBidCount:null,
     winnerPhotoPath:null,
+    winnerBannerPath:null,winnerBannerVersion:0,
   }:null;
   return {
     slug:row.slug!,code:row.publicCode.toString(),status,publishedAt:row.publishedAt!.toISOString(),featured:row.featured,isDemo:row.isDemo,bidCount:row.acceptedBidCount,

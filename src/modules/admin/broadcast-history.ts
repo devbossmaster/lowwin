@@ -3,7 +3,7 @@ import {AdminError} from './errors';
 import type {CampaignPayload} from '../notifications/campaigns';
 import {broadcastButtonLabel,broadcastMiniAppPath} from '../../lib/broadcast-link';
 
-type DeliveryProgress={id:string;sent:bigint;pending:bigint;skipped:bigint;failed:bigint;batches:bigint;failedBatches:bigint;blocked:bigint;invalid:bigint;exhausted:bigint};
+type DeliveryProgress={id:string;sent:bigint;pending:bigint;skipped:bigint;failed:bigint;batches:bigint;failedBatches:bigint;blocked:bigint;invalid:bigint;exhausted:bigint;retrying?:bigint;inFlight?:bigint};
 
 export const STOPPED='CAMPAIGN_STOPPED';
 export async function stopBroadcast(tx:Prisma.TransactionClient,id:string){
@@ -11,9 +11,12 @@ export async function stopBroadcast(tx:Prisma.TransactionClient,id:string){
  if(!row||row.kind!=='GLOBAL_CAMPAIGN'||p?.deliveryKind!=='BROADCAST'||p.rootKey!==row.key||!row.key.startsWith('broadcast:'))throw new AdminError(404,'Broadcast not found.');
  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`broadcast:${row.key}`},0))`;
  // Content stays immutable. The root marker also blocks future expansion/retries.
- await tx.outbox.update({where:{id},data:{state:'SKIPPED',lastError:STOPPED}});
- const remaining=await tx.outbox.updateMany({where:{key:{startsWith:row.key+':'},state:'PENDING'},data:{state:'SKIPPED',lastError:STOPPED}});
- return {id,stopped:true,remainingStopped:remaining.count};
+ await tx.outbox.update({where:{id},data:{state:'SKIPPED',lastError:STOPPED,leaseToken:null,leaseUntil:null}});
+ // Do not revoke active send ownership: a request already accepted by Telegram
+ // must still record its message ID. Claimed-but-not-sent rows recheck Stop.
+ const remaining=await tx.outbox.updateMany({where:{key:{startsWith:row.key+':'},state:'PENDING',OR:[{leaseUntil:null},{leaseUntil:{lte:new Date()}}]},data:{state:'SKIPPED',lastError:STOPPED,leaseToken:null,leaseUntil:null}});
+ const leased=await tx.outbox.count({where:{key:{startsWith:row.key+':'},state:'PENDING',leaseUntil:{gt:new Date()}}});
+ return {id,stopped:true,remainingStopped:remaining.count,leasedAtStop:leased};
 }
 export async function broadcastHistory(client:PrismaClient,{page,q}:{page:number;q:string}){
  const where=Prisma.sql`kind='GLOBAL_CAMPAIGN' AND payload->>'deliveryKind'='BROADCAST' AND payload->>'rootKey'=key AND starts_with(key,'broadcast:') ${q?Prisma.sql`AND (payload->>'body' ILIKE ${'%'+q+'%'} OR key ILIKE ${'%'+q+'%'})`:Prisma.empty}`;
@@ -21,6 +24,8 @@ export async function broadcastHistory(client:PrismaClient,{page,q}:{page:number
  const progress=roots.length?await client.$queryRaw<DeliveryProgress[]>(Prisma.sql`SELECT r.id,
  COUNT(*) FILTER(WHERE o.kind='BROADCAST' AND o.state='SENT') AS sent,
  COUNT(*) FILTER(WHERE o.kind='BROADCAST' AND o.state='PENDING') AS pending,
+ COUNT(*) FILTER(WHERE o.kind='BROADCAST' AND o.state='PENDING' AND o.attempts>0 AND (o."leaseUntil" IS NULL OR o."leaseUntil"<=clock_timestamp())) AS retrying,
+ COUNT(*) FILTER(WHERE o.kind='BROADCAST' AND o.state='PENDING' AND o."leaseUntil">clock_timestamp()) AS "inFlight",
  COUNT(*) FILTER(WHERE o.kind='BROADCAST' AND o.state='SKIPPED') AS skipped,
  COUNT(*) FILTER(WHERE o.kind='BROADCAST' AND o.state='FAILED') AS failed,
  COUNT(*) FILTER(WHERE o.kind='GLOBAL_CAMPAIGN' AND o.state='PENDING') AS batches,
@@ -34,7 +39,8 @@ export async function broadcastHistory(client:PrismaClient,{page,q}:{page:number
  const items=roots.map(r=>{
   const counts=progress.find(c=>c.id===r.id)!,sent=Number(counts.sent),pending=Number(counts.pending),skipped=Number(counts.skipped),failed=Number(counts.failed),batches=Number(counts.batches),failedBatches=Number(counts.failedBatches??0),blocked=Number(counts.blocked??0),invalid=Number(counts.invalid??0),exhausted=Number(counts.exhausted??0),code=r.payload.href?.split('/')[2];
   let buttonLabel='Open Lowwin',miniAppPath='/';try{buttonLabel=broadcastButtonLabel(r.payload.buttonLabel);miniAppPath=broadcastMiniAppPath(r.payload.href??'/')}catch{/* Historical unsupported links are not copied into a new draft. */}
-  return {id:r.id,text:r.payload.body??'',imageId:r.payload.imageId??null,buttonLabel,miniAppPath,auctionCode:code&&/^\d+$/.test(code)?code:String(auctions.find(a=>a.slug===code)?.publicCode??''),createdAt:r.createdAt,sent,pending,skipped,failed,pendingBatches:batches,failedBatches,recipientCount:sent+pending+skipped+failed,failureReasons:{blocked,invalid,exhausted,other:Math.max(0,failed-blocked-invalid-exhausted)},state:r.lastError===STOPPED?'STOPPED':pending||batches?sent?'SENDING':'QUEUED':failed||failedBatches?'NEEDS_ATTENTION':'COMPLETED',canStop:r.lastError!==STOPPED&&!!(pending||batches)};
+  const retrying=Number(counts.retrying??0),inFlight=Number(counts.inFlight??0),recipientCount=sent+pending+skipped+failed;
+  return {id:r.id,text:r.payload.body??'',imageId:r.payload.imageId??null,buttonLabel,miniAppPath,auctionCode:code&&/^\d+$/.test(code)?code:String(auctions.find(a=>a.slug===code)?.publicCode??''),createdAt:r.createdAt,sent,pending,queued:Math.max(0,pending-retrying-inFlight),retrying,inFlight,skipped,failed,pendingBatches:batches,failedBatches,recipientCount,eligibleRecipients:recipientCount,audienceComplete:batches===0&&failedBatches===0,failureReasons:{blocked,invalid,exhausted,other:Math.max(0,failed-blocked-invalid-exhausted)},state:r.lastError===STOPPED?'STOPPED':pending||batches?sent?'SENDING':'QUEUED':failed||failedBatches?'NEEDS_ATTENTION':'COMPLETED',canStop:r.lastError!==STOPPED&&!!(pending||batches)};
  });
  return {items,total:Number(count[0].count),page,totalPages:Math.ceil(Number(count[0].count)/25)};
 }

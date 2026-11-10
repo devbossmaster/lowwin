@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import {notificationSettings} from '@/modules/notifications/settings';
 
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -24,7 +25,7 @@ export function parseEnv(raw: Record<string, string | undefined>) {
   if (production && (new URL(env.BETTER_AUTH_URL).protocol !== 'https:' || new URL(env.MINI_APP_URL).protocol !== 'https:')) throw new Error('HTTPS required');
   if (new URL(env.MINI_APP_URL).origin !== new URL(env.BETTER_AUTH_URL).origin) throw new Error('Mini App and auth origins must match');
   if (env.DEV_IDENTITY_ENABLED === 'true') assertLocalDevelopment('identity', raw);
-  return env;
+  return {...env,...notificationSettings(raw)};
 }
 export function getEnv() { return parseEnv(process.env); }
 export function assertLocalDevelopment(feature: 'identity' | 'points', raw: Record<string, string | undefined> = process.env) {

@@ -45,6 +45,7 @@ model User {
   referralRedemptions ReferralRedemption[]
   referralRegistrationProof ReferralRegistrationProof?
   winnerPhotoConsents WinnerPresentation[] @relation("WinnerPhotoConsent")
+  winnerBannerConsents WinnerPresentation[] @relation("WinnerBannerConsent")
 
   @@map("user")
 }
@@ -315,6 +316,9 @@ model Auction {
   closeAttempts       Int                      @default(0)
   nextCloseAttemptAt  DateTime?
   closeErrorCode      String?
+  publicationAttempts Int @default(0)
+  nextPublicationAttemptAt DateTime?
+  publicationErrorCode String?
   favorites           AuctionFavorite[]
   draft               AuctionDraft?
   feeRevisions        AuctionFeeRevision[]
@@ -323,6 +327,7 @@ model Auction {
   chapaCheckouts       ChapaCheckout[]
 
   @@index([status, startsAt, endsAt])
+  @@index([status, nextPublicationAttemptAt])
   @@index([categoryId, status])
   @@index([publishedAt, endsAt])
   @@index([testRunId, status])
@@ -781,6 +786,9 @@ model Outbox {
   attempts        Int                @default(0)
   nextAttemptAt   DateTime           @default(now())
   lastError       String?
+  leaseToken      String?
+  leaseUntil      DateTime?
+  claimedAt       DateTime?
   settlementId    String?
   settlement      AuctionSettlement? @relation(fields: [settlementId], references: [id], onDelete: Restrict)
   testRunId       String?
@@ -788,6 +796,45 @@ model Outbox {
   telegramMessage TelegramMessage?
 
   @@index([testRunId, state])
+}
+
+// Claims and rate reservations are server-only coordination, never financial proof.
+model TelegramRateBudget {
+  botId            String   @id
+  nextSendAt       DateTime @default(now())
+  nextBulkAt       DateTime @default(now())
+  cooldownUntil    DateTime?
+  highStreak       Int      @default(0)
+  bulkWaitingUntil DateTime?
+}
+
+model TelegramChatRateBudget {
+  botId      String
+  chatId     String
+  nextSendAt DateTime @default(now())
+
+  @@id([botId, chatId])
+}
+
+model TelegramDeliveryLease {
+  key        String    @id
+  botId      String
+  outboxId   String
+  leaseToken String
+  leaseUntil DateTime
+  sentAt     DateTime?
+  messageId  BigInt?
+}
+
+model TelegramMediaCache {
+  botId            String
+  contentKey       String
+  fileId           String?
+  uploadToken      String?
+  uploadLeaseUntil DateTime?
+  updatedAt        DateTime @default(now()) @updatedAt
+
+  @@id([botId, contentKey])
 }
 
 // Private immutable decision and audit proof. PublicAuctionResult is the separate
@@ -833,6 +880,12 @@ model ResultPublication {
   proofHash    String
   reason       String
   historical   Boolean           @default(false)
+}
+
+// Durable deployment cutover: older genuine settlements publish silently.
+model ResultPublicationPolicy {
+  id            String @id
+  automaticFrom DateTime @default(dbgenerated("(clock_timestamp() AT TIME ZONE 'UTC')")) @db.Timestamp(6)
 }
 
 model SettlementMovement {
@@ -1025,7 +1078,8 @@ model ManagedMedia {
   sourceCredit String
   purpose      String   @default("CATALOG")
   createdAt    DateTime @default(now())
-  winnerPresentations WinnerPresentation[]
+  winnerPresentations WinnerPresentation[] @relation("WinnerPhotoMedia")
+  winnerBannerPresentations WinnerPresentation[] @relation("WinnerBannerMedia")
 }
 
 // Editable announcement media stays separate from immutable auction/result facts.
@@ -1033,14 +1087,23 @@ model WinnerPresentation {
   auctionId          String @id
   auction            Auction @relation(fields: [auctionId], references: [id], onDelete: Restrict)
   imageId            String?
-  image              ManagedMedia? @relation(fields: [imageId], references: [id], onDelete: Restrict)
+  image              ManagedMedia? @relation("WinnerPhotoMedia", fields: [imageId], references: [id], onDelete: Restrict)
   consentConfirmedAt DateTime?
   consentActorId     String?
   consentActor       User? @relation("WinnerPhotoConsent", fields: [consentActorId], references: [id], onDelete: Restrict)
+  // PHOTO preserves historical right-hand photographs; BANNER is a complete
+  // uploaded canvas. PRODUCT explicitly restores the frozen product fallback.
+  presentationMode   String @default("PHOTO")
+  bannerImageId      String?
+  bannerImage        ManagedMedia? @relation("WinnerBannerMedia", fields: [bannerImageId], references: [id], onDelete: Restrict)
+  bannerConsentConfirmedAt DateTime?
+  bannerConsentActorId String?
+  bannerConsentActor User? @relation("WinnerBannerConsent", fields: [bannerConsentActorId], references: [id], onDelete: Restrict)
   version            Int @default(1)
   updatedAt          DateTime @updatedAt
 
   @@index([imageId])
+  @@index([bannerImageId])
 }
 
 model SiteContent {

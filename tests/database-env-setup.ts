@@ -15,10 +15,13 @@ const group: Record<string, string> = {
   'auction-activity.test.ts': 'ACTIVITY_TEST_DATABASE_URL', 'arifpay-checkout.test.ts': 'ARIFPAY_TEST_DATABASE_URL',
   'chapa-checkout.test.ts':'CHAPA_TEST_DATABASE_URL',
   'chapa-direct-batch.test.ts':'CHAPA_DIRECT_TEST_DATABASE_URL',
+  'chapa-direct-speed.test.ts':'CHAPA_SPEED_TEST_DATABASE_URL',
   'catalog-workflow.test.ts': 'CATALOG_WORKFLOW_TEST_DATABASE_URL',
   'catalog.test.ts': 'CATALOG_TEST_DATABASE_URL',
   'referral-rewards.test.ts': 'REFERRAL_TEST_DATABASE_URL',
   'result-breakdown.test.ts': 'RESULT_TEST_DATABASE_URL',
+  'result-publication.test.ts': 'RESULT_TEST_DATABASE_URL',
+  'result-campaign-delivery.test.ts': 'RESULT_NOTIFICATION_TEST_DATABASE_URL',
 };
 const database = process.env[group[filename] ?? 'TEST_DATABASE_URL'];
 if (database) {
@@ -30,7 +33,7 @@ if (database) {
   process.env.APP_ENV = 'local';
   // These fixtures exercise signed/contact-bound paths without any bot/provider
   // network requests. Do not depend on a developer .env or deployment secrets.
-  if(['referral-rewards.test.ts','result-breakdown.test.ts','chapa-checkout.test.ts'].includes(filename))Object.assign(process.env,{
+  if(['referral-rewards.test.ts','result-breakdown.test.ts','result-publication.test.ts','chapa-checkout.test.ts'].includes(filename))Object.assign(process.env,{
     NODE_ENV:'test',DEV_POINTS_ENABLED:'true',DEV_IDENTITY_ENABLED:'false',
     BETTER_AUTH_URL:'http://localhost:3000',MINI_APP_URL:'http://localhost:3000',
     BETTER_AUTH_SECRET:'fixture-only-secret-at-least-thirty-two-characters',

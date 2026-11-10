@@ -59,8 +59,8 @@ describe('Master Guide Admin bounded tables',()=>{
  it('defaults to committed completion and applies independent type/status filters before page and count queries',async()=>{
   const db=paymentDb();
   await readChapaTable(db as unknown as PrismaClient,actor,f);
-  expect(db.$queryRaw.mock.calls[0][0].text).toContain("c.status IN ('CREDITED','BID_ACCEPTED') AND c.\"creditJournalId\" IS NOT NULL");
-  for(const [view,condition] of [['unfinished',"c.status IN ('SUBMITTING','PENDING','VERIFYING','AUTH_NEEDED')"],['review',"c.status='NEEDS_REVIEW'"],['failed',"c.status IN ('FAILED','CANCELLED','EXPIRED','INCOMPLETE','BLOCKED')"],['all','WHERE true']] as const){
+  expect(db.$queryRaw.mock.calls[0][0].text).toContain("c.\"creditJournalId\" IS NOT NULL");
+  for(const [view,condition] of [['unfinished',"c.status IN ('SUBMITTING','PENDING','VERIFYING','AUTH_NEEDED')"],['review',"c.status='NEEDS_REVIEW'"],['failed',"c.\"verificationState\"='VERIFIED' AND c.\"providerStatus\" IN ('FAILED','CANCELLED','EXPIRED','INCOMPLETE','BLOCKED','FAILED_OR_CANCELLED')"],['all','WHERE true']] as const){
    await readChapaTable(db as unknown as PrismaClient,actor,{...f,view,purpose:'BID',q:'Player'});
    const page=db.$queryRaw.mock.calls.at(-2)![0],count=db.$queryRaw.mock.calls.at(-1)![0];
    expect(page.text).toContain(condition);expect(count.text).toContain(condition);expect(page.values).toContain('BID');expect(page.values).toContain('%Player%');expect(page.values).toContain(25);
@@ -92,7 +92,7 @@ describe('Master Guide Admin bounded tables',()=>{
   expect(db.bid.findMany).toHaveBeenCalledWith(expect.objectContaining({where:{id:{in:['wallet-bid']}},take:25}));
   const sql=db.$queryRaw.mock.calls[0][0].text;
   expect(sql).toContain('UNION ALL');expect(sql).toContain('ORDER BY amount DESC,"createdAt" DESC,id ASC,source ASC');
-  expect(sql).toContain('NOT EXISTS(SELECT 1 FROM "ChapaCheckout" c WHERE c."bidId"=b.id)');
+  expect(sql).toContain('c.receipt->\'bids\' @> jsonb_build_array(jsonb_build_object(\'id\',b.id))');
   expect(sql).toContain("o.scope='BID'");expect(sql).toContain("j.kind='BID_FEE'");expect(sql).toContain('NOT a."isDemo" AND a."testRunId" IS NULL');
   expect(JSON.stringify(result)).not.toMatch(/private-.*journal|private-cipher|netFeePoints|phoneCipher/);
  });

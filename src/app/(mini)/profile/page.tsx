@@ -9,6 +9,7 @@ import {MiniRouteSkeleton} from '@/components/mini-route-skeleton';
 import {useTelegram} from '@/components/telegram-provider';
 import {OfflineRetry} from '@/components/offline-retry';
 import {WalletTopUpTrigger} from '@/components/wallet-top-up-trigger';
+import {WalletOverviewTrigger} from '@/components/wallet-overview-trigger';
 import {useMiniLocale} from '@/components/mini-locale';
 import {centsToEtb,etbToCents} from '@/lib/money';
 import type {getPlayerProfile} from '@/modules/profile/personal';
@@ -92,7 +93,7 @@ function PlayerProfile(){
         <div className={styles.identityBody}><h2>{data.displayName}</h2>{data.phoneDisplay&&<p>{data.phoneDisplay}</p>}{data.contactVerified&&<span className={styles.verified}><ShieldCheck size={12} aria-hidden="true"/>{text('Verified account','የተረጋገጠ መለያ')}</span>}</div>
       </section>
       <section id="wallet" className={styles.wallet} aria-label={text('Your wallet','ዋሌትዎ')}>
-        <div className={styles.walletHead}><span><Wallet size={15} aria-hidden="true"/>{text('Wallet','ዋሌት')}</span><Link className={styles.walletArrow} href="/wallet" aria-label={text('Open Wallet','ዋሌት ይክፈቱ')}><ChevronRight size={18} aria-hidden="true"/></Link></div>
+        <div className={styles.walletHead}><span><Wallet size={15} aria-hidden="true"/>{text('Wallet','ዋሌት')}</span><WalletOverviewTrigger className={styles.walletArrow} ariaLabel={text('Open Wallet','ዋሌት ይክፈቱ')}><ChevronRight size={18} aria-hidden="true"/></WalletOverviewTrigger></div>
         <p className={styles.balance} aria-busy={!wallet.data&&!wallet.error}>{balance??'—'} <span>ETB</span></p>
         <WalletTopUpTrigger className={styles.topUp} ariaLabel={text('Top up wallet','ወደ ዋሌት ገንዘብ ያስገቡ')}><Plus size={19} aria-hidden="true"/>{text('Top up','ገንዘብ ያስገቡ')}</WalletTopUpTrigger>
         {wallet.error&&<p className={styles.walletError} role="status">{text(wallet.data?'Showing your saved balance.':'Balance unavailable.',wallet.data?'የተቀመጠው ቀሪ ሂሳብ ይታያል።':'ቀሪ ሂሳቡ አይገኝም።')} <button type="button" onClick={wallet.reload}>{text('Retry','እንደገና')}</button></p>}

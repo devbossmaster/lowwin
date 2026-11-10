@@ -1,73 +1,79 @@
 'use client';
-import {useEffect,useRef,useState} from 'react';
-import {IntentPrefetchLink as Link} from './intent-prefetch-link';
-import {ChevronLeft,ChevronRight,Ticket} from 'lucide-react';
-import {AccountSheet} from './account-sheet';
-import {MyBidPaymentAttempts} from './my-bid-payment-attempts';
-import {usePrivateQuery,PrivateState} from './private-query';
-import {OfflineRetry} from './offline-retry';
-import type {getPersonalBids,getPlayerProfile} from '@/modules/profile/personal';
-import {useMiniPage,useMiniQueryState} from './mini-query-state';
-import {useMiniLocale} from './mini-locale';
-import {formatAuctionBid,formatEtb,etbToCents} from '@/lib/money';
+import dynamic from 'next/dynamic';
+import {useCallback,useEffect,useRef,useState} from 'react';
+import {ChevronLeft,ChevronRight,Clock3,Ticket} from 'lucide-react';
+import type {PersonalBidList,PersonalBidListItem} from '@/modules/profile/bid-list';
+import {formatAuctionBid} from '@/lib/money';
 import {isSubmissionFeeOnly} from '@/modules/auctions/rules';
 import {useTelegram} from './telegram-provider';
-import {acceptedBidView,bidFeeNotice,myBidsSelection,type MyBidsFilter,type MyBidsSection} from './my-bids-copy';
-import {MiniBidRowsSkeleton} from './mini-route-skeleton';
+import {useMiniLocale} from './mini-locale';
+import {useMiniPage,useMiniQueryState} from './mini-query-state';
+import {usePrivateQuery,PrivateState} from './private-query';
+import {invalidatePrivateQueries} from './private-query-cache';
+import {prefetchPublicQuery} from './public-query-cache';
+import {auctionDetailUrl} from './auction-query';
+import {useAuctionActivity} from './auction-activity';
+import {AuctionCountdown} from './auction-countdown';
+import {CatalogImage} from './catalog-image';
+import {IntentPrefetchLink as Link} from './intent-prefetch-link';
+import {OfflineRetry} from './offline-retry';
+import {myBidListView,myBidOutcomeLabel,myBidsQueryUrl,type MyBidListView} from './my-bids-list-copy';
 import styles from './my-bids-page.module.css';
 
-type Data=Awaited<ReturnType<typeof getPersonalBids>>;
-type Bid=Data['items'][number];
-type View='all'|'live'|'history';
-export function bidOutcomeLabel(outcome:string,am:boolean){
- const copy:Record<string,[string,string]>={LIVE:['Active','በሂደት ላይ'],PENDING:['Result pending','ውጤት በመጠባበቅ ላይ'],WON:['Won','አሸንፈዋል'],LOST:['Not won','አላሸነፈም'],CANCELLED:['Cancelled','ተሰርዟል'],NO_WINNER:['No winner','አሸናፊ የለም']};
- return (copy[outcome]??copy.PENDING)[am?1:0];
-}
-function paymentOf(bid:Bid):Bid["payment"]{return bid.payment??{status:etbToCents(bid.feePoints)===0n?"NOT_REQUIRED":"UNAVAILABLE",method:null,transactionRef:null,checkoutId:null}}
-function paymentLabel(status:Bid['payment']['status'],am:boolean){return status==='PAID'?(am?'ክፍያው ተከፍሏል':'Fee paid'):status==='NOT_REQUIRED'?(am?'ክፍያ የለም':'No fee'):(am?'የክፍያ ዝርዝር አይገኝም':'Payment details unavailable')}
-function paymentMethod(method:Bid['payment']['method'],am:boolean){return method==='CHAPA'?(am?'የመስመር ላይ ክፍያ':'Online payment'):method==='WALLET'?(am?'የዋሌት ቀሪ ሂሳብ':'Wallet balance'):method==='ARIFPAY_TELEBIRR'?'ArifPay · Telebirr':method==='ARIFPAY_MPESA'?'ArifPay · M-PESA':null}
-const shortId=(id:string)=>id.length>16?`${id.slice(0,8)}…${id.slice(-4)}`:id;
+const AuctionSheet=dynamic(()=>import('./my-bid-auction-sheet'),{ssr:false});
+export {myBidOutcomeLabel as bidOutcomeLabel} from './my-bids-list-copy';
 
-export function MyBidsPage({initialView='all'}:{initialView?:View}){
+export function MyBidsPage({initialView='live'}:{initialView?:MyBidListView|'all'|'history'}){
  const {queryIdentity}=useTelegram();
  return <PlayerBids key={queryIdentity??'guest'} initialView={initialView}/>;
 }
-function PlayerBids({initialView}:{initialView:View}){
- const {queryIdentity}=useTelegram();
- const {language}=useMiniLocale(),am=language==='am',text=(en:string,translated:string)=>am?translated:en;
- const {params,set}=useMiniQueryState(),[page,setPage]=useMiniPage(),[selected,setSelected]=useState<Bid|null>(null),trigger=useRef<HTMLElement|null>(null);
- const requested=params.get('view')??initialView,{section,filter}=myBidsSelection(params.get('section'),params.get('status'),requested),view=acceptedBidView(filter,requested),showAccepted=section==='accepted';
- const query=usePrivateQuery<Data>(`/api/my-bids?view=${view}&page=${showAccepted?page:1}`,{pollMs:30000,keepPreviousData:true}),data=query.data,busy=query.isPlaceholderData;
- const profile=usePrivateQuery<Awaited<ReturnType<typeof getPlayerProfile>>>('/api/profile');
- useEffect(()=>setSelected(null),[section,filter,page]);
- const receipt=selected?(data?.items.find(item=>item.id===selected.id)??selected):null;
- const title=(bid:Bid)=>am?bid.auction.titleAm||bid.auction.title:bid.auction.title;
- const bidNumber=(bid:Bid)=>formatAuctionBid(bid.amount,bid.auction.ruleVersion).replace(/^ETB\s*/, '');
- const date=(value:string)=>new Date(value).toLocaleString(am?'am-ET':'en-ET',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',timeZone:'Africa/Addis_Ababa'});
- const coupons=profile.data?.referral?.configured?profile.data.referral.counts.available:'—';
- const summary=[{label:text('Total','ጠቅላላ'),value:data?(data.counts.total??data.counts.live+data.counts.history):undefined},{label:text('Active','በሂደት ላይ'),value:data?(data.counts.active??data.counts.live):undefined},{label:text('Won','ያሸነፉ'),value:data?.counts.won},{label:text('Coupons','ኩፖኖች'),value:coupons}];
- const filters:Array<[MyBidsFilter,string,string]>=section==='accepted'?[['all','All','ሁሉም'],['active','Active','በሂደት ላይ'],['completed','Completed','የተጠናቀቁ']]:[['all','All','ሁሉም'],['pending','Pending','በመጠባበቅ ላይ'],['failed','Failed','ያልተሳኩ'],['cancelled','Cancelled','የተሰረዙ'],['review','Needs review','ግምገማ የሚያስፈልጋቸው']];
- const chooseSection=(next:MyBidsSection)=>{setSelected(null);set({section:next==='accepted'?null:next,status:null,view:null,page:null,paymentPage:null})};
- return <><OfflineRetry/><section className={styles.page} data-my-bids-ready={!!data&&!busy||undefined}>
-  <div className={styles.summary} data-my-bids-summary aria-label={text('Accepted bid summary','የተቀበሉ ጨረታዎች ማጠቃለያ')} aria-busy={!data&&query.status==='authenticated'}>{summary.map(item=><div key={item.label}><span>{item.label}</span><strong>{item.value??<span className={styles.skeleton} aria-label={text('Loading','በመጫን ላይ')}/>}</strong></div>)}</div>
-  <div className={styles.sections} role="group" aria-label={text('Bid records','የጨረታ መዝገቦች')}><button type="button" aria-pressed={section==='accepted'} onClick={()=>chooseSection('accepted')}>{text('Accepted bids','የተቀበሉ ጨረታዎች')}</button><button type="button" aria-pressed={section==='attempts'} onClick={()=>chooseSection('attempts')}>{text('Payment attempts','የክፍያ ሙከራዎች')}</button></div>
-  <div className={styles.tabs} role="group" aria-label={text('Bid status','የጨረታ ሁኔታ')}>{filters.map(([tab,en,translated])=><button type="button" key={tab} aria-pressed={filter===tab} onClick={()=>{setSelected(null);set({section:section==='accepted'?null:section,status:tab==='all'?null:tab,view:null,page:null,paymentPage:null})}}>{text(en,translated)}</button>)}</div>
-  {section==='attempts'&&<MyBidPaymentAttempts key={`${queryIdentity}:${filter}`} filter={filter}/>}
-  {showAccepted&&<>{(data||query.error||!['loading','authenticated'].includes(query.status))&&<PrivateState query={query} variant="bids"/>}
-  {['loading','authenticated'].includes(query.status)&&!data&&!query.error&&<MiniBidRowsSkeleton/>}
-  {query.status==='authenticated'&&data&&<>
-   {data.items.length>0&&filter==='all'&&<h2 className={styles.listHeading}>{text('Accepted bids','የተቀበሉ ጨረታዎች')}</h2>}
-   {data.items.length===0?<div className={styles.empty}><Ticket size={26} aria-hidden="true"/><h2>{data.total>0?text('No bids on this page','በዚህ ገጽ ጨረታዎች የሉም'):view==='all'?text('Your first bid starts here','የመጀመሪያ ጨረታዎ ከዚህ ይጀምራል'):view==='live'?text('No active bids','በሂደት ላይ ያሉ ጨረታዎች የሉም'):text('No bid history yet','የጨረታ ታሪክ ገና የለም')}</h2><p>{text('Accepted bids appear below. Unfinished payment attempts are shown separately.','እዚህ የሚታዩት የተቀበሉ ጨረታዎች ብቻ ናቸው።')}</p>{data.total>0?<button className={styles.action} onClick={()=>setPage(1)}>{text('First page','የመጀመሪያ ገጽ')}</button>:<Link className={styles.action} href="/auctions/all">{text('Explore auctions','ጨረታዎችን ይመልከቱ')}</Link>}</div>:<div className={styles.list} data-my-bids-list aria-busy={busy||query.fetching}>{data.items.map(item=><button className={styles.row} type="button" key={item.id} data-bid-id={item.id} disabled={busy} onClick={event=>{trigger.current=event.currentTarget;setSelected(item)}} aria-label={`${title(item)}, ${text('bid details','የጨረታ ዝርዝር')}`}><span className={styles.number} data-long={bidNumber(item).length>7||undefined} title={bidNumber(item)}>{bidNumber(item)}</span><span className={styles.rowBody}><span className={styles.rowTitle}>{title(item)}</span><span className={styles.statuses}><span className={styles.outcome} data-outcome={item.outcome}>{bidOutcomeLabel(item.outcome,am)}</span><span className={styles.payment} data-payment-status={paymentOf(item).status}>{paymentLabel(paymentOf(item).status,am)}</span>{item.auction.isDemo&&<span className={styles.payment}>DEMO</span>}</span><span className={styles.meta}><time dateTime={item.acceptedAt}>{date(item.acceptedAt)}</time> · {text('Fee','ክፍያ')} {formatEtb(item.discount?.netFeePoints??item.feePoints)}</span><span className={styles.reference}>{shortId(item.id)}</span></span><ChevronRight className={styles.chevron} size={17} aria-hidden="true"/></button>)}</div>}
-   {data.totalPages>1&&<nav className={styles.pagination} aria-label={text('Bid pages','የጨረታ ገጾች')}><button type="button" aria-label={text('Previous page','የቀድሞ ገጽ')} disabled={busy||data.page<=1} onClick={()=>{setSelected(null);setPage(data.page-1)}}><ChevronLeft size={18} aria-hidden="true"/></button><span>{data.page} / {data.totalPages}</span><button type="button" aria-label={text('Next page','ቀጣይ ገጽ')} disabled={busy||data.page>=data.totalPages} onClick={()=>{setSelected(null);setPage(data.page+1)}}><ChevronRight size={18} aria-hidden="true"/></button></nav>}
-   {data.items.length>0&&<p className={styles.end} role="status">{text(`Showing ${(data.page-1)*20+1}–${Math.min(data.page*20,data.total)} of ${data.total}`,`${(data.page-1)*20+1}–${Math.min(data.page*20,data.total)} ከ ${data.total}`)}{data.page>=data.totalPages&&<> · {text('All bids loaded','ሁሉም ጨረታዎች ታይተዋል')}</>}</p>}
-  </>}</>}
 
- </section>{receipt&&query.status==='authenticated'&&<AccountSheet title={text('Bid details','የጨረታ ዝርዝር')} onClose={()=>setSelected(null)} returnFocusRef={trigger} footer={<Link className={styles.action} href={`/auctions/${receipt.auction.code}`}>{text('View auction','ጨረታውን ይመልከቱ')}</Link>}>
-  <div data-bid-receipt={receipt.id} className={styles.receipt}><h3>{title(receipt)}</h3><div className={styles.statuses}><span className={styles.outcome} data-outcome={receipt.outcome}>{bidOutcomeLabel(receipt.outcome,am)}</span><span className={styles.payment}>{paymentLabel(paymentOf(receipt).status,am)}</span></div><div className={styles.receiptAmount} data-long={bidNumber(receipt).length>8||undefined}>{bidNumber(receipt)}</div><p className={styles.caption}>{isSubmissionFeeOnly(receipt.auction.ruleVersion)?text('Your chosen number','የመረጡት ቁጥር'):text('Your bid amount','የጨረታዎ መጠን')}</p></div>
-  <h4 className={styles.sectionTitle}>{text('Bid information','የጨረታ መረጃ')}</h4><dl className={styles.facts}><div><dt>{text('Bid ID','የጨረታ ግቤት መለያ')}</dt><dd>{receipt.id}</dd></div><div><dt>{text('Submitted on','የቀረበበት ቀን')}</dt><dd>{new Date(receipt.acceptedAt).toLocaleDateString(am?'am-ET':'en-ET',{day:'numeric',month:'short',year:'numeric',timeZone:'Africa/Addis_Ababa'})}</dd></div><div><dt>{text('Submitted at','የቀረበበት ሰዓት')}</dt><dd>{new Date(receipt.acceptedAt).toLocaleTimeString(am?'am-ET':'en-ET',{hour:'numeric',minute:'2-digit',second:'2-digit',timeZone:'Africa/Addis_Ababa'})}</dd></div><div><dt>{text('Entry fee','የማስገቢያ ክፍያ')}</dt><dd>{formatEtb(receipt.feePoints)}</dd></div>{receipt.discount&&<><div><dt>{text('Earned discount','ያገኙት ቅናሽ')} ({receipt.discount.percent}%)</dt><dd>−{formatEtb(receipt.discount.points)}</dd></div><div><dt>{text('Discounted fee','ከቅናሽ በኋላ ያለው ክፍያ')}</dt><dd>{formatEtb(receipt.discount.netFeePoints)}</dd></div></>}{etbToCents(receipt.feeRefunded)>0n&&<div><dt>{text('Fee refunded','የተመለሰ ክፍያ')}</dt><dd>{formatEtb(receipt.feeRefunded)}</dd></div>}<div><dt>{text('Auction ID','የጨረታ መለያ')}</dt><dd>{receipt.auction.code}</dd></div></dl>
-  {paymentOf(receipt).checkoutId&&<Link href={'/payments/chapa/return?checkout='+paymentOf(receipt).checkoutId}>{text('View transaction','ግብይቱን ይመልከቱ')}</Link>}
-  <h4 className={styles.sectionTitle}>{text('Payment information','የክፍያ መረጃ')}</h4><dl className={styles.facts}>{paymentMethod(paymentOf(receipt).method,am)&&<div><dt>{text('Method','መንገድ')}</dt><dd>{paymentMethod(paymentOf(receipt).method,am)}</dd></div>}<div><dt>{text('Payment status','የክፍያ ሁኔታ')}</dt><dd>{paymentOf(receipt).status==='PAID'?text('Paid at submission','ጨረታው ሲቀርብ ተከፍሏል'):paymentLabel(paymentOf(receipt).status,am)}</dd></div>{paymentOf(receipt).transactionRef&&<div><dt>{text('Transaction reference','የክፍያ መለያ')}</dt><dd>{paymentOf(receipt).transactionRef}</dd></div>}</dl>
-  {isSubmissionFeeOnly(receipt.auction.ruleVersion)&&<p className={styles.notice}>{bidFeeNotice(paymentOf(receipt).status,am)}</p>}
-  <div className={styles.sheetLinks}><Link href="/winners">{text('Winners','አሸናፊዎች')}</Link><Link href="/terms">{text('Terms','ውሎች')}</Link><Link href="/privacy">{text('Privacy','ግላዊነት')}</Link></div>
- </AccountSheet>}</>;
+function PlayerBids({initialView}:{initialView:MyBidListView|'all'|'history'}){
+ const {queryIdentity}=useTelegram(),{language}=useMiniLocale(),am=language==='am',text=(en:string,translated:string)=>am?translated:en;
+ const {params,set}=useMiniQueryState(),[page,setPage]=useMiniPage(),view=myBidListView(params.get('view')??initialView,params.get('status'));
+ const [selected,setSelected]=useState<PersonalBidListItem|null>(null),trigger=useRef<HTMLElement|null>(null),invalidateTimer=useRef<ReturnType<typeof setTimeout>|null>(null),changedScopes=useRef(new Set<string>());
+ const query=usePrivateQuery<PersonalBidList>(myBidsQueryUrl(view,page,language),{freshnessMs:view==='finished'?300000:15000,cancelOnUnmount:true}),data=query.data;
+ useEffect(()=>{setSelected(null)},[view,page,language]);
+ useEffect(()=>()=>{if(invalidateTimer.current)clearTimeout(invalidateTimer.current)},[]);
+ // Every visible Live row shares the existing batched activity request. One
+ // changed auction/deadline refreshes only this private list, never the app.
+ const refresh=useCallback((slug:string|null,code:string)=>{
+  if(!queryIdentity)return;
+  changedScopes.current.add('/api/my-bids');changedScopes.current.add(auctionDetailUrl(slug??code));changedScopes.current.add('/api/results/'+encodeURIComponent(code));
+  if(invalidateTimer.current)return;
+  invalidateTimer.current=setTimeout(()=>{invalidateTimer.current=null;const scopes=[...changedScopes.current];changedScopes.current.clear();invalidatePrivateQueries(queryIdentity,scopes)},0);
+ },[queryIdentity]);
+ const choose=(next:MyBidListView)=>{if(next===view)return;setSelected(null);set({view:next==='live'?null:'finished',page:null,section:null,status:null,paymentPage:null})};
+ const handleTabs=(event:React.KeyboardEvent<HTMLButtonElement>,next:MyBidListView)=>{if(event.key==='ArrowRight'||event.key==='ArrowLeft'||event.key==='Home'||event.key==='End'){event.preventDefault();const destination=event.key==='Home'?'live':event.key==='End'?'finished':next;choose(destination);event.currentTarget.parentElement?.querySelector<HTMLButtonElement>('[data-view="'+destination+'"]')?.focus()}};
+ return <><OfflineRetry/><section className={styles.page} data-my-bids-ready={!!data||undefined}>
+  <div className={styles.tabs} role="tablist" data-my-bids-tabs aria-label={text('Your accepted bids','የተቀበሉ ጨረታዎችዎ')}>
+   {(['live','finished'] as const).map(tab=><button key={tab} id={'my-bids-tab-'+tab} type="button" role="tab" data-view={tab} aria-controls="my-bids-panel" aria-selected={tab===view} tabIndex={tab===view?0:-1} onClick={()=>choose(tab)} onKeyDown={event=>handleTabs(event,tab==='live'?'finished':'live')}>{tab==='live'?text('Live','ቀጥታ'):text('Finished','ያለቁ')}</button>)}
+  </div>
+  <div id="my-bids-panel" role="tabpanel" aria-labelledby={'my-bids-tab-'+view}>
+   {!data&&['loading','authenticated'].includes(query.status)&&!query.error?<BidRowsLoading am={am}/>:<PrivateState query={query} variant="bids"/>}
+   {query.status==='authenticated'&&data&&<>
+    {!data.items.length?<div className={styles.empty}><Ticket size={26} aria-hidden="true"/><h2>{view==='live'?text('No live bids yet','የቀጥታ ጨረታዎች ገና የሉም'):text('No finished bids yet','ያለቁ ጨረታዎች ገና የሉም')}</h2><p>{view==='live'?text('Your accepted bids appear here while the auction is open.','ጨረታው ክፍት ሳለ የተቀበሉ ጨረታዎችዎ እዚህ ይታያሉ።'):text('Completed and cancelled auctions appear here.','የተጠናቀቁ እና የተሰረዙ ጨረታዎች እዚህ ይታያሉ።')}</p><Link className={styles.action} href="/auctions/all">{text('Explore auctions','ጨረታዎችን ይመልከቱ')}</Link></div>:<div className={styles.list} data-my-bids-list>{data.items.map(item=><BidRow key={item.id} item={item} live={view==='live'} serverNow={data.serverNow} observedAt={query.updatedAt} onChanged={refresh} onOpen={event=>{trigger.current=event.currentTarget;setSelected(item)}}/>)}</div>}
+    {(data.page>1||data.hasNext)&&<nav className={styles.pagination} aria-label={text('Bid pages','የጨረታ ገጾች')}><button type="button" disabled={data.page<=1} onClick={()=>setPage(data.page-1)} aria-label={text('Previous page','የቀድሞ ገጽ')}><ChevronLeft size={18} aria-hidden="true"/></button><span>{text('Page','ገጽ')} {data.page}</span><button type="button" disabled={!data.hasNext} onClick={()=>setPage(data.page+1)} aria-label={text('Next page','ቀጣይ ገጽ')}><ChevronRight size={18} aria-hidden="true"/></button></nav>}
+   </>}
+  </div>
+ </section>{selected&&query.status==='authenticated'&&<AuctionSheet key={selected.id} bid={selected} live={view==='live'} serverNow={data?.serverNow??selected.acceptedAt} onClose={()=>setSelected(null)} returnFocusRef={trigger}/>}</>;
 }
+
+function BidRow({item,live,serverNow,observedAt,onChanged,onOpen}:{item:PersonalBidListItem;live:boolean;serverNow:string;observedAt:number;onChanged:(slug:string|null,code:string)=>void;onOpen:(event:React.MouseEvent<HTMLButtonElement>)=>void}){
+ const {language}=useMiniLocale(),am=language==='am',element=useRef<HTMLButtonElement>(null);
+ const {activity}=useAuctionActivity(live||item.outcome==='PENDING'?item.auction.code:'',{element});
+ const phase=activity?.status;
+ const changed=useCallback(()=>onChanged(item.auction.slug,item.auction.code),[item.auction.slug,item.auction.code,onChanged]);
+ useEffect(()=>{if(live&&phase&&phase!=='live')changed()},[live,phase,changed]);
+ useEffect(()=>{if(!live&&item.outcome==='PENDING'&&activity?.resultReady)changed()},[live,item.outcome,activity?.resultReady,changed]);
+ const title=am?item.auction.titleAm?.trim()||item.auction.title:item.auction.title,number=formatAuctionBid(item.amount,item.auction.ruleVersion??undefined).replace(/^ETB\s*/,''),feeOnly=isSubmissionFeeOnly(item.auction.ruleVersion??undefined);
+ const prefetch=()=>{if(item.auction.slug)void prefetchPublicQuery(auctionDetailUrl(item.auction.slug))};
+ const target=activity?.endsAt??item.auction.endsAt;
+ return <button ref={element} className={styles.row} type="button" data-bid-id={item.id} onPointerEnter={prefetch} onFocus={prefetch} onClick={onOpen} aria-label={title+', '+(am?(feeOnly?'የመረጡት ቁጥር':'የጨረታ መጠን'):(feeOnly?'chosen number':'bid amount'))+' '+number+', '+myBidOutcomeLabel(item.outcome,am)}>
+  <span className={styles.thumbnail} data-bid-thumbnail><CatalogImage src={item.auction.image?.path} alt="" sizes="72px"/><span className={styles.number} data-long={number.length>7||undefined}>{number}</span></span>
+  <span className={styles.rowBody}><span className={styles.rowTitle}>{title}</span><span className={styles.status} data-outcome={item.outcome}>{myBidOutcomeLabel(item.outcome,am)}{item.auction.isDemo&&<> · DEMO</>}</span>{live&&target&&<span className={styles.clock}><Clock3 size={12} aria-hidden="true"/><AuctionCountdown target={target} serverNow={serverNow} observedAt={observedAt} label="Ends" showLabel={false} onElapsed={changed}/></span>}</span>
+  <ChevronRight className={styles.chevron} size={16} aria-hidden="true"/>
+ </button>;
+}
+
+function BidRowsLoading({am}:{am:boolean}){return <div className={styles.loading} role="status" aria-busy="true"><span className="sr-only">{am?'ጨረታዎችዎን በመጫን ላይ…':'Loading your bids…'}</span><div aria-hidden="true">{[0,1,2].map(index=><div className={styles.rowSkeleton} key={index}><span/><div><span/><span/></div></div>)}</div></div>}

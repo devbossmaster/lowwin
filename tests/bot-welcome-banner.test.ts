@@ -22,6 +22,11 @@ describe('public welcome banner delivery without real Telegram requests',()=>{
   expect(send.sendPhoto.mock.calls[0][2]).toEqual({caption:'Caption one',reply_markup:keyboard});expect(send.sendPhoto.mock.calls[1][2]).toEqual({caption:'Caption two',reply_markup:keyboard});
   const photo=send.sendPhoto.mock.calls[0][1] as InputFile;expect(photo.filename).toBe('lowwin-welcome.jpg');
  });
+ it('selects the existing English or Amharic artwork and caches each language separately',async()=>{
+  const {sendWelcomeBanner}=await import('../src/modules/bot/welcome-banner'),send=api();
+  for(const language of ['en','am','en','am'] as const)await sendWelcomeBanner(send as unknown as Pick<Api,'sendPhoto'|'sendMessage'>,'fixture','Caption',keyboard,language);
+  expect(f.read).toHaveBeenCalledTimes(2);expect(f.read.mock.calls.map(call=>String(call[0]).replaceAll('\\','/').split('/').at(-1))).toEqual(['lowwin-home-banner-en.webp','lowwin-home-banner-am.webp']);expect(send.sendPhoto).toHaveBeenCalledTimes(4);expect(send.sendMessage).not.toHaveBeenCalled();
+ });
  it('keeps the original text and controls when the local asset is unavailable',async()=>{
   f.read.mockRejectedValueOnce(Object.assign(Error('Missing public asset'),{code:'ENOENT'}));
   const {sendWelcomeBanner}=await import('../src/modules/bot/welcome-banner'),send=api();

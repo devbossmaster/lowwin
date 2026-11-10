@@ -23,10 +23,11 @@ export function displayAuctionStatus(a:{status:string;publishedAt:Date|null;star
 }
 export async function auctionList(client:PrismaClient,now:Date,{page=1,q='',status='',category='',take=25,includeCategories=true}={}){
  const where:Prisma.AuctionWhereInput={...auctionStatusWhere(status,now),...(category?{categoryId:category}:{}),...(q?{OR:[{code:{contains:q,mode:'insensitive'}},{product:{title:{contains:q,mode:'insensitive'}}}]}:{})};
- const [rows,total]=await Promise.all([client.auction.findMany({where,select:{id:true,code:true,publicCode:true,slug:true,status:true,startsAt:true,endsAt:true,publishedAt:true,isDemo:true,presentation:true,settlement:{select:{outcome:true}},product:{select:{title:true,images:{select:{path:true,alt:true},orderBy:{sortOrder:'asc'},take:1}}},terms:{select:{minParticipants:true}},draft:{select:{version:true}},closeErrorCode:true},orderBy:[{endsAt:{sort:'asc',nulls:'last'}},{id:'asc'}],take,skip:(page-1)*take}),client.auction.count({where})]);
+ const categoryRead=includeCategories?client.category.findMany({select:{id:true,name:true},orderBy:{name:'asc'}}):Promise.resolve([]);
+ const [rows,total,categories]=await Promise.all([client.auction.findMany({where,select:{id:true,code:true,publicCode:true,slug:true,status:true,startsAt:true,endsAt:true,publishedAt:true,isDemo:true,presentation:true,settlement:{select:{outcome:true}},product:{select:{title:true,images:{select:{path:true,alt:true},orderBy:{sortOrder:'asc'},take:1}}},terms:{select:{minParticipants:true}},draft:{select:{version:true}},closeErrorCode:true},orderBy:[{endsAt:{sort:'asc',nulls:'last'}},{id:'asc'}],take,skip:(page-1)*take}),client.auction.count({where}),categoryRead]);
  const counts=rows.length?await client.$queryRaw<{auctionId:string;participants:bigint;bids:bigint}[]>(Prisma.sql`SELECT "auctionId", COUNT(DISTINCT "userId") AS participants, COUNT(*) AS bids FROM "Bid" WHERE "auctionId" IN (${Prisma.join(rows.map(r=>r.id))}) GROUP BY "auctionId"`):[];
- const categories=includeCategories?await client.category.findMany({select:{id:true,name:true},orderBy:{name:'asc'}}):[];
- return {categories,items:rows.map(r=>({...r,product:presentedProduct(r),displayStatus:displayAuctionStatus(r,now),participants:Number(counts.find(c=>c.auctionId===r.id)?.participants??0),acceptedBids:Number(counts.find(c=>c.auctionId===r.id)?.bids??0)})),total,page,totalPages:Math.ceil(total/take),serverNow:now.toISOString()};
+ const byAuction=new Map(counts.map(count=>[count.auctionId,count]));
+ return {categories,items:rows.map(r=>({...r,product:presentedProduct(r),displayStatus:displayAuctionStatus(r,now),participants:Number(byAuction.get(r.id)?.participants??0),acceptedBids:Number(byAuction.get(r.id)?.bids??0)})),total,page,totalPages:Math.ceil(total/take),serverNow:now.toISOString()};
 }
 export async function deliveryQueue(client:PrismaClient,actor:{id:string;role:StaffRole},{page=1,q='',status=''}={}){
  if(!['','INCOMPLETE','PENDING','CLAIMED','PACKING','SHIPPED','DELIVERED','DISPUTED'].includes(status))throw new AdminError(422,'Choose a valid delivery status.');
@@ -52,6 +53,37 @@ export function eatDayStart(now:Date){
 const realPlayer=Prisma.sql`u."telegramId" IS NOT NULL AND u.id NOT LIKE 'demo-showcase-%'
  AND NOT EXISTS (SELECT 1 FROM "StaffMember" s WHERE s."userId"=u.id)
  AND NOT EXISTS (SELECT 1 FROM "TestRunActor" t WHERE t."userId"=u.id)`;
+type OverviewCount={state:'ready';count:number}|{state:'error'};
+export type OverviewSummary={serverNow:string;auctions?:OverviewCount;players?:OverviewCount;payments?:OverviewCount;deliveries?:OverviewCount};
+export type OverviewAuctions={serverNow:string;items:{id:string;code:string;title:string;image:string|null;displayStatus:string;participants:number;acceptedBids:number;endsAt:Date|null}[]};
+/** Landing counts need no ledger reports, full products, or per-row statistics. */
+export async function readOverviewSummary(client:PrismaClient,actor:{id:string;role:StaffRole;now:Date}):Promise<OverviewSummary>{
+ const grants=permissions(actor.role),catalog=grants.includes('catalog'),players=['OWNER','SUPPORT','PAYMENTS_OPERATOR','AUDITOR'].includes(actor.role),payments=players,deliveries=['OWNER','FULFILLMENT','AUDITOR'].includes(actor.role),ready=process.env.CHAPA_SCHEMA_READY==='true';
+ const data:OverviewSummary={serverNow:actor.now.toISOString()};
+ const columns:Prisma.Sql[]=[];
+ if(catalog)columns.push(Prisma.sql`(SELECT COUNT(*)::int FROM "Auction" a WHERE a."testRunId" IS NULL AND a."publishedAt" IS NOT NULL AND a.status IN ('SCHEDULED','LIVE') AND a."startsAt"<=${actor.now} AND a."endsAt">${actor.now} AND NOT EXISTS(SELECT 1 FROM "AuctionSettlement" s WHERE s."auctionId"=a.id)) AS auctions`);
+ if(players)columns.push(Prisma.sql`(SELECT COUNT(*)::int FROM "user" u WHERE u."createdAt"<=${actor.now} AND ${realPlayer}) AS players`);
+ if(payments&&ready)columns.push(Prisma.sql`(SELECT COUNT(*)::int FROM "ChapaCheckout" WHERE status='NEEDS_REVIEW') AS payments`);
+ if(deliveries)columns.push(Prisma.sql`(SELECT COUNT(*)::int FROM "AuctionSettlement" s JOIN "Auction" a ON a.id=s."auctionId" LEFT JOIN "FulfillmentCase" f ON f."auctionId"=a.id WHERE s.outcome='WINNER' AND NOT a."isDemo" AND a."testRunId" IS NULL AND COALESCE(f.state,'PENDING')<>'DELIVERED' ${actor.role==='FULFILLMENT'?Prisma.sql`AND f."assignedTo"=${actor.id}`:Prisma.empty}) AS deliveries`);
+ const keys=[...(catalog?['auctions']:[]),...(players?['players']:[]),...(payments&&ready?['payments']:[]),...(deliveries?['deliveries']:[])] as (keyof Omit<OverviewSummary,'serverNow'>)[];
+ try{if(columns.length){const [row]=await client.$queryRaw<Record<string,number>[]>(Prisma.sql`SELECT ${Prisma.join(columns)}`);for(const key of keys)data[key]={state:'ready',count:row[key]}}}catch{for(const key of keys)data[key]={state:'error'}}
+ if(payments&&!ready)data.payments={state:'error'};return data;
+}
+/** One bounded query; private snapshots and financial evidence stay off this read model. */
+export async function readOverviewAuctions(client:PrismaClient,actor:{role:StaffRole;now:Date}):Promise<OverviewAuctions>{
+ if(!permissions(actor.role).includes('catalog'))throw new AdminError(403,'Your staff role does not grant this permission.');
+ const items=await client.$queryRaw<OverviewAuctions['items']>(Prisma.sql`WITH selected AS (
+ SELECT a.id,a.code,a."productId",a."endsAt",a."startsAt",a.presentation FROM "Auction" a
+ WHERE a."testRunId" IS NULL AND a."publishedAt" IS NOT NULL AND a.status IN ('SCHEDULED','LIVE') AND NOT EXISTS(SELECT 1 FROM "AuctionSettlement" s WHERE s."auctionId"=a.id)
+ ORDER BY a."endsAt" ASC NULLS LAST,a.id ASC LIMIT 5)
+ SELECT a.id,a.code,COALESCE(a.presentation->>'title',p.title,'Auction') AS title,
+ COALESCE(a.presentation->'images'->0->>'path',(SELECT i.path FROM "ProductImage" i WHERE i."productId"=a."productId" ORDER BY i."sortOrder",i.id LIMIT 1)) AS image,
+ CASE WHEN a."endsAt"<=${actor.now} THEN 'CLOSING' WHEN a."startsAt">${actor.now} THEN 'UPCOMING' ELSE 'LIVE' END AS "displayStatus",
+ (SELECT COUNT(DISTINCT b."userId")::int FROM "Bid" b WHERE b."auctionId"=a.id) AS participants,
+ (SELECT COUNT(*)::int FROM "Bid" b WHERE b."auctionId"=a.id) AS "acceptedBids",a."endsAt"
+ FROM selected a LEFT JOIN "Product" p ON p.id=a."productId" ORDER BY a."endsAt" ASC NULLS LAST,a.id ASC`);
+ return {serverNow:actor.now.toISOString(),items};
+}
 export async function overviewDeposits(client:PrismaClient,now:Date){
  const [row]=await client.$queryRaw<{totalEtb:string;todayEtb:string;count:number}[]>(Prisma.sql`
  SELECT trunc(COALESCE(SUM(c."amountCents"),0)/100,2)::text AS "totalEtb",

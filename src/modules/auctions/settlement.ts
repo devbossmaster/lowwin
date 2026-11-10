@@ -7,6 +7,7 @@ import {stagingDemoEnabled} from './staging-demo';
 import { seedPlatformAccounts } from '@/modules/wallet/ledger';
 import { settleWalletInTransaction } from '@/modules/wallet/settlement';
 import {auctionMaintenance} from './maintenance';
+import {publishSettledResult,recordPublicationFailure,recoverUnpublishedResult} from './result-publication';
 
 export class SettlementError extends Error {
   constructor(public readonly code:string){super(code);this.name='SettlementError'}
@@ -98,14 +99,18 @@ async function completeLocked(tx:Prisma.TransactionClient,auctionId:string,cance
     ...(v2?{decision,participantCount,acceptanceCutoff:auction.bidSequence}:{}),
     actorId:cancellation?.actor.id,reason:minimumCancellation?'MINIMUM_PARTICIPANTS':cancellation?.reason,key:cancellation?.key,requestHash,proof,
     movements:{create:movements},
-    // Settlement releases funds immediately; only an explicit reviewed admin
-    // publication may create result announcement and participant alert intents.
+    // Financial settlement commits first. The shared publication verifier then
+    // creates the result and notification intents atomically, with crash recovery.
   },include:settlementInclude});
   return settled;
 }
 
 export function closeAuctionInTransaction(tx:Prisma.TransactionClient,auctionId:string,raw:Record<string,string|undefined>=process.env){return completeLocked(tx,auctionId,null,raw)}
-export function closeAuction(client:PrismaClient,auctionId:string,raw:Record<string,string|undefined>=process.env){return client.$transaction(tx=>closeAuctionInTransaction(tx,auctionId,raw),txOptions)}
+export async function closeAuction(client:PrismaClient,auctionId:string,raw:Record<string,string|undefined>=process.env){
+ const settled=await client.$transaction(tx=>closeAuctionInTransaction(tx,auctionId,raw),txOptions);
+ try{await publishSettledResult(client,auctionId)}catch(error){await recordPublicationFailure(client,auctionId,error)}
+ return settled;
+}
 export function cancelAuctionInTransaction(tx:Prisma.TransactionClient,input:CancelInput,raw:Record<string,string|undefined>=process.env){const command=cancelSchema.parse(input);return completeLocked(tx,command.auctionId,command,raw)}
 export async function cancelAuction(client:PrismaClient,input:CancelInput,raw:Record<string,string|undefined>=process.env){
   try{return await client.$transaction(tx=>cancelAuctionInTransaction(tx,input,raw),txOptions)}
@@ -115,9 +120,12 @@ export async function cancelAuction(client:PrismaClient,input:CancelInput,raw:Re
 /** Durable work is the due auction row, not an in-memory claim. SKIP LOCKED lets
  * independent processes work concurrently. A crash releases the transaction lock. */
 export async function processDueAuction(client:PrismaClient,raw:Record<string,string|undefined>=process.env){
+  // Bound recovery to one row, then still service one closing auction. A large
+  // historical backfill must not postpone new financial settlements.
+  const recovered=await recoverUnpublishedResult(client);
   let attempted:string|null=null;
   try{
-    return await client.$transaction(async tx=>{
+    const result=await client.$transaction(async tx=>{
       if(await auctionMaintenance(tx))return {status:'idle' as const};
       const allowDemo=demoBidAllowed(raw)||stagingDemoEnabled(raw);
       const rows=await tx.$queryRaw<{id:string}[]>`SELECT a.id FROM "Auction" a
@@ -133,6 +141,8 @@ export async function processDueAuction(client:PrismaClient,raw:Record<string,st
       const settled=await closeAuctionInTransaction(tx,attempted,raw);
       return {status:'settled' as const,auctionId:attempted,settlementId:settled.id};
     },txOptions);
+    if(result.status==='settled')try{await publishSettledResult(client,result.auctionId)}catch(error){return {...result,publication:await recordPublicationFailure(client,result.auctionId,error)}}
+    return result.status==='idle'?recovered:result;
   }catch(error){
     if(!attempted)throw error;
     // Persist bounded retry timing after the failed transaction has rolled back.

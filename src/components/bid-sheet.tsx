@@ -21,8 +21,8 @@ export default function BidSheet(props:Props){
 }
 function BidSheetFrame(props:Props){
  const [phase,setPhase]=useState<BidSheetPhase>(props.initialChapaId?'payment':'entry');
- const title=phase==='receipt'?<MiniPhrase en="Bid receipt" am="የጨረታ ደረሰኝ"/>:phase==='payment'?<MiniPhrase en="Complete payment" am="ክፍያዎን ይፈጽሙ"/>:<span className="sr-only"><MiniPhrase en="Place your bid" am="ጨረታዎን ያቅርቡ"/></span>;
- return <AccountSheet size="payment" layout={phase==='entry'?'bid-entry':phase==='payment'?'checkout':undefined} title={<>{title}{phase==='entry'&&<span className={styles.headerStatus} aria-hidden="true"><MiniPhrase en={props.auction.status==='live'?'Live':props.auction.status==='upcoming'?'Upcoming':'Completed'} am={props.auction.status==='live'?'ቀጥታ':props.auction.status==='upcoming'?'በቅርብ':'ተጠናቋል'}/></span>}</>} headerActions={phase==='entry'?<AuctionShare title={props.auction.product.title} code={props.auction.slug} iconOnly/>:undefined} onClose={props.onClose} footerPortal>
+ const title=phase==='receipt'?<MiniPhrase en="Bid receipt" am="የጨረታ ደረሰኝ"/>:phase==='payment'?<MiniPhrase en="Payment" am="ክፍያ"/>:<MiniPhrase en="Place your bid" am="ጨረታዎን ያቅርቡ"/>;
+ return <AccountSheet size="payment" layout="bid-entry" title={<>{title}{phase==='entry'&&<span className={styles.headerStatus} aria-hidden="true"><MiniPhrase en={props.auction.status==='live'?'Live':props.auction.status==='upcoming'?'Upcoming':'Completed'} am={props.auction.status==='live'?'ቀጥታ':props.auction.status==='upcoming'?'በቅርብ':'ተጠናቋል'}/></span>}</>} headerActions={phase==='entry'?<AuctionShare title={props.auction.product.title} code={props.auction.slug} iconOnly/>:undefined} onClose={props.onClose} footerPortal>
   <BidSheetContents {...props} onPhaseChange={setPhase}/>
  </AccountSheet>;
 }

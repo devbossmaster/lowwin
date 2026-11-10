@@ -5,7 +5,7 @@ import {useRef,useState} from 'react';
 import {usePrivateQuery,PrivateState} from './private-query';
 import {useMiniLocale} from './mini-locale';
 import {useTelegram} from './telegram-provider';
-import {chapaStatusLabel} from '@/lib/chapa-status-label';
+import {paymentSummaryLabel,paymentSummaryState} from '@/lib/payment-summary';
 import {chapaConfirmed,type ChapaCheckoutView} from '@/lib/chapa-client';
 import {formatEtb} from '@/lib/money';
 import {useMiniPage} from './mini-query-state';
@@ -31,11 +31,11 @@ function OwnedHistory({purpose,unaccepted,fullPage}:{purpose?:'TOP_UP'|'BID';una
     // Signs describe committed money movement, never a checkout request or redirect.
     const confirmed=chapaConfirmed(order),direction=confirmed?(order.fundsPreserved||order.purpose==='TOP_UP'?'incoming':'outgoing'):'none';
     const Icon=direction==='incoming'?Plus:direction==='outgoing'?Minus:Clock3;
-    const tone=confirmed?'confirmed':['FAILED','BLOCKED','INCOMPLETE','EXPIRED'].includes(order.status)?'failed':order.status==='CANCELLED'?'cancelled':'pending';
+    const summary=paymentSummaryState({completed:confirmed,providerStatus:order.providerStatus,verificationState:order.verificationState}),tone=summary==='done'?'confirmed':summary==='failed'?'failed':'pending';
     return <li key={order.id}><button type="button" className={styles.row} data-payment-id={order.id} data-direction={direction} disabled={query.isPlaceholderData} onClick={event=>{trigger.current=event.currentTarget;setSelected(order)}}>
      <span className={styles.movement} aria-hidden="true"><Icon size={20} strokeWidth={1.8}/></span>
      <span className={styles.details}><strong>{text(order.fundsPreserved?'Payment saved to wallet':order.purpose==='TOP_UP'?'Wallet top-up':'Bid submission fee',order.fundsPreserved?'ክፍያው በዋሌትዎ ገብቷል':order.purpose==='TOP_UP'?'የዋሌት ገቢ':'የጨረታ ማቅረቢያ ክፍያ')}</strong>{order.purpose==='BID'&&<span className={styles.product}>{am?order.auctionTitleAm||order.auctionTitle||order.auctionSlug:order.auctionTitle||order.auctionSlug}{order.batchNumbers?.length?<> · {order.batchNumbers.length} {text('bids','ጨረታዎች')} · {order.batchNumbers.join(' / ')}</>:order.bidNumber&&<> · #{order.bidNumber}</>}</span>}<time dateTime={order.createdAt}>{date.format(new Date(order.createdAt))}</time>{order.mode==='test'&&<span className={styles.test}>{text('Test payment','የሙከራ ክፍያ')}</span>}</span>
-     <span className={styles.actions}><strong className={styles.amount}><span className="sr-only">{direction==='incoming'?text('Money in: ','የገባ ገንዘብ፦ '):direction==='outgoing'?text('Money out: ','የወጣ ገንዘብ፦ '):text('Payment amount: ','የክፍያ መጠን፦ ')}</span><span aria-hidden="true">{direction==='incoming'?'+':direction==='outgoing'?'−':''}</span>{formatEtb(order.amount)}</strong><span className={styles.status} data-tone={tone}>{chapaStatusLabel(order,am)}</span></span>
+     <span className={styles.actions}><strong className={styles.amount}><span className="sr-only">{direction==='incoming'?text('Money in: ','የገባ ገንዘብ፦ '):direction==='outgoing'?text('Money out: ','የወጣ ገንዘብ፦ '):text('Payment amount: ','የክፍያ መጠን፦ ')}</span><span aria-hidden="true">{direction==='incoming'?'+':direction==='outgoing'?'−':''}</span>{formatEtb(order.amount)}</strong><span className={styles.status} data-tone={tone} data-payment-summary={summary}>{paymentSummaryLabel(summary,am)}</span></span>
     </button></li>;
    })}</ul>
    {(page>1||query.data.nextPage)&&<nav className={styles.pagination} aria-label={text('Transaction pages','የግብይት ገጾች')}><button type="button" disabled={page<=1||query.fetching} aria-label={text('Previous page','ያለፈው ገጽ')} onClick={()=>setPage(page-1)}><ChevronLeft size={18}/></button><span>{page}</span><button type="button" disabled={!query.data.nextPage||query.fetching} aria-label={text('Next page','ቀጣይ ገጽ')} onClick={()=>setPage(query.data!.nextPage!)}><ChevronRight size={18}/></button></nav>}

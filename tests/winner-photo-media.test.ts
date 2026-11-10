@@ -15,10 +15,16 @@ describe('consented announcement media delivery',()=>{
   f.product.mockResolvedValue({id:'product-image'});const response=await read();expect(response.status).toBe(200);expect(response.headers.get('cache-control')).toContain('immutable');expect(f.winner).not.toHaveBeenCalled();expect(f.store).toHaveBeenCalledWith(id,bytes);
  });
  it('serves a currently consented genuine public winner photo without shared caching',async()=>{
-  f.winner.mockResolvedValue({bytes});const response=await read();expect(response.status).toBe(200);expect(response.headers.get('cache-control')).toBe('private, no-store, max-age=0');expect(f.store).not.toHaveBeenCalled();expect(f.admin).not.toHaveBeenCalled();
-  const where=f.winner.mock.calls[0][0].where;expect(where.id).toBe(id);expect(where.purpose).toBe('WINNER_PHOTO');expect(where.winnerPresentations.some.consentConfirmedAt.lte).toBeInstanceOf(Date);
-  expect(where.winnerPresentations.some.auction.is.AND[1]).toMatchObject({status:'CLOSED',isDemo:false,testRunId:null,settlement:{is:{outcome:'WINNER',winnerUserId:{not:null}}}});
-  expect(where.winnerPresentations.some.auction.is.AND[0]).toMatchObject({product:{is:{visible:true,category:{visible:true}}},category:{is:{visible:true}}});
+  f.winner.mockResolvedValue({bytes,mime:'image/png'});const response=await read();expect(response.status).toBe(200);expect(response.headers.get('cache-control')).toBe('private, no-store, max-age=0');expect(f.store).not.toHaveBeenCalled();expect(f.admin).not.toHaveBeenCalled();
+  const where=f.winner.mock.calls[0][0].where;expect(where.id).toBe(id);const photo=where.OR[0];expect(photo.purpose).toBe('WINNER_PHOTO');expect(photo.winnerPresentations.some.consentConfirmedAt.lte).toBeInstanceOf(Date);
+  expect(photo.winnerPresentations.some.auction.is.AND[1]).toMatchObject({status:'CLOSED',isDemo:false,testRunId:null,settlement:{is:{outcome:'WINNER',winnerUserId:{not:null}}}});
+  expect(photo.winnerPresentations.some.auction.is.AND[0]).toMatchObject({product:{is:{visible:true,category:{visible:true}}},category:{is:{visible:true}}});
+  expect(photo.winnerPresentations.some.presentationMode).toBe('PHOTO');
+ });
+ it('serves complete Winners banners as revocable WebP, never as permanent product media',async()=>{
+  f.winner.mockResolvedValueOnce({bytes,mime:'image/webp'});const response=await read();
+  expect(response.status).toBe(200);expect(response.headers.get('content-type')).toBe('image/webp');expect(response.headers.get('cache-control')).toContain('private, no-store');expect(f.store).not.toHaveBeenCalled();
+  const where=f.winner.mock.calls[0][0].where.OR[1];expect(where.purpose).toBe('WINNER_BANNER');expect(where.winnerBannerPresentations.some.presentationMode).toBe('BANNER');expect(where.winnerBannerPresentations.some.bannerConsentConfirmedAt.lte).toBeInstanceOf(Date);expect(f.winner).toHaveBeenCalledTimes(1);
  });
  it('denies a removed/unconsented/unpublished photo instead of serving its retained bytes',async()=>{
   const response=await read();expect(response.status).toBe(404);expect(response.headers.get('cache-control')).toContain('no-store');expect(f.media).not.toHaveBeenCalled();expect(f.store).not.toHaveBeenCalled();
@@ -33,6 +39,10 @@ describe('consented announcement media delivery',()=>{
  it('limits unpublished winner-only previews to currently authorized administrators',async()=>{
   f.media.mockResolvedValue({bytes,purpose:'WINNER_PHOTO'});f.admin.mockResolvedValue({role:'CATALOG_MANAGER'});expect((await read()).status).toBe(404);
   f.admin.mockResolvedValue({role:'OWNER'});const shown=await read();expect(shown.status).toBe(200);expect(shown.headers.get('cache-control')).toContain('no-store');expect(f.store).not.toHaveBeenCalled();
+ });
+ it('requires owner access for private full-banner previews too',async()=>{
+  f.media.mockResolvedValue({bytes,purpose:'WINNER_BANNER',mime:'image/webp'});f.admin.mockResolvedValue({role:'CATALOG_MANAGER'});expect((await read()).status).toBe(404);
+  f.admin.mockResolvedValue({role:'OWNER'});const shown=await read();expect(shown.status).toBe(200);expect(shown.headers.get('content-type')).toBe('image/webp');expect(f.store).not.toHaveBeenCalled();
  });
  it('rejects a malformed media identifier before database or authentication calls',async()=>{
   expect((await read('../../secret')).status).toBe(404);expect(f.product).not.toHaveBeenCalled();expect(f.admin).not.toHaveBeenCalled();

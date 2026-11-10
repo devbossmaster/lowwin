@@ -14,6 +14,7 @@ import {MiniHeader} from './mini-header';
 import {HomeCategories} from './home-categories';
 import {HomeAuctions,homeAuctionHref} from './home-auctions';
 import {HomeHowItWorks} from './home-how-it-works';
+import {HomeFooter} from './home-footer';
 import {resolveHomeCopy} from './home-copy';
 import {MiniPhrase} from './mini-locale';
 import {OfflineRetry} from './offline-retry';
@@ -47,6 +48,6 @@ export function HomePageContent({query:seedQuery,children}:{query:CatalogQuery;c
  const content=!view||!categories||!winners?(error?failure:<MiniRouteSkeleton path="/"/>):<><OfflineRetry/>{error&&failure}<HomeHero copy={resolveHomeCopy(view.managed)} media={view.media} experience={view.experience}/>
   <HomeCategories categories={categories} query={query} home/><HomeAuctions key={`${query.category??'all'}:${query.sort}:${query.q}`} initial={auctions} query={query}/>
   <section id="recent-winners" tabIndex={-1} className={styles.winnersSection} style={{scrollMarginTop:20}}><div className={styles.heading}><h2><MiniPhrase en="Recent winners" am="የቅርብ አሸናፊዎች"/></h2><Link href="/winners"><MiniPhrase en="View all" am="ሁሉንም ይመልከቱ"/><ArrowRight/></Link></div><WinnersClientList initial={winners} carousel/></section><HomeHowItWorks media={view.media} experience={view.experience}/>
- </>;
+ <HomeFooter/></>;
  return <><div className="home-header-slot" hidden={(!view||!categories||!winners)&&!error}><MiniHeader/></div>{content}<HomeDataContext.Provider value={setStreamed}>{children}</HomeDataContext.Provider></>;
 }

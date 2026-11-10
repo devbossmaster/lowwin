@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import {chapaWorkerConfiguration} from '../src/modules/payments/chapa-readiness';
+import {installTelegramRateLimit} from '../src/modules/notifications/telegram-rate';
 const configuration=chapaWorkerConfiguration(process.env);
 console.info(JSON.stringify(configuration));
 if(!configuration.recoveryEnabled)throw Error('Chapa webhook event processing is disabled. Fix missingPrerequisites in the chapa_worker_configuration log and redeploy this worker.');
@@ -11,7 +12,7 @@ const [{db},{recoverChapaCheckouts},{processChapaEvents},{dispatchOne},{chapaRec
 // Credit is already committed before its outbox receipt is eligible. This worker
 // handles only those receipts; campaign scheduling and other jobs stay separate.
 let receiptBot:InstanceType<typeof Bot>|null=null;
-try{if(process.env.TELEGRAM_BOT_TOKEN)receiptBot=new Bot(process.env.TELEGRAM_BOT_TOKEN,{client:{timeoutSeconds:15}})}catch{}
+try{if(process.env.TELEGRAM_BOT_TOKEN){const candidate=new Bot(process.env.TELEGRAM_BOT_TOKEN,{client:{timeoutSeconds:15}});installTelegramRateLimit(candidate.api,db,process.env.TELEGRAM_BOT_TOKEN);receiptBot=candidate}}catch{console.error('chapa_receipt_rate_configuration_invalid')}
 console.info('chapa_receipt_delivery_configuration',{enabled:!!receiptBot});
 let stopped=false;process.on('SIGTERM',()=>{stopped=true});process.on('SIGINT',()=>{stopped=true});
 try{

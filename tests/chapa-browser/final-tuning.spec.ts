@@ -107,38 +107,31 @@ test('a long pending bid stays honest, checks automatically and accepts a later 
  }finally{await f.db.$disconnect()}
 });
 
-test('My Bids filters payment attempts without counting them as accepted bids',async({page},info)=>{
+test('My Bids keeps only Live and Finished accepted records; attempts remain in Transactions',async({page},info)=>{
  const f=await fixture(page,false),orders=['PENDING','FAILED','NEEDS_REVIEW','CANCELLED'].map((status,index)=>({...pending({key:randomUUID(),purpose:'BID',auctionSlug:f.auction.slug!,amount:String(index+2),feeVersion:1}),status,auctionTitle:f.title,merchantReference:'LW'+randomUUID().replaceAll('-','').slice(0,18),...(status==='NEEDS_REVIEW'?{verificationState:'MISMATCH'}:{})}));
+ let historyReads=0;
  try{
   await page.route('**/api/payments/chapa/checkouts**',route=>{
    const url=new URL(route.request().url());
    if(!url.pathname.endsWith('/checkouts'))return route.fulfill({json:orders.find(row=>row.id===url.pathname.split('/').at(-1))});
-   const status=url.searchParams.get('status'),match={failed:'FAILED',pending:'PENDING',cancelled:'CANCELLED',review:'NEEDS_REVIEW'}[status??''],items=match?orders.filter(row=>row.status===match):orders;
-   return route.fulfill({json:{items,page:1,nextPage:null}});
+   historyReads++;return route.fulfill({json:{items:orders,page:1,nextPage:null}});
   });
   await page.goto('/telegram?next='+encodeURIComponent('/my-bids'));
-  const sections=page.getByRole('group',{name:'Bid records'});
-  await expect(sections.getByRole('button',{name:'Accepted bids',exact:true})).toHaveAttribute('aria-pressed','true');await expect(page.locator('[data-payment-id]')).toHaveCount(0);
-  await sections.getByRole('button',{name:'Payment attempts',exact:true}).click();await expect(page.locator('[data-payment-id]')).toHaveCount(4);
-  const filters=page.getByRole('group',{name:'Bid status'});
-  for(const label of ['All','Pending','Failed','Cancelled','Needs review'])await expect(filters.getByRole('button',{name:label,exact:true})).toBeInViewport({ratio:1});
-  await filters.getByRole('button',{name:'Failed',exact:true}).click();await expect(page).toHaveURL(/status=failed/);
-  await expect(page.locator('[data-payment-id]')).toHaveCount(1);await expect(page.locator('[data-payment-id]')).toContainText('Payment failed');
-  await expect(page.locator('[data-my-bids-summary] strong').first()).toHaveText('0');
-  mkdirSync('test-results/chapa-ui/final-tuning',{recursive:true});await page.screenshot({path:`test-results/chapa-ui/final-tuning/bids-${info.project.name}.png`,animations:'disabled'});
-  await page.locator('[data-payment-id]').click();const detail=page.getByRole('dialog',{name:'Transaction details',exact:true});await expect(detail).toBeVisible();await expect(detail).toContainText('Payment failed');
-  await page.screenshot({path:`test-results/chapa-ui/final-tuning/bid-detail-${info.project.name}.png`,animations:'disabled'});
-  await page.keyboard.press('Escape');
-  await filters.getByRole('button',{name:'Pending',exact:true}).click();await expect(page.locator('[data-payment-id]')).toHaveCount(1);
-  await expect(page.locator('[data-payment-id]').filter({hasText:'Payment failed'})).toHaveCount(0);
-  await filters.getByRole('button',{name:'Cancelled',exact:true}).click();await expect(page.locator('[data-payment-id]')).toHaveCount(1);await expect(page.locator('[data-payment-id]')).toContainText('Cancelled');
-  await filters.getByRole('button',{name:'Needs review',exact:true}).click();await expect(page.locator('[data-payment-id]')).toHaveCount(1);await expect(page.locator('[data-payment-id]')).toContainText('Needs verification');
-  await page.reload();await expect(filters.getByRole('button',{name:'Needs review',exact:true})).toHaveAttribute('aria-pressed','true');await expect(page.locator('[data-payment-id]')).toHaveCount(1);
-  await sections.getByRole('button',{name:'Accepted bids',exact:true}).click();await expect(page.locator('[data-payment-id]')).toHaveCount(0);await expect(page).not.toHaveURL(/section=attempts/);
-  await filters.getByRole('button',{name:'Completed',exact:true}).click();await expect(page).toHaveURL(/status=completed/);await expect(page.locator('[data-payment-id]')).toHaveCount(0);
-  await page.goBack();await expect(filters.getByRole('button',{name:'All',exact:true})).toHaveAttribute('aria-pressed','true');
-  await expect(page.locator('[data-my-bids-summary] strong').first()).toHaveText('0');
-  await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  const tabs=page.getByRole('tablist',{name:'Your accepted bids'});
+  await expect(tabs.getByRole('tab')).toHaveCount(2);
+  await expect(tabs.getByRole('tab',{name:'Live',exact:true})).toHaveAttribute('aria-selected','true');
+  await expect(page.locator('[data-bid-id],[data-payment-id],[data-my-bids-summary]')).toHaveCount(0);
+  await expect(page.getByText('Payment attempts',{exact:true})).toHaveCount(0);
+  await tabs.getByRole('tab',{name:'Finished',exact:true}).click();
+  await expect(tabs.getByRole('tab',{name:'Finished',exact:true})).toHaveAttribute('aria-selected','true');
+  await expect(page.locator('[data-bid-id],[data-payment-id]')).toHaveCount(0);expect(historyReads).toBe(0);
+  await page.reload();await expect(tabs.getByRole('tab',{name:'Finished',exact:true})).toHaveAttribute('aria-selected','true');
+  mkdirSync('test-results/chapa-ui/final-tuning',{recursive:true});await page.screenshot({path:`test-results/chapa-ui/final-tuning/bids-compact-${info.project.name}.png`,animations:'disabled'});
+  await page.getByRole('link',{name:'Transactions',exact:true}).click();
+  await expect(page.locator('[data-payment-id]')).toHaveCount(4);expect(historyReads).toBeGreaterThan(0);
+  const failed=page.locator('[data-payment-id="'+orders[1].id+'"]');await expect(failed).toContainText('Payment failed');await failed.click();
+  await expect(page.getByRole('dialog',{name:'Transaction details',exact:true})).toContainText('Payment failed');
+  await page.keyboard.press('Escape');await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  }finally{await f.db.$disconnect()}
 });
 

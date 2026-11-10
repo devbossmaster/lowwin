@@ -32,25 +32,16 @@ describe('upcoming auction reminders',()=>{
  it.each([0,86400000,86400001])('does not send a closing-day notice outside its exact window (%i ms)',async offset=>{
   expect(await campaignContent(transaction(auction({startsAt:new Date(now.getTime()-60000),endsAt:new Date(now.getTime()+offset)})),{...row,kind:'AUCTION_ENDING'})).toBeNull();
  });
- it('suppresses queued cancellation results for the bot and Mini App bell',async()=>{
-  const cancelled=auction({status:'CANCELLED',settlement:{outcome:'CANCELLED',decision:'OWNER_CANCELLED',publication:{publishedAt:now}}});
+ it('announces a published cancellation without resurrecting obsolete private cancellation jobs',async()=>{
+  const cancelled=auction({status:'CANCELLED',settlement:{id:'cancelled',outcome:'CANCELLED',decision:'OWNER_CANCELLED',completedAt:now,publication:{publishedAt:now}}});
   const result={kind:'AUCTION_RESULT',payload:{auctionId:'auction-1',recipientUserId:'player-1'}};
-  expect(await campaignContent(transaction(cancelled),result)).toBeNull();
+  expect((await campaignContent(transaction(cancelled),result))?.body).toContain('Auction cancelled.');
   expect(await notificationContent(transaction(cancelled),{kind:'AUCTION_CANCELLED',payload:{auctionId:'auction-1',recipientUserId:'player-1'}})).toBeNull();
-
-  const tx={auctionSettlement:{findUnique:vi.fn(async()=>({outcome:'CANCELLED',publication:{publishedAt:now}}))},user:{findMany:vi.fn()},outbox:{createMany:vi.fn(),update:vi.fn()}} as unknown as Prisma.TransactionClient;
-  const root:Outbox={id:'cancelled-root',key:'settlement:cancelled:completed',kind:'AUCTION_FINALIZED',createdAt:now,payload:{auctionId:'auction-1'},testRunId:null,state:'PENDING',attempts:0,nextAttemptAt:now,sentAt:null,lastError:null,settlementId:'cancelled'};
-  expect(await expandCampaign(tx,root)).toBe(0);
-  expect(tx.user.findMany).not.toHaveBeenCalled();
- expect(tx.outbox.update).toHaveBeenCalledWith({where:{id:root.id},data:{state:'SKIPPED',lastError:'CANCELLATION_SILENT'}});
  });
- it('keeps completed winner results available for bot delivery',async()=>{
-  vi.stubEnv('MINI_APP_URL','https://lowwin.example');
-  try{
-   const completed=auction({status:'CLOSED',settlement:{outcome:'WINNER',publication:{publishedAt:now}}});
-   const content=await campaignContent(transaction(completed),{kind:'AUCTION_RESULT',payload:{auctionId:'auction-1',recipientUserId:'player-1'}});
-   expect(content?.body).toContain('A winner has been announced.');
-  }finally{vi.unstubAllEnvs()}
+ it('keeps a published no-winner result available for bot delivery',async()=>{
+  const completed=auction({status:'CLOSED',settlement:{id:'completed',outcome:'NO_WINNER',completedAt:now,publication:{publishedAt:now}}});
+  const content=await campaignContent(transaction(completed),{kind:'AUCTION_RESULT',payload:{auctionId:'auction-1',recipientUserId:'player-1'}});
+  expect(content?.body).toContain('The auction closed without a winner.');expect(content?.href).toBe('/winners/42');
  });
  it('uses the displayed product PNG for the one-hour reminder and rejects unrelated paths',async()=>{
   const current='11111111-2222-4333-8444-555555555555',original='aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
@@ -128,8 +119,8 @@ describe('upcoming auction reminders',()=>{
  });
  it('expands reminders into distinct durable recipient keys and retries without duplicate jobs',async()=>{
   const keys=new Set<string>(),createMany=vi.fn(async({data}:{data:Array<{key:string;kind:string}>})=>{let count=0;for(const r of data)if(!keys.has(r.key)){expect(r.kind).toBe('AUCTION_UPCOMING');keys.add(r.key);count++}return {count}});
-  const tx={user:{findMany:vi.fn(async()=>[{id:'player-1'},{id:'player-2'}])},outbox:{createMany,update:vi.fn()}} as unknown as Prisma.TransactionClient;
-  const root:Outbox={id:'root-1',key:'global:upcoming:auction-1',kind:'GLOBAL_CAMPAIGN',createdAt:now,payload:{auctionId:'auction-1',deliveryKind:'AUCTION_UPCOMING',audienceBefore:now.toISOString()},testRunId:null,state:'PENDING',attempts:0,nextAttemptAt:now,sentAt:null,lastError:null,settlementId:null};
+  const tx={$queryRaw:vi.fn(async()=>[{id:'player-1'},{id:'player-2'}]),outbox:{createMany,update:vi.fn()}} as unknown as Prisma.TransactionClient;
+  const root:Outbox={id:'root-1',key:'global:upcoming:auction-1',kind:'GLOBAL_CAMPAIGN',createdAt:now,payload:{auctionId:'auction-1',deliveryKind:'AUCTION_UPCOMING',audienceBefore:now.toISOString()},testRunId:null,state:'PENDING',attempts:0,nextAttemptAt:now,sentAt:null,lastError:null,leaseToken:null,leaseUntil:null,claimedAt:null,settlementId:null};
   await expandCampaign(tx,root);await expandCampaign(tx,root);
   expect([...keys]).toEqual(['global:upcoming:auction-1:user:player-1','global:upcoming:auction-1:user:player-2']);
  });

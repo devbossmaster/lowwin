@@ -1,0 +1,63 @@
+import {expect,test,type Page} from '@playwright/test';
+import {randomUUID} from 'node:crypto';
+import {mkdirSync} from 'node:fs';
+import {signedLaunch} from '../helpers';
+import type {ChapaCheckoutView} from '../../src/lib/chapa-client';
+
+async function setup(page:Page,am:boolean){
+ await page.context().addCookies([{name:'lowwin-language',value:am?'am':'en',domain:'localhost',path:'/'}]);
+ await page.route('https://telegram.org/**',route=>route.fulfill({body:''}));
+ await page.addInitScript(launch=>{localStorage.setItem('lowwin:introduction:v1','dismissed');window.Telegram={WebApp:{initData:launch,ready(){},expand(){},setHeaderColor(){},setBackgroundColor(){}}}},signedLaunch({user:JSON.stringify({id:787910020,first_name:'Wallet UI fixture'})},process.env.TELEGRAM_BOT_TOKEN));
+ const account={user:{id:'wallet-ui-isolated',name:'Wallet UI fixture'},sessionKey:'fixture-only'};
+ await page.route('**/api/auth/telegram/miniapp/signin',route=>route.fulfill({json:{status:'authenticated',me:account}}));
+ await page.route('**/api/me',route=>route.fulfill({json:account}));
+ let credited=false;
+ await page.route('**/api/wallet',route=>route.fulfill({json:{available:credited?'275.00':'25.00',held:'0',currency:'ETB',topUp:{enabled:false,reason:'NOT_CONFIGURED'}}}));
+ const items=[{id:'topup-fixture',at:new Date().toISOString(),type:'topup',kind:'TOP_UP',delta:'100.00',status:'confirmed'},{id:'fee-fixture',at:new Date().toISOString(),type:'bid',kind:'BID_FEE',delta:'-10.00',status:'confirmed'}];
+ await page.route('**/api/wallet/history?*',route=>{const type=new URL(route.request().url()).searchParams.get('type');return route.fulfill({json:{items:type==='all'?items:items.filter(item=>item.type===type),page:1,pageSize:20,hasNext:false}})});
+ await page.route('**/api/alerts?*',route=>route.fulfill({json:{unread:0,items:[],total:0,totalPages:0}}));
+ await page.route('**/api/payments/chapa',route=>route.fulfill({json:{enabled:true,configured:true,mode:'test',walletBidsEnabled:true,minTopup:'1.00',maxTopup:'1000.00',reason:null}}));
+ await page.route('**/api/payments/chapa/methods',route=>route.fulfill({json:{methods:[{slug:'telebirr',name:'telebirr',minAmountCents:'100',maxAmountCents:'100000'},{slug:'mpesa',name:'M-Pesa',minAmountCents:'500',maxAmountCents:'100000'},{slug:'cbebirr',name:'CBE Birr',minAmountCents:'100',maxAmountCents:'100000'},{slug:'unsupported',name:'Unsupported method'}],paymentPhone:'251911111111'}}));
+ await page.route('**/api/catalog/auctions?*',route=>route.fulfill({json:new URL(route.request().url()).searchParams.get('view')==='summary'?{totalLive:0,totalUpcoming:0,serverNow:new Date().toISOString()}:{items:[],page:1,pageSize:20,total:0,totalPages:0,totalLive:0,totalUpcoming:0,serverNow:new Date().toISOString()}}));
+ const id=randomUUID(),requests:Array<{key:string;purpose:string;amount:string;paymentMethod:string;phone:string}>=[];
+ let order:ChapaCheckoutView={id,purpose:'TOP_UP',mode:'test',amount:'250.00',amountCents:'25000',currency:'ETB',status:'AUTH_NEEDED',reason:null,checkoutUrl:null,auctionSlug:null,bidNumber:null,feeVersion:null,grossFee:null,discountPoints:'0',createdAt:new Date().toISOString(),expiresAt:new Date(Date.now()+300000).toISOString(),pollAfterMs:15000,fundsPreserved:false,receipt:null,chargeType:'DIRECT',authType:'OTP',authorizationReference:'wallet-ui-otp',payerPhoneMasked:'251*****2904',paymentMethod:'telebirr',verificationState:'VERIFIED',providerStatus:'AUTH_NEEDED',merchantReference:'LWwalletUITest'};
+ await page.route('**/api/payments/chapa/direct',route=>{requests.push(route.request().postDataJSON());if(requests.length===1)return route.fulfill({status:503,json:{error:'Payment status is temporarily unavailable.',code:'UNAVAILABLE'}});if(requests.length===2)return route.fulfill({status:202,json:{...order,status:'CANCELLED',reason:'PROVIDER_CANCELLED',providerStatus:'CANCELLED',authType:null,authorizationReference:null}});return route.fulfill({status:202,json:order})});
+ await page.route('**/api/payments/chapa/checkouts?*',route=>route.fulfill({json:{items:[],page:1,nextPage:null}}));
+ await page.route('**/api/payments/chapa/checkouts/**',async route=>{if(new URL(route.request().url()).pathname.endsWith('/authorize')){const body=route.request().postDataJSON();expect(body).toEqual({otp:'123456'});credited=true;order={...order,status:'CREDITED',providerStatus:'SUCCESS',authorizationReference:null,authType:null,updatedAt:new Date().toISOString()};return route.fulfill({json:order})}return route.fulfill({json:order})});
+ return {requests};
+}
+async function geometry(page:Page){
+ const dialog=page.getByRole('dialog');
+ expect(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+ const controls=await dialog.locator('button,input').evaluateAll(nodes=>nodes.filter(node=>getComputedStyle(node).display!=='none').map(node=>{const r=node.getBoundingClientRect();return {left:r.left,right:r.right,width:r.width,height:r.height}}));
+ for(const box of controls.filter(box=>box.width>0&&box.height>0)){expect(box.left).toBeGreaterThanOrEqual(-1);expect(box.right).toBeLessThanOrEqual(page.viewportSize()!.width+1)}
+}
+
+for(const am of [false,true])test(`wallet overview and one-step top-up preserve payment safeguards ${am?'AM':'EN'}`,async({page},info)=>{
+ const f=await setup(page,am);await page.goto('/?q=wallet-layout-fixture-none');
+ const wallet=page.getByRole('banner',{name:'Mini App header'}).getByRole('link',{name:am?'ዋሌት, 25.00 ETB':'Wallet, 25.00 ETB',exact:true});
+ await wallet.click();const dialog=page.getByRole('dialog');await expect(dialog.locator('[data-wallet-overview]')).toBeVisible();await expect(dialog.locator('[data-wallet-overview-balance]')).toContainText('25.00');await expect(dialog.locator('[data-wallet-entry]')).toHaveCount(2);await expect(dialog.locator('[data-direction=incoming]')).toContainText('+100.00');await expect(dialog.locator('[data-direction=outgoing]')).toContainText('−10.00');
+ await expect(dialog).not.toContainText(/bonus/i);await dialog.getByRole('button',{name:am?'የጨረታ ክፍያዎች':'Bid fees',exact:true}).click();await expect(dialog.locator('[data-wallet-entry]')).toHaveCount(1);await geometry(page);
+ const directory='test-results/wallet-sheet/screenshots';mkdirSync(directory,{recursive:true});await dialog.screenshot({path:`${directory}/overview-${info.project.name}-${am?'am':'en'}.png`});
+ await dialog.getByRole('button',{name:am?'ገንዘብ ያስገቡ':'Top up',exact:true}).click();await expect(dialog.locator('[data-wallet-top-up]')).toBeVisible();await expect(dialog.getByRole('radio')).toHaveCount(3);await expect(dialog.getByRole('radio',{name:'Unsupported method'})).toHaveCount(0);
+ const pay=dialog.locator('[data-payment-action]');await expect(pay).toBeDisabled();await expect(dialog.getByRole('textbox',{name:am?'የክፍያ ስልክ ቁጥር':'Payment phone number',exact:true})).toHaveCount(0);
+ await dialog.getByRole('button',{name:'250',exact:true}).click();await expect(dialog.getByRole('button',{name:'10,000',exact:true})).toHaveCount(0);await dialog.getByRole('radio',{name:'M-Pesa',exact:true}).check();
+ const phone=dialog.getByRole('textbox',{name:am?'የክፍያ ስልክ ቁጥር':'Payment phone number',exact:true});await expect(phone).toHaveValue('');await phone.fill('0911652904');await expect(dialog.locator('[data-payment-phone-error]')).toBeVisible();await expect(pay).toBeDisabled();expect(f.requests).toHaveLength(0);
+ await dialog.getByRole('radio',{name:'telebirr',exact:true}).check();await expect(dialog.locator('[data-payment-phone-error]')).toHaveCount(0);await expect(pay).toBeEnabled();expect(f.requests).toHaveLength(0);await geometry(page);await dialog.screenshot({path:`${directory}/topup-${info.project.name}-${am?'am':'en'}.png`});
+ await pay.click();await expect(dialog.locator('[data-wallet-payment-progress]')).toHaveAttribute('data-wallet-payment-progress','uncertain');await expect(dialog.getByRole('button',{name:am?'የመጀመሪያውን ጥያቄ ይድገሙ':'Retry original request',exact:true})).toBeVisible();await expect(dialog.getByRole('button',{name:am?'እንደገና ይሞክሩ':'Try again',exact:true})).toHaveCount(0);await geometry(page);
+ await dialog.getByRole('button',{name:am?'ዝጋ':'Close',exact:true}).first().click();await expect(dialog).toHaveCount(0);await page.getByRole('banner',{name:'Mini App header'}).getByRole('link',{name:am?'ገንዘብ ያስገቡ':'Deposit',exact:true}).click();await expect(dialog.locator('[data-wallet-payment-progress]')).toHaveAttribute('data-wallet-payment-progress','uncertain');await expect(dialog).toContainText('250.00');expect(f.requests).toHaveLength(1);
+ await dialog.getByRole('button',{name:am?'የመጀመሪያውን ጥያቄ ይድገሙ':'Retry original request',exact:true}).click();await expect(dialog.locator('[data-wallet-payment-progress]')).toHaveAttribute('data-wallet-payment-progress','terminal');expect(f.requests).toHaveLength(2);expect(f.requests[1]).toEqual(f.requests[0]);await dialog.screenshot({path:`${directory}/terminal-${info.project.name}-${am?'am':'en'}.png`});
+ await dialog.getByRole('button',{name:am?'እንደገና ይሞክሩ':'Try again',exact:true}).click();await expect(dialog.locator('[data-wallet-top-up]')).toBeVisible();await expect(dialog.getByRole('textbox',{name:am?'የሚያስገቡት መጠን':'Amount to top up',exact:true})).toHaveValue(/^250(?:\.00)?$/);await expect(phone).toHaveValue('911652904');await expect(dialog.getByRole('radio',{name:'telebirr',exact:true})).toBeChecked();expect(f.requests).toHaveLength(2);
+ await expect(pay).toBeEnabled();await pay.click();await expect(dialog.locator('[data-direct-approval]')).toHaveAttribute('data-direct-approval','otp');expect(f.requests).toHaveLength(3);expect(f.requests[2].key).not.toBe(f.requests[0].key);expect(f.requests[2]).toMatchObject({purpose:'TOP_UP',amount:'250.00',paymentMethod:'telebirr',phone:'251911652904'});await expect(dialog.locator('input[type=password]')).toHaveCount(1);await expect(dialog).not.toContainText('Fee paid');await geometry(page);
+ await dialog.getByLabel(am?'የአንድ ጊዜ ኮድ':'One-time code',{exact:true}).fill('123456');await dialog.getByRole('button',{name:am?'ኮዱን ያረጋግጡ':'Confirm code',exact:true}).click();await expect(dialog.locator('[data-wallet-payment-progress]')).toHaveAttribute('data-wallet-payment-progress','success');await expect(dialog).toContainText(am?'ገንዘቡ በዋሌትዎ ገብቷል':'Wallet credited');await dialog.screenshot({path:`${directory}/success-${info.project.name}-${am?'am':'en'}.png`});await dialog.getByRole('button',{name:am?'ዝጋ':'Close',exact:true}).first().click();await expect(dialog).toHaveCount(0);await expect(page.getByRole('banner',{name:'Mini App header'}).getByRole('link',{name:am?'ዋሌት, 275.00 ETB':'Wallet, 275.00 ETB',exact:true})).toBeVisible();
+});
+
+test('restored owned top-up can check after an interrupted read without inventing an amount or creating a charge',async({page})=>{
+ const f=await setup(page,false),id=randomUUID();let checks=0;
+ await page.route('**/api/profile',route=>route.fulfill({status:503,json:{error:'Isolated wallet-return fixture'}}));
+ await page.route('**/api/payments/chapa/checkouts/**',route=>{if(route.request().method()==='GET')return route.fulfill({status:503,json:{error:'Temporary read interruption',code:'UNAVAILABLE'}});checks++;return route.fulfill({json:{id,purpose:'TOP_UP',mode:'test',amount:'456.78',amountCents:'45678',currency:'ETB',status:'CREDITED',reason:null,providerStatus:'SUCCESS',verificationState:'VERIFIED',checkoutUrl:null,auctionSlug:null,bidNumber:null,feeVersion:null,grossFee:null,discountPoints:'0',createdAt:new Date().toISOString(),expiresAt:new Date(Date.now()+300000).toISOString(),pollAfterMs:15000,fundsPreserved:false,receipt:null,chargeType:'DIRECT',authType:null,authorizationReference:null,payerPhoneMasked:'251*****1234',paymentMethod:'mpesa'}})});
+ await page.goto('/profile?topup=1&chapa='+id+'#wallet');
+ const dialog=page.getByRole('dialog',{name:'Top up wallet',exact:true});await expect(dialog.locator('[data-wallet-payment-progress]')).toHaveAttribute('data-wallet-payment-progress','uncertain');await expect(dialog).not.toContainText('100.00');await expect(dialog.getByRole('button',{name:'Check payment',exact:true})).toBeVisible();expect(f.requests).toHaveLength(0);
+ await dialog.getByRole('button',{name:'Check payment',exact:true}).click();await expect(dialog.locator('[data-wallet-payment-progress]')).toHaveAttribute('data-wallet-payment-progress','success');await expect(dialog).toContainText('456.78');await expect(dialog).toContainText('M-Pesa');await expect(dialog).toContainText('1234');expect(checks).toBe(1);expect(f.requests).toHaveLength(0);await geometry(page);
+});

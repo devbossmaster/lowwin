@@ -1,39 +1,59 @@
 'use client';
-import {useId,useState,type RefObject} from 'react';
-import dynamic from 'next/dynamic';
-import {ArrowLeft,Wallet} from 'lucide-react';
+import {useId,useRef,useState,type RefObject} from 'react';
+import {Check,LoaderCircle,Wallet} from 'lucide-react';
 import {AccountSheet,AccountSheetFooter} from './account-sheet';
-import {useMiniLocale,MiniPhrase} from './mini-locale';
+import {useMiniLocale} from './mini-locale';
 import {usePrivateQuery} from './private-query';
 import {useTelegram} from './telegram-provider';
-import {ChapaPaymentStatus,useChapaPayment} from './chapa-payment';
-import {centsToEtb,etbToCents} from '@/lib/money';
-import type {ChapaAvailability} from '@/lib/chapa-client';
+import {useChapaPayment} from './chapa-payment';
+import {WalletTopUpProgress} from './wallet-top-up-progress';
+import {centsToEtb,etbToCents,formatEtb} from '@/lib/money';
+import {normalizePaymentPhone,type DirectPaymentMethods} from '@/lib/bid-batch-client';
+import {paymentPhoneProblem,paymentPhoneProblemMessage} from '@/lib/payment-phone';
+import {chapaConfirmed,type ChapaAvailability} from '@/lib/chapa-client';
+import {bidPaymentCanRetry} from '@/lib/bid-payment-progress';
 import type {WalletBalance} from '@/modules/wallet/balance';
-import styles from './bid-payment-sheet.module.css';
-import ui from './batch-checkout.module.css';
-const DirectCheckout=dynamic(()=>import('./direct-checkout'),{ssr:false});
+import styles from './wallet-sheet.module.css';
+
+const providers=[{slug:'telebirr',name:'telebirr',image:'/icons/payments/telebirr.jpg'},{slug:'cbebirr',name:'CBE Birr',image:'/icons/payments/cbebirr.svg'},{slug:'mpesa',name:'M-Pesa',image:'/icons/payments/mpesa.png'}] as const;
 export function walletDisplay(value?:string){try{return value===undefined?null:`${centsToEtb(etbToCents(value))} ETB`}catch{return null}}
 type Props={onClose?:()=>void;returnFocusRef?:RefObject<HTMLElement|null>;initialChapaId?:string};
 function TopUp({onClose,returnFocusRef,initialChapaId}:Props){
- const {language}=useMiniLocale(),text=(en:string,am:string)=>language==='am'?am:en,{queryIdentity,openRegistration}=useTelegram();
- const wallet=usePrivateQuery<WalletBalance>('/api/wallet',{freshnessMs:15000}),availability=usePrivateQuery<ChapaAvailability>('/api/payments/chapa',{freshnessMs:15000});
- const payment=useChapaPayment('topup',initialChapaId),[amount,setAmount]=useState('100'),[checkout,setCheckout]=useState(false),id=useId(),settings=availability.data;
- let valid=false,total='0.00';try{const cents=etbToCents(amount);valid=/^(0|[1-9]\d{0,15})(?:\.\d{1,2})?$/.test(amount)&&cents>=etbToCents(settings?.minTopup??'1')&&cents<=etbToCents(settings?.maxTopup??'43200');total=centsToEtb(cents)}catch{}
- const action=<button className={styles.payButton} data-payment-action type="submit" form={id} disabled={!valid||!!queryIdentity&&!settings?.enabled}>{text(queryIdentity?'Continue to payment':'Log in to top up',queryIdentity?'ወደ ክፍያ ይቀጥሉ':'ገንዘብ ለማስገባት ይግቡ')}</button>;
- const contents=initialChapaId&&(!payment.order||payment.order.chargeType!=='DIRECT')?<ChapaPaymentStatus payment={payment} onNavigate={onClose}/>:checkout||payment.started?<DirectCheckout payment={payment} purpose="TOP_UP" amount={payment.order?.amount??total} onClose={onClose} onBack={()=>setCheckout(false)}/>:<form id={id} className={`${styles.topUp} ${styles.simpleTopUp}`} onSubmit={event=>{event.preventDefault();if(!queryIdentity){openRegistration();return}if(valid&&settings?.enabled)setCheckout(true)}}>
-  <div className={styles.walletStrip}><span><Wallet size={15}/>{text('Wallet','ዋሌት')}</span><strong>{queryIdentity?walletDisplay(wallet.data?.available)??'—':text('Log in','ይግቡ')}</strong></div>
-  {wallet.error&&<p className={styles.error} role="status">{text(wallet.data?'Showing the saved balance. Refresh failed.':'Balance is unavailable.',wallet.data?'የተቀመጠው ቀሪ ሂሳብ ይታያል። ማደስ አልተሳካም።':'ቀሪ ሂሳቡ አይገኝም።')} <button className={styles.inlineRetry} type="button" onClick={wallet.reload}>{text('Retry','እንደገና')}</button></p>}
-  <label className={styles.inputLabel} htmlFor={`${id}-amount`}>{text('Amount','መጠን')}</label><div className={styles.amountInput}><input id={`${id}-amount`} inputMode="decimal" autoComplete="off" maxLength={19} value={amount} onChange={event=>{if(/^\d{0,16}(?:\.\d{0,2})?$/.test(event.target.value))setAmount(event.target.value)}}/><span>ETB</span></div>
-  <div className={styles.presets} aria-label={text('Suggested top-up amounts','የገንዘብ ማስገቢያ መጠኖች')}>{['100','250','500','1000'].map(preset=><button key={preset} type="button" aria-pressed={amount===preset} onClick={()=>setAmount(preset)}>{Number(preset).toLocaleString('en-ET')}</button>)}</div>
-  {amount&&!valid&&<p className={styles.error}>{text(`Enter ${settings?.minTopup??'1.00'}–${settings?.maxTopup??'43,200.00'} ETB.`,`${settings?.minTopup??'1.00'}–${settings?.maxTopup??'43,200.00'} ብር ያስገቡ።`)}</p>}
-  <p className={ui.note}>{text('Choose your payment method and phone number next. The wallet updates only after payment is verified.','ቀጥሎ የክፍያ መንገድና ስልክ ቁጥር ይምረጡ። ዋሌቱ የሚዘምነው ክፍያው ሲረጋገጥ ብቻ ነው።')}</p>
-  {settings?.mode==='test'&&<p className={ui.note}>{text('Test mode · no real money.','የሙከራ ክፍያ · እውነተኛ ገንዘብ አይከፈልም።')}</p>}
-  {availability.error&&<p className={styles.error}>{text('Payment options could not load.','የክፍያ አማራጮችን መጫን አልተቻለም።')} <button className={styles.inlineRetry} type="button" onClick={availability.reload}>{text('Retry','እንደገና')}</button></p>}
-  {queryIdentity&&settings&&!settings.enabled&&<p className={styles.error}>{text('Online payments are unavailable.','የመስመር ላይ ክፍያ አይገኝም።')}</p>}
+ const {language}=useMiniLocale(),am=language==='am',text=(en:string,translated:string)=>am?translated:en;
+ const {queryIdentity,openRegistration}=useTelegram(),authenticated=!!queryIdentity;
+ const payment=useChapaPayment('topup',initialChapaId,{retainOriginal:true}),original=payment.directAttempt?.purpose==='TOP_UP'?payment.directAttempt:null;
+ const [amount,setAmount]=useState(()=>original?.amount??'100'),[method,setMethod]=useState(()=>original?.paymentMethod??''),[phone,setPhone]=useState(()=>original?normalizePaymentPhone(original.phone)?.slice(3)??'':''),id=useId(),submitting=useRef(false);
+ const wallet=usePrivateQuery<WalletBalance>('/api/wallet',{enabled:authenticated,freshnessMs:15000});
+ const availability=usePrivateQuery<ChapaAvailability>('/api/payments/chapa',{enabled:authenticated&&!payment.started,freshnessMs:15000});
+ const methods=usePrivateQuery<DirectPaymentMethods>('/api/payments/chapa/methods',{enabled:authenticated&&!payment.started,freshnessMs:60000}),settings=availability.data;
+ let cents=0n,total='0.00',valid=false;
+ try{cents=etbToCents(amount);total=centsToEtb(cents);valid=!!settings&&/^(0|[1-9]\d{0,15})(?:\.\d{1,2})?$/.test(amount)&&cents>=etbToCents(settings.minTopup)&&cents<=etbToCents(settings.maxTopup)}catch{}
+ const enabledMethods=settings?.enabled?providers.filter(provider=>methods.data?.methods.some(item=>item.slug===provider.slug)):[];
+ const allowed=(slug:string)=>{const item=methods.data?.methods.find(item=>item.slug===slug);return !!item&&valid&&(!item.minAmountCents||cents>=BigInt(item.minAmountCents))&&(!item.maxAmountCents||cents<=BigInt(item.maxAmountCents))};
+ const phoneProblem=paymentPhoneProblem(phone,method),normalizedPhone=phoneProblem?null:normalizePaymentPhone(phone);
+ const ready=valid&&!!settings?.enabled&&!!method&&allowed(method)&&!!normalizedPhone&&!payment.busy;
+ const presets=['10','100','250','500','1000','10000'].filter(value=>{try{return !!settings&&etbToCents(value)>=etbToCents(settings.minTopup)&&etbToCents(value)<=etbToCents(settings.maxTopup)}catch{return false}});
+ const retry=()=>{if(!payment.canStartAgain||!payment.order||!chapaConfirmed(payment.order)&&!bidPaymentCanRetry(payment.order))return;payment.startAgain();methods.reload();availability.reload()};
+ const pay=async()=>{if(!authenticated){openRegistration();return}if(!ready||!normalizedPhone||submitting.current)return;submitting.current=true;try{await payment.createDirect({key:crypto.randomUUID(),purpose:'TOP_UP',amount:total,paymentMethod:method,phone:normalizedPhone})}finally{submitting.current=false}};
+ const action=<button className={styles.pay} type="submit" form={id} data-payment-action disabled={authenticated?!ready:!amount}>{text(authenticated?`Top up ${formatEtb(total)}`:'Log in to top up',authenticated?`${formatEtb(total)} ያስገቡ`:'ገንዘብ ለማስገባት ይግቡ')}</button>;
+ const contents=payment.started?<WalletTopUpProgress payment={payment} amount={initialChapaId&&!payment.order?null:total} provider={method} phone={phone} onRetry={retry} onClose={onClose} footerPortal={!!onClose}/>:<form id={id} className={styles.topUp} data-wallet-top-up onSubmit={event=>{event.preventDefault();void pay()}}>
+  <div className={styles.walletStrip}><span><Wallet size={16}/>{text('Available balance','ለመጠቀም ያለ ቀሪ ሂሳብ')}</span><strong data-wallet-top-up-balance>{walletDisplay(wallet.data?.available)??(authenticated?<span className={styles.placeholder} aria-label={text('Loading balance','ቀሪ ሂሳብ በመጫን ላይ')}/>:text('Log in','ይግቡ'))}</strong></div>
+  <label className={styles.amountLabel} htmlFor={`${id}-amount`}>{text('Amount to top up','የሚያስገቡት መጠን')}</label><div className={styles.amountField}><input id={`${id}-amount`} inputMode="decimal" autoComplete="off" maxLength={19} value={amount} aria-invalid={!!amount&&!!settings&&!valid||undefined} onChange={event=>{if(/^\d{0,16}(?:\.\d{0,2})?$/.test(event.target.value))setAmount(event.target.value)}}/><span>ETB</span></div>
+  <div className={styles.presets} aria-label={text('Suggested top-up amounts','የገንዘብ ማስገቢያ መጠኖች')}>{presets.map(preset=><button key={preset} type="button" aria-pressed={amount===preset} onClick={()=>setAmount(preset)}>{Number(preset).toLocaleString('en-ET')}</button>)}</div>
+  {amount&&settings&&!valid&&<p className={styles.error} role="alert">{text(`Enter ${settings.minTopup}–${settings.maxTopup} ETB.`,`${settings.minTopup}–${settings.maxTopup} ብር ያስገቡ።`)}</p>}
+  <fieldset className={styles.methods} data-wallet-methods><legend>{text('Select payment method','የክፍያ መንገድ ይምረጡ')}</legend><div className={styles.methodGrid}>{enabledMethods.map(provider=><label className={styles.method} key={provider.slug} data-provider={provider.slug} data-selected={method===provider.slug} data-unavailable={!allowed(provider.slug)}><input type="radio" name={`${id}-method`} value={provider.slug} checked={method===provider.slug} disabled={!allowed(provider.slug)} onChange={()=>setMethod(provider.slug)} aria-label={provider.name}/><img src={provider.image} alt="" width={34} height={29}/><strong>{provider.name}</strong>{method===provider.slug&&<Check className={styles.methodCheck} size={16} strokeWidth={2.5} aria-hidden="true"/>}</label>)}</div></fieldset>
+  {authenticated&&(!settings||!methods.data)&&!availability.error&&!methods.error&&<p className={styles.loading} role="status"><LoaderCircle className={styles.spin} size={17}/>{text('Loading payment methods…','የክፍያ መንገዶች በመጫን ላይ…')}</p>}
+  {method&&<div className={styles.phone}><label htmlFor={`${id}-phone`}>{text('Payment phone number','የክፍያ ስልክ ቁጥር')}</label><div className={styles.phoneField}><span aria-hidden="true">+251</span><input id={`${id}-phone`} type="tel" inputMode="tel" autoComplete="off" maxLength={18} value={phone} onChange={event=>setPhone(normalizePaymentPhone(event.target.value)?.slice(3)??event.target.value)} placeholder="7•• / 9•• ••• •••" aria-invalid={!!phone&&!!phoneProblem||undefined} aria-describedby={`${id}-phone-help${phone&&phoneProblem?' '+id+'-phone-error':''}`}/></div><p className="sr-only" id={`${id}-phone-help`}>{text('Enter the phone registered with your selected payment method.','በመረጡት የክፍያ መንገድ የተመዘገበውን ስልክ ያስገቡ።')}</p>{phone&&phoneProblem&&<p className={styles.error} role="alert" id={`${id}-phone-error`} data-payment-phone-error>{paymentPhoneProblemMessage(phoneProblem,am)}</p>}</div>}
+  {authenticated&&settings&&methods.data&&!enabledMethods.length&&!availability.error&&!methods.error&&<p className={styles.error} role="status">{text('Top-ups are currently unavailable.','ገንዘብ ማስገባት ለጊዜው አይገኝም።')}</p>}
+  {method&&valid&&!allowed(method)&&<p className={styles.error} role="status">{text('This method is unavailable for this amount. Choose another method or amount.','ለዚህ መጠን ይህ መንገድ አይገኝም። ሌላ መንገድ ወይም መጠን ይምረጡ።')}</p>}
+  {(methods.error||availability.error)&&<p className={styles.error} role="status">{text('Payment methods could not load.','የክፍያ መንገዶችን ማምጣት አልተቻለም።')} <button className={styles.retry} type="button" onClick={()=>{methods.reload();availability.reload()}}>{text('Retry','እንደገና')}</button></p>}
+  {payment.error&&<p className={styles.error} role="alert">{payment.error}</p>}
+  {wallet.error&&<p className={styles.error} role="status">{text(wallet.data?'Showing your saved balance.':'Balance is unavailable.',wallet.data?'የተቀመጠው ቀሪ ሂሳብ ይታያል።':'ቀሪ ሂሳቡ አይገኝም።')} <button type="button" className={styles.retry} onClick={wallet.reload}>{text('Retry','እንደገና')}</button></p>}
+  <p className={styles.hint}>{text('Your wallet updates after payment is verified.','ክፍያው ሲረጋገጥ ዋሌትዎ ይዘምናል።')}{settings?.mode==='test'&&<> {text('Test mode · no real money.','የሙከራ ክፍያ · እውነተኛ ገንዘብ አይከፈልም።')}</>}</p>
   {onClose?<AccountSheetFooter>{action}</AccountSheetFooter>:action}
  </form>;
- return onClose?<AccountSheet size="payment" layout={checkout||payment.order?.chargeType==='DIRECT'?'checkout':undefined} title={<MiniPhrase en="Top up wallet" am="ወደ ዋሌት ገንዘብ ያስገቡ"/>} onClose={onClose} returnFocusRef={returnFocusRef} footerPortal>{contents}</AccountSheet>:<section className={styles.page}><h1><MiniPhrase en="Top up wallet" am="ወደ ዋሌት ገንዘብ ያስገቡ"/></h1>{contents}</section>;
+ const title=<span className={styles.title}><Wallet size={19}/>{text('Top up wallet','ገንዘብ ያስገቡ')}</span>;
+ return onClose?<AccountSheet size="payment" title={title} onClose={onClose} returnFocusRef={returnFocusRef} footerPortal>{contents}</AccountSheet>:<section className={styles.page}><h1>{title}</h1>{contents}</section>;
 }
 export default function WalletTopUpSheet(props:Props&{onClose:()=>void}){const {queryIdentity}=useTelegram();return <TopUp key={`${queryIdentity??'guest'}:${props.initialChapaId??''}`} {...props}/>}
 export function WalletTopUpPage(){const {queryIdentity}=useTelegram();return <TopUp key={queryIdentity??'guest'}/>}

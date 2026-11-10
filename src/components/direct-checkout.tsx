@@ -33,6 +33,11 @@ export default function DirectCheckout({payment,purpose,amount,batch,onBack,onCl
  const phoneProblem=paymentPhoneProblem(phone,method),normalized=phoneProblem?null:normalizePaymentPhone(phone),selected=methods.data?.methods.find(item=>item.slug===method);
  const submit=()=>{if(!normalized||!selected||payment.busy)return;void payment.createDirect(purpose==='BID'&&batch?{key:operationKey.current,purpose:'BID',batchId:batch.id,quoteHash:batch.quoteHash,paymentMethod:method,phone:normalized}:{key:operationKey.current,purpose:'TOP_UP',amount,paymentMethod:method,phone:normalized})};
  const authorizationReady=order?.chargeType==='DIRECT'&&!!order.authorizationReference;
+ useEffect(()=>{
+  if(payment.started)payment.markPresented('feedback');
+  if(authorizationReady)payment.markPresented('authorization');
+  if(order&&chapaConfirmed(order))payment.markPresented('confirmed');
+ },[payment.started,payment.markPresented,authorizationReady,order]);
  const otpNeeded=authorizationReady&&order.authType==='OTP'&&chapaRecoverable(order)&&order.providerStatus!=='SUCCESS'&&!chapaConfirmed(order);
  const phoneApproval=authorizationReady&&order.authType==='USSD'&&chapaRecoverable(order)&&order.providerStatus!=='SUCCESS'&&!chapaConfirmed(order);
  const connecting=!authorizationReady&&order?.providerStatus!=='SUCCESS';

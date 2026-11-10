@@ -52,9 +52,15 @@ export async function quoteBidBatch(client:PrismaClient,userId:string,raw:unknow
   const previous=await tx.bidBatchOrder.findUnique({where:{userId_key:{userId,key:input.key}}});
   if(previous){if(previous.requestHash!==requestHash)throw new ChapaError(409,'KEY_REUSED','Changed selections require a new quote.');return ownBatch(previous)}
   if(reauthorize)await reauthorize(tx);
-  const priced=await validateBatchInTransaction(tx,userId,input.auctionSlug,numbers,input.feeVersion,input.couponId),id=randomUUID(),quoteHash=chapaHash(JSON.stringify({id,userId,ruleVersion:priced.auction.terms!.ruleVersion,feeVersion:input.feeVersion,lines:priced.lines,totalCents:String(priced.totalCents)}));
-  return ownBatch(await tx.bidBatchOrder.create({data:{id,userId,key:input.key,requestHash,quoteHash,auctionId:priced.auction.id,auctionSlug:input.auctionSlug,ruleVersion:priced.auction.terms!.ruleVersion,feeVersion:input.feeVersion,lines:priced.lines,totalCents:priced.totalCents,grossCents:priced.grossCents,discountCents:priced.discountCents,couponId:input.couponId}}));
+  const priced=await validateBatchInTransaction(tx,userId,input.auctionSlug,numbers,input.feeVersion,input.couponId);
+  return ownBatch(await persistBidBatchQuoteInTransaction(tx,userId,input,priced,requestHash));
  },PAYMENT_TRANSACTION_OPTIONS);
+}
+/** Called after authoritative validation while the auction/wallet locks remain
+ * held. Shared by quote-only and one-command direct checkout preparation. */
+export async function persistBidBatchQuoteInTransaction(tx:Tx,userId:string,input:{key:string;auctionSlug:string;feeVersion:number;couponId?:string},priced:Awaited<ReturnType<typeof validateBatchInTransaction>>,requestHash:string){
+ const id=randomUUID(),quoteHash=chapaHash(JSON.stringify({id,userId,ruleVersion:priced.auction.terms!.ruleVersion,feeVersion:input.feeVersion,lines:priced.lines,totalCents:String(priced.totalCents)}));
+ return tx.bidBatchOrder.create({data:{id,userId,key:input.key,requestHash,quoteHash,auctionId:priced.auction.id,auctionSlug:input.auctionSlug,ruleVersion:priced.auction.terms!.ruleVersion,feeVersion:input.feeVersion,lines:priced.lines,totalCents:priced.totalCents,grossCents:priced.grossCents,discountCents:priced.discountCents,couponId:input.couponId}});
 }
 export async function fulfillBatchInTransaction(tx:Tx,batch:BidBatchOrder){
  const prior=await tx.bidBatchOrder.findUniqueOrThrow({where:{id:batch.id}});

@@ -6,8 +6,9 @@ import {randomInt,randomUUID} from 'node:crypto';
 import {bidAuction,bidUser} from './bid-fixtures';
 import {submitBid} from '../src/modules/auctions/bids';
 import {publishFixtureResult} from './publish-result-fixture';
-import {closeAuction,cancelAuction} from '../src/modules/auctions/settlement';
+import {closeAuction,closeAuctionInTransaction,cancelAuction} from '../src/modules/auctions/settlement';
 import {getPersonalBids} from '../src/modules/profile/personal';
+import {getPersonalBidList,personalBidListQuerySchema} from '../src/modules/profile/bid-list';
 import {reconcile} from '../src/modules/wallet/ledger';
 import {verifyFixtureContact} from './contact-fixtures';
 import {signedLaunch,TEST_TOKEN} from './helpers';
@@ -48,7 +49,47 @@ describe.skipIf(!url)('accepted My Bids accuracy on isolated PostgreSQL',()=>{
  it('keeps 20-record ownership checks on the actual authenticated route and rejects user overrides',async()=>{
   const telegramId=secondTelegramId;
   const {handleAuth}=await import('../src/modules/auth/handler'),auth=await handleAuth(new Request('http://localhost:3000/api/auth/telegram/miniapp/signin',{method:'POST',headers:{origin:'http://localhost:3000','content-type':'application/json'},body:JSON.stringify({initData:signedLaunch({user:JSON.stringify({id:telegramId,first_name:'My Bids private API fixture'})})})}));expect(auth.status).toBe(200);const cookie=auth.headers.get('set-cookie')!.split(';')[0];
-  const {GET}=await import('../src/app/api/my-bids/route'),own=await GET(new Request('http://localhost:3000/api/my-bids?view=all&page=1',{headers:{cookie}}));expect(own.status).toBe(200);expect(own.headers.get('cache-control')).toContain('no-store');expect(own.headers.get('vary')).toBe('Cookie');const data=await own.json();expect(data.counts.total).toBe(1);expect(data.items.every((row:{id:string})=>row.id!==ownProviderBid&&row.id!==wrongOwnerBid)).toBe(true);
+  const {GET}=await import('../src/app/api/my-bids/route'),own=await GET(new Request('http://localhost:3000/api/my-bids?view=finished&page=1',{headers:{cookie}}));expect(own.status).toBe(200);expect(own.headers.get('cache-control')).toContain('no-store');expect(own.headers.get('vary')).toBe('Cookie');const data=await own.json();expect(data.items).toHaveLength(1);expect(data.hasNext).toBe(false);expect(data.counts).toBeUndefined();expect(data.items.every((row:{id:string})=>row.id!==ownProviderBid&&row.id!==wrongOwnerBid)).toBe(true);
   expect((await GET(new Request(`http://localhost:3000/api/my-bids?userId=${first}`,{headers:{cookie}}))).status).toBe(422);expect((await GET(new Request('http://localhost:3000/api/my-bids'))).status).toBe(401);
+ });
+ it('returns one bounded minimal projection with a stable accepted ID and no payment-attempt metadata',async()=>{
+  const observed=new PrismaClient({datasourceUrl:url,log:[{emit:'event',level:'query'}]}),statements:string[]=[];
+  observed.$on('query',event=>statements.push(event.query));
+  try{
+   const one=await getPersonalBidList(observed,first,{view:'live'});expect(statements).toHaveLength(1);
+   const two=await getPersonalBidList(observed,first,{view:'live',page:2}),finished=await getPersonalBidList(observed,first,{view:'finished'});
+   expect(one.items).toHaveLength(20);expect(one.hasNext).toBe(true);expect(two.items).toHaveLength(5);expect(two.hasNext).toBe(false);expect(finished.items).toHaveLength(2);
+   const all=[...one.items,...two.items];expect(new Set(all.map(row=>row.id)).size).toBe(25);expect(all.every(row=>row.outcome==='LIVE')).toBe(true);expect(all.map(row=>row.acceptedAt)).toEqual(all.map(row=>row.acceptedAt).sort().reverse());
+   expect(one.items[0].auction).toMatchObject({code:live.publicCode.toString(),slug:live.slug,title:'Disposable test item',ruleVersion:'lowest-unique-v4'});expect(Number.isNaN(Date.parse(one.serverNow))).toBe(false);
+   expect(Object.keys(one).sort()).toEqual(['hasNext','items','page','pageSize','serverNow']);
+   expect(Object.keys(one.items[0]).sort()).toEqual(['acceptedAt','amount','auction','id','outcome']);
+   for(const secret of [providerRef,second,'private-fixture-cipher','private-fixture-hash'])expect(JSON.stringify(one)).not.toContain(secret);expect(all.some(row=>row.amount==='999')).toBe(false);
+   expect((await getPersonalBidList(observed,first,{view:'live',page:1000})).items).toEqual([]);
+   expect((await getPersonalBidList(observed,randomUUID(),{view:'finished'}))).toMatchObject({items:[],hasNext:false});
+  }finally{await observed.$disconnect()}
+ });
+ it('moves expired bids to Finished before settlement and hides the outcome until publication',async()=>{
+  const ended=await bidAuction(db,{fee:1,isDemo:true,endDelayMs:1400});
+  await db.productImage.create({data:{productId:ended.productId!,path:'/images/products/fallback.webp',alt:'Fallback fixture'}});
+  await db.auction.update({where:{id:ended.id},data:{presentation:{title:'Frozen auction title',titleAm:'የጨረታ ምርት',images:[{path:'/images/products/frozen.webp',alt:'Frozen fixture'}]}}});
+  const chosen=await submitBid(db,{userId:first,auctionSlug:ended.slug!,amount:'31',key:randomUUID()}),other=await submitBid(db,{userId:first,auctionSlug:ended.slug!,amount:'33',key:randomUUID()});
+  await submitBid(db,{userId:second,auctionSlug:ended.slug!,amount:'35',key:randomUUID()});
+  await new Promise(resolve=>setTimeout(resolve,Math.max(0,ended.endsAt!.getTime()-Date.now()+30)));
+  expect((await db.auction.findUniqueOrThrow({where:{id:ended.id}})).status).toBe('LIVE');
+  const pending=await getPersonalBidList(db,first,{view:'finished'});expect(pending.items.find(row=>row.id===chosen.bid.id)).toMatchObject({outcome:'PENDING',auction:{title:'Frozen auction title',titleAm:'የጨረታ ምርት',image:{path:'/images/products/frozen.webp',alt:'Frozen fixture'}}});
+  expect((await getPersonalBidList(db,first,{view:'live'})).items.some(row=>row.id===chosen.bid.id)).toBe(false);
+  await db.$transaction(tx=>closeAuctionInTransaction(tx,ended.id));
+  const unpublished=await getPersonalBidList(db,first,{view:'finished'});expect(unpublished.items.filter(row=>row.auction.slug===ended.slug).map(row=>row.outcome)).toEqual(['PENDING','PENDING']);
+  await publishFixtureResult(db,ended.id);
+  const published=await getPersonalBidList(db,first,{view:'finished'});expect(published.items.find(row=>row.id===chosen.bid.id)?.outcome).toBe('WON');expect(published.items.find(row=>row.id===other.bid.id)?.outcome).toBe('LOST');
+  expect((await getPersonalBidList(db,first,{view:'history'})).items.map(row=>row.id)).toEqual(published.items.map(row=>row.id));
+  expect(await reconcile(db)).toEqual([]);
+ });
+});
+
+describe('minimal My Bids query bounds',()=>{
+ it('rejects account overrides, unbounded pages, and payment-attempt filters',()=>{
+  for(const input of [{userId:'someone-else'},{page:0},{page:1001},{view:'attempts'},{status:'paid'},{language:'xx'}])expect(()=>personalBidListQuerySchema.parse(input)).toThrow();
+  expect(personalBidListQuerySchema.parse({})).toEqual({view:'live',page:1});
  });
 });
