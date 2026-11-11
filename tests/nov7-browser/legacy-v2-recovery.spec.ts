@@ -93,7 +93,7 @@ test('historical V2 USSD PIN feedback is masked and verified cancellation stops 
    return route.fulfill({json:isCancelled?cancelled(order):order});
   });
   const dialog=await openHistorical(page,order,am);await expect(dialog).toContainText(am?'PIN ትክክል':'incorrect payment PIN');await expect(dialog.locator('input[type=password],input[autocomplete="one-time-code"]')).toHaveCount(0);await expect(dialog.getByRole('button',{name:am?'ፈቃዱን ይቀጥሉ':'Continue authorization',exact:true})).toHaveCount(0);
-  await expect(dialog.getByRole('button',{name:am?'ክፍያውን ያረጋግጡ':'Check payment',exact:true})).toBeEnabled();isCancelled=true;await dialog.getByRole('button',{name:am?'ክፍያውን ያረጋግጡ':'Check payment',exact:true}).click();await expect(dialog.locator('[data-summary=failed]')).toBeVisible();await expect(dialog).toContainText(am?'ተሰርዟል':'cancelled');await expect(page.locator('[data-transactions-balance]')).toContainText('25.00');
+  await expect(dialog.getByRole('button',{name:am?'ክፍያውን ያረጋግጡ':'Check payment',exact:true})).toBeEnabled();isCancelled=true;await dialog.getByRole('button',{name:am?'ክፍያውን ያረጋግጡ':'Check payment',exact:true}).click();await expect(dialog.locator('[data-summary=failed]')).toBeVisible();await expect(dialog).toContainText(am?'Chapa ይህ ክፍያ እንደተሰረዘ አረጋግጧል።':'cancelled');await expect(page.locator('[data-transactions-balance]')).toContainText('25.00');
   const before=checks;await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await page.waitForTimeout(2200);expect(checks).toBe(before);expect(authorizations).toBe(0);expect(creations).toEqual([]);await expect(dialog.locator('[data-summary=done],input[autocomplete="one-time-code"]')).toHaveCount(0);await unchangedDatabase(f);
  }finally{await cleanup(f)}
 });
