@@ -57,8 +57,10 @@ if(mode==='unit') {
   if(report.numPendingTests||report.numTodoTests)throw Error('Release requires every opt-in database test to execute.');
 } else {
   run(['node_modules/prisma/build/index.js','migrate','deploy']);
-  if(mode==='admin'){
-    env.LOWIN_UI_TEST_MODE='admin-neutral';env.PAYMENTS_LIVE_ENABLED='false';env.ARIFPAY_ENABLED='false';
+  if(mode==='admin'||mode==='chapa'){
+    // Use shipped bundles for long browser runs. A bare development server
+    // exits at Next's memory threshold and has no CLI supervisor to restart it.
+    env.LOWIN_UI_TEST_MODE=mode==='chapa'?'chapa':'admin-neutral';env.PAYMENTS_LIVE_ENABLED='false';env.ARIFPAY_ENABLED='false';
     const runtimeNodeEnv=env.NODE_ENV;env.NODE_ENV='production';
     run(['node_modules/next/dist/bin/next','build','--webpack']);
     env.NODE_ENV=runtimeNodeEnv??'development';

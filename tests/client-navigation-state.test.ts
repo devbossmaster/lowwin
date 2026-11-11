@@ -1,10 +1,10 @@
 import {readPublicQuery} from '../src/components/public-query-cache';
 import {afterEach,describe,expect,it,vi} from 'vitest';
-import {SessionNavigationState,miniNavigationState,miniRouteKey} from '../src/components/mini-navigation-state';
+import {SessionNavigationState,miniNavigationState,publicMiniNavigationState,miniRouteKey,rememberedMiniVisit,rememberedMiniDestination} from '../src/components/mini-navigation-state';
 import {IntentPrefetchBudget,privateIntentDestination,prefetchMiniIntent,prefetchAuctionIntent} from '../src/components/mini-prefetch';
 import {invalidatePrivateQueries,loadPrivateJson,prefetchPrivateQuery,readPrivateQuery,setPrivateQueryIdentity} from '../src/components/private-query-cache';
 
-afterEach(()=>{setPrivateQueryIdentity(null);vi.unstubAllGlobals();vi.useRealTimers()});
+afterEach(()=>{setPrivateQueryIdentity(null);publicMiniNavigationState.setIdentity(null);publicMiniNavigationState.setIdentity('public');vi.unstubAllGlobals();vi.useRealTimers()});
 describe('session-local navigation coordinates',()=>{
  it('retains result sort and participant pages only for the current session',()=>{
   const memory=new SessionNavigationState();memory.setIdentity('a');memory.rememberResult('a','42',{page:2,sort:'picked',jump:false});memory.rememberPage('a','result:42:50',2);
@@ -26,6 +26,21 @@ describe('session-local navigation coordinates',()=>{
   expect(memory.page('user:session','/?category=phones&sort=fee-low&q=case')).toBe(3);
   expect(memory.page('user:session','/?category=other')).toBe(1);
   expect(memory.visit('user:session','/my-bids')).toMatchObject({href:'/my-bids?view=history&page=2',scrollY:480});
+ });
+ it('returns public filters and scroll from public memory while keeping personal destinations account scoped',()=>{
+  setPrivateQueryIdentity('first');
+  publicMiniNavigationState.remember('public','/?q=QA%20client%20flow&sort=fee-low',3240);
+  publicMiniNavigationState.remember('public','/winners?page=2',640);
+  miniNavigationState.remember('first','/my-bids?view=finished&page=3',480);
+  expect(rememberedMiniVisit('first','/')).toMatchObject({href:'/?q=QA%20client%20flow&sort=fee-low',scrollY:3240});
+  expect(rememberedMiniDestination('first','/winners')).toBe('/winners?page=2');
+  expect(rememberedMiniVisit('first','/my-bids')).toMatchObject({href:'/my-bids?view=finished&page=3',scrollY:480});
+  setPrivateQueryIdentity('second');
+  expect(rememberedMiniVisit('second','/')).toMatchObject({scrollY:3240});
+  expect(rememberedMiniVisit(null,'/winners')).toMatchObject({href:'/winners?page=2',scrollY:640});
+  expect(rememberedMiniDestination('second','/my-bids')).toBe('/my-bids');
+  expect(rememberedMiniVisit('first','/my-bids')).toBeNull();
+  expect(rememberedMiniVisit('second','https://outside.example/')).toBeNull();
  });
  it('does not mix accounts or revive an earlier session of the same account',()=>{
   const memory=new SessionNavigationState();memory.setIdentity('a:old');memory.remember('a:old','/?q=private-search',600);memory.rememberPage('a:old','feed',4);

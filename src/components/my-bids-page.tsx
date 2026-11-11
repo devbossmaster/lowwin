@@ -43,7 +43,8 @@ function PlayerBids({initialView}:{initialView:MyBidListView|'all'|'history'}){
   if(invalidateTimer.current)return;
   invalidateTimer.current=setTimeout(()=>{invalidateTimer.current=null;const scopes=[...changedScopes.current];changedScopes.current.clear();invalidatePrivateQueries(queryIdentity,scopes)},0);
  },[queryIdentity]);
- const choose=(next:MyBidListView)=>{if(next===view)return;setSelected(null);set({view:next==='live'?null:'finished',page:null,section:null,status:null,paymentPage:null})};
+ // An explicit Live value overrides a Finished bookmark's server fallback.
+ const choose=(next:MyBidListView)=>{if(next===view)return;setSelected(null);set({view:next,page:null,section:null,status:null,paymentPage:null})};
  const handleTabs=(event:React.KeyboardEvent<HTMLButtonElement>,next:MyBidListView)=>{if(event.key==='ArrowRight'||event.key==='ArrowLeft'||event.key==='Home'||event.key==='End'){event.preventDefault();const destination=event.key==='Home'?'live':event.key==='End'?'finished':next;choose(destination);event.currentTarget.parentElement?.querySelector<HTMLButtonElement>('[data-view="'+destination+'"]')?.focus()}};
  return <><OfflineRetry/><section className={styles.page} data-my-bids-ready={!!data||undefined}>
   <div className={styles.tabs} role="tablist" data-my-bids-tabs aria-label={text('Your accepted bids','የተቀበሉ ጨረታዎችዎ')}>
