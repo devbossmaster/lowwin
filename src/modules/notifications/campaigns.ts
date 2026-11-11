@@ -49,9 +49,11 @@ export async function expandCampaign(tx:Tx,row:Outbox){
   if(!settlement?.publication||p.settlementId&&p.settlementId!==settlement.id||row.settlementId&&row.settlementId!==settlement.id){await tx.outbox.update({where:{id:row.id},data:{state:'SKIPPED',lastError:'RESULT_NOT_PUBLISHED'}});return 0}
   rootKey=`settlement:${settlement.id}:completed`;resultSettlementId=settlement.id;before=settlement.publication.publishedAt;
  }
+ // Compare UTC timestamp columns to UTC wall time explicitly: Prisma raw
+ // Date parameters are timestamptz and otherwise inherit the session zone.
  // Only reachable non-staff recipients enter fan-out. A later block or role
  // change is rechecked again immediately before the external delivery.
- const users=resultSettlementId?await resultRecipientIds(tx,before,p.cursor):await tx.$queryRaw<{id:string}[]>(Prisma.sql`SELECT u.id FROM "user" u JOIN "BotChat" c ON c."telegramId"=u."telegramId" AND c.blocked=false AND c."startedAt"<=${before} LEFT JOIN "StaffMember" s ON s."userId"=u.id WHERE s."userId" IS NULL AND u.role<>'admin' AND u."createdAt"<=${before} ${p.cursor?Prisma.sql`AND u.id>${p.cursor}`:Prisma.empty} ORDER BY u.id ASC LIMIT 250`);
+ const users=resultSettlementId?await resultRecipientIds(tx,before,p.cursor):await tx.$queryRaw<{id:string}[]>(Prisma.sql`SELECT u.id FROM "user" u JOIN "BotChat" c ON c."telegramId"=u."telegramId" AND c.blocked=false AND c."startedAt"<=(${before}::timestamptz AT TIME ZONE 'UTC') LEFT JOIN "StaffMember" s ON s."userId"=u.id WHERE s."userId" IS NULL AND u.role<>'admin' AND u."createdAt"<=(${before}::timestamptz AT TIME ZONE 'UTC') ${p.cursor?Prisma.sql`AND u.id>${p.cursor}`:Prisma.empty} ORDER BY u.id ASC LIMIT 250`);
  const kind=row.kind==='AUCTION_FINALIZED'?'AUCTION_RESULT':p.deliveryKind;
  if(!kind||!telegramKinds.includes(kind))throw Error('Unknown campaign kind');
  const {cursor:_cursor,audienceBefore:_before,rootKey:_root,deliveryKind:_kind,...content}=p;

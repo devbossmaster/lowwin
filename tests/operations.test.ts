@@ -132,8 +132,9 @@ describe.skipIf(!url)('Master Guide Admin operations and private alerts',()=>{
   const unreachable=await db.user.create({data:{id:randomUUID(),name:'DEMO chat not started',telegramId:'930000002',createdAt:startedAt}}),blocked=await db.user.create({data:{id:randomUUID(),name:'DEMO blocked chat',telegramId:'930000003',createdAt:startedAt}});await db.botChat.create({data:{telegramId:blocked.telegramId!,chatId:blocked.telegramId!,startedAt,blocked:true}});
   const root=await db.$transaction(tx=>queueGlobal(tx,`test:campaign:${randomUUID()}`,'BROADCAST',{body:'DEMO notice',href:'/auctions/all'}));
   const afterEvent=new Date(new Date((root.payload as {audienceBefore:string}).audienceBefore).getTime()+10000),late=await db.user.create({data:{id:randomUUID(),name:'DEMO later signup',telegramId:'930000001',createdAt:afterEvent}});await db.botChat.create({data:{telegramId:late.telegramId!,chatId:late.telegramId!,startedAt:afterEvent}});
-  await db.$transaction(tx=>expandCampaign(tx,root));await db.$transaction(tx=>expandCampaign(tx,root));
-  for(;;){const next=await db.outbox.findFirst({where:{kind:'GLOBAL_CAMPAIGN',state:'PENDING',key:{startsWith:root.key}}});if(!next)break;await db.$transaction(tx=>expandCampaign(tx,next))}
+  const expandInZone=(row:typeof root,zone:'UTC'|'Africa/Asmara')=>db.$transaction(async tx=>{await tx.$executeRawUnsafe(`SET LOCAL TIME ZONE '${zone}'`);return expandCampaign(tx,row)});
+  await expandInZone(root,'UTC');await expandInZone(root,'Africa/Asmara');
+  for(;;){const next=await db.outbox.findFirst({where:{kind:'GLOBAL_CAMPAIGN',state:'PENDING',key:{startsWith:root.key}}});if(!next)break;await expandInZone(next,'Africa/Asmara')}
   const rows=await db.outbox.findMany({where:{kind:'BROADCAST',key:{startsWith:root.key}}}),recipients=rows.map(row=>(row.payload as {recipientUserId:string}).recipientUserId),expected=[...users.map(user=>user.id),...existingRecipients];
   expect(rows).toHaveLength(expected.length);expect(new Set(recipients)).toEqual(new Set(expected));expect(new Set(recipients).size).toBe(rows.length);for(const excluded of [late.id,unreachable.id,blocked.id])expect(recipients).not.toContain(excluded);
  });

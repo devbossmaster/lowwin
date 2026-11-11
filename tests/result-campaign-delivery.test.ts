@@ -20,10 +20,10 @@ describe.skipIf(!url)('published result Telegram campaign, isolated database and
   db=new PrismaClient();
   subscribers=Array.from({length:252},(_,i)=>({id:randomUUID(),telegramId:String(780000000+i)}));
   excluded=Array.from({length:8},(_,i)=>({id:randomUUID(),telegramId:String(790000000+i)}));
-  const all=[...subscribers,...excluded];
-  await db.user.createMany({data:all.map((u,i)=>({...u,name:'Result subscriber '+i,role:i===all.length-2?'admin':'member'}))});
+  const all=[...subscribers,...excluded],createdAt=new Date(Date.now()-60000);
+  await db.user.createMany({data:all.map((u,i)=>({...u,createdAt,name:'Result subscriber '+i,role:i===all.length-2?'admin':'member'}))});
   await db.notificationPreference.createMany({data:all.filter(u=>u.id!==excluded[1].id).map(u=>({userId:u.id,telegram:u.id!==excluded[0].id,inApp:false}))});
-  await db.botChat.createMany({data:all.filter(u=>u.id!==excluded[3].id).map(u=>({telegramId:u.telegramId,chatId:u.telegramId,blocked:u.id===excluded[2].id}))});
+  await db.botChat.createMany({data:all.filter(u=>u.id!==excluded[3].id).map(u=>({telegramId:u.telegramId,chatId:u.telegramId,startedAt:createdAt,blocked:u.id===excluded[2].id}))});
   await db.telegramOwnContact.createMany({data:all.map((u,i)=>({userId:u.id,telegramId:u.telegramId,botId:u.id===excluded[5].id?'999999999':'123456789',phoneCipher:encryptPhone('+251911652904','123456789'),phoneHash:randomUUID(),lastFour:'2904',verifiedAt:new Date(),sourceUpdateId:BigInt(780000000+i),revokedAt:u.id===excluded[4].id?new Date():null}))});
   await db.staffMember.create({data:{userId:excluded[7].id,role:'OWNER',recoveryHashes:[]}});
   const userId=await bidUser(db),a=await bidAuction(db,{isDemo:false,endDelayMs:1800});auctionId=a.id;
@@ -46,6 +46,13 @@ describe.skipIf(!url)('published result Telegram campaign, isolated database and
   const cursor=await db.outbox.findFirstOrThrow({where:{kind:'GLOBAL_CAMPAIGN',settlementId:root.settlementId}});
   expect(await db.$transaction(tx=>expandCampaign(tx,cursor))).toBe(2);
   expect(await db.outbox.count({where:{kind:'AUCTION_RESULT',settlementId:root.settlementId}})).toBe(252);
+ });
+ it.each(['UTC','Africa/Asmara'] as const)('excludes a fully subscribed signup ten seconds after publication in SQL session %s',async(zone)=>{
+  const publication=await db.resultPublication.findUniqueOrThrow({where:{settlementId:root.settlementId!}}),createdAt=new Date(publication.publishedAt.getTime()+10000),telegramId=String(781000000+(zone==='UTC'?1:2)),userId=randomUUID();
+  await db.user.create({data:{id:userId,name:'Post-publication subscriber',telegramId,createdAt}});await db.notificationPreference.create({data:{userId,telegram:true,inApp:false}});await db.botChat.create({data:{telegramId,chatId:telegramId,startedAt:createdAt}});await db.telegramOwnContact.create({data:{userId,telegramId,botId:'123456789',phoneCipher:encryptPhone('+251911652904','123456789'),phoneHash:randomUUID(),lastFour:'2904',verifiedAt:createdAt,sourceUpdateId:BigInt(telegramId)}});
+  expect(await db.$transaction(tx=>hasResultSubscription(tx,userId))).toBe(true);
+  const audience=await db.$transaction(async tx=>{await tx.$executeRawUnsafe(`SET LOCAL TIME ZONE '${zone}'`);const ids:string[]=[];let cursor:string|undefined;for(;;){const page=await resultRecipientIds(tx,publication.publishedAt,cursor);ids.push(...page.map(row=>row.id));if(page.length<250)return ids;cursor=page.at(-1)!.id}});
+  expect(new Set(audience)).toEqual(new Set(subscribers.map(user=>user.id)));expect(audience).not.toContain(userId);expect(audience).toHaveLength(subscribers.length);
  });
  it('restarts and duplicate root intents retain one logical settlement-recipient announcement',async()=>{
   await db.$transaction(tx=>expandCampaign(tx,root));

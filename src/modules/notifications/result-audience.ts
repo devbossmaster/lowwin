@@ -10,8 +10,9 @@ const eligibleJoins=()=>Prisma.sql`
  JOIN "TelegramOwnContact" t ON t."userId"=u.id AND t."telegramId"=u."telegramId" AND t."botId"=${contactBotId()} AND t."revokedAt" IS NULL
  LEFT JOIN "StaffMember" s ON s."userId"=u.id`;
 
+// UTC timestamp columns must not inherit a non-UTC SQL session cutoff.
 export function resultRecipientIds(tx:Prisma.TransactionClient,before:Date,cursor?:string){
- return tx.$queryRaw<{id:string}[]>(Prisma.sql`SELECT u.id ${eligibleJoins()} WHERE s."userId" IS NULL AND u.role<>'admin' AND u."createdAt"<=${before} ${cursor?Prisma.sql`AND u.id>${cursor}`:Prisma.empty} ORDER BY u.id ASC LIMIT 250`);
+ return tx.$queryRaw<{id:string}[]>(Prisma.sql`SELECT u.id ${eligibleJoins()} WHERE s."userId" IS NULL AND u.role<>'admin' AND u."createdAt"<=(${before}::timestamptz AT TIME ZONE 'UTC') ${cursor?Prisma.sql`AND u.id>${cursor}`:Prisma.empty} ORDER BY u.id ASC LIMIT 250`);
 }
 
 /** Recheck after fan-out: unsubscribing, blocking, revocation or a bot change
