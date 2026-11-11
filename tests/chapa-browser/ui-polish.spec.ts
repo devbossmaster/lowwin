@@ -40,7 +40,7 @@ test('live Home countdown stays running through initial query hydration and reop
  }finally{await f.db.$disconnect()}
 });
 
-test('payment launch goes directly to its modal with one owned read and bounded automatic checking',async({page},info)=>{
+test('payment launch restores its modal with one owned read and bounded return routing and checking',async({page},info)=>{
  const id=randomUUID(),am=info.project.name==='430',f=await fixture(page,am,'chapa_'+id);
  let reads=0,checks=0,creates=0,complete=false;
  const order=pending({key:id,purpose:'TOP_UP',amount:'10.00'},id),returnRoutes:string[]=[];
@@ -57,13 +57,16 @@ test('payment launch goes directly to its modal with one owned read and bounded 
   const sheet=page.getByRole('dialog');
   await expect(sheet.locator('[data-hosted-checkout-status]')).toBeVisible();
   const openedMs=Date.now()-started;
-  expect(reads).toBe(1);expect(creates).toBe(0);expect(returnRoutes).toEqual([]);
+  expect(reads).toBe(1);expect(creates).toBe(0);
+  // Telegram entry may prefetch and navigate the explicit return RSC. It must
+  // stay on this payment, without another document load or initialization.
+  expect(returnRoutes.length).toBeLessThanOrEqual(2);expect(returnRoutes.every(value=>{const url=new URL(value);return url.searchParams.get('checkout')===id&&url.searchParams.has('_rsc')})).toBe(true);
   await page.clock.fastForward(300001);
   await expect(sheet.locator('[data-hosted-checkout-status]')).toBeVisible();
   await expect(sheet).not.toContainText('Checkout session ended');
   await expect(sheet.getByRole('button',{name:am?'ክፍያ ያረጋግጡ':'Check payment',exact:true})).toBeVisible();
   complete=true;const before=checks;await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
-  await expect(sheet.getByRole('heading',{name:am?'ዋሌት ገብቷል':'Wallet credited',exact:true})).toBeVisible();
+  await expect(sheet.getByRole('heading',{name:am?'ዋሌት ገብቷል':'Wallet credited',exact:true})).toBeVisible();expect(returnRoutes.length).toBeLessThanOrEqual(2);
   expect(checks-before).toBeLessThanOrEqual(1);expect(creates).toBe(0);
   mkdirSync('test-results/chapa-ui/polish',{recursive:true});
   writeFileSync(`test-results/chapa-ui/polish/return-${info.project.name}.json`,JSON.stringify({openedMs,ownedReads:reads,verificationCalls:checks,intermediateReturnRoutes:returnRoutes.length,checkoutCreations:creates},null,2));
@@ -95,10 +98,10 @@ test('a missing launch payment can exit to Transactions without a redirect loop'
  try{
   await page.route('**/api/payments/chapa/checkouts**',route=>new URL(route.request().url()).pathname.endsWith('/checkouts')?route.fulfill({json:{items:[],page:1,nextPage:null}}):route.fulfill({status:404,json:{error:'Payment not found.'}}));
   await page.goto('/telegram');
-  await expect(page.locator('.payment-resume-error')).toBeVisible();
+  const error=page.getByRole('heading',{name:info.project.name==='430'?'ክፍያውን መክፈት አልቻለም':'Could not open this payment',exact:true});await expect(error).toBeVisible();
   await page.getByRole('link',{name:info.project.name==='430'?'ግብይቶች':'View Transactions',exact:true}).click();
   await expect(page).toHaveURL(/\/payments$/);
-  await expect(page.locator('.payment-resume-error')).toHaveCount(0);
+  await expect(error).toHaveCount(0);
   await expect(page.getByRole('navigation',{name:'Your navigation'})).toBeVisible();
  }finally{await f.db.$disconnect()}
 });

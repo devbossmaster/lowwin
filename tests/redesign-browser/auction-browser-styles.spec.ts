@@ -27,7 +27,7 @@ test('auction sheet loads compact scoped styles in English and Amharic',async({p
    await expect(row).toHaveCSS('display','grid');await expect(row.locator('img')).toHaveCSS('object-fit','cover');
    const image=await row.locator('img').boundingBox();expect(image!.width).toBeLessThanOrEqual(76);expect(image!.height).toBeLessThanOrEqual(76);
    await expect(sheet.getByRole('tablist')).toHaveCSS('display','grid');await expect(sheet.getByRole('tab').first()).toHaveCSS('background-color','rgb(24, 24, 21)');
-   await expect(row.locator('strong')).toHaveCSS('font-size',info.project.use.viewport!.width===360?'12px':'13px');
+   await expect(row.locator('strong:not([aria-hidden="true"])')).toHaveCSS('font-size',info.project.use.viewport!.width===360?'12px':'13px');
    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({animations:'disabled',path:`${directory}/compact-auctions-${info.project.name}-${language}.png`});
    await page.keyboard.press('Escape');await expect(sheet).toHaveCount(0);
   }

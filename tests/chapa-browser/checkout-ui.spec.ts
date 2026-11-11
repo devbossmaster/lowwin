@@ -35,7 +35,7 @@ test('one bid action freezes every selected number and opens V1 hosted checkout 
   for(const number of ['2','3']){await input.fill(number);await dialog.getByRole('button',{name:am?'የጨረታ መጠን ጨምር':'Add bid amount',exact:true}).click()}await input.fill('4');
   await expect(dialog.locator('[data-bid-total]')).toContainText('30.00');expect(quoteReads).toBe(0);expect(commands).toHaveLength(0);
   await expect(dialog.getByRole('radio')).toHaveCount(0);await expect(dialog.locator('input[type="tel"],input[autocomplete="one-time-code"],[data-funding-selector]')).toHaveCount(0);
-  const pay=dialog.locator('[data-bid-continue]');await expect(pay).toHaveText(am?'በChapa ይክፈሉ':'Pay with Chapa');await pay.evaluate(node=>{(node as HTMLButtonElement).click();(node as HTMLButtonElement).click()});
+  const pay=dialog.locator('[data-bid-continue]');await expect(pay).toHaveText(am?'በChapa ይክፈሉ':'Pay with Chapa');await expect(pay).toBeEnabled();await pay.evaluate(node=>{(node as HTMLButtonElement).click();(node as HTMLButtonElement).click()});
   await expect(dialog.locator('[data-hosted-checkout-status]')).toBeVisible();await expect.poll(()=>commands.length).toBe(1);expect(quoteReads).toBe(1);
   const quote=[...quotes.values()][0];expect(quote.lines.map(line=>line.number)).toEqual(['2.00','3.00','4.00']);expect(Object.keys(commands[0]).sort()).toEqual(['batchId','key','purpose','quoteHash']);expect(commands[0]).toMatchObject({batchId:quote.id,quoteHash:quote.quoteHash});
   await expect.poll(()=>page.evaluate(()=>Reflect.get(window,'chapaOpened')??[])).toEqual([order!.checkoutUrl]);expect(order!.checkoutUrl).toMatch(/^https:\/\/checkout\.chapa\.co\//);expect(directCalls).toBe(0);

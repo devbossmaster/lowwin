@@ -6,6 +6,7 @@ import {verifyFixtureContact} from '../contact-fixtures';
 import {signedLaunch} from '../helpers';
 import type {ChapaCheckoutView,ChapaIntent} from '../../src/lib/chapa-client';
 import type {BidBatchQuote} from '../../src/lib/bid-batch-client';
+import type {TransactionRow} from '../../src/lib/transactions';
 
 export async function fixture(page:Page,am:boolean,startParam?:string){
  const db=new PrismaClient({datasourceUrl:process.env.TEST_DATABASE_URL});
@@ -36,5 +37,10 @@ export function pending(intent:ChapaIntent,id:string=randomUUID(),batch?:BidBatc
  const single=intent.purpose==='BID'&&!('batchId'in intent)?intent:null;
  const amount=intent.purpose==='TOP_UP'?Number(intent.amount).toFixed(2):isBatch?batch!.total:'10.00';
  return {id,apiVersion:1,chargeType:'HOSTED',purpose:intent.purpose,mode:'test',amount,amountCents:String(Math.round(Number(amount)*100)),currency:'ETB',status:'PENDING',reason:'AWAITING_PAYMENT',checkoutUrl:'https://checkout.chapa.co/CH-recovery-'+id,auctionSlug:single?.auctionSlug??batch?.auctionSlug??null,bidNumber:single?.amount??null,feeVersion:single?.feeVersion??batch?.feeVersion??null,grossFee:intent.purpose==='BID'?batch?.grossTotal??'10.00':null,discountPoints:batch?.discountTotal??'0',...(batch?{batch,batchNumbers:batch.lines.map(line=>line.number)}:{}),createdAt:new Date().toISOString(),expiresAt:new Date(Date.now()+3600000).toISOString(),pollAfterMs:15000,fundsPreserved:false,receipt:null};
+}
+
+/** The current activity endpoint returns a summary row, never a checkout DTO. */
+export function transaction(order:ChapaCheckoutView,summary:TransactionRow['summary'],direction:TransactionRow['direction']):TransactionRow{
+ return {id:order.id,source:'chapa',type:order.purpose,title:order.auctionTitle??order.auctionSlug??'Bid submission fee',titleAm:order.auctionTitleAm??null,amount:order.amount,direction,summary,paymentMethod:order.paymentMethod??'Chapa',createdAt:order.createdAt,mode:order.mode,fundsPreserved:order.fundsPreserved};
 }
 
