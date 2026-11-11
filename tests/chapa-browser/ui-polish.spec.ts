@@ -98,7 +98,7 @@ test('a missing launch payment can exit to Transactions without a redirect loop'
  try{
   await page.route('**/api/payments/chapa/checkouts**',route=>new URL(route.request().url()).pathname.endsWith('/checkouts')?route.fulfill({json:{items:[],page:1,nextPage:null}}):route.fulfill({status:404,json:{error:'Payment not found.'}}));
   await page.goto('/telegram');
-  const error=page.getByRole('heading',{name:info.project.name==='430'?'ክፍያውን መክፈት አልቻለም':'Could not open this payment',exact:true});await expect(error).toBeVisible();
+  const error=page.getByRole('heading',{name:info.project.name==='430'?'ክፍያውን መክፈት አልተቻለም':'Could not open this payment',exact:true});await expect(error).toBeVisible();
   await page.getByRole('link',{name:info.project.name==='430'?'ግብይቶች':'View Transactions',exact:true}).click();
   await expect(page).toHaveURL(/\/payments$/);
   await expect(error).toHaveCount(0);
