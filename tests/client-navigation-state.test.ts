@@ -56,15 +56,18 @@ describe('bounded user-intent warming',()=>{
   expect(privateIntentDestination('/my-bids?view=history&page=2')).toBe('/api/my-bids?view=finished&page=2&language=en');
   expect(privateIntentDestination('/my-bids?view=finished&page=1001')).toBe('/api/my-bids?view=finished&page=1000&language=en');
   expect(privateIntentDestination('/profile')).toBe('/api/profile');
-  expect(privateIntentDestination('/payments')).toBe('/api/payments/chapa/checkouts?page=1');
-  expect(privateIntentDestination('/payments?page=3')).toBe('/api/payments/chapa/checkouts?page=3');
-  expect(privateIntentDestination('/payments?page=-2')).toBe('/api/payments/chapa/checkouts?page=1');
-  expect(privateIntentDestination('/payments?page=10001')).toBe('/api/payments/chapa/checkouts?page=10000');
+  expect(privateIntentDestination('/payments')).toBe('/api/transactions?page=1&type=ALL');
+  expect(privateIntentDestination('/payments?page=3')).toBe('/api/transactions?page=3&type=ALL');
+  expect(privateIntentDestination('/payments?page=-2')).toBe('/api/transactions?page=1&type=ALL');
+  expect(privateIntentDestination('/payments?page=10001')).toBe('/api/transactions?page=1000&type=ALL');
+  expect(privateIntentDestination('/payments?type=BID&q=wallet%20fee&page=2')).toBe('/api/transactions?page=2&type=BID&q=wallet+fee');
+  expect(privateIntentDestination('/payments?type=unsupported&page=2.5')).toBe('/api/transactions?page=1&type=ALL');
+  expect(new URL(privateIntentDestination('/payments?q='+'x'.repeat(120))!,'https://lowwin.invalid').searchParams.get('q')).toHaveLength(100);
   expect(privateIntentDestination('/winners')).toBe('/api/results/winners?page=1');expect(privateIntentDestination('/winners?page=3')).toBe('/api/results/winners?page=3');expect(privateIntentDestination('/api/results/1/breakdown?amount=50')).toBeNull();
   expect(privateIntentDestination('https://other.example/profile')).toBeNull();
  });
  it.each([
-  ['/profile','/api/profile'],['/payments?page=2','/api/payments/chapa/checkouts?page=2'],
+  ['/profile','/api/profile'],['/payments?page=2','/api/transactions?page=2&type=ALL'],['/payments?page=2&type=BID&q=fee','/api/transactions?page=2&type=BID&q=fee'],
  ])('coalesces intent and opening %s into one private no-store request',async(target,url)=>{
   setPrivateQueryIdentity('intent');let finish!:(response:Response)=>void;
   const request=vi.fn((_url:string,_options?:RequestInit)=>new Promise<Response>(resolve=>{finish=resolve}));vi.stubGlobal('fetch',request);

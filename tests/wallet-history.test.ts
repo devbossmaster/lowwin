@@ -14,6 +14,7 @@ import {createChapaCheckout,verifyChapaCheckout} from '../src/modules/payments/c
 import {createDirectCheckout} from '../src/modules/payments/chapa-direct';
 import type {ChapaCreate,ChapaDirectCreate,ChapaTransport} from '../src/modules/payments/chapa-provider';
 import {signedLaunch,TEST_TOKEN} from './helpers';
+import {contactBotId,encryptPhone} from '../src/modules/auth/own-contact';
 
 const database=process.env.TEST_DATABASE_URL;
 describe.skipIf(!database)('private confirmed wallet history on isolated PostgreSQL',()=>{
@@ -21,6 +22,7 @@ describe.skipIf(!database)('private confirmed wallet history on isolated Postgre
  beforeAll(async()=>{
   const target=new URL(database!);if(target.hostname!=='127.0.0.1'||!target.pathname.endsWith('_test'))throw Error('Disposable loopback _test database required');
   Object.assign(process.env,{DATABASE_URL:database,DIRECT_URL:database,NODE_ENV:'test',APP_ENV:'local',DEV_POINTS_ENABLED:'true',DEV_IDENTITY_ENABLED:'false',STAGING_DEMO_ENABLED:'false',REFERRAL_REWARDS_SCHEMA_READY:'true',WALLET_BIDS_ENABLED:'true',CHAPA_MODE:'test',CHAPA_SCHEMA_READY:'true',CHAPA_PRIVATE_KEY:'CHAPA_TEST_'+'a'.repeat(40),CHAPA_WEBHOOK_SECRET:'a'.repeat(64),CHAPA_ENABLED:'true',CHAPA_RECOVERY_ENABLED:'true',PAYMENT_GATEWAY:'CHAPA',BETTER_AUTH_URL:'https://lowwin.test',MINI_APP_URL:'https://lowwin.test',TELEGRAM_BOT_TOKEN:TEST_TOKEN,TELEGRAM_BOT_USERNAME:'lowin_test_bot',TELEGRAM_WEBHOOK_SECRET:'fixture-contact-webhook-secret-thirty-two',PHONE_CONTACT_KEY_ID:'wallet-history',PHONE_CONTACT_KEYS:JSON.stringify({'wallet-history':'e'.repeat(64)}),PHONE_CONTACT_HASH_KEY:'f'.repeat(64)});
+  Object.assign(process.env,{BETTER_AUTH_SECRET:'fixture-only-wallet-history-auth-secret-at-least-thirty-two',CHAPA_V1_MODE:'test',CHAPA_V1_SCHEMA_READY:'true',CHAPA_V1_ENABLED:'true',CHAPA_V1_RECOVERY_ENABLED:'true',CHAPA_V1_SECRET_KEY:'CHASECK_TEST-'+'a'.repeat(40),CHAPA_V1_WEBHOOK_SECRET:'local-v1-history-signature-secret-thirty-two-characters',CHAPA_V1_BASE_URL:'https://api.chapa.co'});
   execFileSync(process.execPath,[createRequire(import.meta.url).resolve('prisma/build/index.js'),'migrate','deploy'],{env:process.env,stdio:'pipe'});
   db=new PrismaClient({datasourceUrl:database});await db.referralPolicy.upsert({where:{id:'default'},create:{enabled:true,discountPercent:10,expiryDays:30,updatedBy:'isolated-history-owner'},update:{enabled:true}});
  },60000);
@@ -28,9 +30,9 @@ describe.skipIf(!database)('private confirmed wallet history on isolated Postgre
  async function external(user:string,options:{batch?:boolean;coupon?:boolean;late?:boolean}={}){
   let created:ChapaCreate|ChapaDirectCreate|null=null,status='SUCCESS';const reference='CH'+randomUUID().replaceAll('-','');
   const transport:ChapaTransport={
-   create:vi.fn(async input=>{created=input;return {status:'success',data:{checkout_url:`https://checkout.chapa.global/${reference}`,created_at:new Date().toISOString(),expires_at:new Date(Date.now()+300000).toISOString()}}}),
+   create:vi.fn(async input=>{created=input;return {status:'success',data:{checkout_url:`https://checkout.chapa.co/${reference}`}}}),
    direct:vi.fn(async input=>{created=input;return {status:'success',data:{auth_type:'USSD',chapa_reference:reference,payment_status:'PENDING',request_id:'req-'+reference,created_at:new Date().toISOString(),expires_at:new Date(Date.now()+300000).toISOString()}}}),
-   lookup:vi.fn(async()=>({status:'success',data:{merchant_reference:created!.merchantReference,chapa_reference:reference,amount:Number(created!.amountCents),currency:'ETB',mode:'test',status,payment_method:'telebirr',customer:{phone_number:'251911652904'}}})),
+   lookup:vi.fn(async()=>({status:'success',data:options.batch?{merchant_reference:created!.merchantReference,chapa_reference:reference,amount:Number(created!.amountCents),currency:'ETB',mode:'test',status,payment_method:'telebirr',customer:{phone_number:'251911652904'}}:{tx_ref:created!.merchantReference,reference,amount:(Number(created!.amountCents)/100).toFixed(2),currency:'ETB',mode:'test',status:status.toLowerCase(),method:'telebirr'}})),
    validate:vi.fn(async()=>({status:'success',data:{status:'SUCCESS'}})),
    methods:vi.fn(async()=>({status:'success',data:[{name:'Telebirr',slug:'telebirr',can_process_payments:true,can_process_direct_charge:true,supported_currencies:{ETB:{default_min:100,default_max:10000000,countries:{ET:{is_enabled:true}}}}}]})),
   };
@@ -39,7 +41,7 @@ describe.skipIf(!database)('private confirmed wallet history on isolated Postgre
    const auction=await realReferralAuction(db,10,options.late?1400:3600000),coupon=options.coupon?(await earnedReferralCoupon(db,user)).coupon:null,quote=await quoteBidBatch(db,user,{key:randomUUID(),auctionSlug:auction.slug,numbers:['2','3','4'],feeVersion:1,...(coupon?{couponId:coupon.id}:{})});
    order=await createDirectCheckout(db,user,{key:randomUUID(),purpose:'BID',batchId:quote.id,quoteHash:quote.quoteHash,paymentMethod:'telebirr',phone:'0911652904'},undefined,transport);
    if(options.late)await new Promise(resolve=>setTimeout(resolve,Math.max(0,auction.endsAt!.getTime()-Date.now()+30)));
-  }else order=await createChapaCheckout(db,user,{key:randomUUID(),purpose:'TOP_UP',amount:'20'},undefined,transport);
+  }else{await db.telegramOwnContact.update({where:{userId:user},data:{phoneCipher:encryptPhone('+251911652904',contactBotId())}});order=await createChapaCheckout(db,user,{key:randomUUID(),purpose:'TOP_UP',amount:'20'},undefined,transport)}
   return {order,verify:async()=>{await db.chapaCheckout.update({where:{id:order.id},data:{nextCheckAt:new Date(0),leaseUntil:null}});return verifyChapaCheckout(db,order.id,user,undefined,transport)},status:(value:string)=>{status=value}};
  }
  it('includes only confirmed deposits and not unpaid or failed attempts',async()=>{

@@ -1,12 +1,14 @@
 import {beforeEach,describe,expect,it,vi} from 'vitest';
 import {Prisma,type PrismaClient} from '@prisma/client';
 import {randomUUID} from 'node:crypto';
-const guard=vi.hoisted(()=>({role:'OWNER',authenticated:true,recovery:true,identity:'staff',session:'staff-session',rateAllowed:true}));
+const guard=vi.hoisted(()=>({role:'OWNER',authenticated:true,recovery:true,v1Recovery:false,recoveryAuthorized:false,identity:'staff',session:'staff-session',rateAllowed:true}));
 const verify=vi.hoisted(()=>vi.fn());
 const apiDb=vi.hoisted(()=>({current:undefined as unknown}));
 vi.mock('../src/lib/db',()=>({db:new Proxy({},{get:(_object,key)=>(apiDb.current as Record<string,unknown>)?.[key as string]})}));
 vi.mock('../src/modules/admin/boundary',async original=>({...await original<typeof import('../src/modules/admin/boundary')>(),requireAdmin:vi.fn(async()=>{const {AdminError}=await import('../src/modules/admin/errors');if(!guard.authenticated)throw new AdminError(401,'Staff credentials required.');return {id:guard.identity,sessionId:guard.session,role:guard.role,now:new Date('2026-10-26T12:00:00Z')}})}));
 vi.mock('../src/modules/payments/chapa-provider',async original=>({...await original<typeof import('../src/modules/payments/chapa-provider')>(),chapaAvailability:()=>({configured:true,enabled:false,recoveryEnabled:guard.recovery,mode:'test',currency:'ETB',credentialFingerprint:'private-fingerprint',reason:null})}));
+vi.mock('../src/modules/payments/chapa-v1-provider',()=>({chapaV1Availability:()=>({configured:true,enabled:false,recoveryEnabled:guard.v1Recovery,mode:'test',currency:'ETB',credentialFingerprint:'v1-private-fingerprint',reason:null})}));
+vi.mock('../src/modules/payments/chapa-recovery-binding',()=>({approvedRecoveryBinding:vi.fn(async()=>guard.recoveryAuthorized?{finalReference:'approved-v2-reference'}:null)}));
 vi.mock('../src/modules/payments/chapa',()=>({verifyChapaCheckout:verify}));
 vi.mock('../src/lib/rate-limit',()=>({allowIdentityRequest:vi.fn(async()=>guard.rateAllowed)}));
 import {readChapaAdmin,checkChapaAdmin} from '../src/modules/admin/chapa';
@@ -15,12 +17,12 @@ import {GET,POST} from '../src/app/api/admin/chapa/[[...path]]/route';
 
 const id=randomUUID(),headers=new Headers(),now=new Date('2026-10-26T12:00:00Z');
 function fixture(){
- const row={id,userId:'player',purpose:'BID',mode:'test',credentialFingerprint:'private-fingerprint',auctionId:'auction',auctionSlug:'camera',bidNumber:new Prisma.Decimal('4.60'),grossFee:new Prisma.Decimal(30),discountPoints:new Prisma.Decimal(0),feeVersion:1,amountCents:3000n,currency:'ETB',status:'PENDING',reason:'AWAITING_PROVIDER',bidId:null as string|null,creditJournalId:null as string|null,merchantReference:'private-merchant-reference',chapaReference:'private-provider-reference',processorReference:'private-processor-reference',paymentMethod:'telebirr',attempts:2,nextCheckAt:now,expiresAt:now,createdAt:now,updatedAt:now,user:{name:'Local fixture player'},auction:{code:'LW-001',presentation:{title:'Camera'},product:{title:'Camera'},terms:{ruleVersion:'lowest-unique-v4'}},phoneCipher:'private-phone',key:'private-request-key',checkoutUrl:'https://checkout.chapa.global/private-checkout',receipt:{wallet:{balance:'100'}},initialization:{customer:'private-initialization'},evidenceHash:'private-evidence'};
+ const row={id,apiVersion:2,userId:'player',purpose:'BID',mode:'test',credentialFingerprint:'private-fingerprint',auctionId:'auction',auctionSlug:'camera',bidNumber:new Prisma.Decimal('4.60'),grossFee:new Prisma.Decimal(30),discountPoints:new Prisma.Decimal(0),feeVersion:1,amountCents:3000n,currency:'ETB',status:'PENDING',reason:'AWAITING_PROVIDER',bidId:null as string|null,creditJournalId:null as string|null,merchantReference:'private-merchant-reference',chapaReference:'private-provider-reference',processorReference:'private-processor-reference',paymentMethod:'telebirr',attempts:2,nextCheckAt:now,expiresAt:now,createdAt:now,updatedAt:now,user:{name:'Local fixture player'},auction:{code:'LW-001',presentation:{title:'Camera'},product:{title:'Camera'},terms:{ruleVersion:'lowest-unique-v4'}},phoneCipher:'private-phone',key:'private-request-key',checkoutUrl:'https://checkout.chapa.global/private-checkout',receipt:{wallet:{balance:'100'}},initialization:{customer:'private-initialization'},evidenceHash:'private-evidence'};
  const audits=new Map<string,Record<string,unknown>>();
  const mock={chapaCheckout:{findUnique:vi.fn(async(_input?:unknown)=>row),findUniqueOrThrow:vi.fn(async()=>row)},adminAudit:{create:vi.fn(async({data}:{data:Record<string,unknown>})=>{if(typeof data.operationKey==='string')audits.set(data.operationKey,data);return data;}),findUnique:vi.fn(async({where}:{where:{operationKey:string}})=>audits.get(where.operationKey)??null)},$executeRaw:vi.fn(async()=>0),$transaction:vi.fn()};
  mock.$transaction.mockImplementation(async callback=>callback(mock));apiDb.current=mock;return {mock,db:mock as unknown as PrismaClient,row,audits};
 }
-beforeEach(()=>{vi.clearAllMocks();Object.assign(guard,{role:'OWNER',authenticated:true,recovery:true,identity:'staff',session:'staff-session',rateAllowed:true});vi.stubEnv('CHAPA_SCHEMA_READY','true');vi.stubEnv('BETTER_AUTH_URL','https://lowwin.test');verify.mockImplementation(async(client,_id,_user,reauthorize)=>{await reauthorize(client)});});
+beforeEach(()=>{vi.clearAllMocks();Object.assign(guard,{role:'OWNER',authenticated:true,recovery:true,v1Recovery:false,recoveryAuthorized:false,identity:'staff',session:'staff-session',rateAllowed:true});vi.stubEnv('CHAPA_SCHEMA_READY','true');vi.stubEnv('CHAPA_V1_SCHEMA_READY','false');vi.stubEnv('BETTER_AUTH_URL','https://lowwin.test');verify.mockImplementation(async(client,_id,_user,reauthorize)=>{await reauthorize(client)});});
 
 describe('Chapa staff recovery boundary',()=>{
  it('requires a credential-plus-MFA staff session before reading records',async()=>{const {db,mock}=fixture();guard.authenticated=false;await expect(readChapaAdmin(db,headers,id)).rejects.toMatchObject({status:401});expect(mock.chapaCheckout.findUnique).not.toHaveBeenCalled();});
@@ -34,6 +36,26 @@ describe('Chapa staff recovery boundary',()=>{
  it('denies a role revoked after provider HTTP before a credit-capable transaction',async()=>{const {db,mock}=fixture();verify.mockImplementationOnce(async(client,_id,_user,reauthorize)=>{guard.role='SUPPORT';await reauthorize(client);});await expect(checkChapaAdmin(db,headers,{id,key:randomUUID(),reason:'Investigate pending payment'})).rejects.toMatchObject({status:403});expect(mock.adminAudit.create).not.toHaveBeenCalledWith({data:expect.objectContaining({action:'CHAPA_PROVIDER_CHECK_RESULT'})});});
  it('reauthorizes the original staff identity and session after the provider returns',async()=>{const {db}=fixture();verify.mockImplementationOnce(async()=>{guard.session='replacement-session';});await expect(checkChapaAdmin(db,headers,{id,key:randomUUID(),reason:'Investigate pending payment'})).rejects.toMatchObject({status:403,code:'ADMIN_LOGIN_REQUIRED'});});
  it('allows Payments operators to check, with final credit state read from storage',async()=>{const {db,row}=fixture();guard.role='PAYMENTS_OPERATOR';verify.mockImplementationOnce(async(client,_id,_user,reauthorize)=>{await reauthorize(client);row.creditJournalId='existing-journal';row.status='NEEDS_REVIEW';});expect(await checkChapaAdmin(db,headers,{id,key:randomUUID(),reason:'Investigate pending payment'})).toMatchObject({status:'NEEDS_REVIEW',credited:true,bidAccepted:false});expect((await readChapaAdmin(db,headers,id)).item.canCheck).toBe(false);});
+ it('checks v1 rows using only v1 recovery and preserves historical v2 eligibility separately',async()=>{
+  const {db,row}=fixture();guard.recovery=false;guard.v1Recovery=true;row.apiVersion=1;row.credentialFingerprint='v1-private-fingerprint';
+  expect((await readChapaAdmin(db,headers,id)).item).toMatchObject({apiVersion:1,canCheck:true,configurationMatches:true});
+  await expect(checkChapaAdmin(db,headers,{id,key:randomUUID(),reason:'Investigate v1 hosted payment'})).resolves.toMatchObject({id});expect(verify).toHaveBeenCalledOnce();
+  verify.mockClear();row.apiVersion=2;row.credentialFingerprint='private-fingerprint';
+  expect((await readChapaAdmin(db,headers,id)).item.canCheck).toBe(false);
+  await expect(checkChapaAdmin(db,headers,{id,key:randomUUID(),reason:'Investigate old v2 payment'})).rejects.toMatchObject({status:503});expect(verify).not.toHaveBeenCalled();
+ });
+ it('retains reviewed historical v2 credential recovery without authorizing a v1 mismatch',async()=>{
+  const {db,row}=fixture();row.credentialFingerprint='rotated-original-fingerprint';guard.recoveryAuthorized=true;
+  expect((await readChapaAdmin(db,headers,id)).item).toMatchObject({apiVersion:2,canCheck:true,configurationMatches:false});
+  await expect(checkChapaAdmin(db,headers,{id,key:randomUUID(),reason:'Recover reviewed historical v2 receipt'})).resolves.toMatchObject({id});expect(verify).toHaveBeenCalledOnce();
+  verify.mockClear();row.apiVersion=1;guard.v1Recovery=true;
+  await expect(checkChapaAdmin(db,headers,{id,key:randomUUID(),reason:'Do not apply v2 recovery to v1'})).rejects.toMatchObject({status:503});expect(verify).not.toHaveBeenCalled();
+ });
+ it('keeps a v1 row ineligible when its original credential binding is unavailable',async()=>{
+  const {db,row}=fixture();guard.v1Recovery=true;row.apiVersion=1;
+  expect((await readChapaAdmin(db,headers,id)).item).toMatchObject({apiVersion:1,canCheck:false,configurationMatches:false});
+  await expect(checkChapaAdmin(db,headers,{id,key:randomUUID(),reason:'Investigate configuration mismatch'})).rejects.toMatchObject({status:503});expect(verify).not.toHaveBeenCalled();
+ });
  it('rejects invented manual-amount or manual-credit fields',async()=>{const {db}=fixture();await expect(checkChapaAdmin(db,headers,{id,key:randomUUID(),reason:'Investigate pending payment',amount:'100',paid:true})).rejects.toThrow();expect(verify).not.toHaveBeenCalled();});
 });
 

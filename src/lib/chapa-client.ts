@@ -2,8 +2,8 @@ import type {BidReceipt} from '@/modules/auctions/bids';
 import type {ChapaApiErrorCategory} from './chapa-api-error';
 import type {BidBatchQuote} from './bid-batch-client';
 
-export type ChapaIntent={key:string;purpose:'TOP_UP';amount:string}|{key:string;purpose:'BID';auctionSlug:string;amount:string;feeVersion:number;couponId?:string};
-export type ChapaCheckoutView=DirectCheckoutFields&{providerStatus?:string|null;providerReasonCode?:string|null;verificationState?:string;initializationIssue?:ChapaApiErrorCategory|null;merchantReference?:string;paymentMethod?:string|null;auctionTitle?:string|null;auctionTitleAm?:string|null;auctionCode?:string|null;auctionStatus?:string|null;auctionEndsAt?:string|null;id:string;purpose:'TOP_UP'|'BID';mode:'test'|'live';amount:string;amountCents:string;currency:'ETB';status:string;reason:string|null;checkoutUrl:string|null;auctionSlug:string|null;bidNumber:string|null;feeVersion:number|null;grossFee:string|null;discountPoints:string;createdAt:string;expiresAt:string;pollAfterMs:number;fundsPreserved:boolean;receipt:BidReceipt|null};
+export type ChapaIntent={key:string;purpose:'TOP_UP';amount:string}|{key:string;purpose:'BID';auctionSlug:string;amount:string;feeVersion:number;couponId?:string}|{key:string;purpose:'BID';batchId:string;quoteHash:string};
+export type ChapaCheckoutView=DirectCheckoutFields&{apiVersion?:1|2;providerStatus?:string|null;providerReasonCode?:string|null;verificationState?:string;initializationIssue?:ChapaApiErrorCategory|null;merchantReference?:string;paymentMethod?:string|null;auctionTitle?:string|null;auctionTitleAm?:string|null;auctionCode?:string|null;auctionStatus?:string|null;auctionEndsAt?:string|null;id:string;purpose:'TOP_UP'|'BID';mode:'test'|'live';amount:string;amountCents:string;currency:'ETB';status:string;reason:string|null;checkoutUrl:string|null;auctionSlug:string|null;bidNumber:string|null;feeVersion:number|null;grossFee:string|null;discountPoints:string;createdAt:string;expiresAt:string;pollAfterMs:number;fundsPreserved:boolean;receipt:BidReceipt|null};
 export type ChapaAvailability={enabled:boolean;configured:boolean;mode:'test'|'live';walletBidsEnabled:boolean;minTopup:string;maxTopup:string;reason:string|null};
 export type DirectCheckoutFields={chargeType?:'DIRECT'|'HOSTED';authType?:'USSD'|'OTP'|null;authorizationReference?:string|null;payerPhoneMasked?:string|null;batch?:BidBatchQuote|null;batchNumbers?:string[];receipts?:BidReceipt[];initializationReasonCode?:string|null;updatedAt?:string;verificationUnavailable?:boolean};
 export type ChapaAttempt={version:1;intent:ChapaIntent;orderId?:string};
@@ -14,7 +14,9 @@ const amount=/^(0|[1-9]\d{0,15})(?:\.\d{1,2})?$/;
 export function readChapaAttempt(storage:Storage,key:string):ChapaAttempt|null{
  try{
   const value=JSON.parse(storage.getItem(key)??'null') as ChapaAttempt|null,i=value?.intent;
-  if(value?.version!==1||!i||!chapaUuid.test(i.key)||typeof i.amount!=='string'||!amount.test(i.amount)||value.orderId!==undefined&&!chapaUuid.test(value.orderId))return null;
+  if(value?.version!==1||!i||typeof i.key!=='string'||!chapaUuid.test(i.key)||value.orderId!==undefined&&(typeof value.orderId!=='string'||!chapaUuid.test(value.orderId)))return null;
+  if(i.purpose==='BID'&&'batchId'in i)return typeof i.batchId==='string'&&typeof i.quoteHash==='string'&&chapaUuid.test(i.batchId)&&/^[a-f0-9]{64}$/.test(i.quoteHash)&&!Object.keys(i).some(k=>!['key','purpose','batchId','quoteHash'].includes(k))?value:null;
+  if(!('amount'in i)||typeof i.amount!=='string'||!amount.test(i.amount))return null;
   if(i.purpose==='TOP_UP')return Object.keys(i).some(k=>!['key','purpose','amount'].includes(k))?null:value;
   if(i.purpose!=='BID'||typeof i.auctionSlug!=='string'||!/^[a-z0-9-]{1,120}$/.test(i.auctionSlug)||!Number.isSafeInteger(i.feeVersion)||i.feeVersion<1||i.couponId!==undefined&&!chapaUuid.test(i.couponId)||Object.keys(i).some(k=>!['key','purpose','amount','auctionSlug','feeVersion','couponId'].includes(k)))return null;
   return value;
@@ -25,8 +27,8 @@ export function clearChapaAttempt(storage:Storage,key:string){try{storage.remove
 export function clearChapaAttempts(storage:Pick<globalThis.Storage,'length'|'key'|'removeItem'>,keepIdentity:string|null=null){
  try{for(let index=storage.length-1;index>=0;index--){const key=storage.key(index);if(key?.startsWith('lowwin:chapa:')&&(!keepIdentity||!key.startsWith(`lowwin:chapa:${keepIdentity}:`)))storage.removeItem(key)}}catch{}
 }
-export function chapaCheckoutUrl(value:string|null|undefined):string|null{
- try{if(!value||/[\u0000-\u0020\\]/.test(value))return null;const url=new URL(value);return url.protocol==='https:'&&url.hostname==='checkout.chapa.global'&&!url.port&&!url.username&&!url.password&&!url.hash&&url.pathname.length>1?url.href:null}catch{return null}
+export function chapaCheckoutUrl(value:string|null|undefined,apiVersion?:1|2):string|null{
+ try{if(!value||/[\u0000-\u0020\\]/.test(value))return null;const url=new URL(value),allowed=apiVersion===2?url.hostname==='checkout.chapa.global':['checkout.chapa.co','checkout.chapa.global'].includes(url.hostname);return url.protocol==='https:'&&allowed&&!url.port&&!url.username&&!url.password&&!url.hash&&url.pathname.length>1?url.href:null}catch{return null}
 }
 export function chapaConfirmed(order:Pick<ChapaCheckoutView,'purpose'|'status'|'fundsPreserved'|'receipt'>){return order.fundsPreserved||order.purpose==='TOP_UP'&&order.status==='CREDITED'||order.purpose==='BID'&&order.status==='BID_ACCEPTED'&&!!order.receipt}
 /** A structured rejected initialization is not an outstanding phone prompt.

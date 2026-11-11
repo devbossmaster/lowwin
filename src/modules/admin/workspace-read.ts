@@ -58,7 +58,7 @@ export type OverviewSummary={serverNow:string;auctions?:OverviewCount;players?:O
 export type OverviewAuctions={serverNow:string;items:{id:string;code:string;title:string;image:string|null;displayStatus:string;participants:number;acceptedBids:number;endsAt:Date|null}[]};
 /** Landing counts need no ledger reports, full products, or per-row statistics. */
 export async function readOverviewSummary(client:PrismaClient,actor:{id:string;role:StaffRole;now:Date}):Promise<OverviewSummary>{
- const grants=permissions(actor.role),catalog=grants.includes('catalog'),players=['OWNER','SUPPORT','PAYMENTS_OPERATOR','AUDITOR'].includes(actor.role),payments=players,deliveries=['OWNER','FULFILLMENT','AUDITOR'].includes(actor.role),ready=process.env.CHAPA_SCHEMA_READY==='true';
+ const grants=permissions(actor.role),catalog=grants.includes('catalog'),players=['OWNER','SUPPORT','PAYMENTS_OPERATOR','AUDITOR'].includes(actor.role),payments=players,deliveries=['OWNER','FULFILLMENT','AUDITOR'].includes(actor.role),ready=process.env.CHAPA_SCHEMA_READY==='true'||process.env.CHAPA_V1_SCHEMA_READY==='true';
  const data:OverviewSummary={serverNow:actor.now.toISOString()};
  const columns:Prisma.Sql[]=[];
  if(catalog)columns.push(Prisma.sql`(SELECT COUNT(*)::int FROM "Auction" a WHERE a."testRunId" IS NULL AND a."publishedAt" IS NOT NULL AND a.status IN ('SCHEDULED','LIVE') AND a."startsAt"<=${actor.now} AND a."endsAt">${actor.now} AND NOT EXISTS(SELECT 1 FROM "AuctionSettlement" s WHERE s."auctionId"=a.id)) AS auctions`);
@@ -125,7 +125,7 @@ export async function readOverview(client:PrismaClient,actor:{id:string;role:Sta
   jobs.push(part('closing',async()=>{const {counts}=await catalog;return {state:'ready',failed:counts.failed,pending:counts.pending}}));
  }
  if(['OWNER','SUPPORT','PAYMENTS_OPERATOR','AUDITOR'].includes(actor.role))jobs.push(part('payments',async()=>{
-  if(process.env.CHAPA_SCHEMA_READY!=='true')throw new AdminError(503,'Chapa payment storage is not ready.');
+  if(process.env.CHAPA_SCHEMA_READY!=='true'&&process.env.CHAPA_V1_SCHEMA_READY!=='true')throw new AdminError(503,'Chapa payment storage is not ready.');
   return {state:'ready',count:await client.chapaCheckout.count({where:{status:'NEEDS_REVIEW'}})};
  }));
  if(grants.includes('fulfillment'))jobs.push(part('deliveries',async()=>{

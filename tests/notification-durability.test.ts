@@ -108,10 +108,13 @@ describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated t
  it('renews a nearly expired owner before HTTP so another worker cannot reclaim the in-flight send',async()=>{
   const row=await job('CONTACT_CONFIRMED'),began=deferred(),release=deferred();let shortened=false;
   const original=db.$transaction.bind(db);let transactions=0;
-  const nearExpiry=new Proxy(db,{get(target,key){if(key==='$transaction')return async(...args:Parameters<typeof db.$transaction>)=>{if(++transactions===2&&!shortened){shortened=true;await db.outbox.update({where:{id:row.id},data:{leaseUntil:new Date(Date.now()+25)}})}return (original as (...input:unknown[])=>unknown)(...args)};const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value}});
+  // Exercise the <45s renewal branch without allowing fixture setup/SQL
+  // planning to expire the claim before the gate can inspect it.
+  const nearExpiry=new Proxy(db,{get(target,key){if(key==='$transaction')return async(...args:Parameters<typeof db.$transaction>)=>{if(++transactions===2&&!shortened){shortened=true;await db.$executeRaw`UPDATE "Outbox" SET "leaseUntil"=clock_timestamp()+interval '10 seconds' WHERE id=${row.id}`}return (original as (...input:unknown[])=>unknown)(...args)};const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value}});
   const send=vi.fn(async()=>{const saved=await db.outbox.findUniqueOrThrow({where:{id:row.id}});expect(saved.leaseUntil!.getTime()-Date.now()).toBeGreaterThan(90_000);began.resolve();await release.promise;return {message_id:104}});
-  const sending=dispatchBatch(nearExpiry as unknown as PrismaClient,fake(send),{limit:1});await began.promise;
-  expect(await claimNotifications(db,{limit:1})).toEqual([]);release.resolve();await sending;expect(send).toHaveBeenCalledTimes(1);
+  const sending=dispatchBatch(nearExpiry as unknown as PrismaClient,fake(send),{limit:1});
+  try{await Promise.race([began.promise,sending.then(()=>{throw Error('Dispatch ended before the simulated HTTP request')})]);expect(shortened).toBe(true);expect(await claimNotifications(db,{limit:1})).toEqual([])}finally{release.resolve();await sending}
+  expect(send).toHaveBeenCalledTimes(1);
  });
  it('expands independently with a stable cursor, excludes unreachable/admin users and survives a repeated page',async()=>{
   const rootKey=`broadcast:${randomUUID()}`,root=await db.outbox.create({data:{key:rootKey,kind:'GLOBAL_CAMPAIGN',payload:{deliveryKind:'BROADCAST',rootKey,body:'Fixture',href:'/',audienceBefore:new Date(Date.now()+100).toISOString()}}});

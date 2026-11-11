@@ -95,7 +95,12 @@ describe.skipIf(!url)('frozen v2 on disposable PostgreSQL',()=>{
   expect(s).toMatchObject({decision:'OWNER_CANCELLED',outcome:'CANCELLED',winningBidId:null});expect((await cancelAuction(db,command)).id).toBe(s.id);for(const id of [u,v])expect(await balance(id)).toMatchObject({AVAILABLE:1000n,HELD:0n});expect(await db.outbox.count({where:{settlementId:s.id}})).toBe(0);expect(await db.notificationInbox.count({where:{key:{startsWith:`settlement:${s.id}:`}}})).toBe(0);expect(await reconcile(db)).toEqual([]);
  });
  it('scheduled workers perform minimum cancellation idempotently',async()=>{
-  const a=await auction({endDelayMs:200});await due(a);await Promise.all([processDueAuction(db),processDueAuction(db)]);const s=await db.auctionSettlement.findUniqueOrThrow({where:{auctionId:a.id}});expect(s).toMatchObject({decision:'MINIMUM_PARTICIPANTS'});expect(await db.outbox.count({where:{settlementId:s.id}})).toBe(0);
+  const a=await auction({endDelayMs:200});await due(a);
+  // Other settlement suites share this disposable worker queue. Drain bounded
+  // earlier work rather than assuming this auction is its only due row.
+  const queued=await db.auction.count({where:{status:{in:['LIVE','SCHEDULED']},endsAt:{lte:new Date()}}}),results:Array<Awaited<ReturnType<typeof processDueAuction>>>=[];
+  for(let attempt=0;attempt<=queued&&!await db.auctionSettlement.findUnique({where:{auctionId:a.id}});attempt++)results.push(...await Promise.all([processDueAuction(db),processDueAuction(db)]));
+  const s=await db.auctionSettlement.findUniqueOrThrow({where:{auctionId:a.id}});expect(s).toMatchObject({decision:'MINIMUM_PARTICIPANTS'});expect(results.filter(row=>row.status==='settled'&&row.auctionId===a.id)).toHaveLength(1);expect(await db.outbox.count({where:{settlementId:s.id}})).toBe(0);
  });
  it('one accepted bid cancels and direct SQL cannot force a winner below the minimum',async()=>{
   const u=await bidUser(db),a=await auction();const receipt=await bid(u,a.slug!,4);await due(a);

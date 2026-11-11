@@ -484,13 +484,14 @@ model ArifPayCheckout {
   @@index([userId, createdAt])
 }
 
-// Hosted Chapa v2 attempts are additive; verified funds use the existing ledger.
+// Versioned Chapa attempts are additive; verified funds use the existing ledger.
 // Purpose, environment, expected cents and source auction quote are immutable.
 model ChapaCheckout {
   id                    String    @id @default(uuid())
   userId                String
   user                  User      @relation(fields: [userId], references: [id], onDelete: Restrict)
   purpose               String
+  apiVersion            Int       @default(2)
   mode                  String
   credentialFingerprint String
   key                   String
@@ -579,6 +580,7 @@ model BidBatchOrder {
 // No webhook body, customer contact or provider secret is retained here.
 model ChapaWebhookEvent {
   id                       String   @id @default(uuid())
+  apiVersion               Int      @default(2)
   mode                     String
   configurationFingerprint String
   bodyHash                 String
@@ -593,7 +595,7 @@ model ChapaWebhookEvent {
   completedAt              DateTime?
   receivedAt               DateTime @default(now())
 
-  @@unique([mode, configurationFingerprint, bodyHash])
+  @@unique([apiVersion, mode, configurationFingerprint, bodyHash], map: "chapa_event_api_version_delivery_key")
   @@index([merchantReference, receivedAt])
   @@index([status, nextAttemptAt])
 }

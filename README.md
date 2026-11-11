@@ -2,6 +2,8 @@
 
 A mobile-first Telegram Mini App for lowest unique **integer point** auctions. This repository is independent of Gojo Games. Deterministic settlement now has anonymous public results and private bid history, wallet activity, profile, confirmed wins and persistent favorites. Admin, fulfillment, notification delivery, provider funding and phone login remain future work. See [Phase 4B implementation and validation](docs/phase4b-results-personal.md) and [Phase 4A settlement](docs/phase4a-settlement.md).
 
+Current payment integration: [Chapa V1 hosted checkout and migration runbook](docs/payments/chapa-v1.md). New checkout creation defaults to disabled; historical V2 payments retain their own recovery contract. The phase notes below describe earlier milestones.
+
 ## Run locally
 
 Requires Node **24.x**, npm, and PostgreSQL 16+ (or a development Supabase project).

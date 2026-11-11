@@ -22,33 +22,30 @@ function quoteFixture(auctionSlug:string,numbers:string[],discount=false){
 async function compactEntryScenario(page:Page,name:string){
  const f=await fixture(page,false),marker=randomUUID(),errors:string[]=[],writes:string[]=[];let release=()=>{},quoteReads=0;
  const gate=new Promise<void>(resolve=>release=resolve),description='An administrator supplied this product description.\n'+Array.from({length:30},(_,index)=>`Detail ${index+1}: capacity, materials and useful product information remain readable when expanded.`).join('\n');
- const ownBids=['1.01','1.02','1.03','2.01','2.03'].map(amount=>({id:randomUUID(),amount,acceptedAt:new Date().toISOString()})),couponIds=Array.from({length:3},()=>randomUUID()),quoted:string[][]=[];
- page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>{if(request.method()==='POST'&&/\/api\/payments\/chapa\/(?:checkouts|batches\/[^/]+\/wallet)/.test(new URL(request.url()).pathname))writes.push(request.url())});
+ const ownBids=['1.01','1.02','1.03','2.01','2.03'].map(amount=>({id:randomUUID(),amount,acceptedAt:new Date().toISOString()})),couponIds=Array.from({length:3},()=>randomUUID());
+ page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>{if(request.method()==='POST'&&/\/api\/payments\/chapa\/(?:checkouts|batches)/.test(new URL(request.url()).pathname))writes.push(request.url())});
  try{
   await f.db.product.update({where:{id:f.auction.productId!},data:{description}});
   await page.route('**/api/auctions/*/bids',async route=>{if(route.request().method()!=='GET')return route.abort();await gate;const response=await route.fetch(),body=await response.json();return route.fulfill({response,json:{...body,ownBids,remainingSubmissions:95,referralDiscountsAvailable:true,couponAvailableCount:3}})});
   await page.route('**/api/auctions/*/discount-quote?**',route=>{quoteReads++;const coupons=couponIds.map(id=>({id,percent:10,expiresAt:new Date(Date.now()+3600000).toISOString()}));return route.fulfill({json:{serverNow:new Date().toISOString(),auctionSlug:f.auction.slug,feeVersion:1,ruleVersion:'lowest-unique-v4',grossFeePoints:'10',discountPoints:'1',netFeePoints:'9',coupon:coupons[0],eligible:true,availableCoupons:coupons}})});
-  await page.route('**/api/payments/chapa/batches/quote',route=>{const body=route.request().postDataJSON() as {numbers:string[];couponId?:string};quoted.push(body.numbers);return route.fulfill({json:quoteFixture(f.auction.slug!,body.numbers,!!body.couponId)})});
   await page.goto('/telegram?next='+encodeURIComponent(f.home));await page.locator('.auction-card').filter({hasText:f.title}).getByRole('button').click();
-  const dialog=page.getByRole('dialog',{name:'Place your bid',exact:true}),input=dialog.getByRole('textbox',{name:'Your bid amount',exact:true});await expect(dialog).toBeVisible();await expect(input).toBeVisible();await expect(dialog).not.toContainText('Loading entry details');
-  await dialog.evaluate((node,value)=>node.setAttribute('data-stable-modal',value),marker);await expect(dialog.locator(':scope>header').getByText('Live',{exact:true})).toBeVisible();await expect(dialog.getByRole('radio')).toHaveCount(2);
-  await input.fill('4.25');await dialog.getByRole('radio',{name:'Online payment',exact:true}).check();await expect(dialog.locator('[data-payment-action]')).toBeDisabled();release();await expect(dialog.locator('[data-payment-action]')).toBeEnabled();await expect(dialog).toHaveAttribute('data-stable-modal',marker);await expect(page.getByRole('dialog')).toHaveCount(1);const readyGeometry=await expectCompactFit(dialog);
-  await expect(dialog.locator('[data-bid-balance]')).toContainText('25.00');await expect(dialog.locator('[data-bid-remaining]')).toContainText('95');const coupon=dialog.locator('[data-bid-coupons]');await expect(coupon).toContainText('3');expect(quoteReads).toBe(0);
-  await input.fill('1.04');await expect(dialog.getByRole('alert')).toHaveText('Only 3 consecutive amounts. Skip at least one step.');await expect(dialog.locator('[data-payment-action]')).toBeDisabled();await input.fill('1.02');await expect(dialog.getByRole('alert')).toHaveText('This amount is already selected or submitted.');
-  await input.fill('4.25');await coupon.getByRole('button',{name:'Apply',exact:true}).click();await expect(dialog).toContainText('10% discount on one entry');expect(quoteReads).toBe(1);
-  await dialog.getByRole('button',{name:'Add bid amount',exact:true}).click();await input.fill('4.27');await dialog.getByRole('button',{name:'Add bid amount',exact:true}).click();await input.fill('4.29');await dialog.locator('[data-payment-action]').click();
-  const review=page.getByRole('dialog',{name:'Review bids',exact:true});await expect(review.locator('[data-bid-review]')).toBeVisible();expect(quoted).toEqual([['4.25','4.27','4.29']]);await expect(review).toContainText('ETB 29.00');await expect(review.locator('li').filter({hasText:'Coupon applied'})).toHaveCount(1);await expect(review).toHaveAttribute('data-stable-modal',marker);expect(writes).toEqual([]);
-  await review.getByRole('button',{name:'Edit bid amounts',exact:true}).click();await expect(dialog.getByRole('button',{name:'Edit 4.25',exact:true})).toBeVisible();await dialog.getByRole('button',{name:'Remove 4.27',exact:true}).click();await dialog.getByRole('button',{name:'Edit 4.25',exact:true}).click();await input.fill('4.26');await dialog.getByRole('button',{name:'Save bid amount',exact:true}).click();await expect(dialog.getByRole('button',{name:'Edit 4.26',exact:true})).toBeVisible();await expect(dialog.locator('[data-bid-remaining]')).toContainText('93');await coupon.getByRole('button',{name:'Remove',exact:true}).click();
-  await input.fill('4.50');const payment=dialog.getByRole('group',{name:'Select payment method'}),topUp=payment.getByRole('link',{name:'Top up wallet',exact:true});await expect(topUp).toHaveCount(1);expect(await topUp.evaluate(node=>node.closest('label')===null)).toBe(true);const plusBox=await topUp.boundingBox();expect(plusBox!.width).toBeGreaterThanOrEqual(44);expect(plusBox!.height).toBeGreaterThanOrEqual(44);await topUp.click();await expect(page.getByRole('dialog',{name:'Top up wallet',exact:true})).toBeVisible();await page.keyboard.press('Escape');await expect(input).toHaveValue('4.50');await expect(dialog.getByRole('radio',{name:'Online payment',exact:true})).toBeChecked();
-  const product=dialog.getByRole('region',{name:'Product description'});await product.getByRole('button',{name:'Show more',exact:true}).click();await expect(product).toContainText(description);await product.getByRole('button',{name:'Show less',exact:true}).click();
-  await input.fill('10');await input.pressSequentially('.75',{delay:5});await expect(input).toHaveValue('10.75');await input.pressSequentially('9e-');await expect(input).toHaveValue('10.75');await input.fill('11.999');await expect(input).toHaveValue('10.75');await input.fill('');await input.pressSequentially('12.');await expect(dialog.locator('[data-payment-action]')).toBeDisabled();await input.pressSequentially('50');await expect(input).toHaveValue('12.50');await expect(dialog.locator('[data-payment-action]')).toBeEnabled();
-  const viewport=page.viewportSize()!;await input.focus();await page.setViewportSize({...viewport,height:Math.min(430,viewport.height-180)});await expect(dialog).toHaveAttribute('data-keyboard-open','true');await expect(input).toBeInViewport({ratio:1});await expect(dialog.locator('[data-payment-action]')).toBeInViewport({ratio:1});await page.setViewportSize(viewport);await input.blur();await expectCompactFit(dialog);
+  const dialog=page.getByRole('dialog',{name:'Place your bid',exact:true}),input=dialog.getByRole('textbox',{name:'Your bid amount',exact:true}),pay=dialog.locator('[data-bid-continue]');await expect(input).toBeVisible();await expect(dialog).not.toContainText('Loading entry details');
+  await dialog.evaluate((node,value)=>node.setAttribute('data-stable-modal',value),marker);await expect(dialog.locator(':scope>header').getByText('Live',{exact:true})).toBeVisible();await expect(dialog.getByRole('radio')).toHaveCount(0);await expect(dialog.locator('[data-direct-checkout],input[type="tel"]')).toHaveCount(0);
+  await input.fill('4.25');await expect(pay).toBeDisabled();release();await expect(pay).toBeEnabled();await expect(dialog).toHaveAttribute('data-stable-modal',marker);await expect(page.getByRole('dialog')).toHaveCount(1);const readyGeometry=await expectCompactFit(dialog);
+  const coupon=dialog.locator('[data-bid-coupons]');await expect(coupon).toContainText('3');expect(quoteReads).toBe(0);
+  await input.fill('1.04');await expect(dialog.getByRole('alert')).toHaveText('Only 3 consecutive amounts. Skip at least one step.');await expect(pay).toBeDisabled();await input.fill('1.02');await expect(dialog.getByRole('alert')).toHaveText('This amount is already selected or submitted.');
+  await input.fill('4.25');await coupon.getByRole('button',{name:'Apply',exact:true}).click();await expect(dialog).toContainText('10% off one bid fee.');expect(quoteReads).toBe(1);
+  await dialog.getByRole('button',{name:'Add bid amount',exact:true}).click();await input.fill('4.27');await dialog.getByRole('button',{name:'Add bid amount',exact:true}).click();await input.fill('4.29');await expect(dialog.locator('[data-bid-total]')).toContainText('29.00');await expect(dialog.locator('[data-bid-total]')).toContainText('3 bids');await expect(dialog.locator('[data-bid-total]')).toContainText('Coupon applied');expect(writes).toEqual([]);
+  await dialog.getByRole('button',{name:'Remove 4.27',exact:true}).click();await dialog.getByRole('button',{name:'Edit 4.25',exact:true}).click();await input.fill('4.26');await dialog.getByRole('button',{name:'Save bid amount',exact:true}).click();await expect(dialog.getByRole('button',{name:'Edit 4.26',exact:true})).toBeVisible();await coupon.getByRole('button',{name:'Remove',exact:true}).click();
+  const product=dialog.locator('[data-bid-entry] details').filter({hasText:'Product details'});await product.locator('summary').click();await expect(product.locator('p')).toHaveText(description);await product.locator('summary').click();
+  await input.fill('10');await input.pressSequentially('.75',{delay:5});await expect(input).toHaveValue('10.75');await input.pressSequentially('9e-');await expect(input).toHaveValue('10.75');await input.fill('11.999');await expect(input).toHaveValue('10.75');await input.fill('');await input.pressSequentially('12.');await expect(pay).toBeDisabled();await input.pressSequentially('50');await expect(input).toHaveValue('12.50');await expect(pay).toBeEnabled();
+  const viewport=page.viewportSize()!;await input.focus();await page.setViewportSize({...viewport,height:Math.min(430,viewport.height-180)});await expect(dialog).toHaveAttribute('data-keyboard-open','true');await expect(input).toBeInViewport({ratio:1});await expect(pay).toBeInViewport({ratio:1});await page.setViewportSize(viewport);await input.blur();await expectCompactFit(dialog);
   mkdirSync('test-results/chapa-ui/final-tuning',{recursive:true});await page.screenshot({path:`test-results/chapa-ui/final-tuning/bid-${name}.png`,animations:'disabled'});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);expect(errors).toEqual([]);expect(writes).toEqual([]);expect(await f.db.bid.count({where:{userId:f.user.id}})).toBe(0);
-  writeFileSync(`test-results/chapa-ui/final-tuning/bid-${name}.json`,JSON.stringify({viewport,readyGeometry,oneStableModal:true,boundedScroll:true,threeNumbersOneReview:true,uncommittedInputIncluded:true,separateTopUpPreservesSelection:true,couponDiscountsOneEntry:true,paymentWrites:0,errors},null,2));
+  writeFileSync(`test-results/chapa-ui/final-tuning/bid-${name}.json`,JSON.stringify({viewport,readyGeometry,oneStableModal:true,boundedScroll:true,threeNumbersOneTotal:true,uncommittedInputIncluded:true,couponDiscountsOneEntry:true,paymentWrites:0,errors},null,2));
  }finally{release();await f.db.$disconnect()}
 }
 
-test('compact bid entry is one stable modal with gated data, independent wallet plus and accessible expansion',async({page},info)=>{
+test('compact bid entry preserves validation, coupon totals and accessible product details',async({page},info)=>{
  await compactEntryScenario(page,info.project.name);
 });
 
@@ -56,14 +53,14 @@ test('short360x640 batch entry scrolls within its bounds and keeps keyboard acce
  test.skip(info.project.name!=='360','The existing360project owns the additional short-phone viewport.');await page.setViewportSize({width:360,height:640});await compactEntryScenario(page,'360-short');
 });
 
-test('wallet batch submission shows a spinner and sends one disabled action until the response',async({page},info)=>{
+test('wallet batch submission disables duplicate actions and waits for a server receipt',async({page},info)=>{
  const f=await fixture(page,false);let release=()=>{},posts=0;const gate=new Promise<void>(resolve=>release=resolve),quote=quoteFixture(f.auction.slug!,['7.25']);
  try{
   await page.route('**/api/payments/chapa/batches/quote',route=>route.fulfill({json:quote}));
-  await page.route(`**/api/payments/chapa/batches/${quote.id}/wallet`,async route=>{posts++;await gate;return route.fulfill({json:{batch:{...quote,status:'ACCEPTED'},receipts:[{bid:{id:randomUUID(),auctionCode:f.auction.code,auctionSlug:f.auction.slug,amount:'7.25',acceptedAt:new Date().toISOString(),termsVersion:1,feePoints:'10'},hold:{previousMax:'0',newMax:'0',extraReserved:'0'},charge:{feePoints:'10',newlyUnavailable:'10'},wallet:{available:'15',held:'0'},remainingSubmissions:99,ownBids:[]}]}})});
-  await page.goto('/telegram?next='+encodeURIComponent(f.home));await page.locator('.auction-card').filter({hasText:f.title}).getByRole('button').click();const entry=page.getByRole('dialog',{name:'Place your bid',exact:true});await entry.getByRole('textbox',{name:'Your bid amount',exact:true}).fill('7.25');await expect(entry.locator('[data-payment-action]')).toBeEnabled();await entry.locator('[data-payment-action]').click();
-  const review=page.getByRole('dialog',{name:'Review bids',exact:true}),pay=review.locator('[data-payment-action]');await expect(pay).toBeEnabled();await pay.evaluate(button=>{(button as HTMLButtonElement).click();(button as HTMLButtonElement).click()});await expect(pay).toBeDisabled();await expect.poll(()=>posts).toBe(1);const spinner=pay.locator('svg');await expect(spinner).toHaveCount(1);expect(await spinner.evaluate(node=>getComputedStyle(node).animationName)).not.toBe('none');
-  mkdirSync('test-results/chapa-ui/final-tuning',{recursive:true});await page.screenshot({path:`test-results/chapa-ui/final-tuning/wallet-submitting-${info.project.name}.png`,animations:'disabled'});release();await expect(page.getByRole('dialog',{name:'Bid receipt',exact:true}).getByRole('status')).toHaveText('Bid accepted');expect(posts).toBe(1);expect(await f.db.bid.count({where:{userId:f.user.id}})).toBe(0);
+  await page.route(`**/api/payments/chapa/batches/${quote.id}/wallet`,async route=>{posts++;await gate;return route.fulfill({json:{batch:{...quote,status:'ACCEPTED'},receipts:[{bid:{id:randomUUID(),auctionCode:f.auction.code,auctionSlug:f.auction.slug,amount:'7.25',acceptedAt:new Date().toISOString(),termsVersion:1,feePoints:'10'},charge:{feePoints:'10',newlyUnavailable:'10'}}]}})});
+  await page.goto('/telegram?next='+encodeURIComponent(f.home));await page.locator('.auction-card').filter({hasText:f.title}).getByRole('button').click();const entry=page.getByRole('dialog');await entry.getByRole('textbox',{name:'Your bid amount',exact:true}).fill('7.25');
+  const pay=entry.getByRole('button',{name:'Pay ETB 10.00 from wallet',exact:true});await expect(pay).toBeEnabled();await pay.evaluate(button=>{(button as HTMLButtonElement).click();(button as HTMLButtonElement).click()});await expect(pay).toBeDisabled();await expect(entry.locator('[data-bid-continue]')).toBeDisabled();await expect.poll(()=>posts).toBe(1);await expect(entry.getByRole('status')).toContainText('Preparing your payment');
+  mkdirSync('test-results/chapa-ui/final-tuning',{recursive:true});await page.screenshot({path:`test-results/chapa-ui/final-tuning/wallet-submitting-${info.project.name}.png`,animations:'disabled'});release();await expect(page.getByRole('dialog',{name:'Bid receipt',exact:true}).getByRole('heading',{name:'Bids accepted',exact:true})).toBeVisible();expect(posts).toBe(1);expect(await f.db.bid.count({where:{userId:f.user.id}})).toBe(0);
  }finally{release();await f.db.$disconnect()}
 });
 
@@ -93,17 +90,17 @@ test('a long pending bid stays honest, checks automatically and accepts a later 
    if(req.method()==='POST')checks++;
    return route.fulfill({json:{...order,...(complete?{status:'BID_ACCEPTED',providerStatus:'SUCCESS',verificationState:'VERIFIED',receipt:{bid:{id:randomUUID(),amount:'4.25'}}}:{})}});
   });
-  await page.goto('/telegram');const dialog=page.getByRole('dialog');await expect(dialog.locator('[data-payment-state="confirming"]')).toBeVisible();
+  await page.goto('/telegram');const dialog=page.getByRole('dialog');await expect(dialog.locator('[data-hosted-checkout-status]')).toBeVisible();
   await page.clock.fastForward(90001);
-  await expect(dialog.getByRole('heading',{name:'This is taking a bit longer'})).toBeVisible();
-  await expect(dialog).toContainText('4.25');await expect(dialog).toContainText('Submission fee');
-  await expect(dialog.getByRole('link',{name:'Go to My Bids',exact:true})).toBeVisible();
-  await expect(dialog.getByRole('button',{name:/Verify|Check payment/i})).toHaveCount(0);
+  await expect(dialog.getByRole('heading',{name:'Complete payment on Chapa',exact:true})).toBeVisible();
+  await expect(dialog).toContainText('10.00');
+  await expect(dialog.getByRole('link',{name:'View Transactions',exact:true})).toBeVisible();
+  await expect(dialog.getByRole('button',{name:'Check payment',exact:true})).toBeVisible();
   const previous=checks;await page.clock.fastForward(15001);await expect.poll(()=>checks).toBeGreaterThan(previous);
   expect(creates).toBe(0);await expect(dialog).not.toContainText('Bid accepted');
   mkdirSync('test-results/chapa-ui/final-tuning',{recursive:true});await page.screenshot({path:`test-results/chapa-ui/final-tuning/waiting-${info.project.name}.png`,animations:'disabled'});
   complete=true;await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
-  await expect(dialog.locator('[data-payment-state="confirmed"]')).toBeVisible();expect(creates).toBe(0);
+  await expect(dialog.getByRole('heading',{name:'Bid accepted',exact:true})).toBeVisible();expect(creates).toBe(0);
  }finally{await f.db.$disconnect()}
 });
 
@@ -130,7 +127,7 @@ test('My Bids keeps only Live and Finished accepted records; attempts remain in 
   await page.getByRole('link',{name:'Transactions',exact:true}).click();
   await expect(page.locator('[data-payment-id]')).toHaveCount(4);expect(historyReads).toBeGreaterThan(0);
   const failed=page.locator('[data-payment-id="'+orders[1].id+'"]');await expect(failed).toContainText('Payment failed');await failed.click();
-  await expect(page.getByRole('dialog',{name:'Transaction details',exact:true})).toContainText('Payment failed');
+  await expect(page.getByRole('dialog',{name:'Transaction details',exact:true})).toContainText('Payment not completed');
   await page.keyboard.press('Escape');await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  }finally{await f.db.$disconnect()}
 });

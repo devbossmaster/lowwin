@@ -1,17 +1,18 @@
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {PrismaClient} from '@prisma/client';
 
-const f=vi.hoisted(()=>({enabled:true,verify:vi.fn()}));
+const f=vi.hoisted(()=>({enabled:true,v1Enabled:false,verify:vi.fn()}));
 vi.mock('../src/modules/payments/chapa-provider',()=>({chapaAvailability:()=>({recoveryEnabled:f.enabled,mode:'test'}),chapaTransport:{create:vi.fn(),lookup:vi.fn(),methods:vi.fn()}}));
+vi.mock('../src/modules/payments/chapa-v1-provider',()=>({chapaV1Availability:()=>({recoveryEnabled:f.v1Enabled,mode:'test'}),chapaV1Transport:{create:vi.fn(),lookup:vi.fn()}}));
 vi.mock('../src/modules/payments/chapa',()=>({verifyChapaCheckout:f.verify}));
 import {processChapaEvent,processChapaEvents} from '../src/modules/payments/chapa-events';
 
 const start=new Date('2026-10-29T12:00:00Z');
 function fixture(attempts=0){
- const event={id:'durable-event',checkoutId:'owned-checkout',mode:'test',status:'QUEUED',attempts,nextAttemptAt:new Date(0),leaseUntil:null as Date|null,completedAt:null as Date|null,receivedAt:new Date(start.getTime()-120000),event:'payment.success'};
- const checkout={id:'owned-checkout',creditJournalId:null as string|null,leaseUntil:null as Date|null,providerStatus:'PENDING',verificationState:'UNVERIFIED',status:'PENDING'};
+ const event={id:'durable-event',apiVersion:2,checkoutId:'owned-checkout',mode:'test',status:'QUEUED',attempts,nextAttemptAt:new Date(0),leaseUntil:null as Date|null,completedAt:null as Date|null,receivedAt:new Date(start.getTime()-120000),event:'payment.success'};
+ const checkout={id:'owned-checkout',apiVersion:2,mode:'test',creditJournalId:null as string|null,leaseUntil:null as Date|null,providerStatus:'PENDING',verificationState:'UNVERIFIED',status:'PENDING'};
  const updateMany=vi.fn(async({where,data}:any)=>{
-  if(where.status!==event.status)return {count:0};
+  if(where.status!==event.status||where.apiVersion!==undefined&&where.apiVersion!==event.apiVersion||where.mode!==undefined&&where.mode!==event.mode)return {count:0};
   if(data.attempts){
    if(event.attempts>=where.attempts.lt||event.nextAttemptAt>new Date()||event.leaseUntil&&event.leaseUntil>new Date())return {count:0};
    event.attempts+=data.attempts.increment;event.leaseUntil=data.leaseUntil;return {count:1};
@@ -22,11 +23,11 @@ function fixture(attempts=0){
  });
  const findMany=vi.fn(async()=>[{id:event.id}]);
  const readEvent=vi.fn(async()=>({...event}));
- const client={chapaWebhookEvent:{updateMany,findUniqueOrThrow:readEvent,findMany},chapaCheckout:{findUniqueOrThrow:vi.fn(async()=>({...checkout}))}};
+ const client={chapaWebhookEvent:{updateMany,findUnique:vi.fn(async()=>({apiVersion:event.apiVersion,mode:event.mode})),findUniqueOrThrow:readEvent,findMany},chapaCheckout:{findUniqueOrThrow:vi.fn(async()=>({...checkout}))}};
  return {event,checkout,updateMany,findMany,readEvent,client:client as unknown as PrismaClient};
 }
 
-beforeEach(()=>{f.enabled=true;vi.clearAllMocks();vi.useFakeTimers();vi.setSystemTime(start);f.verify.mockResolvedValue(undefined)});
+beforeEach(()=>{f.enabled=true;f.v1Enabled=false;vi.clearAllMocks();vi.useFakeTimers();vi.setSystemTime(start);f.verify.mockResolvedValue(undefined)});
 afterEach(()=>{vi.useRealTimers();vi.restoreAllMocks()});
 
 describe('durable Chapa event confirmation',()=>{
@@ -120,6 +121,12 @@ describe('durable Chapa event confirmation',()=>{
   const state=fixture();f.verify.mockImplementation(async()=>{Object.assign(state.checkout,{providerStatus:'SUCCESS',verificationState:'MISMATCH',status:'NEEDS_REVIEW'})});
   expect(await processChapaEvent(state.client,state.event.id)).toBe(false);expect(state.event.status).toBe('QUEUED');expect(state.checkout.creditJournalId).toBeNull();
  });
+ it('preserves a later delivery when lookup is unavailable even if the last verified result was terminal',async()=>{
+  const state=fixture();Object.assign(state.checkout,{providerStatus:'INCOMPLETE',verificationState:'VERIFIED',status:'INCOMPLETE'});
+  f.verify.mockResolvedValueOnce({verificationUnavailable:true});
+  expect(await processChapaEvent(state.client,state.event.id)).toBe(false);
+  expect(state.event).toMatchObject({status:'QUEUED',attempts:1,completedAt:null});expect(state.checkout).toMatchObject({providerStatus:'INCOMPLETE',verificationState:'VERIFIED'});
+ });
  it('never races an active checkout lease or queries a disabled recovery worker',async()=>{
   const state=fixture();state.checkout.leaseUntil=new Date(start.getTime()+20000);
   expect(await processChapaEvent(state.client,state.event.id)).toBe(false);expect(f.verify).not.toHaveBeenCalled();expect(state.event.status).toBe('QUEUED');
@@ -129,6 +136,19 @@ describe('durable Chapa event confirmation',()=>{
  it('keeps batch processing limited to due queued events and at most twenty jobs',async()=>{
   const state=fixture();Object.assign(state.checkout,{creditJournalId:'existing-credit'});
   expect(await processChapaEvents(state.client,1000)).toEqual({checked:1});
-  expect(state.findMany).toHaveBeenCalledWith({where:{mode:'test',status:'QUEUED',attempts:{lt:5},nextAttemptAt:{lte:expect.any(Date)},OR:[{leaseUntil:null},{leaseUntil:{lte:expect.any(Date)}}]},orderBy:[{nextAttemptAt:'asc'},{id:'asc'}],take:20,select:{id:true}});
+  expect(state.findMany).toHaveBeenCalledWith({where:{AND:[{OR:[{apiVersion:2,mode:'test'}]}],status:'QUEUED',attempts:{lt:5},nextAttemptAt:{lte:expect.any(Date)},OR:[{leaseUntil:null},{leaseUntil:{lte:expect.any(Date)}}]},orderBy:[{nextAttemptAt:'asc'},{id:'asc'}],take:20,select:{id:true}});
+ });
+ it('processes v1 recovery independently while legacy v2 recovery is disabled',async()=>{
+  const state=fixture();f.enabled=false;f.v1Enabled=true;state.event.apiVersion=state.checkout.apiVersion=1;
+  f.verify.mockImplementation(async()=>{Object.assign(state.checkout,{providerStatus:'SUCCESS',verificationState:'VERIFIED',creditJournalId:'v1-credit'})});
+  expect(await processChapaEvents(state.client)).toEqual({checked:1});expect(state.event.status).toBe('PROCESSED');
+  expect(state.findMany).toHaveBeenCalledWith(expect.objectContaining({where:expect.objectContaining({AND:[{OR:[{apiVersion:1,mode:'test'}]}]})}));
+  expect(f.verify).toHaveBeenCalledOnce();
+ });
+ it('never applies a v1 delivery to a historical v2 checkout or queries a disabled version',async()=>{
+  const state=fixture();state.event.apiVersion=1;
+  expect(await processChapaEvent(state.client,state.event.id)).toBe(false);expect(state.updateMany).not.toHaveBeenCalled();
+  f.v1Enabled=true;
+  expect(await processChapaEvent(state.client,state.event.id)).toBe(false);expect(f.verify).not.toHaveBeenCalled();expect(state.event.status).toBe('QUEUED');
  });
 });

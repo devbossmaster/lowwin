@@ -4,15 +4,15 @@ Create one Coolify resource per template and paste the matching variables into
 its Environment Variables screen. Replace every `<...>` placeholder privately.
 Never commit real values.
 
-## Current Chapa v2 deployment
+## Current Chapa V1 hosted deployment
 
-New payment work uses Chapa v2. See the [TEST and production-preparation runbook](../../docs/payments/chapa-release-2026-10-29.md). The historical Verify.et instructions below do not activate Chapa and must not be used to turn on new legacy funding.
+New customer payments use [Chapa V1 hosted checkout](../../docs/payments/chapa-v1.md). Apply migration `202611110001_chapa_v1_hosted` **before deploying the new Prisma web/worker release**. Keep all creation/live switches disabled during deployment; merchant TEST acceptance remains required. The historical Verify.et instructions below do not activate Chapa.
 
-For the current application, follow the [paused Coolify production setup](../../docs/payments/chapa-coolify-setup.md). It lists the exact Chapa variables, protected secrets, dashboard webhook, worker and migration gates without replacing existing authentication or contact keys.
+Use the V1 runbook and root [`.env.example`](../../.env.example) for `CHAPA_V1_*` names. Set the V1 dashboard webhook to `/api/payments/chapa/v1/webhook`. Retain existing `CHAPA_*` credentials, webhook `/api/payments/chapa/webhook`, and mode only for `apiVersion=2` recovery. V1 keys and V2 keys are independent; neither substitutes for the other. Earlier [Coolify setup](../../docs/payments/chapa-coolify-setup.md) and [V2 release notes](../../docs/payments/chapa-release-2026-10-29.md) remain historical V2 references.
 
-Create a separate reviewed TEST `lowwin-chapa` resource using the paused variable inventory in that runbook, build `npm run db:generate`, and start `npm run worker:chapa`. For systemd, the existing template supports `lowwin@chapa.service` with `/etc/lowwin/chapa.env`. Keep creation/recovery/live flags false until the target, schema, merchant TEST key and webhook have been reviewed; do not start a paused/unconfigured worker in a restart loop. Environment files remain outside the release commit.
+Keep the existing `lowwin-chapa` resource and `npm run worker:chapa` command. For systemd, the existing template supports `lowwin@chapa.service` with `/etc/lowwin/chapa.env`. Start it only after the intended V1 and/or V2 recovery configuration passes review; an entirely paused/unconfigured worker exits instead of running. Do not create a restart loop. Environment files remain outside the release commit.
 
-The worker uses the same TEST database, Chapa key/mode, origins, bot identity, phone-encryption keys and applicable referral schema flag as the TEST web app. A copied or rotated key cannot recover another credential's immutable attempts. Give its restricted runtime URL `connection_limit=1` and `pool_timeout=20`; never give it the migration/owner URL. Production preparation needs production-specific values with every activation flag off, not a TEST key copied into production.
+The worker and web app use the same environment's database, origins, bot identity, phone-encryption keys, applicable referral flag and each enabled API version's own credentials/mode. Give the worker's restricted runtime URL `connection_limit=1` and `pool_timeout=20`; keep the migration/owner URL out of application resources. Keep old V2 recovery enabled only as required for unresolved V2 payments. Production preparation uses production-specific values with activation flags off; TEST credentials never go into production. See the V1 runbook for TEST/live guards and rollback.
 
 ## Historical funding notes
 

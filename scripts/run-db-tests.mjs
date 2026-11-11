@@ -14,7 +14,7 @@ if(!['unit','browser','payments','smoke','redesign','admin','chapa','nov7'].incl
 // Normal CI supplies no files and still runs every suite with the no-skip gate.
 const files=process.argv.slice(3);
 if(files.length&&(mode!=='unit'||files.some(file=>!/^tests\/[a-z0-9-]+\.test\.ts$/.test(file)||!existsSync(file))))throw Error('Unit subsets must name existing tests/name.test.ts files.');
-const variables=['TEST_DATABASE_URL','BID_TEST_DATABASE_URL','SETTLEMENT_TEST_DATABASE_URL','PERSONAL_TEST_DATABASE_URL','ADMIN_TEST_DATABASE_URL','MASTER_ADMIN_TEST_DATABASE_URL','OPS_TEST_DATABASE_URL','PAYMENT_TEST_DATABASE_URL','ARIFPAY_TEST_DATABASE_URL','CHAPA_TEST_DATABASE_URL','CHAPA_DIRECT_TEST_DATABASE_URL','ADMIN_CREDIT_TEST_DATABASE_URL','ACTIVITY_TEST_DATABASE_URL','CATALOG_WORKFLOW_TEST_DATABASE_URL','CATALOG_TEST_DATABASE_URL','REFERRAL_TEST_DATABASE_URL','RESULT_TEST_DATABASE_URL'];
+const variables=['TEST_DATABASE_URL','BID_TEST_DATABASE_URL','SETTLEMENT_TEST_DATABASE_URL','PERSONAL_TEST_DATABASE_URL','ADMIN_TEST_DATABASE_URL','MASTER_ADMIN_TEST_DATABASE_URL','OPS_TEST_DATABASE_URL','PAYMENT_TEST_DATABASE_URL','ARIFPAY_TEST_DATABASE_URL','CHAPA_TEST_DATABASE_URL','CHAPA_DIRECT_TEST_DATABASE_URL','CHAPA_SPEED_TEST_DATABASE_URL','ADMIN_CREDIT_TEST_DATABASE_URL','ADMIN_PAYMENT_TABLE_TEST_DATABASE_URL','ACTIVITY_TEST_DATABASE_URL','CATALOG_WORKFLOW_TEST_DATABASE_URL','CATALOG_TEST_DATABASE_URL','REFERRAL_TEST_DATABASE_URL','RESULT_TEST_DATABASE_URL','RESULT_NOTIFICATION_TEST_DATABASE_URL','WINNER_BANNER_TEST_DATABASE_URL'];
 const env={...process.env};
 const admin=new URL(base);admin.pathname='/postgres';
 const client=new Client({connectionString:admin.href});
@@ -38,11 +38,22 @@ if(mode==='nov7'){
 }
 env.APP_ENV='local';
 mkdirSync('test-results/release',{recursive:true});
-writeFileSync(`test-results/release/${mode}-databases.json`,JSON.stringify(names,null,2));
-const run=(args)=>{const r=spawnSync(process.execPath,args,{env,stdio:'inherit'});if(r.status!==0)process.exit(r.status??1)};
+const reportName=files.length?`${mode}-focused-${suffix}`:mode;
+writeFileSync(`test-results/release/${reportName}-databases.json`,JSON.stringify(names,null,2));
+const run=(args,overrides={})=>{const r=spawnSync(process.execPath,args,{env:{...env,...overrides},stdio:'inherit'});if(r.status!==0)process.exit(r.status??1)};
 if(mode==='unit') {
-  run(['node_modules/vitest/vitest.mjs','run',...files,'--reporter=default','--reporter=json','--outputFile=test-results/release/unit.json']);
-  const report=JSON.parse(readFileSync('test-results/release/unit.json','utf8'));
+  // Some base-DB suites import the shared Prisma client and insert fixtures
+  // without migrating. Prepare before Vitest chooses file order, not from an
+  // unrelated suite's beforeAll. Most dedicated suites own their migrations;
+  // result-delivery and admin-table fixtures also need harness preparation.
+  const prepare=['TEST_DATABASE_URL',...[
+    ['tests/result-campaign-delivery.test.ts','RESULT_NOTIFICATION_TEST_DATABASE_URL'],
+    ['tests/admin-payment-table-db.test.ts','ADMIN_PAYMENT_TABLE_TEST_DATABASE_URL'],
+  ].filter(([file])=>files.length===0||files.includes(file)).map(([,key])=>key)];
+  for(const key of prepare)run(['node_modules/prisma/build/index.js','migrate','deploy'],{DATABASE_URL:env[key],DIRECT_URL:env[key]});
+  const reportFile=`test-results/release/${reportName}.json`;
+  run(['node_modules/vitest/vitest.mjs','run',...files,'--reporter=default','--reporter=json',`--outputFile=${reportFile}`]);
+  const report=JSON.parse(readFileSync(reportFile,'utf8'));
   if(report.numPendingTests||report.numTodoTests)throw Error('Release requires every opt-in database test to execute.');
 } else {
   run(['node_modules/prisma/build/index.js','migrate','deploy']);

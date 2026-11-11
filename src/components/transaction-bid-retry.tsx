@@ -14,5 +14,5 @@ export default function TransactionBidRetry({order,draft,onClose,embedded=false,
  const dismiss=useRef<(()=>void)|null>(null),setDismiss=useCallback((action:(()=>void)|null)=>{dismiss.current=action},[]);
  const numbers=draft?.purpose==='BID'&&'numbers'in draft?draft.numbers:order.batchNumbers??(order.bidNumber?[order.bidNumber]:[]);
  const contents=query.data?<BidSheetContents auction={query.data} serverNow={new Date().toISOString()} onClose={onClose} onPhaseChange={onPhaseChange??setPhase} onDismissChange={onDismissChange??setDismiss} initialDraft={{numbers,method:draft?.paymentMethod??order.paymentMethod,phone:draft?.phone}}/>:<p role="status">{query.error?<button type="button" onClick={query.reload}>{am?'እንደገና':'Retry'}</button>:am?'ጨረታውን በመጫን ላይ…':'Loading auction…'}</p>;
- return embedded?contents:<AccountSheet size="payment" layout="bid-entry" presentation={phase==='payment'||phase==='receipt'?'centered':undefined} title={phase==='review'?(am?'ክፍያ':'Payment'):(am?'ጨረታዎን ያቅርቡ':'Place your bid')} footerPortal onClose={()=>dismiss.current?dismiss.current():onClose()}>{contents}</AccountSheet>;
+ return embedded?contents:<AccountSheet size="payment" layout="bid-entry" title={phase==='review'?(am?'ክፍያ':'Payment'):(am?'ጨረታዎን ያቅርቡ':'Place your bid')} footerPortal onClose={()=>dismiss.current?dismiss.current():onClose()}>{contents}</AccountSheet>;
 }

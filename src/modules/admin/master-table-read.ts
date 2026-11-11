@@ -53,7 +53,7 @@ export async function readChapaTable(client:PrismaClient,actor:Actor,f:Filters){
  const statuses=['SUBMITTING','PENDING','VERIFYING','AUTH_NEEDED','CREDITED','BID_ACCEPTED','NEEDS_REVIEW','FAILED','CANCELLED','EXPIRED','INCOMPLETE','BLOCKED'];
  const view=f.view??(f.status?'all':'completed');
  if(!['completed','unfinished','review','failed','all'].includes(view)||f.status&&!statuses.includes(f.status)||f.purpose&&!['TOP_UP','BID'].includes(f.purpose))throw new AdminError(422,'Choose a valid payment status and type.');
- const chapaConfigured=process.env.CHAPA_SCHEMA_READY==='true',walletVisible=['completed','all'].includes(view)&&f.purpose!=='TOP_UP'&&(!f.status||f.status==='BID_ACCEPTED');
+ const chapaConfigured=process.env.CHAPA_SCHEMA_READY==='true'||process.env.CHAPA_V1_SCHEMA_READY==='true',walletVisible=['completed','all'].includes(view)&&f.purpose!=='TOP_UP'&&(!f.status||f.status==='BID_ACCEPTED');
  let lookup:string|null=null;try{lookup=phoneHash(normalizePhone(f.q))}catch{}
  const selected:Prisma.Sql[]=[];
  if(chapaConfigured){

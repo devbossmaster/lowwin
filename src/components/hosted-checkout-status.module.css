@@ -1,0 +1,18 @@
+.status{display:grid;justify-items:center;gap:14px;max-width:440px;margin:0 auto;padding:20px 4px;color:#211e16;text-align:center}
+.icon{display:grid;place-items:center;width:50px;height:50px;border-radius:50%;background:#f5edcf;color:#80611b}
+.status h3{margin:0;font-size:21px;line-height:1.4;font-weight:750;letter-spacing:-.02em}
+.status p{max-width:38ch;margin:0;color:#686357;font-size:13px;line-height:1.7}
+.amount{display:grid;gap:5px;font-size:24px;font-variant-numeric:tabular-nums}
+.amount small,.status>small{color:#686357;font-size:11px;font-weight:500;line-height:1.6}
+.actions{display:grid;gap:8px;width:100%;margin-top:4px}
+.primary,.secondary{display:flex;align-items:center;justify-content:center;box-sizing:border-box;width:100%;min-height:46px;padding:10px 14px;border:1px solid #ded8c9;border-radius:13px;background:#fff;color:#765b18;font:inherit;font-size:14px;font-weight:700;line-height:1.5;text-decoration:none;cursor:pointer}
+.primary{border-color:#211e16;background:#211e16;color:#fff}
+.primary:disabled,.secondary:disabled{opacity:.55;cursor:default}
+.primary:focus-visible,.secondary:focus-visible{outline:2px solid #a9872a;outline-offset:3px}
+.status .error{color:#963f2e}
+.reference{width:100%;font-size:12px;color:#686357}
+.reference summary{padding:8px;cursor:pointer}
+.reference small{display:block;overflow-wrap:anywhere;padding:4px}
+.spin{animation:hosted-spin .9s linear infinite}
+@keyframes hosted-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.spin{animation:none}}

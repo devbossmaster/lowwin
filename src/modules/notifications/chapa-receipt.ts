@@ -40,10 +40,10 @@ export async function chapaReceiptContent(tx:Prisma.TransactionClient,row:Pick<O
  if(!row.payload||typeof row.payload!=='object'||Array.isArray(row.payload))return null;
  const payload=row.payload as {checkoutId?:unknown;recipientUserId?:unknown;merchantRecipientTelegramId?:unknown};
  if(typeof payload.checkoutId!=='string'||typeof payload.recipientUserId!=='string'||!chapaReturnPath(payload.checkoutId))return null;
- const order=await tx.chapaCheckout.findUnique({where:{id:payload.checkoutId},select:{id:true,userId:true,purpose:true,status:true,providerStatus:true,verificationState:true,creditJournalId:true,bidId:true,receipt:true,currency:true,amountCents:true,mode:true,phoneBotId:true,merchantReference:true,chapaReference:true,user:{select:{telegramId:true,ownContact:{select:{telegramId:true,botId:true,revokedAt:true}}}}}});
+ const order=await tx.chapaCheckout.findUnique({where:{id:payload.checkoutId},select:{id:true,apiVersion:true,userId:true,purpose:true,status:true,providerStatus:true,verificationState:true,creditJournalId:true,bidId:true,receipt:true,currency:true,amountCents:true,mode:true,phoneBotId:true,merchantReference:true,chapaReference:true,user:{select:{telegramId:true,ownContact:{select:{telegramId:true,botId:true,revokedAt:true}}}}}});
  if(!order||order.userId!==payload.recipientUserId)return null;
  const outcome=receiptOutcome(order),botId=process.env.TELEGRAM_BOT_TOKEN?.split(':')[0],contact=order.user.ownContact;
- if(!outcome||!botId||order.phoneBotId!==botId||order.mode!==(process.env.CHAPA_MODE??'test'))return null;
+ if(!outcome||!botId||order.phoneBotId!==botId||order.mode!==(order.apiVersion===1?process.env.CHAPA_V1_MODE??'test':process.env.CHAPA_MODE??'test'))return null;
  const amount=centsToEtb(order.amountCents),prefix=order.mode==='test'?'TEST · ':'';
  const batchReceipts=order.receipt&&typeof order.receipt==='object'&&!Array.isArray(order.receipt)?order.receipt.receipts:null;
  const numbers=Array.isArray(batchReceipts)&&batchReceipts.length>1&&batchReceipts.length<=100?batchReceipts.map(item=>item&&typeof item==='object'&&!Array.isArray(item)&&item.bid&&typeof item.bid==='object'&&!Array.isArray(item.bid)?item.bid.amount:null).filter((value):value is string=>typeof value==='string'&&/^\d{1,16}(?:\.\d{1,2})?$/.test(value)):[];

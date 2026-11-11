@@ -16,6 +16,7 @@ import {chapaDirectCreationRejected} from '@/lib/chapa-direct-request';
 import {bidPaymentCanRetry} from '@/lib/bid-payment-progress';
 import {clearChapaOriginalAttempt,readChapaOriginalAttempt,retainChapaOriginalAttempt} from '@/lib/chapa-original-attempt';
 import {retainPaymentRetryDraft} from '@/lib/payment-retry-draft';
+import {clearHostedChapaAttempt,readHostedChapaAttempt,retainHostedChapaAttempt} from '@/lib/chapa-hosted-attempt';
 export {chapaStatusLabel} from '@/lib/chapa-status-label';
 import type {BidBatchQuote,ChapaDirectIntent} from '@/lib/bid-batch-client';
 import {beginPaymentUiTiming,type PaymentUiTiming} from '@/lib/payment-ui-timing';
@@ -26,7 +27,7 @@ type Snapshot={identity:string|null;attempt:ChapaAttempt|null;directAttempt:Chap
 export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=false}:{retainOriginal?:boolean}={}){
  const {queryIdentity,refreshMe}=useTelegram(),{language}=useMiniLocale();
  const retained=()=>retainOriginal&&!initialId&&queryIdentity&&isPrivateQueryIdentity(queryIdentity)?readChapaOriginalAttempt(getMiniQueryClient(),queryIdentity,scope):null;
- const empty=(restore=true):Snapshot=>{const saved=restore?retained():null,recoveryId=restore?initialId??saved?.orderId??null:null;return {identity:queryIdentity,attempt:null,directAttempt:saved?.intent??null,recoveryId,order:null,error:'',errorCode:null,busy:false,restoring:!!recoveryId,paused:false,active:!!recoveryId||!!saved,handoff:'idle'}};
+ const empty=(restore=true):Snapshot=>{const saved=restore?retained():null,hosted=restore&&retainOriginal&&!initialId&&queryIdentity&&isPrivateQueryIdentity(queryIdentity)?readHostedChapaAttempt(getMiniQueryClient(),queryIdentity,scope):null,recoveryId=restore?initialId??hosted?.attempt.orderId??saved?.orderId??null:null;return {identity:queryIdentity,attempt:hosted?.attempt??null,directAttempt:saved?.intent??null,recoveryId,order:null,error:'',errorCode:null,busy:false,restoring:!!recoveryId,paused:false,active:!!recoveryId||!!saved||!!hosted,handoff:'idle'}};
  const [snapshot,setSnapshot]=useState<Snapshot>(()=>empty()),state=snapshot.identity===queryIdentity?snapshot:empty(),stateRef=useRef(state);stateRef.current=state;
  const epoch=useRef(0),controllers=useRef(new Set<AbortController>()),locked=useRef(false),invalidated=useRef<string|null>(null);
  const uiTiming=useRef<PaymentUiTiming|null>(null);
@@ -39,11 +40,14 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
   if(!acceptChapaSnapshot(stateRef.current.order,order))return;
   if(queryIdentity&&stateRef.current.directAttempt)retainPaymentRetryDraft(getMiniQueryClient(),queryIdentity,order.id,stateRef.current.directAttempt);
   if(retainOriginal&&queryIdentity){
+   const hosted=stateRef.current.attempt;
+   if(chapaConfirmed(order))clearHostedChapaAttempt(getMiniQueryClient(),queryIdentity,scope,hosted?{intentKey:hosted.intent.key}:{orderId:order.id});
+   else if(hosted)retainHostedChapaAttempt(getMiniQueryClient(),queryIdentity,scope,{...hosted,orderId:order.id});
    const intent=stateRef.current.directAttempt;
    if(chapaConfirmed(order))clearChapaOriginalAttempt(getMiniQueryClient(),queryIdentity,scope,intent?{intentKey:intent.key}:{orderId:order.id});
    else if(intent)retainChapaOriginalAttempt(getMiniQueryClient(),queryIdentity,scope,intent,order.id);
   }
-  update({order,recoveryId:order.id,error:'',errorCode:null,restoring:false});const confirmedScopes=confirmedChapaQueryScopes(order),scopes=confirmedScopes??(!chapaRecoverable(order)?['/api/payments/chapa/checkouts','/api/my-bids','/api/transactions']:null),revision=`${order.id}:${confirmedScopes?'confirmed':order.status}`;
+  update({order,recoveryId:order.id,error:'',errorCode:null,restoring:false,...(chapaConfirmed(order)?{attempt:null}:stateRef.current.attempt?{attempt:{...stateRef.current.attempt,orderId:order.id}}:{})});const confirmedScopes=confirmedChapaQueryScopes(order),scopes=confirmedScopes??(!chapaRecoverable(order)?['/api/payments/chapa/checkouts','/api/my-bids','/api/transactions']:null),revision=`${order.id}:${confirmedScopes?'confirmed':order.status}`;
   if(queryIdentity&&scopes&&invalidated.current!==revision){invalidated.current=revision;invalidatePrivateQueries(queryIdentity,scopes);if(confirmedScopes)void refreshMe().catch(()=>{})}
  },[scope,update,queryIdentity,refreshMe,retainOriginal]);
  const run=useCallback(async(url:string,options:RequestInit={})=>{
@@ -80,13 +84,19 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
    onError:cause=>update({error:cause instanceof ChapaClientError?cause.message:'Could not reach payment confirmation. We will retry automatically.',errorCode:cause instanceof ChapaClientError?cause.code:'UNAVAILABLE'}),
   });
  },[orderId,queryIdentity,confirmed,waiting,pollingDeadline,state.order?.chargeType,verifyOwned,update]);
- const create=useCallback(async(intent:ChapaIntent)=>{
+ const create=useCallback(async(intent:ChapaIntent,reservedNavigation?:ReturnType<typeof prepareChapaNavigation>)=>{
   if(!queryIdentity||locked.current||!isPrivateQueryIdentity(queryIdentity))return;
-  const version=epoch.current,next=stateRef.current.attempt??{version:1 as const,intent};locked.current=true;update({attempt:next,busy:true,active:true,error:'',errorCode:null,paused:false,handoff:'opening'});const navigation=prepareChapaNavigation();
-  try{const order=await run('/api/payments/chapa/checkouts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(next.intent)});if(current(version)&&order){update({attempt:{...next,orderId:order.id}});const eligible=!chapaConfirmed(order)&&order.providerStatus!=='SUCCESS'&&Date.parse(order.expiresAt)>Date.now()&&['SUBMITTING','PENDING','AUTH_NEEDED'].includes(order.status);update({handoff:eligible&&navigation.open(order.checkoutUrl)?'opened':eligible?'failed':'idle'});invalidatePrivateQueries(queryIdentity,['/api/payments/chapa/checkouts','/api/my-bids','/api/transactions'])}}
-  catch(cause){if(current(version))update({errorCode:cause instanceof ChapaClientError?cause.code:'UNAVAILABLE',error:language==='am'?'ግንኙነቱ ተቋርጧል። ይህንኑ ጥያቄ እንደገና ይሞክሩ ወይም ግብይቶችን ይመልከቱ።':cause instanceof ChapaClientError?cause.message:'Connection interrupted. Retry this request or view Transactions.'})}
+  const version=epoch.current,existing=stateRef.current.attempt,next=existing??{version:1 as const,intent};
+  if(retainOriginal)retainHostedChapaAttempt(getMiniQueryClient(),queryIdentity,scope,next);
+  locked.current=true;update({attempt:next,busy:true,active:true,error:'',errorCode:null,paused:false,handoff:'opening'});const navigation=reservedNavigation??prepareChapaNavigation();
+  try{const order=await run('/api/payments/chapa/checkouts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(next.intent)});if(current(version)&&order){const eligible=!chapaConfirmed(order)&&order.providerStatus!=='SUCCESS'&&Date.parse(order.expiresAt)>Date.now()&&['SUBMITTING','PENDING','AUTH_NEEDED'].includes(order.status);update({handoff:eligible&&navigation.open(chapaCheckoutUrl(order.checkoutUrl,order.apiVersion))?'opened':eligible?'failed':'idle'});invalidatePrivateQueries(queryIdentity,['/api/payments/chapa/checkouts','/api/my-bids','/api/transactions'])}}
+  catch(cause){if(current(version)){
+   const rejected=!existing&&cause instanceof ChapaClientError&&cause.status>=400&&cause.status<500&&['INVALID_INPUT','INVALID_AMOUNT','CONTACT_REQUIRED','BIDDING_RESTRICTED','TERMS_CHANGED','LEGACY_TERMS','CAP_REACHED','CONSECUTIVE_LIMIT','OWN_DUPLICATE','AUCTION_CLOSED','AUCTIONS_PAUSED','COUPON_UNAVAILABLE','QUOTE_CHANGED','STALE_QUOTE'].includes(cause.code);
+   if(rejected&&retainOriginal)clearHostedChapaAttempt(getMiniQueryClient(),queryIdentity,scope,{intentKey:next.intent.key});
+   update({...(rejected?{attempt:null,active:false}:{}),errorCode:cause instanceof ChapaClientError?cause.code:'UNAVAILABLE',error:language==='am'?'ክፍያው ሊጀመር አልቻለም። ይህንኑ ጥያቄ እንደገና ይሞክሩ።':cause instanceof ChapaClientError?cause.message:'Connection interrupted. Resume this same checkout.'});
+  }}
   finally{navigation.cancel();if(current(version)){locked.current=false;update({busy:false,handoff:stateRef.current.handoff==='opening'?'failed':stateRef.current.handoff})}}
- },[queryIdentity,current,update,run,language]);
+ },[queryIdentity,current,update,run,language,retainOriginal,scope]);
  // New direct charges never leave Lowwin. Freeze the original request in memory
  // before HTTP; an interrupted response must retry that same operation/key.
  const createDirect=useCallback(async(intent:ChapaDirectIntent)=>{
@@ -128,7 +138,7 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
  },[queryIdentity,initialId,current,update,verifyOwned,language]);
  // A failed read is not permission to drop an unresolved immutable command.
  const canStartAgain=!state.busy&&!state.restoring&&state.active&&!!state.order&&(bidPaymentCanRetry(state.order)||state.order.purpose==='TOP_UP'&&state.order.status==='CREDITED'&&chapaConfirmed(state.order));
- const startAgain=()=>{if(!canStartAgain||locked.current)return;if(retainOriginal&&queryIdentity)clearChapaOriginalAttempt(getMiniQueryClient(),queryIdentity,scope,stateRef.current.directAttempt?{intentKey:stateRef.current.directAttempt.key}:{orderId:stateRef.current.order?.id??stateRef.current.recoveryId??undefined});epoch.current++;controllers.current.forEach(c=>c.abort());controllers.current.clear();invalidated.current=null;uiTiming.current=null;const next=empty(false);stateRef.current=next;setSnapshot(next)};
+ const startAgain=()=>{if(!canStartAgain||locked.current)return;if(retainOriginal&&queryIdentity){clearHostedChapaAttempt(getMiniQueryClient(),queryIdentity,scope,stateRef.current.attempt?{intentKey:stateRef.current.attempt.intent.key}:{orderId:stateRef.current.order?.id??stateRef.current.recoveryId??undefined});clearChapaOriginalAttempt(getMiniQueryClient(),queryIdentity,scope,stateRef.current.directAttempt?{intentKey:stateRef.current.directAttempt.key}:{orderId:stateRef.current.order?.id??stateRef.current.recoveryId??undefined})}epoch.current++;controllers.current.forEach(c=>c.abort());controllers.current.clear();invalidated.current=null;uiTiming.current=null;const next=empty(false);stateRef.current=next;setSnapshot(next)};
  return {...state,opening:state.handoff==='opening',started:state.active,create,createDirect,authorize,check,canStartAgain,startAgain,beginTiming,markPresented};
 }
 /** One-shot health hints never change the accepted provider authorization. */
@@ -188,7 +198,7 @@ export function ChapaPaymentStatus({payment,onNavigate,onStartAgain,readOnly=fal
   authorization:['Finish the authorization on the checkout page. Your result will appear here automatically.','ፈቃዱን በክፍያ ገጹ ያጠናቅቁ። ውጤቱ እዚህ በራሱ ይታያል።'],
   confirming:['Waiting for payment confirmation. Your result updates automatically. If you already paid, please do not pay again.','የክፍያ ማረጋገጫ በመጠባበቅ ላይ። ውጤቱ እዚህ በራሱ ይታያል። ይህን መስኮት መዝጋት ይችላሉ።'],
  };
- const url=order&&!finished&&['PENDING','AUTH_NEEDED'].includes(order.status)&&!['review','unavailable','applying','access'].includes(phase)&&(payment.handoff==='failed'||!payment.attempt)&&Date.parse(order.expiresAt)>now?chapaCheckoutUrl(order.checkoutUrl):null;
+ const url=order&&!finished&&['PENDING','AUTH_NEEDED'].includes(order.status)&&!['review','unavailable','applying','access'].includes(phase)&&(payment.handoff==='failed'||!payment.attempt)&&Date.parse(order.expiresAt)>now?chapaCheckoutUrl(order.checkoutUrl,order.apiVersion):null;
  const retryOriginal=!payment.busy&&chapaCanResumeCheckout(payment.attempt,order);
  return <section className={`${styles.paymentStatus} ${styles.smoothPaymentStatus}${longWait?' '+styles.longPaymentWait:''}`} data-payment-state={phase} data-payment-long-wait={longWait||undefined}>
   <div className={styles.paymentStatusIcon} data-tone={attention?'attention':finished?'success':'pending'}>{longWait?<Clock3 size={32} aria-hidden="true"/>:spinning?<LoaderCircle className={styles.paymentSpinner} size={26} aria-hidden="true"/>:attention?<TriangleAlert size={25} aria-hidden="true"/>:finished?<Check size={26} aria-hidden="true"/>:<Clock3 size={26} aria-hidden="true"/>}</div>
