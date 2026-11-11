@@ -1,5 +1,7 @@
 import 'dotenv/config';
 import {chapaWorkerConfiguration} from '../src/modules/payments/chapa-readiness';
+import {chapaAvailability} from '../src/modules/payments/chapa-provider';
+import {chapaV1Availability} from '../src/modules/payments/chapa-v1-provider';
 import {installTelegramRateLimit} from '../src/modules/notifications/telegram-rate';
 const configuration=chapaWorkerConfiguration(process.env);
 console.info(JSON.stringify(configuration));
@@ -17,7 +19,9 @@ console.info('chapa_receipt_delivery_configuration',{enabled:!!receiptBot});
 let stopped=false;process.on('SIGTERM',()=>{stopped=true});process.on('SIGINT',()=>{stopped=true});
 try{
  while(!stopped){
-  try{const result=await processChapaEvents(db);if(result.checked)console.info('chapa_events',result);const direct=await reconcileDirectCheckouts(db);if(direct.checked)console.info('chapa_direct_reconciliation',direct);if(process.env.CHAPA_LEGACY_SWEEP_ENABLED==='true'){const legacy=await recoverChapaCheckouts(db);if(legacy.checked)console.info('chapa_legacy_recovery',legacy)}}catch{console.error('chapa_event_processing_unavailable')}
+  try{const result=await processChapaEvents(db);if(result.checked)console.info('chapa_events',result)}catch{console.error('chapa_event_processing_unavailable')}
+  if(chapaAvailability().recoveryEnabled)try{const direct=await reconcileDirectCheckouts(db);if(direct.checked)console.info('chapa_direct_reconciliation',direct)}catch{console.error('chapa_legacy_direct_recovery_unavailable')}
+  if(chapaV1Availability().recoveryEnabled||process.env.CHAPA_LEGACY_SWEEP_ENABLED==='true')try{const result=await recoverChapaCheckouts(db);if(result.checked)console.info('chapa_recovery',result)}catch{console.error('chapa_recovery_unavailable')}
   let dispatched=false;
   if(!stopped&&receiptBot)try{dispatched=await dispatchOne(db,receiptBot,{kind:chapaReceiptKind});if(dispatched)console.info('chapa_receipt_dispatched')}catch{console.error('chapa_receipt_delivery_unavailable')}
   await new Promise(resolve=>setTimeout(resolve,dispatched?100:2000));

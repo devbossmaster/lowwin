@@ -34,6 +34,7 @@ test('launch transport, fonts and measured account latency',async({browser,extra
    page.on('pageerror',error=>errors.push(error.message));
    page.on('request',request=>{if(new URL(request.url()).pathname==='/api/auth/telegram/miniapp/signin'){signins.push(request.method());signInStartedMs=Math.round(performance.now()-started)}if(request.resourceType()==='document')documents.push(new URL(request.url()).pathname)});
    page.on('response',response=>{if(new URL(response.url()).pathname==='/api/auth/telegram/miniapp/signin')apiTiming.push(response.headerValue('server-timing').then(value=>value??undefined))});
+   const signInResponse=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/auth/telegram/miniapp/signin'&&response.request().method()==='POST');
    const started=performance.now();await page.goto('/telegram',{waitUntil:'domcontentloaded'});
    await expect(page.getByRole('navigation',{name:'Your navigation'})).toBeVisible();
    const homeReadyMs=Math.round(performance.now()-started);
@@ -41,11 +42,14 @@ test('launch transport, fonts and measured account latency',async({browser,extra
    await page.evaluate(()=>document.fonts.ready);const fontsReadyMs=Math.round(performance.now()-started);
    await expect(page.locator('#home-headline')).toBeVisible();
    const fonts=await page.evaluate(()=>performance.getEntriesByType('resource').filter(entry=>entry.name.includes('/fonts/')||entry.name.includes('telegram-web-app.js')).map(entry=>({asset:new URL(entry.name).pathname,startMs:Math.round(entry.startTime),durationMs:Math.round(entry.duration),transferBytes:(entry as PerformanceResourceTiming).transferSize})));
+   // Public Home can render before background sign-in has installed the session cookie.
+   const authenticated=await signInResponse;expect(authenticated.status()).toBe(200);await authenticated.finished();
+   const accountReadyMs=Math.round(performance.now()-started);
    if(phase!=='before'){expect(signins).toHaveLength(1);expect(documents).toEqual(['/telegram'])}
    const accountMs:number[]=[];
    if(!slow){for(let sample=0;sample<20;sample++){const began=performance.now();expect((await page.request.get('/api/me')).status()).toBe(200);accountMs.push(Math.round(performance.now()-began))}}
    accountMs.sort((a,b)=>a-b);
-   report[slow?'slow':'normal']={homeReadyMs,fontsReadyMs,signInStartedMs,signInRequests:signins.length,documentRequests:documents,serverTiming:await Promise.all(apiTiming),initialScriptTransferBytes:scripts.reduce((sum,item)=>sum+item.transferBytes,0),scripts,fonts,accountApiSamples:accountMs.length,accountApiP95Ms:accountMs.length?accountMs[Math.ceil(accountMs.length*.95)-1]:null};
+   report[slow?'slow':'normal']={homeReadyMs,fontsReadyMs,accountReadyMs,signInStartedMs,signInRequests:signins.length,documentRequests:documents,serverTiming:await Promise.all(apiTiming),initialScriptTransferBytes:scripts.reduce((sum,item)=>sum+item.transferBytes,0),scripts,fonts,accountApiSamples:accountMs.length,accountApiP95Ms:accountMs.length?accountMs[Math.ceil(accountMs.length*.95)-1]:null};
    await page.screenshot({path:`${root}/${phase}-${info.project.name}-${slow?'slow':'normal'}.png`});
    expect(errors).toEqual([]);await context.close();
   }

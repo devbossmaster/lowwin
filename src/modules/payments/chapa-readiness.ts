@@ -1,5 +1,7 @@
 import {chapaAvailability,chapaWebhookSignatureProfile,isChapaWebhookSecret,createChapaTransport,parseChapaPaymentMethods} from './chapa-provider';
 
+import {chapaV1Availability} from './chapa-v1-provider';
+
 type Environment=Record<string,string|undefined>;
 type Options={schema?:boolean;methods?:boolean};
 type Dependencies={readSchema?:()=>Promise<{driftCount:number}>;fetcher?:typeof fetch};
@@ -48,6 +50,8 @@ function missingPrerequisites(raw:Environment,mode:'test'|'live'){
 
 /** Safe startup diagnostics: only booleans, mode and static setting names. */
 export function chapaWorkerConfiguration(raw:Environment){
+ const v1=chapaV1Availability(raw);
+ if(v1.recoveryEnabled)return {event:'chapa_worker_configuration',apiVersion:1,mode:v1.mode,configured:v1.configured,recoveryEnabled:true,legacySweepEnabled:raw.CHAPA_LEGACY_SWEEP_ENABLED==='true',missingPrerequisites:[]};
  const health=chapaAvailability(raw),missing=missingPrerequisites(raw,health.mode);
  if(!health.recoveryEnabled&&raw.CHAPA_RECOVERY_ENABLED!=='true')missing.push('CHAPA_RECOVERY_ENABLED');
  return {event:'chapa_worker_configuration',mode:health.mode,configured:health.configured,recoveryEnabled:health.recoveryEnabled,legacySweepEnabled:raw.CHAPA_LEGACY_SWEEP_ENABLED==='true',missingPrerequisites:missing};

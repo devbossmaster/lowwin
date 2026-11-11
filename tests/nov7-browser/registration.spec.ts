@@ -17,7 +17,7 @@ async function registrationFixture(page:Page,{supported=true,holdAuthentication=
   calls.contactChecks++;return route.fulfill({json:{verified,masked:verified?'•••• 1234':null}});
  });
  await page.route('**/api/me',route=>{calls.me++;return verified||registered?route.fulfill({json:account}):route.fulfill({status:401,json:{error:'Contact not verified by server'}})});
- for(const path of ['/api/wallet','/api/profile','/api/my-bids','/api/alerts'])await page.route(`**${path}*`,route=>{calls.privateReads++;return route.fulfill(path==='/api/wallet'&&(verified||registered)?{json:{available:'25.00',held:'0',total:'25.00'}}:{status:401,json:{error:'Private fixture'}})});
+ for(const path of ['/api/wallet','/api/profile','/api/my-bids','/api/alerts'])await page.route(`**${path}*`,route=>{calls.privateReads++;if(verified||registered){if(path==='/api/wallet')return route.fulfill({json:{available:'25.00',held:'0',total:'25.00'}});if(path==='/api/alerts'&&new URL(route.request().url()).searchParams.get('summary')==='1')return route.fulfill({json:{unread:0}})}return route.fulfill({status:401,json:{error:'Private fixture'}})});
  await page.addInitScript(({supported})=>{
   localStorage.setItem('lowwin:introduction:v1','dismissed');localStorage.setItem('lowwin-language','en');
   const state:ConsentState={callbacks:[],closes:0};(window as unknown as ConsentWindow).__consentFixture=state;
@@ -32,10 +32,11 @@ test('public Home renders during private bootstrap; contact consent is explicit 
  const state=await registrationFixture(page,{holdAuthentication:true});
  try{
   await page.goto('/');await expect(page.locator('#discover-auctions')).toBeVisible();
-  const login=page.getByRole('banner').getByRole('button',{name:'Log in',exact:true});await expect(login).toBeVisible();
+  const header=page.getByRole('banner');await expect(header.getByRole('status',{name:'Restoring account',exact:true})).toBeVisible();
   expect(state.calls.privateReads).toBe(0);expect(await callbacks(page)).toBe(0);
+  state.release();const login=header.getByRole('button',{name:'Log in',exact:true});await expect(login).toBeVisible();
   await login.click();const sheet=page.getByRole('dialog',{name:'Log in to Lowwin'});await expect(sheet).toBeVisible();expect(await callbacks(page)).toBe(0);
-  state.release();const share=sheet.getByRole('button',{name:'Share contact',exact:true});await expect(share).toBeEnabled();expect(state.calls.contactChecks).toBe(0);
+  const share=sheet.getByRole('button',{name:'Share contact',exact:true});await expect(share).toBeEnabled();expect(state.calls.contactChecks).toBe(0);
   await share.click();expect(await callbacks(page)).toBe(1);await respond(page,0,false);
   await expect(sheet.getByRole('status')).toContainText('cancelled');expect(state.calls.contactChecks).toBe(0);expect(state.calls.botPrompts).toBe(0);
   await sheet.getByRole('button',{name:'Keep browsing',exact:true}).click();await expect(sheet).toHaveCount(0);await expect(page.locator('#discover-auctions')).toBeVisible();
@@ -78,15 +79,15 @@ test('guest bid selections survive native-contact login without an automatic quo
    localStorage.setItem('lowwin:introduction:v1','dismissed');localStorage.setItem('lowwin-language','en');const state:ConsentState={callbacks:[],closes:0};(window as unknown as ConsentWindow).__consentFixture=state;
    window.Telegram={WebApp:{initData:launch,ready(){},expand(){},setHeaderColor(){},setBackgroundColor(){},isVersionAtLeast(){return true},requestContact(callback){state.callbacks.push(callback)},close(){state.closes++}}};
   },{launch:signedLaunch({user:JSON.stringify({id:telegramId,first_name:'Guest draft fixture'})},process.env.TELEGRAM_BOT_TOKEN)});
-  await page.route('**/api/payments/chapa/direct',route=>{financialWrites++;return route.abort()});await page.route('**/api/payments/chapa/batches/**',route=>{if(route.request().method()==='POST')financialWrites++;return route.abort()});
+  await page.route('**/api/payments/chapa/**',route=>{if(route.request().method()==='POST'){financialWrites++;return route.abort()}return route.continue()});
   await page.route('**/api/wallet',route=>route.fulfill({json:{available:'25.00',held:'0',total:'25.00'}}));
   await page.goto('/?q='+encodeURIComponent(title));const card=page.locator('.auction-card').filter({hasText:title});await expect(card).toBeVisible();await card.getByRole('button').click();const bid=page.getByRole('dialog',{name:/Place your bid/}),input=bid.getByRole('textbox',{name:'Your bid amount',exact:true});
-  await input.fill('2.00');await bid.getByRole('button',{name:'Add bid amount',exact:true}).click();await input.fill('3.00');await bid.locator('[data-payment-action]').click();const registration=page.getByRole('dialog',{name:'Log in to Lowwin'});await expect(registration).toBeVisible();
+  await input.fill('2.00');await bid.getByRole('button',{name:'Add bid amount',exact:true}).click();await input.fill('3.00');const pay=bid.locator('[data-bid-continue]');await expect(pay).toHaveText('Pay with Chapa');await pay.click();const registration=page.getByRole('dialog',{name:'Log in to Lowwin'});await expect(registration).toBeVisible();expect(await callbacks(page)).toBe(0);expect(financialWrites).toBe(0);
   await registration.getByRole('button',{name:'Share contact',exact:true}).click();expect(await callbacks(page)).toBe(1);
   // Simulate the authenticated bot webhook's committed own-contact proof. The
   // browser still completes through the real bound GET/contact + GET/me APIs.
   await verifyFixtureContact(db,telegramId);await respond(page,0,true);await expect(registration).toHaveCount(0);await expect(page.locator('[data-header-balance]')).toContainText('25.00');
-  await expect(bid.getByRole('button',{name:'Edit 2.00',exact:true})).toBeVisible();await expect(bid.getByRole('button',{name:'Edit 3.00',exact:true})).toBeVisible();await expect(bid.locator('[data-payment-action]')).toContainText('View bids');expect(financialWrites).toBe(0);
+  await expect(bid.getByRole('button',{name:'Edit 2.00',exact:true})).toBeVisible();await expect(input).toHaveValue('3.00');await expect(bid.getByRole('button',{name:'Edit 3.00',exact:true})).toHaveCount(0);await expect(bid.locator('[data-bid-total]')).toContainText('20.00');await expect(pay).toHaveText('Pay with Chapa');await expect(bid.locator('[data-hosted-checkout-status]')).toHaveCount(0);expect(financialWrites).toBe(0);
   const user=await db.user.findUniqueOrThrow({where:{telegramId:String(telegramId)}});expect(await db.bid.count({where:{userId:user.id}})).toBe(0);expect(await db.chapaCheckout.count({where:{userId:user.id}})).toBe(0);expect(await callbacks(page)).toBe(1);
  }finally{await db.product.update({where:{id:auction.productId!},data:{visible:false}});await db.$disconnect()}
 });

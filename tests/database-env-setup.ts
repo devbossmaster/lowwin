@@ -12,6 +12,7 @@ const group: Record<string, string> = {
   'admin.test.ts': 'ADMIN_TEST_DATABASE_URL', 'operations.test.ts': 'OPS_TEST_DATABASE_URL',
   'payments.test.ts': 'PAYMENT_TEST_DATABASE_URL', 'payment-session.test.ts': 'PAYMENT_TEST_DATABASE_URL',
   'admin-wallet-credit.test.ts': 'ADMIN_CREDIT_TEST_DATABASE_URL',
+  'admin-payment-table-db.test.ts': 'ADMIN_PAYMENT_TABLE_TEST_DATABASE_URL',
   'auction-activity.test.ts': 'ACTIVITY_TEST_DATABASE_URL', 'arifpay-checkout.test.ts': 'ARIFPAY_TEST_DATABASE_URL',
   'chapa-checkout.test.ts':'CHAPA_TEST_DATABASE_URL',
   'chapa-direct-batch.test.ts':'CHAPA_DIRECT_TEST_DATABASE_URL',
@@ -22,6 +23,9 @@ const group: Record<string, string> = {
   'result-breakdown.test.ts': 'RESULT_TEST_DATABASE_URL',
   'result-publication.test.ts': 'RESULT_TEST_DATABASE_URL',
   'result-campaign-delivery.test.ts': 'RESULT_NOTIFICATION_TEST_DATABASE_URL',
+  'winner-banner-db.test.ts': 'WINNER_BANNER_TEST_DATABASE_URL',
+  'my-bids-read.test.ts': 'MY_BIDS_TEST_DATABASE_URL',
+  'wallet-history.test.ts': 'WALLET_HISTORY_TEST_DATABASE_URL',
 };
 const database = process.env[group[filename] ?? 'TEST_DATABASE_URL'];
 if (database) {

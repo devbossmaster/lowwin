@@ -31,13 +31,16 @@ test('browse filters survive navigation and private screens reuse a fresh read',
    const url=new URL((await link.getAttribute('href'))!,'http://localhost');
    expect(url.searchParams.get('q')).toBe(marker);expect(url.searchParams.get('status')).toBe('live');
   }
-  const cards=page.locator('article').filter({has:page.getByRole('heading',{name:new RegExp(marker)})});
+  const main=page.getByRole('main'),cards=main.getByRole('article').filter({has:page.getByRole('heading',{name:new RegExp(marker)})});
+  // Next retains prior route trees as hidden DOM for Back navigation. Assert
+  // the current page's accessible empty state rather than matching hidden text.
+  const empty=main.getByRole('heading',{name:'Nothing here just yet',exact:true});
   await expect(cards).toHaveCount(3);await expect(cards.first()).toContainText('Headphones');
   await sorts.getByRole('link',{name:'Highest fee',exact:true}).click();
   await expect(sorts.getByRole('link',{name:'Highest fee',exact:true})).toHaveAttribute('aria-current','page');
   await expect(cards.first()).toContainText('Camera');
   await page.screenshot({path:`${root}/browse-${info.project.name}-en.png`,fullPage:true});
-  await statuses.getByRole('link',{name:'Upcoming',exact:true}).click();await expect(page.getByText('Nothing here just yet',{exact:true})).toBeVisible();
+  await statuses.getByRole('link',{name:'Upcoming',exact:true}).click();await expect(statuses.getByRole('link',{name:'Upcoming',exact:true})).toHaveAttribute('aria-current','page');await expect(empty).toBeVisible();await expect(main.getByRole('article')).toHaveCount(0);
   expect(new URL(page.url()).searchParams.get('sort')).toBe('fee-high');
   await page.goBack();await expect(cards).toHaveCount(3);
   const category=categories.getByRole('link').nth(1),categoryHref=(await category.getAttribute('href'))!;
@@ -45,8 +48,8 @@ test('browse filters survive navigation and private screens reuse a fresh read',
   await category.click();await expect(category).toHaveAttribute('aria-current','page');await expect(page).toHaveURL(new URL(categoryHref,process.env.BETTER_AUTH_URL).href);expect(new URL(page.url()).searchParams.get('sort')).toBe('fee-high');
   await page.getByRole('textbox',{name:'Search auctions'}).fill('no-result-fixture');
   await page.getByRole('button',{name:'Search',exact:true}).click();
-  await expect(page.getByText('Nothing here just yet',{exact:true})).toBeVisible();
-  const query=new URL(page.url()).searchParams;expect(query.get('sort')).toBe('fee-high');expect(query.get('status')).toBe('live');expect(query.get('category')).toBeTruthy();
+  await expect(empty).toBeVisible();await expect(main.getByRole('article')).toHaveCount(0);
+  const query=new URL(page.url()).searchParams;expect(query.get('q')).toBe('no-result-fixture');expect(query.get('sort')).toBe('fee-high');expect(query.get('status')).toBe('live');expect(query.get('category')).toBeTruthy();
   await page.goto('/draws?tab=upcoming');await expect(page.getByRole('timer').first()).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await page.screenshot({path:`${root}/draws-${info.project.name}-en.png`});

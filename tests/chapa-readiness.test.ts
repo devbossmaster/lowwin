@@ -7,6 +7,12 @@ function environment(patch:Record<string,string|undefined>={}){
 const method=()=>({name:'Untrusted provider display name',slug:'telebirr',is_mobile_money:true,can_process_payments:true,supported_currencies:{ETB:{default_min:100,default_max:1000000,countries:{ET:{is_enabled:true,min_amount:250,max_amount:500000}}}}});
 
 describe('non-charging Chapa readiness',()=>{
+ it('starts v1 recovery independently of disabled legacy credentials without exposing configuration secrets',()=>{
+  const raw:Record<string,string|undefined>=environment({CHAPA_ENABLED:'false',CHAPA_PRIVATE_KEY:undefined,CHAPA_V1_MODE:'test',CHAPA_V1_SECRET_KEY:'CHASECK_TEST-'+'c'.repeat(40),CHAPA_V1_WEBHOOK_SECRET:'independent-v1-webhook-secret-thirty-two-characters',CHAPA_V1_SCHEMA_READY:'true',CHAPA_V1_RECOVERY_ENABLED:'true'});
+  const report=chapaWorkerConfiguration(raw);
+  expect(report).toMatchObject({apiVersion:1,configured:true,recoveryEnabled:true,missingPrerequisites:[]});
+  expect(JSON.stringify(report)).not.toContain(raw.CHAPA_V1_SECRET_KEY!);expect(JSON.stringify(report)).not.toContain(raw.CHAPA_V1_WEBHOOK_SECRET!);
+ });
  it('reports an invalid signature profile and keeps all optional checks offline',async()=>{
   const raw=environment({CHAPA_WEBHOOK_SIGNATURE_PROFILE:'unrecognized',CHAPA_RECOVERY_ENABLED:'true'}),fetcher=vi.fn<typeof fetch>(),readSchema=vi.fn();
   const report=await checkChapaReadiness(raw,{schema:true,methods:true},{fetcher,readSchema});

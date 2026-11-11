@@ -31,7 +31,7 @@ function project(row:Row):TransactionRow{
 /** A single owner-scoped, globally ordered page. Never load provider evidence,
  * entire receipt histories, contact details, or perform a query for each row. */
 export async function getTransactions(client:PrismaClient,userId:string,input:unknown={}):Promise<TransactionsPage>{
- const query=transactionsQuerySchema.parse(input),chapaConfigured=process.env.CHAPA_SCHEMA_READY==='true';
+ const query=transactionsQuerySchema.parse(input),chapaConfigured=process.env.CHAPA_SCHEMA_READY==='true'||process.env.CHAPA_V1_SCHEMA_READY==='true';
  const selected:Prisma.Sql[]=[];
  if(chapaConfigured)selected.push(chapaRows(userId));
  if(query.type!=='TOP_UP')selected.push(walletRows(userId,chapaConfigured));
@@ -44,7 +44,7 @@ export async function getTransactions(client:PrismaClient,userId:string,input:un
  return {items:rows.slice(0,pageSize).map(project),page:query.page,nextPage:rows.length>pageSize?query.page+1:null};
 }
 export async function getWalletTransaction(client:PrismaClient,userId:string,id:string):Promise<WalletTransactionDetail>{
- const value=z.uuid().parse(id),rows=await client.$queryRaw<Row[]>(Prisma.sql`WITH transactions AS (${walletRows(userId,process.env.CHAPA_SCHEMA_READY==='true')}) SELECT * FROM transactions WHERE id=${value} LIMIT 1`),row=rows[0];
+ const value=z.uuid().parse(id),rows=await client.$queryRaw<Row[]>(Prisma.sql`WITH transactions AS (${walletRows(userId,process.env.CHAPA_SCHEMA_READY==='true'||process.env.CHAPA_V1_SCHEMA_READY==='true')}) SELECT * FROM transactions WHERE id=${value} LIMIT 1`),row=rows[0];
  if(!row)throw new PrivateApiError(404,'Transaction not found.');
  return {item:{...project(row),auctionCode:row.auctionCode,auctionSlug:row.auctionSlug,bidNumber:row.bidNumber!,grossFee:row.grossFee!,discountPoints:new Prisma.Decimal(row.grossFee!).sub(row.amount).toString(),currency:'ETB',status:'BID_ACCEPTED',references:{bidId:row.id,journalId:row.journalId!}}};
 }

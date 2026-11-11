@@ -3,21 +3,21 @@ import {z} from 'zod';
 import {requireAdmin} from './boundary';
 import {AdminError} from './errors';
 import {arifPayAvailability} from '../payments/arifpay-provider';
-import {chapaAvailability} from '../payments/chapa-provider';
+import {chapaV1Availability} from '../payments/chapa-v1-provider';
 import {readPlayerTable,readChapaTable,readWinnerTable} from './master-table-read';
 function eatDayStart(now:Date){const d=new Date(now.getTime()+3*3600000);return new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate())-3*3600000)}
 const filters=z.object({page:z.coerce.number().int().min(1).max(100000).default(1),q:z.string().trim().max(100).default(''),status:z.string().regex(/^[A-Z_]*$/).max(40).default(''),sort:z.enum(['newest','oldest','amount']).default('newest'),view:z.enum(['completed','unfinished','review','failed','all']).optional(),purpose:z.enum(['','TOP_UP','BID']).default('')});
 export async function tableExists(client:PrismaClient,name:string){const [r]=await client.$queryRaw<{ready:boolean}[]>`SELECT to_regclass(${`public."${name}"`}) IS NOT NULL AS ready`;return r.ready}
 export function gatewayStatus(raw:Record<string,string|undefined>=process.env){
- const arif=arifPayAvailability(raw),chapa=chapaAvailability(raw),selected=raw.PAYMENT_GATEWAY==='ARIFPAY'?'ArifPay':raw.PAYMENT_GATEWAY==='CHAPA'?'Chapa':null;
+ const arif=arifPayAvailability(raw),chapa=chapaV1Availability(raw),selected=raw.PAYMENT_GATEWAY==='ARIFPAY'?'ArifPay':raw.PAYMENT_GATEWAY==='CHAPA'?'Chapa':null;
  const state=selected===null?'Not selected':selected==='Chapa'?chapa.enabled?`${chapa.mode==='test'?'Test':'Live'} checkout enabled`:chapa.recoveryEnabled?'Recovery only':chapa.configured?'Disabled':'Not configured':arif.enabled?'Live checkout enabled':arif.recoveryEnabled?'Recovery only':raw.ARIFPAY_API_KEY?'Disabled':'Not configured';
- return {selected,state,arifPay:{implemented:true,enabled:arif.enabled,recoveryEnabled:arif.recoveryEnabled},chapa:{implemented:true,configured:chapa.configured,enabled:chapa.enabled,recoveryEnabled:chapa.recoveryEnabled,mode:chapa.mode},callbackChecks:'Provider evidence is verified server-side. Browser return pages are not proof of payment.'};
+ return {selected,state,arifPay:{implemented:true,enabled:arif.enabled,recoveryEnabled:arif.recoveryEnabled},chapa:{apiVersion:1,implemented:true,configured:chapa.configured,enabled:chapa.enabled,recoveryEnabled:chapa.recoveryEnabled,mode:chapa.mode},callbackChecks:'Provider evidence is verified server-side. Browser return pages are not proof of payment.'};
 }
 export async function financialSummary(client:PrismaClient,now:Date){
  const chapa=await tableExists(client,'ChapaCheckout');
  // Do not parse SQL naming ChapaCheckout until its additive migration exists.
  // Direct BID receipts are fee payments, not a second wallet-deposit total.
- const chapaDeposits=chapa?Prisma.sql`(SELECT trunc(COALESCE(SUM(c."amountCents"),0)::numeric/100,2) FROM "ChapaCheckout" c JOIN "Journal" j ON j.id=c."creditJournalId" AND j.kind='CHAPA_RECEIPT' JOIN "Operation" o ON o.id=j."operationId" AND o.scope='CHAPA_RECEIPT' AND o."userId"=c."userId" AND o.key=c.id WHERE c.mode='live' AND c.purpose='TOP_UP' AND c.status='CREDITED' AND c.currency='ETB' AND j."createdAt"<=${now} AND o.result->>'checkoutId'=c.id AND o.result->>'mode'='live' AND o.result->>'currency'='ETB' AND o.result->>'amountCents'=c."amountCents"::text)`:Prisma.sql`0::numeric`;
+ const chapaDeposits=chapa?Prisma.sql`(SELECT trunc(COALESCE(SUM(c."amountCents"),0)::numeric/100,2) FROM "ChapaCheckout" c JOIN "Journal" j ON j.id=c."creditJournalId" AND j.kind='CHAPA_RECEIPT' JOIN "Operation" o ON o.id=j."operationId" AND o.scope='CHAPA_RECEIPT' AND o."userId"=c."userId" AND o.key=c.id WHERE c.mode='live' AND c.purpose='TOP_UP' AND c.status='CREDITED' AND c.currency='ETB' AND j."createdAt"<=${now} AND o.result->>'checkoutId'=c.id AND ((c."apiVersion"=1 AND o.result->>'apiVersion'='1') OR (c."apiVersion"=2 AND COALESCE(o.result->>'apiVersion','2')='2')) AND o.result->>'mode'='live' AND o.result->>'currency'='ETB' AND o.result->>'amountCents'=c."amountCents"::text)`:Prisma.sql`0::numeric`;
  const [r]=await client.$queryRaw<{grossFees:string;discounts:string;refunds:string;netFees:string;deposits:string;available:string;held:string;count:number;todayEtb:string}[]>(Prisma.sql`
  WITH fees AS (SELECT COALESCE(SUM(b."feePoints"),0) AS gross,COALESCE(SUM(b."feePoints") FILTER(WHERE b."acceptedAt">=${eatDayStart(now)}),0) AS today,COUNT(*)::int AS count FROM "Bid" b JOIN "Auction" a ON a.id=b."auctionId" WHERE NOT a."isDemo" AND a."testRunId" IS NULL AND b."acceptedAt"<=${now}),
  adjustments AS (SELECT COALESCE(SUM(-p.delta) FILTER(WHERE j.kind='REFERRAL_DISCOUNT'),0) AS discount,COALESCE(SUM(-p.delta) FILTER(WHERE j.kind IN ('AUCTION_FEE_REFUND','AUCTION_RESET_COMPENSATION')),0) AS refund FROM "Journal" j JOIN "Operation" o ON o.id=j."operationId" JOIN "Posting" p ON p."journalId"=j.id JOIN "LedgerAccount" la ON la.id=p."accountId" JOIN "Auction" a ON a.id=o.result->>'auctionId' WHERE la.name='platform:fees' AND NOT a."isDemo" AND a."testRunId" IS NULL),

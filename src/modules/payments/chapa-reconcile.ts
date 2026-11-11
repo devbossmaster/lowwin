@@ -5,7 +5,7 @@ export type ChapaReceiptDrift={kind:'CHAPA_RECEIPT';name:string;code:'JOURNAL_LI
 /** Audit committed evidence in one MVCC snapshot. This detects drift; it never
  * treats a browser/webhook response as payment evidence or repairs money. */
 export async function reconcileChapaReceipts(client:PrismaClient|Prisma.TransactionClient):Promise<ChapaReceiptDrift[]>{
- if(process.env.CHAPA_SCHEMA_READY!=='true')return [];
+ if(process.env.CHAPA_SCHEMA_READY!=='true'&&process.env.CHAPA_V1_SCHEMA_READY!=='true')return [];
  return client.$queryRaw<ChapaReceiptDrift[]>`
   WITH paid AS (
    SELECT c.*,j.kind AS journal_kind,j.reference AS journal_reference,
@@ -35,7 +35,7 @@ export async function reconcileChapaReceipts(client:PrismaClient|Prisma.Transact
     OR p.operation_scope IS DISTINCT FROM 'CHAPA_RECEIPT' OR p.operation_key IS DISTINCT FROM p.id
     OR p.operation_user IS DISTINCT FROM p."userId"
     OR p."evidenceHash" IS NULL OR p."evidenceHash" !~ '^[a-f0-9]{64}$' OR p.operation_hash IS DISTINCT FROM p."evidenceHash"
-    OR p."chapaReference" IS NULL OR p."chapaReference" !~ '^[A-Za-z0-9_-]{1,128}$'
+    OR p."chapaReference" IS NULL OR p."chapaReference" !~ CASE WHEN p."apiVersion"=1 THEN '^[A-Za-z0-9_.:-]{1,128}$' ELSE '^[A-Za-z0-9_-]{1,128}$' END
     OR p.currency<>'ETB' OR p.mode NOT IN ('test','live')
     OR p.operation_result->>'checkoutId' IS DISTINCT FROM p.id
     OR p.operation_result->>'merchantReference' IS DISTINCT FROM p."merchantReference"
@@ -43,6 +43,8 @@ export async function reconcileChapaReceipts(client:PrismaClient|Prisma.Transact
     OR p.operation_result->>'mode' IS DISTINCT FROM p.mode
     OR p.operation_result->>'amountCents' IS DISTINCT FROM p."amountCents"::text
     OR p.operation_result->>'currency' IS DISTINCT FROM p.currency
+    OR p."apiVersion"=1 AND p.operation_result->>'apiVersion' IS DISTINCT FROM '1'
+    OR p."apiVersion"=2 AND p.operation_result ? 'apiVersion' AND p.operation_result->>'apiVersion' IS DISTINCT FROM '2'
    )
    UNION ALL
    SELECT 'checkout:'||p.id,'POSTINGS' FROM paid p

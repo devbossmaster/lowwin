@@ -1,4 +1,5 @@
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
+import {Suspense} from 'react';
 const f=vi.hoisted(()=>({
  redirect:vi.fn((destination:string)=>{throw Object.assign(new Error('redirect'),{destination})}),
  headers:vi.fn(async()=>new Headers({cookie:'fixture-cookie'})),session:vi.fn(),checkout:vi.fn(),
@@ -19,8 +20,17 @@ import FAQ from '../src/app/(mini)/faq/page';
 import Payments from '../src/app/(mini)/payments/page';
 
 const id='11111111-2222-4333-a444-555555555555',input=(value:Record<string,string|string[]|undefined>={})=>({searchParams:Promise.resolve(value)});
+async function resolvePayments(query:Record<string,string|string[]|undefined>={}){
+ const page=Payments(input(query));
+ if(page.type!==Suspense)return page;
+ // Next executes this async server child after streaming the safe fallback.
+ // Resolve that child explicitly so ownership and redirects are still tested.
+ expect(page.props.fallback).toMatchObject({type:ChapaPaymentHistory,props:{fullPage:true}});
+ const child=page.props.children;expect(child.type).toBeTypeOf('function');
+ return await child.type(child.props);
+}
 async function expectHistory(query:Record<string,string|string[]|undefined>={}){
- const rendered=await Payments(input(query));expect(rendered).toMatchObject({type:ChapaPaymentHistory,props:{fullPage:true}});expect(f.redirect).not.toHaveBeenCalled();
+ const rendered=await resolvePayments(query);expect(rendered).toMatchObject({type:ChapaPaymentHistory,props:{fullPage:true}});expect(f.redirect).not.toHaveBeenCalled();
 }
 beforeEach(()=>{vi.clearAllMocks();vi.stubEnv('ARIFPAY_SCHEMA_READY','true');f.session.mockResolvedValue({user:{id:'verified-owner'}});f.checkout.mockResolvedValue(null)});
 afterEach(()=>vi.unstubAllEnvs());
@@ -33,9 +43,13 @@ describe('retired customer UI compatibility redirects',()=>{
  it('renders the current Transactions history without a legacy private lookup',async()=>{
   await expectHistory();expect(f.session).not.toHaveBeenCalled();expect(f.checkout).not.toHaveBeenCalled();
  });
+ it('streams history before resolving a private legacy checkout reference',async()=>{
+  const page=Payments(input({checkout:id}));expect(page.type).toBe(Suspense);expect(page.props.fallback).toMatchObject({type:ChapaPaymentHistory,props:{fullPage:true}});
+  expect(f.headers).not.toHaveBeenCalled();expect(f.session).not.toHaveBeenCalled();expect(f.checkout).not.toHaveBeenCalled();expect(f.redirect).not.toHaveBeenCalled();
+ });
  it.each(['checkout','checkoutId','id'])('preserves an owned %s link on its actual auction',async field=>{
-  f.checkout.mockResolvedValue({id,auction:{publicCode:1234}});await expect(Payments(input({[field]:id}))).rejects.toMatchObject({destination:`/auctions/1234?checkout=${id}`});
-  expect(f.session).toHaveBeenCalledTimes(1);expect(f.checkout).toHaveBeenCalledWith({where:{id,userId:'verified-owner'},select:{id:true,auction:{select:{publicCode:true}}}});
+  f.checkout.mockResolvedValue({id,auction:{publicCode:1234}});await expect(resolvePayments({[field]:id})).rejects.toMatchObject({destination:`/auctions/1234?checkout=${id}`});
+  expect(f.session).toHaveBeenCalledTimes(1);expect(f.session.mock.calls[0][0].get('cookie')).toBe('fixture-cookie');expect(f.checkout).toHaveBeenCalledWith({where:{id,userId:'verified-owner'},select:{id:true,auction:{select:{publicCode:true}}}});
  });
  it('does not reveal another user’s checkout or query without a valid Mini App session',async()=>{
   await expectHistory({checkout:id});expect(f.checkout).toHaveBeenCalledWith({where:{id,userId:'verified-owner'},select:{id:true,auction:{select:{publicCode:true}}}});
@@ -48,6 +62,6 @@ describe('retired customer UI compatibility redirects',()=>{
   vi.stubEnv('ARIFPAY_SCHEMA_READY','false');await expectHistory({checkout:id});expect(f.session).not.toHaveBeenCalled();expect(f.checkout).not.toHaveBeenCalled();
  });
  it('retains retryable checkout identity on a database failure rather than hiding the failure',async()=>{
-  f.checkout.mockRejectedValue(new Error('fixture database unavailable'));await expect(Payments(input({checkout:id}))).rejects.toThrow('fixture database unavailable');expect(f.redirect).not.toHaveBeenCalled();
+  f.checkout.mockRejectedValue(new Error('fixture database unavailable'));await expect(resolvePayments({checkout:id})).rejects.toThrow('fixture database unavailable');expect(f.redirect).not.toHaveBeenCalled();
  });
 });

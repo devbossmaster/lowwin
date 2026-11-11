@@ -29,7 +29,7 @@ export async function getPersonalBids(client:PrismaClient,userId:string,input:un
     // The legacy adapter is additive and may not be installed on an older DB.
     const providers=process.env.ARIFPAY_SCHEMA_READY==='true'&&rows.length?await tx.arifPayCheckout.findMany({where:{userId,bidId:{in:rows.map(bid=>bid.id)},status:'BID_ACCEPTED',creditJournalId:{not:null}},select:{bidId:true,transactionId:true,channel:true,fee:true}}):[];
     const discounts=referralSchemaReady()&&rows.length?await tx.referralRedemption.findMany({where:{userId,bidId:{in:rows.map(bid=>bid.id)}},select:{bidId:true,grossFeePoints:true,discountPoints:true,coupon:{select:{percent:true}}}}):[];
-    const chapa=process.env.CHAPA_SCHEMA_READY==='true'&&rows.length?await tx.chapaCheckout.findMany({where:{userId,bidId:{in:rows.map(bid=>bid.id)},status:'BID_ACCEPTED',creditJournalId:{not:null}},select:{id:true,bidId:true,merchantReference:true,paymentMethod:true,amountCents:true}}):[];
+    const chapa=(process.env.CHAPA_SCHEMA_READY==='true'||process.env.CHAPA_V1_SCHEMA_READY==='true')&&rows.length?await tx.chapaCheckout.findMany({where:{userId,bidId:{in:rows.map(bid=>bid.id)},status:'BID_ACCEPTED',creditJournalId:{not:null}},select:{id:true,bidId:true,merchantReference:true,paymentMethod:true,amountCents:true}}):[];
     return {items:rows.map(bid=>{
       const result=bid.auction.settlement?.publication&&bid.auction.settlement.publication.publishedAt<=now?bid.auction.settlement:null;
       const outcome=result?(result.outcome==='WINNER'?(result.winningBidId===bid.id?'WON':'LOST'):result.outcome):bid.auction.status==='CANCELLED'?'CANCELLED':bid.auction.status==='CLOSED'||bid.auction.endsAt&&bid.auction.endsAt<=now?'PENDING':'LIVE';

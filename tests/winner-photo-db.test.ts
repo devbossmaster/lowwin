@@ -5,7 +5,7 @@ import {randomUUID} from 'node:crypto';
 import {bidAuction,bidUser} from './bid-fixtures';
 import {submitBid} from '../src/modules/auctions/bids';
 import {publishFixtureResult} from './publish-result-fixture';
-import {closeAuction} from '../src/modules/auctions/settlement';
+import {closeAuctionInTransaction} from '../src/modules/auctions/settlement';
 import {reconcile} from '../src/modules/wallet/ledger';
 import {saveWinnerPhoto} from '../src/modules/admin/winner-photo';
 import {publicAuctionSelect,toPublicAuction} from '../src/modules/auctions/catalog';
@@ -24,7 +24,9 @@ describe.skipIf(!url)('winner presentation on isolated PostgreSQL',()=>{
   auction=await bidAuction(db,{isDemo:false,fee:0,endDelayMs:1600});
   const first=await bidUser(db),other=await bidUser(db);
   await submitBid(db,{userId:first,auctionSlug:auction.slug!,amount:'1',key:randomUUID()});await submitBid(db,{userId:other,auctionSlug:auction.slug!,amount:'2',key:randomUUID()});
-  await new Promise(resolve=>setTimeout(resolve,Math.max(0,auction.endsAt!.getTime()-Date.now()+50)));expect((await closeAuction(db,auction.id)).outcome).toBe('WINNER');
+  // Stop at the financial commit to exercise unpublished-media privacy before
+  // the separate publication step; closeAuction now publishes automatically.
+  await new Promise(resolve=>setTimeout(resolve,Math.max(0,auction.endsAt!.getTime()-Date.now()+50)));expect((await db.$transaction(tx=>closeAuctionInTransaction(tx,auction.id))).outcome).toBe('WINNER');
  },60000);
  afterAll(async()=>{await db?.$disconnect();await (await import('../src/lib/db')).db.$disconnect()});
  const save=(version:number,imageId:string|null)=>db.$transaction(async tx=>{

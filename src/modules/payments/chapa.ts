@@ -5,7 +5,7 @@ import {centsToEtb,etbToCents} from '@/lib/money';
 import {publicChapaPaymentReason,safeChapaPaymentReason} from '@/lib/chapa-payment-reason';
 import {classifyChapaApiError} from '@/lib/chapa-api-error';
 import {assertPlayerContact,contactBotId,decryptPhone,normalizePhone} from '../auth/own-contact';
-import {fulfillBatchInTransaction} from '../auctions/batch';
+import {batchLines,ownBatch,validateBatchInTransaction,fulfillBatchInTransaction} from '../auctions/batch';
 import {BidError,submitBidInTransaction,type BidReceipt} from '../auctions/bids';
 import {auctionMaintenance} from '../auctions/maintenance';
 import {isSubmissionFeeOnly} from '../auctions/rules';
@@ -15,17 +15,18 @@ import {ensureWallet,pointsSchema,seedPlatformAccounts} from '../wallet/ledger';
 import {PAYMENT_TRANSACTION_OPTIONS} from './timing';
 import {measureChapa} from './chapa-timing';
 import {matchesChapaMetadata} from './chapa-metadata';
-import {ChapaError,ChapaProviderError,chapaAvailability,chapaConfigurationFingerprint,chapaHash,chapaTransport,createdChapaSession,isChapaHostedSessionReference,parseChapaEvidence,requireChapa,type ChapaCreate,type ChapaTransport} from './chapa-provider';
+import {ChapaError,ChapaProviderError,chapaAvailability,chapaConfigurationFingerprint,chapaHash,chapaTransport,isChapaHostedSessionReference,parseChapaEvidence,requireChapa,type ChapaCreate,type ChapaTransport} from './chapa-provider';
 import {approvedRecoveryBinding,chapaRecoveryBindings} from './chapa-recovery-binding';
 import {queueChapaReceipt} from '../notifications/chapa-receipt';
-import {chapaMethodCatalog} from './chapa-methods';
+import {chapaV1Availability,chapaV1ConfigurationFingerprint,chapaV1Transport,createdChapaV1Session,parseChapaV1Evidence,requireChapaV1} from './chapa-v1-provider';
 
 type Tx=Prisma.TransactionClient;
 type Authorize=(tx:Tx)=>Promise<void>;
 const money=z.string().regex(/^(0|[1-9]\d{0,7})(?:\.\d{1,2})?$/);
-const createSchema=z.discriminatedUnion('purpose',[
+const createSchema=z.union([
  z.object({key:z.string().uuid(),purpose:z.literal('TOP_UP'),amount:money}).strict(),
  z.object({key:z.string().uuid(),purpose:z.literal('BID'),auctionSlug:z.string().regex(/^[a-z0-9-]{1,120}$/),amount:pointsSchema,feeVersion:z.number().int().min(1),couponId:z.string().uuid().optional()}).strict(),
+ z.object({key:z.string().uuid(),purpose:z.literal('BID'),batchId:z.string().uuid(),quoteHash:z.string().regex(/^[a-f0-9]{64}$/)}).strict(),
 ]);
 const pending=['SUBMITTING','PENDING','VERIFYING','AUTH_NEEDED'];
 const openStatuses=[...pending,'NEEDS_REVIEW'];
@@ -41,7 +42,7 @@ export function walletBidsEnabled(raw:Record<string,string|undefined>=process.en
  if(raw.WALLET_BIDS_ENABLED!=='true'||raw.DEV_IDENTITY_ENABLED==='true'||raw.STAGING_DEMO_ENABLED==='true')return false;
  return raw.APP_ENV==='production'||raw.VERCEL_ENV==='production'?raw.NODE_ENV==='production'&&raw.WALLET_BIDS_LIVE_ENABLED==='true'&&raw.DEV_POINTS_ENABLED!=='true':['local','test','staging'].includes(raw.APP_ENV??'');
 }
-export function publicChapaAvailability(){const value=chapaAvailability();void chapaMethodCatalog.refresh();return {enabled:value.enabled,configured:value.configured,mode:value.mode,walletBidsEnabled:walletBidsEnabled(),minTopup:'1.00',maxTopup:'43200.00',reason:value.reason}}
+export function publicChapaAvailability(){const value=chapaV1Availability();return {enabled:value.enabled,configured:value.configured,mode:value.mode,apiVersion:1,walletBidsEnabled:walletBidsEnabled(),minTopup:'1.00',maxTopup:'43200.00',reason:value.reason}}
 const context={auction:{select:{publicCode:true,status:true,endsAt:true,product:{select:{title:true,titleAm:true}}}}} satisfies Prisma.ChapaCheckoutInclude;
 type OrderContext={auction?:{publicCode:number;status:string;endsAt:Date|null;product:{title:string;titleAm:string|null}|null}|null};
 export function ownChapaCheckout(order:ChapaCheckout&OrderContext){
@@ -52,7 +53,7 @@ export function ownChapaCheckout(order:ChapaCheckout&OrderContext){
  // prefix histories; preserve the original single-bid DTO for old consumers.
  const receipt=order.batchId&&order.receipt&&typeof order.receipt==='object'&&!Array.isArray(order.receipt)?Object.fromEntries(Object.entries(order.receipt).filter(([key])=>['bid','hold','charge','wallet','remainingSubmissions','ownBids'].includes(key))):order.receipt;
  let payerPhoneMasked:string|null=null;try{if(order.payerPhoneCipher&&order.phoneBotId){const phone=decryptPhone(order.payerPhoneCipher,order.phoneBotId);payerPhoneMasked=`${phone.slice(0,3)}*****${phone.slice(-4)}`}}catch{}
- return {id:order.id,purpose:order.purpose,mode:order.mode,amount:centsToEtb(order.amountCents),amountCents:order.amountCents.toString(),currency:order.currency,status:order.status,reason:order.reason,providerReasonCode:publicChapaPaymentReason(order),providerStatus:order.providerStatus??(paid(order)?'SUCCESS':null),verificationState:order.verificationState,initializationIssue,initializationReasonCode:order.chargeType==='DIRECT'?safeChapaPaymentReason(order.initializationErrorCode):null,merchantReference:order.merchantReference,paymentMethod:order.paymentMethod,chargeType:order.chargeType??'HOSTED',authType:order.authType??null,authorizationReference:order.authorizationReference??null,payerPhoneMasked,batch:batch??null,batchNumbers:batch?.lines?.map(line=>line.number)??[],auctionTitle:order.auction?.product?.title??null,auctionTitleAm:order.auction?.product?.titleAm??null,auctionCode:order.auction?.publicCode?.toString()??null,auctionStatus:order.auction?.status??null,auctionEndsAt:order.auction?.endsAt?.toISOString()??null,checkoutUrl:order.checkoutUrl,auctionSlug:order.auctionSlug,bidNumber:order.bidNumber?.toString()??null,feeVersion:order.feeVersion,grossFee:order.grossFee?.toString()??null,discountPoints:order.discountPoints.toString(),createdAt:order.createdAt.toISOString(),updatedAt:order.updatedAt.toISOString(),expiresAt:order.expiresAt.toISOString(),pollAfterMs:STATUS_REFRESH_MS,fundsPreserved:paid(order)&&order.status==='NEEDS_REVIEW',receipt};
+ return {id:order.id,purpose:order.purpose,mode:order.mode,apiVersion:order.apiVersion??2,amount:centsToEtb(order.amountCents),amountCents:order.amountCents.toString(),currency:order.currency,status:order.status,reason:order.reason,providerReasonCode:publicChapaPaymentReason(order),providerStatus:order.providerStatus??(paid(order)?'SUCCESS':null),verificationState:order.verificationState,initializationIssue,initializationReasonCode:order.chargeType==='DIRECT'?safeChapaPaymentReason(order.initializationErrorCode):null,merchantReference:order.merchantReference,paymentMethod:order.paymentMethod,chargeType:order.chargeType??'HOSTED',authType:order.authType??null,authorizationReference:order.authorizationReference??null,payerPhoneMasked,batch:batch??null,batchNumbers:batch?.lines?.map(line=>line.number)??[],auctionTitle:order.auction?.product?.title??null,auctionTitleAm:order.auction?.product?.titleAm??null,auctionCode:order.auction?.publicCode?.toString()??null,auctionStatus:order.auction?.status??null,auctionEndsAt:order.auction?.endsAt?.toISOString()??null,checkoutUrl:order.checkoutUrl,auctionSlug:order.auctionSlug,bidNumber:order.bidNumber?.toString()??null,feeVersion:order.feeVersion,grossFee:order.grossFee?.toString()??null,discountPoints:order.discountPoints.toString(),createdAt:order.createdAt.toISOString(),updatedAt:order.updatedAt.toISOString(),expiresAt:order.expiresAt.toISOString(),pollAfterMs:STATUS_REFRESH_MS,fundsPreserved:paid(order)&&order.status==='NEEDS_REVIEW',receipt};
 }
 export async function eligible(tx:Tx,userId:string){
  const [row]=await tx.$queryRaw<{telegramId:string|null;contactTelegramId:string|null;botId:string|null;phoneCipher:string|null;revokedAt:Date|null;staffId:string|null;suspended:boolean}[]>`SELECT u."telegramId",c."telegramId" AS "contactTelegramId",c."botId",c."phoneCipher",c."revokedAt",s."userId" AS "staffId",COALESCE(r.suspended,false) AS suspended FROM "user" u LEFT JOIN "TelegramOwnContact" c ON c."userId"=u.id LEFT JOIN "StaffMember" s ON s."userId"=u.id LEFT JOIN "UserRestriction" r ON r."userId"=u.id WHERE u.id=${userId}`;
@@ -63,13 +64,20 @@ export async function eligible(tx:Tx,userId:string){
  if(!row.phoneCipher||!row.botId)throw Error('CONTACT_REQUIRED');
  return {phoneCipher:row.phoneCipher,botId:row.botId};
 }
-function initializationInput(order:ChapaCheckout):ChapaCreate{
- // Hosted checkout collects the payer's contact details. The verified Telegram
- // contact still gates Lowwin access. Payer contact and payment method are
- // entered on Chapa's hosted page without a Lowwin prefill.
- return order.initialization as unknown as ChapaCreate;
+function v1ContactPhone(cipher:string,botId:string){
+ const phone=normalizePhone(decryptPhone(cipher,botId));
+ if(!/^\+251[79]\d{8}$/.test(phone))throw new ChapaError(422,'INVALID_PHONE','A verified Ethiopian phone number is required.');
+ return `0${phone.slice(4)}`;
 }
-function sameConfiguration(order:ChapaCheckout){const value=chapaAvailability();return value.mode===order.mode&&chapaConfigurationFingerprint()===order.credentialFingerprint}
+function initializationInput(order:ChapaCheckout):ChapaCreate{
+ const snapshot=order.initialization as Record<string,unknown>,{batch:_batch,...input}=snapshot;
+ if(order.apiVersion!==1)return input as unknown as ChapaCreate;
+ // Required merchant phone data comes from the immutable encrypted contact,
+ // never plaintext initialization JSON or a caller-controlled payment identity.
+ if(!order.phoneCipher||!order.phoneBotId)throw new ChapaError(503,'CONTACT_REQUIRED','This payment needs its original verified contact.');
+ return {...input,customer:{phone_number:v1ContactPhone(order.phoneCipher,order.phoneBotId)}} as unknown as ChapaCreate;
+}
+function sameConfiguration(order:ChapaCheckout){const v1=order.apiVersion===1,value=v1?chapaV1Availability():chapaAvailability();return value.mode===order.mode&&(v1?chapaV1ConfigurationFingerprint():chapaConfigurationFingerprint())===order.credentialFingerprint}
 
 /** The outer payment transaction already owns the wallet advisory key. Keep
  * projection locking before reading balances, without rewriting complete accounts. */
@@ -87,13 +95,18 @@ async function paymentCreditAccounts(tx:Tx,userId:string){
  return {available,issuance};
 }
 
-/** Persist the intent BEFORE provider HTTP. All retries reuse this exact body,
- * reference and idempotency key, including an ambiguous initialization timeout. */
-export async function createChapaCheckout(client:PrismaClient,userId:string,raw:unknown,reauthorize?:Authorize,transport:ChapaTransport=chapaTransport){
- const health=requireChapa(),body=createSchema.parse(raw),normalized=body.purpose==='TOP_UP'?{...body,amount:etbToCents(body.amount).toString()}:{...body,amount:body.amount.toString()},requestHash=chapaHash(JSON.stringify(normalized));
+/** Persist the intent BEFORE provider HTTP. V1 has no assumed initialization
+ * replay guarantee: an ambiguous response keeps the original reference and is
+ * verified before any attempt to recover its hosted URL. */
+export async function createChapaCheckout(client:PrismaClient,userId:string,raw:unknown,reauthorize?:Authorize,transport?:ChapaTransport){
+ const health=requireChapaV1(),body=createSchema.parse(raw),normalized=body.purpose==='TOP_UP'?{...body,amount:etbToCents(body.amount).toString()}:'batchId'in body?{...body}:{...body,amount:body.amount.toString()},requestHash=chapaHash(JSON.stringify(normalized));
  const order=await measureChapa('database',()=>client.$transaction(async tx=>{
   const halted=await auctionMaintenance(tx);
-  if(body.purpose==='BID')await tx.$queryRaw`SELECT id FROM "Auction" WHERE slug=${body.auctionSlug} FOR UPDATE`;
+  let intentAuctionSlug=body.purpose==='BID'&&'auctionSlug'in body?body.auctionSlug:undefined;
+  if(body.purpose==='BID'){
+   if('batchId'in body){const [row]=await tx.$queryRaw<{slug:string}[]>`SELECT a.slug FROM "Auction" a JOIN "BidBatchOrder" b ON b."auctionId"=a.id WHERE b.id=${body.batchId} AND b."userId"=${userId} FOR UPDATE OF a`;intentAuctionSlug=row?.slug}
+   else await tx.$queryRaw`SELECT id FROM "Auction" WHERE slug=${body.auctionSlug} FOR UPDATE`;
+  }
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`},0))`;
   if(reauthorize)await reauthorize(tx);const contact=await eligible(tx,userId);
   const alias=await tx.operation.findUnique({where:{userId_scope_key:{userId,scope:aliasScope,key:body.key}}});
@@ -105,13 +118,31 @@ export async function createChapaCheckout(client:PrismaClient,userId:string,raw:
   }
   const previous=await tx.chapaCheckout.findUnique({where:{userId_key:{userId,key:body.key}}});
   if(previous){if(previous.requestHash!==requestHash)throw new ChapaError(409,'KEY_REUSED','Retry the original payment details with this request key.');return previous}
-  // A new command key deliberately creates a fresh attempt. Historical aliases
-  // stay permanently bound, and transport replay keeps the original key.
+  // A new tab or a lost response must not turn a pending payment into a second
+  // charge. Every coalesced key stays bound after the payment becomes terminal.
+  const active=await tx.chapaCheckout.findFirst({where:{userId,purpose:body.purpose,creditJournalId:null,status:{in:openStatuses},...(body.purpose==='BID'?{auctionSlug:intentAuctionSlug??'__unknown_owned_auction__'}: {})},orderBy:{createdAt:'desc'}});
+  if(active){
+   const same=body.purpose==='TOP_UP'?active.amountCents===etbToCents(body.amount):'batchId'in body?active.batchId===body.batchId&&(active.initialization as Record<string,unknown>).batch!==undefined&&((active.initialization as Record<string,unknown>).batch as {quoteHash?:unknown}).quoteHash===body.quoteHash:active.batchId===null&&active.bidNumber?.eq(body.amount)&&active.feeVersion===body.feeVersion&&active.couponId===(body.couponId??null);
+   if(!same)throw new ChapaError(409,'PAYMENT_ALREADY_PENDING','Another payment is unresolved. Check that payment before starting differently priced details.');
+   await tx.operation.create({data:{userId,scope:aliasScope,key:body.key,requestHash,result:{checkoutId:active.id}}});return active;
+  }
   if(halted)throw new ChapaError(503,'AUCTIONS_PAUSED','New checkouts are paused for auction maintenance. Existing payments can still be checked.');
   if(await tx.chapaCheckout.count({where:{userId,createdAt:{gte:new Date(Date.now()-3600000)}}})>=24)throw new ChapaError(429,'RATE_LIMITED','Too many new payment attempts. Check your existing payment or retry later.');
-  let amountCents:bigint,auctionId:string|null=null,bidNumber:Prisma.Decimal|null=null,grossFee:Prisma.Decimal|null=null,discountPoints=new Prisma.Decimal(0);
+  let amountCents:bigint,auctionId:string|null=null,auctionSlug:string|null=null,bidNumber:Prisma.Decimal|null=null,grossFee:Prisma.Decimal|null=null,discountPoints=new Prisma.Decimal(0),feeVersion:number|null=null,couponId:string|null=null,batchId:string|null=null,batchSnapshot:ReturnType<typeof ownBatch>|null=null;
   if(body.purpose==='TOP_UP'){
    amountCents=etbToCents(body.amount);if(amountCents<100n||amountCents>4320000n)throw new ChapaError(422,'INVALID_AMOUNT','Top up between 1.00 and 43,200.00 ETB.');
+  }else if('batchId'in body){
+   const batch=await tx.bidBatchOrder.findFirst({where:{id:body.batchId,userId}});
+   if(!batch)throw new ChapaError(404,'NOT_FOUND','Order not found.');
+   if(batch.quoteHash!==body.quoteHash||batch.status!=='QUOTED')throw new ChapaError(409,'TERMS_CHANGED','Review a new quote before paying.');
+   if(await tx.chapaCheckout.findUnique({where:{batchId:batch.id}}))throw new ChapaError(409,'PAYMENT_STARTED','This order already has a payment. Check that original payment.');
+   const lines=batchLines(batch),priced=await validateBatchInTransaction(tx,userId,batch.auctionSlug,lines.map(line=>line.number),batch.feeVersion,batch.couponId??undefined);
+   if(priced.totalCents!==batch.totalCents||JSON.stringify(priced.lines)!==JSON.stringify(lines))throw new ChapaError(409,'TERMS_CHANGED','The quote changed. Review a new quote before paying.');
+   const [{now}]=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AT TIME ZONE 'UTC' AS now`;
+   if(!priced.auction.endsAt||priced.auction.endsAt.getTime()-now.getTime()<30000)throw new ChapaError(409,'AUCTION_CLOSED','The auction is too close to its deadline to start checkout.');
+   amountCents=batch.totalCents;
+   if(amountCents<100n||amountCents>4320000n)throw new ChapaError(422,'INVALID_AMOUNT','Use your wallet for an order below 1.00 ETB.');
+   auctionId=batch.auctionId;auctionSlug=batch.auctionSlug;bidNumber=new Prisma.Decimal(lines[0].number);grossFee=new Prisma.Decimal(centsToEtb(batch.grossCents));discountPoints=new Prisma.Decimal(centsToEtb(batch.discountCents));feeVersion=batch.feeVersion;couponId=batch.couponId;batchId=batch.id;batchSnapshot=ownBatch(batch);
   }else{
    if(await tx.operation.findUnique({where:{userId_scope_key:{userId,scope:'BID',key:body.key}}}))throw new ChapaError(409,'BID_ALREADY_ACCEPTED','This bid is already processed. Check My Bids.');
    const a=await tx.auction.findUnique({where:{slug:body.auctionSlug},include:{terms:true,feeRevisions:{orderBy:[{effectiveAt:'desc'},{version:'desc'}],take:1},product:{include:{category:true}},category:true}}),[{now}]=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AT TIME ZONE 'UTC' AS now`;
@@ -127,29 +158,36 @@ export async function createChapaCheckout(client:PrismaClient,userId:string,raw:
    if(body.couponId)discountPoints=(await lockReferralDiscountInTransaction(tx,userId,body.couponId,grossFee,terms.ruleVersion)).discountPoints;
    amountCents=etbToCents(grossFee.sub(discountPoints).toString());
    if(amountCents<100n||amountCents>4320000n)throw new ChapaError(422,'CHAPA_MINIMUM','This fee is below Chapa’s 1.00 ETB minimum or above its configured limit. Use your wallet for this submission fee.');
-   auctionId=a.id;bidNumber=body.amount;
+   auctionId=a.id;auctionSlug=body.auctionSlug;bidNumber=body.amount;feeVersion=body.feeVersion;couponId=body.couponId??null;
   }
+  v1ContactPhone(contact.phoneCipher,contact.botId);
   const id=randomUUID(),merchantReference=`LW${randomBytes(9).toString('hex')}`;
   const returnUrl=new URL(`/payments/chapa/return?checkout=${id}`,process.env.MINI_APP_URL).toString();
-  const initialization:ChapaCreate={amountCents:amountCents.toString(),merchantReference,idempotencyKey:`lowwin:${id}`,returnUrl,returnUrlVersion:1,...chapaMethodCatalog.preferences(amountCents)};
-  return tx.chapaCheckout.create({data:{id,userId,purpose:body.purpose,mode:health.mode,credentialFingerprint:health.credentialFingerprint!,key:body.key,requestHash,merchantReference,amountCents,initialization:json(initialization),phoneCipher:contact.phoneCipher,phoneBotId:contact.botId,auctionId,auctionSlug:body.purpose==='BID'?body.auctionSlug:null,bidNumber,grossFee,discountPoints,feeVersion:body.purpose==='BID'?body.feeVersion:null,couponId:body.purpose==='BID'?body.couponId:null,expiresAt:after(86400000)}});
+  const callbackUrl=new URL(`/api/payments/chapa/v1/callback?checkout=${id}`,process.env.MINI_APP_URL).toString();
+  const initialization:ChapaCreate&{batch?:ReturnType<typeof ownBatch>}={amountCents:amountCents.toString(),merchantReference,idempotencyKey:`lowwin:${id}`,returnUrl,returnUrlVersion:1,callbackUrl,...(batchSnapshot?{batch:batchSnapshot}:{})};
+  return tx.chapaCheckout.create({data:{id,userId,purpose:body.purpose,apiVersion:1,mode:health.mode,credentialFingerprint:health.credentialFingerprint!,key:body.key,requestHash,merchantReference,amountCents,initialization:json(initialization),phoneCipher:contact.phoneCipher,phoneBotId:contact.botId,auctionId,auctionSlug,bidNumber,grossFee,discountPoints,feeVersion,couponId,batchId,expiresAt:after(86400000)}});
  },PAYMENT_TRANSACTION_OPTIONS));
- if(!paid(order)&&!order.checkoutUrl&&sameConfiguration(order)){const initialized=await initializeChapaCheckout(client,order.id,transport,order);if(initialized)return ownChapaCheckout(initialized);return getChapaCheckout(client,userId,order.id)}
+ if(order.apiVersion===1&&!paid(order)&&!order.checkoutUrl&&sameConfiguration(order)){
+  // V1 verification returns 404 both for an unknown reference and for some
+  // unpaid transactions. It cannot authorize a new reference or blind replay.
+  if(order.reason&&['INITIALIZATION_PENDING','INITIALIZATION_CONFLICT','PROVIDER_REFERENCE_UNAVAILABLE','PROVIDER_CONFIRMATION_REQUIRED','PROVIDER_EVENT_RECEIVED'].includes(order.reason))return verifyChapaCheckout(client,order.id,userId,reauthorize,transport,true);
+  const initialized=await initializeChapaCheckout(client,order.id,transport??chapaV1Transport,order);if(initialized)return ownChapaCheckout(initialized);return getChapaCheckout(client,userId,order.id);
+ }
  return ownChapaCheckout(order);
 }
 
 async function initializeChapaCheckout(client:PrismaClient,id:string,transport:ChapaTransport,persisted?:ChapaCheckout){
- if(!chapaAvailability().enabled)return;
- const snapshot=persisted??await measureChapa('database',()=>client.chapaCheckout.findUniqueOrThrow({where:{id}}));if(paid(snapshot)||snapshot.checkoutUrl||!sameConfiguration(snapshot)||!['SUBMITTING','PENDING'].includes(snapshot.status)||classifyChapaApiError(snapshot.initializationHttpStatus,snapshot.initializationErrorCode)==='state'||snapshot.reason&&!['INITIALIZATION_PENDING','PROVIDER_CONFIRMATION_REQUIRED','PROVIDER_REFERENCE_UNAVAILABLE','PROVIDER_EVENT_RECEIVED'].includes(snapshot.reason))return;
+ if(!chapaV1Availability().enabled)return;
+ const snapshot=persisted??await measureChapa('database',()=>client.chapaCheckout.findUniqueOrThrow({where:{id}}));if(snapshot.apiVersion!==1||paid(snapshot)||snapshot.checkoutUrl||!sameConfiguration(snapshot)||!['SUBMITTING','PENDING'].includes(snapshot.status)||snapshot.reason)return;
  const initializationState={id,creditJournalId:null,checkoutUrl:null,status:{in:['SUBMITTING','PENDING']},OR:[{reason:null},{reason:{in:['INITIALIZATION_PENDING','PROVIDER_CONFIRMATION_REQUIRED','PROVIDER_REFERENCE_UNAVAILABLE','PROVIDER_EVENT_RECEIVED']}}]};
  // Take the barrier first, then use a fresh statement snapshot for the halt
  // check and lease update. A single CTE could miss a halt committed while it
  // waited for that barrier. Provider HTTP stays outside this transaction.
  const acquired=await measureChapa('database',()=>client.$transaction(async tx=>{
  await tx.$executeRaw`SELECT pg_advisory_xact_lock_shared(hashtextextended('lowwin:auction-maintenance',0))`;
- return tx.$executeRaw`UPDATE "ChapaCheckout" c SET "leaseUntil"=(clock_timestamp() AT TIME ZONE 'UTC')+interval '20 seconds',"nextCheckAt"=(clock_timestamp() AT TIME ZONE 'UTC')+interval '20 seconds',"updatedAt"=(clock_timestamp() AT TIME ZONE 'UTC')
+ return tx.$executeRaw`UPDATE "ChapaCheckout" c SET reason='INITIALIZATION_PENDING',"leaseUntil"=(clock_timestamp() AT TIME ZONE 'UTC')+interval '20 seconds',"nextCheckAt"=(clock_timestamp() AT TIME ZONE 'UTC')+interval '20 seconds',"updatedAt"=(clock_timestamp() AT TIME ZONE 'UTC')
  WHERE c.id=${id} AND c."creditJournalId" IS NULL AND c."checkoutUrl" IS NULL AND c.status IN ('SUBMITTING','PENDING')
- AND (c.reason IS NULL OR c.reason IN ('INITIALIZATION_PENDING','PROVIDER_CONFIRMATION_REQUIRED','PROVIDER_REFERENCE_UNAVAILABLE','PROVIDER_EVENT_RECEIVED'))
+ AND c.reason IS NULL
  AND COALESCE(c."initializationHttpStatus",0)<>409
  AND NOT (COALESCE(c."initializationHttpStatus",0) IN (400,422) AND COALESCE(c."initializationErrorCode",'')='INVALID_STATE')
  AND (c."leaseUntil" IS NULL OR c."leaseUntil"<=(clock_timestamp() AT TIME ZONE 'UTC'))
@@ -157,7 +195,7 @@ async function initializeChapaCheckout(client:PrismaClient,id:string,transport:C
  },PAYMENT_TRANSACTION_OPTIONS));
  if(!acquired)return;
  try{
-  const response=createdChapaSession(await measureChapa('initialize',()=>transport.create(initializationInput(snapshot))));
+  const response=createdChapaV1Session(await measureChapa('initialize',()=>transport.create(initializationInput(snapshot))));
   if(!response)throw new Error('Invalid initialization evidence');
   const rows=await measureChapa('database',()=>client.chapaCheckout.updateManyAndReturn({where:initializationState,data:{checkoutUrl:response.checkoutUrl,chapaReference:response.chapaReference,...(response.createdAt?{providerCreatedAt:response.createdAt}:{}),...(response.expiresAt?{expiresAt:response.expiresAt}:{}),status:'PENDING',reason:'AWAITING_PROVIDER',initializationErrorCode:null,initializationHttpStatus:null,leaseUntil:null,nextCheckAt:after(5000)}}));return rows[0];
  }catch(error){
@@ -173,16 +211,18 @@ export async function listChapaCheckouts(client:PrismaClient,userId:string,purpo
  const filter=z.enum(['TOP_UP','BID']).optional().parse(purpose);page=z.number().int().min(1).max(10000).parse(page);
  const state=z.enum(['all','pending','failed','cancelled','review']).parse(statusFilter);
  if(state!=='all'&&(!unaccepted||filter!=='BID'))throw new ChapaError(422,'INVALID_INPUT','Choose unaccepted bid payments for this filter.');
- if(process.env.CHAPA_SCHEMA_READY!=='true')return {items:[],page,nextPage:null};
+ if(process.env.CHAPA_SCHEMA_READY!=='true'&&process.env.CHAPA_V1_SCHEMA_READY!=='true')return {items:[],page,nextPage:null};
  const statuses={pending:['SUBMITTING','PENDING','VERIFYING','AUTH_NEEDED'],failed:['FAILED','INCOMPLETE','EXPIRED','BLOCKED'],cancelled:['CANCELLED'],review:['NEEDS_REVIEW']} as const;
  const rows=await client.chapaCheckout.findMany({where:{userId,...(filter?{purpose:filter}:{}),...(unaccepted?{purpose:'BID',bidId:null}:{}),...(state==='all'?{}:{...(state==='review'?{}:{creditJournalId:null}),status:{in:[...statuses[state]]}})},orderBy:[{createdAt:'desc'},{id:'desc'}],skip:(page-1)*20,take:21,include:context});
  return {items:rows.slice(0,20).map(ownChapaCheckout),page,nextPage:rows.length>20?page+1:null};
 }
-export async function verifyChapaCheckout(client:PrismaClient,id:string,userId?:string,reauthorize?:Authorize,transport:ChapaTransport=chapaTransport,eventCheck:boolean|'webhook'=false){
- requireChapa('recover');z.string().uuid().parse(id);
+export async function verifyChapaCheckout(client:PrismaClient,id:string,userId?:string,reauthorize?:Authorize,transport?:ChapaTransport,eventCheck:boolean|'webhook'=false){
+ z.string().uuid().parse(id);
  const snapshot=await measureChapa('database',()=>client.chapaCheckout.findFirst({where:{id,...(userId?{userId}:{})}}));if(!snapshot)throw new ChapaError(404,'NOT_FOUND','Payment not found.');
  if(paid(snapshot))return ownChapaCheckout(snapshot);
- const recoveryBinding=sameConfiguration(snapshot)?null:await approvedRecoveryBinding(client,snapshot);
+ const v1=snapshot.apiVersion===1;(v1?requireChapaV1:requireChapa)('recover');
+ const provider=transport??(v1?chapaV1Transport:chapaTransport);
+ const recoveryBinding=v1||sameConfiguration(snapshot)?null:await approvedRecoveryBinding(client,snapshot);
  if(!sameConfiguration(snapshot)&&!recoveryBinding)throw new ChapaError(503,'CONFIGURATION_CHANGED','This payment needs its original Chapa configuration or a reviewed recovery authorization. Keep its payment ID.');
  const now=Date.now();
  // Ownership was checked by the authenticated read above. During cooldown this
@@ -195,25 +235,25 @@ export async function verifyChapaCheckout(client:PrismaClient,id:string,userId?:
   // USSD polling refreshes the provider's charge state. An authenticated event
   // already signals a state change, so verify it without another validation
   // round trip. OTPs belong only to the explicit authorization mutation.
-  if(eventCheck!=='webhook'&&snapshot.chargeType==='DIRECT'&&snapshot.authType==='USSD'&&snapshot.authorizationReference&&transport.validate)try{await measureChapa('validate',()=>transport.validate!({reference:snapshot.authorizationReference!,paymentMethod:snapshot.paymentMethod!}))}catch{/* Final merchant verification remains authoritative. */}
-  raw=await measureChapa('verify',()=>transport.lookup(snapshot.merchantReference))}catch(error){
+  if(!v1&&eventCheck!=='webhook'&&snapshot.chargeType==='DIRECT'&&snapshot.authType==='USSD'&&snapshot.authorizationReference&&provider.validate)try{await measureChapa('validate',()=>provider.validate!({reference:snapshot.authorizationReference!,paymentMethod:snapshot.paymentMethod!}))}catch{/* Final merchant verification remains authoritative. */}
+  raw=await measureChapa('verify',()=>provider.lookup(snapshot.merchantReference))}catch(error){
   const category=error instanceof ChapaProviderError?error.category:'temporary';
   const policy={configuration:{reason:'PROVIDER_CONFIGURATION_REQUIRED',delay:300000},reference:{reason:'PROVIDER_REFERENCE_UNAVAILABLE',delay:60000},state:{reason:'PROVIDER_STATE_UNAVAILABLE',delay:60000},request:{reason:'PROVIDER_REQUEST_REJECTED',delay:60000},temporary:{reason:'PROVIDER_CONFIRMATION_REQUIRED',delay:error instanceof ChapaProviderError&&error.httpStatus===429?60000:30000}}[category];
   // HTTP errors describe this API request, not whether the customer paid.
   // Keep verified provider state/reason and genuine mismatches authoritative,
   // including evidence that arrived while this HTTP request was in flight.
   const schedule={leaseUntil:null,nextCheckAt:after(policy.delay)};
-  const recorded=await measureChapa('database',()=>client.chapaCheckout.updateMany({where:{id,creditJournalId:null,status:{in:pending},providerStatus:null,verificationState:{in:['UNVERIFIED','UNAVAILABLE']}},data:{...schedule,reason:policy.reason,verificationState:'UNAVAILABLE'}}));
+  const recorded=await measureChapa('database',()=>client.chapaCheckout.updateMany({where:{id,creditJournalId:null,status:{in:pending},providerStatus:null,verificationState:{in:['UNVERIFIED','UNAVAILABLE']}},data:{...schedule,...(v1&&!snapshot.checkoutUrl?{status:'NEEDS_REVIEW'}:{}),reason:policy.reason,verificationState:'UNAVAILABLE'}}));
   if(!recorded.count)await measureChapa('database',()=>client.chapaCheckout.updateMany({where:{id,creditJournalId:null},data:schedule}));
   return {...await getChapaCheckout(client,snapshot.userId,id),verificationUnavailable:true};
  }
- const evidence=parseChapaEvidence(raw);
+ const evidence=v1?parseChapaV1Evidence(raw):parseChapaEvidence(raw);
  let directBinding=true;
  if(snapshot.chargeType==='DIRECT'&&evidence){
   directBinding=(!snapshot.authorizationReference||!evidence.chapaReference||snapshot.authorizationReference===evidence.chapaReference)&&(!evidence.paymentMethod||snapshot.paymentMethod===evidence.paymentMethod);
   try{const expected=normalizePhone(decryptPhone(snapshot.payerPhoneCipher!,snapshot.phoneBotId!)),actual=evidence.customer?.phone_number?normalizePhone(evidence.customer.phone_number):null;directBinding=directBinding&&(!actual||actual===expected)&&(evidence.status!=='SUCCESS'||!!actual&&evidence.paymentMethod===snapshot.paymentMethod)}catch{directBinding=false}
  }
- const matches=!!evidence&&directBinding&&evidence.merchantReference===snapshot.merchantReference&&evidence.amountCents===snapshot.amountCents.toString()&&evidence.currency===snapshot.currency&&(!evidence.chapaReference||!snapshot.chapaReference||snapshot.chapaReference===evidence.chapaReference||isChapaHostedSessionReference(snapshot.checkoutUrl,snapshot.chapaReference,snapshot.mode as 'test'|'live'))&&(!evidence.mode||evidence.mode===snapshot.mode)&&(!recoveryBinding||evidence.status==='SUCCESS'&&evidence.chapaReference===recoveryBinding.finalReference)&&matchesChapaMetadata(snapshot.initialization,evidence.meta,snapshot.id);
+ const matches=!!evidence&&directBinding&&evidence.merchantReference===snapshot.merchantReference&&evidence.amountCents===snapshot.amountCents.toString()&&evidence.currency===snapshot.currency&&(!evidence.chapaReference||!snapshot.chapaReference||snapshot.chapaReference===evidence.chapaReference||!v1&&isChapaHostedSessionReference(snapshot.checkoutUrl,snapshot.chapaReference,snapshot.mode as 'test'|'live'))&&(v1?evidence.mode===snapshot.mode:!evidence.mode||evidence.mode===snapshot.mode)&&(!recoveryBinding||evidence.status==='SUCCESS'&&evidence.chapaReference===recoveryBinding.finalReference)&&matchesChapaMetadata(snapshot.initialization,evidence.meta,snapshot.id);
  if(!matches){await measureChapa('database',()=>client.chapaCheckout.updateMany({where:{id,creditJournalId:null},data:{status:'NEEDS_REVIEW',reason:'EVIDENCE_MISMATCH',verificationState:'MISMATCH',leaseUntil:null,nextCheckAt:after(60000)}}));return getChapaCheckout(client,snapshot.userId,id)}
  return measureChapa('database',()=>client.$transaction(async tx=>{
   await auctionMaintenance(tx);if(snapshot.auctionId)await tx.$queryRaw`SELECT id FROM "Auction" WHERE id=${snapshot.auctionId} FOR UPDATE`;
@@ -222,7 +262,7 @@ export async function verifyChapaCheckout(client:PrismaClient,id:string,userId?:
   if(!order)throw new ChapaError(404,'NOT_FOUND','Payment not found.');
   if(reauthorize)await reauthorize(tx);
   if(paid(order))return ownChapaCheckout(order);
-  const lockedBinding=sameConfiguration(order)?null:await approvedRecoveryBinding(tx,order);
+  const lockedBinding=order.apiVersion===1||sameConfiguration(order)?null:await approvedRecoveryBinding(tx,order);
   if(!sameConfiguration(order)&&(!lockedBinding||lockedBinding.finalReference!==evidence!.chapaReference))throw new ChapaError(503,'CONFIGURATION_CHANGED','Payment verification configuration changed. Keep this payment ID.');
   // Pending/failed verification may expose a session or provisional reference.
   // Only terminal SUCCESS can bind the immutable final payment reference.
@@ -239,7 +279,7 @@ export async function verifyChapaCheckout(client:PrismaClient,id:string,userId?:
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`chapa-reference:${proof.chapaReference}`},0))`;
   if(await tx.chapaCheckout.findFirst({where:{chapaReference:proof.chapaReference,id:{not:id}}}))return ownChapaCheckout(await tx.chapaCheckout.update({where:{id},data:{status:'NEEDS_REVIEW',reason:'DUPLICATE_PROVIDER_REFERENCE',leaseUntil:null,nextCheckAt:after(60000)}}));
   const {available,issuance}=await paymentCreditAccounts(tx,order.userId),amount=new Prisma.Decimal(centsToEtb(order.amountCents));
-  const operation=await tx.operation.create({data:{userId:order.userId,scope:'CHAPA_RECEIPT',key:order.id,requestHash:proof.hash,result:{checkoutId:id,merchantReference:order.merchantReference,chapaReference:proof.chapaReference,mode:order.mode,amountCents:order.amountCents.toString(),currency:'ETB'}}});
+  const operation=await tx.operation.create({data:{userId:order.userId,scope:'CHAPA_RECEIPT',key:order.id,requestHash:proof.hash,result:{checkoutId:id,apiVersion:order.apiVersion??2,merchantReference:order.merchantReference,chapaReference:proof.chapaReference,mode:order.mode,amountCents:order.amountCents.toString(),currency:'ETB'}}});
   const journal=await tx.journal.create({data:{operationId:operation.id,kind:'CHAPA_RECEIPT',reference:`chapa:${order.merchantReference}`,postings:{create:[{accountId:issuance.id,delta:amount.negated()},{accountId:available.id,delta:amount}]}}});
   let receipt:BidReceipt|null=null,reason:string|null=null;
   if(order.purpose==='BID'){
@@ -257,9 +297,12 @@ export async function verifyChapaCheckout(client:PrismaClient,id:string,userId?:
   return ownChapaCheckout(updated);
  },PAYMENT_TRANSACTION_OPTIONS));
 }
-export async function recoverChapaCheckouts(client:PrismaClient,limit=20,transport:ChapaTransport=chapaTransport){
- const health=chapaAvailability();if(!health.recoveryEnabled||process.env.CHAPA_LEGACY_SWEEP_ENABLED!=='true')return {checked:0};
+export async function recoverChapaCheckouts(client:PrismaClient,limit=20,transport?:ChapaTransport){
+ const health=chapaAvailability(),v1=chapaV1Availability(),versions:Prisma.ChapaCheckoutWhereInput[]=[];
  const authorizedIds=chapaRecoveryBindings().map(binding=>binding.checkoutId);
- const rows=await client.chapaCheckout.findMany({where:{flowVersion:1,mode:health.mode,creditJournalId:null,AND:[{OR:[{credentialFingerprint:health.credentialFingerprint!},...(authorizedIds.length?[{id:{in:authorizedIds}}]:[])]},{OR:[{status:{in:openStatuses}},{reason:'PROVIDER_EVENT_RECEIVED'}]}],createdAt:{gte:new Date(Date.now()-30*86400000)},nextCheckAt:{lte:new Date()}},orderBy:[{nextCheckAt:'asc'},{id:'asc'}],take:Math.max(1,Math.min(20,limit))});
+ if(v1.recoveryEnabled)versions.push({apiVersion:1,mode:v1.mode,credentialFingerprint:v1.credentialFingerprint!});
+ if(health.recoveryEnabled&&process.env.CHAPA_LEGACY_SWEEP_ENABLED==='true')versions.push({apiVersion:2,flowVersion:1,mode:health.mode,OR:[{credentialFingerprint:health.credentialFingerprint!},...(authorizedIds.length?[{id:{in:authorizedIds}}]:[])]});
+ if(!versions.length)return {checked:0};
+ const rows=await client.chapaCheckout.findMany({where:{creditJournalId:null,AND:[{OR:versions},{OR:[{status:{in:openStatuses}},{reason:'PROVIDER_EVENT_RECEIVED'}]}],createdAt:{gte:new Date(Date.now()-30*86400000)},nextCheckAt:{lte:new Date()}},orderBy:[{nextCheckAt:'asc'},{id:'asc'}],take:Math.max(1,Math.min(20,limit))});
  let checked=0;for(const row of rows){try{await verifyChapaCheckout(client,row.id,undefined,undefined,transport);checked++}catch{/* Durable intent and lease remain recoverable; no raw provider/contact logging. */}}return {checked};
 }
