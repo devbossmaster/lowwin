@@ -1,6 +1,6 @@
 import {describe,it,expect} from 'vitest';
 import {bidPaymentCanRetry,bidPaymentConnectionDelayed,bidPaymentProgressPhase} from '../src/lib/bid-payment-progress';
-import {acceptChapaSnapshot,chapaAwaitingAuthorization,type ChapaCheckoutView} from '../src/lib/chapa-client';
+import {acceptChapaSnapshot,chapaAwaitingAuthorization,chapaPollingDeadline,chapaPollingPaused,type ChapaCheckoutView} from '../src/lib/chapa-client';
 import {chapaLongWait,chapaPaymentPhase} from '../src/lib/chapa-status';
 const created=Date.parse('2026-11-10T10:00:00Z');
 const order={id:'owned-original',purpose:'TOP_UP',chargeType:'DIRECT',status:'AUTH_NEEDED',providerStatus:null,verificationState:'UNVERIFIED',authorizationReference:'accepted-reference',authType:'USSD',amount:'35.00',createdAt:new Date(created).toISOString(),expiresAt:new Date(created+300000).toISOString(),fundsPreserved:false,receipt:null} as ChapaCheckoutView;
@@ -9,7 +9,7 @@ describe('accepted payment state is independent of checking health',()=>{
  it.each(['BID','TOP_UP'] as const)('keeps %s authorization through transient errors, 90 seconds and foreground polling pause',purpose=>{
   for(const extra of [{error:'Temporary verification error',errorCode:'UNAVAILABLE'},{order:{...order,purpose,verificationState:'UNAVAILABLE'}},{order:{...order,purpose,verificationUnavailable:true}},{paused:true,now:created+900000},{now:created+90001}]){
    const snapshot={...state,order:{...order,purpose},...extra};
-   expect(bidPaymentProgressPhase(snapshot)).toBe('authorization');expect(chapaPaymentPhase(snapshot)).toBe('authorization');expect(bidPaymentConnectionDelayed(snapshot)).toBe(true);expect(bidPaymentCanRetry(snapshot.order)).toBe(false);
+   expect(bidPaymentProgressPhase(snapshot)).toBe('authorization');expect(chapaPaymentPhase(snapshot)).toBe('authorization');expect(bidPaymentConnectionDelayed(snapshot)).toBe(snapshot.now!==created+90001);expect(bidPaymentCanRetry(snapshot.order)).toBe(false);
   }
   expect(chapaLongWait({...order,purpose},created+900000)).toBe(false);
  });
@@ -33,5 +33,11 @@ describe('accepted payment state is independent of checking health',()=>{
   const cancelled={...order,status:'CANCELLED',providerStatus:'CANCELLED',verificationState:'VERIFIED'};
   expect(acceptChapaSnapshot(cancelled,{...order,verificationState:'UNAVAILABLE'})).toBe(false);
   expect(acceptChapaSnapshot(cancelled,{...order,status:'CREDITED',providerStatus:'SUCCESS',verificationState:'VERIFIED'})).toBe(true);
+ });
+ it('uses direct provider expiry for reconciliation without a local five-minute failure',()=>{
+  const extended={...order,expiresAt:new Date(created+3600000).toISOString()};
+  expect(chapaPollingDeadline(extended)).toBe(created+3600000);
+  expect(chapaPollingPaused(extended,created+3600001)).toBe(false);
+  expect(bidPaymentProgressPhase({...state,order:extended,now:created+3600001})).toBe('authorization');
  });
 });

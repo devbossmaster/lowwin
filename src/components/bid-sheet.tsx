@@ -1,5 +1,5 @@
 'use client';
-import {useCallback,useRef,useState} from 'react';
+import {useCallback,useState} from 'react';
 import {AccountSheet} from './account-sheet';
 import type {BidSheetAuction} from './bid-sheet-preview';
 import BidSheetContents from './bid-sheet-content';
@@ -21,9 +21,9 @@ export default function BidSheet(props:Props){
 }
 function BidSheetFrame(props:Props){
  const [phase,setPhase]=useState<BidSheetPhase>(props.initialChapaId?'payment':'entry');
- const dismiss=useRef<(()=>void)|null>(null),onDismissChange=useCallback((handler:(()=>void)|null)=>{dismiss.current=handler},[]);
+ const [back,setBack]=useState<(()=>void)|null>(null),onDismissChange=useCallback((handler:(()=>void)|null)=>{setBack(()=>handler)},[]);
  const title=phase==='receipt'?<MiniPhrase en="Bid receipt" am="የጨረታ ደረሰኝ"/>:phase==='payment'||phase==='review'?<MiniPhrase en="Payment" am="ክፍያ"/>:<MiniPhrase en="Place your bid" am="ጨረታዎን ያቅርቡ"/>;
- return <AccountSheet size="payment" layout="bid-entry" presentation={phase==='payment'||phase==='receipt'?'centered':undefined} title={<>{title}{phase==='entry'&&<span className={styles.headerStatus} aria-hidden="true"><MiniPhrase en={props.auction.status==='live'?'Live':props.auction.status==='upcoming'?'Upcoming':'Completed'} am={props.auction.status==='live'?'ቀጥታ':props.auction.status==='upcoming'?'በቅርብ':'ተጠናቋል'}/></span>}</>} headerActions={phase==='entry'?<AuctionShare title={props.auction.product.title} code={props.auction.slug} iconOnly/>:undefined} onClose={()=>dismiss.current?dismiss.current():props.onClose()} footerPortal>
+ return <AccountSheet size="payment" layout="bid-entry" presentation={phase==='payment'||phase==='receipt'?'centered':undefined} title={<>{title}{phase==='entry'&&<span className={styles.headerStatus} aria-hidden="true"><MiniPhrase en={props.auction.status==='live'?'Live':props.auction.status==='upcoming'?'Upcoming':'Completed'} am={props.auction.status==='live'?'ቀጥታ':props.auction.status==='upcoming'?'በቅርብ':'ተጠናቋል'}/></span>}</>} headerActions={phase==='entry'?<AuctionShare title={props.auction.product.title} code={props.auction.slug} iconOnly/>:undefined} onClose={props.onClose} onBack={back??undefined} footerPortal>
   <BidSheetContents {...props} onPhaseChange={setPhase} onDismissChange={onDismissChange}/>
  </AccountSheet>;
 }

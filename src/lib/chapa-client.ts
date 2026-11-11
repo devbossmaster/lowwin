@@ -59,10 +59,12 @@ export function acceptChapaSnapshot(previous:ChapaCheckoutView|null,next:ChapaCh
 export const CHAPA_CHECKOUT_POLL_MS=5*60*1000;
 /** Bound foreground checks from the saved attempt, without changing the
  * provider's checkout validity or payment outcome when this time elapses. */
-export function chapaPollingDeadline(order:Pick<ChapaCheckoutView,'createdAt'>):number|null{
+export function chapaPollingDeadline(order:Pick<ChapaCheckoutView,'createdAt'>&Partial<Pick<ChapaCheckoutView,'chargeType'|'expiresAt'>>):number|null{
+ if(order.chargeType==='DIRECT'){const expiry=Date.parse(order.expiresAt??'');return Number.isFinite(expiry)?expiry:null}
  const created=Date.parse(order.createdAt);return Number.isFinite(created)?created+CHAPA_CHECKOUT_POLL_MS:null;
 }
 export function chapaPollingPaused(order:ChapaCheckoutView,now=Date.now()){
+ if(order.chargeType==='DIRECT')return false;
  if(chapaConfirmed(order)||order.providerStatus==='SUCCESS'||!['SUBMITTING','PENDING','AUTH_NEEDED'].includes(order.status))return false;
  const deadline=chapaPollingDeadline(order);return deadline!==null&&now>=deadline;
 }

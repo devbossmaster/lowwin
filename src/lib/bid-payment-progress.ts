@@ -1,5 +1,4 @@
 import {chapaAwaitingAuthorization,chapaVerifiedTerminal,chapaConfirmed,chapaDirectRequestRejected,chapaPollingPaused,type ChapaCheckoutView} from './chapa-client';
-import {CHAPA_LONG_WAIT_MS,chapaLongWait} from './chapa-status';
 import {normalizePaymentPhone} from './payment-phone';
 
 export type BidPaymentProgressPhase='preparing'|'connecting'|'authorization'|'confirming'|'success'|'preserved'|'terminal'|'uncertain';
@@ -20,17 +19,11 @@ export function bidPaymentCanRetryOriginal(order:ChapaCheckoutView|null){
  return order.chargeType==='DIRECT'&&['SUBMITTING','PENDING'].includes(order.status)&&!order.authorizationReference&&!chapaConfirmed(order)&&order.providerStatus!=='SUCCESS'&&order.verificationState!=='MISMATCH'&&order.initializationIssue!=='state'&&!chapaDirectRequestRejected(order);
 }
 
-/** A provider success awaiting Lowwin's receipt remains confirming. The
- * existing display clock quiets this wait without inventing acceptance. */
-export function bidPaymentApplicationDelayed(order:ChapaCheckoutView|null,paused=false,now=Date.now()){
- if(!order||order.providerStatus!=='SUCCESS'||chapaConfirmed(order))return false;
- return paused||chapaPollingPaused(order,now)||chapaLongWait(order,now)||now>=Date.parse(order.createdAt)+CHAPA_LONG_WAIT_MS;
-}
 /** Connection health is secondary to accepted provider state. It cannot
  * authorize a fresh attempt or imply that a phone prompt was cancelled. */
 export function bidPaymentConnectionDelayed(state:ProgressState){
  const order=state.order;
- return !!order&&!chapaConfirmed(order)&&!chapaVerifiedTerminal(order)&&(!!state.error||order.verificationUnavailable===true||order.verificationState==='UNAVAILABLE'||state.paused||chapaPollingPaused(order,state.now)||chapaLongWait(order,state.now)||(state.now??Date.now())>=Date.parse(order.createdAt)+CHAPA_LONG_WAIT_MS);
+ return !!order&&!chapaConfirmed(order)&&!chapaVerifiedTerminal(order)&&(!!state.error||order.verificationUnavailable===true||order.verificationState==='UNAVAILABLE'||state.paused||chapaPollingPaused(order,state.now)||(state.now??Date.now())>=Date.parse(order.expiresAt));
 }
 
 /** Presentation only: a received provider payment is still confirming until
@@ -50,7 +43,10 @@ export function bidPaymentProgressPhase(state:ProgressState):BidPaymentProgressP
  if(order.status==='BID_ACCEPTED'||order.status==='EXPIRED')return 'uncertain';
  if(state.busy&&!order.authorizationReference&&['SUBMITTING','PENDING'].includes(order.status))return 'connecting';
  if(chapaAwaitingAuthorization(order))return 'authorization';
- if(error||order.verificationState==='UNAVAILABLE'||state.paused||chapaPollingPaused(order,state.now)||chapaLongWait(order,state.now))return 'uncertain';
+ // An owned pending provider payment stays processing through read failures,
+ // backgrounding and expiry. Only the backend can establish its outcome.
+ if(order.chargeType==='DIRECT'&&['PENDING','AUTH_NEEDED','VERIFYING'].includes(order.status)&&order.providerStatus)return 'confirming';
+ if(error||order.verificationState==='UNAVAILABLE'||state.paused||chapaPollingPaused(order,state.now))return 'uncertain';
  if(!order.authorizationReference&&['SUBMITTING','PENDING'].includes(order.status))return 'connecting';
  return 'confirming';
 }

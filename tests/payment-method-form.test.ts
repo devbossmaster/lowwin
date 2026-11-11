@@ -1,0 +1,22 @@
+﻿import {createElement,type ReactNode} from 'react';
+import {renderToStaticMarkup} from 'react-dom/server';
+import {describe,expect,it,vi} from 'vitest';
+vi.mock('../src/components/account-sheet',()=>({AccountSheetFooter:({children}:{children:ReactNode})=>createElement('footer',null,children)}));
+import PaymentMethodForm,{type PaymentMethodFormProps} from '../src/components/payment-method-form';
+import {MiniLocaleProvider} from '../src/components/mini-locale';
+
+const methods=[{slug:'telebirr',name:'telebirr',minAmountCents:'100',maxAmountCents:'100000'},{slug:'cbebirr',name:'CBE Birr',minAmountCents:'100'},{slug:'mpesa',name:'M-Pesa',minAmountCents:'500'},{slug:'unavailable-bank',name:'Unsupported bank'}];
+const base:PaymentMethodFormProps={total:'35.00',method:null,phone:'911652904',methods,onMethodChange:()=>{},onPhoneChange:()=>{},payDisabled:false,payLabel:'Pay ETB 35.00',onPay:()=>{},onBack:()=>{}};
+function render(props:Partial<PaymentMethodFormProps>={},am=false){return renderToStaticMarkup(createElement(MiniLocaleProvider,{initialLanguage:am?'am':'en',children:createElement(PaymentMethodForm,{...base,...props})}))}
+describe('shared payment method form',()=>{
+ it('requires an explicit provider and never invents provider verification',()=>{const html=render();expect(html).toContain('data-payment-method-form');expect(html).toContain('data-payment-action="true" disabled');expect(html).not.toContain('checked=""');expect(html).not.toContain('Unsupported bank');expect(html).not.toContain('verified');expect(html).toContain('+251')});
+ it('offers only external providers when no wallet is supplied',()=>{const html=render({method:'telebirr'});expect(html).toContain('name="');expect(html).toContain('telebirr.jpg');expect(html).toContain('cbebirr.svg');expect(html).toContain('mpesa.png');expect(html).not.toContain('data-provider="wallet"');expect(html).not.toContain('data-payment-action="true" disabled')});
+ it('keeps payment phone disabled for wallet and blocks insufficient funds',()=>{const html=render({method:'wallet',wallet:{available:'10.00'}});expect(html).toContain('data-provider="wallet"');expect(html).toMatch(/<input[^>]*type="tel"[^>]*disabled=""[^>]*value="911652904"/);expect(html).toContain('Your wallet balance is too low');expect(html).toContain('data-payment-action="true" disabled');expect(html).not.toContain('data-payment-phone-error')});
+ it('rejects a provider-prefix mismatch without presenting it as a completed payment',()=>{const html=render({method:'mpesa'});expect(html).toContain('data-payment-phone-error');expect(html).toContain('aria-invalid="true"');expect(html).toContain('data-payment-action="true" disabled');expect(html).not.toContain('Payment failed')});
+ it('disables an external method outside its supported amount',()=>{const html=render({total:'1.00',method:'mpesa'});expect(html).toContain('data-provider="mpesa" data-selected="true" data-unavailable="true"');expect(html).toContain('Choose a method available for this amount');expect(html).toContain('data-payment-action="true" disabled')});
+ it('shows localized preserved phone and balanced wallet controls',()=>{const html=render({method:'wallet',wallet:{available:'50.00'}},true);expect(html).toContain('Lowwin ዋሌት');expect(html).toMatch(/<input[^>]*type="tel"[^>]*disabled=""[^>]*value="911652904"/);expect(html).toContain('ጠቅላላ ክፍያ');expect(html).not.toContain('data-payment-action="true" disabled')});
+ it('shows processing and prevents repeat submission while busy',()=>{const html=render({method:'telebirr',busy:true});expect(html).toContain('Processing…');expect(html).toContain('aria-busy="true"');expect(html).toContain('data-payment-action="true" disabled')});
+ it('supports fully discounted submissions without requiring a phone',()=>{const html=render({total:'0.00',method:'wallet',phone:'',phoneRequired:false,wallet:{available:'0.00'}});expect(html).not.toContain('data-payment-action="true" disabled');expect(html).not.toContain('data-payment-phone-error');expect(html).toContain('No payment phone is needed')});
+ it('preserves a selected external method for a fully discounted submission without authorizing a below-minimum charge',()=>{const free=render({total:'0.00',method:'telebirr',phone:'',phoneRequired:false});expect(free).not.toContain('data-payment-action="true" disabled');expect(free).not.toContain('Choose a method available for this amount');const paid=render({total:'0.00',method:'telebirr'});expect(paid).toContain('data-payment-action="true" disabled')});
+});
+

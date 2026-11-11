@@ -1,5 +1,5 @@
 'use client';
-import {useCallback,useRef,useState,type RefObject} from 'react';
+import {useCallback,useState,type RefObject} from 'react';
 import dynamic from 'next/dynamic';
 import {Check,Clock3,Copy,LoaderCircle,ShieldCheck,TriangleAlert} from 'lucide-react';
 import {AccountSheet} from './account-sheet';
@@ -26,7 +26,7 @@ export default function TransactionDetails(props:Props){return props.row.source=
 function ChapaDetails({row,trigger,onClose}:Props){
  const {language}=useMiniLocale(),am=language==='am',t=(en:string,a:string)=>am?a:en,payment=useChapaPayment('transaction:'+row.id,row.id),order=payment.order;
  const [continuing,setContinuing]=useState(false),[retrying,setRetrying]=useState(false),[copied,setCopied]=useState(false);
- const {queryIdentity}=useTelegram(),[retryOrder,setRetryOrder]=useState<ChapaCheckoutView|null>(null),[phase,setPhase]=useState<BidSheetPhase>('review'),dismiss=useRef<(()=>void)|null>(null),setDismiss=useCallback((action:(()=>void)|null)=>{dismiss.current=action},[]);
+ const {queryIdentity}=useTelegram(),[retryOrder,setRetryOrder]=useState<ChapaCheckoutView|null>(null),[phase,setPhase]=useState<BidSheetPhase>('review'),[back,setBack]=useState<(()=>void)|null>(null),setDismiss=useCallback((action:(()=>void)|null)=>{setBack(()=>action)},[]);
  const topUpProgress=useCallback((active:boolean)=>setPhase(active?'payment':'review'),[]);
  const draft=retryOrder&&queryIdentity?readPaymentRetryDraft(getMiniQueryClient(),queryIdentity,retryOrder.id):null;
  const summary=order?paymentSummaryState({completed:chapaConfirmed(order),providerStatus:order.providerStatus,verificationState:order.verificationState}):row.summary;
@@ -34,8 +34,8 @@ function ChapaDetails({row,trigger,onClose}:Props){
  async function retry(){if(!retryable||retrying||payment.busy)return;setRetrying(true);try{const current=await payment.check();if(current&&bidPaymentCanRetry(current)&&(current.verificationState==='VERIFIED'||current.reason==='INITIALIZATION_REJECTED')){if(queryIdentity)clearChapaOriginalAttempt(getMiniQueryClient(),queryIdentity,current.purpose==='TOP_UP'?'topup':'bid:'+current.auctionSlug,{orderId:current.id});setRetryOrder(current)}}finally{setRetrying(false)}}
  const reference=order?.merchantReference??order?.id,phone=maskedBidPaymentPhone(order?.payerPhoneMasked),hosted=order&&!chapaConfirmed(order)&&order.providerStatus!=='SUCCESS'&&['SUBMITTING','PENDING','AUTH_NEEDED'].includes(order.status)&&Date.parse(order.expiresAt)>Date.now()?chapaCheckoutUrl(order.checkoutUrl):null;
  const reason=order?chapaPaymentReasonMessage(order,am):null;
- return <AccountSheet size="payment" title={retryOrder?t(retryOrder.purpose==='TOP_UP'?'Top up wallet':'Payment',retryOrder.purpose==='TOP_UP'?'ገንዘብ ያስገቡ':'ክፍያ'):t('Transaction details','የግብይት ዝርዝር')} onClose={()=>dismiss.current?dismiss.current():onClose()} returnFocusRef={trigger} footerPortal={!!retryOrder} layout={retryOrder?.purpose==='BID'?'bid-entry':undefined} presentation={retryOrder&&(phase==='payment'||phase==='receipt')?'centered':undefined}>
-  {retryOrder?.purpose==='TOP_UP'?<TopUp embedded onClose={onClose} onProgressChange={topUpProgress} retryDraft={{amount:retryOrder.amount,paymentMethod:retryOrder.paymentMethod??'',phone:draft?.phone??''}}/>:retryOrder?.purpose==='BID'?<BidRetry embedded order={retryOrder} draft={draft} onClose={onClose} onPhaseChange={setPhase} onDismissChange={setDismiss}/>:continuing&&order?.chargeType==='DIRECT'?<DirectCheckout payment={payment} purpose={order.purpose} amount={order.amount} batch={order.batch??undefined} onClose={onClose}/>:<div className={styles.detail} data-transaction-detail>
+ return <AccountSheet size="payment" title={retryOrder?t(retryOrder.purpose==='TOP_UP'?'Top up wallet':'Payment',retryOrder.purpose==='TOP_UP'?'ገንዘብ ያስገቡ':'ክፍያ'):t('Transaction details','የግብይት ዝርዝር')} onClose={onClose} onBack={back??undefined} returnFocusRef={trigger} footerPortal={!!retryOrder} layout={retryOrder?.purpose==='BID'?'bid-entry':undefined} presentation={retryOrder&&(phase==='payment'||phase==='receipt')?'centered':undefined}>
+  {retryOrder?.purpose==='TOP_UP'?<TopUp embedded onClose={onClose} onDismissChange={setDismiss} onProgressChange={topUpProgress} retryDraft={{amount:retryOrder.amount,paymentMethod:retryOrder.paymentMethod??'',phone:draft?.phone??''}}/>:retryOrder?.purpose==='BID'?<BidRetry embedded order={retryOrder} draft={draft} onClose={onClose} onPhaseChange={setPhase} onDismissChange={setDismiss}/>:continuing&&order?.chargeType==='DIRECT'?<DirectCheckout payment={payment} purpose={order.purpose} amount={order.amount} batch={order.batch??undefined} onClose={onClose}/>:<div className={styles.detail} data-transaction-detail>
    <div className={styles.detailHero} data-summary={summary}><span className={styles.detailIcon}>{summary==='done'?<Check size={23}/>:summary==='failed'?<TriangleAlert size={23}/>:<Clock3 size={23}/>}</span><p>{row.type==='TOP_UP'?t('Wallet top-up','የዋሌት ገቢ'):t('Bid submission fee','የጨረታ ማቅረቢያ ክፍያ')}</p><strong>{formatEtb(order?.amount??row.amount)}</strong><span className={styles.detailStatus}>{paymentSummaryLabel(summary,am)}</span></div>
    {(order?.mode??row.mode)==='test'&&<p className={styles.testMode}>{t('Test payment · no live funds','የሙከራ ክፍያ · እውነተኛ ገንዘብ አይደለም')}</p>}
    <dl className={styles.information}>

@@ -9,6 +9,22 @@ function visibility(){
 afterEach(()=>vi.useRealTimers());
 
 describe('automatic server-owned Chapa verification',()=>{
+ it('keeps an outstanding direct charge checking beyond five minutes and reconciles at provider expiry',async()=>{
+  vi.useFakeTimers();const now=Date.now(),pause=vi.fn(),verify=vi.fn().mockResolvedValue({...pending,chargeType:'DIRECT',pollAfterMs:15000});
+  const stop=startChapaPolling(verify,pause,visibility(),{observeDirect:true,deadlineAt:now+360000,wake:null});
+  await vi.advanceTimersByTimeAsync(359999);expect(pause).not.toHaveBeenCalled();const count=verify.mock.calls.length;
+  await vi.advanceTimersByTimeAsync(1);expect(verify).toHaveBeenCalledTimes(count+1);expect(pause).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(29999);expect(verify).toHaveBeenCalledTimes(count+1);
+  verify.mockResolvedValue({...pending,status:'CREDITED'});await vi.advanceTimersByTimeAsync(1);expect(verify).toHaveBeenCalledTimes(count+2);
+  await vi.advanceTimersByTimeAsync(60000);expect(verify).toHaveBeenCalledTimes(count+2);stop();
+ });
+ it('backs off direct connection errors without changing the attempt or stopping at five minutes',async()=>{
+  vi.useFakeTimers();const pause=vi.fn(),source=visibility(),wake=new EventTarget(),verify=vi.fn().mockRejectedValue(new Error('offline'));
+  const stop=startChapaPolling(verify,pause,source,{observeDirect:true,deadlineAt:Date.now()+60000,wake});
+  await vi.advanceTimersByTimeAsync(600000);expect(pause).not.toHaveBeenCalled();const count=verify.mock.calls.length;expect(count).toBeLessThan(24);
+  source.visibilityState='hidden';source.dispatchEvent(new Event('visibilitychange'));await vi.advanceTimersByTimeAsync(60000);expect(verify).toHaveBeenCalledTimes(count);
+  verify.mockResolvedValue({...pending,status:'CREDITED'});source.visibilityState='visible';wake.dispatchEvent(new Event('online'));await vi.advanceTimersByTimeAsync(0);expect(verify).toHaveBeenCalledTimes(count+1);stop();
+ });
  it('observes committed results in two seconds, then reduces idle reads after thirty seconds',async()=>{
   vi.useFakeTimers();const source=visibility(),wake=new EventTarget(),waiting={...pending,pollAfterMs:2000},verify=vi.fn().mockResolvedValue(waiting);
   const stop=startChapaPolling(verify,vi.fn(),source,{wake});await vi.advanceTimersByTimeAsync(1999);expect(verify).toHaveBeenCalledOnce();

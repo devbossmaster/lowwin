@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {bidPaymentApplicationDelayed,bidPaymentCanRetry,bidPaymentCanRetryOriginal,bidPaymentProgressPhase,maskedBidPaymentPhone} from '@/lib/bid-payment-progress';
+import {bidPaymentCanRetry,bidPaymentCanRetryOriginal,bidPaymentProgressPhase,maskedBidPaymentPhone} from '@/lib/bid-payment-progress';
 import type {ChapaCheckoutView} from '@/lib/chapa-client';
 
 const created=Date.parse('2026-11-10T10:00:00Z');
@@ -26,7 +26,7 @@ describe('bid-only progress follows the owned payment outcome',()=>{
   }
   expect(bidPaymentCanRetry({...pending,status:'NEEDS_REVIEW'})).toBe(false);
   expect(bidPaymentCanRetry(pending)).toBe(false);
-  expect(bidPaymentProgressPhase({...state,now:created+300000})).toBe('uncertain');
+  expect(bidPaymentProgressPhase({...state,now:created+300000})).toBe('confirming');
   expect(pending.status).toBe('PENDING');
  });
  it('requires confirmed expiry evidence and does not turn an elapsed expiresAt into a failure',()=>{
@@ -76,16 +76,11 @@ describe('bid-only progress follows the owned payment outcome',()=>{
   expect(maskedBidPaymentPhone('<script>provider error</script>')).toBeNull();
   expect(maskedBidPaymentPhone(null)).toBeNull();
  });
- it('quiets a provider success after the existing display deadline while still waiting for a committed receipt',()=>{
-  for(const status of ['PENDING','VERIFYING']){
-   const order={...pending,status,providerStatus:'SUCCESS'};
-   expect(bidPaymentApplicationDelayed(order,false,created+89999)).toBe(false);
-   expect(bidPaymentApplicationDelayed(order,false,created+90000)).toBe(true);
-   expect(bidPaymentApplicationDelayed(order,true,created)).toBe(true);
-   expect(bidPaymentProgressPhase({...state,order,now:created+90000})).toBe('confirming');
-   expect(bidPaymentCanRetry(order)).toBe(false);
+ it('keeps pending and successful provider responses processing beyond display timers and expiry',()=>{
+  for(const providerStatus of ['PENDING','SUCCESS'])for(const health of [{},{error:'offline',paused:true},{order:{...pending,providerStatus,verificationState:'UNAVAILABLE'}}]){
+   const snapshot={...state,order:{...pending,providerStatus},now:created+3600000,...health};
+   expect(bidPaymentProgressPhase(snapshot)).toBe('confirming');
+   expect(bidPaymentCanRetry(snapshot.order)).toBe(false);
   }
-  expect(bidPaymentApplicationDelayed(pending,false,created+90000)).toBe(false);
-  expect(bidPaymentApplicationDelayed({...pending,status:'BID_ACCEPTED',providerStatus:'SUCCESS',receipt:{bid:{id:'accepted'}} as ChapaCheckoutView['receipt']},true,created+90000)).toBe(false);
  });
 });
