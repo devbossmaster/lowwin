@@ -1,330 +1,148 @@
 import {test,expect,type Locator,type Page} from '@playwright/test';
-import {randomInt,randomUUID} from 'node:crypto';
-import {fixture,pending} from '../chapa-browser/fixtures';
-import {verifyFixtureContact} from '../contact-fixtures';
-import {signedLaunch} from '../helpers';
+import {randomUUID} from 'node:crypto';
+import {fixture,pending,batchQuote} from '../chapa-browser/fixtures';
 import type {ChapaCheckoutView,ChapaIntent} from '../../src/lib/chapa-client';
-import type {BidBatchQuote,BidBatchReceipt,ChapaDirectIntent} from '../../src/lib/bid-batch-client';
+import type {BidBatchQuote,BidBatchReceipt} from '../../src/lib/bid-batch-client';
 
-async function setup(page:Page,am:boolean){const f=await fixture(page,am);await page.addInitScript(()=>localStorage.setItem('lowwin:introduction:v1','dismissed'));await page.route('**/api/payments/chapa/methods*',route=>route.fulfill({json:{methods:[{name:'Telebirr',slug:'telebirr',minAmountCents:'100',maxAmountCents:'10000000'},{name:'M-Pesa',slug:'mpesa',minAmountCents:'500',maxAmountCents:'10000000'},{name:'CBE Birr',slug:'cbebirr',minAmountCents:'100',maxAmountCents:'10000000'}],paymentPhone:'251911652904'}}));return {...f,async cleanup(){await f.db.product.update({where:{id:f.auction.productId!},data:{visible:false}});await f.db.$disconnect()}}}
-function directOrder(command:ChapaDirectIntent,authType:'USSD'|'OTP',batch?:BidBatchQuote):ChapaCheckoutView{
- const intent:ChapaIntent=command.purpose==='TOP_UP'?{key:command.key,purpose:'TOP_UP',amount:command.amount}:{key:command.key,purpose:'BID',amount:batch!.lines[0].number,auctionSlug:batch!.auctionSlug,feeVersion:batch!.feeVersion};
- const amount=command.purpose==='TOP_UP'?Number(command.amount).toFixed(2):batch!.total;
- return {...pending(intent),chargeType:'DIRECT',authType,authorizationReference:'CH-'+randomUUID(),checkoutUrl:null,status:'AUTH_NEEDED',reason:null,amount,amountCents:String(Math.round(Number(amount)*100)),payerPhoneMasked:'251*****2904',paymentMethod:command.paymentMethod,providerStatus:'AUTH_NEEDED',verificationState:'VERIFIED',batch:batch??null,batchNumbers:batch?.lines.map(line=>line.number)};
+async function setup(page:Page,am:boolean){
+ const f=await fixture(page,am),retired:string[]=[],provider:string[]=[];
+ page.on('request',request=>{const path=new URL(request.url()).pathname;if(/^\/api\/payments\/chapa\/(?:direct(?:\/bid)?|methods)$/.test(path))retired.push(path)});
+ await page.route('https://api.chapa.co/**',route=>{provider.push(route.request().url());return route.abort()});
+ await page.route('https://api.chapa.global/**',route=>{provider.push(route.request().url());return route.abort()});
+ return {...f,retired,async cleanup(){try{expect(retired).toEqual([]);expect(provider).toEqual([]);expect(await f.db.bid.count({where:{userId:f.user.id}})).toBe(0);expect(await f.db.chapaCheckout.count({where:{userId:f.user.id}})).toBe(0);expect((await f.db.ledgerAccount.findUnique({where:{name:`user:${f.user.id}:available`}}))?.balance.toString()??'0').toBe('0');await f.db.product.update({where:{id:f.auction.productId!},data:{visible:false}})}finally{await f.db.$disconnect()}}};
 }
-function accepted(order:ChapaCheckoutView):ChapaCheckoutView{const bids=(order.batchNumbers??[order.bidNumber!]).map(amount=>({id:randomUUID(),auctionCode:'Synthetic QA',auctionSlug:order.auctionSlug!,amount,acceptedAt:new Date().toISOString(),termsVersion:1,feePoints:'10'}));return {...order,status:order.purpose==='TOP_UP'?'CREDITED':'BID_ACCEPTED',providerStatus:'SUCCESS',verificationState:'VERIFIED',receipt:order.purpose==='TOP_UP'?null:{bid:bids[0],hold:{previousMax:'0',newMax:'0',extraReserved:'0'},charge:{feePoints:order.amount,newlyUnavailable:order.amount,netFeePoints:order.amount},wallet:{available:'25',held:'0'},remainingSubmissions:100-bids.length,ownBids:bids.map(b=>({id:b.id,amount:b.amount,acceptedAt:b.acceptedAt}))}}}
-function paymentPhone(dialog:Locator,am:boolean){return dialog.getByRole('textbox',{name:am?'የክፍያ ስልክ ቁጥር':'Payment phone number',exact:true})}
-async function startTopup(page:Page,am:boolean,phone:string|null='0911652904'){await expect(page.locator('[data-header-balance]')).toContainText('25.00');await page.getByRole('link',{name:am?'ገንዘብ ያስገቡ':'Deposit',exact:true}).click();const dialog=page.getByRole('dialog',{name:am?'ወደ ዋሌት ገንዘብ ያስገቡ':'Top up wallet',exact:true});await dialog.getByRole('textbox',{name:am?'መጠን':'Amount',exact:true}).fill('10');await dialog.locator('[data-payment-action]').click();await expect(dialog.locator('[data-direct-checkout]')).toBeVisible();await expect(paymentPhone(dialog,am)).toHaveValue('');if(phone!==null)await paymentPhone(dialog,am).fill(phone);return dialog}
-
-function batchQuote(auctionSlug:string,numbers:string[],feeCents=1000):BidBatchQuote{
- const totalCents=numbers.length*feeCents;
- return {id:randomUUID(),quoteHash:'b'.repeat(64),auctionSlug,feeVersion:1,ruleVersion:'lowest-unique-v4',lines:numbers.map((number,position)=>({position,number:Number(number).toFixed(2),grossFee:(feeCents/100).toFixed(2),discount:'0.00',netFee:(feeCents/100).toFixed(2)})),entryCount:numbers.length,total:(totalCents/100).toFixed(2),totalCents:String(totalCents),grossTotal:(totalCents/100).toFixed(2),discountTotal:'0.00',status:'QUOTED'};
+async function noCustomCheckout(dialog:Locator){
+ await expect(dialog.getByRole('radio')).toHaveCount(0);
+ await expect(dialog.locator('input[type="tel"],input[type="password"],input[autocomplete="one-time-code"],[data-direct-checkout],[data-direct-approval],[data-funding-selector]')).toHaveCount(0);
+}
+async function openTopup(page:Page,am:boolean){
+ await expect(page.locator('[data-header-balance]')).toContainText('25.00');await page.getByRole('link',{name:am?'ገንዘብ ያስገቡ':'Deposit',exact:true}).click();
+ const dialog=page.getByRole('dialog');await expect(dialog.locator('[data-wallet-top-up]')).toBeVisible();return dialog;
 }
 async function openBid(page:Page,title:string){await page.locator('.auction-card').filter({hasText:title}).getByRole('button').click();const dialog=page.getByRole('dialog');await expect(dialog.locator('[data-bid-entry]')).toBeVisible();return dialog}
+const bidInput=(dialog:Locator,am:boolean)=>dialog.getByRole('textbox',{name:am?'የጨረታ መጠንዎ':'Your bid amount',exact:true});
+const topupInput=(dialog:Locator,am:boolean)=>dialog.getByRole('textbox',{name:am?'የሚያስገቡት መጠን':'Amount to top up',exact:true});
+const walletAction=(dialog:Locator,am:boolean)=>dialog.getByRole('button',{name:am?/^ከዋሌት /:/^Pay .* from wallet$/});
+const checked=(dialog:Locator,am:boolean)=>dialog.getByRole('button',{name:am?'ክፍያ ያረጋግጡ':'Check payment',exact:true});
+function accepted(order:ChapaCheckoutView):ChapaCheckoutView{
+ const bid={id:randomUUID(),auctionCode:'Synthetic QA',auctionSlug:order.auctionSlug!,amount:order.batchNumbers?.[0]??'2.00',acceptedAt:new Date().toISOString(),termsVersion:1,feePoints:order.amount};
+ return {...order,status:order.purpose==='TOP_UP'?'CREDITED':'BID_ACCEPTED',providerStatus:'SUCCESS',verificationState:'VERIFIED',receipt:order.purpose==='TOP_UP'?null:{bid,hold:{previousMax:'0',newMax:'0',extraReserved:'0'},charge:{feePoints:order.amount,newlyUnavailable:order.amount},wallet:{available:'25',held:'0'},remainingSubmissions:99,ownBids:[{id:bid.id,amount:bid.amount,acceptedAt:bid.acceptedAt}]}};
+}
+function walletReceipt(quote:BidBatchQuote):BidBatchReceipt{return {batch:{...quote,status:'ACCEPTED'},receipts:quote.lines.map(line=>({bid:{id:randomUUID(),auctionCode:'Synthetic QA',auctionSlug:quote.auctionSlug,amount:line.number,acceptedAt:new Date().toISOString(),termsVersion:1,feePoints:line.netFee},charge:{feePoints:line.netFee,newlyUnavailable:line.netFee}}))}}
 
-test('bid checkout requires a manual phone above payment choices and rejects a provider-prefix mismatch before submission',async({page},info)=>{
- const am=info.project.name==='430',f=await setup(page,am),commands:ChapaDirectIntent[]=[];let quote:BidBatchQuote|null=null,quoteRequests=0,order:ChapaCheckoutView|null=null;
- try{
-  await page.route('**/api/payments/chapa/batches/quote',route=>{quoteRequests++;quote=batchQuote(f.auction.slug!,route.request().postDataJSON().numbers);return route.fulfill({json:quote})});
-  await page.route('**/api/payments/chapa/direct',route=>{const command=route.request().postDataJSON() as ChapaDirectIntent;commands.push(command);order=directOrder(command,'USSD',quote!);return route.fulfill({json:order})});
-  await page.route('**/api/payments/chapa/checkouts/**',route=>route.fulfill({json:order}));
-  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await openBid(page,f.title),phone=paymentPhone(dialog,am),pay=dialog.locator('[data-payment-action]'),feedback=dialog.locator('[data-payment-phone-error]'),funding=dialog.locator('[data-funding-selector]');
-  await expect(phone).toHaveValue('');await dialog.getByRole('textbox',{name:am?'የጨረታ መጠንዎ':'Your bid amount',exact:true}).fill('2');await expect(pay).toBeDisabled();
-  const phoneBox=await phone.boundingBox(),fundingBox=await funding.boundingBox();expect(phoneBox!.y+phoneBox!.height).toBeLessThanOrEqual(fundingBox!.y);
-  await phone.fill('0911652904');await expect(pay).toBeEnabled();await funding.getByRole('radio',{name:'M-Pesa',exact:true}).check();
-  for(const value of ['0911652904','+251911652904','251 911 652 904']){await phone.fill(value);await expect(phone).toHaveAttribute('aria-invalid','true');await expect(feedback).toContainText('M-Pesa');await expect(pay).toBeDisabled()}
-  expect(quoteRequests).toBe(0);expect(commands).toHaveLength(0);await expect(dialog.locator('[data-bid-submitting],[data-direct-approval]')).toHaveCount(0);await page.screenshot({path:info.outputPath('bid-mpesa-prefix-error.png'),animations:'disabled'});
-  await phone.fill('0713339196');await expect(feedback).toHaveCount(0);await expect(pay).toBeEnabled();await funding.getByRole('radio',{name:'telebirr',exact:true}).check();await expect(feedback).toContainText('telebirr');await expect(pay).toBeDisabled();
-  await funding.getByRole('radio',{name:'CBE Birr',exact:true}).check();await expect(feedback).toHaveCount(0);await expect(pay).toBeEnabled();await phone.fill('0911652904');await expect(pay).toBeEnabled();
-  await phone.clear();await funding.getByRole('radio',{name:am?'ዋሌት':'Wallet',exact:true}).check();await expect(phone).toHaveCount(0);await expect(pay).toBeEnabled();expect(quoteRequests).toBe(0);expect(commands).toHaveLength(0);
-  await funding.getByRole('radio',{name:'M-Pesa',exact:true}).check();await expect(phone).toHaveValue('');await expect(pay).toBeDisabled();await phone.fill('+251713339196');await expect(pay).toBeEnabled();await pay.click();
-  await expect.poll(()=>commands.length).toBe(1);expect(quoteRequests).toBe(1);expect(commands[0]).toMatchObject({purpose:'BID',paymentMethod:'mpesa',phone:'251713339196'});await expect(dialog.locator('[data-direct-approval="phone"]')).toBeVisible();
- }finally{await f.cleanup()}
-});
-
-test('top-up phone is blank above providers and an invalid M-Pesa number never starts loading or a charge',async({page},info)=>{
- const am=info.project.name==='430',f=await setup(page,am),commands:ChapaDirectIntent[]=[];let order:ChapaCheckoutView|null=null;
- try{
-  await page.route('**/api/payments/chapa/direct',route=>{const command=route.request().postDataJSON() as ChapaDirectIntent;commands.push(command);order=directOrder(command,'USSD');return route.fulfill({json:order})});
-  await page.route('**/api/payments/chapa/checkouts/**',route=>route.fulfill({json:order}));
-  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await startTopup(page,am,null),phone=paymentPhone(dialog,am),pay=dialog.locator('[data-payment-action]'),feedback=dialog.locator('[data-payment-phone-error]');
-  await expect(phone).toHaveValue('');await expect(pay).toBeDisabled();const phoneBox=await phone.boundingBox(),providersBox=await dialog.locator('[data-direct-checkout] fieldset').boundingBox();expect(phoneBox!.y+phoneBox!.height).toBeLessThanOrEqual(providersBox!.y);
-  await phone.fill('0911652904');await expect(pay).toBeEnabled();const mpesa=dialog.getByRole('radio',{name:'M-Pesa',exact:true});await mpesa.locator('..').click({timeout:10000});await expect(mpesa).toBeChecked();await expect(feedback).toContainText('M-Pesa');await expect(pay).toBeDisabled();expect(commands).toHaveLength(0);await expect(dialog.locator('[data-direct-approval]')).toHaveCount(0);
-  await page.screenshot({path:info.outputPath('topup-manual-phone-error.png'),animations:'disabled'});await phone.fill('0713339196');await expect(feedback).toHaveCount(0);await pay.click();await expect.poll(()=>commands.length).toBe(1);expect(commands[0]).toMatchObject({purpose:'TOP_UP',paymentMethod:'mpesa',phone:'251713339196'});await expect(dialog.locator('[data-direct-approval="phone"]')).toBeVisible();
- }finally{await f.cleanup()}
-});
-
-test('a definitive provider initialization rejection stops the spinner and offers an explicit new checkout',async({page},info)=>{
- const am=info.project.name==='430',f=await setup(page,am);let order:ChapaCheckoutView|null=null,charges=0,checks=0;
- try{
-  // Cover saved pre-fix PENDING attempts as well as new rejected attempts.
-  await page.route('**/api/payments/chapa/direct',route=>{charges++;order={...directOrder(route.request().postDataJSON() as ChapaDirectIntent,'USSD'),status:am?'NEEDS_REVIEW':'PENDING',reason:am?'INITIALIZATION_REJECTED':'PROVIDER_CONFIRMATION_REQUIRED',providerStatus:null,verificationState:'UNAVAILABLE',authType:null,authorizationReference:null,initializationIssue:'request'};return route.fulfill({json:order})});
-  await page.route('**/api/payments/chapa/checkouts/**',route=>{checks++;return route.fulfill({json:order})});
-  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await startTopup(page,am);await dialog.locator('[data-payment-action]').click();await expect(dialog.getByRole('status')).toContainText(am?'ክፍያው ሊጀመር አልቻለም':'Checkout could not start');await expect(dialog.locator('[data-direct-approval]')).toHaveCount(0);
-  await expect(dialog.getByRole('button',{name:am?'አዲስ ክፍያ ይጀምሩ':'Start new checkout',exact:true})).toBeVisible();expect(charges).toBe(1);expect(checks).toBe(0);await page.screenshot({path:info.outputPath('direct-request-rejected.png'),animations:'disabled'});
- }finally{await f.cleanup()}
-});
-
-test('one simplified bid sheet totals every amount and sends one explicitly selected direct charge',async({page},info)=>{
- const am=info.project.name==='430',f=await setup(page,am),commands:ChapaDirectIntent[]=[],quotes:unknown[]=[];let order:ChapaCheckoutView|null=null,quote:BidBatchQuote|null=null,paid=false,verifyRequests=0;
- try{
-  await page.route('**/api/payments/chapa/batches/quote',route=>{const body=route.request().postDataJSON() as {numbers:string[]};quotes.push(body);quote=batchQuote(f.auction.slug!,body.numbers);return route.fulfill({json:quote})});
-  await page.route('**/api/payments/chapa/direct',route=>{const body=route.request().postDataJSON() as ChapaDirectIntent;commands.push(body);order=directOrder(body,'USSD',quote!);return route.fulfill({status:202,json:order})});
-  await page.route('**/api/payments/chapa/checkouts/**',route=>{if(route.request().method()==='POST')verifyRequests++;return route.fulfill({json:paid?accepted(order!):order})});
-  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await openBid(page,f.title),input=dialog.getByRole('textbox',{name:am?'የጨረታ መጠንዎ':'Your bid amount',exact:true});
-  const marker=randomUUID();await dialog.evaluate((node,value)=>node.setAttribute('data-stable-modal',value),marker);
-  await expect(input).toBeEnabled();await input.fill('2');await dialog.getByRole('button',{name:am?'የጨረታ መጠን ጨምር':'Add bid amount',exact:true}).click();await input.fill('3');await dialog.getByRole('button',{name:am?'የጨረታ መጠን ጨምር':'Add bid amount',exact:true}).click();await input.fill('4');
-  await expect(dialog.locator('[data-bid-total]')).toContainText('30.00');expect(quotes).toHaveLength(0);expect(commands).toHaveLength(0);
-  const funding=dialog.locator('[data-funding-selector]'),originalViewport=page.viewportSize()!;
-  await expect(funding.getByRole('radio')).toHaveCount(4);await expect(funding.locator('img')).toHaveCount(3);await expect.poll(()=>funding.locator('img').evaluateAll(nodes=>nodes.every(node=>(node as HTMLImageElement).complete&&(node as HTMLImageElement).naturalWidth>0))).toBe(true);
-  for(const width of [320,originalViewport.width]){
-   await page.setViewportSize({...originalViewport,width});
-   const telebirr=await funding.locator('[data-provider="telebirr"]').boundingBox(),cbe=await funding.locator('[data-provider="cbebirr"]').boundingBox(),mpesa=await funding.locator('[data-provider="mpesa"]').boundingBox(),wallet=await funding.locator('[data-provider="wallet"]').boundingBox();
-   expect(telebirr!.x+telebirr!.width).toBeLessThanOrEqual(cbe!.x+1);expect(Math.abs(telebirr!.y-cbe!.y)).toBeLessThan(2);expect(mpesa!.y).toBeGreaterThan(telebirr!.y);expect(Math.abs(mpesa!.y-wallet!.y)).toBeLessThan(2);expect(mpesa!.x+mpesa!.width).toBeLessThanOrEqual(wallet!.x+1);
-   for(const radio of await funding.getByRole('radio').all())await expect(radio).toHaveCSS('opacity','0');
-   for(const image of await funding.locator('img').all()){const box=await image.boundingBox();expect(box!.width).toBeGreaterThanOrEqual(20);expect(box!.height).toBeGreaterThanOrEqual(20)}
-   const product=dialog.locator('[data-sheet-preview] img');await expect(product).toBeVisible();expect((await product.boundingBox())!.height).toBeGreaterThan(70);
-   const fee=dialog.locator('[data-bid-count]').locator('..'),price=await fee.locator(':scope > div > strong').boundingBox(),bidCount=await fee.locator('[data-bid-count]').boundingBox(),clock=await fee.locator(':scope > span:last-child').boundingBox();
-   for(const neighbor of [bidCount!,clock!])expect(price!.x+price!.width<=neighbor.x+1||neighbor.x+neighbor.width<=price!.x+1||price!.y+price!.height<=neighbor.y+1||neighbor.y+neighbor.height<=price!.y+1).toBe(true);
-   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-   await page.screenshot({path:info.outputPath('simplified-bid-'+width+'.png'),animations:'disabled'});
-  }
-  await funding.getByRole('radio',{name:'telebirr',exact:true}).check();await expect(funding.getByRole('radio',{name:'telebirr',exact:true})).toBeChecked();
-  const phone=paymentPhone(dialog,am);await expect(phone).toHaveValue('');await phone.fill('+251911652904');await expect(phone).toHaveValue('911652904');await phone.fill('0911652904');await expect(phone).toHaveValue('911652904');
-  await dialog.locator('[data-payment-action]').evaluate(node=>{(node as HTMLButtonElement).click();(node as HTMLButtonElement).click()});await expect.poll(()=>commands.length).toBe(1);
-  expect(quotes).toHaveLength(1);expect(quotes[0]).toMatchObject({numbers:['2.00','3.00','4.00']});expect(commands[0]).toMatchObject({purpose:'BID',paymentMethod:'telebirr',phone:'251911652904',batchId:quote!.id});
-  await expect(dialog.locator('[data-bid-review]')).toHaveCount(0);await expect(dialog).toHaveAttribute('data-stable-modal',marker);await expect(dialog.locator('[data-direct-approval="phone"]')).toBeVisible();await expect(page.getByRole('dialog')).toHaveCount(1);
-  await expect(dialog.locator('input[autocomplete="one-time-code"],input[type="password"]')).toHaveCount(0);expect(await page.evaluate(()=>Reflect.get(window,'chapaOpened')??[])).toEqual([]);
-  paid=true;await expect(dialog.locator('[data-payment-state="confirmed"]')).toBeVisible();expect(verifyRequests).toBeGreaterThan(0);await expect(dialog).toContainText('2.00');await expect(dialog).toContainText('4.00');expect(commands).toHaveLength(1);expect(await f.db.bid.count({where:{userId:f.user.id}})).toBe(0);
- }finally{await f.cleanup()}
-});
-
-test('wallet selection submits a server quote once from the same sheet and waits for its receipt',async({page},info)=>{
- const am=info.project.name==='430',f=await setup(page,am),quotes:BidBatchQuote[]=[],commands:unknown[]=[];let release!:()=>void;const gate=new Promise<void>(resolve=>release=resolve);
- try{
-  await page.route('**/api/payments/chapa/batches/quote',route=>{const body=route.request().postDataJSON() as {numbers:string[]};const quote=batchQuote(f.auction.slug!,body.numbers);quotes.push(quote);return route.fulfill({json:quote})});
-  await page.route('**/api/payments/chapa/batches/*/wallet',async route=>{commands.push(route.request().postDataJSON());await gate;const quote=quotes.at(-1)!;const receipt:BidBatchReceipt={batch:{...quote,status:'ACCEPTED'},receipts:quote.lines.map(line=>({bid:{id:randomUUID(),auctionCode:'Synthetic QA',auctionSlug:f.auction.slug!,amount:line.number,acceptedAt:new Date().toISOString(),termsVersion:1,feePoints:'10'},charge:{feePoints:'10',newlyUnavailable:'10'}}))};return route.fulfill({json:receipt})});
-  await page.route('**/api/payments/chapa/direct',()=>{throw Error('Wallet must not initialize an external charge')});
-  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await openBid(page,f.title),input=dialog.getByRole('textbox',{name:am?'የጨረታ መጠንዎ':'Your bid amount',exact:true});await input.fill('7.25');await dialog.locator('[data-funding-selector]').getByRole('radio',{name:am?'ዋሌት':'Wallet',exact:true}).check();
-  await expect(dialog.locator('[data-bid-total]')).toContainText('10.00');const pay=dialog.locator('[data-payment-action]');await expect(pay).toBeEnabled();await pay.evaluate(node=>{(node as HTMLButtonElement).click();(node as HTMLButtonElement).click()});
-  await expect.poll(()=>commands.length).toBe(1);expect(quotes).toHaveLength(1);expect(commands[0]).toEqual({quoteHash:quotes[0].quoteHash});await expect(pay).toBeDisabled();await expect(pay.locator('[data-bid-submitting]')).toBeVisible();await expect(dialog.locator('[data-bid-review]')).toHaveCount(0);await expect(dialog.locator('[data-payment-state="confirmed"]')).toHaveCount(0);
-  await page.screenshot({path:info.outputPath('simplified-wallet-submitting.png'),animations:'disabled'});release();await expect(dialog.getByRole('status')).toHaveText(am?'1 ጨረታዎች ተቀብለዋል':'Bid accepted');expect(commands).toHaveLength(1);expect(await f.db.bid.count({where:{userId:f.user.id}})).toBe(0);
- }finally{release();await f.cleanup()}
-});
-
-test('a changed server total requires a second explicit payment confirmation',async({page},info)=>{
- const am=info.project.name==='430',f=await setup(page,am);let quote:BidBatchQuote|null=null,quoteRequests=0,charges=0;
- try{
-  await page.route('**/api/payments/chapa/batches/quote',route=>{quoteRequests++;const body=route.request().postDataJSON() as {numbers:string[]};quote=batchQuote(f.auction.slug!,body.numbers,900);return route.fulfill({json:quote})});
-  await page.route('**/api/payments/chapa/direct',route=>{charges++;return route.fulfill({json:directOrder(route.request().postDataJSON() as ChapaDirectIntent,'USSD',quote!)})});
-  await page.route('**/api/payments/chapa/checkouts/**',route=>route.fulfill({status:503,json:{error:'Synthetic unavailable'}}));
-  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await openBid(page,f.title);await dialog.getByRole('textbox',{name:am?'የጨረታ መጠንዎ':'Your bid amount',exact:true}).fill('6.25');await dialog.getByRole('radio',{name:'M-Pesa',exact:true}).check();await paymentPhone(dialog,am).fill('0713339196');await expect(dialog.locator('[data-bid-total]')).toContainText('10.00');await dialog.locator('[data-payment-action]').click();
-  await expect.poll(()=>quoteRequests).toBe(1);await expect(dialog.getByRole('alert')).toBeVisible();await expect(dialog.locator('[data-bid-total]')).toContainText('9.00');expect(charges).toBe(0);await expect(dialog.locator('[data-bid-review]')).toHaveCount(0);
-  await dialog.locator('[data-payment-action]').click();await expect.poll(()=>charges).toBe(1);expect(quoteRequests).toBe(1);await expect(dialog.locator('[data-direct-approval="phone"]')).toBeVisible();
- }finally{await f.cleanup()}
-});
-
-test('an uncertain wallet debit retries the original quote after its balance and bid limits change',async({page},info)=>{
- const am=info.project.name==='430',f=await setup(page,am),quotes:BidBatchQuote[]=[],commands:{path:string;body:unknown}[]=[];let debited=false;
- let ownSnapshot:Promise<Record<string,unknown>>|null=null;
- try{
-  await page.route('**/api/wallet',route=>route.fulfill({json:{available:debited?'5.00':'25.00',held:'0',currency:'ETB',topUp:{enabled:true,reason:null}}}));
-  await page.route('**/api/auctions/*/bids',async route=>{const body=await(ownSnapshot??=route.fetch().then(response=>response.json()));return route.fulfill({json:{...body,...(debited?{open:false,remainingSubmissions:0,ownBids:[{id:randomUUID(),amount:'7.25',acceptedAt:new Date().toISOString()}]}:{})}})});
-  await page.route('**/api/payments/chapa/batches/quote',route=>{const quote=batchQuote(f.auction.slug!,route.request().postDataJSON().numbers);quotes.push(quote);return route.fulfill({json:quote})});
-  await page.route('**/api/payments/chapa/batches/*/wallet',route=>{commands.push({path:new URL(route.request().url()).pathname,body:route.request().postDataJSON()});if(commands.length===1){debited=true;return route.abort('failed')}const quote=quotes[0];return route.fulfill({json:{batch:{...quote,status:'ACCEPTED'},receipts:quote.lines.map(line=>({bid:{id:randomUUID(),auctionCode:'Synthetic QA',auctionSlug:f.auction.slug!,amount:line.number,acceptedAt:new Date().toISOString(),termsVersion:1,feePoints:'10'},charge:{feePoints:'10',newlyUnavailable:'10'}}))}})});
-  await page.route('**/api/payments/chapa/direct',()=>{throw Error('Wallet recovery must not initialize an external charge')});
-  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await openBid(page,f.title);await dialog.getByRole('textbox',{name:am?'የጨረታ መጠንዎ':'Your bid amount',exact:true}).fill('7.25');await dialog.getByRole('radio',{name:am?'ዋሌት':'Wallet',exact:true}).check();await dialog.locator('[data-payment-action]').click();
-  const retry=dialog.getByRole('button',{name:am?'የመጀመሪያውን ክፍያ ይድገሙ':'Retry original payment',exact:true});await expect(retry).toBeVisible();await expect(page.locator('[data-header-balance]')).toContainText('5.00');await expect(dialog).toContainText(am?'ይህ ጨረታ ለአዲስ ጨረታዎች ክፍት አይደለም።':'This auction is not open for new bids.');await expect(retry).toBeEnabled();await expect(dialog.locator('[data-bid-total]')).toContainText('10.00');expect(quotes).toHaveLength(1);expect(commands).toHaveLength(1);
-  await retry.click();await expect(dialog.getByRole('status')).toHaveText(am?'1 ጨረታዎች ተቀብለዋል':'Bid accepted');expect(quotes).toHaveLength(1);expect(commands).toHaveLength(2);expect(commands[1]).toEqual(commands[0]);
- }finally{await f.cleanup()}
-});
-
-test('an applied coupon can be removed after refreshed availability becomes zero',async({page},info)=>{
- const am=info.project.name==='430',f=await setup(page,am),couponId=randomUUID();let unavailable=false,quotes=0;
- let ownSnapshot:Promise<Record<string,unknown>>|null=null;
- try{
-  await page.route('**/api/auctions/*/bids',async route=>{const body=await(ownSnapshot??=route.fetch().then(response=>response.json()));return route.fulfill({json:{...body,referralDiscountsAvailable:true,couponAvailableCount:unavailable?0:1}})});
-  await page.route('**/api/auctions/*/discount-quote?**',route=>route.fulfill({json:{serverNow:new Date().toISOString(),auctionSlug:f.auction.slug,feeVersion:1,ruleVersion:'lowest-unique-v4',grossFeePoints:'10',discountPoints:'1',netFeePoints:'9',coupon:unavailable?null:{id:couponId,percent:10,expiresAt:new Date(Date.now()+3600000).toISOString()},eligible:!unavailable}}));
-  await page.route('**/api/payments/chapa/batches/quote',route=>{quotes++;unavailable=true;return route.fulfill({status:409,json:{code:'COUPON_UNAVAILABLE',error:'Synthetic coupon was already used'}})});
-  await page.route('**/api/payments/chapa/direct',()=>{throw Error('An unavailable coupon must not initialize a payment')});
-  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await openBid(page,f.title);await dialog.getByRole('textbox',{name:am?'የጨረታ መጠንዎ':'Your bid amount',exact:true}).fill('6.25');await paymentPhone(dialog,am).fill('0911652904');const coupon=dialog.locator('[data-bid-coupons]');await coupon.getByRole('button',{name:am?'ተግብር':'Apply',exact:true}).click();await expect(dialog.locator('[data-bid-total]')).toContainText('9.00');await dialog.locator('[data-payment-action]').click();
-  await expect.poll(()=>quotes).toBe(1);await expect(coupon).toContainText('0');const remove=coupon.getByRole('button',{name:am?'አስወግድ':'Remove',exact:true});await expect(remove).toBeEnabled();await remove.click();await expect(coupon.getByRole('button',{name:am?'ተግብር':'Apply',exact:true})).toBeDisabled();await expect(dialog.locator('[data-bid-total]')).toContainText('10.00');expect(quotes).toBe(1);
- }finally{await f.cleanup()}
-});
-
-test('OTP appears only on the provider OTP state; explicit authorization sends it once and cancellation remains unpaid',async({page},info)=>{
- const am=info.project.name==='430',f=await setup(page,am),authorizations:unknown[]=[],commands:ChapaDirectIntent[]=[];let order:ChapaCheckoutView|null=null;
- try{
-  await page.route('**/api/payments/chapa/direct',route=>{const body=route.request().postDataJSON() as ChapaDirectIntent;commands.push(body);order=directOrder(body,'OTP');return route.fulfill({json:order})});
-  await page.route('**/api/payments/chapa/checkouts/**',route=>{if(new URL(route.request().url()).pathname.endsWith('/authorize')){authorizations.push(route.request().postDataJSON());order={...order!,status:'CANCELLED',providerStatus:'CANCELLED',providerReasonCode:'PAYMENT_CANCELLED',verificationState:'VERIFIED'}}return route.fulfill({json:order})});
-  await page.goto('/telegram?next='+encodeURIComponent(f.home));await expect(page.locator('[data-header-balance]')).toContainText('25.00');const dialog=await startTopup(page,am);await dialog.getByRole('textbox',{name:am?'የክፍያ ስልክ ቁጥር':'Payment phone number'}).fill('0911652904');await dialog.locator('[data-payment-action]').click();const otp=dialog.locator('input[autocomplete="one-time-code"]');await expect(otp).toBeVisible();await expect(dialog).toContainText(am?'የማረጋገጫ ኮዱን ያስገቡ':'Enter your verification code');expect(authorizations).toHaveLength(0);
-  await page.screenshot({path:info.outputPath('direct-otp.png'),animations:'disabled'});await otp.fill('123456');await dialog.getByRole('button',{name:am?'ኮዱን ያረጋግጡ':'Confirm OTP',exact:true}).click();await expect.poll(()=>authorizations.length).toBe(1);expect(authorizations[0]).toEqual({otp:'123456'});await expect(otp).toHaveCount(0);await expect(dialog.locator('[data-payment-state="failed"]')).toBeVisible();expect(commands).toHaveLength(1);await expect(page.locator('[data-header-balance]')).toContainText('25.00');expect(await f.db.chapaCheckout.count({where:{userId:f.user.id}})).toBe(0);
- }finally{await f.cleanup()}
-});
-
-test('lost direct initialization exposes a retry of the exact original intent without a second automatic charge',async({page},info)=>{
- const am=info.project.name==='430',f=await setup(page,am),commands:ChapaDirectIntent[]=[];let order:ChapaCheckoutView|null=null;
- try{await page.route('**/api/payments/chapa/direct',route=>{const body=route.request().postDataJSON() as ChapaDirectIntent;commands.push(body);if(commands.length===1)return route.abort('failed');order=directOrder(body,'USSD');return route.fulfill({json:order})});await page.route('**/api/payments/chapa/checkouts/**',route=>route.fulfill({json:order}));await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await startTopup(page,am);await dialog.locator('[data-payment-action]').click();await expect(dialog.getByRole('button',{name:am?'የመጀመሪያውን ጥያቄ ይድገሙ':'Retry original request'})).toBeVisible();expect(commands).toHaveLength(1);await dialog.getByRole('button',{name:am?'የመጀመሪያውን ጥያቄ ይድገሙ':'Retry original request'}).click();await expect.poll(()=>commands.length).toBe(2);expect(commands[1]).toEqual(commands[0]);await expect(dialog).toContainText(am?'ክፍያውን በስልክዎ ይፍቀዱ':'Approve the payment on your phone');expect(await page.evaluate(()=>Reflect.get(window,'chapaOpened')??[])).toEqual([])}finally{await f.cleanup()}
-});
-
-test('a delayed verification response cannot replace confirmed OTP payment with an authorization prompt',async({page},info)=>{
- const am=info.project.name==='430',f=await setup(page,am);let order:ChapaCheckoutView|null=null,commands=0,authorizations=0,checks=0;
- let release!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve});
- try{
-  await page.route('**/api/payments/chapa/direct',route=>{commands++;order=directOrder(route.request().postDataJSON() as ChapaDirectIntent,'OTP');return route.fulfill({json:order})});
-  await page.route('**/api/payments/chapa/checkouts/**',async route=>{
-   if(new URL(route.request().url()).pathname.endsWith('/authorize')){authorizations++;return route.fulfill({json:accepted(order!)})}
-   checks++;const old={...order!};await gate;await route.fulfill({json:old}).catch(()=>{});
-  });
-  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await startTopup(page,am);await dialog.locator('[data-payment-action]').click();const otp=dialog.locator('input[autocomplete="one-time-code"]');await expect(otp).toBeVisible();await expect.poll(()=>checks).toBeGreaterThan(0);
-  await otp.fill('123456');await dialog.getByRole('button',{name:am?'ኮዱን ያረጋግጡ':'Confirm OTP',exact:true}).click();await expect(dialog.locator('[data-payment-state="confirmed"]')).toBeVisible();release();await page.waitForTimeout(1500);
-  await expect(dialog.locator('[data-payment-state="confirmed"]')).toBeVisible();await expect(otp).toHaveCount(0);expect(commands).toBe(1);expect(authorizations).toBe(1);expect(await page.evaluate(()=>Reflect.get(window,'chapaOpened')??[])).toEqual([]);
- }finally{release();await f.cleanup()}
-});
-
-test('an unconfirmed direct initialization stays connecting and retries the same persisted request',async({page},info)=>{
- const am=info.project.name==='430',f=await setup(page,am),commands:ChapaDirectIntent[]=[];let order:ChapaCheckoutView|null=null;
- try{
-  await page.route('**/api/payments/chapa/direct',route=>{
-   const command=route.request().postDataJSON() as ChapaDirectIntent;commands.push(command);
-   const ready=directOrder(command,'USSD');
-   order=commands.length===1?{...ready,status:'SUBMITTING',authType:null,authorizationReference:null,providerStatus:null,verificationState:'UNAVAILABLE'}:{...ready,id:order!.id};
-   return route.fulfill({status:202,json:order});
-  });
-  await page.route('**/api/payments/chapa/checkouts/**',route=>route.fulfill({json:order}));
-  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await startTopup(page,am);await dialog.locator('[data-payment-action]').click();
-  const connecting=dialog.locator('[data-direct-approval="connecting"]');await expect(connecting).toBeVisible();
-  await expect(connecting.getByRole('status')).toContainText(am?'በመገናኘት':'Connecting');
-  await expect(connecting).not.toContainText(am?'ክፍያውን በስልክዎ ይፍቀዱ':'Approve the payment on your phone');
-  await expect(dialog.locator('input[autocomplete="one-time-code"]')).toHaveCount(0);
-  expect((await connecting.boundingBox())!.height).toBeLessThan(430);await page.screenshot({path:info.outputPath('direct-initialization-connecting.png'),animations:'disabled'});
-  await connecting.getByRole('button',{name:am?'የመጀመሪያውን ጥያቄ ይድገሙ':'Retry original request',exact:true}).click();
-  await expect.poll(()=>commands.length).toBe(2);expect(commands[1]).toEqual(commands[0]);await expect(dialog.locator('[data-direct-approval="phone"]')).toBeVisible();
-  expect(await page.evaluate(()=>Reflect.get(window,'chapaOpened')??[])).toEqual([]);
- }finally{await f.cleanup()}
-});
-
-test('a terminal bid attempt preserves amounts and retries only on a fresh explicit payment',async({page},info)=>{
- const am=info.project.name==='430',f=await setup(page,am),quotes:BidBatchQuote[]=[],commands:ChapaDirectIntent[]=[];let order:ChapaCheckoutView|null=null,first:ChapaCheckoutView|null=null;
+test('new bid checkout sends one immutable server batch to V1 hosted checkout without phone, provider or OTP entry',async({page},info)=>{
+ const am=info.project.name==='430',f=await setup(page,am),commands:ChapaIntent[]=[],quotes:BidBatchQuote[]=[];let order:ChapaCheckoutView|null=null,paid=false;
  try{
   await page.route('**/api/payments/chapa/batches/quote',route=>{const quote=batchQuote(f.auction.slug!,route.request().postDataJSON().numbers);quotes.push(quote);return route.fulfill({json:quote})});
-  await page.route('**/api/payments/chapa/direct',route=>{const command=route.request().postDataJSON() as ChapaDirectIntent;commands.push(command);const ready=directOrder(command,'USSD',quotes.at(-1)!);order=commands.length===1?{...ready,status:'CANCELLED',providerStatus:'CANCELLED',providerReasonCode:'PAYMENT_CANCELLED'}:ready;if(!first)first=structuredClone(order);return route.fulfill({json:order})});
-  await page.route('**/api/payments/chapa/checkouts/**',route=>route.fulfill({json:order}));
-  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await openBid(page,f.title);await dialog.getByRole('textbox',{name:am?'የጨረታ መጠንዎ':'Your bid amount',exact:true}).fill('2');await dialog.getByRole('radio',{name:'CBE Birr',exact:true}).check();await paymentPhone(dialog,am).fill('0911652904');await dialog.locator('[data-payment-action]').click();
-  await expect(dialog.locator('[data-payment-state="failed"]')).toBeVisible();expect(commands).toHaveLength(1);expect(commands[0].paymentMethod).toBe('cbebirr');expect(quotes).toHaveLength(1);
-  await dialog.getByRole('button',{name:am?'አዲስ ክፍያ ይጀምሩ':'Start new checkout',exact:true}).click();await expect(dialog.locator('[data-bid-entry]')).toBeVisible();await expect(dialog.getByRole('button',{name:am?'2.00 ያስተካክሉ':'Edit 2.00',exact:true})).toBeVisible();expect(quotes).toHaveLength(1);expect(commands).toHaveLength(1);
-  await dialog.getByRole('radio',{name:'CBE Birr',exact:true}).check();await paymentPhone(dialog,am).fill('0911652904');await dialog.locator('[data-payment-action]').click();await expect.poll(()=>commands.length).toBe(2);expect(quotes).toHaveLength(2);expect(quotes[1].id).not.toBe(quotes[0].id);expect(commands[1].key).not.toBe(commands[0].key);expect(commands[1]).toMatchObject({purpose:'BID',batchId:quotes[1].id,paymentMethod:'cbebirr'});expect(commands[0]).toMatchObject({purpose:'BID',batchId:quotes[0].id});
-  await expect(dialog.locator('[data-direct-approval="phone"]')).toBeVisible();expect(first).toMatchObject({status:'CANCELLED',providerStatus:'CANCELLED'});expect(await f.db.bid.count({where:{userId:f.user.id}})).toBe(0);expect(await page.evaluate(()=>Reflect.get(window,'chapaOpened')??[])).toEqual([]);
+  await page.route('**/api/payments/chapa/checkouts**',route=>{const request=route.request();if(new URL(request.url()).pathname.endsWith('/checkouts')&&request.method()==='POST'){const intent=request.postDataJSON() as ChapaIntent;commands.push(intent);order=pending(intent,randomUUID(),quotes.at(-1));return route.fulfill({status:201,json:order})}return route.fulfill({json:paid?accepted(order!):order})});
+  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await openBid(page,f.title),input=bidInput(dialog,am);
+  for(const number of ['2','3']){await input.fill(number);await dialog.getByRole('button',{name:am?'የጨረታ መጠን ጨምር':'Add bid amount',exact:true}).click()}await input.fill('4');
+  await noCustomCheckout(dialog);await expect(dialog.locator('[data-bid-total]')).toContainText('30.00');expect(quotes).toHaveLength(0);expect(commands).toHaveLength(0);
+  const pay=dialog.locator('[data-bid-continue]');await expect(pay).toBeEnabled();await pay.evaluate(node=>{(node as HTMLButtonElement).click();(node as HTMLButtonElement).click()});
+  await expect.poll(()=>commands.length).toBe(1);expect(quotes).toHaveLength(1);expect(quotes[0].lines.map(line=>line.number)).toEqual(['2.00','3.00','4.00']);expect(Object.keys(commands[0]).sort()).toEqual(['batchId','key','purpose','quoteHash']);expect(commands[0]).toMatchObject({purpose:'BID',batchId:quotes[0].id,quoteHash:quotes[0].quoteHash});
+  await expect(dialog.locator('[data-hosted-checkout-status]')).toContainText('30.00');await expect.poll(()=>page.evaluate(()=>Reflect.get(window,'chapaOpened')??[])).toEqual([order!.checkoutUrl]);expect(order!.apiVersion).toBe(1);await noCustomCheckout(dialog);await expect(page.getByRole('dialog')).toHaveCount(1);await expect(dialog.getByRole('heading',{name:am?'ጨረታው ተቀብሏል':'Bid accepted',exact:true})).toHaveCount(0);await expect(page.locator('[data-header-balance]')).toContainText('25.00');
+  paid=true;await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect(dialog.getByRole('heading',{name:am?'ጨረታው ተቀብሏል':'Bid accepted',exact:true})).toBeVisible();expect(commands).toHaveLength(1);
  }finally{await f.cleanup()}
 });
 
-test('verified provider PIN feedback stays on the same USSD attempt and clears after confirmation',async({page},info)=>{
- const am=info.project.name==='430',f=await setup(page,am),commands:ChapaDirectIntent[]=[];let order:ChapaCheckoutView|null=null,paid=false;
+test('top-up validates decimal ETB amounts and waits for server credit after provider success',async({page},info)=>{
+ const am=info.project.name==='430',f=await setup(page,am),commands:ChapaIntent[]=[];let order:ChapaCheckoutView|null=null,phase:'pending'|'provider-success'|'credited'='pending';
  try{
-  await page.route('**/api/payments/chapa/direct',route=>{const command=route.request().postDataJSON() as ChapaDirectIntent;commands.push(command);order={...directOrder(command,'USSD'),providerReasonCode:'INVALID_PIN',pollAfterMs:1000};return route.fulfill({json:order})});
-  await page.route('**/api/payments/chapa/checkouts/**',route=>route.fulfill({json:paid?accepted(order!):order}));
-  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await startTopup(page,am);await dialog.locator('[data-payment-action]').click();
-  await expect(dialog.locator('[data-direct-approval="phone"]')).toBeVisible();await expect(dialog.locator('[data-payment-reason]')).toContainText(am?'PIN ትክክል':'incorrect payment PIN');
-  await expect(dialog.locator('input[type="password"],input[autocomplete="one-time-code"]')).toHaveCount(0);expect(commands).toHaveLength(1);
-  await page.screenshot({path:info.outputPath('direct-provider-pin-feedback.png'),animations:'disabled'});paid=true;
-  await expect(dialog.locator('[data-payment-state="confirmed"]')).toBeVisible();await expect(dialog.locator('[data-payment-reason]')).toHaveCount(0);expect(commands).toHaveLength(1);expect(await page.evaluate(()=>Reflect.get(window,'chapaOpened')??[])).toEqual([]);
+  await page.route('**/api/wallet',route=>route.fulfill({json:{available:phase==='credited'?'35.75':'25.00',held:'0',currency:'ETB',topUp:{enabled:true,reason:null}}}));
+  await page.route('**/api/payments/chapa/checkouts**',route=>{const request=route.request();if(new URL(request.url()).pathname.endsWith('/checkouts')&&request.method()==='POST'){const intent=request.postDataJSON() as ChapaIntent;commands.push(intent);order=pending(intent);return route.fulfill({json:order})}return route.fulfill({json:phase==='credited'?accepted(order!):{...order,...(phase==='provider-success'?{providerStatus:'SUCCESS',verificationState:'VERIFIED'}:{})}})});
+  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await openTopup(page,am),amount=topupInput(dialog,am),pay=dialog.locator('[data-top-up-continue]');await noCustomCheckout(dialog);
+  for(const value of ['0','50000']){await amount.fill(value);await expect(pay).toBeDisabled()}await amount.fill('10.75');await expect(pay).toBeEnabled();await pay.evaluate(node=>{(node as HTMLButtonElement).click();(node as HTMLButtonElement).click()});await expect.poll(()=>commands.length).toBe(1);expect(commands[0]).toMatchObject({purpose:'TOP_UP',amount:'10.75'});expect(Object.keys(commands[0]).sort()).toEqual(['amount','key','purpose']);
+  await expect(dialog.locator('[data-hosted-checkout-status]')).toBeVisible();phase='provider-success';await checked(dialog,am).click();await expect(dialog.getByRole('heading',{name:am?'መለያዎ በመዘመን ላይ…':'Updating your account…',exact:true})).toBeVisible();await expect(page.locator('[data-header-balance]')).toContainText('25.00');
+  phase='credited';await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect(dialog.getByRole('heading',{name:am?'ዋሌት ገብቷል':'Wallet credited',exact:true})).toBeVisible();await expect(page.locator('[data-header-balance]')).toContainText('35.75');expect(commands).toHaveLength(1);await noCustomCheckout(dialog);
  }finally{await f.cleanup()}
 });
 
-test('a cancelled USSD attempt stops phone approval and never starts another charge automatically',async({page},info)=>{
- const am=info.project.name==='430',f=await setup(page,am);let order:ChapaCheckoutView|null=null,charges=0,checks=0,release!:()=>void;
- const gate=new Promise<void>(resolve=>{release=resolve});
- try{
-  await page.route('**/api/payments/chapa/direct',route=>{charges++;order={...directOrder(route.request().postDataJSON() as ChapaDirectIntent,'USSD'),pollAfterMs:1000};return route.fulfill({json:order})});
-  await page.route('**/api/payments/chapa/checkouts/**',async route=>{checks++;await gate;return route.fulfill({json:{...order!,status:'CANCELLED',providerStatus:'CANCELLED',providerReasonCode:'PAYMENT_CANCELLED',updatedAt:new Date().toISOString()}}).catch(()=>{})});
-  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await startTopup(page,am);await dialog.locator('[data-payment-action]').click();
-  const approval=dialog.locator('[data-direct-approval="phone"]');await expect(approval).toBeVisible();await expect(approval.locator('.lucide-smartphone')).toBeVisible();await expect(approval.locator('.lucide-loader-circle')).toHaveCount(0);
-  await expect.poll(()=>checks).toBe(1);release();await expect(dialog.locator('[data-payment-state="failed"]')).toBeVisible();await expect(approval).toHaveCount(0);await expect(dialog.locator('.lucide-loader-circle')).toHaveCount(0);await expect(page.locator('[data-header-balance]')).toContainText('25.00');
-  await page.screenshot({path:info.outputPath('ussd-cancelled.png'),animations:'disabled'});await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await page.waitForTimeout(2200);expect(checks).toBe(1);expect(charges).toBe(1);await expect(dialog.locator('[data-payment-state="confirmed"]')).toHaveCount(0);
- }finally{release();await f.cleanup()}
-});
-
-test('a delayed authorization snapshot cannot restart a server-cancelled payment prompt',async({page},info)=>{
- const am=info.project.name==='430',f=await setup(page,am);let order:ChapaCheckoutView|null=null,charges=0,authorizations=0,checks=0,release!:()=>void;
- const gate=new Promise<void>(resolve=>{release=resolve});
- try{
-  await page.route('**/api/payments/chapa/direct',route=>{charges++;order=directOrder(route.request().postDataJSON() as ChapaDirectIntent,'OTP');return route.fulfill({json:order})});
-  await page.route('**/api/payments/chapa/checkouts/**',async route=>{
-   if(new URL(route.request().url()).pathname.endsWith('/authorize')){authorizations++;return route.fulfill({json:{...order!,status:'CANCELLED',providerStatus:'CANCELLED',providerReasonCode:'PAYMENT_CANCELLED'}})}
-   checks++;const earlier={...order!};await gate;await route.fulfill({json:earlier}).catch(()=>{});
-  });
-  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await startTopup(page,am);await dialog.locator('[data-payment-action]').click();const otp=dialog.locator('input[autocomplete="one-time-code"]');await expect(otp).toBeVisible();await expect.poll(()=>checks).toBe(1);
-  await otp.fill('123456');await dialog.getByRole('button',{name:am?'ኮዱን ያረጋግጡ':'Confirm OTP',exact:true}).click();await expect(dialog.locator('[data-payment-state="failed"]')).toBeVisible();release();await page.waitForTimeout(1200);
-  await expect(dialog.locator('[data-payment-state="failed"]')).toBeVisible();await expect(dialog.locator('[data-direct-approval],input[autocomplete="one-time-code"],.lucide-loader-circle')).toHaveCount(0);expect(charges).toBe(1);expect(authorizations).toBe(1);
- }finally{release();await f.cleanup()}
-});
-
-test('a long USSD wait stays quiet while automatic checks continue and late verified credit applies',async({page},info)=>{
- const am=info.project.name==='430',f=await setup(page,am);let order:ChapaCheckoutView|null=null,charges=0,checks=0,paid=false;
- try{
-  await page.route('**/api/payments/chapa/direct',route=>{charges++;order={...directOrder(route.request().postDataJSON() as ChapaDirectIntent,'USSD'),createdAt:new Date(Date.now()-91000).toISOString(),pollAfterMs:1000};return route.fulfill({json:order})});
-  await page.route('**/api/payments/chapa/checkouts/**',route=>{checks++;return route.fulfill({json:paid?accepted(order!):order})});
-  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await startTopup(page,am);await dialog.locator('[data-payment-action]').click();
-  const longWait=dialog.locator('[data-payment-long-wait="true"]');await expect(longWait).toBeVisible();await expect(longWait.getByRole('status')).toContainText(am?'ይህ ትንሽ እየዘገየ ነው':'This is taking a bit longer');await expect(dialog.locator('[data-direct-approval],.lucide-loader-circle')).toHaveCount(0);
-  await page.screenshot({path:info.outputPath('ussd-long-wait.png'),animations:'disabled'});await expect.poll(()=>checks).toBeGreaterThanOrEqual(2);expect(charges).toBe(1);paid=true;
-  await expect(dialog.locator('[data-payment-state="confirmed"]')).toBeVisible();await expect(longWait).toHaveCount(0);expect(charges).toBe(1);expect(await f.db.chapaCheckout.count({where:{userId:f.user.id}})).toBe(0);
- }finally{await f.cleanup()}
-});
-
-test('unavailable USSD verification preserves the attempt without an active phone approval spinner',async({page},info)=>{
- const am=info.project.name==='430',f=await setup(page,am);let order:ChapaCheckoutView|null=null,charges=0,checks=0,paid=false;
- try{
-  await page.route('**/api/payments/chapa/direct',route=>{charges++;order={...directOrder(route.request().postDataJSON() as ChapaDirectIntent,'USSD'),verificationState:'UNAVAILABLE',pollAfterMs:1000};return route.fulfill({json:order})});
-  await page.route('**/api/payments/chapa/checkouts/**',route=>{checks++;return route.fulfill({json:paid?accepted(order!):order})});
-  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await startTopup(page,am);await dialog.locator('[data-payment-action]').click();await expect(dialog.locator('[data-payment-state="unavailable"]')).toBeVisible();await expect(dialog.locator('[data-direct-approval],.lucide-loader-circle')).toHaveCount(0);expect(charges).toBe(1);
-  await page.screenshot({path:info.outputPath('ussd-verification-unavailable.png'),animations:'disabled'});await expect.poll(()=>checks).toBeGreaterThanOrEqual(2);paid=true;await expect(dialog.locator('[data-payment-state="confirmed"]')).toBeVisible();expect(charges).toBe(1);
- }finally{await f.cleanup()}
-});
-
-test('an expired foreground window stops phone approval and a later focus checks the original payment once',async({page},info)=>{
- const am=info.project.name==='430',f=await setup(page,am);let order:ChapaCheckoutView|null=null,charges=0,checks=0,paid=false;
- try{
-  await page.route('**/api/payments/chapa/direct',route=>{charges++;order={...directOrder(route.request().postDataJSON() as ChapaDirectIntent,'USSD'),createdAt:new Date(Date.now()-301000).toISOString(),pollAfterMs:1000};return route.fulfill({json:order})});
-  await page.route('**/api/payments/chapa/checkouts/**',route=>{checks++;return route.fulfill({json:paid?accepted(order!):order})});
-  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await startTopup(page,am);await dialog.locator('[data-payment-action]').click();await expect(dialog.locator('[data-payment-long-wait="true"]')).toBeVisible();await expect(dialog.locator('[data-direct-approval],.lucide-loader-circle')).toHaveCount(0);
-  await expect.poll(()=>checks).toBe(1);await page.waitForTimeout(2200);expect(checks).toBe(1);expect(charges).toBe(1);paid=true;await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect(dialog.locator('[data-payment-state="confirmed"]')).toBeVisible();expect(checks).toBe(2);expect(charges).toBe(1);
- }finally{await f.cleanup()}
-});
-
-test('the bid fee and total bids remain clear of animated countdown tiles at every mobile width',async({page},info)=>{
+test('retired direct creation and method APIs require the owned session, same origin, and private 410 responses',async({page,browser},info)=>{
  const am=info.project.name==='430',f=await setup(page,am);
  try{
-  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await openBid(page,f.title),summary=dialog.locator('[data-bid-fee-summary]');
-  for(const width of [320,360,430]){
-   await page.setViewportSize({width,height:info.project.name==='430'?932:800});await expect(summary).toBeVisible();await expect(summary.locator('[data-bid-timer] [data-countdown-tile]')).toHaveCount(4);
-   for(const count of ['31','1,234,567']){
-    // Stress localized geometry without inventing accepted financial records.
-    await summary.locator('[data-bid-count] strong').evaluate((node,value)=>{node.textContent=value},count);
-    const bounds=await summary.boundingBox(),fee=await summary.locator('[data-bid-fee]').boundingBox(),bids=await summary.locator('[data-bid-count]').boundingBox(),timer=await summary.locator('[data-bid-timer]').boundingBox();
-    expect(fee!.x+fee!.width<=bids!.x+1||fee!.y+fee!.height<=bids!.y+1).toBe(true);expect(timer!.y).toBeGreaterThanOrEqual(Math.max(fee!.y+fee!.height,bids!.y+bids!.height));
-    for(const element of [fee!,bids!,timer!]){expect(element.x).toBeGreaterThanOrEqual(bounds!.x);expect(element.x+element.width).toBeLessThanOrEqual(bounds!.x+bounds!.width)}
-    for(const tile of await summary.locator('[data-countdown-tile]').all()){const rect=await tile.boundingBox();expect(rect!.x).toBeGreaterThanOrEqual(timer!.x);expect(rect!.x+rect!.width).toBeLessThanOrEqual(timer!.x+timer!.width)}
-    await expect(summary.locator('[data-bid-fee] strong')).toContainText('10.00');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:info.outputPath('bid-fee-countdown-'+width+'-'+count.replaceAll(',','')+'.png'),animations:'disabled'});
-   }
+  await page.goto('/telegram?next='+encodeURIComponent(f.home));await expect(page.locator('[data-header-balance]')).toContainText('25.00');const origin=new URL(page.url()).origin;
+  for(const path of ['/api/payments/chapa/direct','/api/payments/chapa/direct/bid']){
+   const response=await page.request.post(path,{headers:{origin},data:{key:randomUUID(),purpose:'TOP_UP',amount:'10',paymentMethod:'telebirr',phone:'0911652904'}});expect(response.status()).toBe(410);expect(await response.json()).toMatchObject({code:'HOSTED_CHECKOUT_REQUIRED'});expect(response.headers()['cache-control']).toContain('private');expect(response.headers()['cache-control']).toContain('no-store');expect(response.headers().vary).toContain('Cookie');
+   expect((await page.request.post(path,{headers:{origin:'https://untrusted.example'},data:{}})).status()).toBe(403);
   }
+  const methods=await page.request.get('/api/payments/chapa/methods');expect(methods.status()).toBe(410);expect(await methods.json()).toMatchObject({code:'HOSTED_CHECKOUT_REQUIRED'});expect(methods.headers()['cache-control']).toContain('no-store');
+  const anonymous=await browser.newContext({baseURL:origin,ignoreHTTPSErrors:true});try{expect((await anonymous.request.get('/api/payments/chapa/methods')).status()).toBe(401);for(const path of ['/api/payments/chapa/direct','/api/payments/chapa/direct/bid'])expect((await anonymous.request.post(path,{headers:{origin},data:{}})).status()).toBe(401)}finally{await anonymous.close()}
  }finally{await f.cleanup()}
 });
 
-test('an old direct payment response stays isolated after the signed Telegram account changes',async({page},info)=>{
- const am=info.project.name==='430',f=await setup(page,am),secondId=randomInt(8900000000,8990000000),id=randomUUID();
- const order={...pending({key:id,purpose:'TOP_UP',amount:'10.00'},id),chargeType:'DIRECT' as const,authType:'USSD' as const,authorizationReference:'CH-'+id,checkoutUrl:null,status:'AUTH_NEEDED',providerStatus:'AUTH_NEEDED',verificationState:'VERIFIED',merchantReference:'LW-owned-first-account'};
- await verifyFixtureContact(f.db,secondId);const secondUser=await f.db.user.findUniqueOrThrow({where:{telegramId:String(secondId)}});let second=false,reads=0,charges=0,release!:()=>void;
- const gate=new Promise<void>(resolve=>{release=resolve});
+test('invalid and four-consecutive bid numbers cannot request a quote or hosted charge',async({page},info)=>{
+ const am=info.project.name==='430',f=await setup(page,am);let quotes=0,charges=0;
  try{
-  await page.route('**/api/payments/chapa/direct',route=>{charges++;return route.abort()});
-  await page.route('**/api/payments/chapa/checkouts**',async route=>{
-   if(new URL(route.request().url()).pathname.endsWith('/checkouts'))return route.fulfill({json:{items:second?[]:[order],page:1,nextPage:null}});
-   if(route.request().method()==='POST')return route.fulfill({json:order});
-   reads++;await gate;await route.fulfill({json:order}).catch(()=>{});
-  });
-  await page.goto('/telegram?next='+encodeURIComponent(f.home));await expect(page.locator('[data-header-balance]')).toContainText('25.00');const nav=page.getByRole('navigation',{name:'Your navigation'});await nav.getByRole('link',{name:am?'ግብይቶች':'Transactions',exact:true}).click();await expect(page.locator('[data-payment-id]')).toHaveCount(1);await page.locator('[data-payment-id]').click();await expect.poll(()=>reads).toBe(1);await page.keyboard.press('Escape');
-  second=true;const launch=signedLaunch({user:JSON.stringify({id:secondId,first_name:'Second account fixture'})},process.env.TELEGRAM_BOT_TOKEN);await page.evaluate(launch=>{window.Telegram!.WebApp!.initData=launch},launch);
-  const switched=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/auth/telegram/miniapp/signin'&&response.request().method()==='POST');await nav.getByRole('link',{name:am?'መነሻ':'Home',exact:true}).click();const account=await(await switched).json();expect(account.me.user.id).toBe(secondUser.id);release();
-  await expect(page.locator('[data-header-balance]')).toBeVisible();await nav.getByRole('link',{name:am?'ግብይቶች':'Transactions',exact:true}).click();await expect(page.locator('[data-payment-id]')).toHaveCount(0);await expect(page.locator('#transactions')).not.toContainText('LW-owned-first-account');await expect(page.locator('[data-direct-approval]')).toHaveCount(0);expect(charges).toBe(0);
+  await page.route('**/api/payments/chapa/batches/quote',route=>{quotes++;return route.abort()});await page.route('**/api/payments/chapa/checkouts',route=>{charges++;return route.abort()});await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await openBid(page,f.title),input=bidInput(dialog,am),pay=dialog.locator('[data-bid-continue]');
+  await input.fill('0');await expect(pay).toBeDisabled();await expect(dialog.getByRole('alert')).toBeVisible();for(const number of ['1.01','1.02','1.03']){await input.fill(number);await dialog.getByRole('button',{name:am?'የጨረታ መጠን ጨምር':'Add bid amount',exact:true}).click()}await input.fill('1.04');await expect(pay).toBeDisabled();await expect(dialog.getByRole('alert')).toHaveText(am?'ከሦስት በላይ ተከታታይ ቁጥሮች አይፈቀዱም።':'Only 3 consecutive amounts. Skip at least one step.');expect(quotes).toBe(0);expect(charges).toBe(0);
+ }finally{await f.cleanup()}
+});
+
+test('a changed server fee requires a second explicit acceptance before hosted initialization',async({page},info)=>{
+ const am=info.project.name==='430',f=await setup(page,am),commands:ChapaIntent[]=[];let quote:BidBatchQuote|null=null,quoteReads=0,order:ChapaCheckoutView|null=null;
+ try{
+  await page.route('**/api/payments/chapa/batches/quote',route=>{quoteReads++;quote=batchQuote(f.auction.slug!,route.request().postDataJSON().numbers,900);return route.fulfill({json:quote})});await page.route('**/api/payments/chapa/checkouts**',route=>{if(new URL(route.request().url()).pathname.endsWith('/checkouts')&&route.request().method()==='POST'){const intent=route.request().postDataJSON() as ChapaIntent;commands.push(intent);order=pending(intent,randomUUID(),quote!)}return route.fulfill({json:order})});
+  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await openBid(page,f.title);await bidInput(dialog,am).fill('6.25');await dialog.locator('[data-bid-continue]').click();await expect(dialog.getByRole('alert')).toContainText(am?'ክፍያው ተቀይሯል':'The fee changed');await expect(dialog.locator('[data-bid-total]')).toContainText('9.00');expect(commands).toHaveLength(0);expect(await page.evaluate(()=>Reflect.get(window,'chapaOpened')??[])).toEqual([]);
+  await dialog.locator('[data-bid-continue]').click();await expect.poll(()=>commands.length).toBe(1);expect(quoteReads).toBe(1);expect(commands[0]).toMatchObject({batchId:quote!.id,quoteHash:quote!.quoteHash});await expect(dialog.locator('[data-hosted-checkout-status]')).toContainText('9.00');
+ }finally{await f.cleanup()}
+});
+
+test('an unavailable applied coupon can be removed without starting an external payment',async({page},info)=>{
+ const am=info.project.name==='430',f=await setup(page,am),couponId=randomUUID();let unavailable=false,quotes=0,charges=0,ownSnapshot:Promise<Record<string,unknown>>|null=null;
+ try{
+  await page.route('**/api/auctions/*/bids',async route=>{const body=await(ownSnapshot??=route.fetch().then(response=>response.json()));return route.fulfill({json:{...body,referralDiscountsAvailable:true,couponAvailableCount:unavailable?0:1}})});await page.route('**/api/auctions/*/discount-quote?**',route=>route.fulfill({json:{serverNow:new Date().toISOString(),auctionSlug:f.auction.slug,feeVersion:1,ruleVersion:'lowest-unique-v4',grossFeePoints:'10',discountPoints:'1',netFeePoints:'9',coupon:unavailable?null:{id:couponId,percent:10,expiresAt:new Date(Date.now()+3600000).toISOString()},eligible:!unavailable}}));
+  await page.route('**/api/payments/chapa/batches/quote',route=>{quotes++;unavailable=true;return route.fulfill({status:409,json:{code:'COUPON_UNAVAILABLE',error:'Synthetic coupon was already used'}})});await page.route('**/api/payments/chapa/checkouts',route=>{charges++;return route.abort()});
+  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await openBid(page,f.title);await bidInput(dialog,am).fill('6.25');const coupon=dialog.locator('[data-bid-coupons]');await coupon.getByRole('button',{name:am?'ተግብር':'Apply',exact:true}).click();await expect(dialog.locator('[data-bid-total]')).toContainText('9.00');await dialog.locator('[data-bid-continue]').click();await expect.poll(()=>quotes).toBe(1);await expect(coupon).toContainText('0');await coupon.getByRole('button',{name:am?'አስወግድ':'Remove',exact:true}).click();await expect(coupon.getByRole('button',{name:am?'ተግብር':'Apply',exact:true})).toBeDisabled();await expect(dialog.locator('[data-bid-total]')).toContainText('10.00');expect(charges).toBe(0);
+ }finally{await f.cleanup()}
+});
+
+test('wallet payment submits one frozen quote and waits for an accepted server receipt',async({page},info)=>{
+ const am=info.project.name==='430',f=await setup(page,am),quotes:BidBatchQuote[]=[],commands:{path:string;body:unknown}[]=[];let release!:()=>void;const gate=new Promise<void>(resolve=>release=resolve);
+ try{
+  await page.route('**/api/payments/chapa/batches/quote',route=>{const quote=batchQuote(f.auction.slug!,route.request().postDataJSON().numbers);quotes.push(quote);return route.fulfill({json:quote})});await page.route('**/api/payments/chapa/batches/*/wallet',async route=>{commands.push({path:new URL(route.request().url()).pathname,body:route.request().postDataJSON()});await gate;return route.fulfill({json:walletReceipt(quotes[0])})});await page.route('**/api/payments/chapa/checkouts',()=>{throw Error('Wallet payment must not initialize Chapa')});
+  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await openBid(page,f.title);await bidInput(dialog,am).fill('7.25');const pay=walletAction(dialog,am);await expect(pay).toBeEnabled();await pay.evaluate(node=>{(node as HTMLButtonElement).click();(node as HTMLButtonElement).click()});await expect.poll(()=>commands.length).toBe(1);expect(quotes).toHaveLength(1);expect(commands[0]).toEqual({path:'/api/payments/chapa/batches/'+quotes[0].id+'/wallet',body:{quoteHash:quotes[0].quoteHash}});await expect(pay).toBeDisabled();await expect(dialog.getByRole('heading',{name:am?'ጨረታዎች ተቀብለዋል':'Bids accepted',exact:true})).toHaveCount(0);await expect(page.locator('[data-header-balance]')).toContainText('25.00');release();await expect(dialog.getByRole('heading',{name:am?'ጨረታዎች ተቀብለዋል':'Bids accepted',exact:true})).toBeVisible();expect(commands).toHaveLength(1);expect(await page.evaluate(()=>Reflect.get(window,'chapaOpened')??[])).toEqual([]);
  }finally{release();await f.cleanup()}
+});
+
+test('an uncertain wallet submission retries its exact original batch after balance and limits change',async({page},info)=>{
+ const am=info.project.name==='430',f=await setup(page,am),quotes:BidBatchQuote[]=[],commands:{path:string;body:unknown}[]=[];let debited=false,ownSnapshot:Promise<Record<string,unknown>>|null=null;
+ try{
+  await page.route('**/api/wallet',route=>route.fulfill({json:{available:debited?'5.00':'25.00',held:'0',currency:'ETB',topUp:{enabled:true,reason:null}}}));await page.route('**/api/auctions/*/bids',async route=>{const body=await(ownSnapshot??=route.fetch().then(response=>response.json()));return route.fulfill({json:{...body,...(debited?{open:false,remainingSubmissions:0,ownBids:[{id:randomUUID(),amount:'7.25',acceptedAt:new Date().toISOString()}]}:{})}})});
+  await page.route('**/api/payments/chapa/batches/quote',route=>{const quote=batchQuote(f.auction.slug!,route.request().postDataJSON().numbers);quotes.push(quote);return route.fulfill({json:quote})});await page.route('**/api/payments/chapa/batches/*/wallet',route=>{commands.push({path:new URL(route.request().url()).pathname,body:route.request().postDataJSON()});if(commands.length===1){debited=true;return route.abort('failed')}return route.fulfill({json:walletReceipt(quotes[0])})});await page.route('**/api/payments/chapa/checkouts',()=>{throw Error('Wallet recovery must not initialize Chapa')});
+  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await openBid(page,f.title);await bidInput(dialog,am).fill('7.25');await walletAction(dialog,am).click();const retry=dialog.getByRole('button',{name:am?'ጥያቄውን ያረጋግጡ':'Check submission',exact:true});await expect(retry).toBeEnabled();await expect(page.locator('[data-header-balance]')).toContainText('5.00');expect(quotes).toHaveLength(1);expect(commands).toHaveLength(1);await retry.click();await expect(dialog.getByRole('heading',{name:am?'ጨረታዎች ተቀብለዋል':'Bids accepted',exact:true})).toBeVisible();expect(quotes).toHaveLength(1);expect(commands).toHaveLength(2);expect(commands[1]).toEqual(commands[0]);
+ }finally{await f.cleanup()}
+});
+
+for(const purpose of ['TOP_UP','BID'] as const)for(const outcome of ['lost-response','pending-without-url'] as const)test(`${purpose} ${outcome} reopens and resumes only its exact hosted request`,async({page},info)=>{
+ const am=info.project.name==='430',f=await setup(page,am),commands:ChapaIntent[]=[],quotes:BidBatchQuote[]=[];let order:ChapaCheckoutView|null=null;
+ try{
+  await page.route('**/api/payments/chapa/batches/quote',route=>{const quote=batchQuote(f.auction.slug!,route.request().postDataJSON().numbers);quotes.push(quote);return route.fulfill({json:quote})});await page.route('**/api/payments/chapa/checkouts**',route=>{const request=route.request();if(new URL(request.url()).pathname.endsWith('/checkouts')&&request.method()==='POST'){const intent=request.postDataJSON() as ChapaIntent;commands.push(intent);order=pending(intent,order?.id??randomUUID(),quotes.at(-1));if(commands.length===1){if(outcome==='lost-response')return route.abort('failed');order={...order,checkoutUrl:null,reason:'INITIALIZATION_PENDING',verificationState:'UNAVAILABLE'};return route.fulfill({status:202,json:order})}return route.fulfill({json:order})}return route.fulfill({json:order})});
+  await page.goto('/telegram?next='+encodeURIComponent(f.home));let dialog=purpose==='TOP_UP'?await openTopup(page,am):await openBid(page,f.title);if(purpose==='TOP_UP'){await topupInput(dialog,am).fill('17.25');await dialog.locator('[data-top-up-continue]').click()}else{await bidInput(dialog,am).fill('7.25');await dialog.locator('[data-bid-continue]').click()}
+  await expect.poll(()=>commands.length).toBe(1);await expect(dialog.getByRole('button',{name:am?'ክፍያውን ይቀጥሉ':'Resume checkout',exact:true})).toBeEnabled();await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);dialog=purpose==='TOP_UP'?await openTopupReentry(page,am):await reopenBid(page,f.title);await expect(dialog.locator('[data-wallet-top-up],[data-bid-entry]')).toHaveCount(0);await dialog.getByRole('button',{name:am?'ክፍያውን ይቀጥሉ':'Resume checkout',exact:true}).click();await expect.poll(()=>commands.length).toBe(2);expect(commands[1]).toEqual(commands[0]);expect(quotes).toHaveLength(purpose==='BID'?1:0);await expect.poll(()=>page.evaluate(()=>Reflect.get(window,'chapaOpened')??[])).toEqual([order!.checkoutUrl]);await noCustomCheckout(dialog);
+ }finally{await f.cleanup()}
+});
+async function openTopupReentry(page:Page,am:boolean){await page.getByRole('link',{name:am?'ገንዘብ ያስገቡ':'Deposit',exact:true}).click();const dialog=page.getByRole('dialog');await expect(dialog.locator('[data-hosted-checkout-status]')).toBeVisible();return dialog}
+async function reopenBid(page:Page,title:string){await page.locator('.auction-card').filter({hasText:title}).getByRole('button').click();const dialog=page.getByRole('dialog');await expect(dialog.locator('[data-hosted-checkout-status]')).toBeVisible();return dialog}
+
+for(const state of ['review','expired'] as const)test(`an unresolved hosted ${state} stays checkable without a new charge or manual authorization form`,async({page},info)=>{
+ const am=info.project.name==='430',f=await setup(page,am),commands:ChapaIntent[]=[],checks:string[]=[];let order:ChapaCheckoutView|null=null;
+ try{
+  await page.route('**/api/payments/chapa/checkouts**',route=>{const request=route.request(),path=new URL(request.url()).pathname;if(path.endsWith('/checkouts')&&request.method()==='POST'){const intent=request.postDataJSON() as ChapaIntent;commands.push(intent);const base=pending(intent);order=state==='review'?{...base,status:'NEEDS_REVIEW',checkoutUrl:null,reason:'PROVIDER_REFERENCE_UNAVAILABLE',verificationState:'UNAVAILABLE'}:{...base,expiresAt:new Date(Date.now()-1000).toISOString()};return route.fulfill({json:order})}checks.push(path);return route.fulfill({json:order})});
+  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await openTopup(page,am);await dialog.locator('[data-top-up-continue]').click();await expect(dialog.locator('[data-hosted-checkout-status]')).toBeVisible();await noCustomCheckout(dialog);await expect(dialog.getByRole('link',{name:am?'ወደ Chapa ቀጥል':'Continue to Chapa',exact:true})).toHaveCount(0);await expect(dialog.getByRole('button',{name:am?'ክፍያውን ይቀጥሉ':'Resume checkout',exact:true})).toHaveCount(0);await expect(dialog.getByRole('button',{name:am?'እንደገና ይሞክሩ':'Try again',exact:true})).toHaveCount(0);if(state==='review')await expect(dialog.getByRole('link',{name:am?'ድጋፍ ያግኙ':'Contact support',exact:true})).toBeVisible();await checked(dialog,am).click();expect(commands).toHaveLength(1);expect(checks.length).toBeGreaterThan(0);expect(checks.every(path=>path==='/api/payments/chapa/checkouts/'+order!.id)).toBe(true);expect(await page.evaluate(()=>Reflect.get(window,'chapaOpened')??[])).toEqual([]);await expect(page.locator('[data-header-balance]')).toContainText('25.00');
+ }finally{await f.cleanup()}
+});
+
+test('a verified cancelled bid preserves selection and requires an explicit fresh hosted payment',async({page},info)=>{
+ const am=info.project.name==='430',f=await setup(page,am),quotes:BidBatchQuote[]=[],commands:ChapaIntent[]=[];let order:ChapaCheckoutView|null=null;
+ try{
+  await page.route('**/api/payments/chapa/batches/quote',route=>{const quote=batchQuote(f.auction.slug!,route.request().postDataJSON().numbers);quotes.push(quote);return route.fulfill({json:quote})});await page.route('**/api/payments/chapa/checkouts**',route=>{const request=route.request();if(new URL(request.url()).pathname.endsWith('/checkouts')&&request.method()==='POST'){const intent=request.postDataJSON() as ChapaIntent;commands.push(intent);const created=pending(intent,randomUUID(),quotes.at(-1));order=commands.length===1?{...created,status:'CANCELLED',providerStatus:'CANCELLED',verificationState:'VERIFIED'}:created}return route.fulfill({json:order})});
+  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await openBid(page,f.title);await bidInput(dialog,am).fill('2');await dialog.locator('[data-bid-continue]').click();await expect(dialog.getByRole('heading',{name:am?'ክፍያው አልተጠናቀቀም':'Payment not completed',exact:true})).toBeVisible();expect(commands).toHaveLength(1);await dialog.getByRole('button',{name:am?'እንደገና ይሞክሩ':'Try again',exact:true}).click();await expect(dialog.locator('[data-bid-entry]')).toBeVisible();await expect(dialog.getByRole('button',{name:am?'2.00 ያስተካክሉ':'Edit 2.00',exact:true})).toBeVisible();expect(commands).toHaveLength(1);await dialog.locator('[data-bid-continue]').click();await expect.poll(()=>commands.length).toBe(2);expect(quotes).toHaveLength(2);expect(commands[1].key).not.toBe(commands[0].key);expect(commands[1]).toMatchObject({batchId:quotes[1].id,quoteHash:quotes[1].quoteHash});await noCustomCheckout(dialog);
+ }finally{await f.cleanup()}
+});
+
+test('an untrusted hosted URL cannot open and the original owned payment remains checkable',async({page},info)=>{
+ const am=info.project.name==='430',f=await setup(page,am);let order:ChapaCheckoutView|null=null,creates=0;
+ try{
+  await page.route('**/api/payments/chapa/checkouts**',route=>{if(new URL(route.request().url()).pathname.endsWith('/checkouts')&&route.request().method()==='POST'){creates++;order={...pending(route.request().postDataJSON() as ChapaIntent),checkoutUrl:'https://checkout.chapa.co.untrusted.example/payment'}}return route.fulfill({json:order})});await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await openTopup(page,am);await dialog.locator('[data-top-up-continue]').click();await expect(dialog.locator('[data-hosted-checkout-status]')).toBeVisible();await expect(checked(dialog,am)).toBeVisible();await expect(dialog.getByRole('link',{name:am?'ወደ Chapa ቀጥል':'Continue to Chapa',exact:true})).toHaveCount(0);expect(await page.evaluate(()=>Reflect.get(window,'chapaOpened')??[])).toEqual([]);await checked(dialog,am).click();expect(creates).toBe(1);await expect(page.locator('[data-header-balance]')).toContainText('25.00');
+ }finally{await f.cleanup()}
 });

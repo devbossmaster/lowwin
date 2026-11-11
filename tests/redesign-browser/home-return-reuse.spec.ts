@@ -35,7 +35,12 @@ test('returning Home retains exact filters, loaded batch and scroll position',as
     // balance must come from the existing owned cache, with no loading flash.
     expect(await header.locator('[data-header-balance] > span').textContent()).toBe(balanceSnapshot);await expect(header.locator('[data-header-balance] > small')).toHaveText('ETB');await expect(page.locator('.customer-loading')).toHaveCount(0);const mountedHeader=await header.elementHandle();await page.waitForTimeout(450);expect(await mountedHeader!.evaluate(node=>node.isConnected)).toBe(true);
     const walletReads=walletGets-walletBefore,knownFresh=performance.now()-receiptBefore<15000;expect(walletReads).toBeLessThanOrEqual(1);expect(walletDuplicates).toBe(0);expect(new URL(page.url()).pathname+new URL(page.url()).search).toBe(href);await expect.poll(async()=>Math.abs((await page.evaluate(()=>scrollY))-expected),{timeout:5000}).toBeLessThan(80);returns.push({round:round+1,expected,actual:await page.evaluate(()=>scrollY),cards:await cards.count(),hrefPreserved:true,knownFreshWalletCache:knownFresh,walletReads,balanceReusedBeforeRefresh:true});
-   }finally{release();await page.unroute('**/api/wallet',holdWallet)}
+   }finally{
+    release();
+    // Keep interception installed until the released callback has continued
+    // its request. Removing it earlier can auto-handle that same route first.
+    await page.unrouteAll({behavior:'wait'});
+   }
    await expect.poll(()=>walletPending.size,{timeout:10000}).toBe(0);
   }
   const root=process.env.CLIENT_FLOW_REPORT_DIR??'test-results/client-flow';mkdirSync(root,{recursive:true});writeFileSync(`${root}/home-return-${info.project.name}.json`,JSON.stringify({mode:process.env.REDESIGN_PRODUCTION==='1'?'optimized HTTPS loopback':'isolated development preflight',width:info.project.name,returns,concurrentWalletDuplicates:walletDuplicates},null,2)+'\n');
