@@ -48,6 +48,7 @@ export async function createBidDirectCheckout(client:PrismaClient,userId:string,
  };
  const previous=await measureChapa('lookup',()=>client.chapaCheckout.findUnique({where:{userId_key:{userId,key:body.key}}}));
  if(previous){assertReplay(previous);return {kind:'payment' as const,order:await initializeDirectCheckout(client,previous,userId,reauthorize,transport)}}
+ if(transport===chapaTransport)throw new ChapaError(410,'PAYMENT_VERSION_RETIRED','Start a new payment through the current secure checkout.');
  assertDirectPhone(phone,body.paymentMethod);const capabilities=await capabilitiesFor(transport);
  const prepared=await measureChapa('prepare',()=>client.$transaction(async tx=>{
   if(await auctionMaintenance(tx))throw new ChapaError(503,'AUCTIONS_PAUSED','New payments are paused. Existing payments can still be checked.');
@@ -75,6 +76,7 @@ export async function createDirectCheckout(client:PrismaClient,userId:string,raw
  const health=requireChapa(),body=input.parse(raw),phone=normalizePaymentPhone(body.phone),requestHash=directRequestHash(body,phone);
  const previous=await measureChapa('lookup',()=>client.chapaCheckout.findUnique({where:{userId_key:{userId,key:body.key}}}));
  if(previous){if(previous.requestHash!==requestHash||previous.chargeType!=='DIRECT')throw new ChapaError(409,'KEY_REUSED','Retry the original payment details.');return initializeDirectCheckout(client,previous,userId,reauthorize,transport)}
+ if(transport===chapaTransport)throw new ChapaError(410,'PAYMENT_VERSION_RETIRED','Start a new payment through the current secure checkout.');
  assertDirectPhone(phone,body.paymentMethod);const capabilities=await capabilitiesFor(transport);
  const prepared=await measureChapa('prepare',()=>client.$transaction(async tx=>{
   if(await auctionMaintenance(tx))throw new ChapaError(503,'AUCTIONS_PAUSED','New payments are paused. Existing payments can still be checked.');

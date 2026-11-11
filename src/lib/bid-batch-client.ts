@@ -4,7 +4,7 @@ import type {BidReceipt} from '@/modules/auctions/bids';
 
 export type BidBatchLine={position:number;number:string;grossFee:string;discount:string;netFee:string};
 export type BidBatchQuote={id:string;quoteHash:string;auctionSlug:string;feeVersion:number;ruleVersion:string;lines:BidBatchLine[];entryCount:number;total:string;totalCents:string;grossTotal:string;discountTotal:string;status:string};
-export type BidBatchReceipt={batch:BidBatchQuote;receipts:Array<Pick<BidReceipt,'bid'|'charge'>>;wallet?:{available:string;held:string}};
+export type BidBatchReceipt={batch:BidBatchQuote;receipts:Array<Pick<BidReceipt,'bid'|'charge'>>;wallet?:{available:string;held:string;revision?:string};payment?:{method:'wallet';gateway:'INTERNAL_WALLET';total:string;acceptedBidIds:string[]}};
 export type BidFeePreview={entryCount:number;grossTotal:string;discountTotal:string;total:string;totalCents:string};
 /** Display only. A validated coupon discounts one entry, never the entire batch.
  * The server quote remains authoritative before any payment is submitted. */
@@ -40,5 +40,5 @@ export function validateBidDraft(values:readonly string[],rules:BidDraftRules):{
 export type DirectPaymentMethod={slug:string;name:string;minAmountCents?:string;maxAmountCents?:string};
 export type DirectPaymentMethods={methods:DirectPaymentMethod[];paymentPhone?:string|null};
 export type ChapaDirectBidIntent={key:string;paymentMethod:string;phone:string;purpose:'BID';auctionSlug:string;numbers:string[];feeVersion:number;couponId?:string;approvedTotal:string};
-export type ChapaDirectIntent=({key:string;paymentMethod:string;phone:string;purpose:'TOP_UP';amount:string}|{key:string;paymentMethod:string;phone:string;purpose:'BID';batchId:string;quoteHash:string}|ChapaDirectBidIntent);
+export type ChapaDirectIntent=({key:string;paymentMethod:string;phone:string;purpose:'TOP_UP';amount:string}|{key:string;paymentMethod:string;phone:string;purpose:'BID';batchId:string;quoteHash:string}|ChapaDirectBidIntent)&{apiVersion?:'v1';flow?:'INLINE'|'HOSTED'};
 export {normalizePaymentPhone} from './payment-phone';

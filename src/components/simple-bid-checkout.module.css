@@ -14,10 +14,10 @@
 .paymentSummary{display:flex;flex-wrap:wrap;gap:6px 14px;margin:9px 0 0;font-size:11px;line-height:1.5}
 .paymentSummary>div{display:flex;align-items:baseline;gap:5px}
 .paymentSummary dt{color:#68665e}.paymentSummary dd{margin:0;color:#181815;font-weight:650;font-variant-numeric:tabular-nums}
-.entry :global([data-sheet-preview]){display:grid;grid-template-columns:72px minmax(0,1fr);align-items:center;gap:12px;margin-bottom:18px}
-.entry :global([data-sheet-preview])>div:first-child{width:72px;height:64px;margin:0;border-radius:12px;overflow:hidden}
+.entry :global([data-sheet-preview]){display:block;margin-bottom:12px}
+.entry :global([data-sheet-preview])>div:first-child{width:100%;height:auto;aspect-ratio:1840/800;margin:0 0 10px;border-radius:14px;overflow:hidden}
 .entry :global([data-sheet-preview])>div:last-child{min-width:0;display:block;margin:0}
-.entry :global([data-sheet-preview]) h3{margin:0;text-align:left;font-size:16px;line-height:1.45;font-weight:700;letter-spacing:-.015em;text-wrap:pretty}
+.entry :global([data-sheet-preview]) h3{margin:0;text-align:center;font-size:18px;line-height:1.45;font-weight:700;letter-spacing:-.015em;text-wrap:pretty}
 .entry:lang(am) :global([data-sheet-preview]) h3{letter-spacing:0;line-height:1.6}
 .entry .amount{min-height:50px;padding-inline:13px;border-color:#d8d5cc;border-radius:14px;box-shadow:none}
 .entry .amount input{height:48px;font-size:18px;font-weight:600;caret-color:#987522}
@@ -61,6 +61,12 @@
 .entry :global(input[aria-invalid=true]){outline:1px solid #a03928;outline-offset:3px}
 .entry :focus-visible{outline:2px solid #987522;outline-offset:3px}
 .entry :global(input)::selection{background:#f1e5b7;color:#181815}
-@media(max-width:370px){.entry :global([data-sheet-preview]){grid-template-columns:62px minmax(0,1fr);gap:10px;margin-bottom:15px}.entry :global([data-sheet-preview])>div:first-child{width:62px;height:58px}.entry :global([data-sheet-preview]) h3{font-size:15px}.entry .add{min-width:68px;padding-inline:9px}.draftSummary{padding:11px 12px;gap:9px 12px}.reviewProduct{gap:8px}.reviewHeading button{font-size:12px}.total strong{font-size:20px}.pay{padding-inline:10px;font-size:13px}}
+@media(max-width:370px){.entry :global([data-sheet-preview]){margin-bottom:12px}.entry :global([data-sheet-preview]) h3{font-size:17px}.entry .add{min-width:68px;padding-inline:9px}.draftSummary{padding:11px 12px;gap:9px 12px}.reviewProduct{gap:8px}.reviewHeading button{font-size:12px}.total strong{font-size:20px}.pay{padding-inline:10px;font-size:13px}}
 @media(max-width:335px){.reviewPhoto{width:40px;height:44px}.reviewHeading h3{font-size:13px}.reviewHeading button{max-width:36%;font-size:11px}}
 @media(prefers-reduced-motion:reduce){.pay,.entry .add{transition:none}}
+.auctionFacts{padding:10px 12px;border-radius:14px;background:#f1efe8;gap:7px;font-size:11px}
+.auctionFacts>span:first-child{align-items:baseline;flex-direction:column;gap:0}.auctionFacts>span:first-child strong{color:#80621b;font-size:16px;font-weight:750}.auctionFacts small{font-size:10px}.auctionFacts :global(.countdown){font-size:11px;white-space:nowrap}
+.reviewTitle{margin:0 0 14px;color:#625d50;font-size:14px;line-height:1.6;font-weight:550;overflow-wrap:anywhere}
+.reviewChips{display:flex;flex-wrap:wrap;gap:7px;margin:0 0 18px;max-height:160px;overflow:auto;scrollbar-width:thin;scrollbar-color:#c8bfaa transparent}
+.reviewChips span{padding:8px 12px;border-radius:10px;background:#f7f0db;color:#5e4715;font-size:15px;font-weight:650;font-variant-numeric:tabular-nums}
+.reviewTotals{margin:0;font-size:13px;line-height:1.6}.reviewTotals>div{display:flex;justify-content:space-between;align-items:baseline;gap:14px;padding:10px 0}.reviewTotals dt{color:#68665e}.reviewTotals dd{margin:0;text-align:right;font-weight:650;font-variant-numeric:tabular-nums}.reviewTotals>div:last-child{border-top:1px solid #e5e1d6;margin-top:5px;padding-top:15px}.reviewTotals>div:last-child dd{font-size:22px;letter-spacing:-.02em}

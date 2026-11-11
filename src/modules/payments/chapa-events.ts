@@ -1,12 +1,13 @@
 import type {PrismaClient} from '@prisma/client';
 import {chapaAvailability,chapaTransport,type ChapaTransport} from './chapa-provider';
 import {verifyChapaCheckout} from './chapa';
+import {chapaV1Availability} from './chapa-v1-provider';
 
 /** Only durable authenticated delivery hints enter this queue. A configured
  * legacy proof is not payload integrity; only the v2 lookup can establish funds.
  * No pending-checkout scan or initialization is performed by this worker. */
 export async function processChapaEvent(client:PrismaClient,id:string,transport:ChapaTransport=chapaTransport){
- const health=chapaAvailability();if(!health.recoveryEnabled)return false;
+ const legacy=chapaAvailability(),health=legacy.recoveryEnabled?legacy:chapaV1Availability();if(!health.recoveryEnabled)return false;
  const now=new Date(),lease=new Date(Date.now()+30000);
  const claimed=await client.chapaWebhookEvent.updateMany({where:{id,mode:health.mode,status:'QUEUED',attempts:{lt:5},nextAttemptAt:{lte:now},OR:[{leaseUntil:null},{leaseUntil:{lte:now}}]},data:{leaseUntil:lease,attempts:{increment:1}}});
  if(!claimed.count)return false;
@@ -42,7 +43,7 @@ export async function processChapaEvent(client:PrismaClient,id:string,transport:
  }
 }
 export async function processChapaEvents(client:PrismaClient,limit=20,transport:ChapaTransport=chapaTransport){
- const health=chapaAvailability();if(!health.recoveryEnabled)return {checked:0};
+ const legacy=chapaAvailability(),health=legacy.recoveryEnabled?legacy:chapaV1Availability();if(!health.recoveryEnabled)return {checked:0};
  const rows=await client.chapaWebhookEvent.findMany({where:{mode:health.mode,status:'QUEUED',attempts:{lt:5},nextAttemptAt:{lte:new Date()},OR:[{leaseUntil:null},{leaseUntil:{lte:new Date()}}]},orderBy:[{nextAttemptAt:'asc'},{id:'asc'}],take:Math.max(1,Math.min(20,limit)),select:{id:true}});
  let checked=0;for(const row of rows){await processChapaEvent(client,row.id,transport);checked++}return {checked};
 }

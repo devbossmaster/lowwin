@@ -34,7 +34,7 @@ export type DirectBidReceipt=Omit<BidReceipt,'wallet'>;
 
 export type BidErrorCode='AUCTIONS_PAUSED'|'AUCTION_NOT_FOUND'|'AUCTION_CLOSED'|'DEMO_UNAVAILABLE'|'INVALID_AMOUNT'|'CONSECUTIVE_LIMIT'|'OWN_DUPLICATE'|'CAP_REACHED'|'INSUFFICIENT_POINTS'|'KEY_REUSED'|'RETRYABLE_CONFLICT'|'BIDDING_RESTRICTED'|'CONTACT_REQUIRED'|'COUPON_UNAVAILABLE';
 export class BidError extends Error {
-  constructor(public readonly code:BidErrorCode,public readonly status:number,message:string){super(message);this.name='BidError';}
+  constructor(public readonly code:BidErrorCode,public readonly status:number,message:string,public readonly wallet?:{available:string;required:string;shortfall:string;currency:'ETB'}){super(message);this.name='BidError';}
 }
 function fail(code:BidErrorCode,status:number,message:string):never {throw new BidError(code,status,message)}
 

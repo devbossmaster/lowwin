@@ -5,6 +5,12 @@ vi.mock('../src/modules/auth/mini-access',()=>access);
 import {proxy} from '../src/proxy';
 beforeEach(()=>{vi.clearAllMocks();access.getMiniSession.mockReset()});
 describe('private access during database outages',()=>{
+  it('serves only the approved CBE video without database auth, including range requests',async()=>{
+    access.getMiniSession.mockRejectedValue(Error('Database unavailable'));
+    for(const method of ['GET','HEAD'])expect((await proxy(new NextRequest('http://localhost/video/cbe-bank-payment.mp4',{method,headers:{Range:'bytes=0-1023'}}))).headers.get('x-middleware-next')).toBe('1');
+    expect(access.getMiniSession).not.toHaveBeenCalled();access.getMiniSession.mockResolvedValue(null);
+    for(const path of ['/video/private.mp4','/video/cbe-bank-payment.mp4/private'])expect((await proxy(new NextRequest('http://localhost'+path))).status).toBe(307);
+  });
   it('serves the exact public Chapa logo without a database lookup',async()=>{access.getMiniSession.mockRejectedValue(Error('Database unavailable'));expect((await proxy(new NextRequest('http://localhost/images/chapa-logo.svg'))).headers.get('x-middleware-next')).toBe('1');expect(access.getMiniSession).not.toHaveBeenCalled();access.getMiniSession.mockResolvedValue(null);expect((await proxy(new NextRequest('http://localhost/images/chapa-logo.svg/private'))).status).toBe(307)});
   it('leaves only exact Chapa callbacks public and delegates private checkout auth to its handlers',async()=>{
     access.getMiniSession.mockRejectedValue(Error('Database unavailable'));

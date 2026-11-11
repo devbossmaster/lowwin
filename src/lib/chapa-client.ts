@@ -5,7 +5,8 @@ import type {BidBatchQuote} from './bid-batch-client';
 export type ChapaIntent={key:string;purpose:'TOP_UP';amount:string}|{key:string;purpose:'BID';auctionSlug:string;amount:string;feeVersion:number;couponId?:string};
 export type ChapaCheckoutView=DirectCheckoutFields&{providerStatus?:string|null;providerReasonCode?:string|null;verificationState?:string;initializationIssue?:ChapaApiErrorCategory|null;merchantReference?:string;paymentMethod?:string|null;auctionTitle?:string|null;auctionTitleAm?:string|null;auctionCode?:string|null;auctionStatus?:string|null;auctionEndsAt?:string|null;id:string;purpose:'TOP_UP'|'BID';mode:'test'|'live';amount:string;amountCents:string;currency:'ETB';status:string;reason:string|null;checkoutUrl:string|null;auctionSlug:string|null;bidNumber:string|null;feeVersion:number|null;grossFee:string|null;discountPoints:string;createdAt:string;expiresAt:string;pollAfterMs:number;fundsPreserved:boolean;receipt:BidReceipt|null};
 export type ChapaAvailability={enabled:boolean;configured:boolean;mode:'test'|'live';walletBidsEnabled:boolean;minTopup:string;maxTopup:string;reason:string|null};
-export type DirectCheckoutFields={chargeType?:'DIRECT'|'HOSTED';authType?:'USSD'|'OTP'|null;authorizationReference?:string|null;payerPhoneMasked?:string|null;batch?:BidBatchQuote|null;batchNumbers?:string[];receipts?:BidReceipt[];initializationReasonCode?:string|null;updatedAt?:string;verificationUnavailable?:boolean};
+export type DirectCheckoutFields={apiVersion?:'v1'|'v2';chargeType?:'DIRECT'|'HOSTED'|'INLINE';authType?:'USSD'|'OTP'|null;authorizationReference?:string|null;payerPhoneMasked?:string|null;batch?:BidBatchQuote|null;batchNumbers?:string[];receipts?:BidReceipt[];initializationReasonCode?:string|null;updatedAt?:string;verificationUnavailable?:boolean};
+export type ChapaV1Config={enabled:boolean;configured:boolean;mode:'test'|'live';minTopup:string;maxTopup:string;methods:import('./bid-batch-client').DirectPaymentMethod[];phone:string|null;cbeBankEnabled:boolean;cbeGuideUrl:string|null};
 export type ChapaAttempt={version:1;intent:ChapaIntent;orderId?:string};
 type Storage=Pick<globalThis.Storage,'getItem'|'setItem'|'removeItem'>;
 export const chapaUuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -26,7 +27,7 @@ export function clearChapaAttempts(storage:Pick<globalThis.Storage,'length'|'key
  try{for(let index=storage.length-1;index>=0;index--){const key=storage.key(index);if(key?.startsWith('lowwin:chapa:')&&(!keepIdentity||!key.startsWith(`lowwin:chapa:${keepIdentity}:`)))storage.removeItem(key)}}catch{}
 }
 export function chapaCheckoutUrl(value:string|null|undefined):string|null{
- try{if(!value||/[\u0000-\u0020\\]/.test(value))return null;const url=new URL(value);return url.protocol==='https:'&&url.hostname==='checkout.chapa.global'&&!url.port&&!url.username&&!url.password&&!url.hash&&url.pathname.length>1?url.href:null}catch{return null}
+ try{if(!value||/[\u0000-\u0020\\]/.test(value))return null;const url=new URL(value);return url.protocol==='https:'&&['checkout.chapa.global','checkout.chapa.co'].includes(url.hostname)&&!url.port&&!url.username&&!url.password&&!url.hash&&url.pathname.length>1?url.href:null}catch{return null}
 }
 export function chapaConfirmed(order:Pick<ChapaCheckoutView,'purpose'|'status'|'fundsPreserved'|'receipt'>){return order.fundsPreserved||order.purpose==='TOP_UP'&&order.status==='CREDITED'||order.purpose==='BID'&&order.status==='BID_ACCEPTED'&&!!order.receipt}
 /** A structured rejected initialization is not an outstanding phone prompt.
@@ -59,12 +60,12 @@ export function acceptChapaSnapshot(previous:ChapaCheckoutView|null,next:ChapaCh
 export const CHAPA_CHECKOUT_POLL_MS=5*60*1000;
 /** Bound foreground checks from the saved attempt, without changing the
  * provider's checkout validity or payment outcome when this time elapses. */
-export function chapaPollingDeadline(order:Pick<ChapaCheckoutView,'createdAt'>&Partial<Pick<ChapaCheckoutView,'chargeType'|'expiresAt'>>):number|null{
- if(order.chargeType==='DIRECT'){const expiry=Date.parse(order.expiresAt??'');return Number.isFinite(expiry)?expiry:null}
+export function chapaPollingDeadline(order:Pick<ChapaCheckoutView,'createdAt'>&Partial<Pick<ChapaCheckoutView,'chargeType'|'expiresAt'|'apiVersion'>>):number|null{
+ if(order.chargeType==='DIRECT'||order.apiVersion==='v1'){const expiry=Date.parse(order.expiresAt??'');return Number.isFinite(expiry)?expiry:null}
  const created=Date.parse(order.createdAt);return Number.isFinite(created)?created+CHAPA_CHECKOUT_POLL_MS:null;
 }
 export function chapaPollingPaused(order:ChapaCheckoutView,now=Date.now()){
- if(order.chargeType==='DIRECT')return false;
+ if(order.chargeType==='DIRECT'||order.apiVersion==='v1')return false;
  if(chapaConfirmed(order)||order.providerStatus==='SUCCESS'||!['SUBMITTING','PENDING','AUTH_NEEDED'].includes(order.status))return false;
  const deadline=chapaPollingDeadline(order);return deadline!==null&&now>=deadline;
 }
@@ -77,13 +78,14 @@ export function chapaCanResumeCheckout(attempt:ChapaAttempt|null,order:ChapaChec
  return !order.checkoutUrl&&!chapaConfirmed(order)&&['SUBMITTING','PENDING'].includes(order.status)&&(!order.reason||['INITIALIZATION_PENDING','PROVIDER_CONFIRMATION_REQUIRED','PROVIDER_REFERENCE_UNAVAILABLE','PROVIDER_EVENT_RECEIVED'].includes(order.reason));
 }
 export function chapaRecoverable(order:Pick<ChapaCheckoutView,'status'|'fundsPreserved'>){return !order.fundsPreserved&&!['CREDITED','BID_ACCEPTED','FAILED','CANCELLED','EXPIRED','BLOCKED','INCOMPLETE','FAILED_OR_CANCELLED'].includes(order.status)}
-export class ChapaClientError extends Error{constructor(message:string,readonly status=0,readonly code='UNAVAILABLE'){super(message)}}
+export type WalletPaymentShortfall={available:string;required:string;shortfall:string;currency:'ETB'};
+export class ChapaClientError extends Error{constructor(message:string,readonly status=0,readonly code='UNAVAILABLE',readonly wallet?:WalletPaymentShortfall){super(message)}}
 export async function requestChapaJson<T>(url:string,options:RequestInit={},signal?:AbortSignal,timeoutMs=15000):Promise<T>{
  const controller=new AbortController(),abort=()=>controller.abort();if(signal?.aborted)controller.abort();else signal?.addEventListener('abort',abort,{once:true});const timer=setTimeout(abort,timeoutMs);
  try{
   const response=await fetch(url,{...options,cache:'no-store',signal:controller.signal}),body=await response.json().catch(()=>({}));
   if(controller.signal.aborted)throw new DOMException('Payment request interrupted.','AbortError');
-  if(!response.ok)throw new ChapaClientError(typeof body.error==='string'?body.error:'Payment status could not be checked. Retry this same payment.',response.status,typeof body.code==='string'?body.code:'UNAVAILABLE');
+  if(!response.ok){const raw=body.wallet,wallet=raw&&raw.currency==='ETB'&&['available','required','shortfall'].every(key=>typeof raw[key]==='string'&&/^(0|[1-9]\d*)(?:\.\d{1,2})?$/.test(raw[key]))?raw as WalletPaymentShortfall:undefined;throw new ChapaClientError(typeof body.error==='string'?body.error:'Payment status could not be checked. Retry this same payment.',response.status,typeof body.code==='string'?body.code:'UNAVAILABLE',wallet)}
   return body as T;
  }finally{clearTimeout(timer);signal?.removeEventListener('abort',abort)}
 }

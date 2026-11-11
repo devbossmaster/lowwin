@@ -29,6 +29,11 @@
 .security>svg{flex:none;color:#715719}
 .security>span{margin-left:3px;font-size:10px;color:#715719}
 .actions{display:grid;gap:6px}
+.retryActions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.retryActions:has(>:only-child){grid-template-columns:minmax(0,1fr)}
+.outline{display:flex;justify-content:center;align-items:center;gap:8px;min-height:48px;width:100%;padding:11px 12px;border:1px solid #d7d0bf;border-radius:14px;background:#fff;color:#181815;font:inherit;font-size:14px;font-weight:650;line-height:1.4;text-align:center;text-decoration:none;touch-action:manipulation;cursor:pointer}
+.outline:hover{background:#f6f2e8}
+.outline:disabled{color:#77736a;background:#f2f0e9;cursor:default}
 .primary{display:flex;justify-content:center;align-items:center;gap:8px;min-height:48px;width:100%;padding:11px 16px;border:0;border-radius:14px;background:#181815;color:#fff;font:inherit;font-size:14px;font-weight:700;line-height:1.4;text-align:center;text-decoration:none;touch-action:manipulation;cursor:pointer;transition:background-color .15s ease}
 .primary:hover{background:#35332c}
 .primary:active{background:#4b473b}

@@ -14,6 +14,10 @@ describe('payment method phone validation',()=>{
  it.each(['','+2510911652904','+2519713','+251foo','07133391960','0811652904'])('rejects malformed or incomplete input %s',phone=>{
   for(const method of ['telebirr','mpesa','cbebirr'])expect(paymentPhoneProblem(phone,method)).toBe('invalid');
  });
+ it.each(['0211652904','211652904','251211652904','+251 211 652 904','+251251911652904'])('never repairs an unsupported prefix or duplicated country code %s',phone=>{
+  expect(normalizePaymentPhone(phone)).toBeNull();
+  for(const method of ['telebirr','mpesa','cbebirr','ebirr'])expect(paymentPhoneProblem(phone,method)).toBe('invalid');
+ });
  it('provides localized actionable messages without including the entered phone',()=>{
   expect(paymentPhoneProblemMessage('mpesa_prefix')).toContain('07 or +2517');
   expect(paymentPhoneProblemMessage('telebirr_prefix')).toContain('09 or +2519');

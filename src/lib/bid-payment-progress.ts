@@ -41,6 +41,10 @@ export function bidPaymentProgressPhase(state:ProgressState):BidPaymentProgressP
  if(order.verificationState==='MISMATCH'||order.status==='NEEDS_REVIEW'||chapaDirectRequestRejected(order))return 'uncertain';
  if(order.providerStatus==='SUCCESS')return 'confirming';
  if(order.status==='BID_ACCEPTED'||order.status==='EXPIRED')return 'uncertain';
+ // Inline callbacks (including failure/network callbacks) are only hints.
+ // An owned v1 attempt stays processing until its server verifier establishes
+ // a terminal outcome. Its SDK has no supported in-app OTP authorization API.
+ if(order.apiVersion==='v1'&&['SUBMITTING','PENDING','AUTH_NEEDED','VERIFYING'].includes(order.status))return 'confirming';
  if(state.busy&&!order.authorizationReference&&['SUBMITTING','PENDING'].includes(order.status))return 'connecting';
  if(chapaAwaitingAuthorization(order))return 'authorization';
  // An owned pending provider payment stays processing through read failures,
