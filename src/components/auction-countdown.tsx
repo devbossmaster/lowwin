@@ -29,7 +29,9 @@ const Flap=memo(function Flap({value,label,animate}:{value:string;label:string;a
  * server receipt anchors recompute the current value immediately on resume. */
 export function AuctionCountdown({target,serverNow,observedAt,label,showLabel=true,onElapsed,tiles=false,variant}:{target:string;serverNow:string;observedAt?:number;label:string;showLabel?:boolean;onElapsed?:()=>void;tiles?:boolean;variant?:'inline'}){
  const {language}=useMiniLocale(),am=language==='am',element=useRef<HTMLSpanElement>(null),elapsed=useRef<string|null>(null),callback=useRef(onElapsed);callback.current=onElapsed;
- const [remaining,setRemaining]=useState(()=>clocks.initial(target,serverNow,observedAt,Date.now())),[animate,setAnimate]=useState(false);
+ // SSR and the first hydration render share only the serialized server sample.
+ // Apply local receipt age in the effect, after React has matched that HTML.
+ const [remaining,setRemaining]=useState(()=>clocks.remaining(target,serverNow,0,0)),[animate,setAnimate]=useState(false);
  useEffect(()=>{
   const wallAt=Date.now(),monotonicAt=performance.now(),anchor=clocks.observe(serverNow,observedAt,wallAt);let visible=true,id:ReturnType<typeof setInterval>|undefined;
   const reduced=variant==='inline'?null:window.matchMedia('(prefers-reduced-motion: reduce)');

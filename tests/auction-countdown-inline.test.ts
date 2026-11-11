@@ -16,12 +16,12 @@ describe('My Bids plain inline countdown under a mocked clock',()=>{
   const html=render(language);expect(html).toContain(language==='am'?'>2ቀ04:18:09</span>':'>2d04:18:09</span>');expect(html).toContain('role="timer"');expect(html).toContain('aria-live="off"');expect(html).toContain(language==='am'?'02 ቀናት 04 ሰዓታት 18 ደቂቃዎች 09 ሰከንዶች':'Ends in 02 days 04 hours 18 minutes 09 seconds');
   expect(html.match(/<span/g)).toHaveLength(1);for(const marker of ['data-countdown-tile','data-countdown-flip','data-countdown-unit','<small','<strong'])expect(html).not.toContain(marker);
  });
- it('subtracts cached receipt age instead of showing a fresh full duration',()=>{
-  vi.setSystemTime(observedAt+10000);expect(render()).toContain('>2d04:17:59</span>');
+ it('keeps the first server HTML stable until the effect can apply cached receipt age',()=>{
+  const html=render();vi.setSystemTime(observedAt+10000);expect(render()).toBe(html);
  });
- it('ignores a device clock behind receipt time and clamps elapsed deadlines',()=>{
+ it('uses the frozen server sample despite device clock skew and clamps server-expired deadlines',()=>{
   vi.setSystemTime(observedAt-86400000);expect(render()).toContain('>2d04:18:09</span>');
-  vi.setSystemTime(Date.parse(target)+60000);expect(render()).toContain('>Auction ended</span>');expect(render('am')).toContain('>ጨረታው አብቅቷል</span>');expect(render('en',{label:'Starts'})).toContain('>Starting now</span>');
+  vi.setSystemTime(Date.parse(target)+60000);expect(render()).toContain('>2d04:18:09</span>');const expired={serverNow:new Date(Date.parse(target)+60000).toISOString()};expect(render('en',expired)).toContain('>Auction ended</span>');expect(render('am',expired)).toContain('>ጨረታው አብቅቷል</span>');expect(render('en',{...expired,label:'Starts'})).toContain('>Starting now</span>');
  });
  it('retains the original four-unit markup for both existing tile variants',()=>{
   for(const tiles of [false,true]){const html=render('en',{variant:undefined,tiles});expect(html.match(/data-countdown-tile/g)).toHaveLength(4);expect(html.match(/data-countdown-unit/g)).toHaveLength(4);expect(html.match(/<small/g)).toHaveLength(4);expect(html).not.toContain('data-countdown-inline')}

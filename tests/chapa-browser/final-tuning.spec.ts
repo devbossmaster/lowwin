@@ -37,7 +37,11 @@ async function compactEntryScenario(page:Page,name:string){
   await f.db.product.update({where:{id:f.auction.productId!},data:{description}});
   await page.route('**/api/auctions/*/bids',async route=>{if(route.request().method()!=='GET')return route.abort();await gate;const response=await route.fetch(),body=await response.json();return route.fulfill({response,json:{...body,ownBids,remainingSubmissions:95,referralDiscountsAvailable:true,couponAvailableCount:3}})});
   await page.route('**/api/auctions/*/discount-quote?**',route=>{quoteReads++;const coupons=couponIds.map(id=>({id,percent:10,expiresAt:new Date(Date.now()+3600000).toISOString()}));return route.fulfill({json:{serverNow:new Date().toISOString(),auctionSlug:f.auction.slug,feeVersion:1,ruleVersion:'lowest-unique-v4',grossFeePoints:'10',discountPoints:'1',netFeePoints:'9',coupon:coupons[0],eligible:true,availableCoupons:coupons}})});
-  await page.goto('/telegram?next='+encodeURIComponent(f.home));await page.locator('.auction-card').filter({hasText:f.title}).getByRole('button').click();
+  await page.goto('/telegram?next='+encodeURIComponent(f.home));
+  const card=page.locator('.auction-card').filter({hasText:f.title});
+  // The first dev-server home request may compile while Telegram signs in.
+  // Wait for this fixture's streamed card before starting an interaction.
+  await expect(card).toBeVisible();await card.getByRole('button').click();
   const dialog=page.getByRole('dialog',{name:'Place your bid',exact:true}),input=dialog.getByRole('textbox',{name:'Your bid amount',exact:true}),pay=dialog.locator('[data-bid-continue]');await expect(input).toBeVisible();await expect(dialog).not.toContainText('Loading entry details');
   await dialog.evaluate((node,value)=>node.setAttribute('data-stable-modal',value),marker);await expect(dialog.locator(':scope>header').getByText('Live',{exact:true})).toBeVisible();await expect(dialog.getByRole('radio')).toHaveCount(0);await expect(dialog.locator('[data-direct-checkout],input[type="tel"]')).toHaveCount(0);
   await input.fill('4.25');await expect(pay).toBeDisabled();release();await expect(pay).toBeEnabled();await expect(dialog).toHaveAttribute('data-stable-modal',marker);await expect(page.getByRole('dialog')).toHaveCount(1);const readyGeometry=await expectCompactFit(dialog);
