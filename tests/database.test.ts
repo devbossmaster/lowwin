@@ -133,7 +133,7 @@ describe.skipIf(!testUrl)('isolated PostgreSQL foundation', () => {
   });
   it('processes queued bot commands once across workers and retries failed delivery',async()=>{
     const {processOneUpdate}=await import('../src/modules/bot/worker');
-    const {Bot}=await import('grammy');
+    const {Bot,InputFile}=await import('grammy');
     const {createBot}=await import('../src/modules/bot/bot');
     // Ignore leftover fixture-only inbox entries from earlier tests in this disposable DB.
     await client.botUpdate.updateMany({where:{processedAt:null},data:{processedAt:new Date(),payload:{}}});
@@ -144,9 +144,11 @@ describe.skipIf(!testUrl)('isolated PostgreSQL foundation', () => {
     const updateId=Date.now();
     await client.botUpdate.create({data:{updateId,payload:{update_id:updateId,message:{message_id:1,date:Math.floor(Date.now()/1000),chat:{id:1,type:'private'},from:{id:1,is_bot:false,first_name:'Fixture'},text:'/start',entities:[{type:'bot_command',offset:0,length:6}]}}}});
     await Promise.all([processOneUpdate(client,bot),processOneUpdate(client,bot)]);
-    expect(sent).toHaveLength(1);expect(sent[0].method).toBe('sendMessage');
+    expect(sent).toHaveLength(1);expect(sent[0].method).toBe('sendPhoto');
+    expect(sent[0].payload.photo).toBeInstanceOf(InputFile);expect(sent[0].payload.caption).toContain('Welcome to Lowwin!');
     expect(sent[0].payload.reply_markup).toMatchObject({inline_keyboard:expect.arrayContaining([expect.arrayContaining([expect.objectContaining({web_app:{url:process.env.MINI_APP_URL}})])])});
     expect((await client.botUpdate.findUniqueOrThrow({where:{updateId}})).processedAt).not.toBeNull();
+    expect(await processOneUpdate(client,bot)).toBe(false);expect(sent).toHaveLength(1);
     const failureId=updateId+1;
     await client.botUpdate.create({data:{updateId:failureId,payload:{update_id:failureId}}});
     const failing={handleUpdate:async()=>{throw new Error('fixture failure');}} as unknown as InstanceType<typeof Bot>;

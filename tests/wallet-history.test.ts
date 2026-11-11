@@ -16,7 +16,7 @@ import type {ChapaCreate,ChapaDirectCreate,ChapaTransport} from '../src/modules/
 import {signedLaunch,TEST_TOKEN} from './helpers';
 import {contactBotId,encryptPhone} from '../src/modules/auth/own-contact';
 
-const database=process.env.TEST_DATABASE_URL;
+const database=process.env.WALLET_HISTORY_TEST_DATABASE_URL;
 describe.skipIf(!database)('private confirmed wallet history on isolated PostgreSQL',()=>{
  let db:PrismaClient;
  beforeAll(async()=>{

@@ -13,7 +13,7 @@ import {reconcile} from '../src/modules/wallet/ledger';
 import {verifyFixtureContact} from './contact-fixtures';
 import {signedLaunch,TEST_TOKEN} from './helpers';
 
-const url=process.env.TEST_DATABASE_URL;
+const url=process.env.MY_BIDS_TEST_DATABASE_URL;
 describe.skipIf(!url)('accepted My Bids accuracy on isolated PostgreSQL',()=>{
  let db:PrismaClient,first:string,second:string,secondTelegramId:number,live:Awaited<ReturnType<typeof bidAuction>>,ownProviderBid:string,wrongOwnerBid:string,providerRef:string;
  beforeAll(async()=>{

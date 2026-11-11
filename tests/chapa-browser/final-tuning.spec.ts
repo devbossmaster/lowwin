@@ -15,6 +15,15 @@ async function expectCompactFit(dialog:Locator){
  const geometry=await modalGeometry(dialog);expect(geometry.top).toBeGreaterThanOrEqual(0);expect(geometry.bottom).toBeLessThanOrEqual(geometry.viewport+1);expect(geometry.footerBottom).not.toBeNull();expect(geometry.footerBottom!).toBeLessThanOrEqual(geometry.viewport+1);
  return geometry;
 }
+async function expectKeyboardFieldClearance(input:Locator){
+ // Viewport intersection alone misses a field touching the scroll body's
+ // clipped edge. Keep its focus outline clear of the pinned payment footer.
+ await expect.poll(()=>input.evaluate(node=>{
+  const body=node.closest('[data-sheet-body]');if(!body)return -1;
+  const field=node.getBoundingClientRect(),clip=body.getBoundingClientRect();
+  return Math.min(field.top-clip.top,clip.bottom-field.bottom);
+ })).toBeGreaterThanOrEqual(4);
+}
 function quoteFixture(auctionSlug:string,numbers:string[],discount=false){
  const totalCents=numbers.length*1000-(discount?100:0);
  return {id:randomUUID(),quoteHash:'a'.repeat(64),auctionSlug,feeVersion:1,ruleVersion:'lowest-unique-v4',entryCount:numbers.length,lines:numbers.map((number,position)=>({position,number,grossFee:'10.00',discount:discount&&position===0?'1.00':'0.00',netFee:discount&&position===0?'9.00':'10.00'})),total:(totalCents/100).toFixed(2),totalCents:String(totalCents),grossTotal:(numbers.length*10).toFixed(2),discountTotal:discount?'1.00':'0.00',status:'QUOTED'};
@@ -39,7 +48,7 @@ async function compactEntryScenario(page:Page,name:string){
   await dialog.getByRole('button',{name:'Remove 4.27',exact:true}).click();await dialog.getByRole('button',{name:'Edit 4.25',exact:true}).click();await input.fill('4.26');await dialog.getByRole('button',{name:'Save bid amount',exact:true}).click();await expect(dialog.getByRole('button',{name:'Edit 4.26',exact:true})).toBeVisible();await coupon.getByRole('button',{name:'Remove',exact:true}).click();
   const product=dialog.locator('[data-bid-entry] details').filter({hasText:'Product details'});await product.locator('summary').click();await expect(product.locator('p')).toHaveText(description);await product.locator('summary').click();
   await input.fill('10');await input.pressSequentially('.75',{delay:5});await expect(input).toHaveValue('10.75');await input.pressSequentially('9e-');await expect(input).toHaveValue('10.75');await input.fill('11.999');await expect(input).toHaveValue('10.75');await input.fill('');await input.pressSequentially('12.');await expect(pay).toBeDisabled();await input.pressSequentially('50');await expect(input).toHaveValue('12.50');await expect(pay).toBeEnabled();
-  const viewport=page.viewportSize()!;await input.focus();await page.setViewportSize({...viewport,height:Math.min(430,viewport.height-180)});await expect(dialog).toHaveAttribute('data-keyboard-open','true');await expect(input).toBeInViewport({ratio:1});await expect(pay).toBeInViewport({ratio:1});await page.setViewportSize(viewport);await input.blur();await expectCompactFit(dialog);
+  const viewport=page.viewportSize()!;await input.focus();await page.setViewportSize({...viewport,height:Math.min(430,viewport.height-180)});await expect(dialog).toHaveAttribute('data-keyboard-open','true');await expect(input).toBeInViewport({ratio:1});await expectKeyboardFieldClearance(input);await expect(pay).toBeInViewport({ratio:1});await page.setViewportSize(viewport);await input.blur();await expectCompactFit(dialog);
   mkdirSync('test-results/chapa-ui/final-tuning',{recursive:true});await page.screenshot({path:`test-results/chapa-ui/final-tuning/bid-${name}.png`,animations:'disabled'});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);expect(errors).toEqual([]);expect(writes).toEqual([]);expect(await f.db.bid.count({where:{userId:f.user.id}})).toBe(0);
   writeFileSync(`test-results/chapa-ui/final-tuning/bid-${name}.json`,JSON.stringify({viewport,readyGeometry,oneStableModal:true,boundedScroll:true,threeNumbersOneTotal:true,uncommittedInputIncluded:true,couponDiscountsOneEntry:true,paymentWrites:0,errors},null,2));
  }finally{release();await f.db.$disconnect()}

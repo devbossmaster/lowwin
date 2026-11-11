@@ -24,6 +24,8 @@ const group: Record<string, string> = {
   'result-publication.test.ts': 'RESULT_TEST_DATABASE_URL',
   'result-campaign-delivery.test.ts': 'RESULT_NOTIFICATION_TEST_DATABASE_URL',
   'winner-banner-db.test.ts': 'WINNER_BANNER_TEST_DATABASE_URL',
+  'my-bids-read.test.ts': 'MY_BIDS_TEST_DATABASE_URL',
+  'wallet-history.test.ts': 'WALLET_HISTORY_TEST_DATABASE_URL',
 };
 const database = process.env[group[filename] ?? 'TEST_DATABASE_URL'];
 if (database) {
