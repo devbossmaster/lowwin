@@ -66,7 +66,10 @@ test('My Bids accepted Live/Finished records, paging and cached auction sheets i
    }
   }
   await page.getByRole('tab',{name:pagedView==='live'?'ቀጥታ':'ያለቁ',exact:true}).click();
-  let fail=true;await page.route('**/api/my-bids?*',async route=>{if(fail){fail=false;await route.fulfill({status:503,json:{error:'Isolated retry fixture'}})}else await route.continue()});await page.reload();await expect(page.getByRole('alert')).toBeVisible();await page.getByRole('button',{name:'እንደገና ይሞክሩ',exact:true}).click();await expect(cards).toHaveCount(20);await page.unroute('**/api/my-bids?*');report.retryRecovered=true;
+  let fail=true;await page.route('**/api/my-bids?*',async route=>{if(fail){fail=false;await route.fulfill({status:503,json:{error:'Isolated retry fixture'}})}else await route.continue()});await page.reload();
+  // Next also exposes a route-announcement alert. Retry the actual failed
+  // My Bids content, rather than matching that unrelated accessibility node.
+  const retryAlert=page.getByRole('main').getByRole('alert').filter({hasText:'ገጹን ማምጣት አልተቻለም። እንደገና ይሞክሩ።'});await expect(retryAlert).toBeVisible();await retryAlert.getByRole('button',{name:'እንደገና ይሞክሩ',exact:true}).click();await expect(cards).toHaveCount(20);await expect(retryAlert).toHaveCount(0);await page.unroute('**/api/my-bids?*');report.retryRecovered=true;
   expect(await financialSnapshot()).toBe(beforeFinancial);expect(financial).toEqual([]);expect(errors).toEqual([]);report.financialPosts=0;report.errors=errors;writeFileSync(`${root}/my-bids-ui-${info.project.name}.json`,JSON.stringify(report,null,2)+'\n');
  }finally{await db.$disconnect()}
 });
