@@ -12,6 +12,14 @@ type Storage=Pick<globalThis.Storage,'getItem'|'setItem'|'removeItem'>;
 export const chapaUuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const amount=/^(0|[1-9]\d{0,15})(?:\.\d{1,2})?$/;
 
+/** A failed restore read must keep observing the original owned resource.
+ * Wait for the first read to finish; authorization failures require login or
+ * ownership correction, never another automatic request or a new charge. */
+export function chapaRestorePollingId(state:{order:ChapaCheckoutView|null;recoveryId:string|null;restoring:boolean;errorCode:string|null}):string|null{
+ if(state.order||state.restoring||!state.recoveryId||!chapaUuid.test(state.recoveryId)||['UNAUTHORIZED','FORBIDDEN','NOT_FOUND'].includes(state.errorCode??''))return null;
+ return state.recoveryId.toLowerCase();
+}
+
 export function readChapaAttempt(storage:Storage,key:string):ChapaAttempt|null{
  try{
   const value=JSON.parse(storage.getItem(key)??'null') as ChapaAttempt|null,i=value?.intent;

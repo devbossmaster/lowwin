@@ -5,7 +5,7 @@ import {ArrowUpRight,Check,Clock3,LoaderCircle,TriangleAlert} from 'lucide-react
 import {useTelegram} from './telegram-provider';
 import {useMiniLocale} from './mini-locale';
 import {confirmedChapaQueryScopes,getMiniQueryClient,invalidatePrivateQueries,isPrivateQueryIdentity,loadPrivateJson,PrivateQueryError,subscribePrivateQueries} from './private-query-cache';
-import {acceptChapaSnapshot,clearChapaAttempts,chapaCanResumeCheckout,chapaCheckoutUrl,chapaConfirmed,chapaDirectRequestRejected,chapaRecoverable,chapaPollingDeadline,chapaPollingPaused,chapaUuid,ChapaClientError,requestChapaJson,type ChapaAttempt,type ChapaCheckoutView,type ChapaIntent} from '@/lib/chapa-client';
+import {acceptChapaSnapshot,clearChapaAttempts,chapaCanResumeCheckout,chapaCheckoutUrl,chapaConfirmed,chapaDirectRequestRejected,chapaRecoverable,chapaPollingDeadline,chapaPollingPaused,chapaRestorePollingId,chapaUuid,ChapaClientError,requestChapaJson,type ChapaAttempt,type ChapaCheckoutView,type ChapaIntent} from '@/lib/chapa-client';
 import {CHAPA_LONG_WAIT_MS,chapaLongWait,chapaPaymentPhase} from '@/lib/chapa-status';
 import {chapaPaymentReasonMessage,chapaRequestReasonMessage} from '@/lib/chapa-payment-reason';
 import {formatEtb} from '@/lib/money';
@@ -71,20 +71,21 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
   const unsubscribe=subscribePrivateQueries(event=>{if(event.kind==='authorization'||event.kind==='session'&&event.identity!==queryIdentity){epoch.current++;statusRead.current=null;inlineInstance.current?.dispose();inlineInstance.current=null;controllers.current.forEach(c=>c.abort())}});
   return()=>{epoch.current++;controllers.current.forEach(c=>c.abort());controllers.current.clear();inlineInstance.current?.dispose();inlineInstance.current=null;unsubscribe()};
  },[queryIdentity,scope,initialId,retainOriginal]);
- const orderId=state.order?.id,confirmed=!!state.order&&chapaConfirmed(state.order),waiting=!!state.order&&chapaRecoverable(state.order)&&!chapaDirectRequestRejected(state.order);
+ const orderId=state.order?.id??chapaRestorePollingId(state),confirmed=!!state.order&&chapaConfirmed(state.order),waiting=state.order?chapaRecoverable(state.order)&&!chapaDirectRequestRejected(state.order):!!orderId;
+ const observeDirect=state.order?.chargeType==='DIRECT'||state.order?.apiVersion==='v1'||state.directAttempt?.apiVersion==='v1';
  useEffect(()=>{if(state.order&&(confirmed||!waiting)){inlineInstance.current?.dispose();inlineInstance.current=null}},[orderId,confirmed,waiting]);
  const pollingDeadline=state.order?chapaPollingDeadline(state.order):null;
  useEffect(()=>{
-  if(!orderId||!queryIdentity||confirmed||!waiting)return;
+  if(!orderId||!isPrivateQueryIdentity(queryIdentity)||confirmed||!waiting)return;
   // GET restores the owned order; POST asks our server to verify with Chapa.
   // The server's lease and nextCheckAt still control provider request frequency.
   return startChapaPolling(()=>verifyOwned(orderId),()=>update({paused:true}),document,{
    deadlineAt:pollingDeadline,
-   observeDirect:state.order?.chargeType==='DIRECT'||state.order?.apiVersion==='v1',
+   observeDirect,
    onResume:()=>update({paused:false}),
    onError:cause=>update({error:cause instanceof ChapaClientError?cause.message:'Could not reach payment confirmation. We will retry automatically.',errorCode:cause instanceof ChapaClientError?cause.code:'UNAVAILABLE'}),
   });
- },[orderId,queryIdentity,confirmed,waiting,pollingDeadline,state.order?.chargeType,state.order?.apiVersion,verifyOwned,update]);
+ },[orderId,queryIdentity,confirmed,waiting,pollingDeadline,observeDirect,verifyOwned,update]);
  const create=useCallback(async(intent:ChapaIntent)=>{
   if(!queryIdentity||locked.current||!isPrivateQueryIdentity(queryIdentity))return;
   const version=epoch.current,next=stateRef.current.attempt??{version:1 as const,intent};locked.current=true;update({attempt:next,busy:true,active:true,error:'',errorCode:null,paused:false,handoff:'opening'});const navigation=prepareChapaNavigation();

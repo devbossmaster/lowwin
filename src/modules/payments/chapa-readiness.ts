@@ -1,5 +1,6 @@
 import {chapaAvailability,chapaWebhookSignatureProfile,isChapaWebhookSecret,createChapaTransport,parseChapaPaymentMethods} from './chapa-provider';
 import {chapaV1Availability} from './chapa-v1-provider';
+import {chapaV1ConfigurationReport} from './chapa-v1-readiness';
 
 type Environment=Record<string,string|undefined>;
 type Options={schema?:boolean;methods?:boolean};
@@ -52,7 +53,7 @@ export function chapaWorkerConfiguration(raw:Environment){
  const health=chapaAvailability(raw),missing=missingPrerequisites(raw,health.mode);
  if(!health.recoveryEnabled&&raw.CHAPA_RECOVERY_ENABLED!=='true')missing.push('CHAPA_RECOVERY_ENABLED');
  const v1=chapaV1Availability(raw);
- return {event:'chapa_worker_configuration',mode:health.mode,configured:health.configured||v1.configured,recoveryEnabled:health.recoveryEnabled||v1.recoveryEnabled,v1RecoveryEnabled:v1.recoveryEnabled,v2RecoveryEnabled:health.recoveryEnabled,legacySweepEnabled:raw.CHAPA_LEGACY_SWEEP_ENABLED==='true',missingPrerequisites:health.recoveryEnabled||v1.recoveryEnabled?[]:missing,v1ConfigurationRequired:!v1.configured};
+ return {event:'chapa_worker_configuration',mode:health.mode,configured:health.configured||v1.configured,recoveryEnabled:health.recoveryEnabled||v1.recoveryEnabled,v1RecoveryEnabled:v1.recoveryEnabled,v2RecoveryEnabled:health.recoveryEnabled,legacySweepEnabled:raw.CHAPA_LEGACY_SWEEP_ENABLED==='true',missingPrerequisites:health.recoveryEnabled||v1.recoveryEnabled?[]:missing,v1ConfigurationRequired:!v1.configured,v1:chapaV1ConfigurationReport(raw)};
 }
 
 /** Offline by default. Explicit checks are read-only and limited to configured

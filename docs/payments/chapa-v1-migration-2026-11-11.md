@@ -71,6 +71,16 @@ The Chapa worker now reports `v1RecoveryEnabled` and `v2RecoveryEnabled` separat
 
 ## Release preparation
 
+The migration alone does not enable external checkout. WEB and the Chapa worker also need the v1 keys, enabled flags and reviewed method whitelist above. An empty `CHAPA_V1_METHODS` deliberately hides external wallet cards. Historical v2 readiness does not establish v1 readiness.
+
+Run this read-only diagnostic on both updated resources; it prints setting names/booleans and migration metadata, never credentials or customer data:
+
+```sh
+npx --no-install tsx scripts/check-chapa-v1.ts --schema
+```
+
+Without `--schema`, the check is fully offline. `missingPrerequisites` names missing or invalid configuration, `disabledCreationGates` names paused switches, and `methodSelectionRequired` identifies an empty wallet whitelist with no enabled CBE Bank branch. The worker's startup log now includes a separate `v1` report even when historical v2 recovery works. `schema.status: "conflicting"` identifies the superseded PR #15 hosted-only migration; inspect that schema before proceeding rather than resetting the database or marking migrations applied manually.
+
 Migration `202611110001_chapa_v1_checkout` extends the current SQL checks to permit immutable v1/Inline intents and adds a bounded reconciliation index. Apply it before starting the updated WEB/worker revision:
 
 ```sh

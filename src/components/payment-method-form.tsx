@@ -6,6 +6,7 @@ import {centsToEtb,etbToCents,formatEtb} from '@/lib/money';
 import {normalizePaymentPhone,paymentPhoneProblem,paymentPhoneProblemMessage} from '@/lib/payment-phone';
 import {AccountSheetFooter} from './account-sheet';
 import {useMiniLocale} from './mini-locale';
+import {Button} from './ui/button';
 import styles from './payment-method-form.module.css';
 
 const providers=[{slug:'telebirr',name:'telebirr',image:'/icons/payments/telebirr.jpg'},{slug:'cbebirr',name:'CBE Birr',image:'/icons/payments/cbebirr.svg'},{slug:'mpesa',name:'M-Pesa',image:'/icons/payments/mpesa.png'},{slug:'ebirr',name:'eBirr',image:'/payments/ebirr.svg'},{slug:'cbe-bank',name:'CBE Bank',image:'/payments/cbe-bank.webp'}] as const;
@@ -29,9 +30,9 @@ export default function PaymentMethodForm({total,method,phone,onMethodChange,onP
  const walletTotal=amount===null?total:centsToEtb(amount);
  const actionLabel=free?text('Submit bids','ጨረታዎችን ያቅርቡ'):usingWallet?text(`Pay ${walletTotal} ETB from wallet`,`${walletTotal} ብር ከዋሌት ይክፈሉ`):payLabel;
  const busyLabel=usingWallet?text(free?'Submitting bids…':'Paying from your wallet…',free?'ጨረታዎችን በማቅረብ ላይ…':'ከዋሌትዎ በመክፈል ላይ…'):text('Processing…','በማስኬድ ላይ…');
- const action=<button className={styles.pay} type="submit" form={id} data-payment-action data-wallet-payment-action={usingWallet||undefined} disabled={busy||payDisabled||!selectedValid} aria-busy={busy}>{busy&&<LoaderCircle className={styles.spin} size={18} aria-hidden="true"/>}{busy?busyLabel:actionLabel}</button>;
+ const action=<Button className={styles.pay} type="submit" form={id} data-payment-action data-wallet-payment-action={usingWallet||undefined} disabled={busy||payDisabled||!selectedValid} aria-busy={busy}>{busy&&<LoaderCircle className={styles.spin} size={18} aria-hidden="true"/>}{busy?busyLabel:actionLabel}</Button>;
  return <form id={id} className={styles.form} data-payment-method-form onSubmit={event=>{event.preventDefault();if(!busy&&!payDisabled&&selectedValid)onPay()}}>
-  <div className={styles.heading}><button type="button" onClick={onBack} disabled={busy} aria-label={text('Back','ተመለስ')}><ArrowLeft size={18} aria-hidden="true"/></button><div><h3>{text('Pay securely','በደህና ይክፈሉ')}</h3><p className={styles.hint}>{text('Choose how you want to pay.','የሚከፍሉበትን መንገድ ይምረጡ።')}</p></div></div>
+  <div className={styles.heading}><button type="button" onClick={onBack} disabled={busy} aria-label={text('Back','ተመለስ')}><ArrowLeft size={17} aria-hidden="true"/><span>{text('Back','ተመለስ')}</span></button><p>{text('Choose how to pay.','የክፍያ መንገድ ይምረጡ።')}</p></div>
   {summary&&<div className={styles.summary}>{summary}</div>}
   {wallet&&<fieldset className={styles.walletSection} disabled={busy} data-lowwin-wallet><legend>{text('Pay from Lowwin Wallet','ከLowwin ዋሌት ይክፈሉ')}</legend>
    <label className={styles.walletChoice} data-provider="wallet" data-selected={usingWallet} data-unavailable={walletUnavailable&&!free}><input type="radio" name={`${id}-method`} value="wallet" checked={usingWallet} disabled={walletUnavailable&&!free} onChange={()=>onMethodChange('wallet')} aria-label={text('Lowwin Wallet','Lowwin ዋሌት')}/><span className={styles.walletMark}><Wallet size={25} aria-hidden="true"/></span><span className={styles.walletCopy}><strong>{text('Lowwin Wallet','Lowwin ዋሌት')}</strong><small>{text('Available balance','ያለ ቀሪ ሂሳብ')}</small></span><strong className={styles.walletBalance}>{available===null?'—':formatEtb(centsToEtb(available))}</strong>{usingWallet&&<span className={styles.walletCheck}><Check size={14} strokeWidth={3} aria-hidden="true"/></span>}</label>
@@ -42,7 +43,7 @@ export default function PaymentMethodForm({total,method,phone,onMethodChange,onP
     <div className={styles.walletRecovery}>{onTopUp&&<button type="button" onClick={onTopUp}>{text('Top up wallet','ገንዘብ ያስገቡ')}</button>}<span>{text('Or choose an external payment method below.','ወይም ከታች የውጭ ክፍያ መንገድ ይምረጡ።')}</span></div>
    </div>}
   </fieldset>}
-  <section className={styles.external} aria-labelledby={`${id}-external-heading`} data-chapa-methods><h4 id={`${id}-external-heading`}>{text('Pay through Chapa','በChapa ይክፈሉ')}</h4>
+  <section className={styles.external} aria-labelledby={`${id}-external-heading`} data-chapa-methods><h4 id={`${id}-external-heading`}>{text('Pay through Chapa','በChapa ይክፈሉ')}</h4><div className={styles.externalPanel}>
   {!usingWallet&&<div className={styles.phone}><label htmlFor={`${id}-phone`}>{text('Payment phone number','የክፍያ ስልክ ቁጥር')}</label><div className={styles.phoneField} data-disabled={!phoneRequired}>
    <span className={styles.country} aria-hidden="true"><svg viewBox="0 0 30 21" width="24" height="17"><path fill="#159447" d="M0 0h30v7H0z"/><path fill="#f7d33b" d="M0 7h30v7H0z"/><path fill="#df3837" d="M0 14h30v7H0z"/><circle cx="15" cy="10.5" r="6.3" fill="#1473b9"/><path d="m15 5.2 3.1 9.6-8.2-6h10.2l-8.2 6Z" fill="none" stroke="#f7d33b" strokeWidth=".65"/></svg><span>+251</span></span>
    <input id={`${id}-phone`} type="tel" inputMode="tel" autoComplete="tel-national" maxLength={18} value={phone} disabled={busy||!phoneRequired} onChange={event=>onPhoneChange(normalizePaymentPhone(event.target.value)?.slice(3)??event.target.value)} placeholder="7•• / 9•• ••• •••" aria-invalid={!!method&&!!phone&&!!phoneProblem||undefined} aria-describedby={`${id}-phone-help${method&&phone&&phoneProblem?' '+id+'-phone-error':''}`}/>
@@ -53,7 +54,7 @@ export default function PaymentMethodForm({total,method,phone,onMethodChange,onP
   {methodsLoading&&<p className={styles.loading} role="status"><LoaderCircle className={styles.spin} size={16}/>{text('Loading payment methods…','የክፍያ መንገዶች በመጫን ላይ…')}</p>}
   {(methodsError||!methodsLoading&&!supported.length)&&<p className={styles.error} role="status"><CircleAlert size={14} aria-hidden="true"/>{text('External payments are unavailable.','የውጭ ክፍያዎች ለጊዜው አይገኙም።')}{onReloadMethods&&<button type="button" className={styles.retry} onClick={onReloadMethods}>{text('Retry','እንደገና')}</button>}</p>}
   {method&&!usingWallet&&!allowed(method)&&!methodsLoading&&<p className={styles.error} role="alert">{text('Choose a method available for this amount.','ለዚህ መጠን የሚገኝ የክፍያ መንገድ ይምረጡ።')}</p>}
-  </section>
+  </div></section>
   {error&&<div className={styles.error} role="alert">{error}</div>}
   <div className={styles.total} data-payment-total data-bid-total={wallet?'':undefined}><span>{text('Total payable','ጠቅላላ ክፍያ')}</span><strong>{formatEtb(total)}</strong></div>
   {footerPortal?<AccountSheetFooter>{action}</AccountSheetFooter>:action}
