@@ -1,5 +1,6 @@
 import {chapaApiCharge,chapaAwaitingAuthorization,chapaVerifiedTerminal,chapaConfirmed,chapaDirectRequestRejected,chapaPollingPaused,type ChapaCheckoutView} from './chapa-client';
 import {normalizePaymentPhone} from './payment-phone';
+import {safeChapaPaymentReason} from './chapa-payment-reason';
 
 export type BidPaymentProgressPhase='preparing'|'connecting'|'authorization'|'confirming'|'success'|'preserved'|'terminal'|'uncertain';
 type ProgressState={order:ChapaCheckoutView|null;busy:boolean;restoring:boolean;paused:boolean;error:string;errorCode?:string|null;started?:boolean;preparing?:boolean;walletRetry?:boolean;hasReceipt?:boolean;now?:number};
@@ -17,6 +18,15 @@ export function bidPaymentCanRetry(order:ChapaCheckoutView|null){
 export function bidPaymentCanRetryOriginal(order:ChapaCheckoutView|null){
  if(!order)return true;
  return chapaApiCharge(order)&&['SUBMITTING','PENDING'].includes(order.status)&&!order.authorizationReference&&!chapaConfirmed(order)&&order.providerStatus!=='SUCCESS'&&order.verificationState!=='MISMATCH'&&order.initializationIssue!=='state'&&!chapaDirectRequestRejected(order);
+}
+
+/** A bound authorization rejection describes that authorization, not the
+ * financial outcome. Keep reconciling the original payment before any retry. */
+export function bidPaymentAuthorizationError(order:ChapaCheckoutView|null){
+ if(!order||!chapaApiCharge(order)||chapaConfirmed(order)||order.providerStatus==='SUCCESS'||order.verificationState==='MISMATCH'||order.status==='NEEDS_REVIEW'||!['SUBMITTING','PENDING','AUTH_NEEDED','VERIFYING'].includes(order.status))return null;
+ const reason=safeChapaPaymentReason(order.authorizationReasonCode);
+ if(order.authType==='OTP'&&reason==='INVALID_OTP')return null;
+ return reason&&reason!=='AUTHORIZATION_REQUIRED'?reason:null;
 }
 
 /** Connection health is secondary to accepted provider state. It cannot
@@ -42,6 +52,7 @@ export function bidPaymentProgressPhase(state:ProgressState):BidPaymentProgressP
  if(order.verificationState==='MISMATCH'||order.status==='NEEDS_REVIEW'||chapaDirectRequestRejected(order))return 'uncertain';
  if(order.providerStatus==='SUCCESS')return 'confirming';
  if(order.status==='BID_ACCEPTED'||order.status==='EXPIRED')return 'uncertain';
+ if(bidPaymentAuthorizationError(order))return 'uncertain';
  // Inline callbacks (including failure/network callbacks) are only hints.
  if(state.busy&&!order.authorizationReference&&['SUBMITTING','PENDING'].includes(order.status))return 'connecting';
  if(chapaAwaitingAuthorization(order))return 'authorization';

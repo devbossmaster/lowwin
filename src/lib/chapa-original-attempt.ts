@@ -1,5 +1,7 @@
 import type {QueryClient} from '@tanstack/react-query';
 import type {BidBatchQuote,ChapaDirectIntent} from './bid-batch-client';
+import {bidPaymentCanRetry} from './bid-payment-progress';
+import {chapaConfirmed,type ChapaCheckoutView} from './chapa-client';
 
 export type ChapaOriginalAttempt={intent:ChapaDirectIntent;orderId?:string;bidQuote?:BidBatchQuote};
 const key=(identity:string,scope:string)=>['lowin-private',identity,'chapa-original-attempt',scope] as const;
@@ -18,4 +20,13 @@ export function clearChapaOriginalAttempt(client:QueryClient,identity:string,sco
  const saved=readChapaOriginalAttempt(client,identity,scope);
  if(!saved||expected.intentKey&&saved.intent.key!==expected.intentKey||expected.orderId&&saved.orderId!==expected.orderId)return;
  client.removeQueries({queryKey:key(identity,scope),exact:true});
+}
+
+/** Dismissal ends presentation, never a provider request. Release only a
+ * matching original whose latest owned outcome safely permits a new entry. */
+export function clearSettledChapaOriginalAttempt(client:QueryClient,identity:string,scope:string,order:ChapaCheckoutView|null,intentKey?:string){
+ if(!order||!chapaConfirmed(order)&&!bidPaymentCanRetry(order))return false;
+ const saved=readChapaOriginalAttempt(client,identity,scope);
+ if(!saved||intentKey&&saved.intent.key!==intentKey||saved.orderId&&saved.orderId!==order.id||!saved.orderId&&!intentKey)return false;
+ clearChapaOriginalAttempt(client,identity,scope,{intentKey:saved.intent.key,...(saved.orderId?{orderId:order.id}:{})});return true;
 }

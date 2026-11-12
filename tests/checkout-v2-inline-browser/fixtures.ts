@@ -59,8 +59,8 @@ export async function inlineFixture(page:Page,am=false){
 
 /** Synthetic atomic wallet adapter for browser UX only. Provider counters stay
  * separate; GET observes a receipt and never creates a debit. */
-export async function walletFixture(page:Page,f:Awaited<ReturnType<typeof inlineFixture>>,{responseGate,commitGate,interruptReply=false,fee=1000}:{responseGate?:Promise<void>;commitGate?:Promise<void>;interruptReply?:boolean;fee?:number}={}){
- const commands:WalletBidCommand[]=[],knownPosts:string[]=[],reads:string[]=[],operations=new Map<string,{input:WalletBidCommand;quote:BidBatchQuote;receipt:BidBatchReceipt|null}>();let available='25.00',debits=0;
+export async function walletFixture(page:Page,f:Awaited<ReturnType<typeof inlineFixture>>,{responseGate,commitGate,interruptReply=false,fee=1000,initialBalance='25.00'}:{responseGate?:Promise<void>;commitGate?:Promise<void>;interruptReply?:boolean;fee?:number;initialBalance?:string}={}){
+ const commands:WalletBidCommand[]=[],knownPosts:string[]=[],reads:string[]=[],operations=new Map<string,{input:WalletBidCommand;quote:BidBatchQuote;receipt:BidBatchReceipt|null}>();let available=initialBalance,debits=0;
  const makeQuote=(input:WalletBidCommand):BidBatchQuote=>{const total=fee*input.numbers.length;return {id:randomUUID(),quoteHash:'c'.repeat(64),auctionSlug:input.auctionSlug,feeVersion:input.feeVersion,ruleVersion:'lowest-unique-v4',lines:input.numbers.map((number,position)=>({position,number,grossFee:(fee/100).toFixed(2),discount:'0.00',netFee:(fee/100).toFixed(2)})),entryCount:input.numbers.length,total:(total/100).toFixed(2),totalCents:String(total),grossTotal:(total/100).toFixed(2),discountTotal:'0.00',status:'QUOTED'}};
  const commit=(operation:{quote:BidBatchQuote;receipt:BidBatchReceipt|null})=>{
   if(operation.receipt)return operation.receipt;

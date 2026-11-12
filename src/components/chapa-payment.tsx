@@ -15,7 +15,7 @@ import {startChapaOriginalPolling} from '@/lib/chapa-original-polling';
 import {chapaStatusLabel} from '@/lib/chapa-status-label';
 import {chapaDirectCreationRejected} from '@/lib/chapa-direct-request';
 import {bidPaymentCanRetry} from '@/lib/bid-payment-progress';
-import {clearChapaOriginalAttempt,readChapaOriginalAttempt,retainChapaOriginalAttempt} from '@/lib/chapa-original-attempt';
+import {clearChapaOriginalAttempt,clearSettledChapaOriginalAttempt,readChapaOriginalAttempt,retainChapaOriginalAttempt} from '@/lib/chapa-original-attempt';
 import {retainPaymentRetryDraft} from '@/lib/payment-retry-draft';
 export {chapaStatusLabel} from '@/lib/chapa-status-label';
 import type {BidBatchQuote,ChapaDirectIntent} from '@/lib/bid-batch-client';
@@ -80,7 +80,11 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
   const restoreUrl=next.recoveryId&&chapaUuid.test(next.recoveryId)?`/api/payments/chapa/checkouts/${next.recoveryId.toLowerCase()}`:null;
   if(queryIdentity&&restoreUrl)void loadPrivateJson<ChapaCheckoutView>(queryIdentity,restoreUrl,{freshnessMs:5000}).then(order=>{if(current(version))receive(order)}).catch(cause=>{if(current(version))update({restoring:false,errorCode:cause instanceof ChapaClientError?cause.code:cause instanceof PrivateQueryError?({401:'UNAUTHORIZED',403:'FORBIDDEN',404:'NOT_FOUND'}[cause.status]??'UNAVAILABLE'):'UNAVAILABLE',error:language==='am'?'የክፍያውን ሁኔታ ማምጣት አልተቻለም።':'Payment status could not load. Try again.'})});
   const unsubscribe=subscribePrivateQueries(event=>{if(event.kind==='authorization'||event.kind==='session'&&event.identity!==queryIdentity){epoch.current++;statusRead.current=null;controllers.current.forEach(c=>c.abort())}});
-  return()=>{epoch.current++;controllers.current.forEach(c=>c.abort());controllers.current.clear();unsubscribe()};
+  return()=>{
+   const last=stateRef.current;
+   if(retainOriginal&&queryIdentity&&last.identity===queryIdentity)clearSettledChapaOriginalAttempt(getMiniQueryClient(),queryIdentity,scope,last.order,last.directAttempt?.key);
+   epoch.current++;controllers.current.forEach(c=>c.abort());controllers.current.clear();unsubscribe();
+  };
  },[queryIdentity,scope,initialId,retainOriginal]);
  const orderId=state.order?.id??chapaRestorePollingId(state),confirmed=!!state.order&&chapaConfirmed(state.order),waiting=state.order?chapaRecoverable(state.order)&&!chapaDirectRequestRejected(state.order):!!orderId;
  const observeDirect=!!state.order&&(chapaApiCharge(state.order)||chapaCurrentInline(state.order))||state.directAttempt?.apiVersion==='v2'&&state.directAttempt.kind==='inline';
@@ -180,7 +184,13 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
  },[queryIdentity,initialId,current,update,verifyOwned,readOriginal,receive,language]);
  // A failed read is not permission to drop an unresolved immutable command.
  const canStartAgain=!state.busy&&!state.restoring&&state.active&&!!state.order&&(bidPaymentCanRetry(state.order)||state.order.purpose==='TOP_UP'&&state.order.status==='CREDITED'&&chapaConfirmed(state.order));
- const startAgain=()=>{if(!canStartAgain||locked.current)return;if(retainOriginal&&queryIdentity)clearChapaOriginalAttempt(getMiniQueryClient(),queryIdentity,scope,stateRef.current.directAttempt?{intentKey:stateRef.current.directAttempt.key}:{orderId:stateRef.current.order?.id??stateRef.current.recoveryId??undefined});epoch.current++;controllers.current.forEach(c=>c.abort());controllers.current.clear();invalidated.current=null;uiTiming.current=null;const next=empty(false);stateRef.current=next;setSnapshot(next)};
+ const startAgain=()=>{
+  const latest=stateRef.current,order=latest.order;
+  if(latest.identity!==queryIdentity||!isPrivateQueryIdentity(queryIdentity)||locked.current||latest.busy||latest.restoring||!latest.active||!order||!bidPaymentCanRetry(order)&&!(order.purpose==='TOP_UP'&&order.status==='CREDITED'&&chapaConfirmed(order)))return false;
+  if(retainOriginal&&queryIdentity)clearSettledChapaOriginalAttempt(getMiniQueryClient(),queryIdentity,scope,order,latest.directAttempt?.key);
+  epoch.current++;controllers.current.forEach(c=>c.abort());controllers.current.clear();statusRead.current=null;originalRead.current=null;invalidated.current=null;uiTiming.current=null;
+  const next=empty(false);stateRef.current=next;setSnapshot(next);return true;
+ };
  return {...state,opening:state.handoff==='opening',started:state.active,create,createInline,createDirect,authorize,check,canStartAgain,startAgain,beginTiming,markPresented};
 }
 /** One-shot health hints never change the accepted provider authorization. */

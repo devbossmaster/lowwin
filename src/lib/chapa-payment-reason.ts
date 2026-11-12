@@ -1,12 +1,12 @@
 /** Only exact, recognized provider reasons become customer-facing codes.
  * Never relay arbitrary bank messages, payer details, HTML or internal errors. */
-export type ChapaPaymentReasonCode='INSUFFICIENT_FUNDS'|'INVALID_PIN'|'INVALID_OTP'|'PAYMENT_ACCOUNT_NOT_FOUND'|'AUTHORIZATION_REQUIRED'|'PAYMENT_BLOCKED'|'PAYMENT_CANCELLED'|'PAYMENT_EXPIRED'|'PAYMENT_FAILED_OR_CANCELLED';
+export type ChapaPaymentReasonCode='INSUFFICIENT_FUNDS'|'INVALID_PIN'|'INVALID_OTP'|'PAYMENT_ACCOUNT_NOT_FOUND'|'AUTHORIZATION_REQUIRED'|'AUTHORIZATION_FAILED'|'PAYMENT_BLOCKED'|'PAYMENT_CANCELLED'|'PAYMENT_EXPIRED'|'PAYMENT_FAILED_OR_CANCELLED';
 const aliases:Record<string,ChapaPaymentReasonCode>={
  INSUFFICIENT_FUNDS:'INSUFFICIENT_FUNDS',INSUFFICIENT_BALANCE:'INSUFFICIENT_FUNDS','INSUFFICIENT BALANCE':'INSUFFICIENT_FUNDS','INSUFFICIENT BALANCE.':'INSUFFICIENT_FUNDS','INSUFFICIENT FUNDS':'INSUFFICIENT_FUNDS',
  INVALID_PIN:'INVALID_PIN',INCORRECT_PIN:'INVALID_PIN',WRONG_PIN:'INVALID_PIN','INCORRECT PIN':'INVALID_PIN','INVALID PIN':'INVALID_PIN',
  INVALID_OTP:'INVALID_OTP',INCORRECT_OTP:'INVALID_OTP','THE OTP ENTERED IS INCORRECT':'INVALID_OTP','THE OTP ENTERED IS INCORRECT.':'INVALID_OTP',
  PAYMENT_ACCOUNT_NOT_FOUND:'PAYMENT_ACCOUNT_NOT_FOUND',PHONE_NOT_REGISTERED:'PAYMENT_ACCOUNT_NOT_FOUND',NUMBER_NOT_REGISTERED:'PAYMENT_ACCOUNT_NOT_FOUND',CUSTOMER_NOT_REGISTERED:'PAYMENT_ACCOUNT_NOT_FOUND',ACCOUNT_NOT_FOUND:'PAYMENT_ACCOUNT_NOT_FOUND',INVALID_ACCOUNT_NUMBER:'PAYMENT_ACCOUNT_NOT_FOUND','PHONE NUMBER IS NOT REGISTERED':'PAYMENT_ACCOUNT_NOT_FOUND','INVALID ACCOUNT NUMBER':'PAYMENT_ACCOUNT_NOT_FOUND',
- AUTHORIZATION_REQUIRED:'AUTHORIZATION_REQUIRED',PAYMENT_BLOCKED:'PAYMENT_BLOCKED',TRANSACTION_BLOCKED:'PAYMENT_BLOCKED',
+ AUTHORIZATION_REQUIRED:'AUTHORIZATION_REQUIRED',AUTHORIZATION_FAILED:'AUTHORIZATION_FAILED',PAYMENT_BLOCKED:'PAYMENT_BLOCKED',TRANSACTION_BLOCKED:'PAYMENT_BLOCKED',
  PAYMENT_CANCELLED:'PAYMENT_CANCELLED',CUSTOMER_CANCELLED:'PAYMENT_CANCELLED',PAYMENT_EXPIRED:'PAYMENT_EXPIRED',SESSION_EXPIRED:'PAYMENT_EXPIRED',PAYMENT_FAILED_OR_CANCELLED:'PAYMENT_FAILED_OR_CANCELLED',
  "YOU DON'T HAVE ENOUGH BALANCE TO MAKE THIS PAYMENT":'INSUFFICIENT_FUNDS',
  'THIS CUSTOMER DID NOT ACTIVE CREDIT PAY SERVICE':'INSUFFICIENT_FUNDS',
@@ -14,7 +14,7 @@ const aliases:Record<string,ChapaPaymentReasonCode>={
  'INVALID/UNRECOGNIZED ACCOUNT NUMBER.':'PAYMENT_ACCOUNT_NOT_FOUND',
  'PLEASE MAKE SURE YOUR PHONE NUMBER IS CORRECT':'PAYMENT_ACCOUNT_NOT_FOUND',
 };
-export const chapaReasonStatuses=new Set(['FAILED','CANCELLED','INCOMPLETE','BLOCKED','AUTH_NEEDED']);
+export const chapaReasonStatuses=new Set(['FAILED','CANCELLED','INCOMPLETE','EXPIRED','BLOCKED','AUTH_NEEDED']);
 export function safeChapaPaymentReason(value:unknown):ChapaPaymentReasonCode|null{
  if(typeof value!=='string'||value.length>120)return null;
  const normalized=value.trim().toUpperCase();return Object.hasOwn(aliases,normalized)?aliases[normalized]:null;
@@ -22,7 +22,14 @@ export function safeChapaPaymentReason(value:unknown):ChapaPaymentReasonCode|nul
 export function publicChapaPaymentReason(order:{reason:string|null;providerStatus:string|null;verificationState:string}):ChapaPaymentReasonCode|null{
  return order.verificationState==='VERIFIED'&&chapaReasonStatuses.has(order.providerStatus??'')&&order.reason?.startsWith('CHAPA_')?safeChapaPaymentReason(order.reason.slice(6)):null;
 }
+/** Authorization feedback comes from the provider validation request, not the
+ * merchant verification endpoint. It never authorizes credit or a new charge. */
+export function publicChapaAuthorizationReason(order:{status:string;reason:string|null;providerStatus:string|null;verificationState:string}):ChapaPaymentReasonCode|null{
+ if(!['SUBMITTING','PENDING','AUTH_NEEDED','VERIFYING'].includes(order.status)||order.verificationState==='MISMATCH'||order.providerStatus==='SUCCESS'||order.providerStatus&& !['PENDING','AUTH_NEEDED'].includes(order.providerStatus))return null;
+ const prefix='CHAPA_AUTHORIZATION_';return order.reason?.startsWith(prefix)?safeChapaPaymentReason(order.reason.slice(prefix.length)):null;
+}
 const messages:Record<ChapaPaymentReasonCode,[string,string]>={
+ AUTHORIZATION_FAILED:['Chapa reports that the payment authorization was not completed.','Chapa የክፍያ ፈቃዱ እንዳልተጠናቀቀ አሳውቋል።'],
  PAYMENT_FAILED_OR_CANCELLED:['The payment provider reports that this payment failed or was cancelled.','የክፍያ አቅራቢው ይህ ክፍያ እንዳልተሳካ ወይም እንደተሰረዘ አሳውቋል።'],
  PAYMENT_ACCOUNT_NOT_FOUND:['Chapa could not find this account with the selected payment provider. Use a number registered with that provider.','Chapa በመረጡት የክፍያ አቅራቢ ይህን መለያ ማግኘት አልቻለም። በዚያ አቅራቢ የተመዘገበ ቁጥር ይጠቀሙ።'],
  INSUFFICIENT_FUNDS:['Chapa reports insufficient funds in the payment account.','Chapa በክፍያ መለያው ውስጥ ያለው ገንዘብ እንደማይበቃ አሳውቋል።'],

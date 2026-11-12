@@ -4,7 +4,7 @@ import Link from 'next/link';
 import {useEffect,useId,useState} from 'react';
 import {ArrowUpRight,Check,LoaderCircle,ShieldCheck,Smartphone,TriangleAlert} from 'lucide-react';
 import type {BidBatchReceipt} from '@/lib/bid-batch-client';
-import {bidPaymentConnectionDelayed,bidPaymentCanRetry,bidPaymentCanRetryOriginal,bidPaymentProgressPhase,maskedBidPaymentPhone,type BidPaymentProgressPhase} from '@/lib/bid-payment-progress';
+import {bidPaymentAuthorizationError,bidPaymentConnectionDelayed,bidPaymentCanRetry,bidPaymentCanRetryOriginal,bidPaymentProgressPhase,maskedBidPaymentPhone,type BidPaymentProgressPhase} from '@/lib/bid-payment-progress';
 import {chapaPaymentReasonMessage,chapaRequestReasonMessage} from '@/lib/chapa-payment-reason';
 import {formatEtb} from '@/lib/money';
 import {chapaCurrentInline,chapaOriginalKeyUrl,chapaCheckoutUrl} from '@/lib/chapa-client';
@@ -32,6 +32,7 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
  const otpNeeded=phase==='authorization'&&order?.authType==='OTP';
  const finished=phase==='success'||phase==='preserved';
  const terminal=phase==='terminal';
+ const authorizationError=bidPaymentAuthorizationError(order);
  const numbers=receipt?.batch.lines.map(line=>line.number)??(order?.batchNumbers?.length?order.batchNumbers:order?.batch?.lines.map(line=>line.number))??(order?.bidNumber?[order.bidNumber]:summary.numbers);
  const total=receipt?.batch.total??order?.amount??summary.total;
  const provider=order?.paymentMethod??summary.provider;
@@ -41,12 +42,12 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
  const title=am?order?.auctionTitleAm||summary.auctionTitleAm||order?.auctionTitle||summary.auctionTitle:order?.auctionTitle||summary.auctionTitle;
  const safeReason=order?chapaPaymentReasonMessage(order,am)??chapaRequestReasonMessage(order.initializationReasonCode,am):null;
  const requestReason=chapaRequestReasonMessage(payment.errorCode,am);
- const invalidOtp=otpNeeded&&payment.errorCode==='INVALID_OTP';
- const reasonMessage=!finished?(invalidOtp?text('That code was not accepted. Check the code and try again.','ኮዱ አልተቀበለም። ኮዱን ያረጋግጡና እንደገና ይሞክሩ።'):safeReason??requestReason):null;
- const connectionDelayed=!finished&&!terminal&&!invalidOtp&&!requestReason&&bidPaymentConnectionDelayed({...payment,error:payment.error||error,now});
+ const invalidOtp=otpNeeded&&(payment.errorCode==='INVALID_OTP'||order?.authorizationReasonCode==='INVALID_OTP');
+ const reasonMessage=!finished?(invalidOtp?text('That code was not accepted. Check the code and try again.','ኮዱ አልተቀበለም። ኮዱን ያረጋግጡና እንደገና ይሞክሩ።'):safeReason??chapaRequestReasonMessage(authorizationError,am)??requestReason):null;
+ const connectionDelayed=!finished&&!terminal&&!authorizationError&&!invalidOtp&&!requestReason&&bidPaymentConnectionDelayed({...payment,error:payment.error||error,now});
  const safeRetry=terminal&&bidPaymentCanRetry(order)&&payment.canStartAgain&&!busy;
  const retryAction=onChangePayment??onRetry;
- const canRetryOriginal=phase==='uncertain'&&!busy&&!!payment.directAttempt&&bidPaymentCanRetryOriginal(order);
+ const canRetryOriginal=phase==='uncertain'&&!authorizationError&&!busy&&!!payment.directAttempt&&bidPaymentCanRetryOriginal(order);
  // A slow display clock is not a reason to ask the customer to verify. The
  // existing poller owns active checks; expose recovery only when it is paused
  // or the original request has an uncertain outcome.
@@ -73,6 +74,7 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
   terminal:[deposit?'Try again to review your amount and payment details.':'Try again to review your bids and payment details.',deposit?'መጠኑንና የክፍያ ዝርዝሮችዎን ለማየት እንደገና ይሞክሩ።':'ጨረታዎችዎንና የክፍያ ዝርዝሮችዎን ለማየት እንደገና ይሞክሩ።'],
   uncertain:[walletRetry?'Confirm the result by retrying the original payment.':'Check this original payment before paying again.',walletRetry?'የመጀመሪያውን ክፍያ እንደገና በመሞከር ውጤቱን ያረጋግጡ።':'እንደገና ከመክፈልዎ በፊት ይህንኑ ክፍያ ያረጋግጡ።'],
  };
+ if(authorizationError&&!terminal)headings[phase]=['Payment authorization stopped','የክፍያ ፈቃዱ ቆሟል'];
  if(internalWallet&&!finished){
   if(preparing||busy){headings[phase]=['Paying from your wallet…','ከዋሌትዎ በመክፈል ላይ…'];messages[phase]=['Accepting your selected bids.','የመረጧቸውን ጨረታዎች በመቀበል ላይ ነን።']}
   else if(walletRetry){headings[phase]=['Confirm your wallet payment','የዋሌት ክፍያዎን ያረጋግጡ'];messages[phase]=['Retry the original request to retrieve its result. This will not create a second debit.','ውጤቱን ለማግኘት የመጀመሪያውን ጥያቄ ይድገሙ። ሁለተኛ ክፍያ አይፈጥርም።']}
@@ -97,12 +99,12 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
 
  const renderActions=(actions:React.ReactNode)=>footerPortal?<AccountSheetFooter>{actions}</AccountSheetFooter>:actions;
  return <>
-  <section className={styles.progress} data-payment-progress={phase} data-bid-payment-progress={!deposit?phase:undefined} data-wallet-payment-progress={deposit?phase:undefined} data-direct-approval={phase==='authorization'?otpNeeded?'otp':'phone':phase==='connecting'?'connecting':phase==='confirming'?'confirming':undefined} data-payment-state={terminal?'failed':phase==='success'?'confirmed':phase==='uncertain'?'pending':phase} aria-labelledby={`${id}-heading`}>
-   <div className={styles.status} data-tone={terminal?'error':phase==='uncertain'?'attention':finished?'success':'pending'}>
-    <div className={styles.stateIcon} aria-hidden="true">{finished?<Check size={27}/>:terminal||order?.verificationState==='MISMATCH'?<TriangleAlert size={26}/>:otpNeeded?<Smartphone size={27}/>:<LoaderCircle className={styles.spin} size={27} data-bid-submitting={phase==='preparing'||undefined}/>}</div>
+  <section className={styles.progress} data-payment-progress={phase} data-bid-payment-progress={!deposit?phase:undefined} data-wallet-payment-progress={deposit?phase:undefined} data-direct-approval={phase==='authorization'?otpNeeded?'otp':'phone':phase==='connecting'?'connecting':phase==='confirming'?'confirming':undefined} data-payment-state={terminal?'failed':phase==='success'?'confirmed':phase==='uncertain'?'pending':phase} data-payment-authorization-error={authorizationError??undefined} aria-labelledby={`${id}-heading`}>
+   <div className={styles.status} data-tone={terminal||authorizationError?'error':phase==='uncertain'?'attention':finished?'success':'pending'}>
+    <div className={styles.stateIcon} aria-hidden="true">{finished?<Check size={27}/>:terminal||authorizationError||order?.verificationState==='MISMATCH'?<TriangleAlert size={26}/>:otpNeeded?<Smartphone size={27}/>:<LoaderCircle className={styles.spin} size={27} data-bid-submitting={phase==='preparing'||undefined}/>}</div>
     <div role={reasonMessage?'alert':'status'} aria-live={reasonMessage?'assertive':'polite'} aria-atomic="true"><h3 id={`${id}-heading`}>{text(...headings[phase])}</h3><p className={reasonMessage?styles.reason:undefined} data-payment-reason={reasonMessage?true:undefined}>{reasonMessage??text(...messages[phase])}</p></div>
    </div>
-   {!finished&&!terminal&&order?.verificationState!=='MISMATCH'&&<div className={styles.activity} aria-hidden="true"><span/></div>}
+   {!finished&&!terminal&&!authorizationError&&order?.verificationState!=='MISMATCH'&&<div className={styles.activity} aria-hidden="true"><span/></div>}
    {connectionDelayed&&<p className={styles.connection} role="status" data-payment-connection>{text('We’re still checking...','በማረጋገጥ ላይ...')}</p>}
    <dl className={styles.summary}>
     {deposit?<div><dt>{text('For','ለ')}</dt><dd>{text('Wallet top-up','የዋሌት ገቢ')}</dd></div>:<><div><dt>{text('Auction','ጨረታ')}</dt><dd className={styles.auction}>{title}</dd></div><div><dt>{text(numbers.length===1?'Your bid amount':'Bid count',numbers.length===1?'የጨረታ መጠንዎ':'የጨረታ ብዛት')}</dt><dd>{numbers.length===1?numbers[0]:numbers.length?text(`${numbers.length} selected`,`${numbers.length} ተመርጠዋል`):'—'}</dd></div></>}

@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {bidPaymentCanRetry,bidPaymentCanRetryOriginal,bidPaymentProgressPhase,maskedBidPaymentPhone} from '@/lib/bid-payment-progress';
+import {bidPaymentAuthorizationError,bidPaymentCanRetry,bidPaymentCanRetryOriginal,bidPaymentProgressPhase,maskedBidPaymentPhone} from '@/lib/bid-payment-progress';
 import type {ChapaCheckoutView} from '@/lib/chapa-client';
 
 const created=Date.parse('2026-11-10T10:00:00Z');
@@ -75,6 +75,30 @@ describe('bid-only progress follows the owned payment outcome',()=>{
   expect(maskedBidPaymentPhone('+2519*****678')).toBe('+251 ••• •• 678');
   expect(maskedBidPaymentPhone('<script>provider error</script>')).toBeNull();
   expect(maskedBidPaymentPhone(null)).toBeNull();
+ });
+ it('stops a rejected phone authorization while the original financial outcome remains unresolved',()=>{
+  for(const authorizationReasonCode of ['INVALID_PIN','PAYMENT_CANCELLED','INSUFFICIENT_FUNDS']){
+   const order={...pending,status:'AUTH_NEEDED',providerStatus:'PENDING',authorizationReference:'owned-request',authType:'USSD' as const,authorizationReasonCode};
+   expect(bidPaymentAuthorizationError(order)).toBe(authorizationReasonCode);
+   expect(bidPaymentProgressPhase({...state,order})).toBe('uncertain');
+   expect(bidPaymentCanRetry(order)).toBe(false);expect(bidPaymentCanRetryOriginal(order)).toBe(false);
+  }
+ });
+ it('retains verified completion and security mismatch over an old authorization rejection',()=>{
+  const rejected={...pending,authorizationReasonCode:'INVALID_PIN'};
+  expect(bidPaymentAuthorizationError({...rejected,providerStatus:'SUCCESS'})).toBeNull();
+  expect(bidPaymentProgressPhase({...state,order:{...rejected,providerStatus:'SUCCESS'}})).toBe('confirming');
+  expect(bidPaymentAuthorizationError({...rejected,verificationState:'MISMATCH'})).toBeNull();
+  expect(bidPaymentProgressPhase({...state,order:{...rejected,verificationState:'MISMATCH'}})).toBe('uncertain');
+  expect(bidPaymentProgressPhase({...state,order:{...rejected,status:'BID_ACCEPTED',receipt:{bid:{id:'accepted'}} as ChapaCheckoutView['receipt']}})).toBe('success');
+ });
+ it('keeps provider-requested OTP correction on the same original and ignores unrecognized reason text',()=>{
+  const otp={...pending,status:'AUTH_NEEDED',providerStatus:'AUTH_NEEDED',authType:'OTP' as const,authorizationReference:'owned-request',authorizationReasonCode:'INVALID_OTP'};
+  expect(bidPaymentAuthorizationError(otp)).toBeNull();expect(bidPaymentProgressPhase({...state,order:otp})).toBe('authorization');
+  for(const authorizationReasonCode of ['<script>invalid PIN</script>','AUTHORIZATION_REQUIRED']){
+   const current={...otp,authType:'USSD' as const,authorizationReasonCode};
+   expect(bidPaymentAuthorizationError(current)).toBeNull();expect(bidPaymentProgressPhase({...state,order:current})).toBe('authorization');
+  }
  });
  it('keeps pending and successful provider responses processing beyond display timers and expiry',()=>{
   for(const providerStatus of ['PENDING','SUCCESS'])for(const health of [{},{error:'offline',paused:true},{order:{...pending,providerStatus,verificationState:'UNAVAILABLE'}}]){

@@ -11,6 +11,7 @@ import {createDirectMethodCatalog,directMethodCatalog} from './chapa-direct-meth
 import {eligible,getChapaCheckout,ownChapaCheckout,verifyChapaCheckout} from './chapa';
 import {PAYMENT_TRANSACTION_OPTIONS} from './timing';
 import {markChapaDispatch,measureChapa} from './chapa-timing';
+import {chapaAuthorizationErrorFeedback,chapaAuthorizationFeedback,type ChapaAuthorizationFeedback} from './chapa-authorization-feedback';
 import {classifyChapaApiError} from '@/lib/chapa-api-error';
 import {paymentPhoneProblem,paymentPhoneProblemMessage} from '@/lib/payment-phone';
 import {chapaInlineTransport,inlineTransportBinding,isV2InlineCheckout} from './chapa-inline-provider';
@@ -159,8 +160,13 @@ export async function authorizeDirectCheckout(client:PrismaClient,userId:string,
  if(order.authType==='OTP'&&!body.otp||order.authType!=='OTP'&&body.otp)throw new ChapaError(422,'INVALID_AUTHORIZATION','Follow the authorization method requested for this payment.');
  const acquired=await client.$transaction(async tx=>{if(reauthorize)await reauthorize(tx);if(!await allowIdentityRequest(tx,'chapa-validate',`${userId}:${id}`,5))throw new ChapaError(429,'RATE_LIMITED','Wait a minute before trying authorization again.');return tx.chapaCheckout.updateMany({where:{id,creditJournalId:null,validationAttempts:{lt:20},OR:[{leaseUntil:null},{leaseUntil:{lte:new Date()}}]},data:{leaseUntil:new Date(Date.now()+20000),validationAttempts:{increment:1}}})},PAYMENT_TRANSACTION_OPTIONS);
  if(!acquired.count)return getChapaCheckout(client,userId,id);
- try{if(order.authType==='OTP'){if(!selectedTransport.validate)throw new ChapaError(503,'PAYMENT_UNAVAILABLE','Payment authorization is unavailable.');await selectedTransport.validate({reference:order.authorizationReference,paymentMethod:order.paymentMethod!,otp:body.otp})}}
+ let feedback:ChapaAuthorizationFeedback|undefined;
+ try{if(order.authType==='OTP'){
+  if(!selectedTransport.validate)throw new ChapaError(503,'PAYMENT_UNAVAILABLE','Payment authorization is unavailable.');
+  try{feedback=chapaAuthorizationFeedback(await selectedTransport.validate({reference:order.authorizationReference,paymentMethod:order.paymentMethod!,otp:body.otp}),order)}
+  catch(error){feedback=chapaAuthorizationErrorFeedback(error);if(!feedback)throw error}
+ }}
  finally{await client.chapaCheckout.updateMany({where:{id,creditJournalId:null},data:{leaseUntil:null,nextCheckAt:new Date()}})}
- return verifyChapaCheckout(client,id,userId,reauthorize,selectedTransport,true);
+ return verifyChapaCheckout(client,id,userId,reauthorize,selectedTransport,true,feedback);
 }
 export async function reconcileDirectCheckouts(client:PrismaClient,limit=10,transport:ChapaTransport=chapaTransport){const health=requireChapa('recover'),rows=await client.chapaCheckout.findMany({where:{chargeType:'DIRECT',mode:health.mode,credentialFingerprint:health.credentialFingerprint!,creditJournalId:null,reconcileUntil:{gt:new Date()},nextCheckAt:{lte:new Date()},attempts:{lt:500},status:{in:['SUBMITTING','PENDING','AUTH_NEEDED','VERIFYING','NEEDS_REVIEW']}},orderBy:[{nextCheckAt:'asc'},{id:'asc'}],take:Math.max(1,Math.min(20,limit)),select:{id:true}});let checked=0;for(const row of rows){try{await verifyChapaCheckout(client,row.id,undefined,undefined,transport);checked++}catch{/* Durable intent remains recoverable without disclosing provider/contact data. */}}return {checked}}

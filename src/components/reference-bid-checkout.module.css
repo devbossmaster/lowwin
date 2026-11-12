@@ -53,11 +53,15 @@
 .chips button{min-height:36px;padding:5px 9px;border:0;border-radius:20px;background:transparent;color:inherit;font-size:12px;font-weight:600;cursor:pointer;font-variant-numeric:tabular-nums}
 .chips button+button{display:grid;place-items:center;min-width:32px;padding:5px}
 .selectionSummary{display:flex;align-items:center;justify-content:space-between;gap:7px;margin:0 0 5px;color:#716c62;font-size:10px;font-variant-numeric:tabular-nums}.selectionSummary button{min-height:32px;padding:4px 0 4px 9px;border:0;background:none;color:#715719;font:inherit;font-weight:650;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
-.coupons{display:flex;align-items:center;gap:6px;min-height:36px;margin:2px 0;color:#715719;font-size:11px}
-.coupons b{font-weight:650;padding:2px 5px;border-radius:9px;background:#f2e7c4}.coupons button{min-height:36px;padding:4px 5px;margin-left:auto;border:0;background:none;color:#715719;font-size:11px;font-weight:650;cursor:pointer}.coupons button:disabled{color:#8d8677;cursor:not-allowed}
-.balanceNote{display:flex;align-items:flex-start;gap:7px;margin:10px 3px 12px;color:#716c62}
-.balanceNote>svg{flex:none;margin-top:2px}.balanceNote p{margin:0;font-size:10.5px;line-height:1.5}.balanceNote strong{font-weight:400;font-variant-numeric:tabular-nums}
-.balanceNote button{position:relative;padding:0;border:0;background:none;color:#8a6712;font-size:inherit;font-weight:700;text-decoration:underline;text-underline-offset:2px;cursor:pointer}.balanceNote button:before{position:absolute;inset:-10px -3px;content:''}
+.couponArea{margin:0 0 10px}.couponArea:empty{display:none}
+.coupons{display:inline-flex;align-items:center;gap:8px;max-width:100%;box-sizing:border-box;padding:0 3px 0 10px;border:1px solid #e5dfd0;border-radius:14px;background:#f8f6ef;color:#715719;font-size:11px}
+.coupons>svg{flex:none}.coupons>span{display:inline-flex;align-items:center;gap:6px;min-width:0}
+.coupons b{min-width:20px;box-sizing:border-box;padding:2px 5px;border-radius:9px;background:#f2e7c4;text-align:center;font-weight:650;font-variant-numeric:tabular-nums}
+.coupons button{flex:none;min-height:44px;min-width:60px;padding:6px 10px;border:0;border-radius:11px;background:transparent;color:#715719;font:inherit;font-weight:650;cursor:pointer}.coupons button:hover:not(:disabled),.coupons button[aria-pressed=true]{background:#eee3bd}.coupons button:disabled{color:#8d8677;cursor:not-allowed}
+.couponHint{margin:4px 2px 0;color:#716c62;font-size:10px;line-height:1.5}
+.balanceNote{display:flex;align-items:center;gap:7px;min-width:0;margin:4px 2px 8px;color:#716c62}
+.balanceNote>svg{flex:none}.balanceNote p{flex:1;min-width:0;margin:0;font-size:11px;line-height:1.5;overflow-wrap:anywhere}.balanceNote strong{color:#4d493f;font-weight:600;font-variant-numeric:tabular-nums}
+.balanceNote button{flex:none;min-height:44px;padding:5px 8px;border:0;border-radius:10px;background:none;color:#715719;font:inherit;font-size:11px;font-weight:650;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
 .methods{display:block;margin:0;padding:10px;border:0;border-radius:26px;background:#eeece8;min-width:0}
 .methods legend{float:left;display:flex;align-items:center;gap:5px;width:100%;padding:0 0 7px;color:#716c62;font-size:10.5px;font-weight:400}
 .methods legend svg{color:#b98c12;flex:none}

@@ -57,6 +57,12 @@ describe('documented v2 public Inline boundary',()=>{
   const transport=createChapaInlineTransport({env:environment(),fetcher:vi.fn(async()=>{throw new TypeError('network interrupted')}) as typeof fetch});
   await expect(transport.inline(request)).rejects.toMatchObject({code:'PROVIDER_UNAVAILABLE'});
  });
+ it('preserves only an allowlisted structured validation reason, never the provider message',async()=>{
+  const fetcher=vi.fn(async()=>Response.json({status:'error',message:'INVALID_PIN private payer 251911652904',error:{code:'INVALID_VALUE',details:{reason:'INSUFFICIENT_BALANCE',phone:'251911652904'}}},{status:400})),transport=createChapaInlineTransport({env:environment(),fetcher:fetcher as typeof fetch});
+  await expect(transport.validate!({reference:'CHref',paymentMethod:'mpesa'})).rejects.toMatchObject({providerCode:'INVALID_VALUE',paymentReason:'INSUFFICIENT_FUNDS',httpStatus:400});
+  const messageOnly=createChapaInlineTransport({env:environment(),fetcher:vi.fn(async()=>Response.json({status:'error',message:'Insufficient balance',error:{code:'INVALID_VALUE',details:null}},{status:400})) as typeof fetch});
+  try{await messageOnly.validate!({reference:'CHref',paymentMethod:'cbebirr'})}catch(error){expect(error).toBeInstanceOf(ChapaProviderError);expect((error as ChapaProviderError).paymentReason).toBeUndefined()}
+ });
  it('rejects unsupported methods, noninteger cents and excessive references before dispatch',()=>{
   const fetcher=vi.fn(),transport=createChapaInlineTransport({env:environment(),fetcher:fetcher as typeof fetch});
   for(const change of [{amountCents:'50.25'},{amountCents:'99'},{merchantReference:'x'.repeat(21)},{paymentMethod:'unknown'},{phone:'0911652904'}])expect(()=>transport.inline({...request,...change})).toThrow();
