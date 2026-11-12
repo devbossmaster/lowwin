@@ -67,6 +67,8 @@ The diagnostic reads configuration and migration/constraint/trigger/index metada
 
 See [the v2 Inline integration notes](chapa-v2-inline-2026-11-12.md) for the provider contract and current validation record.
 
+The [wallet speed and recovery follow-up](wallet-checkout-speed-2026-11-12.md) documents the new single-command wallet payment, automatic read-only receipt observation, lean coupon count, measured local comparison and its separate validation status. The earlier deployed WEB diagnostic reported `CHAPA_PUBLIC_KEY` missing; the user now reports adding it. Effective deployed WEB/worker readiness and live phone authorization remain unverified locally. Internal-wallet payment does not depend on that external-payment prerequisite. See the [authorization speed follow-up](chapa-authorization-speed-2026-11-12.md) for the subsequent lock consolidation and original-attempt recovery changes.
+
 ## Validation status
 
 - 430 focused unit/service tests passed across 27 suites; two database-gated tests were intentionally skipped in that run.

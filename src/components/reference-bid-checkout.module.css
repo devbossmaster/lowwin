@@ -3,12 +3,6 @@
 .checkout button,.checkout a{touch-action:manipulation}
 .checkout :focus-visible,.pay:focus-visible{outline:2px solid #987522;outline-offset:3px}
 .checkout input::selection{background:#eee2b6;color:#181713}
-.socials{text-align:center;margin:0 0 9px}
-.socials p{margin:0;color:#68665e;font-size:10px;font-weight:500;letter-spacing:.09em;line-height:1.4}
-.socials nav{display:flex;justify-content:center;gap:4px;margin-top:2px}
-.socials a{display:grid;place-items:center;width:44px;height:44px;color:white;text-decoration:none;border-radius:50%}
-.socials a>span{display:grid;place-items:center;width:35px;height:35px;background:#181713;border-radius:50%}
-.socials a:hover>span{background:#715719}
 .productTitle{margin:0 0 14px;text-align:center;color:#181713;font-size:19px;line-height:1.35;font-weight:650;letter-spacing:-.025em;overflow-wrap:anywhere}
 .description{margin:0 0 12px;padding:12px;border-radius:26px;background:#eeece8;color:#6b685f;font-size:12px;line-height:1.55}
 .description summary{list-style:none;cursor:pointer;min-height:63px;display:flex;flex-direction:column;align-items:flex-start;gap:7px}
@@ -43,14 +37,15 @@
 .amountField>span{flex:none;font-size:13px;font-weight:600;color:#797369}
 .amountField input{width:100%;min-width:0;height:44px;border:0;outline:0;background:transparent;color:#181713;font-size:16px;font-weight:600;caret-color:#987522;font-variant-numeric:tabular-nums}
 .amountField input::placeholder{color:#797369;font-size:13px;font-weight:500;opacity:1}
-.amountField:focus-within,.phoneField:focus-within{outline:2px solid #987522;outline-offset:2px}
-.amountField input:focus-visible,.phoneField input:focus-visible{outline:0}
+.amountField:focus-within,.phoneField:focus-within{outline:0;box-shadow:none;border-color:#8c877b}
+.checkout .amountField input:focus-visible,.checkout .phoneField input:focus-visible{outline:0;box-shadow:none}
 .add{display:inline-flex;align-items:center;justify-content:center;gap:4px;min-width:76px;min-height:48px;padding:10px 12px;border:0;border-radius:26px;background:#c9a227;color:#181713;font-size:13px;font-weight:650;cursor:pointer}
 .add:disabled{background:#e5d194;color:#6c5a26;cursor:not-allowed}
 .rangeRow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,.8fr) auto;align-items:end;gap:7px}
 .rangeRow label{display:block;min-width:0;color:#716c62;font-size:11px;line-height:1.4}
 .rangeRow label>span{display:block;margin:0 0 4px}
 .rangeRow input{display:block;width:100%;box-sizing:border-box;min-height:48px;padding:0 12px;border:2px solid #e7e4de;border-radius:28px;background:#fff;color:#181713;font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;caret-color:#987522;box-shadow:0 2px 4px #1817130c}
+.checkout .rangeRow input:focus-visible{outline:0;box-shadow:none;border-color:#8c877b}
 .rangePreview{margin:6px 0 3px;color:#715719;font-size:11px;line-height:1.5;font-variant-numeric:tabular-nums}
 .inputHint{margin:5px 0 8px;color:#716c62;font-size:10px;line-height:1.5}
 .chips{display:flex;flex-wrap:wrap;gap:5px;max-height:120px;overflow:auto;overscroll-behavior:contain;margin:8px 0;scrollbar-width:thin;scrollbar-color:#c7b77e transparent}
@@ -80,7 +75,6 @@
 .phoneField{display:flex;align-items:center;gap:10px;min-height:46px;padding:0 13px;border:1px solid #ded9ce;border-radius:23px;background:white}
 .phoneField>span{color:#716c62;padding-right:10px;border-right:1px solid #e7e4de;font-size:12px}
 .phoneField input{width:100%;min-width:0;min-height:44px;padding:0;border:0;background:transparent;color:#181713;font-size:15px;font-weight:550;outline:0;caret-color:#987522;font-variant-numeric:tabular-nums}
-.phoneField:has(input[aria-invalid=true]){border-color:#a03928}
 .notice,.error{margin:8px 2px 0;font-size:11px;line-height:1.55;overflow-wrap:anywhere}.notice{color:#716c62}.error{color:#a03928}.notice button,.error button{padding:2px;border:0;background:none;color:#715719;text-decoration:underline;text-underline-offset:3px;cursor:pointer;font:inherit;font-weight:650}
 .footer{padding:0}.total{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:0 3px 7px;color:#716c62;font-size:11px;line-height:1.5}.total strong{color:#715719;font-size:15px;font-weight:650;font-variant-numeric:tabular-nums}
 .pay{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;min-height:50px;padding:12px 14px;border:0;border-radius:28px;background:#c9a227;color:#181713;font-size:15px;font-weight:650;line-height:1.4;cursor:pointer}

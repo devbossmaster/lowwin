@@ -6,12 +6,13 @@ import {assertPlayerContact} from '../auth/own-contact';
 import {lockReferralDiscountInTransaction} from '../referrals/service';
 import {ChapaError,chapaHash} from '../payments/chapa-provider';
 import {PAYMENT_TRANSACTION_OPTIONS} from '../payments/timing';
-import {BidError,submitBidInTransaction,type BidReceipt} from './bids';
+import {BidError,recordValidatedSubmissionFeeBidInTransaction,type BidReceipt} from './bids';
 import {createsFourConsecutiveAmounts,parseBidCents} from './consecutive-bids';
 import {auctionMaintenance} from './maintenance';
 import {isSubmissionFeeOnly} from './rules';
 import {walletBidsEnabled} from '../wallet/policy';
 import {readWalletProjection} from '../wallet/balance';
+import {measureChapa} from '../payments/chapa-timing';
 
 type Tx=Prisma.TransactionClient;
 type Authorize=(tx:Tx)=>Promise<void>;
@@ -30,10 +31,15 @@ function publicBatchReceipt(receipts:BidReceipt[]){return receipts.map(({bid,cha
 function walletBatchReceipt(batch:BidBatchOrder,receipt:BidReceipt&{receipts:BidReceipt[]},wallet:Awaited<ReturnType<typeof readWalletProjection>>){
  return {batch:ownBatch(batch),receipts:publicBatchReceipt(receipt.receipts),wallet:{available:centsToEtb(etbToCents(wallet.available)),held:centsToEtb(etbToCents(wallet.held)),revision:wallet.revision},payment:{method:'wallet' as const,gateway:'INTERNAL_WALLET' as const,total:centsToEtb(batch.totalCents),acceptedBidIds:receipt.receipts.map(item=>item.bid.id)}};
 }
-export async function validateBatchInTransaction(tx:Tx,userId:string,slug:string,numbers:string[],feeVersion:number,couponId?:string){
- if(await auctionMaintenance(tx))throw new ChapaError(503,'AUCTIONS_PAUSED','Auctions are paused. Existing funds remain safe.');
+async function lockBatchWriter(tx:Tx,userId:string,slug:string,allowReceiptReplay=false){
+ const halted=await auctionMaintenance(tx);
+ if(halted&&!allowReceiptReplay)throw new ChapaError(503,'AUCTIONS_PAUSED','Auctions are paused. Existing funds remain safe.');
  await tx.$queryRaw`SELECT id FROM "Auction" WHERE slug=${slug} FOR UPDATE`;
  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`},0))`;
+ return halted;
+}
+export async function validateBatchInTransaction(tx:Tx,userId:string,slug:string,numbers:string[],feeVersion:number,couponId?:string,locksHeld=false){
+ if(!locksHeld)await measureChapa('locks',()=>lockBatchWriter(tx,userId,slug));
  await assertPlayerContact(tx,userId);
  if(await tx.staffMember.findUnique({where:{userId}})||(await tx.userRestriction.findUnique({where:{userId}}))?.suspended)throw new ChapaError(403,'BIDDING_RESTRICTED','Bidding is unavailable for this account.');
  const auction=await tx.auction.findUnique({where:{slug},include:{terms:true,feeRevisions:{orderBy:[{effectiveAt:'desc'},{version:'desc'}],take:1},product:{include:{category:true}},category:true}}),[{now}]=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AT TIME ZONE 'UTC' AS now`;
@@ -41,7 +47,7 @@ export async function validateBatchInTransaction(tx:Tx,userId:string,slug:string
  if(auction.isDemo||auction.testRunId||auction.product.isDemo||!auction.terms||!isSubmissionFeeOnly(auction.terms.ruleVersion))throw new ChapaError(409,'LEGACY_TERMS','This order supports real submission-fee auctions only.');
  const terms=auction.terms,fee=auction.feeRevisions[0];
  if(!fee||fee.version!==feeVersion)throw new ChapaError(409,'TERMS_CHANGED','The fee changed. Review a new quote before paying.');
- const normalized=normalizeBatchNumbers(numbers),own=await tx.bid.findMany({where:{userId,auctionId:auction.id},select:{amount:true}});
+ const normalized=normalizeBatchNumbers(numbers),own=await tx.bid.findMany({where:{userId,auctionId:auction.id},orderBy:[{acceptedAt:'asc'},{id:'asc'}],select:{id:true,amount:true,acceptedAt:true}});
  if(own.length+normalized.length>terms.maxDistinctBids)throw new ChapaError(409,'CAP_REACHED','These entries exceed your remaining submissions.');
  const accepted=own.map(item=>parseBidCents(item.amount.toString())),seen=new Set(accepted.map(String));
  for(const number of normalized){const n=new Prisma.Decimal(number),cents=parseBidCents(number);if(n.lt(1)||n.lt(terms.minPoints)||terms.maxPoints!==null&&n.gt(terms.maxPoints)||!n.sub(terms.minPoints).mod(terms.stepPoints).isZero())throw new ChapaError(422,'INVALID_AMOUNT','Choose amounts within the published bounds and increment.');if(seen.has(String(cents)))throw new ChapaError(409,'OWN_DUPLICATE','You already submitted one of these amounts.');if(createsFourConsecutiveAmounts(accepted,cents))throw new ChapaError(422,'CONSECUTIVE_LIMIT','Leave a gap after three consecutive amounts.');accepted.push(cents);seen.add(String(cents))}
@@ -49,7 +55,7 @@ export async function validateBatchInTransaction(tx:Tx,userId:string,slug:string
  const lines:BatchLine[]=normalized.map((number,position)=>{const saving=position===0&&discount?discount.discountPoints:new Prisma.Decimal(0);return {position,number,grossFee:fee.feePoints.toFixed(2),discount:saving.toFixed(2),netFee:fee.feePoints.sub(saving).toFixed(2),...(position===0&&couponId?{couponId}:{})}});
  const grossCents=etbToCents(fee.feePoints.toFixed(2))*BigInt(lines.length),discountCents=discount?etbToCents(discount.discountPoints.toFixed(2)):0n;
  if(grossCents>4320000n)throw new ChapaError(422,'INVALID_AMOUNT','Split this selection into smaller orders.');
- return {auction,lines,totalCents:grossCents-discountCents,grossCents,discountCents};
+ return {auction,own,discount,lines,totalCents:grossCents-discountCents,grossCents,discountCents};
 }
 export async function quoteBidBatch(client:PrismaClient,userId:string,raw:unknown,reauthorize?:Authorize){
  const input=command.parse(raw),numbers=normalizeBatchNumbers(input.numbers),requestHash=chapaHash(JSON.stringify({...input,numbers}));
@@ -67,10 +73,10 @@ export async function persistBidBatchQuoteInTransaction(tx:Tx,userId:string,inpu
  const id=randomUUID(),quoteHash=chapaHash(JSON.stringify({id,userId,ruleVersion:priced.auction.terms!.ruleVersion,feeVersion:input.feeVersion,lines:priced.lines,totalCents:String(priced.totalCents)}));
  return tx.bidBatchOrder.create({data:{id,userId,key:input.key,requestHash,quoteHash,auctionId:priced.auction.id,auctionSlug:input.auctionSlug,ruleVersion:priced.auction.terms!.ruleVersion,feeVersion:input.feeVersion,lines:priced.lines,totalCents:priced.totalCents,grossCents:priced.grossCents,discountCents:priced.discountCents,couponId:input.couponId}});
 }
-export async function fulfillBatchInTransaction(tx:Tx,batch:BidBatchOrder){
- const prior=await tx.bidBatchOrder.findUniqueOrThrow({where:{id:batch.id}});
+export async function fulfillBatchInTransaction(tx:Tx,batch:BidBatchOrder,validated?:Awaited<ReturnType<typeof validateBatchInTransaction>>){
+ const prior=validated?batch:await tx.bidBatchOrder.findUniqueOrThrow({where:{id:batch.id}});
  if(prior.status==='ACCEPTED'&&prior.receipt)return prior.receipt as unknown as BidReceipt&{bids:BidReceipt['bid'][];receipts:BidReceipt[]};
- const lines=batchLines(batch),current=await validateBatchInTransaction(tx,batch.userId,batch.auctionSlug,lines.map(item=>item.number),batch.feeVersion,batch.couponId??undefined);
+ const lines=batchLines(batch),current=validated??await validateBatchInTransaction(tx,batch.userId,batch.auctionSlug,lines.map(item=>item.number),batch.feeVersion,batch.couponId??undefined);
  if(current.auction.terms!.ruleVersion!==batch.ruleVersion||current.totalCents!==batch.totalCents||JSON.stringify(current.lines)!==JSON.stringify(lines))throw new ChapaError(409,'TERMS_CHANGED','The quote or coupon changed. No bids were accepted.');
  // validateBatchInTransaction holds the shared wallet writer lock. Reject an
  // unaffordable complete order before creating even the first entry/outbox row.
@@ -84,7 +90,7 @@ export async function fulfillBatchInTransaction(tx:Tx,batch:BidBatchOrder){
  // entries share the same locked, fully validated batch and use bulk writes.
  // The database Bid triggers still stamp/check every acceptance individually;
  // any late/invalid line aborts the entire outer transaction/savepoint.
- const first=lines[0],initial=await submitBidInTransaction(tx,{userId:batch.userId,auctionSlug:batch.auctionSlug,amount:first.number,feeVersion:batch.feeVersion,key:batchChildKey(batch.id,0),...(first.couponId?{couponId:first.couponId}:{})},process.env,{submissionFeeOnly:true}),receipts:BidReceipt[]=[initial];
+ const first=lines[0],initial=await recordValidatedSubmissionFeeBidInTransaction(tx,{userId:batch.userId,auctionSlug:batch.auctionSlug,amount:first.number,feeVersion:batch.feeVersion,key:batchChildKey(batch.id,0),...(first.couponId?{couponId:first.couponId}:{})},current),receipts:BidReceipt[]=[initial];
  if(etbToCents(initial.charge.netFeePoints??initial.charge.feePoints)!==etbToCents(first.netFee))throw new ChapaError(409,'TERMS_CHANGED','The charged fee no longer matches this quote.');
  const rest=lines.slice(1),remainingCost=batch.totalCents-etbToCents(first.netFee);
  if(etbToCents(initial.wallet.available)<remainingCost)throw new BidError('INSUFFICIENT_POINTS',409,'Your Lowwin wallet does not have enough funds for the entire order.');
@@ -115,7 +121,9 @@ export async function payBidBatchWallet(client:PrismaClient,userId:string,id:str
  z.string().uuid().parse(id);const {quoteHash}=z.object({quoteHash:z.string().regex(/^[a-f0-9]{64}$/)}).strict().parse(raw);
  return client.$transaction(async tx=>{
   const snapshot=await tx.bidBatchOrder.findFirst({where:{id,userId}});if(!snapshot)throw new ChapaError(404,'NOT_FOUND','Order not found.');
-  await tx.$queryRaw`SELECT id FROM "Auction" WHERE id=${snapshot.auctionId} FOR UPDATE`;await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`},0))`;await tx.$queryRaw`SELECT id FROM "BidBatchOrder" WHERE id=${id} FOR UPDATE`;
+  // Take the shared maintenance barrier before auction/wallet locks, matching
+  // every other auction writer and preventing an inverse maintenance lock wait.
+  const halted=await measureChapa('locks',()=>lockBatchWriter(tx,userId,snapshot.auctionSlug,true));await tx.$queryRaw`SELECT id FROM "BidBatchOrder" WHERE id=${id} FOR UPDATE`;
   if(reauthorize)await reauthorize(tx);const batch=await tx.bidBatchOrder.findUniqueOrThrow({where:{id}});
   if(batch.quoteHash!==quoteHash)throw new ChapaError(409,'TERMS_CHANGED','Review the current order before paying.');
   // A receipt accepted through Chapa remains an external payment. Only an
@@ -125,7 +133,50 @@ export async function payBidBatchWallet(client:PrismaClient,userId:string,id:str
    const receipt=batch.receipt as unknown as BidReceipt&{receipts:BidReceipt[]};
    return walletBatchReceipt(batch,receipt,await readWalletProjection(tx,userId));
   }
-  if(batch.totalCents>0n&&!walletBidsEnabled())throw new ChapaError(503,'WALLET_UNAVAILABLE','Wallet payments are currently unavailable.');
-  const receipt=await fulfillBatchInTransaction(tx,batch);return walletBatchReceipt(await tx.bidBatchOrder.findUniqueOrThrow({where:{id}}),receipt,await readWalletProjection(tx,userId));
+  if(halted)throw new ChapaError(503,'AUCTIONS_PAUSED','Auctions are paused. Existing funds remain safe.');
+  return acceptWalletBatch(tx,batch);
  },PAYMENT_TRANSACTION_OPTIONS);
+}
+
+async function acceptWalletBatch(tx:Tx,batch:BidBatchOrder,validated?:Awaited<ReturnType<typeof validateBatchInTransaction>>){
+ if(batch.totalCents>0n&&!walletBidsEnabled())throw new ChapaError(503,'WALLET_UNAVAILABLE','Wallet payments are currently unavailable.');
+ const current=validated??await measureChapa('pricing',()=>validateBatchInTransaction(tx,batch.userId,batch.auctionSlug,batchLines(batch).map(line=>line.number),batch.feeVersion,batch.couponId??undefined,true));
+ const receipt=await measureChapa('fulfill',()=>fulfillBatchInTransaction(tx,batch,current));
+ return walletBatchReceipt({...batch,status:'ACCEPTED'},receipt,await readWalletProjection(tx,batch.userId));
+}
+
+/** A new wallet checkout uses one authenticated command/transaction. The quote
+ * remains immutable, and a changed approved total returns it without a debit.
+ * The selection key is the durable operation key, including after a lost reply. */
+export async function createAndPayBidBatchWallet(client:PrismaClient,userId:string,raw:unknown,reauthorize?:Authorize){
+ const {approvedTotal,...input}=command.extend({approvedTotal:z.string().regex(/^(0|[1-9]\d{0,15})(?:\.\d{1,2})?$/)}).strict().parse(raw),numbers=normalizeBatchNumbers(input.numbers),requestHash=chapaHash(JSON.stringify({...input,numbers,approvedTotal:centsToEtb(etbToCents(approvedTotal))}));
+ return client.$transaction(async tx=>{
+  const halted=await measureChapa('locks',()=>lockBatchWriter(tx,userId,input.auctionSlug,true));
+  if(reauthorize)await reauthorize(tx);
+  let batch=await tx.bidBatchOrder.findUnique({where:{userId_key:{userId,key:input.key}}});
+  if(batch&&batch.requestHash!==requestHash)throw new ChapaError(409,'KEY_REUSED','Changed selections require a new order.');
+  if(batch&&await tx.chapaCheckout.findUnique({where:{batchId:batch.id}}))throw new ChapaError(409,'PAYMENT_STARTED','This order already has an online payment. Check that original payment.');
+  if(batch?.status==='ACCEPTED')return {kind:'receipt' as const,receipt:walletBatchReceipt(batch,batch.receipt as unknown as BidReceipt&{receipts:BidReceipt[]},await readWalletProjection(tx,userId))};
+  if(halted)throw new ChapaError(503,'AUCTIONS_PAUSED','Auctions are paused. Existing funds remain safe.');
+  const priced=await measureChapa('pricing',()=>validateBatchInTransaction(tx,userId,input.auctionSlug,numbers,input.feeVersion,input.couponId,true));
+  if(!batch)batch=await persistBidBatchQuoteInTransaction(tx,userId,input,priced,requestHash);
+  if(batch.totalCents!==priced.totalCents||JSON.stringify(batchLines(batch))!==JSON.stringify(priced.lines))throw new ChapaError(409,'TERMS_CHANGED','The quote or coupon changed. Review the updated fee before paying.');
+  if(batch.totalCents!==etbToCents(approvedTotal))return {kind:'quote' as const,quote:ownBatch(batch)};
+  return {kind:'receipt' as const,receipt:await acceptWalletBatch(tx,batch,priced)};
+ },PAYMENT_TRANSACTION_OPTIONS);
+}
+
+/** Read the owned original operation only. Unknown/uncommitted and quoted rows
+ * stay pending; this never creates a quote, debits funds or invokes Chapa. */
+export async function getOwnWalletBidBatch(client:PrismaClient,userId:string,selector:{key:string}|{id:string;quoteHash:string},reauthorize?:Authorize){
+ const identity='key' in selector?{key:z.string().uuid().parse(selector.key)}:{id:z.string().uuid().parse(selector.id),quoteHash:z.string().regex(/^[a-f0-9]{64}$/).parse(selector.quoteHash)};
+ return client.$transaction(async tx=>{
+  if(reauthorize)await reauthorize(tx);
+  const batch=await tx.bidBatchOrder.findFirst({where:{userId,...('key' in identity?{key:identity.key}:{id:identity.id})}});
+  if('id' in identity&&!batch)throw new ChapaError(404,'NOT_FOUND','Order not found.');
+  if(batch&&'quoteHash' in identity&&batch.quoteHash!==identity.quoteHash)throw new ChapaError(409,'TERMS_CHANGED','Review the original order before checking its payment.');
+  if(batch&&await tx.chapaCheckout.findUnique({where:{batchId:batch.id}}))throw new ChapaError(409,'PAYMENT_STARTED','This order has an online payment. Check that original payment.');
+  if(batch?.status==='ACCEPTED'&&batch.receipt)return {kind:'receipt' as const,receipt:walletBatchReceipt(batch,batch.receipt as unknown as BidReceipt&{receipts:BidReceipt[]},await readWalletProjection(tx,userId))};
+  return {kind:'pending' as const,status:'PENDING' as const,batchId:batch?.id??null,pollAfterMs:1000};
+ },{...PAYMENT_TRANSACTION_OPTIONS,isolationLevel:Prisma.TransactionIsolationLevel.RepeatableRead});
 }

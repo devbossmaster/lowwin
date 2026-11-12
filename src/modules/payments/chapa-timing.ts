@@ -1,6 +1,6 @@
 import {AsyncLocalStorage} from 'node:async_hooks';
 
-type Phase='auth'|'checkout'|'database'|'lookup'|'capabilities'|'prepare'|'persist'|'initialize'|'validate'|'verify'|'dispatch';
+type Phase='auth'|'checkout'|'database'|'locks'|'pricing'|'fulfill'|'lookup'|'capabilities'|'prepare'|'persist'|'initialize'|'validate'|'verify'|'dispatch';
 type Timing={started:number;phases:Map<Phase,number>};
 const requestTiming=new AsyncLocalStorage<Timing>();
 

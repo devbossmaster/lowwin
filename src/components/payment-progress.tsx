@@ -103,7 +103,7 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
     <div role={reasonMessage?'alert':'status'} aria-live={reasonMessage?'assertive':'polite'} aria-atomic="true"><h3 id={`${id}-heading`}>{text(...headings[phase])}</h3><p className={reasonMessage?styles.reason:undefined} data-payment-reason={reasonMessage?true:undefined}>{reasonMessage??text(...messages[phase])}</p></div>
    </div>
    {!finished&&!terminal&&order?.verificationState!=='MISMATCH'&&<div className={styles.activity} aria-hidden="true"><span/></div>}
-   {connectionDelayed&&<p className={styles.connection} role="status" data-payment-connection>{text('Confirmation is taking longer. We’re still checking.','ማረጋገጫው እየዘገየ ነው። ማረጋገጡን እንቀጥላለን።')}</p>}
+   {connectionDelayed&&<p className={styles.connection} role="status" data-payment-connection>{text('We’re still checking...','በማረጋገጥ ላይ...')}</p>}
    <dl className={styles.summary}>
     {deposit?<div><dt>{text('For','ለ')}</dt><dd>{text('Wallet top-up','የዋሌት ገቢ')}</dd></div>:<><div><dt>{text('Auction','ጨረታ')}</dt><dd className={styles.auction}>{title}</dd></div><div><dt>{text(numbers.length===1?'Your bid amount':'Bid count',numbers.length===1?'የጨረታ መጠንዎ':'የጨረታ ብዛት')}</dt><dd>{numbers.length===1?numbers[0]:numbers.length?text(`${numbers.length} selected`,`${numbers.length} ተመርጠዋል`):'—'}</dd></div></>}
     <div className={styles.total}><dt>{text(finished?'Paid':'Total payable',finished?'የተከፈለ':'ጠቅላላ ክፍያ')}</dt><dd>{total===null?'—':formatEtb(total)}</dd></div>

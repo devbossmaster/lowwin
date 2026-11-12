@@ -48,17 +48,23 @@ export async function createInlineCheckout(client:PrismaClient,userId:string,raw
  if(body.flow==='HOSTED'?(body.paymentMethod!=='cbe-bank'||process.env.CHAPA_INLINE_CBE_BANK_ENABLED!=='true'):body.paymentMethod==='cbe-bank')throw new ChapaError(422,'METHOD_UNAVAILABLE','Choose an enabled payment method.');
  const capabilities=body.flow==='INLINE'?await capabilitiesFor(transport):[];
  const prepared=await measureChapa('prepare',()=>client.$transaction(async tx=>{
-  if(body.purpose==='BID')await tx.$queryRaw`SELECT a.id FROM "Auction" a JOIN "BidBatchOrder" b ON b."auctionId"=a.id WHERE b.id=${body.batchId} AND b."userId"=${userId} FOR UPDATE OF a`;
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`},0))`;
+  // Match every financial writer's barrier order once. Keep the maintenance
+  // result until after replay detection so an existing attempt remains readable.
+  const halted=await measureChapa('locks',async()=>{
+   const halted=await auctionMaintenance(tx);
+   if(body.purpose==='BID')await tx.$queryRaw`SELECT a.id FROM "Auction" a JOIN "BidBatchOrder" b ON b."auctionId"=a.id WHERE b.id=${body.batchId} AND b."userId"=${userId} FOR UPDATE OF a`;
+   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`},0))`;
+   return halted;
+  });
   if(reauthorize)await reauthorize(tx);const contact=await eligible(tx,userId);
   const replay=await tx.chapaCheckout.findUnique({where:{userId_key:{userId,key:body.key}}});if(replay){assertReplay(replay);return {created:false,order:replay}}
-  if(await auctionMaintenance(tx))throw new ChapaError(503,'AUCTIONS_PAUSED','New payments are paused. Existing payments can still be checked.');
+  if(halted)throw new ChapaError(503,'AUCTIONS_PAUSED','New payments are paused. Existing payments can still be checked.');
   if(!await allowIdentityRequest(tx,'chapa-inline-create',userId,24,3600000))throw new ChapaError(429,'RATE_LIMITED','Check Transactions before trying another payment.');
   const batch=body.purpose==='BID'?await tx.bidBatchOrder.findFirst({where:{id:body.batchId,userId}}):null;
   if(body.purpose==='BID'){
    if(!batch||batch.quoteHash!==body.quoteHash||batch.status!=='QUOTED')throw new ChapaError(409,'TERMS_CHANGED','Review your bid quote again.');
    if(await tx.chapaCheckout.findUnique({where:{batchId:batch.id}}))throw new ChapaError(409,'PAYMENT_STARTED','Check the existing payment for this selection.');
-   const priced=await validateBatchInTransaction(tx,userId,batch.auctionSlug,batchLines(batch).map(line=>line.number),batch.feeVersion,batch.couponId??undefined);
+   const priced=await measureChapa('pricing',()=>validateBatchInTransaction(tx,userId,batch.auctionSlug,batchLines(batch).map(line=>line.number),batch.feeVersion,batch.couponId??undefined,true));
    if(priced.totalCents!==batch.totalCents||JSON.stringify(priced.lines)!==JSON.stringify(batchLines(batch)))throw new ChapaError(409,'TERMS_CHANGED','The quote changed. Review before paying.');
   }
   const amountCents=batch?.totalCents??etbToCents(body.purpose==='TOP_UP'?body.amount:'0'),method=capabilities.find(method=>method.slug===body.paymentMethod);

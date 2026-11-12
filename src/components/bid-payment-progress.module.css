@@ -24,7 +24,7 @@
 .otp{display:grid;gap:6px;margin-top:13px}
 .otp label{font-size:12px;line-height:1.4;font-weight:600}
 .otp input{width:100%;min-height:46px;padding:9px 12px;border:1px solid #cdc8ba;border-radius:12px;background:#fff;color:#181815;font:inherit;font-size:18px;font-variant-numeric:tabular-nums;letter-spacing:.15em;caret-color:#987522}
-.otp input[aria-invalid=true]{border-color:#a34732}
+.progress .otp input:focus-visible{outline:0;box-shadow:none;border-color:#8c877b}
 .otp input:disabled{background:#f0efeb;color:#68665e;cursor:wait}
 .security{display:flex;justify-content:center;align-items:center;gap:5px;margin:12px 0 0;color:#68665e;font-size:10px;line-height:1.5}
 .security>svg{flex:none;width:12px;height:12px;color:#715719}

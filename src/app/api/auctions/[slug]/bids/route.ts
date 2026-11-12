@@ -25,7 +25,9 @@ export async function GET(request:Request,{params}:{params:Promise<{slug:string}
     const id=await userId(request);
     if(!id)return Response.json({error:'Sign in through Telegram.',code:'UNAUTHENTICATED'},{status:401,headers:privateHeaders});
     const {slug}=await params;
-    const {wallet:_,previousMax:__,...state}=await getOwnBidState(db,id,slug,process.env,false);
+    // Checkout reads its independently cached account coupon count through the
+    // lean referral projection; do not repeat that SQL behind bid-limit reads.
+    const {wallet:_,previousMax:__,...state}=await getOwnBidState(db,id,slug,process.env,false,false);
     return Response.json({...state,paymentMode:state.terms.ruleVersion==='lowest-unique-v4'?(process.env.PAYMENT_GATEWAY==='CHAPA'?'CHAPA':'UNCONFIGURED'):'LEGACY_READ_ONLY',walletBidsEnabled:walletBidsEnabled()},{headers:privateHeaders});
   } catch(error){return errorResponse(error)}
 }

@@ -3,7 +3,7 @@ import {Prisma,PrismaClient} from '@prisma/client';
 import {randomUUID} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {createRequire} from 'node:module';
-import {quoteBidBatch,payBidBatchWallet} from '../src/modules/auctions/batch';
+import {quoteBidBatch,payBidBatchWallet,createAndPayBidBatchWallet,getOwnWalletBidBatch} from '../src/modules/auctions/batch';
 import {creditDevelopmentPoints,reconcile} from '../src/modules/wallet/ledger';
 import {walletBidsEnabled} from '../src/modules/wallet/policy';
 import {readWalletBalance} from '../src/modules/wallet/balance';
@@ -11,7 +11,7 @@ import {createInlineCheckout} from '../src/modules/payments/chapa-inline';
 import type {ChapaInlineTransport} from '../src/modules/payments/chapa-inline-provider';
 import {verifyChapaCheckout} from '../src/modules/payments/chapa';
 import {chapaHttpError} from '../src/modules/payments/chapa-http';
-import {verifiedReferralUser,realReferralAuction} from './referral-fixtures';
+import {verifiedReferralUser,realReferralAuction,referredRegistration} from './referral-fixtures';
 import {TEST_TOKEN} from './helpers';
 
 const database=process.env.WALLET_BATCH_TEST_DATABASE_URL;
@@ -36,6 +36,71 @@ describe.skipIf(!database)('internal wallet batch command on isolated PostgreSQL
   const command={key:randomUUID(),auctionSlug:auction.slug,numbers:options.numbers??['2','9'],feeVersion:1},batch=await quoteBidBatch(db,userId,command);
   return {userId,auction,command,batch,pay:()=>payBidBatchWallet(db,userId,batch.id,{quoteHash:batch.quoteHash})};
  }
+ async function unquotedFixture(){
+  const userId=(await verifiedReferralUser(db)).id,auction=await realReferralAuction(db,10);await creditDevelopmentPoints(db,userId,'25',randomUUID());
+  return {userId,auction,command:{key:randomUUID(),auctionSlug:auction.slug!,numbers:['2','9'],feeVersion:1,approvedTotal:'20.00'}};
+ }
+ it('creates the quote and complete wallet payment in one transaction and recovers the committed receipt read-only',async()=>{
+  const f=await unquotedFixture(),fetch=vi.spyOn(globalThis,'fetch').mockRejectedValue(Error('No provider HTTP allowed'));
+  try{
+   expect(await getOwnWalletBidBatch(db,f.userId,{key:f.command.key})).toMatchObject({kind:'pending',status:'PENDING',batchId:null});
+   expect(await db.bidBatchOrder.count({where:{userId:f.userId}})).toBe(0);
+   const paid=await createAndPayBidBatchWallet(db,f.userId,f.command);expect(paid.kind).toBe('receipt');if(paid.kind!=='receipt')throw Error('Committed receipt required');
+   expect(paid.receipt).toMatchObject({batch:{status:'ACCEPTED',total:'20.00'},wallet:{available:'5.00'},payment:{method:'wallet',acceptedBidIds:paid.receipt.receipts.map(item=>item.bid.id)}});
+   expect(await getOwnWalletBidBatch(db,f.userId,{key:f.command.key})).toEqual(paid);
+   expect(await getOwnWalletBidBatch(db,f.userId,{id:paid.receipt.batch.id,quoteHash:paid.receipt.batch.quoteHash})).toEqual(paid);
+   expect(fetch).not.toHaveBeenCalled();expect(await db.chapaCheckout.count({where:{userId:f.userId}})).toBe(0);
+  }finally{fetch.mockRestore()}
+ });
+ it('serializes first-command duplicate tabs and rejects changed selections under the original key',async()=>{
+  const f=await unquotedFixture(),[first,replayed]=await Promise.all([createAndPayBidBatchWallet(db,f.userId,f.command),createAndPayBidBatchWallet(db,f.userId,f.command)]);
+  expect(first).toEqual(replayed);expect(await balance(f.userId)).toBe('5.00');expect(await db.bid.count({where:{userId:f.userId}})).toBe(2);
+  await expect(createAndPayBidBatchWallet(db,f.userId,{...f.command,numbers:['3','10']})).rejects.toMatchObject({code:'KEY_REUSED'});
+  await expect(createAndPayBidBatchWallet(db,f.userId,{...f.command,approvedTotal:'10.00'})).rejects.toMatchObject({code:'KEY_REUSED'});
+  expect(await createAndPayBidBatchWallet(db,f.userId,{...f.command,approvedTotal:'20'})).toEqual(first);
+  expect(await db.bid.count({where:{userId:f.userId}})).toBe(2);expect(await balance(f.userId)).toBe('5.00');
+ });
+ it('returns a changed total for explicit review without debiting, then accepts only the confirmed saved quote',async()=>{
+  const f=await unquotedFixture(),review=await createAndPayBidBatchWallet(db,f.userId,{...f.command,approvedTotal:'10.00'});
+  expect(review.kind).toBe('quote');if(review.kind!=='quote')throw Error('Review quote required');
+  expect(review.quote.total).toBe('20.00');expect(await balance(f.userId)).toBe('25.00');expect(await db.bid.count({where:{userId:f.userId}})).toBe(0);
+  await expect(createAndPayBidBatchWallet(db,f.userId,f.command)).rejects.toMatchObject({code:'KEY_REUSED'});
+  expect(await getOwnWalletBidBatch(db,f.userId,{key:f.command.key})).toMatchObject({kind:'pending',batchId:review.quote.id});
+  expect(await payBidBatchWallet(db,f.userId,review.quote.id,{quoteHash:review.quote.quoteHash})).toMatchObject({wallet:{available:'5.00'},batch:{status:'ACCEPTED'}});
+ });
+ it('does not wait on or mutate an uncommitted first command while observing its original key',async()=>{
+  const f=await unquotedFixture();let release!:()=>void,reached!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve}),locked=new Promise<void>(resolve=>{reached=resolve});
+  const pending=createAndPayBidBatchWallet(db,f.userId,f.command,async()=>{reached();await gate});await locked;
+  try{expect(await getOwnWalletBidBatch(db,f.userId,{key:f.command.key})).toMatchObject({kind:'pending',batchId:null});expect(await db.bid.count({where:{userId:f.userId}})).toBe(0)}finally{release()}
+  expect((await pending).kind).toBe('receipt');expect((await getOwnWalletBidBatch(db,f.userId,{key:f.command.key})).kind).toBe('receipt');
+ });
+ it('keeps the single-command receipt private and rolls back when session reauthorization fails',async()=>{
+  const f=await unquotedFixture(),other=(await verifiedReferralUser(db)).id;
+  await expect(createAndPayBidBatchWallet(db,f.userId,f.command,async()=>{throw Error('Session revoked')})).rejects.toThrow('Session revoked');
+  expect(await db.bidBatchOrder.count({where:{userId:f.userId}})).toBe(0);expect(await balance(f.userId)).toBe('25.00');
+  const paid=await createAndPayBidBatchWallet(db,f.userId,f.command);if(paid.kind!=='receipt')throw Error('Receipt required');
+  expect(await getOwnWalletBidBatch(db,other,{key:f.command.key})).toMatchObject({kind:'pending',batchId:null});
+  await expect(getOwnWalletBidBatch(db,other,{id:paid.receipt.batch.id,quoteHash:paid.receipt.batch.quoteHash})).rejects.toMatchObject({code:'NOT_FOUND'});
+ });
+ it('rolls back the new quote as well as all financial effects when the complete order is unaffordable',async()=>{
+  const f=await unquotedFixture(),command={...f.command,numbers:['2','9','12'],approvedTotal:'30.00'};
+  await expect(createAndPayBidBatchWallet(db,f.userId,command)).rejects.toMatchObject({code:'INSUFFICIENT_POINTS',wallet:{available:'25.00',required:'30.00',shortfall:'5.00'}});
+  expect(await balance(f.userId)).toBe('25.00');expect(await db.bidBatchOrder.count({where:{userId:f.userId}})).toBe(0);expect(await db.bid.count({where:{userId:f.userId}})).toBe(0);
+ });
+ it('preserves first-bid referral qualification and a single coupon redemption in the consolidated path',async()=>{
+  process.env.REFERRAL_REWARDS_SCHEMA_READY='true';
+  try{
+   await db.referralPolicy.create({data:{enabled:true,discountPercent:10,expiryDays:30,updatedBy:'isolated-wallet-fixture'}});
+   const sponsor=await verifiedReferralUser(db),referred=await referredRegistration(db,sponsor.id),auction=await realReferralAuction(db,10);
+   await creditDevelopmentPoints(db,referred.id,'25',randomUUID());
+   const first=await createAndPayBidBatchWallet(db,referred.id,{key:randomUUID(),auctionSlug:auction.slug!,numbers:['2','9'],feeVersion:1,approvedTotal:'20.00'});
+   expect(first.kind).toBe('receipt');const coupon=await db.referralCoupon.findUniqueOrThrow({where:{referredUserId:referred.id}});expect(coupon.ownerUserId).toBe(sponsor.id);expect(await db.referralCoupon.count({where:{referredUserId:referred.id}})).toBe(1);
+   await creditDevelopmentPoints(db,sponsor.id,'25',randomUUID());
+   const input={key:randomUUID(),auctionSlug:auction.slug!,numbers:['4','11'],feeVersion:1,couponId:coupon.id,approvedTotal:'19.00'},paid=await createAndPayBidBatchWallet(db,sponsor.id,input);
+   expect(paid).toMatchObject({kind:'receipt',receipt:{batch:{total:'19.00',grossTotal:'20.00',discountTotal:'1.00'},wallet:{available:'6.00'}}});
+   expect(await createAndPayBidBatchWallet(db,sponsor.id,input)).toEqual(paid);expect(await db.referralRedemption.count({where:{couponId:coupon.id}})).toBe(1);expect(await reconcile(db)).toEqual([]);
+  }finally{process.env.REFERRAL_REWARDS_SCHEMA_READY='false'}
+ });
  it('charges only fees, returns committed balance and internal metadata without external configuration or HTTP',async()=>{
   const f=await fixture({balance:'25',numbers:['2','900']}),fetch=vi.spyOn(globalThis,'fetch').mockRejectedValue(Error('No network expected'));
   try{expect(walletBidsEnabled()).toBe(true);const paid=await f.pay();expect(paid).toMatchObject({batch:{total:'20.00',status:'ACCEPTED'},wallet:{available:'5.00',held:'0.00'},payment:{method:'wallet',gateway:'INTERNAL_WALLET',total:'20.00'}});expect(paid.payment.acceptedBidIds).toEqual(paid.receipts.map(receipt=>receipt.bid.id));const guard=await db.walletHoldGuard.findFirstOrThrow({where:{wallet:{userId:f.userId}}});expect(paid.wallet.revision).toBe(String(guard.revision));expect(BigInt(paid.wallet.revision)).toBeGreaterThan(0n);expect(await readWalletBalance(db,f.userId)).toMatchObject({available:'5',held:'0',revision:paid.wallet.revision});expect(await balance(f.userId)).toBe('5.00');expect(await db.chapaCheckout.count({where:{userId:f.userId}})).toBe(0);expect(fetch).not.toHaveBeenCalled();expect(await db.outbox.count({where:{kind:'BID_ACCEPTED',payload:{path:['recipientUserId'],equals:f.userId}}})).toBe(2)}finally{fetch.mockRestore()}

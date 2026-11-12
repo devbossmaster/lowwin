@@ -11,6 +11,7 @@ import {chapaPaymentReasonMessage,chapaRequestReasonMessage} from '@/lib/chapa-p
 import {formatEtb} from '@/lib/money';
 import {prepareChapaNavigation} from '@/lib/chapa-navigation';
 import {startChapaPolling} from '@/lib/chapa-polling';
+import {startChapaOriginalPolling} from '@/lib/chapa-original-polling';
 import {chapaStatusLabel} from '@/lib/chapa-status-label';
 import {chapaDirectCreationRejected} from '@/lib/chapa-direct-request';
 import {bidPaymentCanRetry} from '@/lib/bid-payment-progress';
@@ -53,6 +54,16 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
  // Manual recovery and the single observer share one owned status request.
  // This does not replay initialization or bypass the server verification lease.
  const statusRead=useRef<{id:string;request:Promise<ChapaCheckoutView|null>}|null>(null);
+ const originalRead=useRef<{url:string;request:Promise<ChapaCheckoutView>}|null>(null);
+ const readOriginal=useCallback((url:string)=>{
+  if(originalRead.current?.url===url)return originalRead.current.request;
+  // Manual Check can join discovery. The hook/account owns this controller:
+  // pausing one observer must not cancel another caller awaiting that read.
+  const controller=new AbortController();controllers.current.add(controller);
+  const request=requestChapaJson<ChapaCheckoutView>(url,{},controller.signal),flight={url,request};originalRead.current=flight;
+  const release=()=>{controllers.current.delete(controller);if(originalRead.current===flight)originalRead.current=null};
+  void request.then(release,release);return request;
+ },[]);
  const verifyOwned=useCallback((id:string)=>{
   if(statusRead.current?.id===id)return statusRead.current.request;
   const request=run(`/api/payments/chapa/checkouts/${id}`,{method:'POST'});
@@ -62,8 +73,11 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
  },[run]);
  useEffect(()=>{
   try{clearChapaAttempts(window.sessionStorage)}catch{}
-  const version=++epoch.current;locked.current=false;statusRead.current=null;invalidated.current=null;uiTiming.current=null;const next=empty();stateRef.current=next;setSnapshot(next);
-  const restoreUrl=next.recoveryId&&chapaUuid.test(next.recoveryId)?`/api/payments/chapa/checkouts/${next.recoveryId.toLowerCase()}`:chapaOriginalKeyUrl(next.directAttempt);
+  const version=++epoch.current;locked.current=false;statusRead.current=null;originalRead.current=null;invalidated.current=null;uiTiming.current=null;const next=empty();stateRef.current=next;setSnapshot(next);
+  // Missing-ID originals use the one bounded key observer below. Issuing a
+  // separate restore GET here would overlap discovery and misread a pre-commit
+  // 404 as an authoritative missing payment.
+  const restoreUrl=next.recoveryId&&chapaUuid.test(next.recoveryId)?`/api/payments/chapa/checkouts/${next.recoveryId.toLowerCase()}`:null;
   if(queryIdentity&&restoreUrl)void loadPrivateJson<ChapaCheckoutView>(queryIdentity,restoreUrl,{freshnessMs:5000}).then(order=>{if(current(version))receive(order)}).catch(cause=>{if(current(version))update({restoring:false,errorCode:cause instanceof ChapaClientError?cause.code:cause instanceof PrivateQueryError?({401:'UNAUTHORIZED',403:'FORBIDDEN',404:'NOT_FOUND'}[cause.status]??'UNAVAILABLE'):'UNAVAILABLE',error:language==='am'?'የክፍያውን ሁኔታ ማምጣት አልተቻለም።':'Payment status could not load. Try again.'})});
   const unsubscribe=subscribePrivateQueries(event=>{if(event.kind==='authorization'||event.kind==='session'&&event.identity!==queryIdentity){epoch.current++;statusRead.current=null;controllers.current.forEach(c=>c.abort())}});
   return()=>{epoch.current++;controllers.current.forEach(c=>c.abort());controllers.current.clear();unsubscribe()};
@@ -82,6 +96,15 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
    onError:cause=>update({error:cause instanceof ChapaClientError?cause.message:'Could not reach payment confirmation. We will retry automatically.',errorCode:cause instanceof ChapaClientError?cause.code:'UNAVAILABLE'}),
   });
  },[orderId,queryIdentity,confirmed,waiting,pollingDeadline,observeDirect,verifyOwned,update]);
+ const originalUrl=!orderId&&state.active&&!state.busy&&!state.restoring?chapaOriginalKeyUrl(state.directAttempt):null;
+ useEffect(()=>{
+  if(!originalUrl||!isPrivateQueryIdentity(queryIdentity))return;
+  const version=epoch.current;
+  return startChapaOriginalPolling(()=>readOriginal(originalUrl),order=>{if(current(version))receive(order)},document,{
+   isCurrent:()=>current(version),onPause:()=>update({paused:true}),onResume:()=>update({paused:false}),
+   onError:cause=>{if(current(version))update({error:cause instanceof ChapaClientError?cause.message:'Could not reach payment confirmation. We will retry automatically.',errorCode:cause instanceof ChapaClientError?cause.code:'UNAVAILABLE'})},
+  });
+ },[originalUrl,queryIdentity,current,receive,readOriginal,update]);
  const create=useCallback(async(intent:ChapaIntent)=>{
   if(!queryIdentity||locked.current||!isPrivateQueryIdentity(queryIdentity))return;
   const version=epoch.current,next=stateRef.current.attempt??{version:1 as const,intent};locked.current=true;update({attempt:next,busy:true,active:true,error:'',errorCode:null,paused:false,handoff:'opening'});const navigation=prepareChapaNavigation();
@@ -103,7 +126,10 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
    const endpoint='/api/payments/chapa/inline';
    const result=await requestChapaJson<{order:ChapaCheckoutView}>(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)},controller.signal);
    if(!current(version))return;
-   receive(result.order);invalidatePrivateQueries(queryIdentity,['/api/payments/chapa/checkouts','/api/my-bids','/api/transactions']);
+   receive(result.order);
+   // receive() already invalidates confirmed/terminal outcomes exactly once.
+   // A newly outstanding attempt only needs its history rows refreshed here.
+   if(chapaRecoverable(result.order))invalidatePrivateQueries(queryIdentity,['/api/payments/chapa/checkouts','/api/my-bids','/api/transactions']);
    if(navigation&&!chapaConfirmed(result.order)&&chapaRecoverable(result.order))update({handoff:navigation.open(result.order.checkoutUrl)?'opened':'failed'});
   }catch(cause){if(current(version)){
    const rejected=chapaDirectCreationRejected(cause);
@@ -150,8 +176,8 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
  },[queryIdentity,current,update,run,language]);
  const check=useCallback(async()=>{
   const id=stateRef.current.order?.id??stateRef.current.recoveryId??initialId,recoveryUrl=chapaOriginalKeyUrl(stateRef.current.directAttempt);if((!id&&!recoveryUrl)||locked.current||!queryIdentity||!isPrivateQueryIdentity(queryIdentity))return;
-  const version=epoch.current;locked.current=true;update({busy:true,error:'',errorCode:null});try{return id?await verifyOwned(id):await run(recoveryUrl!)}catch(cause){if(current(version))update({errorCode:cause instanceof ChapaClientError?cause.code:'UNAVAILABLE',error:language==='am'?'ማረጋገጥ አልተቻለም። የመጨረሻው ሁኔታ ተጠብቋል።':'Verification is unavailable. The last known payment status is preserved.'});return null}finally{if(current(version)){locked.current=false;update({busy:false,restoring:false})}}
- },[queryIdentity,initialId,current,update,verifyOwned,run,language]);
+  const version=epoch.current;locked.current=true;update({busy:true,error:'',errorCode:null});try{if(id)return await verifyOwned(id);const order=await readOriginal(recoveryUrl!);if(!current(version))return null;receive(order);return order}catch(cause){if(current(version))update({errorCode:cause instanceof ChapaClientError?cause.code:'UNAVAILABLE',error:language==='am'?'ማረጋገጥ አልተቻለም። የመጨረሻው ሁኔታ ተጠብቋል።':'Verification is unavailable. The last known payment status is preserved.'});return null}finally{if(current(version)){locked.current=false;update({busy:false,restoring:false})}}
+ },[queryIdentity,initialId,current,update,verifyOwned,readOriginal,receive,language]);
  // A failed read is not permission to drop an unresolved immutable command.
  const canStartAgain=!state.busy&&!state.restoring&&state.active&&!!state.order&&(bidPaymentCanRetry(state.order)||state.order.purpose==='TOP_UP'&&state.order.status==='CREDITED'&&chapaConfirmed(state.order));
  const startAgain=()=>{if(!canStartAgain||locked.current)return;if(retainOriginal&&queryIdentity)clearChapaOriginalAttempt(getMiniQueryClient(),queryIdentity,scope,stateRef.current.directAttempt?{intentKey:stateRef.current.directAttempt.key}:{orderId:stateRef.current.order?.id??stateRef.current.recoveryId??undefined});epoch.current++;controllers.current.forEach(c=>c.abort());controllers.current.clear();invalidated.current=null;uiTiming.current=null;const next=empty(false);stateRef.current=next;setSnapshot(next)};
