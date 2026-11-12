@@ -2,7 +2,7 @@
 import {useEffect} from 'react';
 import type {BidBatchQuote} from '@/lib/bid-batch-client';
 import {bidPaymentCanRetry} from '@/lib/bid-payment-progress';
-import {chapaConfirmed} from '@/lib/chapa-client';
+import {chapaApiCharge,chapaCurrentInline,chapaConfirmed} from '@/lib/chapa-client';
 import {ChapaPaymentStatus,useChapaPayment} from './chapa-payment';
 import PaymentProgress from './payment-progress';
 
@@ -14,10 +14,10 @@ export default function DirectCheckout({payment,purpose,amount,batch,onClose,onS
  const order=payment.order;
  useEffect(()=>{
   if(payment.started)payment.markPresented('feedback');
-  if(order?.chargeType==='DIRECT'&&order.authorizationReference)payment.markPresented('authorization');
+  if(order&&chapaApiCharge(order)&&order.authorizationReference)payment.markPresented('authorization');
   if(order&&chapaConfirmed(order))payment.markPresented('confirmed');
  },[payment.started,payment.markPresented,order]);
- if(order&&order.apiVersion!=='v1'&&order.chargeType!=='DIRECT')return <ChapaPaymentStatus payment={payment} onNavigate={onClose} onStartAgain={onStartAgain}/>;
+ if(order&&order.apiVersion!=='v1'&&!chapaCurrentInline(order)&&order.chargeType!=='DIRECT')return <ChapaPaymentStatus payment={payment} onNavigate={onClose} onStartAgain={onStartAgain}/>;
  const retry=onStartAgain?()=>{void (async()=>{if(!bidPaymentCanRetry(payment.order))return;const checked=await payment.check();if(checked&&bidPaymentCanRetry(checked))onStartAgain()})()}:undefined;
  return <PaymentProgress purpose={purpose} footerPortal={false} payment={payment} summary={{auctionTitle:order?.auctionTitle??'',auctionTitleAm:order?.auctionTitleAm,numbers:order?.batchNumbers??batch?.lines.map(line=>line.number)??(order?.bidNumber?[order.bidNumber]:[]),total:order?.amount??amount,provider:order?.paymentMethod??payment.directAttempt?.paymentMethod??null,phone:payment.directAttempt?.phone??null}} onClose={onClose} onRetry={retry}/>;
 }

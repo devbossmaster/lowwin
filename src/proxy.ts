@@ -23,7 +23,7 @@ export async function proxy(request:NextRequest) {
   if(path==='/payments/chapa/return'||path==='/api/payments/chapa/callback'||path==='/api/payments/chapa/webhook'||path==='/api/payments/chapa'||path==='/api/payments/chapa/checkouts'||/^\/api\/payments\/chapa\/checkouts\/[0-9a-f-]{36}$/i.test(path))return NextResponse.next();
   // Direct/batch handlers require the owned payment session themselves. Keep
   // the same boundary without paying for another session lookup in Proxy.
-  if(path==='/api/payments/chapa/direct'||path==='/api/payments/chapa/methods'||path==='/api/payments/chapa/batches/quote'||/^\/api\/payments\/chapa\/batches\/[0-9a-f-]{36}\/wallet$/i.test(path)||/^\/api\/payments\/chapa\/checkouts\/[0-9a-f-]{36}\/authorize$/i.test(path))return NextResponse.next();
+  if(path==='/api/payments/chapa/direct'||path==='/api/payments/chapa/inline'||path==='/api/payments/chapa/inline/config'||path==='/api/payments/chapa/methods'||path==='/api/payments/chapa/batches/quote'||/^\/api\/payments\/chapa\/batches\/[0-9a-f-]{36}\/wallet$/i.test(path)||/^\/api\/payments\/chapa\/checkouts\/[0-9a-f-]{36}\/authorize$/i.test(path))return NextResponse.next();
   // Public onboarding artwork must load before a Telegram session exists.
   // Keep this exact allowlist separate from all protected Mini App data.
   if(publicAssets.has(path))return NextResponse.next();

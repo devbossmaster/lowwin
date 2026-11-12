@@ -13,6 +13,7 @@ import {PAYMENT_TRANSACTION_OPTIONS} from './timing';
 import {markChapaDispatch,measureChapa} from './chapa-timing';
 import {classifyChapaApiError} from '@/lib/chapa-api-error';
 import {paymentPhoneProblem,paymentPhoneProblemMessage} from '@/lib/payment-phone';
+import {chapaInlineTransport,inlineTransportBinding,isV2InlineCheckout} from './chapa-inline-provider';
 
 type Authorize=(tx:Prisma.TransactionClient)=>Promise<void>;
 const common={key:z.string().uuid(),paymentMethod:z.enum(['telebirr','mpesa','cbebirr','ebirr']),phone:z.string().min(9).max(40)};
@@ -148,16 +149,18 @@ async function dispatchDirectCheckout(client:PrismaClient,order:ChapaCheckout,us
 }
 /** OTP lives only in this stack frame. Never retry this mutation automatically. */
 export async function authorizeDirectCheckout(client:PrismaClient,userId:string,id:string,raw:unknown,reauthorize?:Authorize,transport:ChapaTransport=chapaTransport){
- requireChapa('recover');z.string().uuid().parse(id);const body=z.object({otp:z.string().regex(/^\d{4,10}$/).optional()}).strict().parse(raw),order=await client.chapaCheckout.findFirst({where:{id,userId,chargeType:'DIRECT'}});if(!order)throw new ChapaError(404,'NOT_FOUND','Payment not found.');if(order.creditJournalId)return ownChapaCheckout(order);
+ requireChapa('recover');z.string().uuid().parse(id);const body=z.object({otp:z.string().regex(/^\d{4,10}$/).optional()}).strict().parse(raw),order=await client.chapaCheckout.findFirst({where:{id,userId,OR:[{chargeType:'DIRECT'},{chargeType:'INLINE',flowVersion:4}]}});if(!order)throw new ChapaError(404,'NOT_FOUND','Payment not found.');if(order.creditJournalId)return ownChapaCheckout(order);
+ const inline=isV2InlineCheckout(order),selectedTransport=inline&&transport===chapaTransport?chapaInlineTransport:transport;
  const health=requireChapa('recover');if(order.mode!==health.mode||order.credentialFingerprint!==health.credentialFingerprint)throw new ChapaError(503,'CONFIGURATION_CHANGED','This payment needs its original configuration.');
- if(['FAILED','CANCELLED','INCOMPLETE','BLOCKED','EXPIRED'].includes(order.status))return verifyChapaCheckout(client,id,userId,reauthorize,transport,true);
+ if(['FAILED','CANCELLED','INCOMPLETE','BLOCKED','EXPIRED'].includes(order.status))return verifyChapaCheckout(client,id,userId,reauthorize,selectedTransport,true);
+ if(inline&&!inlineTransportBinding(order))throw new ChapaError(503,'CONFIGURATION_CHANGED','This authorization needs its original public-key configuration. Check the original payment.');
  if(order.validationAttempts>=20)throw new ChapaError(429,'AUTHORIZATION_LIMIT','Too many authorization attempts. Check this original payment in Transactions.');
  if(!order.authorizationReference||!order.authType)throw new ChapaError(409,'PAYMENT_INITIALIZING','Check the original payment while it is being initialized.');
  if(order.authType==='OTP'&&!body.otp||order.authType!=='OTP'&&body.otp)throw new ChapaError(422,'INVALID_AUTHORIZATION','Follow the authorization method requested for this payment.');
  const acquired=await client.$transaction(async tx=>{if(reauthorize)await reauthorize(tx);if(!await allowIdentityRequest(tx,'chapa-validate',`${userId}:${id}`,5))throw new ChapaError(429,'RATE_LIMITED','Wait a minute before trying authorization again.');return tx.chapaCheckout.updateMany({where:{id,creditJournalId:null,validationAttempts:{lt:20},OR:[{leaseUntil:null},{leaseUntil:{lte:new Date()}}]},data:{leaseUntil:new Date(Date.now()+20000),validationAttempts:{increment:1}}})},PAYMENT_TRANSACTION_OPTIONS);
  if(!acquired.count)return getChapaCheckout(client,userId,id);
- try{if(order.authType==='OTP'){if(!transport.validate)throw new ChapaError(503,'PAYMENT_UNAVAILABLE','Payment authorization is unavailable.');await transport.validate({reference:order.authorizationReference,paymentMethod:order.paymentMethod!,otp:body.otp})}}
+ try{if(order.authType==='OTP'){if(!selectedTransport.validate)throw new ChapaError(503,'PAYMENT_UNAVAILABLE','Payment authorization is unavailable.');await selectedTransport.validate({reference:order.authorizationReference,paymentMethod:order.paymentMethod!,otp:body.otp})}}
  finally{await client.chapaCheckout.updateMany({where:{id,creditJournalId:null},data:{leaseUntil:null,nextCheckAt:new Date()}})}
- return verifyChapaCheckout(client,id,userId,reauthorize,transport,true);
+ return verifyChapaCheckout(client,id,userId,reauthorize,selectedTransport,true);
 }
 export async function reconcileDirectCheckouts(client:PrismaClient,limit=10,transport:ChapaTransport=chapaTransport){const health=requireChapa('recover'),rows=await client.chapaCheckout.findMany({where:{chargeType:'DIRECT',mode:health.mode,credentialFingerprint:health.credentialFingerprint!,creditJournalId:null,reconcileUntil:{gt:new Date()},nextCheckAt:{lte:new Date()},attempts:{lt:500},status:{in:['SUBMITTING','PENDING','AUTH_NEEDED','VERIFYING','NEEDS_REVIEW']}},orderBy:[{nextCheckAt:'asc'},{id:'asc'}],take:Math.max(1,Math.min(20,limit)),select:{id:true}});let checked=0;for(const row of rows){try{await verifyChapaCheckout(client,row.id,undefined,undefined,transport);checked++}catch{/* Durable intent remains recoverable without disclosing provider/contact data. */}}return {checked}}

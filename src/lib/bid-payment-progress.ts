@@ -1,4 +1,4 @@
-import {chapaAwaitingAuthorization,chapaVerifiedTerminal,chapaConfirmed,chapaDirectRequestRejected,chapaPollingPaused,type ChapaCheckoutView} from './chapa-client';
+import {chapaApiCharge,chapaAwaitingAuthorization,chapaVerifiedTerminal,chapaConfirmed,chapaDirectRequestRejected,chapaPollingPaused,type ChapaCheckoutView} from './chapa-client';
 import {normalizePaymentPhone} from './payment-phone';
 
 export type BidPaymentProgressPhase='preparing'|'connecting'|'authorization'|'confirming'|'success'|'preserved'|'terminal'|'uncertain';
@@ -16,7 +16,7 @@ export function bidPaymentCanRetry(order:ChapaCheckoutView|null){
  * authorization reference. An owned ID still supports the same operation. */
 export function bidPaymentCanRetryOriginal(order:ChapaCheckoutView|null){
  if(!order)return true;
- return order.chargeType==='DIRECT'&&['SUBMITTING','PENDING'].includes(order.status)&&!order.authorizationReference&&!chapaConfirmed(order)&&order.providerStatus!=='SUCCESS'&&order.verificationState!=='MISMATCH'&&order.initializationIssue!=='state'&&!chapaDirectRequestRejected(order);
+ return chapaApiCharge(order)&&['SUBMITTING','PENDING'].includes(order.status)&&!order.authorizationReference&&!chapaConfirmed(order)&&order.providerStatus!=='SUCCESS'&&order.verificationState!=='MISMATCH'&&order.initializationIssue!=='state'&&!chapaDirectRequestRejected(order);
 }
 
 /** Connection health is secondary to accepted provider state. It cannot
@@ -49,7 +49,7 @@ export function bidPaymentProgressPhase(state:ProgressState):BidPaymentProgressP
  if(chapaAwaitingAuthorization(order))return 'authorization';
  // An owned pending provider payment stays processing through read failures,
  // backgrounding and expiry. Only the backend can establish its outcome.
- if(order.chargeType==='DIRECT'&&['PENDING','AUTH_NEEDED','VERIFYING'].includes(order.status)&&order.providerStatus)return 'confirming';
+ if(chapaApiCharge(order)&&['PENDING','AUTH_NEEDED','VERIFYING'].includes(order.status)&&order.providerStatus)return 'confirming';
  if(error||order.verificationState==='UNAVAILABLE'||state.paused||chapaPollingPaused(order,state.now))return 'uncertain';
  if(!order.authorizationReference&&['SUBMITTING','PENDING'].includes(order.status))return 'connecting';
  return 'confirming';

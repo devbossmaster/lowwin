@@ -9,7 +9,7 @@ import type {getBidDiscountQuote} from '@/modules/referrals/service';
 import {isSubmissionFeeOnly} from '@/modules/auctions/rules';
 import {etbToCents,formatEtb} from '@/lib/money';
 import {normalizeBidDraft,normalizePaymentPhone,previewBidFees,validateBidDraft,type BidBatchQuote,type BidBatchReceipt,type BidDraftError} from '@/lib/bid-batch-client';
-import {ChapaClientError,requestChapaJson,type ChapaV1Config,type WalletPaymentShortfall} from '@/lib/chapa-client';
+import {ChapaClientError,requestChapaJson,type ChapaCheckoutConfig,type WalletPaymentShortfall} from '@/lib/chapa-client';
 import {usableBidDiscount} from '@/lib/bid-discount-preview';
 import {paymentPhoneProblem} from '@/lib/payment-phone';
 import {clearBidWalletRecovery,readBidWalletRecovery,retainBidWalletRecovery} from '@/lib/bid-wallet-recovery';
@@ -73,7 +73,7 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
  const id=useId(),lock=useRef(false),phoneEdited=useRef(!!normalizePaymentPhone(restoredPhone)),generation=useRef(0),controllers=useRef(new Set<AbortController>());
  const quoteAttempt=useRef<{fingerprint:string;key:string;quote?:BidBatchQuote;paymentKey:string}|null>(walletRecovery?{fingerprint:'',key:walletRecovery.id,paymentKey:walletRecovery.id,quote:walletRecovery}:null);
  const authenticated=!!queryIdentity,active=known.status==='live'&&(!state||state.open),current=isSubmissionFeeOnly(terms.ruleVersion);
- const methods=usePrivateQuery<ChapaV1Config>('/api/payments/chapa/v1/config',{enabled:authenticated&&active&&!payment.started,freshnessMs:60000});
+ const methods=usePrivateQuery<ChapaCheckoutConfig>('/api/payments/chapa/inline/config',{enabled:authenticated&&active&&!payment.started,freshnessMs:60000});
  const enabledMethods=methods.data?.enabled?[...methods.data.methods,...(methods.data.cbeBankEnabled?[{slug:'cbe-bank',name:'CBE Bank'}]:[])]:[];
  const discount=usePrivateQuery<DiscountQuote>(`/api/auctions/${auction.slug}/discount-quote?feeVersion=${terms.version}`,{enabled:authenticated&&!!state?.referralDiscountsAvailable&&applyCoupon});
  const coupon=applyCoupon?usableBidDiscount(discount.data,terms.version,terms.entryFeePoints,discount.updatedAt):null;
@@ -154,7 +154,7 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
   if(!recoveryQuote)payment.beginTiming(true);lock.current=true;setBusy(true);setError('');let walletSubmitted=false;
   try{
    // Quote is immutable and server-priced; only explicit Pay persists the
-   // owned v1 intent or commits the existing internal-wallet command.
+   // owned v2 Inline intent or commits the existing internal-wallet command.
    const confirmedQuote=attempt.quote??await requestChapaJson<BidBatchQuote>('/api/payments/chapa/batches/quote',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,key:attempt.key})},controller.signal);
    if(generation.current!==version||!isPrivateQueryIdentity(queryIdentity))return;
    attempt.quote=confirmedQuote;setQuote(confirmedQuote);
@@ -166,9 +166,9 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
     const accepted=await requestChapaJson<BidBatchReceipt>(`/api/payments/chapa/batches/${confirmedQuote.id}/wallet`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({quoteHash:confirmedQuote.quoteHash})},controller.signal);
     if(generation.current===version&&isPrivateQueryIdentity(queryIdentity)){clearBidWalletRecovery(getMiniQueryClient(),queryIdentity,confirmedQuote);clearBidFundingDraft(getMiniQueryClient(),queryIdentity,auction.slug);fundingRetained.current=false;setReceipt(accepted);setWalletRetry(false);publishWalletBidReceipt(queryIdentity,accepted,known);void refreshMe().catch(()=>{})}
    }else{
-    const intent={key:attempt.paymentKey,purpose:'BID' as const,batchId:confirmedQuote.id,quoteHash:confirmedQuote.quoteHash,paymentMethod:method!,phone:normalizedPhone!,apiVersion:'v1' as const,flow:method==='cbe-bank'?'HOSTED' as const:'INLINE' as const};
+    const intent={key:attempt.paymentKey,purpose:'BID' as const,batchId:confirmedQuote.id,quoteHash:confirmedQuote.quoteHash,paymentMethod:method!,phone:normalizedPhone!,apiVersion:'v2' as const,kind:'inline' as const,flow:method==='cbe-bank'?'HOSTED' as const:'INLINE' as const};
     retainChapaOriginalAttempt(getMiniQueryClient(),queryIdentity,'bid:'+auction.slug,intent,undefined,confirmedQuote);
-    await payment.createV1(intent);
+    await payment.createInline(intent);
    }
   }catch(cause){
    if(generation.current===version){
@@ -199,8 +199,8 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
     flow.continueToPayment(true);setError(text('Review the updated total before paying.','ከመክፈልዎ በፊት የዘመነውን ጠቅላላ ክፍያ ይመልከቱ።'));return;
    }
    if(!normalizedPhone){flow.openPayment();return}
-   const intent={key:paymentKey,purpose:'BID' as const,batchId:refreshed.id,quoteHash:refreshed.quoteHash,paymentMethod:method,phone:normalizedPhone,apiVersion:'v1' as const,flow:method==='cbe-bank'?'HOSTED' as const:'INLINE' as const};
-   retainChapaOriginalAttempt(getMiniQueryClient(),queryIdentity!, 'bid:'+auction.slug,intent,undefined,refreshed);await payment.createV1(intent);
+   const intent={key:paymentKey,purpose:'BID' as const,batchId:refreshed.id,quoteHash:refreshed.quoteHash,paymentMethod:method,phone:normalizedPhone,apiVersion:'v2' as const,kind:'inline' as const,flow:method==='cbe-bank'?'HOSTED' as const:'INLINE' as const};
+   retainChapaOriginalAttempt(getMiniQueryClient(),queryIdentity!, 'bid:'+auction.slug,intent,undefined,refreshed);await payment.createInline(intent);
   }catch(cause){if(version===generation.current){flow.continueToPayment(true);setError(cause instanceof ChapaClientError?cause.message:text('Review your bids before trying again.','እንደገና ከመሞከርዎ በፊት ጨረታዎችዎን ይመልከቱ።'))}}
   finally{if(version===generation.current)setBusy(false)}
  };

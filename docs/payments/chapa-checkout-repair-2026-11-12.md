@@ -1,5 +1,7 @@
 # Checkout configuration and modal repair — 12 November 2026
 
+> Superseded for new payments by [the current-key v2 Inline update](chapa-v2-inline-2026-11-12.md). The v1 setup below applies only to the earlier v1 adapter or its historical recovery. The merchant's current `CHAPA_LIVE_PUB_…` key was accepted by Chapa's read-only v2 service check; it belongs in `CHAPA_PUBLIC_KEY` for the new v2 flow.
+
 ## Confirmed production configuration gap
 
 The supplied WEB diagnostic reported `configured: false`, `enabled: false`, `recoveryEnabled: false` and an empty methods list. All four settings below were absent: `CHAPA_V1_SECRET_KEY`, `CHAPA_V1_PUBLIC_KEY`, `CHAPA_V1_WEBHOOK_SECRET` and `CHAPA_V1_METHODS`. Both v1 activation flags were false. The common schema/live/review flags were true.

@@ -13,7 +13,7 @@ import {usePaymentCheckoutFlow} from './payment-checkout-flow';
 import {centsToEtb,etbToCents,formatEtb} from '@/lib/money';
 import {normalizePaymentPhone} from '@/lib/bid-batch-client';
 import {paymentPhoneProblem,paymentPhoneProblemMessage} from '@/lib/payment-phone';
-import {chapaConfirmed,type ChapaCheckoutView,type ChapaV1Config} from '@/lib/chapa-client';
+import {chapaConfirmed,type ChapaCheckoutView,type ChapaCheckoutConfig} from '@/lib/chapa-client';
 import {bidPaymentCanRetry} from '@/lib/bid-payment-progress';
 import {getMiniQueryClient,isPrivateQueryIdentity,loadPrivateJson} from './private-query-cache';
 import {readPaymentRetryDraft} from '@/lib/payment-retry-draft';
@@ -21,8 +21,8 @@ import type {WalletBalance} from '@/modules/wallet/balance';
 import styles from './wallet-sheet.module.css';
 
 const supported=new Set(['telebirr','cbebirr','mpesa','ebirr']);
-type TopupConfig=ChapaV1Config&{minTopup:string;maxTopup:string};
-function methodsFor(config:TopupConfig|null):ChapaV1Config['methods']{return config?.enabled?[...config.methods.filter(item=>supported.has(item.slug)),...(config.cbeBankEnabled?[{slug:'cbe-bank',name:'CBE Bank'}]:[])]:[]}
+type TopupConfig=ChapaCheckoutConfig&{minTopup:string;maxTopup:string};
+function methodsFor(config:TopupConfig|null):ChapaCheckoutConfig['methods']{return config?.enabled?[...config.methods.filter(item=>supported.has(item.slug)),...(config.cbeBankEnabled?[{slug:'cbe-bank',name:'CBE Bank'}]:[])]:[]}
 function amountAllowed(value:string,config:TopupConfig|null){try{const cents=etbToCents(value);return !!config&&/^(0|[1-9]\d{0,15})(?:\.\d{1,2})?$/.test(value)&&cents>=etbToCents(config.minTopup)&&cents<=etbToCents(config.maxTopup)}catch{return false}}
 function methodAllowed(value:string,slug:string,config:TopupConfig|null){try{const cents=etbToCents(value),item=methodsFor(config).find(item=>item.slug===slug);return !!item&&amountAllowed(value,config)&&(!item.minAmountCents||cents>=BigInt(item.minAmountCents))&&(!item.maxAmountCents||cents<=BigInt(item.maxAmountCents))}catch{return false}}
 export function walletDisplay(value?:string){try{return value===undefined?null:`${centsToEtb(etbToCents(value))} ETB`}catch{return null}}
@@ -39,7 +39,7 @@ function TopUp({onClose,returnFocusRef,initialChapaId,retryDraft,embedded=false,
  const back=!payment.started?(flow.step==='guide'?flow.openPayment:flow.step==='payment'?flow.editDraft:null):null;
  useEffect(()=>{onDismissChange?.(back);return()=>onDismissChange?.(null)},[back,onDismissChange]);
  const wallet=usePrivateQuery<WalletBalance>('/api/wallet',{enabled:authenticated,freshnessMs:15000});
- const methods=usePrivateQuery<TopupConfig>('/api/payments/chapa/v1/config',{enabled:authenticated&&!payment.started,freshnessMs:60000}),settings=methods.data;
+ const methods=usePrivateQuery<TopupConfig>('/api/payments/chapa/inline/config',{enabled:authenticated&&!payment.started,freshnessMs:60000}),settings=methods.data;
  useEffect(()=>{if(phoneEdited.current)return;const registered=normalizePaymentPhone(settings?.phone??'');if(registered)setPhone(registered.slice(3))},[settings?.phone]);
  let cents=0n,total='0.00',valid=false;
  try{cents=etbToCents(amount);total=centsToEtb(cents);valid=amountAllowed(amount,settings)}catch{}
@@ -58,7 +58,7 @@ function TopUp({onClose,returnFocusRef,initialChapaId,retryDraft,embedded=false,
    const nextMethod=current.paymentMethod??saved?.paymentMethod??method,nextPhone=normalizePaymentPhone(savedPhone??phone),nextAmount=current.amount;
    setAmount(nextAmount);setMethod(nextMethod);
    if(nextPhone){phoneEdited.current=true;setPhone(nextPhone.slice(3))}
-   const latest=fresh&&queryIdentity?await loadPrivateJson<TopupConfig>(queryIdentity,'/api/payments/chapa/v1/config',{force:true}):settings;
+   const latest=fresh&&queryIdentity?await loadPrivateJson<TopupConfig>(queryIdentity,'/api/payments/chapa/inline/config',{force:true}):settings;
    if(!queryIdentity||!isPrivateQueryIdentity(queryIdentity))return;
    // Reconciliation, capability and amount checks happen before a fresh key is
    // created. An interrupted check preserves the original owned attempt.
@@ -67,10 +67,10 @@ function TopUp({onClose,returnFocusRef,initialChapaId,retryDraft,embedded=false,
    if(!latest?.enabled||!amountAllowed(nextAmount,latest)||!methodAllowed(nextAmount,nextMethod,latest)||!phoneKnown||!nextPhone||paymentPhoneProblem(nextPhone,nextMethod)){
     setError(text('Review your amount and payment details before trying again.','እንደገና ከመሞከርዎ በፊት መጠኑንና የክፍያ ዝርዝሩን ይመልከቱ።'));return;
    }
-   await payment.createV1({apiVersion:'v1',flow:nextMethod==='cbe-bank'?'HOSTED':'INLINE',key:crypto.randomUUID(),purpose:'TOP_UP',amount:nextAmount,paymentMethod:nextMethod,phone:nextPhone});
+   await payment.createInline({apiVersion:'v2',kind:'inline',flow:nextMethod==='cbe-bank'?'HOSTED':'INLINE',key:crypto.randomUUID(),purpose:'TOP_UP',amount:nextAmount,paymentMethod:nextMethod,phone:nextPhone});
   }catch{setError(text('Could not prepare another payment. The original payment status is preserved.','ሌላ ክፍያ ማዘጋጀት አልተቻለም። የመጀመሪያው ክፍያ ሁኔታ ተጠብቋል።'))}finally{submitting.current=false;setRetrying(false)}
  };
- const pay=async(hosted=false)=>{if(!authenticated){openRegistration();return}if(method==='cbe-bank'&&!hosted){flow.showGuide();return}if(hosted&&!normalizedPhone){flow.openPayment();setError(paymentPhoneProblemMessage(phoneProblem??'invalid',am));return}if(!ready||!normalizedPhone||submitting.current)return;submitting.current=true;setError('');try{await payment.createV1({apiVersion:'v1',flow:method==='cbe-bank'?'HOSTED':'INLINE',key:crypto.randomUUID(),purpose:'TOP_UP',amount:total,paymentMethod:method,phone:normalizedPhone})}finally{submitting.current=false}};
+ const pay=async(hosted=false)=>{if(!authenticated){openRegistration();return}if(method==='cbe-bank'&&!hosted){flow.showGuide();return}if(hosted&&!normalizedPhone){flow.openPayment();setError(paymentPhoneProblemMessage(phoneProblem??'invalid',am));return}if(!ready||!normalizedPhone||submitting.current)return;submitting.current=true;setError('');try{await payment.createInline({apiVersion:'v2',kind:'inline',flow:method==='cbe-bank'?'HOSTED':'INLINE',key:crypto.randomUUID(),purpose:'TOP_UP',amount:total,paymentMethod:method,phone:normalizedPhone})}finally{submitting.current=false}};
  const next=()=>{if(!authenticated){openRegistration();return}if(valid&&!payment.busy)flow.continueToPayment()};
  const continueAction=<button className={`${styles.pay} ${styles.topUpPay}`} type="submit" form={id} data-top-up-continue disabled={authenticated?!valid:!amount}>{text(authenticated?'Continue to payment':'Log in to top up',authenticated?'ወደ ክፍያ ቀጥል':'ገንዘብ ለማስገባት ይግቡ')}<ArrowRight size={17} aria-hidden="true"/></button>;
  const contents=payment.started?<WalletTopUpProgress payment={{...payment,busy:payment.busy||retrying,error:error||payment.error}} amount={initialChapaId&&!payment.order?null:total} provider={method} phone={phone} onRetry={()=>void retry()} onChangePayment={()=>void retry(false)} onClose={onClose} footerPortal={!!onClose}/>:<div data-wallet-top-up data-top-up-step={flow.step}>
