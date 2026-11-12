@@ -7,7 +7,7 @@ vi.mock('../src/modules/payments/chapa-events',()=>({processChapaEvent:f.process
 vi.mock('../src/lib/db',()=>({db:{$transaction:f.transaction}}));
 vi.mock('../src/modules/auth/private-api',async original=>({...await original<typeof import('../src/modules/auth/private-api')>(),requireUser:f.user}));
 vi.mock('../src/modules/payments/session',()=>({requirePaymentSession:f.auth}));
-vi.mock('../src/modules/payments/chapa',()=>({createChapaCheckout:f.create,getChapaCheckout:f.read,listChapaCheckouts:f.list,verifyChapaCheckout:f.verify,walletBidsEnabled:()=>f.enabled,publicChapaAvailability:()=>({enabled:false,configured:false,mode:'test',walletBidsEnabled:f.enabled,minTopup:'1.00',maxTopup:'43200.00',reason:'Not configured'})}));
+vi.mock('../src/modules/payments/chapa',()=>({createChapaCheckout:f.create,getChapaCheckout:f.read,listChapaCheckouts:f.list,verifyChapaCheckout:f.verify,unsupportedLegacyChapaCheckout:(order:{flowVersion?:number;initialization?:{apiVersion?:string}})=>order.flowVersion===3||order.initialization?.apiVersion==='v1',walletBidsEnabled:()=>f.enabled,publicChapaAvailability:()=>({enabled:false,configured:false,mode:'test',walletBidsEnabled:f.enabled,minTopup:'1.00',maxTopup:'43200.00',reason:'Not configured'})}));
 vi.mock('../src/modules/auctions/bids',async original=>({...await original<typeof import('../src/modules/auctions/bids')>(),submitBidInTransaction:f.submit}));
 import {PrivateApiError} from '../src/modules/auth/private-api';
 import {measureChapa} from '../src/modules/payments/chapa-timing';
@@ -41,6 +41,12 @@ function existingLegacyEvent(patch:Partial<EventRow>={}){
 }
 afterEach(()=>{vi.unstubAllEnvs();vi.restoreAllMocks()});
 describe('Chapa HTTP authorization and durable webhook boundary',()=>{
+ it.each(['raw_body','legacy_secret'])('acknowledges an authenticated %s hint for retired history without queueing or mutating the payment',async profile=>{
+  vi.stubEnv('CHAPA_WEBHOOK_SIGNATURE_PROFILE',profile);f.find.mockResolvedValue({id,flowVersion:3,initialization:{apiVersion:'v1'},merchantReference:merchant,mode:'test',chapaReference:hint.chapa_reference,amountCents:1000n,currency:'ETB',creditJournalId:null});
+  const response=await webhook(profile==='raw_body'?signed(hint):legacySigned(hint));expect(response.status).toBe(200);expect(await response.json()).toEqual({accepted:true});
+  expect(f.update).not.toHaveBeenCalled();expect(f.process).not.toHaveBeenCalled();expect(f.verify).not.toHaveBeenCalled();expect(f.submit).not.toHaveBeenCalled();expect(globalThis.fetch).not.toHaveBeenCalled();
+  if(profile==='raw_body')expect(f.event.mock.calls[0][0].data[0]).toMatchObject({checkoutId:null,status:'IGNORED'});else expect(f.event).not.toHaveBeenCalled();
+ });
  it.each([
   {status:'NEEDS_REVIEW',verificationState:'MISMATCH',providerStatus:null,reason:'EVIDENCE_MISMATCH'},
   {status:'CANCELLED',verificationState:'VERIFIED',providerStatus:'CANCELLED',reason:'PROVIDER_CANCELLED'},

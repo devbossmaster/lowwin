@@ -7,6 +7,7 @@ const clock=vi.hoisted(()=>({now:Date.parse('2026-11-10T10:00:00Z')}));
 vi.mock('../src/components/chapa-payment',()=>({useChapaPaymentClock:()=>clock.now,ChapaPaymentStatus:()=>createElement('div',{'data-hosted-recovery':true})}));
 vi.mock('../src/components/account-sheet',()=>({AccountSheetFooter:({children}:{children:ReactNode})=>createElement('footer',null,children)}));
 import PaymentProgress from '../src/components/payment-progress';
+import BidPaymentProgress from '../src/components/bid-payment-progress';
 import {WalletTopUpProgress} from '../src/components/wallet-top-up-progress';
 import {MiniLocaleProvider} from '../src/components/mini-locale';
 const started=Date.parse('2026-11-10T10:00:00Z');
@@ -19,11 +20,11 @@ describe('shared bid and deposit status surface',()=>{
   const summary={auctionTitle:'Owned auction',numbers:['4.25'],total:'35.00',provider:'wallet',phone:null};
   const walletPayment={...base,order:null,started:false};
   const wrap=(children:ReactNode)=>renderToStaticMarkup(createElement(MiniLocaleProvider,{initialLanguage:'en',children}));
-  const preparing=wrap(createElement(PaymentProgress,{payment:walletPayment,summary,preparing:true,onClose:()=>{}}));
-  expect(preparing).toContain('Paying from your wallet…');expect(preparing).toContain('Internal wallet');expect(preparing).not.toContain('phone');expect(preparing).not.toContain('authorization');expect(preparing).not.toContain('one-time-code');expect(preparing).not.toContain('Chapa');
-  const receipt={batch:{total:'35.00',lines:[{number:'4.25'}]},receipts:[],payment:{method:'wallet',gateway:'INTERNAL_WALLET',total:'35.00',acceptedBidIds:['owned-bid']}} as unknown as import('../src/lib/bid-batch-client').BidBatchReceipt;
-  const committed=wrap(createElement(PaymentProgress,{payment:walletPayment,summary,receipt,onClose:()=>{}}));
-  expect(committed).toContain('Bid accepted');expect(committed).toContain('Lowwin Wallet');expect(committed).toContain('Internal wallet');expect(committed).toContain('>Paid</dt>');expect(committed).not.toContain('Chapa');
+  const preparing=wrap(createElement(BidPaymentProgress,{walletPayment:true,payment:walletPayment,summary,preparing:true,onClose:()=>{}}));
+  expect(preparing).toContain('Paying from your wallet…');expect(preparing).toContain('data-wallet-bid-progress="paying"');expect(preparing).not.toContain('Internal wallet');expect(preparing).not.toContain('phone');expect(preparing).not.toContain('authorization');expect(preparing).not.toContain('one-time-code');expect(preparing).not.toContain('Chapa');
+  const receipt={batch:{status:'ACCEPTED',total:'35.00',lines:[{number:'4.25'}]},receipts:[{bid:{id:'owned-bid'}}],payment:{method:'wallet',gateway:'INTERNAL_WALLET',total:'35.00',acceptedBidIds:['owned-bid']}} as unknown as import('../src/lib/bid-batch-client').BidBatchReceipt;
+  const committed=wrap(createElement(BidPaymentProgress,{walletPayment:true,payment:walletPayment,summary,receipt,onClose:()=>{}}));
+  expect(committed).toContain('Bid accepted');expect(committed).toContain('data-wallet-bid-progress="success"');expect(committed).toContain('Paid from wallet');expect(committed).toContain('ETB 35.00');expect(committed).not.toContain('Internal wallet');expect(committed).not.toContain('Chapa');
  });
  for(const purpose of ['BID','TOP_UP'] as const){
   it(`${purpose} keeps active authorization and fulfillment automatic after the display deadline`,()=>{
@@ -44,23 +45,26 @@ describe('shared bid and deposit status surface',()=>{
  it('only mounts the code field for an actual provider-requested OTP',()=>{const ussd=render('TOP_UP');expect(ussd).not.toContain('one-time-code');const otp=render('TOP_UP',{...base,order:{...order,authType:'OTP',verificationState:'VERIFIED'}});expect(otp).toContain('autoComplete="one-time-code"');expect(otp).toContain('Never enter your wallet PIN here');expect(otp).toContain('Confirm code');expect(otp).not.toContain('name="pin"')});
  it('uses the same compact surface and localized summary for deposits',()=>{const html=render('TOP_UP',base,true);expect(html).toContain('data-wallet-payment-progress="authorization"');expect(html).toContain('የዋሌት ገቢ');expect(html).toContain('የክፍያ ፈቃድን');expect(html).toContain('data-payment-progress');expect(html).not.toContain('data-bid-payment-progress');expect(html).not.toContain('Connect');expect(html).not.toContain('<ol')});
  it('retains the established hosted-payment recovery path',()=>{expect(render('TOP_UP',{...base,order:{...order,chargeType:'HOSTED'}})).toContain('data-hosted-recovery')});
- it.each(['BID','TOP_UP'] as const)('%s v1 Inline uses the shared processing view and never offers an invented OTP challenge or SDK retry',purpose=>{
-  const html=render(purpose,{...base,error:'SDK response could not be checked',paused:true,order:{...order,apiVersion:'v1',chargeType:'INLINE',authType:'OTP',providerStatus:null}});
-  expect(html).toContain('Processing payment…');expect(html).toContain('Check your phone for a payment request');expect(html).toContain('data-payment-connection');expect(html).toContain('Total payable');expect(html).not.toContain('data-hosted-recovery');expect(html).not.toContain('Confirm code');expect(html).not.toContain('one-time-code');expect(html).not.toContain('Retry original request');expect(html).not.toContain('Try again');
+ it.each(['BID','TOP_UP'] as const)('%s retired payments show read-only history and no authorization or retry',purpose=>{
+  const html=render(purpose,{...base,order:{...order,apiVersion:'legacy',unsupportedLegacy:true,chargeType:'INLINE',authType:'OTP',providerStatus:null}});
+  expect(html).toContain('Historical payment');expect(html).toContain('read-only');expect(html).toContain('Transactions');expect(html).toContain('Close');expect(html).not.toContain('Confirm code');expect(html).not.toContain('one-time-code');expect(html).not.toContain('Try again');expect(html).not.toContain('Open payment page');
  });
- it('checks the original owned v1 key after a lost preparation response without offering to launch the SDK again',()=>{
-  const html=render('TOP_UP',{...base,order:null,error:'Interrupted initialization',started:true,directAttempt:{apiVersion:'v1',flow:'INLINE',key:'owned-key',purpose:'TOP_UP',amount:'35.00',paymentMethod:'telebirr',phone:'0912345678'}});
-  expect(html).toContain('Check payment');expect(html).toContain('Close');expect(html).not.toContain('Retry original request');expect(html).not.toContain('Try again');
+ it('a retired cached command without an owned response cannot restart a charge',()=>{
+  const html=render('TOP_UP',{...base,order:null,errorCode:'LEGACY_PAYMENT_UNSUPPORTED',error:'Historical payment',started:true,directAttempt:null});
+  expect(html).toContain('Historical payment');expect(html).not.toContain('Retry original request');expect(html).not.toContain('Try again');
  });
- it('v1 hosted uses the shared status view with the owned original URL recovery actions',()=>{
-  const html=render('TOP_UP',{...base,order:{...order,apiVersion:'v1',chargeType:'HOSTED',status:'PENDING',providerStatus:null,checkoutUrl:'https://checkout.chapa.co/test-owned'}});
-  expect(html).toContain('Processing payment…');expect(html).toContain('Open payment page');expect(html).toContain('Check payment status');expect(html).not.toContain('data-hosted-recovery');expect(html).not.toContain('Start new checkout');
-  const injected=render('TOP_UP',{...base,order:{...order,apiVersion:'v1',chargeType:'HOSTED',status:'PENDING',providerStatus:null,checkoutUrl:'https://evil.test/pay'}});expect(injected).not.toContain('Open payment page');
+ it('v2 hosted offers one status action while uncertain and never opens an injected host',()=>{
+  const hosted={...order,apiVersion:'v2' as const,flowVersion:4,chargeType:'HOSTED' as const,status:'PENDING',providerStatus:null,checkoutUrl:'https://checkout.chapa.global/test-owned'};
+  const html=render('TOP_UP',{...base,order:hosted});
+  expect(html).not.toContain('Open payment page');expect(html).toContain('Check payment status');expect(html).toContain('>Close</button>');expect(html.match(/<button/g)).toHaveLength(2);expect(html).not.toContain('Start new checkout');
+  const ready={...hosted,verificationState:'VERIFIED',verificationUnavailable:false,authorizationReference:null};
+  expect(render('TOP_UP',{...base,order:ready})).toContain('Open payment page');
+  const injected=render('TOP_UP',{...base,order:{...ready,checkoutUrl:'https://evil.test/pay'}});expect(injected).not.toContain('Open payment page');
  });
- it('only exposes Change payment for a safe terminal outcome and preserves the shared success requirement',()=>{
-  const failed={...order,apiVersion:'v1' as const,chargeType:'INLINE' as const,paymentMethod:'ebirr',status:'CANCELLED',providerStatus:'CANCELLED',verificationState:'VERIFIED',providerReasonCode:'PAYMENT_CANCELLED'};
+ it('only exposes Try again and Close for a safe terminal outcome and preserves the shared success requirement',()=>{
+  const failed={...order,apiVersion:'v2' as const,flowVersion:4,chargeType:'INLINE' as const,paymentMethod:'ebirr',status:'CANCELLED',providerStatus:'CANCELLED',verificationState:'VERIFIED',providerReasonCode:'PAYMENT_CANCELLED'};
   const html=renderToStaticMarkup(createElement(MiniLocaleProvider,{initialLanguage:'en',children:createElement(PaymentProgress,{payment:{...base,order:failed},summary:{auctionTitle:'Owned auction',numbers:['4.25'],total:'35.00',provider:'ebirr',phone:'0912345678'},onRetry:()=>{},onChangePayment:()=>{},onClose:()=>{}})}));
-  expect(html).toContain('Payment cancelled');expect(html).toContain('Change payment');expect(html).toContain('Try again');expect(html).toContain('Close');expect(html).toContain('/payments/ebirr.svg');expect(html).not.toContain('Nothing was charged');
+  expect(html).toContain('Payment cancelled');expect(html).not.toContain('Change payment');expect(html).toContain('Try again');expect(html).toContain('Close');expect(html.match(/<button/g)).toHaveLength(2);expect(html).toContain('/payments/ebirr.svg');expect(html).not.toContain('Nothing was charged');
   const pending=render('TOP_UP',{...base,order:{...failed,purpose:'TOP_UP',status:'PENDING',providerStatus:'SUCCESS'}});expect(pending).toContain('confirming your wallet credit');expect(pending).not.toContain('Wallet credited');
  });
 });

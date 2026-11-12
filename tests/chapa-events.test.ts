@@ -3,13 +3,13 @@ import type {PrismaClient} from '@prisma/client';
 
 const f=vi.hoisted(()=>({enabled:true,verify:vi.fn()}));
 vi.mock('../src/modules/payments/chapa-provider',()=>({chapaAvailability:()=>({recoveryEnabled:f.enabled,mode:'test'}),chapaTransport:{create:vi.fn(),lookup:vi.fn(),methods:vi.fn()}}));
-vi.mock('../src/modules/payments/chapa',()=>({verifyChapaCheckout:f.verify}));
+vi.mock('../src/modules/payments/chapa',()=>({verifyChapaCheckout:f.verify,unsupportedLegacyChapaCheckout:(order:{flowVersion?:number})=>order.flowVersion===3}));
 import {processChapaEvent,processChapaEvents} from '../src/modules/payments/chapa-events';
 
 const start=new Date('2026-10-29T12:00:00Z');
 function fixture(attempts=0){
  const event={id:'durable-event',checkoutId:'owned-checkout',mode:'test',status:'QUEUED',attempts,nextAttemptAt:new Date(0),leaseUntil:null as Date|null,completedAt:null as Date|null,receivedAt:new Date(start.getTime()-120000),event:'payment.success'};
- const checkout={id:'owned-checkout',creditJournalId:null as string|null,leaseUntil:null as Date|null,providerStatus:'PENDING',verificationState:'UNVERIFIED',status:'PENDING'};
+ const checkout={id:'owned-checkout',flowVersion:4,creditJournalId:null as string|null,leaseUntil:null as Date|null,providerStatus:'PENDING',verificationState:'UNVERIFIED',status:'PENDING'};
  const updateMany=vi.fn(async({where,data}:any)=>{
   if(where.status!==event.status)return {count:0};
   if(data.attempts){
@@ -30,6 +30,12 @@ beforeEach(()=>{f.enabled=true;vi.clearAllMocks();vi.useFakeTimers();vi.setSyste
 afterEach(()=>{vi.useRealTimers();vi.restoreAllMocks()});
 
 describe('durable Chapa event confirmation',()=>{
+ it('retains unsupported historical attempts for staff review without provider verification or false settlement',async()=>{
+  const state=fixture();state.checkout.flowVersion=3;
+  expect(await processChapaEvent(state.client,state.event.id)).toBe(false);
+  expect(state.event.status).toBe('NEEDS_VERIFICATION');expect(state.event.completedAt).toBeNull();expect(state.event.leaseUntil).toBeNull();
+  expect(state.checkout).toMatchObject({status:'PENDING',verificationState:'UNVERIFIED',creditJournalId:null});expect(f.verify).not.toHaveBeenCalled();
+ });
  it.each(['PENDING','FAILED','SUCCESS'])('uses merchant verification rather than a combined failure hint for authoritative %s',async status=>{
   const state=fixture();state.event.event='payment.failed_or_cancelled';
   f.verify.mockImplementation(async()=>{Object.assign(state.checkout,{providerStatus:status,verificationState:'VERIFIED',status:status==='SUCCESS'?'CREDITED':status,...(status==='SUCCESS'?{creditJournalId:'canonical-credit'}:{})})});

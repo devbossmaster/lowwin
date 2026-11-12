@@ -47,10 +47,11 @@
 .amountField input:focus-visible,.phoneField input:focus-visible{outline:0}
 .add{display:inline-flex;align-items:center;justify-content:center;gap:4px;min-width:76px;min-height:48px;padding:10px 12px;border:0;border-radius:26px;background:#c9a227;color:#181713;font-size:13px;font-weight:650;cursor:pointer}
 .add:disabled{background:#e5d194;color:#6c5a26;cursor:not-allowed}
-.rangeRow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;align-items:end;gap:8px}
+.rangeRow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,.8fr) auto;align-items:end;gap:7px}
 .rangeRow label{display:block;min-width:0;color:#716c62;font-size:11px;line-height:1.4}
 .rangeRow label>span{display:block;margin:0 0 4px}
 .rangeRow input{display:block;width:100%;box-sizing:border-box;min-height:48px;padding:0 12px;border:2px solid #e7e4de;border-radius:28px;background:#fff;color:#181713;font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;caret-color:#987522;box-shadow:0 2px 4px #1817130c}
+.rangePreview{margin:6px 0 3px;color:#715719;font-size:11px;line-height:1.5;font-variant-numeric:tabular-nums}
 .inputHint{margin:5px 0 8px;color:#716c62;font-size:10px;line-height:1.5}
 .chips{display:flex;flex-wrap:wrap;gap:5px;max-height:120px;overflow:auto;overscroll-behavior:contain;margin:8px 0;scrollbar-width:thin;scrollbar-color:#c7b77e transparent}
 .chips>span{display:inline-flex;align-items:center;border:1px solid #e0d2a8;border-radius:20px;background:#fbf7e9;color:#715719;min-width:0}

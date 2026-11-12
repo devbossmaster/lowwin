@@ -14,9 +14,7 @@ export async function proxy(request:NextRequest) {
   if((request.method==='GET'||request.method==='HEAD')&&(isPublicMiniPage(path)||isMiniAccountShell(path))||isPublicMiniRead(path,request.method))return NextResponse.next();
   if(path==='/api/health/live')return NextResponse.next();
   if((request.method==='GET'||request.method==='HEAD')&&path==='/video/cbe-bank-payment.mp4')return NextResponse.next();
-  // Pinned public SDK artwork has no account data. v1 handlers authenticate
-  // owned commands or provider signatures themselves, like v2 recovery.
-  if(path==='/vendor/chapa-inline-v1.c9e7f64f.js'||path==='/payments/ebirr.svg'||path==='/payments/cbe-bank.webp'||['/api/payments/chapa/v1','/api/payments/chapa/v1/config','/api/payments/chapa/v1/callback','/api/payments/chapa/v1/webhook'].includes(path))return NextResponse.next();
+  if(path==='/payments/ebirr.svg'||path==='/payments/cbe-bank.webp')return NextResponse.next();
   // Hosted returns are public guidance; callback never mutates money and the
   // webhook authenticates exact bytes itself. Owned checkout APIs authorize in
   // their handlers, avoiding duplicate session reads here.

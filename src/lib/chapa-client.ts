@@ -5,22 +5,20 @@ import type {BidBatchQuote,ChapaDirectIntent} from './bid-batch-client';
 export type ChapaIntent={key:string;purpose:'TOP_UP';amount:string}|{key:string;purpose:'BID';auctionSlug:string;amount:string;feeVersion:number;couponId?:string};
 export type ChapaCheckoutView=DirectCheckoutFields&{providerStatus?:string|null;providerReasonCode?:string|null;verificationState?:string;initializationIssue?:ChapaApiErrorCategory|null;merchantReference?:string;paymentMethod?:string|null;auctionTitle?:string|null;auctionTitleAm?:string|null;auctionCode?:string|null;auctionStatus?:string|null;auctionEndsAt?:string|null;id:string;purpose:'TOP_UP'|'BID';mode:'test'|'live';amount:string;amountCents:string;currency:'ETB';status:string;reason:string|null;checkoutUrl:string|null;auctionSlug:string|null;bidNumber:string|null;feeVersion:number|null;grossFee:string|null;discountPoints:string;createdAt:string;expiresAt:string;pollAfterMs:number;fundsPreserved:boolean;receipt:BidReceipt|null};
 export type ChapaAvailability={enabled:boolean;configured:boolean;mode:'test'|'live';walletBidsEnabled:boolean;minTopup:string;maxTopup:string;reason:string|null};
-export type DirectCheckoutFields={apiVersion?:'v1'|'v2';flowVersion?:number;chargeType?:'DIRECT'|'HOSTED'|'INLINE';authType?:'USSD'|'OTP'|null;authorizationReference?:string|null;payerPhoneMasked?:string|null;batch?:BidBatchQuote|null;batchNumbers?:string[];receipts?:BidReceipt[];initializationReasonCode?:string|null;updatedAt?:string;verificationUnavailable?:boolean};
-export type ChapaCheckoutConfig={apiVersion?:'v1'|'v2';enabled:boolean;configured:boolean;mode:'test'|'live';minTopup:string;maxTopup:string;methods:import('./bid-batch-client').DirectPaymentMethod[];phone:string|null;cbeBankEnabled:boolean;cbeGuideUrl:string|null};
-export type ChapaV1Config=ChapaCheckoutConfig;
+export type DirectCheckoutFields={apiVersion?:'v2'|'legacy';unsupportedLegacy?:boolean;flowVersion?:number;chargeType?:'DIRECT'|'HOSTED'|'INLINE';authType?:'USSD'|'OTP'|null;authorizationReference?:string|null;payerPhoneMasked?:string|null;batch?:BidBatchQuote|null;batchNumbers?:string[];receipts?:BidReceipt[];initializationReasonCode?:string|null;updatedAt?:string;verificationUnavailable?:boolean};
+export type ChapaCheckoutConfig={apiVersion?:'v2';enabled:boolean;configured:boolean;mode:'test'|'live';minTopup:string;maxTopup:string;methods:import('./bid-batch-client').DirectPaymentMethod[];phone:string|null;cbeBankEnabled:boolean;cbeGuideUrl:string|null};
 export type ChapaAttempt={version:1;intent:ChapaIntent;orderId?:string};
 type Storage=Pick<globalThis.Storage,'getItem'|'setItem'|'removeItem'>;
 export const chapaUuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const amount=/^(0|[1-9]\d{0,15})(?:\.\d{1,2})?$/;
 
-/** New v2 Inline attempts use our owned server adapter. Legacy v1 SDK attempts
- * remain version-bound and are never sent to the new creation endpoint. */
+/** Original-key recovery uses only the owned v2 Inline adapter. */
 export function chapaOriginalKeyUrl(intent:ChapaDirectIntent|null|undefined){
  if(!intent||!chapaUuid.test(intent.key))return null;
- const base=intent.apiVersion==='v1'?'/api/payments/chapa/v1':intent.apiVersion==='v2'&&intent.kind==='inline'?'/api/payments/chapa/inline':null;
+ const base=intent.apiVersion==='v2'&&intent.kind==='inline'?'/api/payments/chapa/inline':null;
  return base?`${base}?key=${encodeURIComponent(intent.key)}`:null;
 }
-export function chapaApiCharge(order:Pick<DirectCheckoutFields,'chargeType'|'apiVersion'|'flowVersion'>){return order.chargeType==='DIRECT'||order.apiVersion==='v2'&&order.flowVersion===4&&order.chargeType==='INLINE'}
+export function chapaApiCharge(order:Pick<DirectCheckoutFields,'chargeType'|'apiVersion'|'flowVersion'|'unsupportedLegacy'>){return !order.unsupportedLegacy&&order.apiVersion!=='legacy'&&(order.chargeType==='DIRECT'||order.apiVersion==='v2'&&order.flowVersion===4&&order.chargeType==='INLINE')}
 export function chapaCurrentInline(order:Pick<DirectCheckoutFields,'apiVersion'|'flowVersion'>){return order.apiVersion==='v2'&&order.flowVersion===4}
 
 /** A failed restore read must keep observing the original owned resource.
@@ -80,11 +78,11 @@ export const CHAPA_CHECKOUT_POLL_MS=5*60*1000;
 /** Bound foreground checks from the saved attempt, without changing the
  * provider's checkout validity or payment outcome when this time elapses. */
 export function chapaPollingDeadline(order:Pick<ChapaCheckoutView,'createdAt'>&Partial<Pick<ChapaCheckoutView,'chargeType'|'expiresAt'|'apiVersion'|'flowVersion'>>):number|null{
- if(chapaApiCharge(order)||chapaCurrentInline(order)||order.apiVersion==='v1'){const expiry=Date.parse(order.expiresAt??'');return Number.isFinite(expiry)?expiry:null}
+ if(chapaApiCharge(order)||chapaCurrentInline(order)){const expiry=Date.parse(order.expiresAt??'');return Number.isFinite(expiry)?expiry:null}
  const created=Date.parse(order.createdAt);return Number.isFinite(created)?created+CHAPA_CHECKOUT_POLL_MS:null;
 }
 export function chapaPollingPaused(order:ChapaCheckoutView,now=Date.now()){
- if(chapaApiCharge(order)||chapaCurrentInline(order)||order.apiVersion==='v1')return false;
+ if(chapaApiCharge(order)||chapaCurrentInline(order))return false;
  if(chapaConfirmed(order)||order.providerStatus==='SUCCESS'||!['SUBMITTING','PENDING','AUTH_NEEDED'].includes(order.status))return false;
  const deadline=chapaPollingDeadline(order);return deadline!==null&&now>=deadline;
 }
@@ -96,7 +94,7 @@ export function chapaCanResumeCheckout(attempt:ChapaAttempt|null,order:ChapaChec
  if(order.initializationIssue==='state'||chapaDirectRequestRejected(order))return false;
  return !order.checkoutUrl&&!chapaConfirmed(order)&&['SUBMITTING','PENDING'].includes(order.status)&&(!order.reason||['INITIALIZATION_PENDING','PROVIDER_CONFIRMATION_REQUIRED','PROVIDER_REFERENCE_UNAVAILABLE','PROVIDER_EVENT_RECEIVED'].includes(order.reason));
 }
-export function chapaRecoverable(order:Pick<ChapaCheckoutView,'status'|'fundsPreserved'>){return !order.fundsPreserved&&!['CREDITED','BID_ACCEPTED','FAILED','CANCELLED','EXPIRED','BLOCKED','INCOMPLETE','FAILED_OR_CANCELLED'].includes(order.status)}
+export function chapaRecoverable(order:Pick<ChapaCheckoutView,'status'|'fundsPreserved'>&Partial<Pick<ChapaCheckoutView,'apiVersion'|'unsupportedLegacy'>>){return !order.unsupportedLegacy&&order.apiVersion!=='legacy'&&!order.fundsPreserved&&!['CREDITED','BID_ACCEPTED','FAILED','CANCELLED','EXPIRED','BLOCKED','INCOMPLETE','FAILED_OR_CANCELLED'].includes(order.status)}
 export type WalletPaymentShortfall={available:string;required:string;shortfall:string;currency:'ETB'};
 export class ChapaClientError extends Error{constructor(message:string,readonly status=0,readonly code='UNAVAILABLE',readonly wallet?:WalletPaymentShortfall){super(message)}}
 export async function requestChapaJson<T>(url:string,options:RequestInit={},signal?:AbortSignal,timeoutMs=15000):Promise<T>{

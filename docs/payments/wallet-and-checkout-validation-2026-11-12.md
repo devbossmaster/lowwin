@@ -1,6 +1,6 @@
 # Internal wallet and shared checkout — 12 November 2026
 
-This extends the [Chapa v1 migration](chapa-v1-migration-2026-11-11.md). New external payments use official v1 Inline or the explicit hosted CBE Bank branch. Historical v2 attempts retain their original verification/recovery path. Lowwin Wallet remains an independent internal funding source.
+> Archived revision evidence. Current checkout uses [native Chapa v2 Inline](chapa-v2-inline-2026-11-12.md); active v1 routes, SDK, worker handling and settings are removed. The historical behavior and measurements below do not describe the current setup or final validation for the cleanup.
 
 ## Wallet payment
 

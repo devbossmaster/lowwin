@@ -20,7 +20,6 @@ import {ChapaError,ChapaProviderError,chapaAvailability,chapaConfigurationFinger
 import {approvedRecoveryBinding,chapaRecoveryBindings} from './chapa-recovery-binding';
 import {queueChapaReceipt} from '../notifications/chapa-receipt';
 import {chapaMethodCatalog} from './chapa-methods';
-import {chapaV1Availability,chapaV1Transport,isV1Checkout,parseChapaV1Evidence,requireChapaV1} from './chapa-v1-provider';
 import {chapaInlineAvailability,chapaInlineTransport,inlineTransportBinding,isV2InlineCheckout} from './chapa-inline-provider';
 
 type Tx=Prisma.TransactionClient;
@@ -36,6 +35,11 @@ const aliasScope='CHAPA_CHECKOUT_ALIAS';
 const aliasResult=z.object({checkoutId:z.string().uuid()}).strict();
 const json=(value:unknown)=>JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 const paid=(order:ChapaCheckout)=>order.creditJournalId!==null;
+/** Retired provider attempts remain readable financial history. They must never
+ * be initialized, verified, or reinterpreted through the active v2 transport. */
+export function unsupportedLegacyChapaCheckout(order:{flowVersion?:number;initialization:unknown}){
+ return order.flowVersion===3||!!order.initialization&&typeof order.initialization==='object'&&!Array.isArray(order.initialization)&&(order.initialization as Record<string,unknown>).apiVersion==='v1';
+}
 const after=(ms:number)=>new Date(Date.now()+ms);
 // Observe committed webhook results separately from the provider retry schedule.
 const STATUS_REFRESH_MS=2000;
@@ -52,7 +56,7 @@ export function ownChapaCheckout(order:ChapaCheckout&OrderContext){
  // prefix histories; preserve the original single-bid DTO for old consumers.
  const receipt=order.batchId&&order.receipt&&typeof order.receipt==='object'&&!Array.isArray(order.receipt)?Object.fromEntries(Object.entries(order.receipt).filter(([key])=>['bid','hold','charge','wallet','remainingSubmissions','ownBids'].includes(key))):order.receipt;
  let payerPhoneMasked:string|null=null;try{if(order.payerPhoneCipher&&order.phoneBotId){const phone=decryptPhone(order.payerPhoneCipher,order.phoneBotId);payerPhoneMasked=`${phone.slice(0,3)}*****${phone.slice(-4)}`}}catch{}
- return {id:order.id,flowVersion:order.flowVersion,apiVersion:isV1Checkout(order)?'v1' as const:'v2' as const,purpose:order.purpose,mode:order.mode,amount:centsToEtb(order.amountCents),amountCents:order.amountCents.toString(),currency:order.currency,status:order.status,reason:order.reason,providerReasonCode:publicChapaPaymentReason(order),providerStatus:order.providerStatus??(paid(order)?'SUCCESS':null),verificationState:order.verificationState,initializationIssue,initializationReasonCode:order.chargeType==='DIRECT'||isV2InlineCheckout(order)&&order.chargeType==='INLINE'?safeChapaPaymentReason(order.initializationErrorCode):null,merchantReference:order.merchantReference,paymentMethod:order.paymentMethod,chargeType:order.chargeType??'HOSTED',authType:order.authType??null,authorizationReference:order.authorizationReference??null,payerPhoneMasked,batch:batch??null,batchNumbers:batch?.lines?.map(line=>line.number)??[],auctionTitle:order.auction?.product?.title??null,auctionTitleAm:order.auction?.product?.titleAm??null,auctionCode:order.auction?.publicCode?.toString()??null,auctionStatus:order.auction?.status??null,auctionEndsAt:order.auction?.endsAt?.toISOString()??null,checkoutUrl:order.checkoutUrl,auctionSlug:order.auctionSlug,bidNumber:order.bidNumber?.toString()??null,feeVersion:order.feeVersion,grossFee:order.grossFee?.toString()??null,discountPoints:order.discountPoints.toString(),createdAt:order.createdAt.toISOString(),updatedAt:order.updatedAt.toISOString(),expiresAt:order.expiresAt.toISOString(),pollAfterMs:STATUS_REFRESH_MS,fundsPreserved:paid(order)&&order.status==='NEEDS_REVIEW',receipt};
+ return {id:order.id,flowVersion:order.flowVersion,apiVersion:unsupportedLegacyChapaCheckout(order)?'legacy' as const:'v2' as const,unsupportedLegacy:unsupportedLegacyChapaCheckout(order),purpose:order.purpose,mode:order.mode,amount:centsToEtb(order.amountCents),amountCents:order.amountCents.toString(),currency:order.currency,status:order.status,reason:order.reason,providerReasonCode:publicChapaPaymentReason(order),providerStatus:order.providerStatus??(paid(order)?'SUCCESS':null),verificationState:order.verificationState,initializationIssue,initializationReasonCode:order.chargeType==='DIRECT'||isV2InlineCheckout(order)&&order.chargeType==='INLINE'?safeChapaPaymentReason(order.initializationErrorCode):null,merchantReference:order.merchantReference,paymentMethod:order.paymentMethod,chargeType:order.chargeType??'HOSTED',authType:order.authType??null,authorizationReference:order.authorizationReference??null,payerPhoneMasked,batch:batch??null,batchNumbers:batch?.lines?.map(line=>line.number)??[],auctionTitle:order.auction?.product?.title??null,auctionTitleAm:order.auction?.product?.titleAm??null,auctionCode:order.auction?.publicCode?.toString()??null,auctionStatus:order.auction?.status??null,auctionEndsAt:order.auction?.endsAt?.toISOString()??null,checkoutUrl:order.checkoutUrl,auctionSlug:order.auctionSlug,bidNumber:order.bidNumber?.toString()??null,feeVersion:order.feeVersion,grossFee:order.grossFee?.toString()??null,discountPoints:order.discountPoints.toString(),createdAt:order.createdAt.toISOString(),updatedAt:order.updatedAt.toISOString(),expiresAt:order.expiresAt.toISOString(),pollAfterMs:STATUS_REFRESH_MS,fundsPreserved:paid(order)&&order.status==='NEEDS_REVIEW',receipt};
 }
 export async function eligible(tx:Tx,userId:string){
  const [row]=await tx.$queryRaw<{telegramId:string|null;contactTelegramId:string|null;botId:string|null;phoneCipher:string|null;revokedAt:Date|null;staffId:string|null;suspended:boolean}[]>`SELECT u."telegramId",c."telegramId" AS "contactTelegramId",c."botId",c."phoneCipher",c."revokedAt",s."userId" AS "staffId",COALESCE(r.suspended,false) AS suspended FROM "user" u LEFT JOIN "TelegramOwnContact" c ON c."userId"=u.id LEFT JOIN "StaffMember" s ON s."userId"=u.id LEFT JOIN "UserRestriction" r ON r."userId"=u.id WHERE u.id=${userId}`;
@@ -69,7 +73,7 @@ function initializationInput(order:ChapaCheckout):ChapaCreate{
  // entered on Chapa's hosted page without a Lowwin prefill.
  return order.initialization as unknown as ChapaCreate;
 }
-function sameConfiguration(order:ChapaCheckout){const value=isV1Checkout(order)?chapaV1Availability():chapaAvailability();return value.mode===order.mode&&value.credentialFingerprint===order.credentialFingerprint}
+function sameConfiguration(order:ChapaCheckout){if(unsupportedLegacyChapaCheckout(order))return false;const value=chapaAvailability();return value.mode===order.mode&&value.credentialFingerprint===order.credentialFingerprint}
 
 /** The outer payment transaction already owns the wallet advisory key. Keep
  * projection locking before reading balances, without rewriting complete accounts. */
@@ -182,12 +186,13 @@ export async function listChapaCheckouts(client:PrismaClient,userId:string,purpo
 export async function verifyChapaCheckout(client:PrismaClient,id:string,userId?:string,reauthorize?:Authorize,transport:ChapaTransport=chapaTransport,eventCheck:boolean|'webhook'=false){
  z.string().uuid().parse(id);
  const snapshot=await measureChapa('database',()=>client.chapaCheckout.findFirst({where:{id,...(userId?{userId}:{})}}));if(!snapshot)throw new ChapaError(404,'NOT_FOUND','Payment not found.');
- const v1=isV1Checkout(snapshot),inlineV2=isV2InlineCheckout(snapshot);if(v1)requireChapaV1('recover');else requireChapa('recover');
+ if(unsupportedLegacyChapaCheckout(snapshot))return ownChapaCheckout(snapshot);
+ const inlineV2=isV2InlineCheckout(snapshot);requireChapa('recover');
  // Select the saved protocol, never the currently preferred creation flow.
  // Public-key authorization refresh cannot replace private-key verification.
  const selectedTransport=inlineV2&&transport===chapaTransport?chapaInlineTransport:transport;
  if(paid(snapshot))return ownChapaCheckout(snapshot);
- const recoveryBinding=v1||sameConfiguration(snapshot)?null:await approvedRecoveryBinding(client,snapshot);
+ const recoveryBinding=sameConfiguration(snapshot)?null:await approvedRecoveryBinding(client,snapshot);
  if(!sameConfiguration(snapshot)&&!recoveryBinding)throw new ChapaError(503,'CONFIGURATION_CHANGED','This payment needs its original Chapa configuration or a reviewed recovery authorization. Keep its payment ID.');
  const now=Date.now();
  // Ownership was checked by the authenticated read above. During cooldown this
@@ -202,7 +207,7 @@ export async function verifyChapaCheckout(client:PrismaClient,id:string,userId?:
   // round trip. OTPs belong only to the explicit authorization mutation.
   const authorizationFlow=snapshot.chargeType==='DIRECT'||inlineV2&&snapshot.chargeType==='INLINE';
   if(eventCheck!=='webhook'&&authorizationFlow&&snapshot.authType==='USSD'&&snapshot.authorizationReference&&selectedTransport.validate&&(!inlineV2||inlineTransportBinding(snapshot)))try{await measureChapa('validate',()=>selectedTransport.validate!({reference:snapshot.authorizationReference!,paymentMethod:snapshot.paymentMethod!}))}catch{/* Final merchant verification remains authoritative. */}
-  raw=await measureChapa('verify',()=>v1&&transport===chapaTransport?chapaV1Transport.lookup(snapshot.merchantReference):selectedTransport.lookup(snapshot.merchantReference))}catch(error){
+  raw=await measureChapa('verify',()=>selectedTransport.lookup(snapshot.merchantReference))}catch(error){
   const category=error instanceof ChapaProviderError?error.category:'temporary';
   const policy={configuration:{reason:'PROVIDER_CONFIGURATION_REQUIRED',delay:300000},reference:{reason:'PROVIDER_REFERENCE_UNAVAILABLE',delay:60000},state:{reason:'PROVIDER_STATE_UNAVAILABLE',delay:60000},request:{reason:'PROVIDER_REQUEST_REJECTED',delay:60000},temporary:{reason:'PROVIDER_CONFIRMATION_REQUIRED',delay:error instanceof ChapaProviderError&&error.httpStatus===429?60000:30000}}[category];
   // HTTP errors describe this API request, not whether the customer paid.
@@ -213,7 +218,7 @@ export async function verifyChapaCheckout(client:PrismaClient,id:string,userId?:
   if(!recorded.count)await measureChapa('database',()=>client.chapaCheckout.updateMany({where:{id,creditJournalId:null},data:schedule}));
   return {...await getChapaCheckout(client,snapshot.userId,id),verificationUnavailable:true};
  }
- const evidence=v1?parseChapaV1Evidence(raw):parseChapaEvidence(raw);
+ const evidence=parseChapaEvidence(raw);
  let directBinding=true;
  if(snapshot.chargeType==='DIRECT'&&evidence){
   directBinding=(!snapshot.authorizationReference||!evidence.chapaReference||snapshot.authorizationReference===evidence.chapaReference)&&(!evidence.paymentMethod||snapshot.paymentMethod===evidence.paymentMethod);
@@ -234,7 +239,7 @@ export async function verifyChapaCheckout(client:PrismaClient,id:string,userId?:
   if(!order)throw new ChapaError(404,'NOT_FOUND','Payment not found.');
   if(reauthorize)await reauthorize(tx);
   if(paid(order))return ownChapaCheckout(order);
-  const lockedBinding=v1||sameConfiguration(order)?null:await approvedRecoveryBinding(tx,order);
+  const lockedBinding=sameConfiguration(order)?null:await approvedRecoveryBinding(tx,order);
   if(!sameConfiguration(order)&&(!lockedBinding||lockedBinding.finalReference!==evidence!.chapaReference))throw new ChapaError(503,'CONFIGURATION_CHANGED','Payment verification configuration changed. Keep this payment ID.');
   // Pending/failed verification may expose a session or provisional reference.
   // Only terminal SUCCESS can bind the immutable final payment reference.

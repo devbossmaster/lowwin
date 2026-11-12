@@ -5,6 +5,7 @@ import {readRequestBytes,RequestBodyError} from '@/lib/request-body';
 import {privateHeaders} from '@/modules/auth/private-api';
 import {authenticateChapaWebhook,chapaAvailability,chapaHash,chapaWebhookAmountMatches,chapaWebhookConfigurationFingerprint,isChapaHostedSessionReference,parseChapaWebhook} from '@/modules/payments/chapa-provider';
 import {processChapaEvent} from '@/modules/payments/chapa-events';
+import {unsupportedLegacyChapaCheckout} from '@/modules/payments/chapa';
 import type {ChapaWebhookEvent} from '@prisma/client';
 export const runtime='nodejs';
 export async function POST(request:Request){
@@ -23,7 +24,7 @@ export async function POST(request:Request){
    // Permit only a recovery hint here; verification must establish the final
    // payment reference before its balanced receipt can replace that token.
    const hostedSession=order&&isChapaHostedSessionReference(order.checkoutUrl,order.chapaReference,health.mode);
-   const valid=!!order&&order.mode===health.mode&&(!hint.chapaReference||!order.chapaReference||hint.chapaReference===order.chapaReference||hostedSession)&&chapaWebhookAmountMatches(hint,order.amountCents)&&(!hint.currency||hint.currency===order.currency);
+   const valid=!!order&&!unsupportedLegacyChapaCheckout(order)&&order.mode===health.mode&&(!hint.chapaReference||!order.chapaReference||hint.chapaReference===order.chapaReference||hostedSession)&&chapaWebhookAmountMatches(hint,order.amountCents)&&(!hint.currency||hint.currency===order.currency);
    if(legacy){
     // Never accumulate legacy records for arbitrary references or paid orders.
     if(!valid||order!.creditJournalId)return null;

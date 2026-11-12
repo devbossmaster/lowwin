@@ -1,6 +1,6 @@
 # Shared bid and deposit checkout — 11 November 2026
 
-This validation records the earlier v2 shared-flow update. The later [v1 migration](chapa-v1-migration-2026-11-11.md) supersedes its new-payment routing and no-migration guidance.
+> Archived revision evidence. Current checkout uses [native Chapa v2 Inline](chapa-v2-inline-2026-11-12.md); active v1 routes, SDK, worker handling and settings are removed. Do not use this note for current activation or migration instructions.
 
 The latest shared-flow specification replaces the earlier conflicting checkout presentations. Bids and wallet top-ups now use the same controlled payment form and payment-status surface, inside one existing dialog. No payment accounting or provider endpoint was changed in this update.
 

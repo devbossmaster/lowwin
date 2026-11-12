@@ -15,7 +15,7 @@ const progress={order,busy:false,restoring:false,paused:false,error:'',now:creat
 describe('v2 Inline frontend keeps the owned payment version and outcome',()=>{
  it('resolves an interrupted response through the version-specific owned key lookup',()=>{
   expect(chapaOriginalKeyUrl(intent)).toBe('/api/payments/chapa/inline?key='+key);
-  expect(chapaOriginalKeyUrl({...intent,apiVersion:'v1',kind:undefined})).toBe('/api/payments/chapa/v1?key='+key);
+  expect(chapaOriginalKeyUrl({...intent,apiVersion:'legacy',kind:undefined} as unknown as ChapaDirectIntent)).toBeNull();
   expect(chapaOriginalKeyUrl({...intent,apiVersion:undefined,kind:undefined,flow:undefined})).toBeNull();
   expect(chapaOriginalKeyUrl({...intent,kind:undefined})).toBeNull();
   expect(chapaOriginalKeyUrl({...intent,key:'../other-account'})).toBeNull();
@@ -32,7 +32,7 @@ describe('v2 Inline frontend keeps the owned payment version and outcome',()=>{
  });
  it('recognizes only the new v2 Inline marker as API-managed authorization',()=>{
   expect(chapaApiCharge(order)).toBe(true);expect(chapaCurrentInline(order)).toBe(true);
-  expect(chapaApiCharge({...order,apiVersion:'v1',flowVersion:3})).toBe(false);
+  expect(chapaApiCharge({...order,apiVersion:'legacy',unsupportedLegacy:true,flowVersion:3})).toBe(false);
   expect(chapaApiCharge({...order,flowVersion:3})).toBe(false);
   expect(chapaApiCharge({...order,flowVersion:undefined})).toBe(false);
   expect(chapaApiCharge({...order,chargeType:'HOSTED'})).toBe(false);
@@ -52,7 +52,7 @@ describe('v2 Inline frontend keeps the owned payment version and outcome',()=>{
   expect(bidPaymentProgressPhase({...progress,order:unknown,error:'timeout'})).toBe('uncertain');
   expect(bidPaymentCanRetryOriginal(unknown)).toBe(true);
   expect(bidPaymentCanRetry(unknown)).toBe(false);
-  expect(bidPaymentCanRetryOriginal({...unknown,apiVersion:'v1',flowVersion:3})).toBe(false);
+  expect(bidPaymentCanRetryOriginal({...unknown,apiVersion:'legacy',unsupportedLegacy:true,flowVersion:3})).toBe(false);
  });
  it('lets verified cancellation, success and security mismatch outrank authorization hints',()=>{
   const cancelled={...order,status:'CANCELLED',providerStatus:'CANCELLED',verificationState:'VERIFIED'};
@@ -66,7 +66,7 @@ describe('v2 Inline frontend keeps the owned payment version and outcome',()=>{
   const rejected={...order,status:'NEEDS_REVIEW',reason:'INITIALIZATION_REJECTED',providerStatus:null,authorizationReference:null,initializationIssue:'request' as const,verificationState:'UNAVAILABLE'};
   expect(chapaDirectRequestRejected(rejected)).toBe(true);expect(bidPaymentCanRetry(rejected)).toBe(true);
   expect(chapaDirectRequestRejected({...rejected,authorizationReference:'CH-accepted'})).toBe(false);
-  expect(chapaDirectRequestRejected({...rejected,apiVersion:'v1',flowVersion:3})).toBe(false);
+  expect(chapaDirectRequestRejected({...rejected,apiVersion:'legacy',unsupportedLegacy:true,flowVersion:3})).toBe(false);
  });
  it('uses provider expiry for new Inline/hosted tracking while preserving older hosted polling bounds',()=>{
   expect(chapaPollingDeadline(order)).toBe(created+5*60000);

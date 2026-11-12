@@ -28,8 +28,8 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
  const deposit=purpose==='TOP_UP';
  const phase=bidPaymentProgressPhase({...payment,preparing,walletRetry,hasReceipt:!deposit&&!!receipt,now});
  const busy=preparing||payment.busy||payment.restoring;
- const v1=order?.apiVersion==='v1',currentInline=!!order&&chapaCurrentInline(order),hosted=(v1||currentInline)&&order?.chargeType==='HOSTED';
- const otpNeeded=!v1&&phase==='authorization'&&order?.authType==='OTP';
+ const currentInline=!!order&&chapaCurrentInline(order),hosted=currentInline&&order?.chargeType==='HOSTED';
+ const otpNeeded=phase==='authorization'&&order?.authType==='OTP';
  const finished=phase==='success'||phase==='preserved';
  const terminal=phase==='terminal';
  const numbers=receipt?.batch.lines.map(line=>line.number)??(order?.batchNumbers?.length?order.batchNumbers:order?.batch?.lines.map(line=>line.number))??(order?.bidNumber?[order.bidNumber]:summary.numbers);
@@ -42,17 +42,17 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
  const safeReason=order?chapaPaymentReasonMessage(order,am)??chapaRequestReasonMessage(order.initializationReasonCode,am):null;
  const requestReason=chapaRequestReasonMessage(payment.errorCode,am);
  const invalidOtp=otpNeeded&&payment.errorCode==='INVALID_OTP';
+ const reasonMessage=!finished?(invalidOtp?text('That code was not accepted. Check the code and try again.','ኮዱ አልተቀበለም። ኮዱን ያረጋግጡና እንደገና ይሞክሩ።'):safeReason??requestReason):null;
  const connectionDelayed=!finished&&!terminal&&!invalidOtp&&!requestReason&&bidPaymentConnectionDelayed({...payment,error:payment.error||error,now});
  const safeRetry=terminal&&bidPaymentCanRetry(order)&&payment.canStartAgain&&!busy;
- const canRetry=!!onRetry&&safeRetry;
- const canRetryOriginal=phase==='uncertain'&&!busy&&!!payment.directAttempt&&payment.directAttempt.apiVersion!=='v1'&&bidPaymentCanRetryOriginal(order);
+ const retryAction=onChangePayment??onRetry;
+ const canRetryOriginal=phase==='uncertain'&&!busy&&!!payment.directAttempt&&bidPaymentCanRetryOriginal(order);
  // A slow display clock is not a reason to ask the customer to verify. The
  // existing poller owns active checks; expose recovery only when it is paused
  // or the original request has an uncertain outcome.
  const hostedUrl=hosted&&!finished&&!terminal&&order.providerStatus!=='SUCCESS'&&order.verificationState!=='MISMATCH'&&Date.parse(order.expiresAt)>now?chapaCheckoutUrl(order.checkoutUrl):null;
  const canCheck=(hosted||phase==='uncertain'||payment.paused&&(phase==='confirming'||phase==='authorization'&&!otpNeeded))&&(!!order||payment.started&&(!payment.directAttempt||!!chapaOriginalKeyUrl(payment.directAttempt))&&!walletRetry)&&!finished&&!terminal;
- const canReconnect=!!payment.canRetryInlineConnection&&!finished&&!terminal&&!busy;
- const normalWaiting=!finished&&!terminal&&!otpNeeded&&!canCheck&&!canRetryOriginal&&!canReconnect&&!hostedUrl&&!(phase==='uncertain'&&walletRetry&&onRetryWallet)&&!!onClose;
+ const normalWaiting=!finished&&!terminal&&!otpNeeded&&!canCheck&&!canRetryOriginal&&!hostedUrl&&!(phase==='uncertain'&&walletRetry&&onRetryWallet)&&!!onClose;
  const headings:Record<BidPaymentProgressPhase,[string,string]>={
   preparing:['Sending payment request…','የክፍያ ጥያቄን በመላክ ላይ…'],
   connecting:['Sending payment request…','የክፍያ ጥያቄን በመላክ ላይ…'],
@@ -77,11 +77,6 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
   if(preparing||busy){headings[phase]=['Paying from your wallet…','ከዋሌትዎ በመክፈል ላይ…'];messages[phase]=['Accepting your selected bids.','የመረጧቸውን ጨረታዎች በመቀበል ላይ ነን።']}
   else if(walletRetry){headings[phase]=['Confirm your wallet payment','የዋሌት ክፍያዎን ያረጋግጡ'];messages[phase]=['Retry the original request to retrieve its result. This will not create a second debit.','ውጤቱን ለማግኘት የመጀመሪያውን ጥያቄ ይድገሙ። ሁለተኛ ክፍያ አይፈጥርም።']}
  }
- if(canReconnect){headings[phase]=['Payment connection interrupted','የክፍያ ግንኙነቱ ተቋርጧል'];messages[phase]=['The secure payment connection did not load. Retry the connection to continue this same request.','የተጠበቀው የክፍያ ግንኙነት አልተጫነም። ያንኑ ጥያቄ ለመቀጠል ግንኙነቱን ይድገሙ።']}
- if(v1&&!finished&&!terminal&&!canReconnect&&phase!=='uncertain'&&order.providerStatus!=='SUCCESS'){
-  headings[phase]=['Processing payment…','ክፍያው በመካሄድ ላይ ነው…'];
-  messages[phase]=hosted?['Complete payment on the secure payment page. Your status updates automatically.','ክፍያውን በተጠበቀው የክፍያ ገጽ ያጠናቅቁ። ውጤቱ በራሱ ይዘምናል።']:['Check your phone for a payment request and follow your provider’s instructions.','በስልክዎ የክፍያ ጥያቄ ካለ ያረጋግጡና የአቅራቢዎን መመሪያ ይከተሉ።'];
- }
  if(currentInline&&hostedUrl&&!finished&&!terminal){headings[phase]=['Complete your payment','ክፍያዎን ያጠናቅቁ'];messages[phase]=['Complete payment on the secure payment page. Your status updates automatically.','ክፍያውን በተጠበቀው የክፍያ ገጽ ያጠናቅቁ። ውጤቱ በራሱ ይዘምናል።']}
  useEffect(()=>{setOtp('')},[order?.id]);
  useEffect(()=>{
@@ -90,24 +85,29 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
   if(phase==='success'||phase==='preserved')payment.markPresented('confirmed');
  },[phase,payment.markPresented]);
 
+ if((order?.unsupportedLegacy||order?.apiVersion==='legacy'||payment.errorCode==='LEGACY_PAYMENT_UNSUPPORTED')&&!finished)return <section className={styles.progress} data-payment-progress="legacy-read-only" role="status">
+  <div className={styles.stateIcon} data-tone="attention"><TriangleAlert size={25} aria-hidden="true"/></div>
+  <h3>{text('Historical payment','የቆየ ክፍያ')}</h3>
+  <p>{text('This payment is read-only. Its recorded status is available in Transactions. Contact support if it still needs review.','ይህ ክፍያ ለማየት ብቻ ነው። የተመዘገበውን ሁኔታ በግብይቶች ይመልከቱ። ማረጋገጥ ካስፈለገው እርዳታ ይጠይቁ።')}</p>
+  <div className={styles.actions}><Link className={styles.primary} href="/payments" onClick={onClose}>{text('Transactions','ግብይቶች')}</Link>{onClose&&<button type="button" className={styles.outline} onClick={onClose}>{text('Close','ዝጋ')}</button>}</div>
+ </section>;
+
  // Keep historical hosted recovery on its established shared path.
- if(order&&!v1&&!currentInline&&order.chargeType!=='DIRECT')return <ChapaPaymentStatus payment={payment} onNavigate={onClose} onStartAgain={onRetry} readOnly={!bidPaymentCanRetry(order)}/>;
+ if(order&&!currentInline&&order.chargeType!=='DIRECT')return <ChapaPaymentStatus payment={payment} onNavigate={onClose} onStartAgain={onRetry} readOnly={!bidPaymentCanRetry(order)}/>;
 
  const renderActions=(actions:React.ReactNode)=>footerPortal?<AccountSheetFooter>{actions}</AccountSheetFooter>:actions;
  return <>
   <section className={styles.progress} data-payment-progress={phase} data-bid-payment-progress={!deposit?phase:undefined} data-wallet-payment-progress={deposit?phase:undefined} data-direct-approval={phase==='authorization'?otpNeeded?'otp':'phone':phase==='connecting'?'connecting':phase==='confirming'?'confirming':undefined} data-payment-state={terminal?'failed':phase==='success'?'confirmed':phase==='uncertain'?'pending':phase} aria-labelledby={`${id}-heading`}>
    <div className={styles.status} data-tone={terminal?'error':phase==='uncertain'?'attention':finished?'success':'pending'}>
     <div className={styles.stateIcon} aria-hidden="true">{finished?<Check size={27}/>:terminal||order?.verificationState==='MISMATCH'?<TriangleAlert size={26}/>:otpNeeded?<Smartphone size={27}/>:<LoaderCircle className={styles.spin} size={27} data-bid-submitting={phase==='preparing'||undefined}/>}</div>
-    <div role="status" aria-live="polite" aria-atomic="true"><h3 id={`${id}-heading`}>{text(...headings[phase])}</h3><p>{text(...messages[phase])}</p></div>
+    <div role={reasonMessage?'alert':'status'} aria-live={reasonMessage?'assertive':'polite'} aria-atomic="true"><h3 id={`${id}-heading`}>{text(...headings[phase])}</h3><p className={reasonMessage?styles.reason:undefined} data-payment-reason={reasonMessage?true:undefined}>{reasonMessage??text(...messages[phase])}</p></div>
    </div>
    {!finished&&!terminal&&order?.verificationState!=='MISMATCH'&&<div className={styles.activity} aria-hidden="true"><span/></div>}
-   {(safeReason||requestReason||invalidOtp)&&!finished&&<p className={styles.reason} role="alert" data-payment-reason>{invalidOtp?text('That code was not accepted. Check the code and try again.','ኮዱ አልተቀበለም። ኮዱን ያረጋግጡና እንደገና ይሞክሩ።'):safeReason??requestReason}</p>}
    {connectionDelayed&&<p className={styles.connection} role="status" data-payment-connection>{text('Confirmation is taking longer. We’re still checking.','ማረጋገጫው እየዘገየ ነው። ማረጋገጡን እንቀጥላለን።')}</p>}
    <dl className={styles.summary}>
-    {deposit?<div><dt>{text('For','ለ')}</dt><dd>{text('Wallet top-up','የዋሌት ገቢ')}</dd></div>:<><div><dt>{text('Auction','ጨረታ')}</dt><dd className={styles.auction}>{title}</dd></div><div><dt>{text(numbers.length===1?'Bid amount':'Bids',numbers.length===1?'የጨረታ መጠን':'ጨረታዎች')}</dt><dd>{numbers.length===1?numbers[0]:numbers.length?text(`${numbers.length} selected`,`${numbers.length} ተመርጠዋል`):'—'}</dd></div></>}
+    {deposit?<div><dt>{text('For','ለ')}</dt><dd>{text('Wallet top-up','የዋሌት ገቢ')}</dd></div>:<><div><dt>{text('Auction','ጨረታ')}</dt><dd className={styles.auction}>{title}</dd></div><div><dt>{text(numbers.length===1?'Your bid amount':'Bid count',numbers.length===1?'የጨረታ መጠንዎ':'የጨረታ ብዛት')}</dt><dd>{numbers.length===1?numbers[0]:numbers.length?text(`${numbers.length} selected`,`${numbers.length} ተመርጠዋል`):'—'}</dd></div></>}
     <div className={styles.total}><dt>{text(finished?'Paid':'Total payable',finished?'የተከፈለ':'ጠቅላላ ክፍያ')}</dt><dd>{total===null?'—':formatEtb(total)}</dd></div>
-    <div><dt>{text('Payment','ክፍያ')}</dt><dd><span className={styles.provider}>{provider&&providerImages[provider]&&<img src={providerImages[provider]} width={24} height={22} alt=""/>}{providerName}</span>{phone&&<span className={styles.phone}>{phone}</span>}</dd></div>
-    {internalWallet&&<div><dt>{text('Gateway','የክፍያ መተላለፊያ')}</dt><dd>{text('Internal wallet','የውስጥ ዋሌት')}</dd></div>}
+    <div><dt>{text('Payment method','የክፍያ መንገድ')}</dt><dd><span className={styles.provider}>{provider&&providerImages[provider]&&<img src={providerImages[provider]} width={24} height={22} alt=""/>}{providerName}</span>{phone&&<span className={styles.phone}>{phone}</span>}</dd></div>
    </dl>
    {otpNeeded&&<form className={styles.otp} id={`${id}-otp-form`} onSubmit={event=>{event.preventDefault();if(busy||!/^\d{4,10}$/.test(otp))return;const code=otp;setOtp('');void payment.authorize(code)}}>
     <label htmlFor={`${id}-otp`}>{text('One-time code','የአንድ ጊዜ ኮድ')}</label>
@@ -116,21 +116,14 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
    <p className={styles.security}><ShieldCheck size={14}/>{text('Secure payment · Lowwin','የተጠበቀ ክፍያ · Lowwin')}{order?.mode==='test'&&<span>{text('Test','ሙከራ')}</span>}</p>
   </section>
   {!normalWaiting&&renderActions(<div className={styles.actions}>
-   {canReconnect&&<button type="button" className={styles.primary} onClick={payment.retryInlineConnection}>{text('Retry connection','ግንኙነቱን ይድገሙ')}</button>}
    {finished&&(onClose?<button type="button" className={styles.primary} onClick={onClose}>{text('Done','ተጠናቋል')}</button>:<Link className={styles.primary} href={deposit?'/profile#wallet':'/my-bids'}>{text('Done','ተጠናቋል')}</Link>)}
-   {terminal&&(onRetry||onChangePayment)&&<div className={styles.retryActions}>
-    {onChangePayment&&<button type="button" className={styles.outline} disabled={!safeRetry} onClick={onChangePayment}>{text('Change payment','ክፍያ ይቀይሩ')}</button>}
-    {onRetry&&<button type="button" className={styles.primary} disabled={!canRetry} onClick={onRetry}>{text('Try again','እንደገና ይሞክሩ')}</button>}
-   </div>}
-   {hostedUrl&&<button type="button" className={styles.primary} onClick={()=>{const navigation=prepareChapaNavigation();try{navigation.open(hostedUrl)}finally{navigation.cancel()}}}>{text('Open payment page','የክፍያ ገጹን ይክፈቱ')}<ArrowUpRight size={16} aria-hidden="true"/></button>}
+   {terminal&&retryAction&&<button type="button" className={styles.primary} disabled={!safeRetry} onClick={retryAction}>{text('Try again','እንደገና ይሞክሩ')}</button>}
+   {hostedUrl&&phase!=='uncertain'&&<button type="button" className={styles.primary} onClick={()=>{const navigation=prepareChapaNavigation();try{navigation.open(hostedUrl)}finally{navigation.cancel()}}}>{text('Open payment page','የክፍያ ገጹን ይክፈቱ')}<ArrowUpRight size={16} aria-hidden="true"/></button>}
    {otpNeeded&&<button type="submit" form={`${id}-otp-form`} className={styles.primary} disabled={busy||!/^\d{4,10}$/.test(otp)}>{payment.busy&&<LoaderCircle className={styles.spin} size={17} aria-hidden="true"/>}{text('Confirm code','ኮዱን ያረጋግጡ')}</button>}
    {phase==='uncertain'&&walletRetry&&onRetryWallet&&<button type="button" className={styles.primary} disabled={busy} onClick={onRetryWallet}>{busy&&<LoaderCircle className={styles.spin} size={17} aria-hidden="true"/>}{text('Retry original payment','የመጀመሪያውን ክፍያ ይድገሙ')}</button>}
    {canRetryOriginal&&<button type="button" className={styles.primary} onClick={onRetryOriginal??(()=>void payment.createDirect(payment.directAttempt!))}>{text('Retry original request','የመጀመሪያውን ጥያቄ ይድገሙ')}</button>}
-   {canCheck&&!canRetryOriginal&&<button type="button" className={hostedUrl?styles.outline:styles.primary} disabled={busy} onClick={()=>void payment.check()}>{busy&&<LoaderCircle className={styles.spin} size={17} aria-hidden="true"/>}{text(busy?'Checking payment':hosted?'Check payment status':'Check payment',busy?'ክፍያውን በማረጋገጥ ላይ':hosted?'የክፍያውን ሁኔታ ያረጋግጡ':'ክፍያውን ያረጋግጡ')}</button>}
-   <div className={styles.secondaryActions}>
-    {canRetryOriginal&&canCheck&&order?<button type="button" disabled={busy} onClick={()=>void payment.check()}>{text('Check payment','ክፍያውን ያረጋግጡ')}</button>:phase==='uncertain'&&<Link href="/payments" prefetch={false} onClick={onClose}>{text('Transactions','ግብይቶች')}</Link>}
-    {!normalWaiting&&!finished&&(onClose?<button type="button" onClick={onClose}>{text('Close','ዝጋ')}</button>:<Link href={deposit?'/profile#wallet':'/my-bids'}>{text('Close','ዝጋ')}</Link>)}
-   </div>
+   {canCheck&&!canRetryOriginal&&<button type="button" className={hostedUrl&&phase!=='uncertain'?styles.outline:styles.primary} disabled={busy} onClick={()=>void payment.check()}>{busy&&<LoaderCircle className={styles.spin} size={17} aria-hidden="true"/>}{text(busy?'Checking payment':hosted?'Check payment status':'Check payment',busy?'ክፍያውን በማረጋገጥ ላይ':hosted?'የክፍያውን ሁኔታ ያረጋግጡ':'ክፍያውን ያረጋግጡ')}</button>}
+   {!normalWaiting&&!finished&&(onClose?<button type="button" className={styles.outline} onClick={onClose}>{text('Close','ዝጋ')}</button>:<Link className={styles.outline} href={deposit?'/profile#wallet':'/my-bids'}>{text('Close','ዝጋ')}</Link>)}
   </div>)}
  </>;
 }

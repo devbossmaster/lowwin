@@ -7,7 +7,7 @@ type ProgressState={order:ChapaCheckoutView|null;busy:boolean;restoring:boolean;
 /** A retry can return to entry only after an owned, terminal server outcome.
  * Display deadlines, transport errors and provider success never qualify. */
 export function bidPaymentCanRetry(order:ChapaCheckoutView|null){
- if(!order||order.fundsPreserved||chapaConfirmed(order)||order.providerStatus==='SUCCESS'||order.verificationState==='MISMATCH')return false;
+ if(!order||order.unsupportedLegacy||order.apiVersion==='legacy'||order.fundsPreserved||chapaConfirmed(order)||order.providerStatus==='SUCCESS'||order.verificationState==='MISMATCH')return false;
  if(order.reason==='INITIALIZATION_REJECTED'&&chapaDirectRequestRejected(order))return true;
  return ['FAILED','CANCELLED','INCOMPLETE','EXPIRED','BLOCKED','FAILED_OR_CANCELLED'].includes(order.status)&&chapaVerifiedTerminal(order);
 }
@@ -33,6 +33,7 @@ export function bidPaymentProgressPhase(state:ProgressState):BidPaymentProgressP
  if(state.hasReceipt)return 'success';
  if(order?.fundsPreserved)return 'preserved';
  if(order&&chapaConfirmed(order))return 'success';
+ if(order?.unsupportedLegacy||order?.apiVersion==='legacy'||errorCode==='LEGACY_PAYMENT_UNSUPPORTED')return 'uncertain';
  if(bidPaymentCanRetry(order))return 'terminal';
  if(state.preparing&&!state.started&&!order)return 'preparing';
  if(state.walletRetry)return 'uncertain';
@@ -42,9 +43,6 @@ export function bidPaymentProgressPhase(state:ProgressState):BidPaymentProgressP
  if(order.providerStatus==='SUCCESS')return 'confirming';
  if(order.status==='BID_ACCEPTED'||order.status==='EXPIRED')return 'uncertain';
  // Inline callbacks (including failure/network callbacks) are only hints.
- // An owned v1 attempt stays processing until its server verifier establishes
- // a terminal outcome. Its SDK has no supported in-app OTP authorization API.
- if(order.apiVersion==='v1'&&['SUBMITTING','PENDING','AUTH_NEEDED','VERIFYING'].includes(order.status))return 'confirming';
  if(state.busy&&!order.authorizationReference&&['SUBMITTING','PENDING'].includes(order.status))return 'connecting';
  if(chapaAwaitingAuthorization(order))return 'authorization';
  // An owned pending provider payment stays processing through read failures,

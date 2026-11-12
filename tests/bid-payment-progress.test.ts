@@ -83,12 +83,12 @@ describe('bid-only progress follows the owned payment outcome',()=>{
    expect(bidPaymentCanRetry(snapshot.order)).toBe(false);
   }
  });
- it.each(['INLINE','HOSTED'] as const)('keeps owned v1 %s processing through SDK/network errors and expiry without authorizing a second initialization',chargeType=>{
-  const order={...pending,apiVersion:'v1' as const,chargeType,providerStatus:null,verificationState:'UNAVAILABLE'};
-  expect(bidPaymentProgressPhase({...state,order,error:'SDK network error',paused:true,now:created+86400001})).toBe('confirming');
+ it.each(['INLINE','HOSTED'] as const)('keeps retired %s payment history read-only without authorization or a second initialization',chargeType=>{
+  const order={...pending,apiVersion:'legacy' as const,unsupportedLegacy:true,chargeType,providerStatus:null,verificationState:'UNAVAILABLE'};
+  expect(bidPaymentProgressPhase({...state,order,error:'Historical payment',paused:true,now:created+86400001})).toBe('uncertain');
   expect(bidPaymentCanRetry(order)).toBe(false);expect(bidPaymentCanRetryOriginal(order)).toBe(false);
-  expect(bidPaymentProgressPhase({...state,order:{...order,status:'AUTH_NEEDED',authType:'OTP'}})).toBe('confirming');
-  expect(bidPaymentProgressPhase({...state,order:{...order,status:'FAILED',providerStatus:'FAILED',verificationState:'VERIFIED'}})).toBe('terminal');
+  expect(bidPaymentProgressPhase({...state,order:{...order,status:'AUTH_NEEDED',authType:'OTP'}})).toBe('uncertain');
+  expect(bidPaymentProgressPhase({...state,order:{...order,status:'FAILED',providerStatus:'FAILED',verificationState:'VERIFIED'}})).toBe('uncertain');
   expect(bidPaymentProgressPhase({...state,order:{...order,verificationState:'MISMATCH'}})).toBe('uncertain');
  });
 });

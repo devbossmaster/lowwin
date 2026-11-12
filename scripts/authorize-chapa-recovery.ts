@@ -18,6 +18,7 @@ async function main(){
  try{
   const order=await db.chapaCheckout.findUniqueOrThrow({where:{id}});
   const validate=(row:ChapaCheckout)=>{
+   if(row.flowVersion===3||!!row.initialization&&typeof row.initialization==='object'&&!Array.isArray(row.initialization)&&row.initialization.apiVersion==='v1')throw Error('Historical payment is read-only. Provider recovery is unavailable for this retired protocol.');
    if(row.id!==id||row.mode!==health.mode||row.merchantReference!==merchant||row.amountCents.toString()!==amount||row.currency!=='ETB')throw Error('Frozen checkout identity, mode or money does not match the explicit review.');
    if(row.credentialFingerprint===health.credentialFingerprint)throw Error('This checkout already has the current credential binding; no rotation approval is needed.');
    if(row.creditJournalId)throw Error('Payment is already credited; no recovery approval is needed.');
