@@ -37,3 +37,37 @@
 .sheet[data-presentation=centered] .footer{padding:10px 18px 16px}
 @keyframes centered-arrive{from{opacity:.6}to{opacity:1}}
 @media(prefers-reduced-motion:reduce){.sheet[data-presentation=centered][open]{animation:none}}
+
+/* Reference bid checkout: one compact sheet; other account/payment sheets keep
+   their existing framing. Native dialog focus and keyboard sizing are shared. */
+.sheet[data-layout=bid-reference]{width:min(calc(100% - 28px),448px);max-height:calc(var(--sheet-viewport-height,100dvh) - max(20px,env(safe-area-inset-top,0px),var(--tg-safe-area-inset-top,0px)));border-radius:28px 28px 0 0;background:#fdfcf9}
+.sheet[data-layout=bid-reference]::backdrop{background:#25241f99;backdrop-filter:blur(5px)}
+.sheet[data-layout=bid-reference] .handle{display:none}
+.sheet[data-layout=bid-reference] .header{min-height:54px;padding:6px 10px 0 16px;gap:8px}
+.sheet[data-layout=bid-reference] .header h2{display:flex;align-items:center;font-size:11px;font-weight:600;line-height:1.3;letter-spacing:0}
+.sheet[data-layout=bid-reference] .header h2>span:not(:global(.sr-only)){padding:5px 12px;background:#ddb348;color:#211b0b;font-size:10px;font-weight:600;text-transform:uppercase}
+.sheet[data-layout=bid-reference] .headerActions{gap:0}
+.sheet[data-layout=bid-reference] .header button{position:relative;isolation:isolate;width:44px;height:44px;padding:0;background:transparent;color:#6d6b64}
+.sheet[data-layout=bid-reference] .header button::before{position:absolute;z-index:-1;inset:6px;border-radius:50%;background:#eeece7;content:''}
+.sheet[data-layout=bid-reference] .header button svg{width:16px;height:16px}
+.sheet[data-layout=bid-reference] .body{padding:0 16px 4px;scrollbar-width:thin;scrollbar-color:#ccc7ba transparent}
+.sheet[data-layout=bid-reference] .footer{padding:8px 16px max(12px,calc(max(env(safe-area-inset-bottom,0px),var(--tg-safe-area-inset-bottom,0px)) + var(--tg-content-safe-area-inset-bottom,0px)));border:0;background:#fdfcf9}
+.sheet[data-layout=bid-reference][data-keyboard-open=true]{max-height:calc(var(--sheet-viewport-height,100dvh) - 12px)}
+@media(max-width:340px){.sheet[data-layout=bid-reference]{width:calc(100% - 16px)}.sheet[data-layout=bid-reference] .body{padding-inline:12px}.sheet[data-layout=bid-reference] .header{padding-inline:12px 6px}.sheet[data-layout=bid-reference] .footer{padding-inline:12px}}
+@media(prefers-reduced-motion:reduce){.sheet[data-layout=bid-reference]::backdrop{backdrop-filter:none}}
+.sheet[data-layout=topup-reference]{width:min(calc(100% - 28px),448px);max-height:calc(var(--sheet-viewport-height,100dvh) - max(20px,env(safe-area-inset-top,0px),var(--tg-safe-area-inset-top,0px)));border-radius:28px 28px 0 0;background:#fdfcf9}
+.sheet[data-layout=topup-reference]::backdrop{background:#25241f99;backdrop-filter:blur(5px)}
+.sheet[data-layout=topup-reference] .handle{display:none}
+.sheet[data-layout=topup-reference] .header{position:relative;min-height:60px;padding:8px 52px 6px;box-sizing:border-box;justify-content:center}
+.sheet[data-layout=topup-reference] .header h2{flex:1;text-align:center;font-size:18px;font-weight:700;line-height:1.4;letter-spacing:-.02em}
+.sheet[data-layout=topup-reference] .header h2>span{display:flex;justify-content:center;align-items:center;gap:7px}
+.sheet[data-layout=topup-reference] .header h2 svg{position:absolute;left:18px;box-sizing:content-box;width:16px;height:16px;padding:8px;border-radius:50%;background:#faf4e5;color:#987522}
+.sheet[data-layout=topup-reference] .headerActions{position:absolute;right:10px;top:8px}
+.sheet[data-layout=topup-reference] .header button{position:relative;isolation:isolate;width:44px;height:44px;padding:0;background:transparent;color:#6d6b64}
+.sheet[data-layout=topup-reference] .header button::before{position:absolute;z-index:-1;inset:6px;border-radius:50%;background:#eeece7;content:''}
+.sheet[data-layout=topup-reference] .header button svg{width:16px;height:16px}
+.sheet[data-layout=topup-reference] .body{padding:0 18px 4px;scrollbar-width:thin;scrollbar-color:#ccc7ba transparent}
+.sheet[data-layout=topup-reference] .footer{padding:10px 18px max(12px,calc(max(env(safe-area-inset-bottom,0px),var(--tg-safe-area-inset-bottom,0px)) + var(--tg-content-safe-area-inset-bottom,0px)));border:0;background:#fdfcf9}
+.sheet[data-layout=topup-reference][data-keyboard-open=true]{max-height:calc(var(--sheet-viewport-height,100dvh) - 12px)}
+@media(max-width:340px){.sheet[data-layout=topup-reference]{width:calc(100% - 16px)}.sheet[data-layout=topup-reference] .body,.sheet[data-layout=topup-reference] .footer{padding-inline:12px}.sheet[data-layout=topup-reference] .header h2{font-size:17px}}
+@media(prefers-reduced-motion:reduce){.sheet[data-layout=topup-reference]::backdrop{backdrop-filter:none}}
