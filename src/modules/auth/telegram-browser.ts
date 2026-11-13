@@ -9,7 +9,7 @@ import {miniReturnPath} from '@/lib/mini-return';
 import {attributeNewReferralInTransaction} from '../referrals/service';
 import {contactBotId,encryptPhone,phoneHash} from './own-contact';
 import {createAuth} from './server';
-import {browserLoginBinding,browserLoginConfig,browserLoginCookie,browserLoginCookieValue,browserLoginCookieName,browserRateIdentity,exchangeTelegramBrowserCode,newBrowserLoginChallenge,TELEGRAM_BROWSER_TTL_SECONDS,TELEGRAM_OIDC_ISSUER,TelegramBrowserError,telegramBrowserSettings,validBrowserChallenge,type TelegramBrowserChallenge,type TelegramBrowserClaims,type TelegramBrowserSettings} from './telegram-browser-protocol';
+import {browserLoginBinding,browserLoginConfig,browserLoginCookie,browserLoginCookieValue,browserLoginCookieName,browserRateIdentity,exchangeTelegramBrowserCode,newBrowserLoginChallenge,TELEGRAM_BROWSER_TTL_SECONDS,TELEGRAM_OIDC_ISSUER,TelegramBrowserError,telegramBrowserSettings,validBrowserChallenge,validTelegramBrowserRequest,type TelegramBrowserChallenge,type TelegramBrowserClaims,type TelegramBrowserSettings} from './telegram-browser-protocol';
 
 const responseHeaders={'Cache-Control':'private, no-store, max-age=0','Vary':'Cookie','X-Robots-Tag':'noindex','Referrer-Policy':'no-referrer'};
 const challengePrefix='telegram-browser:';
@@ -19,7 +19,7 @@ export async function browserLoginConfiguration(){return Response.json(browserLo
 
 export async function startTelegramBrowserLogin(request:Request,client:PrismaClient=db){
  const settings=telegramBrowserSettings();if(!settings)return Response.json({error:'Telegram browser login is not configured.'},{status:503,headers:responseHeaders});
- const url=new URL(request.url);if(url.origin!==settings.origin||url.searchParams.getAll('next').length>1||url.searchParams.getAll('lang').length>1)return Response.json({error:'Invalid login request.'},{status:400,headers:responseHeaders});
+ const url=new URL(request.url);if(!validTelegramBrowserRequest(request,settings,'start')||url.searchParams.getAll('next').length>1||url.searchParams.getAll('lang').length>1)return Response.json({error:'Invalid login request.'},{status:400,headers:responseHeaders});
  try{
   // A forwarded address is used only as an abuse limit, never authentication.
   // The deployment proxy must overwrite forwarding headers at the edge.
@@ -87,7 +87,7 @@ export async function finishTelegramBrowserLogin(request:Request,client:PrismaCl
  const settings=telegramBrowserSettings();if(!settings)return Response.json({error:'Telegram browser login is not configured.'},{status:503,headers:responseHeaders});
  let challenge:TelegramBrowserChallenge|undefined;
  try{
-  const url=new URL(request.url);if(url.origin!==settings.origin||url.searchParams.getAll('state').length!==1||url.searchParams.getAll('code').length>1||url.searchParams.getAll('error').length>1)throw new TelegramBrowserError('invalid');
+  const url=new URL(request.url);if(!validTelegramBrowserRequest(request,settings,'callback')||url.searchParams.getAll('state').length!==1||url.searchParams.getAll('code').length>1||url.searchParams.getAll('error').length>1)throw new TelegramBrowserError('invalid');
   const state=url.searchParams.get('state');if(!state||!/^[A-Za-z0-9_-]{43}$/.test(state))throw new TelegramBrowserError('invalid');
   challenge=await consumeChallenge(client,request,settings,state);
   if(url.searchParams.has('error'))throw new TelegramBrowserError(url.searchParams.get('error')==='access_denied'?'cancelled':'invalid');

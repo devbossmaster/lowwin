@@ -20,6 +20,28 @@ export function telegramBrowserSettings(raw:Record<string,string|undefined>=proc
  }catch{return null}
 }
 export function browserLoginConfig(raw:Record<string,string|undefined>=process.env){const configured=!!telegramBrowserSettings({...raw,TELEGRAM_LOGIN_ENABLED:'true'});return {enabled:raw.TELEGRAM_LOGIN_ENABLED==='true'&&configured,configured}}
+
+/** Next's self-hosted request URL may name its internal bind address behind TLS
+ * termination. The configured origin still owns every redirect and cookie.
+ * Require the actual public Host on that path; forwarded headers only veto
+ * conflicts and cannot independently establish a trusted host or identity. */
+export function validTelegramBrowserRequest(request:Request,settings:Pick<TelegramBrowserSettings,'origin'>,phase:'start'|'callback'){
+ try{
+  const canonical=new URL(settings.origin),transport=new URL(request.url);
+  const matchesHost=(value:string)=>{
+   if(!value||/[,\s/@?#\\\u0000-\u001f\u007f]/.test(value))return false;
+   try{return new URL(`${canonical.protocol}//${value}`).host===canonical.host}catch{return false}
+  };
+  const host=request.headers.get('host'),forwardedHost=request.headers.get('x-forwarded-host'),forwardedProtocol=request.headers.get('x-forwarded-proto');
+  if(host!==null&&!matchesHost(host)||forwardedHost!==null&&!matchesHost(forwardedHost))return false;
+  if(forwardedProtocol!==null&&forwardedProtocol!==canonical.protocol.slice(0,-1))return false;
+  // An OAuth callback is naturally cross-site. Its single-use state, nonce,
+  // PKCE and browser-bound cookie provide the independent callback checks.
+  const origin=request.headers.get('origin');
+  if(phase==='start'&&origin!==null&&origin!==canonical.origin)return false;
+  return transport.origin===canonical.origin||host!==null&&matchesHost(host);
+ }catch{return false}
+}
 export function browserLoginCookieName(settings:Pick<TelegramBrowserSettings,'secure'>){return `${settings.secure?'__Host-':''}lowwin.telegram-login`}
 export function browserLoginCookie(settings:Pick<TelegramBrowserSettings,'secure'>,value:string,maxAge=TELEGRAM_BROWSER_TTL_SECONDS){return `${browserLoginCookieName(settings)}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${settings.secure?'; Secure':''}`}
 export function browserLoginCookieValue(headers:Headers,settings:Pick<TelegramBrowserSettings,'secure'>){const name=browserLoginCookieName(settings);const values=(headers.get('cookie')??'').split(';').map(v=>v.trim()).filter(v=>v.startsWith(name+'='));if(values.length!==1)return null;try{return decodeURIComponent(values[0].slice(name.length+1))}catch{return null}}

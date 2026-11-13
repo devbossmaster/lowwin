@@ -35,6 +35,14 @@ These are separate from the bot token and Chapa credentials. Never put the secre
 
 Actual Telegram approval requires the registered origin/callback and provider credentials. An unconfigured login displays a clear unavailable state and keeps public browsing accessible; it cannot manufacture a session.
 
+### Coolify / reverse-proxy routing
+
+Keep `BETTER_AUTH_URL=https://lowwin.shop` and preserve the public `Host: lowwin.shop` at the proxy. When supplied, `X-Forwarded-Host` must match that authority and `X-Forwarded-Proto` must be the single value `https`. Forwarded headers must be overwritten by the trusted edge.
+
+Next.js can reconstruct a Route Handler URL using its internal bind hostname/port even when the browser requested the public domain. Login start and callback therefore validate canonical public Host routing independently of that internal transport URL. Forwarded Host alone cannot authorize a mismatch; conflicting/malformed headers and duplicate parameters still fail closed. Redirects, state and cookies always use the configured canonical origin, with browser binding, PKCE, nonce and single-use callback checks unchanged.
+
+The November 14 repair for `Invalid login request.` passed 31 real-handler regressions with stubbed persistence and no provider calls, plus the existing 41 protocol/client tests. It requires a WEB redeploy; it adds no migration or credential. Production readiness still depends on the redacted configuration/schema check and an actual browser approval.
+
 ## Release and validation
 
 The additive migration `202611130002_telegram_browser_login` records session and contact-proof provenance. It retains the existing Mini App defaults and does not copy balances or create another customer account. Apply pending migrations with the authorized schema-owner connection before running the new WEB/worker revision:
