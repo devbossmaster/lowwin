@@ -1,4 +1,4 @@
-.title{display:flex;align-items:center;gap:10px;min-width:0}.title>img{flex:none;object-fit:contain}.title>span{min-width:0;text-wrap:balance}
+.title{display:flex;align-items:center;gap:10px;min-width:0}.title>img{flex:none;object-fit:contain;border-radius:22%}.title>span{min-width:0;text-wrap:balance}
 .introduction{display:grid;gap:14px}.artwork{position:relative;aspect-ratio:1840/800;overflow:hidden;border-radius:14px;background:#191810}.artwork img{object-fit:cover}
 .lead{margin:0;color:#36352f;font-size:14px;line-height:1.7;text-wrap:pretty}
 .example{padding-top:14px;border-top:1px solid #eeece5}.example h3{margin:0 0 12px;font-size:13px;font-weight:650;line-height:1.5;color:#34322b}

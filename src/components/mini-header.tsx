@@ -13,7 +13,7 @@ import {centsToEtb,etbToCents} from '@/lib/money';
 import type {WalletBalance} from '@/modules/wallet/balance';
 import {useMiniLocale,type MiniLanguage} from './mini-locale';
 import styles from './mini-header.module.css';
-import {LOWWIN_LOGO_SRC} from '@/lib/brand';
+import {LOWWIN_BRAND_NAME,LOWWIN_LOGO_SRC} from '@/lib/brand';
 
 export function MiniHeader(){
  const {language,setLanguage,t}=useMiniLocale();
@@ -48,7 +48,7 @@ export function MiniHeader(){
  };
  if(path!=='/')return null;
  return <header className={styles.header} role="banner" aria-label="Mini App header">
-  <Link href="/" className={styles.brand} aria-label={am?'Lowwin መነሻ':'Lowwin Home'}><img src={LOWWIN_LOGO_SRC} width={28} height={28} alt="" data-lowwin-logo/><span className={styles.brandName}>Lowwin</span></Link>
+  <Link href="/" className={styles.brand} aria-label={am?'LowWin መነሻ':'LowWin Home'}><img src={LOWWIN_LOGO_SRC} width={28} height={28} alt="" data-lowwin-logo/><span className={styles.brandName}>{LOWWIN_BRAND_NAME}</span></Link>
   {registered?<div className={styles.balancePill} data-long-balance={amount!==null&&amount.length>6||undefined}>
    <WalletOverviewTrigger ariaBusy={amount===null||undefined} className={styles.balance} ariaLabel={`${am?'ዋሌት':'Wallet'}${amount!==null?`, ${amount} ETB`:''}`} title={amount!==null?`${amount} ETB`:am?'ቀሪ ሂሳቡን ለማየት ዋሌትን ይክፈቱ':'Open Wallet to check your balance'}><Wallet size={14} strokeWidth={1.75} aria-hidden="true"/><span data-header-balance aria-busy={amount===null||undefined}><span className={styles.balanceAmount}>{amount??<span className={styles.balancePlaceholder} aria-label={am?'ሂሳብ በመጫን ላይ':'Loading balance'}/>}</span><small>ETB</small></span></WalletOverviewTrigger>
    <WalletTopUpTrigger className={styles.addFunds} ariaLabel={am?'ገንዘብ ያስገቡ':'Deposit'}><Plus size={15} strokeWidth={1.75} aria-hidden="true"/></WalletTopUpTrigger>

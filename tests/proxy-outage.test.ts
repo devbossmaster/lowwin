@@ -39,10 +39,10 @@ describe('private access during database outages',()=>{
     access.getMiniSession.mockResolvedValue(null);
     for(const path of ['/api/payments/chapa/webhook/extra','/api/payments/chapa/callback/extra','/api/payments/chapa/checkouts/not-a-uuid','/api/payments/chapa/checkouts/11111111-1111-4111-a111-111111111111/extra'])expect((await proxy(new NextRequest('http://localhost'+path))).status).toBe(401);
   });
-  it('renders a public auction deep link without waiting for a Telegram identity lookup',async()=>{
+  it('requires registered identity for a result deep link and preserves a safe return on Home',async()=>{
     access.getMiniSession.mockResolvedValue(null);
-    const response=await proxy(new NextRequest('https://localhost/auctions/123?checkout=11111111-1111-4111-a111-111111111111'));
-    expect(response.headers.get('x-middleware-next')).toBe('1');expect(access.getMiniSession).not.toHaveBeenCalled();
+    const response=await proxy(new NextRequest('https://localhost/winners/123?view=all'));
+    const location=new URL(response.headers.get('location')!);expect(response.status).toBe(307);expect(location.pathname).toBe('/');expect(location.searchParams.get('login')).toBe('1');expect(location.searchParams.get('next')).toBe('/winners/123?view=all');expect(access.getMiniSession).toHaveBeenCalledTimes(1);
   });
   it('delegates exact direct-charge routes to their session-guarded handlers without a duplicate auth read',async()=>{
     access.getMiniSession.mockRejectedValue(Error('Private authentication is unavailable'));

@@ -10,7 +10,7 @@ import {useMiniLocale} from './mini-locale';
 import {useMiniPage,useMiniQueryState} from './mini-query-state';
 import {usePrivateQuery,PrivateState} from './private-query';
 import {invalidatePrivateQueries} from './private-query-cache';
-import {prefetchPublicQuery} from './public-query-cache';
+import {prefetchPrivateQuery} from './private-query-cache';
 import {auctionDetailUrl} from './auction-query';
 import {useAuctionActivity} from './auction-activity';
 import {AuctionCountdown} from './auction-countdown';
@@ -60,6 +60,7 @@ function PlayerBids({initialView}:{initialView:MyBidListView|'all'|'history'}){
 }
 
 function BidRow({item,live,serverNow,observedAt,onChanged,onOpen,priority=false}:{item:PersonalBidListItem;priority?:boolean;live:boolean;serverNow:string;observedAt:number;onChanged:(slug:string|null,code:string)=>void;onOpen:(event:React.MouseEvent<HTMLButtonElement>)=>void}){
+ const {queryIdentity}=useTelegram();
  const {language}=useMiniLocale(),am=language==='am',element=useRef<HTMLButtonElement>(null);
  const {activity}=useAuctionActivity(live||item.outcome==='PENDING'?item.auction.code:'',{element});
  const phase=activity?.status;
@@ -67,7 +68,7 @@ function BidRow({item,live,serverNow,observedAt,onChanged,onOpen,priority=false}
  useEffect(()=>{if(live&&phase&&phase!=='live')changed()},[live,phase,changed]);
  useEffect(()=>{if(!live&&item.outcome==='PENDING'&&activity?.resultReady)changed()},[live,item.outcome,activity?.resultReady,changed]);
  const title=am?item.auction.titleAm?.trim()||item.auction.title:item.auction.title,number=formatAuctionBid(item.amount,item.auction.ruleVersion??undefined).replace(/^ETB\s*/,''),feeOnly=isSubmissionFeeOnly(item.auction.ruleVersion??undefined);
- const prefetch=()=>{if(item.auction.slug)void prefetchPublicQuery(auctionDetailUrl(item.auction.slug))};
+ const prefetch=()=>{if(queryIdentity&&item.auction.slug)void prefetchPrivateQuery(queryIdentity,auctionDetailUrl(item.auction.slug))};
  const target=activity?.endsAt??item.auction.endsAt;
  return <button ref={element} className={styles.row} type="button" data-bid-id={item.id} onPointerEnter={prefetch} onFocus={prefetch} onClick={onOpen} aria-label={title+', '+(am?(feeOnly?'የመረጡት ቁጥር':'የጨረታ መጠን'):(feeOnly?'chosen number':'bid amount'))+' '+number+', '+myBidOutcomeLabel(item.outcome,am)}>
   <span className={styles.thumbnail} data-bid-thumbnail><CatalogImage src={item.auction.image?.path} alt="" variant="thumbnail" sizes="72px" priority={priority}/><span className={styles.number} data-long={number.length>7||undefined}>{number}</span></span>

@@ -7,7 +7,7 @@ import {ArrowRight} from 'lucide-react';
 import type {CatalogQuery,listAuctions,listCategories} from '@/modules/auctions/catalog';
 import type {publicHomeContent,publicHomeExperience} from '@/modules/admin/public-content';
 import type {resolveLearnMoreMedia} from '@/lib/learn-more-media';
-import {catalogBatchUrl,winnersQueryUrl} from '@/lib/catalog-query';
+import {catalogBatchUrl,recentWinnersQueryUrl} from '@/lib/catalog-query';
 import {homeFilterQuery} from '@/lib/home-filter-query';
 import {HomeHero} from './home-hero';
 import {MiniHeader} from './mini-header';
@@ -41,7 +41,7 @@ export function HomePageContent({query:seedQuery,children}:{query:CatalogQuery;c
  useEffect(()=>{if(!initial)return;const saved=client.getQueryData<Shell>(key);if(!saved||Date.parse(saved.serverNow)<Date.parse(initial.serverNow))client.setQueryData<Shell>(key,{managed:initial.managed,experience:initial.experience,media:initial.media,serverNow:initial.serverNow})},[initial,client,key.join('|')]);
  const categories=initial?.categories??readPublicQuery<HomeData['categories']>('/api/catalog/categories')?.value;
  const auctions=(homeAuctionHref(query)===(auctionHref??homeAuctionHref(seedQuery))?initial?.auctions:undefined)??readPublicQuery<HomeData['auctions']>(catalogBatchUrl(query,1))?.value;
- const winners=initial?.winners??readPublicQuery<WinnersData>(winnersQueryUrl())?.value;
+ const winners=initial?.winners??readPublicQuery<WinnersData>(recentWinnersQueryUrl())?.value;
  const view=initial??shell.data;
  useEffect(()=>{if(initial)seedPublicQuery('/api/catalog/categories',initial.categories)},[initial]);
  const content=<HomePageSections view={view} categories={categories} auctions={auctions} winners={winners} query={query} error={!!error} onRetry={()=>router.refresh()}/>;

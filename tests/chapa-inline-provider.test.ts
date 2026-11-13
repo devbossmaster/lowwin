@@ -70,6 +70,17 @@ describe('documented v2 public Inline boundary',()=>{
  });
 });
 describe('Inline merchant capabilities cache',()=>{
+ it('recovers an empty supported-method catalog after5seconds while retaining healthy caching',async()=>{
+  vi.useFakeTimers();vi.setSystemTime(new Date('2026-11-13T00:00:00Z'));
+  const methods=vi.fn().mockResolvedValueOnce({status:'success',data:[]}).mockResolvedValue(capabilities()),catalog=createInlineMethodCatalog({methods} as unknown as ChapaTransport,environment());
+  expect(await catalog.get()).toEqual([]);expect(await catalog.get()).toEqual([]);expect(methods).toHaveBeenCalledOnce();
+  vi.setSystemTime(new Date('2026-11-13T00:00:05.001Z'));
+  expect(await catalog.get()).toMatchObject([{slug:'telebirr'}]);expect(await catalog.get()).toMatchObject([{slug:'telebirr'}]);expect(methods).toHaveBeenCalledTimes(2);
+ });
+ it('releases a failed cold flight so the next explicit read can recover without closing checkout',async()=>{
+  const methods=vi.fn().mockRejectedValueOnce(new TypeError('Interrupted capability read')).mockResolvedValue(capabilities()),catalog=createInlineMethodCatalog({methods} as unknown as ChapaTransport,environment());
+  await expect(catalog.get()).rejects.toThrow('Interrupted capability read');expect(await catalog.get()).toMatchObject([{slug:'telebirr'}]);expect(methods).toHaveBeenCalledTimes(2);
+ });
  it('filters supported merchant-enabled ETB/ET methods without requiring Direct Charge capability',async()=>{
   const raw=environment(),methods=vi.fn(async()=>capabilities()),catalog=createInlineMethodCatalog({methods} as unknown as ChapaTransport,raw);
   expect(await catalog.get()).toMatchObject([{slug:'telebirr',minimumCents:'100',maximumCents:'100000'}]);

@@ -36,6 +36,9 @@ export function usePrivateQuery<T>(url:string,{pollMs=0,enabled=true,freshnessMs
       if(!active||event.identity!==queryIdentity&&event.kind!=='session'&&event.kind!=='authorization')return;
       if(event.kind==='stored'&&event.keys&&!event.keys.includes(key))return;
       if(event.kind==='mutation'&&event.keys&&!event.keys.some(scope=>matchesPrivateResource(key,scope)))return;
+      // A successful shared reader or seed supersedes this reader's old error.
+      // Retain account/key checks above so another resource cannot clear it.
+      if(event.kind==='stored'&&event.identity===queryIdentity)setFeedback({request,error:'',fetching:false});
       setRevision(value=>value+1);
       if(event.identity===queryIdentity&&event.kind==='mutation')refresh(true);
     });

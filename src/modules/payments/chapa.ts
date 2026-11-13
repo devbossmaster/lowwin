@@ -3,6 +3,7 @@ import {randomBytes,randomUUID} from 'node:crypto';
 import {Prisma,type ChapaCheckout,type PrismaClient} from '@prisma/client';
 import {z} from 'zod';
 import {centsToEtb,etbToCents} from '@/lib/money';
+import {CHAPA_TOPUP_MIN_ETB,CHAPA_TOPUP_MAX_ETB} from '@/lib/chapa-topup-policy';
 import {publicChapaAuthorizationReason,publicChapaPaymentReason,safeChapaPaymentReason} from '@/lib/chapa-payment-reason';
 import {classifyChapaApiError} from '@/lib/chapa-api-error';
 import {assertPlayerContact,contactBotId,decryptPhone,normalizePhone} from '../auth/own-contact';
@@ -48,7 +49,7 @@ const after=(ms:number)=>new Date(Date.now()+ms);
 const STATUS_REFRESH_MS=2000;
 
 export {walletBidsEnabled} from '../wallet/policy';
-export function publicChapaAvailability(){const value=chapaInlineAvailability();return {enabled:value.enabled,configured:value.configured,mode:value.mode,apiVersion:'v2' as const,walletBidsEnabled:walletBidsEnabled(),minTopup:'1.00',maxTopup:'43200.00',reason:value.enabled?null:'Secure payments are not configured.'}}
+export function publicChapaAvailability(){const value=chapaInlineAvailability();return {enabled:value.enabled,configured:value.configured,mode:value.mode,apiVersion:'v2' as const,walletBidsEnabled:walletBidsEnabled(),minTopup:CHAPA_TOPUP_MIN_ETB,maxTopup:CHAPA_TOPUP_MAX_ETB,reason:value.enabled?null:'Secure payments are not configured.'}}
 const context={auction:{select:{publicCode:true,status:true,endsAt:true,product:{select:{title:true,titleAm:true}}}}} satisfies Prisma.ChapaCheckoutInclude;
 type OrderContext={auction?:{publicCode:number;status:string;endsAt:Date|null;product:{title:string;titleAm:string|null}|null}|null};
 export function ownChapaCheckout(order:ChapaCheckout&OrderContext){

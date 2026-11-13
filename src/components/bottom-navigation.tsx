@@ -8,7 +8,8 @@ import {useTelegram} from './telegram-provider';
 import {miniNavigationState} from './mini-navigation-state';
 
 export function BottomNavigation(){
- const path=usePathname(),{queryIdentity}=useTelegram();
+ const path=usePathname(),{queryIdentity,status,me}=useTelegram();
+ if(status!=='authenticated'||!me?.user?.id||!queryIdentity)return null;
  const active=activeCustomerNavigation(path);
  return <nav className={`${styles.bar} mini-bottom-navigation`} aria-label="Your navigation">{items.map(({href,en,am,icon:Icon})=>{
   const content=<><Icon size={20} aria-hidden="true"/><span className={styles.label}><MiniPhrase en={en} am={am}/></span></>;

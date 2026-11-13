@@ -16,7 +16,7 @@ import styles from './bid-payment-progress.module.css';
 
 export type BidPaymentSummary={auctionTitle:string;auctionTitleAm?:string|null;numbers:string[];total:string|null;provider:string|null;phone:string|null};
 export type PaymentProgressProps={purpose?:'BID'|'TOP_UP';footerPortal?:boolean;payment:ReturnType<typeof useChapaPayment>;summary:BidPaymentSummary;preparing?:boolean;walletRetry?:boolean;receipt?:BidBatchReceipt|null;error?:string;onRetry?:()=>void;onChangePayment?:()=>void;onClose?:()=>void;onRetryWallet?:()=>void;onRetryOriginal?:()=>void};
-const providerNames:Record<string,string>={telebirr:'telebirr',cbebirr:'CBE Birr',mpesa:'M-Pesa',ebirr:'eBirr','cbe-bank':'CBE Bank',wallet:'Lowwin Wallet'};
+const providerNames:Record<string,string>={telebirr:'telebirr',cbebirr:'CBE Birr',mpesa:'M-Pesa',ebirr:'eBirr','cbe-bank':'CBE Bank',wallet:'LowWin Wallet'};
 const providerImages:Record<string,string>={telebirr:'/icons/payments/telebirr.jpg',cbebirr:'/icons/payments/cbebirr.svg',mpesa:'/icons/payments/mpesa.png',ebirr:'/payments/ebirr.svg','cbe-bank':'/payments/cbe-bank.webp'};
 
 /** Shared bid/deposit presentation. Every action reuses the original payment
@@ -37,7 +37,7 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
  const total=receipt?.batch.total??order?.amount??summary.total;
  const provider=order?.paymentMethod??summary.provider;
  const internalWallet=!deposit&&(provider==='wallet'||provider==='coupon'||!!receipt||walletRetry);
- const providerName=provider==='coupon'?text('Coupon','ኩፖን'):provider==='wallet'?text('Lowwin Wallet','Lowwin ዋሌት'):provider?providerNames[provider]??text('Payment provider','የክፍያ አቅራቢ'):text('Payment provider','የክፍያ አቅራቢ');
+ const providerName=provider==='coupon'?text('Coupon','ኩፖን'):provider==='wallet'?text('LowWin Wallet','LowWin ዋሌት'):provider?providerNames[provider]??text('Payment provider','የክፍያ አቅራቢ'):text('Payment provider','የክፍያ አቅራቢ');
  const phone=maskedBidPaymentPhone(order?.payerPhoneMasked??summary.phone);
  const title=am?order?.auctionTitleAm||summary.auctionTitleAm||order?.auctionTitle||summary.auctionTitle:order?.auctionTitle||summary.auctionTitle;
  const safeReason=order?chapaPaymentReasonMessage(order,am)??chapaRequestReasonMessage(order.initializationReasonCode,am):null;
@@ -65,12 +65,12 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
   uncertain:[order?.status==='NEEDS_REVIEW'||order?.verificationState==='MISMATCH'?'Payment needs review':'Payment is processing…',order?.status==='NEEDS_REVIEW'||order?.verificationState==='MISMATCH'?'ክፍያው ማረጋገጥ ያስፈልገዋል':'ክፍያው በመካሄድ ላይ ነው…'],
  };
  const messages:Record<BidPaymentProgressPhase,[string,string]>={
-  preparing:['Waiting for Lowwin to confirm your request.','Lowwin ጥያቄዎን እስኪያረጋግጥ እየጠበቅን ነው።'],
+  preparing:['Waiting for LowWin to confirm your request.','LowWin ጥያቄዎን እስኪያረጋግጥ እየጠበቅን ነው።'],
   connecting:['Contacting your provider about this payment.','ስለዚህ ክፍያ ከክፍያ አቅራቢዎ ጋር በመገናኘት ላይ ነን።'],
   authorization:[otpNeeded?'Use the one-time code from your provider. Never enter your wallet PIN here.':'Approve the payment request on your phone.',otpNeeded?'ከክፍያ አቅራቢዎ የተላከውን ኮድ ያስገቡ። የዋሌት PIN እዚህ አያስገቡ።':'በስልክዎ የመጣውን የክፍያ ጥያቄ ያጽድቁ።'],
-  confirming:[order?.providerStatus==='SUCCESS'?(deposit?'Payment received. We are confirming your wallet credit.':'Payment received. Waiting for Lowwin to accept your bids.'):'Waiting for your provider’s confirmation. This page updates automatically.',order?.providerStatus==='SUCCESS'?(deposit?'ክፍያዎ ደርሷል። የዋሌት ገቢዎን በማረጋገጥ ላይ ነን።':'ክፍያዎ ደርሷል። Lowwin ጨረታዎችዎን እስኪቀበል እየጠበቅን ነው።'):'የክፍያ አቅራቢዎን ማረጋገጫ በመጠባበቅ ላይ ነን። ይህ ገጽ በራሱ ይዘምናል።'],
+  confirming:[order?.providerStatus==='SUCCESS'?(deposit?'Payment received. We are confirming your wallet credit.':'Payment received. Waiting for LowWin to accept your bids.'):'Waiting for your provider’s confirmation. This page updates automatically.',order?.providerStatus==='SUCCESS'?(deposit?'ክፍያዎ ደርሷል። የዋሌት ገቢዎን በማረጋገጥ ላይ ነን።':'ክፍያዎ ደርሷል። LowWin ጨረታዎችዎን እስኪቀበል እየጠበቅን ነው።'):'የክፍያ አቅራቢዎን ማረጋገጫ በመጠባበቅ ላይ ነን። ይህ ገጽ በራሱ ይዘምናል።'],
   success:[deposit?'Your available balance has been updated.':'Your bids are ready in My Bids.',deposit?'ለመጠቀም የሚችሉት ቀሪ ሂሳብ ተዘምኗል።':'ጨረታዎችዎን በእኔ ጨረታዎች ማየት ይችላሉ።'],
-  preserved:['Your bids were not accepted. The payment is available in your Lowwin wallet.','ጨረታዎችዎ አልተቀበሉም። ክፍያው በLowwin ዋሌትዎ ውስጥ ይገኛል።'],
+  preserved:['Your bids were not accepted. The payment is available in your LowWin wallet.','ጨረታዎችዎ አልተቀበሉም። ክፍያው በLowWin ዋሌትዎ ውስጥ ይገኛል።'],
   terminal:[deposit?'Try again to review your amount and payment details.':'Try again to review your bids and payment details.',deposit?'መጠኑንና የክፍያ ዝርዝሮችዎን ለማየት እንደገና ይሞክሩ።':'ጨረታዎችዎንና የክፍያ ዝርዝሮችዎን ለማየት እንደገና ይሞክሩ።'],
   uncertain:[walletRetry?'Confirm the result by retrying the original payment.':'Check this original payment before paying again.',walletRetry?'የመጀመሪያውን ክፍያ እንደገና በመሞከር ውጤቱን ያረጋግጡ።':'እንደገና ከመክፈልዎ በፊት ይህንኑ ክፍያ ያረጋግጡ።'],
  };
@@ -115,7 +115,7 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
     <label htmlFor={`${id}-otp`}>{text('One-time code','የአንድ ጊዜ ኮድ')}</label>
     <input id={`${id}-otp`} type="password" inputMode="numeric" autoComplete="one-time-code" maxLength={10} value={otp} disabled={busy} aria-invalid={invalidOtp||undefined} onChange={event=>{if(/^\d{0,10}$/.test(event.target.value))setOtp(event.target.value)}}/>
    </form>}
-   <p className={styles.security}><ShieldCheck size={14}/>{text('Secure payment · Lowwin','የተጠበቀ ክፍያ · Lowwin')}{order?.mode==='test'&&<span>{text('Test','ሙከራ')}</span>}</p>
+   <p className={styles.security}><ShieldCheck size={14}/>{text('Secure payment · LowWin','የተጠበቀ ክፍያ · LowWin')}{order?.mode==='test'&&<span>{text('Test','ሙከራ')}</span>}</p>
   </section>
   {!normalWaiting&&renderActions(<div className={styles.actions}>
    {finished&&(onClose?<button type="button" className={styles.primary} onClick={onClose}>{text('Done','ተጠናቋል')}</button>:<Link className={styles.primary} href={deposit?'/profile#wallet':'/my-bids'}>{text('Done','ተጠናቋል')}</Link>)}

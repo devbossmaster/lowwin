@@ -23,6 +23,7 @@ import {MiniCategoryName,MiniPhrase,useMiniLocale} from './mini-locale';
 import styles from './auction-detail.module.css';
 import {useAuctionActivity,useAuctionRefresh} from './auction-activity';
 import {auctionDetailUrl} from './auction-query';
+import {usePrivateQuery} from './private-query';
 import {usePublicQuery} from './public-query';
 
 export function AuctionDetail({auction:initialAuction,serverNow}:{auction:CatalogAuction;serverNow:string}){
@@ -30,14 +31,15 @@ export function AuctionDetail({auction:initialAuction,serverNow}:{auction:Catalo
  const known=detail.data??initialAuction;
  const params=useSearchParams(),candidate=params.get('chapa'),chapaId=params.getAll('chapa').length===1&&candidate&&chapaUuid.test(candidate)?candidate:undefined;
  const [bidding,setBidding]=useState(!!chapaId),[returnId,setReturnId]=useState(chapaId);
- const {queryIdentity}=useTelegram();
+ const {queryIdentity,status,me}=useTelegram();
+ const resultQuery=usePrivateQuery<CatalogAuction>('/api/results/'+encodeURIComponent(initialAuction.code),{enabled:['closed','cancelled','closing'].includes(known.status)&&status==='authenticated'&&!!me?.user?.id&&!!queryIdentity});
  const warmBid=()=>prefetchAuctionIntent(queryIdentity,initialAuction.slug);
  useEffect(()=>{if(window.location.hash==='#bid-review')setBidding(true)},[]);
  useEffect(()=>{if(chapaId){setReturnId(chapaId);setBidding(true)}},[chapaId]);
  const closeBidding=()=>{setBidding(false);setReturnId(undefined);const url=new URL(window.location.href);url.searchParams.delete('chapa');if(url.hash==='#bid-review')url.hash='';window.history.replaceState(window.history.state,'',url.pathname+url.search+url.hash)};
  const {activity,views,refreshActivity}=useAuctionActivity(initialAuction.code,{record:true});
  useAuctionRefresh(activity,initialAuction.status,Boolean(initialAuction.result));
- const auction={...known,status:activity?.status??known.status,viewCount:views??known.viewCount,bidCount:activity?.bids??known.bidCount,startsAt:activity?.startsAt??known.startsAt,endsAt:activity?.endsAt??known.endsAt};
+ const auction={...known,...(resultQuery.data?{result:resultQuery.data.result}:{}),status:activity?.status??known.status,viewCount:views??known.viewCount,bidCount:activity?.bids??known.bidCount,startsAt:activity?.startsAt??known.startsAt,endsAt:activity?.endsAt??known.endsAt};
  const {language}=useMiniLocale(),am=language==='am',live=auction.status==='live',upcoming=auction.status==='upcoming';
  const title=am?(auction.product.titleAm?.trim()||auction.product.title):auction.product.title;
  const condition=am?(auction.product.conditionAm?.trim()||auction.product.condition):auction.product.condition;

@@ -7,20 +7,22 @@ vi.mock('next/link',()=>({default:({href,children,...props}:{href:string;childre
 vi.mock('../src/components/intent-prefetch-link',()=>({IntentPrefetchLink:({href,children,scroll,...props}:{href:string;children:ReactNode;scroll?:boolean})=>createElement('a',{href,...props},children)}));
 vi.mock('../src/components/telegram-provider',()=>({useTelegram:()=>f.state}));
 import {BrowserNavigation} from '../src/components/browser-navigation';
+import {BottomNavigation} from '../src/components/bottom-navigation';
 import {MiniLocaleProvider,type MiniLanguage} from '../src/components/mini-locale';
 import {miniNavigationState} from '../src/components/mini-navigation-state';
 const render=(language:MiniLanguage='en')=>renderToStaticMarkup(createElement(MiniLocaleProvider,{initialLanguage:language,children:createElement(BrowserNavigation)}));
+const renderMobile=(language:MiniLanguage='en')=>renderToStaticMarkup(createElement(MiniLocaleProvider,{initialLanguage:language,children:createElement(BottomNavigation)}));
 beforeEach(()=>{f.path='/my-bids';f.state={status:'authenticated',queryIdentity:'account-a:session-a',me:{user:{id:'account-a'}},environment:'browser'};miniNavigationState.setIdentity(f.state.queryIdentity)});
 afterEach(()=>miniNavigationState.setIdentity(null));
 
 describe('server-confirmed customer navigation',()=>{
  it.each(['loading','guest','contact-required','error'])('hides navigation while %s even with a retained account snapshot',status=>{
   f.state.status=status;
-  const html=render();expect(html).not.toContain('<nav');expect(html).not.toContain('data-browser-navigation');expect(html).not.toMatch(/href="\/(?:my-bids|payments|profile)/);
+  for(const html of [render(),renderMobile()]){expect(html).not.toContain('<nav');expect(html).not.toContain('data-browser-navigation');expect(html).not.toMatch(/href="\/(?:my-bids|payments|profile)/)}
  });
  it.each(['me','queryIdentity'])('requires a confirmed %s before showing navigation',missing=>{
   if(missing==='me')f.state.me=null;else f.state.queryIdentity=null;
-  const html=render();expect(html).not.toContain('<nav');expect(html).not.toContain('data-browser-navigation');
+  for(const html of [render(),renderMobile()]){expect(html).not.toContain('<nav');expect(html).not.toContain('data-browser-navigation')}
  });
  it.each(['en','am'] as const)('renders accessible current-route links after confirmed registration in %s',language=>{
   const html=render(language);expect(html).toContain('data-browser-navigation');expect(html).toContain('<nav');expect(html).toContain('aria-current="page"');
@@ -37,5 +39,6 @@ describe('server-confirmed customer navigation',()=>{
  it('uses the same navigation for an owned Mini App account and browser OAuth account',()=>{
   const browser=render();f.state.environment='mini';const mini=render();
   expect(browser).toContain('href="/payments"');expect(mini).toContain('href="/payments"');
+  expect(renderMobile()).toContain('href="/payments"');
  });
 });

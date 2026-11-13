@@ -38,7 +38,7 @@
 @media(hover:hover) and (pointer:fine) and (prefers-reduced-motion:no-preference){.app-frame .auction-card:hover{transform:translateY(-1px)}}
 
 /* Shared customer finishing details; route layouts keep their own skeletons. */
-[data-lowwin-logo]{object-fit:contain}
+[data-lowwin-logo]{object-fit:contain;border-radius:22%}
 .branded-launch-loading{gap:18px;color:var(--brand-muted, #72697e)}
 .branded-launch-loading>img{width:56px;height:56px;object-fit:contain}
 .launch-progress{display:flex;align-items:center;justify-content:center;gap:10px}

@@ -8,7 +8,7 @@ import './globals.css';
 import '@/components/mini-redesign.css';
 import '@/components/lowwin-brand.css';
 import '@/components/browser-responsive.css';
-export const metadata: Metadata = { title: { default: 'Lowwin — A little different wins', template: '%s · Lowwin' }, description: 'The lowest unique ETB bid wins. Discover a different way to bid with Lowwin.',icons:{icon:LOWWIN_ICON_SRC,apple:LOWWIN_ICON_SRC} };
+export const metadata: Metadata = { title: { default: 'LowWin — A little different wins', template: '%s · LowWin' }, description: 'The lowest unique ETB bid wins. Discover a different way to bid with LowWin.',icons:{icon:LOWWIN_ICON_SRC,apple:LOWWIN_ICON_SRC} };
 export const viewport: Viewport = { width: 'device-width', initialScale: 1, viewportFit: 'cover', themeColor: '#F2F2F7' };
 export const dynamic = 'force-dynamic';
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

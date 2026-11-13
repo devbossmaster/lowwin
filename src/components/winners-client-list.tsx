@@ -4,9 +4,9 @@ import {WinnerCards} from './winner-cards';
 import {MiniPhrase} from './mini-locale';
 import {useMiniPage} from './mini-query-state';
 import {usePublicQuery} from './public-query';
-import {PrivateState} from './private-query';
+import {PrivateState,usePrivateQuery} from './private-query';
 import type {listCompletedWinners} from '@/modules/auctions/results';
-import {winnersQueryUrl} from '@/lib/catalog-query';
+import {winnersQueryUrl,recentWinnersQueryUrl} from '@/lib/catalog-query';
 import {MiniRouteSkeleton} from './mini-route-skeleton';
 import {miniQueryPolicy} from './mini-query-policy';
 import {readPublicQuery,seedPublicQuery} from './public-query-cache';
@@ -14,14 +14,16 @@ import {readPublicQuery,seedPublicQuery} from './public-query-cache';
 export type WinnersData=Awaited<ReturnType<typeof listCompletedWinners>>&{allowDemo:boolean};
 export function WinnersListLoading(){return <MiniRouteSkeleton variant="winners" compact/>}
 export function WinnersClientList({initial,carousel=false}:{initial?:WinnersData;carousel?:boolean}={}){
- const [savedPage,setPage]=useMiniPage(),page=carousel?1:savedPage,url=winnersQueryUrl(page),policy=miniQueryPolicy(url),seed=initial?.page===page?initial:undefined;
+ const [savedPage,setPage]=useMiniPage(),page=carousel?1:savedPage,url=carousel?recentWinnersQueryUrl():winnersQueryUrl(page),policy=miniQueryPolicy(url),seed=initial?.page===page?initial:undefined;
  // Published results are historical display data. Home keeps its cards visible
  // and checks quietly on that existing policy, without recurring loading feedback.
- const query=usePublicQuery<WinnersData>(url,{keepPreviousData:true,initialData:seed,pollMs:carousel?policy.staleMs:30000,freshnessMs:carousel?policy.staleMs:10000}),data=query.data,busy=query.isPlaceholderData;
+ const publicQuery=usePublicQuery<WinnersData>(recentWinnersQueryUrl(),{enabled:carousel,keepPreviousData:true,initialData:carousel?seed:undefined,pollMs:carousel?policy.staleMs:0,freshnessMs:policy.staleMs});
+ const privateQuery=usePrivateQuery<WinnersData>(winnersQueryUrl(page),{enabled:!carousel,keepPreviousData:true,initialData:!carousel?seed:undefined,pollMs:!carousel?30000:0,freshnessMs:10000});
+ const query=carousel?publicQuery:privateQuery,data=query.data,busy=query.isPlaceholderData;
  useEffect(()=>{
-  if(!seed)return;const saved=readPublicQuery<WinnersData>(url);
+  if(!carousel||!seed)return;const saved=readPublicQuery<WinnersData>(url);
   if(!saved||Date.parse(seed.serverNow)>Date.parse(saved.value.serverNow))seedPublicQuery(url,seed);
- },[seed,url]);
+ },[seed,url,carousel]);
  return <div data-winners-ready={!!data&&!busy||undefined} data-winners-refreshing={query.fetching||undefined}>
   {(data||query.error||!['loading','authenticated'].includes(query.status))&&(!carousel||!data||!!query.error)&&<PrivateState query={query}/>}
   {!data&&!query.error&&['loading','authenticated'].includes(query.status)&&<WinnersListLoading/>}

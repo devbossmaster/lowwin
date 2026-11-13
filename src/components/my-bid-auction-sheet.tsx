@@ -5,7 +5,7 @@ import type {CatalogAuction} from '@/modules/auctions/catalog';
 import type {PersonalBidListItem} from '@/modules/profile/bid-list';
 import {AccountSheet} from './account-sheet';
 import {CatalogImage} from './catalog-image';
-import {usePublicQuery} from './public-query';
+import {usePrivateQuery} from './private-query';
 import {auctionDetailUrl} from './auction-query';
 import {useMiniLocale} from './mini-locale';
 import type {BidSheetPhase} from './bid-sheet';
@@ -18,7 +18,7 @@ const ResultSheetContent=dynamic(()=>import('./result-sheet').then(module=>modul
  * selection; never seed this partial private projection as a complete auction. */
 export default function MyBidAuctionSheet({bid,live,serverNow,onClose,returnFocusRef}:{bid:PersonalBidListItem;live:boolean;serverNow:string;onClose:()=>void;returnFocusRef:RefObject<HTMLElement|null>}){
  const {language}=useMiniLocale(),am=language==='am',url=auctionDetailUrl(bid.auction.slug??bid.auction.code);
- const query=usePublicQuery<CatalogAuction>(url,{cancelOnUnmount:true});
+ const query=usePrivateQuery<CatalogAuction>(url,{cancelOnUnmount:true});
  const title=am?bid.auction.titleAm||bid.auction.title:bid.auction.title;
  const [phase,setPhase]=useState<BidSheetPhase>('entry');
  const dismiss=useRef<(()=>void)|null>(null),onDismissChange=useCallback((handler:(()=>void)|null)=>{dismiss.current=handler},[]);

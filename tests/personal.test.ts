@@ -66,7 +66,7 @@ describe.skipIf(!url)('Phase 4B public outcomes and private pages on PostgreSQL'
   });
   it('shows only allowlisted winner identity and a verified masked phone, without private proof or other bidders',async()=>{
     const route=await import('../src/app/api/results/[auctionCode]/route');
-    const response=await route.GET(request(`/api/results/${publicCode(winner)}`),{params:Promise.resolve({auctionCode:publicCode(winner)})});
+    const response=await route.GET(request(`/api/results/${publicCode(winner)}`,first.cookie),{params:Promise.resolve({auctionCode:publicCode(winner)})});
     expect(response.status).toBe(200);expect(response.headers.get('cache-control')).toContain('no-store');const body=await response.json();
     expect(Object.keys(body).sort()).toEqual(['slug','code','status','publishedAt','featured','isDemo','startsAt','endsAt','bidCount','viewCount','product','category','fulfillment','terms','result'].sort());
     expect(Object.keys(body.result).sort()).toEqual(['decision','outcome','winningPoints','explanation','isDemo','closedAt','publishedAt','source','demoLabel','winnerDisplay','winnerUsername','winnerPhoneMasked','winnerPhotoPath','winnerBannerPath','winnerBannerVersion','acceptedBidCount'].sort());
@@ -106,7 +106,7 @@ describe.skipIf(!url)('Phase 4B public outcomes and private pages on PostgreSQL'
     const firstPage=await listPublicResults(client,{q:'TEST-BID-',status:'pending'}),secondPage=await listPublicResults(client,{q:'TEST-BID-',status:'pending',page:2});
     expect(firstPage.total).toBe(8);expect(firstPage.items).toHaveLength(6);expect(secondPage.items).toHaveLength(2);expect(new Set([...firstPage.items,...secondPage.items].map(a=>a.code)).size).toBe(8);
     for(const [status,auction] of [['winner',winner],['no_winner',noWinner],['cancelled',cancelled]] as const)expect((await listPublicResults(client,{q:publicCode(auction),status})).items.map(a=>a.code)).toEqual([publicCode(auction)]);
-    const route=await import('../src/app/api/results/route');expect((await route.GET(request('/api/results?page=-1'))).status).toBe(422);
+    const route=await import('../src/app/api/results/route');expect((await route.GET(request('/api/results?page=-1',first.cookie))).status).toBe(422);
       expect((await listPublicResults(client,{q:'nothing-matches'})).total).toBe(0);
       const filtered=await listPublicResults(client,{category:'accessories',sort:'title'});
       expect(filtered.items.length).toBeGreaterThan(0);expect(filtered.items.every(a=>a.category.slug==='accessories')).toBe(true);

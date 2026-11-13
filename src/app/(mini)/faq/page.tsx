@@ -1,2 +1,3 @@
 import {redirect} from 'next/navigation';
-export default function FAQ(){redirect('/#how-lowwin-works')}
+import {requireCustomerPage} from '@/modules/auth/customer-page';
+export default async function FAQ(){await requireCustomerPage('/faq');redirect('/#how-lowwin-works')}

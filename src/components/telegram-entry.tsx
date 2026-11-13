@@ -3,6 +3,8 @@ import {lazy,Suspense,useEffect} from 'react';
 import {usePathname,useRouter} from 'next/navigation';
 import {useTelegram} from './telegram-provider';
 import {miniReturnPath} from '@/lib/mini-return';
+import {customerLoginPath} from '@/lib/customer-login-entry';
+import {isPublicMiniPage} from '@/lib/mini-public-routes';
 import {chapaReturnStartPath} from '@/lib/chapa-return-link';
 import {LaunchSplash} from './launch-splash';
 const TelegramEntryRecovery=lazy(()=>import('./telegram-entry-recovery'));
@@ -15,7 +17,10 @@ export function TelegramEntry({onComplete}:{onComplete?:()=>void}={}){
     if(pathname==='/telegram'){
       const payment=chapaReturnStartPath(new URLSearchParams(window.Telegram?.WebApp?.initData).get('start_param'));
       const destination=payment??miniReturnPath(new URL(window.location.href).searchParams.get('next'));
-      router.replace(destination+(destination.includes('#')?'':window.location.hash));return;
+      const next=destination+(destination.includes('#')?'':window.location.hash);
+      // Public product links remain browseable. Protected destinations register
+      // on Home first, preventing /telegram redirect loops.
+      router.replace(status==='authenticated'||isPublicMiniPage(new URL(next,window.location.origin).pathname)?next:customerLoginPath(next));return;
     }
     if(status!=='authenticated'||!telegramLaunch)return;
     // The mounted ChapaLaunchRouter resolves startapp once for this identity.

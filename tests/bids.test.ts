@@ -98,7 +98,7 @@ describe.skipIf(!url)('authenticated point bids on disposable PostgreSQL',()=>{
     expect(lower.hold).toEqual({previousMax:'40',newMax:'40',extraReserved:'0'});
     expect(higher.hold).toEqual({previousMax:'40',newMax:'70',extraReserved:'30'});
     expect(higher.charge).toEqual({feePoints:'3',newlyUnavailable:'33'});
-    expect(higher.wallet).toEqual({available:'921',held:'70'});
+    expect(higher.wallet).toEqual({available:'921',held:'70',cashAvailable:'921',bonusAvailable:'0',bonusExpiresAt:null});
     expect(await client.journal.count({where:{kind:'BID_FEE',operation:{userId}}})).toBe(3);
     expect(await client.journal.count({where:{kind:'HOLD_RESERVE',operation:{userId}}})).toBe(2);
     expect(await reconcile(client)).toEqual([]);
@@ -171,10 +171,10 @@ describe.skipIf(!url)('authenticated point bids on disposable PostgreSQL',()=>{
   },30000);
   it('keeps real accepted bids and user identities out of the public catalog',async()=>{
     await submitBid(client,command('137'));
-    const {GET}=await import('../src/app/api/catalog/auctions/[slug]/route');
-    const response=await GET(new Request(`http://localhost:3000/api/catalog/auctions/${auction.slug}`),{params:Promise.resolve({slug:auction.slug!})});
+    const {GET}=await import('../src/app/api/catalog/auctions/route');
+    const response=await GET(new Request(`http://localhost:3000/api/catalog/auctions?view=home&q=${encodeURIComponent(auction.code)}`));
     expect(response.status).toBe(200);
-    const body=await response.json(),json=JSON.stringify(body);
+    const body=(await response.json()).items[0],json=JSON.stringify(body);
     expect(body.result).toBeNull();
     expect(json).not.toContain(userId);expect(json).not.toContain('ownBids');expect(json).not.toContain('acceptedBidCount');expect(json).not.toContain('bidder');
     expect(await reconcile(client)).toEqual([]);

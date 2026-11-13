@@ -1,8 +1,9 @@
 'use client';
 import {miniReadsBusy,prefetchPrivateQuery,subscribePrivateQueries} from './private-query-cache';
 import {prefetchPublicQuery} from './public-query-cache';
-import {isPublicMiniRead} from '@/lib/mini-public-routes';
+import {isPublicMiniPage,isPublicMiniRead} from '@/lib/mini-public-routes';
 import {myBidListView,myBidsQueryUrl} from './my-bids-list-copy';
+import {warmTopUpConfiguration} from './top-up-prefetch';
 
 /** Shared metadata budget; no response payloads and no eager detail/participant reads. */
 export class IntentPrefetchBudget{
@@ -47,6 +48,7 @@ export function prefetchMiniIntent(identity:string|null,target:string,prefetchRo
  const connection=typeof navigator==='undefined'?null:(navigator as Navigator&{connection?:{saveData?:boolean;effectiveType?:string}}).connection;
  if(connection?.saveData||connection?.effectiveType==='2g'||connection?.effectiveType==='slow-2g')return;
  let parsed:URL;try{parsed=new URL(target,'https://lowwin.invalid')}catch{return}if(parsed.origin!=='https://lowwin.invalid')return;
+ if(!identity&&!isPublicMiniPage(parsed.pathname))return;
  target=parsed.pathname+parsed.search;
  if(!budget.allow(identity,target))return;
  prefetchRoute(target);
@@ -64,6 +66,7 @@ export function prefetchAuctionIntent(identity:string|null,slug:string,{details=
  if(identity){
   void prefetchPrivateQuery(identity,`/api/auctions/${slug}/bids`);
   if(!details)void prefetchPrivateQuery(identity,'/api/wallet');
+  if(!details)warmTopUpConfiguration(identity);
  }
- if(details)void prefetchPublicQuery(`/api/catalog/auctions/${slug}`);
+ if(details&&identity)void prefetchPrivateQuery(identity,`/api/catalog/auctions/${slug}`);
 }

@@ -10,7 +10,7 @@ export default function ErrorPage({retry,reset}:{retry?:()=>void;reset:()=>void}
  const [offline,setOffline]=useState(false),[imageFailed,setImageFailed]=useState(false);
  useEffect(()=>{const sync=()=>setOffline(navigator.onLine===false);sync();window.addEventListener('online',sync);window.addEventListener('offline',sync);return()=>{window.removeEventListener('online',sync);window.removeEventListener('offline',sync)}},[]);
  return <main id="main" className={styles.root} lang={language}><section className={styles.card} aria-labelledby="page-error-title">
-  <div className={styles.brand}>{imageFailed?<ShieldAlert size={28} aria-hidden="true"/>:<img src={LOWWIN_LOGO_SRC} alt="" width={40} height={40} onError={()=>setImageFailed(true)}/>}<strong>Lowwin</strong></div>
+  <div className={styles.brand}>{imageFailed?<ShieldAlert size={28} aria-hidden="true"/>:<img src={LOWWIN_LOGO_SRC} alt="" width={40} height={40} onError={()=>setImageFailed(true)}/>}<strong>LowWin</strong></div>
   {offline&&<WifiOff className={styles.offlineIcon} size={24} aria-hidden="true"/>}
   <h1 id="page-error-title">{offline?(am?'ግንኙነትዎ ተቋርጧል':'You’re offline'):(am?'ገጹን መጫን አልተቻለም':'This page couldn’t load')}</h1>
   <p>{offline?(am?'ከበይነመረብ ጋር ይገናኙና እንደገና ይሞክሩ።':'Reconnect to the internet, then try again.'):(am?'ገጹን ለማደስ እንደገና ይሞክሩ።':'Please try again to reload this page.')}</p>

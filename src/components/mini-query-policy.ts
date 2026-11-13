@@ -4,6 +4,7 @@ export const MINI_QUERY_POLICIES={
  catalog:{staleMs:15000,retainMs:600000,refreshOnResume:true},
  detail:{staleMs:15000,retainMs:600000,refreshOnResume:true},
  account:{staleMs:60000,retainMs:600000,refreshOnResume:false},
+ paymentConfiguration:{staleMs:60000,retainMs:300000,refreshOnResume:false},
  wallet:{staleMs:5000,retainMs:60000,refreshOnResume:true},
  transactions:{staleMs:30000,retainMs:600000,refreshOnResume:false},
  bids:{staleMs:15000,retainMs:300000,refreshOnResume:true},
@@ -11,6 +12,7 @@ export const MINI_QUERY_POLICIES={
 } as const;
 export function miniQueryPolicy(url:string){
  const path=url.split(/[?#]/,1)[0];
+ if(path==='/api/payments/chapa/inline/config')return MINI_QUERY_POLICIES.paymentConfiguration;
  if(path==='/api/transactions'||path==='/api/payments/chapa/checkouts')return MINI_QUERY_POLICIES.transactions;
  if(path==='/api/my-bids'&&['finished','history'].includes(new URL(url,'https://lowwin.invalid').searchParams.get('view')??''))return MINI_QUERY_POLICIES.historical;
  if(path.startsWith('/api/wallet')||path==='/api/me'||path.startsWith('/api/payments/'))return MINI_QUERY_POLICIES.wallet;

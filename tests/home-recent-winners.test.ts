@@ -4,6 +4,7 @@ import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {WinnersData} from '../src/components/winners-client-list';
 const f=vi.hoisted(()=>({query:{data:null as WinnersData|null,error:'',status:'authenticated',fetching:false,isPlaceholderData:false,reload:vi.fn()},options:null as {pollMs:number;freshnessMs:number;initialData?:WinnersData}|null,page:1}));
 vi.mock('../src/components/public-query',()=>({usePublicQuery:(_url:string,options:NonNullable<typeof f.options>)=>{f.options=options;return f.query}}));
+vi.mock('../src/components/private-query',async original=>({...await original<typeof import('../src/components/private-query')>(),usePrivateQuery:(_url:string,options:NonNullable<typeof f.options>&{enabled?:boolean})=>{if(options.enabled!==false)f.options=options;return f.query}}));
 vi.mock('../src/components/mini-query-state',()=>({useMiniPage:()=>[f.page,vi.fn()]}));
 vi.mock('../src/components/mini-locale',()=>({MiniPhrase:({en}:{en:string})=>createElement('span',null,en)}));
 vi.mock('../src/components/winner-cards',()=>({WinnerCards:({items}:{items:unknown[]})=>createElement('div',{'data-saved-winner-count':items.length},'Saved winner cards')}));
@@ -31,8 +32,8 @@ describe('Home recent winners retain public cards and refresh quietly',()=>{
   f.query.fetching=true;expect(render(false)).toContain('Updating');expect(f.options).toMatchObject({pollMs:30000,freshnessMs:10000});f.page=2;render(false,saved);expect(f.options?.initialData).toBeUndefined();
  });
  it('uses the existing historical freshness for Home and reuses repeated cached navigation',async()=>{
-  vi.useFakeTimers();vi.stubGlobal('window',{});render();const options=f.options!;expect(options.pollMs).toBe(miniQueryPolicy('/api/results/winners?page=1').staleMs);expect(options.freshnessMs).toBe(300000);
-  const client=getMiniQueryClient(),url='/api/results/winners?page=1',http=vi.fn(async()=>Response.json(saved));vi.stubGlobal('fetch',http);
+  vi.useFakeTimers();vi.stubGlobal('window',{});render();const options=f.options!;expect(options.pollMs).toBe(miniQueryPolicy('/api/results/recent-winners').staleMs);expect(options.freshnessMs).toBe(300000);
+  const client=getMiniQueryClient(),url='/api/results/recent-winners',http=vi.fn(async()=>Response.json(saved));vi.stubGlobal('fetch',http);
   const read=()=>client.fetchQuery({queryKey:publicQueryKey(url),queryFn:({signal})=>loadPublicJson(url,{signal}),staleTime:options.freshnessMs});
   await read();for(let visit=0;visit<9;visit++){await vi.advanceTimersByTimeAsync(30000);await read()}expect(http).toHaveBeenCalledOnce();
   await client.invalidateQueries({queryKey:publicQueryKey(url)});await read();expect(http).toHaveBeenCalledTimes(2);

@@ -56,15 +56,15 @@ describe('bounded user-intent warming',()=>{
   expect(privateIntentDestination('/my-bids?view=history&page=2')).toBe('/api/my-bids?view=finished&page=2&language=en');
   expect(privateIntentDestination('/my-bids?view=finished&page=1001')).toBe('/api/my-bids?view=finished&page=1000&language=en');
   expect(privateIntentDestination('/profile')).toBe('/api/profile');
-  expect(privateIntentDestination('/payments')).toBe('/api/payments/chapa/checkouts?page=1');
-  expect(privateIntentDestination('/payments?page=3')).toBe('/api/payments/chapa/checkouts?page=3');
-  expect(privateIntentDestination('/payments?page=-2')).toBe('/api/payments/chapa/checkouts?page=1');
-  expect(privateIntentDestination('/payments?page=10001')).toBe('/api/payments/chapa/checkouts?page=10000');
+  expect(privateIntentDestination('/payments')).toBe('/api/transactions?page=1&type=ALL');
+  expect(privateIntentDestination('/payments?page=3')).toBe('/api/transactions?page=3&type=ALL');
+  expect(privateIntentDestination('/payments?page=-2')).toBe('/api/transactions?page=1&type=ALL');
+  expect(privateIntentDestination('/payments?page=10001')).toBe('/api/transactions?page=1000&type=ALL');
   expect(privateIntentDestination('/winners')).toBe('/api/results/winners?page=1');expect(privateIntentDestination('/winners?page=3')).toBe('/api/results/winners?page=3');expect(privateIntentDestination('/api/results/1/breakdown?amount=50')).toBeNull();
   expect(privateIntentDestination('https://other.example/profile')).toBeNull();
  });
  it.each([
-  ['/profile','/api/profile'],['/payments?page=2','/api/payments/chapa/checkouts?page=2'],
+  ['/profile','/api/profile'],['/payments?page=2','/api/transactions?page=2&type=ALL'],
  ])('coalesces intent and opening %s into one private no-store request',async(target,url)=>{
   setPrivateQueryIdentity('intent');let finish!:(response:Response)=>void;
   const request=vi.fn((_url:string,_options?:RequestInit)=>new Promise<Response>(resolve=>{finish=resolve}));vi.stubGlobal('fetch',request);
@@ -89,6 +89,11 @@ describe('bounded user-intent warming',()=>{
  });
  it('skips low-priority navigation warming when Save Data is enabled',()=>{
   vi.stubGlobal('navigator',{connection:{saveData:true}});const router=vi.fn();prefetchMiniIntent(null,'/profile',router);expect(router).not.toHaveBeenCalled();
+ });
+ it('never prefetches a protected route or its data for an unregistered visitor',()=>{
+  vi.stubGlobal('navigator',{connection:{effectiveType:'4g'}});const router=vi.fn(),request=vi.fn();vi.stubGlobal('fetch',request);
+  for(const destination of ['/profile','/winners','/my-bids','/payments','/faq','/terms'])prefetchMiniIntent(null,destination,router);
+  expect(router).not.toHaveBeenCalled();expect(request).not.toHaveBeenCalled();
  });
  it('skips card warming on Save Data and slow connections',()=>{
   setPrivateQueryIdentity('constrained');const request=vi.fn();vi.stubGlobal('fetch',request);
@@ -115,12 +120,13 @@ describe('bounded user-intent warming',()=>{
   prefetchAuctionIntent('quick-card-intent','phone-42',{details:true});await new Promise(resolve=>setTimeout(resolve,0));
   prefetchAuctionIntent('quick-card-intent','phone-42',{details:true});await new Promise(resolve=>setTimeout(resolve,0));
   expect(request.mock.calls.map(call=>String(call[0]))).toEqual(['/api/auctions/phone-42/bids','/api/catalog/auctions/phone-42']);
-  expect(readPublicQuery('/api/catalog/auctions/phone-42')?.value).toEqual({code:'42'});
+  expect(readPrivateQuery('quick-card-intent','/api/catalog/auctions/phone-42')?.value).toEqual({code:'42'});
+  expect(readPublicQuery('/api/catalog/auctions/phone-42')).toBeNull();
  });
- it('warms public guest details without requesting a balance or own bid state',async()=>{
+ it('does not warm protected auction details or account data for a guest',async()=>{
   vi.stubGlobal('window',{});vi.stubGlobal('navigator',{connection:{effectiveType:'4g'}});
   const request=vi.fn(async(_url:string)=>Response.json({code:'guest-43'}));vi.stubGlobal('fetch',request);
   prefetchAuctionIntent(null,'guest-43',{details:true});await new Promise(resolve=>setTimeout(resolve,0));
-  expect(request.mock.calls.map(call=>String(call[0]))).toEqual(['/api/catalog/auctions/guest-43']);
+  expect(request).not.toHaveBeenCalled();
  });
 });

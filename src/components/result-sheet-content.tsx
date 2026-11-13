@@ -3,9 +3,9 @@ import {useEffect,useRef,useState,type CSSProperties,type RefObject} from 'react
 import {ChevronRight,Trophy} from 'lucide-react';
 import {AccountSheet} from './account-sheet';
 import {useMiniLocale,MiniPhrase} from './mini-locale';
-import {usePublicQuery} from './public-query';
 import {PrivateState,usePrivateQuery} from './private-query';
-import {publicMiniNavigationState as miniNavigationState} from './mini-navigation-state';
+import {miniNavigationState} from './mini-navigation-state';
+import {useTelegram} from './telegram-provider';
 import {formatAuctionBid,formatEtb} from '@/lib/money';
 import type {ResultBreakdown} from '@/modules/auctions/result-breakdown';
 import styles from './winner-results.module.css';
@@ -15,8 +15,8 @@ function Pager({page,totalPages,change,disabled=false}:{page:number;totalPages:n
  return totalPages>1?<nav className={styles.pager} aria-label={language==='am'?'የውጤት ገጾች':'Result pages'}><button disabled={disabled||page<=1} onClick={()=>change(page-1)}><MiniPhrase en="Previous" am="ወደ ኋላ"/></button><span>{page} / {totalPages}</span><button disabled={disabled||page>=totalPages} onClick={()=>change(page+1)}><MiniPhrase en="Next" am="ቀጣይ"/></button></nav>:null;
 }
 function ParticipantSheet({code,amount,onClose,returnFocusRef}:{code:string;amount:string;onClose:()=>void;returnFocusRef:RefObject<HTMLElement|null>}){
- const {language}=useMiniLocale(),am=language==='am',pageKey='result:'+code+':'+amount,[page,setPage]=useState(()=>miniNavigationState.page('public',pageKey));
- useEffect(()=>miniNavigationState.rememberPage('public',pageKey,page),[pageKey,page]);
+ const {queryIdentity}=useTelegram(),{language}=useMiniLocale(),am=language==='am',pageKey='result:'+code+':'+amount,[page,setPage]=useState(()=>miniNavigationState.page(queryIdentity,pageKey));
+ useEffect(()=>miniNavigationState.rememberPage(queryIdentity,pageKey,page),[queryIdentity,pageKey,page]);
  const query=usePrivateQuery<ResultBreakdown>('/api/results/'+encodeURIComponent(code)+'/breakdown?amount='+encodeURIComponent(amount)+'&page='+page,{keepPreviousData:true,cancelOnUnmount:true}),data=query.data?.kind==='participants'?query.data:null;
  return <AccountSheet title={<MiniPhrase en="Bid details" am="የጨረታ ዝርዝር"/>} onClose={onClose} returnFocusRef={returnFocusRef}>
   {!data&&query.status==='authenticated'&&!query.error?<p className={styles.loading} role="status"><MiniPhrase en="Loading participants…" am="ተሳታፊዎችን በመጫን ላይ…"/></p>:<PrivateState query={query}/>}
@@ -34,9 +34,9 @@ function ParticipantSheet({code,amount,onClose,returnFocusRef}:{code:string;amou
  </AccountSheet>;
 }
 export default function ResultBreakdownContent({code}:{code:string}){
- const {language}=useMiniLocale(),am=language==='am',[view,setView]=useState(()=>miniNavigationState.result('public',code)),{page,sort,jump}=view,[amount,setAmount]=useState<string|null>(null),amountTrigger=useRef<HTMLElement|null>(null),winningRow=useRef<HTMLButtonElement|null>(null);
- useEffect(()=>miniNavigationState.rememberResult('public',code,view),[code,view]);
- const query=usePublicQuery<ResultBreakdown>('/api/results/'+encodeURIComponent(code)+'/breakdown?page='+page+'&sort='+sort+(jump?'&jump=winner':''),{keepPreviousData:true,cancelOnUnmount:true}),data=query.data?.kind==='amounts'?query.data:null,busy=query.isPlaceholderData;
+ const {queryIdentity}=useTelegram(),{language}=useMiniLocale(),am=language==='am',[view,setView]=useState(()=>miniNavigationState.result(queryIdentity,code)),{page,sort,jump}=view,[amount,setAmount]=useState<string|null>(null),amountTrigger=useRef<HTMLElement|null>(null),winningRow=useRef<HTMLButtonElement|null>(null);
+ useEffect(()=>miniNavigationState.rememberResult(queryIdentity,code,view),[queryIdentity,code,view]);
+ const query=usePrivateQuery<ResultBreakdown>('/api/results/'+encodeURIComponent(code)+'/breakdown?page='+page+'&sort='+sort+(jump?'&jump=winner':''),{keepPreviousData:true,cancelOnUnmount:true}),data=query.data?.kind==='amounts'?query.data:null,busy=query.isPlaceholderData;
  useEffect(()=>{if(jump&&data&&!busy)winningRow.current?.scrollIntoView({block:'nearest',behavior:'instant'})},[jump,data,busy]);
  const largest=data?Math.max(1,...data.amounts.map(row=>row.bidCount)):1;
  return <>

@@ -2,6 +2,7 @@ import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {ChapaCheckout,PrismaClient} from '@prisma/client';
 import type {ChapaInlineTransport} from '../src/modules/payments/chapa-inline-provider';
 import {createInlineCheckout,findInlineCheckoutByKey} from '../src/modules/payments/chapa-inline';
+import {chapaHash} from '../src/modules/payments/chapa-provider';
 
 const spies=vi.hoisted(()=>({authorize:vi.fn(),eligible:vi.fn(),validateBatch:vi.fn(),verify:vi.fn(),get:vi.fn(),rate:vi.fn()}));
 vi.mock('../src/modules/auth/own-contact',()=>({decryptPhone:()=> '251911652904',encryptPhone:()=> 'encrypted-payer',phoneHash:(value:string)=>'hash:'+value}));
@@ -36,6 +37,27 @@ beforeEach(()=>{
 afterEach(()=>vi.unstubAllEnvs());
 
 describe('owned v2 Inline creation boundary',()=>{
+ it.each(['0','1.00','4.99'])('rejects a fresh %s ETB top-up before method/provider calls or financial writes',async amount=>{
+  const f=fixture();await expect(createInlineCheckout(f.db,'owner',{key,purpose:'TOP_UP',flow:'INLINE',paymentMethod:'telebirr',phone:'0911652904',amount},spies.authorize,f.transport)).rejects.toMatchObject({code:'INVALID_AMOUNT',status:422});
+  expect(f.transport.methods).not.toHaveBeenCalled();expect(f.transaction.$queryRaw).not.toHaveBeenCalled();expect(f.db.$transaction).not.toHaveBeenCalled();expect(f.inline).not.toHaveBeenCalled();expect(f.checkout.create).not.toHaveBeenCalled();
+ });
+ it('accepts exactly5ETB as500integer cents when merchant capabilities allow it',async()=>{
+  const f=fixture(),result=await createInlineCheckout(f.db,'owner',{key,purpose:'TOP_UP',flow:'INLINE',paymentMethod:'telebirr',phone:'0911652904',amount:'5.00'},spies.authorize,f.transport);
+  expect(result.order.amountCents).toBe(500n);expect(f.inline).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({amountCents:'500'}),'create');
+ });
+ it('keeps provider-specific minimums authoritative above the business minimum',async()=>{
+  const f=fixture();vi.mocked(f.transport.methods).mockResolvedValue({status:'success',data:[{name:'telebirr',slug:'telebirr',can_process_payments:true,supported_currencies:{ETB:{countries:{ET:{is_enabled:true,min_amount:1000,max_amount:1000000}}}}}]});
+  await expect(createInlineCheckout(f.db,'owner',{key,purpose:'TOP_UP',flow:'INLINE',paymentMethod:'telebirr',phone:'0911652904',amount:'5.00'},spies.authorize,f.transport)).rejects.toMatchObject({code:'METHOD_UNAVAILABLE'});
+  expect(f.checkout.create).not.toHaveBeenCalled();expect(f.inline).not.toHaveBeenCalled();
+ });
+ it('preserves recovery of an existing owned sub5ETB intent instead of changing its historical amount',async()=>{
+  const f=fixture(),body={key,purpose:'TOP_UP',flow:'INLINE',paymentMethod:'telebirr',phone:'0911652904',amount:'5.00'};
+  await createInlineCheckout(f.db,'owner',body,spies.authorize,f.transport);
+  const previous=f.order()!,original={...body,amount:'1.00'},requestHash=chapaHash(JSON.stringify({key,flow:'INLINE',paymentMethod:'telebirr',phone:'hash:+251911652904',purpose:'TOP_UP',amount:'1.00'}));
+  f.changeOrder({amountCents:100n,requestHash,initialization:{...(previous.initialization as Record<string,unknown>),amountCents:'100'}});
+  const recovered=await createInlineCheckout(f.db,'owner',original,spies.authorize,f.transport);
+  expect(recovered.order.id).toBe(previous.id);expect(recovered.order.amountCents).toBe(100n);expect(f.checkout.create).toHaveBeenCalledOnce();expect(f.inline).toHaveBeenCalledOnce();
+ });
  it('rejects stale or unconfirmed bonus offers before persistence or any charge',async()=>{
   for(const approved of [{},{approvedDepositBonusVersion:1,approvedDepositBonusAmount:'10.00'},{approvedDepositBonusVersion:2,approvedDepositBonusAmount:'20.00'}]){
    const f=fixture();f.setBonusPolicy({enabled:true,percent:10,minCents:10000n,maxBonusCents:null,validityDays:7,endsAt:null,version:2});

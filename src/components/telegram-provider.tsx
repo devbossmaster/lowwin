@@ -39,8 +39,13 @@ export function TelegramProvider({ children, devEnabled, botUrl }: { children: R
     const profileChanged=accountRef.current?.user.id===account.user.id&&JSON.stringify(accountRef.current.user)!==JSON.stringify(account.user);
     accountRef.current=account;
     const identity=account.user.id+':'+(account.sessionKey??String(attemptSequence.current));
+    const changedIdentity=identityRef.current!==identity;
     identityRef.current=identity;accountUpdatedAt.current=Date.now();
     setPrivateQueryIdentity(identity);seedPrivateQuery(identity,'/api/me',account);setQueryIdentity(identity);setMe(account);
+    // Start the owned balance read as soon as the server accepts registration.
+    // Header and sheet readers join this same single-flight cache request. A
+    // wallet outage must not delay or fail otherwise valid account restoration.
+    if(changedIdentity)void loadPrivateJson(identity,'/api/wallet').catch(()=>{});
     setRegistrationOpen(false);
     if(profileChanged)invalidatePrivateQueries(identity,['/api/profile']);
   },[]);

@@ -18,17 +18,18 @@ describe('one-button public Telegram entry',()=>{
  }
  it.each([false,true])('sends one concise welcome and one Open Lowwin button, registered=%s',async verified=>{
   const {sent,contactVerified}=await send({},verified);
-  expect(sent).toHaveLength(1);expect(sent[0].method).toBe('sendPhoto');expect(sent[0].payload.photo).toBeInstanceOf(InputFile);expect(String(sent[0].payload.caption)).toContain('Welcome to Lowwin!');
-  expect(sent[0].payload.reply_markup).toEqual({inline_keyboard:[[{text:'Open Lowwin',web_app:{url:'https://lowwin.test/telegram'}}]]});
+  expect(sent).toHaveLength(1);expect(sent[0].method).toBe('sendPhoto');expect(sent[0].payload.photo).toBeInstanceOf(InputFile);expect(String(sent[0].payload.caption)).toContain('እንኳን ወደ LowWin');
+  expect(sent[0].payload.reply_markup).toEqual({inline_keyboard:[[{text:'LowWinን ይክፈቱ',web_app:{url:'https://lowwin.test/telegram'}}]]});
   expect(contactVerified).not.toHaveBeenCalled();expect(f.checkout).not.toHaveBeenCalled();
  });
  it('uses the Amharic welcome caption with one photo and the same public app action',async()=>{
   const {sent}=await send({from:{id:7,is_bot:false,first_name:'Fixture',language_code:'am'}});
-  expect(sent).toHaveLength(1);expect(sent[0].method).toBe('sendPhoto');expect(String(sent[0].payload.caption)).toContain('እንኳን ወደ Lowwin');expect(sent[0].payload.reply_markup).toEqual({inline_keyboard:[[{text:'Open Lowwin',web_app:{url:'https://lowwin.test/telegram'}}]]});
+  expect(sent).toHaveLength(1);expect(sent[0].method).toBe('sendPhoto');expect(String(sent[0].payload.caption)).toContain('እንኳን ወደ LowWin');expect(sent[0].payload.reply_markup).toEqual({inline_keyboard:[[{text:'LowWinን ይክፈቱ',web_app:{url:'https://lowwin.test/telegram'}}]]});
  });
+ it.each(['en','fr',undefined])('keeps the initial welcome Amharic for Telegram UI language %s',async language_code=>{const {sent}=await send({from:{id:7,is_bot:false,first_name:'Fixture',language_code}});expect(String(sent[0].payload.caption)).toContain('እንኳን ወደ LowWin');expect(String(sent[0].payload.caption)).not.toContain('Welcome to');expect(sent[0].payload.reply_markup).toEqual({inline_keyboard:[[{text:'LowWinን ይክፈቱ',web_app:{url:'https://lowwin.test/telegram'}}]]})});
  it('keeps an opaque original payment resume link without claiming success or disclosing a receipt',async()=>{
   const id='0f55aaab-2222-4444-8888-123456789012',{sent}=await send({text:`/start chapa_${id}`});
-  expect(sent).toHaveLength(1);expect(sent[0].payload.reply_markup).toEqual({inline_keyboard:[[{text:'Open Lowwin',web_app:{url:`https://lowwin.test/payments/chapa/return?checkout=${id}`}}]]});
+  expect(sent).toHaveLength(1);expect(sent[0].payload.reply_markup).toEqual({inline_keyboard:[[{text:'LowWinን ይክፈቱ',web_app:{url:`https://lowwin.test/payments/chapa/return?checkout=${id}`}}]]});
   expect(String(sent[0].payload.caption)).not.toMatch(/credited|confirmed|accepted|100\.00/i);expect(f.checkout).not.toHaveBeenCalled();
  });
  it('preserves new-user referral attribution before opening the public app',async()=>{
@@ -37,7 +38,7 @@ describe('one-button public Telegram entry',()=>{
  });
  it('does not accept a malformed payment payload as a return route',async()=>{
   const {sent}=await send({text:'/start chapa_0f55aaab-2222-4444-8888-123456789012_status_SUCCESS'});
-  expect(sent[0].payload.reply_markup).toEqual({inline_keyboard:[[{text:'Open Lowwin',web_app:{url:'https://lowwin.test/telegram'}}]]});
+  expect(sent[0].payload.reply_markup).toEqual({inline_keyboard:[[{text:'LowWinን ይክፈቱ',web_app:{url:'https://lowwin.test/telegram'}}]]});
  });
  it.each([{from:{id:8,is_bot:false,first_name:'Other'}},{from:{id:7,is_bot:true,first_name:'Bot'}},{forward_origin:{type:'user',date:1,sender_user:{id:7,is_bot:false,first_name:'Fixture'}}}])('rejects inauthentic private starts %j',async change=>expect((await send(change)).sent).toEqual([]));
  it('does not expose a Mini App button in a group',async()=>{const {sent}=await send({chat:{id:-7,type:'group',title:'Fixture'}});expect(sent).toHaveLength(1);expect(sent[0].payload.reply_markup).toBeUndefined()});

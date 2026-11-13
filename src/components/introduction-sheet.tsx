@@ -6,13 +6,13 @@ import {AccountSheet} from './account-sheet';
 import {MiniPhrase,useMiniLocale} from './mini-locale';
 import {TutorialVideo} from './tutorial-video';
 import type {TutorialProps} from './tutorial-content';
-import {LOWWIN_LOGO_SRC} from '@/lib/brand';
+import {LOWWIN_LOGO_SRC,lowwinBanner} from '@/lib/brand';
 import styles from './introduction-sheet.module.css';
 export default function IntroductionSheet({onClose,onExplore,media,intro}:TutorialProps&{onClose:()=>void;onExplore:()=>void}){
  const {language}=useMiniLocale(),am=language==='am';
- return <AccountSheet title={<span className={styles.title}><img src={LOWWIN_LOGO_SRC} width={32} height={32} alt=""/><span><MiniPhrase en="Welcome to Lowwin" am="ወደ Lowwin እንኳን በደህና መጡ"/></span></span>} onClose={onClose} footer={<button className={`primary-button ${styles.continue}`} type="button" onClick={onClose}><MiniPhrase en="Continue to auctions" am="ወደ ጨረታዎች ይቀጥሉ"/><ArrowRight size={17} aria-hidden="true"/></button>}>
+ return <AccountSheet title={<span className={styles.title}><img src={LOWWIN_LOGO_SRC} width={32} height={32} alt=""/><span><MiniPhrase en="Welcome to LowWin" am="ወደ LowWin እንኳን በደህና መጡ"/></span></span>} onClose={onClose} footer={<button className={`primary-button ${styles.continue}`} type="button" onClick={onClose}><MiniPhrase en="Continue to auctions" am="ወደ ጨረታዎች ይቀጥሉ"/><ArrowRight size={17} aria-hidden="true"/></button>}>
   <div className={styles.introduction} data-welcome-introduction>
-   {media?<TutorialVideo media={media}/>:<div className={styles.artwork}><Image src={`/images/lowwin-home-banner-${am?'am':'en'}.webp`} alt="" fill sizes="(max-width:480px) calc(100vw - 36px),444px" quality={75}/></div>}
+   {media?<TutorialVideo media={media}/>:<div className={styles.artwork}><Image src={lowwinBanner(language)} alt="" fill sizes="(max-width:480px) calc(100vw - 36px),444px" quality={75}/></div>}
    <p className={styles.lead}><MiniPhrase en={intro?.en||'Choose your bid amount. The lowest amount entered by just one player wins.'} am={intro?.am||'የጨረታ መጠንዎን ይምረጡ። በአንድ ተጫራች ብቻ የተመረጠው ዝቅተኛ መጠን ያሸንፋል።'}/></p>
    <section className={styles.example} aria-label={am?'የማብራሪያ ምሳሌ':'Illustrative bid example'}>
     <h3><MiniPhrase en="See how a unique bid wins" am="ልዩ ጨረታ እንዴት እንደሚያሸንፍ ይመልከቱ"/></h3>

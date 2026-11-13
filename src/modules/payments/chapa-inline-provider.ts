@@ -88,7 +88,9 @@ export function createInlineMethodCatalog(transport:ChapaTransport=chapaInlineTr
     const promise=transport.methods().then(rawMethods=>{
      const found=parseChapaPaymentMethods(rawMethods);if(!found)throw new ChapaError(503,'METHODS_UNAVAILABLE','Payment methods could not be confirmed. Try again.');current(config.key);
      const available=config.methods.flatMap(slug=>{const method=found.find(m=>m.slug===slug);return method?[{slug:method.slug,name:method.name,minimumCents:method.minimumCents,maximumCents:method.maximumCents,minAmountCents:method.minimumCents,maxAmountCents:method.maximumCents}]:[]});
-     if(pending===flight)cached={key:config.key,until:Date.now()+300000,methods:available};return available;
+     // An empty successful response remains fail-closed, but must not pin a
+     // recovered merchant capability state behind the healthy five-minute TTL.
+     if(pending===flight)cached={key:config.key,until:Date.now()+(available.length?300000:5000),methods:available};return available;
     }).finally(()=>{if(pending===flight)pending=null});
     flight={key:config.key,promise};pending=flight;
    }

@@ -1,7 +1,7 @@
 .bar{display:none}
 @media(min-width:1024px){
  :global(.app-frame[data-app-layout=browser]) .bar{position:relative;z-index:35;display:flex;align-items:center;justify-content:space-between;gap:24px;width:100%;min-width:0;min-height:72px;margin-bottom:16px;padding:10px 16px;border:1px solid var(--brand-line,#e4e7ec);border-radius:16px;background:var(--brand-surface,#fff);color:var(--brand-ink,#16202c)}
- .brand{display:flex;align-items:center;gap:8px;flex:none;min-height:48px;color:inherit;text-decoration:none;font-size:20px;font-weight:700;letter-spacing:-.025em;white-space:nowrap}.brand img{flex:none;width:32px;height:32px;object-fit:contain}
+ .brand{display:flex;align-items:center;gap:8px;flex:none;min-height:48px;color:inherit;text-decoration:none;font-size:20px;font-weight:700;letter-spacing:-.025em;white-space:nowrap}.brand img{flex:none;width:32px;height:32px;object-fit:contain;border-radius:22%}
  .bar nav{display:flex;align-items:center;justify-content:flex-end;gap:4px;min-width:0}.bar nav a{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:48px;padding:10px 14px;border-radius:24px;color:var(--brand-muted,#657181);font-size:14px;font-weight:600;line-height:1.5;text-decoration:none;white-space:nowrap;transition:background-color 150ms ease,color 150ms ease}.bar nav a>svg{flex:none;width:18px;height:18px}.bar nav a[aria-current=page]{background:var(--action-disabled,#dbe7fb);color:var(--action-pressed,#1e40af)}
  .bar a:focus-visible{outline:2px solid var(--action-primary,#2563eb);outline-offset:3px}
 }
