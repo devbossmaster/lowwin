@@ -32,7 +32,7 @@ DO $reset$
 DECLARE c jsonb := __RESET_CONFIG_JSON__; a jsonb; m jsonb; expected jsonb; current_row record; auction_row "Auction"%ROWTYPE; terms_row "AuctionTerms"%ROWTYPE;
  uid text; sid text; release_op text; refund_op text; release_journal text; refund_journal text; op text; journal_id text; available_id text; held_id text; fees_id text;
  gross numeric; discount numeric; prior numeric; compensation numeric; release_amount numeric; available_before numeric; held_before numeric; refs jsonb; distribution jsonb; proof jsonb; revisions jsonb;
- total_compensation numeric:=0; audit_row record; snapshot_age interval;
+ total_compensation numeric:=0; audit_row record; snapshot_age interval;bonus_funded boolean;
 BEGIN
  PERFORM pg_advisory_xact_lock(hashtextextended('lowwin:auction-maintenance',0));
  SELECT "requestHash",details INTO audit_row FROM "AdminAudit" WHERE "operationKey"='reset:'||(c->>'runId')||':complete';
@@ -66,6 +66,15 @@ BEGIN
   PERFORM id FROM "Auction" WHERE id=a->>'id' FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'Target auction disappeared'; END IF;
  END LOOP;
+ -- BEGIN DEPOSIT BONUS RESET GUARD
+ -- This historical cash-compensation flow cannot restore a restricted bonus.
+ -- All target auctions are already locked, so no accepted bonus bid can race it.
+ IF to_regclass('public."DepositBonusUse"') IS NOT NULL THEN
+  EXECUTE 'SELECT EXISTS(SELECT 1 FROM "DepositBonusUse" u JOIN "Bid" b ON b.id=u."bidId" WHERE b."auctionId" IN (SELECT value->>''id'' FROM jsonb_array_elements($1)))'
+   INTO bonus_funded USING c->'auctions';
+  IF bonus_funded THEN RAISE EXCEPTION 'Bonus-funded fees require a source-preserving compensation review; cash reset refused';END IF;
+ END IF;
+ -- END DEPOSIT BONUS RESET GUARD
  IF (SELECT COUNT(*) FROM "user")<>(c->>'userCount')::int OR (SELECT md5(string_agg(id||':'||COALESCE("telegramId"::text,''),'|' ORDER BY id)) FROM "user")<>c->>'userFingerprint' THEN RAISE EXCEPTION 'Customer identity baseline changed; regenerate without deleting any account'; END IF;
  FOR uid IN SELECT id FROM(SELECT DISTINCT value->>'userId' AS id FROM jsonb_array_elements(c->'participants')) users ORDER BY id COLLATE "C" LOOP
   PERFORM pg_advisory_xact_lock(hashtextextended('wallet:'||uid,0));

@@ -2,11 +2,13 @@ import type {BidReceipt} from '@/modules/auctions/bids';
 import type {ChapaApiErrorCategory} from './chapa-api-error';
 import type {BidBatchQuote,ChapaDirectIntent} from './bid-batch-client';
 
+export type DepositBonusPolicy={configured:boolean;enabled:boolean;percent:number;minAmount:string;maxBonus:string|null;validityDays:number;endsAt:string|null;version:number};
+export type DepositBonusQuote={amount:string;totalCredit:string;policyVersion:number;validityDays:number;credited:boolean};
 export type ChapaIntent={key:string;purpose:'TOP_UP';amount:string}|{key:string;purpose:'BID';auctionSlug:string;amount:string;feeVersion:number;couponId?:string};
 export type ChapaCheckoutView=DirectCheckoutFields&{providerStatus?:string|null;providerReasonCode?:string|null;authorizationReasonCode?:string|null;verificationState?:string;initializationIssue?:ChapaApiErrorCategory|null;merchantReference?:string;paymentMethod?:string|null;auctionTitle?:string|null;auctionTitleAm?:string|null;auctionCode?:string|null;auctionStatus?:string|null;auctionEndsAt?:string|null;id:string;purpose:'TOP_UP'|'BID';mode:'test'|'live';amount:string;amountCents:string;currency:'ETB';status:string;reason:string|null;checkoutUrl:string|null;auctionSlug:string|null;bidNumber:string|null;feeVersion:number|null;grossFee:string|null;discountPoints:string;createdAt:string;expiresAt:string;pollAfterMs:number;fundsPreserved:boolean;receipt:BidReceipt|null};
 export type ChapaAvailability={enabled:boolean;configured:boolean;mode:'test'|'live';walletBidsEnabled:boolean;minTopup:string;maxTopup:string;reason:string|null};
-export type DirectCheckoutFields={apiVersion?:'v2'|'legacy';unsupportedLegacy?:boolean;flowVersion?:number;chargeType?:'DIRECT'|'HOSTED'|'INLINE';authType?:'USSD'|'OTP'|null;authorizationReference?:string|null;payerPhoneMasked?:string|null;batch?:BidBatchQuote|null;batchNumbers?:string[];receipts?:BidReceipt[];initializationReasonCode?:string|null;updatedAt?:string;verificationUnavailable?:boolean};
-export type ChapaCheckoutConfig={apiVersion?:'v2';enabled:boolean;configured:boolean;mode:'test'|'live';minTopup:string;maxTopup:string;methods:import('./bid-batch-client').DirectPaymentMethod[];phone:string|null;cbeBankEnabled:boolean;cbeGuideUrl:string|null};
+export type DirectCheckoutFields={depositBonus?:DepositBonusQuote|null;apiVersion?:'v2'|'legacy';unsupportedLegacy?:boolean;flowVersion?:number;chargeType?:'DIRECT'|'HOSTED'|'INLINE';authType?:'USSD'|'OTP'|null;authorizationReference?:string|null;payerPhoneMasked?:string|null;batch?:BidBatchQuote|null;batchNumbers?:string[];receipts?:BidReceipt[];initializationReasonCode?:string|null;updatedAt?:string;verificationUnavailable?:boolean};
+export type ChapaCheckoutConfig={depositBonus?:DepositBonusPolicy;apiVersion?:'v2';enabled:boolean;configured:boolean;mode:'test'|'live';minTopup:string;maxTopup:string;methods:import('./bid-batch-client').DirectPaymentMethod[];phone:string|null;cbeBankEnabled:boolean;cbeGuideUrl:string|null};
 export type ChapaAttempt={version:1;intent:ChapaIntent;orderId?:string};
 type Storage=Pick<globalThis.Storage,'getItem'|'setItem'|'removeItem'>;
 export const chapaUuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -97,7 +99,12 @@ export function chapaCanResumeCheckout(attempt:ChapaAttempt|null,order:ChapaChec
 export function chapaRecoverable(order:Pick<ChapaCheckoutView,'status'|'fundsPreserved'>&Partial<Pick<ChapaCheckoutView,'apiVersion'|'unsupportedLegacy'>>){return !order.unsupportedLegacy&&order.apiVersion!=='legacy'&&!order.fundsPreserved&&!['CREDITED','BID_ACCEPTED','FAILED','CANCELLED','EXPIRED','BLOCKED','INCOMPLETE','FAILED_OR_CANCELLED'].includes(order.status)}
 export type WalletPaymentShortfall={available:string;required:string;shortfall:string;currency:'ETB'};
 export class ChapaClientError extends Error{constructor(message:string,readonly status=0,readonly code='UNAVAILABLE',readonly wallet?:WalletPaymentShortfall){super(message)}}
-export async function requestChapaJson<T>(url:string,options:RequestInit={},signal?:AbortSignal,timeoutMs=15000):Promise<T>{
+/** Status and explicit authorization can serialize public validation (15s)
+ * and private verification (10s). Creation keeps its original shorter budget. */
+export function chapaRequestTimeout(url:string,options:RequestInit={}){
+ return options.method?.toUpperCase()==='POST'&&new RegExp(`^/api/payments/chapa/checkouts/${chapaUuid.source.slice(1,-1)}(?:/authorize)?$`,'i').test(url)?30000:15000;
+}
+export async function requestChapaJson<T>(url:string,options:RequestInit={},signal?:AbortSignal,timeoutMs=chapaRequestTimeout(url,options)):Promise<T>{
  const controller=new AbortController(),abort=()=>controller.abort();if(signal?.aborted)controller.abort();else signal?.addEventListener('abort',abort,{once:true});const timer=setTimeout(abort,timeoutMs);
  try{
   const response=await fetch(url,{...options,cache:'no-store',signal:controller.signal}),body=await response.json().catch(()=>({}));

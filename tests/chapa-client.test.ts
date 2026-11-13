@@ -1,5 +1,5 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
-import {CHAPA_CHECKOUT_POLL_MS,acceptChapaSnapshot,chapaCheckoutUrl,chapaConfirmed,chapaCanResumeCheckout,chapaPollingDeadline,chapaPollingPaused,chapaRecoverable,clearChapaAttempt,clearChapaAttempts,readChapaAttempt,requestChapaJson,writeChapaAttempt,type ChapaAttempt,type ChapaCheckoutView} from '../src/lib/chapa-client';
+import {CHAPA_CHECKOUT_POLL_MS,acceptChapaSnapshot,chapaCheckoutUrl,chapaConfirmed,chapaCanResumeCheckout,chapaPollingDeadline,chapaPollingPaused,chapaRecoverable,chapaRequestTimeout,clearChapaAttempt,clearChapaAttempts,readChapaAttempt,requestChapaJson,writeChapaAttempt,type ChapaAttempt,type ChapaCheckoutView} from '../src/lib/chapa-client';
 const uuid='0f55aaab-2222-4444-8888-123456789012',attempt:ChapaAttempt={version:1,intent:{purpose:'BID',key:uuid,auctionSlug:'fixture-auction',amount:'3.60',feeVersion:1}};
 function storage(){const values=new Map<string,string>();return {getItem:(key:string)=>values.get(key)??null,setItem:(key:string,value:string)=>{values.set(key,value)},removeItem:(key:string)=>{values.delete(key)}}}
 afterEach(()=>{vi.unstubAllGlobals();vi.useRealTimers()});
@@ -45,5 +45,16 @@ describe('Chapa client recovery and display boundaries',()=>{
  it('bounds automatic checking and retains unresolved review without inventing payment failure',()=>{expect(chapaRecoverable({status:'NEEDS_REVIEW',fundsPreserved:false})).toBe(true);expect(chapaRecoverable({status:'PENDING',fundsPreserved:false})).toBe(true);for(const status of ['BID_ACCEPTED','CREDITED','FAILED','CANCELLED','EXPIRED','BLOCKED','INCOMPLETE'])expect(chapaRecoverable({status,fundsPreserved:false})).toBe(false);expect(chapaRecoverable({status:'NEEDS_REVIEW',fundsPreserved:true})).toBe(false)});
  it('requests private no-store JSON and preserves server error codes',async()=>{const fetch=vi.fn().mockResolvedValue(Response.json({error:'Not configured',code:'PAYMENT_UNAVAILABLE'},{status:503}));vi.stubGlobal('fetch',fetch);await expect(requestChapaJson('/api/payments/chapa')).rejects.toMatchObject({status:503,code:'PAYMENT_UNAVAILABLE'});expect(fetch.mock.calls[0][1].cache).toBe('no-store')});
  it('aborts stalled requests at the deadline',async()=>{vi.useFakeTimers();vi.stubGlobal('fetch',vi.fn((_url:string,options:RequestInit)=>new Promise((_resolve,reject)=>options.signal?.addEventListener('abort',()=>reject(new DOMException('aborted','AbortError'))))));const request=requestChapaJson('/api/payments/chapa'),check=expect(request).rejects.toMatchObject({name:'AbortError'});await vi.advanceTimersByTimeAsync(15000);await check});
+ it.each(['', '/authorize'])('allows serial provider validation and private verification to finish inside the %s status budget',async suffix=>{
+  vi.useFakeTimers();const url='/api/payments/chapa/checkouts/'+uuid+suffix;let resolve!:(response:Response)=>void;
+  vi.stubGlobal('fetch',vi.fn((_url:string,options:RequestInit)=>new Promise<Response>((done,reject)=>{resolve=done;options.signal?.addEventListener('abort',()=>reject(new DOMException('aborted','AbortError')))})));
+  const result=requestChapaJson(url,{method:'POST'});await vi.advanceTimersByTimeAsync(25000);resolve(Response.json({status:'PENDING'}));expect(await result).toEqual({status:'PENDING'});expect(vi.getTimerCount()).toBe(0);
+ });
+ it('keeps thirty-second status requests bounded and does not extend creation or read budgets',async()=>{
+  const url='/api/payments/chapa/checkouts/'+uuid;expect(chapaRequestTimeout(url,{method:'POST'})).toBe(30000);
+  for(const endpoint of ['/api/payments/chapa/checkouts','/api/payments/chapa/inline','/api/payments/chapa/direct','https://elsewhere.test'+url,url+'/other'])expect(chapaRequestTimeout(endpoint,{method:'POST'})).toBe(15000);
+  expect(chapaRequestTimeout(url)).toBe(15000);vi.useFakeTimers();vi.stubGlobal('fetch',vi.fn((_url:string,options:RequestInit)=>new Promise((_resolve,reject)=>options.signal?.addEventListener('abort',()=>reject(new DOMException('aborted','AbortError'))))));
+  const request=requestChapaJson(url,{method:'POST'}),check=expect(request).rejects.toMatchObject({name:'AbortError'});await vi.advanceTimersByTimeAsync(30000);await check;expect(vi.getTimerCount()).toBe(0);
+ });
  it('discards late responses even when the transport ignores cancellation',async()=>{const controller=new AbortController();let resolve!:(response:Response)=>void;vi.stubGlobal('fetch',vi.fn(()=>new Promise<Response>(r=>{resolve=r})));const request=requestChapaJson('/api/payments/chapa/checkouts/'+uuid,{},controller.signal),check=expect(request).rejects.toMatchObject({name:'AbortError'});controller.abort();resolve(Response.json({status:'CREDITED'}));await check});
 });

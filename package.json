@@ -7,7 +7,7 @@
     "node": ">=24 <25"
   },
   "scripts": {
-    "dev": "node --use-env-proxy node_modules/next/dist/bin/next dev",
+    "dev": "node --use-env-proxy node_modules/next/dist/bin/next dev --webpack",
     "build": "prisma generate && next build --webpack",
     "start": "next start",
     "typecheck": "tsc --noEmit",

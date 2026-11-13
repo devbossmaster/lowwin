@@ -62,6 +62,20 @@ DO $$ DECLARE t text; BEGIN
 END $$;
 -- Migrations can run before this group exists. Restore its intended function
 -- access explicitly, while keeping privileged cleanup unavailable to browsers.
+DO $$ DECLARE t text; BEGIN
+ FOREACH t IN ARRAY ARRAY['DepositBonusPolicy','DepositBonusLot','DepositBonusUse','DepositBonusExpiry'] LOOP
+  IF to_regclass(format('public.%I',t)) IS NOT NULL THEN
+   IF EXISTS(SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename=t AND tableowner='lowwin_runtime') THEN RAISE EXCEPTION 'Runtime must not own tables';END IF;
+   EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',t);
+   EXECUTE format('REVOKE ALL ON public.%I FROM lowwin_runtime',t);
+   EXECUTE format('GRANT SELECT,INSERT ON public.%I TO lowwin_runtime',t);
+   IF t='DepositBonusPolicy' THEN EXECUTE format('GRANT UPDATE ON public.%I TO lowwin_runtime',t);END IF;
+   IF NOT EXISTS(SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename=t AND policyname='lowwin_server_access') THEN
+    EXECUTE format('CREATE POLICY lowwin_server_access ON public.%I TO lowwin_runtime USING(true) WITH CHECK(true)',t);
+   END IF;
+  END IF;
+ END LOOP;
+END $$;
 GRANT EXECUTE ON FUNCTION public.cleanup_test_run(text) TO lowwin_runtime;
 DO $$ DECLARE browser_role text; BEGIN
  REVOKE EXECUTE ON FUNCTION public.cleanup_test_run(text) FROM PUBLIC;

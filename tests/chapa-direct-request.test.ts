@@ -11,6 +11,10 @@ describe('direct checkout creation rejection',()=>{
    expect(chapaDirectCreationRejected(new ChapaClientError('Rejected.',status,code))).toBe(true);
   }
  });
+ it('releases a changed deposit bonus quote rejected before provider dispatch',()=>{
+  expect(chapaDirectCreationRejected(new ChapaClientError('Review the new bonus.',409,'DEPOSIT_BONUS_CHANGED'))).toBe(true);
+  expect(chapaDirectCreationRejected(new ChapaClientError('Unknown response.',503,'DEPOSIT_BONUS_CHANGED'))).toBe(false);
+ });
  it('retains an ambiguous request after a timeout, outage or unclassified conflict',()=>{
   for(const cause of [new DOMException('Timed out.','AbortError'),new Error('Connection lost.'),new ChapaClientError('Unavailable.',503,'PAYMENT_UNAVAILABLE'),new ChapaClientError('Unavailable.',503,'COUPON_UNAVAILABLE'),new ChapaClientError('Conflict.',409,'RETRYABLE_CONFLICT'),new ChapaClientError('Conflict.',409,'KEY_REUSED')]){
    expect(chapaDirectCreationRejected(cause)).toBe(false);

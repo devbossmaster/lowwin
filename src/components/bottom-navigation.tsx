@@ -1,22 +1,15 @@
 'use client';
 import {usePathname} from 'next/navigation';
-import {CircleUserRound,House,Layers,Trophy,ReceiptText} from 'lucide-react';
+import {activeCustomerNavigation,customerNavigationItems as items} from './customer-navigation-items';
 import {MiniPhrase} from './mini-locale';
 import styles from './bottom-navigation.module.css';
 import {IntentPrefetchLink} from './intent-prefetch-link';
 import {useTelegram} from './telegram-provider';
 import {miniNavigationState} from './mini-navigation-state';
 
-const items=[
- {href:'/',en:'Home',am:'መነሻ',icon:House},
- {href:'/winners',en:'Winners',am:'አሸናፊዎች',icon:Trophy},
- {href:'/my-bids',en:'My Bids',am:'ጨረታዎቼ',icon:Layers},
- {href:'/payments',en:'Transactions',am:'ግብይቶች',icon:ReceiptText},
- {href:'/profile',en:'Profile',am:'መገለጫ',icon:CircleUserRound},
-];
 export function BottomNavigation(){
  const path=usePathname(),{queryIdentity}=useTelegram();
- const active=path.startsWith('/auctions')||path.startsWith('/categories')?'/':path.startsWith('/draws')?'/winners':items.filter(({href})=>href==='/'?path==='/':href==='/my-bids'&&path==='/winning-bids'?true:path===href||path.startsWith(`${href}/`)).sort((a,b)=>b.href.length-a.href.length)[0]?.href;
+ const active=activeCustomerNavigation(path);
  return <nav className={`${styles.bar} mini-bottom-navigation`} aria-label="Your navigation">{items.map(({href,en,am,icon:Icon})=>{
   const content=<><Icon size={20} aria-hidden="true"/><span className={styles.label}><MiniPhrase en={en} am={am}/></span></>;
   const saved=miniNavigationState.visit(queryIdentity,href);

@@ -5,6 +5,20 @@ vi.mock('../src/modules/auth/mini-access',()=>access);
 import {proxy} from '../src/proxy';
 beforeEach(()=>{vi.clearAllMocks();access.getMiniSession.mockReset()});
 describe('private access during database outages',()=>{
+  it('serves the exact self-hosted Inter font without widening private asset access',async()=>{
+    access.getMiniSession.mockRejectedValue(Error('Database unavailable'));
+    for(const method of ['GET','HEAD'])expect((await proxy(new NextRequest('http://localhost/fonts/inter-latin-variable.woff2',{method}))).headers.get('x-middleware-next')).toBe('1');
+    expect(access.getMiniSession).not.toHaveBeenCalled();
+    access.getMiniSession.mockResolvedValue(null);
+    for(const path of ['/fonts/inter-latin-variable.woff2/private','/fonts/private-inter.woff2'])expect((await proxy(new NextRequest('http://localhost'+path))).status).toBe(307);
+  });
+  it('serves the public November hero during an auth outage without exposing nearby private paths',async()=>{
+    access.getMiniSession.mockRejectedValue(Error('Database unavailable'));
+    for(const method of ['GET','HEAD'])expect((await proxy(new NextRequest('http://localhost/images/lowwin-violet-hero-20261113.webp',{method}))).headers.get('x-middleware-next')).toBe('1');
+    expect(access.getMiniSession).not.toHaveBeenCalled();
+    access.getMiniSession.mockResolvedValue(null);
+    for(const path of ['/images/lowwin-violet-hero-20261113.webp/private','/images/private-winner.webp'])expect((await proxy(new NextRequest('http://localhost'+path))).status).toBe(307);
+  });
   it('serves only the approved CBE video without database auth, including range requests',async()=>{
     access.getMiniSession.mockRejectedValue(Error('Database unavailable'));
     for(const method of ['GET','HEAD'])expect((await proxy(new NextRequest('http://localhost/video/cbe-bank-payment.mp4',{method,headers:{Range:'bytes=0-1023'}}))).headers.get('x-middleware-next')).toBe('1');

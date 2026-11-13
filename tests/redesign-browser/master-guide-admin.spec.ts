@@ -109,7 +109,7 @@ test('Master Guide Admin uses a real verified admin session and compact responsi
   expect(grant.expiresAt.getTime()-grant.credentialAt.getTime()).toBeLessThanOrEqual(8*3600000);
   await page.setViewportSize({width:1440,height:1000});
   const sidebar=page.getByRole('navigation',{name:'Business areas',exact:true});
-  await expect(sidebar.getByRole('link')).toHaveText(['Overview','Auctions and Catalog','Players','Payments','Winners','Broadcast']);
+  await expect(sidebar.getByRole('link')).toHaveText(['Overview','Auctions and Catalog','Players','Payments','Bonus','Winners','Broadcast']);
   await expect(sidebar).not.toContainText(/Refund|Reconciliation|Content|Report|Settings|Team|Wallets/);
   await expect(page.locator('body')).not.toContainText(/authenticator|MFA verified|two.factor|bootstrap/i);
   await page.setViewportSize(mobile);await capturePair('overview');

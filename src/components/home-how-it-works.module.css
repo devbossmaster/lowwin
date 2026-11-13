@@ -1,48 +1,12 @@
-.guide {
-  margin: 24px 16px 8px;
-  padding: 24px 20px 12px;
-  border-radius: 16px;
-  background: #fff;
-  color: #181815;
-}
-
-.heading { margin-bottom: 22px; }
-.heading h2 { margin: 0; font-size: 24px; font-weight: 700; line-height: 1.3; letter-spacing: -.03em; text-wrap: balance; }
-.heading p { margin: 6px 0 0; color: #68665e; font-size: 13px; line-height: 1.6; }
-
-.steps { display: grid; padding: 0; margin: 0 0 22px; list-style: none; }
-.steps li { display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 14px; align-items: start; padding: 16px 0; }
-.steps li:first-child { padding-top: 0; }
-.steps li:last-child { padding-bottom: 0; }
-.steps li + li { border-top: 1px solid #eeece5; }
-.symbol { display: flex; flex-direction: column; align-items: center; gap: 6px; padding-top: 2px; color: #876719; }
-.symbol > span { color: #68665e; font-size: 10px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
-.steps h3 { margin: 0 0 5px; font-size: 15px; font-weight: 700; line-height: 1.45; letter-spacing: -.015em; }
-.steps p { margin: 0; color: #68665e; font-size: 13px; line-height: 1.65; }
-
-.example { padding: 16px; border-radius: 16px; background: #201f1a; color: #fffdf6; }
-.exampleHeading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
-.exampleHeading h3 { margin: 0; font-size: 13px; font-weight: 600; line-height: 1.5; }
-.exampleHeading > svg { flex-shrink: 0; color: #e4c36b; }
-.numbers { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: center; gap: 7px; }
-.numbers > span { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 0; height: 52px; border-radius: 10px; background: #35342e; color: #c3bfb3; }
-.numbers strong { font-size: 23px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
-.numbers > .winningNumber { height: 66px; gap: 5px; background: #e4c36b; color: #201f1a; }
-.winningNumber strong { font-size: 28px; font-weight: 700; }
-.winnerLabel { font-size: 10px; font-weight: 700; line-height: 1.4; }
-.repeatedNumber strong { text-decoration: line-through; text-decoration-color: #888577; text-decoration-thickness: 1px; }
-.example p { margin: 14px 0 0; color: #dfdbce; font-size: 12px; line-height: 1.65; }
-
-.rules { margin: 16px 0 0; color: #68665e; font-size: 12px; line-height: 1.7; }
-.actions { display: flex; flex-direction: column; align-items: center; gap: 2px; margin-top: 18px; }
-.actions button { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; min-height: 46px; padding: 11px 16px; border: 0; border-radius: 12px; background: var(--mini-action, #c9a227); color: #181815; font: inherit; font-size: 13px; font-weight: 700; line-height: 1.5; cursor: pointer; touch-action: manipulation; }
-.actions button svg { flex-shrink: 0; }
-.actions a { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; max-width: 100%; padding: 8px 4px; color: #68665e; font-size: 11px; line-height: 1.6; text-align: center; text-decoration: underline; text-decoration-color: #b7af9e; text-underline-offset: 3px; }
-.actions button:focus-visible, .actions a:focus-visible { outline: 2px solid #987522; outline-offset: 3px; }
-.actions button:active { background: var(--mini-action-hover, #b48e1d); }
-.guide::selection, .guide ::selection { background: #e9e3d1; color: #181815; }
-.guide:lang(am) .heading h2 { font-size: 23px; line-height: 1.5; letter-spacing: 0; }
-.guide:lang(am) .steps h3 { line-height: 1.65; letter-spacing: 0; }
-.guide:lang(am) .steps p, .guide:lang(am) .rules { line-height: 1.8; }
-@media (hover: hover) { .actions button:hover { background: var(--mini-action-hover, #b48e1d); } .actions a:hover { color: #181815; } }
-@media (max-width: 350px) { .guide { padding-inline: 16px; } .steps li { grid-template-columns: 34px minmax(0, 1fr); gap: 12px; } .example { padding: 14px 12px; } .numbers { gap: 5px; } .heading h2 { font-size: 23px; } }
+.guide{margin:24px 16px 8px;padding:24px 20px 12px;border-radius:16px;background:#fff;color:var(--brand-ink,#16202c)}
+.heading{margin-bottom:20px}.heading h2{margin:0;font-size:24px;font-weight:700;line-height:1.3;letter-spacing:-.03em;text-wrap:balance}.heading p{margin:6px 0 0;color:var(--brand-muted,#657181);font-size:14px;line-height:1.6}
+.steps{display:grid;padding:0;margin:0 0 20px;list-style:none}.steps li{display:grid;grid-template-columns:40px minmax(0,1fr);gap:12px;align-items:start;padding:16px 0}.steps li:first-child{padding-top:0}.steps li:last-child{padding-bottom:0}.steps li+li{border-top:1px solid var(--brand-line,#e1e4e9)}
+.symbol{display:grid;place-items:center;width:40px;height:40px;border-radius:12px;background:var(--brand-soft,#f2f2f7);color:var(--brand-primary-strong,#5533be)}
+.steps h3{margin:0 0 4px;font-size:15px;font-weight:600;line-height:1.45;letter-spacing:-.015em}.steps p{margin:0;color:var(--brand-muted,#657181);font-size:14px;line-height:1.65}
+.example{padding:16px;border-radius:16px;background:var(--brand-soft,#f2f2f7);color:var(--brand-ink,#16202c)}.exampleHeading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}.exampleHeading h3{margin:0;font-size:13px;font-weight:600;line-height:1.5}.exampleHeading>svg{flex:none;color:var(--brand-primary-strong,#5533be)}
+.numbers{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));align-items:center;gap:7px}.numbers>span{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:0;height:52px;border-radius:12px;background:#fff;color:var(--brand-muted-on-soft,#5f6b7a)}.numbers strong{font-size:23px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums}.numbers>.winningNumber{height:66px;gap:5px;background:var(--brand-primary,#6d4cfd);color:var(--brand-on-primary,#fff)}.winningNumber strong{font-size:28px;font-weight:700}.winnerLabel{font-size:10px;font-weight:600;line-height:1.4}.repeatedNumber strong{text-decoration:line-through;text-decoration-thickness:1px}.example p{margin:13px 0 0;color:var(--brand-muted-on-soft,#5f6b7a);font-size:14px;line-height:1.65}
+.rules{margin:16px 0 0;color:var(--brand-muted,#657181);font-size:12px;line-height:1.7}.actions{display:flex;flex-direction:column;align-items:center;gap:2px;margin-top:18px}.actions button{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:48px;padding:12px 24px;border:0;border-radius:24px;background:var(--action-primary,#2563eb);color:var(--action-ink,#fff);font:inherit;font-size:15px;font-weight:600;line-height:1.5;cursor:pointer;touch-action:manipulation}.actions button svg{flex:none}.actions a{display:inline-flex;align-items:center;justify-content:center;min-height:44px;max-width:100%;padding:8px 4px;color:var(--brand-muted,#657181);font-size:11px;line-height:1.6;text-align:center;text-decoration:underline;text-decoration-color:var(--brand-muted,#657181);text-underline-offset:3px}.actions button:focus-visible,.actions a:focus-visible{outline:2px solid var(--brand-primary,#6d4cfd);outline-offset:3px}.actions button:active{background:var(--action-pressed,#1e40af)}
+.guide::selection,.guide ::selection{background:var(--brand-soft,#f2f2f7);color:var(--brand-ink,#16202c)}.guide:lang(am) .heading h2{font-size:23px;line-height:1.5;letter-spacing:0}.guide:lang(am) .steps h3{line-height:1.65;letter-spacing:0}.guide:lang(am) .steps p,.guide:lang(am) .rules{line-height:1.8}
+@media(hover:hover){.actions button:hover{background:var(--action-hover,#1d4ed8)}.actions a:hover{color:var(--brand-ink,#16202c)}}
+@media(max-width:350px){.guide{padding-inline:16px}.steps li{grid-template-columns:36px minmax(0,1fr);gap:10px}.symbol{width:36px;height:36px}.example{padding:14px 12px}.numbers{gap:5px}.heading h2{font-size:23px}}
+@media(min-width:768px){:global(.app-frame[data-app-environment=browser]) .steps{grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}:global(.app-frame[data-app-environment=browser]) .steps li{display:block;padding:0}:global(.app-frame[data-app-environment=browser]) .steps li+li{border-top:0}:global(.app-frame[data-app-environment=browser]) .symbol{margin-bottom:12px}:global(.app-frame[data-app-environment=browser]) .example{max-width:540px}:global(.app-frame[data-app-environment=browser]) .actions{align-items:flex-start;max-width:360px}}

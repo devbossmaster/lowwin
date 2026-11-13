@@ -1,5 +1,12 @@
-import {expect,test} from '@playwright/test';
+import {expect,test,type Locator,type Page} from '@playwright/test';
 import {inlineFixture,selectBids,wakePayment} from '../checkout-v2-inline-browser/fixtures';
+
+async function expectContainedPayment(dialog:Locator,page:Page){
+ const box=(await dialog.boundingBox())!,viewport=page.viewportSize()!;
+ expect(box.height).toBeLessThanOrEqual(viewport.height-24);expect(box.y).toBeGreaterThanOrEqual(0);expect(box.y+box.height).toBeLessThanOrEqual(viewport.height+1);
+ expect(await dialog.locator('[data-sheet-body]').evaluate(node=>node.scrollWidth<=node.clientWidth+1)).toBe(true);
+ await expect(dialog.locator('[data-sheet-close]')).toBeInViewport();
+}
 
 for(const am of [false,true])test(`compact authorization updates the same modal with a confirmed provider error ${am?'AM':'EN'}`,async({page},info)=>{
  const f=await inlineFixture(page,am);
@@ -13,7 +20,7 @@ for(const am of [false,true])test(`compact authorization updates the same modal 
   await progress.evaluate(node=>{(node as HTMLElement).dataset.instanceMarker='same-attempt'});
   await expect(page.getByRole('dialog')).toHaveCount(1);
   await expect(progress.locator('dl>div')).toHaveCount(4);
-  expect((await dialog.boundingBox())!.height).toBeLessThan(Math.min(560,(page.viewportSize()?.height??800)-40));
+  await expectContainedPayment(dialog,page);
   await dialog.screenshot({path:info.outputPath(`authorization-waiting-${am?'am':'en'}.png`),animations:'disabled'});
   f.setOrder({status:'FAILED',providerStatus:'FAILED',verificationState:'VERIFIED',providerReasonCode:'INVALID_PIN'});
   await wakePayment(page);
@@ -24,7 +31,8 @@ for(const am of [false,true])test(`compact authorization updates the same modal 
   await expect(dialog.locator('input')).toHaveCount(0);
   await expect(dialog.getByRole('button',{name:am?'እንደገና ይሞክሩ':'Try again',exact:true})).toBeEnabled();
   await expect(page.getByRole('dialog')).toHaveCount(1);
-  expect((await dialog.boundingBox())!.height).toBeLessThan(Math.min(560,(page.viewportSize()?.height??800)-40));
+  await expectContainedPayment(dialog,page);
+  await expect(dialog.getByRole('button',{name:am?'እንደገና ይሞክሩ':'Try again',exact:true})).toBeInViewport();
   await dialog.screenshot({path:info.outputPath(`authorization-pin-error-${am?'am':'en'}.png`),animations:'disabled'});
   expect(f.commands).toHaveLength(1);expect(f.unexpected).toHaveLength(0);
  }finally{await f.cleanup()}

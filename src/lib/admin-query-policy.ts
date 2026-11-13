@@ -17,6 +17,7 @@ const affected:Record<string,readonly string[]>={
 };
 export function adminMutationResources(action:string,endpoint='command'){
  const resource=endpoint.split('?')[0];
+ if(resource==='bonus'&&action==='save-policy')return ['bonus'];
  if(['chapa','arifpay'].includes(resource)&&action==='check')return [resource,'workspace/transactions','transactions','workspace/players','users','auctions','dashboard'];
  if(resource==='payments'){
   if(['preview-policy','preview','impact'].includes(action))return [];

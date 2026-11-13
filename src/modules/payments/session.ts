@@ -17,7 +17,7 @@ export async function requirePaymentSession(request:Request){
  return {userId:current.user.id,reauthorize:async(tx:Prisma.TransactionClient)=>{
   const valid=await tx.session.findFirst({where:{
    id:current.session.id,token:current.session.token,userId:current.user.id,expiresAt:{gt:new Date()},
-   ...(!preview?{telegramLaunchId:telegramId,user:{is:{telegramId,staffMember:{is:null},ownContact:{is:{telegramId:telegramId!,botId:botId!,revokedAt:null}}}}}:{}),
+   ...(!preview?{telegramLaunchId:telegramId,telegramAuthSource:current.session.telegramAuthSource,user:{is:{telegramId,staffMember:{is:null},ownContact:{is:{telegramId:telegramId!,botId:botId!,revokedAt:null}}}}}:{}),
   },select:{id:true}});
   if(!valid)throw new PrivateApiError(401,'Sign in through Telegram.');
  }};

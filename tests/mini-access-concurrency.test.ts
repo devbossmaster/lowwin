@@ -9,7 +9,7 @@ vi.mock('../src/modules/auth/own-contact',()=>({contactBotId:()=> '123'}));
 vi.mock('../src/lib/env',()=>({getEnv:()=>({BETTER_AUTH_URL:process.env.BETTER_AUTH_URL??'http://localhost:3000',BETTER_AUTH_SECRET:'fixture-session-signing-secret-at-least-thirty-two'})}));
 import {getLaunchSession,getMiniSession} from '../src/modules/auth/mini-access';
 const secret='fixture-session-signing-secret-at-least-thirty-two',cookies=new Map<string,string>();
-const bound=()=>({id:'session-a',token:'a',userId:'user-a',name:'Player',image:null,createdAt:new Date(),updatedAt:new Date(),expiresAt:new Date(Date.now()+3600000),telegramLaunchId:'456',telegramId:'456',staffId:null as string|null,contactTelegramId:'456',contactBotId:'123',revokedAt:null as Date|null,lastFour:'1234'});
+const bound=()=>({id:'session-a',token:'a',userId:'user-a',name:'Player',image:null,createdAt:new Date(),updatedAt:new Date(),expiresAt:new Date(Date.now()+3600000),telegramLaunchId:'456',telegramAuthSource:'MINI_APP',telegramId:'456',staffId:null as string|null,contactTelegramId:'456',contactBotId:'123',revokedAt:null as Date|null,lastFour:'1234'});
 const headers=(token='a',secure=false)=>new Headers({cookie:`${secure?'__Secure-':''}better-auth.session_token=${encodeURIComponent(cookies.get(token)??token)}`});
 beforeEach(async()=>{vi.clearAllMocks();vi.stubEnv('BETTER_AUTH_URL','http://localhost:3000');for(const token of ['a','b'])cookies.set(token,`${token}.${await makeSignature(token,secret)}`);f.getSession.mockReset().mockResolvedValue({session:{id:'session-a'},user:{id:'user-a'}});f.read.mockReset().mockImplementation(async()=>[bound()])});
 
@@ -34,6 +34,7 @@ describe('one-read, signed Mini App sessions',()=>{
  it('returns only the masked contact and fresh session identity',async()=>{
   const session=await getLaunchSession(headers());expect(session?.contactStatus).toEqual({verified:true,masked:'•••• 1234'});expect(session).not.toHaveProperty('phoneCipher');expect(session).not.toHaveProperty('phoneHash');expect(f.read).toHaveBeenCalledOnce();
  });
+ it('accepts a verified browser proof with the same identity/contact gates',async()=>{f.read.mockResolvedValue([{...bound(),telegramAuthSource:'TELEGRAM_OIDC'}]);expect((await getMiniSession(headers()))?.session.telegramAuthSource).toBe('TELEGRAM_OIDC');f.read.mockResolvedValue([{...bound(),telegramAuthSource:'untrusted'}]);expect(await getMiniSession(headers())).toBeNull()});
  it.each(['unbound','mismatch','staff','wrong-contact','wrong-bot','revoked'] as const)('rejects %s bindings on the next request',async kind=>{
   const row=bound();if(kind==='unbound')row.telegramLaunchId='';if(kind==='mismatch')row.telegramLaunchId='other';if(kind==='staff')row.staffId='user-a';if(kind==='wrong-contact')row.contactTelegramId='other';if(kind==='wrong-bot')row.contactBotId='other';if(kind==='revoked')row.revokedAt=new Date();f.read.mockResolvedValue([row]);expect(await getMiniSession(headers())).toBeNull();
  });

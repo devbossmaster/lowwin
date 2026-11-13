@@ -3,16 +3,18 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import {usePathname} from 'next/navigation';
 import {MINI_AUTH_TIMEOUT_MS,TelegramLaunchError,miniAuthError,signInTelegram,signOutMiniAccount,type MiniAccount} from '@/lib/mini-auth-client';
 import {observeTelegramSdk} from '@/lib/telegram-sdk-client';
+import {telegramEnvironment,type TelegramEnvironment} from '@/lib/telegram-browser-login-client';
 import {invalidatePrivateQueries,loadPrivateJson,seedPrivateQuery,setPrivateQueryIdentity,subscribePrivateQueries} from './private-query-cache';
 type WebApp = { BackButton?:{isVisible?:boolean;show:()=>void;hide:()=>void;onClick:(handler:()=>void)=>void;offClick:(handler:()=>void)=>void};initData?: string; platform?:string; ready: () => void; expand?:()=>void; requestFullscreen?:()=>void; close?:()=>void; openLink?:(url:string)=>void; openTelegramLink?:(url:string)=>void; requestContact?:(callback:(shared:boolean)=>void)=>void; isVersionAtLeast?:(version:string)=>boolean; setHeaderColor?: (color: string) => void; setBackgroundColor?: (color: string) => void };
 declare global { interface Window { Telegram?: { WebApp?: WebApp } } }
 type Me = MiniAccount;
 type Status = 'loading' | 'guest' | 'contact-required' | 'authenticated' | 'error';
-const Context = createContext<{ status: Status; queryIdentity:string|null; verifyingTelegram: boolean; me: Me | null; error: string; needsReopen: boolean; retry: () => void; finishContact: () => Promise<void>; refreshMe: () => Promise<void>; signOut:()=>Promise<void>; devLogin: (accessKey: string) => void; devEnabled: boolean; botUrl: string | null;registrationOpen:boolean;openRegistration:()=>void;closeRegistration:()=>void }>({ status: 'loading', queryIdentity:null, verifyingTelegram: false, me: null, error: '', needsReopen: false, retry: () => {}, finishContact: async () => {}, refreshMe: async () => {}, signOut:async()=>{}, devLogin: () => {}, devEnabled: false, botUrl: null,registrationOpen:false,openRegistration:()=>{},closeRegistration:()=>{} });
+const Context = createContext<{ status: Status; environment:TelegramEnvironment; queryIdentity:string|null; verifyingTelegram: boolean; me: Me | null; error: string; needsReopen: boolean; retry: () => void; finishContact: () => Promise<void>; refreshMe: () => Promise<void>; signOut:()=>Promise<void>; devLogin: (accessKey: string) => void; devEnabled: boolean; botUrl: string | null;registrationOpen:boolean;openRegistration:()=>void;closeRegistration:()=>void }>({ status: 'loading', environment:'detecting', queryIdentity:null, verifyingTelegram: false, me: null, error: '', needsReopen: false, retry: () => {}, finishContact: async () => {}, refreshMe: async () => {}, signOut:async()=>{}, devLogin: () => {}, devEnabled: false, botUrl: null,registrationOpen:false,openRegistration:()=>{},closeRegistration:()=>{} });
 export const useTelegram = () => useContext(Context);
-export function TelegramProvider({ children, devEnabled, botUrl, requireLaunch=false }: { children: React.ReactNode; devEnabled: boolean; botUrl: string | null; requireLaunch?:boolean }) {
+export function TelegramProvider({ children, devEnabled, botUrl }: { children: React.ReactNode; devEnabled: boolean; botUrl: string | null }) {
   const pathname=usePathname(),previousPath=useRef(pathname);
   const [status, setStatus] = useState<Status>('loading');
+  const [environment,setEnvironment]=useState<TelegramEnvironment>('detecting');
   const [registrationOpen,setRegistrationOpen]=useState(false);
   const openRegistration=useCallback(()=>setRegistrationOpen(true),[]);
   const closeRegistration=useCallback(()=>setRegistrationOpen(false),[]);
@@ -58,9 +60,9 @@ export function TelegramProvider({ children, devEnabled, botUrl, requireLaunch=f
       await signOutMiniAccount();
       // The same SDK launch must not immediately sign the user back in.
       launchAttempt.current=window.Telegram?.WebApp?.initData??'';
-      clearAccount();setError('');setNeedsReopen(true);setVerifyingTelegram(false);setStatus('guest');
+      clearAccount();setError('');setNeedsReopen(environment==='mini');setVerifyingTelegram(false);setStatus('guest');
     }finally{authenticating.current=false}
-  },[clearAccount]);
+  },[clearAccount,environment]);
   useEffect(()=>subscribePrivateQueries(event=>{
     if(event.kind==='authorization'&&event.identity===identityRef.current){
       attemptSequence.current++;clearAccount();setStatus('guest');
@@ -84,13 +86,15 @@ export function TelegramProvider({ children, devEnabled, botUrl, requireLaunch=f
     const attempt=++attemptSequence.current;
     clearAccount();setStatus('loading'); setError(''); setNeedsReopen(false);
     const app = window.Telegram?.WebApp;
+    setEnvironment(telegramEnvironment(app));
     launchAttempt.current=app?.initData??'';
-    // The spinner is presentation only. Access still requires signed initData and server contact verification.
+    // The spinner is presentation only. The server verifies Telegram identity and contact proof.
     setVerifyingTelegram(Boolean(app?.initData && !dev));
     try {
       // A presentation-only SDK failure must not strand the authentication lock.
       try { app?.ready(); } catch { /* Authentication still runs. */ }
-      if(requireLaunch&&!app?.initData&&!dev){setMe(null);setStatus('guest');return}
+      // A browser may restore an owned OIDC session without Mini App launch data.
+      // /api/me enforces the server-side authentication/contact proof in either flow.
       if(app?.initData&&!dev) {
         const result=await signInTelegram(app.initData);
         if(attempt!==attemptSequence.current)return;
@@ -103,12 +107,12 @@ export function TelegramProvider({ children, devEnabled, botUrl, requireLaunch=f
       }
       const response = await fetch('/api/me', { cache: 'no-store', signal: AbortSignal.timeout(MINI_AUTH_TIMEOUT_MS) });
       if(attempt!==attemptSequence.current)return;
-      if (response.status === 401 || (!app?.initData && !dev && response.status === 503)) { setMe(null); setStatus('guest'); return; }
+      if (response.status === 401) { setMe(null); setStatus('guest'); return; }
       if (!response.ok) throw new Error('Your account could not be loaded. Please retry.');
       const account=await response.json();if(attempt!==attemptSequence.current)return;acceptAccount(account); setStatus('authenticated');
     } catch (err) { if(attempt!==attemptSequence.current)return;setMe(null); setNeedsReopen(err instanceof TelegramLaunchError); setError(miniAuthError(err)); setStatus('error'); }
     finally { if(attempt===attemptSequence.current){authenticating.current=false;setVerifyingTelegram(false)} }
-  }, [requireLaunch,acceptAccount,clearAccount]);
+  }, [acceptAccount,clearAccount]);
   const finishContact=useCallback(async()=>{
     const attempt=++attemptSequence.current;
     clearAccount();setStatus('loading');setError('');setNeedsReopen(false);setVerifyingTelegram(true);
@@ -124,7 +128,7 @@ export function TelegramProvider({ children, devEnabled, botUrl, requireLaunch=f
     }catch(cause){if(attempt!==attemptSequence.current)return;setMe(null);setNeedsReopen(cause instanceof TelegramLaunchError);setError(miniAuthError(cause));setStatus('error')}
     finally{if(attempt===attemptSequence.current)setVerifyingTelegram(false)}
   },[acceptAccount,clearAccount]);
-  const autoAuthenticate=useCallback(()=>{const launch=window.Telegram?.WebApp?.initData??'';if(launchAttempt.current===launch)return;void authenticate()},[authenticate]);
+  const autoAuthenticate=useCallback(()=>{const app=window.Telegram?.WebApp,launch=app?.initData??'';setEnvironment(telegramEnvironment(app));if(launchAttempt.current===launch)return;void authenticate()},[authenticate]);
   useEffect(()=>{
     const reopened=pathname==='/telegram'&&previousPath.current!==pathname;
     previousPath.current=pathname;
@@ -135,7 +139,7 @@ export function TelegramProvider({ children, devEnabled, botUrl, requireLaunch=f
     const color='#FFFFFF';
     try { window.Telegram?.WebApp?.setHeaderColor?.(color); } catch { /* Older Telegram clients may reject custom colors. */ }
     try { window.Telegram?.WebApp?.setBackgroundColor?.(color); } catch { /* Keep recovery controls usable. */ }
-  },[status,verifyingTelegram,requireLaunch]);
+  },[status,verifyingTelegram]);
   // A late SDK load can arrive during a previous request. Retry only a changed
   // launch once that request settles, never loop on the same failed launch.
   useEffect(()=>{if(status!=='loading')autoAuthenticate()},[status,autoAuthenticate]);
@@ -143,13 +147,17 @@ export function TelegramProvider({ children, devEnabled, botUrl, requireLaunch=f
     // Visibility only, never authentication proof. This also hides the action
     // when a proxy has rewritten all server-visible headers to localhost.
     setLocalBrowser(['localhost','127.0.0.1','[::1]'].includes(window.location.hostname));
-    return observeTelegramSdk(autoAuthenticate,()=>{
+    const stop=observeTelegramSdk(autoAuthenticate,()=>{
+      // Browser login and existing browser sessions do not depend on WebApp JS.
+      if(!window.Telegram?.WebApp?.initData){setEnvironment('browser');autoAuthenticate();return}
       if(authenticating.current||identityRef.current)return;
       launchAttempt.current=window.Telegram?.WebApp?.initData??'';
       clearAccount();setNeedsReopen(false);setError('Telegram could not load. Check your connection and retry.');setStatus('error');
     });
+    autoAuthenticate();
+    return stop;
   }, [autoAuthenticate,clearAccount]);
-  return <Context.Provider value={{ status, queryIdentity, verifyingTelegram, me, error, needsReopen, retry: () => {if(needsReopen)return;if(!window.Telegram?.WebApp){window.location.reload();return}void authenticate()}, finishContact, refreshMe, signOut, devLogin: accessKey => void authenticate(true, accessKey), devEnabled: devEnabled && localBrowser, botUrl,registrationOpen,openRegistration,closeRegistration }}>
+  return <Context.Provider value={{ status, environment, queryIdentity, verifyingTelegram, me, error, needsReopen, retry: () => {if(needsReopen)return;void authenticate()}, finishContact, refreshMe, signOut, devLogin: accessKey => void authenticate(true, accessKey), devEnabled: devEnabled && localBrowser, botUrl,registrationOpen,openRegistration,closeRegistration }}>
     {children}
   </Context.Provider>;
 }

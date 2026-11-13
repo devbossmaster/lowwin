@@ -13,6 +13,7 @@ import {isSubmissionFeeOnly} from './rules';
 import {walletBidsEnabled} from '../wallet/policy';
 import {readWalletProjection} from '../wallet/balance';
 import {measureChapa} from '../payments/chapa-timing';
+import {consumeDepositBonusInTransaction,readDepositBonusFunds} from '../wallet/deposit-bonus';
 
 type Tx=Prisma.TransactionClient;
 type Authorize=(tx:Tx)=>Promise<void>;
@@ -29,7 +30,7 @@ export function batchLines(batch:Pick<BidBatchOrder,'lines'>){return z.array(lin
 export function ownBatch(batch:BidBatchOrder){return {id:batch.id,quoteHash:batch.quoteHash,auctionSlug:batch.auctionSlug,ruleVersion:batch.ruleVersion,feeVersion:batch.feeVersion,lines:batchLines(batch),entryCount:batchLines(batch).length,total:centsToEtb(batch.totalCents),totalCents:String(batch.totalCents),grossTotal:centsToEtb(batch.grossCents),discountTotal:centsToEtb(batch.discountCents),status:batch.status}}
 function publicBatchReceipt(receipts:BidReceipt[]){return receipts.map(({bid,charge})=>({bid,charge}))}
 function walletBatchReceipt(batch:BidBatchOrder,receipt:BidReceipt&{receipts:BidReceipt[]},wallet:Awaited<ReturnType<typeof readWalletProjection>>){
- return {batch:ownBatch(batch),receipts:publicBatchReceipt(receipt.receipts),wallet:{available:centsToEtb(etbToCents(wallet.available)),held:centsToEtb(etbToCents(wallet.held)),revision:wallet.revision},payment:{method:'wallet' as const,gateway:'INTERNAL_WALLET' as const,total:centsToEtb(batch.totalCents),acceptedBidIds:receipt.receipts.map(item=>item.bid.id)}};
+ return {batch:ownBatch(batch),receipts:publicBatchReceipt(receipt.receipts),wallet:{...wallet,available:centsToEtb(etbToCents(wallet.available)),held:centsToEtb(etbToCents(wallet.held)),revision:wallet.revision},payment:{method:'wallet' as const,gateway:'INTERNAL_WALLET' as const,total:centsToEtb(batch.totalCents),acceptedBidIds:receipt.receipts.map(item=>item.bid.id)}};
 }
 async function lockBatchWriter(tx:Tx,userId:string,slug:string,allowReceiptReplay=false){
  const halted=await auctionMaintenance(tx);
@@ -73,7 +74,7 @@ export async function persistBidBatchQuoteInTransaction(tx:Tx,userId:string,inpu
  const id=randomUUID(),quoteHash=chapaHash(JSON.stringify({id,userId,ruleVersion:priced.auction.terms!.ruleVersion,feeVersion:input.feeVersion,lines:priced.lines,totalCents:String(priced.totalCents)}));
  return tx.bidBatchOrder.create({data:{id,userId,key:input.key,requestHash,quoteHash,auctionId:priced.auction.id,auctionSlug:input.auctionSlug,ruleVersion:priced.auction.terms!.ruleVersion,feeVersion:input.feeVersion,lines:priced.lines,totalCents:priced.totalCents,grossCents:priced.grossCents,discountCents:priced.discountCents,couponId:input.couponId}});
 }
-export async function fulfillBatchInTransaction(tx:Tx,batch:BidBatchOrder,validated?:Awaited<ReturnType<typeof validateBatchInTransaction>>){
+export async function fulfillBatchInTransaction(tx:Tx,batch:BidBatchOrder,validated?:Awaited<ReturnType<typeof validateBatchInTransaction>>,allowDepositBonus=false){
  const prior=validated?batch:await tx.bidBatchOrder.findUniqueOrThrow({where:{id:batch.id}});
  if(prior.status==='ACCEPTED'&&prior.receipt)return prior.receipt as unknown as BidReceipt&{bids:BidReceipt['bid'][];receipts:BidReceipt[]};
  const lines=batchLines(batch),current=validated??await validateBatchInTransaction(tx,batch.userId,batch.auctionSlug,lines.map(item=>item.number),batch.feeVersion,batch.couponId??undefined);
@@ -82,7 +83,7 @@ export async function fulfillBatchInTransaction(tx:Tx,batch:BidBatchOrder,valida
  // unaffordable complete order before creating even the first entry/outbox row.
  // Zero-fee coupon orders remain valid without creating a gateway payment.
  if(batch.totalCents>0n){
-  const account=await tx.ledgerAccount.findUnique({where:{name:`user:${batch.userId}:available`},select:{balance:true}}),available=etbToCents(account?.balance.toFixed(2)??'0');
+  const account=await tx.ledgerAccount.findUnique({where:{name:`user:${batch.userId}:available`},select:{balance:true}}),bonus=allowDepositBonus?await readDepositBonusFunds(tx,batch.userId):{bonusAvailable:'0'},available=etbToCents(account?.balance.toFixed(2)??'0')+etbToCents(bonus.bonusAvailable);
   if(available<batch.totalCents)throw new BidError('INSUFFICIENT_POINTS',409,'Your Lowwin Wallet balance is too low.',{available:centsToEtb(available),required:centsToEtb(batch.totalCents),shortfall:centsToEtb(batch.totalCents-available),currency:'ETB'});
  }
  // Run the first entry through the existing authoritative command, including
@@ -90,7 +91,7 @@ export async function fulfillBatchInTransaction(tx:Tx,batch:BidBatchOrder,valida
  // entries share the same locked, fully validated batch and use bulk writes.
  // The database Bid triggers still stamp/check every acceptance individually;
  // any late/invalid line aborts the entire outer transaction/savepoint.
- const first=lines[0],initial=await recordValidatedSubmissionFeeBidInTransaction(tx,{userId:batch.userId,auctionSlug:batch.auctionSlug,amount:first.number,feeVersion:batch.feeVersion,key:batchChildKey(batch.id,0),...(first.couponId?{couponId:first.couponId}:{})},current),receipts:BidReceipt[]=[initial];
+ const first=lines[0],initial=await recordValidatedSubmissionFeeBidInTransaction(tx,{userId:batch.userId,auctionSlug:batch.auctionSlug,amount:first.number,feeVersion:batch.feeVersion,key:batchChildKey(batch.id,0),...(first.couponId?{couponId:first.couponId}:{})},current,process.env,allowDepositBonus),receipts:BidReceipt[]=[initial];
  if(etbToCents(initial.charge.netFeePoints??initial.charge.feePoints)!==etbToCents(first.netFee))throw new ChapaError(409,'TERMS_CHANGED','The charged fee no longer matches this quote.');
  const rest=lines.slice(1),remainingCost=batch.totalCents-etbToCents(first.netFee);
  if(etbToCents(initial.wallet.available)<remainingCost)throw new BidError('INSUFFICIENT_POINTS',409,'Your Lowwin wallet does not have enough funds for the entire order.');
@@ -99,8 +100,8 @@ export async function fulfillBatchInTransaction(tx:Tx,batch:BidBatchOrder,valida
   if(!available||fee.feePoints.gt(0)&&!fees)throw new ChapaError(503,'PAYMENT_UNAVAILABLE','Payment accounts could not be loaded. Retry this same order.');
   const children=rest.map(line=>({line,id:randomUUID(),operationId:randomUUID(),journalId:randomUUID()}));
   const inserted=await tx.bid.createManyAndReturn({data:children.map(child=>({id:child.id,operationId:child.operationId,userId:batch.userId,auctionId:batch.auctionId,amount:new Prisma.Decimal(child.line.number),termsVersion:batch.feeVersion,feePoints:fee.feePoints,feeRevisionId:fee.id})),select:{id:true,amount:true,acceptedAt:true}}),byId=new Map(inserted.map(bid=>[bid.id,bid]));
-  let availableCents=etbToCents(initial.wallet.available),own=initial.ownBids;
-  for(const child of children){const bid=byId.get(child.id)!;availableCents-=etbToCents(child.line.netFee);own=[...own,{id:bid.id,amount:bid.amount.toString(),acceptedAt:bid.acceptedAt.toISOString()}];receipts.push({bid:{...initial.bid,id:bid.id,amount:bid.amount.toString(),acceptedAt:bid.acceptedAt.toISOString()},hold:initial.hold,charge:{feePoints:fee.feePoints.toString(),newlyUnavailable:fee.feePoints.toString()},wallet:{available:new Prisma.Decimal(centsToEtb(availableCents)).toString(),held:initial.wallet.held},remainingSubmissions:initial.remainingSubmissions-child.line.position,ownBids:own})}
+  let availableCents=etbToCents(initial.wallet.available),cashCents=etbToCents(initial.wallet.cashAvailable??initial.wallet.available),bonusCents=etbToCents(initial.wallet.bonusAvailable??'0'),own=initial.ownBids;
+  for(const child of children){const bid=byId.get(child.id)!,net=etbToCents(child.line.netFee),used=allowDepositBonus?await consumeDepositBonusInTransaction(tx,{userId:batch.userId,bidId:bid.id,netFeeCents:net}):0n;availableCents-=net;cashCents-=net-used;if(cashCents<0n)throw new BidError('INSUFFICIENT_POINTS',409,'The bonus changed or expired. Review your current balance and retry.');bonusCents-=used;own=[...own,{id:bid.id,amount:bid.amount.toString(),acceptedAt:bid.acceptedAt.toISOString()}];receipts.push({bid:{...initial.bid,id:bid.id,amount:bid.amount.toString(),acceptedAt:bid.acceptedAt.toISOString()},hold:initial.hold,charge:{feePoints:fee.feePoints.toString(),newlyUnavailable:fee.feePoints.toString(),...(used?{bonusUsed:centsToEtb(used)}:{})},wallet:{available:new Prisma.Decimal(centsToEtb(availableCents)).toString(),held:initial.wallet.held,cashAvailable:centsToEtb(cashCents),bonusAvailable:centsToEtb(bonusCents),bonusExpiresAt:bonusCents>0n?initial.wallet.bonusExpiresAt:null},remainingSubmissions:initial.remainingSubmissions-child.line.position,ownBids:own})}
   await tx.operation.createMany({data:children.map((child,index)=>({id:child.operationId,userId:batch.userId,scope:'BID',key:batchChildKey(batch.id,child.line.position),requestHash:chapaHash(JSON.stringify({auctionSlug:batch.auctionSlug,amount:new Prisma.Decimal(child.line.number).toString(),feeVersion:batch.feeVersion})),result:JSON.parse(JSON.stringify(receipts[index+1]))}))});
   if(fee.feePoints.gt(0)){
    await tx.journal.createMany({data:children.map(child=>({id:child.journalId,operationId:child.operationId,kind:'BID_FEE',reference:`bid:${child.id}`}))});
@@ -141,7 +142,7 @@ export async function payBidBatchWallet(client:PrismaClient,userId:string,id:str
 async function acceptWalletBatch(tx:Tx,batch:BidBatchOrder,validated?:Awaited<ReturnType<typeof validateBatchInTransaction>>){
  if(batch.totalCents>0n&&!walletBidsEnabled())throw new ChapaError(503,'WALLET_UNAVAILABLE','Wallet payments are currently unavailable.');
  const current=validated??await measureChapa('pricing',()=>validateBatchInTransaction(tx,batch.userId,batch.auctionSlug,batchLines(batch).map(line=>line.number),batch.feeVersion,batch.couponId??undefined,true));
- const receipt=await measureChapa('fulfill',()=>fulfillBatchInTransaction(tx,batch,current));
+ const receipt=await measureChapa('fulfill',()=>fulfillBatchInTransaction(tx,batch,current,true));
  return walletBatchReceipt({...batch,status:'ACCEPTED'},receipt,await readWalletProjection(tx,batch.userId));
 }
 

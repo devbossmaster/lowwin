@@ -1,0 +1,21 @@
+/* Browser-only layout: a Telegram WebView retains the established Mini App. */
+@media(min-width:640px){
+ .app-frame[data-app-environment=browser]{max-width:900px;--catalog-columns:repeat(2,minmax(0,1fr));--home-hero-ratio:2.3}
+ .app-frame[data-app-environment=browser] .mini-bottom-navigation{max-width:900px}
+ .app-frame[data-app-environment=browser] .home-header-slot header{padding-inline:24px;gap:16px;grid-template-columns:minmax(80px,1fr) auto auto}
+ .app-frame[data-app-environment=browser] [data-home-hero] h1{font-size:38px}
+ .app-frame[data-app-environment=browser] [data-home-hero] p{font-size:14px;max-width:28ch}
+}
+@media(min-width:1024px){
+ .app-frame[data-app-environment=browser]{max-width:1280px;padding:24px 24px 40px 240px;min-height:100dvh}
+ .app-frame[data-app-environment=browser] .mini-bottom-navigation{display:none}
+ .app-frame[data-app-environment=browser]>#main{min-height:calc(100dvh - 88px)}
+ .app-frame[data-app-environment=browser][data-home=false]>#main{max-width:860px;margin-inline:auto}
+ .app-frame[data-app-environment=browser] .home-header-slot header{padding-top:4px;padding-bottom:14px;background:transparent;border-bottom:0;grid-template-columns:minmax(0,1fr) auto}
+ .app-frame[data-app-environment=browser] .home-header-slot header>a:first-child{display:none}
+ .app-frame[data-app-environment=browser] [data-home-hero]{border-radius:20px}
+ .app-frame[data-app-environment=browser] [data-customer-page-header]{max-width:860px;margin:0 auto 20px;border-radius:16px}
+ .app-frame[data-app-environment=browser] .auction-card .card-action{min-height:48px}
+ .app-frame[data-app-environment=browser] [data-telegram-support]{right:max(24px,calc((100vw - 1280px)/2 + 24px));bottom:24px}
+}
+@media(min-width:1280px){.app-frame[data-app-environment=browser]{--catalog-columns:repeat(3,minmax(0,1fr))}}

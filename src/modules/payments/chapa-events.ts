@@ -18,13 +18,16 @@ export async function processChapaEvent(client:PrismaClient,id:string,transport:
   if(current.creditJournalId){verified=credited=true;return true}
   if(unsupportedLegacyChapaCheckout(current)){unsupportedLegacy=true;return false}
   if(current.leaseUntil&&current.leaseUntil>new Date())return false;
-  await verifyChapaCheckout(client,current.id,undefined,undefined,transport,'webhook');
+  const verification=await verifyChapaCheckout(client,current.id,undefined,undefined,transport,'webhook');
   const result=await client.chapaCheckout.findUniqueOrThrow({where:{id:current.id}});
   // A verified but still pending payment needs another bounded lookup. An early
   // provider read must not consume the only notification before SUCCESS exists.
-  const terminal=result.providerStatus&&['SUCCESS','FAILED','CANCELLED','INCOMPLETE','BLOCKED'].includes(result.providerStatus);
+  const terminal=result.providerStatus&&['SUCCESS','FAILED','CANCELLED','INCOMPLETE','EXPIRED','BLOCKED'].includes(result.providerStatus);
   credited=!!result.creditJournalId;
-  verified=credited||result.verificationState==='VERIFIED'&&!result.leaseUntil&&!!terminal;
+  // A lookup outage preserves the last verified outcome. It cannot establish
+  // that this newer event was reconciled; retain its durable retry instead.
+  const unavailable=verification&&'verificationUnavailable'in verification&&verification.verificationUnavailable===true;
+  verified=credited||!unavailable&&result.verificationState==='VERIFIED'&&!result.leaseUntil&&!!terminal;
   return verified;
  }catch{return false}
  finally{

@@ -13,7 +13,7 @@ const key='04b7c915-8010-4ea0-86d6-8ca2ea3b181e',batchId='560e2a63-b907-49df-982
 const lines=[{position:0,number:'4.25',grossFee:'50.00',discount:'0.00',netFee:'50.00'},{position:1,number:'324.00',grossFee:'50.00',discount:'0.00',netFee:'50.00'}];
 const bid={key,purpose:'BID',flow:'INLINE',paymentMethod:'telebirr',phone:'0911652904',batchId,quoteHash};
 function fixture(){
- let order:ChapaCheckout|null=null,inTransaction=false,halted=false;const gates:string[]=[];
+ let order:ChapaCheckout|null=null,inTransaction=false,halted=false,bonusPolicy:any=null;const gates:string[]=[];
  const batch={id:batchId,userId:'owner',quoteHash,status:'QUOTED',auctionId:1,auctionSlug:'test-auction',totalCents:10000n,grossCents:10000n,discountCents:0n,couponId:null,feeVersion:1,lines};
  const checkout={
   findUnique:vi.fn(async({where}:any)=>where.userId_key?order&&order.userId===where.userId_key.userId&&order.key===where.userId_key.key?order:null:where.batchId?order&&order.batchId===where.batchId?order:null:null),
@@ -21,13 +21,13 @@ function fixture(){
   updateManyAndReturn:vi.fn(async({data}:any)=>{order={...order!,...data};return [order]}),
   updateMany:vi.fn(async()=>({count:1})),
  };
- const transaction={chapaCheckout:checkout,bidBatchOrder:{findFirst:vi.fn(async()=>batch)},adminAudit:{findFirst:vi.fn(async()=>{gates.push('maintenance-read');return halted?{action:'AUCTIONS_MAINTENANCE_HALTED'}:null})},$queryRaw:vi.fn(async()=>{gates.push('auction-lock');return []}),$executeRaw:vi.fn(async(strings:TemplateStringsArray)=>{gates.push(strings.join('').includes('pg_advisory_xact_lock_shared')?'maintenance-lock':'wallet-lock');return 1})};
+ const transaction={chapaCheckout:checkout,bidBatchOrder:{findFirst:vi.fn(async()=>batch)},adminAudit:{findFirst:vi.fn(async()=>{gates.push('maintenance-read');return halted?{action:'AUCTIONS_MAINTENANCE_HALTED'}:null})},$queryRaw:vi.fn(async(strings:TemplateStringsArray)=>{const sql=strings.join('');if(sql.includes('to_regclass'))return [{ready:!!bonusPolicy}];if(sql.includes('DepositBonusPolicy'))return bonusPolicy?[{...bonusPolicy,now:new Date()}]:[];gates.push('auction-lock');return []}),$executeRaw:vi.fn(async(strings:TemplateStringsArray)=>{gates.push(strings.join('').includes('pg_advisory_xact_lock_shared')?'maintenance-lock':'wallet-lock');return 1})};
  const db={...transaction,$transaction:vi.fn(async(operation:any)=>{inTransaction=true;try{return await operation(transaction)}finally{inTransaction=false}})} as unknown as PrismaClient;
  const methods=vi.fn(async()=>({status:'success',data:[{name:'telebirr',slug:'telebirr',can_process_payments:true,supported_currencies:{ETB:{default_min:100,default_max:1000000,countries:{ET:{is_enabled:true,min_amount:100,max_amount:1000000}}}}}]}));
  const inline=vi.fn(async(input:any)=>{expect(inTransaction).toBe(false);expect(order).not.toBeNull();expect(order!.amountCents).toBe(BigInt(input.amountCents));expect(order!.merchantReference).toBe(input.merchantReference);return {status:'success',data:{auth_type:'USSD',chapa_reference:'CHowned-reference',payment_status:'PENDING',request_id:'request-owned',expires_at:new Date(Date.now()+300000).toISOString()}}});
  const transport={inline,methods,create:vi.fn(),lookup:vi.fn(),validate:vi.fn()} as unknown as ChapaInlineTransport;
  spies.get.mockImplementation(async()=>order);spies.verify.mockImplementation(async()=>order);spies.validateBatch.mockResolvedValue({totalCents:10000n,lines});
- return {db,transport,inline,checkout,batch,transaction,gates,setHalted:(value:boolean)=>{halted=value},order:()=>order,changeOrder:(patch:Partial<ChapaCheckout>)=>{order={...order!,...patch}}};
+ return {db,transport,inline,checkout,batch,transaction,gates,setBonusPolicy:(value:any)=>{bonusPolicy=value},setHalted:(value:boolean)=>{halted=value},order:()=>order,changeOrder:(patch:Partial<ChapaCheckout>)=>{order={...order!,...patch}}};
 }
 beforeEach(()=>{
  vi.clearAllMocks();spies.rate.mockResolvedValue(true);spies.eligible.mockResolvedValue({phoneCipher:'encrypted-contact',botId:'bot'});
@@ -36,6 +36,20 @@ beforeEach(()=>{
 afterEach(()=>vi.unstubAllEnvs());
 
 describe('owned v2 Inline creation boundary',()=>{
+ it('rejects stale or unconfirmed bonus offers before persistence or any charge',async()=>{
+  for(const approved of [{},{approvedDepositBonusVersion:1,approvedDepositBonusAmount:'10.00'},{approvedDepositBonusVersion:2,approvedDepositBonusAmount:'20.00'}]){
+   const f=fixture();f.setBonusPolicy({enabled:true,percent:10,minCents:10000n,maxBonusCents:null,validityDays:7,endsAt:null,version:2});
+   await expect(createInlineCheckout(f.db,'owner',{key,purpose:'TOP_UP',flow:'INLINE',paymentMethod:'telebirr',phone:'0911652904',amount:'100.00',...approved},spies.authorize,f.transport)).rejects.toMatchObject({code:'DEPOSIT_BONUS_CHANGED',status:409});
+   expect(f.checkout.create).not.toHaveBeenCalled();expect(f.inline).not.toHaveBeenCalled();
+  }
+ });
+ it('freezes the confirmed bonus quote and replays it after a policy change',async()=>{
+  const f=fixture();f.setBonusPolicy({enabled:true,percent:10,minCents:10000n,maxBonusCents:null,validityDays:7,endsAt:null,version:2});
+  const intent={key,purpose:'TOP_UP',flow:'INLINE',paymentMethod:'telebirr',phone:'0911652904',amount:'100.00',approvedDepositBonusVersion:2,approvedDepositBonusAmount:'10.00'};
+  const first=await createInlineCheckout(f.db,'owner',intent,spies.authorize,f.transport);expect(f.order()!.initialization).toMatchObject({depositBonus:{amountCents:'1000',policyVersion:2,validityDays:7}});
+  f.setBonusPolicy({enabled:false,percent:100,minCents:10000n,maxBonusCents:null,validityDays:1,endsAt:null,version:3});
+  expect((await createInlineCheckout(f.db,'owner',intent,spies.authorize,f.transport)).order.id).toBe(first.order.id);expect(f.checkout.create).toHaveBeenCalledOnce();expect(f.inline).toHaveBeenCalledOnce();
+ });
  it('commits exact quoted fees and immutable account/reference/key binding before HTTP',async()=>{
   const f=fixture(),result=await createInlineCheckout(f.db,'owner',bid,spies.authorize,f.transport);
   expect(spies.authorize).toHaveBeenCalledOnce();expect(spies.eligible).toHaveBeenCalledOnce();expect(spies.validateBatch).toHaveBeenCalledOnce();

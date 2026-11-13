@@ -6,6 +6,7 @@ import {TEST_TOKEN} from './helpers';
 // DATABASE_URL in beforeAll is too late for those modules.
 const filename = (expect.getState().testPath ?? '').replaceAll('\\', '/').split('/').at(-1) ?? '';
 const group: Record<string, string> = {
+  'telegram-browser-auth.test.ts':'TELEGRAM_BROWSER_TEST_DATABASE_URL',
   'bids.test.ts': 'BID_TEST_DATABASE_URL', 'submission-fee.test.ts': 'BID_TEST_DATABASE_URL',
   'settlement.test.ts': 'SETTLEMENT_TEST_DATABASE_URL', 'settlement-v2.test.ts': 'SETTLEMENT_TEST_DATABASE_URL',
   'settlement-v3.test.ts': 'SETTLEMENT_TEST_DATABASE_URL', 'personal.test.ts': 'PERSONAL_TEST_DATABASE_URL',

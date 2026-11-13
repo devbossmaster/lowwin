@@ -1,4 +1,4 @@
-.root{--bone:#e6e3da;--bone-light:#eeece5;width:100%;max-width:480px;min-width:0;min-height:calc(100dvh - 152px);margin-inline:auto;padding:18px 16px 32px;background:var(--mini-canvas,#f5f4ef);border-radius:0;color:var(--mini-ink,#181815);overflow:hidden;contain:paint}
+.root{--bone:#e4e7ec;--bone-light:#eef0f4;width:100%;max-width:480px;min-width:0;min-height:calc(100dvh - 152px);margin-inline:auto;padding:18px 16px 32px;background:var(--mini-canvas,var(--brand-canvas, #f2f2f7));border-radius:0;color:var(--mini-ink,var(--brand-ink, #16202c));overflow:hidden;contain:paint}
 .compact{min-height:0;padding:8px 0 16px;background:transparent}
 .bone{display:block;min-width:0;border-radius:6px;background:var(--bone);animation:breathe 1.8s ease-in-out infinite}
 .stack{display:grid;gap:18px;min-width:0}
@@ -22,13 +22,20 @@
 .button{width:100%;height:48px;border-radius:24px;background:#dedacf}
 .caption{width:62%;height:10px;background:var(--bone-light)}
 .home{display:grid;gap:22px}
-.hero{display:grid;align-content:end;gap:11px;min-height:220px;margin:-18px -16px 0;padding:30px 18px 20px;background:#25241f}
-.hero .bone{background:#49473d}
+.homeHeader{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:52px;margin-top:-10px}
+.homeBrand{width:96px;height:32px}
+.homeControls{display:flex;gap:8px;align-items:center}
+.homeControls>.bone{width:36px;height:36px;border-radius:50%}
+.homeControls>.bone:first-child{width:80px;height:44px;border-radius:24px}
+.homeAuctionGrid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
+.homeAuctionGrid>.auctionCard:nth-child(n+2){display:none}
+.hero{display:grid;align-content:end;gap:11px;min-height:240px;aspect-ratio:var(--home-hero-ratio,1.85);margin:-14px -16px 0;padding:26px 20px 30px;background:#172235}
+.hero .bone{background:#344258}
 .heroTitle{width:55%;height:58px}
 .heroCopy{width:46%;height:25px}
 .heroActions{display:flex;gap:10px;margin-top:8px}
-.heroActions>.bone{width:42%;height:44px;border-radius:24px;background:#6b6040}
-.heroActions>.bone+span{background:#ddd9cf}
+.heroActions>.bone{width:42%;height:48px;border-radius:24px;background:#486286}
+.heroActions>.bone+span{background:#c8cdd5}
 .gallery{width:100%;aspect-ratio:1840/800;border-radius:16px;background:#dfdcd2}
 .thumbnails{display:flex;gap:9px;overflow:hidden}
 .thumbnails>.bone{width:58px;height:48px;flex:none;border-radius:10px}
@@ -79,3 +86,23 @@
 .legalSection{display:grid;gap:16px;padding-block:8px}
 @keyframes breathe{0%,100%{opacity:.65}50%{opacity:1}}
 @media(prefers-reduced-motion:reduce){.bone{animation:none}}
+@media(min-width:640px){
+ :global(.app-frame[data-app-environment=browser]) .root[data-route-skeleton=home]{max-width:none;padding:18px 16px 32px}
+ :global(.app-frame[data-app-environment=browser]) .homeAuctionGrid{grid-template-columns:var(--catalog-columns,repeat(2,minmax(0,1fr)))}
+ :global(.app-frame[data-app-environment=browser]) .homeAuctionGrid>.auctionCard:nth-child(n+2){display:block}
+ :global(.app-frame[data-app-environment=browser]) .homeAuctionGrid>.auctionCard:nth-child(3){display:none}
+}
+@media(min-width:1024px){
+ :global(.app-frame[data-app-environment=browser]) .root[data-route-skeleton=home]{padding:0 0 32px}
+ :global(.app-frame[data-app-environment=browser]) .home{gap:22px}
+ :global(.app-frame[data-app-environment=browser]) .homeHeader{justify-content:flex-end;min-height:62px;margin:0}
+ :global(.app-frame[data-app-environment=browser]) .homeBrand{display:none}
+ :global(.app-frame[data-app-environment=browser]) .hero{margin:-22px 0 0;border-radius:20px}
+ :global(.app-frame[data-app-environment=browser]) .homeContent{padding-inline:16px}
+ :global(.app-frame[data-app-environment=browser]) .heroTitle{max-width:360px}
+ :global(.app-frame[data-app-environment=browser]) .heroCopy{max-width:280px}
+ :global(.app-frame[data-app-environment=browser]) .heroActions>.bone{max-width:180px}
+}
+@media(min-width:1280px){
+ :global(.app-frame[data-app-environment=browser]) .homeAuctionGrid>.auctionCard:nth-child(3){display:block}
+}

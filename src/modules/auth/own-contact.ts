@@ -39,6 +39,7 @@ export async function acceptOwnContact(tx:DB,payload:unknown,botId:string|null,u
   await attributeNewReferralInTransaction(tx,user.id,tid,{newAccount:true});
  }
  if(!existing)await tx.telegramOwnContact.create({data:{telegramId:tid,botId,userId:user.id,phoneHash:hash,phoneCipher:encryptPhone(phone,botId),lastFour:phone.slice(-4),verifiedAt:new Date(),sourceUpdateId:updateId}});
+ else if(existing.verificationSource==='TELEGRAM_OIDC')await tx.telegramOwnContact.update({where:{id:existing.id},data:{userId:user.id,verificationSource:'BOT_CONTACT',sourceUpdateId:updateId,oidcIssuer:null,oidcSubject:null,verifiedAt:new Date()}});
  else if(!existing.userId)await tx.telegramOwnContact.update({where:{id:existing.id},data:{userId:user.id}});
  return record(existing?'ALREADY_VERIFIED':'VERIFIED');
 }

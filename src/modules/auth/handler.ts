@@ -91,7 +91,7 @@ export async function handleAuth(request: Request) {
           stage='session-bind';
           const issued=await response.json() as {session:{id:string;userId:string};user:{id:string;name:string;image?:string|null}};
           if(!issued.session?.id||!issued.user?.id||issued.session.userId!==issued.user.id)throw new Error('Missing issued session');
-          const bound=await tx.session.updateMany({where:{id:issued.session.id,userId:issued.user.id,user:{telegramId:identity,staffMember:null}},data:{telegramLaunchId:identity}});
+          const bound=await tx.session.updateMany({where:{id:issued.session.id,userId:issued.user.id,user:{telegramId:identity,staffMember:null}},data:{telegramLaunchId:identity,telegramAuthSource:'MINI_APP'}});
           if(bound.count!==1)throw new Error('Launch identity mismatch');
           await attributeNewReferralInTransaction(tx,issued.user.id,identity,{newAccount:!existed,signedStartParam:telegramStartParam});
           stage='contact-bind';

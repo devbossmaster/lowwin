@@ -1,0 +1,10 @@
+{
+  "createdAt": "2026-11-13",
+  "tool": "built-in image_gen",
+  "prompt": "Create an original premium ecommerce auction website hero artwork for Lowwin, a Telegram-first Ethiopian auction platform. A very wide landscape 2.3:1 composition intended to crop exactly to 1840 by 800 pixels. No text, no letters, no numerals, no logos, no watermark anywhere. New brand is vivid violet #6D4CFD, deep violet #422584, pale lavender #F8F5FC, with a small warm golden-yellow #FFCF66 accent. The LEFT 55 percent must be calm clean deep violet negative space for a readable HTML headline and buttons, with no objects behind it. On the RIGHT 45 percent: a beautifully lit, believable studio still life of a premium unbranded graphite power bank, elegant white over-ear headphones and a small closed wireless earbuds case, arranged on one low lilac plinth. Include a small tasteful gold gift ribbon near the base to convey a prize, not floating coins or money. Photorealistic materials, precise controlled studio lighting, soft contact shadows, professional editorial product photography, distinctive violet light and a pale lavender rim, generous breathing room, clean product silhouettes, minimal set, no busy graphics, no people, no casino imagery, no clutter. Keep all important objects inside the right-hand crop safe area and leave bottom 20 percent sufficiently quiet for overlay controls. This is illustrative marketing artwork, not a product listing photo.",
+  "original": "exec-d0f1c115-fada-4aad-944c-04684c7b3415.png",
+  "output": "public/images/lowwin-violet-hero-20261113.webp",
+  "width": 1840,
+  "height": 800,
+  "illustrative": true
+}

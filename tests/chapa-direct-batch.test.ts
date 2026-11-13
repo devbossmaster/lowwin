@@ -89,12 +89,12 @@ describe.skipIf(!database)('direct charges and atomic batches on isolated Postgr
   expect((await db.chapaWebhookEvent.findUniqueOrThrow({where:{id:event.id}})).status).toBe('PROCESSED');
   expect(await balance(f.user)).toBe('0');expect(await db.bid.count({where:{userId:f.user}})).toBe(0);expect(await db.operation.count({where:{userId:f.user,scope:'CHAPA_RECEIPT'}})).toBe(0);
  });
- it.each(['PENDING','AUTH_NEEDED'])('keeps an active direct %s prompt on the initial fifteen-second cadence while retaining USSD validation',async status=>{
+ it.each(['PENDING','AUTH_NEEDED'])('refreshes an active direct %s prompt after five seconds in its first minute while retaining USSD validation',async status=>{
   const f=await fixture(),order=await f.start();f.setStatus(status);
   await db.chapaCheckout.update({where:{id:order.id},data:{attempts:20}});
   const before=Date.now();expect(await f.verify(order.id)).toMatchObject({status,verificationState:'VERIFIED'});
   const stored=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});
-  expect(stored.nextCheckAt.getTime()).toBeGreaterThanOrEqual(before+15000);expect(stored.nextCheckAt.getTime()).toBeLessThanOrEqual(Date.now()+15000);
+  expect(stored.nextCheckAt.getTime()).toBeGreaterThanOrEqual(before+5000);expect(stored.nextCheckAt.getTime()).toBeLessThanOrEqual(Date.now()+5000);
   expect(f.validate).toHaveBeenCalledOnce();expect(f.lookup).toHaveBeenCalledOnce();expect(await balance(f.user)).toBe('0');
  });
  it('retains growing recovery backoff after the direct authorization expires without claiming a failed payment',async()=>{

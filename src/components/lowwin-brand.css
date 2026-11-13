@@ -1,0 +1,88 @@
+/* Lowwin's November 2026 identity. Financial state colors keep their meaning. */
+:root {
+  --brand-primary: #6d4cfd;
+  --brand-primary-hover: #5d3de6;
+  --brand-primary-strong: #5533be;
+  --brand-on-primary: #fff;
+  --brand-deep: #382171;
+  --brand-canvas: #f2f2f7;
+  --brand-surface: #fff;
+  --brand-soft: #f2f2f7;
+  --brand-line: #e4e7ec;
+  --brand-ink: #16202c;
+  --brand-muted: #657181;
+  --brand-muted-on-soft: #5f6b7a;
+  --brand-disabled: #d9cef9;
+  --brand-disabled-ink: #5f537f;
+  --brand-bonus: #ffcf66;
+  --brand-bonus-soft: #fff3c4;
+  --brand-bonus-ink: #4b320d;
+  --action-primary: #2563eb;
+  --action-hover: #1d4ed8;
+  --action-pressed: #1e40af;
+  --action-ink: #fff;
+  --action-disabled: #dbe7fb;
+  --action-disabled-ink: #52647f;
+  --control-radius: 999px;
+  --control-height: 48px;
+  --control-padding-x: 24px;
+  --control-gap: 8px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --mini-action: var(--action-primary);
+  --mini-action-ink: var(--action-ink);
+  --mini-action-hover: var(--action-hover);
+  --mini-focus: var(--brand-primary);
+  color-scheme: light;
+}
+body { background: var(--brand-canvas); color: var(--brand-ink); font-size: 15px; font-weight: 400; line-height: 1.6; }
+.app-frame, .telegram-entry {
+  --mini-action: var(--action-primary);
+  --mini-action-ink: var(--action-ink);
+  --mini-action-hover: var(--action-hover);
+  --mini-focus: var(--brand-primary);
+  --mini-soft: var(--brand-soft);
+  --surface-ink: var(--brand-ink);
+  color: var(--brand-ink);
+  background: var(--brand-canvas);
+}
+.app-frame button[data-payment-action], body dialog button[data-payment-action] {
+  background: var(--action-primary);
+  color: var(--action-ink);
+  --surface-ink: var(--action-ink);
+  border: 0;
+  border-radius: var(--control-radius);
+  min-height: var(--control-height);
+  padding-inline: var(--control-padding-x);
+  gap: var(--control-gap);
+  font-size: 15px;
+  font-weight: 600;
+  transition: background-color 150ms ease, color 150ms ease, transform 150ms ease;
+}
+.app-frame button[data-payment-action]:hover:not(:disabled), body dialog button[data-payment-action]:hover:not(:disabled) { background: var(--action-hover); color: var(--action-ink); }
+.app-frame button[data-payment-action]:active:not(:disabled), body dialog button[data-payment-action]:active:not(:disabled) { background: var(--action-pressed); transform:translateY(1px); }
+.app-frame button[data-payment-action]:disabled, body dialog button[data-payment-action]:disabled { background: var(--action-disabled); color: var(--action-disabled-ink); --surface-ink: var(--action-disabled-ink); }
+.app-frame .auction-card .primary-button.card-action { background: var(--action-primary); color: var(--action-ink); --surface-ink: var(--action-ink); border-radius:var(--control-radius);min-height:var(--control-height);padding-inline:var(--control-padding-x);gap:var(--control-gap);font-size:15px;font-weight:600;transition:background-color 150ms ease,transform 150ms ease; }
+.app-frame .auction-card .primary-button.card-action:hover { background: var(--action-hover); color: var(--action-ink); }
+.app-frame .auction-card .primary-button.card-action:active { background:var(--action-pressed);transform:translateY(1px); }
+.app-frame .auction-card .secondary-button.card-action{min-height:48px;padding-inline:24px;border:1px solid var(--brand-line);border-radius:999px;background:#fff;color:var(--brand-ink);font-size:15px;font-weight:600}
+.app-frame .auction-card-win { background: var(--brand-soft); color: var(--brand-primary-strong); }
+.app-frame .auction-card-art > .status-live { background: var(--brand-soft); color: var(--brand-primary-strong); }
+.app-frame .auction-card { border:1px solid var(--brand-line);border-radius: 20px; }
+.app-frame .auction-card-body { text-align: start; }
+.app-frame .auction-card h3 { text-align: start; font-weight: 700; }
+.app-frame .card-facts { justify-content: flex-start; }
+.app-frame .card-fee, .app-frame .card-clock { background: var(--brand-soft); }
+.app-frame :focus-visible, .telegram-entry :focus-visible { outline-color: var(--brand-primary); }
+body ::selection { background: #e8e5f5; color: var(--brand-ink); }
+body input, body textarea { caret-color: var(--brand-primary); }
+.app-frame .primary-button,.app-frame .primary-bid-button,body dialog .primary-button{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:12px 24px;gap:8px;border:0;border-radius:999px;background:var(--action-primary);color:var(--action-ink);font:inherit;font-size:15px;font-weight:600;line-height:1.5;text-decoration:none;cursor:pointer;transition:background-color 150ms ease,transform 150ms ease}
+.app-frame .primary-button:hover:not(:disabled),.app-frame .primary-bid-button:hover:not(:disabled),body dialog .primary-button:hover:not(:disabled){background:var(--action-hover);color:var(--action-ink)}
+.app-frame .primary-button:active:not(:disabled),.app-frame .primary-bid-button:active:not(:disabled),body dialog .primary-button:active:not(:disabled){background:var(--action-pressed);transform:translateY(1px)}
+.app-frame .primary-button:disabled,.app-frame .primary-bid-button:disabled,body dialog .primary-button:disabled{background:var(--action-disabled);color:var(--action-disabled-ink);cursor:not-allowed}
+.app-frame :where(h1,h2,h3){font-weight:650;letter-spacing:-.025em}.app-frame :lang(am) :where(h1,h2,h3){letter-spacing:0;line-height:1.6}
+@media(prefers-reduced-motion:reduce){.app-frame button[data-payment-action],body dialog button[data-payment-action],.app-frame .auction-card .card-action{transition:none;transform:none}}

@@ -1,62 +1,50 @@
-# Lowin customer design system
+# Lowwin design system
 
-The 22 October 2026 customer redesign replaces the prior green visual world. The user's 18 ordered references establish compact mobile rhythm, clear sheets and quiet surfaces; branding and product claims stay original to Lowin. The existing logo remains unchanged. Staff administration follows [Master Guide Admin](docs/master-guide-admin.md), with its separate compact table workspace and server-enforced access.
+The latest 13 November 2026 direction uses white/soft-gray surfaces and blue primary buttons, with self-hosted Inter variable for English and the existing Ethiopic font for Amharic. Preserve the Lowwin logo and banners. Current shared tokens live in [lowwin-brand.css](src/components/lowwin-brand.css). Historical release notes describe earlier designs, not the current visual specification.
 
-## Direction
+## Visual direction
 
-Mode: Operate. A customer should be able to find an auction, understand the real fee, submit a private number and return to an authoritative result. Use an image-led Home, compact horizontal category chips, single-column auction cards and native modal bottom sheets. The supplied reference direction takes precedence over Impeccable's generated alternate concepts. Code-led implementation; no design approval pause is required by the user's explicit authorization.
-
-## Tokens
+Use white cards, soft-gray surfaces, charcoal text and compact layouts with natural height. Blue is scoped to primary buttons; violet remains the brand accent for identity, selection and illustrations. Yellow/gold highlights deposit offers. Neutral secondary and red destructive actions remain distinct. The reference URL was blank in automated preview, so the user's explicit visual specification is the authority.
 
 | Role | Value |
 | --- | --- |
-| Canvas | `#f5f4ef` |
-| Panel | `#ffffff` |
-| Ink / payment action | `#181815` |
-| Standard primary action | `#c9a227` |
-| Primary action label / icon | `#181815` |
-| Primary action hover | `#b48e1d` |
-| Secondary text | `#68665e` |
-| Gold text | `#715719` |
-| Gold accent / focus | `#987522` |
-| Selected gold surface | `#e9e3d1` |
-| Quiet line | `#e5e1d6` |
-| Error | `#a03928` |
+| Canvas / panel | #F2F2F7 / #FFFFFF |
+| Action / hover / pressed / label | #2563EB / #1D4ED8 / #1E40AF / #FFFFFF |
+| Retained brand accent | #6D4CFD |
+| Ink / secondary text | #16202C / #657181 |
+| Secondary text on gray | #5F6B7A |
+| Quiet surface / line | #F2F2F7 / #E4E7EC |
+| Disabled action / label | #DBE7FB / #52647F |
+| Bonus accent / surface / ink | #FFCF66 / #FFF3C4 / #4B320D |
 
-The 23 October 2026 user override makes ordinary customer primary actions muted gold with near-black labels and icons. Use `--mini-action: #c9a227`, `--mini-action-ink: #181815` and hover `#b48e1d`; contrast is 7.35:1 normally and 5.78:1 on hover. Gold continues to support focus, fees and result details. Quiet secondary controls and selected filters remain neutral. Payment initiation, fee confirmation and payment-status primary actions retain near-black with white labels (17.79:1). Mark shared payment buttons with `data-payment-action`; ArifPay primary buttons and the final bid confirmation keep their explicit payment styling. Status labels always include text. Cards have 16px corners, sheets 24px upper corners, compact controls pill-shaped. Avoid decorative shadows; the photographic banner carries the visual richness.
+White on action blue is 5.17:1; secondary #657181 on white is 4.96:1. Gray surfaces use the slightly darker secondary token for 4.86:1. Selection needs an outline and checkmark, not color alone. Errors use concise text and a small icon; avoid decorative red frames. Keep visible focus.
 
-## Type
+## Typography and layout
 
-Self-host DM Sans Latin at 400/500/600/700 and a single variable Noto Sans Ethiopic WOFF2 covering 100–900. Both use swap. Ethiopic is unicode-ranged so an English view does not download an unused script. English body is 14px with 1.55–1.65 line height; Amharic uses approximately 1.65 for legibility. Page headings are 25–27px at 600–650; product titles 16–18px, supporting copy 12–13px, occasional secondary metadata 10–11px. Display/heading tracking stops at -.035em; Amharic tracking is zero. Monetary values and countdowns use tabular numerals. The included existing bold-only TTF and Poppins/Sora files remain for historical references but are not requested by the new customer font declarations.
+Self-host Inter Latin variable (weights 100–900; body 400, actions/labels 600, headings 600–700) with existing unicode-ranged Noto Sans Ethiopic. Body text is 14–16px; action labels are 15px. Use tabular money/countdowns, slightly tighter English headings, normal Amharic tracking and sufficient Ethiopic line height. Compact navigation/metadata retain smaller readable sizes where necessary. Do not shrink text to force a layout.
 
-## Layout and interaction
+Use the 4/8/12/16/24/32px spacing scale. Primary actions have a 48px minimum height, pill radius, 24px horizontal padding and an 8px icon gap. Keep icon-only controls practically touchable at 44px. Use 150ms transitions, subtle pressed feedback and reduced-motion support. Preserve rounded inputs, scrollable categories and readable wrapping at 320/360/430px. Keep safe-area padding, contained scrolling and keyboard-accessible actions.
 
-A centered 480px maximum canvas serves mobile WebViews and ordinary preview widths. Check 360px and 430px. Insets are 16–20px, list gaps 12–16px, section separation 22–28px. The white header contains the existing logo, hammer shortcut, notification bell and language control. The bottom bar contains Home, Draws, Auctions, My Bids and Profile; gold centered Auctions replaces the superseded Deposit action. All primary and icon controls provide at least 44px targets.
+Ordinary browsers additionally adapt to tablets and desktops: two catalog columns from 640px, persistent side navigation from 1024px, and three columns from 1280px within a bounded canvas. Telegram WebViews keep the compact Mini App layout even in a wide window. Desktop login is a compact centered card leading to Telegram's official approval page; Mini App Login retains self-contact sharing. Layout detection never supplies authentication proof.
 
-Browser and Telegram safe-area insets are respected at the top and bottom. Native dialog sheets provide focus containment, Escape/backdrop dismissal and focus restoration; sheet body scrolling remains independent. Keyboard/device behavior still requires physical Telegram validation. Motion is subtle and reduced-motion-aware. Learn More and bid sheets are code split; an optional configured YouTube player is mounted only after an explicit Watch action. The family banner is a 104KB original generated photographic asset with HTML copy and an illustrative label.
+Home uses an original 1840×800 violet product still life with localized HTML copy. It is illustrative artwork, not an inventory or partnership claim. Preserve genuinely custom administrator banners. The exact image-generation prompt is in [the provenance manifest](public/images/lowwin-violet-hero-20261113.provenance.json).
 
-## Truth and safety
+## Shared checkout
 
-Each auction displays its frozen terms. V4 bid numbers have no currency charge; older auctions retain their own financial policy. No winner is inferred from an elapsed timer. Draws excludes illustrative/test announcements and uses finalized settlements for winners, with masked identity. No winning photos or stories are fabricated.
+Bid entry is a short first step: numbers, validation, chips, coupon/range tools and accurate submission-fee total. Continue prepares the authoritative quote without charging. Payment shows the summary, editable payer phone and supported external methods. Keep internal Lowwin Wallet separate. Only final explicit Pay may create a provider operation or debit the wallet.
 
-Private query snapshots are scoped to the authenticated session identity and invalidated after financial mutations. Direct ArifPay checkout is off until reviewed configuration is complete. Pending/needs-review ArifPay requests remain visible on the dedicated Bid payments page. Customer wallets, balance/hold displays and past manual-transfer history are removed; each new entry pays directly through ArifPay. No optimistic acceptance or credit exists. Customer deposit creation is retired; historical evidence, verification workers and staff operations remain.
+Top-up uses an amount step with presets and a qualifying deposit-offer preview, then the same external selection/status presentation. Explain continuing below the bonus minimum inside the same sheet. Wallet cannot fund itself.
 
-## Master Guide Admin
+Use one compact processing/result surface. Show authorization only when accepted by the provider. Never collect a wallet PIN. Confirm success only after verified payment and completed bid acceptance or wallet credit. Unknown transport outcomes keep the original attempt. Terminal retry reconciles the original and restores the draft without charging automatically. Closing dismisses the UI without cancelling a provider request.
 
-The 28 October 2026 admin direction uses six sections: Overview, Auctions and Catalog, Players, Payments, Winners and Broadcast. Keep the existing Lowwin identity, warm white canvas, white bordered tables, near-black selection and restrained gold actions. Use a compact sidebar and top bar with a wide workspace. On 360px and 430px screens, keep column headers and table rows; scroll horizontally within each bordered table rather than overflowing the page or changing records into cards.
+Bonus and deposited funds remain distinct. Show principal, actual bonus and total credit explicitly. Percent, minimum, cap, validity and offer end are server-configured. Do not promise a disabled, expired or unavailable offer.
 
-Players combines identity, wallet and referral summaries; Payments shows Chapa customer/payment records with details on demand; Winners combines winner, product, won date and delivery status. Broadcast supplies image, message and a Mini App button for the Telegram bot only, without Mini App inbox notifications. Separate refund/compensation/reconciliation, content, reports, settings and onboarding surfaces leave ordinary navigation. Historical financial, audit and settlement evidence is preserved.
+## Interaction and administration
 
-Public Better Auth signup creates a member. Resend verifies the email and handles password resets. An authorized database operator sets `User.role='admin'` for a verified staff email with no Telegram identity; the first admin uses this same process. Login is email/password with an eight-hour absolute session cap and current database authorization on pages and APIs. Bootstrap, invitations and 2FA flows are retired. Preserve private session/role cache isolation, scoped invalidation, lazy details and truthful unavailable states. The [canonical guide](docs/master-guide-admin.md) contains the exact promotion SQL and verification boundaries; local implementation does not establish production deployment or actual provider delivery.
+Reuse AccountSheet focus containment, Escape/Telegram Back, safe areas and focus restoration. Motion is purposeful and reduced-motion-aware. Lazy-load sheets, retain cached content and scope private queries to the account. Physical Telegram keyboard/USSD behavior remains a device check.
 
-## Verification evidence
+Follow [Master Guide Admin](docs/master-guide-admin.md): verified staff email plus current database-assigned admin role on pages and APIs. Retain compact tables, audit evidence, contained horizontal table scrolling, cache isolation and existing sidebar structure. Colors follow current tokens; authority and financial rules remain unchanged. Deposit controls live at /admin/bonus; enabling requires an explicit audited save.
 
-### 30 October 2026 customer refinement
+## Truth and release boundary
 
-The supplied `public/logonew.png` now replaces the previous mark. Customer headers use a versioned 2,392-byte WebP derivative; launch uses the same small mark with a spinner and localized Loading text. The original PNG is preserved. Route transitions use distinct, neutral skeleton geometry for each page; modal sections retain compact loading states and existing cached content remains visible during refreshes.
-
-The warm white, near-black and gold palette remains. Customer account, bids, transactions and catalog surfaces have consistent rounded panels, readable secondary text, tabular amounts, visible keyboard focus and contained mobile layouts. A signed payment launch resolves the owned checkout directly to the original top-up or canonical auction modal. A five-minute customer window ends the waiting presentation without declaring a payment failed or changing the provider's expiry; a later verified payment still applies through the existing ledger safeguards.
-
-Telegram deposit receipts follow committed server credit. Auction bot messages use the actual product photo where available, concise title, relevant EAT time and one Mini App action. Chapa controls its hosted checkout appearance and the actual browser redirect; Lowwin does not replace its provider URL or infer success from a return link.
-
-See `docs/redesign/` for screenshots, local measurements, comparison notes and release limitations. `docs/arifpay-checkout.md` specifies the provider contract, activation and recovery safeguards. These documents distinguish local verification from production and physical WebView evidence.
+Preserve frozen auction economics, ledger accounting, idempotency, verification and private result settlement until explicit publication. Never invent balances, payments, winner photos or provider-specific failures. Local checks do not prove deployment, production migrations or physical-phone delivery. See [November 13 release notes](docs/nov13-checkout-and-bonus-release.md).

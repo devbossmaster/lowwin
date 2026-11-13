@@ -47,6 +47,20 @@ describe('shared bid and deposit status surface',()=>{
   });
  }
  it('does not call verified provider success a credited deposit until the wallet commit exists',()=>{const pending=render('TOP_UP',{...base,order:{...order,status:'PENDING',providerStatus:'SUCCESS',verificationState:'VERIFIED'}});expect(pending).toContain('Confirming your payment');expect(pending).toContain('confirming your wallet credit');expect(pending).not.toContain('Wallet credited');expect(pending).not.toContain('>Paid</dt>');const credited=render('TOP_UP',{...base,order:{...order,status:'CREDITED',providerStatus:'SUCCESS',verificationState:'VERIFIED'}});expect(credited).toContain('Wallet credited');expect(credited).toContain('>Paid</dt>');expect(credited).toContain('>Done</button>');expect(credited).not.toContain('Top up again')});
+ it('shows bonus credit only after the verified wallet commit and preserves the separate principal',()=>{
+  const quote={amount:'10.10',totalCredit:'111.11',policyVersion:2,validityDays:7,credited:false};
+  const pending=render('TOP_UP',{...base,order:{...order,amount:'101.01',status:'PENDING',providerStatus:'SUCCESS',verificationState:'VERIFIED',depositBonus:quote}});
+  expect(pending).not.toContain('data-deposit-bonus-credited');expect(pending).not.toContain('111.11');
+  const credited=render('TOP_UP',{...base,order:{...order,amount:'101.01',status:'CREDITED',providerStatus:'SUCCESS',verificationState:'VERIFIED',depositBonus:{...quote,credited:true}}});
+  expect(credited).toContain('Bidding bonus credited');expect(credited).toContain('ETB 10.10');expect(credited).toContain('ETB 101.01');expect(credited).toContain('ETB 111.11');
+ });
+ it('keeps Check primary and only offers explicit same-key recovery before authorization exists',()=>{
+  const intent={key:'00000000-0000-4000-8000-000000000001',purpose:'TOP_UP' as const,amount:'35.00',paymentMethod:'telebirr',phone:'251911000000',apiVersion:'v2' as const,kind:'inline' as const,flow:'INLINE' as const};
+  const unknown=render('TOP_UP',{...base,order:null,directAttempt:intent,error:'Interrupted',errorCode:'UNAVAILABLE'});
+  expect(unknown).toContain('Check payment');expect(unknown).toContain('Retry original request');expect(unknown).toContain('Close');expect(unknown).not.toContain('Try again');
+  const outstanding=render('TOP_UP',{...base,directAttempt:intent,error:'Interrupted',errorCode:'UNAVAILABLE',paused:true});
+  expect(outstanding).toContain('Check payment');expect(outstanding).not.toContain('Retry original request');expect(outstanding).not.toContain('Try again');
+ });
  it('only mounts the code field for an actual provider-requested OTP',()=>{const ussd=render('TOP_UP');expect(ussd).not.toContain('one-time-code');const otp=render('TOP_UP',{...base,order:{...order,authType:'OTP',verificationState:'VERIFIED'}});expect(otp).toContain('autoComplete="one-time-code"');expect(otp).toContain('Never enter your wallet PIN here');expect(otp).toContain('Confirm code');expect(otp).not.toContain('name="pin"')});
  it('retains the original provider OTP field when that code is rejected and hides stale authorization errors after verified success',()=>{
   const rejected=render('TOP_UP',{...base,order:{...order,authType:'OTP',authorizationReasonCode:'INVALID_OTP'}});

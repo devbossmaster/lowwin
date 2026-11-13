@@ -13,10 +13,11 @@ import {ChapaError,ChapaProviderError,chapaAvailability,chapaHash,createdChapaDi
 import {chapaInlineAvailability,chapaInlineTransport,createInlineMethodCatalog,inlineMethodCatalog,inlineTransportBinding,isV2InlineCheckout,requireChapaInline,type ChapaInlineTransport} from './chapa-inline-provider';
 import {PAYMENT_TRANSACTION_OPTIONS} from './timing';
 import {markChapaDispatch,measureChapa} from './chapa-timing';
+import {depositBonusStorageReady,getDepositBonusPolicy,quoteDepositBonusInTransaction} from '../wallet/deposit-bonus';
 
 type Authorize=(tx:Prisma.TransactionClient)=>Promise<void>;
 const common={key:z.string().uuid(),flow:z.enum(['INLINE','HOSTED']),paymentMethod:z.enum(['telebirr','cbebirr','mpesa','ebirr','cbe-bank']),phone:z.string().min(9).max(40)};
-const input=z.discriminatedUnion('purpose',[z.object({...common,purpose:z.literal('BID'),batchId:z.string().uuid(),quoteHash:z.string().regex(/^[a-f0-9]{64}$/)}).strict(),z.object({...common,purpose:z.literal('TOP_UP'),amount:z.string().regex(/^(0|[1-9]\d{0,7})(?:\.\d{1,2})?$/)}).strict()]);
+const input=z.discriminatedUnion('purpose',[z.object({...common,purpose:z.literal('BID'),batchId:z.string().uuid(),quoteHash:z.string().regex(/^[a-f0-9]{64}$/)}).strict(),z.object({...common,purpose:z.literal('TOP_UP'),amount:z.string().regex(/^(0|[1-9]\d{0,7})(?:\.\d{1,2})?$/),approvedDepositBonusVersion:z.number().int().nonnegative().optional(),approvedDepositBonusAmount:z.string().regex(/^(0|[1-9]\d{0,7})(?:\.\d{1,2})?$/).optional()}).strict()]);
 type InlineInput=z.infer<typeof input>;
 const requestHash=(body:InlineInput,phone:string)=>chapaHash(JSON.stringify({...body,...(body.purpose==='TOP_UP'?{amount:centsToEtb(etbToCents(body.amount))}:{}),phone:phoneHash(`+${phone}`)}));
 const after=(ms:number)=>new Date(Date.now()+ms);
@@ -26,9 +27,9 @@ const capabilitiesFor=(transport:ChapaInlineTransport)=>measureChapa('capabiliti
 
 export async function chapaInlineConfig(client:PrismaClient,userId:string){
  const health=chapaInlineAvailability();
- const [contact,methods]=await Promise.all([client.telegramOwnContact.findUnique({where:{userId},select:{phoneCipher:true,botId:true,revokedAt:true}}),health.enabled?capabilitiesFor(chapaInlineTransport):Promise.resolve([])]);
+ const [contact,methods,depositBonus]=await Promise.all([client.telegramOwnContact.findUnique({where:{userId},select:{phoneCipher:true,botId:true,revokedAt:true}}),health.enabled?capabilitiesFor(chapaInlineTransport):Promise.resolve([]),getDepositBonusPolicy(client)]);
  let phone:string|null=null;try{if(contact&&!contact.revokedAt)phone=decryptPhone(contact.phoneCipher,contact.botId)}catch{}
- return {apiVersion:'v2' as const,configured:health.configured,enabled:health.enabled,recoveryEnabled:health.recoveryEnabled,mode:health.mode,minTopup:'1.00',maxTopup:'43200.00',methods,phone,cbeBankEnabled:health.enabled&&process.env.CHAPA_INLINE_CBE_BANK_ENABLED==='true',cbeGuideUrl:safeInlineCbeGuideUrl()};
+ return {apiVersion:'v2' as const,configured:health.configured,enabled:health.enabled,recoveryEnabled:health.recoveryEnabled,mode:health.mode,minTopup:'1.00',maxTopup:'43200.00',methods,phone,depositBonus,cbeBankEnabled:health.enabled&&process.env.CHAPA_INLINE_CBE_BANK_ENABLED==='true',cbeGuideUrl:safeInlineCbeGuideUrl()};
 }
 /** A lost response may discover the existing owned attempt, never initialize it. */
 export async function findInlineCheckoutByKey(client:PrismaClient,userId:string,key:string){
@@ -44,6 +45,7 @@ export async function createInlineCheckout(client:PrismaClient,userId:string,raw
  const hash=requestHash(body,phone),previous=await measureChapa('lookup',()=>client.chapaCheckout.findUnique({where:{userId_key:{userId,key:body.key}}}));
  const assertReplay=(order:ChapaCheckout)=>{if(!isV2InlineCheckout(order)||order.requestHash!==hash)throw new ChapaError(409,'KEY_REUSED','Keep the original payment details.')};
  if(previous){assertReplay(previous);return {order:await initializeInlineCheckout(client,previous,userId,reauthorize,transport)}}
+ const bonusReady=body.purpose==='TOP_UP'&&await depositBonusStorageReady(client);
  const health=requireChapaInline();
  if(body.flow==='HOSTED'?(body.paymentMethod!=='cbe-bank'||process.env.CHAPA_INLINE_CBE_BANK_ENABLED!=='true'):body.paymentMethod==='cbe-bank')throw new ChapaError(422,'METHOD_UNAVAILABLE','Choose an enabled payment method.');
  const capabilities=body.flow==='INLINE'?await capabilitiesFor(transport):[];
@@ -72,7 +74,9 @@ export async function createInlineCheckout(client:PrismaClient,userId:string,raw
   if(body.flow==='INLINE'&&(!method||amountCents<BigInt(method.minimumCents)||amountCents>BigInt(method.maximumCents)))throw new ChapaError(422,'METHOD_UNAVAILABLE','This method does not support the quoted amount.');
   const current=requireChapaInline();if(current.mode!==health.mode||current.credentialFingerprint!==health.credentialFingerprint||current.publicKeyFingerprint!==health.publicKeyFingerprint)throw new ChapaError(503,'CONFIGURATION_CHANGED','Reload payment options before paying.');
   const id=randomUUID(),merchantReference=`LW${randomBytes(9).toString('hex')}`,idempotencyKey=`lowwin-inline:${id}`,returnUrl=new URL(`/payments/chapa/return?checkout=${id}`,process.env.MINI_APP_URL).href;
-  const initialization={apiVersion:'v2',flowVersion:4,flow:body.flow,amountCents:String(amountCents),merchantReference,idempotencyKey,publicKeyFingerprint:health.publicKeyFingerprint!,paymentMethod:body.paymentMethod,payerPhoneHash:phoneHash(`+${phone}`),returnUrl,returnUrlVersion:1,...(batch?{batch:ownBatch(batch)}:{})};
+  const depositBonus=body.purpose==='TOP_UP'?await quoteDepositBonusInTransaction(tx,amountCents,bonusReady):null;
+  if(body.purpose==='TOP_UP'&&(depositBonus&&(body.approvedDepositBonusVersion!==depositBonus.policyVersion||body.approvedDepositBonusAmount===undefined)||body.approvedDepositBonusAmount!==undefined&&etbToCents(body.approvedDepositBonusAmount)!==BigInt(depositBonus?.amountCents??'0')))throw new ChapaError(409,'DEPOSIT_BONUS_CHANGED','The deposit bonus changed. Review the updated offer before paying.');
+  const initialization={apiVersion:'v2',flowVersion:4,flow:body.flow,amountCents:String(amountCents),merchantReference,idempotencyKey,publicKeyFingerprint:health.publicKeyFingerprint!,paymentMethod:body.paymentMethod,payerPhoneHash:phoneHash(`+${phone}`),returnUrl,returnUrlVersion:1,...(depositBonus?{depositBonus}:{}),...(batch?{batch:ownBatch(batch)}:{})};
   if(!await allowIdentityRequest(tx,'chapa-inline-initialize',id,5,86400000))throw new ChapaError(429,'RATE_LIMITED','Check the original payment before trying again.');
   const order=await tx.chapaCheckout.create({data:{id,userId,key:body.key,requestHash:hash,purpose:body.purpose,mode:health.mode,credentialFingerprint:health.credentialFingerprint!,initialization:JSON.parse(JSON.stringify(initialization)),chargeType:body.flow,flowVersion:4,batchId:batch?.id,payerPhoneCipher:encryptPhone(phone,contact.botId),phoneCipher:contact.phoneCipher,phoneBotId:contact.botId,merchantReference,amountCents,currency:'ETB',paymentMethod:body.paymentMethod,auctionId:batch?.auctionId,auctionSlug:batch?.auctionSlug,bidNumber:batch?new Prisma.Decimal(batchLines(batch)[0].number):null,feeVersion:batch?.feeVersion,grossFee:batch?new Prisma.Decimal(centsToEtb(batch.grossCents)):null,discountPoints:batch?new Prisma.Decimal(centsToEtb(batch.discountCents)):new Prisma.Decimal(0),couponId:batch?.couponId,status:'SUBMITTING',reason:'AWAITING_PROVIDER',attempts:1,leaseUntil:after(45000),expiresAt:after(body.flow==='INLINE'?300000:86400000),nextCheckAt:after(15000),reconcileUntil:after(30*86400000)}});
   return {created:true,order};

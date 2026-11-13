@@ -10,8 +10,8 @@ const migrationSql = readdirSync(migrationsRoot, {withFileTypes: true})
   .map(name => readFileSync(new URL(`${name}/migration.sql`, migrationsRoot), 'utf8'));
 const runtimeSql = readFileSync(new URL('../deploy/runtime-role.sql', import.meta.url), 'utf8');
 const quote = (value: string) => `"${value.replaceAll('"', '""')}"`;
-const immutableTables = ['AuctionFeeRevision', 'AuctionControlRevision', 'PaymentTransferAlias', 'AdminWalletCredit'];
-const mutableTables = ['VerifyRequest', 'VerifyWebhookEvent', 'ArifPayCheckout'];
+const immutableTables = ['AuctionFeeRevision', 'AuctionControlRevision', 'PaymentTransferAlias', 'AdminWalletCredit', 'DepositBonusLot', 'DepositBonusUse', 'DepositBonusExpiry'];
+const mutableTables = ['VerifyRequest', 'VerifyWebhookEvent', 'ArifPayCheckout', 'DepositBonusPolicy'];
 const testTables = ['TestRun', 'TestRunActor', 'TelegramMessage'];
 
 describe.skipIf(!sourceUrl)('runtime role provisioning on disposable PostgreSQL', () => {

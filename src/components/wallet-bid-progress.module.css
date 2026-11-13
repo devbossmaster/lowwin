@@ -1,19 +1,23 @@
-.progress{padding:7px 0 2px;text-align:center;color:#181815}
+.progress{padding:7px 0 2px;text-align:center;color:var(--brand-ink, #211a30)}
 .icon{position:relative;display:grid;place-items:center;width:48px;height:48px;margin:0 auto 13px;border-radius:50%;background:#f4ecd4;color:#86661b}
-.progress[data-wallet-bid-progress=success] .icon{background:#f2e7c4;color:#715719}
+.progress[data-wallet-bid-progress=success] .icon{background:var(--brand-soft, #eee8fa);color:var(--brand-primary-strong, #5533be)}
 .icon .spin{position:absolute;right:-3px;bottom:0;padding:2px;border-radius:50%;background:#fff;box-sizing:content-box;animation:wallet-spin 1s linear infinite}
 .progress h3{margin:0 0 7px;font-size:19px;font-weight:650;line-height:1.4;letter-spacing:-.02em;text-wrap:balance;overflow-wrap:anywhere}
-.progress p{max-width:31ch;margin:0 auto;color:#68665e;font-size:12px;line-height:1.65}
+.progress p{max-width:31ch;margin:0 auto;color:var(--brand-muted, #72697e);font-size:12px;line-height:1.65}
 .progress:lang(am) h3{letter-spacing:0;line-height:1.6}
-.receipt{display:grid;gap:8px;margin:16px 0 0;padding:12px 0 0;border-top:1px solid #e5e1d6;font-size:12px;line-height:1.5;text-align:left}
+.receipt{display:grid;gap:8px;margin:16px 0 0;padding:12px 0 0;border-top:1px solid var(--brand-line, #e4dcf0);font-size:12px;line-height:1.5;text-align:left}
 .receipt>div{display:flex;align-items:baseline;justify-content:space-between;gap:14px}
-.receipt dt{color:#68665e;min-width:0;overflow-wrap:anywhere}
-.receipt dd{margin:0;color:#181815;font-size:14px;font-weight:650;white-space:nowrap;font-variant-numeric:tabular-nums}
+.receipt dt{color:var(--brand-muted, #72697e);min-width:0;overflow-wrap:anywhere}
+.receipt dd{margin:0;color:var(--brand-ink, #211a30);font-size:14px;font-weight:650;white-space:nowrap;font-variant-numeric:tabular-nums}
 .actions{display:grid;gap:4px}
-.primary{display:flex;align-items:center;justify-content:center;min-height:46px;box-sizing:border-box;padding:10px 14px;border:0;border-radius:24px;background:#c9a227;color:#181815;font:inherit;font-size:13px;font-weight:650;text-decoration:none;cursor:pointer}
-.primary:hover{background:#b48e1d}
-.close{min-height:42px;padding:7px;border:0;border-radius:20px;background:transparent;color:#68665e;font:inherit;font-size:12px;cursor:pointer}
-.primary:focus-visible,.close:focus-visible{outline:2px solid #987522;outline-offset:3px}
-.progress ::selection{background:#eee0ac;color:#181815}
+.primary{display:flex;align-items:center;justify-content:center;min-height:48px;box-sizing:border-box;padding:12px 24px;border:0;border-radius:24px;background:var(--action-primary, #2563eb);color:var(--action-ink, #fff);font:inherit;font-size:15px;font-weight:600;text-decoration:none;cursor:pointer;--surface-ink:var(--action-ink, #fff);gap:8px;line-height:1.5}
+.primary:hover{background:var(--action-hover, #1d4ed8);color:var(--action-ink, #fff)}
+.close{min-height:42px;padding:7px;border:0;border-radius:20px;background:transparent;color:var(--brand-muted, #72697e);font:inherit;font-size:12px;cursor:pointer}
+.close:focus-visible{outline:2px solid var(--brand-primary, #6d4cfd);outline-offset:3px}
+.primary:focus-visible{outline:2px solid var(--brand-primary, #6d4cfd);outline-offset:3px;background:var(--action-primary, #2563eb);color:var(--action-ink, #fff);--surface-ink:var(--action-ink, #fff);min-height:48px;border-radius:24px;padding:12px 24px;gap:8px;font-size:15px;font-weight:600;line-height:1.5}
+.progress ::selection{background:#eee0ac;color:var(--brand-ink, #211a30)}
 @keyframes wallet-spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.icon .spin{animation:none}}
+.primary:hover:not(:disabled):not([aria-disabled=true]){background:var(--action-hover, #1d4ed8);color:var(--action-ink, #fff)}
+.primary:active:not(:disabled):not([aria-disabled=true]){background:var(--action-pressed, #1e40af)}
+.primary:disabled,.primary[aria-disabled=true]{background:var(--action-disabled, #dbe7fb);color:var(--action-disabled-ink, #52647f);--surface-ink:var(--action-disabled-ink, #52647f);opacity:1}

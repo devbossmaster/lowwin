@@ -1,9 +1,9 @@
 .panel{display:grid;gap:14px;margin-top:24px;padding-top:24px;border-top:1px solid #e8e5dc;min-width:0}
-.panel h3{margin:0;color:#181815;font-size:18px;line-height:1.4}
-.panel p,.panel small{margin:0;color:#68665e;font-size:13px;line-height:1.6}
+.panel h3{margin:0;color:var(--brand-ink, #211a30);font-size:18px;line-height:1.4}
+.panel p,.panel small{margin:0;color:var(--brand-muted, #72697e);font-size:13px;line-height:1.6}
 .previewFigure{display:grid;gap:8px;margin:0;width:min(100%,680px)}
-.previewFigure figcaption{color:#68665e;font-size:12px;line-height:1.5}
-.preview{width:100%;aspect-ratio:1840/800;overflow:hidden;border:1px solid #e8e5dc;border-radius:12px;background:#f0eee6}
+.previewFigure figcaption{color:var(--brand-muted, #72697e);font-size:12px;line-height:1.5}
+.preview{width:100%;aspect-ratio:1840/800;overflow:hidden;border:1px solid #e8e5dc;border-radius:12px;background:var(--brand-soft, #eee8fa)}
 .preview img{display:block;width:100%;height:100%;object-fit:cover;object-position:center}
 .panel input[type=file]{max-width:100%;padding:12px 0}
 .panel input[type=checkbox]{flex:none}

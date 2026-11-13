@@ -44,10 +44,20 @@ export function HomePageContent({query:seedQuery,children}:{query:CatalogQuery;c
  const winners=initial?.winners??readPublicQuery<WinnersData>(winnersQueryUrl())?.value;
  const view=initial??shell.data;
  useEffect(()=>{if(initial)seedPublicQuery('/api/catalog/categories',initial.categories)},[initial]);
- const failure=<p role="status"><MiniPhrase en="Home could not refresh." am="መነሻውን ማደስ አልተቻለም።"/> <button className="retry-action" onClick={()=>router.refresh()}><MiniPhrase en="Retry" am="እንደገና ይሞክሩ"/></button></p>;
- const content=!view||!categories||!winners?(error?failure:<MiniRouteSkeleton path="/"/>):<><OfflineRetry/>{error&&failure}<HomeHero copy={resolveHomeCopy(view.managed)} media={view.media} experience={view.experience}/>
-  <HomeCategories categories={categories} query={query} home/><HomeAuctions key={`${query.category??'all'}:${query.sort}:${query.q}`} initial={auctions} query={query}/>
-  <section id="recent-winners" tabIndex={-1} className={styles.winnersSection} style={{scrollMarginTop:20}}><div className={styles.heading}><h2><MiniPhrase en="Recent winners" am="የቅርብ አሸናፊዎች"/></h2><Link href="/winners"><MiniPhrase en="View all" am="ሁሉንም ይመልከቱ"/><ArrowRight/></Link></div><WinnersClientList initial={winners} carousel/></section><HomeHowItWorks media={view.media} experience={view.experience}/>
- <HomeFooter/></>;
+ const content=<HomePageSections view={view} categories={categories} auctions={auctions} winners={winners} query={query} error={!!error} onRetry={()=>router.refresh()}/>;
  return <><div className="home-header-slot" hidden={(!view||!categories||!winners)&&!error}><MiniHeader/></div>{content}<HomeDataContext.Provider value={setStreamed}>{children}</HomeDataContext.Provider></>;
 }
+
+/** The public shell remains useful during an outage. Missing resources are
+ * unavailable, never empty results; only successful server data enters caches. */
+export function HomePageSections({view,categories,auctions,winners,query,error,onRetry}:{view?:Shell;categories?:HomeData['categories'];auctions?:HomeData['auctions'];winners?:WinnersData;query:CatalogQuery;error:boolean;onRetry:()=>void}){
+ if((!view||!categories||!winners)&&!error)return <MiniRouteSkeleton path="/"/>;
+ return <><OfflineRetry/>{error&&<div role="status" className={styles.homeNotice}><p><MiniPhrase en="Home could not refresh. Please try again." am="መነሻውን ማደስ አልተቻለም። እንደገና ይሞክሩ።"/></p><HomeRetry onRetry={onRetry}/></div>}
+  <HomeHero copy={resolveHomeCopy(view?.managed??null)} media={view?.media??null} experience={view?.experience??null}/>
+  {categories&&<HomeCategories categories={categories} query={query} home/>}
+  {error&&!auctions?<section id="discover-auctions" className={styles.section} data-home-unavailable="auctions"><div className={styles.heading}><h2><MiniPhrase en="Live auctions" am="ክፍት ጨረታዎች"/></h2></div><div className={styles.unavailable}><p><MiniPhrase en="Live auctions are temporarily unavailable." am="ክፍት ጨረታዎችን ለጊዜው ማምጣት አልተቻለም።"/></p><HomeRetry onRetry={onRetry}/></div></section>:<HomeAuctions key={[query.category??'all',query.sort,query.q].join(':')} initial={auctions} query={query}/>}
+  <section id="recent-winners" tabIndex={-1} className={styles.winnersSection} style={{scrollMarginTop:20}}><div className={styles.heading}><h2><MiniPhrase en="Recent winners" am="የቅርብ አሸናፊዎች"/></h2><Link href="/winners"><MiniPhrase en="View all" am="ሁሉንም ይመልከቱ"/><ArrowRight/></Link></div>{error&&!winners?<div className={styles.unavailableWinners} data-home-unavailable="winners"><div className={styles.unavailable}><p><MiniPhrase en="Recent winners are temporarily unavailable." am="የቅርብ አሸናፊዎችን ለጊዜው ማምጣት አልተቻለም።"/></p><HomeRetry onRetry={onRetry}/></div></div>:<WinnersClientList initial={winners} carousel/>}</section>
+  <HomeHowItWorks media={view?.media??null} experience={view?.experience??null}/><HomeFooter/>
+ </>;
+}
+function HomeRetry({onRetry}:{onRetry:()=>void}){return <button type="button" className={styles.homeRetry} onClick={onRetry}><MiniPhrase en="Retry" am="እንደገና ይሞክሩ"/></button>}

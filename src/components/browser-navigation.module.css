@@ -1,0 +1,8 @@
+.rail{display:none}
+@media(min-width:1024px){
+ :global(.app-frame[data-app-environment=browser]) .rail{position:fixed;inset-block:24px;inset-inline-start:max(24px,calc((100vw - 1280px)/2 + 24px));z-index:35;display:flex;flex-direction:column;width:184px;padding:20px 12px;border:1px solid var(--brand-line);border-radius:16px;background:var(--brand-surface);color:var(--brand-ink)}
+ .brand{display:flex;align-items:center;gap:9px;min-height:48px;padding:0 6px;margin-bottom:28px;color:inherit;text-decoration:none;font-size:21px;font-weight:700;letter-spacing:-.03em}.brand img{flex:none;width:34px;height:34px;object-fit:contain}
+ .rail nav{display:grid;gap:7px}.rail nav a{display:flex;align-items:center;gap:11px;min-height:48px;padding:11px 12px;border-radius:12px;color:var(--brand-muted);font-size:13px;font-weight:550;line-height:1.5;text-decoration:none}.rail nav a>svg{flex:none}.rail nav a[aria-current=page]{background:var(--brand-soft);color:var(--brand-primary-strong);font-weight:700}
+ .help{display:grid;gap:4px;margin-top:auto;padding-top:24px;border-top:1px solid var(--brand-line)}.help a{display:flex;align-items:center;min-height:44px;padding:8px 10px;color:var(--brand-muted);text-decoration:none;font-size:12px;line-height:1.5}.rail a:focus-visible{outline:2px solid var(--brand-primary);outline-offset:3px}
+}
+@media(hover:hover){.rail nav a:hover,.help a:hover{background:var(--brand-canvas);color:var(--brand-primary-strong)}}

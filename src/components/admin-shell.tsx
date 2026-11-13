@@ -3,13 +3,13 @@ import {LOWWIN_LOGO_SRC} from '@/lib/brand';
 import {createContext,useContext,useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {AdminLink as Link} from './admin-query';
 import {usePathname,useRouter,useSearchParams} from 'next/navigation';
-import {LayoutDashboard,Gavel,CreditCard,Users,LogOut,Menu,X,ChevronRight,ShieldCheck,Trophy,MessagesSquare} from 'lucide-react';
+import {LayoutDashboard,Gavel,CreditCard,Users,LogOut,Menu,X,ChevronRight,ShieldCheck,Trophy,MessagesSquare,Gift} from 'lucide-react';
 import {activeTask,adminAreas,allowedTasks,areaLanding,roleLabels,type AdminAccess} from '@/modules/admin/navigation';
 import {AdminQueryProvider,clearAdminCache,navigation,positions} from './admin-query';
 import {LanguageSwitch} from './mini-locale';
 const AccessContext=createContext<AdminAccess|null>(null);
 export function useAdminAccess(){const access=useContext(AccessContext);if(!access)throw Error('Admin access context is required.');return access;}
-const icons:Record<string,typeof Gavel>={Overview:LayoutDashboard,'Auctions and Catalog':Gavel,Players:Users,Payments:CreditCard,Winners:Trophy,Broadcast:MessagesSquare};
+const icons:Record<string,typeof Gavel>={Overview:LayoutDashboard,'Auctions and Catalog':Gavel,Players:Users,Payments:CreditCard,Bonus:Gift,Winners:Trophy,Broadcast:MessagesSquare};
 export function AdminShell({children,access}:{children:React.ReactNode;access:AdminAccess}){return <AccessContext.Provider value={access}><AdminQueryProvider key={access.cacheIdentity} identity={access.cacheIdentity??'isolated-admin-fixture'} allowedRoutes={allowedTasks(access.role).map(task=>task.href)}><Workspace access={access}>{children}</Workspace></AdminQueryProvider></AccessContext.Provider>}
 function Workspace({children,access}:{children:React.ReactNode;access:AdminAccess}){
  const path=usePathname(),search=useSearchParams(),route=path+(search.size?'?'+search.toString():''),router=useRouter(),task=activeTask(path),tasks=allowedTasks(access.role).filter(t=>t.area===task.area),[open,setOpen]=useState(false),[error,setError]=useState('');const drawer=useRef<HTMLElement>(null),trigger=useRef<HTMLButtonElement>(null);

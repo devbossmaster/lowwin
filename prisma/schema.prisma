@@ -62,6 +62,7 @@ model Session {
   user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   staffSession     StaffSession?
   telegramLaunchId String?
+  telegramAuthSource String @default("MINI_APP")
 
   @@index([userId])
   @@map("session")
@@ -121,7 +122,10 @@ model TelegramOwnContact {
   phoneCipher    String
   lastFour       String
   verifiedAt     DateTime
-  sourceUpdateId BigInt    @unique
+  sourceUpdateId BigInt?   @unique
+  verificationSource String @default("BOT_CONTACT")
+  oidcIssuer     String?
+  oidcSubject    String?
   revokedAt      DateTime?
 
   @@unique([botId, telegramId])
@@ -188,6 +192,58 @@ model Journal {
   transactionId BigInt    @default(dbgenerated("txid_current()"))
   postings      Posting[]
   chapaCheckout ChapaCheckout?
+}
+
+// Deposit promotions never mix with cash. Immutable lot movements account for
+// fee-only use and expiry; BONUS is a separate wallet ledger projection.
+model DepositBonusPolicy {
+  id           String   @id @default("default")
+  enabled      Boolean  @default(false)
+  percent      Int      @default(10)
+  minCents     BigInt   @default(10000)
+  maxBonusCents BigInt?
+  validityDays Int      @default(7)
+  endsAt       DateTime?
+  version      Int      @default(1)
+  updatedBy    String?
+  updatedAt    DateTime @updatedAt
+}
+
+model DepositBonusLot {
+  checkoutId   String   @id
+  userId       String
+  amountCents  BigInt
+  policyVersion Int
+  validityDays Int
+  journalId    String   @unique
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt, checkoutId])
+}
+
+model DepositBonusUse {
+  id           String   @id @default(uuid())
+  checkoutId   String
+  userId       String
+  bidId        String
+  operationId  String
+  amountCents  BigInt
+  createdAt    DateTime @default(now())
+
+  @@unique([checkoutId, bidId])
+  @@index([bidId])
+  @@index([operationId])
+  @@index([userId, checkoutId])
+}
+
+model DepositBonusExpiry {
+  checkoutId   String   @id
+  userId       String
+  amountCents  BigInt
+  journalId    String?  @unique
+  createdAt    DateTime @default(now())
 }
 
 model Posting {

@@ -1,6 +1,6 @@
-# Lowin — Phase 4B results and personal pages
+# Lowwin
 
-A mobile-first Telegram Mini App for lowest unique **integer point** auctions. This repository is independent of Gojo Games. Deterministic settlement now has anonymous public results and private bid history, wallet activity, profile, confirmed wins and persistent favorites. Admin, fulfillment, notification delivery, provider funding and phone login remain future work. See [Phase 4B implementation and validation](docs/phase4b-results-personal.md) and [Phase 4A settlement](docs/phase4a-settlement.md).
+A Telegram Mini App and responsive website for versioned lowest-unique-bid auctions, Chapa v2 payments, wallet-funded submission fees and administrator-reviewed result publication. Current product rules are recorded in [PRODUCT.md](PRODUCT.md). This repository is independent of Gojo Games. Older phase notes below describe the implementation history; see [Phase 4B](docs/phase4b-results-personal.md) and [Phase 4A](docs/phase4a-settlement.md).
 
 ## Run locally
 
@@ -14,6 +14,10 @@ npm run db:generate
 npm run db:migrate
 npm run dev
 ```
+
+Development explicitly uses webpack, matching the production build. If an older dev process reports the Next.js 16 Turbopack/webpack configuration error, stop it with `Ctrl+C` and restart `npm run dev`.
+
+Checkout and configurable deposit bonuses are described in [November 13 release notes](docs/nov13-checkout-and-bonus-release.md). The later [website login](docs/telegram-browser-login.md) and [visual update](docs/nov13-visual-and-browser-validation.md) add official Telegram browser authentication, Inter typography and blue primary buttons. Earlier phase notes below are historical; current product and design contracts are in [PRODUCT.md](PRODUCT.md) and [DESIGN.md](DESIGN.md).
 
 Open http://localhost:3000. The public catalog/rules work without authentication. Authenticated routes fail closed if configuration is missing. Demo inventory is explicitly labeled; test bids are accepted only in an isolated local/test environment on a loopback `_test` database. Production rejects DEMO bids.
 

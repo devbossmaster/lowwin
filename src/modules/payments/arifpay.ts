@@ -127,7 +127,7 @@ export async function verifyArifPayCheckout(client:PrismaClient,id:string,userId
   if(previouslyAccepted){reason='BID_ALREADY_ACCEPTED'}else{
    await tx.$executeRawUnsafe('SAVEPOINT arifpay_bid');
    try{
-    const accepted=await submitBidInTransaction(tx,{userId:t.userId,auctionSlug:t.auctionSlug,amount:t.bidNumber.toString(),key:t.key,feeVersion:t.feeVersion});
+    const accepted=await submitBidInTransaction(tx,{userId:t.userId,auctionSlug:t.auctionSlug,amount:t.bidNumber.toString(),key:t.key,feeVersion:t.feeVersion},process.env,{allowDepositBonus:false});
     receipt=accepted;bidId=accepted.bid.id;
     await tx.$executeRawUnsafe('RELEASE SAVEPOINT arifpay_bid');
    }catch(error){

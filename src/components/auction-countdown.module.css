@@ -1,13 +1,13 @@
 .countdown{display:inline-flex;align-items:center;justify-content:center;gap:4px;font-variant-numeric:tabular-nums;line-height:1}
 .inline{display:inline-block;min-inline-size:11ch;font-variant-numeric:tabular-nums;white-space:nowrap;line-height:1.4}
-.label{font-size:10px;color:#68665e;margin-right:4px}
+.label{font-size:10px;color:var(--brand-muted, #72697e);margin-right:4px}
 .unit{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0}
-.tile{--flap-width:26px;--flap-height:28px;position:relative;display:block;box-sizing:border-box;width:var(--flap-width);min-width:calc(var(--flap-digits,2)*.64em + .68em);height:var(--flap-height);border:1px solid #d8d3c6;border-radius:6px;background:#e5e1d6;color:#282419;font-size:13px;font-weight:750;box-shadow:0 3px 6px #3025110c;perspective:160px;isolation:isolate}
+.tile{--flap-width:26px;--flap-height:28px;position:relative;display:block;box-sizing:border-box;width:var(--flap-width);min-width:calc(var(--flap-digits,2)*.64em + .68em);height:var(--flap-height);border:1px solid #d8d3c6;border-radius:6px;background:var(--brand-line, #e4dcf0);color:#282419;font-size:13px;font-weight:750;box-shadow:0 3px 6px #3025110c;perspective:160px;isolation:isolate}
 .tile:after{content:'';position:absolute;inset:calc(50% - .5px) 0 auto;z-index:4;height:1px;background:#bcb5a57a;pointer-events:none}
 .half{position:absolute;inset-inline:0;height:50%;overflow:hidden;backface-visibility:hidden;-webkit-backface-visibility:hidden}
 .half>span{display:grid;place-items:center;height:calc(var(--flap-height) - 2px);white-space:nowrap;line-height:1;letter-spacing:-.03em}
 .upper{top:0;border-radius:5px 5px 0 0;background:#f2f0e9;transform-origin:center bottom}
-.lower{bottom:0;border-radius:0 0 5px 5px;background:#e5e1d6;transform-origin:center top}
+.lower{bottom:0;border-radius:0 0 5px 5px;background:var(--brand-line, #e4dcf0);transform-origin:center top}
 .lower>span{transform:translateY(-50%)}
 .leaves{position:absolute;inset:0;z-index:2;perspective:160px;pointer-events:none}
 .outgoing{animation:fold-down 120ms cubic-bezier(.55,.05,.85,.45) both}

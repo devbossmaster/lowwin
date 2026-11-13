@@ -22,6 +22,8 @@ import {queueChapaReceipt} from '../notifications/chapa-receipt';
 import {chapaMethodCatalog} from './chapa-methods';
 import {chapaInlineAvailability,chapaInlineTransport,inlineTransportBinding,isV2InlineCheckout} from './chapa-inline-provider';
 import {chapaAuthorizationErrorFeedback,chapaAuthorizationFeedback,chapaAuthorizationFeedbackReason,type ChapaAuthorizationFeedback} from './chapa-authorization-feedback';
+import {creditDepositBonusInTransaction,ownDepositBonus} from '../wallet/deposit-bonus';
+import {chapaPendingVerificationDelay,shouldRefreshChapaAuthorization} from './chapa-verification-policy';
 
 type Tx=Prisma.TransactionClient;
 type Authorize=(tx:Tx)=>Promise<void>;
@@ -57,7 +59,7 @@ export function ownChapaCheckout(order:ChapaCheckout&OrderContext){
  // prefix histories; preserve the original single-bid DTO for old consumers.
  const receipt=order.batchId&&order.receipt&&typeof order.receipt==='object'&&!Array.isArray(order.receipt)?Object.fromEntries(Object.entries(order.receipt).filter(([key])=>['bid','hold','charge','wallet','remainingSubmissions','ownBids'].includes(key))):order.receipt;
  let payerPhoneMasked:string|null=null;try{if(order.payerPhoneCipher&&order.phoneBotId){const phone=decryptPhone(order.payerPhoneCipher,order.phoneBotId);payerPhoneMasked=`${phone.slice(0,3)}*****${phone.slice(-4)}`}}catch{}
- return {id:order.id,flowVersion:order.flowVersion,apiVersion:unsupportedLegacyChapaCheckout(order)?'legacy' as const:'v2' as const,unsupportedLegacy:unsupportedLegacyChapaCheckout(order),purpose:order.purpose,mode:order.mode,amount:centsToEtb(order.amountCents),amountCents:order.amountCents.toString(),currency:order.currency,status:order.status,reason:order.reason,providerReasonCode:publicChapaPaymentReason(order),authorizationReasonCode:publicChapaAuthorizationReason(order),providerStatus:order.providerStatus??(paid(order)?'SUCCESS':null),verificationState:order.verificationState,initializationIssue,initializationReasonCode:order.chargeType==='DIRECT'||isV2InlineCheckout(order)&&order.chargeType==='INLINE'?safeChapaPaymentReason(order.initializationErrorCode):null,merchantReference:order.merchantReference,paymentMethod:order.paymentMethod,chargeType:order.chargeType??'HOSTED',authType:order.authType??null,authorizationReference:order.authorizationReference??null,payerPhoneMasked,batch:batch??null,batchNumbers:batch?.lines?.map(line=>line.number)??[],auctionTitle:order.auction?.product?.title??null,auctionTitleAm:order.auction?.product?.titleAm??null,auctionCode:order.auction?.publicCode?.toString()??null,auctionStatus:order.auction?.status??null,auctionEndsAt:order.auction?.endsAt?.toISOString()??null,checkoutUrl:order.checkoutUrl,auctionSlug:order.auctionSlug,bidNumber:order.bidNumber?.toString()??null,feeVersion:order.feeVersion,grossFee:order.grossFee?.toString()??null,discountPoints:order.discountPoints.toString(),createdAt:order.createdAt.toISOString(),updatedAt:order.updatedAt.toISOString(),expiresAt:order.expiresAt.toISOString(),pollAfterMs:STATUS_REFRESH_MS,fundsPreserved:paid(order)&&order.status==='NEEDS_REVIEW',receipt};
+ return {depositBonus:ownDepositBonus(order),id:order.id,flowVersion:order.flowVersion,apiVersion:unsupportedLegacyChapaCheckout(order)?'legacy' as const:'v2' as const,unsupportedLegacy:unsupportedLegacyChapaCheckout(order),purpose:order.purpose,mode:order.mode,amount:centsToEtb(order.amountCents),amountCents:order.amountCents.toString(),currency:order.currency,status:order.status,reason:order.reason,providerReasonCode:publicChapaPaymentReason(order),authorizationReasonCode:publicChapaAuthorizationReason(order),providerStatus:order.providerStatus??(paid(order)?'SUCCESS':null),verificationState:order.verificationState,initializationIssue,initializationReasonCode:order.chargeType==='DIRECT'||isV2InlineCheckout(order)&&order.chargeType==='INLINE'?safeChapaPaymentReason(order.initializationErrorCode):null,merchantReference:order.merchantReference,paymentMethod:order.paymentMethod,chargeType:order.chargeType??'HOSTED',authType:order.authType??null,authorizationReference:order.authorizationReference??null,payerPhoneMasked,batch:batch??null,batchNumbers:batch?.lines?.map(line=>line.number)??[],auctionTitle:order.auction?.product?.title??null,auctionTitleAm:order.auction?.product?.titleAm??null,auctionCode:order.auction?.publicCode?.toString()??null,auctionStatus:order.auction?.status??null,auctionEndsAt:order.auction?.endsAt?.toISOString()??null,checkoutUrl:order.checkoutUrl,auctionSlug:order.auctionSlug,bidNumber:order.bidNumber?.toString()??null,feeVersion:order.feeVersion,grossFee:order.grossFee?.toString()??null,discountPoints:order.discountPoints.toString(),createdAt:order.createdAt.toISOString(),updatedAt:order.updatedAt.toISOString(),expiresAt:order.expiresAt.toISOString(),pollAfterMs:STATUS_REFRESH_MS,fundsPreserved:paid(order)&&order.status==='NEEDS_REVIEW',receipt};
 }
 export async function eligible(tx:Tx,userId:string){
  const [row]=await tx.$queryRaw<{telegramId:string|null;contactTelegramId:string|null;botId:string|null;phoneCipher:string|null;revokedAt:Date|null;staffId:string|null;suspended:boolean}[]>`SELECT u."telegramId",c."telegramId" AS "contactTelegramId",c."botId",c."phoneCipher",c."revokedAt",s."userId" AS "staffId",COALESCE(r.suspended,false) AS suspended FROM "user" u LEFT JOIN "TelegramOwnContact" c ON c."userId"=u.id LEFT JOIN "StaffMember" s ON s."userId"=u.id LEFT JOIN "UserRestriction" r ON r."userId"=u.id WHERE u.id=${userId}`;
@@ -207,7 +209,7 @@ export async function verifyChapaCheckout(client:PrismaClient,id:string,userId?:
   // already signals a state change, so verify it without another validation
   // round trip. OTPs belong only to the explicit authorization mutation.
   const authorizationFlow=snapshot.chargeType==='DIRECT'||inlineV2&&snapshot.chargeType==='INLINE';
-  if(eventCheck!=='webhook'&&authorizationFlow&&snapshot.authType==='USSD'&&snapshot.authorizationReference&&selectedTransport.validate&&(!inlineV2||inlineTransportBinding(snapshot)))try{
+  if(eventCheck!=='webhook'&&authorizationFlow&&shouldRefreshChapaAuthorization(snapshot)&&selectedTransport.validate&&(!inlineV2||inlineTransportBinding(snapshot)))try{
    const validation=await measureChapa('validate',()=>selectedTransport.validate!({reference:snapshot.authorizationReference!,paymentMethod:snapshot.paymentMethod!}));
    authorizationFeedback=chapaAuthorizationFeedback(validation,snapshot);
   }catch(error){authorizationFeedback=chapaAuthorizationErrorFeedback(error)}
@@ -258,8 +260,8 @@ export async function verifyChapaCheckout(client:PrismaClient,id:string,userId?:
    // Keep the initial polling cadence while a direct authorization is open.
    // Growing backoff here can delay a prompt cancellation.
    // Expired authorization and request errors retain their recovery backoff.
-   const waiting=proof.status==='PENDING'||proof.status==='AUTH_NEEDED',activeDirect=authorizationFlow&&order.expiresAt.getTime()>Date.now();
-   const delay=waiting?activeDirect?15000:Math.min(300000,15000*Math.max(1,Math.floor(order.attempts/4))):300000;
+   const waiting=proof.status==='PENDING'||proof.status==='AUTH_NEEDED';
+   const delay=waiting?chapaPendingVerificationDelay(order,authorizationFlow):300000;
    const authorizationReason=authorizationFeedback?chapaAuthorizationFeedbackReason(authorizationFeedback):publicChapaAuthorizationReason(order)?order.reason:null;
    return ownChapaCheckout(await tx.chapaCheckout.update({where:{id},data:{...fields,status:proof.status,reason:proof.reasonCode?`CHAPA_${proof.reasonCode}`:waiting&&authorizationReason?authorizationReason:'PAYMENT_NOT_COMPLETED',nextCheckAt:after(delay)}}));
   }
@@ -269,12 +271,13 @@ export async function verifyChapaCheckout(client:PrismaClient,id:string,userId?:
   const {available,issuance}=await paymentCreditAccounts(tx,order.userId),amount=new Prisma.Decimal(centsToEtb(order.amountCents));
   const operation=await tx.operation.create({data:{userId:order.userId,scope:'CHAPA_RECEIPT',key:order.id,requestHash:proof.hash,result:{checkoutId:id,merchantReference:order.merchantReference,chapaReference:proof.chapaReference,mode:order.mode,amountCents:order.amountCents.toString(),currency:'ETB'}}});
   const journal=await tx.journal.create({data:{operationId:operation.id,kind:'CHAPA_RECEIPT',reference:`chapa:${order.merchantReference}`,postings:{create:[{accountId:issuance.id,delta:amount.negated()},{accountId:available.id,delta:amount}]}}});
+  await creditDepositBonusInTransaction(tx,order,available.walletId!,issuance.id,journal.id,proof.hash);
   let receipt:BidReceipt|null=null,reason:string|null=null;
   if(order.purpose==='BID'){
    await tx.$executeRawUnsafe('SAVEPOINT chapa_bid');
    try{
     if(await tx.operation.findUnique({where:{userId_scope_key:{userId:order.userId,scope:'BID',key:order.key}}}))throw new ChapaError(409,'BID_ALREADY_ACCEPTED','The bid was already accepted.');
-    receipt=order.batchId?await fulfillBatchInTransaction(tx,await tx.bidBatchOrder.findUniqueOrThrow({where:{id:order.batchId}})):await submitBidInTransaction(tx,{userId:order.userId,auctionSlug:order.auctionSlug!,amount:order.bidNumber!.toString(),feeVersion:order.feeVersion!,key:order.key,...(order.couponId?{couponId:order.couponId}:{})});
+    receipt=order.batchId?await fulfillBatchInTransaction(tx,await tx.bidBatchOrder.findUniqueOrThrow({where:{id:order.batchId}})):await submitBidInTransaction(tx,{userId:order.userId,auctionSlug:order.auctionSlug!,amount:order.bidNumber!.toString(),feeVersion:order.feeVersion!,key:order.key,...(order.couponId?{couponId:order.couponId}:{})},process.env,{allowDepositBonus:false});
     if(new Prisma.Decimal(receipt.charge.netFeePoints??receipt.charge.feePoints).mul(100).toString()!==order.amountCents.toString())throw new ChapaError(409,'FEE_CHANGED','The discount or fee changed.');
     await tx.$executeRawUnsafe('RELEASE SAVEPOINT chapa_bid');
    }catch(error){await tx.$executeRawUnsafe('ROLLBACK TO SAVEPOINT chapa_bid');await tx.$executeRawUnsafe('RELEASE SAVEPOINT chapa_bid');receipt=null;reason=error instanceof BidError||error instanceof ChapaError?error.code:'PAID_BID_NOT_ACCEPTED'}

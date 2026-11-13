@@ -6,5 +6,5 @@ import {ChapaClientError} from './chapa-client';
 export function chapaDirectCreationRejected(cause:unknown):boolean{
  if(!(cause instanceof ChapaClientError))return false;
  return ['TERMS_CHANGED','INVALID_PHONE','METHOD_UNAVAILABLE','PAYMENT_STARTED','CONTACT_REQUIRED','AUCTIONS_PAUSED'].includes(cause.code)
-  ||cause.status===409&&cause.code==='COUPON_UNAVAILABLE';
+  ||cause.status===409&&['COUPON_UNAVAILABLE','DEPOSIT_BONUS_CHANGED'].includes(cause.code);
 }

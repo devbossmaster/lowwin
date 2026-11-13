@@ -95,6 +95,7 @@ function PlayerProfile(){
       <section id="wallet" className={styles.wallet} aria-label={text('Your wallet','ዋሌትዎ')}>
         <div className={styles.walletHead}><span><Wallet size={15} aria-hidden="true"/>{text('Wallet','ዋሌት')}</span><WalletOverviewTrigger className={styles.walletArrow} ariaLabel={text('Open Wallet','ዋሌት ይክፈቱ')}><ChevronRight size={18} aria-hidden="true"/></WalletOverviewTrigger></div>
         <p className={styles.balance} aria-busy={!wallet.data&&!wallet.error}>{balance??'—'} <span>ETB</span></p>
+        {wallet.data?.bonusAvailable&&etbToCents(wallet.data.bonusAvailable)>0n&&<div className={styles.walletSplit}><span>{text('Deposited funds','ያስገቡት ገንዘብ')} <b>{centsToEtb(etbToCents(wallet.data.cashAvailable))} ETB</b></span><span>{text('Active bonus','ያለ ቦነስ')} <b>{centsToEtb(etbToCents(wallet.data.bonusAvailable))} ETB</b></span></div>}
         <WalletTopUpTrigger className={styles.topUp} ariaLabel={text('Top up wallet','ወደ ዋሌት ገንዘብ ያስገቡ')}><Plus size={19} aria-hidden="true"/>{text('Top up','ገንዘብ ያስገቡ')}</WalletTopUpTrigger>
         {wallet.error&&<p className={styles.walletError} role="status">{text(wallet.data?'Showing your saved balance.':'Balance unavailable.',wallet.data?'የተቀመጠው ቀሪ ሂሳብ ይታያል።':'ቀሪ ሂሳቡ አይገኝም።')} <button type="button" onClick={wallet.reload}>{text('Retry','እንደገና')}</button></p>}
       </section>

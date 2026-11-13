@@ -103,7 +103,7 @@ describe('durable Chapa event confirmation',()=>{
   expect(await processChapaEvent(state.client,state.event.id)).toBe(false);
   finish();expect(await first).toBe(true);expect(f.verify).toHaveBeenCalledTimes(1);expect(state.event.status).toBe('PROCESSED');
  });
- it.each(['FAILED','CANCELLED','INCOMPLETE','BLOCKED'])('completes a server-verified terminal %s without claiming a credit',async status=>{
+ it.each(['FAILED','CANCELLED','INCOMPLETE','EXPIRED','BLOCKED'])('completes a server-verified terminal %s without claiming a credit',async status=>{
   const state=fixture();f.verify.mockImplementation(async()=>{Object.assign(state.checkout,{providerStatus:status,verificationState:'VERIFIED',status})});
   expect(await processChapaEvent(state.client,state.event.id)).toBe(true);
   expect(state.event.status).toBe('PROCESSED');expect(state.checkout.creditJournalId).toBeNull();
@@ -121,6 +121,12 @@ describe('durable Chapa event confirmation',()=>{
   }
   const state=fixture(5);const prior=f.verify.mock.calls.length;
   expect(await processChapaEvent(state.client,state.event.id)).toBe(false);expect(f.verify).toHaveBeenCalledTimes(prior);
+ });
+ it('retains a newer success hint when a lookup outage preserves an earlier verified terminal state',async()=>{
+  const state=fixture();Object.assign(state.checkout,{status:'INCOMPLETE',providerStatus:'INCOMPLETE',verificationState:'VERIFIED'});f.verify.mockResolvedValueOnce({verificationUnavailable:true});
+  expect(await processChapaEvent(state.client,state.event.id)).toBe(false);expect(state.event).toMatchObject({status:'QUEUED',attempts:1,completedAt:null});expect(state.checkout).toMatchObject({status:'INCOMPLETE',verificationState:'VERIFIED',creditJournalId:null});
+  vi.setSystemTime(state.event.nextAttemptAt);f.verify.mockImplementationOnce(async()=>{Object.assign(state.checkout,{status:'CREDITED',providerStatus:'SUCCESS',creditJournalId:'late-credit'});return {verificationUnavailable:false}});
+  expect(await processChapaEvent(state.client,state.event.id)).toBe(true);expect(state.event.status).toBe('PROCESSED');expect(f.verify).toHaveBeenCalledTimes(2);
  });
  it('does not complete mismatched evidence solely because the webhook claimed success',async()=>{
   const state=fixture();f.verify.mockImplementation(async()=>{Object.assign(state.checkout,{providerStatus:'SUCCESS',verificationState:'MISMATCH',status:'NEEDS_REVIEW'})});

@@ -25,6 +25,8 @@ export async function proxy(request:NextRequest) {
   // Public onboarding artwork must load before a Telegram session exists.
   // Keep this exact allowlist separate from all protected Mini App data.
   if(publicAssets.has(path))return NextResponse.next();
+  if(path==='/images/lowwin-violet-hero-20261113.webp')return NextResponse.next();
+  if(path==='/fonts/inter-latin-variable.woff2')return NextResponse.next();
   const tutorial=resolveLearnMoreMedia({youtube:process.env.LOWIN_YOUTUBE_URL,local:process.env.LOWIN_HOW_TO_VIDEO_PATH,poster:process.env.LOWIN_HOW_TO_POSTER_PATH});
   if(tutorial&&(path===tutorial.poster||tutorial.kind==='local'&&path===tutorial.src))return NextResponse.next();
   // The media handler authorizes unpublished uploads with a verified staff
@@ -42,7 +44,7 @@ export async function proxy(request:NextRequest) {
   if(destination!=='/')entryUrl.searchParams.set('next',destination);
   // An unavailable database is not an invalid login. Keep access closed, but
   // let API clients offer Retry instead of treating a live session as signed out.
-  const response=allowed?NextResponse.next():path.startsWith('/api/')?NextResponse.json({error:unavailable?'Connection interrupted. Please retry.':'Open Lowwin through the Telegram bot.'},{status:unavailable?503:401}):unavailable?new NextResponse('<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Try again | Lowwin</title><body style="margin:0;min-height:100dvh;display:grid;place-items:center;background:#f5f4ef;color:#181815;font-family:system-ui,sans-serif"><main style="padding:32px;text-align:center"><h1 style="font-size:28px">Connection busy</h1><p>Please try again.</p><a href="" style="display:inline-flex;align-items:center;justify-content:center;min-height:48px;min-width:130px;border-radius:12px;background:#181815;color:#fff;text-decoration:none;font-weight:600">Retry</a></main></body></html>',{status:503,headers:{'Content-Type':'text/html; charset=utf-8'}}):NextResponse.redirect(entryUrl);
+  const response=allowed?NextResponse.next():path.startsWith('/api/')?NextResponse.json({error:unavailable?'Connection interrupted. Please retry.':'Log in with Telegram to continue.'},{status:unavailable?503:401}):unavailable?new NextResponse('<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Try again | Lowwin</title><body style="margin:0;min-height:100dvh;display:grid;place-items:center;background:#f2f2f7;color:#16202c;font-family:system-ui,sans-serif"><main style="padding:32px;text-align:center"><h1 style="font-size:28px">Connection busy</h1><p>Please try again.</p><a href="" style="display:inline-flex;align-items:center;justify-content:center;min-height:48px;min-width:130px;border-radius:12px;background:#2563eb;color:#fff;text-decoration:none;font-weight:600">Retry</a></main></body></html>',{status:503,headers:{'Content-Type':'text/html; charset=utf-8'}}):NextResponse.redirect(entryUrl);
   if(unavailable)response.headers.set('Retry-After','5');
   response.headers.set('Cache-Control','private, no-store, max-age=0');
   response.headers.set('Vary','Cookie');

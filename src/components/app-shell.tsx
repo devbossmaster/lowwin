@@ -13,11 +13,13 @@ import {MiniNavigationMemory} from './mini-navigation-memory';
 import {LegacyAccountActions} from './legacy-account-actions';
 import {LoaderCircle,LogIn,UserRound} from 'lucide-react';
 import styles from './app-shell.module.css';
+import {BrowserNavigation} from './browser-navigation';
 
 export function AppShell({children,requireLaunch=false,demoProductImage=false}:{children:React.ReactNode;requireLaunch?:boolean;demoProductImage?:boolean}){
- const {status,openRegistration}=useTelegram(),path=usePathname();
+ const {status,openRegistration,environment}=useTelegram(),path=usePathname();
  const protectedPage=requireLaunch&&!isPublicMiniPage(path)&&status!=='authenticated';
- return <CatalogImagePreview enabled={demoProductImage}><div className="app-frame">
+ return <CatalogImagePreview enabled={demoProductImage}><div className="app-frame" data-app-environment={environment} data-home={path==='/'}>
+  <BrowserNavigation/>
   <Suspense fallback={null}><MiniNavigationMemory/></Suspense>
   <Suspense fallback={null}><LegacyAccountActions/></Suspense>
   {path!=='/'&&<CustomerPageHeader/>}

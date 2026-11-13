@@ -12,7 +12,7 @@ for(const am of [false,true])test(`coupons render independently of slow bid deta
   let dialog=await openBid(page,f.title);
   await expect(dialog.locator('[data-bid-coupons] b')).toHaveText('3');
   expect(countReads).toBe(1);expect(f.commands).toHaveLength(0);
-  release();await expect(dialog.locator('[data-chapa-methods]')).toBeVisible();
+  release();await expect(dialog.locator('[data-bid-step=entry]')).toBeVisible();await expect(dialog.getByRole('radio')).toHaveCount(0);
   await dialog.getByRole('button',{name:am?'ዝጋ':'Close',exact:true}).click();
   dialog=await openBid(page,f.title);
   await expect(dialog.locator('[data-bid-coupons] b')).toHaveText('3');

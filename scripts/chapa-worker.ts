@@ -9,17 +9,20 @@ const [{db},{recoverChapaCheckouts},{processChapaEvents},{dispatchOne},{chapaRec
  import('../src/lib/db'),import('../src/modules/payments/chapa'),import('../src/modules/payments/chapa-events'),
  import('../src/modules/notifications/service'),import('../src/modules/notifications/chapa-receipt'),import('grammy'),import('../src/modules/payments/chapa-direct'),import('../src/modules/payments/chapa-inline'),
 ]);
+const {expireDepositBonusLots}=await import('../src/modules/wallet/deposit-bonus');
 // Credit is already committed before its outbox receipt is eligible. This worker
 // handles only those receipts; campaign scheduling and other jobs stay separate.
 let receiptBot:InstanceType<typeof Bot>|null=null;
 try{if(process.env.TELEGRAM_BOT_TOKEN){const candidate=new Bot(process.env.TELEGRAM_BOT_TOKEN,{client:{timeoutSeconds:15}});installTelegramRateLimit(candidate.api,db,process.env.TELEGRAM_BOT_TOKEN);receiptBot=candidate}}catch{console.error('chapa_receipt_rate_configuration_invalid')}
 console.info('chapa_receipt_delivery_configuration',{enabled:!!receiptBot});
 let stopped=false;process.on('SIGTERM',()=>{stopped=true});process.on('SIGINT',()=>{stopped=true});
+let nextBonusExpiry=0;
 try{
  while(!stopped){
   try{const result=await processChapaEvents(db);if(result.checked)console.info('chapa_events',result);if(configuration.v2RecoveryEnabled){const inline=await reconcileInlineCheckouts(db);if(inline.checked)console.info('chapa_inline_reconciliation',inline);const direct=await reconcileDirectCheckouts(db);if(direct.checked)console.info('chapa_direct_reconciliation',direct);if(process.env.CHAPA_LEGACY_SWEEP_ENABLED==='true'){const legacy=await recoverChapaCheckouts(db);if(legacy.checked)console.info('chapa_legacy_recovery',legacy)}}}catch{console.error('chapa_event_processing_unavailable')}
   let dispatched=false;
   if(!stopped&&receiptBot)try{dispatched=await dispatchOne(db,receiptBot,{kind:chapaReceiptKind});if(dispatched)console.info('chapa_receipt_dispatched')}catch{console.error('chapa_receipt_delivery_unavailable')}
+  if(!stopped&&Date.now()>=nextBonusExpiry){nextBonusExpiry=Date.now()+30000;try{const expired=await expireDepositBonusLots(db,20);if(expired.expired)console.info('deposit_bonus_expiry',expired)}catch{console.error('deposit_bonus_expiry_unavailable')}}
   await new Promise(resolve=>setTimeout(resolve,dispatched?100:2000));
  }
 }finally{await db.$disconnect()}

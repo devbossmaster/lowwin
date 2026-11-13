@@ -53,7 +53,7 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
  // or the original request has an uncertain outcome.
  const hostedUrl=hosted&&!finished&&!terminal&&order.providerStatus!=='SUCCESS'&&order.verificationState!=='MISMATCH'&&Date.parse(order.expiresAt)>now?chapaCheckoutUrl(order.checkoutUrl):null;
  const canCheck=(hosted||phase==='uncertain'||payment.paused&&(phase==='confirming'||phase==='authorization'&&!otpNeeded))&&(!!order||payment.started&&(!payment.directAttempt||!!chapaOriginalKeyUrl(payment.directAttempt))&&!walletRetry)&&!finished&&!terminal;
- const normalWaiting=!finished&&!terminal&&!otpNeeded&&!canCheck&&!canRetryOriginal&&!hostedUrl&&!(phase==='uncertain'&&walletRetry&&onRetryWallet)&&!!onClose;
+ const normalWaiting=!finished&&!terminal&&!otpNeeded&&!canCheck&&!hostedUrl&&!(phase==='uncertain'&&walletRetry&&onRetryWallet)&&!!onClose;
  const headings:Record<BidPaymentProgressPhase,[string,string]>={
   preparing:['Sending payment request…','የክፍያ ጥያቄን በመላክ ላይ…'],
   connecting:['Sending payment request…','የክፍያ ጥያቄን በመላክ ላይ…'],
@@ -104,11 +104,11 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
     <div className={styles.stateIcon} aria-hidden="true">{finished?<Check size={27}/>:terminal||authorizationError||order?.verificationState==='MISMATCH'?<TriangleAlert size={26}/>:otpNeeded?<Smartphone size={27}/>:<LoaderCircle className={styles.spin} size={27} data-bid-submitting={phase==='preparing'||undefined}/>}</div>
     <div role={reasonMessage?'alert':'status'} aria-live={reasonMessage?'assertive':'polite'} aria-atomic="true"><h3 id={`${id}-heading`}>{text(...headings[phase])}</h3><p className={reasonMessage?styles.reason:undefined} data-payment-reason={reasonMessage?true:undefined}>{reasonMessage??text(...messages[phase])}</p></div>
    </div>
-   {!finished&&!terminal&&!authorizationError&&order?.verificationState!=='MISMATCH'&&<div className={styles.activity} aria-hidden="true"><span/></div>}
    {connectionDelayed&&<p className={styles.connection} role="status" data-payment-connection>{text('We’re still checking...','በማረጋገጥ ላይ...')}</p>}
    <dl className={styles.summary}>
     {deposit?<div><dt>{text('For','ለ')}</dt><dd>{text('Wallet top-up','የዋሌት ገቢ')}</dd></div>:<><div><dt>{text('Auction','ጨረታ')}</dt><dd className={styles.auction}>{title}</dd></div><div><dt>{text(numbers.length===1?'Your bid amount':'Bid count',numbers.length===1?'የጨረታ መጠንዎ':'የጨረታ ብዛት')}</dt><dd>{numbers.length===1?numbers[0]:numbers.length?text(`${numbers.length} selected`,`${numbers.length} ተመርጠዋል`):'—'}</dd></div></>}
     <div className={styles.total}><dt>{text(finished?'Paid':'Total payable',finished?'የተከፈለ':'ጠቅላላ ክፍያ')}</dt><dd>{total===null?'—':formatEtb(total)}</dd></div>
+    {deposit&&finished&&order?.depositBonus?.credited&&<><div className={styles.bonusCredit} data-deposit-bonus-credited><dt>{text('Bidding bonus credited','የጨረታ ጉርሻ ገብቷል')}</dt><dd>+{formatEtb(order.depositBonus.amount)}</dd></div><div className={styles.total}><dt>{text('Total wallet credit','ጠቅላላ የዋሌት ገቢ')}</dt><dd>{formatEtb(order.depositBonus.totalCredit)}</dd></div></>}
     <div><dt>{text('Payment method','የክፍያ መንገድ')}</dt><dd><span className={styles.provider}>{provider&&providerImages[provider]&&<img src={providerImages[provider]} width={24} height={22} alt=""/>}{providerName}</span>{phone&&<span className={styles.phone}>{phone}</span>}</dd></div>
    </dl>
    {otpNeeded&&<form className={styles.otp} id={`${id}-otp-form`} onSubmit={event=>{event.preventDefault();if(busy||!/^\d{4,10}$/.test(otp))return;const code=otp;setOtp('');void payment.authorize(code)}}>
@@ -123,8 +123,8 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
    {hostedUrl&&phase!=='uncertain'&&<button type="button" className={styles.primary} onClick={()=>{const navigation=prepareChapaNavigation();try{navigation.open(hostedUrl)}finally{navigation.cancel()}}}>{text('Open payment page','የክፍያ ገጹን ይክፈቱ')}<ArrowUpRight size={16} aria-hidden="true"/></button>}
    {otpNeeded&&<button type="submit" form={`${id}-otp-form`} className={styles.primary} disabled={busy||!/^\d{4,10}$/.test(otp)}>{payment.busy&&<LoaderCircle className={styles.spin} size={17} aria-hidden="true"/>}{text('Confirm code','ኮዱን ያረጋግጡ')}</button>}
    {phase==='uncertain'&&walletRetry&&onRetryWallet&&<button type="button" className={styles.primary} disabled={busy} onClick={onRetryWallet}>{busy&&<LoaderCircle className={styles.spin} size={17} aria-hidden="true"/>}{text('Retry original payment','የመጀመሪያውን ክፍያ ይድገሙ')}</button>}
-   {canRetryOriginal&&<button type="button" className={styles.primary} onClick={onRetryOriginal??(()=>void payment.createDirect(payment.directAttempt!))}>{text('Retry original request','የመጀመሪያውን ጥያቄ ይድገሙ')}</button>}
-   {canCheck&&!canRetryOriginal&&<button type="button" className={hostedUrl&&phase!=='uncertain'?styles.outline:styles.primary} disabled={busy} onClick={()=>void payment.check()}>{busy&&<LoaderCircle className={styles.spin} size={17} aria-hidden="true"/>}{text(busy?'Checking payment':hosted?'Check payment status':'Check payment',busy?'ክፍያውን በማረጋገጥ ላይ':hosted?'የክፍያውን ሁኔታ ያረጋግጡ':'ክፍያውን ያረጋግጡ')}</button>}
+   {canCheck&&<button type="button" className={hostedUrl&&phase!=='uncertain'?styles.outline:styles.primary} disabled={busy} onClick={()=>void payment.check()}>{busy&&<LoaderCircle className={styles.spin} size={17} aria-hidden="true"/>}{text(busy?'Checking payment':hosted?'Check payment status':'Check payment',busy?'ክፍያውን በማረጋገጥ ላይ':hosted?'የክፍያውን ሁኔታ ያረጋግጡ':'ክፍያውን ያረጋግጡ')}</button>}
+   {canRetryOriginal&&<button type="button" className={styles.outline} onClick={onRetryOriginal??(()=>void payment.createDirect(payment.directAttempt!))}>{text('Retry original request','የመጀመሪያውን ጥያቄ ይድገሙ')}</button>}
    {!normalWaiting&&!finished&&(onClose?<button type="button" className={styles.outline} onClick={onClose}>{text('Close','ዝጋ')}</button>:<Link className={styles.outline} href={deposit?'/profile#wallet':'/my-bids'}>{text('Close','ዝጋ')}</Link>)}
   </div>)}
  </>;
