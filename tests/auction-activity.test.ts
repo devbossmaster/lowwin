@@ -29,7 +29,17 @@ describe.skipIf(!url)('live public activity on disposable PostgreSQL',()=>{
   const first=await readAuctionActivity(client,codes),second=await readAuctionActivity(client,codes);
   expect(first).toEqual(second);
   expect(first[0]).toMatchObject({code:String(auction.publicCode),views:'0',bids:0,bidders:0,status:'live',resultReady:false});
-  expect(Object.keys(first[0]).sort()).toEqual(['bidders','bids','code','endsAt','resultReady','startsAt','status','views']);
+  expect(Object.keys(first[0]).sort()).toEqual(['bidders','bids','code','endsAt','presentationVersion','resultReady','startsAt','status','views']);
+  expect(first[0].presentationVersion).toBe(auction.controlVersion);
+ });
+
+ it('carries published correction revisions without product bytes or private audit data',async()=>{
+  const auction=await bidAuction(client);
+  const first=(await readAuctionActivity(client,[auction.publicCode]))[0];
+  await client.auction.update({where:{id:auction.id},data:{controlVersion:{increment:1}}});
+  const second=(await readAuctionActivity(client,[auction.publicCode]))[0];
+  expect(second.presentationVersion).toBe(first.presentationVersion!+1);
+  expect(JSON.stringify(second)).not.toMatch(/image|presentation"|userId|reason|winningPoints/);
  });
 
  it('counts people once when they place multiple accepted bids',async()=>{

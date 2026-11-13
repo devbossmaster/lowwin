@@ -13,7 +13,7 @@ import {maskedResultContact,safeResultIdentity} from './result-identity';
 // unrestricted user records never enter the DTO/cache. Public identity fields
 // pass a separate allowlist that rejects phone/email-looking display names.
 export const publicAuctionSelect = {
-  slug:true,code:true,publicCode:true,status:true,publishedAt:true,startsAt:true,endsAt:true,featured:true,isDemo:true,acceptedBidCount:true,publicViewCount:true,presentation:true,
+  slug:true,code:true,publicCode:true,status:true,publishedAt:true,startsAt:true,endsAt:true,featured:true,isDemo:true,acceptedBidCount:true,publicViewCount:true,presentation:true,controlVersion:true,
   fulfillmentSummary:true,fulfillmentSummaryAm:true,fulfillmentRegion:true,fulfillmentRegionAm:true,
   product:{select:{title:true,titleAm:true,description:true,descriptionAm:true,condition:true,conditionAm:true,images:{orderBy:{sortOrder:'asc'},select:{path:true,alt:true,sourceType:true,sourceCredit:true}}}},
   category:{select:{slug:true,name:true,nameAm:true}},
@@ -91,7 +91,7 @@ export function toPublicAuction(row: AuctionRow, now: Date) {
   }:null;
   return {
     slug:row.slug!,code:row.publicCode.toString(),status,publishedAt:row.publishedAt!.toISOString(),featured:row.featured,isDemo:row.isDemo,bidCount:row.acceptedBidCount,
-    viewCount:row.publicViewCount.toString(),
+    viewCount:row.publicViewCount.toString(),...(row.controlVersion===undefined?{}:{presentationVersion:row.controlVersion}),
     startsAt:row.startsAt!.toISOString(),endsAt:row.endsAt!.toISOString(),
     product:{title:product.title,titleAm:product.titleAm??row.product!.titleAm,description:product.description,descriptionAm:product.descriptionAm??row.product!.descriptionAm,condition:product.condition,conditionAm:product.conditionAm??row.product!.conditionAm,
       images:product.images.map(image=>({path:image.path,alt:image.alt,sourceType:image.sourceType,sourceCredit:image.sourceCredit??null}))},

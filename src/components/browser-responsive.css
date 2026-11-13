@@ -1,3 +1,5 @@
+.app-frame{--customer-nav-height:69px}
+.app-frame[data-customer-registered=false]{--customer-nav-height:0px}
 /* Responsive browser geometry also reserves initial loading space; confirmed Mini Apps stay compact. */
 .app-frame[data-customer-registered=false]{padding-bottom:calc(24px + var(--mini-safe-bottom,0px) + var(--tg-content-safe-area-inset-bottom,0px))}
 @media(min-width:640px){
@@ -8,7 +10,7 @@
  .app-frame[data-app-layout=browser] [data-home-hero] p{font-size:14px;max-width:28ch}
 }
 @media(min-width:1024px){
- .app-frame[data-app-layout=browser]{max-width:1280px;padding:24px 24px 40px;min-height:100dvh}
+ .app-frame[data-app-layout=browser]{--customer-nav-height:0px;max-width:1280px;padding:24px 24px 40px;min-height:100dvh}
  .app-frame[data-app-layout=browser] .mini-bottom-navigation{display:none}
  .app-frame[data-app-layout=browser]>#main{min-height:calc(100dvh - 88px)}
  .app-frame[data-app-layout=browser][data-home=false]>#main{max-width:860px;margin-inline:auto}

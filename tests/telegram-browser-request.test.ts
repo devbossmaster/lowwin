@@ -10,8 +10,8 @@ const settings=telegramBrowserSettings(raw)!;
 const startPath='/api/auth/telegram/browser/start?next=%2Fpayments&lang=en';
 function requestHeaders(values:Record<string,string|undefined>){const headers=new Headers();for(const [key,value] of Object.entries(values))if(value!==undefined)headers.set(key,value);return headers}
 const client={verification:{create:f.create,findUnique:f.find,deleteMany:f.consume},$executeRaw:f.cleanup} as unknown as PrismaClient;
-beforeEach(()=>{vi.clearAllMocks();for(const [key,value] of Object.entries(raw))vi.stubEnv(key,value);f.allow.mockResolvedValue(true);f.create.mockImplementation(async({data})=>data);f.cleanup.mockResolvedValue(0);f.consume.mockResolvedValue({count:1})});
-afterEach(()=>vi.unstubAllEnvs());
+beforeEach(()=>{vi.clearAllMocks();vi.spyOn(console,'warn').mockImplementation(()=>{});for(const [key,value] of Object.entries(raw))vi.stubEnv(key,value);f.allow.mockResolvedValue(true);f.create.mockImplementation(async({data})=>data);f.cleanup.mockResolvedValue(0);f.consume.mockResolvedValue({count:1})});
+afterEach(()=>{vi.unstubAllEnvs();vi.restoreAllMocks()});
 
 describe('canonical Telegram browser login behind an internal transport URL',()=>{
  it.each([
@@ -70,5 +70,20 @@ describe('canonical Telegram browser login behind an internal transport URL',()=
  it('rejects callback host tampering before reading or consuming a bound challenge',async()=>{
   const transport=vi.fn(),response=await finishTelegramBrowserLogin(new Request('http://0.0.0.0:3000/api/auth/telegram/browser/callback?state='+'s'.repeat(43),{headers:{host:'evil.example','x-forwarded-host':'lowwin.shop','x-forwarded-proto':'https'}}),client,transport);
   expect(response.headers.get('location')).toContain('https://lowwin.shop/?telegramLoginError=invalid');expect(f.find).not.toHaveBeenCalled();expect(f.consume).not.toHaveBeenCalled();expect(transport).not.toHaveBeenCalled();
+  expect(console.warn).toHaveBeenCalledWith('telegram_browser_login_rejected',{stage:'callback',code:'invalid',diagnostic:'REQUEST_ORIGIN',databaseCode:undefined});
+ });
+ it('distinguishes missing browser binding without logging authorization data',async()=>{
+  const state='s'.repeat(43),code='private-opaque-authorization-code',transport=vi.fn();
+  const response=await finishTelegramBrowserLogin(new Request('https://lowwin.shop/api/auth/telegram/browser/callback?'+new URLSearchParams({state,code})),client,transport);
+  expect(response.headers.get('location')).toContain('telegramLoginError=invalid');expect(transport).not.toHaveBeenCalled();expect(f.find).not.toHaveBeenCalled();
+  expect(console.warn).toHaveBeenCalledWith('telegram_browser_login_rejected',{stage:'browser_binding',code:'invalid',diagnostic:'COOKIE_BINDING',databaseCode:undefined});
+  const logged=JSON.stringify(vi.mocked(console.warn).mock.calls);expect(logged).not.toContain(code);expect(logged).not.toContain(state);expect(logged).not.toContain(raw.TELEGRAM_LOGIN_CLIENT_SECRET);
+ });
+ it('reports an allowlisted missing-table code without leaking database errors or cookies',async()=>{
+  const begin=await startTelegramBrowserLogin(new Request('https://lowwin.shop'+startPath),client),authorization=new URL(begin.headers.get('location')!),state=authorization.searchParams.get('state')!,cookie=begin.headers.get('set-cookie')!.split(';')[0];
+  f.find.mockRejectedValueOnce(Object.assign(new Error('private database connection details'),{code:'P2021'}));
+  const response=await finishTelegramBrowserLogin(new Request('https://lowwin.shop/api/auth/telegram/browser/callback?'+new URLSearchParams({state,code:'private-code'}),{headers:{cookie}}),client,vi.fn());
+  expect(response.headers.get('location')).toContain('telegramLoginError=unavailable');expect(console.warn).toHaveBeenCalledWith('telegram_browser_login_rejected',{stage:'browser_binding',code:'unavailable',diagnostic:undefined,databaseCode:'P2021'});
+  const logged=JSON.stringify(vi.mocked(console.warn).mock.calls);expect(logged).not.toContain('private database');expect(logged).not.toContain(cookie);expect(logged).not.toContain(state);
  });
 });

@@ -4,7 +4,7 @@ import {browserLoginConfig,telegramBrowserSettings} from '../src/modules/auth/te
 const migration='202611130002_telegram_browser_login';
 async function main(){
  const args=process.argv.slice(2);
- if(args.some(arg=>!['--schema','--help'].includes(arg))){console.error(JSON.stringify({error:'UNKNOWN_OPTION'}));process.exitCode=1;return}
+ if(args.some(arg=>!['--schema','--help'].includes(arg))){console.error(JSON.stringify({error:'UNKNOWN_OPTION',usage:'npx --no-install tsx scripts/check-telegram-browser-login.ts --schema',hint:'Use two ordinary hyphens before schema; do not append other terminal text.'}));process.exitCode=1;return}
  if(args.includes('--help')){console.log('npx --no-install tsx scripts/check-telegram-browser-login.ts [--schema]\nRedacted configuration and optional read-only schema check. No Telegram request, login, secrets or customer records.');return}
  nextEnv.loadEnvConfig(process.cwd(),process.env.NODE_ENV!=='production',{info:()=>{},error:()=>{}});
  const config=browserLoginConfig(),settings=telegramBrowserSettings({...process.env,TELEGRAM_LOGIN_ENABLED:'true'});

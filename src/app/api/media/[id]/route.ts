@@ -35,9 +35,12 @@ export async function GET(request:Request,{params}:{params:Promise<{id:string}>}
   // Keep the existing frozen-original cache useful after an upgrade and during a
   // database outage; write each versioned derivative beside it, never over it.
   if(rendition){const original=await readPublishedMedia(id);if(original)return publicResponse(request,id,await publishedRendition(id,original,rendition),rendition)}
-  const published=await db.productImage.findFirst({where:{path:`/api/media/${id}`,product:{visible:true,category:{visible:true},auctions:{some:{publishedAt:{not:null}}}}},select:{id:true}});
+  const mediaPath=`/api/media/${id}`,now=new Date();
+  // Live public corrections update the auction snapshot, not frozen inventory.
+  // Those CATALOG images need the same published delivery as product photos.
+  const published=await db.productImage.findFirst({where:{path:mediaPath,product:{visible:true,category:{visible:true},auctions:{some:{publishedAt:{not:null}}}}},select:{id:true}})
+   ??await db.auction.findFirst({where:{AND:[publicWhere(now),{presentation:{path:['images'],array_contains:[{path:mediaPath}]}}]},select:{id:true}});
   if(!published){
-   const now=new Date();
    const eligibleAuction={is:{AND:[publicWhere(now),{status:'CLOSED',isDemo:false,testRunId:null,settlement:{is:{outcome:'WINNER',winnerUserId:{not:null},completedAt:{lte:now},publication:{is:{publishedAt:{lte:now}}}}}}]}};
    const winnerMedia=await db.managedMedia.findFirst({where:{id,OR:[{purpose:'WINNER_PHOTO',winnerPresentations:{some:{presentationMode:'PHOTO',consentConfirmedAt:{lte:now},auction:eligibleAuction}}},{purpose:'WINNER_BANNER',winnerBannerPresentations:{some:{presentationMode:'BANNER',bannerConsentConfirmedAt:{lte:now},auction:eligibleAuction}}}]},select:{bytes:true,mime:true}});
    // Unlike a frozen product image, this consented announcement can be removed.

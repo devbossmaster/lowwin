@@ -33,13 +33,14 @@ export async function startTelegramBrowserLogin(request:Request,client:PrismaCli
 }
 
 async function consumeChallenge(client:PrismaClient,request:Request,settings:TelegramBrowserSettings,state:string){
- const binding=browserLoginBinding(browserLoginCookieValue(request.headers,settings));if(!binding||binding.state!==state)throw new TelegramBrowserError('invalid');
- const row=await client.verification.findUnique({where:{id:challengePrefix+state}});if(!row)throw new TelegramBrowserError('expired');
- if(row.expiresAt.getTime()<=Date.now())throw new TelegramBrowserError('expired');
- let challenge:unknown;try{challenge=JSON.parse(row.value)}catch{throw new TelegramBrowserError('invalid')}
- if(!validBrowserChallenge(challenge,settings,state,binding.secret))throw new TelegramBrowserError('invalid');
+ const binding=browserLoginBinding(browserLoginCookieValue(request.headers,settings));if(!binding)throw new TelegramBrowserError('invalid','COOKIE_BINDING');
+ if(binding.state!==state)throw new TelegramBrowserError('invalid','COOKIE_STATE');
+ const row=await client.verification.findUnique({where:{id:challengePrefix+state}});if(!row)throw new TelegramBrowserError('expired','CHALLENGE_MISSING');
+ if(row.expiresAt.getTime()<=Date.now())throw new TelegramBrowserError('expired','CHALLENGE_EXPIRED');
+ let challenge:unknown;try{challenge=JSON.parse(row.value)}catch{throw new TelegramBrowserError('invalid','CHALLENGE_DATA')}
+ if(!validBrowserChallenge(challenge,settings,state,binding.secret))throw new TelegramBrowserError('invalid','CHALLENGE_DATA');
  // Compare-and-delete makes a callback single-use across requests/replicas.
- const consumed=await client.verification.deleteMany({where:{id:row.id,value:row.value,expiresAt:{gt:new Date()}}});if(consumed.count!==1)throw new TelegramBrowserError('expired');
+ const consumed=await client.verification.deleteMany({where:{id:row.id,value:row.value,expiresAt:{gt:new Date()}}});if(consumed.count!==1)throw new TelegramBrowserError('expired','CHALLENGE_USED');
  return challenge;
 }
 
@@ -86,19 +87,32 @@ async function sessionCookie(token:string){
 export async function finishTelegramBrowserLogin(request:Request,client:PrismaClient=db,transport:typeof fetch=fetch){
  const settings=telegramBrowserSettings();if(!settings)return Response.json({error:'Telegram browser login is not configured.'},{status:503,headers:responseHeaders});
  let challenge:TelegramBrowserChallenge|undefined;
+ let stage:'callback'|'browser_binding'|'token_exchange'|'identity_commit'|'session_cookie'='callback';
  try{
-  const url=new URL(request.url);if(!validTelegramBrowserRequest(request,settings,'callback')||url.searchParams.getAll('state').length!==1||url.searchParams.getAll('code').length>1||url.searchParams.getAll('error').length>1)throw new TelegramBrowserError('invalid');
-  const state=url.searchParams.get('state');if(!state||!/^[A-Za-z0-9_-]{43}$/.test(state))throw new TelegramBrowserError('invalid');
+  const url=new URL(request.url);if(!validTelegramBrowserRequest(request,settings,'callback'))throw new TelegramBrowserError('invalid','REQUEST_ORIGIN');
+  if(url.searchParams.getAll('state').length!==1||url.searchParams.getAll('code').length>1||url.searchParams.getAll('error').length>1)throw new TelegramBrowserError('invalid','CALLBACK_PARAMETERS');
+  const state=url.searchParams.get('state');if(!state||!/^[A-Za-z0-9_-]{43}$/.test(state))throw new TelegramBrowserError('invalid','CALLBACK_PARAMETERS');
+  stage='browser_binding';
   challenge=await consumeChallenge(client,request,settings,state);
-  if(url.searchParams.has('error'))throw new TelegramBrowserError(url.searchParams.get('error')==='access_denied'?'cancelled':'invalid');
+  if(url.searchParams.has('error'))throw new TelegramBrowserError(url.searchParams.get('error')==='access_denied'?'cancelled':'invalid','PROVIDER_CANCELLED');
   // Authorization codes are opaque provider data. Preserve their decoded value;
   // URLSearchParams handles transport encoding during the token exchange.
-  const code=url.searchParams.get('code');if(!code||code.length>2048||/[\u0000-\u001f\u007f]/.test(code))throw new TelegramBrowserError('invalid');
+  const code=url.searchParams.get('code');if(!code||code.length>2048||/[\u0000-\u001f\u007f]/.test(code))throw new TelegramBrowserError('invalid','AUTHORIZATION_CODE');
+  stage='token_exchange';
   const claims=await exchangeTelegramBrowserCode(code,settings,challenge,transport);
   if(!await allowIdentityRequest(client,'telegram-browser-finish',claims.telegramId,10))throw new TelegramBrowserError('unavailable');
   // Provider HTTP is complete before this short identity/contact/session commit.
+  stage='identity_commit';
   const issued=await client.$transaction(tx=>registerBrowserTelegramIdentity(tx,claims,settings),{maxWait:10000,timeout:20000});
+  stage='session_cookie';
   const headers=new Headers(responseHeaders);headers.set('Location',new URL(challenge.next,settings.origin).href);headers.append('Set-Cookie',await sessionCookie(issued.session.token));headers.append('Set-Cookie',browserLoginCookie(settings,'',0));
   return new Response(null,{status:303,headers});
- }catch(error){return errorRedirect(settings,error instanceof TelegramBrowserError?error.code:'unavailable',challenge)}
+ }catch(error){
+  const known=error instanceof TelegramBrowserError;
+  const databaseCode=error&&typeof error==='object'&&'code' in error&&['P2021','P2022','P2002','P2028','P1001','P1002'].includes(String(error.code))?String(error.code):undefined;
+  // Deliberately no raw Error, request URL, headers, state, claims or provider
+  // payload: this is enough to identify the rejecting boundary safely in WEB logs.
+  console.warn('telegram_browser_login_rejected',{stage,code:known?error.code:'unavailable',diagnostic:known?error.diagnostic:undefined,databaseCode});
+  return errorRedirect(settings,known?error.code:'unavailable',challenge);
+ }
 }

@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import BidSheet from './bid-sheet';
 import dynamic from 'next/dynamic';
-import {useEffect,useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import {useSearchParams} from 'next/navigation';
 import {chapaUuid} from '@/lib/chapa-client';
 import {ChevronDown,Eye,Gavel,ShieldCheck,Ticket} from 'lucide-react';
@@ -25,6 +25,7 @@ import {useAuctionActivity,useAuctionRefresh} from './auction-activity';
 import {auctionDetailUrl} from './auction-query';
 import {usePrivateQuery} from './private-query';
 import {usePublicQuery} from './public-query';
+import {auctionPresentationRefreshVersion} from '@/lib/auction-presentation-refresh';
 
 export function AuctionDetail({auction:initialAuction,serverNow}:{auction:CatalogAuction;serverNow:string}){
  const detail=usePublicQuery<CatalogAuction>(auctionDetailUrl(initialAuction.slug),{initialData:initialAuction});
@@ -38,6 +39,13 @@ export function AuctionDetail({auction:initialAuction,serverNow}:{auction:Catalo
  useEffect(()=>{if(chapaId){setReturnId(chapaId);setBidding(true)}},[chapaId]);
  const closeBidding=()=>{setBidding(false);setReturnId(undefined);const url=new URL(window.location.href);url.searchParams.delete('chapa');if(url.hash==='#bid-review')url.hash='';window.history.replaceState(window.history.state,'',url.pathname+url.search+url.hash)};
  const {activity,views,refreshActivity}=useAuctionActivity(initialAuction.code,{record:true});
+ const presentationRequest=useRef({code:initialAuction.code,version:0});
+ useEffect(()=>{
+  if(presentationRequest.current.code!==initialAuction.code)presentationRequest.current={code:initialAuction.code,version:0};
+  const revision=auctionPresentationRefreshVersion(known.presentationVersion,activity?.presentationVersion,presentationRequest.current.version);
+  if(revision===null)return;
+  presentationRequest.current.version=revision;detail.reload();
+ },[initialAuction.code,known.presentationVersion,activity?.presentationVersion,detail.reload]);
  useAuctionRefresh(activity,initialAuction.status,Boolean(initialAuction.result));
  const auction={...known,...(resultQuery.data?{result:resultQuery.data.result}:{}),status:activity?.status??known.status,viewCount:views??known.viewCount,bidCount:activity?.bids??known.bidCount,startsAt:activity?.startsAt??known.startsAt,endsAt:activity?.endsAt??known.endsAt};
  const {language}=useMiniLocale(),am=language==='am',live=auction.status==='live',upcoming=auction.status==='upcoming';

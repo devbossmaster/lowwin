@@ -8,7 +8,8 @@ export const TELEGRAM_OIDC_ISSUER='https://oauth.telegram.org';
 export const TELEGRAM_BROWSER_MIGRATION='202611130002_telegram_browser_login';
 export const TELEGRAM_BROWSER_TTL_SECONDS=600;
 export type TelegramBrowserErrorCode='cancelled'|'expired'|'unavailable'|'invalid'|'contact_required'|'conflict';
-export class TelegramBrowserError extends Error{constructor(public readonly code:TelegramBrowserErrorCode){super(code);this.name='TelegramBrowserError'}}
+export type TelegramBrowserDiagnostic='REQUEST_ORIGIN'|'CALLBACK_PARAMETERS'|'COOKIE_BINDING'|'COOKIE_STATE'|'CHALLENGE_MISSING'|'CHALLENGE_EXPIRED'|'CHALLENGE_DATA'|'CHALLENGE_USED'|'PROVIDER_CANCELLED'|'AUTHORIZATION_CODE'|'TOKEN_RESPONSE'|'TOKEN_ENCODING'|'TOKEN_HEADER'|'TOKEN_KEY'|'TOKEN_SIGNATURE'|'TOKEN_ISSUER'|'TOKEN_AUDIENCE'|'TOKEN_NONCE'|'TOKEN_SUBJECT'|'TOKEN_TIME'|'TOKEN_PROFILE';
+export class TelegramBrowserError extends Error{constructor(public readonly code:TelegramBrowserErrorCode,public readonly diagnostic?:TelegramBrowserDiagnostic){super(code);this.name='TelegramBrowserError'}}
 export type TelegramBrowserSettings={enabled:true;clientId:string;clientSecret:string;origin:string;callback:string;secure:boolean};
 export function telegramBrowserSettings(raw:Record<string,string|undefined>=process.env):TelegramBrowserSettings|null{
  if(raw.TELEGRAM_LOGIN_ENABLED!=='true')return null;
@@ -65,19 +66,28 @@ export type TelegramBrowserClaims={telegramId:string;subject:string;name:string;
 type Jwk=JsonWebKey&{kid?:string;alg?:string;use?:string;key_ops?:string[]};
 function decodePart(value:string){if(!/^[A-Za-z0-9_-]+$/.test(value))throw new TelegramBrowserError('invalid');const buffer=Buffer.from(value,'base64url');if(buffer.toString('base64url')!==value)throw new TelegramBrowserError('invalid');return buffer}
 export function verifyTelegramBrowserToken(token:string,settings:TelegramBrowserSettings,challenge:TelegramBrowserChallenge,keys:readonly Jwk[],now=Math.floor(Date.now()/1000)):TelegramBrowserClaims{
+ let diagnostic:TelegramBrowserDiagnostic='TOKEN_ENCODING';
  try{
   if(token.length>16384)throw Error();const parts=token.split('.');if(parts.length!==3)throw Error();
   const header=JSON.parse(decodePart(parts[0]).toString('utf8')) as Record<string,unknown>,claims=JSON.parse(decodePart(parts[1]).toString('utf8')) as Record<string,unknown>;
+  diagnostic='TOKEN_HEADER';
   if(header.alg!=='RS256'||typeof header.kid!=='string'||header.kid.length>160||!header.kid||header.crit!==undefined||header.b64!==undefined||header.typ!==undefined&&header.typ!=='JWT')throw Error();
+  diagnostic='TOKEN_KEY';
   const candidates=keys.filter(k=>k.kid===header.kid&&k.kty==='RSA'&&(!k.alg||k.alg==='RS256')&&(!k.use||k.use==='sig')&&(!k.key_ops||k.key_ops.includes('verify')));if(candidates.length!==1)throw Error();
   const key=createPublicKey({key:candidates[0],format:'jwk'});if(key.asymmetricKeyType!=='rsa'||(key.asymmetricKeyDetails?.modulusLength??0)<2048||(key.asymmetricKeyDetails?.modulusLength??0)>8192)throw Error();
+  diagnostic='TOKEN_SIGNATURE';
   if(!verify('RSA-SHA256',Buffer.from(`${parts[0]}.${parts[1]}`),{key,padding:constants.RSA_PKCS1_PADDING},decodePart(parts[2])))throw Error();
-  if(claims.iss!==TELEGRAM_OIDC_ISSUER||claims.aud!==settings.clientId||claims.nonce!==challenge.nonce||typeof claims.sub!=='string'||!/^[A-Za-z0-9._~:-]{1,200}$/.test(claims.sub))throw Error();
+  diagnostic='TOKEN_ISSUER';if(claims.iss!==TELEGRAM_OIDC_ISSUER)throw Error();
+  diagnostic='TOKEN_AUDIENCE';if(claims.aud!==settings.clientId)throw Error();
+  diagnostic='TOKEN_NONCE';if(claims.nonce!==challenge.nonce)throw Error();
+  diagnostic='TOKEN_SUBJECT';if(typeof claims.sub!=='string'||!/^[A-Za-z0-9._~:-]{1,200}$/.test(claims.sub))throw Error();
+  diagnostic='TOKEN_TIME';
   if(typeof claims.exp!=='number'||!Number.isSafeInteger(claims.exp)||claims.exp<=now||typeof claims.iat!=='number'||!Number.isSafeInteger(claims.iat)||claims.iat>now+30||claims.iat<Math.floor(challenge.createdAt/1000)-30||now-claims.iat>TELEGRAM_BROWSER_TTL_SECONDS||claims.exp<=claims.iat||claims.nbf!==undefined&&(typeof claims.nbf!=='number'||claims.nbf>now+30))throw Error();
+  diagnostic='TOKEN_PROFILE';
   if(typeof claims.id!=='number'||!Number.isSafeInteger(claims.id)||claims.id<=0||typeof claims.name!=='string'||!claims.name.trim()||claims.name.length>256)throw Error();
   let phone:string|null=null;if(claims.phone_number_verified===true&&typeof claims.phone_number==='string'){try{phone=normalizePhone(claims.phone_number)}catch{}}
   return {telegramId:String(claims.id),subject:claims.sub,name:claims.name.trim(),username:typeof claims.preferred_username==='string'&&/^[A-Za-z0-9_]{1,64}$/.test(claims.preferred_username)?claims.preferred_username:null,image:telegramPhotoUrl(claims.picture),phone};
- }catch{throw new TelegramBrowserError('invalid')}
+ }catch{throw new TelegramBrowserError('invalid',diagnostic)}
 }
 async function boundedProviderJson(response:Response,maxBytes=65536){if(!response.ok)throw new TelegramBrowserError('unavailable');const contentLength=Number(response.headers.get('content-length')??0);if(contentLength>maxBytes)throw new TelegramBrowserError('unavailable');const reader=response.body?.getReader();if(!reader)throw new TelegramBrowserError('unavailable');let total=0;const chunks:Uint8Array[]=[];while(true){const {done,value}=await reader.read();if(done)break;total+=value.length;if(total>maxBytes){await reader.cancel();throw new TelegramBrowserError('unavailable')}chunks.push(value)}try{return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown}catch{throw new TelegramBrowserError('unavailable')}}
 type Fetch=typeof fetch;
@@ -90,8 +100,8 @@ export async function telegramBrowserKeys(transport:Fetch=fetch,force=false):Pro
 export async function exchangeTelegramBrowserCode(code:string,settings:TelegramBrowserSettings,challenge:TelegramBrowserChallenge,transport:Fetch=fetch){
  try{
   const response=await transport(TELEGRAM_OIDC_ISSUER+'/token',{method:'POST',headers:{Authorization:'Basic '+Buffer.from(`${settings.clientId}:${settings.clientSecret}`).toString('base64'),'Content-Type':'application/x-www-form-urlencoded',Accept:'application/json'},body:new URLSearchParams({grant_type:'authorization_code',code,redirect_uri:settings.callback,client_id:settings.clientId,code_verifier:challenge.verifier}),redirect:'error',cache:'no-store',signal:AbortSignal.timeout(15000)});
-  const body=await boundedProviderJson(response,32768) as {id_token?:unknown};if(typeof body.id_token!=='string')throw new TelegramBrowserError('invalid');
-  const keys=await telegramBrowserKeys(transport);let header:Record<string,unknown>;try{header=JSON.parse(Buffer.from(body.id_token.split('.')[0],'base64url').toString('utf8'))}catch{throw new TelegramBrowserError('invalid')}
+  const body=await boundedProviderJson(response,32768) as {id_token?:unknown};if(typeof body.id_token!=='string')throw new TelegramBrowserError('invalid','TOKEN_RESPONSE');
+  const keys=await telegramBrowserKeys(transport);let header:Record<string,unknown>;try{header=JSON.parse(Buffer.from(body.id_token.split('.')[0],'base64url').toString('utf8'))}catch{throw new TelegramBrowserError('invalid','TOKEN_ENCODING')}
   const current=typeof header.kid==='string'&&keys.some(k=>k.kid===header.kid)?keys:await telegramBrowserKeys(transport,true);
   return verifyTelegramBrowserToken(body.id_token,settings,challenge,current);
  }catch(error){if(error instanceof TelegramBrowserError)throw error;throw new TelegramBrowserError('unavailable')}

@@ -1,12 +1,12 @@
 import {beforeEach,describe,expect,it,vi} from 'vitest';
-const f=vi.hoisted(()=>({cached:vi.fn(),store:vi.fn(),product:vi.fn(),winner:vi.fn(),media:vi.fn(),admin:vi.fn()}));
-vi.mock('../src/lib/db',()=>({db:{productImage:{findFirst:f.product},managedMedia:{findFirst:f.winner,findUnique:f.media}}}));
+const f=vi.hoisted(()=>({cached:vi.fn(),store:vi.fn(),product:vi.fn(),presentation:vi.fn(),winner:vi.fn(),media:vi.fn(),admin:vi.fn()}));
+vi.mock('../src/lib/db',()=>({db:{productImage:{findFirst:f.product},auction:{findFirst:f.presentation},managedMedia:{findFirst:f.winner,findUnique:f.media}}}));
 vi.mock('../src/modules/admin/boundary',()=>({adminHeaders:{'Cache-Control':'private, no-store, max-age=0','Vary':'Cookie'},requireAdmin:f.admin}));
 vi.mock('../src/modules/media/published-cache',()=>({readPublishedMedia:f.cached,storePublishedMedia:f.store}));
 import {GET} from '../src/app/api/media/[id]/route';
 const id='10000000-1111-4222-8333-444444444444',bytes=Uint8Array.from([137,80,78,71]);
 const read=(value=id)=>GET(new Request(`https://lowwin.test/api/media/${value}`),{params:Promise.resolve({id:value})});
-beforeEach(()=>{vi.resetAllMocks();f.cached.mockResolvedValue(null);f.product.mockResolvedValue(null);f.winner.mockResolvedValue(null);f.media.mockResolvedValue({bytes,purpose:'CATALOG'});f.admin.mockRejectedValue(Error('Not staff'))});
+beforeEach(()=>{vi.resetAllMocks();f.cached.mockResolvedValue(null);f.product.mockResolvedValue(null);f.presentation.mockResolvedValue(null);f.winner.mockResolvedValue(null);f.media.mockResolvedValue({bytes,purpose:'CATALOG'});f.admin.mockRejectedValue(Error('Not staff'))});
 describe('consented announcement media delivery',()=>{
  it('keeps existing frozen product images on their immutable cache fast path',async()=>{
   f.cached.mockResolvedValue(bytes);const response=await read();expect(response.status).toBe(200);expect(response.headers.get('cache-control')).toContain('immutable');expect(f.product).not.toHaveBeenCalled();expect(f.winner).not.toHaveBeenCalled();
@@ -34,6 +34,10 @@ describe('consented announcement media delivery',()=>{
  });
  it('refuses immutable delivery if an invalid catalog link points at winner-only media',async()=>{
   f.product.mockResolvedValue({id:'invalid-link'});f.media.mockResolvedValue({bytes,purpose:'WINNER_PHOTO'});
+  const response=await read();expect(response.status).toBe(404);expect(response.headers.get('cache-control')).toContain('no-store');expect(f.store).not.toHaveBeenCalled();
+ });
+ it.each(['WINNER_PHOTO','WINNER_BANNER'])('rejects a forged public presentation link to %s without caching it',async purpose=>{
+  f.presentation.mockResolvedValue({id:'invalid-presentation'});f.media.mockResolvedValue({bytes,purpose});
   const response=await read();expect(response.status).toBe(404);expect(response.headers.get('cache-control')).toContain('no-store');expect(f.store).not.toHaveBeenCalled();
  });
  it('limits unpublished winner-only previews to currently authorized administrators',async()=>{
