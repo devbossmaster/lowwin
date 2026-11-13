@@ -4,7 +4,7 @@
 .heading p{font-size:13px;line-height:1.6;color:#69685f;margin:6px 0 0}
 .tabs{display:flex;padding:4px;gap:4px;border-radius:100px;background:#eae8e1;margin:0 0 20px}
 .tabs a,.tabs button{display:flex;align-items:center;justify-content:center;gap:7px;flex:1;min-height:44px;border:0;border-radius:100px;background:transparent;color:#626158;font:inherit;font-size:13px;font-weight:650;text-decoration:none;padding:8px 10px}
-.tabs [aria-current=page],.tabs [aria-pressed=true]{background:var(--brand-ink, #211a30);color:#fff}
+.tabs [aria-current=page],.tabs [aria-pressed=true]{background:var(--action-primary, #2563eb);color:var(--action-ink, #fff)}
 .tabs span{font-size:11px;opacity:.8}
 .summary{display:flex;justify-content:space-around;background:#fff;border-radius:16px;padding:16px 8px;margin-bottom:18px}
 .summary div{display:flex;flex:1;flex-direction:column;align-items:center;gap:5px}
@@ -90,7 +90,7 @@
 .notice{padding:13px 16px;background:#fff9e9;border-radius:14px;color:#6b531e;font-size:12px;line-height:1.7;margin:14px 0}
 .pagination{display:flex;align-items:center;justify-content:center;gap:6px;margin:26px auto 0}
 .pagination button{display:grid;place-items:center;min-width:44px;min-height:44px;border:0;border-radius:50%;background:#fff;color:var(--brand-ink, #211a30);font:inherit;font-size:13px;font-variant-numeric:tabular-nums}
-.pagination button[aria-current=page]{background:var(--brand-ink, #211a30);color:#fff}
+.pagination button[aria-current=page]{background:var(--action-primary, #2563eb);color:var(--action-ink, #fff)}
 .page button:focus-visible,.page a:focus-visible{outline:2px solid var(--brand-primary, #6d4cfd);outline-offset:3px}
 .page button:disabled{opacity:.5;cursor:wait}
 @media(min-width:620px){.list.results{grid-template-columns:repeat(2,minmax(0,1fr))}.page{padding:28px 24px 40px}}

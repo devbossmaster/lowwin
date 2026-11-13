@@ -2,6 +2,7 @@ import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
 import {afterEach,describe,expect,it,vi} from 'vitest';
+import {LOWWIN_LOGO_SRC} from '../src/lib/brand';
 
 const state=vi.hoisted(()=>({path:'/profile'}));
 vi.mock('next/navigation',()=>({usePathname:()=>state.path,useSearchParams:()=>new URLSearchParams(),useRouter:()=>({refresh:vi.fn()})}));
@@ -25,7 +26,7 @@ describe('launch and route-specific customer loading',()=>{
  it.each(['en','am'] as const)('limits the new logo, spinner and concise loading copy to launch in %s',language=>{
   const html=render(createElement(LaunchSplash),language);
   expect(html.match(/<main\b/g)).toHaveLength(1);
-  expect(html.match(/<img\b/g)).toHaveLength(1);expect(html).toContain('/images/lowwin-logo-20261030.webp');
+  expect(html.match(/<img\b/g)).toHaveLength(1);expect(html).toContain(LOWWIN_LOGO_SRC);
   expect(html).toContain('alt="Lowwin"');expect(html).toContain('data-lowwin-logo');
   expect(html.match(/role="status"/g)).toHaveLength(1);
   expect(html.match(/class="loading-spinner-ring"/g)).toHaveLength(1);
@@ -35,7 +36,7 @@ describe('launch and route-specific customer loading',()=>{
  });
  it('can embed branded launch status without another main landmark',()=>{
   const html=render(createElement(BrandedLaunchLoading));
-  expect(html).not.toMatch(/<main\b/);expect(html).toContain('/images/lowwin-logo-20261030.webp');
+  expect(html).not.toMatch(/<main\b/);expect(html).toContain(LOWWIN_LOGO_SRC);
   expect(html.match(/role="status"/g)).toHaveLength(1);
   expect(html.match(/class="loading-spinner-ring"/g)).toHaveLength(1);
  });

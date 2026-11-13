@@ -54,8 +54,8 @@
 .total small{display:block;margin-top:1px;color:var(--brand-primary-strong, #5533be);font-size:11px}
 .pay{min-height:48px;border:1px solid transparent;border-radius:24px;background:var(--action-primary, #2563eb);color:var(--action-ink, #fff);font-size:15px;font-weight:600;line-height:1.5;--surface-ink:var(--action-ink, #fff);padding:12px 24px;gap:8px}
 .pay:hover:not(:disabled){background:var(--action-disabled, #dbe7fb);color:var(--action-disabled-ink, #52647f);opacity:1;--surface-ink:var(--action-disabled-ink, #52647f)}
-.pay[data-payment-action]{background:var(--brand-ink, #211a30);color:#fff}
-.pay[data-payment-action]:hover:not(:disabled){background:#333129}
+.pay[data-payment-action]{background:var(--action-primary, #2563eb);color:var(--action-ink, #fff)}
+.pay[data-payment-action]:hover:not(:disabled){background:var(--action-hover, #1d4ed8);color:#fff}
 .pay[data-payment-action]:disabled{border-color:#e0dbce;background:var(--brand-soft, #eee8fa);color:#767064;cursor:not-allowed;box-shadow:none}
 .pay:disabled{border-color:#e0dbce;background:var(--action-disabled, #dbe7fb);color:var(--action-disabled-ink, #52647f);cursor:not-allowed;box-shadow:none;opacity:1;--surface-ink:var(--action-disabled-ink, #52647f)}
 .pay:focus-visible{outline:2px solid var(--brand-primary, #6d4cfd);outline-offset:3px;background:var(--action-primary, #2563eb);color:var(--action-ink, #fff);--surface-ink:var(--action-ink, #fff);min-height:48px;border-radius:24px;padding:12px 24px;gap:8px;font-size:15px;font-weight:600;line-height:1.5}

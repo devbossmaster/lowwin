@@ -1,7 +1,7 @@
 .inbox{color:var(--brand-ink, #211a30)}
 .filters{display:flex;gap:7px;overflow:auto;padding:0 0 12px;scrollbar-width:none}
 .filters button{display:flex;align-items:center;justify-content:center;gap:6px;min-height:44px;flex-shrink:0;border:0;border-radius:30px;background:#f0efeb;color:#626158;font:inherit;font-size:12px;font-weight:600;padding:9px 14px}
-.filters [aria-pressed=true]{background:var(--brand-ink, #211a30);color:#fff}
+.filters [aria-pressed=true]{background:var(--action-primary, #2563eb);color:var(--action-ink, #fff)}
 .tools{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:11px;color:#69685f;margin:0 0 8px}
 .tools button,.meta button,.error button{display:flex;align-items:center;gap:6px;min-height:44px;border:0;background:transparent;font:inherit;font-size:11px;color:#6e5316;padding:8px 0}
 .list{display:grid;gap:10px}

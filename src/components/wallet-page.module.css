@@ -71,7 +71,7 @@
 .uploadHelp{margin:16px 0 0;color:var(--wallet-muted);font-size:12px;line-height:1.7}
 .uploadHelp span{display:block}
 .submit{display:flex;align-items:center;justify-content:center;width:100%;min-height:48px;margin-top:24px;padding:12px 24px;border:0;border-radius:24px;background:var(--action-primary, #2563eb);color:var(--action-ink, #fff);font-size:15px!important;font-weight:600!important;cursor:pointer;--surface-ink:var(--action-ink, #fff);gap:8px;line-height:1.5}
-.referenceActions .secondary:hover:not(:disabled){background:var(--brand-ink, #211a30);--surface-ink:#fff;color:#fff;}
+.referenceActions .secondary:hover:not(:disabled){background:var(--action-hover, #1d4ed8);--surface-ink:var(--action-ink, #fff);color:var(--action-ink, #fff);}
 .submit:hover:not(:disabled),.uploadButton:hover:not(:disabled),.addMoney:hover{background:var(--action-disabled, #dbe7fb);--surface-ink:var(--action-disabled-ink, #52647f);color:var(--action-disabled-ink, #52647f);opacity:1;}
 .submit:disabled{background:var(--action-disabled, #dbe7fb);color:var(--action-disabled-ink, #52647f);cursor:default;--surface-ink:var(--action-disabled-ink, #52647f);opacity:1}
 .hint{display:flex;flex-wrap:wrap;gap:4px 18px;margin:12px 0 0;color:var(--wallet-muted);font-size:12px;line-height:1.7;overflow-wrap:anywhere}

@@ -33,7 +33,7 @@ function AuctionCard(){return <div className={styles.auctionCard} data-skeleton-
 function Catalog({category=false}:{category?:boolean}){return <div className={styles.stack}>{category&&<Heading/>}<Search/><Chips/><div className={styles.catalogTools}><Bone/><Bone/></div><AuctionCard/><AuctionCard/></div>}
 function Home(){return <div className={styles.home}>
  <div className={styles.homeHeader} data-skeleton-part="home-header"><Bone className={styles.homeBrand}/><div className={styles.homeControls}><Bone/><Bone/><Bone/></div></div>
- <div className={styles.hero} data-skeleton-part="hero"><Bone className={styles.heroTitle}/><Bone className={styles.heroCopy}/><div className={styles.heroActions}><Bone/><Bone/></div></div>
+ <div className={styles.heroBlock}><div className={styles.hero} data-skeleton-part="hero"><Bone className={styles.heroTitle}/><Bone className={styles.heroCopy}/></div><div className={styles.heroActions}><Bone/><Bone/></div><Bone className={styles.heroCaption}/></div>
  <div className={`${styles.stack} ${styles.homeContent}`}><Chips/><Bone className={styles.sectionTitle}/><Chips/><div className={styles.homeAuctionGrid} data-skeleton-part="auction-grid"><AuctionCard/><AuctionCard/><AuctionCard/></div></div>
  </div>}
 function Auction(){return <div className={styles.stack} data-skeleton-part="auction-detail"><Bone className={styles.gallery}/><div className={styles.thumbnails}><Bone/><Bone/><Bone/></div><Bone className={styles.title}/><div className={styles.facts}><Bone/><Bone/></div><Bone className={styles.button}/><div className={styles.prose}><Bone/><Bone/><Bone/></div><div className={styles.facts}><Bone/><Bone/></div></div>}

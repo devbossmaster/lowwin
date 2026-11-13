@@ -45,7 +45,7 @@
 .pagination>div{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:7px}
 .pagination span{display:inline-flex;align-items:center;gap:7px}
 .pagination a{display:grid;place-items:center;min-width:40px;min-height:40px;border:1px solid #dce4ec;border-radius:9px;background:#fff;color:var(--surface-ink, #000);font-size:13px;text-decoration:none;--surface-ink:#000}
-.pagination a[aria-current=page]{border-color:var(--brand-ink, #211a30);background:var(--brand-ink, #211a30);color:#fff;--surface-ink:#fff}
+.pagination a[aria-current=page]{border-color:var(--brand-ink, #211a30);background:var(--action-primary, #2563eb);color:var(--action-ink, #fff);--surface-ink:var(--action-ink, #fff)}
 .card a:focus-visible,.pagination a:focus-visible{outline:2px solid var(--brand-ink, #211a30);outline-offset:3px}
 @media(min-width:420px){.image{height:245px}.content{padding-inline:18px}}
 @media(max-width:370px){.content{padding-inline:12px}.hero h1{font-size:30px}.hero p{font-size:14px}.meta{font-size:12px}}

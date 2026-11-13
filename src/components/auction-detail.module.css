@@ -12,7 +12,7 @@
 .page :focus-visible{outline:2px solid var(--brand-primary, #6d4cfd);outline-offset:3px}.page ::selection{background:#e7d79f;color:var(--brand-ink, #211a30)}.page button{transition:background-color 150ms ease}.page button:active{filter:brightness(.95)}
 @media(max-width:370px){.page{padding-inline:12px}.gallery{margin-inline:-12px}.stats,.description,.facts,.terms,.actions{padding:16px 14px}.clock :global(.countdown){gap:7px}.fee strong{font-size:22px}}
 @media(prefers-reduced-motion:reduce){.page button{transition:none}}
-.page .bidding :global(.card-action){background:var(--action-primary, #2563eb);color:var(--action-ink, #fff);--surface-ink:var(--action-ink, #fff);min-height:48px;border-radius:24px;padding:12px 24px;gap:8px;font-size:15px;font-weight:600;line-height:1.5}.page .bidding :global(.card-action:hover){background:#29271f;color:#e6bf50}
+.page .bidding :global(.card-action){background:var(--action-primary, #2563eb);color:var(--action-ink, #fff);--surface-ink:var(--action-ink, #fff);min-height:48px;border-radius:24px;padding:12px 24px;gap:8px;font-size:15px;font-weight:600;line-height:1.5}.page .bidding :global(.card-action:hover){background:var(--action-hover, #1d4ed8);color:var(--action-ink, #fff)}
 .share.shareIcon{width:44px;padding:0}
 .page .bidding :global(.card-action):hover:not(:disabled):not([aria-disabled=true]){background:var(--action-hover, #1d4ed8);color:var(--action-ink, #fff)}
 .page .bidding :global(.card-action):active:not(:disabled):not([aria-disabled=true]){background:var(--action-pressed, #1e40af)}

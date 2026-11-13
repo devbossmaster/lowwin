@@ -20,9 +20,11 @@ export function HomeHero({copy,videoId,media,experience}:{copy:Copy;videoId?:str
  const configuredBanner=language==='am'?experience?.bannerAm:experience?.bannerEn;
  const customBanner=!!configuredBanner&&!/^\/images\/lowwin-home-banner-(?:en|am)\.webp(?:\?.*)?$/.test(configuredBanner);
  return <>
-  <section className={styles.banner} aria-labelledby="home-headline" lang={language} data-home-hero>
-   <Image src={customBanner?configuredBanner!:'/images/lowwin-violet-hero-20261113.webp'} alt={language==='am'?'የLowwin ማስተዋወቂያ ምስል፤ ለማሳያ የተዘጋጀ':'Lowwin promotional image; illustrative scene'} fill sizes="(max-width:480px) 100vw, 480px" quality={75} preload/>
-   <div className={customBanner?'sr-only':styles.bannerCopy}><h1 id="home-headline">{headline}</h1><p>{lead}</p></div>
+  <section className={`${styles.banner} ${styles.artworkBanner}`} aria-labelledby="home-headline" lang={language} data-home-hero>
+   <div className={styles.bannerArtwork}>
+    <Image src={customBanner?configuredBanner!:`/images/lowwin-blue-banner-${language==='am'?'am':'en'}-20261113-v2.webp`} alt={language==='am'?'የLowwin ማስተዋወቂያ ምስል፤ ለማሳያ የተዘጋጀ':'Lowwin promotional image; illustrative scene'} width={1840} height={800} sizes="(min-width:1280px) 1016px, (min-width:1024px) calc(100vw - 264px), (min-width:640px) 900px, (max-width:480px) 100vw, 480px" quality={75} preload/>
+   </div>
+   <div className={styles.accessibleCopy}><h1 id="home-headline">{headline}</h1><p>{lead}</p></div>
    <div className={styles.introActions}>
     <button ref={learnButton} type="button" onClick={()=>setLearn(true)}><MiniPhrase en="Learn more" am="ተጨማሪ ይወቁ"/><ArrowRight size={15}/></button>
     <a href="#recent-winners" onClick={event=>{const section=document.getElementById('recent-winners');if(section){event.preventDefault();section.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'start'});section.focus({preventScroll:true})}}}><Trophy size={14}/><MiniPhrase en="Recent winners" am="የቅርብ አሸናፊዎች"/></a>

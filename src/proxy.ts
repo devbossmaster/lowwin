@@ -25,7 +25,7 @@ export async function proxy(request:NextRequest) {
   // Public onboarding artwork must load before a Telegram session exists.
   // Keep this exact allowlist separate from all protected Mini App data.
   if(publicAssets.has(path))return NextResponse.next();
-  if(path==='/images/lowwin-violet-hero-20261113.webp')return NextResponse.next();
+  if(path==='/images/lowwin-violet-hero-20261113.webp'||path==='/images/lowwin-blue-banner-en-20261113-v2.webp'||path==='/images/lowwin-blue-banner-am-20261113-v2.webp'||path==='/images/lowwin-blue-logo-20261113.webp'||path==='/images/lowwin-blue-icon-20261113.png')return NextResponse.next();
   if(path==='/fonts/inter-latin-variable.woff2')return NextResponse.next();
   const tutorial=resolveLearnMoreMedia({youtube:process.env.LOWIN_YOUTUBE_URL,local:process.env.LOWIN_HOW_TO_VIDEO_PATH,poster:process.env.LOWIN_HOW_TO_POSTER_PATH});
   if(tutorial&&(path===tutorial.poster||tutorial.kind==='local'&&path===tutorial.src))return NextResponse.next();

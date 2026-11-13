@@ -1,7 +1,7 @@
 .panel{color:var(--brand-ink, #211a30)}
 .tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;padding:4px;border-radius:25px;background:var(--brand-soft, #eee8fa)}
 .tabs button{display:flex;align-items:center;justify-content:center;gap:7px;min-height:44px;padding:9px 12px;border:0;border-radius:22px;background:transparent;color:var(--brand-muted, #72697e);font:inherit;font-size:12px;font-weight:650;cursor:pointer}
-.tabs button[aria-selected=true]{background:var(--brand-ink, #211a30);color:#fff}
+.tabs button[aria-selected=true]{background:var(--action-primary, #2563eb);color:var(--action-ink, #fff)}
 .tabs button>span{font-size:10px;line-height:1.5;font-variant-numeric:tabular-nums;opacity:.85}
 .caption{min-height:18px;margin:9px 2px 8px;color:var(--brand-muted, #72697e);font-size:10px;line-height:1.6}
 .viewport{height:min(54dvh,500px);min-height:200px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#d6d0c1 var(--brand-canvas, #f8f5fc);outline-offset:-2px}

@@ -1,0 +1,46 @@
+{
+  "date": "2026-11-13",
+  "tool": "built-in image_gen",
+  "intent": "User-requested blue-black recoloring of the existing Lowwin family banner and LW logo",
+  "originals": [
+    "public/images/lowwin-home-banner-en.webp",
+    "public/images/lowwin-home-banner-am.webp",
+    "public/images/lowwin-logo-20261030.webp"
+  ],
+  "promptSummary": "Preserve family/products, original slogans and logo identity; royal blue replaces gold/green, blue-black gradient background, natural skin and red suitcase. English and Amharic variants. No new claims or inventory.",
+  "postprocessing": "Sharp resize and WebP/PNG encoding only",
+  "records": [
+    {
+      "file": "public/images/lowwin-blue-banner-en-20261113.webp",
+      "width": 1840,
+      "height": 800,
+      "bytes": 193712,
+      "sha256": "9c74ad9e5c93605883cc1b3206c3cfbb4c63e09ed0260950cd15949d00321126",
+      "source": "exec-2ce155f4-341d-4b95-9f3e-f1bc29214d50.png"
+    },
+    {
+      "file": "public/images/lowwin-blue-banner-am-20261113.webp",
+      "width": 1840,
+      "height": 800,
+      "bytes": 199180,
+      "sha256": "fcebe91a3005835229121a5b7b09af6703ef3e420655a8eefc50c1699d621a6e",
+      "source": "exec-fc250924-f89d-4f84-bda3-618b7e81b316.png"
+    },
+    {
+      "file": "public/images/lowwin-blue-logo-20261113.webp",
+      "width": 192,
+      "height": 192,
+      "bytes": 2542,
+      "sha256": "1b6171837ee9f321bed68c03074090e6040480c941ffcf38c00f614baff693ab",
+      "source": "exec-951083ad-b358-46ae-9a3b-7e6266b252bc.png"
+    },
+    {
+      "file": "public/images/lowwin-blue-icon-20261113.png",
+      "width": 192,
+      "height": 192,
+      "bytes": 27664,
+      "sha256": "6c8764d1e248acba8a912c33d74b0375cf29b8e95a70f8d751d04a7ea8aec8a7",
+      "source": "exec-951083ad-b358-46ae-9a3b-7e6266b252bc.png"
+    }
+  ]
+}
