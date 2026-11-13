@@ -16,10 +16,11 @@ import styles from './app-shell.module.css';
 import {BrowserNavigation} from './browser-navigation';
 
 export function AppShell({children,requireLaunch=false,demoProductImage=false}:{children:React.ReactNode;requireLaunch?:boolean;demoProductImage?:boolean}){
- const {status,openRegistration,environment}=useTelegram(),path=usePathname();
+ const {status,me,queryIdentity,openRegistration,environment}=useTelegram(),path=usePathname();
+ const registered=status==='authenticated'&&!!me?.user?.id&&!!queryIdentity;
  const protectedPage=requireLaunch&&!isPublicMiniPage(path)&&status!=='authenticated';
  // Reserve responsive website geometry during SDK detection; auth still uses the actual environment.
- return <CatalogImagePreview enabled={demoProductImage}><div className="app-frame" data-app-environment={environment} data-app-layout={environment==='mini'?'mini':'browser'} data-home={path==='/'}>
+ return <CatalogImagePreview enabled={demoProductImage}><div className="app-frame" data-app-environment={environment} data-app-layout={environment==='mini'?'mini':'browser'} data-customer-registered={registered?'true':'false'} data-home={path==='/'}>
   <BrowserNavigation/>
   <Suspense fallback={null}><MiniNavigationMemory/></Suspense>
   <Suspense fallback={null}><LegacyAccountActions/></Suspense>

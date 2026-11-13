@@ -22,7 +22,7 @@ export function HomeHero({copy,videoId,media,experience}:{copy:Copy;videoId?:str
  return <>
   <section className={`${styles.banner} ${styles.artworkBanner}`} aria-labelledby="home-headline" lang={language} data-home-hero>
    <div className={styles.bannerArtwork}>
-    <Image src={customBanner?configuredBanner!:`/images/lowwin-blue-banner-${language==='am'?'am':'en'}-20261113-v2.webp`} alt={language==='am'?'የLowwin ማስተዋወቂያ ምስል፤ ለማሳያ የተዘጋጀ':'Lowwin promotional image; illustrative scene'} width={1840} height={800} sizes="(min-width:1280px) 1016px, (min-width:1024px) calc(100vw - 264px), (min-width:640px) 900px, (max-width:480px) 100vw, 480px" quality={75} preload/>
+    <Image src={customBanner?configuredBanner!:`/images/lowwin-blue-banner-${language==='am'?'am':'en'}-20261113-v2.webp`} alt={language==='am'?'የLowwin ማስተዋወቂያ ምስል፤ ለማሳያ የተዘጋጀ':'Lowwin promotional image; illustrative scene'} width={1840} height={800} sizes="(min-width:1280px) 1232px, (min-width:1024px) calc(100vw - 48px), (min-width:640px) 900px, (max-width:480px) 100vw, 480px" quality={75} preload/>
    </div>
    <div className={styles.accessibleCopy}><h1 id="home-headline">{headline}</h1><p>{lead}</p></div>
    <div className={styles.introActions}>

@@ -5,10 +5,13 @@
 .card:global(.auction-card)>:global(.auction-card-body){padding:16px 12px 8px}
 .card:global(.auction-card)>:global(.auction-card-body)>h3{margin:0 0 6px;min-height:0;font-size:17px;line-height:1.35;overflow-wrap:anywhere}
 .card:global(.auction-card)>:global(.auction-card-body)>h3:lang(am){line-height:1.55}
-.card:global(.auction-card)>:global(.auction-card-body)>:global(.card-facts){display:grid;grid-template-columns:minmax(0,1fr) max-content;align-items:center;gap:6px;margin:0 0 6px}
+.card:global(.auction-card)>:global(.auction-card-body)>:global(.card-facts){display:grid;grid-template-columns:minmax(0,1fr) max-content max-content;align-items:center;gap:4px;margin:0 0 6px}
+.bids{display:inline-flex;align-items:center;justify-content:center;gap:3px;max-width:100%;min-height:25px;padding:3px 5px;border-radius:16px;background:var(--brand-soft,#f2f2f7);color:var(--brand-muted,#657181);font-size:10px;line-height:1.35;font-variant-numeric:tabular-nums;white-space:nowrap}.bids svg{flex:none;color:var(--brand-primary-strong,#5533be)}.bids strong{font-size:11px!important}
 .card:global(.auction-card)>:global(.auction-card-body)>:global(.card-facts)>:global(.card-fee){min-width:0;min-height:0;flex-wrap:wrap;justify-content:center;gap:2px 5px;padding:3px 8px;line-height:1.35;text-align:center}
 .card:global(.auction-card)>:global(.auction-card-body)>:global(.card-facts)>:global(.card-fee)>strong{min-width:0;max-width:100%;overflow-wrap:anywhere}
-.card:global(.auction-card)>:global(.auction-card-body)>:global(.card-facts)>:global(.card-clock){min-height:0;padding:1px 6px}
+.card:global(.auction-card)>:global(.auction-card-body)>:global(.card-facts)>:global(.card-clock){min-height:0;padding:1px 2px}
+.card:global(.auction-card)>:global(.auction-card-body)>:global(.card-facts)>:global(.card-clock) :global(.countdown){gap:2px}
+.card:global(.auction-card)>:global(.auction-card-body)>:global(.card-facts)>:global(.card-clock) [data-countdown-tile]{--flap-width:24px;--flap-height:26px;font-size:12px}
 .card:global(.auction-card)>:global(.auction-card-body)>:global(.card-facts)>:global(.card-clock)>svg{display:none}
 .card:global(.auction-card)>:global(.auction-card-body)>:global(.card-action){min-height:44px;height:auto;margin:0;padding:8px 12px}
 .card:global(.auction-card)>:global(.auction-card-body)>:global(.card-disclosure){margin:4px 0 0;font-size:10px;line-height:1.4}

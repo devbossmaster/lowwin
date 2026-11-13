@@ -26,7 +26,9 @@ for(const am of [false,true])test(`ordinary website browsing and explicit offici
   await page.goto(f.home);const frame=page.locator('.app-frame');await expect(frame).toHaveAttribute('data-app-environment','browser');await expect(page.locator('.auction-card')).toHaveCount(3);
   const width=page.viewportSize()!.width;expect(await frame.evaluate(node=>node.getBoundingClientRect().width)).toBeLessThanOrEqual(width);
   expect(await page.locator('.auction-card').first().evaluate(node=>getComputedStyle(node.parentElement!).gridTemplateColumns.split(' ').length)).toBe(width>=1280?3:width>=640?2:1);
-  if(width>=1024){await expect(page.locator('[data-browser-navigation]')).toBeVisible();await expect(page.locator('.mini-bottom-navigation')).toBeHidden()}else{await expect(page.locator('[data-browser-navigation]')).toBeHidden();await expect(page.locator('.mini-bottom-navigation')).toBeVisible()}
+  // Guest browsing must not expose the authenticated desktop account navigation.
+  await expect(page.locator('[data-browser-navigation]')).toHaveCount(0);
+  if(width>=1024){await expect(page.locator('.mini-bottom-navigation')).toBeHidden()}else{await expect(page.locator('.mini-bottom-navigation')).toBeVisible()}
   await page.getByRole('button',{name:am?'ይግቡ':'Log in',exact:true}).first().click();const dialog=page.getByRole('dialog');await expect(dialog.locator('[data-browser-telegram-login]')).toBeVisible();await expect(dialog.locator('input')).toHaveCount(0);await expect(dialog.getByRole('button',{name:am?'በTelegram ይቀጥሉ':'Continue with Telegram',exact:true})).toBeEnabled();expect(f.starts).toHaveLength(0);
   expect(await dialog.evaluate(node=>node.scrollWidth<=node.clientWidth+1)).toBe(true);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await dialog.screenshot({path:info.outputPath(`browser-login-${am?'am':'en'}.png`)});
   await page.keyboard.press('Escape');await expect(dialog).toHaveCount(0);await expect(page.getByRole('button',{name:am?'ይግቡ':'Log in',exact:true}).first()).toBeFocused();

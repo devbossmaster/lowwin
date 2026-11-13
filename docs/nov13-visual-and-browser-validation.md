@@ -6,7 +6,7 @@ Shared tokens and component styles cover the catalog, How bidding works, account
 
 Inter is self-hosted as one 48,256-byte Latin variable WOFF2, weights 100–900. Its OFL license and source/hash provenance are in `public/fonts/`. No external font request is needed. Banners retain 1840×800 WebP composition. White text on blue measures 5.17:1. Secondary text on white measures 4.96:1; the darker secondary-on-gray token measures 4.86:1.
 
-Ordinary browsers support the same account and wallet through [official Telegram login](telegram-browser-login.md). Browser catalogs use two columns from 640px and three from 1280px, with desktop side navigation from 1024px. Actual Telegram WebViews retain the compact Mini App layout and native self-contact sharing. The main account header remains Home-only.
+Ordinary browsers support the same account and wallet through [official Telegram login](telegram-browser-login.md). Browser catalogs use two columns from 640px and three from 1280px. The latest requested layout removes the desktop sidebar: a horizontal top navigation appears from 1024px only after server-confirmed registration, a confirmed account and its scoped query identity. Guests, loading/error states and unverified contacts do not mount those navigation links. Actual Telegram WebViews retain the compact Mini App layout and native self-contact sharing. The main account header remains Home-only.
 
 ## Local validation
 
@@ -26,3 +26,17 @@ Ordinary browsers support the same account and wallet through [official Telegram
 - Redacted readiness command: nine cases passed against the isolated database. Read-only owner checks and sanitized runtime-role permission failure were both verified.
 
 These checks use isolated local data and intercepted provider requests; they cannot establish live Telegram approval, USSD arrival, provider latency or production readiness. No merge, deploy or live payment was performed.
+
+## Follow-up: authenticated top navigation and card counts
+
+The sidebar gutter is removed for both guests and signed-in desktop browsers. The Home logo remains visible for guests; registered desktop accounts use the logo in the new navigation bar. Banner responsive-image sizes and Home skeleton geometry follow the wider content area. Main navigation keeps account-scoped remembered routes and intent-only prefetching. The server's signed session, expiry, Mini App/OIDC provenance, same-bot unrevoked contact and staff exclusion remain independent authorization checks; this presentation change does not grant account access.
+
+Auction cards show the accepted bid total beside the submission fee using existing catalog/activity data, without an extra request. A valid zero is displayed as zero; an invalid/unavailable count is displayed as unavailable. The existing animated server-relative countdown is retained.
+
+Latest focused check: **131 tests across nine files passed**; full-project TypeScript passed. Twenty bilingual guest/registered navigation-and-Home-header combinations passed at 320/430/1024/1280/1908px with actual self-hosted fonts and logo, without overlap, clipping, overflow or unexpected requests. Sixteen actual auction-card layouts passed at 320/360/430px and a representative desktop card width, including large fees and counts. These fixture checks do not prove production identity-provider configuration. The production website suite was not rerun for this follow-up.
+
+The guide now uses three concise illustrated panels inspired by the user's supplied examples. Official unDraw Choose Card, Mobile Payments and Winner SVGs are self-hosted, recolored blue, lazy-loaded and decorative; they are not payment/winner evidence. Combined SVG size is 22,610 bytes. License and source hashes are in `public/images/how-it-works/`. A single viewport-triggered entrance disconnects its observer after entry and is disabled for reduced motion. Public asset access is limited to those three exact GET/HEAD paths; nearby private paths remain protected, with a proxy regression check.
+
+Eight illustrated-guide layouts passed at 320/430/1024/1280px in English/Amharic, with no overflow, clipped text, broken illustrations, page errors or unexpected requests. Reduced-motion checks confirmed all three illustration animations disabled. The final optimized webpack production build passed, including compilation, TypeScript, page generation and traces; only the existing non-blocking dependency-cache snapshot warnings remained.
+
+The user subsequently requested enabling browser OAuth. The local readiness check still reports missing BotFather Client ID/Client Secret; credentials and exact callback registration must be configured privately on WEB before enabling. No credentials, provider approval, production environment change or deployment was performed by the agent.

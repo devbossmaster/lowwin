@@ -1,0 +1,39 @@
+{
+  "retrieved": "2026-11-13",
+  "author": "Katerina Limpitsouni",
+  "source": "unDraw",
+  "license": "https://undraw.co/license",
+  "usage": "Decorative illustrations in Lowwin How bidding works. Not customer, payment or winner evidence.",
+  "assets": [
+    {
+      "title": "Choose Card",
+      "page": "https://undraw.co/illustration/choose-card_es1o",
+      "download": "https://cdn.undraw.co/illustrations/choose-card_es1o.svg",
+      "file": "public/images/how-it-works/choose-number.svg",
+      "originalSha256": "c3f8c2bbeea4137a7ba279c523fa1cfeff727fb91c1e331c61e29d4ade7e2985",
+      "sha256": "1dbb9e2ee34fa61e7d781727786db0aded99fee2eda88a460c8166ee32495619",
+      "bytes": 6364,
+      "modification": "Changed the editable #6c63ff accent to Lowwin blue #2563eb."
+    },
+    {
+      "title": "Mobile Payments",
+      "page": "https://undraw.co/illustration/mobile-payments_uate",
+      "download": "https://cdn.undraw.co/illustration/mobile-payments_uate.svg",
+      "file": "public/images/how-it-works/pay-entry.svg",
+      "originalSha256": "215ce017a9ad87932d757875a859091b3af21e217040abc1767f04d630dc48bf",
+      "sha256": "30ca75b9f95a562cc37a2c692fee316b0bd6822dbd011ede2c95ccfdbccd2e2d",
+      "bytes": 10744,
+      "modification": "Changed the editable #6c63ff accent to Lowwin blue #2563eb."
+    },
+    {
+      "title": "Winner",
+      "page": "https://undraw.co/illustration/winner_x40e",
+      "download": "https://cdn.undraw.co/illustration/winner_x40e.svg",
+      "file": "public/images/how-it-works/winning-result.svg",
+      "originalSha256": "9515640b903e4b24d3056c50e98f03350f09507abc2bf611f92ae2bc58fbe075",
+      "sha256": "d88ebd3b5bc92c9b0ba3a6b270f8ebc971fc1c0a22442973eeb7ab3a16fcb85e",
+      "bytes": 5502,
+      "modification": "Changed the editable #6c63ff accent to Lowwin blue #2563eb."
+    }
+  ]
+}

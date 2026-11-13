@@ -98,8 +98,9 @@
 @media(min-width:1024px){
  :global(.app-frame[data-app-layout=browser]) .root[data-route-skeleton=home]{padding:0 0 32px}
  :global(.app-frame[data-app-layout=browser]) .home{gap:22px}
- :global(.app-frame[data-app-layout=browser]) .homeHeader{justify-content:flex-end;min-height:62px;margin:0}
- :global(.app-frame[data-app-layout=browser]) .homeBrand{display:none}
+ :global(.app-frame[data-app-layout=browser]) .homeHeader{justify-content:space-between;min-height:62px;margin:0;padding-inline:16px}
+ :global(.app-frame[data-app-layout=browser][data-customer-registered=true]) .homeHeader{justify-content:flex-end}
+ :global(.app-frame[data-app-layout=browser][data-customer-registered=true]) .homeBrand{display:none}
  :global(.app-frame[data-app-layout=browser]) .heroBlock{margin-top:-22px;border-radius:20px}
  :global(.app-frame[data-app-layout=browser]) .hero{border-radius:20px}
  :global(.app-frame[data-app-layout=browser]) .homeContent{padding-inline:16px}

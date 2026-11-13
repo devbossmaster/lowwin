@@ -5,6 +5,12 @@ vi.mock('../src/modules/auth/mini-access',()=>access);
 import {proxy} from '../src/proxy';
 beforeEach(()=>{vi.clearAllMocks();access.getMiniSession.mockReset()});
 describe('private access during database outages',()=>{
+  it('serves only the three public guide illustrations without authentication',async()=>{
+    access.getMiniSession.mockRejectedValue(Error('Database unavailable'));
+    for(const name of ['choose-number','pay-entry','winning-result'])for(const method of ['GET','HEAD'])expect((await proxy(new NextRequest(`http://localhost/images/how-it-works/${name}.svg`,{method}))).headers.get('x-middleware-next')).toBe('1');
+    expect(access.getMiniSession).not.toHaveBeenCalled();access.getMiniSession.mockResolvedValue(null);
+    for(const path of ['/images/how-it-works/private.svg','/images/how-it-works/choose-number.svg/private'])expect((await proxy(new NextRequest('http://localhost'+path))).status).toBe(307);
+  });
   it('serves the exact self-hosted Inter font without widening private asset access',async()=>{
     access.getMiniSession.mockRejectedValue(Error('Database unavailable'));
     for(const method of ['GET','HEAD'])expect((await proxy(new NextRequest('http://localhost/fonts/inter-latin-variable.woff2',{method}))).headers.get('x-middleware-next')).toBe('1');
