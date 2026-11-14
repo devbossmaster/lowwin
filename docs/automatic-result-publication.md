@@ -2,6 +2,14 @@
 
 The auction worker settles an ended auction using its frozen server rules, then validates the committed accepted-bid proof before publishing. Publication and logical outbox intents commit atomically in a separate transaction. Financial settlement is not rolled back or changed by announcement failure. The worker retries genuine unpublished settlements after restart, including interruption between settlement and publication.
 
+## 14 November 2026 verification
+
+Deadline protection is independent of worker availability. Bid submission reads the PostgreSQL wall clock after acquiring the auction lock, and the database acceptance trigger separately requires acceptance strictly before the frozen deadline. An in-flight request queued past closing is rejected. The countdown clamps at zero and displays “Auction ended”; a card's Pay action can remain visible briefly while the immediate shared expiry refresh returns, but cannot bypass server acceptance checks.
+
+The operator supplied repeated `idle` logs from the production auction service. This confirms a running loop returning no eligible work at that time; it does not establish production settlement latency, the deployed revision, or a completed real result. The current worker waits one second after idle iterations; database contention, maintenance, validation and publication retries can add delay.
+
+Local verification: 63 settlement, publication, countdown and fee-only tests passed across the relevant six suites, after updating two outdated receipt assertions for the existing cash/bonus fields. A separate isolated PostgreSQL sample with 100 accepted V4 bids from four verified fixture participants settled and published in 240.7 ms. It chose the correct unique number (2, ahead of duplicated 1), rejected a late bid and reconciled with zero ledger drift. This single loopback sample excludes idle polling, production database/network latency, browser refresh and notification delivery; it is not a p95 or service guarantee. No production auction was settled and no real notification or payment was triggered.
+
 V2–V4 preserve lowest accepted number submitted exactly once; only when none is unique, the first immutable acceptance at the lowest number wins. Fewer than two accepted participants cancels under the original version's fee/refund rules. V1 keeps its original no-unique/no-winner behavior. Bids are filtered strictly before the original cutoff and at the saved acceptance-order boundary. A mismatch remains unpublished with a safe `Auction.publicationErrorCode` and bounded retry time; no winner is guessed or repaired.
 
 ## Operations

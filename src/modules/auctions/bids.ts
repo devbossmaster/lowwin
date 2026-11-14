@@ -97,13 +97,13 @@ export async function submitBidInTransaction(tx:Prisma.TransactionClient,input:B
  * number, contact, restrictions, price and coupon in this same transaction.
  * Reuse that snapshot for its first entry instead of repeating those queries.
  * The database still validates/stamps acceptance at the actual INSERT. */
-export async function recordValidatedSubmissionFeeBidInTransaction(tx:Prisma.TransactionClient,input:BidInput,prepared:ValidatedSubmissionFeeBid,raw:Record<string,string|undefined>=process.env,allowDepositBonus=true):Promise<BidReceipt>{
+export async function recordValidatedSubmissionFeeBidInTransaction(tx:Prisma.TransactionClient,input:BidInput,prepared:ValidatedSubmissionFeeBid,raw:Record<string,string|undefined>=process.env,allowDepositBonus=true,deferNotification=false):Promise<BidReceipt>{
   const command=bidInputSchema.parse(input),terms=prepared.auction.terms,fee=prepared.auction.feeRevisions[0];
   if(prepared.auction.slug!==command.auctionSlug||!terms||!isSubmissionFeeOnly(terms.ruleVersion)||!fee||fee.version!==command.feeVersion||command.couponId!==(prepared.discount?.couponId))fail('RETRYABLE_CONFLICT',409,'Review the current bid order before paying.');
-  return recordBidInTransaction(tx,command,prepared.auction,prepared.own,raw,prepared.discount,allowDepositBonus);
+  return recordBidInTransaction(tx,command,prepared.auction,prepared.own,raw,prepared.discount,allowDepositBonus,deferNotification);
 }
 
-async function recordBidInTransaction(tx:Prisma.TransactionClient,command:z.output<typeof bidInputSchema>,auction:ValidatedAuction,own:ValidatedSubmissionFeeBid['own'],raw:Record<string,string|undefined>,lockedDiscount?:ValidatedSubmissionFeeBid['discount'],allowDepositBonus=true):Promise<BidReceipt>{
+async function recordBidInTransaction(tx:Prisma.TransactionClient,command:z.output<typeof bidInputSchema>,auction:ValidatedAuction,own:ValidatedSubmissionFeeBid['own'],raw:Record<string,string|undefined>,lockedDiscount?:ValidatedSubmissionFeeBid['discount'],allowDepositBonus=true,deferNotification=false):Promise<BidReceipt>{
   const {userId,auctionSlug,amount,key,feeVersion,couponId}=command,terms=auction.terms!,fee=auction.feeRevisions[0];
   const requestHash=createHash('sha256').update(JSON.stringify({auctionSlug,amount:amount.toString(),feeVersion,couponId})).digest('hex');
 
@@ -162,7 +162,7 @@ async function recordBidInTransaction(tx:Prisma.TransactionClient,command:z.outp
       {accountId:available.id,delta:fee.feePoints.negated()},{accountId:feeAccount!.id,delta:fee.feePoints},
     ]}}});
   }
-  await enqueueAlert(tx,{key:`bid:${bid.id}:accepted`,kind:'BID_ACCEPTED',auctionId:auction.id,userId});
+  if(!deferNotification)await enqueueAlert(tx,{key:`bid:${bid.id}:accepted`,kind:'BID_ACCEPTED',auctionId:auction.id,userId,bidId:bid.id});
   await qualifyReferralInTransaction(tx,userId,bid.id,raw);
   return receipt;
 }

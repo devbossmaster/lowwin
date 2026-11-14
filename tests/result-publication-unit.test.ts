@@ -24,7 +24,7 @@ describe('automatic immutable result publication',()=>{
   const {s,tx}=fixture();tx.bid.aggregate.mockResolvedValue({_count:{acceptanceOrder:3},_min:{acceptanceOrder:2n},_max:{acceptanceOrder:3n}});await expect(reviewResult(tx as never,s)).rejects.toMatchObject({code:'ACCEPTANCE_ORDER_MISMATCH'});
  });
  it('creates publication and canonical frozen-media outbox intents together',async()=>{
-  const {tx}=fixture();expect(await publishSettledResultInTransaction(tx as never,'auction')).toMatchObject({alreadyPublished:false,historical:false});expect(tx.outbox.createMany.mock.calls[0][0]).toMatchObject({skipDuplicates:true,data:[{key:'settlement:settlement:completed',kind:'AUCTION_FINALIZED',payload:{imagePath:'/assets/product.webp',settlementId:'settlement'}}]});
+  const {tx}=fixture();expect(await publishSettledResultInTransaction(tx as never,'auction')).toMatchObject({alreadyPublished:false,historical:false});expect(tx.outbox.createMany.mock.calls[0][0]).toMatchObject({skipDuplicates:true,data:[{key:'settlement:settlement:ended',kind:'AUCTION_FINALIZED',payload:{imagePath:'/assets/product.webp',settlementId:'settlement',outcome:'WINNER'}},{key:'settlement:settlement:winner:winner',kind:'WINNER_CONGRATULATIONS',payload:{imagePath:'/assets/product.webp',settlementId:'settlement',recipientUserId:'winner',outcome:'WINNER'}}]});
  });
  it('blocks publication and every announcement intent when the immutable proof does not match',async()=>{
   const {tx,row}=fixture();tx.auctionSettlement.findUnique.mockResolvedValue({...row,acceptedCount:4});
@@ -35,7 +35,18 @@ describe('automatic immutable result publication',()=>{
   tx.$queryRaw.mockResolvedValue([{now:new Date('2026-01-01T11:59:30Z')}]);await expect(publishSettledResultInTransaction(tx as never,'auction')).rejects.toMatchObject({code:'RESULT_NOT_READY'});expect(tx.outbox.createMany).not.toHaveBeenCalled();
   tx.$queryRaw.mockResolvedValue([{now:new Date('2026-01-01T12:00:01Z')}]);await expect(publishSettledResultInTransaction(tx as never,'auction')).rejects.toMatchObject({code:'PARTICIPANT_PROOF_MISMATCH'});expect(tx.outbox.createMany).not.toHaveBeenCalled();
  });
- it('keeps cancellation publication without sending a removed announcement',async()=>{const {tx}=fixture({cancelled:true});await publishSettledResultInTransaction(tx as never,'auction');expect(tx.resultPublication.create).toHaveBeenCalledTimes(1);expect(tx.outbox.createMany).not.toHaveBeenCalled()});
+ it('creates only an ended root for cancelled and legacy no-winner results after cutoff',async()=>{
+  for(const options of [{cancelled:true},{rule:'lowest-unique-v1',fallback:true}]){
+   const {tx,s}=fixture(options);await publishSettledResultInTransaction(tx as never,'auction');expect(tx.resultPublication.create).toHaveBeenCalledTimes(1);
+   expect(tx.outbox.createMany.mock.calls[0][0]).toMatchObject({skipDuplicates:true,data:[{key:'settlement:settlement:ended',kind:'AUCTION_FINALIZED',settlementId:'settlement',payload:{auctionId:'auction',settlementId:'settlement',outcome:s.outcome}}]});
+  }
+ });
+ it('keeps an early owner cancellation silent before the frozen cutoff',async()=>{
+  const {tx,row}=fixture({cancelled:true}),cutoff=new Date('2026-01-03');
+  tx.auctionSettlement.findUnique.mockResolvedValue({...row,cutoff,decision:'OWNER_CANCELLED',proof:{...(row.proof as Record<string,unknown>),cutoff:cutoff.toISOString(),decision:'OWNER_CANCELLED'}} as never);
+  await expect(publishSettledResultInTransaction(tx as never,'auction')).resolves.toMatchObject({historical:false,alreadyPublished:false});
+  expect(tx.resultPublication.create).toHaveBeenCalledTimes(1);expect(tx.outbox.createMany).not.toHaveBeenCalled();
+ });
  it('silently backfills pre-cutover history and fails closed if policy is absent',async()=>{
   const {tx}=fixture();tx.resultPublicationPolicy.findUnique.mockResolvedValue({id:'auto',automaticFrom:new Date('2026-01-03')});expect(await publishSettledResultInTransaction(tx as never,'auction')).toMatchObject({historical:true});expect(tx.outbox.createMany).not.toHaveBeenCalled();
   tx.resultPublicationPolicy.findUnique.mockResolvedValue(null as never);await expect(publishSettledResultInTransaction(tx as never,'auction')).rejects.toMatchObject({code:'PUBLICATION_POLICY_NOT_READY'});

@@ -14,6 +14,8 @@ import {walletBidsEnabled} from '../wallet/policy';
 import {readWalletProjection} from '../wallet/balance';
 import {measureChapa} from '../payments/chapa-timing';
 import {consumeDepositBonusInTransaction,readDepositBonusFunds} from '../wallet/deposit-bonus';
+import {bidPurchaseNotificationCopy} from '../notifications/amharic-copy';
+import {materializeAlert} from '../notifications/service';
 
 type Tx=Prisma.TransactionClient;
 type Authorize=(tx:Tx)=>Promise<void>;
@@ -91,7 +93,7 @@ export async function fulfillBatchInTransaction(tx:Tx,batch:BidBatchOrder,valida
  // entries share the same locked, fully validated batch and use bulk writes.
  // The database Bid triggers still stamp/check every acceptance individually;
  // any late/invalid line aborts the entire outer transaction/savepoint.
- const first=lines[0],initial=await recordValidatedSubmissionFeeBidInTransaction(tx,{userId:batch.userId,auctionSlug:batch.auctionSlug,amount:first.number,feeVersion:batch.feeVersion,key:batchChildKey(batch.id,0),...(first.couponId?{couponId:first.couponId}:{})},current,process.env,allowDepositBonus),receipts:BidReceipt[]=[initial];
+ const first=lines[0],initial=await recordValidatedSubmissionFeeBidInTransaction(tx,{userId:batch.userId,auctionSlug:batch.auctionSlug,amount:first.number,feeVersion:batch.feeVersion,key:batchChildKey(batch.id,0),...(first.couponId?{couponId:first.couponId}:{})},current,process.env,allowDepositBonus,true),receipts:BidReceipt[]=[initial];
  if(etbToCents(initial.charge.netFeePoints??initial.charge.feePoints)!==etbToCents(first.netFee))throw new ChapaError(409,'TERMS_CHANGED','The charged fee no longer matches this quote.');
  const rest=lines.slice(1),remainingCost=batch.totalCents-etbToCents(first.netFee);
  if(etbToCents(initial.wallet.available)<remainingCost)throw new BidError('INSUFFICIENT_POINTS',409,'Your Lowwin wallet does not have enough funds for the entire order.');
@@ -108,14 +110,15 @@ export async function fulfillBatchInTransaction(tx:Tx,batch:BidBatchOrder,valida
    await tx.posting.createMany({data:children.flatMap(child=>[{journalId:child.journalId,accountId:available!.id,delta:fee.feePoints.negated()},{journalId:child.journalId,accountId:fees!.id,delta:fee.feePoints}])});
   }
   await tx.auction.update({where:{id:batch.auctionId},data:{acceptedBidCount:{increment:rest.length}}});
-  // Equivalent to enqueueAlert for this already validated real, open auction.
-  // Bulk insertion avoids per-entry auction/content re-reads and keeps every
-  // notification inside the same all-or-none financial transaction.
-  await tx.outbox.createMany({data:children.map(child=>({key:`bid:${child.id}:accepted`,kind:'BID_ACCEPTED',payload:{auctionId:batch.auctionId,recipientUserId:batch.userId}}))});
-  await tx.notificationInbox.createMany({data:children.map(child=>({key:`bid:${child.id}:accepted`,kind:'BID_ACCEPTED',userId:batch.userId,title:'Bid accepted',body:'Your accepted receipt is ready in My Bids.',href:'/my-bids'}))});
  }
  const receipt={...receipts.at(-1)!,bid:receipts[0].bid,bids:receipts.map(item=>item.bid),receipts,batchId:batch.id,total:centsToEtb(batch.totalCents),charge:{feePoints:centsToEtb(batch.grossCents),discountPoints:centsToEtb(batch.discountCents),netFeePoints:centsToEtb(batch.totalCents),newlyUnavailable:centsToEtb(batch.totalCents)}};
  await tx.bidBatchOrder.update({where:{id:batch.id},data:{status:'ACCEPTED',receipt:JSON.parse(JSON.stringify(receipt))}});
+ // One immutable notification intent for the committed complete purchase,
+ // instead of up to 100 messages. Replay returns above without another intent.
+ const alert=await tx.outbox.create({data:{key:`bid-batch:${batch.id}:accepted`,kind:'BID_ACCEPTED',payload:{auctionId:batch.auctionId,recipientUserId:batch.userId,batchId:batch.id,bidId:initial.bid.id}}});
+ const snapshot=current.auction.presentation as {title?:string;titleAm?:string}|null;
+ const copy=bidPurchaseNotificationCopy({productTitle:snapshot?.titleAm||current.auction.product?.titleAm||snapshot?.title||current.auction.product?.title||'',numbers:lines.map(line=>line.number),paidFee:centsToEtb(batch.totalCents),ruleVersion:batch.ruleVersion});
+ if(copy)await materializeAlert(tx,alert,{...copy,userId:batch.userId,kind:'BID_ACCEPTED',href:'/my-bids'});
  return receipt;
 }
 export async function payBidBatchWallet(client:PrismaClient,userId:string,id:string,raw:unknown,reauthorize?:Authorize){

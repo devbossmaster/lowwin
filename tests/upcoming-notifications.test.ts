@@ -1,7 +1,7 @@
 import {describe,it,expect,vi} from 'vitest';
 import type {Prisma,PrismaClient,Outbox} from '@prisma/client';
 import {auctionNotificationImageId,campaignContent,expandCampaign,scheduleGlobalAlerts,telegramKinds} from '../src/modules/notifications/campaigns';
-import {endingReminders,endingReminderCurrent,retiredNotificationKinds} from '../src/modules/notifications/policy';
+import {endingReminders,endingReminderCurrent,retiredNotificationKinds,upcomingReminders,upcomingReminderCurrent} from '../src/modules/notifications/policy';
 import {notificationContent} from '../src/modules/notifications/service';
 import {notificationCopy} from '../src/components/notification-copy';
 
@@ -15,26 +15,32 @@ function schedulerClient(data:Record<string,unknown>,halted=false):PrismaClient{
 }
 const root=(kind:string):Outbox=>({id:'root-1',key:'global:upcoming:auction-1',kind:'GLOBAL_CAMPAIGN',createdAt:now,payload:{auctionId:'auction-1',deliveryKind:kind,audienceBefore:now.toISOString()},testRunId:null,state:'PENDING',attempts:0,nextAttemptAt:now,sentAt:null,lastError:null,leaseToken:null,leaseUntil:null,claimedAt:null,settlementId:null});
 
-describe('one upcoming reminder and four closing windows',()=>{
+describe('two upcoming reminders and five closing windows',()=>{
  it('announces a newly published auction separately from its scheduled reminder',async()=>{
-  const content=await campaignContent(transaction(auction({startsAt:new Date(now.getTime()+4*24*hour)})),{...row,kind:'AUCTION_PUBLISHED'});
-  expect(content?.title).toContain('New auction');expect(content?.href).toBe('/auctions/fixture-phone');
+  const future=transaction(auction({startsAt:new Date(now.getTime()+4*24*hour)}));
+  const content=await campaignContent(future,{...row,kind:'AUCTION_UPCOMING_ADDED'});
+  expect(content?.title).toContain('አዲስ መጪ ጨረታ');expect(content?.href).toBe('/auctions/fixture-phone');
+  expect(await campaignContent(future,{...row,kind:'AUCTION_PUBLISHED'})).toBeNull();
+  const live=transaction(auction({status:'LIVE',startsAt:new Date(now.getTime()-hour)}));
+  expect((await campaignContent(live,{...row,kind:'AUCTION_PUBLISHED'}))?.title).toContain('አዲስ ጨረታ ተጀምሯል');
+  expect(await campaignContent(live,{...row,kind:'AUCTION_UPCOMING_ADDED'})).toBeNull();
  });
  it.each(endingReminders)('accepts only the live $kind window',async reminder=>{
   const content=await campaignContent(transaction(auction({status:'LIVE',startsAt:new Date(now.getTime()-hour),endsAt:new Date(now.getTime()+reminder.maxMs)})),{...row,kind:reminder.kind});
-  expect(content?.title).toContain(reminder.en);expect(content?.body).toContain('Fixture phone');
+  expect(content?.title).toContain(reminder.am);expect(content?.body).toContain('Fixture phone');
   expect(notificationCopy(content!,'am').title).toContain(reminder.am);
   for(const offset of [reminder.minMs,reminder.maxMs+1,-1])expect(endingReminderCurrent(reminder.kind,new Date(now.getTime()+offset),now)).toBe(false);
  });
- it.each([0,1,12*hour,12*hour+1,24*hour,24*hour+1,48*hour,48*hour+1,72*hour,72*hour+1])('never catches up multiple closing notices at %i ms',offset=>{
+ it.each([0,1,hour,hour+1,12*hour,12*hour+1,24*hour,24*hour+1,48*hour,48*hour+1,72*hour,72*hour+1])('never catches up multiple closing notices at %i ms',offset=>{
   const matches=endingReminders.filter(r=>endingReminderCurrent(r.kind,new Date(now.getTime()+offset),now));
   expect(matches).toHaveLength(offset>0&&offset<=72*hour?1:0);
  });
- it.each([1,hour,24*hour])('uses the same upcoming notice throughout its day window (%i ms)',async offset=>{
-  const content=await campaignContent(transaction(auction({startsAt:new Date(now.getTime()+offset)})),row);
-  expect(content?.title).toContain('within 1 day');expect(notificationCopy(content!,'am').body).toContain('የሚጀምርበት');
+ it.each(upcomingReminders)('accepts only its own upcoming $kind window',async reminder=>{
+  const content=await campaignContent(transaction(auction({startsAt:new Date(now.getTime()+reminder.maxMs)})),{...row,kind:reminder.kind});
+  expect(content?.title).toContain(reminder.am);expect(content?.body).toContain('የሚጀምርበት');
+  for(const offset of [reminder.minMs,reminder.maxMs+1,-1])expect(upcomingReminderCurrent(reminder.kind,new Date(now.getTime()+offset),now)).toBe(false);
  });
- it.each([-1,0,24*hour+1])('suppresses an upcoming reminder outside its window (%i ms)',async offset=>{
+ it.each([-1,0,hour,24*hour+1])('suppresses a day reminder outside its window (%i ms)',async offset=>{
   expect(await campaignContent(transaction(auction({startsAt:new Date(now.getTime()+offset)})),row)).toBeNull();
  });
  it.each([{status:'CANCELLED'},{status:'DRAFT'},{publishedAt:null},{startsAt:null},{endsAt:now},{product:{visible:false}},{isDemo:true},{testRunId:'private-test'},{result:{id:'historic-result'}},{settlement:{outcome:'WINNER'}}])('suppresses unavailable/private/finished auctions %j',async change=>{
@@ -51,10 +57,12 @@ describe('one upcoming reminder and four closing windows',()=>{
   const createMany=vi.fn(async({data}:{data:Array<{key:string}>})=>{let count=0;for(const job of data)if(!saved.has(job.key)){saved.set(job.key,job);count++}return {count}});
   const findMany=vi.fn(async({where}:{where:{status:unknown;endsAt:{gt:Date;lte?:Date};startsAt:{gt?:Date}}})=>where.startsAt.gt?[{id:'upcoming',isDemo:false,isSettlementFixture:false}]:[{id:`closing-${where.endsAt.lte!.getTime()}`,isDemo:false,isSettlementFixture:false,controlVersion:7}]);
   const client=schedulerClient({$queryRaw:vi.fn(async()=>[{now}]),auction:{findMany},outbox:{createMany}});
-  expect(await scheduleGlobalAlerts(client)).toBe(5);expect(await scheduleGlobalAlerts(client)).toBe(0);
-  expect(saved.size).toBe(5);expect(saved.get('global:upcoming:upcoming')).toMatchObject({payload:{deliveryKind:'AUCTION_UPCOMING',audienceBefore:now.toISOString()}});
+  expect(await scheduleGlobalAlerts(client)).toBe(7);expect(await scheduleGlobalAlerts(client)).toBe(0);
+  expect(saved.size).toBe(7);expect(saved.get('global:upcoming:upcoming')).toMatchObject({payload:{deliveryKind:'AUCTION_UPCOMING',audienceBefore:now.toISOString()}});
+  expect(saved.get('global:upcoming-1-hour:upcoming')).toMatchObject({payload:{deliveryKind:'AUCTION_UPCOMING_1_HOUR'}});
   expect([...saved.keys()].some(k=>k.includes('starting-soon'))).toBe(false);
-  expect(findMany.mock.calls[4][0].where.startsAt).toEqual({gt:now,lte:new Date(now.getTime()+24*hour)});
+  expect(findMany.mock.calls[5][0].where.startsAt).toEqual({gt:new Date(now.getTime()+hour),lte:new Date(now.getTime()+24*hour)});
+  expect(findMany.mock.calls[6][0].where.startsAt).toEqual({gt:now,lte:new Date(now.getTime()+hour)});
   for(const reminder of endingReminders)expect([...saved.entries()].some(([key,value])=>key.startsWith(`global:${reminder.key}:`)&&key.endsWith(':v7')&&(value as {payload:{deliveryKind:string}}).payload.deliveryKind===reminder.kind)).toBe(true);
  });
  it('does not inspect auctions or create jobs during maintenance',async()=>{

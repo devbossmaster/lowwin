@@ -15,7 +15,7 @@ const operations:Record<string,string>={
 };
 export function authLogSummary(args:unknown[],message?:unknown){
  const pending=[...args];let selected:ReturnType<typeof databaseErrorSummary>|undefined;
- let providerCode:string|undefined,diagnostic=typeof message==='string'?operations[message]:undefined;
+ let providerCode:string|undefined,tokenRequestProfile:string|undefined,diagnostic=typeof message==='string'?operations[message]:undefined;
  for(let visited=0;pending.length&&visited<12;visited++){
   const value=pending.shift();
   // The plugin intentionally throws a fixed sentence for a 200/error token
@@ -24,6 +24,7 @@ export function authLogSummary(args:unknown[],message?:unknown){
   const tokenCode=text?.match(/^\[better-auth-telegram\] OIDC: token endpoint returned "([a-z_]+)"$/)?.[1];
   if(tokenCode&&providerCodes.has(tokenCode))providerCode=tokenCode;
   if(!value||typeof value!=='object')continue;
+  if('telegramTokenRequestProfile' in value&&value.telegramTokenRequestProfile==='telegram-basic-raw-v2')tokenRequestProfile='telegram-basic-raw-v2';
   if('code' in value&&typeof value.code==='string'&&providerCodes.has(value.code))providerCode=value.code;
   if('code' in value&&value.code==='SCHEMA_MISMATCH')diagnostic='GENERATED_CLIENT_SCHEMA';
   const summary=databaseErrorSummary(value);
@@ -31,7 +32,7 @@ export function authLogSummary(args:unknown[],message?:unknown){
   if('cause' in value)pending.push(value.cause);
   if('error' in value)pending.push(value.error);
  }
- if(selected)return {...selected,...(diagnostic?{diagnostic}:{})};
- if(providerCode)return {code:'AUTH_PROVIDER',diagnostic:diagnostic??'TOKEN_EXCHANGE',providerCode,hint:providerCode==='invalid_client'?'Check WEB Login Widget client credentials and exact BotFather callback; bot tokens are separate credentials.':'Restart sign-in; inspect the provider configuration if the rejection repeats.'};
+ if(selected)return {...selected,...(diagnostic?{diagnostic}:{}),...(tokenRequestProfile?{tokenRequestProfile}:{})};
+ if(providerCode)return {code:'AUTH_PROVIDER',diagnostic:diagnostic??'TOKEN_EXCHANGE',providerCode,...(tokenRequestProfile?{tokenRequestProfile}:{}),hint:providerCode==='invalid_client'?'Telegram rejected WEB OIDC client authentication. Check the current Login Widget Client ID/Secret pair for this bot; worker credentials do not configure WEB.':'Restart sign-in; inspect the provider configuration if the rejection repeats.'};
  return {code:'AUTH_PROVIDER_OR_SESSION',...(diagnostic?{diagnostic}:{}),hint:'Run the read-only auth runtime check in WEB; inspect its generated-client, tables and runtime grants.'};
 }

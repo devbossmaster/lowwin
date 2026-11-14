@@ -1,3 +1,4 @@
+import {materializeAlert} from '../notifications/service';
 import {walletBidsEnabled} from '../wallet/policy';
 import {randomBytes,randomUUID} from 'node:crypto';
 import {Prisma,type ChapaCheckout,type PrismaClient} from '@prisma/client';
@@ -282,8 +283,11 @@ export async function verifyChapaCheckout(client:PrismaClient,id:string,userId?:
     await tx.$executeRawUnsafe('RELEASE SAVEPOINT chapa_bid');
    }catch(error){await tx.$executeRawUnsafe('ROLLBACK TO SAVEPOINT chapa_bid');await tx.$executeRawUnsafe('RELEASE SAVEPOINT chapa_bid');receipt=null;reason=error instanceof BidError||error instanceof ChapaError?error.code:'PAID_BID_NOT_ACCEPTED'}
   }
-  if(!receipt)await tx.notificationInbox.create({data:{key:`chapa:${id}:credited`,kind:'PAYMENT_CREDITED',userId:order.userId,title:'Wallet credited · ገንዘብ ገብቷል',body:`${amount.toFixed(2)} ETB verified through Chapa.${order.purpose==='BID'?' The bid was not accepted; the funds remain in your wallet.':''}\n${amount.toFixed(2)} ብር በChapa ተረጋግጦ ገብቷል።${order.purpose==='BID'?' ጨረታው አልተቀበለም፤ ገንዘቡ በዋሌትዎ ውስጥ ቀርቷል።':''}`,href:`/payments/chapa/return?checkout=${id}`}});
   const updated=await tx.chapaCheckout.update({where:{id},data:{...fields,creditJournalId:journal.id,status:receipt?'BID_ACCEPTED':order.purpose==='TOP_UP'?'CREDITED':'NEEDS_REVIEW',reason,...(receipt?{bidId:receipt.bid.id,receipt:json(receipt)}:{})}});
+  if(!receipt){
+   const alert=await tx.outbox.create({data:{key:`chapa:${id}:credited`,kind:'DEPOSIT_CREDITED',payload:{checkoutId:id,recipientUserId:order.userId}}});
+   await materializeAlert(tx,alert);
+  }
   return ownChapaCheckout(updated);
  },PAYMENT_TRANSACTION_OPTIONS));
 }

@@ -16,7 +16,7 @@ describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated t
  const maintenance=async(action:string)=>{const latest=await db.adminAudit.findFirst({orderBy:{createdAt:'desc'},select:{createdAt:true}});return db.adminAudit.create({data:{actorId:'isolated',action,target:'all',details:{},createdAt:new Date(Math.max(Date.now(),(latest?.createdAt.getTime()??0)+1))}})};
  const deferred=()=>{let resolve!:()=>void;const promise=new Promise<void>(r=>{resolve=r});return {promise,resolve}};
  const fake=(send:ReturnType<typeof vi.fn>)=>({api:{sendMessage:send,sendPhoto:send,deleteMessage:send}} as unknown as Pick<Bot,'api'>);
- const job=(kind='BROADCAST',index=0,rootKey?:string)=>db.outbox.create({data:{key:rootKey?`${rootKey}:user:${users[index].id}`:`notification-durable:${randomUUID()}`,kind,payload:kind==='CONTACT_CONFIRMED'?{telegramId:users[index].telegramId,botId:'123456789'}:{recipientUserId:users[index].id,body:'Fixture update',href:'/',...(rootKey?{rootKey}:{})}}});
+ const job=(kind='BROADCAST',index=0,rootKey?:string)=>db.outbox.create({data:{key:rootKey?`${rootKey}:user:${users[index].id}`:`notification-durable:${randomUUID()}`,kind,payload:{recipientUserId:users[index].id,body:'Fixture update',href:'/',...(rootKey?{rootKey}:{})}}});
  beforeAll(async()=>{
   const target=new URL(url!);if(!['127.0.0.1','localhost'].includes(target.hostname)||!target.pathname.endsWith('_test'))throw Error('Isolated loopback _test database required');
   Object.assign(process.env,{DATABASE_URL:url,DIRECT_URL:url,TELEGRAM_BOT_TOKEN:TEST_TOKEN,MINI_APP_URL:'https://lowwin.test/telegram'});
@@ -33,7 +33,7 @@ describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated t
  });
  afterAll(async()=>{await db?.$disconnect()});
  it('claims disjoint bounded batches concurrently and leaves urgent capacity plus bulk progress',async()=>{
-  for(let i=0;i<12;i++)await job(i<8?'CONTACT_CONFIRMED':'BROADCAST',i);
+  for(let i=0;i<12;i++)await job(i<8?'BID_ACCEPTED':'BROADCAST',i);
   const [one,two]=await Promise.all([claimNotifications(db,{limit:4}),claimNotifications(db,{limit:4})]);
   expect(new Set([...one,...two].map(r=>r.id)).size).toBe(8);expect(one).toHaveLength(4);expect(two).toHaveLength(4);
   expect(one.some(r=>r.kind==='BROADCAST')).toBe(true);expect(two.some(r=>r.kind==='BROADCAST')).toBe(true);
@@ -72,7 +72,7 @@ describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated t
   expect((await db.outbox.findUniqueOrThrow({where:{id:row.id}})).state).toBe('SENT');expect((await db.outbox.findUniqueOrThrow({where:{id:later.id}})).state).toBe('SKIPPED');expect(await db.telegramMessage.count()).toBe(messagesBefore+1);
  });
  it('stops claimed-but-unsent work and pauses claims during maintenance without losing ownership',async()=>{
-  const one=await job('CONTACT_CONFIRMED'),two=await job('BROADCAST',1),began=deferred(),release=deferred();let running=true;
+  const one=await job('BROADCAST'),two=await job('BROADCAST',1),began=deferred(),release=deferred();let running=true;
   const send=vi.fn(async()=>{began.resolve();await release.promise;return {message_id:102}});
   const sending=dispatchBatch(db,fake(send),{limit:2,concurrency:1,shouldContinue:()=>running});await began.promise;running=false;release.resolve();await sending;
   expect(send).toHaveBeenCalledTimes(1);expect((await db.outbox.findUniqueOrThrow({where:{id:two.id}})).lastError).toBe('WORKER_STOPPING');
@@ -107,7 +107,7 @@ describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated t
   }finally{await db.user.update({where:{id:users[1].id},data:{role:'member'}})}
  });
  it('retains an accepted-send lease on acknowledgement failure rather than immediately resending',async()=>{
-  const row=await job('CONTACT_CONFIRMED');const send=vi.fn(async()=>({message_id:103}));
+  const row=await job('BROADCAST');const send=vi.fn(async()=>({message_id:103}));
   const original=db.$transaction.bind(db);let transactions=0;
   const wrapped=new Proxy(db,{get(target,key){if(key==='$transaction')return async(...args:Parameters<typeof db.$transaction>)=>{transactions++;if(transactions===3)throw Error('Simulated acknowledgement disconnect');return (original as (...input:unknown[])=>unknown)(...args)};const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value}});
   await dispatchBatch(wrapped,fake(send),{limit:1});
@@ -115,7 +115,7 @@ describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated t
   await dispatchBatch(db,fake(send),{limit:1});expect(send).toHaveBeenCalledTimes(1);
  });
  it('renews a nearly expired owner before HTTP so another worker cannot reclaim the in-flight send',async()=>{
-  const row=await job('CONTACT_CONFIRMED'),began=deferred(),release=deferred();let shortened=false;
+  const row=await job('BROADCAST'),began=deferred(),release=deferred();let shortened=false;
   const original=db.$transaction.bind(db);let transactions=0;
   const nearExpiry=new Proxy(db,{get(target,key){if(key==='$transaction')return async(...args:Parameters<typeof db.$transaction>)=>{if(++transactions===2&&!shortened){shortened=true;await db.outbox.update({where:{id:row.id},data:{leaseUntil:new Date(Date.now()+10_000)}})}return (original as (...input:unknown[])=>unknown)(...args)};const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value}});
   let observedLease=0;const send=vi.fn(async()=>{const saved=await db.outbox.findUniqueOrThrow({where:{id:row.id}});observedLease=saved.leaseUntil!.getTime()-Date.now();began.resolve();await release.promise;return {message_id:104}});

@@ -45,13 +45,13 @@ describe.skipIf(!url)('submission-fee-only bidding on disposable PostgreSQL',()=
   expect(queries.some(row=>row.query.includes('lock_wallet_hold_state'))).toBe(true);
   expect(queries.some(row=>row.query.startsWith('INSERT INTO "public"."LedgerAccount"'))).toBe(false);
   expect(queries.filter(row=>row.query.includes('"LedgerAccount"')&&row.params.includes(`user:${u}:`))).toEqual([]);
-  expect(receipt.wallet).toEqual({available:'8',held:'0'});expect(await reconcile(db)).toEqual([]);
+  expect(receipt.wallet).toEqual({available:'8',held:'0',cashAvailable:'8',bonusAvailable:'0',bonusExpiresAt:null});expect(await reconcile(db)).toEqual([]);
  });
  it('initializes a missing or incomplete wallet before accepting a zero-fee bid',async()=>{
   const a=await auction(0);
   for(const incomplete of [false,true]){
    const u=await bidUser(db,'0');if(incomplete)await db.wallet.create({data:{userId:u}});
-   expect((await bid(u,a.slug!,'1.05')).wallet).toEqual({available:'0',held:'0'});
+   expect((await bid(u,a.slug!,'1.05')).wallet).toEqual({available:'0',held:'0',cashAvailable:'0',bonusAvailable:'0',bonusExpiresAt:null});
    expect(await db.ledgerAccount.count({where:{wallet:{userId:u},kind:{in:['AVAILABLE','HELD']}}})).toBe(2);
   }
   expect(await reconcile(db)).toEqual([]);

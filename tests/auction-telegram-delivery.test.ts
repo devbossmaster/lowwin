@@ -8,7 +8,7 @@ import {randomUUID} from 'node:crypto';
 import {notificationDispatchFixture} from './notification-dispatch-fixture';
 
 const now=new Date('2026-10-30T09:00:00Z'),imageId='11111111-2222-4333-8444-555555555555';
-const auction=(change:Record<string,unknown>={})=>({slug:'rugass-power-bank',publicCode:42,publishedAt:new Date(now.getTime()-60000),startsAt:new Date(now.getTime()+1800000),endsAt:new Date(now.getTime()+86400000),status:'SCHEDULED',isDemo:false,isSettlementFixture:false,testRunId:null,presentation:{title:'Rugass 20,000 mAh power bank',images:[{path:`/api/media/${imageId}`}]},product:{title:'Original product title',visible:true,images:[]},result:null,settlement:null,...change});
+const auction=(change:Record<string,unknown>={})=>({slug:'rugass-power-bank',publicCode:42,publishedAt:new Date(now.getTime()-60000),startsAt:new Date(now.getTime()+9*3600000),endsAt:new Date(now.getTime()+86400000),status:'SCHEDULED',isDemo:false,isSettlementFixture:false,testRunId:null,presentation:{title:'Rugass 20,000 mAh power bank',images:[{path:`/api/media/${imageId}`}]},product:{title:'Original product title',visible:true,images:[]},result:null,settlement:null,...change});
 const job=()=>({id:'auction-message',key:'global:upcoming:auction:user:player',kind:'AUCTION_UPCOMING',payload:{auctionId:'auction',recipientUserId:'player'},state:'PENDING',attempts:0,nextAttemptAt:new Date(0),createdAt:new Date(0),sentAt:null,lastError:null,leaseToken:null,leaseUntil:null,claimedAt:null,settlementId:null,testRunId:null}) as Outbox;
 let photoBytes:Buffer;
 beforeEach(async()=>{vi.stubEnv('MINI_APP_URL','https://lowwin.test');vi.stubEnv('TELEGRAM_BOT_TOKEN','123456789:fixture-token');photoBytes=await sharp({create:{width:184,height:80,channels:3,background:'#c9a227'}}).png().toBuffer()});
@@ -30,8 +30,8 @@ describe('concise auction Telegram messages',()=>{
   const f=fixture();await dispatchOne(f.client,f.bot);
   expect(f.row.state).toBe('SENT');expect(f.sendMessage).not.toHaveBeenCalled();expect(f.tx.managedMedia.findUnique).toHaveBeenCalledWith({where:{id:imageId},select:{bytes:true}});
   expect(f.sendPhoto).toHaveBeenCalledWith('900000001',expect.any(InputFile),{
-   caption:'⏰ Rugass 20,000 mAh power bank\nOpens within 1 day · በ1 ቀን ውስጥ ይጀምራል\n30 Oct 2026, 12:30 EAT\n#42',
-   reply_markup:{inline_keyboard:[[{text:'View auction · ጨረታውን ይመልከቱ',web_app:{url:'https://lowwin.test/auctions/rugass-power-bank'}}]]},
+   caption:expect.stringContaining('ጨረታው በ24 ሰዓታት ውስጥ ይጀምራል'),
+   reply_markup:{inline_keyboard:[[{text:'ጨረታውን ይመልከቱ',web_app:{url:'https://lowwin.test/auctions/rugass-power-bank'}}]]},
   });
  });
  it('sends text when no actual product image exists instead of the generic notification banner',async()=>{
@@ -47,14 +47,16 @@ describe('concise auction Telegram messages',()=>{
   const f=fixture();f.sendPhoto.mockRejectedValueOnce({error_code:429,parameters:{retry_after:20}});await dispatchOne(f.client,f.bot);
   expect(f.row.state).toBe('PENDING');expect(f.row.lastError).toBe('RATE_LIMIT');expect(f.row.attempts).toBe(1);expect(f.sendPhoto).toHaveBeenCalledOnce();expect(f.sendMessage).not.toHaveBeenCalled();
  });
- it('uploads frozen product media with actual result facts and never resends a completed job',async()=>{
-  const productImage=randomUUID(),f=fixture(auction({presentation:{title:'Power bank',images:[{path:'/api/media/'+productImage}]},status:'CLOSED',endsAt:new Date(now.getTime()-1000),settlement:{id:'settlement',outcome:'WINNER',ruleVersion:'lowest-unique-v4',decision:'LOWEST_UNIQUE',winningPoints:'0.54',winnerUserId:'winner',winner:{name:'Player',telegramUsername:'winner_user',ownContact:null},completedAt:new Date(now.getTime()-1000),publication:{publishedAt:now}}}));f.row.kind='AUCTION_RESULT';
+ it('uploads frozen product media with only the ended notice and never resends a completed job',async()=>{
+  const productImage=randomUUID(),f=fixture(auction({presentation:{title:'Power bank',images:[{path:'/api/media/'+productImage}]},status:'CLOSED',endsAt:new Date(now.getTime()-1000),settlement:{id:'settlement',outcome:'WINNER',ruleVersion:'lowest-unique-v4',decision:'LOWEST_UNIQUE',winningPoints:'0.54',winnerUserId:'winner',winner:{name:'Player',telegramUsername:'winner_user',ownContact:null},completedAt:new Date(now.getTime()-1000),publication:{publishedAt:now}}}));f.row.kind='AUCTION_ENDED';
   f.tx.winnerPresentation.findFirst.mockResolvedValue({imageId:randomUUID(),consentConfirmedAt:now,image:{purpose:'WINNER_PHOTO'}});
-  await dispatchOne(f.client,f.bot);expect(f.sendPhoto).toHaveBeenCalledOnce();expect(f.sendPhoto).toHaveBeenCalledWith('900000001',expect.any(InputFile),expect.objectContaining({caption:expect.stringContaining('0.54')}));expect(f.tx.managedMedia.findUnique).toHaveBeenCalledWith({where:{id:productImage},select:{bytes:true}});expect(f.tx.winnerPresentation.findFirst).not.toHaveBeenCalled();
+  await dispatchOne(f.client,f.bot);expect(f.sendPhoto).toHaveBeenCalledOnce();expect(f.sendPhoto).toHaveBeenCalledWith('900000001',expect.any(InputFile),expect.objectContaining({caption:expect.stringContaining('ጨረታው ተጠናቋል')}));expect(f.tx.managedMedia.findUnique).toHaveBeenCalledWith({where:{id:productImage},select:{bytes:true}});expect(f.tx.winnerPresentation.findFirst).not.toHaveBeenCalled();
+  const sent=f.sendPhoto.mock.calls[0] as unknown as [string,unknown,{caption:string}];
+  expect(sent[2].caption).not.toMatch(/0\.54|winner_user/);
   expect(await dispatchOne(f.client,f.bot)).toBe(false);expect(f.sendPhoto).toHaveBeenCalledOnce();
  });
  it('keeps the result text and exact button when its frozen product image cannot be decoded',async()=>{
-  const productImage=randomUUID(),f=fixture(auction({presentation:{title:'Missing result image',images:[{path:'/api/media/'+productImage}]},status:'CLOSED',endsAt:new Date(now.getTime()-1000),settlement:{id:'settlement',outcome:'WINNER',decision:'LOWEST_UNIQUE',winningPoints:'0.54',winner:{name:'Player',ownContact:null},completedAt:new Date(now.getTime()-1000),publication:{publishedAt:now}}}));f.row.kind='AUCTION_RESULT';
+  const productImage=randomUUID(),f=fixture(auction({presentation:{title:'Missing result image',images:[{path:'/api/media/'+productImage}]},status:'CLOSED',endsAt:new Date(now.getTime()-1000),settlement:{id:'settlement',outcome:'WINNER',decision:'LOWEST_UNIQUE',winningPoints:'0.54',winner:{name:'Player',ownContact:null},completedAt:new Date(now.getTime()-1000),publication:{publishedAt:now}}}));f.row.kind='AUCTION_ENDED';
   f.tx.managedMedia.findUnique.mockResolvedValueOnce({bytes:Buffer.from('corrupt-photo')});
   await dispatchOne(f.client,f.bot);expect(f.row.state).toBe('SENT');expect(f.sendPhoto).not.toHaveBeenCalled();expect(f.sendMessage).toHaveBeenCalledOnce();expect(JSON.stringify(f.sendMessage.mock.calls[0][2])).toContain('/winners/42');
  });

@@ -34,13 +34,31 @@ TELEGRAM_LOGIN_CLIENT_SECRET=<BotFather OIDC Client Secret>
 
 Retain the existing `BETTER_AUTH_SECRET`, `TELEGRAM_BOT_TOKEN`, bot username and encrypted-contact key configuration. Do not rotate the Better Auth secret as part of this update. The OIDC secret is separate from the bot token and payment keys. Workers do not perform browser OAuth. Remove the obsolete `TELEGRAM_LOGIN_TOKEN_AUTH_METHOD` setting if it was added.
 
-The upstream provider uses the documented server-side Basic token exchange, with the installed Better Auth OAuth helper. No fallback exchanges or user credentials are sent from the browser. Provider access/ID tokens are not persisted: the verified mapper creates the owned identity binding before Better Auth's lookup, with account token updates disabled.
+The upstream provider uses the server-side Better Auth OAuth helper. A narrow Telegram request adapter supplies the documented form `client_id` and exactly one Basic header containing the raw UTF-8 `client_id:client_secret` pair. The generic helper otherwise form-encodes special characters and omits the body client ID in Basic mode. State, S256 PKCE, nonce, JWKS verification and sessions remain owned by Better Auth and its Telegram plugin. There is no fallback exchange or browser-side secret. Provider access/ID tokens are not persisted: the verified mapper creates the owned identity binding before Better Auth's lookup, with account token updates disabled.
 
 Readiness remains a redacted configuration/schema check, not a credential test:
 
 ```sh
 npx --no-install tsx scripts/check-telegram-browser-login.ts --schema
 ```
+
+To inspect the deployed request construction **offline**, without sending credentials or a code to Telegram:
+
+```sh
+npx --no-install tsx scripts/check-telegram-browser-login.ts --request
+```
+
+The output includes the installed package versions, public client ID/callback, safe credential-shape booleans and `tokenRequest.profile: "telegram-basic-raw-v2"`. `basicHeaderMatches`, `clientIdInBody`, `redirectMatches` and `pkcePresent` must be true; `secretInBody` must be false. The command does not print the secret, authorization header, code, PKCE verifier, cookies or customer records, and makes no Telegram request. `ready: true` means local configuration readiness only; `credentialVerification` remains `not-performed`.
+
+To determine whether the running WEB container actually has the current BotFather secret, use its interactive terminal:
+
+```sh
+npx --no-install tsx scripts/check-telegram-browser-login.ts --request --compare-secret
+```
+
+Copy the Client Secret from BotFather's current Login Widget/OpenID Connect page into the **hidden prompt**, then press Enter. Do not put it in the command, chat or a screenshot. Input is not echoed or added to prompt history. JSON contains only `credentials.secretMatchesBotFather: true/false`. A mismatch exits with `ready: false`; Ctrl+C cancels. Noninteractive shells refuse the comparison. Matching locally proves equality to the value pasted, not Telegram's acceptance. This command makes no provider request and changes no configuration.
+
+After a real callback rejection, the safe log includes `tokenRequestProfile: "telegram-basic-raw-v2"` when Telegram returns an HTTP-200 OAuth error through the updated adapter. This identifies the deployed path without logging the request. Continued `invalid_client` still means Telegram rejected client authentication; request construction and schema checks cannot establish that Telegram accepts the configured ID/secret pair. Check the running **WEB** resource, not workers. When the exact callback and current BotFather credentials are confirmed, send BotSupport the sanitized diagnostic and public callback/client ID with `#oidc`, as Telegram's official guide requests. Do not send them your secret, cookies, tokens or authorization codes.
 
 Expected callback: `https://lowwin.shop/api/auth/callback/telegram-oidc`; expected integration: `better-auth-telegram`. Schema requires the existing `202611130002_telegram_browser_login` migration. This update adds no migration and never copies wallets. Apply pending migrations through the existing authorized migration connection only.
 

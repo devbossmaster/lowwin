@@ -5,13 +5,10 @@ import {formatEtb} from '@/lib/money';
 import {auctionMaintenance} from '../auctions/maintenance';
 import {broadcastMiniAppPath,broadcastButtonLabel} from '@/lib/broadcast-link';
 import {resultRecipientIds} from './result-audience';
-import {resultAnnouncement} from './result-announcement';
-import {safeResultIdentity,maskedResultContact} from '../auctions/result-identity';
-
-import {endingReminders,endingReminder,endingReminderCurrent,notificationRetired} from './policy';
+import {endingReminders,endingReminder,endingReminderCurrent,notificationRetired,upcomingReminders,upcomingReminder,upcomingReminderCurrent} from './policy';
 
 type Tx=Prisma.TransactionClient;
-export const telegramKinds=['AUCTION_PUBLISHED','AUCTION_UPCOMING','AUCTION_ENDING',...endingReminders.filter(r=>r.kind!=='AUCTION_ENDING').map(r=>r.kind),'AUCTION_RESULT','DEPOSIT_CREDITED','BROADCAST'];
+export const telegramKinds=['AUCTION_PUBLISHED','AUCTION_UPCOMING_ADDED',...upcomingReminders.map(r=>r.kind),...endingReminders.map(r=>r.kind),'AUCTION_ENDED','DEPOSIT_CREDITED','BROADCAST'];
 /** Only a published product's own local image may accompany its auction alert. */
 export function auctionNotificationImagePath(presentation:unknown,productPath?:string){
  const image=typeof presentation==='object'&&presentation!==null&&'images' in presentation&&Array.isArray(presentation.images)?presentation.images[0]:null;
@@ -47,15 +44,15 @@ export async function expandCampaign(tx:Tx,row:Outbox){
  }
  // Publication is the authority for every outcome. Canonical settlement keys
  // prevent duplicate logical announcements from legacy/retried root intents.
- if(row.kind==='AUCTION_FINALIZED'||p.deliveryKind==='AUCTION_RESULT'){
+ if(row.kind==='AUCTION_FINALIZED'||p.deliveryKind==='AUCTION_ENDED'){
   const settlement=p.auctionId?await tx.auctionSettlement.findUnique({where:{auctionId:p.auctionId},select:{id:true,outcome:true,publication:{select:{publishedAt:true}}}}):null;
-  if(settlement?.outcome!=='WINNER'||!settlement?.publication||p.settlementId&&p.settlementId!==settlement.id||row.settlementId&&row.settlementId!==settlement.id){await tx.outbox.update({where:{id:row.id},data:{state:'SKIPPED',lastError:'RESULT_NOT_PUBLISHED'}});return 0}
-  rootKey=`settlement:${settlement.id}:completed`;resultSettlementId=settlement.id;before=settlement.publication.publishedAt;
+  if(!settlement?.publication||p.settlementId&&p.settlementId!==settlement.id||row.settlementId&&row.settlementId!==settlement.id){await tx.outbox.update({where:{id:row.id},data:{state:'SKIPPED',lastError:'RESULT_NOT_PUBLISHED'}});return 0}
+  rootKey=`settlement:${settlement.id}:ended`;resultSettlementId=settlement.id;before=settlement.publication.publishedAt;
  }
  // Only reachable non-staff recipients enter fan-out. A later block or role
  // change is rechecked again immediately before the external delivery.
- const users=resultSettlementId?await resultRecipientIds(tx,before,p.cursor):await tx.$queryRaw<{id:string}[]>(Prisma.sql`SELECT u.id FROM "user" u JOIN "BotChat" c ON c."telegramId"=u."telegramId" AND c.blocked=false AND c."startedAt"<=${before} LEFT JOIN "StaffMember" s ON s."userId"=u.id WHERE s."userId" IS NULL AND u.role<>'admin' AND u."createdAt"<=${before} ${p.cursor?Prisma.sql`AND u.id>${p.cursor}`:Prisma.empty} ORDER BY u.id ASC LIMIT 250`);
- const kind=row.kind==='AUCTION_FINALIZED'?'AUCTION_RESULT':p.deliveryKind;
+ const users=await resultRecipientIds(tx,before,p.cursor);
+ const kind=row.kind==='AUCTION_FINALIZED'?'AUCTION_ENDED':p.deliveryKind;
  if(!kind||!telegramKinds.includes(kind))throw Error('Unknown campaign kind');
  const {cursor:_cursor,audienceBefore:_before,rootKey:_root,deliveryKind:_kind,...content}=p;
  if(users.length)await tx.outbox.createMany({data:users.map(user=>({key:`${rootKey}:user:${user.id}`,kind,payload:{...content,...(resultSettlementId?{settlementId:resultSettlementId}:{}),rootKey,recipientUserId:user.id},settlementId:resultSettlementId,testRunId:row.testRunId})),skipDuplicates:true});
@@ -75,18 +72,20 @@ async function scheduleGlobalAlertsInTransaction(client:Tx){
  for(const reminder of endingReminders){
   cursor=undefined;
   for(;;){
-   const auctions:{id:string;isDemo:boolean;isSettlementFixture:boolean;controlVersion:number}[]=await client.auction.findMany({where:{testRunId:null,publishedAt:{lte:now},status:'LIVE',startsAt:{lte:now},endsAt:{gt:new Date(now.getTime()+reminder.minMs),lte:new Date(now.getTime()+reminder.maxMs)},product:{visible:true},settlement:{is:null},result:{is:null},...(cursor?{id:{gt:cursor}}:{})},select:{id:true,isDemo:true,isSettlementFixture:true,controlVersion:true},orderBy:{id:'asc'},take:100});
+   const auctions:{id:string;isDemo:boolean;isSettlementFixture:boolean;controlVersion:number}[]=await client.auction.findMany({where:{testRunId:null,publishedAt:{lte:now},status:{in:['LIVE','SCHEDULED']},startsAt:{lte:now},endsAt:{gt:new Date(now.getTime()+reminder.minMs),lte:new Date(now.getTime()+reminder.maxMs)},product:{visible:true},settlement:{is:null},result:{is:null},...(cursor?{id:{gt:cursor}}:{})},select:{id:true,isDemo:true,isSettlementFixture:true,controlVersion:true},orderBy:{id:'asc'},take:100});
    const allowed=auctions.filter(a=>!a.isDemo||a.isSettlementFixture&&(demoBidAllowed()||stagingDemoEnabled()));
    if(allowed.length)created+=(await client.outbox.createMany({data:allowed.map(a=>{const key=`global:${reminder.key}:${a.id}:v${a.controlVersion}`;return {key,kind:'GLOBAL_CAMPAIGN',payload:{auctionId:a.id,deliveryKind:reminder.kind,rootKey:key,audienceBefore:now.toISOString()}}}),skipDuplicates:true})).count;
    if(auctions.length<100)break;cursor=auctions.at(-1)!.id;
   }
  }
- cursor=undefined;
- for(;;){
-  const auctions:{id:string;isDemo:boolean;isSettlementFixture:boolean}[]=await client.auction.findMany({where:{testRunId:null,publishedAt:{lte:now},status:{in:['LIVE','SCHEDULED']},startsAt:{gt:now,lte:new Date(now.getTime()+86400000)},endsAt:{gt:now},product:{visible:true},settlement:{is:null},result:{is:null},...(cursor?{id:{gt:cursor}}:{})},select:{id:true,isDemo:true,isSettlementFixture:true},orderBy:{id:'asc'},take:100});
-  const allowed=auctions.filter(a=>!a.isDemo||a.isSettlementFixture&&(demoBidAllowed()||stagingDemoEnabled()));
-  if(allowed.length)created+=(await client.outbox.createMany({data:allowed.map(a=>({key:`global:upcoming:${a.id}`,kind:'GLOBAL_CAMPAIGN',payload:{auctionId:a.id,deliveryKind:'AUCTION_UPCOMING',rootKey:`global:upcoming:${a.id}`,audienceBefore:now.toISOString()}})),skipDuplicates:true})).count;
-  if(auctions.length<100)break;cursor=auctions.at(-1)!.id;
+ for(const reminder of upcomingReminders){
+  cursor=undefined;
+  for(;;){
+   const auctions:{id:string;isDemo:boolean;isSettlementFixture:boolean}[]=await client.auction.findMany({where:{testRunId:null,publishedAt:{lte:now},status:{in:['LIVE','SCHEDULED']},startsAt:{gt:new Date(now.getTime()+reminder.minMs),lte:new Date(now.getTime()+reminder.maxMs)},endsAt:{gt:now},product:{visible:true},settlement:{is:null},result:{is:null},...(cursor?{id:{gt:cursor}}:{})},select:{id:true,isDemo:true,isSettlementFixture:true},orderBy:{id:'asc'},take:100});
+   const allowed=auctions.filter(a=>!a.isDemo||a.isSettlementFixture&&(demoBidAllowed()||stagingDemoEnabled()));
+   if(allowed.length)created+=(await client.outbox.createMany({data:allowed.map(a=>{const key=`global:${reminder.key}:${a.id}`;return {key,kind:'GLOBAL_CAMPAIGN',payload:{auctionId:a.id,deliveryKind:reminder.kind,rootKey:key,audienceBefore:now.toISOString()}}}),skipDuplicates:true})).count;
+   if(auctions.length<100)break;cursor=auctions.at(-1)!.id;
+  }
  }
  return created;
 }
@@ -98,46 +97,55 @@ export async function campaignContent(tx:Tx,row:Pick<Outbox,'kind'|'payload'>){
   // A product promotion must still refer to a visible, accepting auction.
   if(p.auctionId){const a=await tx.auction.findUnique({where:{id:p.auctionId},select:{status:true,endsAt:true,product:{select:{visible:true}}}});if(!a||a.status!=='LIVE'||!a.product?.visible||!a.endsAt||a.endsAt<=new Date())return null}
   let href:string,buttonLabel:string;try{href=broadcastMiniAppPath(p.href);buttonLabel=broadcastButtonLabel(p.buttonLabel)}catch{return null}
-  return {...base,title:'Lowwin update · የLowwin መረጃ',body:p.body,href,imageId:p.imageId,imagePath:p.imagePath,buttonLabel};
+  return {...base,title:'የLowWin መረጃ',body:p.body,href,imageId:p.imageId,imagePath:p.imagePath,buttonLabel};
  }
  if(row.kind==='DEPOSIT_CREDITED'){
   if(!p.intentId)return null;
   const t=await tx.topUpIntent.findUnique({where:{id:p.intentId},select:{userId:true,status:true,points:true,provider:true}});
   if(!t||t.userId!==p.recipientUserId||t.status!=='CREDITED')return null;
-  if(t.provider==='ADMIN_CREDIT')return {...base,title:'Funds added · ገንዘብ ተጨምሯል',body:`Lowwin admin added ${formatEtb(t.points)} to your wallet.\nየLowwin አስተዳዳሪ ${formatEtb(t.points)} ወደ ሂሳብዎ ጨምሯል።`,href:'/wallet'};
-  return {...base,title:'Deposit successful · ገንዘቡ ገብቷል',body:`${formatEtb(t.points)} has been added to your wallet.\n${formatEtb(t.points)} ወደ ሂሳብዎ ገብቷል።`,href:'/wallet'};
+  if(t.provider==='ADMIN_CREDIT')return {...base,title:'ገንዘብ ተጨምሯል',body:`የLowWin አስተዳዳሪ ${formatEtb(t.points)} ወደ ዋሌትዎ ጨምሯል።`,href:'/wallet',buttonLabel:'ዋሌቴን ይመልከቱ'};
+  return {...base,title:'ገንዘቡ ገብቷል',body:`${formatEtb(t.points)} ወደ ዋሌትዎ ገብቷል።`,href:'/wallet',buttonLabel:'ዋሌቴን ይመልከቱ'};
  }
  if(!p.auctionId)return null;
- const a=await tx.auction.findUnique({where:{id:p.auctionId},select:{slug:true,publicCode:true,publishedAt:true,startsAt:true,endsAt:true,status:true,isDemo:true,isSettlementFixture:true,testRunId:true,presentation:true,product:{select:{title:true,titleAm:true,visible:true,images:{orderBy:{sortOrder:'asc'},take:1,select:{path:true}}}},result:{select:{id:true}},settlement:{select:{id:true,outcome:true,ruleVersion:true,decision:true,winningPoints:true,winnerUserId:true,winner:{select:{name:true,telegramUsername:true,ownContact:{select:{botId:true,phoneCipher:true,revokedAt:true}}}},completedAt:true,publication:{select:{publishedAt:true}}}}}});
+ const a=await tx.auction.findUnique({where:{id:p.auctionId},select:{slug:true,publicCode:true,publishedAt:true,startsAt:true,endsAt:true,status:true,isDemo:true,isSettlementFixture:true,testRunId:true,presentation:true,product:{select:{title:true,titleAm:true,visible:true,images:{orderBy:{sortOrder:'asc'},take:1,select:{path:true}}}},result:{select:{id:true}},settlement:{select:{id:true,outcome:true,completedAt:true,publication:{select:{publishedAt:true}}}}}});
  if(!a?.publishedAt||!a.slug||a.result||a.testRunId||a.isDemo&&(!a.isSettlementFixture||!(demoBidAllowed()||stagingDemoEnabled())))return null;
  const [{now}]=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`;
  if(a.publishedAt>now)return null;
- const presentation=a.presentation as {title?:unknown;titleAm?:unknown;images?:{path?:unknown}[]}|null;const title=typeof presentation?.title==='string'?presentation.title:a.product?.title;
+ const presentation=a.presentation as {title?:unknown;titleAm?:unknown;images?:{path?:unknown}[]}|null;
+ const title=typeof presentation?.titleAm==='string'&&presentation.titleAm.trim()?presentation.titleAm:a.product?.titleAm|| (typeof presentation?.title==='string'?presentation.title:a.product?.title);
  base.imagePath=auctionNotificationImagePath(presentation,a.product?.images?.[0]?.path);
  base.imageId=auctionNotificationImageId(presentation,a.product?.images?.[0]?.path);
- const prefix=a.isDemo?'DEMO · ':'',item=`${title??'Auction'} · #${a.publicCode}`,shortItem=(title??'Auction').replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim().slice(0,120),code=a.publicCode===null?'':`\n#${a.publicCode}`;
- const when=(date:Date)=>new Intl.DateTimeFormat('en-GB',{dateStyle:'medium',timeStyle:'short',timeZone:'Africa/Addis_Ababa'}).format(date)+' EAT';
- const action={buttonLabel:'View auction · ጨረታውን ይመልከቱ',href:`/auctions/${a.slug}`};
- if(row.kind==='AUCTION_RESULT'){
+ const prefix=a.isDemo?'ማሳያ · ':'',shortItem=(title??'ጨረታ').replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim().slice(0,120);
+ const when=(date:Date)=>new Intl.DateTimeFormat('am-ET',{dateStyle:'medium',timeStyle:'short',timeZone:'Africa/Addis_Ababa'}).format(date)+' (ኢትዮጵያ ሰዓት)';
+ const action={buttonLabel:'ጨረታውን ይመልከቱ',href:`/auctions/${a.slug}`};
+ if(row.kind==='AUCTION_ENDED'){
   const settlement=a.settlement;
-  if(!settlement?.publication||settlement.publication.publishedAt>now||settlement.completedAt>now||!['CLOSED','CANCELLED'].includes(a.status)||p.settlementId&&p.settlementId!==settlement.id||a.publicCode===null)return null;
+  if(!settlement?.publication||settlement.publication.publishedAt>now||settlement.completedAt>now||!a.endsAt||a.endsAt>now||!['CLOSED','CANCELLED'].includes(a.status)||p.settlementId&&p.settlementId!==settlement.id||a.publicCode===null)return null;
   // Publication freezes the product image in its durable root intent. Later
   // Winners-only banners/photos neither change queued messages nor resend them.
   if(p.imagePath!==undefined){base.imagePath=auctionNotificationImagePath({images:[{path:p.imagePath}]});base.imageId=auctionNotificationImageId({images:[{path:p.imagePath}]})}
-  const copy=resultAnnouncement({title:title??'Auction',titleAm:typeof presentation?.titleAm==='string'?presentation.titleAm:a.product?.titleAm,code:String(a.publicCode),outcome:settlement.outcome,decision:settlement.decision,ruleVersion:settlement.ruleVersion,winningPoints:settlement.winningPoints?.toString()??null,...safeResultIdentity(settlement.winner),phoneMasked:maskedResultContact(settlement.winner?.ownContact),publishedAt:settlement.publication.publishedAt});
-  return copy?{...base,...copy}:null;
+  const heading=prefix+'ጨረታው ተጠናቋል',body=`የ${shortItem} ጨረታ ተጠናቋል። ውጤቱን ለማየት ከታች ይጫኑ።`;
+  return {...base,title:heading,body,telegramCaption:`${heading}\n\n${body}`,buttonLabel:'ውጤቱን ይመልከቱ',href:`/winners/${a.publicCode}`};
  }
  if(!['LIVE','SCHEDULED'].includes(a.status)||!a.product?.visible||!a.endsAt||a.endsAt<=now)return null;
- if(row.kind==='AUCTION_UPCOMING'){
+ const starting=upcomingReminder(row.kind);
+ if(starting){
   if(a.settlement||!a.startsAt)return null;
-  const remaining=a.startsAt.getTime()-now.getTime();
-  if(remaining<=0||remaining>86400000)return null;
-  return {...base,...action,title:prefix+'Bidding opens within 1 day · ጨረታው በ1 ቀን ውስጥ ይጀምራል',body:`${item}\nOpens: ${when(a.startsAt)}\nየሚጀምርበት: ${when(a.startsAt)}`,telegramCaption:`⏰ ${prefix}${shortItem}\nOpens within 1 day · በ1 ቀን ውስጥ ይጀምራል\n${when(a.startsAt)}${code}`};
+  if(!upcomingReminderCurrent(row.kind,a.startsAt,now))return null;
+  return {...base,...action,title:prefix+starting.am,body:`${shortItem}\nየሚጀምርበት፦ ${when(a.startsAt)}`,telegramCaption:`⏰ ${prefix}${starting.am}\n\n${shortItem}\nየሚጀምርበት፦ ${when(a.startsAt)}`};
  }
  const reminder=endingReminder(row.kind);
  if(reminder){
-  if(a.status!=='LIVE'||a.settlement||!a.startsAt||a.startsAt>now||!endingReminderCurrent(row.kind,a.endsAt,now))return null;
-  return {...base,...action,title:`${prefix}${reminder.en} · ${reminder.am}`,body:`${item}\nEnds: ${when(a.endsAt)}\nየመዝጊያ ሰዓት: ${when(a.endsAt)}`,telegramCaption:`⌛ ${prefix}${shortItem}\n${reminder.en} · ${reminder.am}\nEnds · ይዘጋል: ${when(a.endsAt)}${code}`};
+  if(a.settlement||!a.startsAt||a.startsAt>now||!endingReminderCurrent(row.kind,a.endsAt,now))return null;
+  return {...base,...action,title:`${prefix}${reminder.am}`,body:`${shortItem}\nየመዝጊያ ሰዓት፦ ${when(a.endsAt)}`,telegramCaption:`⌛ ${prefix}${reminder.am}\n\n${shortItem}\nየመዝጊያ ሰዓት፦ ${when(a.endsAt)}`};
  }
- return {...base,...action,title:prefix+'New auction · አዲስ ጨረታ',body:`${item}\nView the item and its auction terms.\nዕቃውንና የጨረታውን ውሎች ይመልከቱ።`,telegramCaption:`📣 ${prefix}${shortItem}\nNew auction · አዲስ ጨረታ${a.startsAt?'\n'+when(a.startsAt):''}${code}`};
+ if(row.kind==='AUCTION_UPCOMING_ADDED'){
+  if(a.settlement||!a.startsAt||a.startsAt<=now)return null;
+  return {...base,...action,title:prefix+'🔥 አዲስ መጪ ጨረታ',body:`${shortItem}\nየሚጀምርበት፦ ${when(a.startsAt)}`,telegramCaption:`🔥 ${prefix}አዲስ መጪ ጨረታ\n\nሰላም {name}፣\n${shortItem}\nየሚጀምርበት፦ ${when(a.startsAt)}`};
+ }
+ if(row.kind==='AUCTION_PUBLISHED'){
+  if(a.settlement||!a.startsAt||a.startsAt>now)return null;
+  return {...base,...action,title:prefix+'🔥 አዲስ ጨረታ ተጀምሯል',body:`${shortItem}\nዕቃውንና የጨረታውን ውሎች ይመልከቱ።`,telegramCaption:`🔥 ${prefix}አዲስ ጨረታ ተጀምሯል\n\nሰላም {name}፣\n${shortItem}\nጨረታውን ለመቀላቀል ከታች ይጫኑ።`};
+ }
+ return null;
 }

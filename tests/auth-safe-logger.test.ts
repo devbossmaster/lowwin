@@ -26,4 +26,10 @@ describe('safe Better Auth diagnostics',()=>{
  it('retains database evidence ahead of a generic provider failure',()=>{
   expect(authLogSummary([{cause:{code:'P2022'}}],'Failed to create verification')).toMatchObject({code:'P2022',diagnostic:'STATE_CREATE'});
  });
+ it('reports only the known token-request profile without secret request data',()=>{
+  const failure=Object.assign(new Error('[better-auth-telegram] OIDC: token endpoint returned "invalid_client"'),{telegramTokenRequestProfile:'telegram-basic-raw-v2',authorization:'Basic secret-header',body:'code=secret-code&client_secret=private'});
+  expect(authLogSummary([failure],'Failed to validate authorization code')).toMatchObject({providerCode:'invalid_client',diagnostic:'TOKEN_EXCHANGE',tokenRequestProfile:'telegram-basic-raw-v2'});
+  expect(JSON.stringify(authLogSummary([failure]))).not.toMatch(/secret-header|secret-code|client_secret=private/);
+  expect(authLogSummary([{telegramTokenRequestProfile:'private-secret-value',code:'invalid_client'}])).not.toHaveProperty('tokenRequestProfile');
+ });
 });

@@ -2,6 +2,7 @@ import {Prisma,type PrismaClient,type Outbox} from '@prisma/client';
 import type {Bot} from 'grammy';
 import {existsSync,statSync} from 'node:fs';
 import {resolve} from 'node:path';
+import {safeResultIdentity} from '../auctions/result-identity';
 import {auctionMaintenance} from '../auctions/maintenance';
 import {notificationContent,materializeAlert,notificationPhoto,telegramCampaignText} from './service';
 import {broadcastRoot,expandCampaign,telegramKinds} from './campaigns';
@@ -25,7 +26,7 @@ const botId=()=>process.env.TELEGRAM_BOT_TOKEN?.split(':')[0]??'';
 const beforeSend=(client:PrismaClient,row:ClaimedNotification,context:BatchContext,logicalKey?:string,recipient?:RecipientGate)=>beforeNotificationSend(client,row,context.shouldContinue,logicalKey,recipient);
 
 async function getContent(client:PrismaClient,row:ClaimedNotification,context:BatchContext){
- if(!telegramKinds.includes(row.kind)||row.kind==='DEPOSIT_CREDITED')return notificationContent(client,row);
+ if(!telegramKinds.includes(row.kind)||highPriorityKinds.includes(row.kind))return notificationContent(client,row);
  const p=row.payload as Record<string,unknown>,{recipientUserId,...shared}=p;
  const key=row.kind+':'+JSON.stringify(shared);
  let promise=context.content.get(key);
@@ -69,17 +70,6 @@ async function dispatchClaim(client:PrismaClient,bot:BotApi,row:ClaimedNotificat
  let acceptedByTelegram=false;
  try{
   if(notificationRetired(row.kind)){await skip('NOTIFICATION_RETIRED');return}
-  if(row.kind==='CONTACT_CONFIRMED'){
-   const p=row.payload as {telegramId?:string;botId?:string},contact=p.telegramId&&p.botId===botId()?await client.telegramOwnContact.findUnique({where:{botId_telegramId:{botId:p.botId,telegramId:p.telegramId}}}):null;
-   if(!contact||contact.revokedAt||!contact.userId||!process.env.MINI_APP_URL){await skip();return}
-   recipientTelegramId=p.telegramId;
-   const chat=await client.botChat.findUnique({where:{telegramId:p.telegramId!},select:{chatId:true}});
-   if(!chat){await skip('CHAT_NOT_STARTED');return}
-   recordNotificationTiming('preparation',performance.now()-preparingAt);
-   const sent=await withTelegramSendPolicy({priority:'high',beforeSend:()=>beforeSend(client,row,context,undefined,{telegramId:p.telegramId!,chatId:chat.chatId})},()=>bot.api.sendMessage(p.telegramId!,'You are registered with Lowwin. Open the app to continue.\nበLowwin ተመዝግበዋል። ለመቀጠል መተግበሪያውን ይክፈቱ።',{reply_markup:{inline_keyboard:[[{text:'Open Lowwin',web_app:{url:process.env.MINI_APP_URL!}}]]}}));
-   acceptedByTelegram=true;recordNotificationAccepted();
-   await timeNotification('acknowledgement',()=>finishClaim(client,row,{state:'SENT',sentAt:new Date(),attempts:{increment:1},lastError:null},sent?.message_id?{chatId:p.telegramId!,messageId:sent.message_id}:undefined));return;
-  }
   if(row.kind==='TELEGRAM_DELETE'){
    const p=row.payload as {telegramMessageId?:string},record=p.telegramMessageId?await client.telegramMessage.findUnique({where:{id:p.telegramMessageId}}):null;
    if(!record||!['QUEUED','FAILED'].includes(record.deletionState)){await skip();return}
@@ -95,21 +85,21 @@ async function dispatchClaim(client:PrismaClient,bot:BotApi,row:ClaimedNotificat
   }
   const content=await getContent(client,row,context);
   if(!content){await skip();return}
-  if(row.kind!=='AUCTION_RESULT')await materializeAlert(client,row,content);
-  if(row.testRunId||!telegramKinds.includes(row.kind)&&row.kind!==chapaReceiptKind){await skip();return}
+  if(row.kind!=='AUCTION_ENDED')await materializeAlert(client,row,content);
+  if(row.testRunId||!telegramKinds.includes(row.kind)&&!highPriorityKinds.includes(row.kind)&&row.kind!==chapaReceiptKind){await skip();return}
   const merchantAlert='merchantAlert' in content&&content.merchantAlert===true;
   const users=merchantAlert?[]:await client.$queryRaw<{telegramId:string;name:string;chatId:string|null;blocked:boolean|null}[]>`SELECT u."telegramId",u.name,c."chatId",c.blocked FROM "user" u LEFT JOIN "BotChat" c ON c."telegramId"=u."telegramId" WHERE u.id=${content.userId} LIMIT 1`;
   const user=users[0],recipient=merchantAlert&&'recipientTelegramId' in content&&typeof content.recipientTelegramId==='string'?content.recipientTelegramId:user?.telegramId;
   const chat=merchantAlert&&recipient?await client.botChat.findUnique({where:{telegramId:recipient}}):user?.chatId?{telegramId:user.telegramId,chatId:user.chatId,blocked:user.blocked}:null;
   if(!chat||chat.blocked){await skip(row.kind==='BROADCAST'?(chat?'CHAT_BLOCKED':'CHAT_NOT_STARTED'):null);return}
   recipientTelegramId=chat.telegramId;
-  if((merchantAlert||row.kind==='AUCTION_RESULT')&&chat.chatId!==recipient){await skip('PRIVATE_CHAT_REQUIRED');return}
+  if((merchantAlert||row.kind==='AUCTION_ENDED'||highPriorityKinds.includes(row.kind))&&chat.chatId!==recipient){await skip('PRIVATE_CHAT_REQUIRED');return}
   let logicalKey:string|undefined;
   const payload=row.payload as {auctionId?:string;recipientUserId?:string};
-  if(row.kind==='AUCTION_RESULT'){
+  if(row.kind==='AUCTION_ENDED'){
    if(!await hasResultSubscription(client,content.userId)){await skip('RESULT_RECIPIENT_INELIGIBLE');return}
    if(!payload.auctionId){await skip('RESULT_NOT_PUBLISHED');return}
-   const delivered=await client.telegramMessage.findFirst({where:{auctionId:payload.auctionId,chatId:chat.chatId,outbox:{is:{kind:'AUCTION_RESULT'}}},select:{id:true}});
+   const delivered=await client.telegramMessage.findFirst({where:{auctionId:payload.auctionId,chatId:chat.chatId,outbox:{is:{kind:{in:['AUCTION_ENDED','AUCTION_RESULT']}}}},select:{id:true}});
    if(delivered){await finishClaim(client,row,{state:'SENT',sentAt:new Date(),lastError:'RESULT_ALREADY_DELIVERED'});return}
    const logical=await claimLogicalDelivery(client,row,botId(),payload.auctionId,content.userId);logicalKey=logical.key;
    if(logical.sent){await finishClaim(client,row,{state:'SENT',sentAt:new Date(),lastError:'RESULT_ALREADY_DELIVERED'});return}
@@ -118,26 +108,26 @@ async function dispatchClaim(client:PrismaClient,bot:BotApi,row:ClaimedNotificat
   }
   const link=new URL(content.href,process.env.MINI_APP_URL);
   if(link.protocol!=='https:'){await skip();return}
-  const name=(user?.name??'Lowwin player').replace(/[\r\n\u0000-\u001f]/g,' ').slice(0,80),startReminder=['AUCTION_UPCOMING','AUCTION_STARTING_SOON'].includes(row.kind),paymentReceipt=row.kind===chapaReceiptKind;
+  const name=safeResultIdentity(user).displayName??'ተጫዋች',startReminder=['AUCTION_UPCOMING','AUCTION_UPCOMING_1_HOUR'].includes(row.kind),paymentReceipt=row.kind===chapaReceiptKind;
   const body=content.body.includes('{name}')?content.body.replaceAll('{name}',name):`${name},\n${content.body}`;
-  const text=paymentReceipt?content.body:row.kind==='BROADCAST'?content.body.replaceAll('{name}',name):'telegramCaption' in content&&typeof content.telegramCaption==='string'?content.telegramCaption:telegramCampaignText(row.kind,content.title,startReminder?content.body:body,startReminder?name:undefined);
-  const button='buttonLabel' in content?String(content.buttonLabel):row.kind==='DEPOSIT_CREDITED'?'View wallet':startReminder?'View auction':'Bid';
+  const text=paymentReceipt?content.body:row.kind==='BROADCAST'?content.body.replaceAll('{name}',name):'telegramCaption' in content&&typeof content.telegramCaption==='string'?content.telegramCaption.replaceAll('{name}',name):telegramCampaignText(row.kind,content.title,startReminder?content.body:body,startReminder?name:undefined);
+  const button='buttonLabel' in content?String(content.buttonLabel):row.kind==='DEPOSIT_CREDITED'?'ዋሌቴን ልይ':row.kind==='BID_ACCEPTED'?'ጨረታዎቼን ልይ':row.kind==='WINNER_CONGRATULATIONS'?'ሽልማቴን ልይ':row.kind==='AUCTION_ENDED'?'ውጤቱን ልይ':'ጨረታውን ልይ';
   const options={reply_markup:{inline_keyboard:[[merchantAlert?{text:button,url:link.href}:{text:button,web_app:{url:link.href}}]]}};
-  const auctionImage=(row.kind.startsWith('AUCTION_')||row.kind==='BROADCAST')&&'imagePath' in content&&typeof content.imagePath==='string'?content.imagePath:null;
+  const auctionImage=(row.kind.startsWith('AUCTION_')||row.kind==='BROADCAST'||row.kind==='BID_ACCEPTED'||row.kind==='WINNER_CONGRATULATIONS')&&'imagePath' in content&&typeof content.imagePath==='string'?content.imagePath:null;
   const imageId='imageId' in content&&typeof content.imageId==='string'?content.imageId:undefined;
   const local=auctionImage&&!auctionImage.startsWith('/api/')?resolve('public','.'+auctionImage):notificationImage;
   const version=existsSync(local)?`${statSync(local).mtimeMs}:${statSync(local).size}`:'immutable-media';
   const photoKey=auctionImage?`auction:${auctionImage}:${version}`:`notification:${imageId??'default'}:${version}`;
   const preparePhoto=async()=>{
-   if(paymentReceipt)return null;
+   if(paymentReceipt||row.kind==='DEPOSIT_CREDITED')return null;
    let photo=(row.kind.startsWith('AUCTION_')||auctionImage)?(auctionImage?await auctionPhoto(client,auctionImage):null):await notificationPhoto(client,imageId,link.origin);
-   if(!photo&&row.kind==='AUCTION_RESULT'&&'fallbackImagePath' in content&&typeof content.fallbackImagePath==='string')photo=await auctionPhoto(client,content.fallbackImagePath);
+   if(!photo&&row.kind==='AUCTION_ENDED'&&'fallbackImagePath' in content&&typeof content.fallbackImagePath==='string')photo=await auctionPhoto(client,content.fallbackImagePath);
    return photo;
   };
   const gate:RecipientGate={telegramId:chat.telegramId,chatId:chat.chatId,userId:content.userId,excludeStaff:row.kind==='BROADCAST'||row.kind.startsWith('AUCTION_')};
   recordNotificationTiming('preparation',performance.now()-preparingAt);
   const sent=await withTelegramSendPolicy({priority:highPriorityKinds.includes(row.kind)?'high':'bulk',beforeSend:()=>beforeSend(client,row,context,logicalKey,gate)},async()=>{
-   const photo=paymentReceipt?null:await sendBroadcastPhoto(bot.api,chat.chatId,()=>timeNotification('mediaPreparation',preparePhoto),{...options,caption:text},photoKey,{client,botId:botId()});
+   const photo=paymentReceipt||row.kind==='DEPOSIT_CREDITED'?null:await sendBroadcastPhoto(bot.api,chat.chatId,()=>timeNotification('mediaPreparation',preparePhoto),{...options,caption:text},photoKey,{client,botId:botId()});
    return photo??bot.api.sendMessage(chat.chatId,text,options);
   });
   acceptedByTelegram=true;recordNotificationAccepted();

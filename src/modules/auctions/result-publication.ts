@@ -51,10 +51,12 @@ export async function publishSettledResultInTransaction(tx:Prisma.TransactionCli
  if((s.auction.isDemo||s.auction.testRunId)&&!options.allowFixture)return {auctionId,settlementId:s.id,skipped:true as const};
  const policy=await tx.resultPublicationPolicy.findUnique({where:{id:'auto'}});if(!policy)throw new ResultPublicationError('PUBLICATION_POLICY_NOT_READY');
  const reviewed=await reviewResult(tx,s),historical=options.forceSilent===true||s.completedAt<policy.automaticFrom;
- const publication=await tx.resultPublication.create({data:{settlementId:s.id,actorId:'system:auto-publication',proofHash:reviewed.proofHash,historical,reason:historical?'Validated historical settlement; silent automatic backfill':'Automatic publication of validated immutable settlement'}});
- if(!historical&&s.outcome==='WINNER'){
+ const publication=await tx.resultPublication.create({data:{settlementId:s.id,publishedAt:now,actorId:'system:auto-publication',proofHash:reviewed.proofHash,historical,reason:historical?'Validated historical settlement; silent automatic backfill':'Automatic publication of validated immutable settlement'}});
+ if(!historical&&s.cutoff<=now){
   const snapshot=s.auction.presentation as {images?:{path?:string}[]}|null,imagePath=snapshot?.images?.[0]?.path??s.auction.product?.images[0]?.path;
-  const rows=[{key:`settlement:${s.id}:completed`,kind:'AUCTION_FINALIZED',payload:{auctionId,settlementId:s.id,outcome:s.outcome,...(imagePath?{imagePath}:{})}}];
+  const ended={auctionId,settlementId:s.id,outcome:s.outcome,...(imagePath?{imagePath}:{})};
+  const rows=[{key:`settlement:${s.id}:ended`,kind:'AUCTION_FINALIZED',payload:ended},
+   ...(s.outcome==='WINNER'&&s.winnerUserId?[{key:`settlement:${s.id}:winner:${s.winnerUserId}`,kind:'WINNER_CONGRATULATIONS',payload:{...ended,recipientUserId:s.winnerUserId}}]:[])];
   await tx.outbox.createMany({data:rows.map(row=>({...row,settlementId:s.id,testRunId:s.auction.testRunId})),skipDuplicates:true});
  }
  await tx.auction.update({where:{id:auctionId},data:{publicationErrorCode:null,nextPublicationAttemptAt:null}});

@@ -9,7 +9,6 @@ import {closeAuction} from '../src/modules/auctions/settlement';
 import {expandCampaign} from '../src/modules/notifications/campaigns';
 import {dispatchOne} from '../src/modules/notifications/service';
 import {hasResultSubscription,resultRecipientIds} from '../src/modules/notifications/result-audience';
-import {encryptPhone} from '../src/modules/auth/own-contact';
 
 const url=process.env.RESULT_NOTIFICATION_TEST_DATABASE_URL;
 describe.skipIf(!url)('published result Telegram campaign, isolated database and mocked transport',()=>{
@@ -22,9 +21,9 @@ describe.skipIf(!url)('published result Telegram campaign, isolated database and
   excluded=Array.from({length:8},(_,i)=>({id:randomUUID(),telegramId:String(790000000+i)}));
   const all=[...subscribers,...excluded];
   await db.user.createMany({data:all.map((u,i)=>({...u,name:'Result subscriber '+i,role:i===all.length-2?'admin':'member'}))});
-  await db.notificationPreference.createMany({data:all.filter(u=>u.id!==excluded[1].id).map(u=>({userId:u.id,telegram:u.id!==excluded[0].id,inApp:false}))});
-  await db.botChat.createMany({data:all.filter(u=>u.id!==excluded[3].id).map(u=>({telegramId:u.telegramId,chatId:u.telegramId,blocked:u.id===excluded[2].id}))});
-  await db.telegramOwnContact.createMany({data:all.map((u,i)=>({userId:u.id,telegramId:u.telegramId,botId:u.id===excluded[5].id?'999999999':'123456789',phoneCipher:encryptPhone('+251911652904','123456789'),phoneHash:randomUUID(),lastFour:'2904',verifiedAt:new Date(),sourceUpdateId:BigInt(780000000+i),revokedAt:u.id===excluded[4].id?new Date():null}))});
+  await db.notificationPreference.createMany({data:all.filter(u=>u.id!==subscribers[251].id).map(u=>({userId:u.id,telegram:![excluded[0].id,excluded[1].id].includes(u.id),inApp:false}))});
+  await db.botChat.createMany({data:all.filter(u=>u.id!==excluded[3].id).map(u=>({telegramId:u.telegramId,chatId:u.telegramId,blocked:u.id===excluded[2].id,startedAt:u.id===excluded[5].id?new Date(Date.now()+3600000):new Date(Date.now()-60000)}))});
+  await db.user.update({where:{id:excluded[4].id},data:{telegramId:null}});
   await db.staffMember.create({data:{userId:excluded[7].id,role:'OWNER',recoveryHashes:[]}});
   const userId=await bidUser(db),a=await bidAuction(db,{isDemo:false,endDelayMs:1800});auctionId=a.id;
   await submitBid(db,{userId,auctionSlug:a.slug!,amount:'5',key:randomUUID()});
@@ -35,22 +34,23 @@ describe.skipIf(!url)('published result Telegram campaign, isolated database and
  const botWith=(sendMessage:ReturnType<typeof vi.fn>)=>({api:{sendMessage}} as unknown as Pick<Bot,'api'>);
  async function onlyJob(userId:string){
   await db.outbox.updateMany({where:{state:'PENDING'},data:{state:'SKIPPED'}});
-  return db.outbox.update({where:{key:`settlement:${root.settlementId}:completed:user:${userId}`},data:{state:'PENDING',nextAttemptAt:new Date(),attempts:0,lastError:null}});
+  return db.outbox.update({where:{key:`settlement:${root.settlementId}:ended:user:${userId}`},data:{state:'PENDING',nextAttemptAt:new Date(),attempts:0,lastError:null}});
  }
  it('includes nonparticipants, excludes every ineligible audience, and bounds immutable cursor batches',async()=>{
   expect(await db.bid.count({where:{userId:{in:subscribers.map(u=>u.id)},auctionId}})).toBe(0);
   const pub=await db.resultPublication.findUniqueOrThrow({where:{settlementId:root.settlementId!}});
   const first=await db.$transaction(tx=>resultRecipientIds(tx,pub.publishedAt));expect(first).toHaveLength(250);
+  expect(await db.$transaction(tx=>hasResultSubscription(tx,subscribers[251].id))).toBe(true);
   for(const u of excluded)expect(await db.$transaction(tx=>hasResultSubscription(tx,u.id))).toBe(false);
   expect(await db.$transaction(tx=>expandCampaign(tx,root))).toBe(250);
   const cursor=await db.outbox.findFirstOrThrow({where:{kind:'GLOBAL_CAMPAIGN',settlementId:root.settlementId}});
   expect(await db.$transaction(tx=>expandCampaign(tx,cursor))).toBe(2);
-  expect(await db.outbox.count({where:{kind:'AUCTION_RESULT',settlementId:root.settlementId}})).toBe(252);
+  expect(await db.outbox.count({where:{kind:'AUCTION_ENDED',settlementId:root.settlementId}})).toBe(252);
  });
  it('restarts and duplicate root intents retain one logical settlement-recipient announcement',async()=>{
   await db.$transaction(tx=>expandCampaign(tx,root));
   await db.$transaction(tx=>expandCampaign(tx,{...root,key:'legacy-alias',payload:{auctionId,settlementId:root.settlementId}}));
-  expect(await db.outbox.count({where:{kind:'AUCTION_RESULT',settlementId:root.settlementId}})).toBe(252);
+  expect(await db.outbox.count({where:{kind:'AUCTION_ENDED',settlementId:root.settlementId}})).toBe(252);
  });
  it('rechecks subscriptions after fanout without changing financial or publication records',async()=>{
   const u=subscribers[0],job=await onlyJob(u.id),send=vi.fn();

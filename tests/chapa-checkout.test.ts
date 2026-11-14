@@ -30,6 +30,21 @@ describe.skipIf(!database)('Chapa v2 hosted payments on disposable PostgreSQL',(
  afterAll(async()=>{await db?.$disconnect();const shared=await import('../src/lib/db');await shared.db.$disconnect()});
  const balance=async(userId:string)=>(await db.ledgerAccount.findUnique({where:{name:`user:${userId}:available`}}))?.balance.toString()??'0';
  const due=async(id:string)=>{await db.chapaCheckout.update({where:{id},data:{nextCheckAt:new Date(0),leaseUntil:null}})};
+ async function expectDepositAlert(checkoutId:string,userId:string,amount:string,preserved=false){
+  const key=`chapa:${checkoutId}:credited`,job=await db.outbox.findUniqueOrThrow({where:{key}}),alert=await db.notificationInbox.findUniqueOrThrow({where:{key}});
+  expect(job).toMatchObject({kind:'DEPOSIT_CREDITED',payload:{checkoutId,recipientUserId:userId}});
+  expect(alert).toMatchObject({userId,kind:'DEPOSIT_CREDITED',href:'/wallet'});expect(alert.title).toMatch(/[\u1200-\u137f]/);expect(alert.body).toContain(`${amount} ብር`);
+  if(preserved)expect(alert.body).toContain('ይህ ጨረታ አልተቀበለም። ክፍያው በዋሌትዎ ተቀምጧል።');
+  expect(await db.outbox.count({where:{kind:'DEPOSIT_CREDITED',payload:{path:['checkoutId'],equals:checkoutId}}})).toBe(1);
+  expect(await db.outbox.count({where:{kind:'CHAPA_PAYMENT_CONFIRMED',payload:{path:['checkoutId'],equals:checkoutId}}})).toBe(0);
+ }
+ async function expectBidAlert(checkoutId:string,userId:string,auctionId:string,amount:string,fee:string){
+  const bid=await db.bid.findFirstOrThrow({where:{userId,auctionId}}),key=`bid:${bid.id}:accepted`,job=await db.outbox.findUniqueOrThrow({where:{key}}),alert=await db.notificationInbox.findUniqueOrThrow({where:{key}});
+  expect(job).toMatchObject({kind:'BID_ACCEPTED',payload:{auctionId,recipientUserId:userId,bidId:bid.id}});
+  expect(alert).toMatchObject({userId,kind:'BID_ACCEPTED',href:'/my-bids'});expect(alert.title).toMatch(/[\u1200-\u137f]/);expect(alert.body).toContain(amount);expect(alert.body).toContain(`ክፍያ: ${fee} ብር`);expect(alert.body).not.toMatch(/unique|rank|reference/i);
+  expect(await db.outbox.count({where:{kind:'BID_ACCEPTED',AND:[{payload:{path:['auctionId'],equals:auctionId}},{payload:{path:['recipientUserId'],equals:userId}}]}})).toBe(1);
+  expect(await db.outbox.count({where:{kind:{in:['DEPOSIT_CREDITED','CHAPA_PAYMENT_CONFIRMED']},payload:{path:['checkoutId'],equals:checkoutId}}})).toBe(0);
+ }
  async function payment(options:{purpose?:'TOP_UP'|'BID';amount?:string;fee?:number;endDelayMs?:number;userId?:string;couponId?:string;initialBalance?:string;testSession?:boolean;liveSession?:boolean;liveSessionPrefix?:'APW'|'APV'|'APQ'|'APU'|'APt';opaqueSession?:boolean}={}){
   const userId=options.userId??(await verifiedReferralUser(db,'Synthetic Chapa customer')).id;
   if(options.initialBalance)await creditDevelopmentPoints(db,userId,options.initialBalance,`chapa-test-${randomUUID()}`);
@@ -123,7 +138,7 @@ describe.skipIf(!database)('Chapa v2 hosted payments on disposable PostgreSQL',(
  it('credits exact verified cents once with one balanced journal and one private alert',async()=>{
   const f=await payment({amount:'25.50',initialBalance:'7'}),order=await f.start();await due(order.id);await Promise.all([verifyChapaCheckout(db,order.id,f.userId,undefined,f.transport),verifyChapaCheckout(db,order.id,f.userId,undefined,f.transport)]);
   expect((await getChapaCheckout(db,f.userId,order.id)).status).toBe('CREDITED');expect(await balance(f.userId)).toBe('32.5');expect(f.lookup).toHaveBeenCalledTimes(1);await f.verify(order.id);expect(f.lookup).toHaveBeenCalledTimes(1);
-  const operations=await db.operation.findMany({where:{userId:f.userId,scope:'CHAPA_RECEIPT'},include:{journal:{include:{postings:true}}}});expect(operations).toHaveLength(1);expect(operations[0].journal?.postings.map(p=>p.delta.toString()).sort()).toEqual(['-25.5','25.5']);expect(await db.notificationInbox.count({where:{key:`chapa:${order.id}:credited`}})).toBe(1);expect(await db.outbox.count({where:{key:`chapa:${order.id}:telegram-confirmed`,kind:'CHAPA_PAYMENT_CONFIRMED'}})).toBe(1);expect(await reconcile(db)).toEqual([]);
+  const operations=await db.operation.findMany({where:{userId:f.userId,scope:'CHAPA_RECEIPT'},include:{journal:{include:{postings:true}}}});expect(operations).toHaveLength(1);expect(operations[0].journal?.postings.map(p=>p.delta.toString()).sort()).toEqual(['-25.5','25.5']);expect(await db.notificationInbox.count({where:{key:`chapa:${order.id}:credited`}})).toBe(1);await expectDepositAlert(order.id,f.userId,'25.50');expect(await reconcile(db)).toEqual([]);
  });
  it('waits for a TEST session payment and credits its final reference once with an empty processor field',async()=>{
   const f=await payment({amount:'100',testSession:true}),order=await f.start();
@@ -323,16 +338,22 @@ describe.skipIf(!database)('Chapa v2 hosted payments on disposable PostgreSQL',(
   expect(await db.operation.count({where:{userId:f.userId,scope:'CHAPA_RECEIPT'}})).toBe(0);
  });
  it('charges only the submission fee, accepts a bid once and never reserves its number',async()=>{
-  const f=await payment({purpose:'BID',amount:'3.60',fee:30,initialBalance:'5'}),order=await f.start();expect(order.amountCents).toBe('3000');expect(f.inputs[0].amountCents).toBe('3000');const result=await f.verify(order.id);expect(result).toMatchObject({status:'BID_ACCEPTED',bidNumber:'3.6',receipt:{charge:{feePoints:'30',newlyUnavailable:'30'},hold:{extraReserved:'0'}}});expect((await getPersonalBids(db,f.userId)).items[0].payment).toMatchObject({status:'PAID',method:'CHAPA',checkoutId:order.id});expect(await balance(f.userId)).toBe('5');await Promise.all([f.verify(order.id),f.verify(order.id)]);expect(await db.bid.count({where:{auctionId:f.auction!.id,userId:f.userId}})).toBe(1);expect(await db.auctionHold.count({where:{auctionId:f.auction!.id}})).toBe(0);expect(await db.outbox.count({where:{key:`chapa:${order.id}:telegram-confirmed`}})).toBe(1);expect(await db.operation.count({where:{userId:f.userId,scope:'CHAPA_RECEIPT'}})).toBe(1);expect(await reconcile(db)).toEqual([]);
+  const f=await payment({purpose:'BID',amount:'3.60',fee:30,initialBalance:'5'}),order=await f.start();expect(order.amountCents).toBe('3000');expect(f.inputs[0].amountCents).toBe('3000');const result=await f.verify(order.id);expect(result).toMatchObject({status:'BID_ACCEPTED',bidNumber:'3.6',receipt:{charge:{feePoints:'30',newlyUnavailable:'30'},hold:{extraReserved:'0'}}});expect((await getPersonalBids(db,f.userId)).items[0].payment).toMatchObject({status:'PAID',method:'CHAPA',checkoutId:order.id});expect(await balance(f.userId)).toBe('5');await Promise.all([f.verify(order.id),f.verify(order.id)]);expect(await db.bid.count({where:{auctionId:f.auction!.id,userId:f.userId}})).toBe(1);expect(await db.auctionHold.count({where:{auctionId:f.auction!.id}})).toBe(0);expect(await db.outbox.count({where:{key:`chapa:${order.id}:telegram-confirmed`}})).toBe(0);expect(await db.operation.count({where:{userId:f.userId,scope:'CHAPA_RECEIPT'}})).toBe(1);expect(await reconcile(db)).toEqual([]);
+  await expectBidAlert(order.id,f.userId,f.auction!.id,'3.60','30.00');
  });
  it('accepts a genuinely earned discount using only its net fee and preserves frozen gross-fee evidence',async()=>{
   const sponsor=await verifiedReferralUser(db),grant=await earnedReferralCoupon(db,sponsor.id),f=await payment({purpose:'BID',userId:sponsor.id,fee:20,couponId:grant.coupon.id}),order=await f.start();expect(order).toMatchObject({grossFee:'20',discountPoints:'2',amountCents:'1800'});const result=await f.verify(order.id);expect(result).toMatchObject({status:'BID_ACCEPTED',receipt:{charge:{feePoints:'20',discountPoints:'2',netFeePoints:'18',newlyUnavailable:'18'}}});expect(await balance(sponsor.id)).toBe('0');expect((await db.bid.findFirstOrThrow({where:{auctionId:f.auction!.id}})).feePoints.toString()).toBe('20');expect(await db.referralRedemption.count({where:{couponId:grant.coupon.id}})).toBe(1);expect(await reconcile(db)).toEqual([]);
+  await expectBidAlert(order.id,sponsor.id,f.auction!.id,'3.60','18.00');
  });
  it('preserves a paid net fee when its earned discount was redeemed during checkout',async()=>{
   const sponsor=await verifiedReferralUser(db);await creditDevelopmentPoints(db,sponsor.id,'100',`chapa-test-${randomUUID()}`);const grant=await earnedReferralCoupon(db,sponsor.id),f=await payment({purpose:'BID',userId:sponsor.id,fee:20,couponId:grant.coupon.id}),order=await f.start(),other=await realReferralAuction(db,10);await submitBid(db,{userId:sponsor.id,auctionSlug:other.slug!,amount:'8.80',feeVersion:1,couponId:grant.coupon.id,key:randomUUID()});const before=await balance(sponsor.id),result=await f.verify(order.id);expect(result).toMatchObject({status:'NEEDS_REVIEW',reason:'COUPON_UNAVAILABLE',fundsPreserved:true});expect(new Prisma.Decimal(await balance(sponsor.id)).sub(before).toString()).toBe('18');expect(await db.bid.count({where:{auctionId:f.auction!.id}})).toBe(0);expect(await db.referralRedemption.count({where:{couponId:grant.coupon.id}})).toBe(1);expect(await reconcile(db)).toEqual([]);
+  await expectDepositAlert(order.id,sponsor.id,'18.00',true);
  });
  it('retains a late verified payment without accepting a bid after the real frozen deadline',async()=>{
   const f=await payment({purpose:'BID',fee:30,endDelayMs:35000}),order=await f.start();await new Promise(resolve=>setTimeout(resolve,35100));const result=await f.verify(order.id);expect(result).toMatchObject({status:'NEEDS_REVIEW',reason:'AUCTION_CLOSED',fundsPreserved:true});expect(await balance(f.userId)).toBe('30');expect(await db.bid.count({where:{auctionId:f.auction!.id}})).toBe(0);await f.verify(order.id);expect(await balance(f.userId)).toBe('30');expect(await reconcile(db)).toEqual([]);
+  await expectDepositAlert(order.id,f.userId,'30.00',true);
+  expect(await db.outbox.count({where:{kind:'BID_ACCEPTED',payload:{path:['auctionId'],equals:f.auction!.id}}})).toBe(0);
+  expect(await db.operation.count({where:{userId:f.userId,scope:'CHAPA_RECEIPT'}})).toBe(1);
  },50000);
  it('keeps verified incoming funds during maintenance while blocking new checkouts and bids',async()=>{
   const f=await payment({purpose:'BID',fee:30}),order=await f.start(),other=await payment();await db.adminAudit.create({data:{actorId:'isolated-chapa-maintainer',action:'AUCTIONS_MAINTENANCE_HALTED',target:'chapa-local-test',details:{runId:'chapa-local-test'}}});
