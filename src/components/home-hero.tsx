@@ -1,5 +1,5 @@
 'use client';
-import Image from 'next/image';
+import {getImageProps} from 'next/image';
 import dynamic from 'next/dynamic';
 import {useRef,useState} from 'react';
 import {ArrowRight,Trophy} from 'lucide-react';
@@ -8,7 +8,7 @@ import styles from './home-banner.module.css';
 import type {LearnMoreMedia} from '@/lib/learn-more-media';
 import type {HomeExperience} from '@/modules/admin/content-schema';
 import {FirstVisitIntroduction} from './first-visit-introduction';
-import {lowwinHomeBanner} from '@/lib/brand';
+import {lowwinHomeBanner,lowwinDesktopHomeBanner} from '@/lib/brand';
 // Keep the current page visible while the sheet's code loads.
 const LearnMoreSheet=dynamic(()=>import('./learn-more-sheet'),{loading:()=>null});
 type Copy={headline:string;headlineAm:string;lead:string;leadAm:string};
@@ -19,10 +19,13 @@ export function HomeHero({copy,videoId,media,experience}:{copy:Copy;videoId?:str
  const headline=language==='am'?copy.headlineAm:copy.headline;
  const lead=language==='am'?copy.leadAm:copy.lead;
  const configuredBanner=language==='am'?experience?.bannerAm:experience?.bannerEn;
+ const imageCommon={alt:language==='am'?'የLowWin ማስተዋወቂያ ምስል፤ ለማሳያ የተዘጋጀ':'LowWin promotional image; illustrative scene',quality:75,loading:'eager' as const,fetchPriority:'high' as const};
+ const {props:mobile}=getImageProps({...imageCommon,src:lowwinHomeBanner(language,configuredBanner),width:1600,height:900,sizes:'(max-width:639px) 100vw, 900px'});
+ const {props:desktop}=getImageProps({...imageCommon,src:lowwinDesktopHomeBanner(language,configuredBanner),width:1840,height:800,sizes:'(min-width:1280px) 1232px, calc(100vw - 48px)'});
  return <>
   <section className={`${styles.banner} ${styles.artworkBanner}`} aria-labelledby="home-headline" lang={language} data-home-hero>
    <div className={styles.bannerArtwork}>
-    <Image src={lowwinHomeBanner(language,configuredBanner)} alt={language==='am'?'የLowWin ማስተዋወቂያ ምስል፤ ለማሳያ የተዘጋጀ':'LowWin promotional image; illustrative scene'} width={1600} height={900} sizes="(min-width:1280px) 1232px, (min-width:1024px) calc(100vw - 48px), (min-width:640px) 900px, (max-width:480px) 100vw, 480px" quality={75} preload/>
+    <picture><source media="(min-width:1024px)" srcSet={desktop.srcSet??desktop.src} sizes={desktop.sizes} width={1840} height={800}/><img {...mobile}/></picture>
    </div>
    <div className={styles.accessibleCopy}><h1 id="home-headline">{headline}</h1><p>{lead}</p></div>
    <div className={styles.introActions}>

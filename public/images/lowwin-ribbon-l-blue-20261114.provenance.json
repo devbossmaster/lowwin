@@ -1,7 +1,10 @@
 {
   "date": "2026-11-14",
+  "approved": true,
   "tool": "image_gen",
-  "source": "User-supplied ribbon L reference",
-  "direction": "Preserve folded magenta-purple and mint-blue L; royal blue background; no separate wordmark",
-  "master": "docs/design/lowwin-ribbon-l-blue-20261114.webp"
+  "source": "User-supplied ribbon L and auction-gavel references; user-approved final revision",
+  "direction": "Official LowWin identity: white folded L, white LOWWIN wordmark underneath, white auction gavel with blue cap bands and handle tip, royal blue background",
+  "master": "docs/design/lowwin-ribbon-l-blue-20261114.webp",
+  "logo": "public/images/lowwin-ribbon-l-blue-20261114-v2.webp",
+  "icon": "public/images/lowwin-ribbon-l-icon-20261114-v2.png"
 }

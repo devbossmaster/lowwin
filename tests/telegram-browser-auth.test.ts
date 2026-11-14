@@ -18,6 +18,8 @@ const provider=vi.fn(async(input:RequestInfo|URL,init?:RequestInit)=>{
  if(url!=='https://oauth.telegram.org/token')throw Error('Unexpected fixture network request');
  const body=new URLSearchParams(String(init?.body)),code=body.get('code')!,entry=issued.get(code);
  expect(new Headers(init?.headers).get('authorization')).toMatch(/^Basic /);
+ expect(body.get('client_id')).toBe('123456789');
+ expect(body.has('client_secret')).toBe(false);
  expect(body.get('redirect_uri')).toBe(origin+'/api/auth/callback/telegram-oidc');
  if(!entry)return Response.json({error:'invalid_grant'});
  issued.delete(code);expect(body.get('code_verifier')).toBe(entry.verifier);

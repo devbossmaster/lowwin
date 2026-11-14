@@ -2,7 +2,7 @@
   "date": "2026-11-14",
   "tool": "HTML/CSS layout rendered by Chromium",
   "source": "docs/design/lowwin-family-gloss-blue-16x9-20261114.webp",
-  "purpose": "Separate 16:9 Home banner matching the requested reference height; wide auction and campaign images unchanged",
+  "purpose": "Logo-free mobile Home artwork; the compact header owns the brand lockup",
   "backgroundArt": {
     "tool": "image_gen",
     "brief": "Glossy curved blue backdrop, approximately 20% deeper blue at the user request; family and prizes preserved"
@@ -10,18 +10,18 @@
   "illustrative": true,
   "records": [
     {
-      "file": "public/images/lowwin-home-16x9-en-20261114.webp",
+      "file": "public/images/lowwin-home-16x9-en-20261114-v3.webp",
       "width": 1600,
       "height": 900,
-      "bytes": 161832,
-      "sha256": "0d43fd81d8bcfb7479a9430e30c0426fbfa8905648e5efd446dd2d1793859b09"
+      "bytes": 160836,
+      "sha256": "ebf35fad66a7148cc6ad3bb501389a209f4f391f4ce47ae091782a3dc6dc1ba7"
     },
     {
-      "file": "public/images/lowwin-home-16x9-am-20261114.webp",
+      "file": "public/images/lowwin-home-16x9-am-20261114-v3.webp",
       "width": 1600,
       "height": 900,
-      "bytes": 161350,
-      "sha256": "ed355819499ea2d8c302b278b1559b6063836917e801db45c6e08bdbec883ba6"
+      "bytes": 160136,
+      "sha256": "a75161ef5f78caaaebc90515372d344d346d753f5f9de015dae2431b1ea46c82"
     }
   ]
 }

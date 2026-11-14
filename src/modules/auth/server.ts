@@ -13,6 +13,7 @@ import {emailAdapter} from '../admin/email';
 import {telegramLoginSettings} from './telegram-login';
 import {prepareTelegramOIDCIdentity} from './telegram-oidc-identity';
 import {authLogSummary} from './safe-logger';
+import {telegramOIDCTokenRequest} from './telegram-oidc-token-request';
 
 const oidcProof=defineRequestState<{telegramId:string;subject:string}|null>(()=>null);
 
@@ -23,7 +24,7 @@ export function createAuth(client: PrismaClient | Prisma.TransactionClient = db)
     appName: 'Lowwin', baseURL: env.BETTER_AUTH_URL, secret: env.BETTER_AUTH_SECRET,
     database: prismaAdapter(client, { provider: 'postgresql' }),
     trustedOrigins: [new URL(env.BETTER_AUTH_URL).origin],
-    logger:{level:'error',log:(level,_message,...args)=>{console.warn('authentication_operation_unavailable',{level,...authLogSummary(args)})}},
+    logger:{level:'error',log:(level,message,...args)=>{console.warn('authentication_operation_unavailable',{level,...authLogSummary(args,message)})}},
     user:{additionalFields:{role:{type:'string',defaultValue:'member',input:false,required:false}}},
     emailAndPassword: {
       enabled:true,disableSignUp:false,autoSignIn:false,requireEmailVerification:true,
@@ -71,7 +72,7 @@ export function createAuth(client: PrismaClient | Prisma.TransactionClient = db)
           return profile;
         },
       }:undefined,
-    }), {
+    }), telegramOIDCTokenRequest(login), {
       id: 'lowin-local-development', endpoints: {
         localIdentity: createAuthEndpoint('/lowin/dev-identity', { method: 'POST' }, async ctx => {
           // Repeat the full gate for direct internal Better Auth API invocation.

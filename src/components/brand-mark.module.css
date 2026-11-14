@@ -1,0 +1,2 @@
+.mark{position:relative;display:block;flex:none;width:var(--brand-mark-size,30px);height:var(--brand-mark-size,30px);overflow:hidden;border-radius:24%;background:#0644c2}
+.mark>img[data-lowwin-logo]{position:absolute;display:block;max-width:none;width:167.2%;height:167.2%;left:-36.667%;top:-14.667%;border-radius:0}

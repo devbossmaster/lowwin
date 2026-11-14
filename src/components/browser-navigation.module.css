@@ -8,4 +8,4 @@
 @media(min-width:1024px) and (max-width:1199px){.bar nav a{padding-inline:10px;font-size:13px}.bar{gap:16px}}
 @media(hover:hover){.bar nav a:hover{background:var(--brand-soft,#f2f2f7);color:var(--action-pressed,#1e40af)}}
 @media(prefers-reduced-motion:reduce){.bar nav a{transition:none}}
-.brand img{width:44px;height:44px;border-radius:10px}
+.brand{--brand-mark-size:30px}
