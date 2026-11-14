@@ -1,0 +1,9 @@
+{
+  "date": "2026-11-14",
+  "tool": "image_gen",
+  "source": "User-supplied LOW WIN logo",
+  "edit": "Preserve artwork; replace navy background with deeper royal blue at user request",
+  "master": "docs/design/lowwin-logo-royal-blue-20261114.webp",
+  "logo": "public/images/lowwin-logo-royal-blue-20261114.webp",
+  "icon": "public/images/lowwin-icon-royal-blue-20261114.png"
+}

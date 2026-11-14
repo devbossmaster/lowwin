@@ -22,3 +22,18 @@
 }
 @media(max-width:389px){.header .login{padding-inline:10px;font-size:12px;gap:4px}}
 @media(prefers-reduced-motion:reduce){.header .login::before{transition:none}}
+
+/* Compact painted controls keep the reference's single-row proportions. */
+.brand{gap:7px}.brand img{width:30px;height:30px;border-radius:23%}.brandName{font-size:17px;font-weight:700;letter-spacing:-.025em}.brandName,.balanceAmount,.balance small{font-family:'Inter',sans-serif}
+@media(max-width:639px){
+ .header{grid-template-columns:max-content minmax(0,1fr) 132px;padding-top:calc(4px + var(--mini-safe-top,0px) + var(--tg-content-safe-area-inset-top,0px));padding-bottom:4px;gap:4px}
+ .actions{gap:0}
+ .header .icon::before,.languageButton::before{inset:6px}
+ .header .icon>svg{width:17px;height:17px}
+ .languageButton{gap:2px;font-size:9px}.languageButton>svg:first-child{width:12px;height:12px}
+ .header .login{padding-inline:12px;font-size:12px;gap:5px}
+ .header .login::before{inset:6px 0}
+}
+@media(max-width:389px){.brand{gap:5px}.brand img{width:26px;height:26px}.brandName{font-size:14px}.header .login{padding-inline:9px;gap:4px}.header .login>svg{width:12px;height:12px}}
+@media(max-width:339px){.brand{gap:4px}.brand img{width:22px;height:22px}.brandName{font-size:12px}.header{gap:1px}}
+.header .brand{width:44px;min-width:44px;gap:0}.header .brand img{width:44px;height:44px;border-radius:10px}

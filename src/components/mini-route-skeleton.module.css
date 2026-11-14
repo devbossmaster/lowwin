@@ -29,8 +29,8 @@
 .homeControls>.bone:first-child{width:80px;height:44px;border-radius:24px}
 .homeAuctionGrid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
 .homeAuctionGrid>.auctionCard:nth-child(n+2){display:none}
-.heroBlock{position:relative;min-width:0;overflow:hidden;border-radius:16px;background:#172235}
-.hero{display:grid;align-content:center;gap:11px;width:100%;min-width:0;aspect-ratio:1840/800;border-radius:16px;padding:20px;background:#172235}
+.heroBlock{position:relative;min-width:0;overflow:hidden;border-radius:0;background:#172235}
+.hero{display:grid;align-content:center;gap:11px;width:100%;min-width:0;aspect-ratio:16/9;border-radius:0;padding:20px;background:#172235}
 .hero .bone{background:#344258}
 .heroTitle{width:55%;height:clamp(32px,4vw,58px)}
 .heroCopy{width:46%;height:16px}
@@ -101,8 +101,8 @@
  :global(.app-frame[data-app-layout=browser]) .homeHeader{justify-content:space-between;min-height:62px;margin:0;padding-inline:16px}
  :global(.app-frame[data-app-layout=browser][data-customer-registered=true]) .homeHeader{justify-content:flex-end}
  :global(.app-frame[data-app-layout=browser][data-customer-registered=true]) .homeBrand{display:none}
- :global(.app-frame[data-app-layout=browser]) .heroBlock{margin-top:-22px;border-radius:20px}
- :global(.app-frame[data-app-layout=browser]) .hero{border-radius:20px}
+ :global(.app-frame[data-app-layout=browser]) .heroBlock{margin-top:-22px;border-radius:0}
+ :global(.app-frame[data-app-layout=browser]) .hero{border-radius:0}
  :global(.app-frame[data-app-layout=browser]) .homeContent{padding-inline:16px}
  :global(.app-frame[data-app-layout=browser]) .heroTitle{max-width:360px}
  :global(.app-frame[data-app-layout=browser]) .heroCopy{max-width:280px}

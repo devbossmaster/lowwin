@@ -1,9 +1,9 @@
 .banner{width:100%;min-width:0;position:relative;isolation:isolate;display:flex;flex-direction:column;align-items:flex-start;gap:18px;min-height:240px;aspect-ratio:var(--home-hero-ratio,1.85);padding:26px 20px 30px;overflow:hidden;background:#422584;color:#fff}
 .banner>img{z-index:-2;object-fit:cover;object-position:62% center}
 /* Embedded campaign artwork keeps its full composition at every width. */
-.banner.artworkBanner{display:block;min-height:0;aspect-ratio:1840/800;padding:0;overflow:hidden;border-radius:16px;background:transparent;color:#fff}
+.banner.artworkBanner{display:block;min-height:0;aspect-ratio:16/9;padding:0;overflow:hidden;border-radius:0;background:transparent;color:#fff}
 .artworkBanner::before{display:none}
-.bannerArtwork{width:100%;height:100%;aspect-ratio:1840/800;overflow:hidden;border-radius:inherit;background:transparent}
+.bannerArtwork{width:100%;height:100%;aspect-ratio:16/9;overflow:hidden;border-radius:inherit;background:transparent}
 .bannerArtwork img{display:block;width:100%;height:100%;object-fit:cover}
 .accessibleCopy{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .artworkBanner .introActions{position:absolute;z-index:1;left:16px;bottom:16px;margin:0;padding:0;gap:8px;max-width:calc(100% - 32px);background:transparent}

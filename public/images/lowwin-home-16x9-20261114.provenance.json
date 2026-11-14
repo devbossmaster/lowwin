@@ -1,0 +1,27 @@
+{
+  "date": "2026-11-14",
+  "tool": "HTML/CSS layout rendered by Chromium",
+  "source": "docs/design/lowwin-family-gloss-blue-16x9-20261114.webp",
+  "purpose": "Separate 16:9 Home banner matching the requested reference height; wide auction and campaign images unchanged",
+  "backgroundArt": {
+    "tool": "image_gen",
+    "brief": "Glossy curved blue backdrop, approximately 20% deeper blue at the user request; family and prizes preserved"
+  },
+  "illustrative": true,
+  "records": [
+    {
+      "file": "public/images/lowwin-home-16x9-en-20261114.webp",
+      "width": 1600,
+      "height": 900,
+      "bytes": 161832,
+      "sha256": "0d43fd81d8bcfb7479a9430e30c0426fbfa8905648e5efd446dd2d1793859b09"
+    },
+    {
+      "file": "public/images/lowwin-home-16x9-am-20261114.webp",
+      "width": 1600,
+      "height": 900,
+      "bytes": 161350,
+      "sha256": "ed355819499ea2d8c302b278b1559b6063836917e801db45c6e08bdbec883ba6"
+    }
+  ]
+}

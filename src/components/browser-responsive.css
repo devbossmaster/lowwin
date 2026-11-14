@@ -17,7 +17,7 @@
  .app-frame[data-app-layout=browser] .home-header-slot header{padding:4px 16px 14px;background:transparent;border-bottom:0;grid-template-columns:max-content minmax(0,1fr) 140px}
  .app-frame[data-app-layout=browser][data-customer-registered=true] .home-header-slot header{grid-template-columns:minmax(0,1fr) 140px}
  .app-frame[data-app-layout=browser][data-customer-registered=true] .home-header-slot header>a:first-child{display:none}
- .app-frame[data-app-layout=browser] [data-home-hero]{border-radius:20px}
+ .app-frame[data-app-layout=browser] [data-home-hero]{border-radius:0}
  .app-frame[data-app-layout=browser] [data-customer-page-header]{max-width:860px;margin:0 auto 20px;border-radius:16px}
  .app-frame[data-app-layout=browser] [data-winners-page]{width:100%;max-width:none;padding-inline:0}
  .app-frame[data-app-layout=browser] [data-winners-page] [data-route-skeleton=winners]{max-width:none}

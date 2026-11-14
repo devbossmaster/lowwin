@@ -27,7 +27,9 @@ Use the 4/8/12/16/24/32px spacing scale. Primary actions have a 48px minimum hei
 
 Ordinary browsers additionally adapt to tablets and desktops: two catalog columns from 640px, persistent side navigation from 1024px, and three columns from 1280px within a bounded canvas. Telegram WebViews keep the compact Mini App layout even in a wide window. Desktop login is a compact centered card leading to Telegram's official approval page; Mini App Login retains self-contact sharing. Layout detection never supplies authentication proof.
 
-Home uses an original 1840×800 violet product still life with localized HTML copy. It is illustrative artwork, not an inventory or partnership claim. Preserve genuinely custom administrator banners. The exact image-generation prompt is in [the provenance manifest](public/images/lowwin-violet-hero-20261113.provenance.json).
+Home uses its own 16:9 banner (1600×900), with the family and prizes against a deeper blue, glossy curved backdrop. Keep the compact actions over the bottom-left of the image. Auction and other wide product imagery retain 1840×800 proportions. Preserve genuinely custom administrator banners. Home artwork is illustrative; its source and dimensions are recorded in [the provenance manifest](public/images/lowwin-home-16x9-20261114.provenance.json).
+
+The Home and desktop navigation headers show the ribbon L logo alone, without a separate name beside it. Compact painted controls keep 44px touch targets; balance and ETB stay horizontal. Home retains the illustrated How it works guide; Learn more opens the video-only sheet. Keep the unconfigured video slot ready for a later upload, and load hosted video or the privacy-enhanced YouTube embed only after Play. Existing admin video settings accept a YouTube URL or an approved local hosted-video path.
 
 ## Shared checkout
 
