@@ -8,31 +8,33 @@ import {verifyFixtureContact} from '../contact-fixtures';
 async function website(page:Page,am=false){
  const db=new PrismaClient({datasourceUrl:process.env.TEST_DATABASE_URL}),prefix='Website '+randomUUID().slice(0,8),auctions:Awaited<ReturnType<typeof bidAuction>>[]=[];
  for(let i=0;i<3;i++){const auction=await bidAuction(db,{fee:10,ruleVersion:'lowest-unique-v4',isDemo:false,endDelayMs:3600000});auctions.push(auction);await db.product.update({where:{id:auction.productId!},data:{title:`${prefix} ${i+1}`,titleAm:`${prefix} የሙከራ ዕቃ ${i+1}`,images:{create:{path:'/images/lowwin-demo-headphones.webp',alt:'Isolated browser test product',sourceType:'ORIGINAL'}}}})}
- const external:string[]=[],errors:string[]=[],starts:string[]=[];
+ const external:string[]=[],errors:string[]=[],approvals:string[]=[],charges:string[]=[],readiness:string[]=[],starts:{provider:string;callbackURL:string;errorCallbackURL:string;disableRedirect:boolean}[]=[];
  page.on('pageerror',error=>errors.push(error.message));
  await page.route('https://telegram.org/**',route=>route.fulfill({body:''}));
  await page.route('https://api.chapa.global/**',route=>{external.push(route.request().url());return route.abort()});
  await page.route('https://oauth.telegram.org/**',route=>{external.push(route.request().url());return route.abort()});
- await page.addInitScript(language=>{localStorage.setItem('lowwin-language',language);localStorage.setItem('lowwin:introduction:v1','dismissed');window.Telegram={WebApp:{initData:'',platform:'unknown',ready(){}}}},am?'am':'en');
+ await page.route(url=>url.origin==='https://oauth.telegram.org'&&url.pathname==='/auth',route=>{approvals.push(route.request().url());return route.fulfill({contentType:'text/html',body:'<h1>Isolated official-login handoff fixture</h1>'})});
+ await page.route('**/api/payments/**',route=>{if(route.request().method()==='POST'){charges.push(route.request().url());return route.abort()}return route.continue()});
+ await page.addInitScript(language=>{localStorage.setItem('lowwin-language',language);localStorage.setItem('lowwin:introduction:v1','dismissed');(window as unknown as {nativeContactRequests:number}).nativeContactRequests=0;window.Telegram={WebApp:{initData:'',platform:'unknown',ready(){},requestContact(){(window as unknown as {nativeContactRequests:number}).nativeContactRequests++}}}},am?'am':'en');
  await page.context().addCookies([{name:'lowwin-language',value:am?'am':'en',domain:'localhost',path:'/'}]);
- await page.route('**/api/auth/telegram/browser/config',route=>route.fulfill({json:{enabled:true,configured:true}}));
- await page.route('**/api/auth/telegram/browser/start?*',route=>{starts.push(route.request().url());return route.fulfill({contentType:'text/html',body:'<h1>Isolated official-login handoff fixture</h1>'})});
- return {db,home:'/?q='+encodeURIComponent(prefix),prefix,auctions,external,errors,starts,async close(){await db.$disconnect()}};
+ await page.route('**/api/auth/telegram/config',route=>{readiness.push(route.request().url());return route.fulfill({json:{enabled:true,configured:true}})});
+ await page.route('**/api/auth/sign-in/social',route=>{expect(route.request().method()).toBe('POST');starts.push(route.request().postDataJSON());return route.fulfill({json:{url:'https://oauth.telegram.org/auth?client_id=123456789&state=isolated-fixture&code_challenge=public-fixture&code_challenge_method=S256',redirect:true}})});
+ return {db,home:'/?q='+encodeURIComponent(prefix),prefix,auctions,external,errors,starts,approvals,charges,readiness,async close(){await db.$disconnect()}};
 }
 
 for(const am of [false,true])test(`ordinary website browsing and explicit official login ${am?'AM':'EN'}`,async({page},info)=>{
  const f=await website(page,am);
  try{
   await page.goto(f.home);const frame=page.locator('.app-frame');await expect(frame).toHaveAttribute('data-app-environment','browser');await expect(page.locator('.auction-card')).toHaveCount(3);
-  const width=page.viewportSize()!.width;expect(await frame.evaluate(node=>node.getBoundingClientRect().width)).toBeLessThanOrEqual(width);
+  const websiteOrigin=new URL(page.url()).origin,width=page.viewportSize()!.width;expect(await frame.evaluate(node=>node.getBoundingClientRect().width)).toBeLessThanOrEqual(width);
   expect(await page.locator('.auction-card').first().evaluate(node=>getComputedStyle(node.parentElement!).gridTemplateColumns.split(' ').length)).toBe(width>=1280?3:width>=640?2:1);
   // Guest browsing must not expose the authenticated desktop account navigation.
   await expect(page.locator('[data-browser-navigation]')).toHaveCount(0);
   await expect(page.locator('.mini-bottom-navigation')).toHaveCount(0);
-  await page.getByRole('button',{name:am?'ይግቡ':'Log in',exact:true}).first().click();const dialog=page.getByRole('dialog');await expect(dialog.locator('[data-browser-telegram-login]')).toBeVisible();await expect(dialog.locator('input')).toHaveCount(0);await expect(dialog.getByRole('button',{name:am?'በTelegram ይቀጥሉ':'Continue with Telegram',exact:true})).toBeEnabled();expect(f.starts).toHaveLength(0);
+  await page.getByRole('button',{name:am?'ይግቡ':'Log in',exact:true}).first().click();const dialog=page.getByRole('dialog');await expect(dialog.locator('[data-browser-telegram-login]')).toBeVisible();await expect(dialog.locator('input')).toHaveCount(0);await expect(dialog.getByRole('button',{name:am?'በTelegram ይቀጥሉ':'Continue with Telegram',exact:true})).toBeEnabled();expect(f.starts).toHaveLength(0);expect(f.approvals).toHaveLength(0);expect(f.charges).toHaveLength(0);expect(await page.evaluate(()=>(window as unknown as {nativeContactRequests:number}).nativeContactRequests)).toBe(0);
   expect(await dialog.evaluate(node=>node.scrollWidth<=node.clientWidth+1)).toBe(true);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await dialog.screenshot({path:info.outputPath(`browser-login-${am?'am':'en'}.png`)});
   await page.keyboard.press('Escape');await expect(dialog).toHaveCount(0);await expect(page.getByRole('button',{name:am?'ይግቡ':'Log in',exact:true}).first()).toBeFocused();
-  await page.getByRole('button',{name:am?'ይግቡ':'Log in',exact:true}).first().click();await dialog.getByRole('button',{name:am?'በTelegram ይቀጥሉ':'Continue with Telegram',exact:true}).click();await expect(page.getByRole('heading',{name:'Isolated official-login handoff fixture'})).toBeVisible();expect(f.starts).toHaveLength(1);const start=new URL(f.starts[0]),destination=new URL(start.searchParams.get('next')!,start.origin);expect(destination.origin).toBe(start.origin);expect(destination.pathname).toBe('/');expect(destination.searchParams.get('q')).toBe(f.prefix);expect([...destination.searchParams.keys()]).toEqual(['q']);expect(start.searchParams.get('lang')).toBe(am?'am':'en');expect(f.external).toHaveLength(0);expect(f.errors).toHaveLength(0);
+  await page.getByRole('button',{name:am?'ይግቡ':'Log in',exact:true}).first().click();await dialog.getByRole('button',{name:am?'በTelegram ይቀጥሉ':'Continue with Telegram',exact:true}).click();await expect(page.getByRole('heading',{name:'Isolated official-login handoff fixture'})).toBeVisible();expect(f.starts).toHaveLength(1);expect(f.readiness).toHaveLength(1);const start=f.starts[0],destination=new URL(start.callbackURL,websiteOrigin);expect(destination.origin).toBe(websiteOrigin);expect(destination.pathname).toBe('/');expect(destination.searchParams.get('q')).toBe(f.prefix);expect([...destination.searchParams.keys()]).toEqual(['q']);const errorCallback=new URL(start.errorCallbackURL,destination.origin);expect(start.provider).toBe('telegram-oidc');expect(start.disableRedirect).toBe(true);expect(errorCallback.origin).toBe(destination.origin);expect(errorCallback.searchParams.get('lang')).toBe(am?'am':'en');expect(errorCallback.searchParams.get('login')).toBe('1');expect(errorCallback.searchParams.get('next')).toBe(start.callbackURL);expect(f.approvals).toHaveLength(1);expect(new URL(f.approvals[0]).origin).toBe('https://oauth.telegram.org');expect(f.charges).toHaveLength(0);expect(f.external).toHaveLength(0);expect(f.errors).toHaveLength(0);
  }finally{await f.close()}
 });
 
@@ -43,7 +45,7 @@ test('registered browser restores its owned account without Mini App SDK or anot
   await verifyFixtureContact(f.db,tid);const user=await f.db.user.findUniqueOrThrow({where:{telegramId:String(tid)}}),token=randomBytes(32).toString('hex');
   await f.db.session.create({data:{id:randomUUID(),token,userId:user.id,expiresAt:new Date(Date.now()+86400000),telegramLaunchId:String(tid),telegramAuthSource:'TELEGRAM_OIDC'}});
   await page.context().addCookies([{name:'__Secure-better-auth.session_token',value:encodeURIComponent(`${token}.${await makeSignature(token,process.env.BETTER_AUTH_SECRET!)}`),domain:'localhost',path:'/',secure:true,httpOnly:true,sameSite:'Lax'}]);
-  await page.goto('/profile');await expect(page.locator('[data-profile-ready]')).toBeVisible();await expect(page.locator('.app-frame')).toHaveAttribute('data-app-environment','browser');await expect(page.getByRole('dialog')).toHaveCount(0);const me=await page.request.get('/api/me');expect(me.status()).toBe(200);expect((await me.json()).user.id).toBe(user.id);expect(f.starts).toHaveLength(0);expect(f.external).toHaveLength(0);
+  await page.goto('/profile');await expect(page.locator('[data-profile-ready]')).toBeVisible();await expect(page.locator('.app-frame')).toHaveAttribute('data-app-environment','browser');await expect(page.getByRole('dialog')).toHaveCount(0);const me=await page.request.get('/api/me');expect(me.status()).toBe(200);expect((await me.json()).user.id).toBe(user.id);expect(f.starts).toHaveLength(0);expect(f.approvals).toHaveLength(0);expect(f.charges).toHaveLength(0);expect(await page.evaluate(()=>(window as unknown as {nativeContactRequests:number}).nativeContactRequests)).toBe(0);expect(f.external).toHaveLength(0);
  }finally{await f.close()}
 });
 

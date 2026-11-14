@@ -1,5 +1,5 @@
 import nextEnv from '@next/env';
-import {browserLoginConfig,telegramBrowserSettings} from '../src/modules/auth/telegram-browser-protocol';
+import {browserLoginConfig,telegramLoginSettings} from '../src/modules/auth/telegram-login';
 
 const migration='202611130002_telegram_browser_login';
 async function main(){
@@ -7,7 +7,7 @@ async function main(){
  if(args.some(arg=>!['--schema','--help'].includes(arg))){console.error(JSON.stringify({error:'UNKNOWN_OPTION',usage:'npx --no-install tsx scripts/check-telegram-browser-login.ts --schema',hint:'Use two ordinary hyphens before schema; do not append other terminal text.'}));process.exitCode=1;return}
  if(args.includes('--help')){console.log('npx --no-install tsx scripts/check-telegram-browser-login.ts [--schema]\nRedacted configuration and optional read-only schema check. No Telegram request, login, secrets or customer records.');return}
  nextEnv.loadEnvConfig(process.cwd(),process.env.NODE_ENV!=='production',{info:()=>{},error:()=>{}});
- const config=browserLoginConfig(),settings=telegramBrowserSettings({...process.env,TELEGRAM_LOGIN_ENABLED:'true'});
+ const config=browserLoginConfig(),settings=telegramLoginSettings({...process.env,TELEGRAM_LOGIN_ENABLED:'true'});
  const required=['TELEGRAM_LOGIN_CLIENT_ID','TELEGRAM_LOGIN_CLIENT_SECRET','TELEGRAM_BOT_TOKEN','BETTER_AUTH_URL'];
  let schema:{status:string;expectedMigration:string;applied?:boolean;sessionSource?:boolean;contactProof?:boolean}={status:'not-requested',expectedMigration:migration};
  if(args.includes('--schema')){
@@ -22,7 +22,7 @@ async function main(){
   },{maxWait:5000,timeout:10000})}catch(error){const details=error as {code?:string;meta?:{code?:string}};schema={status:details.code==='42501'||details.meta?.code==='42501'?'migration-connection-required':'unavailable',expectedMigration:migration}}finally{await db.$disconnect()}
  }
  const ready=config.enabled&&config.configured&&(!args.includes('--schema')||schema.status==='ok');
- console.log(JSON.stringify({...config,missing:required.filter(key=>!process.env[key]),clientIdMatchesBot:!!process.env.TELEGRAM_LOGIN_CLIENT_ID&&process.env.TELEGRAM_LOGIN_CLIENT_ID===process.env.TELEGRAM_BOT_TOKEN?.split(':')[0],callback:settings?.callback??null,schema,ready},null,2));
+ console.log(JSON.stringify({...config,missing:required.filter(key=>!process.env[key]),clientIdMatchesBot:!!process.env.TELEGRAM_LOGIN_CLIENT_ID&&process.env.TELEGRAM_LOGIN_CLIENT_ID===process.env.TELEGRAM_BOT_TOKEN?.split(':')[0],callback:settings?.callback??null,integration:'better-auth-telegram',credentialVerification:'not-performed',schema,ready},null,2));
  if(!ready)process.exitCode=1;
 }
 void main().catch(()=>{console.error(JSON.stringify({error:'CHECK_UNAVAILABLE'}));process.exitCode=1});

@@ -27,7 +27,7 @@ Home now keeps its existing brand banner, instructions and footer visible when i
 
 The local configuration is missing `TELEGRAM_LOGIN_CLIENT_ID` and `TELEGRAM_LOGIN_CLIENT_SECRET`; `TELEGRAM_LOGIN_ENABLED` is not true. Consequently the configuration endpoint truthfully returns `enabled:false` and `configured:false`. This endpoint does not query the database.
 
-Obtain the existing bot's credentials from **BotFather → bot → Login Widget**, register the actual website origin and exact `/api/auth/telegram/browser/callback`, and configure privately:
+Obtain the existing bot's credentials from **BotFather → bot → Login Widget / OpenID Connect**, register the actual website origin and exact `/api/auth/callback/telegram-oidc`, and configure privately:
 
 ```dotenv
 TELEGRAM_LOGIN_ENABLED=true

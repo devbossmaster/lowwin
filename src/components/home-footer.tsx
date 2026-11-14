@@ -14,6 +14,6 @@ export function HomeFooter(){
   <nav className={styles.socials} aria-label={language==='am'?'ማህበራዊ ገጾቻችን':'Our social pages'}>{socials.map(({name,url,Icon})=><a key={name} href={url} target="_blank" rel="noopener noreferrer" aria-label={`Lowwin on ${name}`}><span><Icon size={15} strokeWidth={1.8} aria-hidden="true"/></span></a>)}</nav>
   <p><MiniPhrase en="18+ only. Bid fees are non-refundable. Please bid responsibly." am="ከ18 ዓመት በላይ ብቻ። የማስገቢያ ክፍያ አይመለስም። በኃላፊነት ይሳተፉ።"/></p>
   <p>© {new Date().getUTCFullYear()} Lowwin · <MiniPhrase en="Lowest unique bid wins" am="ዝቅተኛው ልዩ ቁጥር ያሸንፋል"/></p>
-  <nav className={styles.legal} aria-label={language==='am'?'ውሎችና ግላዊነት':'Terms and privacy'}><Link href="/terms"><MiniPhrase en="Terms & Conditions apply" am="ውሎችና ሁኔታዎች ይተገበራሉ"/></Link><Link href="/privacy"><MiniPhrase en="Privacy Policy" am="የግላዊነት ፖሊሲ"/></Link></nav>
+  <nav className={styles.legal} aria-label={language==='am'?'ውሎችና ሁኔታዎች':'Terms and conditions'}><Link href="/terms"><MiniPhrase en="Terms & Conditions apply" am="ውሎችና ሁኔታዎች ይተገበራሉ"/></Link></nav>
  </footer>;
 }

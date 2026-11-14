@@ -1,58 +1,53 @@
-# Website and Mini App Telegram login
+# Shared Telegram authentication
 
-Lowwin supports ordinary mobile/desktop browsers alongside the Telegram Mini App. Both paths resolve the same numeric Telegram identity and existing account; they do not create a separate wallet or link accounts by phone, username or email.
+LowWin uses the published `better-auth-telegram@3.2.2` plugin with exact `better-auth` and `@better-auth/core` 1.7.17. This replaces the private Mini App compatibility fork and the separate browser OAuth implementation. Next.js, TanStack Query, the existing user/wallet tables and Better Auth sessions remain.
 
-## Customer flow
+## Customer behavior
 
-In a browser, Login opens a compact Lowwin card. Continue with Telegram sends the browser to Telegram's own approval page and returns to the requested Lowwin page. Lowwin does not collect Telegram passwords, codes or wallet PINs. Existing registered accounts restore automatically from a valid session. New accounts need Telegram's signed verified-phone consent; refused or missing phone proof cannot unlock paid actions.
+- Browse Home and auction details without sharing a contact. Protected actions open the compact sign-in sheet.
+- Inside Telegram, the existing signed Mini App launch and explicit self-contact consent remain. The server validates the signature and five-minute launch age; SDK globals do not prove identity.
+- In a website browser, Continue with Telegram calls Better Auth's `POST /api/auth/sign-in/social` with `provider: telegram-oidc`. Telegram returns to `GET /api/auth/callback/telegram-oidc`.
+- Better Auth owns database-backed state, browser-binding cookies, S256 PKCE, nonce, code exchange and signed session cookies. The upstream plugin verifies Telegram's JWKS, issuer, audience, expiry and nonce. Browser-supplied ID-token login and manual account linking are disabled.
+- Verified numeric Telegram ID identifies the existing user; opaque OIDC `sub` is stored separately as its provider account ID. The application mapper preserves encrypted contact proof and existing balances. It never merges accounts using phone, name or username. New users must consent to a verified phone; revoked contacts and conflicting/staff accounts are rejected.
+- Editable bid/top-up drafts and a safe internal destination may survive the handoff for 15 minutes in tab-scoped storage. Phones, login credentials, provider tokens, quotes and payment keys are excluded. Restoration never submits a bid or payment.
+- Cancellation and errors return to the sheet. No raw provider description is reflected. Closing keeps public browsing available.
 
-Inside the Mini App, Login retains the existing signed launch and native self-contact-sharing flow. The browser layout indicator is presentation only; API authorization remains server-enforced. Tablet/desktop browsers use a wider catalog and desktop navigation, while phone browsers and Telegram keep compact touch layouts.
+The old `/api/auth/telegram/browser/start` and `/callback` routes, custom JWT verifier, custom OAuth challenge/cookie implementation and token-auth-method setting have been removed. Expired old callbacks must start a new login.
 
-## Official protocol
+## BotFather and WEB settings
 
-This uses Telegram's current OpenID Connect Authorization Code flow with S256 PKCE, not the archived iframe widget. The backend validates one-time browser-bound state/nonce, Telegram signature/JWKS, issuer, audience and token times. Telegram's signed profile `id` maps to the existing numeric Telegram account; its `sub` is a separate OIDC subject. Phone claims cannot merge accounts or silently replace an existing contact. Mini App and OIDC contact/session provenance remain explicit.
+In **BotFather → the existing LowWin bot → Login Widget / OpenID Connect**, register:
 
-References: [Telegram Login](https://core.telegram.org/bots/telegram-login) and [OIDC discovery](https://oauth.telegram.org/.well-known/openid-configuration). Provider login is separate from payment authorization; existing payment verification, ownership, revocation and ledger rules still apply.
+1. Trusted origin: `https://lowwin.shop`
+2. Redirect URI: `https://lowwin.shop/api/auth/callback/telegram-oidc`
 
-## Operator setup
+The redirect changed. Register this exact new URI before testing the new WEB revision. Keep **RS256** selected so profile and phone claims are available. Mini App native contact sharing is independent of the retired iframe Login Widget.
 
-Open **BotFather → the existing Lowwin bot → Login Widget**. Register both:
-
-1. Website origin: `https://lowwin.shop`.
-2. Exact callback: `https://lowwin.shop/api/auth/telegram/browser/callback`.
-
-Use the actual canonical origin from `BETTER_AUTH_URL`; do not add a trailing slash on the callback or substitute a different domain. Register staging separately. Keep Telegram's default **RS256** algorithm, because this flow needs profile and phone scopes.
-
-Save the provided credentials in the **WEB service's server environment**:
+Set these privately on **WEB only**:
 
 ```dotenv
+BETTER_AUTH_URL=https://lowwin.shop
 TELEGRAM_LOGIN_ENABLED=true
-TELEGRAM_LOGIN_CLIENT_ID=<Client ID from BotFather>
-TELEGRAM_LOGIN_CLIENT_SECRET=<Client Secret from BotFather>
+TELEGRAM_LOGIN_CLIENT_ID=<BotFather Client ID for the same bot>
+TELEGRAM_LOGIN_CLIENT_SECRET=<BotFather OIDC Client Secret>
 ```
 
-These are separate from the bot token and Chapa credentials. Never put the secret in a public frontend variable, repository, chat or URL. Existing bot and Better Auth configuration remains required. Private browser requests use the existing secure session cookie.
+Retain the existing `BETTER_AUTH_SECRET`, `TELEGRAM_BOT_TOKEN`, bot username and encrypted-contact key configuration. Do not rotate the Better Auth secret as part of this update. The OIDC secret is separate from the bot token and payment keys. Workers do not perform browser OAuth. Remove the obsolete `TELEGRAM_LOGIN_TOKEN_AUTH_METHOD` setting if it was added.
 
-Actual Telegram approval requires the registered origin/callback and provider credentials. An unconfigured login displays a clear unavailable state and keeps public browsing accessible; it cannot manufacture a session.
+The upstream provider uses the documented server-side Basic token exchange, with the installed Better Auth OAuth helper. No fallback exchanges or user credentials are sent from the browser. Provider access/ID tokens are not persisted: the verified mapper creates the owned identity binding before Better Auth's lookup, with account token updates disabled.
 
-### Coolify / reverse-proxy routing
-
-Keep `BETTER_AUTH_URL=https://lowwin.shop` and preserve the public `Host: lowwin.shop` at the proxy. When supplied, `X-Forwarded-Host` must match that authority and `X-Forwarded-Proto` must be the single value `https`. Forwarded headers must be overwritten by the trusted edge.
-
-Next.js can reconstruct a Route Handler URL using its internal bind hostname/port even when the browser requested the public domain. Login start and callback therefore validate canonical public Host routing independently of that internal transport URL. Forwarded Host alone cannot authorize a mismatch; conflicting/malformed headers and duplicate parameters still fail closed. Redirects, state and cookies always use the configured canonical origin, with browser binding, PKCE, nonce and single-use callback checks unchanged.
-
-The November 14 repair for `Invalid login request.` passed 31 real-handler regressions with stubbed persistence and no provider calls, plus the existing 41 protocol/client tests. It requires a WEB redeploy; it adds no migration or credential. Production readiness still depends on the redacted configuration/schema check and an actual browser approval.
-
-## Release and validation
-
-The additive migration `202611130002_telegram_browser_login` records session and contact-proof provenance. It retains the existing Mini App defaults and does not copy balances or create another customer account. Apply pending migrations with the authorized schema-owner connection before running the new WEB/worker revision:
+Readiness remains a redacted configuration/schema check, not a credential test:
 
 ```sh
-npm run db:migrate
-npm run db:generate
 npx --no-install tsx scripts/check-telegram-browser-login.ts --schema
 ```
 
-The redacted readiness command makes no Telegram request and reads no customer records. `--schema` uses `DIRECT_URL`, falling back to `DATABASE_URL`, in a read-only transaction. The runtime role intentionally cannot read migration history; `migration-connection-required` means to run that operator check with the authorized migration connection, not to widen runtime permissions.
+Expected callback: `https://lowwin.shop/api/auth/callback/telegram-oidc`; expected integration: `better-auth-telegram`. Schema requires the existing `202611130002_telegram_browser_login` migration. This update adds no migration and never copies wallets. Apply pending migrations through the existing authorized migration connection only.
 
-Local validation passed 161 authentication/session/security tests, including real isolated PostgreSQL cases, and nine readiness-command cases. Browser handoff and responsive checks are recorded in [the validation notes](nov13-visual-and-browser-validation.md). Actual Telegram approval still requires BotFather configuration and a physical/browser check against the registered origin. No production migration, provider login, live payment, merge or deployment was performed during implementation.
+Keep canonical public Host routing at the reverse proxy and overwrite forwarded headers at the trusted edge. Conflicting Host/protocol headers and external callback destinations are rejected. Sessions remain HttpOnly, SameSite=Lax and Secure on HTTPS; private routes still perform server-side ownership/contact/expiry checks.
+
+## Validation boundary
+
+Local tests use disposable loopback PostgreSQL and synthetic signed JWTs; Telegram HTTP is mocked. No production migration, live provider login, payment, merge or deployment is performed. The previous production `invalid_client` means Telegram rejected the client credentials; switching libraries alone does not prove it is resolved. Test one fresh approval after the new callback and WEB revision are configured.
+
+References: [official Telegram Login](https://core.telegram.org/bots/telegram-login), [Better Auth Telegram repository](https://github.com/vcode-sh/better-auth-telegram).

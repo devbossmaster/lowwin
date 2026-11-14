@@ -10,3 +10,15 @@
 @media(max-width:339px){.header{grid-template-columns:max-content minmax(0,1fr) 132px;gap:0;padding-left:max(4px,env(safe-area-inset-left,0px),var(--tg-content-safe-area-inset-left,0px));padding-right:max(4px,env(safe-area-inset-right,0px),var(--tg-content-safe-area-inset-right,0px))}.actions{gap:0}.brand{gap:4px}.brand img{width:20px;height:20px}.brandName{font-size:12px}.balancePill .balance{padding-left:2px}.balancePill .balanceAmount{font-size:12px}.balancePill .balance small{font-size:9px}}
 @media(hover:hover){.header .icon:hover::before,.languageButton:hover::before,.languageOption:hover{background:var(--brand-canvas, #f8f5fc);border-color:#d8d4c8}.addFunds:hover::before{background:#fff8}.login:hover{background:var(--action-hover)}}
 @media(prefers-reduced-motion:reduce){.header .icon::before,.languageButton::before{transition:none}}
+
+/* A shorter visible Login pill keeps the existing comfortable touch target. */
+@media(max-width:639px){
+ .header .login{position:relative;isolation:isolate;min-height:44px;height:44px;padding:0 14px;gap:6px;background:transparent;font-size:13px;line-height:1.3}
+ .header .login::before{content:'';position:absolute;z-index:-1;inset:4px 0;border-radius:999px;background:var(--action-primary);transition:background-color 150ms ease}
+ .header .login:is(:hover,:active,:focus-visible){background:transparent}
+ .header .login:hover::before{background:var(--action-hover)}
+ .header .login:active::before{background:var(--action-pressed)}
+ .header .login>svg{width:13px;height:13px}
+}
+@media(max-width:389px){.header .login{padding-inline:10px;font-size:12px;gap:4px}}
+@media(prefers-reduced-motion:reduce){.header .login::before{transition:none}}

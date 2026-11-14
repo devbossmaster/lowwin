@@ -5,7 +5,7 @@ import {signedLaunch,TEST_TOKEN} from './helpers';
 const mocks=vi.hoisted(()=>({
   transaction:vi.fn(),createAuth:vi.fn(),handler:vi.fn(),limit:vi.fn(),
   launchSession:vi.fn(),bindContact:vi.fn(),bootstrap:vi.fn(),
-  tx:{$executeRaw:vi.fn(),session:{updateMany:vi.fn()}},
+  tx:{$executeRaw:vi.fn(),user:{findUnique:vi.fn()},account:{findUnique:vi.fn(),create:vi.fn()},session:{updateMany:vi.fn()}},
 }));
 vi.mock('../src/lib/db',()=>({db:{$transaction:mocks.transaction}}));
 vi.mock('../src/lib/rate-limit',()=>({allowIdentityRequest:mocks.limit}));
@@ -34,6 +34,9 @@ beforeEach(()=>{
   mocks.limit.mockReset().mockResolvedValue(true);
   mocks.launchSession.mockReset().mockResolvedValue(null);
   mocks.tx.$executeRaw.mockReset().mockResolvedValue(1);
+  mocks.tx.user.findUnique.mockReset().mockResolvedValue(null);
+  mocks.tx.account.findUnique.mockReset().mockResolvedValue(null);
+  mocks.tx.account.create.mockReset().mockRejectedValue(new Error('Unexpected account repair'));
   mocks.tx.session.updateMany.mockReset().mockResolvedValue({count:1});
   mocks.bindContact.mockReset().mockResolvedValue(undefined);
   mocks.bootstrap.mockReset().mockResolvedValue({ok:true,status:'contact-required',me:null});

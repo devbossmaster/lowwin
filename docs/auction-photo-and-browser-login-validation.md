@@ -1,65 +1,13 @@
-# Auction photos, Bid dock and browser sign-in
+# Browser login and presentation validation
 
-## Changes
+The earlier independent browser-OAuth implementation is superseded by the shared published Better Auth Telegram plugin. See [current setup and security boundaries](telegram-browser-login.md).
 
-- The auction Bid dock now uses the visible customer navigation height. Guests and desktop browsers have no reserved mobile-navigation gap; registered mobile users retain the existing navigation and safe areas.
-- Public catalog media authorization now recognizes images saved in an auction's public presentation, as well as original product images. This fixes an uploaded correction being visible to staff but returning 404 for visitors. Winner photos and banners retain their separate consent checks and private caching.
-- The presentation editor keeps staged images through background query updates. Upload is followed by explicit **Save public corrections**; **Use as cover** moves an image to the first position. Removing the currently selected gallery image resets the gallery safely.
-- Open auction details observe the existing batched activity revision and reload product details once when a newer correction appears. There is no new polling loop or per-second product request.
-- Browser-login rejection logs identify the failing boundary using fixed codes. Logs contain no authorization codes, state, cookies, tokens, profile claims, phone numbers or raw provider/database errors. User-facing errors remain generic; state, nonce, PKCE, RS256, ownership and single-use challenge validation remain enforced.
+The operator's production diagnostics confirmed `invalid_client` after Telegram approval, despite settings/schema readiness. No successful live login has been verified. Configuration checks cannot establish that Telegram accepts the client credentials.
 
-## Local verification
+Current browser callback: `https://lowwin.shop/api/auth/callback/telegram-oidc`. BotFather must allow it before testing the updated WEB revision. Mini App login continues to use signed launch data and explicit native contact consent.
 
-- Authentication: 167 tests passed in 13 files against a separate disposable loopback PostgreSQL database; includes official browser-flow fixtures, Mini App contact sharing, account isolation and payment-session authorization.
-- Browser protocol/request/client tests: 80 passed, including rejection diagnostics and sensitive-data exclusion.
-- Media: 27 tests passed for public replacement renditions, warm caching, private previews, consent and winner-media rejection.
-- Auction activity, correction refresh, catalog preview and winner privacy: 43 tests passed against a separate disposable loopback PostgreSQL database.
-- Actual-component Chrome fixtures: 320/360/430/1280px, guest/account states; eight dock/gallery cases passed without page overflow. Replacement images decoded and the selected gallery item reset after removal.
-- Actual AdminWorkspace/AdminImageUpload fixture: upload alone did not publish; staging survived a query update; cover ordering and one explicit save used the correct image order.
-- Actual AuctionDetail correction fixture: one newer revision produced one reload and the new image; repeated revisions and failed reloads produced no request loop, and a later revision recovered. No browser errors occurred.
-- TypeScript, whitespace validation and the isolated production build passed. The build reported a webpack pack-cache snapshot warning but completed successfully; no live payment services were enabled for it.
-- Browser checks use intercepted fixture requests and synthetic images. They do not prove a deployed edit or physical Telegram webview behavior.
+The application keeps canonical users, wallets, encrypted contact proof and legacy identity records. No account is merged by phone/name/username; the upstream opaque OIDC subject remains separate from numeric Telegram ID. The old standalone OAuth routes and private plugin fork are removed.
 
-## Production browser-login status
+Existing mobile banner overlays and authorization typography refinements remain local changes. Their responsive rendering was checked at narrow phone and desktop widths in the previous UI pass. Auction imagery corrections and bidding/accounting rules are unchanged by the authentication migration.
 
-The operator's read-only report confirms configuration and migration `202611130002_telegram_browser_login` are ready, including both session/contact constraints. This rules out missing settings or that migration as the reported cause. It does **not** prove a successful callback.
-
-The subsequent production log identifies `stage: token_exchange`, `diagnostic: TOKEN_RESPONSE`: Telegram returned successful HTTP/parseable JSON without a top-level string `id_token`. This occurs before key/signature/claim validation or account creation. The current handler recognizes OAuth errors returned with HTTP 200 as well as HTTP 400/401 and records only bounded, allowlisted response metadata. It does not substitute an access token or nested identity object for a verified ID token. A new log's `providerResponse.providerCode` can distinguish a provider rejection such as `invalid_client` from a malformed response; the original log does not establish which one occurred.
-
-After the updated WEB is deployed, reproduce one fresh browser login and inspect the WEB log event `telegram_browser_login_rejected`. Share only that event's `stage`, `code`, `diagnostic` and `databaseCode`. Do not share callback URLs containing codes/state, tokens or cookies. The current production rejection cannot be identified from the generic screenshot alone; no validation has been weakened to bypass it.
-
-This update adds no database migration or new environment variable. It was not merged or deployed and made no live payments or notification sends.
-
-## Navigation follow-up
-
-- Registered customer navigation now has Home, Winners, My Bids with a hammer icon, and Profile. Guests continue to see no private navigation.
-- Transactions remains at `/payments`, accessible from Profile's wallet card and near the top of the Wallet sheet. Profile includes My bids, My wins and Saved prizes shortcuts alongside existing notifications and rewards.
-- The remaining black selected auction-browse control uses the existing blue action palette.
-- Website copy now makes clear that the same Telegram flow signs in an existing account or creates a new account after verified phone consent. Bot contact-sharing remains a separate supported entry path to the same numeric Telegram identity.
-
-Follow-up checks: 44 navigation/bid tests and 95 browser-auth protocol/request/client tests passed. Sixteen navigation Chrome cases passed at 320/360/430/1280px across both languages and guest/account states. Eighteen Profile/Wallet cases and six browser-login modal cases also passed, including rendered Amharic labels, link destinations, overflow and intercepted actions. TypeScript and the final isolated production build passed. No real login, payment or bot delivery was initiated by these checks.
-
-## Current notification inventory
-
-Source inventory: **9 Telegram bot notification kinds** and **12 Mini App notification kinds**. This is implementation coverage, not a production-delivery or preference check.
-
-| Notification | Bot | Mini App |
-| --- | --- | --- |
-| New auction published | Yes | Yes |
-| Opens within 24 hours | Yes | Yes |
-| Opens within 1 hour | Yes | Yes |
-| Ends within 24 hours | Yes | Yes |
-| Result published | Yes | Yes |
-| Legacy/manual/admin deposit credited | Yes | Hidden |
-| Verified Chapa payment receipt | Yes | Separate credit notice below |
-| Contact registration confirmed | Yes | No |
-| Admin broadcast | Yes | No |
-| Bid accepted | No | Yes |
-| Participant result ready | No | Yes |
-| Winning result | No | Yes |
-| First-accepted-lowest fallback win | No | Yes |
-| No-winner result under applicable older rules | No | Yes |
-| Delivery updated | No | Yes |
-| Verified Chapa wallet credit/preserved funds | Receipt above | Yes |
-
-The optional merchant payment alert is a recipient variant of the Chapa receipt. `/start` welcome and `/help` are interactive replies, excluded from the nine. Template-only legacy kinds are excluded. Sources: notifications/campaigns.ts, dispatch.ts, service.ts, chapa-receipt.ts, participant-results.ts, payments/chapa.ts and api/alerts/route.ts.
+Actual current authentication checks are recorded in [the focused validation report](telegram-shared-auth-validation.md). No merge, deployment or real provider payment was performed.

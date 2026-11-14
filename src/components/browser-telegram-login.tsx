@@ -3,7 +3,8 @@ import {useEffect,useRef,useState} from 'react';
 import {useQuery} from '@tanstack/react-query';
 import {AlertCircle,LoaderCircle,ShieldCheck} from 'lucide-react';
 import {LOWWIN_LOGO_SRC} from '@/lib/brand';
-import {loadTelegramBrowserLoginConfiguration,telegramBrowserLoginDestination,telegramBrowserLoginError,telegramBrowserLoginStart,type TelegramBrowserLoginError,type TelegramBrowserLoginConfiguration} from '@/lib/telegram-browser-login-client';
+import {loadTelegramBrowserLoginConfiguration,requestTelegramBrowserLogin,telegramBrowserLoginDestination,telegramBrowserLoginError,type TelegramBrowserLoginError,type TelegramBrowserLoginConfiguration} from '@/lib/telegram-browser-login-client';
+import {rememberTelegramAuthResume} from '@/lib/telegram-auth-resume';
 import {AccountSheet} from './account-sheet';
 import {MiniPhrase,useMiniLocale} from './mini-locale';
 import {useTelegram} from './telegram-provider';
@@ -22,18 +23,19 @@ function TelegramMark(){return <svg width="21" height="21" viewBox="0 0 24 24" f
 
 /** Browser identity uses Telegram's own approval page; LowWin collects no code or PIN. */
 export default function BrowserTelegramLogin(){
- const {language}=useMiniLocale(),{status,closeRegistration,botUrl}=useTelegram();
+ const {language}=useMiniLocale(),{status,me,closeRegistration,botUrl}=useTelegram();
  const [pending,setPending]=useState(false),[navigationError,setNavigationError]=useState(false),[errorCode]=useState(()=>typeof window==='undefined'?null:telegramBrowserLoginError(new URLSearchParams(window.location.search).get('telegramLoginError')));
- const redirecting=useRef(false);
+ const redirecting=useRef(false),navigation=useRef<AbortController|null>(null);
  const configuration=useQuery<TelegramBrowserLoginConfiguration>({queryKey:['public','telegram-browser-login','configuration'],queryFn:({signal})=>loadTelegramBrowserLoginConfiguration(signal),staleTime:60_000,gcTime:300_000,retry:false,networkMode:'always',refetchOnWindowFocus:false});
- useEffect(()=>{const resumed=()=>{redirecting.current=false;setPending(false)};window.addEventListener('pageshow',resumed);return()=>window.removeEventListener('pageshow',resumed)},[]);
+ useEffect(()=>{const resumed=()=>{navigation.current?.abort();navigation.current=null;redirecting.current=false;setPending(false)};window.addEventListener('pageshow',resumed);return()=>{window.removeEventListener('pageshow',resumed);navigation.current?.abort();navigation.current=null}},[]);
  function clearFeedback(){const url=new URL(window.location.href);if(url.searchParams.has('telegramLoginError')){url.searchParams.delete('telegramLoginError');url.searchParams.delete('next');window.history.replaceState(window.history.state,'',url.pathname+url.search+url.hash)}}
  function close(){clearFeedback();closeRegistration()}
- function start(){
+ async function start(){
   if(redirecting.current||!configuration.data?.enabled||!configuration.data.configured||status==='loading')return;
-  const destination=telegramBrowserLoginDestination(window.location);
+  const current=telegramBrowserLoginDestination(window.location),saved=rememberTelegramAuthResume(current,me?.user?.id??null,{scrollY:window.scrollY}),destination=saved?.destination??current;
+  const controller=new AbortController();navigation.current=controller;
   redirecting.current=true;setPending(true);setNavigationError(false);clearFeedback();
-  try{window.location.assign(telegramBrowserLoginStart(destination,language))}catch{redirecting.current=false;setPending(false);setNavigationError(true)}
+  try{const url=await requestTelegramBrowserLogin(destination,language,controller.signal);if(navigation.current===controller&&!controller.signal.aborted)window.location.assign(url)}catch{if(navigation.current===controller){redirecting.current=false;setPending(false);setNavigationError(true)}}
  }
  const ready=configuration.data?.enabled===true&&configuration.data.configured===true,restoring=status==='loading';
  const notice=errorCode?feedback[errorCode][language]:navigationError?(language==='am'?'Telegramን መክፈት አልቻልንም። እንደገና ይሞክሩ።':'Telegram could not open. Please try again.'):null;

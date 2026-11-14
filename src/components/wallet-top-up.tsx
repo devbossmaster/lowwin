@@ -20,6 +20,7 @@ import {getMiniQueryClient,isPrivateQueryIdentity,readPrivateQuery} from './priv
 import {loadTopUpConfiguration,TOP_UP_CONFIG_URL,TOP_UP_PRESETS,topUpConfigFreshness} from './top-up-prefetch';
 import {CHAPA_TOPUP_MIN_CENTS,CHAPA_TOPUP_MIN_ETB} from '@/lib/chapa-topup-policy';
 import {readPaymentRetryDraft} from '@/lib/payment-retry-draft';
+import {consumeTelegramResumeDraft,registerTelegramResumeDraft,type TelegramTopupResumeDraft} from '@/lib/telegram-auth-resume';
 import type {WalletBalance} from '@/modules/wallet/balance';
 import styles from './wallet-sheet.module.css';
 import reference from './reference-top-up.module.css';
@@ -40,6 +41,16 @@ function TopUp({onClose,returnFocusRef,initialChapaId,retryDraft,embedded=false,
  const [amount,setAmount]=useState(()=>retryDraft?.amount??''),[method,setMethod]=useState(()=>retryDraft?.paymentMethod??''),[phone,setPhone]=useState(()=>normalizePaymentPhone(retryDraft?.phone??'')?.slice(3)??''),[error,setError]=useState(''),[retrying,setRetrying]=useState(false),[stage,setStage]=useState<'amount'|'bonus'|'payment'>(retryDraft?'payment':'amount'),[showProgress,setShowProgress]=useState(!!initialChapaId);
  const id=useId(),submitting=useRef(false),phoneEdited=useRef(!!retryDraft?.phone),reportedCredit=useRef<string|null>(null),alive=useRef(true);
  const [preparing,setPreparing]=useState(false);
+ const authResumeRestored=useRef(false),authResumeDraft=useRef<TelegramTopupResumeDraft|null>(null);
+ authResumeDraft.current=payment.started||payment.busy||retrying||preparing?null:{kind:'topup',amount,method:supported.has(method)?method as TelegramTopupResumeDraft['method']:null,stage};
+ useEffect(()=>registerTelegramResumeDraft(me?.user?.id??null,()=>authResumeDraft.current),[me?.user?.id]);
+ useEffect(()=>{
+  if(!authenticated||!me?.user?.id||authResumeRestored.current||payment.started)return;
+  authResumeRestored.current=true;
+  const saved=consumeTelegramResumeDraft(me.user.id,'topup');if(!saved)return;
+  setAmount(saved.amount);setMethod(saved.method??'');setStage(saved.stage);
+  // The registered contact supplies the phone again; no payment is initialized.
+ },[authenticated,me?.user?.id,payment.started]);
  useEffect(()=>{alive.current=true;return()=>{alive.current=false}},[]);
  const reportError=(message:string)=>{setError(message);if(message)notice(message,'error',{id:`topup-validation:${id}`,duration:6000})};
  const wallet=usePrivateQuery<WalletBalance>('/api/wallet',{enabled:authenticated,freshnessMs:15000});

@@ -1,4 +1,5 @@
 import { db } from '@/lib/db';
+import {randomUUID} from 'node:crypto';
 import {readRequestText,RequestBodyError} from '@/lib/request-body';
 import {allowIdentityRequest} from '@/lib/rate-limit';
 import { getEnv } from '@/lib/env';
@@ -9,13 +10,16 @@ import { miniAppBody, validateTelegramInitData } from './telegram-validation';
 import {bindOwnContact} from './own-contact';
 import {getLaunchSession} from './mini-access';
 import {telegramBootstrap} from './mini-account';
-import {attributeNewReferralInTransaction,referralSchemaReady} from '../referrals/service';
+import {attributeNewReferralInTransaction} from '../referrals/service';
+import {handleTelegramOIDC} from './telegram-oidc-handler';
 
 export async function handleAuth(request: Request) {
   const path = new URL(request.url).pathname.replace('/api/auth', '');
+  if(path==='/telegram/config'&&request.method==='GET')return handleTelegramOIDC(request,path);
+  const oidc=path==='/sign-in/social'&&request.method==='POST'||path==='/callback/telegram-oidc'&&request.method==='GET';
   const emailPosts=['/sign-up/email','/sign-in/email','/send-verification-email','/request-password-reset','/reset-password'];
   const allowedGet=path==='/get-session'||path==='/verify-email'||/^\/reset-password\/[A-Za-z0-9_-]+$/.test(path);
-  if (!((request.method==='GET'&&allowedGet)||(request.method==='POST'&&[...emailPosts,'/telegram/miniapp/signin','/sign-out','/lowin/dev-identity'].includes(path))))return new Response(null,{status:404});
+  if (!oidc&&!((request.method==='GET'&&allowedGet)||(request.method==='POST'&&[...emailPosts,'/telegram/miniapp/signin','/sign-out','/lowin/dev-identity'].includes(path))))return new Response(null,{status:404});
   let env;
   try { env = getEnv(); } catch { return Response.json({ error: 'Authentication is not configured yet.' }, { status: 503 }); }
   if (request.method === 'POST' && request.headers.get('origin') !== new URL(env.BETTER_AUTH_URL).origin) return Response.json({ error: 'Invalid origin' }, { status: 403 });
@@ -23,6 +27,7 @@ export async function handleAuth(request: Request) {
     try {const body=await readRequestText(request,emailPosts.includes(path)?4096:20000);request=new Request(request.url,{method:request.method,headers:request.headers,body})}
     catch(error){return Response.json({error:error instanceof RequestBodyError?error.message:'Invalid request.'},{status:error instanceof RequestBodyError?error.status:400,headers:{'Cache-Control':'private, no-store'}})}
   }
+  if(oidc)return handleTelegramOIDC(request,path);
   if(emailPosts.includes(path)||request.method==='GET'&&path!=='/get-session'){
     const started=performance.now(),headers={'Cache-Control':'private, no-store, max-age=0','Vary':'Cookie','X-Robots-Tag':'noindex'};
     try{
@@ -79,7 +84,15 @@ export async function handleAuth(request: Request) {
       return await db.$transaction(async tx => {
         stage='identity-lock';
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`telegram:${identity}`}, 0))`;
-        const existed=path==='/telegram/miniapp/signin'&&referralSchemaReady()?await tx.user.findUnique({where:{telegramId:identity},select:{id:true}}):null;
+        const existed=path==='/telegram/miniapp/signin'?await tx.user.findUnique({where:{telegramId:identity},select:{id:true,role:true,staffMember:{select:{userId:true}}}}):null;
+        if(path==='/telegram/miniapp/signin'){
+          const canonical=await tx.account.findUnique({where:{providerId_accountId:{providerId:'telegram',accountId:identity}},select:{userId:true,telegramId:true}});
+          if(existed&&(existed.role!=='member'||existed.staffMember)||canonical&&(canonical.userId!==existed?.id||canonical.telegramId!==null&&canonical.telegramId!==identity))throw new Response(null,{status:403});
+          // Bot contact registration predates an authentication account. A fresh
+          // signed numeric identity can bind only that same existing member,
+          // under the shared identity lock; phone/name matching never links it.
+          if(existed&&!canonical)await tx.account.create({data:{id:randomUUID(),providerId:'telegram',accountId:identity,userId:existed.id,telegramId:identity}});
+        }
         stage='plugin-sign-in';
         const response = await createAuth(tx).handler(request);
         if (!response.ok) throw response;

@@ -2,7 +2,8 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {PrismaClient} from '@prisma/client';
 import {execFileSync} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
-import {telegram} from '@lowwin/better-auth-telegram';
+import {betterAuth} from 'better-auth';
+import {telegram} from 'better-auth-telegram';
 import {TEST_TOKEN,signedLaunch} from './helpers';
 
 const database=process.env.TEST_DATABASE_URL;
@@ -11,17 +12,33 @@ const legacyPasswordHash="5490727c045ea9de239ddb0e338aa20e:3133421c40f2a4089d655
 const legacyCookie="fixture-pre-upgrade-session-token.xxIBSefknYDC/oh/CczksP5VH6YcoUgsKlAkiwii7rQ=";
 
 describe('reviewed Telegram compatibility surface',()=>{
- const options={botToken:TEST_TOKEN,botUsername:'lowin_fixture_bot',loginWidget:false as const,miniApp:{enabled:true,validateInitData:true}};
- it('keeps only the signed Mini App flow and its rate limits available',()=>{
+ const options={botToken:TEST_TOKEN,botUsername:'lowin_fixture_bot',loginWidget:false,maxAuthAge:300,allowUserToLink:false,miniApp:{enabled:true,validateInitData:true,allowAutoSignin:true},oidc:{enabled:true,clientId:TEST_TOKEN.split(':')[0],clientSecret:'fixture-only-oidc-client-secret',disableIdTokenSignIn:true}};
+ const fixture=()=>betterAuth({baseURL:'http://localhost:3027',secret:'fixture-upstream-auth-secret-thirty-two-characters',logger:{disabled:true},plugins:[telegram(options)]});
+ const request=(path:string,body?:unknown)=>new Request('http://localhost:3027/api/auth/'+path,{method:body===undefined?'GET':'POST',headers:{origin:'http://localhost:3027','content-type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})});
+ it('combines OIDC with signed Mini App authentication while keeping legacy widget endpoints disabled',async()=>{
   const plugin=telegram(options);
   expect(plugin.endpoints).toHaveProperty('signInWithMiniApp');
+  expect(plugin.endpoints).toHaveProperty('getTelegramConfig');
   expect(plugin.endpoints).not.toHaveProperty('signInWithTelegram');
-  expect(plugin).not.toHaveProperty('init');
+  expect(plugin.endpoints).not.toHaveProperty('linkTelegram');
+  expect(plugin.endpoints).not.toHaveProperty('unlinkTelegram');
   expect(plugin.rateLimit.some(rule=>rule.pathMatcher('/telegram/miniapp/signin')&&rule.max===10)).toBe(true);
+  const auth=fixture(),context=await auth.$context;
+  expect(context.socialProviders.some(provider=>provider.id==='telegram-oidc'&&provider.requiresIdTokenNonce===true)).toBe(true);
+  const response=await auth.handler(request('telegram/config'));
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({botUsername:'lowin_fixture_bot',loginWidgetEnabled:false,miniAppEnabled:true,oidcEnabled:true,testMode:false});
+  for(const path of ['telegram/signin','telegram/link','telegram/unlink'])expect((await auth.handler(request(path,{}))).status,path).toBe(404);
  });
- it('fails closed if unreviewed widget, OIDC or unsigned Mini App paths are enabled',()=>{
-  for(const config of [{...options,loginWidget:true},{...options,oidc:{enabled:true}},{...options,miniApp:{enabled:true,validateInitData:false}}])
-   expect(()=>telegram(config)).toThrow('requires signed Mini App authentication');
+ it('requires a valid Mini App signature and the configured five-minute auth age',async()=>{
+  const auth=fixture();
+  const valid=await auth.handler(request('telegram/miniapp/validate',{initData:signedLaunch()}));
+  expect(valid.status).toBe(200);expect(await valid.json()).toMatchObject({valid:true});
+  for(const initData of [signedLaunch({},'wrong-token'),signedLaunch({auth_date:String(Math.floor(Date.now()/1000)-301)})]){
+   const response=await auth.handler(request('telegram/miniapp/signin',{initData}));
+   expect(response.status).toBe(401);
+   expect(response.headers.getSetCookie().some(value=>value.includes('session_token='))).toBe(false);
+  }
  });
 });
 

@@ -28,16 +28,39 @@ describe.skipIf(!url)('required own-contact boundary',()=>{
   expect(await isRegisteredTelegramUser(db,tid)).toBe(false);
   expect(await processContact({...message(id),from:{id,is_bot:false,first_name:'New',last_name:'Player'}})).toBe('VERIFIED');
   const user=await db.user.findUniqueOrThrow({where:{telegramId:tid}});
+  const wallet=await db.wallet.create({data:{userId:user.id}});
+  expect(await db.account.count({where:{userId:user.id}})).toBe(0);
   expect(user.name).toBe('New Player');expect((await contactStatus(db,user.id)).verified).toBe(true);
   expect(await isRegisteredTelegramUser(db,tid)).toBe(true);
   expect(await db.session.count({where:{userId:user.id}})).toBe(0);
   expect(await db.operation.count({where:{userId:user.id}})).toBe(0);
   expect(await processContact(message(id))).toBe('ALREADY_VERIFIED');
   const result=await handleAuth(new Request('http://localhost:3000/api/auth/telegram/miniapp/signin',{method:'POST',headers:{origin:'http://localhost:3000','content-type':'application/json'},body:JSON.stringify({initData:signedLaunch({user:JSON.stringify({id,first_name:'New Player'})})})}));
-  expect(result.status).toBe(200);expect(await db.user.count({where:{telegramId:tid}})).toBe(1);
+  expect(result.status).toBe(200);expect((await result.json()).me.user.id).toBe(user.id);expect(await db.user.count({where:{telegramId:tid}})).toBe(1);
   expect((await db.account.findUniqueOrThrow({where:{providerId_accountId:{providerId:'telegram',accountId:tid}}})).userId).toBe(user.id);
+  expect((await db.wallet.findUniqueOrThrow({where:{userId:user.id}})).id).toBe(wallet.id);
   await db.telegramOwnContact.update({where:{userId:user.id},data:{revokedAt:new Date()}});
   expect(await isRegisteredTelegramUser(db,tid)).toBe(false);
+ });
+ it.each(['foreign-account','mismatched-account-identity','staff','admin-role'] as const)('refuses native account repair for %s without moving accounts or issuing a session',async scenario=>{
+  const id=next(),tid=String(id),{handleAuth}=await import('../src/modules/auth/handler');
+  expect(await processContact(message(id))).toBe('VERIFIED');
+  const user=await db.user.findUniqueOrThrow({where:{telegramId:tid}});
+  let accountOwner=user.id;
+  if(scenario==='foreign-account')accountOwner=(await db.user.create({data:{id:`foreign-${next()}`,name:'Foreign fixture',telegramId:String(next())}})).id;
+  if(scenario==='foreign-account'||scenario==='mismatched-account-identity')await db.account.create({data:{id:`account-${next()}`,providerId:'telegram',accountId:tid,userId:accountOwner,telegramId:scenario==='mismatched-account-identity'?String(next()):tid}});
+  if(scenario==='staff')await db.staffMember.create({data:{userId:user.id,recoveryHashes:[]}});
+  if(scenario==='admin-role')await db.user.update({where:{id:user.id},data:{role:'admin'}});
+  const before=await db.account.findMany({where:{accountId:tid}}),sessions=await db.session.count();
+  const result=await handleAuth(new Request('http://localhost:3000/api/auth/telegram/miniapp/signin',{method:'POST',headers:{origin:'http://localhost:3000','content-type':'application/json'},body:JSON.stringify({initData:signedLaunch({user:JSON.stringify({id,first_name:'Contact fixture'})})})}));
+  expect(result.status).toBe(403);expect(result.headers.getSetCookie()).toEqual([]);
+  expect(await db.account.findMany({where:{accountId:tid}})).toEqual(before);expect(await db.session.count()).toBe(sessions);
+ });
+ it('does not repair a bot-created account from an invalid signed launch',async()=>{
+  const id=next(),{handleAuth}=await import('../src/modules/auth/handler');expect(await processContact(message(id))).toBe('VERIFIED');
+  const user=await db.user.findUniqueOrThrow({where:{telegramId:String(id)}});
+  const result=await handleAuth(new Request('http://localhost:3000/api/auth/telegram/miniapp/signin',{method:'POST',headers:{origin:'http://localhost:3000','content-type':'application/json'},body:JSON.stringify({initData:signedLaunch({user:JSON.stringify({id,first_name:'Contact fixture'})},'wrong-token')})}));
+  expect(result.status).toBe(401);expect(await db.account.count({where:{userId:user.id}})).toBe(0);expect(await db.session.count({where:{userId:user.id}})).toBe(0);
  });
  it('does not treat an existing user without verified contact as registered',async()=>{
   const id=next(),user=await db.user.create({data:{id:`contact-${id}`,name:'Incomplete',telegramId:String(id)}});

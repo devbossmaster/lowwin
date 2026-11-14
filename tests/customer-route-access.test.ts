@@ -22,7 +22,7 @@ describe('public products and registered customer website boundary',()=>{
  });
  it('leaves Home, login/onboarding, staff authentication and signed delivery infrastructure independent',async()=>{
   access.getMiniSession.mockRejectedValue(Error('Customer lookup must not run'));
-  for(const path of ['/','/telegram','/admin','/admin/login','/api/admin/auctions','/api/auth/telegram/browser/config','/api/auth/telegram/browser/start','/api/auth/telegram/browser/callback','/api/onboarding/contact','/api/bot/webhook','/api/payments/chapa/webhook','/payments/chapa/return','/api/health/live','/api/catalog/auctions','/api/catalog/categories','/api/catalog/activity','/api/results/winners'])expect((await proxy(new NextRequest('https://lowwin.test'+path))).headers.get('x-middleware-next')).toBe('1');
+  for(const path of ['/','/telegram','/admin','/admin/login','/api/admin/auctions','/api/auth/telegram/config','/api/auth/sign-in/social','/api/auth/callback/telegram-oidc','/api/onboarding/contact','/api/bot/webhook','/api/payments/chapa/webhook','/payments/chapa/return','/api/health/live','/api/catalog/auctions','/api/catalog/categories','/api/catalog/activity','/api/results/winners'])expect((await proxy(new NextRequest('https://lowwin.test'+path))).headers.get('x-middleware-next')).toBe('1');
   expect(access.getMiniSession).not.toHaveBeenCalled();
  });
  it('keeps the registration destination strictly within customer routes',()=>{

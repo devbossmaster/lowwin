@@ -38,7 +38,7 @@
 .heroActions>.bone{flex:1;height:48px;border-radius:24px;background:#486286}
 .heroActions>.bone+span{background:var(--bone-light)}
 .heroCaption{position:absolute;right:12px;bottom:5px;width:25%;max-width:160px;height:5px;background:#8c99ad}
-@media(max-width:639px){.heroBlock{padding-bottom:76px}.heroActions{left:12px;bottom:18px;width:calc(100% - 24px);max-width:none}}
+@media(max-width:639px){.heroActions{left:8px;bottom:7px;width:calc(100% - 16px);max-width:240px;gap:6px}.heroActions>.bone{flex:0 1 42%;height:30px}.heroCaption{right:8px;bottom:3px;height:5px}}
 .gallery{width:100%;aspect-ratio:1840/800;border-radius:16px;background:#dfdcd2}
 .thumbnails{display:flex;gap:9px;overflow:hidden}
 .thumbnails>.bone{width:58px;height:48px;flex:none;border-radius:10px}

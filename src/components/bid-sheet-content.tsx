@@ -18,6 +18,7 @@ import {clearWalletBidCommand,readWalletBidCommand,recoverWalletBidCommand,retai
 import {clearBidFundingDraft,readBidFundingDraft,retainBidFundingDraft} from '@/lib/bid-funding-draft';
 import {readChapaOriginalAttempt,retainChapaOriginalAttempt} from '@/lib/chapa-original-attempt';
 import {readPaymentRetryDraft} from '@/lib/payment-retry-draft';
+import {consumeTelegramResumeDraft,registerTelegramResumeDraft,type TelegramBidResumeDraft} from '@/lib/telegram-auth-resume';
 import {AccountSheetFooter} from './account-sheet';
 import {AuctionCountdown} from './auction-countdown';
 import {isFullAuction,type BidSheetAuction} from './bid-sheet-preview';
@@ -79,6 +80,17 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
  // Dismissing the complete checkout clears its editable draft, never an unknown payment.
  useEffect(()=>()=>{if(queryIdentity)clearBidFundingDraft(getMiniQueryClient(),queryIdentity,auction.slug)},[queryIdentity,auction.slug]);
  const authenticated=status==='authenticated'&&!!me?.user?.id&&!!queryIdentity,active=known.status==='live'&&(!state||state.open),current=isSubmissionFeeOnly(terms.ruleVersion);
+ const authResumeRestored=useRef(false),authResumeDraft=useRef<TelegramBidResumeDraft|null>(null);
+ authResumeDraft.current=busy||payment.started||receipt||walletRetry?null:{kind:'bid',auctionSlug:auction.slug,auctionCode:auction.code,numbers,input,multiple,numberMode,rangeFrom,rangeTo,rangeStep,method:method&&['wallet','telebirr','cbebirr','mpesa'].includes(method)?method as TelegramBidResumeDraft['method']:null,applyCoupon};
+ useEffect(()=>registerTelegramResumeDraft(me?.user?.id??null,()=>authResumeDraft.current),[me?.user?.id,auction.slug]);
+ useEffect(()=>{
+  if(!authenticated||!me?.user?.id||authResumeRestored.current||payment.started||receipt||walletRetry)return;
+  authResumeRestored.current=true;
+  const saved=consumeTelegramResumeDraft(me.user.id,'bid',auction.slug);if(!saved)return;
+  setNumbers(saved.numbers);setInput(saved.input);setMultiple(saved.multiple);setNumberMode(saved.numberMode);setRangeFrom(saved.rangeFrom);setRangeTo(saved.rangeTo);setRangeStep(saved.rangeStep);setMethod(saved.method);setApplyCoupon(saved.applyCoupon);
+  // Only editable selection is restored. Existing validation/quote preparation
+  // runs normally; the customer must still explicitly choose Continue/Pay.
+ },[authenticated,me?.user?.id,auction.slug,payment.started,receipt,walletRetry]);
  const savedSettings=queryIdentity?readPrivateQuery<ChapaCheckoutConfig>(queryIdentity,TOP_UP_CONFIG_URL,{freshnessMs:60000})?.value:null;
  const methods=usePrivateQuery<ChapaCheckoutConfig>(TOP_UP_CONFIG_URL,{enabled:authenticated&&active,freshnessMs:topUpConfigFreshness(savedSettings)});
  const enabledMethods=methods.data?.enabled?methods.data.methods.filter(item=>providers.some(provider=>provider.slug===item.slug)):[];
