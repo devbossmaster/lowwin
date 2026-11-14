@@ -21,16 +21,16 @@ export function winnerBannerData(auction:BannerAuction,am=false){
 
 /** Product-first announcement. Historical photographs keep their original
  * composition; approved complete banners render as-is at the canonical ratio. */
-export function WinnerBanner({auction,className,priority=false}:{auction:BannerAuction;className?:string;priority?:boolean}){
+export function WinnerBanner({auction,className,priority=false,compact=false}:{auction:BannerAuction;className?:string;priority?:boolean;compact?:boolean}){
  const {language}=useMiniLocale(),am=language==='am',data=winnerBannerData(auction,am);
  if(!data)return null;
- return <div className={`${styles.banner}${className?' '+className:''}`} data-winner-banner data-photo={data.banner?'banner':data.photo?'winner':'product'}>
+ return <div className={`${styles.banner}${className?' '+className:''}`} data-winner-banner data-compact={compact||undefined} data-photo={data.banner?'banner':data.photo?'winner':'product'}>
   <div className={styles.image}><CatalogImage src={data.image} alt={data.banner?(am?`${data.title} — የአሸናፊ ባነር`:`Winner banner for ${data.title}`):data.photo?(am?`${data.title} — የአሸናፊው ፎቶ`:`Winner photograph for ${data.title}`):data.title} className={data.photo&&!data.banner?styles.person:styles.product} priority={priority} sizes="(max-width:480px) 100vw, 600px"/></div>
   {!data.banner&&<div className={styles.copy}>
    <span className={styles.badge}><Trophy size={12} aria-hidden="true"/><MiniPhrase en="Winner" am="አሸናፊ"/></span>
-   <strong className={styles.title} title={data.title}>{data.title}</strong>
+   {!compact&&<strong className={styles.title} title={data.title}>{data.title}</strong>}
    <div className={styles.result}><span className={styles.resultLabel}><MiniPhrase en={data.number?'Winning number':'Winning amount'} am={data.number?'ያሸነፈው ቁጥር':'ያሸነፈው መጠን'}/></span><strong className={styles.value} data-long={data.value.length>12||undefined}>{data.value}</strong></div>
-   <div className={styles.footer}><img src={LOWWIN_LOGO_SRC} width={19} height={19} alt="" decoding="async" aria-hidden="true"/><span>{data.phone??`#${auction.code}`}<small>LOWWIN</small></span></div>
+   {!compact&&<div className={styles.footer}><img src={LOWWIN_LOGO_SRC} width={19} height={19} alt="" decoding="async" aria-hidden="true"/><span>{data.phone??`#${auction.code}`}<small>LOWWIN</small></span></div>}
   </div>}
  </div>;
 }

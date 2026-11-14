@@ -24,7 +24,7 @@ describe('automatic immutable result publication',()=>{
   const {s,tx}=fixture();tx.bid.aggregate.mockResolvedValue({_count:{acceptanceOrder:3},_min:{acceptanceOrder:2n},_max:{acceptanceOrder:3n}});await expect(reviewResult(tx as never,s)).rejects.toMatchObject({code:'ACCEPTANCE_ORDER_MISMATCH'});
  });
  it('creates publication and canonical frozen-media outbox intents together',async()=>{
-  const {tx}=fixture();expect(await publishSettledResultInTransaction(tx as never,'auction')).toMatchObject({alreadyPublished:false,historical:false});expect(tx.outbox.createMany.mock.calls[0][0]).toMatchObject({skipDuplicates:true,data:[{key:'settlement:settlement:completed',kind:'AUCTION_FINALIZED',payload:{imagePath:'/assets/product.webp',settlementId:'settlement'}},{key:'settlement:settlement:participants',kind:'AUCTION_PARTICIPANTS'}]});
+  const {tx}=fixture();expect(await publishSettledResultInTransaction(tx as never,'auction')).toMatchObject({alreadyPublished:false,historical:false});expect(tx.outbox.createMany.mock.calls[0][0]).toMatchObject({skipDuplicates:true,data:[{key:'settlement:settlement:completed',kind:'AUCTION_FINALIZED',payload:{imagePath:'/assets/product.webp',settlementId:'settlement'}}]});
  });
  it('blocks publication and every announcement intent when the immutable proof does not match',async()=>{
   const {tx,row}=fixture();tx.auctionSettlement.findUnique.mockResolvedValue({...row,acceptedCount:4});
@@ -35,7 +35,7 @@ describe('automatic immutable result publication',()=>{
   tx.$queryRaw.mockResolvedValue([{now:new Date('2026-01-01T11:59:30Z')}]);await expect(publishSettledResultInTransaction(tx as never,'auction')).rejects.toMatchObject({code:'RESULT_NOT_READY'});expect(tx.outbox.createMany).not.toHaveBeenCalled();
   tx.$queryRaw.mockResolvedValue([{now:new Date('2026-01-01T12:00:01Z')}]);await expect(publishSettledResultInTransaction(tx as never,'auction')).rejects.toMatchObject({code:'PARTICIPANT_PROOF_MISMATCH'});expect(tx.outbox.createMany).not.toHaveBeenCalled();
  });
- it('announces cancellation honestly without a winner participant job',async()=>{const {tx}=fixture({cancelled:true});await publishSettledResultInTransaction(tx as never,'auction');expect(tx.outbox.createMany.mock.calls[0][0].data).toHaveLength(1)});
+ it('keeps cancellation publication without sending a removed announcement',async()=>{const {tx}=fixture({cancelled:true});await publishSettledResultInTransaction(tx as never,'auction');expect(tx.resultPublication.create).toHaveBeenCalledTimes(1);expect(tx.outbox.createMany).not.toHaveBeenCalled()});
  it('silently backfills pre-cutover history and fails closed if policy is absent',async()=>{
   const {tx}=fixture();tx.resultPublicationPolicy.findUnique.mockResolvedValue({id:'auto',automaticFrom:new Date('2026-01-03')});expect(await publishSettledResultInTransaction(tx as never,'auction')).toMatchObject({historical:true});expect(tx.outbox.createMany).not.toHaveBeenCalled();
   tx.resultPublicationPolicy.findUnique.mockResolvedValue(null as never);await expect(publishSettledResultInTransaction(tx as never,'auction')).rejects.toMatchObject({code:'PUBLICATION_POLICY_NOT_READY'});

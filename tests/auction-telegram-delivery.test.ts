@@ -9,7 +9,7 @@ import {notificationDispatchFixture} from './notification-dispatch-fixture';
 
 const now=new Date('2026-10-30T09:00:00Z'),imageId='11111111-2222-4333-8444-555555555555';
 const auction=(change:Record<string,unknown>={})=>({slug:'rugass-power-bank',publicCode:42,publishedAt:new Date(now.getTime()-60000),startsAt:new Date(now.getTime()+1800000),endsAt:new Date(now.getTime()+86400000),status:'SCHEDULED',isDemo:false,isSettlementFixture:false,testRunId:null,presentation:{title:'Rugass 20,000 mAh power bank',images:[{path:`/api/media/${imageId}`}]},product:{title:'Original product title',visible:true,images:[]},result:null,settlement:null,...change});
-const job=()=>({id:'auction-message',key:'global:starting-soon:auction:user:player',kind:'AUCTION_STARTING_SOON',payload:{auctionId:'auction',recipientUserId:'player'},state:'PENDING',attempts:0,nextAttemptAt:new Date(0),createdAt:new Date(0),sentAt:null,lastError:null,leaseToken:null,leaseUntil:null,claimedAt:null,settlementId:null,testRunId:null}) as Outbox;
+const job=()=>({id:'auction-message',key:'global:upcoming:auction:user:player',kind:'AUCTION_UPCOMING',payload:{auctionId:'auction',recipientUserId:'player'},state:'PENDING',attempts:0,nextAttemptAt:new Date(0),createdAt:new Date(0),sentAt:null,lastError:null,leaseToken:null,leaseUntil:null,claimedAt:null,settlementId:null,testRunId:null}) as Outbox;
 let photoBytes:Buffer;
 beforeEach(async()=>{vi.stubEnv('MINI_APP_URL','https://lowwin.test');vi.stubEnv('TELEGRAM_BOT_TOKEN','123456789:fixture-token');photoBytes=await sharp({create:{width:184,height:80,channels:3,background:'#c9a227'}}).png().toBuffer()});
 afterEach(()=>vi.unstubAllEnvs());
@@ -30,7 +30,7 @@ describe('concise auction Telegram messages',()=>{
   const f=fixture();await dispatchOne(f.client,f.bot);
   expect(f.row.state).toBe('SENT');expect(f.sendMessage).not.toHaveBeenCalled();expect(f.tx.managedMedia.findUnique).toHaveBeenCalledWith({where:{id:imageId},select:{bytes:true}});
   expect(f.sendPhoto).toHaveBeenCalledWith('900000001',expect.any(InputFile),{
-   caption:'⏰ Rugass 20,000 mAh power bank\nOpens within 1 hour · በ1 ሰዓት ውስጥ ይጀምራል\n🗓 30 Oct 2026, 12:30 EAT\n#42',
+   caption:'⏰ Rugass 20,000 mAh power bank\nOpens within 1 day · በ1 ቀን ውስጥ ይጀምራል\n30 Oct 2026, 12:30 EAT\n#42',
    reply_markup:{inline_keyboard:[[{text:'View auction · ጨረታውን ይመልከቱ',web_app:{url:'https://lowwin.test/auctions/rugass-power-bank'}}]]},
   });
  });
@@ -54,7 +54,7 @@ describe('concise auction Telegram messages',()=>{
   expect(await dispatchOne(f.client,f.bot)).toBe(false);expect(f.sendPhoto).toHaveBeenCalledOnce();
  });
  it('keeps the result text and exact button when its frozen product image cannot be decoded',async()=>{
-  const productImage=randomUUID(),f=fixture(auction({presentation:{title:'Missing result image',images:[{path:'/api/media/'+productImage}]},status:'CLOSED',endsAt:new Date(now.getTime()-1000),settlement:{id:'settlement',outcome:'NO_WINNER',completedAt:new Date(now.getTime()-1000),publication:{publishedAt:now}}}));f.row.kind='AUCTION_RESULT';
+  const productImage=randomUUID(),f=fixture(auction({presentation:{title:'Missing result image',images:[{path:'/api/media/'+productImage}]},status:'CLOSED',endsAt:new Date(now.getTime()-1000),settlement:{id:'settlement',outcome:'WINNER',decision:'LOWEST_UNIQUE',winningPoints:'0.54',winner:{name:'Player',ownContact:null},completedAt:new Date(now.getTime()-1000),publication:{publishedAt:now}}}));f.row.kind='AUCTION_RESULT';
   f.tx.managedMedia.findUnique.mockResolvedValueOnce({bytes:Buffer.from('corrupt-photo')});
   await dispatchOne(f.client,f.bot);expect(f.row.state).toBe('SENT');expect(f.sendPhoto).not.toHaveBeenCalled();expect(f.sendMessage).toHaveBeenCalledOnce();expect(JSON.stringify(f.sendMessage.mock.calls[0][2])).toContain('/winners/42');
  });

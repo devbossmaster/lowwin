@@ -51,6 +51,7 @@
 .admin-people .people-id{font-size:11px;overflow-wrap:anywhere;max-width:28ch;word-break:break-word}.people-muted{color:#646158;font-size:13px}.admin-people .people-money{color:#756023;font-weight:700;font-variant-numeric:tabular-nums}.admin-people .people-held{color:#88531b;font-variant-numeric:tabular-nums;font-weight:600}
 .admin-people .people-phone{display:inline-flex;gap:7px;align-items:center;color:#756023;text-decoration:none;white-space:nowrap;font-weight:600;min-height:44px}
 .people-row-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.people-row-actions button{white-space:nowrap}
+.admin-root .admin-auction-broadcast-link{display:flex;align-items:center;gap:7px;min-height:44px;width:max-content;color:var(--button-primary,#2563eb);font-size:13px;font-weight:600;text-decoration:none}.admin-root .admin-auction-broadcast-link:hover{text-decoration:underline}
 .people-badge{display:inline-flex;align-items:center;border-radius:6px;background:#f3f3f3;color:#756023;font-size:12px;font-weight:600;padding:4px 9px;margin-top:8px;white-space:nowrap}.people-badge.is-warning{background:#fff2dc;color:#785016}.people-done{display:flex;align-items:center;gap:6px;color:#756023;font-weight:600}
 .people-section-head{display:flex;align-items:center;justify-content:space-between;gap:16px}.people-section-head h2{font-size:20px;line-height:1.4;margin:0;overflow-wrap:anywhere}.people-section-head>button{flex:none}
 .people-detail{max-width:850px;margin-top:32px}.people-detail-name{margin:20px 0 24px}.people-detail-name>strong{font-size:22px}

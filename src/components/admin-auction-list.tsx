@@ -3,7 +3,8 @@
 import {LoadingSpinner} from './loading-spinner';
 import {AdminPhoto} from './admin-catalog';
 import {AdminLink as Link} from './admin-query';
-import {Plus} from 'lucide-react';
+import {Plus,Megaphone} from 'lucide-react';
+import {useAdminAccess} from './admin-shell';
 import type {auctionList} from '@/modules/admin/workspace-read';
 import {AdminHeading,Empty,ErrorNotice,Pagination,Status,eat,statusLabel,useAdminRead,useQueueParams} from './admin-ui';
 
@@ -17,7 +18,7 @@ const views:{id:View;label:string}[]=[
 const runningStatuses=['UPCOMING','LIVE','CLOSING','FAILED'];
 
 export function AdminAuctionList(){
-  const queue=useQueueParams();
+  const queue=useQueueParams(),owner=useAdminAccess().role==='OWNER';
   const rawStatus=queue.params.get('status')??'';
   const rawView=queue.params.get('view');
   const view:View=views.some(item=>item.id===rawView)?rawView as View:rawStatus==='CANCELLED'?'cancelled':rawStatus==='DRAFT'?'drafts':rawStatus==='COMPLETED'?'completed':'in-progress';
@@ -52,7 +53,7 @@ export function AdminAuctionList(){
           <td>{item.participants} people{item.terms&&item.participants<item.terms.minParticipants&&<small>Below {item.terms.minParticipants}-person minimum</small>}</td>
           <td>{item.acceptedBids}</td>
           <td><small>Starts {eat(item.startsAt)}</small><small>Ends {eat(item.endsAt)}</small></td>
-          <td><Link href={`/admin/auctions/${item.id}`}>{item.displayStatus==='DRAFT'?'Edit draft':['COMPLETED','CANCELLED'].includes(item.displayStatus)?'View result':'Open auction'} →</Link></td>
+          <td><Link href={`/admin/auctions/${item.id}`}>{item.displayStatus==='DRAFT'?'Edit draft':['COMPLETED','CANCELLED'].includes(item.displayStatus)?'View result':'Open auction'} →</Link>{owner&&item.displayStatus==='LIVE'&&!item.isDemo&&<Link className="admin-auction-broadcast-link" href={`/admin/notifications?auction=${item.id}`}><Megaphone size={16}/>Broadcast</Link>}</td>
         </tr>)}
       </tbody></table>{!query.data.items.length&&<Empty title={`No ${view.replace('-', ' ')} auctions`}>Adjust the filters or choose another tab.</Empty>}</div>
       <Pagination page={query.data.page} total={query.data.total} totalPages={query.data.totalPages} onPage={page=>queue.set({page:String(page)})}/>

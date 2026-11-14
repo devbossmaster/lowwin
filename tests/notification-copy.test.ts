@@ -55,6 +55,11 @@ describe('notification display language',()=>{
   expect(notificationAge('2026-09-29T12:00:00Z','am',now)).toBe('አሁን');
   expect(notificationAge('2026-09-29T11:00:00Z','am',now)).toBe(new Intl.RelativeTimeFormat('am-ET',{numeric:'auto'}).format(-1,'hour'));
  });
+ it('uses the Ethiopian calendar day for older notifications across UTC midnight',()=>{
+  const date='2026-10-01T22:30:00Z',now=Date.parse('2026-11-14T12:00:00Z');
+  expect(notificationAge(date,'en',now)).toBe('Oct 2');
+  expect(notificationAge(date,'am',now)).toBe(new Date(date).toLocaleDateString('am-ET',{month:'short',day:'numeric',timeZone:'Africa/Addis_Ababa'}));
+ });
 });
 describe('home introduction',()=>{
  it('replaces retired copy in both languages while preserving Owner edits',()=>{

@@ -17,7 +17,7 @@ async function persistentPhoto(api:PhotoApi,chatId:string,source:Source,options:
  const cached=memory.get(memoryKey),saved=cached&&cached.until>performance.now()?cached:await client.telegramMediaCache.findUnique({where,select:{fileId:true}});
  const token=randomUUID();let owner=false;
  if(!saved?.fileId){
-  const acquired=await client.$queryRaw<{botId:string}[]>`INSERT INTO "TelegramMediaCache" ("botId","contentKey","uploadToken","uploadLeaseUntil","updatedAt") VALUES (${botId},${key},${token},clock_timestamp()+interval '120 seconds',clock_timestamp()) ON CONFLICT("botId","contentKey") DO UPDATE SET "uploadToken"=EXCLUDED."uploadToken","uploadLeaseUntil"=EXCLUDED."uploadLeaseUntil","updatedAt"=clock_timestamp() WHERE "TelegramMediaCache"."fileId" IS NULL AND ("TelegramMediaCache"."uploadToken" IS NULL OR "TelegramMediaCache"."uploadLeaseUntil"<=clock_timestamp()) RETURNING "botId"`;
+  const acquired=await client.$queryRaw<{botId:string}[]>`INSERT INTO "TelegramMediaCache" ("botId","contentKey","uploadToken","uploadLeaseUntil","updatedAt") VALUES (${botId},${key},${token},(clock_timestamp() AT TIME ZONE 'UTC')+interval '120 seconds',(clock_timestamp() AT TIME ZONE 'UTC')) ON CONFLICT("botId","contentKey") DO UPDATE SET "uploadToken"=EXCLUDED."uploadToken","uploadLeaseUntil"=EXCLUDED."uploadLeaseUntil","updatedAt"=(clock_timestamp() AT TIME ZONE 'UTC') WHERE "TelegramMediaCache"."fileId" IS NULL AND ("TelegramMediaCache"."uploadToken" IS NULL OR "TelegramMediaCache"."uploadLeaseUntil"<=(clock_timestamp() AT TIME ZONE 'UTC')) RETURNING "botId"`;
   if(!acquired.length)throw new TelegramMediaDeferredError(new Date(Date.now()+1000));
   owner=true;
  }

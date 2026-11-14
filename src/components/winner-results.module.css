@@ -9,3 +9,6 @@
 .carouselRegion{position:relative}.carousel[data-automatic]{scroll-snap-type:none;scroll-behavior:auto}.carouselToggle{display:flex;align-items:center;justify-content:center;gap:5px;min-width:72px;min-height:44px;margin:0 16px 0 auto;padding:6px 10px;border:0;border-radius:22px;background:transparent;color:#71694f;font:inherit;font-size:11px;cursor:pointer}.carouselToggle:focus-visible{outline:2px solid var(--brand-primary, #6d4cfd);outline-offset:2px}
 @media(min-width:700px){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.carousel .card{flex-basis:330px}}
 @media(prefers-reduced-motion:reduce){.resultSurface{scroll-behavior:auto}}
+
+/* Compact Home cards keep the full banner and two useful lines. */
+.carousel .card{flex:0 0 clamp(208px,56vw,280px);border:0;border-radius:16px}.carousel .cardBody{padding:9px 10px 11px}.carousel .cardBody h3{display:block;margin:0;font-size:13px;font-weight:650;line-height:1.45;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.carousel .cardBody .cardDate{display:block;margin:4px 0 0;color:#657181;font-size:10px;line-height:1.5}.carousel .photo{background:#eaf3ff}.carousel .photo img{object-fit:contain}.carousel .badge{top:7px;left:7px;padding:4px 7px;background:#2563eb;color:#fff;font-size:9px}.carousel{scrollbar-color:#c7d5eb transparent}

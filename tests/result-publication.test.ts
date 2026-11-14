@@ -26,7 +26,7 @@ describe.skipIf(!url)('automatic publication on isolated PostgreSQL',()=>{
  it('automatically exposes a validated result with real publication time and accurate distinct/unique counts',async()=>{
   const {auction,first}=await populated(),[settled,replayed]=await Promise.all([settlement.closeAuction(db,auction.id),settlement.closeAuction(db,auction.id)]),row=await db.resultPublication.findUniqueOrThrow({where:{settlementId:settled.id}});expect(replayed.id).toBe(settled.id);
   expect(row).toMatchObject({historical:false,actorId:'system:auto-publication'});expect(settled.winnerUserId).toBe(first);expect(settled.winningPoints?.toString()).toBe('2');
-  expect(await db.outbox.count({where:{settlementId:settled.id}})).toBe(2);
+  expect(await db.outbox.count({where:{settlementId:settled.id}})).toBe(1);
   const view=await results.getPublicResult(db,String(auction.publicCode));expect(view?.result).toMatchObject({publishedAt:row.publishedAt.toISOString(),winnerDisplay:'Actual Telegram name',winnerUsername:'@winner_fixture',winningPoints:'2'});
   const stats=await breakdown.getResultBreakdown(db,String(auction.publicCode),breakdown.breakdownQuery.parse({}));expect(stats).toMatchObject({totalBids:3,totalPlayers:2,totalAmounts:2,totalUniqueAmounts:1});
   const serialized=JSON.stringify(stats);expect(serialized).not.toMatch(/phoneCipher|telegramId|winnerUserId|proof|acceptanceOrder/);
@@ -38,7 +38,7 @@ describe.skipIf(!url)('automatic publication on isolated PostgreSQL',()=>{
   const {auction}=await populated(),s=await db.$transaction(tx=>settlement.closeAuctionInTransaction(tx,auction.id));
   expect(await db.resultPublication.findUnique({where:{settlementId:s.id}})).toBeNull();const before=await finance();
   const receipts=await Promise.all([publication.recoverUnpublishedResult(db),publication.publishSettledResult(db,auction.id)]);expect(receipts.some(r=>'settlementId'in r&&r.settlementId===s.id)).toBe(true);
-  expect(await db.resultPublication.count({where:{settlementId:s.id}})).toBe(1);expect(await db.outbox.count({where:{settlementId:s.id}})).toBe(2);expect(await finance()).toBe(before);
+  expect(await db.resultPublication.count({where:{settlementId:s.id}})).toBe(1);expect(await db.outbox.count({where:{settlementId:s.id}})).toBe(1);expect(await finance()).toBe(before);
   const original=await db.resultPublication.findUniqueOrThrow({where:{settlementId:s.id}});await publication.publishSettledResult(db,auction.id);expect((await db.resultPublication.findUniqueOrThrow({where:{settlementId:s.id}})).publishedAt).toEqual(original.publishedAt);expect(await finance()).toBe(before);
  });
  it('rolls result publication back if its notification intents cannot commit',async()=>{
@@ -49,7 +49,7 @@ describe.skipIf(!url)('automatic publication on isolated PostgreSQL',()=>{
   await publication.publishSettledResult(db,auction.id);
  });
  it('publishes automatic zero/one participant cancellation with no winner and no invented fee refund',async()=>{
-  for(const one of [false,true]){const userId=one?await player():null,auction=await bidAuction(db,{ruleVersion:'lowest-unique-v4',fee:1,isDemo:false,endDelayMs:500});if(userId)await bids.submitBid(db,{userId,auctionSlug:auction.slug!,amount:'3',feeVersion:1,key:randomUUID()});await wait(auction);const s=await settlement.closeAuction(db,auction.id);expect(s).toMatchObject({outcome:'CANCELLED',decision:'MINIMUM_PARTICIPANTS',winnerUserId:null});expect(s.movements.every(m=>m.refundedFees.isZero())).toBe(true);expect(await db.outbox.count({where:{settlementId:s.id,kind:'AUCTION_FINALIZED'}})).toBe(1);expect(await db.outbox.count({where:{settlementId:s.id,kind:'AUCTION_PARTICIPANTS'}})).toBe(0)}
+  for(const one of [false,true]){const userId=one?await player():null,auction=await bidAuction(db,{ruleVersion:'lowest-unique-v4',fee:1,isDemo:false,endDelayMs:500});if(userId)await bids.submitBid(db,{userId,auctionSlug:auction.slug!,amount:'3',feeVersion:1,key:randomUUID()});await wait(auction);const s=await settlement.closeAuction(db,auction.id);expect(s).toMatchObject({outcome:'CANCELLED',decision:'MINIMUM_PARTICIPANTS',winnerUserId:null});expect(s.movements.every(m=>m.refundedFees.isZero())).toBe(true);expect(await db.outbox.count({where:{settlementId:s.id,kind:'AUCTION_FINALIZED'}})).toBe(0);expect(await db.outbox.count({where:{settlementId:s.id,kind:'AUCTION_PARTICIPANTS'}})).toBe(0)}
  });
  it('keeps cutover policy and publication immutable',async()=>{
   await expect(db.resultPublicationPolicy.update({where:{id:'auto'},data:{automaticFrom:new Date()}})).rejects.toThrow();const p=await db.resultPublication.findFirstOrThrow();await expect(db.resultPublication.update({where:{settlementId:p.settlementId},data:{reason:'forged'}})).rejects.toThrow();

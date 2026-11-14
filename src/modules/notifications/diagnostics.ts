@@ -29,10 +29,10 @@ export function notificationTimingSnapshot(reset=false){
 export async function notificationDatabaseSnapshot(client:PrismaClient){
  const [queue]=await client.$queryRaw<{pending:bigint;due:bigint;inFlight:bigint;retrying:bigint;oldestDueAgeMs:number}[]>`
   SELECT COUNT(*) AS pending,
-   COUNT(*) FILTER(WHERE "nextAttemptAt"<=clock_timestamp() AND ("leaseUntil" IS NULL OR "leaseUntil"<=clock_timestamp())) AS due,
-   COUNT(*) FILTER(WHERE "leaseUntil">clock_timestamp()) AS "inFlight",
-   COUNT(*) FILTER(WHERE attempts>0 AND ("leaseUntil" IS NULL OR "leaseUntil"<=clock_timestamp())) AS retrying,
-   COALESCE(MAX(EXTRACT(EPOCH FROM clock_timestamp()-"createdAt")*1000) FILTER(WHERE "nextAttemptAt"<=clock_timestamp() AND ("leaseUntil" IS NULL OR "leaseUntil"<=clock_timestamp())),0)::float AS "oldestDueAgeMs"
+   COUNT(*) FILTER(WHERE "nextAttemptAt"<=(clock_timestamp() AT TIME ZONE 'UTC') AND ("leaseUntil" IS NULL OR "leaseUntil"<=(clock_timestamp() AT TIME ZONE 'UTC'))) AS due,
+   COUNT(*) FILTER(WHERE "leaseUntil">(clock_timestamp() AT TIME ZONE 'UTC')) AS "inFlight",
+   COUNT(*) FILTER(WHERE attempts>0 AND ("leaseUntil" IS NULL OR "leaseUntil"<=(clock_timestamp() AT TIME ZONE 'UTC'))) AS retrying,
+   COALESCE(MAX(EXTRACT(EPOCH FROM (clock_timestamp() AT TIME ZONE 'UTC')-"createdAt")*1000) FILTER(WHERE "nextAttemptAt"<=(clock_timestamp() AT TIME ZONE 'UTC') AND ("leaseUntil" IS NULL OR "leaseUntil"<=(clock_timestamp() AT TIME ZONE 'UTC'))),0)::float AS "oldestDueAgeMs"
    FROM "Outbox" WHERE state='PENDING' AND kind NOT IN ('GLOBAL_CAMPAIGN','AUCTION_FINALIZED','AUCTION_PARTICIPANTS')`;
  const [activity]=await client.$queryRaw<{connections:bigint;active:bigint;idleInTransaction:bigint;waiting:bigint;oldestTransactionMs:number}[]>`
   SELECT COUNT(*) AS connections,COUNT(*) FILTER(WHERE state='active') AS active,

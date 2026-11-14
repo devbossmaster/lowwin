@@ -2,6 +2,7 @@ import type {ChapaCheckout,Outbox,Prisma} from '@prisma/client';
 import {chapaReturnPath} from '@/lib/chapa-return-link';
 import {centsToEtb} from '@/lib/money';
 
+import {notificationRetired} from './policy';
 export const chapaReceiptKind='CHAPA_PAYMENT_CONFIRMED';
 type ReceiptOrder=Pick<ChapaCheckout,'id'|'userId'|'purpose'|'status'|'providerStatus'|'verificationState'|'creditJournalId'|'bidId'|'receipt'|'currency'|'amountCents'|'mode'|'phoneBotId'>;
 
@@ -23,6 +24,7 @@ function receiptOutcome(order:ReceiptOrder){
  * The unique key deduplicates confirmation events, not Telegram's external send:
  * the existing worker can repeat a message after a send/commit crash ambiguity. */
 export async function queueChapaReceipt(tx:Prisma.TransactionClient,order:ReceiptOrder){
+ if(notificationRetired(chapaReceiptKind))return null;
  if(!receiptOutcome(order)||!chapaReturnPath(order.id))return null;
  const key=`chapa:${order.id}:telegram-confirmed`;
  const receipt=await tx.outbox.upsert({where:{key},create:{key,kind:chapaReceiptKind,payload:{checkoutId:order.id,recipientUserId:order.userId}},update:{}});
@@ -36,6 +38,7 @@ export async function queueChapaReceipt(tx:Prisma.TransactionClient,order:Receip
 
 /** Re-read proof and recipient ownership instead of trusting an outbox snapshot. */
 export async function chapaReceiptContent(tx:Prisma.TransactionClient,row:Pick<Outbox,'kind'|'payload'>){
+ if(notificationRetired(row.kind))return null;
  if(row.kind!==chapaReceiptKind)return null;
  if(!row.payload||typeof row.payload!=='object'||Array.isArray(row.payload))return null;
  const payload=row.payload as {checkoutId?:unknown;recipientUserId?:unknown;merchantRecipientTelegramId?:unknown};

@@ -52,9 +52,9 @@ export async function publishSettledResultInTransaction(tx:Prisma.TransactionCli
  const policy=await tx.resultPublicationPolicy.findUnique({where:{id:'auto'}});if(!policy)throw new ResultPublicationError('PUBLICATION_POLICY_NOT_READY');
  const reviewed=await reviewResult(tx,s),historical=options.forceSilent===true||s.completedAt<policy.automaticFrom;
  const publication=await tx.resultPublication.create({data:{settlementId:s.id,actorId:'system:auto-publication',proofHash:reviewed.proofHash,historical,reason:historical?'Validated historical settlement; silent automatic backfill':'Automatic publication of validated immutable settlement'}});
- if(!historical){
+ if(!historical&&s.outcome==='WINNER'){
   const snapshot=s.auction.presentation as {images?:{path?:string}[]}|null,imagePath=snapshot?.images?.[0]?.path??s.auction.product?.images[0]?.path;
-  const rows=[{key:`settlement:${s.id}:completed`,kind:'AUCTION_FINALIZED',payload:{auctionId,settlementId:s.id,outcome:s.outcome,...(imagePath?{imagePath}:{})}},...(s.outcome!=='CANCELLED'?[{key:`settlement:${s.id}:participants`,kind:'AUCTION_PARTICIPANTS',payload:{auctionId,settlementId:s.id}}]:[])];
+  const rows=[{key:`settlement:${s.id}:completed`,kind:'AUCTION_FINALIZED',payload:{auctionId,settlementId:s.id,outcome:s.outcome,...(imagePath?{imagePath}:{})}}];
   await tx.outbox.createMany({data:rows.map(row=>({...row,settlementId:s.id,testRunId:s.auction.testRunId})),skipDuplicates:true});
  }
  await tx.auction.update({where:{id:auctionId},data:{publicationErrorCode:null,nextPublicationAttemptAt:null}});

@@ -1,6 +1,7 @@
 import {Prisma,type PrismaClient} from '@prisma/client';
 import {broadcastRoot} from './campaigns';
 import type {ClaimedNotification} from './leases';
+import {endingReminder,notificationRetired} from './policy';
 
 export type RecipientGate={telegramId:string;chatId:string;userId?:string;excludeStaff?:boolean};
 export class DeliveryGate extends Error{constructor(readonly reason:string,readonly retry:boolean){super(reason)}}
@@ -10,7 +11,9 @@ export class DeliveryGate extends Error{constructor(readonly reason:string,reado
  * transaction commits before each actual HTTP request, including photo retry. */
 export async function beforeNotificationSend(client:PrismaClient,row:ClaimedNotification,shouldContinue:()=>boolean,logicalKey?:string,recipient?:RecipientGate){
  if(!shouldContinue())throw new DeliveryGate('WORKER_STOPPING',true);
+ if(notificationRetired(row.kind))throw new DeliveryGate('NOTIFICATION_RETIRED',false);
  const p=row.payload as {recipientUserId?:string;auctionId?:string;botId?:string;telegramId?:string};
+ const reminder=endingReminder(row.kind);
  return client.$transaction(async tx=>{
   await tx.$executeRaw`SELECT pg_advisory_xact_lock_shared(hashtextextended('lowwin:auction-maintenance',0))`;
   const [gate]=await tx.$queryRaw<{now:Date;leaseUntil:Date|null;reason:string|null}[]>(Prisma.sql`
@@ -29,14 +32,14 @@ export async function beforeNotificationSend(client:PrismaClient,row:ClaimedNoti
       JOIN "TelegramOwnContact" t ON t."userId"=u.id AND t."telegramId"=u."telegramId" AND t."botId"=${process.env.TELEGRAM_BOT_TOKEN?.split(':')[0]??''} AND t."revokedAt" IS NULL
       LEFT JOIN "StaffMember" s ON s."userId"=u.id WHERE u.id=${p.recipientUserId??null} AND u.role<>'admin' AND s."userId" IS NULL
     ) THEN 'RESULT_RECIPIENT_INELIGIBLE'
-    WHEN ${row.kind==='AUCTION_RESULT'&&!!p.auctionId} AND NOT EXISTS(SELECT 1 FROM "Auction" a JOIN "AuctionSettlement" s ON s."auctionId"=a.id JOIN "ResultPublication" pub ON pub."settlementId"=s.id WHERE a.id=${p.auctionId??null} AND a.status IN ('CLOSED','CANCELLED') AND s."completedAt"<=stamp.now AND pub."publishedAt"<=stamp.now) THEN 'RESULT_NOT_PUBLISHED'
-    WHEN ${['AUCTION_PUBLISHED','AUCTION_UPCOMING','AUCTION_STARTING_SOON','AUCTION_ENDING'].includes(row.kind)&&!!p.auctionId} AND NOT EXISTS(SELECT 1 FROM "Auction" a JOIN "Product" product ON product.id=a."productId" WHERE a.id=${p.auctionId??null} AND a.status IN ('LIVE','SCHEDULED') AND a."endsAt">stamp.now AND product.visible) THEN 'AUCTION_RETIRED'
-    WHEN ${['AUCTION_UPCOMING','AUCTION_STARTING_SOON','AUCTION_ENDING'].includes(row.kind)&&!!p.auctionId} AND NOT EXISTS(SELECT 1 FROM "Auction" a WHERE a.id=${p.auctionId??null} AND CASE
-     WHEN ${row.kind==='AUCTION_ENDING'} THEN a."startsAt"<=stamp.now AND a."endsAt"<stamp.now+interval '24 hours'
-     WHEN ${row.kind==='AUCTION_UPCOMING'} THEN a."startsAt">stamp.now+interval '1 hour' AND a."startsAt"<stamp.now+interval '24 hours' AND NOT EXISTS(SELECT 1 FROM "AuctionSettlement" s WHERE s."auctionId"=a.id)
-     ELSE a."startsAt">stamp.now AND a."startsAt"<=stamp.now+interval '1 hour' AND NOT EXISTS(SELECT 1 FROM "AuctionSettlement" s WHERE s."auctionId"=a.id) END) THEN 'AUCTION_RETIRED'
+    WHEN ${row.kind==='AUCTION_RESULT'&&!!p.auctionId} AND NOT EXISTS(SELECT 1 FROM "Auction" a JOIN "AuctionSettlement" s ON s."auctionId"=a.id JOIN "ResultPublication" pub ON pub."settlementId"=s.id WHERE a.id=${p.auctionId??null} AND a.status='CLOSED' AND s.outcome='WINNER' AND s."completedAt"<=stamp.now AND pub."publishedAt"<=stamp.now) THEN 'RESULT_NOT_PUBLISHED'
+    WHEN ${row.kind!=='AUCTION_RESULT'&&(row.kind==='BROADCAST'||row.kind.startsWith('AUCTION_'))&&!!p.auctionId} AND NOT EXISTS(SELECT 1 FROM "Auction" a JOIN "Product" product ON product.id=a."productId" WHERE a.id=${p.auctionId??null} AND a.status IN ('LIVE','SCHEDULED') AND a."endsAt">stamp.now AND product.visible) THEN 'AUCTION_RETIRED'
+    WHEN ${row.kind==='BROADCAST'&&!!p.auctionId} AND NOT EXISTS(SELECT 1 FROM "Auction" a WHERE a.id=${p.auctionId??null} AND a.status='LIVE' AND a."publishedAt"<=stamp.now AND a."startsAt"<=stamp.now AND NOT EXISTS(SELECT 1 FROM "AuctionSettlement" s WHERE s."auctionId"=a.id)) THEN 'AUCTION_RETIRED'
+    WHEN ${(!!reminder||row.kind==='AUCTION_UPCOMING')&&!!p.auctionId} AND NOT EXISTS(SELECT 1 FROM "Auction" a WHERE a.id=${p.auctionId??null} AND NOT EXISTS(SELECT 1 FROM "AuctionSettlement" s WHERE s."auctionId"=a.id) AND CASE
+     WHEN ${!!reminder} THEN a.status='LIVE' AND a."startsAt"<=stamp.now AND a."endsAt">stamp.now+${reminder?.minMs??0}*interval '1 millisecond' AND a."endsAt"<=stamp.now+${reminder?.maxMs??0}*interval '1 millisecond'
+     ELSE a."startsAt">stamp.now AND a."startsAt"<=stamp.now+interval '24 hours' END) THEN 'AUCTION_RETIRED'
     ELSE NULL END AS reason
-   FROM (SELECT clock_timestamp() AS now) stamp LEFT JOIN "Outbox" o ON o.id=${row.id}`);
+   FROM (SELECT (clock_timestamp() AT TIME ZONE 'UTC') AS now) stamp LEFT JOIN "Outbox" o ON o.id=${row.id}`);
   if(!gate||gate.reason)throw new DeliveryGate(gate?.reason??'CLAIM_REPLACED',['MAINTENANCE_PAUSED','CLAIM_REPLACED'].includes(gate?.reason??'CLAIM_REPLACED'));
   // Keep the usual path read-only. A near-expiry claim and any logical alias
   // renew together under current tokens; failed renewal rolls everything back.

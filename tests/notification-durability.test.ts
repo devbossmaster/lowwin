@@ -8,7 +8,7 @@ import {stopBroadcast,broadcastHistory} from '../src/modules/admin/broadcast-his
 import {sendBroadcastPhoto,TelegramMediaDeferredError} from '../src/modules/notifications/broadcast-photo';
 import {TEST_TOKEN} from './helpers';
 import {installTelegramRateLimit} from '../src/modules/notifications/telegram-rate';
-import {notificationTimingSnapshot} from '../src/modules/notifications/diagnostics';
+import {notificationDatabaseSnapshot,notificationTimingSnapshot} from '../src/modules/notifications/diagnostics';
 
 const url=process.env.TEST_DATABASE_URL;
 describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated transport only',()=>{
@@ -20,7 +20,8 @@ describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated t
  beforeAll(async()=>{
   const target=new URL(url!);if(!['127.0.0.1','localhost'].includes(target.hostname)||!target.pathname.endsWith('_test'))throw Error('Isolated loopback _test database required');
   Object.assign(process.env,{DATABASE_URL:url,DIRECT_URL:url,TELEGRAM_BOT_TOKEN:TEST_TOKEN,MINI_APP_URL:'https://lowwin.test/telegram'});
-  db=new PrismaClient();const base=830000000+Math.floor(Math.random()*1000000);users=Array.from({length:20},(_,i)=>({id:randomUUID(),telegramId:String(base+i)}));
+  target.searchParams.set('options','-c TimeZone=Africa/Addis_Ababa');
+  db=new PrismaClient({datasourceUrl:target.toString()});const base=830000000+Math.floor(Math.random()*1000000);users=Array.from({length:20},(_,i)=>({id:randomUUID(),telegramId:String(base+i)}));
   await db.user.createMany({data:users.map(u=>({...u,name:'Fixture recipient',role:'member'}))});
   await db.botChat.createMany({data:users.map(u=>({telegramId:u.telegramId,chatId:u.telegramId}))});
   await db.telegramOwnContact.createMany({data:users.map(u=>({userId:u.id,telegramId:u.telegramId,botId:'123456789',phoneCipher:'isolated-unused-cipher',phoneHash:randomUUID(),lastFour:'2904',verifiedAt:new Date(),sourceUpdateId:BigInt(u.telegramId)}))});
@@ -37,6 +38,14 @@ describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated t
   expect(new Set([...one,...two].map(r=>r.id)).size).toBe(8);expect(one).toHaveLength(4);expect(two).toHaveLength(4);
   expect(one.some(r=>r.kind==='BROADCAST')).toBe(true);expect(two.some(r=>r.kind==='BROADCAST')).toBe(true);
   expect(one.every(r=>r.leaseToken&&r.leaseUntil>new Date())).toBe(true);
+  const [clock]=await db.$queryRaw<{zone:string}[]>`SELECT current_setting('TimeZone') AS zone`;
+  expect(clock.zone).toBe('Africa/Addis_Ababa');
+  for(const row of [...one,...two]){
+   expect(row.leaseUntil.getTime()-Date.now()).toBeGreaterThan(110_000);
+   expect(row.leaseUntil.getTime()-Date.now()).toBeLessThanOrEqual(120_000);
+   expect(Math.abs(row.claimedAt!.getTime()-Date.now())).toBeLessThan(10_000);
+  }
+  expect((await notificationDatabaseSnapshot(db)).queue).toMatchObject({pending:12,due:4,inFlight:8,retrying:0});
  });
  it('recovers an expired claim and rejects the old worker completion and alias ownership',async()=>{
   const row=await job(),[old]=await claimNotifications(db,{limit:1});
@@ -108,10 +117,10 @@ describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated t
  it('renews a nearly expired owner before HTTP so another worker cannot reclaim the in-flight send',async()=>{
   const row=await job('CONTACT_CONFIRMED'),began=deferred(),release=deferred();let shortened=false;
   const original=db.$transaction.bind(db);let transactions=0;
-  const nearExpiry=new Proxy(db,{get(target,key){if(key==='$transaction')return async(...args:Parameters<typeof db.$transaction>)=>{if(++transactions===2&&!shortened){shortened=true;await db.outbox.update({where:{id:row.id},data:{leaseUntil:new Date(Date.now()+25)}})}return (original as (...input:unknown[])=>unknown)(...args)};const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value}});
-  const send=vi.fn(async()=>{const saved=await db.outbox.findUniqueOrThrow({where:{id:row.id}});expect(saved.leaseUntil!.getTime()-Date.now()).toBeGreaterThan(90_000);began.resolve();await release.promise;return {message_id:104}});
-  const sending=dispatchBatch(nearExpiry as unknown as PrismaClient,fake(send),{limit:1});await began.promise;
-  expect(await claimNotifications(db,{limit:1})).toEqual([]);release.resolve();await sending;expect(send).toHaveBeenCalledTimes(1);
+  const nearExpiry=new Proxy(db,{get(target,key){if(key==='$transaction')return async(...args:Parameters<typeof db.$transaction>)=>{if(++transactions===2&&!shortened){shortened=true;await db.outbox.update({where:{id:row.id},data:{leaseUntil:new Date(Date.now()+10_000)}})}return (original as (...input:unknown[])=>unknown)(...args)};const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value}});
+  let observedLease=0;const send=vi.fn(async()=>{const saved=await db.outbox.findUniqueOrThrow({where:{id:row.id}});observedLease=saved.leaseUntil!.getTime()-Date.now();began.resolve();await release.promise;return {message_id:104}});
+  const sending=dispatchBatch(nearExpiry as unknown as PrismaClient,fake(send),{limit:1});await Promise.race([began.promise,sending.then(()=>{throw Error('Expected a renewed lease before simulated HTTP')})]);
+  try{expect(observedLease).toBeGreaterThan(90_000);expect(await claimNotifications(db,{limit:1})).toEqual([])}finally{release.resolve();await sending}expect(send).toHaveBeenCalledTimes(1);
  });
  it('expands independently with a stable cursor, excludes unreachable/admin users and survives a repeated page',async()=>{
   const rootKey=`broadcast:${randomUUID()}`,root=await db.outbox.create({data:{key:rootKey,kind:'GLOBAL_CAMPAIGN',payload:{deliveryKind:'BROADCAST',rootKey,body:'Fixture',href:'/',audienceBefore:new Date(Date.now()+100).toISOString()}}});

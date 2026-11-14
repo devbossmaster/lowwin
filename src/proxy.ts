@@ -4,6 +4,7 @@ import {miniReturnPath} from '@/lib/mini-return';
 import {customerLoginPath} from '@/lib/customer-login-entry';
 import {resolveLearnMoreMedia} from '@/lib/learn-more-media';
 import {isPublicMiniPage,isPublicMiniRead} from '@/lib/mini-public-routes';
+import {LOWWIN_BANNER_SRC,LOWWIN_ICON_SRC,LOWWIN_LOGO_SRC} from '@/lib/brand';
 
 // These handlers enforce getMiniSession/requireUser themselves before any
 // private read or mutation. Do not run another full session lookup in Proxy.
@@ -25,7 +26,7 @@ export async function proxy(request:NextRequest) {
   if(path==='/api/payments/chapa/direct'||path==='/api/payments/chapa/inline'||path==='/api/payments/chapa/inline/config'||path==='/api/payments/chapa/methods'||path==='/api/payments/chapa/batches/quote'||/^\/api\/payments\/chapa\/batches\/[0-9a-f-]{36}\/wallet$/i.test(path)||/^\/api\/payments\/chapa\/checkouts\/[0-9a-f-]{36}\/authorize$/i.test(path))return NextResponse.next();
   // Public onboarding artwork must load before a Telegram session exists.
   // Keep this exact allowlist separate from all protected Mini App data.
-  if(publicAssets.has(path))return NextResponse.next();
+  if(publicAssets.has(path)||path===LOWWIN_LOGO_SRC||path===LOWWIN_ICON_SRC||Object.values(LOWWIN_BANNER_SRC).some(banner=>banner===path))return NextResponse.next();
   if((request.method==='GET'||request.method==='HEAD')&&['/images/how-it-works/choose-number.svg','/images/how-it-works/pay-entry.svg','/images/how-it-works/winning-result.svg'].includes(path))return NextResponse.next();
   if(path==='/images/lowwin-violet-hero-20261113.webp'||path==='/images/lowwin-blue-banner-en-20261113-v2.webp'||path==='/images/lowwin-blue-banner-am-20261113-v2.webp'||path==='/images/lowwin-blue-logo-20261113.webp'||path==='/images/lowwin-blue-icon-20261113.png')return NextResponse.next();
   if(path==='/fonts/inter-latin-variable.woff2')return NextResponse.next();

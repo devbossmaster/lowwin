@@ -2,8 +2,9 @@ import {z} from 'zod';
 import type {Prisma} from '@prisma/client';
 import {db} from '@/lib/db';
 import {requireUser,requireMutationOrigin,smallJson,privateHeaders,privateError} from '@/modules/auth/private-api';
+import {retiredNotificationKinds} from '@/modules/notifications/policy';
 export const dynamic='force-dynamic';
-const visibleToCustomer:Prisma.NotificationInboxWhereInput={NOT:{OR:[{kind:{startsWith:'DEPOSIT_'}},{kind:{startsWith:'TOPUP_'}}]}};
+const visibleToCustomer:Prisma.NotificationInboxWhereInput={NOT:{OR:[{kind:{startsWith:'DEPOSIT_'}},{kind:{startsWith:'TOPUP_'}},{kind:{in:retiredNotificationKinds}}]}};
 const promotionKinds=['BROADCAST','GLOBAL_CAMPAIGN'];
 const categories=z.enum(['all','draws','payments','promotions']);
 function categoryWhere(category:z.infer<typeof categories>):Prisma.NotificationInboxWhereInput{

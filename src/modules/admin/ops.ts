@@ -12,7 +12,6 @@ import {AdminError} from './errors';
 import {digest} from './crypto';
 import {openContact} from '../fulfillment/crypto';
 import {emailAdapter} from './email';
-import {enqueueAlert} from '../notifications/service';
 import {randomUUID} from 'node:crypto';
 import {broadcastMiniAppPath,broadcastButtonLabel} from '@/lib/broadcast-link';
 import {demoBidAllowed,submitBidInTransaction} from '../auctions/bids';
@@ -24,9 +23,11 @@ import {winnerPhotoSchema} from './winner-photo';
 import {winnerBannerSchema,saveWinnerBanner} from './winner-banner';
 import {clearPublicDataCache} from '../cache/public-data';
 import {resultPublishSchema,readResultReview} from './result-publication';
+import {auctionBroadcastDraft} from './auction-broadcast';
 
 const key=z.string().uuid(),reason=z.string().trim().min(5).max(500),uid=z.string().min(1).max(128);
 const schemas={
+ auctionBroadcast:z.object({key,reason,auctionId:z.string().uuid(),draftHash:z.string().length(64),confirmation:z.literal('SEND')}).strict(),
  broadcast:z.object({key,reason,text:z.string().trim().min(1).max(700),auctionCode:z.string().regex(/^[1-9]\d{0,8}$/).optional(),imageId:z.string().uuid().optional(),buttonLabel:z.string().trim().min(1).max(40).refine(v=>!/[\u0000-\u001f\u007f]/.test(v)).optional(),miniAppPath:z.string().max(100).refine(v=>{try{broadcastMiniAppPath(v);return true}catch{return false}},'Choose a supported Mini App page.').optional(),confirmation:z.literal('SEND')}).strict(),
  suspend:z.object({key,userId:uid,suspended:z.boolean(),reason}).strict(),
  deliveryDone:z.object({key,auctionId:z.string().uuid(),version:z.number().int().min(0),reason}).strict(),
@@ -41,7 +42,7 @@ const schemas={
  testClean:z.object({key,id:z.string().uuid(),confirmation:z.literal('CLEAN TEST RUN'),reason}).strict(),
 };
 export type OpsAction=keyof typeof schemas;
-const commandPermission:Record<OpsAction,Permission>={resultPublish:'audit',deliveryDone:'fulfillment',winnerPhoto:'fulfillment',winnerBanner:'fulfillment',broadcastStop:'jobs',broadcast:'jobs',suspend:'support',fulfillment:'fulfillment',retry:'jobs',testStart:'settings',testFinish:'settings',testClean:'settings'};
+const commandPermission:Record<OpsAction,Permission>={auctionBroadcast:'jobs',resultPublish:'audit',deliveryDone:'fulfillment',winnerPhoto:'fulfillment',winnerBanner:'fulfillment',broadcastStop:'jobs',broadcast:'jobs',suspend:'support',fulfillment:'fulfillment',retry:'jobs',testStart:'settings',testFinish:'settings',testClean:'settings'};
 export const sectionPermission:Record<string,Permission>={users:'support',results:'audit',fulfillment:'fulfillment',wallets:'wallets',notifications:'jobs',jobs:'jobs',analytics:'audit',audit:'audit',team:'team',settings:'settings'};
 export const serialize=(v:unknown)=>JSON.parse(JSON.stringify(v,(_,x)=>typeof x==='bigint'?x.toString():x));
 export function pageInput(params:URLSearchParams){return z.object({page:z.coerce.number().int().min(1).max(100000).default(1),q:z.string().trim().max(100).default(''),status:z.string().max(40).default(''),category:z.union([z.literal(''),z.string().uuid()]).default('')}).parse(Object.fromEntries(params))}
@@ -53,20 +54,25 @@ export async function opsMutation(client:PrismaClient,headers:Headers,action:Ops
  if(action==='suspend'&&actor.role!=='OWNER')throw new AdminError(403,'Only the Owner can change bidding access.');
  const result=await client.$transaction(async tx=>{
   // Auction -> wallet (for bidding policy) -> staff. Team lock serializes grants.
-  if(action==='fulfillment'||action==='deliveryDone'||action==='winnerBanner')await tx.$queryRaw`SELECT id FROM "Auction" WHERE id=${(input as {auctionId:string}).auctionId} FOR UPDATE`;
+  if(action==='auctionBroadcast'||action==='fulfillment'||action==='deliveryDone'||action==='winnerBanner')await tx.$queryRaw`SELECT id FROM "Auction" WHERE id=${(input as {auctionId:string}).auctionId} FOR UPDATE`;
   if('userId' in input)await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${input.userId}`},0))`;
   const owner=await requireAdmin(tx,headers,{permission:commandPermission[action],lock:true});
   const operationKey=`${actor.id}:${input.key}`;await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`admin:${operationKey}`},0))`;
   const old=await tx.adminAudit.findUnique({where:{operationKey}});if(old){if(old.requestHash!==hash)throw new AdminError(409,'Idempotency key changed.');return (old.details as {receipt:unknown}).receipt}
   let receipt:Record<string,unknown>={},target='';
-  if(action==='broadcast'){
+  if(action==='auctionBroadcast'){
+   const d=schemas.auctionBroadcast.parse(input);if(owner.role!=='OWNER')throw new AdminError(403,'Only the Owner can broadcast.');
+   const preview=await auctionBroadcastDraft(tx,d.auctionId,owner.now);
+   if(preview.draftHash!==d.draftHash)throw new AdminError(409,'The auction changed. Reload its preview before sending.');
+   const job=await queueGlobal(tx,`broadcast:${owner.id}:${d.key}`,'BROADCAST',{auctionId:d.auctionId,body:preview.text,href:preview.miniAppPath,imagePath:preview.imagePath,buttonLabel:preview.buttonLabel,telegramOnly:true});
+   receipt={id:job.id,state:'PENDING'};target=job.id;
+  }else if(action==='broadcast'){
    const d=schemas.broadcast.parse(input);if(owner.role!=='OWNER')throw new AdminError(403,'Only the Owner can broadcast.');
    let href=broadcastMiniAppPath(d.miniAppPath??'/');
    if(d.auctionCode){const a=await tx.auction.findUnique({where:{publicCode:Number(d.auctionCode)},select:{slug:true,publishedAt:true,status:true,endsAt:true,isDemo:true}});if(!a?.slug||!a.publishedAt||!['LIVE','SCHEDULED'].includes(a.status)||!a.endsAt||a.endsAt<=owner.now||a.isDemo&&process.env.APP_ENV==='production')throw new AdminError(422,'Choose a published active auction code.');href=`/auctions/${d.auctionCode}`}
    if(d.imageId&&!await tx.managedMedia.findFirst({where:{id:d.imageId,purpose:'CATALOG'},select:{id:true}}))throw new AdminError(422,'Upload a validated catalog image first. Winner photographs cannot be broadcast.');
-   const audience=await tx.user.count({where:{telegramId:{not:null},staffMember:{is:null}}});
    const job=await queueGlobal(tx,`broadcast:${owner.id}:${d.key}`,'BROADCAST',{body:d.text,href,buttonLabel:broadcastButtonLabel(d.buttonLabel),telegramOnly:true,...(d.imageId?{imageId:d.imageId}:{})});
-   receipt={id:job.id,audience,state:'PENDING'};target=job.id;
+   receipt={id:job.id,state:'PENDING'};target=job.id;
   }else if(action==='broadcastStop'){
    const d=schemas.broadcastStop.parse(input);if(owner.role!=='OWNER')throw new AdminError(403,'Only the Owner can stop a broadcast.');receipt=await stopBroadcast(tx,d.id);target=d.id;
   }else if(action==='suspend'){
@@ -96,7 +102,7 @@ export async function opsMutation(client:PrismaClient,headers:Headers,action:Ops
    if(d.state==='SHIPPED'&&!d.tracking)throw new AdminError(422,'Record a shipment reference.');
    const data={state:d.state,tracking:d.tracking,note:d.reason,...(d.assignedTo!==undefined?{assignedTo:d.assignedTo}:{}),...(d.state==='DELIVERED'?{deliveredAt:owner.now,contactDeleteAt:new Date(owner.now.getTime()+30*86400000)}:{})};
    const row=await tx.fulfillmentCase.upsert({where:{auctionId:d.auctionId},create:{auctionId:d.auctionId,userId:settled.winnerUserId,...data},update:{...data,version:{increment:1}}});
-   await enqueueAlert(tx,{key:`fulfillment:${row.auctionId}:${row.version}`,kind:'FULFILLMENT_UPDATED',auctionId:row.auctionId,userId:row.userId});receipt={auctionId:row.auctionId,state:row.state,version:row.version};target=row.auctionId;
+   receipt={auctionId:row.auctionId,state:row.state,version:row.version};target=row.auctionId;
   }else if(action==='testStart'){
    const d=schemas.testStart.parse(input);if(owner.role!=='OWNER')throw new AdminError(403,'Only the Owner can create a private test run.');if(!(demoBidAllowed()||stagingDemoEnabled()))throw new AdminError(409,'Private test runs require the isolated local test or pinned staging capability.');
    const category=await tx.category.findFirst({where:{visible:true,requiresEligibilityReview:false},orderBy:{id:'asc'}});if(!category)throw new AdminError(409,'Create one standard category before starting a test run.');
@@ -142,6 +148,7 @@ export async function opsRead(client:PrismaClient,headers:Headers,path:string[],
   if(path[1]){const wallet=await client.wallet.findUniqueOrThrow({where:{id:path[1]},select:{id:true,userId:true,user:{select:{name:true}},accounts:{select:{id:true,kind:true,balance:true}},holds:{select:{auctionId:true,points:true}}}});const where={userId:wallet.userId};return serialize({...wallet,operations:await client.operation.findMany({where,select:{id:true,scope:true,createdAt:true},orderBy:[{createdAt:'desc'},{id:'asc'}],skip,take}),total:await client.operation.count({where}),page})}
   const where:Prisma.WalletWhereInput=q?{OR:[{userId:{contains:q}},{user:{name:{contains:q,mode:'insensitive'}}}]}:{};return result(await client.wallet.findMany({where,select:{id:true,userId:true,user:{select:{name:true}},accounts:{select:{kind:true,balance:true}},holds:{select:{points:true}}},orderBy:{id:'asc'},skip,take}),await client.wallet.count({where}));
  }
+ if(section==='notifications'&&path[1]==='auction'&&path[2]){if(actor.role!=='OWNER')throw new AdminError(403,'Only the Owner can broadcast.');return serialize(await auctionBroadcastDraft(client,z.string().uuid().parse(path[2]),actor.now))}
  if(section==='notifications')return serialize(await broadcastHistory(client,{page,q}));
  if(section==='jobs'){const where:Prisma.OutboxWhereInput={...(status?{state:status}:{}),...(q?{kind:{contains:q,mode:'insensitive'}}:{})};return result(await client.outbox.findMany({where,select:{id:true,kind:true,state:true,attempts:true,nextAttemptAt:true,lastError:true,createdAt:true,sentAt:true},orderBy:[{createdAt:'desc'},{id:'asc'}],skip,take}),await client.outbox.count({where}))}
  if(section==='audit'&&path[1]){const row=await client.adminAudit.findUniqueOrThrow({where:{id:path[1]},select:{id:true,actorId:true,action:true,target:true,createdAt:true,details:true}});const staff=await client.user.findUnique({where:{id:row.actorId},select:{name:true,email:true}});const detail=row.details as Record<string,unknown>;return serialize({...row,actorLabel:staff?.email??staff?.name??'Former staff member',details:{reason:typeof detail.reason==='string'?detail.reason:'No reason recorded'}})}

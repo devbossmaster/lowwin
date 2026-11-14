@@ -1,0 +1,24 @@
+{
+  "date": "2026-11-14",
+  "tool": "built-in image_gen + HTML/CSS typography rendered by Chromium",
+  "source": "docs/design/lowwin-family-blue-20261114.webp",
+  "prompt": "Preserve the Ethiopian family, bicycle, iPhone 18 Pro Max retail box, PlayStation 5 Slim box and red suitcase. Use a clean matte light-mid blue background slightly deeper than pale sky blue, with understated rounded backdrop shapes. Keep the left area free for native bilingual typography. No satin or dark background.",
+  "logo": "Native flat blue-and-white LW vector mark; LowWin wordmark",
+  "illustrative": true,
+  "records": [
+    {
+      "file": "public/images/lowwin-light-blue-banner-en-20261114.webp",
+      "width": 1840,
+      "height": 800,
+      "bytes": 190008,
+      "sha256": "f2da37f7a24b0804e1a4521ab61ca20026397c63cac67259e8bd6861aa2bd06d"
+    },
+    {
+      "file": "public/images/lowwin-light-blue-banner-am-20261114.webp",
+      "width": 1840,
+      "height": 800,
+      "bytes": 189236,
+      "sha256": "715820a2397dd805fbb12cb546e51476d114c3e4c3653856aa53db254ad55169"
+    }
+  ]
+}

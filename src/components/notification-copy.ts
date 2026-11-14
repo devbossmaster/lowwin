@@ -20,7 +20,7 @@ export function notificationCopy(item:AlertCopy,language:'en'|'am'){
  // Frozen v4 notices must not inherit older translations promising refunds or holds.
  if(language==='am'&&item.body==='Auction cancelled. Accepted submission fees are non-refundable.')return {title:'ጨረታው ተሰርዟል',body:'ጨረታው ተሰርዟል። የተቀበሉ ጨረታዎች የማቅረቢያ ክፍያ አይመለስም።'};
  if(language==='am'&&item.body==='Your result is ready. The chosen number is not charged.')return {title:'የጨረታዎ ውጤት ዝግጁ ነው',body:'ውጤትዎ ዝግጁ ነው። የመረጡት ቁጥር አይከፈልም።'};
- const campaigns:Record<string,[string,string]>={AUCTION_UPCOMING:['Bidding opens within 24 hours','ጨረታው በ24 ሰዓት ውስጥ ይጀምራል'],AUCTION_STARTING_SOON:['Bidding opens within 1 hour','ጨረታው በ1 ሰዓት ውስጥ ይጀምራል'],AUCTION_PUBLISHED:['New auction','አዲስ ጨረታ'],AUCTION_ENDING:['Less than one day left','ከአንድ ቀን ያነሰ ጊዜ ቀርቷል'],AUCTION_RESULT:['Auction finished','ጨረታው ተጠናቋል'],DEPOSIT_CREDITED:['Deposit successful','ገንዘቡ ገብቷል'],BROADCAST:['Lowwin update','የLowwin መረጃ']};
+ const campaigns:Record<string,[string,string]>={AUCTION_UPCOMING:['Bidding opens within 1 day','ጨረታው በ1 ቀን ውስጥ ይጀምራል'],AUCTION_STARTING_SOON:['Bidding opens within 1 hour','ጨረታው በ1 ሰዓት ውስጥ ይጀምራል'],AUCTION_PUBLISHED:['New auction','አዲስ ጨረታ'],AUCTION_ENDING:['1 day left','1 ቀን ቀርቷል'],AUCTION_ENDING_3_DAYS:['3 days left','3 ቀናት ቀርተዋል'],AUCTION_ENDING_2_DAYS:['2 days left','2 ቀናት ቀርተዋል'],AUCTION_ENDING_12_HOURS:['12 hours left','12 ሰዓታት ቀርተዋል'],AUCTION_RESULT:['Winner announced','አሸናፊው ታውቋል'],DEPOSIT_CREDITED:['Deposit successful','ገንዘቡ ገብቷል'],BROADCAST:['Lowwin update','የLowwin መረጃ']};
  const campaign=item.kind==='DEPOSIT_CREDITED'&&item.title.startsWith('Funds added')?item.title.split(' · '):item.kind?campaigns[item.kind]:undefined;
  if(campaign){
   const lines=item.body.split('\n'),am=language==='am';
@@ -39,5 +39,5 @@ export function notificationAge(date:string,language:'en'|'am',now=Date.now()){
  for(const [limit,divisor,unit] of [[3600,60,'minute'],[86400,3600,'hour'],[604800,86400,'day'],[2592000,604800,'week']] as const){
   if(seconds<limit)return relative.format(-Math.floor(seconds/divisor),unit);
  }
- return new Date(date).toLocaleDateString(locale,{month:'short',day:'numeric'});
+ return new Date(date).toLocaleDateString(locale,{month:'short',day:'numeric',timeZone:'Africa/Addis_Ababa'});
 }

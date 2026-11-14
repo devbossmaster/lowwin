@@ -4,7 +4,7 @@ import {existsSync,statSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {auctionMaintenance} from '../auctions/maintenance';
 import {notificationContent,materializeAlert,notificationPhoto,telegramCampaignText} from './service';
-import {broadcastRoot,broadcastStopped,expandCampaign,telegramKinds} from './campaigns';
+import {broadcastRoot,expandCampaign,telegramKinds} from './campaigns';
 import {expandParticipantResults} from './participant-results';
 import {chapaReceiptKind} from './chapa-receipt';
 import {hasResultSubscription} from './result-audience';
@@ -15,6 +15,7 @@ import {withTelegramSendPolicy,telegramPolicyApi,TelegramRateDeferredError} from
 import {beforeNotificationSend,DeliveryGate,type RecipientGate} from './send-gate';
 import {recordNotificationTiming,recordNotificationAccepted,recordNotificationUncertain,timeNotification} from './diagnostics';
 
+import {notificationRetired} from './policy';
 type BotApi=Pick<Bot,'api'>;
 type Content=Awaited<ReturnType<typeof notificationContent>>;
 type BatchContext={content:Map<string,Promise<Content>>;shouldContinue:()=>boolean};
@@ -35,7 +36,7 @@ async function getContent(client:PrismaClient,row:ClaimedNotification,context:Ba
   else{
    promise=notificationContent(client,row);
    if(cache.size>=64)cache.delete(cache.keys().next().value!);
-   const entry={until:performance.now()+1000,value:promise};cache.set(key,entry);
+   const entry={until:performance.now()+(row.kind==='BROADCAST'?60_000:1000),value:promise};cache.set(key,entry);
    // Never retain failed/missing preparation. Every actual send still reads
    // ownership, recipient and auction eligibility at the durable gate.
    promise.then(value=>{if(!value&&cache.get(key)===entry)cache.delete(key)},()=>{if(cache.get(key)===entry)cache.delete(key)});
@@ -67,6 +68,7 @@ async function dispatchClaim(client:PrismaClient,bot:BotApi,row:ClaimedNotificat
  let recipientTelegramId:string|undefined;
  let acceptedByTelegram=false;
  try{
+  if(notificationRetired(row.kind)){await skip('NOTIFICATION_RETIRED');return}
   if(row.kind==='CONTACT_CONFIRMED'){
    const p=row.payload as {telegramId?:string;botId?:string},contact=p.telegramId&&p.botId===botId()?await client.telegramOwnContact.findUnique({where:{botId_telegramId:{botId:p.botId,telegramId:p.telegramId}}}):null;
    if(!contact||contact.revokedAt||!contact.userId||!process.env.MINI_APP_URL){await skip();return}
@@ -118,17 +120,17 @@ async function dispatchClaim(client:PrismaClient,bot:BotApi,row:ClaimedNotificat
   if(link.protocol!=='https:'){await skip();return}
   const name=(user?.name??'Lowwin player').replace(/[\r\n\u0000-\u001f]/g,' ').slice(0,80),startReminder=['AUCTION_UPCOMING','AUCTION_STARTING_SOON'].includes(row.kind),paymentReceipt=row.kind===chapaReceiptKind;
   const body=content.body.includes('{name}')?content.body.replaceAll('{name}',name):`${name},\n${content.body}`;
-  const text=paymentReceipt?content.body:'telegramCaption' in content&&typeof content.telegramCaption==='string'?content.telegramCaption:telegramCampaignText(row.kind,content.title,startReminder?content.body:body,startReminder?name:undefined);
+  const text=paymentReceipt?content.body:row.kind==='BROADCAST'?content.body.replaceAll('{name}',name):'telegramCaption' in content&&typeof content.telegramCaption==='string'?content.telegramCaption:telegramCampaignText(row.kind,content.title,startReminder?content.body:body,startReminder?name:undefined);
   const button='buttonLabel' in content?String(content.buttonLabel):row.kind==='DEPOSIT_CREDITED'?'View wallet':startReminder?'View auction':'Bid';
   const options={reply_markup:{inline_keyboard:[[merchantAlert?{text:button,url:link.href}:{text:button,web_app:{url:link.href}}]]}};
-  const auctionImage=row.kind.startsWith('AUCTION_')&&'imagePath' in content&&typeof content.imagePath==='string'?content.imagePath:null;
+  const auctionImage=(row.kind.startsWith('AUCTION_')||row.kind==='BROADCAST')&&'imagePath' in content&&typeof content.imagePath==='string'?content.imagePath:null;
   const imageId='imageId' in content&&typeof content.imageId==='string'?content.imageId:undefined;
   const local=auctionImage&&!auctionImage.startsWith('/api/')?resolve('public','.'+auctionImage):notificationImage;
   const version=existsSync(local)?`${statSync(local).mtimeMs}:${statSync(local).size}`:'immutable-media';
   const photoKey=auctionImage?`auction:${auctionImage}:${version}`:`notification:${imageId??'default'}:${version}`;
   const preparePhoto=async()=>{
    if(paymentReceipt)return null;
-   let photo=row.kind.startsWith('AUCTION_')?(auctionImage?await auctionPhoto(client,auctionImage):null):await notificationPhoto(client,imageId,link.origin);
+   let photo=(row.kind.startsWith('AUCTION_')||auctionImage)?(auctionImage?await auctionPhoto(client,auctionImage):null):await notificationPhoto(client,imageId,link.origin);
    if(!photo&&row.kind==='AUCTION_RESULT'&&'fallbackImagePath' in content&&typeof content.fallbackImagePath==='string')photo=await auctionPhoto(client,content.fallbackImagePath);
    return photo;
   };

@@ -9,6 +9,7 @@ import {existsSync,statSync} from 'node:fs';
 import {resolve} from 'node:path';
 import sharp from 'sharp';
 import {chapaReceiptContent,chapaReceiptKind} from './chapa-receipt';
+import {notificationRetired} from './policy';
 type DB=Prisma.TransactionClient;
 const notificationImage=resolve('public/notification.png');
 const composedPhotos=new Map<string,Promise<Buffer|null>>();
@@ -47,6 +48,7 @@ export async function notificationPhoto(tx:DB,imageId:string|undefined,origin:st
 }
 const words:Record<string,[string,string]>={AUCTION_MINIMUM_CANCELLED:['Auction cancelled: participant minimum not met','Fewer than two eligible participants entered. All entry fees were refunded and all holds released.'],AUCTION_FALLBACK_WON:['You won: first accepted lowest bid','No amount was unique. Your bid at the lowest amount was accepted first by the database. View your final result and delivery details.'],BID_ACCEPTED:['Bid accepted','Your accepted receipt is ready in My Bids.'],AUCTION_CLOSED:['Auction closed','Your result and released holds are ready to review.'],AUCTION_WON:['You won this auction','Your settled result is ready. Claim instructions are in your wins.'],AUCTION_NO_WINNER:['No unique winner','This auction closed without a winner. Holds were released; disclosed entry fees were retained.'],AUCTION_CANCELLED:['Auction cancelled','Auction holds were released and charged entry fees were refunded.'],FULFILLMENT_UPDATED:['Delivery update','Open your win to review its fulfillment status.'],AUCTION_START:['A saved auction is open','Your saved auction is now open.'],FAVORITE_ENDING:['A saved auction ends soon','Open your saved auction to check its closing time.']};
 export async function notificationContent(tx:DB,row:Pick<Outbox,'kind'|'payload'>){
+ if(notificationRetired(row.kind))return null;
  if(row.kind===chapaReceiptKind)return chapaReceiptContent(tx,row);
  if(telegramKinds.includes(row.kind))return campaignContent(tx,row);
  const p=row.payload as {auctionId?:string;recipientUserId?:string};if(!p.recipientUserId||!p.auctionId)return null;
@@ -63,7 +65,7 @@ export async function notificationContent(tx:DB,row:Pick<Outbox,'kind'|'payload'
 export async function materializeAlert(tx:DB,row:Pick<Outbox,'key'|'kind'|'payload'>&Partial<Pick<Outbox,'testRunId'>>,prepared?:Awaited<ReturnType<typeof notificationContent>>){
  // Broadcasts and Chapa receipts are Telegram-only. The payment transaction
  // retains its existing private alert; delivery must not add another inbox item.
- if(row.kind==='BROADCAST'||row.kind===chapaReceiptKind)return;
+ if(notificationRetired(row.kind)||row.kind==='BROADCAST'||row.kind===chapaReceiptKind)return;
  const content=prepared===undefined?await notificationContent(tx,row):prepared;if(!content)return;
  if(row.kind==='AUCTION_RESULT'){
   const preference=await tx.notificationPreference.findUnique({where:{userId:content.userId},select:{inApp:true}});

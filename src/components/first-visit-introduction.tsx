@@ -9,7 +9,7 @@ export function FirstVisitIntroduction({enabled=true,...props}:TutorialProps&{en
  const {registrationOpen}=useTelegram();
  const [open,setOpen]=useState(false);
  useEffect(()=>{
-  if(!enabled||registrationOpen)return;
+  if(!enabled||registrationOpen){setOpen(false);return}
   try{if(introductionDismissed(localStorage))return}catch{/* Storage may be disabled. */}
   // Home paints first. A player is never part of its critical rendering path.
   const id=window.setTimeout(()=>{if(!document.querySelector('dialog[open]'))setOpen(true)},400);

@@ -1,11 +1,12 @@
 import {Prisma,type PrismaClient,type Outbox} from '@prisma/client';
 import {randomUUID,createHash} from 'node:crypto';
 import {auctionMaintenance} from '../auctions/maintenance';
-import {chapaReceiptKind} from './chapa-receipt';
 
+// Prisma DateTime columns store UTC timestamp values without a timezone.
+// Normalize database wall-clock expressions, independently of display time (EAT).
 export const notificationLeaseMs=120_000;
 export const expansionKinds=['GLOBAL_CAMPAIGN','AUCTION_FINALIZED','AUCTION_PARTICIPANTS'];
-export const highPriorityKinds=['CONTACT_CONFIRMED',chapaReceiptKind,'AUCTION_WON','AUCTION_FALLBACK_WON','FULFILLMENT_UPDATED'];
+export const highPriorityKinds=['CONTACT_CONFIRMED'];
 export type ClaimedNotification=Outbox&{leaseToken:string;leaseUntil:Date};
 export type ClaimOptions={limit?:number;priority?:'high'|'bulk';kind?:string};
 const bounded=(value:number|undefined,fallback:number,max:number)=>Math.max(1,Math.min(max,Math.floor(Number.isFinite(value)?value!:fallback)));
@@ -15,7 +16,7 @@ export async function claimNotifications(client:PrismaClient,options:ClaimOption
  const limit=bounded(options.limit,12,32),token=randomUUID();
  return client.$transaction(async tx=>{
   if(await auctionMaintenance(tx))return [];
-  const base=Prisma.sql`state='PENDING' AND "nextAttemptAt"<=clock_timestamp() AND ("leaseUntil" IS NULL OR "leaseUntil"<=clock_timestamp()) AND kind NOT IN (${Prisma.join(expansionKinds)}) ${options.kind?Prisma.sql`AND kind=${options.kind}`:Prisma.empty}`;
+  const base=Prisma.sql`state='PENDING' AND "nextAttemptAt"<=(clock_timestamp() AT TIME ZONE 'UTC') AND ("leaseUntil" IS NULL OR "leaseUntil"<=(clock_timestamp() AT TIME ZONE 'UTC')) AND kind NOT IN (${Prisma.join(expansionKinds)}) ${options.kind?Prisma.sql`AND kind=${options.kind}`:Prisma.empty}`;
   const select=async(priority:'high'|'bulk'|undefined,take:number,excluded:string[]=[])=>take?tx.$queryRaw<Outbox[]>(Prisma.sql`SELECT * FROM "Outbox" WHERE ${base} ${priority==='high'?Prisma.sql`AND kind IN (${Prisma.join(highPriorityKinds)})`:priority==='bulk'?Prisma.sql`AND kind NOT IN (${Prisma.join(highPriorityKinds)})`:Prisma.empty} ${excluded.length?Prisma.sql`AND id NOT IN (${Prisma.join(excluded)})`:Prisma.empty} ORDER BY "nextAttemptAt",id FOR UPDATE SKIP LOCKED LIMIT ${take}`):[];
   let rows:Outbox[]=[];
   if(options.priority||options.kind||limit===1)rows=await select(options.priority,limit);
@@ -25,7 +26,7 @@ export async function claimNotifications(client:PrismaClient,options:ClaimOption
    if(rows.length<limit)rows.push(...await select(undefined,limit-rows.length,rows.map(row=>row.id)));
   }
   if(!rows.length)return [];
-  return tx.$queryRaw<ClaimedNotification[]>(Prisma.sql`UPDATE "Outbox" SET "leaseToken"=${token},"leaseUntil"=clock_timestamp()+interval '120 seconds',"claimedAt"=clock_timestamp() WHERE id IN (${Prisma.join(rows.map(row=>row.id))}) RETURNING *`);
+  return tx.$queryRaw<ClaimedNotification[]>(Prisma.sql`UPDATE "Outbox" SET "leaseToken"=${token},"leaseUntil"=(clock_timestamp() AT TIME ZONE 'UTC')+interval '120 seconds',"claimedAt"=(clock_timestamp() AT TIME ZONE 'UTC') WHERE id IN (${Prisma.join(rows.map(row=>row.id))}) RETURNING *`);
  },{timeout:5000,maxWait:5000});
 }
 
@@ -33,7 +34,7 @@ export async function claimExpansion(client:PrismaClient){
  const token=randomUUID();
  return client.$transaction(async tx=>{
   if(await auctionMaintenance(tx))return null;
-  const rows=await tx.$queryRaw<Outbox[]>(Prisma.sql`SELECT * FROM "Outbox" WHERE state='PENDING' AND kind IN (${Prisma.join(expansionKinds)}) AND "nextAttemptAt"<=clock_timestamp() AND ("leaseUntil" IS NULL OR "leaseUntil"<=clock_timestamp()) ORDER BY "nextAttemptAt",id FOR UPDATE SKIP LOCKED LIMIT 1`);
+  const rows=await tx.$queryRaw<Outbox[]>(Prisma.sql`SELECT * FROM "Outbox" WHERE state='PENDING' AND kind IN (${Prisma.join(expansionKinds)}) AND "nextAttemptAt"<=(clock_timestamp() AT TIME ZONE 'UTC') AND ("leaseUntil" IS NULL OR "leaseUntil"<=(clock_timestamp() AT TIME ZONE 'UTC')) ORDER BY "nextAttemptAt",id FOR UPDATE SKIP LOCKED LIMIT 1`);
   if(!rows.length)return null;
   return tx.outbox.update({where:{id:rows[0].id},data:{leaseToken:token,leaseUntil:new Date(Date.now()+notificationLeaseMs),claimedAt:new Date()}}) as Promise<ClaimedNotification>;
  },{timeout:5000,maxWait:5000});
@@ -42,7 +43,7 @@ export async function claimExpansion(client:PrismaClient){
 export const logicalDeliveryKey=(botId:string,auctionId:string,userId:string)=>`${botId}:${createHash('sha256').update(`public-result:${auctionId}:${userId}`).digest('hex')}`;
 export async function claimLogicalDelivery(client:PrismaClient,row:ClaimedNotification,botId:string,auctionId:string,userId:string){
  const key=logicalDeliveryKey(botId,auctionId,userId);
- const rows=await client.$queryRaw<{key:string}[]>`INSERT INTO "TelegramDeliveryLease" (key,"botId","outboxId","leaseToken","leaseUntil") VALUES (${key},${botId},${row.id},${row.leaseToken},${row.leaseUntil}) ON CONFLICT(key) DO UPDATE SET "outboxId"=EXCLUDED."outboxId","leaseToken"=EXCLUDED."leaseToken","leaseUntil"=EXCLUDED."leaseUntil" WHERE "TelegramDeliveryLease"."sentAt" IS NULL AND "TelegramDeliveryLease"."leaseUntil"<=clock_timestamp() RETURNING key`;
+ const rows=await client.$queryRaw<{key:string}[]>`INSERT INTO "TelegramDeliveryLease" (key,"botId","outboxId","leaseToken","leaseUntil") VALUES (${key},${botId},${row.id},${row.leaseToken},${row.leaseUntil}) ON CONFLICT(key) DO UPDATE SET "outboxId"=EXCLUDED."outboxId","leaseToken"=EXCLUDED."leaseToken","leaseUntil"=EXCLUDED."leaseUntil" WHERE "TelegramDeliveryLease"."sentAt" IS NULL AND "TelegramDeliveryLease"."leaseUntil"<=(clock_timestamp() AT TIME ZONE 'UTC') RETURNING key`;
  if(rows.length)return {key,acquired:true,sent:false};
  const saved=await client.telegramDeliveryLease.findUnique({where:{key},select:{sentAt:true,leaseToken:true}});
  return {key,acquired:saved?.leaseToken===row.leaseToken,sent:!!saved?.sentAt};

@@ -19,7 +19,6 @@ import {measureChapa} from './chapa-timing';
 import {matchesChapaMetadata} from './chapa-metadata';
 import {ChapaError,ChapaProviderError,chapaAvailability,chapaConfigurationFingerprint,chapaHash,chapaTransport,createdChapaSession,isChapaHostedSessionReference,parseChapaEvidence,requireChapa,type ChapaCreate,type ChapaTransport} from './chapa-provider';
 import {approvedRecoveryBinding,chapaRecoveryBindings} from './chapa-recovery-binding';
-import {queueChapaReceipt} from '../notifications/chapa-receipt';
 import {chapaMethodCatalog} from './chapa-methods';
 import {chapaInlineAvailability,chapaInlineTransport,inlineTransportBinding,isV2InlineCheckout} from './chapa-inline-provider';
 import {chapaAuthorizationErrorFeedback,chapaAuthorizationFeedback,chapaAuthorizationFeedbackReason,type ChapaAuthorizationFeedback} from './chapa-authorization-feedback';
@@ -285,7 +284,6 @@ export async function verifyChapaCheckout(client:PrismaClient,id:string,userId?:
   }
   if(!receipt)await tx.notificationInbox.create({data:{key:`chapa:${id}:credited`,kind:'PAYMENT_CREDITED',userId:order.userId,title:'Wallet credited · ገንዘብ ገብቷል',body:`${amount.toFixed(2)} ETB verified through Chapa.${order.purpose==='BID'?' The bid was not accepted; the funds remain in your wallet.':''}\n${amount.toFixed(2)} ብር በChapa ተረጋግጦ ገብቷል።${order.purpose==='BID'?' ጨረታው አልተቀበለም፤ ገንዘቡ በዋሌትዎ ውስጥ ቀርቷል።':''}`,href:`/payments/chapa/return?checkout=${id}`}});
   const updated=await tx.chapaCheckout.update({where:{id},data:{...fields,creditJournalId:journal.id,status:receipt?'BID_ACCEPTED':order.purpose==='TOP_UP'?'CREDITED':'NEEDS_REVIEW',reason,...(receipt?{bidId:receipt.bid.id,receipt:json(receipt)}:{})}});
-  await queueChapaReceipt(tx,updated);
   return ownChapaCheckout(updated);
  },PAYMENT_TRANSACTION_OPTIONS));
 }

@@ -12,6 +12,7 @@ import { masterAdminDatabaseHooks } from './staff-plugin';
 import {emailAdapter} from '../admin/email';
 import {telegramLoginSettings} from './telegram-login';
 import {prepareTelegramOIDCIdentity} from './telegram-oidc-identity';
+import {authLogSummary} from './safe-logger';
 
 const oidcProof=defineRequestState<{telegramId:string;subject:string}|null>(()=>null);
 
@@ -22,7 +23,7 @@ export function createAuth(client: PrismaClient | Prisma.TransactionClient = db)
     appName: 'Lowwin', baseURL: env.BETTER_AUTH_URL, secret: env.BETTER_AUTH_SECRET,
     database: prismaAdapter(client, { provider: 'postgresql' }),
     trustedOrigins: [new URL(env.BETTER_AUTH_URL).origin],
-    logger:{level:'error',log:()=>{console.warn('Authentication operation unavailable.')}},
+    logger:{level:'error',log:(level,_message,...args)=>{console.warn('authentication_operation_unavailable',{level,...authLogSummary(args)})}},
     user:{additionalFields:{role:{type:'string',defaultValue:'member',input:false,required:false}}},
     emailAndPassword: {
       enabled:true,disableSignUp:false,autoSignIn:false,requireEmailVerification:true,

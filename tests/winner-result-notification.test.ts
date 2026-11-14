@@ -18,12 +18,11 @@ beforeEach(()=>{vi.stubEnv('TELEGRAM_BOT_TOKEN','123456789:fixture-token');vi.st
 afterEach(()=>vi.unstubAllEnvs());
 
 describe('published result announcements',()=>{
- it('uses frozen product media, actual safe winner facts, publication time and the exact result link',async()=>{
+ it('uses frozen product media and only concise safe winner facts with the exact result link',async()=>{
   const f=fixture(),content=await campaignContent(f.db,row);
   expect(content).toMatchObject({imageId:productId,imagePath:'/api/media/'+productId,href:'/winners/42',buttonLabel:'View result · ውጤቱን ይመልከቱ'});
-  expect(caption(content)).toContain('Bura · @cryptonbozz · +251911***904');
-  expect(caption(content)).toContain('0.54');expect(caption(content)).toContain('Lowest unique number.');
-  expect(caption(content)).toContain('10 Nov 2026, 12:59 EAT');
+  expect(caption(content)).toContain('Bura\n+251911***904');
+  expect(caption(content)).toContain('ETB 0.54');expect(caption(content)).not.toMatch(/cryptonbozz|Lowest unique number|12:59 EAT|Entry|settlement/);
   expect(JSON.stringify(content)).not.toMatch(/private-winner|phoneCipher|consentConfirmedAt|251911652904/);
   expect(f.tx.winnerPresentation.findFirst).not.toHaveBeenCalled();
  });
@@ -34,13 +33,13 @@ describe('published result announcements',()=>{
   expect((await campaignContent(f.db,row))?.imagePath).toBe('/api/media/'+productId);
   expect(f.tx.winnerPresentation.findFirst).not.toHaveBeenCalled();
  });
- it('explains the actual first-accepted fallback rather than claiming uniqueness',async()=>{
+ it('shows a legitimate legacy winner without adding another fallback announcement or algorithm text',async()=>{
   const f=fixture();f.item.settlement.decision='FIRST_ACCEPTED_LOWEST';
-  const content=await campaignContent(f.db,row);expect(caption(content)).toContain('Earliest bid at the lowest number');expect(caption(content)).toContain('no unique number existed');expect(caption(content)).not.toContain('Lowest unique number.');
+  const content=await campaignContent(f.db,row);expect(caption(content)).toContain('Bura');expect(caption(content)).toContain('ETB 0.54');expect(caption(content)).not.toMatch(/Earliest|fallback|unique|accepted/);
  });
- it.each(['NO_WINNER','CANCELLED'])('announces published %s without inventing a winner or refund',async outcome=>{
+ it.each(['NO_WINNER','CANCELLED'])('does not send a removed %s announcement',async outcome=>{
   const f=fixture();Object.assign(f.item,{status:outcome==='CANCELLED'?'CANCELLED':'CLOSED',settlement:{...f.settlement,outcome,winner:null,winningPoints:null}});
-  const content=await campaignContent(f.db,row);expect(content?.href).toBe('/winners/42');expect(caption(content)).not.toMatch(/Bura|Winning number|refunded/);
+  expect(await campaignContent(f.db,row)).toBeNull();
  });
  it.each([{settlement:null},{status:'LIVE'},{isDemo:true},{testRunId:'private-test'}])('suppresses unpublished/private/incomplete results: %j',async change=>{
   expect(await campaignContent(fixture(change).db,row)).toBeNull();
@@ -56,6 +55,6 @@ describe('published result announcements',()=>{
  });
  it('keeps upcoming/live images separate from result announcement media',async()=>{
   const f=fixture({status:'LIVE',startsAt:new Date(now.getTime()-60000),endsAt:new Date(now.getTime()+3600000),settlement:null});
-  expect(await campaignContent(f.db,{...row,kind:'AUCTION_ENDING'})).toMatchObject({imagePath:'/api/media/'+productId});
+  expect(await campaignContent(f.db,{...row,kind:'AUCTION_ENDING_12_HOURS'})).toMatchObject({imagePath:'/api/media/'+productId});
  });
 });
