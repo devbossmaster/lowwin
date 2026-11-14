@@ -9,7 +9,10 @@ export const TELEGRAM_BROWSER_MIGRATION='202611130002_telegram_browser_login';
 export const TELEGRAM_BROWSER_TTL_SECONDS=600;
 export type TelegramBrowserErrorCode='cancelled'|'expired'|'unavailable'|'invalid'|'contact_required'|'conflict';
 export type TelegramBrowserDiagnostic='REQUEST_ORIGIN'|'CALLBACK_PARAMETERS'|'COOKIE_BINDING'|'COOKIE_STATE'|'CHALLENGE_MISSING'|'CHALLENGE_EXPIRED'|'CHALLENGE_DATA'|'CHALLENGE_USED'|'PROVIDER_CANCELLED'|'AUTHORIZATION_CODE'|'TOKEN_RESPONSE'|'TOKEN_ENCODING'|'TOKEN_HEADER'|'TOKEN_KEY'|'TOKEN_SIGNATURE'|'TOKEN_ISSUER'|'TOKEN_AUDIENCE'|'TOKEN_NONCE'|'TOKEN_SUBJECT'|'TOKEN_TIME'|'TOKEN_PROFILE';
-export class TelegramBrowserError extends Error{constructor(public readonly code:TelegramBrowserErrorCode,public readonly diagnostic?:TelegramBrowserDiagnostic){super(code);this.name='TelegramBrowserError'}}
+const oauthTokenErrorCodes=['invalid_request','invalid_client','invalid_grant','unauthorized_client','unsupported_grant_type','invalid_scope','access_denied','temporarily_unavailable','server_error'] as const;
+type OAuthTokenErrorCode=typeof oauthTokenErrorCodes[number];
+export type TelegramTokenResponseDiagnostic={httpStatus:number;shape:'object'|'array'|'null'|'other';hasIdToken:boolean;hasNestedIdToken:boolean;hasError:boolean;providerCode:OAuthTokenErrorCode|'unrecognized'|'none'};
+export class TelegramBrowserError extends Error{constructor(public readonly code:TelegramBrowserErrorCode,public readonly diagnostic?:TelegramBrowserDiagnostic,public readonly providerResponse?:TelegramTokenResponseDiagnostic){super(code);this.name='TelegramBrowserError'}}
 export type TelegramBrowserSettings={enabled:true;clientId:string;clientSecret:string;origin:string;callback:string;secure:boolean};
 export function telegramBrowserSettings(raw:Record<string,string|undefined>=process.env):TelegramBrowserSettings|null{
  if(raw.TELEGRAM_LOGIN_ENABLED!=='true')return null;
@@ -89,8 +92,21 @@ export function verifyTelegramBrowserToken(token:string,settings:TelegramBrowser
   return {telegramId:String(claims.id),subject:claims.sub,name:claims.name.trim(),username:typeof claims.preferred_username==='string'&&/^[A-Za-z0-9_]{1,64}$/.test(claims.preferred_username)?claims.preferred_username:null,image:telegramPhotoUrl(claims.picture),phone};
  }catch{throw new TelegramBrowserError('invalid',diagnostic)}
 }
-async function boundedProviderJson(response:Response,maxBytes=65536){if(!response.ok)throw new TelegramBrowserError('unavailable');const contentLength=Number(response.headers.get('content-length')??0);if(contentLength>maxBytes)throw new TelegramBrowserError('unavailable');const reader=response.body?.getReader();if(!reader)throw new TelegramBrowserError('unavailable');let total=0;const chunks:Uint8Array[]=[];while(true){const {done,value}=await reader.read();if(done)break;total+=value.length;if(total>maxBytes){await reader.cancel();throw new TelegramBrowserError('unavailable')}chunks.push(value)}try{return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown}catch{throw new TelegramBrowserError('unavailable')}}
+async function boundedProviderJson(response:Response,maxBytes=65536,readErrorResponse=false){if(!response.ok&&!readErrorResponse)throw new TelegramBrowserError('unavailable');const contentLength=Number(response.headers.get('content-length')??0);if(contentLength>maxBytes)throw new TelegramBrowserError('unavailable');const reader=response.body?.getReader();if(!reader)throw new TelegramBrowserError('unavailable');let total=0;const chunks:Uint8Array[]=[];while(true){const {done,value}=await reader.read();if(done)break;total+=value.length;if(total>maxBytes){await reader.cancel();throw new TelegramBrowserError('unavailable')}chunks.push(value)}try{return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown}catch{throw new TelegramBrowserError('unavailable')}}
 type Fetch=typeof fetch;
+/** Inspect only known response fields. Never retain or log a provider body,
+ * unknown keys, error_description, tokens or other customer/provider values. */
+export function telegramTokenResponse(body:unknown,httpStatus:number){
+ const object=body!==null&&typeof body==='object'&&!Array.isArray(body)?body as Record<string,unknown>:null;
+ const hasError=!!object&&Object.hasOwn(object,'error')&&object.error!==null&&object.error!==undefined;
+ if(httpStatus>=200&&httpStatus<300&&object&&typeof object.id_token==='string'&&object.id_token.length>0&&!hasError)return object.id_token;
+ const nested=object?.data&&typeof object.data==='object'&&!Array.isArray(object.data)?object.data as Record<string,unknown>:null;
+ const providerCode:TelegramTokenResponseDiagnostic['providerCode']=hasError?typeof object?.error==='string'&&(oauthTokenErrorCodes as readonly string[]).includes(object.error)?object.error as OAuthTokenErrorCode:'unrecognized':'none';
+ const diagnostic:TelegramTokenResponseDiagnostic={httpStatus,shape:object?'object':body===null?'null':Array.isArray(body)?'array':'other',hasIdToken:!!object&&Object.hasOwn(object,'id_token'),hasNestedIdToken:!!nested&&Object.hasOwn(nested,'id_token'),hasError,providerCode};
+ // A token endpoint can return HTTP 200 with an OAuth error. It is still not a
+ // completed login. In particular, an access_token alone never proves identity.
+ throw new TelegramBrowserError(providerCode==='invalid_grant'||providerCode==='access_denied'?'invalid':'unavailable','TOKEN_RESPONSE',diagnostic);
+}
 let jwksCache:{keys:Jwk[];expiresAt:number;refreshedAt:number}|null=null,jwksPending:Promise<Jwk[]>|null=null;
 export async function telegramBrowserKeys(transport:Fetch=fetch,force=false):Promise<Jwk[]>{
  const now=Date.now();if(jwksCache&&now<jwksCache.expiresAt&&(!force||now-jwksCache.refreshedAt<30000))return jwksCache.keys;if(jwksPending)return jwksPending;
@@ -100,9 +116,9 @@ export async function telegramBrowserKeys(transport:Fetch=fetch,force=false):Pro
 export async function exchangeTelegramBrowserCode(code:string,settings:TelegramBrowserSettings,challenge:TelegramBrowserChallenge,transport:Fetch=fetch){
  try{
   const response=await transport(TELEGRAM_OIDC_ISSUER+'/token',{method:'POST',headers:{Authorization:'Basic '+Buffer.from(`${settings.clientId}:${settings.clientSecret}`).toString('base64'),'Content-Type':'application/x-www-form-urlencoded',Accept:'application/json'},body:new URLSearchParams({grant_type:'authorization_code',code,redirect_uri:settings.callback,client_id:settings.clientId,code_verifier:challenge.verifier}),redirect:'error',cache:'no-store',signal:AbortSignal.timeout(15000)});
-  const body=await boundedProviderJson(response,32768) as {id_token?:unknown};if(typeof body.id_token!=='string')throw new TelegramBrowserError('invalid','TOKEN_RESPONSE');
-  const keys=await telegramBrowserKeys(transport);let header:Record<string,unknown>;try{header=JSON.parse(Buffer.from(body.id_token.split('.')[0],'base64url').toString('utf8'))}catch{throw new TelegramBrowserError('invalid','TOKEN_ENCODING')}
+  const token=telegramTokenResponse(await boundedProviderJson(response,32768,true),response.status);
+  const keys=await telegramBrowserKeys(transport);let header:Record<string,unknown>;try{header=JSON.parse(Buffer.from(token.split('.')[0],'base64url').toString('utf8'))}catch{throw new TelegramBrowserError('invalid','TOKEN_ENCODING')}
   const current=typeof header.kid==='string'&&keys.some(k=>k.kid===header.kid)?keys:await telegramBrowserKeys(transport,true);
-  return verifyTelegramBrowserToken(body.id_token,settings,challenge,current);
+  return verifyTelegramBrowserToken(token,settings,challenge,current);
  }catch(error){if(error instanceof TelegramBrowserError)throw error;throw new TelegramBrowserError('unavailable')}
 }

@@ -1,7 +1,7 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
 import dynamic from 'next/dynamic';
-import {Bell,Check,ChevronRight,Copy,Gift,Mail,MapPin,Pencil,Plus,Share2,ShieldCheck,Ticket,UsersRound,Wallet} from 'lucide-react';
+import {Bell,Check,ChevronRight,Copy,Gavel,Gift,Heart,Mail,MapPin,Pencil,Plus,ReceiptText,Share2,ShieldCheck,Ticket,Trophy,UsersRound,Wallet} from 'lucide-react';
 import {IntentPrefetchLink as Link} from '@/components/intent-prefetch-link';
 import {invalidatePrivateQueries} from '@/components/private-query-cache';
 import {usePrivateQuery,PrivateState} from '@/components/private-query';
@@ -97,6 +97,7 @@ function PlayerProfile(){
         <p className={styles.balance} aria-busy={!wallet.data&&!wallet.error}>{balance??'—'} <span>ETB</span></p>
         {wallet.data?.bonusAvailable&&etbToCents(wallet.data.bonusAvailable)>0n&&<div className={styles.walletSplit}><span>{text('Deposited funds','ያስገቡት ገንዘብ')} <b>{centsToEtb(etbToCents(wallet.data.cashAvailable))} ETB</b></span><span>{text('Active bonus','ያለ ቦነስ')} <b>{centsToEtb(etbToCents(wallet.data.bonusAvailable))} ETB</b></span></div>}
         <WalletTopUpTrigger className={styles.topUp} ariaLabel={text('Top up wallet','ወደ ዋሌት ገንዘብ ያስገቡ')}><Plus size={19} aria-hidden="true"/>{text('Top up','ገንዘብ ያስገቡ')}</WalletTopUpTrigger>
+        <Link href="/payments" className={styles.walletTransactions}><ReceiptText size={17} aria-hidden="true"/><span>{text('Transactions','\u130d\u1265\u12ed\u1276\u127d')}</span><ChevronRight size={16} aria-hidden="true"/></Link>
         {wallet.error&&<p className={styles.walletError} role="status">{text(wallet.data?'Showing your saved balance.':'Balance unavailable.',wallet.data?'የተቀመጠው ቀሪ ሂሳብ ይታያል።':'ቀሪ ሂሳቡ አይገኝም።')} <button type="button" onClick={wallet.reload}>{text('Retry','እንደገና')}</button></p>}
       </section>
       <div className={styles.summary} aria-label={text('Your activity','የእርስዎ እንቅስቃሴ')}>
@@ -104,6 +105,11 @@ function PlayerProfile(){
         <div><span><Ticket size={13} aria-hidden="true"/>{text('Total bids','ጠቅላላ ጨረታዎች')}</span><strong>{data.counts.bids}</strong></div>
       </div>
       <Link href="/profile/alerts" className={styles.notifications}><Bell size={19} aria-hidden="true"/><span>{text('Notifications','ማሳወቂያዎች')}</span>{alerts.data&&alerts.data.unread>0&&<strong data-unread-indicator aria-label={text(`${alerts.data.unread} unread`,`${alerts.data.unread} ያልተነበቡ`)}>{alerts.data.unread>99?'99+':alerts.data.unread}</strong>}<ChevronRight size={18} aria-hidden="true"/></Link>
+      <nav className={styles.shortcuts} aria-label={text('Your auctions','የእርስዎ ጨረታዎች')}>
+        <Link href="/my-bids"><span className={styles.shortcutIcon}><Gavel size={20} aria-hidden="true"/></span><span><strong>{text('My bids','ጨረታዎቼ')}</strong><small>{text('Your live and finished entries','የቀጥታ እና ያለቁ ጨረታዎችዎ')}</small></span><ChevronRight size={17} aria-hidden="true"/></Link>
+        <Link href="/winning-bids"><span className={styles.shortcutIcon}><Trophy size={20} aria-hidden="true"/></span><span><strong>{text('My wins','ያሸነፍኳቸው')}</strong><small>{text('Prizes and delivery updates','ሽልማቶች እና የርክክብ ዝማኔዎች')}</small></span><ChevronRight size={17} aria-hidden="true"/></Link>
+        <Link href="/profile/favorites"><span className={styles.shortcutIcon}><Heart size={20} aria-hidden="true"/></span><span><strong>{text('Saved prizes','የተቀመጡ ሽልማቶች')}</strong><small>{text('Auctions you saved','ያስቀመጧቸው ጨረታዎች')}</small></span><ChevronRight size={17} aria-hidden="true"/></Link>
+      </nav>
       <section className={styles.panel} aria-labelledby="refer-heading">
         <div className={styles.panelHeading}><h2 id="refer-heading"><UsersRound size={17} aria-hidden="true"/>{text('Refer & earn','ይጋብዙ እና ያግኙ')}</h2><span className={styles.referralState} data-active={referralActive||undefined}>{referralActive?text('Active','ንቁ'):knownRewards&&!referral?.enabled?text('Paused','ቆሟል'):text('Unavailable','አይገኝም')}</span></div>
         <p className={styles.description}>{referralActive&&typeof referral?.discountPercent==='number'?text(`Share your link. When a new friend registers with it and makes their first accepted bid, you earn one ${referral.discountPercent}% discount on a submission fee.`,`ሊንክዎን ያጋሩ። አዲስ ጓደኛዎ በሊንኩ ተመዝግቦ የመጀመሪያ ጨረታው ሲቀበል፣ ለአንድ የማስገቢያ ክፍያ ${referral.discountPercent}% ቅናሽ ያገኛሉ።`):knownRewards&&!referral?.enabled?text('New invitations are paused. Your earned discounts keep their original expiry.','አዲስ ግብዣዎች ቆመዋል። ያገኟቸው ቅናሾች የመጀመሪያ የማብቂያ ቀናቸውን ይይዛሉ።'):text('Your invitation link and reward terms will appear here when Refer & earn is ready.','የመጋበዣ ሊንክዎ እና የሽልማት ውሎች አገልግሎቱ ሲዘጋጅ እዚህ ይታያሉ።')}</p>

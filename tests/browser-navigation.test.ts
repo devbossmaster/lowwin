@@ -8,6 +8,7 @@ vi.mock('../src/components/intent-prefetch-link',()=>({IntentPrefetchLink:({href
 vi.mock('../src/components/telegram-provider',()=>({useTelegram:()=>f.state}));
 import {BrowserNavigation} from '../src/components/browser-navigation';
 import {BottomNavigation} from '../src/components/bottom-navigation';
+import {activeCustomerNavigation} from '../src/components/customer-navigation-items';
 import {MiniLocaleProvider,type MiniLanguage} from '../src/components/mini-locale';
 import {miniNavigationState} from '../src/components/mini-navigation-state';
 const render=(language:MiniLanguage='en')=>renderToStaticMarkup(createElement(MiniLocaleProvider,{initialLanguage:language,children:createElement(BrowserNavigation)}));
@@ -26,8 +27,8 @@ describe('server-confirmed customer navigation',()=>{
  });
  it.each(['en','am'] as const)('renders accessible current-route links after confirmed registration in %s',language=>{
   const html=render(language);expect(html).toContain('data-browser-navigation');expect(html).toContain('<nav');expect(html).toContain('aria-current="page"');
-  for(const path of ['/','/winners','/my-bids','/payments','/profile'])expect(html).toContain(`href="${path}"`);
-  expect(html).toContain(language==='en'?'Transactions':'ግብይቶች');expect(html).toContain(language==='en'?'Main navigation':'ዋና አሰሳ');expect(html).not.toContain('<aside');
+  for(const path of ['/','/winners','/my-bids','/profile'])expect(html).toContain(`href="${path}"`);
+  expect(html).not.toContain('href="/payments"');expect(html).toContain('lucide-gavel');expect(html).toContain(language==='en'?'Main navigation':'ዋና አሰሳ');expect(html).not.toContain('<aside');
  });
  it('restores only the current account’s saved destination and drops it after logout/account change',()=>{
   miniNavigationState.remember('account-a:session-a','/my-bids?view=finished',400);
@@ -38,7 +39,11 @@ describe('server-confirmed customer navigation',()=>{
  });
  it('uses the same navigation for an owned Mini App account and browser OAuth account',()=>{
   const browser=render();f.state.environment='mini';const mini=render();
-  expect(browser).toContain('href="/payments"');expect(mini).toContain('href="/payments"');
-  expect(renderMobile()).toContain('href="/payments"');
+  for(const html of [browser,mini,renderMobile()]){expect(html).not.toContain('href="/payments"');expect(html).toContain('href="/my-bids"');expect(html).toContain('lucide-gavel')}
+  expect(renderMobile()).toContain('data-bid="true"');
+ });
+ it.each(['/payments','/payments/receipt','/wallet','/wallet/history'])('keeps %s under the Profile money section without restoring a fifth navigation item',path=>{
+  f.path=path;expect(activeCustomerNavigation(path)).toBe('/profile');
+  for(const html of [render(),renderMobile()]){expect(html).toContain('href="/profile"');expect(html).toMatch(/href="\/profile"[^>]*aria-current="page"/);expect((html.match(/<nav[\s\S]*?<\/nav>/)?.[0].match(/href="/g)??[]).length).toBe(4)}
  });
 });

@@ -39,8 +39,8 @@ export default function BrowserTelegramLogin(){
  const notice=errorCode?feedback[errorCode][language]:navigationError?(language==='am'?'Telegramን መክፈት አልቻልንም። እንደገና ይሞክሩ።':'Telegram could not open. Please try again.'):null;
  return <AccountSheet title={<span className={styles.brand}><img src={LOWWIN_LOGO_SRC} width={27} height={27} alt=""/>LowWin</span>} onClose={close} presentation="centered">
   <div className={styles.content} data-browser-telegram-login>
-   <h3><MiniPhrase en="Sign in to continue" am="ለመቀጠል ይግቡ"/></h3>
-   <p className={styles.lead}><MiniPhrase en="Keep your bids, wallet and rewards together in your LowWin account." am="ጨረታዎችዎን፣ ዋሌትዎን እና ሽልማቶችዎን በLowWin መለያዎ አንድ ላይ ያስቀምጡ።"/></p>
+   <h3><MiniPhrase en="Sign in or create an account" am="ይግቡ ወይም ይመዝገቡ"/></h3>
+   <p className={styles.lead}><MiniPhrase en="Continue with Telegram. If you're new, we'll create your LowWin account in the same step." am="በTelegram ይቀጥሉ። አዲስ ከሆኑ የLowWin መለያዎ በዚሁ ይፈጠራል።"/></p>
    {notice&&<p className={styles.notice} role="alert"><AlertCircle size={17} aria-hidden="true"/><span>{notice}</span></p>}
    {restoring?<p className={styles.loading} role="status"><LoaderCircle size={17} className={styles.spin} aria-hidden="true"/><MiniPhrase en="Restoring your account…" am="መለያዎን በመመለስ ላይ…"/></p>:<>
     {status==='error'&&ready&&<p className={styles.status} role="status"><MiniPhrase en="Your previous session could not be restored. Sign in again to continue." am="የቀደመውን መግቢያዎን መመለስ አልቻልንም። ለመቀጠል እንደገና ይግቡ።"/></p>}
@@ -48,7 +48,7 @@ export default function BrowserTelegramLogin(){
     {configuration.data&&!ready&&<div className={styles.unavailable}><p role="status"><MiniPhrase en="Website sign-in isn’t configured yet. You can use LowWin in Telegram or keep browsing." am="የድረ ገጽ መግቢያ ገና አልተዘጋጀም። LowWinን በTelegram ይክፈቱ ወይም መመልከት ይቀጥሉ።"/></p>{botUrl&&<TelegramBotLink className={styles.primary} href={botUrl}><TelegramMark/><MiniPhrase en="Open LowWin in Telegram" am="LowWinን በTelegram ይክፈቱ"/></TelegramBotLink>}</div>}
     {configuration.isError&&<div className={styles.unavailable}><p role="status"><MiniPhrase en="We couldn’t connect to sign-in. Check your connection and try again." am="ወደ መግቢያው መገናኘት አልቻልንም። ግንኙነትዎን ያረጋግጡና እንደገና ይሞክሩ።"/></p><button type="button" className={styles.retry} onClick={()=>void configuration.refetch()} disabled={configuration.isFetching}><MiniPhrase en={configuration.isFetching?'Connecting…':'Try again'} am={configuration.isFetching?'በመገናኘት ላይ…':'እንደገና ይሞክሩ'}/></button></div>}
    </>}
-   {ready&&<p className={styles.explanation}><MiniPhrase en="Approve on Telegram, then return here. Use the same Telegram account to access your existing wallet and bids." am="በTelegram ያጽድቁና ወደዚህ ይመለሱ። ዋሌትዎን እና ጨረታዎችዎን ለመቀጠል ተመሳሳይ የTelegram መለያ ይጠቀሙ።"/></p>}
+   {ready&&<p className={styles.explanation}><MiniPhrase en="For a new account, allow phone sharing on Telegram. Use the same Telegram account here and in the bot to keep your wallet and bids." am="ለአዲስ መለያ ስልክ ቁጥርዎን በTelegram ለማጋራት ይፍቀዱ። ዋሌትዎን እና ጨረታዎችዎን ለመቀጠል እዚህና በቦቱ ተመሳሳይ የTelegram መለያ ይጠቀሙ።"/></p>}
    {errorCode==='contact_required'&&botUrl&&<TelegramBotLink className={styles.secondary} href={botUrl}><MiniPhrase en="Finish registration in Telegram" am="ምዝገባን በTelegram ያጠናቅቁ"/></TelegramBotLink>}
    <button type="button" className={styles.browse} onClick={close}><MiniPhrase en="Keep browsing" am="መመልከት ይቀጥሉ"/></button>
    <p className={styles.security}><ShieldCheck size={14} aria-hidden="true"/><MiniPhrase en="Secure sign-in through Telegram" am="በTelegram ደህንነቱ የተጠበቀ መግቢያ"/></p>

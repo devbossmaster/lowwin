@@ -112,7 +112,7 @@ export async function finishTelegramBrowserLogin(request:Request,client:PrismaCl
   const databaseCode=error&&typeof error==='object'&&'code' in error&&['P2021','P2022','P2002','P2028','P1001','P1002'].includes(String(error.code))?String(error.code):undefined;
   // Deliberately no raw Error, request URL, headers, state, claims or provider
   // payload: this is enough to identify the rejecting boundary safely in WEB logs.
-  console.warn('telegram_browser_login_rejected',{stage,code:known?error.code:'unavailable',diagnostic:known?error.diagnostic:undefined,databaseCode});
+  console.warn('telegram_browser_login_rejected',{stage,code:known?error.code:'unavailable',diagnostic:known?error.diagnostic:undefined,databaseCode,...(known&&error.providerResponse?{providerResponse:error.providerResponse}:{})});
   return errorRedirect(settings,known?error.code:'unavailable',challenge);
  }
 }

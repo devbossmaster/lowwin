@@ -42,7 +42,7 @@
 .empty{display:grid;justify-items:center;gap:8px;padding:30px 12px;color:var(--brand-muted, #72697e);text-align:center;font-size:13px;line-height:1.5}
 .empty svg{color:#96866a}
 .empty p{margin:0}
-.historyLink{display:flex;justify-content:center;align-items:center;min-height:44px;margin-top:8px;color:var(--brand-primary-strong, #5533be);font-size:13px;font-weight:650;text-underline-offset:3px}
+.historyLink{display:flex;align-items:center;gap:10px;min-height:56px;margin-top:16px;padding:12px 14px;border-radius:14px;background:#fff;color:var(--brand-ink,#16202c);font-size:15px;font-weight:600;line-height:1.5;text-decoration:none}.historyLink>span{flex:1;min-width:0}.historyLink>svg{flex:none}.historyLink>svg:last-child{color:var(--brand-muted,#657181)}.historyLink:hover{color:var(--action-hover,#1d4ed8)}
 .pagination{display:flex;justify-content:space-between;align-items:center;margin-top:9px;font-size:12px;color:var(--brand-muted, #72697e)}
 .pagination button{min-height:40px;padding:6px 10px;border:0;background:none;color:var(--brand-primary-strong, #5533be);font:inherit;font-weight:650;cursor:pointer}
 .pagination button:disabled{color:#8b8577;cursor:default}

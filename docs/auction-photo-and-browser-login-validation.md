@@ -24,9 +24,20 @@
 
 The operator's read-only report confirms configuration and migration `202611130002_telegram_browser_login` are ready, including both session/contact constraints. This rules out missing settings or that migration as the reported cause. It does **not** prove a successful callback.
 
+The subsequent production log identifies `stage: token_exchange`, `diagnostic: TOKEN_RESPONSE`: Telegram returned successful HTTP/parseable JSON without a top-level string `id_token`. This occurs before key/signature/claim validation or account creation. The current handler recognizes OAuth errors returned with HTTP 200 as well as HTTP 400/401 and records only bounded, allowlisted response metadata. It does not substitute an access token or nested identity object for a verified ID token. A new log's `providerResponse.providerCode` can distinguish a provider rejection such as `invalid_client` from a malformed response; the original log does not establish which one occurred.
+
 After the updated WEB is deployed, reproduce one fresh browser login and inspect the WEB log event `telegram_browser_login_rejected`. Share only that event's `stage`, `code`, `diagnostic` and `databaseCode`. Do not share callback URLs containing codes/state, tokens or cookies. The current production rejection cannot be identified from the generic screenshot alone; no validation has been weakened to bypass it.
 
 This update adds no database migration or new environment variable. It was not merged or deployed and made no live payments or notification sends.
+
+## Navigation follow-up
+
+- Registered customer navigation now has Home, Winners, My Bids with a hammer icon, and Profile. Guests continue to see no private navigation.
+- Transactions remains at `/payments`, accessible from Profile's wallet card and near the top of the Wallet sheet. Profile includes My bids, My wins and Saved prizes shortcuts alongside existing notifications and rewards.
+- The remaining black selected auction-browse control uses the existing blue action palette.
+- Website copy now makes clear that the same Telegram flow signs in an existing account or creates a new account after verified phone consent. Bot contact-sharing remains a separate supported entry path to the same numeric Telegram identity.
+
+Follow-up checks: 44 navigation/bid tests and 95 browser-auth protocol/request/client tests passed. Sixteen navigation Chrome cases passed at 320/360/430/1280px across both languages and guest/account states. Eighteen Profile/Wallet cases and six browser-login modal cases also passed, including rendered Amharic labels, link destinations, overflow and intercepted actions. TypeScript and the final isolated production build passed. No real login, payment or bot delivery was initiated by these checks.
 
 ## Current notification inventory
 
