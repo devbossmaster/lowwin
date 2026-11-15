@@ -8,7 +8,7 @@ type ProgressState={order:ChapaCheckoutView|null;busy:boolean;restoring:boolean;
 /** A retry can return to entry only after an owned, terminal server outcome.
  * Display deadlines, transport errors and provider success never qualify. */
 export function bidPaymentCanRetry(order:ChapaCheckoutView|null){
- if(!order||order.unsupportedLegacy||order.apiVersion==='legacy'||order.fundsPreserved||chapaConfirmed(order)||order.providerStatus==='SUCCESS'||order.verificationState==='MISMATCH')return false;
+ if(!order||order.unsupportedLegacy||order.apiVersion==='legacy'&&order.legacyRecoveryAvailable!==true||order.fundsPreserved||chapaConfirmed(order)||order.providerStatus==='SUCCESS'||order.verificationState==='MISMATCH')return false;
  if(order.reason==='INITIALIZATION_REJECTED'&&chapaDirectRequestRejected(order))return true;
  return ['FAILED','CANCELLED','INCOMPLETE','EXPIRED','BLOCKED','FAILED_OR_CANCELLED'].includes(order.status)&&chapaVerifiedTerminal(order);
 }
@@ -43,8 +43,8 @@ export function bidPaymentProgressPhase(state:ProgressState):BidPaymentProgressP
  if(state.hasReceipt)return 'success';
  if(order?.fundsPreserved)return 'preserved';
  if(order&&chapaConfirmed(order))return 'success';
- if(order?.unsupportedLegacy||order?.apiVersion==='legacy'||errorCode==='LEGACY_PAYMENT_UNSUPPORTED')return 'uncertain';
  if(bidPaymentCanRetry(order))return 'terminal';
+ if(order?.unsupportedLegacy||order?.apiVersion==='legacy'||errorCode==='LEGACY_PAYMENT_UNSUPPORTED')return order?.legacyRecoveryAvailable&&order.providerStatus==='SUCCESS'?'confirming':'uncertain';
  if(state.preparing&&!state.started&&!order)return 'preparing';
  if(state.walletRetry)return 'uncertain';
  if(errorCode&&['UNAUTHORIZED','FORBIDDEN','NOT_FOUND','CONFIGURATION_CHANGED'].includes(errorCode))return 'uncertain';

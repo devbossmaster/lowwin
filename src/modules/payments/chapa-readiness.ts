@@ -1,5 +1,6 @@
 import {chapaAvailability,chapaWebhookSignatureProfile,isChapaWebhookSecret,createChapaTransport,parseChapaPaymentMethods} from './chapa-provider';
 import {chapaInlineAvailability} from './chapa-inline-provider';
+import {chapaLegacyRecoveryAvailability} from './chapa-legacy-recovery';
 
 type Environment=Record<string,string|undefined>;
 type Options={schema?:boolean;methods?:boolean};
@@ -51,8 +52,8 @@ function missingPrerequisites(raw:Environment,mode:'test'|'live'){
 export function chapaWorkerConfiguration(raw:Environment){
  const health=chapaAvailability(raw),missing=missingPrerequisites(raw,health.mode);
  if(!health.recoveryEnabled&&raw.CHAPA_RECOVERY_ENABLED!=='true')missing.push('CHAPA_RECOVERY_ENABLED');
- const inline=chapaInlineAvailability(raw);
- return {event:'chapa_worker_configuration',apiVersion:'v2' as const,mode:health.mode,configured:health.configured,recoveryEnabled:health.recoveryEnabled,v2RecoveryEnabled:health.recoveryEnabled,legacySweepEnabled:raw.CHAPA_LEGACY_SWEEP_ENABLED==='true',missingPrerequisites:health.recoveryEnabled?[]:missing,inline:{configured:inline.configured,creationEnabled:inline.enabled,publicKeyValid:inline.publicKeyValid,privateKeyIsPublic:inline.privateKeyIsPublic}};
+ const inline=chapaInlineAvailability(raw),legacy=chapaLegacyRecoveryAvailability(raw),recoveryEnabled=health.recoveryEnabled||legacy.recoveryEnabled;
+ return {event:'chapa_worker_configuration',apiVersion:'v2' as const,mode:health.mode,configured:health.configured,recoveryEnabled,v2RecoveryEnabled:health.recoveryEnabled,v1RecoveryEnabled:legacy.recoveryEnabled,legacySweepEnabled:raw.CHAPA_LEGACY_SWEEP_ENABLED==='true',missingPrerequisites:recoveryEnabled?[]:missing,inline:{configured:inline.configured,creationEnabled:inline.enabled,publicKeyValid:inline.publicKeyValid,privateKeyIsPublic:inline.privateKeyIsPublic}};
 }
 
 /** Offline by default. Explicit checks are read-only and limited to configured

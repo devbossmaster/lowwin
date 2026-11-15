@@ -5,12 +5,15 @@ import {chapaAvailability,chapaHash,ChapaError,ChapaProviderError,createChapaTra
 type Environment=Record<string,string|undefined>;
 const API='https://api.chapa.global';
 const supported=['telebirr','cbebirr','mpesa','ebirr'] as const;
+// New LowWin payments offer these three rails only. Keep the transport's
+// historical eBirr validator above compatible with already-owned attempts.
+const checkoutMethods=['telebirr','cbebirr','mpesa'] as const;
 export function chapaInlinePublicKeyValid(value:string|undefined,mode:'test'|'live'){
  return new RegExp(`^CHAPA_${mode==='live'?'LIVE':'TEST'}_PUB_[A-Za-z0-9_-]{16,240}$`).test(value??'')&&!/REPLACE|CHANGE_ME|example|fixture/i.test(value??'');
 }
 export function chapaInlineConfiguredMethods(raw:Environment=process.env){
  const supplied=raw.CHAPA_INLINE_METHODS===undefined?['telebirr','cbebirr','mpesa']:raw.CHAPA_INLINE_METHODS.split(',').map(v=>v.trim());
- return supported.filter(method=>supplied.includes(method));
+ return checkoutMethods.filter(method=>supplied.includes(method));
 }
 export function chapaInlineAvailability(raw:Environment=process.env){
  const base=chapaAvailability(raw),publicKeyValid=chapaInlinePublicKeyValid(raw.CHAPA_PUBLIC_KEY,base.mode),privateKeyIsPublic=/^CHAPA_(?:LIVE|TEST)_PUB_/.test(raw.CHAPA_PRIVATE_KEY??'');

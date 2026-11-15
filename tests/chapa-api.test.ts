@@ -41,6 +41,16 @@ function existingLegacyEvent(patch:Partial<EventRow>={}){
 }
 afterEach(()=>{vi.unstubAllEnvs();vi.restoreAllMocks()});
 describe('Chapa HTTP authorization and durable webhook boundary',()=>{
+ it('rejects a legacy-profile downgrade for a raw-body-pinned owned intent before every write',async()=>{
+  vi.stubEnv('CHAPA_WEBHOOK_SIGNATURE_PROFILE','legacy_secret');
+  const order={id,flowVersion:4,initialization:{apiVersion:'v2',webhookSignatureProfile:'raw_body'},merchantReference:merchant,mode:'test',chapaReference:hint.chapa_reference,amountCents:1000n,currency:'ETB',creditJournalId:null};f.find.mockResolvedValue(order);
+  const response=await webhook(legacySigned(hint));expect(response.status).toBe(401);expect(await response.json()).toEqual({accepted:false,reason:'SIGNATURE_PROFILE_MISMATCH'});
+  expect(f.event).not.toHaveBeenCalled();expect(f.eventUpdate).not.toHaveBeenCalled();expect(f.update).not.toHaveBeenCalled();expect(f.lock).not.toHaveBeenCalled();expect(f.process).not.toHaveBeenCalled();expect(globalThis.fetch).not.toHaveBeenCalled();expect(order.creditJournalId).toBeNull();
+ });
+ it('upgrades exact raw-body authentication for a pinned intent while the merchant legacy profile remains selected',async()=>{
+  vi.stubEnv('CHAPA_WEBHOOK_SIGNATURE_PROFILE','legacy_secret');f.find.mockResolvedValue({id,flowVersion:4,initialization:{apiVersion:'v2',webhookSignatureProfile:'raw_body'},merchantReference:merchant,mode:'test',chapaReference:hint.chapa_reference,amountCents:1000n,currency:'ETB',creditJournalId:null});
+  expect((await webhook(signed(hint))).status).toBe(200);expect(f.event.mock.calls[0][0].data[0]).toMatchObject({checkoutId:id,status:'QUEUED'});expect(f.update).toHaveBeenCalledOnce();expect(f.verify).not.toHaveBeenCalled();expect(globalThis.fetch).not.toHaveBeenCalled();
+ });
  it.each(['raw_body','legacy_secret'])('acknowledges an authenticated %s hint for retired history without queueing or mutating the payment',async profile=>{
   vi.stubEnv('CHAPA_WEBHOOK_SIGNATURE_PROFILE',profile);f.find.mockResolvedValue({id,flowVersion:3,initialization:{apiVersion:'v1'},merchantReference:merchant,mode:'test',chapaReference:hint.chapa_reference,amountCents:1000n,currency:'ETB',creditJournalId:null});
   const response=await webhook(profile==='raw_body'?signed(hint):legacySigned(hint));expect(response.status).toBe(200);expect(await response.json()).toEqual({accepted:true});

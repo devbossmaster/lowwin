@@ -1,14 +1,17 @@
 import type {PrismaClient} from '@prisma/client';
 import {chapaAvailability,chapaTransport,type ChapaTransport} from './chapa-provider';
 import {unsupportedLegacyChapaCheckout,verifyChapaCheckout} from './chapa';
+import {chapaLegacyRecoveryAvailability} from './chapa-legacy-recovery';
+
+function recoveryModes(){const current=chapaAvailability(),legacy=chapaLegacyRecoveryAvailability();return [...new Set([...(current.recoveryEnabled?[current.mode]:[]),...(legacy.recoveryEnabled?[legacy.mode]:[])])]}
 
 /** Only durable authenticated delivery hints enter this queue. A configured
- * legacy proof is not payload integrity; only the v2 lookup can establish funds.
+ * legacy proof is not payload integrity; only the original-version private lookup can establish funds.
  * No pending-checkout scan or initialization is performed by this worker. */
 export async function processChapaEvent(client:PrismaClient,id:string,transport:ChapaTransport=chapaTransport){
- const health=chapaAvailability();if(!health.recoveryEnabled)return false;
+ const modes=recoveryModes();if(!modes.length)return false;
  const now=new Date(),lease=new Date(Date.now()+30000);
- const claimed=await client.chapaWebhookEvent.updateMany({where:{id,mode:health.mode,status:'QUEUED',attempts:{lt:5},nextAttemptAt:{lte:now},OR:[{leaseUntil:null},{leaseUntil:{lte:now}}]},data:{leaseUntil:lease,attempts:{increment:1}}});
+ const claimed=await client.chapaWebhookEvent.updateMany({where:{id,mode:{in:modes},status:'QUEUED',attempts:{lt:5},nextAttemptAt:{lte:now},OR:[{leaseUntil:null},{leaseUntil:{lte:now}}]},data:{leaseUntil:lease,attempts:{increment:1}}});
  if(!claimed.count)return false;
  const event=await client.chapaWebhookEvent.findUniqueOrThrow({where:{id}});
  let verified=false,credited=false,unsupportedLegacy=false;
@@ -33,8 +36,8 @@ export async function processChapaEvent(client:PrismaClient,id:string,transport:
  finally{
   const where={id,status:'QUEUED',leaseUntil:lease};
   if(unsupportedLegacy){
-   // Retired attempts are retained for staff reconciliation. Do not call a
-   // removed provider API or present an unverified payment as settled.
+   // An unconfigured original version remains available for staff review.
+   // Never replace its verification with the active version's transport.
    await client.chapaWebhookEvent.updateMany({where,data:{leaseUntil:null,status:'NEEDS_VERIFICATION',completedAt:null}});
   }else if(!credited&&event.nextAttemptAt>now){
    // A hint was coalesced after claiming this lease but before reading the job.
@@ -50,7 +53,7 @@ export async function processChapaEvent(client:PrismaClient,id:string,transport:
  }
 }
 export async function processChapaEvents(client:PrismaClient,limit=20,transport:ChapaTransport=chapaTransport){
- const health=chapaAvailability();if(!health.recoveryEnabled)return {checked:0};
- const rows=await client.chapaWebhookEvent.findMany({where:{mode:health.mode,status:'QUEUED',attempts:{lt:5},nextAttemptAt:{lte:new Date()},OR:[{leaseUntil:null},{leaseUntil:{lte:new Date()}}]},orderBy:[{nextAttemptAt:'asc'},{id:'asc'}],take:Math.max(1,Math.min(20,limit)),select:{id:true}});
+ const modes=recoveryModes();if(!modes.length)return {checked:0};
+ const rows=await client.chapaWebhookEvent.findMany({where:{mode:{in:modes},status:'QUEUED',attempts:{lt:5},nextAttemptAt:{lte:new Date()},OR:[{leaseUntil:null},{leaseUntil:{lte:new Date()}}]},orderBy:[{nextAttemptAt:'asc'},{id:'asc'}],take:Math.max(1,Math.min(20,limit)),select:{id:true}});
  let checked=0;for(const row of rows){await processChapaEvent(client,row.id,transport);checked++}return {checked};
 }

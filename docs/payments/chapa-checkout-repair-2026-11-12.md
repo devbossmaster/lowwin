@@ -63,7 +63,7 @@ The diagnostic reads configuration and migration/constraint/trigger/index metada
 - Fulfillment requires private-key `GET /v2/payments/{reference}/verify`, matching payment identity/amount/currency/environment, and a committed bid receipt or wallet credit. An API-operation success, redirect, timer or browser callback is insufficient.
 - Interrupted/uncertain requests keep the original operation. Closing hides the sheet and does not cancel the provider request. Status checks never initialize a new charge.
 - Lowwin Wallet remains a separate atomic internal payment command, without Chapa initialization, phone authorization or webhook waiting. Its compact success view uses the committed receipt and returned balance.
-- Historical v1 `flowVersion: 3` records remain read-only and unsupported for active recovery. Active v1 routes, worker handling, SDK and settings are removed. Existing records and migration history are preserved; they are not converted or replayed as v2.
+- Historical note: the original cleanup left v1 `flowVersion: 3` read-only. The later [15 November recovery update](chapa-in-app-validation-2026-11-15.md) adds explicitly configured original-version verification only; no new v1 creation, SDK or conversion to v2 is introduced.
 
 See [the v2 Inline integration notes](chapa-v2-inline-2026-11-12.md) for the provider contract and current validation record.
 

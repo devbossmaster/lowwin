@@ -81,7 +81,14 @@ export async function walletFixture(page:Page,f:Awaited<ReturnType<typeof inline
   try{return await route.fulfill({json:{kind:'receipt',receipt}})}catch{/* A closed WebView can interrupt the response after fixture commit. */}
  });
  await page.route(/\/api\/payments\/chapa\/batches\/[^/]+\/wallet(?:\?.*)?$/,route=>{
-  const req=route.request(),url=new URL(req.url()),id=url.pathname.split('/').at(-2)!,operation=[...operations.values()].find(item=>item.quote.id===id);
+  const req=route.request(),url=new URL(req.url()),id=url.pathname.split('/').at(-2)!;
+  let operation=[...operations.values()].find(item=>item.quote.id===id);
+  // Switching from an external method can reuse its owned, uncharged quote.
+  // The real wallet adapter supports this same existing-batch command.
+  if(!operation&&req.method()==='POST'){
+   const quote=f.quotes.find(item=>item.id===id&&item.quoteHash===req.postDataJSON().quoteHash);
+   if(quote){operation={input:{key:quote.id,auctionSlug:quote.auctionSlug,numbers:quote.lines.map(line=>line.number),feeVersion:quote.feeVersion,approvedTotal:quote.total},quote,receipt:null};operations.set(quote.id,operation)}
+  }
   if(req.method()==='GET'){reads.push(url.href);return route.fulfill(operation?.receipt?{json:{kind:'receipt',receipt:operation.receipt}}:{status:202,json:pending(operation?.quote.id??null)})}
   knownPosts.push(id);if(!operation||req.postDataJSON().quoteHash!==operation.quote.quoteHash)return route.fulfill({status:404,json:{code:'NOT_FOUND',error:'Owned quote not found.'}});
   return route.fulfill({json:commit(operation)});
@@ -90,5 +97,12 @@ export async function walletFixture(page:Page,f:Awaited<ReturnType<typeof inline
 }
 
 export async function openBid(page:Page,title:string){await page.locator('.auction-card').filter({hasText:title}).getByRole('button').click();return page.getByRole('dialog')}
-export async function selectBids(page:Page,title:string,numbers=['4.25'],_am=false){const dialog=await openBid(page,title),input=dialog.locator('[data-bid-step="entry"] input[inputmode="decimal"]').first();if(numbers.length>1)await dialog.getByRole('switch').click();for(const number of numbers){await input.fill(number);if(numbers.length>1)await dialog.locator('[data-bid-add]').click()}await expect(dialog.getByRole('radio')).toHaveCount(0);await dialog.locator('[data-payment-action]').click();await expect(dialog.locator('[data-bid-step=payment]')).toBeVisible();await expect(dialog.locator('[data-payment-method-form]')).toBeVisible();return dialog}
+/** Handles the optional multiple-bid review without submitting any payment. */
+export async function continueToBidPayment(dialog:import('@playwright/test').Locator){
+ await dialog.locator('[data-payment-action]').click();
+ await expect(dialog.locator('[data-bid-step=review],[data-bid-step=payment]')).toBeVisible();
+ if(await dialog.locator('[data-bid-step=review]').isVisible())await dialog.locator('[data-payment-action]').click();
+ await expect(dialog.locator('[data-bid-step=payment]')).toBeVisible();
+}
+export async function selectBids(page:Page,title:string,numbers=['4.25'],_am=false){const dialog=await openBid(page,title),input=dialog.locator('[data-bid-step="entry"] input[inputmode="decimal"]').first();for(const number of numbers){await input.fill(number);if(numbers.length>1)await dialog.locator('[data-bid-add]').click()}await expect(dialog.getByRole('radio')).toHaveCount(0);await continueToBidPayment(dialog);await expect(dialog.locator('[data-payment-method-form]')).toBeVisible();return dialog}
 export async function wakePayment(page:Page){await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:false});Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'});document.dispatchEvent(new Event('visibilitychange'));window.dispatchEvent(new Event('focus'));window.dispatchEvent(new Event('online'))})}

@@ -24,7 +24,12 @@ describe('external checkout return to the original owned Mini App payment',()=>{
 });
 describe('one-click hosted checkout handoff',()=>{
  it('uses Telegram openLink and opens only the validated URL after initialization',()=>{
-  const openLink=vi.fn(),open=vi.fn();vi.stubGlobal('window',{Telegram:{WebApp:{openLink}},open});const nav=prepareChapaNavigation();expect(openLink).not.toHaveBeenCalled();expect(nav.open(url)).toBe(true);nav.cancel();expect(openLink).toHaveBeenCalledExactlyOnceWith(url);expect(open).not.toHaveBeenCalled();
+  const openLink=vi.fn(),open=vi.fn();vi.stubGlobal('window',{Telegram:{WebApp:{initData:'signed-launch',openLink}},open});const nav=prepareChapaNavigation();expect(openLink).not.toHaveBeenCalled();expect(nav.open(url)).toBe(true);nav.cancel();expect(openLink).toHaveBeenCalledExactlyOnceWith(url);expect(open).not.toHaveBeenCalled();
+ });
+ it('uses the browser handoff when the Telegram SDK is loaded without Mini App initData',()=>{
+  const openLink=vi.fn(),replace=vi.fn(),popup={opener:{},closed:false,location:{replace},close:vi.fn()},open=vi.fn(()=>popup);
+  vi.stubGlobal('window',{Telegram:{WebApp:{initData:'',openLink}},open});
+  const navigation=prepareChapaNavigation();expect(open).toHaveBeenCalledExactlyOnceWith('about:blank','_blank');expect(navigation.open(url)).toBe(true);expect(replace).toHaveBeenCalledExactlyOnceWith(url);expect(openLink).not.toHaveBeenCalled();
  });
  it('reserves a browser tab during the Pay click and closes it if checkout creation fails',()=>{
   const replace=vi.fn(),close=vi.fn(),popup={opener:{},closed:false,location:{replace},close},open=vi.fn(()=>popup);vi.stubGlobal('window',{open});const nav=prepareChapaNavigation();expect(open).toHaveBeenCalledExactlyOnceWith('about:blank','_blank');expect(popup.opener).toBeNull();nav.cancel();expect(close).toHaveBeenCalledOnce();expect(replace).not.toHaveBeenCalled();
@@ -34,6 +39,6 @@ describe('one-click hosted checkout handoff',()=>{
   vi.stubGlobal('window',{open:()=>null,location:{assign}});prepareChapaNavigation().open(url);expect(assign).toHaveBeenCalledExactlyOnceWith(url);
  });
  it('never opens caller-controlled hosts, fragments, credentials or malformed URLs',()=>{
-  const openLink=vi.fn();vi.stubGlobal('window',{Telegram:{WebApp:{openLink}}});for(const bad of ['https://evil.test/checkout','https://user:password@checkout.chapa.global/CHx',url+'#other',' '+url,'javascript:alert(1)'])expect(prepareChapaNavigation().open(bad)).toBe(false);expect(openLink).not.toHaveBeenCalled();
+  const openLink=vi.fn();vi.stubGlobal('window',{Telegram:{WebApp:{initData:'signed-launch',openLink}}});for(const bad of ['https://evil.test/checkout','https://user:password@checkout.chapa.global/CHx',url+'#other',' '+url,'javascript:alert(1)'])expect(prepareChapaNavigation().open(bad)).toBe(false);expect(openLink).not.toHaveBeenCalled();
  });
 });

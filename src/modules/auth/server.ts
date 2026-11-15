@@ -4,22 +4,34 @@ import { APIError,createAuthEndpoint,createAuthMiddleware } from 'better-auth/ap
 import { setSessionCookie } from 'better-auth/cookies';
 import { telegram } from 'better-auth-telegram';
 import {defineRequestState} from '@better-auth/core/context';
+import {createHash} from 'node:crypto';
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { db } from '@/lib/db';
 import { getEnv } from '@/lib/env';
 import { assertLocalIdentityAccess } from './local-identity';
 import { masterAdminDatabaseHooks } from './staff-plugin';
 import {emailAdapter} from '../admin/email';
-import {telegramLoginSettings} from './telegram-login';
+import {telegramLoginSettings,type TelegramLoginSettings} from './telegram-login';
 import {prepareTelegramOIDCIdentity} from './telegram-oidc-identity';
 import {authLogSummary} from './safe-logger';
 import {telegramOIDCTokenRequest} from './telegram-oidc-token-request';
+import {measureTelegramAuth} from './telegram-timing';
 
 const oidcProof=defineRequestState<{telegramId:string;subject:string}|null>(()=>null);
 
+// One bounded entry per live Prisma client preserves the upstream provider's
+// remote-JWKS cache. This shares configuration, never sessions or verified
+// claims. Transaction clients are deliberately never retained or reused.
+const instances=new WeakMap<object,{configuration:string;auth:ReturnType<typeof buildAuth>}>();
 export function createAuth(client: PrismaClient | Prisma.TransactionClient = db) {
-  const env = getEnv();
-  const login=telegramLoginSettings(),staffHooks=masterAdminDatabaseHooks(client);
+  const env=getEnv(),login=telegramLoginSettings();
+  const configuration=createHash('sha256').update(JSON.stringify({env,login})).digest('hex');
+  const cacheable=typeof (client as PrismaClient).$transaction==='function',prior=cacheable?instances.get(client):undefined;
+  if(prior?.configuration===configuration)return prior.auth;
+  const auth=buildAuth(client,env,login);if(cacheable)instances.set(client,{configuration,auth});return auth;
+}
+function buildAuth(client:PrismaClient|Prisma.TransactionClient,env:ReturnType<typeof getEnv>,login:TelegramLoginSettings|null){
+  const staffHooks=masterAdminDatabaseHooks(client);
   return betterAuth({
     appName: 'Lowwin', baseURL: env.BETTER_AUTH_URL, secret: env.BETTER_AUTH_SECRET,
     database: prismaAdapter(client, { provider: 'postgresql' }),
@@ -47,7 +59,7 @@ export function createAuth(client: PrismaClient | Prisma.TransactionClient = db)
           const proof=await oidcProof.get();
           try{
             if(!proof||!login)throw Error('Missing verified Telegram identity');
-            const bound=await client.session.updateMany({where:{id:session.id,userId:session.userId,user:{telegramId:proof.telegramId,role:'member',staffMember:null,accounts:{some:{providerId:'telegram-oidc',accountId:proof.subject,telegramId:proof.telegramId}},ownContact:{is:{botId:login.clientId,telegramId:proof.telegramId,userId:session.userId,revokedAt:null}}}},data:{telegramLaunchId:proof.telegramId,telegramAuthSource:'TELEGRAM_OIDC'}});
+            const bound=await measureTelegramAuth('oidc_session',()=>client.session.updateMany({where:{id:session.id,userId:session.userId,user:{telegramId:proof.telegramId,role:'member',staffMember:null,accounts:{some:{providerId:'telegram-oidc',accountId:proof.subject,telegramId:proof.telegramId}},ownContact:{is:{botId:login.clientId,telegramId:proof.telegramId,userId:session.userId,revokedAt:null}}}},data:{telegramLaunchId:proof.telegramId,telegramAuthSource:'TELEGRAM_OIDC'}}));
             if(bound.count!==1)throw Error('Telegram session binding rejected');
           }catch{
             await client.session.deleteMany({where:{id:session.id,userId:session.userId}});
@@ -67,7 +79,7 @@ export function createAuth(client: PrismaClient | Prisma.TransactionClient = db)
       oidc:login?{enabled:true,clientId:login.clientId,clientSecret:login.clientSecret,requestPhone:true,requestBotAccess:true,disableIdTokenSignIn:true,disableSignUp:true,
         mapOIDCProfileToUser:async claims=>{
           if(!('$transaction' in client))throw new APIError('FORBIDDEN',{message:'Browser login requires its own request.'});
-          const profile=await prepareTelegramOIDCIdentity(claims,login,client as PrismaClient);
+          const profile=await measureTelegramAuth('oidc_identity',()=>prepareTelegramOIDCIdentity(claims,login,client as PrismaClient));
           await oidcProof.set({telegramId:String(claims.id),subject:claims.sub});
           return profile;
         },

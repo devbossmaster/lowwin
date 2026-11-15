@@ -28,6 +28,7 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
  const deposit=purpose==='TOP_UP';
  const phase=bidPaymentProgressPhase({...payment,preparing,walletRetry,hasReceipt:!deposit&&!!receipt,now});
  const busy=preparing||payment.busy||payment.restoring;
+ const legacy=order?.apiVersion==='legacy',legacyRecovery=legacy&&order.legacyRecoveryAvailable===true;
  const currentInline=!!order&&chapaCurrentInline(order),hosted=currentInline&&order?.chargeType==='HOSTED';
  const otpNeeded=phase==='authorization'&&order?.authType==='OTP';
  const finished=phase==='success'||phase==='preserved';
@@ -80,6 +81,7 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
   else if(walletRetry){headings[phase]=['Confirm your wallet payment','የዋሌት ክፍያዎን ያረጋግጡ'];messages[phase]=['Retry the original request to retrieve its result. This will not create a second debit.','ውጤቱን ለማግኘት የመጀመሪያውን ጥያቄ ይድገሙ። ሁለተኛ ክፍያ አይፈጥርም።']}
  }
  if(currentInline&&hostedUrl&&!finished&&!terminal){headings[phase]=['Complete your payment','ክፍያዎን ያጠናቅቁ'];messages[phase]=['Complete payment on the secure payment page. Your status updates automatically.','ክፍያውን በተጠበቀው የክፍያ ገጽ ያጠናቅቁ። ውጤቱ በራሱ ይዘምናል።']}
+ if(legacyRecovery&&phase==='uncertain'){headings.uncertain=['Checking your previous payment','?????? ??? ?????? ??'];messages.uncertain=['We are checking the original payment. Please do not pay again yet.','???????? ??? ?????? ?? ??? ?? ????? ??????']}
  useEffect(()=>{setOtp('')},[order?.id]);
  useEffect(()=>{
   payment.markPresented('feedback');
@@ -87,7 +89,7 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
   if(phase==='success'||phase==='preserved')payment.markPresented('confirmed');
  },[phase,payment.markPresented]);
 
- if((order?.unsupportedLegacy||order?.apiVersion==='legacy'||payment.errorCode==='LEGACY_PAYMENT_UNSUPPORTED')&&!finished)return <section className={styles.progress} data-payment-progress="legacy-read-only" role="status">
+ if((order?.unsupportedLegacy||legacy&&!legacyRecovery||payment.errorCode==='LEGACY_PAYMENT_UNSUPPORTED'&&!legacyRecovery)&&!finished)return <section className={styles.progress} data-payment-progress="legacy-read-only" role="status">
   <div className={styles.stateIcon} data-tone="attention"><TriangleAlert size={25} aria-hidden="true"/></div>
   <h3>{text('Historical payment','የቆየ ክፍያ')}</h3>
   <p>{text('This payment is read-only. Its recorded status is available in Transactions. Contact support if it still needs review.','ይህ ክፍያ ለማየት ብቻ ነው። የተመዘገበውን ሁኔታ በግብይቶች ይመልከቱ። ማረጋገጥ ካስፈለገው እርዳታ ይጠይቁ።')}</p>
@@ -95,7 +97,7 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
  </section>;
 
  // Keep historical hosted recovery on its established shared path.
- if(order&&!currentInline&&order.chargeType!=='DIRECT')return <ChapaPaymentStatus payment={payment} onNavigate={onClose} onStartAgain={onRetry} readOnly={!bidPaymentCanRetry(order)}/>;
+ if(order&&!legacy&&!currentInline&&order.chargeType!=='DIRECT')return <ChapaPaymentStatus payment={payment} onNavigate={onClose} onStartAgain={onRetry} readOnly={!bidPaymentCanRetry(order)}/>;
 
  const renderActions=(actions:React.ReactNode)=>footerPortal?<AccountSheetFooter>{actions}</AccountSheetFooter>:actions;
  return <>

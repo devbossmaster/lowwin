@@ -3,7 +3,8 @@ import {randomUUID} from 'node:crypto';
 import {after} from 'next/server';
 import {readRequestBytes,RequestBodyError} from '@/lib/request-body';
 import {privateHeaders} from '@/modules/auth/private-api';
-import {authenticateChapaWebhook,chapaAvailability,chapaHash,chapaWebhookAmountMatches,chapaWebhookConfigurationFingerprint,isChapaHostedSessionReference,parseChapaWebhook} from '@/modules/payments/chapa-provider';
+import {chapaAvailability,chapaHash,chapaWebhookAmountMatches,chapaWebhookConfigurationFingerprint,isChapaHostedSessionReference,parseChapaWebhook} from '@/modules/payments/chapa-provider';
+import {authenticateChapaDelivery,chapaDeliveryProfileMatches} from '@/modules/payments/chapa-webhook-profile';
 import {processChapaEvent} from '@/modules/payments/chapa-events';
 import {unsupportedLegacyChapaCheckout} from '@/modules/payments/chapa';
 import type {ChapaWebhookEvent} from '@prisma/client';
@@ -11,15 +12,19 @@ export const runtime='nodejs';
 export async function POST(request:Request){
  const health=chapaAvailability();if(!health.recoveryEnabled)return Response.json({accepted:false},{status:503,headers:privateHeaders});
  try{
-  const bytes=await readRequestBytes(request,65536),authentication=authenticateChapaWebhook(bytes,request.headers);if(!authentication)return Response.json({accepted:false},{status:401,headers:privateHeaders});
+  const bytes=await readRequestBytes(request,65536),authentication=authenticateChapaDelivery(bytes,request.headers);if(!authentication)return Response.json({accepted:false},{status:401,headers:privateHeaders});
   const hint=parseChapaWebhook(JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes)));if(!hint||hint.mode&&hint.mode!==health.mode)return Response.json({accepted:false},{status:400,headers:privateHeaders});
   const legacy=authentication==='legacy_secret';
   if(legacy&&(hint.type!=='payment'||!hint.merchantReference||hint.mode!==health.mode||hint.currency!==health.currency))return Response.json({accepted:false},{status:400,headers:privateHeaders});
   // Only allowlisted, non-PII hints are retained. The legacy shared-secret
   // proof does not protect payload integrity; nothing in a hint creates money.
+  const profileMismatch=Symbol('signature-profile-mismatch');
   const job=await db.$transaction(async tx=>{
    const id=randomUUID(),configurationFingerprint=chapaWebhookConfigurationFingerprint(),bodyHash=chapaHash(bytes);
    const order=hint.type==='payment'&&hint.merchantReference?await tx.chapaCheckout.findUnique({where:{merchantReference:hint.merchantReference}}):null;
+   // Never downgrade an immutable exact-body requirement to a reusable secret
+   // proof. Reject before delivery creation, queue updates or checkout writes.
+   if(order&&!chapaDeliveryProfileMatches(order.initialization,authentication))return profileMismatch;
    // Older intents stored a hosted session token as their reference.
    // Permit only a recovery hint here; verification must establish the final
    // payment reference before its balanced receipt can replace that token.
@@ -61,6 +66,7 @@ export async function POST(request:Request){
    await tx.chapaCheckout.updateMany({where:{id:order!.id,creditJournalId:null},data:{nextCheckAt:new Date()}});
    return id;
   });
+  if(job===profileMismatch)return Response.json({accepted:false,reason:'SIGNATURE_PROFILE_MISMATCH'},{status:401,headers:privateHeaders});
   // Acknowledge the committed delivery before provider HTTP. Next keeps the
   // first verification off the response path; the durable worker owns retries
   // if this process stops or the provider is temporarily unavailable.

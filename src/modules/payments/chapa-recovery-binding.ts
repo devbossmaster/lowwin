@@ -4,6 +4,7 @@ import {chapaAvailability,chapaHash} from './chapa-provider';
 
 const fingerprint=z.string().regex(/^[a-f0-9]{64}$/);
 const schema=z.object({checkoutId:z.string().uuid(),mode:z.enum(['test','live']),fromFingerprint:fingerprint,toFingerprint:fingerprint,requestHash:fingerprint,merchantReference:z.string().regex(/^[A-Za-z0-9_-]{1,20}$/),amountCents:z.string().regex(/^[1-9]\d{0,15}$/),currency:z.literal('ETB'),finalReference:z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),expiresAt:z.iso.datetime({offset:true})}).strict();
+export const chapaRecoveryBindingSchema=schema;
 export type ChapaRecoveryBinding=z.infer<typeof schema>;
 type Environment=Record<string,string|undefined>;
 type Order=Pick<ChapaCheckout,'id'|'mode'|'credentialFingerprint'|'requestHash'|'merchantReference'|'amountCents'|'currency'>;

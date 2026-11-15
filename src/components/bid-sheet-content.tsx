@@ -1,7 +1,7 @@
 'use client';
 import dynamic from 'next/dynamic';
 import {useCallback,useEffect,useId,useRef,useState} from 'react';
-import {ChevronDown,Clock3,Layers,LoaderCircle,Plus,Ticket,Wallet,X} from 'lucide-react';
+import {ArrowLeft,ChevronDown,Clock3,LoaderCircle,Plus,Ticket,Wallet,X} from 'lucide-react';
 import type {CatalogAuction} from '@/modules/auctions/catalog';
 import type {getOwnBidState} from '@/modules/auctions/bids';
 import type {WalletBalance} from '@/modules/wallet/balance';
@@ -39,8 +39,9 @@ import styles from './bid-payment-sheet.module.css';
 import reference from './reference-bid-checkout.module.css';
 import {ReferencePaymentMethods,referencePaymentProviders as providers} from './reference-payment-methods';
 import {BidCouponControl} from './bid-coupon-control';
+import {CatalogImage} from './catalog-image';
 const WalletTopUp=dynamic(()=>import('./wallet-top-up'),{ssr:false});
-type Method='wallet'|typeof providers[number]['slug']|'ebirr'|'cbe-bank';
+type Method='wallet'|typeof providers[number]['slug'];
 export type BidCheckoutDraft={numbers:string[];method?:string|null;phone?:string|null};
 type BidState=Omit<Awaited<ReturnType<typeof getOwnBidState>>,'wallet'|'previousMax'>&{referralDiscountsAvailable?:boolean;couponAvailableCount?:number|null};
 type DiscountQuote=Awaited<ReturnType<typeof getBidDiscountQuote>>;
@@ -66,7 +67,7 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
  const restoredReview=useRef(false);
  useEffect(()=>{if(!restoredReview.current&&initialDraft?.numbers.length){restoredReview.current=true;flow.openPayment()}},[initialDraft,flow.openPayment]);
  const [input,setInput]=useState(''),[numbers,setNumbers]=useState<string[]>(initialDraft?.numbers??fundingDraft?.numbers??[]),[editing,setEditing]=useState<number|null>(null);
- const [multiple,setMultiple]=useState((initialDraft?.numbers??fundingDraft?.numbers??[]).length>1),[numberMode,setNumberMode]=useState<'individual'|'range'>('individual'),[rangeFrom,setRangeFrom]=useState(''),[rangeTo,setRangeTo]=useState(''),[rangeStep,setRangeStep]=useState<string|null>(null);
+ const [numberMode,setNumberMode]=useState<'individual'|'range'>('individual'),[rangeFrom,setRangeFrom]=useState(''),[rangeTo,setRangeTo]=useState(''),[rangeStep,setRangeStep]=useState<string|null>(null);
  const [method,setMethod]=useState<Method|null>(restoredMethod&&['wallet','telebirr','mpesa','cbebirr'].includes(restoredMethod)?restoredMethod as Method:null),[phone,setPhone]=useState(normalizePaymentPhone(restoredPhone)?.slice(3)??'');
  const [quote,setQuote]=useState<BidBatchQuote|null>(initialChapaId?walletRecovery??originalQuote:null),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const [receipt,setReceipt]=useState<BidBatchReceipt|null>(null),[applyCoupon,setApplyCoupon]=useState(fundingDraft?.applyCoupon??false),[walletRetry,setWalletRetry]=useState(!!walletRecovery||!!savedWalletCommand),[quoteBusy,setQuoteBusy]=useState(false),[quoteRetry,setQuoteRetry]=useState(0);
@@ -81,13 +82,13 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
  useEffect(()=>()=>{if(queryIdentity)clearBidFundingDraft(getMiniQueryClient(),queryIdentity,auction.slug)},[queryIdentity,auction.slug]);
  const authenticated=status==='authenticated'&&!!me?.user?.id&&!!queryIdentity,active=known.status==='live'&&(!state||state.open),current=isSubmissionFeeOnly(terms.ruleVersion);
  const authResumeRestored=useRef(false),authResumeDraft=useRef<TelegramBidResumeDraft|null>(null);
- authResumeDraft.current=busy||payment.started||receipt||walletRetry?null:{kind:'bid',auctionSlug:auction.slug,auctionCode:auction.code,numbers,input,multiple,numberMode,rangeFrom,rangeTo,rangeStep,method:method&&['wallet','telebirr','cbebirr','mpesa'].includes(method)?method as TelegramBidResumeDraft['method']:null,applyCoupon};
+ authResumeDraft.current=busy||payment.started||receipt||walletRetry?null:{kind:'bid',auctionSlug:auction.slug,auctionCode:auction.code,numbers,input,multiple:true,numberMode,rangeFrom,rangeTo,rangeStep,method:method&&['wallet','telebirr','cbebirr','mpesa'].includes(method)?method as TelegramBidResumeDraft['method']:null,applyCoupon};
  useEffect(()=>registerTelegramResumeDraft(me?.user?.id??null,()=>authResumeDraft.current),[me?.user?.id,auction.slug]);
  useEffect(()=>{
   if(!authenticated||!me?.user?.id||authResumeRestored.current||payment.started||receipt||walletRetry)return;
   authResumeRestored.current=true;
   const saved=consumeTelegramResumeDraft(me.user.id,'bid',auction.slug);if(!saved)return;
-  setNumbers(saved.numbers);setInput(saved.input);setMultiple(saved.multiple);setNumberMode(saved.numberMode);setRangeFrom(saved.rangeFrom);setRangeTo(saved.rangeTo);setRangeStep(saved.rangeStep);setMethod(saved.method);setApplyCoupon(saved.applyCoupon);
+  setNumbers(saved.numbers);setInput(saved.input);setNumberMode(saved.numberMode);setRangeFrom(saved.rangeFrom);setRangeTo(saved.rangeTo);setRangeStep(saved.rangeStep);setMethod(saved.method);setApplyCoupon(saved.applyCoupon);
   // Only editable selection is restored. Existing validation/quote preparation
   // runs normally; the customer must still explicitly choose Continue/Pay.
  },[authenticated,me?.user?.id,auction.slug,payment.started,receipt,walletRetry]);
@@ -98,7 +99,7 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
  const coupon=applyCoupon?usableBidDiscount(discount.data,terms.version,terms.entryFeePoints,discount.updatedAt):null;
  const bounds=state?.terms??full?.terms,rules=bounds?{...bounds,remainingSubmissions:state?.remainingSubmissions??bounds.maxDistinctBids,ownBids:state?.ownBids??[]}:null;
  const selectedRangeStep=rangeStep??defaultBidRangeStep(bounds?.stepPoints??'0.01'),rangeDraft=rules?previewBidRange(rangeFrom,rangeTo,selectedRangeStep,numbers,rules):null;
- const values=!multiple?(input?[input]:numbers.slice(0,1)):editing===null?[...numbers,...(input?[input]:[])]:numbers.map((value,index)=>index===editing?input:value);
+ const values=editing===null?[...numbers,...(input?[input]:[])]:numbers.map((value,index)=>index===editing?input:value);
  const recoveryQuote=walletRetry&&showProgress?quoteAttempt.current?.quote:null;
  const draft=recoveryQuote?{numbers:recoveryQuote.lines.map(line=>line.number),error:null}:rules?validateBidDraft(values,rules):{numbers:values.map(normalizeBidDraft).filter((value):value is string=>value!==null),error:null};
  const body={auctionSlug:auction.slug,numbers:draft.numbers,feeVersion:terms.version,...(coupon?.coupon?.id?{couponId:coupon.coupon.id}:{})};
@@ -120,7 +121,7 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
  const copy:Record<BidDraftError,[string,string]>={precision:['Enter a number with at most two decimals.','እስከ ሁለት አስርዮሽ ያለው ቁጥር ያስገቡ።'],range:['Choose an amount within the displayed range and step.','በሚታየው ክልል እና ልዩነት ውስጥ መጠን ይምረጡ።'],duplicate:['This amount is already selected or submitted.','ይህ መጠን ተመርጧል ወይም ቀድሞ ቀርቧል።'],consecutive:['Only 3 consecutive amounts. Skip at least one step.','ከሦስት በላይ ተከታታይ ቁጥሮች አይፈቀዱም።'],limit:['You have reached the remaining submission limit.','የቀሩትን የጨረታ ገደብ ደርሰዋል።']};
  const rangeError=(problem:BidRangeError)=>problem==='step'?text(`Use a positive step that is a multiple of ${bounds?.stepPoints??'0.01'}.`,`ከዜሮ በላይ የሆነና የ ${bounds?.stepPoints??'0.01'} ብዜት የሆነ ልዩነት ያስገቡ።`):problem==='alignment'?text('The range must end exactly on your chosen step.','የክልሉ መጨረሻ ከተመረጠው ልዩነት ጋር መጣጣም አለበት።'):text(...copy[problem]);
  useEffect(()=>{const version=++generation.current;return()=>{if(generation.current===version)generation.current++;controllers.current.forEach(c=>c.abort());controllers.current.clear()}},[queryIdentity]);
- useEffect(()=>{if(!toppingUp)onPhaseChange(showProgress&&receipt?'receipt':showProgress&&(busy||walletRetry||payment.started)?'payment':step==='payment'?'checkout':'entry')},[toppingUp,showProgress,receipt,busy,walletRetry,payment.started,step,onPhaseChange]);
+ useEffect(()=>{if(!toppingUp)onPhaseChange(showProgress&&receipt?'receipt':showProgress&&(busy||walletRetry||payment.started)?'payment':step==='payment'?'checkout':step==='review'?'review':'entry')},[toppingUp,showProgress,receipt,busy,walletRetry,payment.started,step,onPhaseChange]);
  useEffect(()=>{setWalletFailure(null)},[wallet.updatedAt,fingerprint]);
  useEffect(()=>{if(fundingRetained.current&&queryIdentity&&!receipt&&!payment.started)retainBidFundingDraft(getMiniQueryClient(),queryIdentity,auction.slug,{numbers:draft.error?numbers:draft.numbers,method:method??'wallet',phone,applyCoupon})},[queryIdentity,auction.slug,fingerprint,numbers,method,phone,applyCoupon,receipt,payment.started]);
  useEffect(()=>{if(queryIdentity&&payment.order?.purpose==='BID'&&payment.order.status==='BID_ACCEPTED'&&payment.order.receipt){clearBidFundingDraft(getMiniQueryClient(),queryIdentity,auction.slug);fundingRetained.current=false}},[queryIdentity,auction.slug,payment.order?.purpose,payment.order?.status,payment.order?.receipt]);
@@ -128,7 +129,7 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
  // Review creates only an immutable server quote. Providers and the wallet are
  // contacted solely by the final Pay action below; moving between steps keeps readers mounted.
  useEffect(()=>{
-  if(step==='entry'||method===null||method==='wallet'||zero||busy||!queryIdentity||!state||!active||!current||draft.error||!draft.numbers.length||payment.started)return;
+  if(step!=='payment'||method===null||method==='wallet'||zero||busy||!queryIdentity||!state||!active||!current||draft.error||!draft.numbers.length||payment.started)return;
   if(quoteAttempt.current?.fingerprint===fingerprint&&quoteAttempt.current.quote)return;
   const attempt=quoteAttempt.current?.fingerprint===fingerprint?quoteAttempt.current:{fingerprint,key:crypto.randomUUID(),paymentKey:crypto.randomUUID(),quote:undefined as BidBatchQuote|undefined};quoteAttempt.current=attempt;
   const version=generation.current,controller=new AbortController();controllers.current.add(controller);let mounted=true;setQuoteBusy(true);setQuote(null);reportError('');
@@ -217,7 +218,7 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
   if(!authenticated||!queryIdentity){openRegistration();return}
   if(walletTarget){presentPayment();if(walletObservation.current){setBusy(true);return}await executeWallet(walletTarget,{readOnly:!retryOriginalWallet});return}
   if(payment.started){viewPaymentStatus();return}
-  if(multiple&&numberMode==='range'&&(rangeFrom||rangeTo)){reportError(rangeDraft?.error?rangeError(rangeDraft.error):text('Add the range before paying.','ከመክፈልዎ በፊት ክልሉን ይጨምሩ።'));return}
+  if(numberMode==='range'&&(rangeFrom||rangeTo)){reportError(rangeDraft?.error?rangeError(rangeDraft.error):text('Add the range before paying.','ከመክፈልዎ በፊት ክልሉን ይጨምሩ።'));return}
   if(draft.error||!draft.numbers.length){reportError(draft.error?text(...copy[draft.error]):text('Add at least one bid amount.','ቢያንስ አንድ የጨረታ መጠን ያስገቡ።'));return}
   if(!active||!current){reportError(text('This auction is not accepting bids.','ይህ ጨረታ አዲስ ጨረታ አይቀበልም።'));return}
   if(step==='entry'){
@@ -237,11 +238,14 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
      const receivedAt=readPrivateQuery<DiscountQuote>(queryIdentity,discountUrl)?.updatedAt??discount.updatedAt;
      if(!usableBidDiscount(offer,currentState.terms.version,currentState.terms.entryFeePoints,receivedAt)){reportError(text('This coupon is unavailable. Remove it or choose another.','ይህ ኩፖን አይገኝም። ያስወግዱት ወይም ሌላ ይምረጡ።'));return}
     }
-    setNumbers(checked.numbers);setInput('');setEditing(null);flow.openPayment();
+    setNumbers(checked.numbers);setInput('');setEditing(null);flow.continueToPayment(checked.numbers.length>1);
    }catch(cause){if(version===generation.current)reportError(cause instanceof ChapaClientError?cause.message:text('Could not load your bid details. Check your connection and try again.','የጨረታ ዝርዝሮችዎን መጫን አልቻልንም። ግንኙነትዎን ያረጋግጡና እንደገና ይሞክሩ።'))}
    finally{if(version===generation.current){lock.current=false;setBusy(false)}}
    return;
   }
+  // Reviewing a batch only advances the existing sheet. Quotes and all
+  // financial commands remain on the explicit payment path below.
+  if(step==='review'){reportError('');flow.openPayment();return}
   if(!state||quoteBusy)return;
   if(method===null){reportError(text('Choose a payment method.','የክፍያ መንገድ ይምረጡ።'));return}
   if(!enabled){reportError(text('This payment method is unavailable for this total. Choose another method.','ይህ የክፍያ መንገድ ለዚህ መጠን አይገኝም። ሌላ ይምረጡ።'));return}
@@ -263,7 +267,7 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
    attempt.quote=confirmedQuote;setQuote(confirmedQuote);
    if(etbToCents(confirmedQuote.total)!==totalCents){showProgressRef.current=false;setShowProgress(false);reportError(text('The total was updated. Check the amount below, then tap Pay to confirm.','ጠቅላላ ክፍያው ተቀይሯል። ከታች ያለውን መጠን ይመልከቱና ለማረጋገጥ ይክፈሉ።'));return}
    setNumbers(confirmedQuote.lines.map(line=>line.number));setInput('');setEditing(null);
-   const intent={key:attempt.paymentKey,purpose:'BID' as const,batchId:confirmedQuote.id,quoteHash:confirmedQuote.quoteHash,paymentMethod:method,phone:normalizedPhone!,apiVersion:'v2' as const,kind:'inline' as const,flow:method==='cbe-bank'?'HOSTED' as const:'INLINE' as const};
+   const intent={key:attempt.paymentKey,purpose:'BID' as const,batchId:confirmedQuote.id,quoteHash:confirmedQuote.quoteHash,paymentMethod:method,phone:normalizedPhone!,apiVersion:'v2' as const,kind:'inline' as const,flow:'INLINE' as const};
    retainChapaOriginalAttempt(getMiniQueryClient(),queryIdentity,'bid:'+auction.slug,intent,undefined,confirmedQuote);await payment.createInline(intent);
   }catch(cause){
    if(generation.current===version){showProgressRef.current=false;setShowProgress(false);reportError(cause instanceof ChapaClientError?cause.message:text('Could not prepare your bids. Please retry.','ጨረታዎችዎን ማዘጋጀት አልተቻለም። እንደገና ይሞክሩ።'));if(cause instanceof ChapaClientError&&['QUOTE_CHANGED','STALE_QUOTE','COUPON_UNAVAILABLE','RETRYABLE_CONFLICT','TERMS_CHANGED'].includes(cause.code)){setQuote(null);quoteAttempt.current=null}own.reload();wallet.reload();if(applyCoupon)discount.reload()}
@@ -282,32 +286,50 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
    if(!payment.startAgain())return;
    setMethod(nextMethod&&providers.some(provider=>provider.slug===nextMethod)?nextMethod as Method:null);
    if(nextPhone){phoneEdited.current=true;setPhone(nextPhone.slice(3))}
-   setMultiple(selection.length>1);
    setQuote(null);quoteAttempt.current=null;setWalletRetry(false);setWalletCommand(null);setReceipt(null);
    setNumbers(selection);setInput('');setEditing(null);reportError('');showProgressRef.current=false;setShowProgress(false);flow.openPayment();own.reload();if(applyCoupon)discount.reload();
   }catch{reportError(text('Could not check the original payment. Its status is preserved.','የመጀመሪያውን ክፍያ ማረጋገጥ አልተቻለም። ሁኔታው ተጠብቋል።'))}finally{setBusy(false)}
  };
- const backInCheckout=step==='payment'&&!showProgress?flow.editDraft:null;
+ const returnToReview=useCallback(()=>flow.continueToPayment(true),[flow.continueToPayment]);
+ const backInCheckout=!showProgress?(step==='review'?flow.editDraft:step==='payment'?(selectedNumbers.length>1?returnToReview:flow.editDraft):null):null;
  const returnFromTopUp=useCallback(()=>{setToppingUp(false);flow.openPayment()},[flow.openPayment]);
  const topUpProgress=useCallback((active:boolean)=>{if(fundingOpen.current)onPhaseChange(active?'payment':'topup')},[onPhaseChange]);
  const topUpBack=useCallback((handler:(()=>void)|null)=>{if(fundingOpen.current)onDismissChange?.(handler??returnFromTopUp)},[onDismissChange,returnFromTopUp]);
  const topUpCredited=useCallback(()=>{setToppingUp(false);flow.openPayment();setQuote(null);quoteAttempt.current=null;setQuoteRetry(value=>value+1);setWalletFailure(null);setFundingNotice(text('Wallet topped up. Review your bids, then confirm payment from your wallet.','ዋሌትዎ ተሞልቷል። ጨረታዎችዎን ይመልከቱና ከዋሌት ለመክፈል ያረጋግጡ።'));own.reload();wallet.reload();if(applyCoupon)discount.reload()},[flow.openPayment,own.reload,wallet.reload,discount.reload,applyCoupon,language]);
  const openTopUp=()=>{if(!queryIdentity||busy||walletRetry||payment.started)return;fundingRetained.current=true;retainBidFundingDraft(getMiniQueryClient(),queryIdentity,auction.slug,{numbers:selectedNumbers,method:'wallet',phone,applyCoupon});setNumbers(selectedNumbers);setInput('');setEditing(null);setMethod('wallet');setToppingUp(true)};
- useEffect(()=>{if(toppingUp)return;onDismissChange?.(backInCheckout);return()=>onDismissChange?.(null)},[toppingUp,step,numbers.length,receipt,busy,walletRetry,payment.started,flow.editDraft,flow.openPayment,flow.continueToPayment,onDismissChange]);
+ useEffect(()=>{if(toppingUp)return;onDismissChange?.(backInCheckout);return()=>onDismissChange?.(null)},[toppingUp,backInCheckout,onDismissChange]);
  if(toppingUp)return <WalletTopUp embedded onClose={onClose} onCredited={topUpCredited} onProgressChange={topUpProgress} onDismissChange={topUpBack}/>;
  if(showProgress&&(receipt||busy||walletRetry||payment.started))return <BidPaymentProgress walletPayment={!!receipt||walletRetry||busy&&(zero||method==='wallet')} payment={payment} preparing={busy} walletRetry={walletRetry} receipt={receipt} error={error} summary={{auctionTitle:known.product.title,auctionTitleAm:known.product.titleAm,numbers:quote?.lines.map(line=>line.number)??selectedNumbers,total:quote?.total??(directDraft&&'approvedTotal'in directDraft?directDraft.approvedTotal:payment.started?null:total),provider:directDraft?.paymentMethod??(payment.started&&!quote?null:zero?'coupon':method),phone:directDraft?.phone??(external?phone:null)}} onRetry={()=>void startNewBidPayment()} onChangePayment={()=>void startNewBidPayment()} onRetryWallet={()=>void pay(true)} onRetryOriginal={()=>void retryOriginalDirect()} onClose={onClose}/>;
 
  const invalidDraft=!!draft.error&&!!input;
- const footerTotal=!multiple&&!selectedNumbers.length?terms.entryFeePoints:total;
  const pendingOriginal=!!walletTarget||payment.started;
  const payDisabled=busy;
  const fieldHelp=text(`Enter an amount from ${bounds?.minPoints??'—'}${bounds?.maxPoints?` to ${bounds.maxPoints}`:''}. Step ${bounds?.stepPoints??'—'}.`,`ከ ${bounds?.minPoints??'—'}${bounds?.maxPoints?` እስከ ${bounds.maxPoints}`:''} መጠን ያስገቡ። ልዩነት ${bounds?.stepPoints??'—'}።`);
  const setDecimal=(value:string,setter:(value:string)=>void)=>{if(/^\d{0,16}(?:\.\d{0,2})?$/.test(value)){setter(value);reportError('')}else reportError(text(...copy.precision))};
  const rangePresentation=<>{rangeDraft?.complete&&!rangeDraft.error&&<p className={reference.rangePreview} data-bid-range-preview role="status">{text(`${rangeDraft.count} amounts · Step ${rangeDraft.step}`,`${rangeDraft.count} መጠኖች · ልዩነት ${rangeDraft.step}`)}</p>}{rangeDraft?.error&&<p className={reference.error} data-bid-range-error role="alert">{rangeError(rangeDraft.error)}</p>}</>;
+ if(step==='review')return <>
+  <AccountSheetFooter><div className={reference.footer}>
+   <div className={reference.total} data-bid-total><span>{text('Total payable','ጠቅላላ ክፍያ')}</span><strong>{formatEtb(total)}</strong></div>
+   <button type="button" className={reference.pay} data-payment-action disabled={busy} onClick={()=>void pay()}>{text('Continue to payment','ወደ ክፍያ ይቀጥሉ')}</button>
+   <button type="button" className={reference.reviewBack} onClick={flow.editDraft}><ArrowLeft size={16} aria-hidden="true"/>{text('Edit bids','ጨረታዎችን ያስተካክሉ')}</button>
+  </div></AccountSheetFooter>
+  <section className={`${reference.checkout} ${reference.batchReview}`} data-bid-step="review" aria-label={text('Review your bids','ጨረታዎችዎን ይመልከቱ')}>
+   <p className={reference.reviewProduct}>{am?known.product.titleAm||known.product.title:known.product.title}</p>
+   <p className={reference.reviewLead}>{text('Check your numbers before choosing how to pay.','የክፍያ መንገድ ከመምረጥዎ በፊት ቁጥሮችዎን ይመልከቱ።')}</p>
+   <ul className={reference.reviewNumbers} aria-label={text('Selected bid numbers','የተመረጡ የጨረታ ቁጥሮች')}>{selectedNumbers.map(number=><li key={number}>{number}</li>)}</ul>
+   <dl className={reference.batchBreakdown}>
+    <div><dt>{text('Bid count','የጨረታ ብዛት')}</dt><dd>{selectedNumbers.length}</dd></div>
+    <div><dt>{text('Fee per bid','የአንድ ጨረታ ክፍያ')}</dt><dd>{formatEtb(terms.entryFeePoints)}</dd></div>
+    <div><dt>{text('Submission fees','የማቅረቢያ ክፍያ')}</dt><dd>{formatEtb(priced?.grossTotal??preview.grossTotal)}</dd></div>
+    {etbToCents(priced?.discountTotal??preview.discountTotal)>0n&&<div><dt>{text('Coupon discount','የኩፖን ቅናሽ')}</dt><dd>−{formatEtb(priced?.discountTotal??preview.discountTotal)}</dd></div>}
+   </dl>
+   <p className={reference.reviewNote}>{text('Only submission fees are charged, not your chosen numbers.','የማቅረቢያ ክፍያ ብቻ ይከፈላል፤ የመረጡት ቁጥር አይከፈልም።')}</p>
+  </section>
+ </>;
  if(step==='payment')return <>
   <AccountSheetFooter><div className={reference.footer}>
    <div className={reference.total} data-bid-total><span>{text('Total payable','ጠቅላላ ክፍያ')}</span><strong>{formatEtb(total)}</strong></div>
-   <button type="button" className={reference.pay} data-payment-action data-bid-pay disabled={busy||quoteBusy} aria-busy={busy||quoteBusy} onClick={()=>void pay()}>{(busy||quoteBusy)&&<LoaderCircle size={17} className={reference.spin} aria-hidden="true"/>}{pendingOriginal?text('View payment status','የክፍያ ሁኔታ ይመልከቱ'):text(zero?'Submit bids':method==='wallet'?`Pay ${formatEtb(total)} from wallet`:`Pay ${formatEtb(total)} & bid`,zero?'ጨረታዎችን ያቅርቡ':`${formatEtb(total)} ከፍለው ይጫረቱ`)}</button>
+   <button type="button" className={reference.pay} data-payment-action data-bid-pay disabled={busy||quoteBusy} aria-busy={busy||quoteBusy} onClick={event=>{if(event.detail<=1)void pay()}}>{(busy||quoteBusy)&&<LoaderCircle size={17} className={reference.spin} aria-hidden="true"/>}{pendingOriginal?text('View payment status','የክፍያ ሁኔታ ይመልከቱ'):text(zero?'Submit bids':method==='wallet'?`Pay ${formatEtb(total)} from wallet`:`Pay ${formatEtb(total)} & bid`,zero?'ጨረታዎችን ያቅርቡ':`${formatEtb(total)} ከፍለው ይጫረቱ`)}</button>
   </div></AccountSheetFooter>
   <div className={reference.checkout} data-bid-step="payment" data-payment-method-form>
    <div className={reference.reviewHeading}><div><h3>{text('Your bids are ready','ጨረታዎችዎ ዝግጁ ናቸው')}</h3><p>{am?known.product.titleAm||known.product.title:known.product.title}</p></div><button type="button" className={reference.edit} onClick={flow.editDraft}>{text('Edit','ያስተካክሉ')}</button></div>
@@ -327,11 +349,11 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
  </>;
  return <>
   <AccountSheetFooter><div className={reference.footer}>
-   {multiple&&<div className={reference.total} data-bid-total aria-live="polite"><span>{text(`${selectedNumbers.length} selected`,`${selectedNumbers.length} ተመርጠዋል`)}</span><strong>{formatEtb(total)}</strong></div>}
-   <button type="button" className={reference.pay} data-payment-action data-bid-pay data-bid-total={!multiple?'':undefined} disabled={payDisabled} aria-busy={busy} onClick={()=>void pay()}>{busy&&<LoaderCircle size={16} className={reference.spin} aria-hidden="true"/>}{pendingOriginal?text('View payment status','የክፍያ ሁኔታ ይመልከቱ'):!authenticated?text('Log in to bid','ለመጫረት ይግቡ'):text('Continue to payment','ወደ ክፍያ ይቀጥሉ')}</button>
+   {<div className={reference.total} data-bid-total aria-live="polite"><span>{text(`${selectedNumbers.length} selected`,`${selectedNumbers.length} ተመርጠዋል`)}</span><strong>{formatEtb(total)}</strong></div>}
+   <button type="button" className={reference.pay} data-payment-action data-bid-pay disabled={payDisabled} aria-busy={busy} onClick={()=>void pay()}>{busy&&<LoaderCircle size={16} className={reference.spin} aria-hidden="true"/>}{pendingOriginal?text('View payment status','የክፍያ ሁኔታ ይመልከቱ'):!authenticated?text('Log in to bid','ለመጫረት ይግቡ'):text('Continue to payment','ወደ ክፍያ ይቀጥሉ')}</button>
   </div></AccountSheetFooter>
   <div className={reference.checkout} data-bid-entry data-bid-step="entry" data-payment-method-form={undefined}>
-   <h3 className={reference.productTitle}>{am?known.product.titleAm||known.product.title:known.product.title}</h3>
+   <div className={reference.productHeader}><CatalogImage src={known.product.images[0]?.path} alt="" variant="thumbnail" sizes="56px"/><h3 className={reference.productTitle}>{am?known.product.titleAm||known.product.title:known.product.title}</h3></div>
    {description&&<details className={reference.description}><summary><span className={reference.excerpt}>{description}</span><b><span className={reference.more}>{text('Show more','ተጨማሪ ያሳዩ')}</span><span className={reference.less}>{text('Show less','ያሳንሱ')}</span><ChevronDown size={12} aria-hidden="true"/></b></summary><p>{description}</p></details>}
    <div className={reference.feeStrip}><div className={reference.fee}><small>{text('Bid fee','የጨረታ ክፍያ')}</small><strong>{formatEtb(terms.entryFeePoints)}</strong></div><span className={reference.bidCount}><Ticket size={12} aria-hidden="true"/>{known.bidCount.toLocaleString('en-US')} {text('bids','ጨረታዎች')}</span><span className={reference.timer}><Clock3 size={15} aria-hidden="true"/><AuctionCountdown target={known.endsAt} serverNow={serverNow} label="Ends" showLabel={false} variant="inline" onElapsed={()=>{detail.reload();if(authenticated)own.reload()}}/></span></div>
    {active&&current&&<div className={reference.couponArea}>
@@ -342,17 +364,16 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
    {!pendingOriginal&&receipt&&<p className={reference.notice} role="status">{text('Your previous wallet payment was confirmed.','የቀደመው የዋሌት ክፍያዎ ተረጋግጧል።')} <button type="button" onClick={presentPayment}>{text('View receipt','ደረሰኝ ይመልከቱ')}</button></p>}
    {fundingNotice&&<p className={reference.notice} role="status" data-bid-funding-notice>{fundingNotice}</p>}
    {active&&current?<>
-    <div className={reference.multiRow}><span><Layers size={15} aria-hidden="true"/>{text('Bid on several amounts','በብዙ መጠኖች ይጫረቱ')}</span><button type="button" role="switch" aria-checked={multiple} aria-label={text('Bid on several amounts','በብዙ መጠኖች ይጫረቱ')} data-bid-multi-toggle data-bid-mode-toggle disabled={frozen} onClick={()=>{if(multiple&&(numbers.length>1||editing===null&&numbers.length>0&&input!=='')){reportError(text('Remove extra amounts before switching to a single bid.','ወደ አንድ ጨረታ ከመቀየርዎ በፊት ተጨማሪ መጠኖችን ያስወግዱ።'));return}if(multiple&&numbers.length===1){setInput(editing===null?numbers[0]:input);setNumbers([]);setEditing(null)}setMultiple(!multiple);setNumberMode('individual');reportError('')}}><span/></button></div>
-    <div className={reference.inputHeading}><label htmlFor={id}>{text('Your bid number','የጨረታ ቁጥርዎ')}</label>{multiple&&<span>{selectedNumbers.length} / {rules?.remainingSubmissions??'—'} {text('numbers','ቁጥሮች')}</span>}</div>
-    {multiple&&<div className={reference.tabs} role="tablist" aria-label={text('Add bid amounts','የጨረታ መጠኖች ይጨምሩ')} data-bid-range-tabs><button type="button" role="tab" aria-selected={numberMode==='individual'} disabled={frozen} onClick={()=>{setNumberMode('individual');reportError('')}}>{text('One by one','አንድ በአንድ')}</button><button type="button" role="tab" aria-selected={numberMode==='range'} disabled={frozen} onClick={()=>{setNumberMode('range');setInput('');setEditing(null);reportError('')}}>{text('Range','ክልል')}</button></div>}
-    {multiple&&numberMode==='range'?<><div className={reference.rangeRow}>
+    <div className={reference.inputHeading}><label htmlFor={id}>{text('Your bid number','የጨረታ ቁጥርዎ')}</label>{<span>{selectedNumbers.length} / {rules?.remainingSubmissions??'—'} {text('numbers','ቁጥሮች')}</span>}</div>
+    {<div className={reference.tabs} role="tablist" aria-label={text('Add bid amounts','የጨረታ መጠኖች ይጨምሩ')} data-bid-range-tabs><button type="button" role="tab" aria-selected={numberMode==='individual'} disabled={frozen} onClick={()=>{setNumberMode('individual');reportError('')}}>{text('One by one','አንድ በአንድ')}</button><button type="button" role="tab" aria-selected={numberMode==='range'} disabled={frozen} onClick={()=>{setNumberMode('range');setInput('');setEditing(null);reportError('')}}>{text('Range','ክልል')}</button></div>}
+    {numberMode==='range'?<><div className={reference.rangeRow}>
      <label><span>{text('From','ከ')}</span><input aria-label={text('From amount','የመጀመሪያ መጠን')} data-bid-range-from inputMode="decimal" autoComplete="off" maxLength={19} value={rangeFrom} placeholder={bounds?.minPoints??'0.00'} disabled={frozen} onChange={event=>setDecimal(event.target.value,setRangeFrom)}/></label>
      <label><span>{text('To','እስከ')}</span><input aria-label={text('To amount','የመጨረሻ መጠን')} data-bid-range-to inputMode="decimal" autoComplete="off" maxLength={19} value={rangeTo} placeholder="0.00" disabled={frozen} onChange={event=>setDecimal(event.target.value,setRangeTo)}/></label>
      <label><span>{text('Step','ልዩነት')}</span><input aria-label={text('Step amount','ልዩነት')} data-bid-range-step inputMode="decimal" autoComplete="off" maxLength={19} value={selectedRangeStep} disabled={frozen} onChange={event=>setDecimal(event.target.value,setRangeStep)} aria-invalid={rangeDraft?.error==='step'||undefined}/></label>
      <button type="button" className={reference.add} data-bid-add disabled={frozen||!rangeFrom&&!rangeTo} aria-label={text('Add bid range','የጨረታ ክልል ጨምር')} onClick={addRange}><Plus size={16} aria-hidden="true"/>{text('Add','ጨምር')}</button>
-    </div>{rangePresentation}</>:<div className={reference.inputRow}><div className={reference.amountField}><span aria-hidden="true">#</span><input id={id} inputMode="decimal" autoComplete="off" maxLength={19} disabled={frozen} value={input} placeholder={text('Enter your bid amount…','የጨረታ መጠንዎን ያስገቡ…')} onChange={event=>setDecimal(event.target.value,setInput)} onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();if(multiple)add()}}} aria-invalid={invalidDraft||undefined} aria-describedby={`${id}-help`}/></div>{multiple&&<button className={reference.add} type="button" data-bid-add disabled={frozen||!input} aria-label={text(editing===null?'Add bid amount':'Save bid amount',editing===null?'የጨረታ መጠን ጨምር':'የጨረታ መጠን ያስቀምጡ')} onClick={add}><Plus size={16} aria-hidden="true"/>{text(editing===null?'Add':'Save',editing===null?'ጨምር':'አስቀምጥ')}</button>}</div>}
+    </div>{rangePresentation}</>:<div className={reference.inputRow}><div className={reference.amountField}><span aria-hidden="true">#</span><input id={id} inputMode="decimal" autoComplete="off" maxLength={19} disabled={frozen} value={input} placeholder={text('Enter your bid amount…','የጨረታ መጠንዎን ያስገቡ…')} onChange={event=>setDecimal(event.target.value,setInput)} onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();add()}}} aria-invalid={invalidDraft||undefined} aria-describedby={`${id}-help`}/></div>{<button className={reference.add} type="button" data-bid-add disabled={frozen||!input} aria-label={text(editing===null?'Add bid amount':'Save bid amount',editing===null?'የጨረታ መጠን ጨምር':'የጨረታ መጠን ያስቀምጡ')} onClick={add}><Plus size={16} aria-hidden="true"/>{text(editing===null?'Add':'Save',editing===null?'ጨምር':'አስቀምጥ')}</button>}</div>}
     <p id={`${id}-help`} className={reference.inputHint}>{fieldHelp}</p>
-    {!!numbers.length&&<><div className={reference.chips} aria-label={text('Selected bid amounts','የተመረጡ የጨረታ መጠኖች')}>{numbers.map((number,index)=><span key={number}><button disabled={frozen} type="button" aria-label={text(`Edit ${number}`,`${number} ያስተካክሉ`)} onClick={()=>{setEditing(index);setInput(number);setNumberMode('individual');reportError('')}}>{number}</button><button disabled={frozen} type="button" aria-label={text(`Remove ${number}`,`${number} ያስወግዱ`)} onClick={()=>{setNumbers(values=>values.filter((_,i)=>i!==index));setEditing(null);setInput('');reportError('')}}><X size={12} aria-hidden="true"/></button></span>)}</div><div className={reference.selectionSummary}><span>{text(`${numbers.length} numbers × ${formatEtb(terms.entryFeePoints)}`,`${numbers.length} ቁጥሮች × ${formatEtb(terms.entryFeePoints)}`)}</span><button type="button" disabled={frozen} onClick={()=>{setNumbers([]);setInput('');setEditing(null);reportError('')}}>{text('Clear all','ሁሉንም አጽዳ')}</button></div></>}
+    {!!numbers.length&&<><div className={reference.chips} aria-label={text('Selected bid amounts','የተመረጡ የጨረታ መጠኖች')}>{numbers.map((number,index)=><span key={number}><button disabled={frozen} type="button" aria-label={text(`Edit ${number}`,`${number} ያስተካክሉ`)} onClick={()=>{setEditing(index);setInput(number);setNumberMode('individual');reportError('')}}>{number}</button><button disabled={frozen} type="button" aria-label={text(`Remove ${number}`,`${number} ያስወግዱ`)} onClick={()=>{setNumbers(values=>values.filter((_,i)=>i!==index));if(editing===index){setEditing(null);setInput('')}else if(editing!==null&&editing>index)setEditing(editing-1);reportError('')}}><X size={12} aria-hidden="true"/></button></span>)}</div><div className={reference.selectionSummary}><span>{text(`${numbers.length} numbers × ${formatEtb(terms.entryFeePoints)}`,`${numbers.length} ቁጥሮች × ${formatEtb(terms.entryFeePoints)}`)}</span><button type="button" disabled={frozen} onClick={()=>{setNumbers([]);setInput('');setEditing(null);reportError('')}}>{text('Clear all','ሁሉንም አጽዳ')}</button></div></>}
    </>:<p className={reference.notice}>{text('This auction is not open for new bids.','ይህ ጨረታ ለአዲስ ጨረታዎች ክፍት አይደለም።')}</p>}
 
    {own.error&&authenticated&&<p className={reference.error}>{text('Your bid limits could not load.','የጨረታ ገደቦችዎ መጫን አልተቻለም።')} <button type="button" onClick={own.reload}>{text('Retry','እንደገና')}</button></p>}

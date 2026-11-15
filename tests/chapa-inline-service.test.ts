@@ -48,7 +48,28 @@ describe('owned v2 Inline creation boundary',()=>{
  it('keeps provider-specific minimums authoritative above the business minimum',async()=>{
   const f=fixture();vi.mocked(f.transport.methods).mockResolvedValue({status:'success',data:[{name:'telebirr',slug:'telebirr',can_process_payments:true,supported_currencies:{ETB:{countries:{ET:{is_enabled:true,min_amount:1000,max_amount:1000000}}}}}]});
   await expect(createInlineCheckout(f.db,'owner',{key,purpose:'TOP_UP',flow:'INLINE',paymentMethod:'telebirr',phone:'0911652904',amount:'5.00'},spies.authorize,f.transport)).rejects.toMatchObject({code:'METHOD_UNAVAILABLE'});
-  expect(f.checkout.create).not.toHaveBeenCalled();expect(f.inline).not.toHaveBeenCalled();
+  expect(f.db.$transaction).not.toHaveBeenCalled();expect(f.checkout.create).not.toHaveBeenCalled();expect(f.inline).not.toHaveBeenCalled();
+ });
+ it('starts cold bonus readiness and method discovery together before opening financial locks',async()=>{
+  const f=fixture();let releaseSchema!:(value:Array<{ready:boolean}>)=>void,releaseMethods!:(value:unknown)=>void;
+  f.transaction.$queryRaw.mockImplementationOnce(()=>new Promise(resolve=>{releaseSchema=resolve}));
+  const capabilities={status:'success',data:[{name:'telebirr',slug:'telebirr',can_process_payments:true,supported_currencies:{ETB:{countries:{ET:{is_enabled:true,min_amount:100,max_amount:1000000}}}}}]};
+  vi.mocked(f.transport.methods).mockImplementationOnce(()=>new Promise(resolve=>{releaseMethods=resolve}));
+  const pending=createInlineCheckout(f.db,'owner',{key,purpose:'TOP_UP',flow:'INLINE',paymentMethod:'telebirr',phone:'0911652904',amount:'5.00'},spies.authorize,f.transport);
+  await vi.waitFor(()=>{expect(f.transaction.$queryRaw).toHaveBeenCalledOnce();expect(f.transport.methods).toHaveBeenCalledOnce()});
+  expect(f.db.$transaction).not.toHaveBeenCalled();expect(f.inline).not.toHaveBeenCalled();
+  releaseSchema([{ready:false}]);await Promise.resolve();expect(f.db.$transaction).not.toHaveBeenCalled();
+  releaseMethods(capabilities);expect((await pending).order.status).toBe('AUTH_NEEDED');expect(f.db.$transaction).toHaveBeenCalledOnce();
+ });
+ it('rejects a discovered unavailable method before financial locks, eligibility and rate writes',async()=>{
+  const f=fixture();vi.mocked(f.transport.methods).mockResolvedValue({status:'success',data:[]});
+  await expect(createInlineCheckout(f.db,'owner',bid,spies.authorize,f.transport)).rejects.toMatchObject({code:'METHOD_UNAVAILABLE'});
+  expect(f.db.$transaction).not.toHaveBeenCalled();expect(spies.authorize).not.toHaveBeenCalled();expect(spies.eligible).not.toHaveBeenCalled();expect(spies.rate).not.toHaveBeenCalled();expect(f.inline).not.toHaveBeenCalled();
+ });
+ it.each([{flow:'HOSTED',paymentMethod:'cbe-bank'},{flow:'INLINE',paymentMethod:'ebirr'}])('does not create a fresh retired-method or hosted request: %j',async selection=>{
+  const f=fixture();vi.stubEnv('CHAPA_INLINE_CBE_BANK_ENABLED','true');
+  await expect(createInlineCheckout(f.db,'owner',{...bid,...selection},spies.authorize,f.transport)).rejects.toMatchObject({code:'METHOD_UNAVAILABLE'});
+  expect(f.transport.methods).not.toHaveBeenCalled();expect(f.db.$transaction).not.toHaveBeenCalled();expect(f.transport.create).not.toHaveBeenCalled();expect(f.inline).not.toHaveBeenCalled();
  });
  it('preserves recovery of an existing owned sub5ETB intent instead of changing its historical amount',async()=>{
   const f=fixture(),body={key,purpose:'TOP_UP',flow:'INLINE',paymentMethod:'telebirr',phone:'0911652904',amount:'5.00'};
@@ -76,8 +97,14 @@ describe('owned v2 Inline creation boundary',()=>{
   const f=fixture(),result=await createInlineCheckout(f.db,'owner',bid,spies.authorize,f.transport);
   expect(spies.authorize).toHaveBeenCalledOnce();expect(spies.eligible).toHaveBeenCalledOnce();expect(spies.validateBatch).toHaveBeenCalledOnce();
   expect(f.inline).toHaveBeenCalledOnce();expect(f.inline.mock.calls[0][0]).toMatchObject({amountCents:'10000',phone:'251911652904',paymentMethod:'telebirr'});
-  expect(result.order).toMatchObject({flowVersion:4,chargeType:'INLINE',amountCents:10000n,status:'AUTH_NEEDED',authorizationReference:'CHowned-reference',initialization:{apiVersion:'v2',flowVersion:4,flow:'INLINE',amountCents:'10000',publicKeyFingerprint:expect.stringMatching(/^[a-f0-9]{64}$/),idempotencyKey:expect.stringMatching(/^lowwin-inline:/)}});
+  expect(result.order).toMatchObject({flowVersion:4,chargeType:'INLINE',amountCents:10000n,status:'AUTH_NEEDED',authorizationReference:'CHowned-reference',initialization:{apiVersion:'v2',flowVersion:4,flow:'INLINE',amountCents:'10000',publicKeyFingerprint:expect.stringMatching(/^[a-f0-9]{64}$/),webhookSignatureProfile:'raw_body',idempotencyKey:expect.stringMatching(/^lowwin-inline:/)}});
   expect(f.order()!.merchantReference).toHaveLength(20);expect(f.order()!.amountCents).not.toBe(32825n);
+ });
+ it('snapshots the configured signature profile truthfully without rewriting an original payment',async()=>{
+  const f=fixture();vi.stubEnv('CHAPA_WEBHOOK_SIGNATURE_PROFILE','legacy_secret');
+  await createInlineCheckout(f.db,'owner',bid,spies.authorize,f.transport);expect(f.order()!.initialization).toMatchObject({webhookSignatureProfile:'legacy_secret'});
+  vi.stubEnv('CHAPA_WEBHOOK_SIGNATURE_PROFILE','raw_body');await createInlineCheckout(f.db,'owner',bid,spies.authorize,f.transport);
+  expect(f.order()!.initialization).toMatchObject({webhookSignatureProfile:'legacy_secret'});expect(f.inline).toHaveBeenCalledOnce();
  });
  it('acquires the real maintenance barrier, auction and wallet in order once before reauthorization and locked validation',async()=>{
   const f=fixture(),authorize=vi.fn(async()=>{expect(f.gates).toEqual(['maintenance-lock','maintenance-read','auction-lock','wallet-lock'])});
@@ -125,6 +152,11 @@ describe('owned v2 Inline creation boundary',()=>{
   const f=fixture();spies.validateBatch.mockResolvedValue({totalCents:20000n,lines});
   await expect(createInlineCheckout(f.db,'owner',bid,spies.authorize,f.transport)).rejects.toMatchObject({code:'TERMS_CHANGED'});expect(f.checkout.create).not.toHaveBeenCalled();expect(f.inline).not.toHaveBeenCalled();
  });
+ it('does not persist or dispatch when the locked auction validation finds its deadline passed',async()=>{
+  const f=fixture();spies.validateBatch.mockRejectedValueOnce(Object.assign(Error('Auction ended'),{code:'AUCTION_ENDED'}));
+  await expect(createInlineCheckout(f.db,'owner',bid,spies.authorize,f.transport)).rejects.toMatchObject({code:'AUCTION_ENDED'});
+  expect(f.checkout.create).not.toHaveBeenCalled();expect(f.inline).not.toHaveBeenCalled();
+ });
  it('does not initialize invalid phones or provider-prefix mismatches',async()=>{
   const f=fixture();await expect(createInlineCheckout(f.db,'owner',{...bid,paymentMethod:'mpesa'},spies.authorize,f.transport)).rejects.toMatchObject({code:'INVALID_PHONE'});expect(f.checkout.create).not.toHaveBeenCalled();expect(f.inline).not.toHaveBeenCalled();
  });
@@ -135,5 +167,12 @@ describe('owned v2 Inline creation boundary',()=>{
  it('keeps a timed-out initialization attached to its saved original operation',async()=>{
   const f=fixture();f.inline.mockRejectedValueOnce(new TypeError('interrupted transport'));const result=await createInlineCheckout(f.db,'owner',bid,spies.authorize,f.transport);
   expect(result.order).toMatchObject({status:'PENDING',verificationState:'UNAVAILABLE',reason:'PROVIDER_CONFIRMATION_REQUIRED'});expect(f.checkout.create).toHaveBeenCalledOnce();expect(f.order()!.initialization).toHaveProperty('idempotencyKey');expect(f.inline).toHaveBeenCalledOnce();
+ });
+ it('retries an interrupted initialization using its exact original request without rediscovery or another intent',async()=>{
+  const f=fixture();f.inline.mockRejectedValueOnce(new TypeError('interrupted transport'));
+  const first=await createInlineCheckout(f.db,'owner',bid,spies.authorize,f.transport),request=f.inline.mock.calls[0][0];
+  const recovered=await createInlineCheckout(f.db,'owner',bid,spies.authorize,f.transport);
+  expect(recovered.order.id).toBe(first.order.id);expect(recovered.order.status).toBe('AUTH_NEEDED');expect(f.inline).toHaveBeenCalledTimes(2);expect(f.inline.mock.calls[1]).toEqual([request,'recover']);
+  expect(f.checkout.create).toHaveBeenCalledOnce();expect(f.transport.methods).toHaveBeenCalledOnce();expect(spies.validateBatch).toHaveBeenCalledOnce();
  });
 });

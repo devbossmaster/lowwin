@@ -1,10 +1,12 @@
 import {createAuth} from './server';
 import {browserLoginConfig,telegramLoginSettings,telegramLoginRequestOrigin,telegramLoginDestination,telegramLoginFailure,TELEGRAM_LOGIN_PROVIDER} from './telegram-login';
+import {timedTelegramAuthResponse} from './telegram-timing';
 
 const headers={'Cache-Control':'private, no-store, max-age=0','Vary':'Cookie','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'};
 /** HTTP boundary only: protocol state, PKCE, JWT validation and cookies belong
  * to the installed Telegram plugin and Better Auth's standard social routes. */
-export async function handleTelegramOIDC(request:Request,path:string){
+export function handleTelegramOIDC(request:Request,path:string){return timedTelegramAuthResponse(()=>handleTelegramOIDCRequest(request,path))}
+async function handleTelegramOIDCRequest(request:Request,path:string){
  if(path==='/telegram/config')return Response.json(browserLoginConfig(),{headers});
  const settings=telegramLoginSettings();
  if(!settings)return Response.json({error:'Telegram sign-in is not configured.'},{status:503,headers});

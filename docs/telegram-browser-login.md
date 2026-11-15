@@ -62,6 +62,18 @@ After a real callback rejection, the safe log includes `tokenRequestProfile: "te
 
 Expected callback: `https://lowwin.shop/api/auth/callback/telegram-oidc`; expected integration: `better-auth-telegram`. Schema requires the existing `202611130002_telegram_browser_login` migration. This update adds no migration and never copies wallets. Apply pending migrations through the existing authorized migration connection only.
 
+### State restoration failures
+
+`STATE_PARSE` happens while restoring the browser-bound OAuth state, before exchanging the provider code. It does not establish a missing migration or a successful credential exchange. Check runtime readiness separately:
+
+```sh
+npx --no-install tsx scripts/check-auth-runtime.ts
+```
+
+This read-only check validates the generated client, required auth columns and runtime role grants without returning customer rows or contacting Telegram. If it reports `ready: true`, do not repeat migrations or rotate credentials merely because of `STATE_PARSE`. Start one new sign-in from the canonical Home page in the same browser, rather than reloading an old callback or approving an earlier tab's request. A second sign-in can replace that browser's state cookie; an already used or expired callback cannot be replayed.
+
+The safe auth logger retains only allowlisted state codes and fixed reasons. It never prints state parameters, cookie values, stored verification JSON, PKCE verifiers or exception details. Use that reason to distinguish an unavailable state record, browser binding mismatch, expiry and underlying database failure. State, cookie binding and PKCE validation must remain enabled. If browser binding failures repeat across WEB replicas, check that they use the same stable `BETTER_AUTH_SECRET`, canonical host and database; do not rotate that secret as a troubleshooting step.
+
 Keep canonical public Host routing at the reverse proxy and overwrite forwarded headers at the trusted edge. Conflicting Host/protocol headers and external callback destinations are rejected. Sessions remain HttpOnly, SameSite=Lax and Secure on HTTPS; private routes still perform server-side ownership/contact/expiry checks.
 
 ## Validation boundary

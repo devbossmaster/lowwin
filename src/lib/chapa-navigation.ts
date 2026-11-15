@@ -12,7 +12,7 @@ export function returnChapaToBot(botUrl:string|null|undefined,id:string|null|und
 /** Reserve a browser tab during the Pay click so an asynchronous response is
  * not blocked as a popup. Telegram uses its own external-browser handoff. */
 export function prepareChapaNavigation(){
- const telegram=window.Telegram?.WebApp;
+ const telegram=window.Telegram?.WebApp?.initData?window.Telegram.WebApp:null;
  let popup:Window|null=null;
  if(!telegram?.openLink)try{popup=window.open('about:blank','_blank')}catch{/* Same-tab fallback remains available. */}
  if(popup)popup.opener=null;

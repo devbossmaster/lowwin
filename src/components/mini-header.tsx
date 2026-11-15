@@ -15,6 +15,7 @@ import {useMiniLocale,type MiniLanguage} from './mini-locale';
 import styles from './mini-header.module.css';
 import {LOWWIN_BRAND_NAME} from '@/lib/brand';
 import {BrandMark} from './brand-mark';
+import {CustomerNavigation} from './browser-navigation';
 
 export function MiniHeader(){
  const {language,setLanguage,t}=useMiniLocale();
@@ -48,8 +49,10 @@ export function MiniHeader(){
   }else if(event.key==='Tab'){setLanguageOpen(false);languageButtonRef.current?.focus()}
  };
  if(path!=='/')return null;
- return <header className={styles.header} role="banner" aria-label="Mini App header">
+ return <header className={styles.header} role="banner" aria-label="Mini App header" data-home-header>
   <Link href="/" className={styles.brand} aria-label={am?'LowWin መነሻ':'LowWin Home'}><BrandMark/><span className={styles.brandName}>{LOWWIN_BRAND_NAME}</span></Link>
+  <CustomerNavigation className={styles.navigation}/>
+  <div className={styles.accountControls} data-header-account-controls>
   {registered?<div className={styles.balancePill} data-long-balance={amount!==null&&amount.length>6||undefined}>
    <WalletOverviewTrigger ariaBusy={amount===null||undefined} className={styles.balance} ariaLabel={`${am?'ዋሌት':'Wallet'}${amount!==null?`, ${amount} ETB`:''}`} title={amount!==null?`${amount} ETB`:am?'ቀሪ ሂሳቡን ለማየት ዋሌትን ይክፈቱ':'Open Wallet to check your balance'}><Wallet size={14} strokeWidth={1.75} aria-hidden="true"/><span data-header-balance aria-busy={amount===null||undefined}><span className={styles.balanceAmount}>{amount??<span className={styles.balancePlaceholder} aria-label={am?'ሂሳብ በመጫን ላይ':'Loading balance'}/>}</span><small>ETB</small></span></WalletOverviewTrigger>
    <WalletTopUpTrigger className={styles.addFunds} ariaLabel={am?'ገንዘብ ያስገቡ':'Deposit'}><Plus size={15} strokeWidth={1.75} aria-hidden="true"/></WalletTopUpTrigger>
@@ -62,5 +65,6 @@ export function MiniHeader(){
    {languageOpen&&<div ref={languageMenuRef} id={languageMenuId} className={styles.languageMenu} role="menu" aria-label={t('language')} onKeyDown={moveLanguageFocus}>{([['en','English'],['am','አማርኛ']] as const).map(([value,label])=><button type="button" role="menuitemradio" aria-checked={language===value} className={styles.languageOption} key={value} lang={value} onClick={()=>{setLanguage(value as MiniLanguage);setLanguageOpen(false);languageButtonRef.current?.focus()}}><span>{label}</span>{language===value&&<Check size={15} strokeWidth={1.75} aria-hidden="true"/>}</button>)}</div>}
   </div>
   </nav>
+  </div>
  </header>;
 }

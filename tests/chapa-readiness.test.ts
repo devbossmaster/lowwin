@@ -27,6 +27,15 @@ describe('non-charging Chapa readiness',()=>{
   expect(report).toMatchObject({configured:false,recoveryEnabled:false,missingPrerequisites:['CHAPA_WEBHOOK_SECRET']});
   for(const secret of [raw.CHAPA_PRIVATE_KEY,raw.CHAPA_WEBHOOK_SECRET,raw.DATABASE_URL,raw.MINI_APP_URL])if(secret)expect(JSON.stringify(report)).not.toContain(secret);
  });
+ it('keeps original-version recovery running independently of paused or unconfigured v2',()=>{
+  const raw:Record<string,string|undefined>=environment({CHAPA_ENABLED:'false',CHAPA_RECOVERY_ENABLED:'false',CHAPA_PRIVATE_KEY:undefined,CHAPA_V1_MODE:'test',CHAPA_V1_SECRET_KEY:'CHASECK_TEST-'+'b'.repeat(32),CHAPA_V1_RECOVERY_ENABLED:'true'});
+  const result=chapaWorkerConfiguration(raw);
+  expect(result).toMatchObject({configured:false,recoveryEnabled:true,v2RecoveryEnabled:false,v1RecoveryEnabled:true,missingPrerequisites:[]});
+  expect(result.inline.creationEnabled).toBe(false);
+  expect(JSON.stringify(result)).not.toContain(raw.CHAPA_V1_SECRET_KEY);
+  expect(chapaWorkerConfiguration({...raw,CHAPA_V1_RECOVERY_ENABLED:'false'})).toMatchObject({recoveryEnabled:false,v1RecoveryEnabled:false});
+  expect(chapaWorkerConfiguration({...raw,CHAPA_V1_SECRET_KEY:'CHAPA_TEST_'+'c'.repeat(32)})).toMatchObject({recoveryEnabled:false,v1RecoveryEnabled:false});
+ });
  it('blocks webhook recovery with a missing signature secret while preserving the creation pause',async()=>{
   const raw=environment({CHAPA_WEBHOOK_SECRET:undefined,CHAPA_ENABLED:'false',CHAPA_RECOVERY_ENABLED:'true'}),fetcher=vi.fn<typeof fetch>(),readSchema=vi.fn();
   expect(await checkChapaReadiness(raw,{schema:true,methods:true},{fetcher,readSchema})).toMatchObject({configured:false,creationEnabled:false,recoveryEnabled:false,missingPrerequisites:['CHAPA_WEBHOOK_SECRET'],schema:{status:'blocked'},methods:{status:'blocked'}});

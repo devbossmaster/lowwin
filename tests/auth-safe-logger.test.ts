@@ -32,4 +32,38 @@ describe('safe Better Auth diagnostics',()=>{
   expect(JSON.stringify(authLogSummary([failure]))).not.toMatch(/secret-header|secret-code|client_secret=private/);
   expect(authLogSummary([{telegramTokenRequestProfile:'private-secret-value',code:'invalid_client'}])).not.toHaveProperty('tokenRequestProfile');
  });
+ it.each([
+  ['state_mismatch','State mismatch: verification not found','STATE_RECORD_MISSING'],
+  ['state_security_mismatch','State mismatch: State not persisted correctly','STATE_COOKIE_BINDING_MISMATCH'],
+  ['state_mismatch','State mismatch: auth state cookie not found','STATE_COOKIE_MISSING'],
+  ['state_not_found','State not found in OAuth callback','MISSING_STATE_PARAMETER'],
+  ['state_mismatch','Invalid state: request expired','STATE_EXPIRED'],
+  ['state_security_mismatch','State mismatch: OAuth state parameter does not match stored state','STATE_VALUE_MISMATCH'],
+  ['state_invalid','State invalid: Failed to decrypt or parse auth state','STORED_STATE_INVALID'],
+ ])('identifies a fixed state failure without reflecting its details: %s / %s',(stateCode,message,reason)=>{
+  const failure=Object.assign(new Error(message),{code:stateCode,details:{state:'private-oauth-state',cookie:'secret-cookie',value:'private-persisted-json'},errorURL:'https://lowwin.example/?secret=private-callback'});
+  const result=authLogSummary([failure],'Failed to parse state');
+  expect(result).toMatchObject({code:'AUTH_STATE',diagnostic:'STATE_PARSE',stateCode,reason});
+  expect(JSON.stringify(result)).not.toMatch(/private-oauth-state|secret-cookie|private-persisted-json|private-callback/);
+ });
+ it('does not infer database failure when state parsing has no recognized cause',()=>{
+  const result=authLogSummary([new SyntaxError('JSON contains private-state and private-cookie')],'Failed to parse state');
+  expect(result).toMatchObject({code:'AUTH_STATE',diagnostic:'STATE_PARSE'});
+  expect(result).not.toHaveProperty('stateCode');expect(result).not.toHaveProperty('reason');
+  expect(result.hint).not.toMatch(/database|grants|schema/i);
+  expect(JSON.stringify(result)).not.toMatch(/private-state|private-cookie/);
+ });
+ it('keeps known nested database evidence above a state failure',()=>{
+  const failure=Object.assign(new Error('State mismatch: verification not found'),{code:'state_mismatch',details:{state:'private-state'},cause:{code:'P2022',message:'private-query',meta:{code:'42703'}}});
+  expect(authLogSummary([failure],'Failed to parse state')).toMatchObject({code:'P2022',sqlState:'42703',diagnostic:'STATE_PARSE'});
+  expect(JSON.stringify(authLogSummary([failure],'Failed to parse state'))).not.toMatch(/private-state|private-query/);
+ });
+ it('does not trust an arbitrary state code or append a provider message to the hint',()=>{
+  const failure=Object.assign(new Error('private-state-value'),{code:'state_security_mismatch',details:{state:'private-details'}});
+  expect(authLogSummary([failure],'Failed to parse state')).toMatchObject({code:'AUTH_STATE',stateCode:'state_security_mismatch'});
+  expect(authLogSummary([failure],'Failed to parse state')).not.toHaveProperty('reason');
+  const unknown=authLogSummary([{code:'private-state-code',details:'private-details'}],'Failed to parse state');
+  expect(unknown).not.toHaveProperty('stateCode');
+  expect(JSON.stringify([unknown,authLogSummary([failure],'Failed to parse state')])).not.toMatch(/private-state-value|private-details|private-state-code/);
+ });
 });

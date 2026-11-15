@@ -107,6 +107,18 @@ describe('bid-only progress follows the owned payment outcome',()=>{
    expect(bidPaymentCanRetry(snapshot.order)).toBe(false);
   }
  });
+ it('reconciles an enabled original-version payment and permits fresh checkout only after a verified unsuccessful outcome',()=>{
+  const legacy={...pending,apiVersion:'legacy' as const,unsupportedLegacy:false,legacyRecoveryAvailable:true,chargeType:'INLINE' as const,providerStatus:null,verificationState:'UNAVAILABLE'};
+  expect(bidPaymentProgressPhase({...state,order:legacy})).toBe('uncertain');
+  expect(bidPaymentCanRetry(legacy)).toBe(false);expect(bidPaymentCanRetryOriginal(legacy)).toBe(false);
+  const failed={...legacy,status:'FAILED',providerStatus:'FAILED',verificationState:'VERIFIED'};
+  expect(bidPaymentCanRetry(failed)).toBe(true);expect(bidPaymentCanRetryOriginal(failed)).toBe(false);
+  expect(bidPaymentProgressPhase({...state,order:failed})).toBe('terminal');
+  expect(bidPaymentCanRetry({...failed,providerStatus:'SUCCESS'})).toBe(false);
+  expect(bidPaymentCanRetry({...failed,verificationState:'MISMATCH'})).toBe(false);
+  expect(bidPaymentCanRetry({...failed,legacyRecoveryAvailable:false})).toBe(false);
+  expect(bidPaymentCanRetry({...failed,fundsPreserved:true})).toBe(false);
+ });
  it.each(['INLINE','HOSTED'] as const)('keeps retired %s payment history read-only without authorization or a second initialization',chargeType=>{
   const order={...pending,apiVersion:'legacy' as const,unsupportedLegacy:true,chargeType,providerStatus:null,verificationState:'UNAVAILABLE'};
   expect(bidPaymentProgressPhase({...state,order,error:'Historical payment',paused:true,now:created+86400001})).toBe('uncertain');

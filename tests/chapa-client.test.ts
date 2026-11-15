@@ -4,6 +4,14 @@ const uuid='0f55aaab-2222-4444-8888-123456789012',attempt:ChapaAttempt={version:
 function storage(){const values=new Map<string,string>();return {getItem:(key:string)=>values.get(key)??null,setItem:(key:string,value:string)=>{values.set(key,value)},removeItem:(key:string)=>{values.delete(key)}}}
 afterEach(()=>{vi.unstubAllGlobals();vi.useRealTimers()});
 describe('Chapa client recovery and display boundaries',()=>{
+ it('permits only explicitly configured original-version status recovery without reinitialization',()=>{
+  const legacy={id:uuid,purpose:'TOP_UP',status:'PENDING',apiVersion:'legacy',unsupportedLegacy:false,legacyRecoveryAvailable:true,providerStatus:null,verificationState:'UNAVAILABLE',fundsPreserved:false,receipt:null,checkoutUrl:null} as ChapaCheckoutView;
+  expect(chapaRecoverable(legacy)).toBe(true);
+  expect(chapaRecoverable({...legacy,legacyRecoveryAvailable:false})).toBe(false);
+  expect(chapaRecoverable({...legacy,unsupportedLegacy:true})).toBe(false);
+  expect(chapaCanResumeCheckout(attempt,legacy)).toBe(false);
+  expect(chapaRecoverable({...legacy,status:'CREDITED'})).toBe(false);
+ });
  it.each(['FAILED','CANCELLED','INCOMPLETE','EXPIRED','BLOCKED'])('does not reopen %s from a delayed pre-cancellation read, but accepts a late verified credit',status=>{
   const terminal={id:uuid,purpose:'TOP_UP',status,providerStatus:status,verificationState:'VERIFIED',fundsPreserved:false,receipt:null} as ChapaCheckoutView;
   for(const nextStatus of ['SUBMITTING','PENDING','AUTH_NEEDED'])expect(acceptChapaSnapshot(terminal,{...terminal,status:nextStatus,providerStatus:nextStatus})).toBe(false);

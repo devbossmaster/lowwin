@@ -70,6 +70,14 @@ describe('shared bid and deposit status surface',()=>{
  });
  it('uses the same compact surface and localized summary for deposits',()=>{const html=render('TOP_UP',base,true);expect(html).toContain('data-wallet-payment-progress="authorization"');expect(html).toContain('የዋሌት ገቢ');expect(html).toContain('የክፍያ ፈቃድን');expect(html).toContain('data-payment-progress');expect(html).not.toContain('data-bid-payment-progress');expect(html).not.toContain('Connect');expect(html).not.toContain('<ol')});
  it('retains the established hosted-payment recovery path',()=>{expect(render('TOP_UP',{...base,order:{...order,chargeType:'HOSTED'}})).toContain('data-hosted-recovery')});
+ it.each(['BID','TOP_UP'] as const)('%s enabled original-version recovery checks the owned attempt without offering old authorization or initialization',purpose=>{
+  const legacy={...order,apiVersion:'legacy' as const,unsupportedLegacy:false,legacyRecoveryAvailable:true,chargeType:'INLINE' as const,authType:'OTP' as const,providerStatus:null};
+  const html=render(purpose,{...base,order:legacy});
+  expect(html).toContain('Checking your previous payment');expect(html).toContain('Check payment');expect(html).toContain('Close');
+  expect(html).not.toContain('Confirm code');expect(html).not.toContain('one-time-code');expect(html).not.toContain('Try again');expect(html).not.toContain('Retry original request');expect(html).not.toContain('data-hosted-recovery');
+  const failed=render(purpose,{...base,order:{...legacy,status:'FAILED',providerStatus:'FAILED',verificationState:'VERIFIED'}});
+  expect(failed).toContain('Try again');expect(failed).toContain('Close');expect(failed).not.toContain('Confirm code');expect(failed).not.toContain('Retry original request');
+ });
  it.each(['BID','TOP_UP'] as const)('%s retired payments show read-only history and no authorization or retry',purpose=>{
   const html=render(purpose,{...base,order:{...order,apiVersion:'legacy',unsupportedLegacy:true,chargeType:'INLINE',authType:'OTP',providerStatus:null}});
   expect(html).toContain('Historical payment');expect(html).toContain('read-only');expect(html).toContain('Transactions');expect(html).toContain('Close');expect(html).not.toContain('Confirm code');expect(html).not.toContain('one-time-code');expect(html).not.toContain('Try again');expect(html).not.toContain('Open payment page');

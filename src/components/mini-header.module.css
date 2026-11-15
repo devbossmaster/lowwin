@@ -24,6 +24,7 @@
 @media(prefers-reduced-motion:reduce){.header .login::before{transition:none}}
 
 /* Compact painted controls keep the reference's single-row proportions. */
+.header .navigation{display:none}.accountControls{display:contents}
 .brand{gap:7px}.brand img{width:30px;height:30px;border-radius:23%}.brandName{font-size:17px;font-weight:700;letter-spacing:-.025em}.brandName,.balanceAmount,.balance small{font-family:'Inter',sans-serif}
 @media(max-width:639px){
  .header{grid-template-columns:max-content minmax(0,1fr) 132px;padding-top:calc(4px + var(--mini-safe-top,0px) + var(--tg-content-safe-area-inset-top,0px));padding-bottom:4px;gap:4px}

@@ -23,11 +23,12 @@ describe('Telegram documented token request compatibility',()=>{
    return Response.json({access_token:'synthetic-access',id_token:'synthetic-token',token_type:'Bearer'});
   });
   vi.stubGlobal('fetch',fetch);
-  const verify=vi.fn(),getUserInfo=vi.fn(),other={id:'other-provider'};
+  const verify=vi.fn(),getUserInfo=vi.fn(async()=>null),other={id:'other-provider'};
   const result=await telegramOIDCTokenRequest(settings).init!({socialProviders:[{id:'telegram-oidc',idToken:{verify},getUserInfo},other]} as never);
   const providers=result!.context!.socialProviders!;
   expect(providers[1]).toBe(other);
-  expect(providers[0]!.idToken).toEqual({verify});expect(providers[0]!.getUserInfo).toBe(getUserInfo);
+  expect(providers[0]!.idToken).toEqual({verify});
+  const verifiedTokens={idToken:'synthetic-token',expectedIdTokenNonce:'original-nonce'};expect(await providers[0]!.getUserInfo!(verifiedTokens as never)).toBeNull();expect(getUserInfo).toHaveBeenCalledExactlyOnceWith(verifiedTokens);
   expect(await providers[0]!.validateAuthorizationCode!(args)).toMatchObject({idToken:'synthetic-token'});
   expect(fetch).toHaveBeenCalledOnce();
  });

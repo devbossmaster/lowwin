@@ -2,6 +2,7 @@ import type {BetterAuthPlugin} from 'better-auth';
 import {Buffer} from 'node:buffer';
 import {authorizationCodeRequest,validateAuthorizationCode} from 'better-auth/oauth2';
 import type {TelegramLoginSettings} from './telegram-login';
+import {measureTelegramAuth} from './telegram-timing';
 
 export const TELEGRAM_OIDC_TOKEN_REQUEST_PROFILE='telegram-basic-raw-v2' as const;
 type CodeArguments=Pick<Parameters<typeof validateAuthorizationCode>[0],'code'|'codeVerifier'|'redirectURI'>;
@@ -44,11 +45,12 @@ export function telegramOIDCTokenRequest(settings:TelegramLoginSettings|null):Be
   return {context:{socialProviders:context.socialProviders.map(provider=>provider.id!=='telegram-oidc'?provider:{
    ...provider,
    validateAuthorizationCode:async({code,codeVerifier,redirectURI})=>{
-    const tokens=await validateAuthorizationCode(telegramOIDCTokenRequestOptions(settings,{code,codeVerifier,redirectURI}));
+    const tokens=await measureTelegramAuth('oidc_token',()=>validateAuthorizationCode(telegramOIDCTokenRequestOptions(settings,{code,codeVerifier,redirectURI})));
     // Telegram can return HTTP 200 with an OAuth error instead of tokens.
     if(tokens.raw?.error)throw Object.assign(Error(`[better-auth-telegram] OIDC: token endpoint returned "${String(tokens.raw.error)}"`),{telegramTokenRequestProfile:TELEGRAM_OIDC_TOKEN_REQUEST_PROFILE});
     return tokens;
    },
+   getUserInfo:async tokens=>measureTelegramAuth('oidc_profile',()=>provider.getUserInfo(tokens)),
   })}};
  }};
 }

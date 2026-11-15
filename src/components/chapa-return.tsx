@@ -26,14 +26,13 @@ export function ChapaReturn({id}:{id:string|null}){
  const {status,queryIdentity,botUrl,verifyingTelegram}=useTelegram(),{language}=useMiniLocale(),text=(en:string,am:string)=>language==='am'?am:en;
  const [insideMiniApp,setInsideMiniApp]=useState<boolean|null>(null),[handoffWaiting,setHandoffWaiting]=useState(true),handoff=useRef<string|null>(null);
  useEffect(()=>{
-  // An external browser needs no account lookup before its Telegram handoff.
-  // Wait for SDK detection so a slow in-app SDK is not mistaken for a browser.
-  if(!window.Telegram?.WebApp&&status==='loading')return;
+  // Restore an existing browser session before considering a Telegram handoff.
+  // Loading the SDK on the website does not make it a Mini App launch.
   const inside=!!window.Telegram?.WebApp?.initData;setInsideMiniApp(inside);
-  if(inside||!id||handoff.current===id)return;
+  if(inside||status==='loading'||verifyingTelegram||status==='authenticated'&&queryIdentity||!id||handoff.current===id)return;
   if(!botUrl)return;
   handoff.current=id;setHandoffWaiting(true);if(!returnChapaToBot(botUrl,id))setHandoffWaiting(false);
- },[status,verifyingTelegram,botUrl,id]);
+ },[status,queryIdentity,verifyingTelegram,botUrl,id]);
  useEffect(()=>{
   if(!id||insideMiniApp!==false)return;
   const timer=setTimeout(()=>setHandoffWaiting(false),1500);
@@ -41,7 +40,7 @@ export function ChapaReturn({id}:{id:string|null}){
  },[id,insideMiniApp]);
  const returnPath=chapaReturnPath(id),botReturn=chapaBotReturnLink(botUrl,id)??botUrl,appReturn=chapaMiniAppReturnLink(botUrl,id)??botReturn;
  return <main id="main" className={styles.returnPage}>
-  {id&&insideMiniApp&&status==='authenticated'&&queryIdentity?<OwnedReturn key={`${queryIdentity}:${id}`} id={id}/>:id&&(insideMiniApp===null||insideMiniApp&&(status==='loading'||verifyingTelegram)||insideMiniApp===false&&handoffWaiting)?<BrandedLaunchLoading/>:<section className={styles.paymentStatus}>
+  {id&&status==='authenticated'&&queryIdentity?<OwnedReturn key={`${queryIdentity}:${id}`} id={id}/>:id&&(insideMiniApp===null||status==='loading'||verifyingTelegram||insideMiniApp===false&&handoffWaiting)?<BrandedLaunchLoading/>:<section className={styles.paymentStatus}>
    <div className={styles.paymentStatusIcon}><ArrowUpRight size={24} aria-hidden="true"/></div>
    <h1>{text(id?'Back to your payment':'Payment link unavailable',id?'ወደ ክፍያዎ ይመለሱ':'የክፍያ ማስፈንጠሪያው አይገኝም')}</h1>
    <p>{text('Open Lowwin to see your top-up or bid. Your payment status updates automatically.','ገንዘብ ማስገባትዎን ወይም ጨረታዎን ለማየት Lowwinን ይክፈቱ። የክፍያ ሁኔታው በራሱ ይዘምናል።')}</p>

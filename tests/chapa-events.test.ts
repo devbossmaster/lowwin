@@ -1,9 +1,10 @@
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {PrismaClient} from '@prisma/client';
 
-const f=vi.hoisted(()=>({enabled:true,verify:vi.fn()}));
+const f=vi.hoisted(()=>({enabled:true,legacyEnabled:false,verify:vi.fn()}));
 vi.mock('../src/modules/payments/chapa-provider',()=>({chapaAvailability:()=>({recoveryEnabled:f.enabled,mode:'test'}),chapaTransport:{create:vi.fn(),lookup:vi.fn(),methods:vi.fn()}}));
-vi.mock('../src/modules/payments/chapa',()=>({verifyChapaCheckout:f.verify,unsupportedLegacyChapaCheckout:(order:{flowVersion?:number})=>order.flowVersion===3}));
+vi.mock('../src/modules/payments/chapa-legacy-recovery',()=>({chapaLegacyRecoveryAvailability:()=>({recoveryEnabled:f.legacyEnabled,mode:'test'})}));
+vi.mock('../src/modules/payments/chapa',()=>({verifyChapaCheckout:f.verify,unsupportedLegacyChapaCheckout:(order:{flowVersion?:number})=>order.flowVersion===3&&!f.legacyEnabled}));
 import {processChapaEvent,processChapaEvents} from '../src/modules/payments/chapa-events';
 
 const start=new Date('2026-10-29T12:00:00Z');
@@ -26,10 +27,15 @@ function fixture(attempts=0){
  return {event,checkout,updateMany,findMany,readEvent,client:client as unknown as PrismaClient};
 }
 
-beforeEach(()=>{f.enabled=true;vi.clearAllMocks();vi.useFakeTimers();vi.setSystemTime(start);f.verify.mockResolvedValue(undefined)});
+beforeEach(()=>{f.enabled=true;f.legacyEnabled=false;vi.clearAllMocks();vi.useFakeTimers();vi.setSystemTime(start);f.verify.mockResolvedValue(undefined)});
 afterEach(()=>{vi.useRealTimers();vi.restoreAllMocks()});
 
 describe('durable Chapa event confirmation',()=>{
+ it('uses original-version verification for configured historical recovery even when v2 is paused',async()=>{
+  f.enabled=false;f.legacyEnabled=true;const state=fixture();state.checkout.flowVersion=3;
+  f.verify.mockImplementation(async()=>{Object.assign(state.checkout,{providerStatus:'SUCCESS',verificationState:'VERIFIED',status:'CREDITED',creditJournalId:'legacy-credit'})});
+  expect(await processChapaEvent(state.client,state.event.id)).toBe(true);expect(f.verify).toHaveBeenCalledOnce();expect(state.event.status).toBe('PROCESSED');expect(state.checkout.creditJournalId).toBe('legacy-credit');
+ });
  it('retains unsupported historical attempts for staff review without provider verification or false settlement',async()=>{
   const state=fixture();state.checkout.flowVersion=3;
   expect(await processChapaEvent(state.client,state.event.id)).toBe(false);
@@ -141,6 +147,6 @@ describe('durable Chapa event confirmation',()=>{
  it('keeps batch processing limited to due queued events and at most twenty jobs',async()=>{
   const state=fixture();Object.assign(state.checkout,{creditJournalId:'existing-credit'});
   expect(await processChapaEvents(state.client,1000)).toEqual({checked:1});
-  expect(state.findMany).toHaveBeenCalledWith({where:{mode:'test',status:'QUEUED',attempts:{lt:5},nextAttemptAt:{lte:expect.any(Date)},OR:[{leaseUntil:null},{leaseUntil:{lte:expect.any(Date)}}]},orderBy:[{nextAttemptAt:'asc'},{id:'asc'}],take:20,select:{id:true}});
+  expect(state.findMany).toHaveBeenCalledWith({where:{mode:{in:['test']},status:'QUEUED',attempts:{lt:5},nextAttemptAt:{lte:expect.any(Date)},OR:[{leaseUntil:null},{leaseUntil:{lte:expect.any(Date)}}]},orderBy:[{nextAttemptAt:'asc'},{id:'asc'}],take:20,select:{id:true}});
  });
 });

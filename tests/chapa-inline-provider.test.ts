@@ -90,8 +90,8 @@ describe('Inline merchant capabilities cache',()=>{
   const raw=environment();let resolve!:(value:unknown)=>void;const methods=vi.fn(()=>new Promise<unknown>(done=>{resolve=done})),catalog=createInlineMethodCatalog({methods} as unknown as ChapaTransport,raw);
   const first=catalog.get(),second=catalog.get();expect(methods).toHaveBeenCalledOnce();raw.CHAPA_PUBLIC_KEY='CHAPA_TEST_PUB_'+'c'.repeat(32);resolve(capabilities());await expect(first).rejects.toMatchObject({code:'CONFIGURATION_CHANGED'});await expect(second).rejects.toMatchObject({code:'CONFIGURATION_CHANGED'});
  });
- it('honors explicit method narrowing and enables eBirr only when listed',()=>{
-  expect(chapaInlineConfiguredMethods(environment())).toEqual(['telebirr','cbebirr','mpesa']);expect(chapaInlineConfiguredMethods(environment({CHAPA_INLINE_METHODS:'ebirr,telebirr,unknown,telebirr'}))).toEqual(['telebirr','ebirr']);expect(chapaInlineConfiguredMethods(environment({CHAPA_INLINE_METHODS:''}))).toEqual([]);
+ it('narrows the server allowlist without enabling extra rails through settings',()=>{
+  expect(chapaInlineConfiguredMethods(environment())).toEqual(['telebirr','cbebirr','mpesa']);expect(chapaInlineConfiguredMethods(environment({CHAPA_INLINE_METHODS:'ebirr,telebirr,cbe-bank,unknown,telebirr'}))).toEqual(['telebirr']);expect(chapaInlineConfiguredMethods(environment({CHAPA_INLINE_METHODS:''}))).toEqual([]);
  });
  it('does not fabricate options when capabilities are malformed or merchant-disabled',async()=>{
   const malformed=createInlineMethodCatalog({methods:async()=>({status:'success',data:[{slug:'telebirr'}]})} as unknown as ChapaTransport,environment());await expect(malformed.get()).rejects.toMatchObject({code:'METHODS_UNAVAILABLE'});

@@ -2,11 +2,11 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {usePathname} from 'next/navigation';
 import {MINI_AUTH_TIMEOUT_MS,TelegramLaunchError,miniAuthError,signInTelegram,signOutMiniAccount,type MiniAccount} from '@/lib/mini-auth-client';
-import {observeTelegramSdk} from '@/lib/telegram-sdk-client';
+import {enableTelegramFullscreen,observeTelegramSdk,type TelegramViewportApp} from '@/lib/telegram-sdk-client';
 import {telegramEnvironment,type TelegramEnvironment} from '@/lib/telegram-browser-login-client';
 import {clearTelegramAuthResume} from '@/lib/telegram-auth-resume';
 import {invalidatePrivateQueries,loadPrivateJson,seedPrivateQuery,setPrivateQueryIdentity,subscribePrivateQueries} from './private-query-cache';
-type WebApp = { BackButton?:{isVisible?:boolean;show:()=>void;hide:()=>void;onClick:(handler:()=>void)=>void;offClick:(handler:()=>void)=>void};initData?: string; platform?:string; ready: () => void; expand?:()=>void; requestFullscreen?:()=>void; close?:()=>void; openLink?:(url:string)=>void; openTelegramLink?:(url:string)=>void; requestContact?:(callback:(shared:boolean)=>void)=>void; isVersionAtLeast?:(version:string)=>boolean; setHeaderColor?: (color: string) => void; setBackgroundColor?: (color: string) => void };
+type WebApp = TelegramViewportApp & { BackButton?:{isVisible?:boolean;show:()=>void;hide:()=>void;onClick:(handler:()=>void)=>void;offClick:(handler:()=>void)=>void};ready: () => void; close?:()=>void; openLink?:(url:string)=>void; openTelegramLink?:(url:string)=>void; requestContact?:(callback:(shared:boolean)=>void)=>void; setHeaderColor?: (color: string) => void; setBackgroundColor?: (color: string) => void };
 declare global { interface Window { Telegram?: { WebApp?: WebApp } } }
 type Me = MiniAccount;
 type Status = 'loading' | 'guest' | 'contact-required' | 'authenticated' | 'error';
@@ -155,7 +155,12 @@ export function TelegramProvider({ children, devEnabled, botUrl }: { children: R
     // Visibility only, never authentication proof. This also hides the action
     // when a proxy has rewritten all server-visible headers to localhost.
     setLocalBrowser(['localhost','127.0.0.1','[::1]'].includes(window.location.hostname));
-    const stop=observeTelegramSdk(autoAuthenticate,()=>{
+    let stopFullscreen=()=>{};
+    const sdkReady=()=>{
+      stopFullscreen();stopFullscreen=enableTelegramFullscreen(window.Telegram?.WebApp);
+      autoAuthenticate();
+    };
+    const stop=observeTelegramSdk(sdkReady,()=>{
       // Browser login and existing browser sessions do not depend on WebApp JS.
       if(!window.Telegram?.WebApp?.initData){setEnvironment('browser');autoAuthenticate();return}
       if(authenticating.current||identityRef.current)return;
@@ -163,7 +168,7 @@ export function TelegramProvider({ children, devEnabled, botUrl }: { children: R
       clearAccount();setNeedsReopen(false);setError('Telegram could not load. Check your connection and retry.');setStatus('error');
     });
     autoAuthenticate();
-    return stop;
+    return()=>{stopFullscreen();stop()};
   }, [autoAuthenticate,clearAccount]);
   return <Context.Provider value={{ status, environment, queryIdentity, verifyingTelegram, me, error, needsReopen, retry: () => {if(needsReopen)return;void authenticate()}, finishContact, refreshMe, signOut, devLogin: accessKey => void authenticate(true, accessKey), devEnabled: devEnabled && localBrowser, botUrl,registrationOpen,openRegistration,closeRegistration }}>
     {children}
