@@ -1,20 +1,29 @@
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {Prisma} from '@prisma/client';
-const f=vi.hoisted(()=>({user:vi.fn(),projection:vi.fn()}));
+const f=vi.hoisted(()=>({user:vi.fn(),projection:vi.fn(),storage:vi.fn()}));
 vi.mock('../src/lib/db',()=>({db:{$queryRaw:f.projection}}));
-vi.mock('../src/modules/wallet/deposit-bonus',()=>({depositBonusStorageReady:async()=>false}));
+vi.mock('../src/modules/wallet/deposit-bonus',()=>({depositBonusStorageReady:f.storage}));
 vi.mock('../src/modules/auth/private-api',async original=>({...await original<typeof import('../src/modules/auth/private-api')>(),requireUser:f.user}));
 import {PrivateApiError} from '../src/modules/auth/private-api';
 import {GET} from '../src/app/api/wallet/route';
 import {readWalletBalance} from '../src/modules/wallet/balance';
 import {centsToEtb,etbToCents} from '../src/lib/money';
 const request=()=>new Request('https://lowwin.example/api/wallet');
-beforeEach(()=>{vi.clearAllMocks();vi.stubEnv('WALLET_BIDS_ENABLED','false');vi.spyOn(console,'warn').mockImplementation(()=>{});f.user.mockResolvedValue('signed-in-player');f.projection.mockResolvedValue([{available:new Prisma.Decimal('1234.50'),held:new Prisma.Decimal('0.25'),revision:'12'}])});
+beforeEach(()=>{vi.clearAllMocks();vi.stubEnv('WALLET_BIDS_ENABLED','false');vi.spyOn(console,'warn').mockImplementation(()=>{});f.user.mockResolvedValue('signed-in-player');f.storage.mockResolvedValue(false);f.projection.mockResolvedValue([{available:new Prisma.Decimal('1234.50'),held:new Prisma.Decimal('0.25'),revision:'12'}])});
 afterEach(()=>{vi.unstubAllEnvs();vi.restoreAllMocks()});
 describe('header wallet connection',()=>{
  it('returns only the authenticated account balance and keeps top-ups unavailable',async()=>{const r=await GET(request());expect(r.status).toBe(200);expect(await r.json()).toEqual({available:'1234.5',held:'0.25',cashAvailable:'1234.5',bonusAvailable:'0',bonusExpiresAt:null,revision:'12',bidsEnabled:false,currency:'ETB',topUp:{enabled:false,reason:'NOT_CONFIGURED'}});expect(f.projection).toHaveBeenCalledTimes(1);expect(f.projection.mock.calls[0].at(-1)).toBe('signed-in-player');expect(r.headers.get('cache-control')).toContain('no-store');expect(r.headers.get('vary')).toBe('Cookie')});
  it('reports internal-wallet availability independently of external payment configuration',async()=>{for(const[key,value]of Object.entries({WALLET_BIDS_ENABLED:'true',APP_ENV:'local',DEV_IDENTITY_ENABLED:'false',STAGING_DEMO_ENABLED:'false',PAYMENT_GATEWAY:'NONE',CHAPA_ENABLED:'false'}))vi.stubEnv(key,value);expect(await(await GET(request())).json()).toMatchObject({bidsEnabled:true,revision:'12'})});
  it('never queries balances for a guest or an unverified session',async()=>{f.user.mockRejectedValue(new PrivateApiError(401,'Sign in through Telegram.'));expect((await GET(request())).status).toBe(401);expect(f.projection).not.toHaveBeenCalled()});
+ it('starts cold schema readiness during authentication without reading an unverified balance',async()=>{
+  let authenticate!:(userId:string)=>void,ready!:(value:boolean)=>void;
+  f.user.mockImplementationOnce(()=>new Promise<string>(resolve=>{authenticate=resolve}));
+  f.storage.mockImplementationOnce(()=>new Promise<boolean>(resolve=>{ready=resolve}));
+  const response=GET(request());
+  expect(f.user).toHaveBeenCalledOnce();expect(f.storage).toHaveBeenCalledOnce();expect(f.projection).not.toHaveBeenCalled();
+  ready(false);await Promise.resolve();expect(f.projection).not.toHaveBeenCalled();
+  authenticate('signed-in-player');expect((await response).status).toBe(200);expect(f.projection).toHaveBeenCalledOnce();
+ });
  it('measures auth and ledger separately while preserving private response headers',async()=>{vi.spyOn(performance,'now').mockReturnValueOnce(100).mockReturnValueOnce(140).mockReturnValueOnce(300);const response=await GET(request());expect(response.headers.get('server-timing')).toBe('auth;dur=40.0, ledger;dur=160.0, total;dur=200.0');expect(response.headers.get('cache-control')).toBe('private, no-store, max-age=0');expect(response.headers.get('vary')).toBe('Cookie');expect(console.warn).not.toHaveBeenCalled()});
  it('reports a failed auth stage without querying or logging private account data',async()=>{f.user.mockRejectedValue(new Prisma.PrismaClientKnownRequestError('private SQL cookie and connection',{code:'P2024',clientVersion:'6.19.3'}));const response=await GET(request());expect(response.status).toBe(503);expect(response.headers.get('server-timing')).toMatch(/^auth;dur=\d+\.\d, total;dur=\d+\.\d$/);expect(f.projection).not.toHaveBeenCalled();expect(console.warn).toHaveBeenCalledWith('Wallet read unavailable',{stage:'auth',code:'P2024',kind:'PrismaClientKnownRequestError',elapsedMs:expect.any(Number)});expect(JSON.stringify(vi.mocked(console.warn).mock.calls)).not.toContain('private')});
  it('classifies a ledger failure without logging its SQL or returning an invented balance',async()=>{f.projection.mockRejectedValue(new Prisma.PrismaClientKnownRequestError('private SQL and phone number',{code:'P2022',clientVersion:'6.19.3'}));const response=await GET(request());expect(response.status).toBe(503);expect(await response.json()).toEqual({error:'This information is temporarily unavailable.'});expect(response.headers.get('server-timing')).toMatch(/auth;dur=\d+\.\d, ledger;dur=\d+\.\d, total;dur=\d+\.\d/);expect(console.warn).toHaveBeenCalledWith('Wallet read unavailable',{stage:'ledger',code:'P2022',kind:'PrismaClientKnownRequestError',elapsedMs:expect.any(Number)});expect(JSON.stringify(vi.mocked(console.warn).mock.calls)).not.toContain('private')});

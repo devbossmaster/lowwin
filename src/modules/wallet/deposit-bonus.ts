@@ -5,13 +5,22 @@ import {centsToEtb} from '@/lib/money';
 
 type DB=Pick<PrismaClient,'$queryRaw'>;
 type Tx=Prisma.TransactionClient;
-const storage=new WeakMap<object,{until:number;ready:boolean}>();
+const storage=new WeakMap<object,{until:number;result:Promise<boolean>}>();
 /** An additive rollout may precede its migration. Probe without touching a
  * missing relation (which would abort a financial transaction). No env flag. */
 export async function depositBonusStorageReady(client:DB,fresh=false){
- const prior=storage.get(client);if(!fresh&&prior&&prior.until>Date.now())return prior.ready;
- const rows=await client.$queryRaw<Array<{ready:boolean}>>`SELECT to_regclass('public."DepositBonusPolicy"') IS NOT NULL AND to_regclass('public."DepositBonusLot"') IS NOT NULL AND to_regclass('public."DepositBonusUse"') IS NOT NULL AND to_regclass('public."DepositBonusExpiry"') IS NOT NULL AS ready`;
- const ready=rows[0]?.ready===true;storage.set(client,{until:Date.now()+30000,ready});return ready;
+ const prior=storage.get(client);if(!fresh&&prior&&prior.until>Date.now())return prior.result;
+ // Concurrent wallet/configuration readers share the same schema probe. The
+ // lifetime starts after completion; failed probes remain retryable.
+ const entry={until:Infinity,result:Promise.resolve(false)};
+ storage.set(client,entry);
+ entry.result=(async()=>{
+  try{
+   const rows=await client.$queryRaw<Array<{ready:boolean}>>`SELECT to_regclass('public."DepositBonusPolicy"') IS NOT NULL AND to_regclass('public."DepositBonusLot"') IS NOT NULL AND to_regclass('public."DepositBonusUse"') IS NOT NULL AND to_regclass('public."DepositBonusExpiry"') IS NOT NULL AS ready`;
+   entry.until=Date.now()+30000;return rows[0]?.ready===true;
+  }catch(error){if(storage.get(client)===entry)storage.delete(client);throw error}
+ })();
+ return entry.result;
 }
 const defaults={configured:false,enabled:false,percent:10,minAmount:'100.00',maxBonus:null as string|null,validityDays:7,endsAt:null as string|null,version:0,updatedAt:null as string|null};
 export async function getDepositBonusPolicy(client:PrismaClient|Tx,ready?:boolean){

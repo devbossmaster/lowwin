@@ -74,3 +74,11 @@ Initialization acceptance and webhook notifications are not fulfillment proof. S
 ## Remaining external checks
 
 Resolve the provider TEST initialization responses above, then measure authorization/verification/completion with confirmed supported simulator inputs. Physical-device Telegram handoff and USSD require separate explicitly authorized device checks; Chapa's TEST simulator does not send real USSD/SMS. Record application preparation, provider HTTP and phone delivery separately. No production migration, merge, deployment or live payment was performed for this validation update.
+
+## Compact checkout and wallet loading follow-up
+
+The payment step now shows the product title, Edit action, selected number/count and a short submission-fee note. The repeated readiness heading and duplicate fee total were removed; the accurate total remains next to Pay. English and Amharic single/multiple-bid layouts passed at 320, 360 and 430 px, with the summary bounded to 144 px and Edit retaining a 44 px touch target.
+
+Switching external providers previously aborted and restarted an unchanged fee-quote request. It now keeps that request alive across telebirr, M-PESA and CBE Birr selection. A pending external quote no longer blocks internal-wallet payment. Twelve production-mode fixture browser checks passed, including a deliberately held quote, provider switching without initialization, and successful wallet payment while the external response remains held. Provider HTTP was intercepted; these tests made no real charges. Screenshots and results are in `.local/compact-checkout-20261116/`.
+
+Home already preloads the authenticated wallet through the shared private query cache. The remaining server improvement overlaps schema readiness with authentication and shares concurrent readiness probes with the existing 30-second, database-client-scoped cache. User ledger reads still require authentication; balances themselves are not cached on the server. Fourteen focused wallet/readiness tests passed, including denied authentication, cold concurrent reads, forced schema refresh and retry after synchronous/asynchronous failures. This removes redundant database work; no production latency figure is claimed.

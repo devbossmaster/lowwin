@@ -128,8 +128,10 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
  useEffect(()=>{if(!phoneEdited.current){const registered=normalizePaymentPhone(methods.data?.phone??'');if(registered)setPhone(registered.slice(3))}},[methods.data?.phone]);
  // Review creates only an immutable server quote. Providers and the wallet are
  // contacted solely by the final Pay action below; moving between steps keeps readers mounted.
+ // Pricing does not depend on the external provider or payer phone, so switching
+ // providers for an unchanged draft keeps the same quote request alive.
  useEffect(()=>{
-  if(step!=='payment'||method===null||method==='wallet'||zero||busy||!queryIdentity||!state||!active||!current||draft.error||!draft.numbers.length||payment.started)return;
+  if(step!=='payment'||!external||zero||busy||!queryIdentity||!state||!active||!current||draft.error||!draft.numbers.length||payment.started)return;
   if(quoteAttempt.current?.fingerprint===fingerprint&&quoteAttempt.current.quote)return;
   const attempt=quoteAttempt.current?.fingerprint===fingerprint?quoteAttempt.current:{fingerprint,key:crypto.randomUUID(),paymentKey:crypto.randomUUID(),quote:undefined as BidBatchQuote|undefined};quoteAttempt.current=attempt;
   const version=generation.current,controller=new AbortController();controllers.current.add(controller);let mounted=true;setQuoteBusy(true);setQuote(null);reportError('');
@@ -139,7 +141,7 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
    if(etbToCents(next.total)!==etbToCents(preview.total))reportError(text('The total changed. Review the amount before paying.','ጠቅላላ ክፍያው ተቀይሯል። ከመክፈልዎ በፊት መጠኑን ይመልከቱ።'));
   }).catch(cause=>{if(mounted&&version===generation.current)reportError(cause instanceof ChapaClientError?cause.message:text('Could not confirm the total. Please retry.','ጠቅላላ ክፍያውን ማረጋገጥ አልተቻለም። እንደገና ይሞክሩ።'))}).finally(()=>{controllers.current.delete(controller);if(mounted)setQuoteBusy(false)});
   return()=>{mounted=false;controller.abort();controllers.current.delete(controller);setQuoteBusy(false)};
- },[step,method,zero,busy,fingerprint,queryIdentity,!!state,active,current,payment.started,quoteRetry]);
+ },[step,external,zero,busy,fingerprint,queryIdentity,!!state,active,current,payment.started,quoteRetry]);
  // These codes are definitive pre-creation rejections, not uncertain charges.
  // The hook preserves all transport/server ambiguities on their original key.
  useEffect(()=>{
@@ -246,7 +248,7 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
   // Reviewing a batch only advances the existing sheet. Quotes and all
   // financial commands remain on the explicit payment path below.
   if(step==='review'){reportError('');flow.openPayment();return}
-  if(!state||quoteBusy)return;
+  if(!state||external&&quoteBusy)return;
   if(method===null){reportError(text('Choose a payment method.','የክፍያ መንገድ ይምረጡ።'));return}
   if(!enabled){reportError(text('This payment method is unavailable for this total. Choose another method.','ይህ የክፍያ መንገድ ለዚህ መጠን አይገኝም። ሌላ ይምረጡ።'));return}
   if(applyCoupon&&(!coupon||discount.fetching)){reportError(text(discount.fetching?'Your coupon is still loading. Please try again in a moment.':'This coupon is unavailable. Remove it or select another coupon.','ኩፖኑን ያረጋግጡ ወይም ያስወግዱት።'));return}
@@ -329,12 +331,14 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
  if(step==='payment')return <>
   <AccountSheetFooter><div className={reference.footer}>
    <div className={reference.total} data-bid-total><span>{text('Total payable','ጠቅላላ ክፍያ')}</span><strong>{formatEtb(total)}</strong></div>
-   <button type="button" className={reference.pay} data-payment-action data-bid-pay disabled={busy||quoteBusy} aria-busy={busy||quoteBusy} onClick={event=>{if(event.detail<=1)void pay()}}>{(busy||quoteBusy)&&<LoaderCircle size={17} className={reference.spin} aria-hidden="true"/>}{pendingOriginal?text('View payment status','የክፍያ ሁኔታ ይመልከቱ'):text(zero?'Submit bids':method==='wallet'?`Pay ${formatEtb(total)} from wallet`:`Pay ${formatEtb(total)} & bid`,zero?'ጨረታዎችን ያቅርቡ':`${formatEtb(total)} ከፍለው ይጫረቱ`)}</button>
+   <button type="button" className={reference.pay} data-payment-action data-bid-pay disabled={busy||external&&quoteBusy} aria-busy={busy||external&&quoteBusy} onClick={event=>{if(event.detail<=1)void pay()}}>{(busy||external&&quoteBusy)&&<LoaderCircle size={17} className={reference.spin} aria-hidden="true"/>}{pendingOriginal?text('View payment status','የክፍያ ሁኔታ ይመልከቱ'):text(zero?'Submit bids':method==='wallet'?`Pay ${formatEtb(total)} from wallet`:`Pay ${formatEtb(total)} & bid`,zero?'ጨረታዎችን ያቅርቡ':`${formatEtb(total)} ከፍለው ይጫረቱ`)}</button>
   </div></AccountSheetFooter>
   <div className={reference.checkout} data-bid-step="payment" data-payment-method-form>
-   <div className={reference.reviewHeading}><div><h3>{text('Your bids are ready','ጨረታዎችዎ ዝግጁ ናቸው')}</h3><p>{am?known.product.titleAm||known.product.title:known.product.title}</p></div><button type="button" className={reference.edit} onClick={flow.editDraft}>{text('Edit','ያስተካክሉ')}</button></div>
-   <dl className={reference.reviewSummary}><div><dt>{text('Bid numbers','የጨረታ ቁጥሮች')}</dt><dd>{selectedNumbers.length<=4?selectedNumbers.join(', '):text(`${selectedNumbers.length} selected`,`${selectedNumbers.length} ተመርጠዋል`)}</dd></div><div><dt>{text('Submission fees','የማቅረቢያ ክፍያ')}</dt><dd>{formatEtb(total)}</dd></div></dl>
-   <p className={reference.paymentNote}>{text('Only the submission fee is charged. Your bid number is not a payment.','የሚከፈለው የማቅረቢያ ክፍያ ብቻ ነው። የጨረታ ቁጥርዎ ክፍያ አይደለም።')}</p>
+   <section className={reference.paymentOverview} data-bid-payment-summary aria-label={text('Payment summary','የክፍያ ማጠቃለያ')}>
+    <div className={reference.paymentOverviewHeading}><h3>{am?known.product.titleAm||known.product.title:known.product.title}</h3><button type="button" className={reference.edit} onClick={flow.editDraft}>{text('Edit','ያስተካክሉ')}</button></div>
+    <dl className={reference.paymentNumbers}><div><dt>{selectedNumbers.length===1?text('Bid number','የጨረታ ቁጥር'):text(`${selectedNumbers.length} bids`,`${selectedNumbers.length} ጨረታዎች`)}</dt><dd>{selectedNumbers.length<=4?selectedNumbers.join(', '):text(`${selectedNumbers.length} selected`,`${selectedNumbers.length} ተመርጠዋል`)}</dd></div></dl>
+    <p className={reference.paymentFeeNote}>{text('Only submission fees are charged.','የማቅረቢያ ክፍያ ብቻ ይከፈላል።')}</p>
+   </section>
    {fundingNotice&&<p className={reference.notice} role="status" data-bid-funding-notice>{fundingNotice}</p>}
    <ReferencePaymentMethods name={`${id}-method`} method={method} onChange={value=>{setMethod(value as Method);reportError('')}} available={enabledMethods.map(item=>item.slug)} allowed={methodAvailable} disabled={frozen} wallet={{enabled:walletEnabled&&(walletAvailable!==null||zero),balance:walletAvailable}}>
     {method!=='wallet'&&!zero&&<div className={reference.phone} data-payment-phone><label htmlFor={`${id}-phone`}>{text('Payment phone number','የክፍያ ስልክ ቁጥር')}</label><div className={reference.phoneField}><span aria-hidden="true">+251</span><input id={`${id}-phone`} type="tel" inputMode="tel" autoComplete="tel-national" maxLength={18} value={phone} onChange={event=>{phoneEdited.current=true;setPhone(normalizePaymentPhone(event.target.value)?.slice(3)??event.target.value);reportError('')}} aria-invalid={!!phone&&!!phoneProblem||undefined} aria-describedby={`${id}-phone-note`}/></div><p id={`${id}-phone-note`} className={reference.inputHint}>{text('Use the number registered with your provider.','በክፍያ አቅራቢዎ የተመዘገበውን ቁጥር ይጠቀሙ።')}</p></div>}
@@ -343,7 +347,7 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
    {method==='wallet'&&insufficient&&!zero&&<p className={reference.error} role="status" data-wallet-insufficient>{text(`${formatEtb(total)} is required. Add funds or choose another method.`,`${formatEtb(total)} ያስፈልጋል። ገንዘብ ያስገቡ ወይም ሌላ መንገድ ይምረጡ።`)}</p>}
    {methods.fetching&&!methods.data&&<p className={reference.notice} role="status">{text('Loading payment methods…','የክፍያ መንገዶች በመጫን ላይ…')}</p>}
    {!methods.fetching&&!enabledMethods.length&&(methods.error||methods.data)&&<p className={reference.notice} role="status">{text('External payments are unavailable.','የውጭ ክፍያዎች አይገኙም።')} <button type="button" onClick={methods.reload}>{text('Retry','እንደገና')}</button></p>}
-   {quoteBusy&&<p className={reference.notice} role="status">{text('Confirming your total…','ጠቅላላ ክፍያዎን በማረጋገጥ ላይ…')}</p>}
+   {external&&quoteBusy&&<p className={reference.notice} role="status">{text('Confirming your total…','ጠቅላላ ክፍያዎን በማረጋገጥ ላይ…')}</p>}
    {error&&<p className={reference.error} role="alert">{error}</p>}
   </div>
  </>;
