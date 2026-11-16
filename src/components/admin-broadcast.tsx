@@ -8,9 +8,9 @@ async function command(action:string,input:unknown){
  const body=await response.json();if(!response.ok){const reference=typeof body.traceId==='string'&&/^[0-9a-f-]{36}$/i.test(body.traceId)?` Reference: ${body.traceId}`:'';throw Error((body.error??'Broadcast could not be queued.')+reference)}return body;
 }
 export type BroadcastDraft={id:string;text:string;auctionCode:string;imageId:string|null;buttonLabel?:string;miniAppPath?:string;auctionId?:string;draftHash?:string;imagePath?:string;title?:string};
-const destinations=[['/','Home'],['/auctions/all','Auctions'],['/my-bids','My bids'],['/winners','Winners'],['/profile','Profile']];
+const destinations=[['/','Home'],['/my-bids','My bids'],['/winners','Winners'],['/profile','Profile']];
 export function AdminBroadcast({initial,onQueued}:{initial?:BroadcastDraft;onQueued?:()=>void}){
- const [text,setText]=useState(initial?.text??''),[buttonLabel,setButtonLabel]=useState(initial?.buttonLabel??'Open Lowwin'),[miniAppPath,setMiniAppPath]=useState(initial?.miniAppPath||(initial?.auctionCode?`/auctions/${initial.auctionCode}`:'/'));
+ const [text,setText]=useState(initial?.text??''),[buttonLabel,setButtonLabel]=useState(initial?.buttonLabel??'Open Lowwin'),[miniAppPath,setMiniAppPath]=useState((initial?.miniAppPath==='/auctions/all'?'/':initial?.miniAppPath)||(initial?.auctionCode?`/auctions/${initial.auctionCode}`:'/'));
  const [file,setFile]=useState<File|null>(null),[rights,setRights]=useState(false),[review,setReview]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[result,setResult]=useState(''),[key,setKey]=useState(''),[imageId,setImageId]=useState<string|undefined>(initial?.imageId??undefined),[preview,setPreview]=useState<string|undefined>(),pending=useRef(false);
  useEffect(()=>{if(!file){setPreview(imageId?`/api/media/${imageId}`:initial?.imagePath);return}const url=URL.createObjectURL(file);setPreview(url);return()=>URL.revokeObjectURL(url)},[file,imageId,initial?.imagePath]);
  const change=()=>{setKey('');setReview(false);setResult('')};

@@ -17,3 +17,9 @@
 .card:global(.auction-card)>:global(.auction-card-body)>:global(.card-disclosure){margin:4px 0 0;font-size:10px;line-height:1.4}
 .card:global(.auction-card)>:global(.auction-card-body)>:global(.card-caption){gap:0 4px;margin:2px 0 0;font-size:10px;line-height:1.4}
 :global(.card-grid):has(>.card){row-gap:16px}
+.card:global(.auction-card)>:global(.auction-card-body)>.placeBid{min-height:46px;border-bottom:3px solid var(--action-pressed,#1e40af);border-radius:16px;gap:9px}
+.utilities{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:stretch;gap:8px;margin-top:7px}
+.terms{display:flex;align-items:center;justify-content:center;gap:5px;min-width:0;min-height:44px;padding:5px 8px;border-radius:12px;background:#edf9f4;color:#216b52;font-size:10px;font-weight:600;line-height:1.45;text-align:center;text-decoration:none}.terms svg{flex:none}
+.utilities .share{min-height:44px;padding:6px 11px;border-radius:12px;font-size:11px;background:var(--action-disabled,#dbe7fb);color:var(--action-pressed,#1e40af);border:0}.utilities .share svg{width:14px;height:14px}
+.terms:focus-visible{outline:2px solid var(--action-primary,#2563eb);outline-offset:2px}
+@media(prefers-reduced-motion:no-preference){.card:global(.auction-card)>:global(.auction-card-body)>.placeBid:active{transform:translateY(2px);border-bottom-color:transparent}}

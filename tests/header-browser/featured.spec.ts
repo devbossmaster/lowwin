@@ -52,7 +52,7 @@ test('featured auction card has real terms, safe public data and a usable carous
   const before=await carousel.getByText('Auction code').locator('..').locator('strong').innerText();
   await carousel.getByRole('button',{name:'Next featured auction'}).click();
   await expect(carousel.getByText('Auction code').locator('..').locator('strong')).not.toHaveText(before);
-  await expect(page.locator('a[href="/auctions/all?status=live"]')).toBeVisible();
+  await expect(page.locator('a[href="/"]')).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   expect(errors).toEqual([]);
 });

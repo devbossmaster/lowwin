@@ -3,6 +3,17 @@
 .tabs button{min-width:0;min-height:44px;padding:8px 16px;border:0;border-radius:21px;background:transparent;color:var(--brand-muted, #72697e);font:inherit;font-size:14px;font-weight:700;line-height:1.4;cursor:pointer}
 .tabs button[aria-selected=true]{background:var(--action-primary, #2563eb);color:var(--action-ink, #fff)}
 .list{display:grid;gap:9px}
+.auctionCard{min-width:0;overflow:hidden;border-radius:16px;background:#fff;align-self:start}
+.auctionCard .row{border-radius:0;border:0}
+.numbersHeading{display:flex;align-items:center;gap:7px;margin:0 12px 8px;color:var(--brand-muted,#657181);font-size:12px;line-height:1.5}
+.numbersHeading>span{min-width:20px;padding:1px 6px;border-radius:12px;background:var(--brand-soft,#f2f2f7);color:var(--brand-ink,#16202c);font-size:11px;font-weight:600;text-align:center;font-variant-numeric:tabular-nums}
+.numbers{display:flex;flex-wrap:wrap;gap:6px;max-height:200px;margin:0 12px 14px;padding:0;overflow:auto;list-style:none;scrollbar-color:var(--action-disabled,#dbe7fb) transparent}
+.bidChip{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-width:54px;max-width:100%;min-height:34px;padding:7px 10px;border-radius:10px;background:var(--brand-soft,#f2f2f7);color:var(--brand-ink,#16202c);line-height:1.3;overflow-wrap:anywhere}
+.chipNumber{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
+.chipStatus{font-size:10px;color:var(--brand-muted,#657181)}
+.bidChip[data-outcome=WON]{background:var(--action-disabled,#dbe7fb);color:var(--action-pressed,#1e40af)}
+.bidChip[data-outcome=WON] .chipStatus{color:var(--action-pressed,#1e40af);font-weight:600}
+.moreNumbers{padding:0 12px 12px}.moreNumbers p{margin:0 0 5px;font-size:12px;color:var(--brand-muted,#657181);line-height:1.5}.moreNumbers button{min-height:44px;border:0;border-radius:22px;background:var(--brand-soft,#f2f2f7);color:var(--action-pressed,#1e40af);padding:10px 16px;font:inherit;font-size:12px;font-weight:600;cursor:pointer}.moreNumbers button:disabled{cursor:wait;color:var(--brand-muted,#657181)}
 .row{display:grid;grid-template-columns:72px minmax(0,1fr) 14px;align-items:center;gap:12px;width:100%;padding:12px;border:1px solid transparent;border-radius:19px;background:#fff;color:var(--brand-ink, #211a30);text-align:left;font:inherit;cursor:pointer}
 .thumbnail{position:relative;display:block;width:72px;height:72px;overflow:hidden;border-radius:12px;background:var(--brand-soft, #eee8fa)}
 .thumbnail>img{display:block;width:100%;height:100%;object-fit:cover}
@@ -31,6 +42,7 @@
 .rowSkeleton>div{display:grid;gap:10px}
 .rowSkeleton>div>span{height:12px;width:90%;border-radius:4px;background:var(--brand-soft, #eee8fa)}
 .rowSkeleton>div>span+span{width:60%}
+.rowSkeleton:after{content:'';grid-column:1/-1;width:75%;height:30px;border-radius:8px;background:var(--brand-soft,#f2f2f7)}
 .sheetLoading>img{display:block;width:100%;height:auto;aspect-ratio:2.3;object-fit:cover;border-radius:16px}
 .sheetLoading h3{margin:15px 0;font-size:18px;font-weight:700;line-height:1.45;text-align:center}
 .sheetLoading p{margin:16px 0;color:var(--brand-muted, #72697e);font-size:13px;line-height:1.6;text-align:center}
@@ -41,3 +53,17 @@
 .action:hover:not(:disabled):not([aria-disabled=true]){background:var(--action-hover, #1d4ed8);color:var(--action-ink, #fff)}
 .action:active:not(:disabled):not([aria-disabled=true]){background:var(--action-pressed, #1e40af)}
 .action:disabled,.action[aria-disabled=true]{background:var(--action-disabled, #dbe7fb);color:var(--action-disabled-ink, #52647f);--surface-ink:var(--action-disabled-ink, #52647f);opacity:1}
+@media(min-width:1024px){
+ :global(.app-frame[data-app-layout=browser]) .page{max-width:none;padding:12px 0 32px}
+ :global(.app-frame[data-app-layout=browser]) .tabs{max-width:420px;margin-inline:auto;background:var(--brand-soft,#f2f2f7)}
+ :global(.app-frame[data-app-layout=browser]) .list,:global(.app-frame[data-app-layout=browser]) .loading>div{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+ :global(.app-frame[data-app-layout=browser]) .row,:global(.app-frame[data-app-layout=browser]) .rowSkeleton{padding:14px;border-radius:16px}
+ :global(.app-frame[data-app-layout=browser]) .rowTitle{font-size:15px;line-height:1.5;font-weight:600}
+ :global(.app-frame[data-app-layout=browser]) .status{font-size:13px}
+ :global(.app-frame[data-app-layout=browser]) .clock :global(.countdown){font-size:12px}
+ :global(.app-frame[data-app-layout=browser]) .chevron{color:var(--brand-muted,#657181)}
+ :global(.app-frame[data-app-layout=browser]) .status[data-outcome=WON],:global(.app-frame[data-app-layout=browser]) .status[data-outcome=PENDING],:global(.app-frame[data-app-layout=browser]) .empty>svg{color:var(--action-pressed,#1e40af)}
+}
+@media(min-width:1024px) and (hover:hover){
+ :global(.app-frame[data-app-layout=browser]) .row:hover{background:var(--brand-soft,#f2f2f7);border-color:var(--brand-line,#e4e7ec)}
+}

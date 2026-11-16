@@ -9,7 +9,7 @@ export function customerPageTitle(path:string):readonly [string,string]{
  if(path==='/wallet/deposit')return ['Top up wallet','ወደ ዋሌት ገንዘብ ያስገቡ'];
  if(path.startsWith('/wallet'))return ['Wallet','ዋሌት'];
  if(path==='/payments')return ['Transactions','ግብይቶች'];
- if(path==='/auctions'||path==='/auctions/all'||path.startsWith('/categories/'))return ['Auctions','ጨረታዎች'];
+ if(path==='/auctions'||path.startsWith('/categories/'))return ['Auctions','ጨረታዎች'];
  if(path.startsWith('/auctions/'))return ['Auction details','የጨረታ ዝርዝር'];
  if(path==='/terms')return ['Terms & conditions','ውሎች እና ሁኔታዎች'];
  if(path==='/privacy')return ['Privacy policy','የግላዊነት ፖሊሲ'];

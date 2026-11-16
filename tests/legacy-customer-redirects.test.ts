@@ -1,4 +1,5 @@
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
+import {Suspense,type ReactElement} from 'react';
 const f=vi.hoisted(()=>({
  redirect:vi.fn((destination:string)=>{throw Object.assign(new Error('redirect'),{destination})}),
  headers:vi.fn(async()=>new Headers({cookie:'fixture-cookie'})),session:vi.fn(),checkout:vi.fn(),
@@ -7,6 +8,7 @@ vi.mock('next/navigation',()=>({redirect:f.redirect}));
 vi.mock('next/headers',()=>({headers:f.headers}));
 vi.mock('../src/lib/db',()=>({db:{arifPayCheckout:{findFirst:f.checkout}}}));
 vi.mock('../src/modules/auth/mini-access',()=>({getMiniSession:f.session}));
+vi.mock('../src/modules/auth/customer-page',()=>({requireCustomerPage:vi.fn(async()=>({}))}));
 vi.mock('../src/components/chapa-payment-history',()=>({ChapaPaymentHistory:vi.fn(()=>null)}));
 import {ChapaPaymentHistory} from '../src/components/chapa-payment-history';
 import WinningBids from '../src/app/(mini)/winning-bids/page';
@@ -19,14 +21,20 @@ import FAQ from '../src/app/(mini)/faq/page';
 import Payments from '../src/app/(mini)/payments/page';
 
 const id='11111111-2222-4333-a444-555555555555',input=(value:Record<string,string|string[]|undefined>={})=>({searchParams:Promise.resolve(value)});
+async function renderPayments(query:Record<string,string|string[]|undefined>={}){
+ const rendered=Payments(input(query));
+ if(rendered.type!==Suspense)return rendered;
+ const child=rendered.props.children as ReactElement;
+ return (child.type as (props:typeof child.props)=>Promise<ReactElement>)(child.props);
+}
 async function expectHistory(query:Record<string,string|string[]|undefined>={}){
- const rendered=await Payments(input(query));expect(rendered).toMatchObject({type:ChapaPaymentHistory,props:{fullPage:true}});expect(f.redirect).not.toHaveBeenCalled();
+ const rendered=await renderPayments(query);expect(rendered).toMatchObject({type:ChapaPaymentHistory,props:{fullPage:true}});expect(f.redirect).not.toHaveBeenCalled();
 }
 beforeEach(()=>{vi.clearAllMocks();vi.stubEnv('ARIFPAY_SCHEMA_READY','true');f.session.mockResolvedValue({user:{id:'verified-owner'}});f.checkout.mockResolvedValue(null)});
 afterEach(()=>vi.unstubAllEnvs());
 describe('retired customer UI compatibility redirects',()=>{
  it.each([
-  [WinningBids,'/my-bids?view=history'],[Wins,'/my-bids?view=history'],[Favorites,'/auctions/all'],[Wallet,'/profile#wallet'],[Deposit,'/profile?topup=1'],[Alerts,'/?notifications=1'],[FAQ,'/#how-lowwin-works'],
+  [WinningBids,'/my-bids?view=history'],[Wins,'/my-bids?view=history'],[Favorites,'/#discover-auctions'],[Wallet,'/profile#wallet'],[Deposit,'/profile?topup=1'],[Alerts,'/?notifications=1'],[FAQ,'/#how-lowwin-works'],
  ] as const)('keeps the old route meaningful at %s',async(render,destination)=>{
   await expect(Promise.resolve().then(()=>render())).rejects.toMatchObject({destination});expect(f.checkout).not.toHaveBeenCalled();expect(f.session).not.toHaveBeenCalled();
  });
@@ -34,7 +42,7 @@ describe('retired customer UI compatibility redirects',()=>{
   await expectHistory();expect(f.session).not.toHaveBeenCalled();expect(f.checkout).not.toHaveBeenCalled();
  });
  it.each(['checkout','checkoutId','id'])('preserves an owned %s link on its actual auction',async field=>{
-  f.checkout.mockResolvedValue({id,auction:{publicCode:1234}});await expect(Payments(input({[field]:id}))).rejects.toMatchObject({destination:`/auctions/1234?checkout=${id}`});
+  f.checkout.mockResolvedValue({id,auction:{publicCode:1234}});await expect(renderPayments({[field]:id})).rejects.toMatchObject({destination:`/auctions/1234?checkout=${id}`});
   expect(f.session).toHaveBeenCalledTimes(1);expect(f.checkout).toHaveBeenCalledWith({where:{id,userId:'verified-owner'},select:{id:true,auction:{select:{publicCode:true}}}});
  });
  it('does not reveal another user’s checkout or query without a valid Mini App session',async()=>{
@@ -48,6 +56,6 @@ describe('retired customer UI compatibility redirects',()=>{
   vi.stubEnv('ARIFPAY_SCHEMA_READY','false');await expectHistory({checkout:id});expect(f.session).not.toHaveBeenCalled();expect(f.checkout).not.toHaveBeenCalled();
  });
  it('retains retryable checkout identity on a database failure rather than hiding the failure',async()=>{
-  f.checkout.mockRejectedValue(new Error('fixture database unavailable'));await expect(Payments(input({checkout:id}))).rejects.toThrow('fixture database unavailable');expect(f.redirect).not.toHaveBeenCalled();
+  f.checkout.mockRejectedValue(new Error('fixture database unavailable'));await expect(renderPayments({checkout:id})).rejects.toThrow('fixture database unavailable');expect(f.redirect).not.toHaveBeenCalled();
  });
 });

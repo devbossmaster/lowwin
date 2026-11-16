@@ -8,6 +8,12 @@
 .pager{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:16px;font-size:12px}.pager button{min-height:44px;padding:8px 14px;border:0;border-radius:22px;background:var(--action-primary, #2563eb);color:var(--action-ink, #fff);font:inherit;font-size:12px;cursor:pointer}.pager button:disabled{background:#eeece5;color:#77736a;cursor:default}.stats{display:flex;gap:8px;margin:16px 0}.stats>span{display:flex;flex:1;flex-direction:column;gap:4px;padding:12px 8px;border-radius:18px;background:#f1efea;font-size:10px;color:#77746c;text-align:center}.stats strong{color:var(--brand-ink, #211a30);font-size:16px;font-weight:700}.amountTitle{text-align:center;color:var(--brand-primary, #6d4cfd);font-size:30px;font-weight:750;margin:12px 0}.people li{display:grid;gap:4px;padding:13px 0;border-bottom:1px solid #eeece5;font-size:12px}.people strong{font-size:14px;font-weight:650}.people span,.people time{font-size:11px;color:#77746c;overflow-wrap:anywhere}.people time{margin-top:2px}
 .carouselRegion{position:relative}.carousel[data-automatic]{scroll-snap-type:none;scroll-behavior:auto}.carouselToggle{display:flex;align-items:center;justify-content:center;gap:5px;min-width:72px;min-height:44px;margin:0 16px 0 auto;padding:6px 10px;border:0;border-radius:22px;background:transparent;color:#71694f;font:inherit;font-size:11px;cursor:pointer}.carouselToggle:focus-visible{outline:2px solid var(--brand-primary, #6d4cfd);outline-offset:2px}
 @media(min-width:700px){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.carousel .card{flex-basis:330px}}
+@media(min-width:1024px){
+ :global(.app-frame[data-app-layout=browser]) .cards .card{border-color:var(--brand-line,#e4e7ec);border-radius:16px}
+ :global(.app-frame[data-app-layout=browser]) .cards .cardBody h3{font-size:18px;line-height:1.5}
+ :global(.app-frame[data-app-layout=browser]) .cards .cardBody p{font-size:13px;color:var(--brand-muted,#657181)}
+ :global(.app-frame[data-app-layout=browser]) .cards .reference{background:var(--brand-soft,#f2f2f7);color:var(--brand-muted-on-soft,#5f6b7a)}
+}
 @media(prefers-reduced-motion:reduce){.resultSurface{scroll-behavior:auto}}
 
 /* Compact Home cards keep the full banner and two useful lines. */

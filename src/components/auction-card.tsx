@@ -1,6 +1,6 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
-import {ArrowUpRight,Clock3,Eye,Ticket} from 'lucide-react';
+import {ArrowRight,ArrowUpRight,Clock3,Eye,ShieldCheck,Ticket} from 'lucide-react';
 import type {CatalogAuction} from '@/modules/auctions/catalog';
 import {CatalogImage} from './catalog-image';
 import {AuctionCountdown} from './auction-countdown';
@@ -13,6 +13,7 @@ import {IntentPrefetchLink} from './intent-prefetch-link';
 import {useTelegram} from './telegram-provider';
 import {prefetchAuctionIntent} from './mini-prefetch';
 import {seedAuctionQuery} from './auction-query';
+import {AuctionShare} from './auction-share';
 import badges from './auction-card-badges.module.css';
 export function AuctionCard({auction:initialAuction,serverNow,serverObservedAt,priority=false}:{auction:CatalogAuction;serverNow?:string;serverObservedAt?:number;priority?:boolean;onFavoriteChanged?:()=>void}){
  const [bidding,setBidding]=useState(false),ref=useRef<HTMLElement>(null);
@@ -33,7 +34,8 @@ export function AuctionCard({auction:initialAuction,serverNow,serverObservedAt,p
  return <article className={`auction-card ${badges.card}`} ref={ref}>
   <IntentPrefetchLink className="auction-card-art" href={detail} aria-label={title}><CatalogImage src={auction.product.images[0]?.path} alt={title} priority={priority}/><span className={`status-tag status-${auction.status}`}>{statusText}</span><span className={badges.views} aria-label={am?`${viewLabel} የተመዘገቡ እይታዎች`:`${viewLabel} recorded views`}><Eye size={13} aria-hidden="true"/><span className={badges.count}>{viewLabel}</span></span>{auction.isDemo&&<span className="demo-ribbon">DEMO</span>}{(live||upcoming)&&<span className="auction-card-win"><MiniPhrase en="Win" am="ያሸንፉ"/></span>}</IntentPrefetchLink>
   <div className="auction-card-body"><h3><IntentPrefetchLink href={detail}>{title}</IntentPrefetchLink></h3><div className="card-facts"><span className="card-fee"><MiniPhrase en="Fee" am="ክፍያ"/> <strong>{fee}</strong></span><span className={badges.bids} data-card-bid-count={bidCount??'unavailable'} aria-label={bidCount===null?(am?'የጨረታ ብዛት አልተገኘም':'Bid count unavailable'):(am?`${bidLabel} ጠቅላላ ጨረታዎች`:`${bidLabel} total bids`)}><Ticket size={12} aria-hidden="true"/><strong>{bidLabel}</strong><span><MiniPhrase en="bids" am="ጨረታ"/></span></span><span className="card-clock"><Clock3 size={13} aria-hidden="true"/>{(live||upcoming)&&serverNow?<AuctionCountdown target={upcoming?auction.startsAt:auction.endsAt} serverNow={serverNow} observedAt={serverObservedAt} label={upcoming?'Starts':'Ends'} showLabel={false} onElapsed={refreshActivity}/>:statusText}</span></div>
-   {live?<button className="primary-button card-action" onPointerEnter={warmBid} onFocus={warmBid} onTouchStart={warmBid} onClick={()=>setBidding(true)}><Ticket size={16} aria-hidden="true"/><MiniPhrase en={hasFee?`Pay ${fee} & bid`:'Bid now'} am={hasFee?`${fee} ከፍለው ይጫረቱ`:'አሁን ይጫረቱ'}/></button>:<IntentPrefetchLink className="secondary-button card-action" href={detail}><MiniPhrase en={upcoming?'View auction':'View result'} am={upcoming?'ጨረታውን ይመልከቱ':'ውጤቱን ይመልከቱ'}/><ArrowUpRight size={16} aria-hidden="true"/></IntentPrefetchLink>}
+   {live?<button type="button" className={`primary-button card-action ${badges.placeBid}`} onPointerEnter={warmBid} onFocus={warmBid} onTouchStart={warmBid} onClick={()=>setBidding(true)}><MiniPhrase en="Place a bid" am="ይጫረቱ"/><ArrowRight size={17} aria-hidden="true"/></button>:<IntentPrefetchLink className="secondary-button card-action" href={detail}><MiniPhrase en={upcoming?'View auction':'View result'} am={upcoming?'ጨረታውን ይመልከቱ':'ውጤቱን ይመልከቱ'}/><ArrowUpRight size={16} aria-hidden="true"/></IntentPrefetchLink>}
+   <div className={badges.utilities}><IntentPrefetchLink href={`${detail}#auction-terms`} className={badges.terms}><ShieldCheck size={13} aria-hidden="true"/><MiniPhrase en="Terms & conditions apply" am="ውሎችና ሁኔታዎች ይተገበራሉ"/></IntentPrefetchLink><AuctionShare title={title} code={auction.code} className={badges.share}/></div>
    <p className="card-disclosure"><MiniPhrase en={hasFee?(isSubmissionFeeOnly(auction.terms.ruleVersion)?'Submission fee is non-refundable':'See auction terms'):'No entry fee'} am={hasFee?(isSubmissionFeeOnly(auction.terms.ruleVersion)?'የማስገቢያ ክፍያው ተመላሽ አይሆንም':'የጨረታ ውሎችን ይመልከቱ'):'የመግቢያ ክፍያ የለም'}/></p>
    <p className="card-caption"><span><MiniPhrase en={upcoming?'Starts':live?'Closes':'Scheduled close'} am={upcoming?'የሚጀምረው':live?'የሚዘጋው':'የመዝጊያ ጊዜ'}/> · <time dateTime={upcoming?auction.startsAt:auction.endsAt}>{new Date(upcoming?auction.startsAt:auction.endsAt).toLocaleString(am?'am-ET':'en-ET',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',timeZone:'Africa/Addis_Ababa'})}</time></span><span>· <MiniPhrase en="Auction ID" am="የጨረታ መለያ"/> {auction.code}</span></p>
   </div>{bidding&&<BidSheet auction={auction} serverNow={serverNow??new Date().toISOString()} onClose={()=>setBidding(false)}/>}

@@ -9,7 +9,7 @@ export function customerLoadingCopy(pathname:string):CustomerLoadingCopy {
  if(pathname.startsWith('/wallet'))return {en:'Loading your wallet…',am:'ዋሌትዎን በመጫን ላይ…'};
  if(pathname==='/payments')return {en:'Loading bid payments…',am:'የጨረታ ክፍያዎችን በመጫን ላይ…'};
  if(pathname==='/draws'||pathname==='/winners'||pathname.startsWith('/winners/'))return {en:'Loading winners…',am:'አሸናፊዎችን በመጫን ላይ…'};
- if(pathname==='/auctions'||pathname==='/auctions/all'||pathname.startsWith('/categories/'))return {en:'Loading auctions…',am:'ጨረታዎችን በመጫን ላይ…'};
+ if(pathname==='/auctions'||pathname.startsWith('/categories/'))return {en:'Loading auctions…',am:'ጨረታዎችን በመጫን ላይ…'};
  if(pathname.startsWith('/auctions/'))return {en:'Loading auction details…',am:'የጨረታ ዝርዝሮችን በመጫን ላይ…'};
  if(pathname==='/')return {en:'Loading Lowin…',am:'Lowinን በመጫን ላይ…'};
  return {en:'Loading…',am:'በመጫን ላይ…'};

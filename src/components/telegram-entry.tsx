@@ -6,6 +6,7 @@ import {miniReturnPath} from '@/lib/mini-return';
 import {customerLoginPath} from '@/lib/customer-login-entry';
 import {isPublicMiniPage} from '@/lib/mini-public-routes';
 import {chapaReturnStartPath} from '@/lib/chapa-return-link';
+import {auctionStartPath} from '@/lib/auction-share-link';
 import {LaunchSplash} from './launch-splash';
 const TelegramEntryRecovery=lazy(()=>import('./telegram-entry-recovery'));
 
@@ -15,8 +16,9 @@ export function TelegramEntry({onComplete}:{onComplete?:()=>void}={}){
   const telegramLaunch=typeof window!=='undefined'&&Boolean(window.Telegram?.WebApp?.initData);
   useEffect(()=>{
     if(pathname==='/telegram'){
-      const payment=chapaReturnStartPath(new URLSearchParams(window.Telegram?.WebApp?.initData).get('start_param'));
-      const destination=payment??miniReturnPath(new URL(window.location.href).searchParams.get('next'));
+      const start=new URLSearchParams(window.Telegram?.WebApp?.initData).get('start_param');
+      const payment=chapaReturnStartPath(start);
+      const destination=payment??auctionStartPath(start)??miniReturnPath(new URL(window.location.href).searchParams.get('next'));
       const next=destination+(destination.includes('#')?'':window.location.hash);
       // Public product links remain browseable. Protected destinations register
       // on Home first, preventing /telegram redirect loops.

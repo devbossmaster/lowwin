@@ -1,6 +1,9 @@
 import {describe,it,expect} from 'vitest';
 import {miniReturnPath} from '../src/lib/mini-return';
 describe('Telegram customer return destinations',()=>{
+ it('does not restore a removed catalogue page after sign-in',()=>{
+  expect(miniReturnPath('/auctions/all')).toBe('/');expect(miniReturnPath('/auctions/all?category=phones#saved')).toBe('/');
+ });
  it('preserves auction, checkout and private customer links',()=>{
   for(const value of ['/auctions/123?checkout=11111111-1111-4111-a111-111111111111','/auctions/old-slug#bid-review','/my-bids?view=history','/draws?tab=upcoming','/profile/alerts','/wallet?type=payments'])expect(miniReturnPath(value)).toBe(value);
  });

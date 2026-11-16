@@ -150,7 +150,7 @@ test('Master Guide Admin uses a real verified admin session and compact responsi
   await page.getByRole('searchbox',{name:'Search',exact:true}).fill('headphones');await page.getByRole('button',{name:'Search',exact:true}).click();await expect(winnerTable.locator('tbody tr')).toHaveCount(1);
 
   await navigate(page,'Broadcast');await expect(page.getByRole('heading',{name:'Broadcast',exact:true})).toBeVisible();
-  await expect(page.getByLabel('Image',{exact:false})).toHaveAttribute('type','file');await page.getByLabel('Message',{exact:true}).fill('Hello {name}, discover the next Lowwin auction.');await page.getByLabel('Button text',{exact:true}).fill('Open auctions');await page.getByRole('combobox',{name:/^Open page/}).selectOption('/auctions/all');
+  await expect(page.getByLabel('Image',{exact:false})).toHaveAttribute('type','file');await page.getByLabel('Message',{exact:true}).fill('Hello {name}, discover the next Lowwin auction.');await page.getByLabel('Button text',{exact:true}).fill('Open auctions');await page.getByRole('combobox',{name:/^Open page/}).selectOption('/');
   const preview=page.getByRole('complementary',{name:'Broadcast preview',exact:true});await expect(preview).toContainText('Hello Abebe,');await expect(preview).toContainText('Open auctions');await expect(preview).toContainText('Telegram bot only.');
   await capturePair('broadcast');await page.getByRole('button',{name:'Review broadcast',exact:true}).click();await expect(page.getByRole('button',{name:'Send broadcast',exact:true})).toBeVisible();await page.getByRole('button',{name:'Keep editing',exact:true}).click();
   expect(writes).toEqual([]);expect(authPosts.filter(path=>path.includes('/lowin/staff/'))).toEqual([]);expect(errors).toEqual([]);

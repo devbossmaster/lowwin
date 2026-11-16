@@ -8,7 +8,7 @@ import {submitBid} from '../src/modules/auctions/bids';
 import {publishFixtureResult} from './publish-result-fixture';
 import {closeAuction,closeAuctionInTransaction,cancelAuction} from '../src/modules/auctions/settlement';
 import {getPersonalBids} from '../src/modules/profile/personal';
-import {getPersonalBidList,personalBidListQuerySchema} from '../src/modules/profile/bid-list';
+import {getPersonalBidList,getPersonalBidAuctionList,personalBidAuctionListQuerySchema,personalBidListQuerySchema} from '../src/modules/profile/bid-list';
 import {reconcile} from '../src/modules/wallet/ledger';
 import {verifyFixtureContact} from './contact-fixtures';
 import {signedLaunch,TEST_TOKEN} from './helpers';
@@ -85,11 +85,41 @@ describe.skipIf(!url)('accepted My Bids accuracy on isolated PostgreSQL',()=>{
   expect((await getPersonalBidList(db,first,{view:'history'})).items.map(row=>row.id)).toEqual(published.items.map(row=>row.id));
   expect(await reconcile(db)).toEqual([]);
  });
+ it('pages complete owned auction groups rather than splitting their accepted numbers across pages',async()=>{
+  for(let index=0;index<11;index++){
+   const auction=await bidAuction(db,{ruleVersion:'lowest-unique-v4',fee:0,isDemo:false});
+   for(const amount of ['1','3'])await submitBid(db,{userId:first,auctionSlug:auction.slug!,amount,key:randomUUID(),feeVersion:1});
+  }
+  const observed=new PrismaClient({datasourceUrl:url,log:[{emit:'event',level:'query'}]}),statements:string[]=[];observed.$on('query',event=>statements.push(event.query));
+  try{
+   const firstPage=await getPersonalBidAuctionList(observed,first,{grouped:'1',view:'live'});expect(statements).toHaveLength(1);
+   const secondPage=await getPersonalBidAuctionList(observed,first,{grouped:'1',view:'live',page:2});
+   expect(firstPage.items).toHaveLength(10);expect(firstPage.hasNext).toBe(true);expect(secondPage.items).toHaveLength(2);expect(secondPage.hasNext).toBe(false);
+   const groups=[...firstPage.items,...secondPage.items];expect(new Set(groups.map(item=>item.auction.code)).size).toBe(12);
+   const original=groups.find(item=>item.auction.code===live.publicCode.toString())!;expect(original.bidCount).toBe(25);expect(original.bids).toHaveLength(25);expect(original.hasMoreBids).toBe(false);expect(original.nextBidCursor).toBeNull();
+   const [boundary]=await db.$queryRaw<Array<{at:string;id:string}>>`SELECT "acceptedAt"::text AS at,id FROM "Bid" WHERE id=${original.bids[9].id}`;
+   const bidCursor=Buffer.from(JSON.stringify(boundary)).toString('base64url');
+   const continued=await getPersonalBidAuctionList(observed,first,{grouped:'1',view:'live',auction:original.auction.code,bidCursor});
+   expect(continued.items).toHaveLength(1);expect(continued.items[0].bidCount).toBe(25);expect(continued.items[0].bids.map(bid=>bid.id)).toEqual(original.bids.slice(10).map(bid=>bid.id));expect(continued.items[0].outcome).toBe('LIVE');
+   expect(new Set([...original.bids.slice(0,10),...continued.items[0].bids].map(bid=>bid.id)).size).toBe(25);
+   expect((await getPersonalBidAuctionList(observed,second,{grouped:'1',view:'live',auction:original.auction.code,bidCursor})).items).toEqual([]);
+   expect(new Set(groups.flatMap(item=>item.bids.map(bid=>bid.id))).size).toBe(47);expect(groups.every(group=>group.bids.every(bid=>bid.outcome==='LIVE'))).toBe(true);
+   for(const secret of [providerRef,second,'private-fixture-cipher','private-fixture-hash'])expect(JSON.stringify(firstPage)).not.toContain(secret);
+   expect((await getPersonalBidAuctionList(observed,second,{grouped:'1',view:'live'})).items).toEqual([]);
+   expect((await getPersonalBidAuctionList(observed,second,{grouped:'1',view:'live',auction:live.publicCode.toString()})).items).toEqual([]);
+   const finished=await getPersonalBidAuctionList(observed,first,{grouped:'1',view:'finished'});expect(finished.items.some(group=>group.outcome==='WON'&&group.bids.some(bid=>bid.outcome==='WON'))).toBe(true);expect(finished.items.some(group=>group.outcome==='CANCELLED'&&group.bids.some(bid=>bid.outcome==='CANCELLED'))).toBe(true);
+   await expect(getPersonalBidAuctionList(observed,first,{grouped:'1',auction:live.publicCode.toString(),bidCursor:'not-valid-json'})).rejects.toThrow();
+  }finally{await observed.$disconnect()}
+ });
 });
 
 describe('minimal My Bids query bounds',()=>{
  it('rejects account overrides, unbounded pages, and payment-attempt filters',()=>{
   for(const input of [{userId:'someone-else'},{page:0},{page:1001},{view:'attempts'},{status:'paid'},{language:'xx'}])expect(()=>personalBidListQuerySchema.parse(input)).toThrow();
   expect(personalBidListQuerySchema.parse({})).toEqual({view:'live',page:1});
+ });
+ it('bounds grouped auction pages and requires an explicit owned auction for continuation',()=>{
+  expect(personalBidAuctionListQuerySchema.parse({grouped:'1'})).toEqual({grouped:'1',view:'live',page:1});
+  for(const input of [{grouped:'1',userId:'other'},{grouped:'1',page:1001},{grouped:'1',bidCursor:'cursor'},{grouped:'1',auction:'external-slug'},{grouped:'1',bidCursor:'x'.repeat(241),auction:'1'}])expect(()=>personalBidAuctionListQuerySchema.parse(input)).toThrow();
  });
 });

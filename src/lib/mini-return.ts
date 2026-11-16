@@ -6,6 +6,7 @@ export function miniReturnPath(value:string|null|undefined):string{
  try{
   const url=new URL(value,'https://lowin.invalid');
   if(url.origin!=='https://lowin.invalid')return '/';
+  if(url.pathname==='/auctions/all')return '/';
   if(url.pathname==='/payments/chapa/return'){
    if(url.hash||url.searchParams.getAll('checkout').length!==1||[...url.searchParams.keys()].some(key=>key!=='checkout'))return '/';
    return chapaReturnPath(url.searchParams.get('checkout'))??'/';

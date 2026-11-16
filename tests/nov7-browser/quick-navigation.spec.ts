@@ -12,10 +12,10 @@ test('quick auction browsing commits client navigation without a cache-observer 
   const sheet=page.getByRole('dialog',{name:'Auctions',exact:true});await expect(sheet).toBeVisible();
   await sheet.getByRole('tab',{name:mode==='live'?/^Live/:/^Upcoming/}).click();
   await sheet.getByRole('link',{name:'Browse all auctions',exact:true}).click();
-  await expect(page).toHaveURL(new RegExp('/auctions/all\\?status='+mode+'$'));
-  await expect(page.getByRole('navigation',{name:'Auction status',exact:true})).toBeVisible();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.locator('#discover-auctions')).toBeVisible();
   await expect(sheet).toHaveCount(0);
-  await page.goBack();await expect(page.locator('#home-headline')).toBeVisible();await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.locator('#home-headline')).toBeVisible();await expect(page.getByRole('dialog')).toHaveCount(0);
  }
  expect(documents).toEqual(['/']);expect(errors).toEqual([]);
 });

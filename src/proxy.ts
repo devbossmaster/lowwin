@@ -16,6 +16,12 @@ const publicAssets=new Set(['/images/lowwin-logo-20261030.webp','/images/lowwin-
 
 export async function proxy(request:NextRequest) {
   const path=request.nextUrl.pathname;
+  // Stop before the loading boundary streams a 200 response. This retired URL
+  // serves no catalogue, customer session or product/database lookup.
+  if(path==='/auctions/all'){
+    const am=request.cookies.get('lowwin-language')?.value!=='en';
+    return new NextResponse(`<!doctype html><html lang="${am?'am':'en'}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>404 · LowWin</title><style>@font-face{font-family:Inter;src:url('/fonts/inter-latin-variable.woff2')}@font-face{font-family:Ethiopic;src:url('/fonts/noto-sans-ethiopic-variable.woff2')}body{margin:0;min-height:100dvh;display:grid;place-items:center;background:#f2f2f7;color:#16202c;font:15px/1.6 Inter,Ethiopic,sans-serif}main{max-width:400px;padding:32px;text-align:center}strong{color:#1e40af}h1{font-size:26px;line-height:1.4}a{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:0 24px;margin-top:12px;border-radius:24px;background:#2563eb;color:#fff;text-decoration:none;font-weight:600}a:focus-visible{outline:2px solid #1e40af;outline-offset:4px}</style><main><strong>LowWin</strong><h1>${am?'ይህ ገጽ አልተገኘም':'Page not found'}</h1><p>${am?'ያሉትን ጨረታዎች ከመነሻ ገጽ ይመልከቱ።':'Browse current auctions from Home.'}</p><a href="/">${am?'ወደ መነሻ ገጽ':'Return Home'}</a></main></html>`,{status:404,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'private, no-store','X-Robots-Tag':'noindex'}});
+  }
   if((request.method==='GET'||request.method==='HEAD')&&isPublicMiniPage(path)||isPublicMiniRead(path,request.method))return NextResponse.next();
   if(path==='/api/health/live')return NextResponse.next();
   if((request.method==='GET'||request.method==='HEAD')&&path==='/video/cbe-bank-payment.mp4')return NextResponse.next();

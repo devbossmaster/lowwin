@@ -9,8 +9,8 @@ vi.mock('next/dynamic',()=>({default:()=>()=>null}));
 vi.mock('../src/components/auction-activity',()=>({useAuctionActivity:()=>({activity:state.activity,views:null,refreshActivity:()=>{}}),useAuctionRefresh:()=>{}}));
 vi.mock('../src/components/telegram-provider',()=>({useTelegram:()=>({queryIdentity:null})}));
 vi.mock('../src/components/public-query',()=>({usePublicQuery:()=>({data:null})}));
-vi.mock('../src/components/auction-gallery',()=>({AuctionGallery:()=>null}));
-vi.mock('../src/components/auction-share',()=>({AuctionShare:()=>null}));
+vi.mock('../src/components/auction-gallery',()=>({AuctionGallery:()=>createElement('div',{'data-product-gallery':true})}));
+vi.mock('../src/components/auction-share',()=>({AuctionShareOptions:()=>createElement('div',{'data-share-options':true})}));
 import {AuctionDetail} from '../src/components/auction-detail';
 import {MiniLocaleProvider} from '../src/components/mini-locale';
 
@@ -33,5 +33,17 @@ describe('public auction total accepted bids',()=>{
  it('preserves a real zero and the Amharic total-bids label',()=>{
   state.activity={bids:0,bidders:0,status:'live',startsAt:now,endsAt};
   expect(render('am')).toContain('<strong>0</strong><small>ጠቅላላ ጨረታዎች</small>');
+ });
+ it('shows the published fee and code before the explicit bidding action',()=>{
+  const html=render();
+  expect(html).toContain('<h1>Power bank</h1>');expect(html).toContain('data-share-options');
+  expect(html).toContain('Fee per bid');expect(html).toContain('ETB 50.00');expect(html).toContain('Auction code');
+  expect(html).toContain('data-auction-bid');expect(html).toContain('Place a bid');expect(html).not.toContain('Pay ETB 50.00 &amp; bid');
+  expect(html).toContain('Chosen numbers stay private until the result is published.');
+  expect(html).toContain('Frozen terms');expect(html).toContain('Collect the prize');
+  expect(html.indexOf('data-product-gallery')).toBeLessThan(html.indexOf('<h1>'));
+ });
+ it('keeps the existing countdown and scheduled Ethiopian-time information',()=>{
+  const html=render();expect(html).toContain('role="timer"');expect(html).toContain(`dateTime="${endsAt}"`);expect(html).toContain('3:33 AM');expect(html).toContain('EAT');
  });
 });

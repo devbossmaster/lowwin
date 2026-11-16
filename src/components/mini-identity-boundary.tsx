@@ -6,6 +6,7 @@ import {TELEGRAM_SDK_URL} from '@/lib/telegram-sdk-client';
 import {TelegramProvider,useTelegram} from './telegram-provider';
 import {MiniQueryProvider} from './mini-query-provider';
 import {ChapaLaunchRouter} from './chapa-launch-router';
+import {AuctionLaunchRouter} from './auction-launch-router';
 import {telegramBrowserLoginError} from '@/lib/telegram-browser-login-client';
 import {customerLoginRequest,withoutCustomerLogin} from '@/lib/customer-login-entry';
 const RegistrationSheet=lazy(()=>import('./contact-gate').then(module=>({default:module.ContactGate})));
@@ -37,5 +38,5 @@ export function MiniIdentityBoundary({children,devEnabled,botUrl}:{children:Reac
  const path=usePathname();
  if(path==='/admin'||path.startsWith('/admin/'))return children;
  preinit(TELEGRAM_SDK_URL,{as:'script',fetchPriority:'high'});
- return <MiniQueryProvider><TelegramProvider devEnabled={devEnabled} botUrl={botUrl}><ChapaLaunchRouter>{children}</ChapaLaunchRouter><Suspense fallback={null}><RegistrationHost/></Suspense></TelegramProvider></MiniQueryProvider>;
+ return <MiniQueryProvider><TelegramProvider devEnabled={devEnabled} botUrl={botUrl}><AuctionLaunchRouter/><ChapaLaunchRouter>{children}</ChapaLaunchRouter><Suspense fallback={null}><RegistrationHost/></Suspense></TelegramProvider></MiniQueryProvider>;
 }

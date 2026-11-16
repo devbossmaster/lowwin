@@ -114,7 +114,7 @@ describe.skipIf(!url)('Master Guide Admin operations and private alerts',()=>{
  });
  it('fans global events past 500 users without duplicate recipients or post-event signups',async()=>{
   const users=Array.from({length:601},(_,i)=>({id:randomUUID(),name:'DEMO campaign fixture',telegramId:String(920000000+i)}));await db.user.createMany({data:users});
-  const root=await db.$transaction(tx=>queueGlobal(tx,`test:campaign:${randomUUID()}`,'BROADCAST',{body:'DEMO notice',href:'/auctions/all'}));
+  const root=await db.$transaction(tx=>queueGlobal(tx,`test:campaign:${randomUUID()}`,'BROADCAST',{body:'DEMO notice',href:'/'}));
   const expected=await db.user.count({where:{telegramId:{not:null},staffMember:{is:null},createdAt:{lte:new Date((root.payload as any).audienceBefore)}}});
   const late=await db.user.create({data:{id:randomUUID(),name:'DEMO later signup',telegramId:'930000001',createdAt:new Date(Date.now()+10000)}});
   await db.$transaction(tx=>expandCampaign(tx,root));await db.$transaction(tx=>expandCampaign(tx,root));

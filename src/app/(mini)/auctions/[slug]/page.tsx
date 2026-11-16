@@ -5,6 +5,7 @@ import {getAuction,serverNow} from '@/modules/auctions/catalog';
 import {catalogProductPreview} from '@/lib/catalog-preview';
 export default async function AuctionPage({params,searchParams}:{params:Promise<{slug:string}>;searchParams:Promise<{checkout?:string|string[];chapa?:string|string[]}>}){
  const {slug}=await params;
+ if(slug==='all')notFound();
  const now=await serverNow(),auction=await getAuction(slug,now);
  if(!auction)notFound();
  if(slug!==auction.code){

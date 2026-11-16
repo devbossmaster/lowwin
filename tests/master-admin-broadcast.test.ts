@@ -5,9 +5,10 @@ import {campaignContent} from '../src/modules/notifications/campaigns';
 import {materializeAlert} from '../src/modules/notifications/service';
 
 describe('Master Guide Admin Telegram broadcasts',()=>{
- it.each(['/','/auctions/all','/my-bids','/winners','/profile','/auctions/42'])('accepts a supported Mini App destination: %s',path=>{
+ it.each(['/','/my-bids','/winners','/profile','/auctions/42'])('accepts a supported Mini App destination: %s',path=>{
   expect(broadcastMiniAppPath(path)).toBe(path);
  });
+ it('recovers already queued retired catalogue buttons to Home',()=>expect(broadcastMiniAppPath('/auctions/all')).toBe('/'));
  it.each(['https://elsewhere.example','//elsewhere.example','/admin','/profile?redirect=https://elsewhere.example','/auctions/../admin','/auctions/0','/auctions/42\n'])('rejects an unsafe or unsupported destination: %s',path=>{
   expect(()=>broadcastMiniAppPath(path)).toThrow();
  });

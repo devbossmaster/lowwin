@@ -13,7 +13,7 @@ afterEach(()=>{route.path='/'});
 describe('customer route loading geometry',()=>{
  it('distinguishes route families and their existing redirect aliases',()=>{
   const destinations={
-   '/':'home','/auctions/all?page=2':'catalog','/auctions/phone-123#bid-review':'auction','/categories/phones':'category',
+   '/':'home','/auctions?page=2':'catalog','/auctions/phone-123#bid-review':'auction','/categories/phones':'category',
    '/winners':'winners','/winners/all':'winners','/winners/1001':'winner','/draws':'winners',
    '/my-bids':'bids','/winning-bids':'bids','/profile/wins':'bids','/payments':'payments',
    '/profile':'profile','/wallet/deposit':'wallet','/profile/favorites':'catalog','/profile/alerts':'home',
@@ -29,7 +29,7 @@ describe('customer route loading geometry',()=>{
   expect(render('/profile')).toContain('data-skeleton-part="profile-identity"');
   expect(render('/profile')).not.toContain('data-skeleton-part="hero"');
  });
- it.each(['/','/auctions/all','/auctions/phone-123','/winners','/winners/1001','/my-bids','/payments','/profile','/wallet','/faq','/terms'])('announces %s loading once without inventing financial data',path=>{
+ it.each(['/','/auctions','/auctions/phone-123','/winners','/winners/1001','/my-bids','/payments','/profile','/wallet','/faq','/terms'])('announces %s loading once without inventing financial data',path=>{
   const html=render(path);
   expect(html.match(/role="status"/g)).toHaveLength(1);
   expect(html).toContain('aria-busy="true"');expect(html).toContain('aria-hidden="true"');

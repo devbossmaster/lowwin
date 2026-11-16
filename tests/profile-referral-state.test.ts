@@ -16,7 +16,7 @@ beforeEach(()=>{Object.assign(f.referral,{configured:true,enabled:true,shareUrl:
 
 describe('Profile referral readiness and earned coupons',()=>{
  it('displays the saved percentage and expiry with an actionable invitation and earned discount',()=>{
-  const html=render();expect(html).toContain('>Active</span>');expect(html).toContain('one 13% discount');expect(html).toContain('after 20 days');expect(html).toContain('13% off one submission fee');expect(html).toContain('href="/auctions/all"');expect(html).not.toContain('free bid');
+  const html=render();expect(html).toContain('>Active</span>');expect(html).toContain('one 13% discount');expect(html).toContain('after 20 days');expect(html).toContain('13% off one submission fee');expect(html).toContain('href="/#discover-auctions"');expect(html).not.toContain('free bid');
  });
  it('pauses new invitations without hiding already-earned coupons or changing their terms',()=>{
   Object.assign(f.referral,{enabled:false,shareUrl:null});const html=render();expect(html).toContain('>Paused</span>');expect(html).toContain('earned discounts keep their original expiry');expect(html).toContain('13% off one submission fee');expect(html).toContain('Use a discount');

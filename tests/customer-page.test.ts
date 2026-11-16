@@ -12,13 +12,10 @@ vi.mock('../src/components/winner-result-route',()=>({WinnerResultRoute:()=>null
 vi.mock('../src/components/help-pages',()=>({LegalPage:()=>null}));
 vi.mock('../src/components/tutorial-content',()=>({TutorialContent:()=>null}));
 vi.mock('../src/components/offline-retry',()=>({OfflineRetry:()=>null}));
-vi.mock('../src/components/catalog-auction-list',()=>({CatalogAuctionList:()=>null}));
 vi.mock('../src/components/home-categories',()=>({HomeCategories:()=>null}));
-vi.mock('../src/components/auction-sort-links',()=>({AuctionSortLinks:()=>null}));
 import {requireCustomerPage} from '../src/modules/auth/customer-page';
 import AuctionPage from '../src/app/(mini)/auctions/[slug]/page';
 import ResultPage from '../src/app/(mini)/winners/[auctionCode]/page';
-import AllAuctions from '../src/app/(mini)/auctions/all/page';
 import Category from '../src/app/(mini)/categories/[slug]/page';
 import Terms from '../src/app/(mini)/terms/page';
 import Privacy from '../src/app/(mini)/privacy/page';
@@ -30,6 +27,10 @@ const pages=[
  ['/terms',()=>Terms()],['/privacy',()=>Privacy()],['/faq',()=>FAQ()],['/how-it-works',()=>HowItWorks()],
 ] as const;
 describe('server-rendered customer data authorization',()=>{
+ it('returns not found for the retired browse path before reading auction data',async()=>{
+  await expect(AuctionPage({params:Promise.resolve({slug:'all'}),searchParams:Promise.resolve({})})).rejects.toThrow('NOT_FOUND');
+  expect(f.now).not.toHaveBeenCalled();expect(f.auction).not.toHaveBeenCalled();
+ });
  it.each(pages)('authorizes %s before reading or rendering protected content',async(path,render)=>{
   await expect(render()).rejects.toThrow('REDIRECT /?login=1&next='+encodeURIComponent(path));
   for(const read of [f.auction,f.result,f.category,f.now,f.legal,f.list,f.experience])expect(read).not.toHaveBeenCalled();

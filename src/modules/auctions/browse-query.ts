@@ -16,7 +16,7 @@ export function parseBrowseQuery(values:SearchParams):CatalogQuery{
 }
 
 /** Home's former code-order Default now pins featured items, then newest.
- * Explicit code ordering remains available on the independent browse page. */
+ * The Home catalogue is the single browsing destination. */
 export function parseHomeQuery(values:SearchParams):CatalogQuery{
   const sort=Array.isArray(values.sort)?values.sort[0]:values.sort;
   return parseBrowseQuery({...values,status:'live',sort:!sort||sort==='code'?'featured':sort,page:'1'});

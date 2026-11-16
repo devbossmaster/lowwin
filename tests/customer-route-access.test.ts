@@ -6,11 +6,16 @@ import {proxy} from '../src/proxy';
 import {customerLoginPath,customerLoginRequest,withoutCustomerLogin} from '../src/lib/customer-login-entry';
 beforeEach(()=>{vi.clearAllMocks();access.localMiniPreview.mockReturnValue(false);access.getMiniSession.mockResolvedValue(null)});
 describe('public products and registered customer website boundary',()=>{
+ it('lets the retired catalogue resolve to 404 without querying a customer session',async()=>{
+  access.getMiniSession.mockRejectedValue(Error('Account lookup must not run'));
+  const response=await proxy(new NextRequest('https://lowwin.test/auctions/all'));
+  expect(response.status).toBe(404);expect(response.headers.get('x-robots-tag')).toBe('noindex');expect(access.getMiniSession).not.toHaveBeenCalled();
+ });
  it.each(['/winners','/winners/42','/draws','/my-bids','/winning-bids','/profile','/profile/alerts','/profile/support','/wallet','/wallet/deposit','/payments','/faq','/terms','/privacy','/how-it-works'])('requires verified registration for %s',async path=>{
   const response=await proxy(new NextRequest('https://lowwin.test'+path+'?view=saved',{headers:{cookie:'forged-session=1','x-telegram-id':'123',RSC:'1','next-router-prefetch':'1'}})),url=new URL(response.headers.get('location')!);
   expect(response.status).toBe(307);expect(url.origin).toBe('https://lowwin.test');expect(url.pathname).toBe('/');expect(url.searchParams.get('login')).toBe('1');expect(url.searchParams.get('next')).toBe(path+'?view=saved');expect(response.headers.get('cache-control')).toContain('private, no-store');expect(access.getMiniSession).toHaveBeenCalledTimes(1);
  });
- it.each(['/auctions','/auctions/all','/auctions/item-42','/categories/accessories','/api/catalog/auctions/item-42'])('allows read-only public product browsing on %s without account queries',async path=>{
+ it.each(['/auctions','/auctions/item-42','/categories/accessories','/api/catalog/auctions/item-42'])('allows read-only public product browsing on %s without account queries',async path=>{
   access.getMiniSession.mockRejectedValue(Error('Account unavailable'));const response=await proxy(new NextRequest('https://lowwin.test'+path));expect(response.headers.get('x-middleware-next')).toBe('1');expect(access.getMiniSession).not.toHaveBeenCalled();
  });
  it.each(['MINI_APP','TELEGRAM_OIDC'])('allows an independently validated %s account',async source=>{

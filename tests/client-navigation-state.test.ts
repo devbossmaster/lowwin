@@ -52,9 +52,9 @@ describe('bounded user-intent warming',()=>{
   budget.reset();expect(budget.allow('b','/',32001)).toBe(true);
  });
  it('warms only the requested personal page, never every result or participant list',()=>{
-  expect(privateIntentDestination('/my-bids')).toBe('/api/my-bids?view=live&page=1&language=en');
-  expect(privateIntentDestination('/my-bids?view=history&page=2')).toBe('/api/my-bids?view=finished&page=2&language=en');
-  expect(privateIntentDestination('/my-bids?view=finished&page=1001')).toBe('/api/my-bids?view=finished&page=1000&language=en');
+  expect(privateIntentDestination('/my-bids')).toBe('/api/my-bids?view=live&page=1&language=en&grouped=1');
+  expect(privateIntentDestination('/my-bids?view=history&page=2')).toBe('/api/my-bids?view=finished&page=2&language=en&grouped=1');
+  expect(privateIntentDestination('/my-bids?view=finished&page=1001')).toBe('/api/my-bids?view=finished&page=1000&language=en&grouped=1');
   expect(privateIntentDestination('/profile')).toBe('/api/profile');
   expect(privateIntentDestination('/payments')).toBe('/api/transactions?page=1&type=ALL');
   expect(privateIntentDestination('/payments?page=3')).toBe('/api/transactions?page=3&type=ALL');

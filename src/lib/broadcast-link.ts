@@ -1,6 +1,7 @@
-const paths=new Set(['/','/auctions/all','/my-bids','/winners','/profile']);
+const paths=new Set(['/','/my-bids','/winners','/profile']);
 /** Broadcast buttons open only known Mini App destinations on our own origin. */
 export function broadcastMiniAppPath(value:string){
+ if(value==='/auctions/all')return '/'; // Previously queued buttons recover to Home.
  if(paths.has(value)||/^\/auctions\/[1-9]\d{0,8}$/.test(value))return value;
  throw new Error('Choose a supported Mini App page.');
 }

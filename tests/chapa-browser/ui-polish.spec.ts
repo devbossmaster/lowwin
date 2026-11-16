@@ -79,7 +79,7 @@ test('customer page layouts preserve the brand and fit mobile and desktop widths
   await page.goto('/telegram?next='+encodeURIComponent(f.home));
   await expect(page.getByRole('navigation',{name:'Your navigation'})).toBeVisible();
   mkdirSync('test-results/chapa-ui/polish',{recursive:true});
-  for(const [name,path] of [['home',f.home],['auctions','/auctions/all'],['winners','/winners'],['bids','/my-bids'],['transactions','/payments'],['profile','/profile']] as const){
+  for(const [name,path] of [['home',f.home],['auctions','/'],['winners','/winners'],['bids','/my-bids'],['transactions','/payments'],['profile','/profile']] as const){
    await page.goto(path);await expect(page.locator('#main')).toBeVisible();
    await expect(page.getByRole('navigation',{name:'Your navigation'})).toBeVisible();
    await expect(page.locator('[data-route-skeleton]')).toHaveCount(0);
