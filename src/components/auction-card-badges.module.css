@@ -5,11 +5,11 @@
 .card:global(.auction-card)>:global(.auction-card-body){padding:16px 12px 8px}
 .card:global(.auction-card)>:global(.auction-card-body)>h3{margin:0 0 6px;min-height:0;font-size:17px;line-height:1.35;overflow-wrap:anywhere}
 .card:global(.auction-card)>:global(.auction-card-body)>h3:lang(am){line-height:1.55}
-.card:global(.auction-card)>:global(.auction-card-body)>:global(.card-facts){display:grid;grid-template-columns:minmax(0,1fr) max-content max-content;align-items:center;gap:4px;margin:0 0 6px}
-.bids{display:inline-flex;align-items:center;justify-content:center;gap:3px;max-width:100%;min-height:25px;padding:3px 5px;border-radius:16px;background:var(--brand-soft,#f2f2f7);color:var(--brand-muted,#657181);font-size:10px;line-height:1.35;font-variant-numeric:tabular-nums;white-space:nowrap}.bids svg{flex:none;color:var(--brand-primary-strong,#5533be)}.bids strong{font-size:11px!important}
-.card:global(.auction-card)>:global(.auction-card-body)>:global(.card-facts)>:global(.card-fee){min-width:0;min-height:0;flex-wrap:wrap;justify-content:center;gap:2px 5px;padding:3px 8px;line-height:1.35;text-align:center}
+.card:global(.auction-card)>:global(.auction-card-body)>:global(.card-facts){display:grid;grid-template-columns:repeat(2,minmax(0,1fr)) minmax(104px,1fr);align-items:stretch;gap:6px;margin:0 0 8px}
+.bids{display:grid;grid-template-columns:auto auto;align-content:center;align-items:center;justify-content:center;gap:2px 4px;min-width:0;min-height:44px;padding:5px 6px;border-radius:12px;background:var(--brand-soft,#f2f2f7);color:var(--brand-muted,#657181);font-size:10px;line-height:1.35;font-variant-numeric:tabular-nums}.bids svg{flex:none;color:var(--brand-muted,#657181)}.bids strong{font-size:12px!important;overflow-wrap:anywhere}.bids>span{grid-column:1/-1;text-align:center}
+.card:global(.auction-card)>:global(.auction-card-body)>:global(.card-facts)>:global(.card-fee){display:flex;flex-direction:column;min-width:0;min-height:44px;justify-content:center;gap:2px;padding:5px 6px;border-radius:12px;line-height:1.35;text-align:center}
 .card:global(.auction-card)>:global(.auction-card-body)>:global(.card-facts)>:global(.card-fee)>strong{min-width:0;max-width:100%;overflow-wrap:anywhere}
-.card:global(.auction-card)>:global(.auction-card-body)>:global(.card-facts)>:global(.card-clock){min-height:0;padding:1px 2px}
+.card:global(.auction-card)>:global(.auction-card-body)>:global(.card-facts)>:global(.card-clock){min-width:0;min-height:44px;justify-content:center;padding:4px 1px;border-radius:12px;text-align:center;overflow-wrap:anywhere}
 .card:global(.auction-card)>:global(.auction-card-body)>:global(.card-facts)>:global(.card-clock) :global(.countdown){gap:2px}
 .card:global(.auction-card)>:global(.auction-card-body)>:global(.card-facts)>:global(.card-clock) [data-countdown-tile]{--flap-width:24px;--flap-height:26px;font-size:12px}
 .card:global(.auction-card)>:global(.auction-card-body)>:global(.card-facts)>:global(.card-clock)>svg{display:none}
@@ -19,7 +19,7 @@
 :global(.card-grid):has(>.card){row-gap:16px}
 .card:global(.auction-card)>:global(.auction-card-body)>.placeBid{min-height:46px;border-bottom:3px solid var(--action-pressed,#1e40af);border-radius:16px;gap:9px}
 .utilities{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:stretch;gap:8px;margin-top:7px}
-.terms{display:flex;align-items:center;justify-content:center;gap:5px;min-width:0;min-height:44px;padding:5px 8px;border-radius:12px;background:#edf9f4;color:#216b52;font-size:10px;font-weight:600;line-height:1.45;text-align:center;text-decoration:none}.terms svg{flex:none}
+.terms{display:flex;align-items:center;justify-content:center;gap:5px;min-width:0;min-height:44px;padding:5px 8px;border-radius:12px;background:#e7f6ee;color:#176144;font-size:10px;font-weight:600;line-height:1.45;text-align:center;text-decoration:none}.terms svg{flex:none}
 .utilities .share{min-height:44px;padding:6px 11px;border-radius:12px;font-size:11px;background:var(--action-disabled,#dbe7fb);color:var(--action-pressed,#1e40af);border:0}.utilities .share svg{width:14px;height:14px}
 .terms:focus-visible{outline:2px solid var(--action-primary,#2563eb);outline-offset:2px}
 @media(prefers-reduced-motion:no-preference){.card:global(.auction-card)>:global(.auction-card-body)>.placeBid:active{transform:translateY(2px);border-bottom-color:transparent}}

@@ -15,12 +15,13 @@ const lines=[{position:0,number:'4.25',grossFee:'50.00',discount:'0.00',netFee:'
 const bid={key,purpose:'BID',flow:'INLINE',paymentMethod:'telebirr',phone:'0911652904',batchId,quoteHash};
 function fixture(){
  let order:ChapaCheckout|null=null,inTransaction=false,halted=false,bonusPolicy:any=null;const gates:string[]=[];
+ const matches=(row:Record<string,any>|null,where:Record<string,any>):boolean=>!!row&&Object.entries(where).every(([key,value])=>key==='OR'?value.some((part:Record<string,any>)=>matches(row,part)):value instanceof Date?row[key] instanceof Date&&row[key].getTime()===value.getTime():value&&typeof value==='object'?'in'in value?value.in.includes(row[key]):'lte'in value?row[key] instanceof Date&&row[key].getTime()<=value.lte.getTime():false:row[key]===value);
  const batch={id:batchId,userId:'owner',quoteHash,status:'QUOTED',auctionId:1,auctionSlug:'test-auction',totalCents:10000n,grossCents:10000n,discountCents:0n,couponId:null,feeVersion:1,lines};
  const checkout={
   findUnique:vi.fn(async({where}:any)=>where.userId_key?order&&order.userId===where.userId_key.userId&&order.key===where.userId_key.key?order:null:where.batchId?order&&order.batchId===where.batchId?order:null:null),
   create:vi.fn(async({data}:any)=>{order={...data,creditJournalId:null,authorizationReference:null,providerRequestId:null,authType:null,checkoutUrl:null,providerStatus:null,verificationState:'UNVERIFIED',initializationErrorCode:null,initializationHttpStatus:null,createdAt:new Date()} as ChapaCheckout;return order}),
-  updateManyAndReturn:vi.fn(async({data}:any)=>{order={...order!,...data};return [order]}),
-  updateMany:vi.fn(async()=>({count:1})),
+  updateManyAndReturn:vi.fn(async({where,data}:any)=>{if(!matches(order,where))return [];order={...order!,...data};return [order]}),
+  updateMany:vi.fn(async({where,data}:any)=>{if(!matches(order,where))return {count:0};order={...order!,...data,attempts:typeof data.attempts==='object'?order!.attempts+data.attempts.increment:order!.attempts};return {count:1}}),
  };
  const transaction={chapaCheckout:checkout,bidBatchOrder:{findFirst:vi.fn(async()=>batch)},adminAudit:{findFirst:vi.fn(async()=>{gates.push('maintenance-read');return halted?{action:'AUCTIONS_MAINTENANCE_HALTED'}:null})},$queryRaw:vi.fn(async(strings:TemplateStringsArray)=>{const sql=strings.join('');if(sql.includes('to_regclass'))return [{ready:!!bonusPolicy}];if(sql.includes('DepositBonusPolicy'))return bonusPolicy?[{...bonusPolicy,now:new Date()}]:[];gates.push('auction-lock');return []}),$executeRaw:vi.fn(async(strings:TemplateStringsArray)=>{gates.push(strings.join('').includes('pg_advisory_xact_lock_shared')?'maintenance-lock':'wallet-lock');return 1})};
  const db={...transaction,$transaction:vi.fn(async(operation:any)=>{inTransaction=true;try{return await operation(transaction)}finally{inTransaction=false}})} as unknown as PrismaClient;
@@ -143,6 +144,53 @@ describe('owned v2 Inline creation boundary',()=>{
  it('returns the same accepted initialization for repeat Pay without dispatching twice',async()=>{
   const f=fixture();const first=await createInlineCheckout(f.db,'owner',bid,spies.authorize,f.transport),second=await createInlineCheckout(f.db,'owner',bid,spies.authorize,f.transport);
   expect(second.order.id).toBe(first.order.id);expect(f.checkout.create).toHaveBeenCalledOnce();expect(f.inline).toHaveBeenCalledOnce();
+ });
+ it('returns an active original dispatch without financial locks, another retry token or provider call',async()=>{
+  const f=fixture(),reply=f.inline.getMockImplementation()!;let release!:()=>void;
+  const waiting=new Promise<void>(resolve=>{release=resolve});f.inline.mockImplementationOnce(async request=>{await waiting;return reply(request)});
+  const original=createInlineCheckout(f.db,'owner',bid,spies.authorize,f.transport);
+  await vi.waitFor(()=>expect(f.inline).toHaveBeenCalledOnce());
+  const transactions=vi.mocked(f.db.$transaction).mock.calls.length,rates=spies.rate.mock.calls.length;
+  const duplicate=await createInlineCheckout(f.db,'owner',bid,spies.authorize,f.transport);
+  expect(duplicate.order.id).toBe(f.order()!.id);expect(duplicate.order.status).toBe('SUBMITTING');
+  expect(f.db.$transaction).toHaveBeenCalledTimes(transactions);expect(spies.rate).toHaveBeenCalledTimes(rates);expect(f.inline).toHaveBeenCalledOnce();
+  release();expect((await original).order.status).toBe('AUTH_NEEDED');
+ });
+ it.each(['success','error'] as const)('fences a delayed original initialization %s after a successor owns the payment lease',async outcome=>{
+  const f=fixture(),reply=f.inline.getMockImplementation()!;let release!:()=>void;
+  const waiting=new Promise<void>(resolve=>{release=resolve});f.inline.mockImplementationOnce(async request=>{await waiting;if(outcome==='error')throw new TypeError('Delayed transport failure');return reply(request)});
+  const original=createInlineCheckout(f.db,'owner',bid,spies.authorize,f.transport);await vi.waitFor(()=>expect(f.inline).toHaveBeenCalledOnce());
+  const originalLease=f.order()!.leaseUntil!,successorLease=new Date(originalLease.getTime()+60000);
+  f.changeOrder({leaseUntil:successorLease,status:'PENDING',verificationState:'UNAVAILABLE'});release();
+  const result=await original;expect(result.order).toMatchObject({status:'PENDING',verificationState:'UNAVAILABLE',authorizationReference:null,leaseUntil:successorLease});
+  expect(f.checkout.updateManyAndReturn.mock.calls[0][0].where.leaseUntil).toEqual(originalLease);expect(f.inline).toHaveBeenCalledOnce();expect(f.checkout.create).toHaveBeenCalledOnce();
+ });
+ it('fences an expired recovery dispatch with its newly acquired lease rather than the old row snapshot',async()=>{
+  const f=fixture();f.inline.mockRejectedValueOnce(new TypeError('Lost first reply'));await createInlineCheckout(f.db,'owner',bid,spies.authorize,f.transport);
+  const stale=new Date(Date.now()-1000);f.changeOrder({leaseUntil:stale});
+  const recovered=await createInlineCheckout(f.db,'owner',bid,spies.authorize,f.transport),claim=f.checkout.updateMany.mock.calls[0][0].data.leaseUntil;
+  expect(claim.getTime()).toBeGreaterThan(stale.getTime());expect(f.checkout.updateManyAndReturn.mock.calls.at(-1)![0].where.leaseUntil).toEqual(claim);expect(recovered.order.status).toBe('AUTH_NEEDED');
+ });
+ it('may fill accepted authorization after verified waiting evidence without clearing a successor verification lease or evidence',async()=>{
+  const f=fixture(),reply=f.inline.getMockImplementation()!;let release!:()=>void;
+  const waiting=new Promise<void>(resolve=>{release=resolve});f.inline.mockImplementationOnce(async request=>{await waiting;return reply(request)});
+  const original=createInlineCheckout(f.db,'owner',bid,spies.authorize,f.transport);await vi.waitFor(()=>expect(f.inline).toHaveBeenCalledOnce());
+  const successorLease=new Date(f.order()!.leaseUntil!.getTime()+60000);f.changeOrder({leaseUntil:successorLease,status:'PENDING',providerStatus:'PENDING',verificationState:'VERIFIED'});release();
+  expect((await original).order).toMatchObject({leaseUntil:successorLease,status:'PENDING',providerStatus:'PENDING',verificationState:'VERIFIED',authorizationReference:'CHowned-reference'});
+  const supplemental=f.checkout.updateManyAndReturn.mock.calls.at(-1)![0].data;
+  for(const field of ['leaseUntil','status','providerStatus','verificationState','creditJournalId'])expect(supplemental).not.toHaveProperty(field);
+ });
+ it('does not consume the initialization budget when another request wins the recovery lease',async()=>{
+  const f=fixture();f.inline.mockRejectedValueOnce(new TypeError('interrupted transport'));await createInlineCheckout(f.db,'owner',bid,spies.authorize,f.transport);
+  const rates=spies.rate.mock.calls.length;f.checkout.updateMany.mockResolvedValueOnce({count:0});
+  await createInlineCheckout(f.db,'owner',bid,spies.authorize,f.transport);
+  expect(spies.rate).toHaveBeenCalledTimes(rates);expect(f.inline).toHaveBeenCalledOnce();expect(f.checkout.create).toHaveBeenCalledOnce();
+ });
+ it('rejects an exhausted retry budget inside the claim transaction without dispatching',async()=>{
+  const f=fixture();f.inline.mockRejectedValueOnce(new TypeError('interrupted transport'));await createInlineCheckout(f.db,'owner',bid,spies.authorize,f.transport);
+  spies.rate.mockResolvedValueOnce(false);
+  await expect(createInlineCheckout(f.db,'owner',bid,spies.authorize,f.transport)).rejects.toMatchObject({code:'RATE_LIMITED',status:429});
+  expect(f.checkout.updateMany).toHaveBeenCalledOnce();expect(f.checkout.updateMany.mock.invocationCallOrder[0]).toBeLessThan(spies.rate.mock.invocationCallOrder.at(-1)!);expect(f.inline).toHaveBeenCalledOnce();
  });
  it('rejects changed payer details under the original key',async()=>{
   const f=fixture();await createInlineCheckout(f.db,'owner',bid,spies.authorize,f.transport);

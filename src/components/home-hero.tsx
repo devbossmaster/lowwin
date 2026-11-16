@@ -23,10 +23,11 @@ export function HomeHero({copy,videoId,media,experience}:{copy:Copy;videoId?:str
  const {props:mobile}=getImageProps({...imageCommon,src:lowwinHomeBanner(language,configuredBanner),width:1600,height:900,sizes:'(max-width:639px) 100vw, 900px'});
  const {props:desktop}=getImageProps({...imageCommon,src:lowwinDesktopHomeBanner(language,configuredBanner),width:1840,height:800,sizes:'(min-width:1280px) 1232px, calc(100vw - 48px)'});
  return <>
-  <section className={`${styles.banner} ${styles.artworkBanner}`} aria-labelledby="home-headline" lang={language} data-home-hero>
+  <section className={`relative overflow-hidden ${styles.banner} ${styles.artworkBanner}`} aria-labelledby="home-headline" lang={language} data-home-hero>
    <div className={styles.bannerArtwork}>
     <picture><source media="(min-width:1024px)" srcSet={desktop.srcSet??desktop.src} sizes={desktop.sizes} width={1840} height={800}/><img {...mobile}/></picture>
    </div>
+   <div aria-hidden="true" className={`absolute inset-0 bg-gradient-to-t from-foreground/70 via-foreground/25 to-transparent ${styles.bannerShade}`}/>
    <div className={styles.accessibleCopy}><h1 id="home-headline">{headline}</h1><p>{lead}</p></div>
    <div className={styles.introActions}>
     <button ref={learnButton} type="button" onClick={()=>setLearn(true)}><MiniPhrase en="Learn more" am="ተጨማሪ ይወቁ"/><ArrowRight size={15}/></button>

@@ -6,6 +6,7 @@
 .bannerArtwork{width:100%;height:100%;aspect-ratio:16/9;overflow:hidden;border-radius:inherit;background:transparent}
 .bannerArtwork img{display:block;width:100%;height:100%;object-fit:cover}
 .bannerArtwork picture{display:block;width:100%;height:100%}
+.bannerShade{position:absolute;inset:0;pointer-events:none;background:linear-gradient(to top,rgba(22,32,44,.7),rgba(22,32,44,.25),transparent)}
 @media(min-width:1024px){:global(.app-frame[data-app-layout=browser]) .banner.artworkBanner,:global(.app-frame[data-app-layout=browser]) .bannerArtwork{aspect-ratio:1840/800}}
 .accessibleCopy{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .artworkBanner .introActions{position:absolute;z-index:1;left:16px;bottom:16px;margin:0;padding:0;gap:8px;max-width:calc(100% - 32px);background:transparent}

@@ -53,6 +53,12 @@ describe('documented v2 public Inline boundary',()=>{
   await expect(transport.inline(request)).rejects.toMatchObject({providerCode:'INVALID_FORMAT',category:'request',httpStatus:400});
   try{await transport.inline(request)}catch(error){expect(error).toBeInstanceOf(ChapaProviderError);expect((error as Error).message).not.toContain('251911652904');expect((error as Error).message).not.toContain('secret-value')}
  });
+ it('retains only a safe operator diagnostic for an environment mismatch',async()=>{
+  const transport=createChapaInlineTransport({env:environment(),fetcher:vi.fn(async()=>Response.json({status:'error',message:'API key environment does not match business environment.',error:{code:'INVALID_VALUE',details:{mobile:request.phone}}},{status:403})) as typeof fetch});
+  await expect(transport.inline(request)).rejects.toMatchObject({httpStatus:403,providerCode:'INVALID_VALUE',category:'configuration',diagnostic:{code:'ENVIRONMENT_MISMATCH',message:'API key environment does not match business environment.'}});
+  const unsafe=createChapaInlineTransport({env:environment(),fetcher:vi.fn(async()=>Response.json({status:'error',message:'API key environment does not match business environment. '+request.phone,error:{code:'INVALID_VALUE',details:null}},{status:403})) as typeof fetch});
+  const error=await unsafe.inline(request).catch(cause=>cause);expect(error).toBeInstanceOf(ChapaProviderError);if(!(error instanceof ChapaProviderError))throw Error('Expected sanitized provider error');expect(error.diagnostic?.code).toBe('ACCESS_REJECTED');expect(JSON.stringify(error)).not.toContain(request.phone);
+ });
  it('does not turn an interrupted response into a confirmed provider failure',async()=>{
   const transport=createChapaInlineTransport({env:environment(),fetcher:vi.fn(async()=>{throw new TypeError('network interrupted')}) as typeof fetch});
   await expect(transport.inline(request)).rejects.toMatchObject({code:'PROVIDER_UNAVAILABLE'});
@@ -70,6 +76,19 @@ describe('documented v2 public Inline boundary',()=>{
  });
 });
 describe('Inline merchant capabilities cache',()=>{
+ it('keeps observed connectivity and safe errors isolated from a rotated merchant key',async()=>{
+  const raw=environment(),methods=vi.fn().mockRejectedValueOnce(new ChapaProviderError(403,'INVALID_VALUE',undefined,undefined,{code:'ENVIRONMENT_MISMATCH',message:'API key environment does not match business environment.'})).mockResolvedValue(capabilities()),catalog=createInlineMethodCatalog({methods} as unknown as ChapaTransport,raw);
+  expect(catalog.diagnostic()).toEqual({state:'not-checked'});const first=catalog.get();expect(catalog.diagnostic()).toEqual({state:'loading'});
+  await expect(first).rejects.toMatchObject({providerCode:'INVALID_VALUE'});expect(catalog.diagnostic()).toMatchObject({state:'unavailable',httpStatus:403,providerCode:'INVALID_VALUE',diagnostic:{code:'ENVIRONMENT_MISMATCH'}});
+  raw.CHAPA_PRIVATE_KEY='CHAPA_TEST_'+'c'.repeat(32);expect(catalog.diagnostic()).toEqual({state:'not-checked'});
+  await catalog.get();expect(catalog.diagnostic()).toMatchObject({state:'available',methodCount:1});expect(catalog.diagnostic()).not.toHaveProperty('providerCode');
+  expect(JSON.stringify(catalog.diagnostic())).not.toContain(raw.CHAPA_PRIVATE_KEY);
+ });
+ it('does not present expired capabilities as currently available',async()=>{
+  vi.useFakeTimers();vi.setSystemTime(new Date('2026-11-13T00:00:00Z'));
+  const catalog=createInlineMethodCatalog({methods:async()=>capabilities()} as unknown as ChapaTransport,environment());await catalog.get();
+  expect(catalog.diagnostic()).toMatchObject({state:'available',methodCount:1});vi.advanceTimersByTime(300001);expect(catalog.diagnostic()).toMatchObject({state:'expired'});
+ });
  it('recovers an empty supported-method catalog after5seconds while retaining healthy caching',async()=>{
   vi.useFakeTimers();vi.setSystemTime(new Date('2026-11-13T00:00:00Z'));
   const methods=vi.fn().mockResolvedValueOnce({status:'success',data:[]}).mockResolvedValue(capabilities()),catalog=createInlineMethodCatalog({methods} as unknown as ChapaTransport,environment());

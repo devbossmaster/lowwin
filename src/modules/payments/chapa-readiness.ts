@@ -1,4 +1,4 @@
-import {chapaAvailability,chapaWebhookSignatureProfile,isChapaWebhookSecret,createChapaTransport,parseChapaPaymentMethods} from './chapa-provider';
+import {chapaAvailability,chapaWebhookSignatureProfile,isChapaWebhookSecret,createChapaTransport,parseChapaPaymentMethods,ChapaProviderError,type ChapaProviderDiagnostic} from './chapa-provider';
 import {chapaInlineAvailability} from './chapa-inline-provider';
 import {chapaLegacyRecoveryAvailability} from './chapa-legacy-recovery';
 
@@ -11,7 +11,7 @@ export type ChapaReadiness={
  mode:'test'|'live';configured:boolean;creationEnabled:boolean;recoveryEnabled:boolean;
  missingPrerequisites:string[];
  schema:{status:CheckStatus|'drift';driftCount?:number};
- methods:{status:CheckStatus;items?:Method[]};
+ methods:{status:CheckStatus;items?:Method[];provider?:{httpStatus:number;code:string;diagnostic?:ChapaProviderDiagnostic}};
 };
 
 function secureOrigins(raw:Environment){
@@ -80,7 +80,7 @@ export async function checkChapaReadiness(raw:Environment,options:Options={},dep
     if(found===null)throw Error();
     const secrets=[raw.CHAPA_PRIVATE_KEY,raw.CHAPA_WEBHOOK_SECRET].filter((value):value is string=>!!value);
     report.methods={status:'ok',items:found.map(({slug,minimumCents,maximumCents,isMobileMoney})=>({slug:secrets.some(secret=>slug.includes(secret))?'redacted':slug,minimumCents,maximumCents,isMobileMoney}))};
-   }catch{report.methods={status:'unavailable'}}
+   }catch(error){report.methods={status:'unavailable',...(error instanceof ChapaProviderError?{provider:{httpStatus:error.httpStatus,code:error.providerCode,...(error.diagnostic?{diagnostic:error.diagnostic}:{})}}:{})}}
   }
  }
  return report;

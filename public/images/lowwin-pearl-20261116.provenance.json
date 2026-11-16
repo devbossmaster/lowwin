@@ -1,0 +1,36 @@
+{
+  "date": "2026-11-16",
+  "source": "docs/design/lowwin-family-pearl-blue-20261116.webp",
+  "tool": "Built-in image_gen background; Chromium native Inter and Noto Sans Ethiopic typography; Sharp WebP encoding",
+  "illustrative": true,
+  "records": [
+    {
+      "file": "public/images/lowwin-pearl-banner-en-20261116.webp",
+      "width": 1840,
+      "height": 800,
+      "bytes": 144940,
+      "sha256": "c45e81d5ebd5831d8b55ce773f079e199fc048708c6630095866f65c49386c45"
+    },
+    {
+      "file": "public/images/lowwin-pearl-banner-am-20261116.webp",
+      "width": 1840,
+      "height": 800,
+      "bytes": 143464,
+      "sha256": "366f9adf2d5007900efa090bd1b5f45b4c77115ca04910184a25987d14e38e5e"
+    },
+    {
+      "file": "public/images/lowwin-pearl-home-en-20261116.webp",
+      "width": 1600,
+      "height": 900,
+      "bytes": 135448,
+      "sha256": "0503d0adcd76b00a57e55c9d6071b6205bad8142c7f7e8372650c0b173cda6ee"
+    },
+    {
+      "file": "public/images/lowwin-pearl-home-am-20261116.webp",
+      "width": 1600,
+      "height": 900,
+      "bytes": 134932,
+      "sha256": "56e437651b22615eb2e7c55e81650e6c29a9a79499786abda4e7cc1a1dfceb0b"
+    }
+  ]
+}

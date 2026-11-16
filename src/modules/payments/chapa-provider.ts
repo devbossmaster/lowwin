@@ -13,10 +13,20 @@ export type ChapaMode='test'|'live';
 export class ChapaError extends Error {
  constructor(public status:number,public code:string,message:string){super(message);this.name='ChapaError'}
 }
+export type ChapaProviderDiagnostic={code:'ENVIRONMENT_MISMATCH'|'AUTHENTICATION_REJECTED'|'ACCESS_REJECTED'|'RATE_LIMITED'|'PROVIDER_UNAVAILABLE';message:string};
+/** Operator-only projection. Never retain arbitrary provider text: it may
+ * contain keys, payer details or OTPs. Messages do not decide payment state. */
+export function safeChapaProviderDiagnostic(httpStatus:number,providerCode:string,message:unknown):ChapaProviderDiagnostic|undefined{
+ if(httpStatus===403&&providerCode==='INVALID_VALUE'&&typeof message==='string'&&/^API key environment does not match business environment\.?$/i.test(message.trim()))return {code:'ENVIRONMENT_MISMATCH',message:'API key environment does not match business environment.'};
+ if(httpStatus===401)return {code:'AUTHENTICATION_REJECTED',message:'Chapa rejected request authentication.'};
+ if(httpStatus===403)return {code:'ACCESS_REJECTED',message:'Chapa rejected access to this operation.'};
+ if(httpStatus===429)return {code:'RATE_LIMITED',message:'Chapa temporarily limited requests.'};
+ if(httpStatus>=500)return {code:'PROVIDER_UNAVAILABLE',message:'Chapa could not complete the request.'};
+}
 export class ChapaProviderError extends ChapaError {
  readonly category:ChapaApiErrorCategory;
  readonly definiteRejection:boolean;
- constructor(readonly httpStatus:number,readonly providerCode:string,_legacyDefiniteRejection?:boolean,readonly paymentReason?:ChapaPaymentReasonCode){
+ constructor(readonly httpStatus:number,readonly providerCode:string,_legacyDefiniteRejection?:boolean,readonly paymentReason?:ChapaPaymentReasonCode,readonly diagnostic?:ChapaProviderDiagnostic){
   super(502,'PROVIDER_UNAVAILABLE',httpStatus===429?'Chapa is busy. Please try again later.':'Chapa could not complete this request. View the transaction before trying again.');
   this.category=classifyChapaApiError(httpStatus,providerCode);
   // A duplicate/invalid-state response may refer to an operation already
@@ -167,7 +177,7 @@ async function boundedJson(response:Response){
  let length=0;const chunks:Uint8Array[]=[];
  try{for(;;){const part=await reader.read();if(part.done)break;length+=part.value.byteLength;if(length>MAX_RESPONSE_BYTES){await reader.cancel();throw new Error('Response bound')}chunks.push(part.value)}
   let body:unknown;try{body=JSON.parse(Buffer.concat(chunks).toString('utf8'))}catch{body=null}
-  if(!response.ok){const error=z.object({reason:z.unknown().optional(),error:z.object({code:z.string().regex(/^[A-Z][A-Z0-9_]{0,79}$/),details:z.unknown().optional()}).optional()}).safeParse(body);const code=error.success?error.data.error?.code??'HTTP_ERROR':'HTTP_ERROR',details=error.success?error.data.error?.details:null;const reason=safeChapaPaymentReason(code)??(error.success?safeChapaPaymentReason(error.data.reason):null)??(details&&typeof details==='object'&&!Array.isArray(details)?safeChapaPaymentReason((details as Record<string,unknown>).reason):null);throw new ChapaProviderError(response.status,code,undefined,reason??undefined)}
+  if(!response.ok){const error=z.object({message:z.unknown().optional(),reason:z.unknown().optional(),error:z.object({code:z.string().regex(/^[A-Z][A-Z0-9_]{0,79}$/),details:z.unknown().optional()}).optional()}).safeParse(body);const code=error.success?error.data.error?.code??'HTTP_ERROR':'HTTP_ERROR',details=error.success?error.data.error?.details:null;const reason=safeChapaPaymentReason(code)??(error.success?safeChapaPaymentReason(error.data.reason):null)??(details&&typeof details==='object'&&!Array.isArray(details)?safeChapaPaymentReason((details as Record<string,unknown>).reason):null);throw new ChapaProviderError(response.status,code,undefined,reason??undefined,safeChapaProviderDiagnostic(response.status,code,error.success?error.data.message:undefined))}
   if(body===null)throw Error('Invalid JSON');return body;
  }
  catch(error){if(error instanceof ChapaProviderError)throw error;throw new ChapaError(502,'PROVIDER_UNAVAILABLE','Payment confirmation is pending. Check this same payment again.')}

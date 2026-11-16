@@ -113,16 +113,28 @@ export async function initializeInlineCheckout(client:PrismaClient,order:ChapaCh
  if(!['SUBMITTING','PENDING'].includes(order.status)||order.providerStatus||order.verificationState==='MISMATCH'||classifyChapaApiError(order.initializationHttpStatus,order.initializationErrorCode)==='request')return getChapaCheckout(client,userId,order.id);
  if(!inlineTransportBinding(order)||Date.now()-order.createdAt.getTime()>86400000)return verifyChapaCheckout(client,order.id,userId,reauthorize,transport,true);
  requireChapaInline('recover');
+ // A duplicate request can observe the immutable intent before its original
+ // provider HTTP has returned. It needs neither financial locks nor another
+ // initialization-rate token while that dispatch already owns its lease.
+ if(order.leaseUntil&&order.leaseUntil.getTime()>Date.now())return ownChapaCheckout(order);
+ const dispatchLease=after(45000);
  const acquired=await measureChapa('prepare',()=>client.$transaction(async tx=>{
   if(reauthorize)await reauthorize(tx);if(await auctionMaintenance(tx))throw new ChapaError(503,'AUCTIONS_PAUSED','New payment requests are paused.');
-  if(!await allowIdentityRequest(tx,'chapa-inline-initialize',order.id,5,86400000))return {count:0};
-  return tx.chapaCheckout.updateMany({where:{id:order.id,userId,creditJournalId:null,authorizationReference:null,checkoutUrl:null,status:{in:['SUBMITTING','PENDING']},providerStatus:null,verificationState:{in:['UNVERIFIED','UNAVAILABLE']},OR:[{leaseUntil:null},{leaseUntil:{lte:new Date()}}]},data:{leaseUntil:after(45000),nextCheckAt:after(15000),attempts:{increment:1}}});
+  const claim=await tx.chapaCheckout.updateMany({where:{id:order.id,userId,creditJournalId:null,authorizationReference:null,checkoutUrl:null,status:{in:['SUBMITTING','PENDING']},providerStatus:null,verificationState:{in:['UNVERIFIED','UNAVAILABLE']},OR:[{leaseUntil:null},{leaseUntil:{lte:new Date()}}]},data:{leaseUntil:dispatchLease,nextCheckAt:after(15000),attempts:{increment:1}}});
+  if(!claim.count)return claim;
+  // Only a won dispatch claim consumes the bounded provider retry budget.
+  // Throwing rolls the claim back atomically when the budget is exhausted.
+  if(!await allowIdentityRequest(tx,'chapa-inline-initialize',order.id,5,86400000))throw new ChapaError(429,'RATE_LIMITED','Check the original payment before trying again.');
+  return claim;
  },PAYMENT_TRANSACTION_OPTIONS));
- return acquired.count?dispatchInlineCheckout(client,order,userId,transport,'recover'):getChapaCheckout(client,userId,order.id);
+ return acquired.count?dispatchInlineCheckout(client,{...order,leaseUntil:dispatchLease},userId,transport,'recover'):getChapaCheckout(client,userId,order.id);
 }
 async function dispatchInlineCheckout(client:PrismaClient,order:ChapaCheckout,userId:string,transport:ChapaInlineTransport,operation:'create'|'recover'){
  if(!inlineTransportBinding(order))return verifyChapaCheckout(client,order.id,userId,undefined,transport,true);
- const writable={id:order.id,userId,creditJournalId:null,authorizationReference:null,checkoutUrl:null,status:{in:['SUBMITTING','PENDING']},providerStatus:null,verificationState:{in:['UNVERIFIED','UNAVAILABLE']}} satisfies Prisma.ChapaCheckoutWhereInput;
+ // Delayed initialization replies must not release a successor dispatch or
+ // verification lease, or replace its authoritative evidence with transport state.
+ if(!order.leaseUntil)return getChapaCheckout(client,userId,order.id);
+ const writable={id:order.id,userId,leaseUntil:order.leaseUntil,creditJournalId:null,authorizationReference:null,checkoutUrl:null,status:{in:['SUBMITTING','PENDING']},providerStatus:null,verificationState:{in:['UNVERIFIED','UNAVAILABLE']}} satisfies Prisma.ChapaCheckoutWhereInput;
  try{
   const initialization=order.initialization as Record<string,unknown>;
   if(order.chargeType==='HOSTED'){

@@ -13,6 +13,7 @@ function fixture(patch:Partial<ChapaCheckout>={}){
  const checkout={
   findFirst:vi.fn(async()=>snapshot()),findUniqueOrThrow:vi.fn(async()=>snapshot()),
   updateMany:vi.fn(async({where,data}:any)=>{
+   if(where.leaseUntil instanceof Date&&order.leaseUntil?.getTime()!==where.leaseUntil.getTime())return {count:0};
    if(order.creditJournalId||where.OR&&order.leaseUntil&&order.leaseUntil.getTime()>Date.now()||where.nextCheckAt&&order.nextCheckAt.getTime()>Date.now())return {count:0};
    order={...order,...data,attempts:data.attempts?order.attempts+data.attempts.increment:order.attempts,updatedAt:new Date()};return {count:1};
   }),
@@ -61,5 +62,33 @@ describe('bounded Chapa authorization refresh and private verification',()=>{
  it('keeps nonauthorization and expired-window recovery backoff unchanged',()=>{
   const f=fixture({attempts:80,expiresAt:new Date(Date.now()-1)}).row();expect(chapaPendingVerificationDelay(f,true)).toBe(300000);expect(chapaPendingVerificationDelay({...f,attempts:1},false)).toBe(15000);
   expect(shouldRefreshChapaAuthorization({...f,providerStatus:'EXPIRED',verificationState:'UNVERIFIED'})).toBe(true);expect(shouldRefreshChapaAuthorization({...f,authType:'OTP'})).toBe(false);
+ });
+ it.each(['PENDING','SUCCESS'])('discards an old %s response after a successor owns the verification lease',async status=>{
+  const f=fixture();let successorLease:Date;
+  f.lookup.mockImplementationOnce(async()=>{
+   vi.advanceTimersByTime(46000);successorLease=new Date(Date.now()+45000);
+   f.patch({status:'CANCELLED',providerStatus:'CANCELLED',verificationState:'VERIFIED',reason:'CHAPA_PAYMENT_CANCELLED',leaseUntil:successorLease,nextCheckAt:successorLease});
+   return {status:'success',data:{chapa_reference:'CHowned',merchant_reference:'LWowned',amount:4000,currency:'ETB',payment_method:'telebirr',customer:{phone_number:'251911652904'},status,mode:'test'}};
+  });
+  expect(await f.verify()).toMatchObject({status:'CANCELLED',providerStatus:'CANCELLED',verificationState:'VERIFIED'});
+  expect(f.row().leaseUntil).toEqual(successorLease!);expect(f.row().nextCheckAt).toEqual(successorLease!);expect(f.row().creditJournalId).toBeNull();
+ });
+ it('does not let an old mismatched response quarantine a successor verification',async()=>{
+  const f=fixture();let successorLease:Date;
+  f.lookup.mockImplementationOnce(async()=>{
+   vi.advanceTimersByTime(46000);successorLease=new Date(Date.now()+45000);
+   f.patch({status:'AUTH_NEEDED',providerStatus:'AUTH_NEEDED',verificationState:'VERIFIED',leaseUntil:successorLease,nextCheckAt:successorLease});
+   return {status:'success',data:{chapa_reference:'CHowned',merchant_reference:'LWowned',amount:9999,currency:'ETB',payment_method:'telebirr',status:'PENDING',mode:'test'}};
+  });
+  expect(await f.verify()).toMatchObject({status:'AUTH_NEEDED',providerStatus:'AUTH_NEEDED',verificationState:'VERIFIED'});expect(f.row().leaseUntil).toEqual(successorLease!);
+ });
+ it('does not let an old lookup outage release a successor lease or delay its due check',async()=>{
+  const f=fixture();let successorLease:Date;
+  f.lookup.mockImplementationOnce(async()=>{
+   vi.advanceTimersByTime(46000);successorLease=new Date(Date.now()+45000);
+   f.patch({status:'PENDING',providerStatus:'PENDING',verificationState:'VERIFIED',leaseUntil:successorLease,nextCheckAt:successorLease});throw Error('Synthetic interrupted verification');
+  });
+  expect(await f.verify()).toMatchObject({status:'PENDING',providerStatus:'PENDING',verificationState:'VERIFIED',verificationUnavailable:true});
+  expect(f.row().leaseUntil).toEqual(successorLease!);expect(f.row().nextCheckAt).toEqual(successorLease!);
  });
 });

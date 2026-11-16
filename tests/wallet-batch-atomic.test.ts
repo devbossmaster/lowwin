@@ -103,7 +103,20 @@ describe.skipIf(!database)('internal wallet batch command on isolated PostgreSQL
  });
  it('charges only fees, returns committed balance and internal metadata without external configuration or HTTP',async()=>{
   const f=await fixture({balance:'25',numbers:['2','900']}),fetch=vi.spyOn(globalThis,'fetch').mockRejectedValue(Error('No network expected'));
-  try{expect(walletBidsEnabled()).toBe(true);const paid=await f.pay();expect(paid).toMatchObject({batch:{total:'20.00',status:'ACCEPTED'},wallet:{available:'5.00',held:'0.00'},payment:{method:'wallet',gateway:'INTERNAL_WALLET',total:'20.00'}});expect(paid.payment.acceptedBidIds).toEqual(paid.receipts.map(receipt=>receipt.bid.id));const guard=await db.walletHoldGuard.findFirstOrThrow({where:{wallet:{userId:f.userId}}});expect(paid.wallet.revision).toBe(String(guard.revision));expect(BigInt(paid.wallet.revision)).toBeGreaterThan(0n);expect(await readWalletBalance(db,f.userId)).toMatchObject({available:'5',held:'0',revision:paid.wallet.revision});expect(await balance(f.userId)).toBe('5.00');expect(await db.chapaCheckout.count({where:{userId:f.userId}})).toBe(0);expect(fetch).not.toHaveBeenCalled();expect(await db.outbox.count({where:{kind:'BID_ACCEPTED',payload:{path:['recipientUserId'],equals:f.userId}}})).toBe(2)}finally{fetch.mockRestore()}
+  try{
+   expect(walletBidsEnabled()).toBe(true);const paid=await f.pay();
+   expect(paid).toMatchObject({batch:{total:'20.00',status:'ACCEPTED'},wallet:{available:'5.00',held:'0.00'},payment:{method:'wallet',gateway:'INTERNAL_WALLET',total:'20.00'}});
+   expect(paid.payment.acceptedBidIds).toEqual(paid.receipts.map(receipt=>receipt.bid.id));
+   const guard=await db.walletHoldGuard.findFirstOrThrow({where:{wallet:{userId:f.userId}}});
+   expect(paid.wallet.revision).toBe(String(guard.revision));expect(BigInt(paid.wallet.revision)).toBeGreaterThan(0n);
+   expect(await readWalletBalance(db,f.userId)).toMatchObject({available:'5',held:'0',revision:paid.wallet.revision});
+   expect(await balance(f.userId)).toBe('5.00');expect(await db.chapaCheckout.count({where:{userId:f.userId}})).toBe(0);expect(fetch).not.toHaveBeenCalled();
+   // The complete accepted purchase has one durable notification intent. Its
+   // batch reference resolves every accepted number without per-bid messages.
+   expect(await db.outbox.findMany({where:{kind:'BID_ACCEPTED',payload:{path:['recipientUserId'],equals:f.userId}},select:{key:true,payload:true}})).toEqual([
+    {key:`bid-batch:${f.batch.id}:accepted`,payload:{auctionId:f.auction.id,recipientUserId:f.userId,batchId:f.batch.id,bidId:paid.receipts[0].bid.id}},
+   ]);
+  }finally{fetch.mockRestore()}
  });
  it('accepts duplicate concurrent calls once and replays the same receipt after a lost response',async()=>{
   const f=await fixture({balance:'25'}),[first,replay]=await Promise.all([f.pay(),f.pay()]);

@@ -206,8 +206,13 @@ export async function verifyChapaCheckout(client:PrismaClient,id:string,userId?:
  // is a status read only: no lease write, provider call or money mutation. The
  // later financial transaction still reauthorizes before applying any payment.
  if(snapshot.leaseUntil&&snapshot.leaseUntil.getTime()>now||!eventCheck&&snapshot.nextCheckAt.getTime()>now)return ownChapaCheckout(snapshot);
- const acquired=await measureChapa('database',()=>client.$transaction(async tx=>{if(reauthorize)await reauthorize(tx);return tx.chapaCheckout.updateMany({where:{id,creditJournalId:null,...(eventCheck?{}:{nextCheckAt:{lte:new Date()}}),OR:[{leaseUntil:null},{leaseUntil:{lte:new Date()}}]},data:{leaseUntil:after(45000),nextCheckAt:after(45000),attempts:{increment:1}}})},PAYMENT_TRANSACTION_OPTIONS));
+ const verificationLease=after(45000);
+ const acquired=await measureChapa('database',()=>client.$transaction(async tx=>{if(reauthorize)await reauthorize(tx);return tx.chapaCheckout.updateMany({where:{id,creditJournalId:null,...(eventCheck?{}:{nextCheckAt:{lte:new Date()}}),OR:[{leaseUntil:null},{leaseUntil:{lte:new Date()}}]},data:{leaseUntil:verificationLease,nextCheckAt:verificationLease,attempts:{increment:1}}})},PAYMENT_TRANSACTION_OPTIONS));
  if(!acquired.count)return ownChapaCheckout(await measureChapa('database',()=>client.chapaCheckout.findUniqueOrThrow({where:{id}})));
+ // A process can pause beyond the lease while provider HTTP is in flight.
+ // Fence every resulting write by our claimed value: an old request must not
+ // clear another verifier's lease or replace evidence recorded by its owner.
+ const ownedVerification={id,creditJournalId:null,leaseUntil:verificationLease};
  let raw:unknown,authorizationFeedback=providedAuthorizationFeedback;try{
   // USSD polling refreshes the provider's charge state. An authenticated event
   // already signals a state change, so verify it without another validation
@@ -225,12 +230,12 @@ export async function verifyChapaCheckout(client:PrismaClient,id:string,userId?:
   // including evidence that arrived while this HTTP request was in flight.
   const schedule={leaseUntil:null,nextCheckAt:after(policy.delay)},feedbackReason=authorizationFeedback?chapaAuthorizationFeedbackReason(authorizationFeedback):undefined;
   const feedbackPreserved=feedbackReason===undefined&&publicChapaAuthorizationReason(snapshot)?snapshot.reason:null;
-  const recorded=await measureChapa('database',()=>client.chapaCheckout.updateMany({where:{id,creditJournalId:null,status:{in:pending},providerStatus:null,verificationState:{in:['UNVERIFIED','UNAVAILABLE']}},data:{...schedule,reason:feedbackReason??feedbackPreserved??policy.reason,verificationState:'UNAVAILABLE'}}));
+  const recorded=await measureChapa('database',()=>client.chapaCheckout.updateMany({where:{...ownedVerification,status:{in:pending},providerStatus:null,verificationState:{in:['UNVERIFIED','UNAVAILABLE']}},data:{...schedule,reason:feedbackReason??feedbackPreserved??policy.reason,verificationState:'UNAVAILABLE'}}));
   if(!recorded.count){
    // Keep the last privately verified state intact. Recognized authorization
    // feedback is supplementary and cannot replace a private reason/outcome.
-   const feedbackRecorded=authorizationFeedback&&(authorizationFeedback.kind==='rejected'||publicChapaAuthorizationReason(snapshot))?await measureChapa('database',()=>client.chapaCheckout.updateMany({where:{id,userId:snapshot.userId,creditJournalId:null,status:{in:pending},verificationState:{not:'MISMATCH'},AND:[{OR:[{providerStatus:null},{providerStatus:{in:['PENDING','AUTH_NEEDED']}}]},{OR:[{reason:null},{NOT:{reason:{startsWith:'CHAPA_'}}},{reason:{startsWith:'CHAPA_AUTHORIZATION_'}}]}]},data:{...schedule,reason:feedbackReason??policy.reason}})):null;
-   if(!feedbackRecorded?.count)await measureChapa('database',()=>client.chapaCheckout.updateMany({where:{id,creditJournalId:null},data:schedule}));
+   const feedbackRecorded=authorizationFeedback&&(authorizationFeedback.kind==='rejected'||publicChapaAuthorizationReason(snapshot))?await measureChapa('database',()=>client.chapaCheckout.updateMany({where:{...ownedVerification,userId:snapshot.userId,status:{in:pending},verificationState:{not:'MISMATCH'},AND:[{OR:[{providerStatus:null},{providerStatus:{in:['PENDING','AUTH_NEEDED']}}]},{OR:[{reason:null},{NOT:{reason:{startsWith:'CHAPA_'}}},{reason:{startsWith:'CHAPA_AUTHORIZATION_'}}]}]},data:{...schedule,reason:feedbackReason??policy.reason}})):null;
+   if(!feedbackRecorded?.count)await measureChapa('database',()=>client.chapaCheckout.updateMany({where:ownedVerification,data:schedule}));
   }
   return {...await getChapaCheckout(client,snapshot.userId,id),verificationUnavailable:true};
  }
@@ -247,7 +252,7 @@ export async function verifyChapaCheckout(client:PrismaClient,id:string,userId?:
   if(evidence.customer?.phone_number)try{directBinding=directBinding&&normalizePhone(evidence.customer.phone_number)===normalizePhone(decryptPhone(snapshot.payerPhoneCipher!,snapshot.phoneBotId!))}catch{directBinding=false}
  }
  const matches=!!evidence&&directBinding&&evidence.merchantReference===snapshot.merchantReference&&evidence.amountCents===snapshot.amountCents.toString()&&evidence.currency===snapshot.currency&&(!evidence.chapaReference||!snapshot.chapaReference||snapshot.chapaReference===evidence.chapaReference||isChapaHostedSessionReference(snapshot.checkoutUrl,snapshot.chapaReference,snapshot.mode as 'test'|'live'))&&(!evidence.mode||evidence.mode===snapshot.mode)&&(!recoveryBinding||evidence.status==='SUCCESS'&&evidence.chapaReference===recoveryBinding.finalReference)&&matchesChapaMetadata(snapshot.initialization,evidence.meta,snapshot.id);
- if(!matches){await measureChapa('database',()=>client.chapaCheckout.updateMany({where:{id,creditJournalId:null},data:{status:'NEEDS_REVIEW',reason:'EVIDENCE_MISMATCH',verificationState:'MISMATCH',leaseUntil:null,nextCheckAt:after(60000)}}));return getChapaCheckout(client,snapshot.userId,id)}
+ if(!matches){await measureChapa('database',()=>client.chapaCheckout.updateMany({where:ownedVerification,data:{status:'NEEDS_REVIEW',reason:'EVIDENCE_MISMATCH',verificationState:'MISMATCH',leaseUntil:null,nextCheckAt:after(60000)}}));return getChapaCheckout(client,snapshot.userId,id)}
  return measureChapa('database',()=>client.$transaction(async tx=>{
   await auctionMaintenance(tx);if(snapshot.auctionId)await tx.$queryRaw`SELECT id FROM "Auction" WHERE id=${snapshot.auctionId} FOR UPDATE`;
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${snapshot.userId}`},0))`;
@@ -255,6 +260,7 @@ export async function verifyChapaCheckout(client:PrismaClient,id:string,userId?:
   if(!order)throw new ChapaError(404,'NOT_FOUND','Payment not found.');
   if(reauthorize)await reauthorize(tx);
   if(paid(order))return ownChapaCheckout(order);
+  if(order.leaseUntil?.getTime()!==verificationLease.getTime())return ownChapaCheckout(order);
   const lockedBinding=sameConfiguration(order)?null:legacy?await approvedLegacyRecoveryBinding(tx,order):await approvedRecoveryBinding(tx,order);
   if(!sameConfiguration(order)&&(!lockedBinding||lockedBinding.finalReference!==evidence!.chapaReference))throw new ChapaError(503,'CONFIGURATION_CHANGED','Payment verification configuration changed. Keep this payment ID.');
   // Pending/failed verification may expose a session or provisional reference.

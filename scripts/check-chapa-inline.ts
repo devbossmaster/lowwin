@@ -2,9 +2,9 @@ import nextEnv from '@next/env';
 import {CHAPA_INLINE_MIGRATION,checkChapaInlineReadiness} from '../src/modules/payments/chapa-inline-readiness';
 
 async function main(){
- const args=process.argv.slice(2),usage='npx --no-install tsx scripts/check-chapa-inline.ts [--schema]';
- if(args.some(arg=>!['--schema','--help'].includes(arg))){console.error(JSON.stringify({error:'UNKNOWN_OPTION',usage}));process.exitCode=1;return}
- if(args.includes('--help')){console.log(usage+'\nRedacted v2 Inline configuration. --schema reads migration/constraint/trigger/index metadata only. No provider HTTP, payments, customer records or credential values. Run on WEB and the Chapa worker.');return}
+ const args=process.argv.slice(2),usage='npx --no-install tsx scripts/check-chapa-inline.ts [--schema] [--methods]';
+ if(args.some(arg=>!['--schema','--methods','--help'].includes(arg))){console.error(JSON.stringify({error:'UNKNOWN_OPTION',usage}));process.exitCode=1;return}
+ if(args.includes('--help')){console.log(usage+'\nRedacted v2 Inline configuration. --schema reads migration/constraint/trigger/index metadata only. --methods performs only GET payment methods in an enabled, reviewed TEST environment; LIVE is blocked. No payments, customer records or credential values. Run on WEB and the Chapa worker.');return}
  nextEnv.loadEnvConfig(process.cwd(),process.env.NODE_ENV!=='production',{info:()=>{},error:()=>{}});
  const timeout=setTimeout(()=>{console.error(JSON.stringify({error:'CHECK_TIMEOUT'}));process.exit(1)},25000);
  try{
@@ -19,7 +19,7 @@ async function main(){
     const indexes=await tx.$queryRaw<{present:boolean}[]>`SELECT to_regclass('public."ChapaCheckout_inline_v2_reconcile_idx"') IS NOT NULL AS present`;
     return {migrationApplied:migrations[0]?.present===true,identityConstraint:constraints[0]?.present===true,guardTrigger:triggers[0]?.present===true,reconcileIndex:indexes[0]?.present===true};
    },{maxWait:5000,timeout:10000})}finally{await db.$disconnect()}
-  }:undefined);
+  }:undefined,{methods:args.includes('--methods')});
   console.log(JSON.stringify(report,null,2));if(!report.ready)process.exitCode=1;
  }finally{clearTimeout(timeout)}
 }

@@ -17,9 +17,9 @@ const amount=/^(0|[1-9]\d{0,15})(?:\.\d{1,2})?$/;
 /** Original-key recovery uses only the owned v2 Inline adapter. */
 export function chapaOriginalKeyUrl(intent:ChapaDirectIntent|null|undefined){
  if(!intent||!chapaUuid.test(intent.key))return null;
- const base=intent.apiVersion==='v2'&&intent.kind==='inline'?'/api/payments/chapa/inline':null;
- return base?`${base}?key=${encodeURIComponent(intent.key)}`:null;
+ return intent.apiVersion==='v2'&&intent.kind==='inline'?chapaOriginalRecoveryUrl(intent.key):null;
 }
+export function chapaOriginalRecoveryUrl(key:string|null|undefined){return key&&chapaUuid.test(key)?`/api/payments/chapa/inline?key=${encodeURIComponent(key)}`:null}
 export function chapaApiCharge(order:Pick<DirectCheckoutFields,'chargeType'|'apiVersion'|'flowVersion'|'unsupportedLegacy'>){return !order.unsupportedLegacy&&order.apiVersion!=='legacy'&&(order.chargeType==='DIRECT'||order.apiVersion==='v2'&&order.flowVersion===4&&order.chargeType==='INLINE')}
 export function chapaCurrentInline(order:Pick<DirectCheckoutFields,'apiVersion'|'flowVersion'>){return order.apiVersion==='v2'&&order.flowVersion===4}
 

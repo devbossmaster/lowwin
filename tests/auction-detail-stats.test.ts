@@ -3,12 +3,13 @@ import {renderToStaticMarkup} from 'react-dom/server';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
 import type {CatalogAuction} from '../src/modules/auctions/catalog';
 
-const state=vi.hoisted(()=>({activity:null as null|{bids:number;bidders:number;status:'live';startsAt:string;endsAt:string}}));
+const state=vi.hoisted(()=>({activity:null as null|{bids:number;bidders:number;status:'live';startsAt:string;endsAt:string},catalog:null as null|{items:CatalogAuction[];serverNow:string}}));
 vi.mock('next/navigation',()=>({useSearchParams:()=>new URLSearchParams()}));
 vi.mock('next/dynamic',()=>({default:()=>()=>null}));
 vi.mock('../src/components/auction-activity',()=>({useAuctionActivity:()=>({activity:state.activity,views:null,refreshActivity:()=>{}}),useAuctionRefresh:()=>{}}));
 vi.mock('../src/components/telegram-provider',()=>({useTelegram:()=>({queryIdentity:null})}));
-vi.mock('../src/components/public-query',()=>({usePublicQuery:()=>({data:null})}));
+vi.mock('../src/components/public-query',()=>({usePublicQuery:(url:string)=>({data:url.includes('?')?state.catalog:null})}));
+vi.mock('../src/components/auction-card',()=>({AuctionCard:({auction}:{auction:CatalogAuction})=>createElement('article',{'data-related-auction':auction.code},auction.product.title)}));
 vi.mock('../src/components/auction-gallery',()=>({AuctionGallery:()=>createElement('div',{'data-product-gallery':true})}));
 vi.mock('../src/components/auction-share',()=>({AuctionShareOptions:()=>createElement('div',{'data-share-options':true})}));
 import {AuctionDetail} from '../src/components/auction-detail';
@@ -20,7 +21,7 @@ const auction={code:'5',slug:'bid-total-fixture',status:'live',isDemo:false,resu
  terms:{version:1,ruleVersion:'lowest-unique-v4',entryFeePoints:'50',minPoints:'1',maxPoints:null,stepPoints:'0.01',maxDistinctBids:100,noWinnerTerms:'Frozen terms',cancellationTerms:'Frozen terms'},
 } as unknown as CatalogAuction;
 const render=(language:'en'|'am'='en')=>renderToStaticMarkup(createElement(MiniLocaleProvider,{initialLanguage:language,children:createElement(AuctionDetail,{auction,serverNow:now})}));
-beforeEach(()=>{state.activity=null});
+beforeEach(()=>{state.activity=null;state.catalog=null});
 
 describe('public auction total accepted bids',()=>{
  it('shows the saved accepted-bid total while the activity request is unavailable',()=>{
@@ -40,10 +41,23 @@ describe('public auction total accepted bids',()=>{
   expect(html).toContain('Fee per bid');expect(html).toContain('ETB 50.00');expect(html).toContain('Auction code');
   expect(html).toContain('data-auction-bid');expect(html).toContain('Place a bid');expect(html).not.toContain('Pay ETB 50.00 &amp; bid');
   expect(html).toContain('Chosen numbers stay private until the result is published.');
-  expect(html).toContain('Frozen terms');expect(html).toContain('Collect the prize');
+  expect(html).not.toContain('Frozen terms');expect(html).not.toContain('Collect the prize');expect(html).not.toContain('A product');
+  expect(html).toContain('href="/terms"');
+  expect(html.indexOf('Fee per bid')).toBeLessThan(html.indexOf('More chances'));
+  expect(html.indexOf('Total bids')).toBeLessThan(html.indexOf('More chances'));
+  expect(html.indexOf('More chances')).toBeLessThan(html.indexOf('data-share-options'));
   expect(html.indexOf('data-product-gallery')).toBeLessThan(html.indexOf('<h1>'));
  });
  it('keeps the existing countdown and scheduled Ethiopian-time information',()=>{
   const html=render();expect(html).toContain('role="timer"');expect(html).toContain(`dateTime="${endsAt}"`);expect(html).toContain('3:33 AM');expect(html).toContain('EAT');
+ });
+ it('recommends only other auctions still accepting entries',()=>{
+  state.catalog={serverNow:now,items:[auction,{...auction,code:'6',product:{...auction.product,title:'Other live prize'}},{...auction,code:'7',endsAt:now},{...auction,code:'8',status:'upcoming'}]};
+  const html=render();expect(html).toContain('data-related-auction="6"');
+  for(const code of ['5','7','8'])expect(html).not.toContain(`data-related-auction="${code}"`);
+  expect(html).toContain('href="/#discover-auctions"');
+ });
+ it('omits the recommendations when no other live auction is available',()=>{
+  state.catalog={serverNow:now,items:[auction]};expect(render()).not.toContain('data-more-chances');
  });
 });

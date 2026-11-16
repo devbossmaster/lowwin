@@ -5,6 +5,7 @@ import {MINI_AUTH_TIMEOUT_MS,TelegramLaunchError,miniAuthError,signInTelegram,si
 import {enableTelegramFullscreen,observeTelegramSdk,type TelegramViewportApp} from '@/lib/telegram-sdk-client';
 import {telegramEnvironment,type TelegramEnvironment} from '@/lib/telegram-browser-login-client';
 import {clearTelegramAuthResume} from '@/lib/telegram-auth-resume';
+import {chapaRecoveryStorage,clearChapaRecoveryPointers} from '@/lib/chapa-recovery-pointer';
 import {invalidatePrivateQueries,loadPrivateJson,seedPrivateQuery,setPrivateQueryIdentity,subscribePrivateQueries} from './private-query-cache';
 type WebApp = TelegramViewportApp & { BackButton?:{isVisible?:boolean;show:()=>void;hide:()=>void;onClick:(handler:()=>void)=>void;offClick:(handler:()=>void)=>void};ready: () => void; close?:()=>void; openLink?:(url:string)=>void; openTelegramLink?:(url:string)=>void; requestContact?:(callback:(shared:boolean)=>void)=>void; setHeaderColor?: (color: string) => void; setBackgroundColor?: (color: string) => void };
 declare global { interface Window { Telegram?: { WebApp?: WebApp } } }
@@ -37,6 +38,7 @@ export function TelegramProvider({ children, devEnabled, botUrl }: { children: R
     identityRef.current=null;accountRef.current=null;setPrivateQueryIdentity(null);setQueryIdentity(null);setMe(null);
   },[]);
   const acceptAccount=useCallback((account:Me)=>{
+    clearChapaRecoveryPointers(chapaRecoveryStorage(),account.user.id);
     if(accountRef.current&&accountRef.current.user.id!==account.user.id)clearTelegramAuthResume();
     const profileChanged=accountRef.current?.user.id===account.user.id&&JSON.stringify(accountRef.current.user)!==JSON.stringify(account.user);
     accountRef.current=account;
@@ -65,6 +67,7 @@ export function TelegramProvider({ children, devEnabled, botUrl }: { children: R
     ++attemptSequence.current;
     try{
       await signOutMiniAccount();
+      clearChapaRecoveryPointers(chapaRecoveryStorage());
       clearTelegramAuthResume();
       // The same SDK launch must not immediately sign the user back in.
       launchAttempt.current=window.Telegram?.WebApp?.initData??'';

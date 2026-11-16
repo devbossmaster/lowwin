@@ -1,6 +1,6 @@
 import {z} from 'zod';
 import {safeChapaPaymentReason} from '@/lib/chapa-payment-reason';
-import {chapaAvailability,chapaHash,ChapaError,ChapaProviderError,createChapaTransport,parseChapaPaymentMethods,type ChapaDirectCreate,type ChapaTransport} from './chapa-provider';
+import {chapaAvailability,chapaHash,ChapaError,ChapaProviderError,createChapaTransport,parseChapaPaymentMethods,safeChapaProviderDiagnostic,type ChapaProviderDiagnostic,type ChapaDirectCreate,type ChapaTransport} from './chapa-provider';
 
 type Environment=Record<string,string|undefined>;
 const API='https://api.chapa.global';
@@ -46,10 +46,10 @@ async function inlineJson(response:Response){
   for(;;){const part=await reader.read();if(part.done)break;length+=part.value.byteLength;if(length>65536){await reader.cancel();throw Error('Response bound')}chunks.push(part.value)}
   let body:unknown;try{body=JSON.parse(Buffer.concat(chunks).toString('utf8'))}catch{throw Error('Invalid JSON')}
   if(!response.ok){
-   const parsed=z.object({reason:z.unknown().optional(),error:z.object({code:z.string().regex(/^[A-Z][A-Z0-9_]{0,79}$/),details:z.unknown().optional()}).optional()}).safeParse(body);
+   const parsed=z.object({message:z.unknown().optional(),reason:z.unknown().optional(),error:z.object({code:z.string().regex(/^[A-Z][A-Z0-9_]{0,79}$/),details:z.unknown().optional()}).optional()}).safeParse(body);
    const code=parsed.success?parsed.data.error?.code??'HTTP_ERROR':'HTTP_ERROR',details=parsed.success?parsed.data.error?.details:null;
    const reason=safeChapaPaymentReason(code)??(parsed.success?safeChapaPaymentReason(parsed.data.reason):null)??(details&&typeof details==='object'&&!Array.isArray(details)?safeChapaPaymentReason((details as Record<string,unknown>).reason):null);
-   throw new ChapaProviderError(response.status,code,undefined,reason??undefined);
+   throw new ChapaProviderError(response.status,code,undefined,reason??undefined,safeChapaProviderDiagnostic(response.status,code,parsed.success?parsed.data.message:undefined));
   }
   return body;
  }catch(error){if(error instanceof ChapaProviderError)throw error;throw new ChapaError(502,'PROVIDER_UNAVAILABLE','Payment confirmation is pending. Check this same payment again.')}
@@ -74,14 +74,22 @@ export function createChapaInlineTransport(options:{env?:Environment;fetcher?:ty
 export const chapaInlineTransport=createChapaInlineTransport();
 
 export type InlineMethod={slug:string;name:string;minimumCents:string;maximumCents:string;minAmountCents:string;maxAmountCents:string};
+export type InlineMethodDiagnostic={state:'disabled'|'not-checked'|'loading'|'available'|'empty'|'expired'|'unavailable';checkedAt?:number;methodCount?:number;httpStatus?:number;providerCode?:string;diagnostic?:ChapaProviderDiagnostic};
 /** General enabled wallet capabilities apply to Inline; Direct's additional
  * can_process_direct_charge gate is not documented for this API. */
 export function createInlineMethodCatalog(transport:ChapaTransport=chapaInlineTransport,raw:Environment=process.env){
  type Flight={key:string;promise:Promise<InlineMethod[]>};
  let cached:{key:string;until:number;methods:InlineMethod[]}|null=null,pending:Flight|null=null;
+ let observed:{key:string;value:InlineMethodDiagnostic}|null=null;
  const configuration=()=>{const health=chapaInlineAvailability(raw),methods=chapaInlineConfiguredMethods(raw);return {enabled:health.enabled,methods,key:`${health.mode}:${health.credentialFingerprint}:${health.publicKeyFingerprint}:${methods.join(',')}`}};
  const current=(key:string)=>{const next=configuration();if(!next.enabled||next.key!==key)throw new ChapaError(503,'CONFIGURATION_CHANGED','Reload payment options before paying.')};
- return {async get(amountCents?:bigint){
+ return {diagnostic():InlineMethodDiagnostic{
+  const config=configuration();if(!config.enabled)return {state:'disabled'};
+  if(pending?.key===config.key)return {state:'loading'};
+  if(observed?.key!==config.key)return {state:'not-checked'};
+  if(observed.value.state!=='unavailable'&&cached?.key===config.key&&cached.until<=Date.now())return {...observed.value,state:'expired'};
+  return {...observed.value};
+ },async get(amountCents?:bigint){
   const config=configuration();if(!config.enabled)throw new ChapaError(503,'PAYMENT_UNAVAILABLE','External payments are unavailable.');
   let methods:InlineMethod[];
   if(cached?.key===config.key&&cached.until>Date.now())methods=cached.methods;
@@ -93,7 +101,10 @@ export function createInlineMethodCatalog(transport:ChapaTransport=chapaInlineTr
      const available=config.methods.flatMap(slug=>{const method=found.find(m=>m.slug===slug);return method?[{slug:method.slug,name:method.name,minimumCents:method.minimumCents,maximumCents:method.maximumCents,minAmountCents:method.minimumCents,maxAmountCents:method.maximumCents}]:[]});
      // An empty successful response remains fail-closed, but must not pin a
      // recovered merchant capability state behind the healthy five-minute TTL.
-     if(pending===flight)cached={key:config.key,until:Date.now()+(available.length?300000:5000),methods:available};return available;
+     if(pending===flight){cached={key:config.key,until:Date.now()+(available.length?300000:5000),methods:available};observed={key:config.key,value:{state:available.length?'available':'empty',checkedAt:Date.now(),methodCount:available.length}}}return available;
+    }).catch(error=>{
+     if(pending===flight)observed={key:config.key,value:{state:'unavailable',checkedAt:Date.now(),...(error instanceof ChapaProviderError?{httpStatus:error.httpStatus,providerCode:error.providerCode,...(error.diagnostic?{diagnostic:error.diagnostic}:{})}:{})}};
+     throw error;
     }).finally(()=>{if(pending===flight)pending=null});
     flight={key:config.key,promise};pending=flight;
    }
