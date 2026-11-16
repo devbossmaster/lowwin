@@ -19,10 +19,21 @@ describe('read-only original Inline key discovery',()=>{
   await vi.advanceTimersByTimeAsync(60000);expect(read).not.toHaveBeenCalled();source.visibilityState='visible';source.dispatchEvent(new Event('visibilitychange'));wake.dispatchEvent(new Event('focus'));wake.dispatchEvent(new Event('online'));expect(read).toHaveBeenCalledOnce();
   resolve(order);await vi.advanceTimersByTimeAsync(0);expect(received).toHaveBeenCalledOnce();expect(resume).toHaveBeenCalledOnce();stop();
  });
- it('bounds missing-row reads without declaring the payment failed or starting another operation',async()=>{
-  vi.useFakeTimers();const wake=new EventTarget(),read=vi.fn().mockRejectedValue(new ChapaClientError('Not found',404,'NOT_FOUND')),received=vi.fn(),error=vi.fn(),pause=vi.fn();
-  const stop=startChapaOriginalPolling(read,received,visibility(),{isCurrent:()=>true,wake,maximumReads:3,onError:error,onPause:pause});
-  await vi.advanceTimersByTimeAsync(60000);expect(read).toHaveBeenCalledTimes(3);expect(pause).toHaveBeenCalledOnce();expect(received).not.toHaveBeenCalled();expect(error).not.toHaveBeenCalled();wake.dispatchEvent(new Event('focus'));await vi.advanceTimersByTimeAsync(10000);expect(read).toHaveBeenCalledTimes(3);stop();
+ it('bounds missing-row reads and resumes the same read-only discovery after connectivity returns',async()=>{
+  vi.useFakeTimers();const wake=new EventTarget(),read=vi.fn().mockRejectedValue(new ChapaClientError('Not found',404,'NOT_FOUND')),received=vi.fn(),error=vi.fn(),pause=vi.fn(),resume=vi.fn();
+  const stop=startChapaOriginalPolling(read,received,visibility(),{isCurrent:()=>true,wake,maximumReads:3,onError:error,onPause:pause,onResume:resume});
+  await vi.advanceTimersByTimeAsync(60000);expect(read).toHaveBeenCalledTimes(3);expect(pause).toHaveBeenCalledOnce();expect(received).not.toHaveBeenCalled();expect(error).not.toHaveBeenCalled();
+  read.mockResolvedValueOnce({...order,status:'CREDITED'});wake.dispatchEvent(new Event('online'));await vi.advanceTimersByTimeAsync(0);expect(read).toHaveBeenCalledTimes(4);expect(resume).toHaveBeenCalledOnce();expect(received).toHaveBeenCalledExactlyOnceWith({...order,status:'CREDITED'});
+  wake.dispatchEvent(new Event('focus'));await vi.advanceTimersByTimeAsync(60000);expect(read).toHaveBeenCalledTimes(4);stop();
+ });
+ it('coalesces sequential resume events after a fast read while preserving its scheduled retry',async()=>{
+  vi.useFakeTimers();const source=visibility(),wake=new EventTarget(),read=vi.fn().mockRejectedValue(new ChapaClientError('Not found',404)),received=vi.fn();source.visibilityState='hidden';
+  const stop=startChapaOriginalPolling(read,received,source,{isCurrent:()=>true,wake});source.visibilityState='visible';source.dispatchEvent(new Event('visibilitychange'));await vi.advanceTimersByTimeAsync(100);wake.dispatchEvent(new Event('focus'));await vi.advanceTimersByTimeAsync(100);wake.dispatchEvent(new Event('online'));await vi.advanceTimersByTimeAsync(0);expect(read).toHaveBeenCalledOnce();
+  read.mockResolvedValue(order);await vi.advanceTimersByTimeAsync(800);expect(read).toHaveBeenCalledTimes(2);expect(received).toHaveBeenCalledExactlyOnceWith(order);stop();
+ });
+ it('allows a genuine second return from background inside the resume coalescing window',async()=>{
+  vi.useFakeTimers();const source=visibility(),wake=new EventTarget(),read=vi.fn().mockRejectedValue(new ChapaClientError('Not found',404)),received=vi.fn();source.visibilityState='hidden';
+  const stop=startChapaOriginalPolling(read,received,source,{isCurrent:()=>true,wake});source.visibilityState='visible';source.dispatchEvent(new Event('visibilitychange'));await vi.advanceTimersByTimeAsync(100);source.visibilityState='hidden';source.dispatchEvent(new Event('visibilitychange'));read.mockResolvedValue(order);source.visibilityState='visible';source.dispatchEvent(new Event('visibilitychange'));await vi.advanceTimersByTimeAsync(0);expect(read).toHaveBeenCalledTimes(2);expect(received).toHaveBeenCalledExactlyOnceWith(order);stop();
  });
  it.each([401,403])('stops on authoritative access denial %s while preserving the original operation',async status=>{
   vi.useFakeTimers();const wake=new EventTarget(),failure=new ChapaClientError('Access denied',status,'FORBIDDEN'),read=vi.fn().mockRejectedValue(failure),received=vi.fn(),error=vi.fn();

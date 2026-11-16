@@ -1,10 +1,12 @@
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {Prisma,type ChapaCheckout,type PrismaClient} from '@prisma/client';
 import {verifyChapaCheckout} from '../src/modules/payments/chapa';
+import {authorizeDirectCheckout} from '../src/modules/payments/chapa-direct';
 import {chapaHash,type ChapaTransport} from '../src/modules/payments/chapa-provider';
 import {chapaPendingVerificationDelay,shouldRefreshChapaAuthorization} from '../src/modules/payments/chapa-verification-policy';
 
 vi.mock('../src/modules/auth/own-contact',async importOriginal=>({...await importOriginal<typeof import('../src/modules/auth/own-contact')>(),decryptPhone:()=>'+251911652904'}));
+vi.mock('../src/lib/rate-limit',async importOriginal=>({...await importOriginal<typeof import('../src/lib/rate-limit')>(),allowIdentityRequest:vi.fn(async()=>true)}));
 
 const id='8d845028-bb7a-4cce-bca6-510bb149ed01',privateKey='CHAPA_TEST_'+'a'.repeat(40);
 function fixture(patch:Partial<ChapaCheckout>={}){
@@ -33,6 +35,26 @@ beforeEach(()=>{
 afterEach(()=>{vi.unstubAllEnvs();vi.useRealTimers()});
 
 describe('bounded Chapa authorization refresh and private verification',()=>{
+ it.each(['waiting','rejected','unavailable'])('does not release a newer lease after a delayed OTP %s response',async response=>{
+  const f=fixture({authType:'OTP',validationAttempts:0});let successorLease:Date;
+  f.validate.mockImplementationOnce(async()=>{
+   vi.advanceTimersByTime(21000);successorLease=new Date(Date.now()+45000);
+   f.patch({status:'VERIFYING',leaseUntil:successorLease,nextCheckAt:successorLease});
+   if(response==='unavailable')throw new Error('Temporary provider transport failure');
+   return {status:'success',data:{chapa_reference:'CHowned',merchant_reference:'LWowned',amount:4000,currency:'ETB',payment_method:'telebirr',status:response==='rejected'?'FAILED':'PENDING',mode:'test'}};
+  });
+  const authorize=authorizeDirectCheckout(f.db,'owner',id,{otp:'123456'},undefined,f.transport);
+  if(response==='unavailable')await expect(authorize).rejects.toThrow('Temporary provider transport failure');
+  else await expect(authorize).resolves.toMatchObject({status:'VERIFYING'});
+  expect(f.row().leaseUntil).toEqual(successorLease!);expect(f.row().nextCheckAt).toEqual(successorLease!);
+  expect(f.lookup).not.toHaveBeenCalled();expect(f.row().reason).toBeNull();
+ });
+ it('releases only its own OTP lease then verifies the original reference once',async()=>{
+  const f=fixture({authType:'OTP',validationAttempts:0});
+  await expect(authorizeDirectCheckout(f.db,'owner',id,{otp:'123456'},undefined,f.transport)).resolves.toMatchObject({status:'PENDING'});
+  expect(f.validate).toHaveBeenCalledExactlyOnceWith({reference:'CHowned',paymentMethod:'telebirr',otp:'123456'});
+  expect(f.lookup).toHaveBeenCalledExactlyOnceWith('LWowned');expect(f.row().leaseUntil).toBeNull();
+ });
  it('refreshes an active prompt after five seconds and keeps cooldown reads free of provider HTTP',async()=>{
   const f=fixture();expect(await f.verify()).toMatchObject({status:'PENDING'});expect(f.row().nextCheckAt.getTime()-Date.now()).toBe(5000);
   await f.verify();vi.advanceTimersByTime(4999);await f.verify();expect(f.validate).toHaveBeenCalledOnce();expect(f.lookup).toHaveBeenCalledOnce();

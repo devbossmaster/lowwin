@@ -9,6 +9,15 @@ function visibility(){
 afterEach(()=>vi.useRealTimers());
 
 describe('automatic server-owned Chapa verification',()=>{
+ it('coalesces sequential resume events after a fast response without losing the scheduled check',async()=>{
+  vi.useFakeTimers();const source=visibility(),wake=new EventTarget(),verify=vi.fn().mockResolvedValue({...pending,pollAfterMs:2000});source.visibilityState='hidden';
+  const stop=startChapaPolling(verify,vi.fn(),source,{observeDirect:true,wake});source.visibilityState='visible';source.dispatchEvent(new Event('visibilitychange'));await vi.advanceTimersByTimeAsync(100);wake.dispatchEvent(new Event('focus'));await vi.advanceTimersByTimeAsync(100);wake.dispatchEvent(new Event('online'));await vi.advanceTimersByTimeAsync(0);expect(verify).toHaveBeenCalledOnce();
+  verify.mockResolvedValue({...pending,status:'CREDITED'});await vi.advanceTimersByTimeAsync(1800);expect(verify).toHaveBeenCalledTimes(2);await vi.advanceTimersByTimeAsync(60000);expect(verify).toHaveBeenCalledTimes(2);stop();
+ });
+ it('does not suppress a genuine foreground return inside the resume coalescing window',async()=>{
+  vi.useFakeTimers();const source=visibility(),wake=new EventTarget(),verify=vi.fn().mockResolvedValue(pending);source.visibilityState='hidden';
+  const stop=startChapaPolling(verify,vi.fn(),source,{observeDirect:true,wake});source.visibilityState='visible';source.dispatchEvent(new Event('visibilitychange'));await vi.advanceTimersByTimeAsync(100);source.visibilityState='hidden';source.dispatchEvent(new Event('visibilitychange'));verify.mockResolvedValue({...pending,status:'CREDITED'});source.visibilityState='visible';source.dispatchEvent(new Event('visibilitychange'));await vi.advanceTimersByTimeAsync(0);expect(verify).toHaveBeenCalledTimes(2);stop();
+ });
  it('keeps an outstanding direct charge checking beyond five minutes and reconciles at provider expiry',async()=>{
   vi.useFakeTimers();const now=Date.now(),pause=vi.fn(),verify=vi.fn().mockResolvedValue({...pending,chargeType:'DIRECT',pollAfterMs:15000});
   const stop=startChapaPolling(verify,pause,visibility(),{observeDirect:true,deadlineAt:now+360000,wake:null});

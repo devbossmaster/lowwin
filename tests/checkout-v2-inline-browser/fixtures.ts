@@ -96,7 +96,7 @@ export async function walletFixture(page:Page,f:Awaited<ReturnType<typeof inline
  return {commands,knownPosts,reads,operations,debits:()=>debits,available:()=>available};
 }
 
-export async function openBid(page:Page,title:string){await page.locator('.auction-card').filter({hasText:title}).getByRole('button').click();return page.getByRole('dialog')}
+export async function openBid(page:Page,title:string){await page.locator('.auction-card').filter({hasText:title}).locator('button.card-action').click();return page.getByRole('dialog')}
 /** Handles the optional multiple-bid review without submitting any payment. */
 export async function continueToBidPayment(dialog:import('@playwright/test').Locator){
  await dialog.locator('[data-payment-action]').click();

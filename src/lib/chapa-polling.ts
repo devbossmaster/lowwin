@@ -7,10 +7,11 @@ type Options={onError?:(error:unknown)=>void;onResume?:()=>void;wake?:Events|nul
 /** Bounded automatic checks of the owned endpoint. Returning to the app wakes a
  * paused check; no pending/error/redirect is ever converted into success. */
 export function startChapaPolling(verify:()=>Promise<ChapaCheckoutView|null>,onPause:()=>void,visibility:Visibility=document,options:Options={}){
- let active=true,paused=false,inFlight=false,delay=5000,timer:ReturnType<typeof setTimeout>|undefined;
+ let active=true,paused=false,inFlight=false,delay=5000,lastWakeAt=-Infinity,timer:ReturnType<typeof setTimeout>|undefined;
  const fixedDeadline=typeof options.deadlineAt==='number'&&Number.isFinite(options.deadlineAt)?options.deadlineAt:null;
  let deadline=options.observeDirect?fixedDeadline??Infinity:Math.min(Date.now()+300000,fixedDeadline??Infinity);
  let fastUntil=Date.now()+30000;
+ let wasHidden=visibility.visibilityState!=='visible';
  const wake=options.wake===undefined?(typeof window==='undefined'?null:window):options.wake;
  const schedule=()=>{
   clearTimeout(timer);
@@ -39,8 +40,11 @@ export function startChapaPolling(verify:()=>Promise<ChapaCheckoutView|null>,onP
   }finally{inFlight=false;if(active&&!options.observeDirect&&Date.now()>=deadline)pause();schedule()}
  };
  const onWake=()=>{
-  clearTimeout(timer);
-  if(!active||visibility.visibilityState!=='visible')return;
+  if(!active)return;
+  if(visibility.visibilityState!=='visible'){wasHidden=true;clearTimeout(timer);return}
+  // Coalesce browser resume signals even when the first status response is fast.
+  // Do not clear its scheduled retry when ignoring a duplicate signal.
+  const now=Date.now();if(!wasHidden&&now-lastWakeAt<750)return;wasHidden=false;lastWakeAt=now;clearTimeout(timer);
   fastUntil=Date.now()+30000;
   // Reopening or returning after the customer window gets one fresh server
   // check for a late success, without starting another five-minute loop.

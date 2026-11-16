@@ -81,7 +81,7 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
   else if(walletRetry){headings[phase]=['Confirm your wallet payment','የዋሌት ክፍያዎን ያረጋግጡ'];messages[phase]=['Retry the original request to retrieve its result. This will not create a second debit.','ውጤቱን ለማግኘት የመጀመሪያውን ጥያቄ ይድገሙ። ሁለተኛ ክፍያ አይፈጥርም።']}
  }
  if(currentInline&&hostedUrl&&!finished&&!terminal){headings[phase]=['Complete your payment','ክፍያዎን ያጠናቅቁ'];messages[phase]=['Complete payment on the secure payment page. Your status updates automatically.','ክፍያውን በተጠበቀው የክፍያ ገጽ ያጠናቅቁ። ውጤቱ በራሱ ይዘምናል።']}
- if(legacyRecovery&&phase==='uncertain'){headings.uncertain=['Checking your previous payment','?????? ??? ?????? ??'];messages.uncertain=['We are checking the original payment. Please do not pay again yet.','???????? ??? ?????? ?? ??? ?? ????? ??????']}
+ if(legacyRecovery&&phase==='uncertain'){headings.uncertain=['Checking your previous payment','የቀድሞ ክፍያዎን እያረጋገጥን ነው'];messages.uncertain=['We are checking the original payment. Please do not pay again yet.','የጀመሩትን ክፍያ እያረጋገጥን ነው። እስከዚያው ድረስ እንደገና አይክፈሉ።']}
  useEffect(()=>{setOtp('')},[order?.id]);
  useEffect(()=>{
   payment.markPresented('feedback');
