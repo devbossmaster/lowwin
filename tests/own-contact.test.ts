@@ -78,7 +78,7 @@ describe.skipIf(!url)('required own-contact boundary',()=>{
   expect(await db.session.count({where:{userId:user.id}})).toBe(1);
   expect((await contactStatus(db,user.id)).verified).toBe(true);
  });
- it('commits contact without Telegram calls and deduplicates its durable confirmation',async()=>{
+ it('commits contact without Telegram calls and retains its deduplicated retired confirmation without delivery',async()=>{
   const id=next(),updateId=next(),{processOneUpdate}=await import('../src/modules/bot/worker');
   await db.botUpdate.updateMany({where:{processedAt:null},data:{processedAt:new Date(),payload:{}}});
   expect((await receive({update_id:updateId,message:message(id)})).status).toBe(200);
@@ -88,14 +88,14 @@ describe.skipIf(!url)('required own-contact boundary',()=>{
   expect((await contactStatus(db,user.id)).verified).toBe(true);
   const key=`contact-confirmed:${contactBotId()}:${id}`;
   expect(await db.outbox.count({where:{key,kind:'CONTACT_CONFIRMED'}})).toBe(1);
-  // The existing durable notification worker handles the optional confirmation
-  // later. Contact status was already available even with Telegram failing.
+  // Registration is already durable. The retired confirmation remains audit
+  // evidence without reintroducing an extra automatic Telegram message.
   const {dispatchOne}=await import('../src/modules/notifications/service');
   await db.outbox.update({where:{key},data:{nextAttemptAt:new Date(0)}});
   const delivered=vi.fn(async()=>({message_id:1}));
   expect(await dispatchOne(db,{api:{sendMessage:delivered}} as unknown as Bot)).toBe(true);
-  expect(delivered).toHaveBeenCalledExactlyOnceWith(String(id),expect.stringContaining('registered with Lowwin'),expect.objectContaining({reply_markup:{inline_keyboard:[[{text:'Open Lowwin',web_app:{url:'http://localhost:3000'}}]]}}));
-  expect((await db.outbox.findUniqueOrThrow({where:{key}})).state).toBe('SENT');
+  expect(delivered).not.toHaveBeenCalled();
+  expect(await db.outbox.findUniqueOrThrow({where:{key}})).toMatchObject({state:'SKIPPED',lastError:'NOTIFICATION_RETIRED'});
   const repeatUpdateId=next();expect((await receive({update_id:repeatUpdateId,message:message(id)})).status).toBe(200);
   expect(await processOneUpdate(db,bot)).toBe(true);expect(sent).not.toHaveBeenCalled();
   expect(await db.outbox.count({where:{key}})).toBe(1);expect(await db.user.count({where:{telegramId:String(id)}})).toBe(1);

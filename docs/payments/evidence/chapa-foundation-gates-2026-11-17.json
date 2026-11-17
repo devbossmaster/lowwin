@@ -6,14 +6,18 @@
   "readOnlySourceComparison": true,
   "comparisonCommand": "git diff --name-only e7d25f2..4c3bbcb -- <notification/bot/admin/profile/results/media sources and these six test files>",
   "sourceDiffEmpty": true,
-  "baselineExecutionPerformed": false,
-  "proofLimit": "This is a source/test comparison, not a clean baseline execution. Remaining failures require triage before merge.",
+  "baselineExecutionPerformed": true,
+  "proofLimit": "Actual baseline and head 108-case reproduction is now complete under matching local Windows/Node/PostgreSQL conditions. Historical failure inventory below is retained; final Linux CI remains authoritative for aggregate status.",
   "remainingHistoricalSchemaSetupFailure": {
     "file": "tests/chapa-schema.test.ts",
     "blockedTests": 9,
-    "attemptedRepairRetained": false
+    "attemptedRepairRetained": true,
+    "status": "repaired in test fixture; all nine cases passed in 108-case rerun"
   },
-  "remainingUnchangedFailures": [
+  "note": "Do not sum overlapping counts. No retired notifications were restored and no privacy or financial contract was weakened.",
+  "historicalSnapshot": true,
+  "baselineExecutionEvidence": "../../chapa-foundation-baseline-reproduction-2026-11-17.json",
+  "historicalFailures": [
     {
       "file": "tests/admin-wallet-credit.test.ts",
       "test": "admin funds on disposable PostgreSQL > commits exact funds, owner attribution, one private alert and one queued bot message without a transaction ID"
@@ -79,5 +83,25 @@
       "test": "winner presentation on isolated PostgreSQL > adds, replaces and resets the photo while all winning and ledger facts remain identical"
     }
   ],
-  "note": "Do not restore retired notifications, alter privacy, or redesign product behavior merely to satisfy these older assertions. Root retains the broad CI gate."
+  "finalRepairs": {
+    "productionCodeChanged": false,
+    "cohortPassed": 108,
+    "cohortFailed": 0,
+    "cohortSkipped": 0,
+    "localFull": {
+      "filesPassed": 275,
+      "filesTotal": 276,
+      "assertionsPassed": 3175,
+      "assertionFailures": 0,
+      "blockedCases": 7,
+      "cause": "Windows cleanup EPERM before contact suite"
+    },
+    "correctedContactSuite": {
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    "finalTypeScript": "passed",
+    "linuxFullGate": "must reach terminal after frozen repair batch push"
+  }
 }

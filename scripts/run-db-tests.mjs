@@ -28,8 +28,8 @@ try {
   }
 } finally {await client.end();}
 env.DATABASE_URL=env.DIRECT_URL=env.TEST_DATABASE_URL;
-if(mode==='chapa'||mode==='nov7')Object.assign(env,{CHAPA_TEST_DATABASE_URL:env.TEST_DATABASE_URL,CHAPA_ENABLED:'false',CHAPA_RECOVERY_ENABLED:'false',CHAPA_SCHEMA_READY:'false',CHAPA_MODE:'test',CHAPA_PRIVATE_KEY:'',CHAPA_WEBHOOK_SECRET:'',CHAPA_RECOVERY_BINDINGS:'',CHAPA_LIVE_ENABLED:'false',CHAPA_MERCHANT_REVIEWED:'false',CHAPA_DIRECT_EBIRR_ENABLED:'false',WALLET_BIDS_ENABLED:'false',WALLET_BIDS_LIVE_ENABLED:'false',PAYMENTS_LIVE_ENABLED:'false',ARIFPAY_ENABLED:'false'});
-if(mode==='nov7'){
+if(mode==='chapa'||mode==='nov7')Object.assign(env,{REDIS_URL:'',CHAPA_TEST_DATABASE_URL:env.TEST_DATABASE_URL,CHAPA_ENABLED:'false',CHAPA_INLINE_ENABLED:'false',CHAPA_RECOVERY_ENABLED:'false',CHAPA_SCHEMA_READY:'false',CHAPA_MODE:'test',CHAPA_PRIVATE_KEY:'',CHAPA_PUBLIC_KEY:'',CHAPA_WEBHOOK_SECRET:'',CHAPA_TEST_VALIDATION_PRIVATE_KEY:'',CHAPA_TEST_VALIDATION_PUBLIC_KEY:'',CHAPA_TEST_VALIDATION_WEBHOOK_SECRET:'',CHAPA_V1_ENABLED:'false',CHAPA_V1_RECOVERY_ENABLED:'false',CHAPA_V1_SECRET_KEY:'',CHAPA_V1_PUBLIC_KEY:'',CHAPA_V1_WEBHOOK_SECRET:'',CHAPA_RECOVERY_BINDINGS:'',CHAPA_LIVE_ENABLED:'false',CHAPA_MERCHANT_REVIEWED:'false',CHAPA_DIRECT_EBIRR_ENABLED:'false',WALLET_BIDS_ENABLED:'false',WALLET_BIDS_LIVE_ENABLED:'false',PAYMENTS_LIVE_ENABLED:'false',ARIFPAY_ENABLED:'false'});
+if(mode==='chapa'||mode==='nov7'){
  const port=Number(env.NOV7_PORT??3157);if(!Number.isSafeInteger(port)||port<1024||port>65535)throw Error('Invalid isolated November browser port.');
  const origin=`https://localhost:${port}`;
  // Build and runtime use the same isolated fixture identity configuration.
@@ -54,10 +54,10 @@ if(mode==='unit') {
     run(['node_modules/next/dist/bin/next','build','--webpack']);
     env.NODE_ENV=runtimeNodeEnv??'development';
   }else if(mode!=='chapa'&&mode!=='nov7')run(['node_modules/tsx/dist/cli.mjs','scripts/seed-catalog.ts']);
-  if(mode==='nov7'){
+  if(mode==='chapa'||mode==='nov7'){
     const runtimeNodeEnv=env.NODE_ENV;env.NODE_ENV='production';
     run(['node_modules/next/dist/bin/next','build','--webpack']);
-    env.NODE_ENV=runtimeNodeEnv??'development';
+    env.NODE_ENV=mode==='chapa'?'production':runtimeNodeEnv??'development';
   }
   if(mode==='redesign'&&env.REDESIGN_PRODUCTION==='1'){
     env.LOWIN_UI_TEST_MODE='local';

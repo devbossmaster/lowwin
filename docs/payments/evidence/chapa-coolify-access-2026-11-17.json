@@ -1,0 +1,26 @@
+{
+  "checkedAt": "2026-11-17T07:38:15.626Z",
+  "origin": "https://coolify.gojoplay.online",
+  "readOnly": true,
+  "authenticated": false,
+  "configurationChanged": false,
+  "applicationDeployed": false,
+  "checks": [
+    {
+      "path": "/api/v1/health",
+      "status": 200,
+      "tlsValidated": true,
+      "healthOK": true
+    },
+    {
+      "path": "/api/v1/projects",
+      "status": 401,
+      "tlsValidated": true
+    }
+  ],
+  "linkedResourceIdentityVerified": false,
+  "authenticatedInventoryPerformed": false,
+  "stagingTargetIdentified": false,
+  "deployedStreamingSamples": 0,
+  "physicalDeviceEvidence": "deferred"
+}

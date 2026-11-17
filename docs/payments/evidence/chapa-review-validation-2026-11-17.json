@@ -16,7 +16,14 @@
     "advisory": "https://github.com/vercel/next.js/security/advisories/GHSA-mfr8-8qww-v76h",
     "patchedFloor": "16.4.5",
     "reactUnchanged": true,
-    "fullNpmAudit": { "info": 0, "low": 0, "moderate": 0, "high": 0, "critical": 0, "total": 0 }
+    "fullNpmAudit": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    }
   },
   "validation": [
     {
@@ -67,7 +74,10 @@
     {
       "kind": "production-bundle-payment-browser-fixtures",
       "result": "passed",
-      "widths": [360, 430],
+      "widths": [
+        360,
+        430
+      ],
       "testsPassed": 29,
       "intentionalDuplicateCasesSkipped": 11,
       "elapsedMs": 171969,
@@ -76,11 +86,19 @@
     {
       "kind": "production-bundle-admin-regression",
       "result": "passed",
-      "widths": [360, 430, 1440],
+      "widths": [
+        360,
+        430,
+        1440
+      ],
       "testsPassed": 3,
       "applicationWrites": 0
     },
-    { "kind": "standalone-typescript", "command": "npx tsc --noEmit", "result": "passed" },
+    {
+      "kind": "standalone-typescript",
+      "command": "npx tsc --noEmit",
+      "result": "passed"
+    },
     {
       "kind": "fresh-production-build",
       "command": "npm run build",
@@ -111,7 +129,7 @@
       "testsPassed": 31,
       "files": 4,
       "scope": "Admin payment table, notification durability, transactions and wallet history",
-      "historicalChapaSchemaSuite": "Attempted repair still failed against the old schema and was reverted; original CI blocker remains"
+      "historicalChapaSchemaSuite": "Subsequently repaired with chronological prerequisites and successors; included in 108 passing cases. See followupEvidence."
     },
     {
       "kind": "real-redis-cross-process-ci",
@@ -127,10 +145,66 @@
     "allChecksGreen": false,
     "remainingFailureInventory": "chapa-foundation-gates-2026-11-17.json",
     "fullRun": "https://github.com/devbossmaster/lowwin/actions/runs/44036042628",
-    "fullRunResultsBeforeFinalFixtureCorrections": { "testsPassed": 3128, "testsFailed": 29, "testsSkipped": 25, "suiteSetupFailures": 3 },
+    "fullRunResultsBeforeFinalFixtureCorrections": {
+      "testsPassed": 3128,
+      "testsFailed": 29,
+      "testsSkipped": 25,
+      "suiteSetupFailures": 3
+    },
     "subsequentRun": "https://github.com/devbossmaster/lowwin/actions/runs/44037051175",
-    "subsequentJobsConfirmedPassed": ["payment-stream-broker", "security", "static-secrets", "browser-admin"],
-    "remainingGate": "Unrelated baseline foundation failures are not hidden or treated as passing. Inspect latest PR checks after the final test-only corrections."
+    "subsequentJobsConfirmedPassed": [
+      "payment-stream-broker",
+      "security",
+      "static-secrets",
+      "browser-admin"
+    ],
+    "remainingGate": "Fresh Linux foundation and migrated payment-browser workflow must reach terminal. Separate redesign gate remains open with actual representative baseline reproduction and explicit limits; no all-green claim.",
+    "lastCompletedPreRepairRun": "https://github.com/devbossmaster/lowwin/actions/runs/44038433916",
+    "lastCompletedPreRepairResults": {
+      "foundation": {
+        "passed": 3157,
+        "failed": 16,
+        "skippedOrBlocked": 9
+      },
+      "browserChapa": {
+        "passed": 25,
+        "failed": 77,
+        "skipped": 2,
+        "cleanupError": true
+      },
+      "browserRedesign": {
+        "passed": 11,
+        "failed": 19,
+        "skipped": 1,
+        "conclusion": "cancelled at 25-minute job timeout; 43 planned cases no terminal result"
+      }
+    },
+    "finalLocalRepairEvidence": {
+      "foundationCohort": {
+        "passed": 108,
+        "failed": 0,
+        "skipped": 0
+      },
+      "correctedContactSuite": {
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0
+      },
+      "paymentBrowserDistinctCases": {
+        "passed": 84,
+        "failed": 0,
+        "intentionalDuplicateSkips": 11,
+        "acrossFocusedReruns": true,
+        "restoredAuthorizationModalCases": 4
+      },
+      "fullLocalFoundation": {
+        "passed": 3175,
+        "assertionFailures": 0,
+        "blockedByCleanup": 7,
+        "fullGatePassed": false
+      }
+    },
+    "currentChecks": "https://github.com/devbossmaster/lowwin/pull/16/checks"
   },
   "actualProvider": {
     "evidence": "chapa-test-inline-diagnosis-2026-11-17.json",
@@ -141,11 +215,32 @@
     "safeMessage": "payable not found",
     "rootCauseConfirmed": false,
     "originalOperationPreserved": true,
-    "distinctNewOperationsDuringReview": 0,
+    "distinctNewOperationsDuringReview": 1,
     "acceptedTestPayments": 0,
     "committedProviderCredits": 0,
     "authenticatedWebhookDeliveries": 0,
-    "merchantKeyPairBusinessBindingRequiresProviderConfirmation": true
+    "merchantKeyPairBusinessBindingRequiresProviderConfirmation": true,
+    "originalPairEvidenceHistorical": true,
+    "newPair": {
+      "evidence": "chapa-newpair-inline-test-2026-11-17.json",
+      "initializationCalls": 1,
+      "method": "telebirr",
+      "httpStatus": 400,
+      "code": "INVALID_VALUE",
+      "message": "payable not found",
+      "acceptedPayments": 0,
+      "credits": 0,
+      "receipts": 0,
+      "webhooks": 0,
+      "originalOperationRetained": true,
+      "latency": {
+        "samples": 1,
+        "applicationTotalMs": 2095,
+        "coldCapabilitiesMs": 988.1,
+        "initializationHttpMs": 968.9,
+        "rejectedOperationOnly": true
+      }
+    }
   },
   "deployment": {
     "stagingTargetIdentified": false,
@@ -155,7 +250,23 @@
     "productionDeploymentPerformed": false,
     "merged": false,
     "runbook": "../chapa-staging-rollout-2026-11-17.md",
-    "additiveMigrations": ["202611170001_chapa_payment_signals", "202611170002_chapa_signal_guards"],
-    "temporaryDashboardWebhookRemoval": "operator-action-required-no-authenticated-dashboard-access"
+    "additiveMigrations": [
+      "202611170001_chapa_payment_signals",
+      "202611170002_chapa_signal_guards"
+    ],
+    "temporaryDashboardWebhookRemoval": "operator-action-required-no-authenticated-dashboard-access",
+    "apiHealthAccess": "validated HTTPS health200, unauthenticated inventory401; resource identity unverified"
+  },
+  "followupEvidence": {
+    "date": "2026-11-17",
+    "foundation": "../../chapa-foundation-baseline-reproduction-2026-11-17.json",
+    "browser": "chapa-browser-ci-baseline-reproduction-2026-11-17.json",
+    "redesign": "chapa-redesign-ci-gates-2026-11-17.json",
+    "providerNewKeys": "chapa-newpair-inline-test-2026-11-17.json",
+    "providerReadOnlyChecks": "chapa-updated-test-keys-2026-11-17.json",
+    "stagingAccess": "chapa-coolify-access-2026-11-17.json",
+    "productionCodeChangedInTriageBatch": false,
+    "sourceDigestStillMatches": true,
+    "finalTypeScript": "passed"
   }
 }

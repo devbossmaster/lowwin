@@ -2,8 +2,13 @@ import {test,expect} from '@playwright/test';
 import {randomUUID} from 'node:crypto';
 import {fixture,pending} from './fixtures';
 
+async function returnToForeground(page:import('@playwright/test').Page){
+ await page.evaluate(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,value:'hidden'});document.dispatchEvent(new Event('visibilitychange'))});
+ await page.evaluate(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'});document.dispatchEvent(new Event('visibilitychange'));window.dispatchEvent(new Event('focus'))});
+}
+
 // Historical hosted orders still reopen and verify; new initiation is covered
-// by direct-checkout.spec. A return link never creates or proves a payment.
+// by checkout-v2-inline-browser. A return link never creates or proves payment.
 for(const purpose of ['TOP_UP','BID'] as const)test(`existing hosted ${purpose} return restores its owned modal and waits for verified fulfillment`,async({page},info)=>{
  const am=info.project.name==='430',id=randomUUID(),f=await fixture(page,am,'chapa_'+id);
  const order={...pending(purpose==='TOP_UP'?{key:id,purpose,amount:'100.00'}:{purpose,key:id,auctionSlug:f.auction.slug!,amount:'3.60',feeVersion:1},id),auctionTitle:f.title,auctionCode:String(f.auction.publicCode)};
@@ -13,7 +18,7 @@ for(const purpose of ['TOP_UP','BID'] as const)test(`existing hosted ${purpose} 
   await page.goto('/telegram');const sheet=page.getByRole('dialog');await expect(sheet.locator('[data-payment-state="confirming"]')).toBeVisible();
   await expect(page).toHaveURL(purpose==='TOP_UP'?new RegExp('/profile\\?(?:topup=1&)?chapa='+id):new RegExp('/auctions/'+f.auction.publicCode+'\\?chapa='+id));
   await expect(sheet.getByRole('button',{name:/Verify status|Check payment/i})).toHaveCount(0);await expect.poll(()=>checks).toBeGreaterThan(0);expect(creates).toBe(0);
-  complete=true;await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect(sheet.locator('[data-payment-state="confirmed"]')).toBeVisible();
+  complete=true;await returnToForeground(page);await expect(sheet.locator('[data-payment-state="confirmed"]')).toBeVisible();
   if(purpose==='BID')await expect(sheet.getByRole('heading',{name:am?'ጨረታው ተቀብሏል':'Bid accepted',exact:true})).toBeVisible();
   await sheet.getByRole('button',{name:am?'ተጠናቋል':'Done',exact:true}).click();await expect(sheet).toHaveCount(0);expect(creates).toBe(0);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  }finally{await f.db.$disconnect()}
@@ -24,8 +29,8 @@ test('an owned historical payment preserves unavailable and review states, then 
  try{
   await page.route('**/api/payments/chapa/checkouts**',route=>{const req=route.request(),collection=new URL(req.url()).pathname.endsWith('/checkouts');if(collection&&req.method()==='POST'){creates++;return route.abort()}return route.fulfill({json:{...order,...(phase==='unavailable'?{verificationState:'UNAVAILABLE',reason:'PROVIDER_CONFIRMATION_REQUIRED'}:phase==='review'?{status:'NEEDS_REVIEW',verificationState:'MISMATCH',reason:'EVIDENCE_MISMATCH'}:{status:'CREDITED',providerStatus:'SUCCESS',verificationState:'VERIFIED'})}})});
   await page.goto('/telegram');const sheet=page.getByRole('dialog');await expect(sheet.locator('[data-payment-state="unavailable"]')).toBeVisible();
-  phase='review';await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect(sheet.locator('[data-payment-state="review"]')).toBeVisible();
-  phase='credited';await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect(sheet.locator('[data-payment-state="confirmed"]')).toBeVisible();expect(creates).toBe(0);
+  phase='review';await returnToForeground(page);await expect(sheet.locator('[data-payment-state="review"]')).toBeVisible();
+  phase='credited';await returnToForeground(page);await expect(sheet.locator('[data-payment-state="confirmed"]')).toBeVisible();expect(creates).toBe(0);
  }finally{await f.db.$disconnect()}
 });
 

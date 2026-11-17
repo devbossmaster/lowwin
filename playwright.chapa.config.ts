@@ -1,7 +1,25 @@
 import {defineConfig} from '@playwright/test';
-import {ENGLISH_UI_STATE} from './tests/helpers';
-const database=process.env.TEST_DATABASE_URL??'',target=new URL(database);
-if(!['localhost','127.0.0.1'].includes(target.hostname)||!target.pathname.endsWith('_test'))throw Error('Chapa UI checks require a disposable loopback _test database');
-const origin='http://localhost:3156',env={DATABASE_URL:database,DIRECT_URL:database,APP_ENV:'local',LOWIN_UI_TEST_MODE:'chapa',LOWWIN_BROWSER_WEBPACK:'1',BETTER_AUTH_URL:origin,MINI_APP_URL:origin,BETTER_AUTH_SECRET:'chapa-local-ui-secret-at-least-thirty-two-characters',TELEGRAM_BOT_TOKEN:'123456789:chapa_ui_local_test_token_20261026',TELEGRAM_BOT_USERNAME:'lowin_fixture_bot',TELEGRAM_WEBHOOK_SECRET:'chapa-local-ui-webhook-secret-20261026',PHONE_CONTACT_KEY_ID:'local-fixture',PHONE_CONTACT_KEYS:JSON.stringify({'local-fixture':'e'.repeat(64)}),PHONE_CONTACT_HASH_KEY:'f'.repeat(64),DEV_IDENTITY_ENABLED:'false',DEV_POINTS_ENABLED:'false',CHAPA_ENABLED:'false',CHAPA_SCHEMA_READY:'false',WALLET_BIDS_ENABLED:'false',PAYMENTS_LIVE_ENABLED:'false',ARIFPAY_ENABLED:'false',REFERRAL_REWARDS_SCHEMA_READY:'true'};
-Object.assign(process.env,env);
-export default defineConfig({testDir:'./tests/chapa-browser',testMatch:['checkout-ui.spec.ts','recovery.spec.ts','return-ui.spec.ts','v2-errors.spec.ts','ui-polish.spec.ts','final-tuning.spec.ts','winner-banner.spec.ts'],outputDir:'test-results/chapa-ui',workers:1,timeout:240000,expect:{timeout:45000},reporter:[['list'],['json',{outputFile:'test-results/chapa-ui/results.json'}]],use:{baseURL:origin,storageState:ENGLISH_UI_STATE,browserName:'chromium',channel:process.env.PLAYWRIGHT_CHANNEL==='chrome'?'chrome':undefined,actionTimeout:15000,trace:'retain-on-failure'},globalSetup:'./tests/browser-server-setup.ts',metadata:{testServers:[{kind:'next',port:3156,env}]},projects:[{name:'desktop',testMatch:['return-ui.spec.ts','v2-errors.spec.ts','ui-polish.spec.ts','final-tuning.spec.ts','winner-banner.spec.ts'],use:{viewport:{width:1280,height:900}}},{name:'360',testIgnore:'winner-banner.spec.ts',use:{viewport:{width:360,height:800}}},{name:'430',testIgnore:'winner-banner.spec.ts',use:{viewport:{width:430,height:932}}}]});
+import base from './playwright.checkout-v2-inline.config';
+
+// Payment CI follows the shipped v2 Inline entry points. Historical orders
+// still have explicit hosted return, Direct recovery and account isolation
+// checks; they must never be tested by starting a retired Direct checkout.
+const mobile=[
+ '**/checkout-v2-inline-browser/**/*.spec.ts',
+ '**/reference-bid-browser/payment-status.spec.ts',
+ '**/chapa-browser/recovery.spec.ts',
+ '**/chapa-browser/return-ui.spec.ts',
+ '**/chapa-browser/v2-errors.spec.ts',
+ '**/nov7-browser/public-ui.spec.ts',
+ '**/nov7-browser/registration.spec.ts',
+ '**/nov7-browser/quick-navigation.spec.ts',
+];
+export default defineConfig({
+ ...base,testDir:'./tests',outputDir:'test-results/chapa-ui',
+ timeout:90000,expect:{timeout:15000},
+ reporter:[['list'],['json',{outputFile:'test-results/chapa-ui/results.json'}]],
+ projects:[
+  ...[360,430].map(width=>({name:String(width),testMatch:mobile,use:{viewport:{width,height:width===430?932:800}}})),
+  {name:'desktop',testMatch:'**/chapa-browser/winner-banner.spec.ts',use:{viewport:{width:1280,height:900}}},
+ ],
+});

@@ -1,0 +1,52 @@
+{
+  "at": "2026-11-17T08:03:16.061Z",
+  "mode": "test",
+  "dedicatedConfigurationOnly": true,
+  "initializationRequests": 0,
+  "newOperations": 0,
+  "requests": [
+    {
+      "operation": "private-methods",
+      "endpoint": "/v2/payments/methods",
+      "httpStatus": 200,
+      "elapsedMs": 933.4,
+      "safeMessage": "Payment methods retrieved successfully",
+      "methods": [
+        {
+          "slug": "mpesa",
+          "payments": true,
+          "direct": true,
+          "ethiopiaEnabled": true
+        },
+        {
+          "slug": "telebirr",
+          "payments": true,
+          "direct": true,
+          "ethiopiaEnabled": true
+        },
+        {
+          "slug": "cbebirr",
+          "payments": true,
+          "direct": true,
+          "ethiopiaEnabled": true
+        }
+      ]
+    },
+    {
+      "operation": "public-service",
+      "endpoint": "/v2/payments/html",
+      "httpStatus": 200,
+      "elapsedMs": 749.6,
+      "safeMessage": "HTML Checkout is running"
+    }
+  ],
+  "binding": {
+    "samePrivateAsOriginal": false,
+    "samePublicAsOriginal": false,
+    "originalStatus": "NEEDS_REVIEW",
+    "originalVerificationState": "UNAVAILABLE",
+    "originalCreditPresent": false
+  },
+  "originalRecordUnchanged": true,
+  "limit": "Service access does not establish same-business assignment, actual Inline initialization or settlement. No original operation was replayed."
+}

@@ -21,6 +21,16 @@ Keep the existing actual TEST attempt and its records under
 `.local/chapa-test-e2e-20261117*`; an unavailable provider reference is not grounds
 to initialize another charge.
 
+At 07:38 UTC, the user-supplied Coolify host
+`https://coolify.gojoplay.online` passed a validated HTTPS request:
+`GET /api/v1/health` returned `200` with `OK`, and unauthenticated
+`GET /api/v1/projects` returned `401`. The linked project, environment and
+application remain unverified; the host name does not authorize any other Gojo
+resources. No authenticated inventory, configuration change or deployment has
+occurred. This API health check is not evidence of a running Lowwin staging app.
+The sanitized record is committed at
+[Coolify access evidence](evidence/chapa-coolify-access-2026-11-17.json).
+
 | Required evidence | Result | Measured samples |
 | --- | --- | ---: |
 | Deployed Coolify TLS WEB + separate worker + private Redis | NOT RUN — target/access unavailable | 0 |
@@ -34,13 +44,68 @@ separate evidence. They do not fill any row above.
 
 ## Information needed before a deployment
 
-An operator must identify the staging Coolify project/environment, existing
-authenticated access, WEB/Chapa-worker/Redis resource UUIDs and an HTTPS staging
-hostname. Record their names and UUIDs alongside the exact reviewed 40-character
-Git SHA and both previous image tags. Confirm that the database project, bot,
+Start with the Coolify dashboard URL and existing approved authenticated access;
+the operator does not need to find resource UUIDs first. Read-only inventory can
+identify the project/environment and candidate WEB/Chapa-worker/Redis resources.
+Before deployment, record their verified names and UUIDs, HTTPS staging hostname,
+exact reviewed 40-character Git SHA and both previous image tags. Confirm that the database project, bot,
 merchant TEST account and Redis resource differ from production. Do not infer
 the target from an old tunnel or a similarly named resource. No new token is
 needed when an existing approved dashboard/API session is available.
+
+### Read-only API access when the dashboard session is not connected
+
+Use the origin of the actual dashboard, retaining its HTTPS port if present,
+and append `/api/v1`. Remove the entire `/project/.../terminal` path, query and
+fragment. The supplied dashboard therefore uses
+`https://coolify.gojoplay.online/api/v1`. Do not use a Lowwin application domain
+as the API host. See [Coolify API base URLs](https://coolify.io/docs/api/overview).
+
+In the team owning the linked project, open **Keys & Tokens > API Tokens > New
+token**. The authenticated token page on this host is
+`https://coolify.gojoplay.online/security/api-tokens`; the path is defined in
+[Coolify's official route source](https://github.com/coollabsio/coolify/blob/main/routes/web.php#L566).
+Use description `lowwin-staging-discovery`, expiry **7 days**, permission
+**read** only, and **Selected projects, environments, or resources** access to the
+linked project only. If an approved existing token already has this access, use
+it instead. On self-hosted instances, API access must already be enabled under
+Settings > Advanced; preserve any existing IP allowlist. Copy the complete token
+once and save it privately in the ignored local `.env` or a secret manager:
+
+```ini
+LOWWIN_STAGING_COOLIFY_API=https://coolify.gojoplay.online/api/v1
+LOWWIN_STAGING_COOLIFY_TOKEN=<COMPLETE_TOKEN_SAVED_PRIVATELY>
+```
+
+Do not paste the token into chat, a command argument or tracked files. The local
+discovery helper only sends bounded GET requests to the supplied host and linked
+IDs; it does not request environment values, logs, terminal access or deployment.
+A limited token can test `GET /projects`; `/team` is outside its scope. See
+[API token creation](https://coolify.io/docs/core/security/credentials/api-tokens)
+and [authorization](https://coolify.io/docs/api/authorization). If the installed
+Coolify version offers different controls, stop and inspect its version and
+available access settings before widening permissions.
+
+### Permissions for later isolated provisioning
+
+After identity and isolation are verified, creating/configuring staging resources
+needs `write`, starting them needs `deploy`, and inventory still needs `read`.
+Use a separate short-lived token with those permissions limited to a dedicated
+Lowwin staging project/environment. No `root`, `delete` or `read:sensitive` is
+needed for this preparation. Resource logs, if later required, need separately
+approved `read:sensitive` access; secrets must stay redacted in evidence.
+
+A scoped token cannot introduce unused team Git/SSH credentials or place a
+resource on a server with no resource already inside its scope. When staging is
+absent, an operator must first create the dedicated staging project/environment
+and approve its separate server/destination and Git source in the dashboard,
+then bootstrap a staging resource there before scoped provisioning. Do not widen
+the token to all team resources to work around this restriction. A project
+containing production resources is not a staging-only scope. In particular,
+Coolify warns that a scoped **write** token can reach the host through Compose
+mounts; separate environment names on one server do not provide server isolation.
+See [Coolify API permissions](https://coolify.io/docs/api/permissions) and
+[environment creation](https://coolify.io/docs/api/endpoints/projects/create-environment).
 
 If no staging resources exist, create a separate staging environment containing
 `lowwin-web-staging`, `lowwin-chapa-staging` and private

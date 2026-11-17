@@ -47,8 +47,8 @@ describe.skipIf(!url)('admin funds on disposable PostgreSQL',()=>{
   expect(journal.kind).toBe('ADMIN_CREDIT');expect(journal.postings.map(p=>[p.account.name,p.delta.toString()]).sort()).toEqual([['platform:issuance','-30.27'],[`user:${userId}:available`,'30.27']]);
   expect(await db.topUpIntent.findUnique({where:{id:b.id}})).toMatchObject({status:'REJECTED',caseState:'RESOLVED',reasonCode:'ADMIN_CREDIT_REPLACEMENT'});
   const row=await db.outbox.findUniqueOrThrow({where:{key:`deposit:${result.intentId}:credited`}});
-  expect(row.state).toBe('PENDING');expect(await db.notificationInbox.findUnique({where:{key:row.key}})).toMatchObject({userId,title:'Funds added · ገንዘብ ተጨምሯል',href:'/wallet'});
-  expect(await campaignContent(db,row)).toMatchObject({body:expect.stringContaining('admin added ETB 30.27')});
+  expect(row.state).toBe('PENDING');expect(await db.notificationInbox.findUnique({where:{key:row.key}})).toMatchObject({userId,title:'✅ ገንዘብ ገብቷል',body:expect.stringContaining('30.27 ብር'),href:'/wallet'});
+  expect(await campaignContent(db,row)).toMatchObject({body:expect.stringContaining('ETB 30.27')});
   expect(await campaignContent(db,{...row,payload:{intentId:result.intentId,recipientUserId:access.id}})).toBeNull();
   expect((await listOwnTopups(db,userId)).items.find(t=>t.id===result.intentId)).toMatchObject({channel:'manual',status:'CREDITED',amountCents:'3027'});
   expect(await reconcile(db)).toEqual([]);expect(await reconcilePayments(db)).toEqual([]);
@@ -114,8 +114,8 @@ describe.skipIf(!url)('admin funds on disposable PostgreSQL',()=>{
   expect(await db.outbox.findUnique({where:{key}})).toMatchObject({state:'SENT',attempts:2});
   expect(send).toHaveBeenCalledTimes(2);
   const last=send.mock.calls[1],options=last[2];
-  expect(options.reply_markup.inline_keyboard[0][0]).toEqual({text:'View wallet',web_app:{url:'https://fixture.invalid/wallet'}});
-  expect(options.caption??last[1]).toContain('Lowwin admin added ETB 30.27');
+  expect(options.reply_markup.inline_keyboard[0][0]).toEqual({text:'ዋሌቴን ልይ',web_app:{url:'https://fixture.invalid/wallet'}});
+  expect(options.caption??last[1]).toContain('30.27 ብር');
   expect(await db.adminWalletCredit.count({where:{sourceIntentId:b.id}})).toBe(1);
   expect(await db.notificationInbox.count({where:{key}})).toBe(1);
  });

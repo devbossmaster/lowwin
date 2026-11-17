@@ -226,11 +226,8 @@ jobs:
       - run: npm ci
       - run: npm run db:generate
       - run: npx playwright install --with-deps chromium
-      # Creates a fresh loopback database and migrates it. The spec creates its
-      # own synthetic fixtures and mocks payment responses; no merchant keys.
-      - run: node scripts/run-db-tests.mjs chapa
-      # The public-entry and direct-charge changes also run against shipped
-      # production bundles, on their own fresh DB and temporary localhost TLS.
+      # Every payment check uses shipped bundles, a fresh migrated loopback DB,
+      # synthetic identities and intercepted provider HTTP; no merchant keys.
       - name: Create temporary localhost TLS for production browser checks
         run: |
           umask 077
@@ -238,14 +235,15 @@ jobs:
             -keyout "$NOV7_TLS_KEY" -out "$NOV7_TLS_CERT" \
             -days 1 -subj '/CN=localhost' \
             -addext 'subjectAltName=DNS:localhost,IP:127.0.0.1'
-      - run: node scripts/run-db-tests.mjs nov7
+      # Current v2 Inline, OTP, lost-reply recovery, SSE/poll fallback, internal
+      # wallet independence, historical hosted/Direct recovery and ownership.
+      - run: node scripts/run-db-tests.mjs chapa
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
           name: chapa-checkout-ui
           path: |
             test-results/chapa-ui/
-            test-results/nov7-runs/
             test-results/nov7-evidence/
-            test-results/release/nov7-databases.json
+            test-results/release/chapa-databases.json
           retention-days: 7
