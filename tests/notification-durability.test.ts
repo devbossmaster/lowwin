@@ -66,20 +66,42 @@ describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated t
  it('does not hold a database transaction during HTTP; Stop returns promptly and the in-flight acknowledgement persists',async()=>{
   const rootKey=`broadcast:${randomUUID()}`,root=await db.outbox.create({data:{key:rootKey,kind:'GLOBAL_CAMPAIGN',state:'SENT',payload:{deliveryKind:'BROADCAST',rootKey}}});
   const row=await job('BROADCAST',0,root.key),later=await job('BROADCAST',1,root.key),began=deferred(),release=deferred();
-  const send=vi.fn(async()=>{began.resolve();await release.promise;return {message_id:101,photo:[{file_id:'fixture-file'}]}});
+  // Claim order is nextAttemptAt then UUID, not insertion order. Both jobs are
+  // due, with a deliberate first recipient for this in-flight Stop barrier.
+  await db.outbox.update({where:{id:row.id},data:{nextAttemptAt:new Date(0)}});await db.outbox.update({where:{id:later.id},data:{nextAttemptAt:new Date(1)}});
+  const send=vi.fn(async(_chat:string)=>{began.resolve();await release.promise;return {message_id:101,photo:[{file_id:'fixture-file'}]}});
   const sending=dispatchBatch(db,fake(send),{limit:1,concurrency:1});await began.promise;
-  const [activity]=await db.$queryRaw<{held:bigint}[]>`SELECT COUNT(*) AS held FROM pg_stat_activity WHERE datname=current_database() AND state='idle in transaction'`;
-  expect(Number(activity.held)).toBe(0);
-  const started=performance.now(),stopped=await db.$transaction(tx=>stopBroadcast(tx,root.id));expect(performance.now()-started).toBeLessThan(500);expect(stopped.remainingStopped).toBe(1);
-  release.resolve();await sending;expect(send).toHaveBeenCalledTimes(1);
+  try{
+   expect(send.mock.calls[0]?.[0]).toBe(users[0].telegramId);
+   const claimed=await db.outbox.findUniqueOrThrow({where:{id:row.id}});expect(claimed.state).toBe('PENDING');expect(claimed.leaseToken).toBeTruthy();expect(claimed.leaseUntil!.getTime()).toBeGreaterThan(Date.now());
+   expect(await db.outbox.findUniqueOrThrow({where:{id:later.id}})).toMatchObject({state:'PENDING',leaseToken:null});
+   const [activity]=await db.$queryRaw<{held:bigint}[]>`SELECT COUNT(*) AS held FROM pg_stat_activity WHERE datname=current_database() AND state='idle in transaction'`;
+   expect(Number(activity.held)).toBe(0);
+   const started=performance.now(),stopped=await db.$transaction(tx=>stopBroadcast(tx,root.id));expect(performance.now()-started).toBeLessThan(500);expect(stopped.remainingStopped).toBe(1);expect(stopped.leasedAtStop).toBe(1);
+   expect(await db.outbox.findUniqueOrThrow({where:{id:row.id}})).toMatchObject({state:'PENDING',leaseToken:claimed.leaseToken});
+   expect(await db.outbox.findUniqueOrThrow({where:{id:later.id}})).toMatchObject({state:'SKIPPED',lastError:'CAMPAIGN_STOPPED'});
+  }finally{release.resolve();await sending}
+  expect(send).toHaveBeenCalledTimes(1);
   expect((await db.outbox.findUniqueOrThrow({where:{id:row.id}})).state).toBe('SENT');expect((await db.outbox.findUniqueOrThrow({where:{id:later.id}})).state).toBe('SKIPPED');expect(await db.telegramMessage.count()).toBe(messagesBefore+1);
+  expect(await db.telegramMessage.findUniqueOrThrow({where:{outboxId:row.id}})).toMatchObject({chatId:users[0].telegramId,messageId:101n});
  });
  it('stops claimed-but-unsent work and pauses claims during maintenance without losing ownership',async()=>{
   const one=await job('BROADCAST'),two=await job('BROADCAST',1),began=deferred(),release=deferred();let running=true;
-  const send=vi.fn(async()=>{began.resolve();await release.promise;return {message_id:102}});
-  const sending=dispatchBatch(db,fake(send),{limit:2,concurrency:1,shouldContinue:()=>running});await began.promise;running=false;release.resolve();await sending;
-  expect(send).toHaveBeenCalledTimes(1);expect((await db.outbox.findUniqueOrThrow({where:{id:two.id}})).lastError).toBe('WORKER_STOPPING');
-  expect((await db.outbox.findUniqueOrThrow({where:{id:one.id}})).state).toBe('SENT');
+  await db.outbox.update({where:{id:one.id},data:{nextAttemptAt:new Date(0)}});await db.outbox.update({where:{id:two.id},data:{nextAttemptAt:new Date(1)}});
+  const send=vi.fn(async(_chat:string)=>{began.resolve();await release.promise;return {message_id:102}});
+  const sending=dispatchBatch(db,fake(send),{limit:2,concurrency:1,shouldContinue:()=>running});await began.promise;
+  let inFlight=one,unsent=two;
+  try{
+   const recipient=send.mock.calls[0]?.[0];expect([users[0].telegramId,users[1].telegramId]).toContain(recipient);
+   // A multirow UPDATE RETURNING does not promise processing order. Bind each
+   // assertion to the request that actually entered HTTP, under its live claim.
+   if(recipient===users[1].telegramId){inFlight=two;unsent=one}
+   const claims=await db.outbox.findMany({where:{id:{in:[one.id,two.id]}}});expect(claims).toHaveLength(2);expect(claims.every(row=>row.state==='PENDING'&&row.leaseToken&&row.leaseUntil!.getTime()>Date.now())).toBe(true);
+   running=false;
+  }finally{release.resolve();await sending}
+  expect(send).toHaveBeenCalledTimes(1);expect(await db.outbox.findUniqueOrThrow({where:{id:unsent.id}})).toMatchObject({state:'PENDING',lastError:'WORKER_STOPPING',leaseToken:null});
+  expect((await db.outbox.findUniqueOrThrow({where:{id:inFlight.id}})).state).toBe('SENT');
+  expect(await db.telegramMessage.findUniqueOrThrow({where:{outboxId:inFlight.id}})).toMatchObject({chatId:send.mock.calls[0][0],messageId:102n});
   await maintenance('AUCTIONS_MAINTENANCE_HALTED');expect(await claimNotifications(db)).toEqual([]);
  });
  it('rechecks a blocked recipient immediately before dispatch and applies bounded provider retry_after',async()=>{

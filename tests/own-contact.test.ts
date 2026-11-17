@@ -8,7 +8,7 @@ import {TEST_TOKEN,signedLaunch} from './helpers';
 import {stagingDemoEnabled,stagingDemoUser} from '../src/modules/auctions/staging-demo';
 import {CONTACT_ALREADY_VERIFIED_MESSAGE,CONTACT_REQUEST_MESSAGE,CONTACT_VERIFIED_MESSAGE,START_BIDDING_ACTION,CONTACT_KEYBOARD_REMOVED_MESSAGE} from '../src/modules/bot/onboarding-copy';
 import type {Bot} from 'grammy';
-const url=process.env.TEST_DATABASE_URL;
+const url=process.env.OWN_CONTACT_TEST_DATABASE_URL??process.env.TEST_DATABASE_URL;
 const {sendMessage}=vi.hoisted(()=>({sendMessage:vi.fn(async()=>({message_id:1}))}));
 vi.mock('../src/modules/bot/bot',()=>({createBot:()=>({api:{sendMessage}})}));
 describe.skipIf(!url)('required own-contact boundary',()=>{

@@ -204,7 +204,82 @@
         "fullGatePassed": false
       }
     },
-    "currentChecks": "https://github.com/devbossmaster/lowwin/pull/16/checks"
+    "currentChecks": "https://github.com/devbossmaster/lowwin/pull/16/checks",
+    "followupRun": {
+      "commit": "e86004ee3dd13c2ccf264f88918833678c9cf554",
+      "url": "https://github.com/devbossmaster/lowwin/actions/runs/44051099101",
+      "foundation": {
+        "job": 133928818691,
+        "result": "failure",
+        "passed": 3180,
+        "failed": 2,
+        "skipped": 0,
+        "seconds": 365.73,
+        "typecheckAndBuild": "skipped after unit failure",
+        "failures": [
+          "Cross-suite campaign expansion before retired contact notification in shared fixture database",
+          "Stop fixture assumed which equally due outbox row was claimed"
+        ]
+      },
+      "browserChapa": {
+        "job": 133928818832,
+        "result": "failure",
+        "passed": 82,
+        "failed": 2,
+        "skipped": 11,
+        "productionBuild": "passed",
+        "allPaymentScenarios": "passed",
+        "failures": [
+          "430px normal and throttled canonical Home-return fixture fell outside unfiltered page1"
+        ]
+      },
+      "passedJobs": [
+        "static-secrets",
+        "security",
+        "payment-stream-broker",
+        "browser-admin"
+      ],
+      "redesign": "Separate known-open gate; inspect run for terminal status"
+    },
+    "followupFixtureCorrection": {
+      "applicationSourceChanged": false,
+      "contactDatabaseIsolation": "OWN_CONTACT_TEST_DATABASE_URL allocated per suite before imports",
+      "notificationStop": "Deliberate due order for limit1; actual HTTP recipient and live lease bind multirow Stop expectations",
+      "publicHome": "Only owned synthetic marker is featured, including reuse; no app pagination change",
+      "orderedCohort": {
+        "passed": 43,
+        "failed": 0,
+        "skipped": 0
+      },
+      "releaseHarnessCohort": {
+        "passed": 43,
+        "failed": 0,
+        "skipped": 0
+      },
+      "finalDurability": {
+        "passed": 12,
+        "failed": 0,
+        "skipped": 0
+      },
+      "crowdedCatalogProof": {
+        "passed": 4,
+        "failed": 0,
+        "newerNonFeaturedSiblings": 15,
+        "widths": [
+          360,
+          430
+        ],
+        "networks": [
+          "normal",
+          "throttled"
+        ]
+      },
+      "typeScript": "passed after final source edit",
+      "countsOverlapDoNotSum": true,
+      "foundationEvidence": "../../chapa-foundation-baseline-reproduction-2026-11-17.json",
+      "paginationEvidence": "chapa-ci-44051099101-pagination-2026-11-17.json",
+      "freshLinuxAggregateRequired": true
+    }
   },
   "actualProvider": {
     "evidence": "chapa-test-inline-diagnosis-2026-11-17.json",

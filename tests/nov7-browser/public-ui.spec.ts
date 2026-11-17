@@ -15,11 +15,13 @@ test.beforeAll(async()=>{
  try{
   const body={managedExperience:{bannerEn:'',bannerAm:'',learnIntroEn:'Isolated test explanation: choose the lowest unique bid.',learnIntroAm:'ዝቅተኛውን ልዩ ጨረታ ይምረጡ።',video:{youtube:'',local:'/videos/nov7-tutorial.mp4',poster:'/images/lowin-family-hero.webp'},socials:[]}};
   await db.siteContent.upsert({where:{id:'home'},create:{id:'home',body},update:{body}});
-  const existing=await db.auction.findFirst({where:{product:{title:marker}},select:{publicCode:true,slug:true}});
-  if(existing){code=String(existing.publicCode);slug=existing.slug!;return}
+  // Home returns to its default featured first page. Other suites create more
+  // than one page of auctions; keep this owned fixture deliberately visible.
+  const existing=await db.auction.findFirst({where:{product:{title:marker}},select:{id:true,publicCode:true,slug:true}});
+  if(existing){await db.auction.update({where:{id:existing.id},data:{featured:true}});code=String(existing.publicCode);slug=existing.slug!;return}
   const auction=await bidAuction(db,{fee:10,ruleVersion:'lowest-unique-v4',isDemo:false,endDelayMs:3*86400000});
   await db.product.update({where:{id:auction.productId!},data:{title:marker,titleAm:'የሙከራ ሽቦ አልባ ማዳመጫ',description:'Isolated browser-test product. No real prize or live payment.',descriptionAm:'የአሳሽ ሙከራ ዕቃ ነው።',images:{create:{path:'/images/lowwin-demo-headphones.webp',alt:'Isolated test headphones',sourceType:'ORIGINAL',sortOrder:0}}}});
-  await db.auction.update({where:{id:auction.id},data:{publicViewCount:123n}});code=String(auction.publicCode);slug=auction.slug!;
+  await db.auction.update({where:{id:auction.id},data:{featured:true,publicViewCount:123n}});code=String(auction.publicCode);slug=auction.slug!;
  }finally{await db.$disconnect()}
 });
 async function identity(page:Page,registered=true){

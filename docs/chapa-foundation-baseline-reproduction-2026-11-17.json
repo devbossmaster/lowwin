@@ -353,5 +353,154 @@
     "tests/chapa-schema.test.ts": "f463eaa1a386069895704e9976c8ff9962969ba51c2ac2d7168f1047074df3bf",
     "tests/contact-request-limit.test.ts": "d3d052b53fac32b257b52f4b244af80613671c5057a158b9e2622907abbbb5df"
   },
-  "fixtureHashNormalization": "UTF-8 source with CRLF normalized to LF"
+  "fixtureHashNormalization": "UTF-8 source with CRLF normalized to LF",
+  "ciFollowup44051099101": {
+    "baseCommit": "e86004ee3dd13c2ccf264f88918833678c9cf554",
+    "ci": {
+      "run": 44051099101,
+      "job": 133928818691,
+      "testFiles": {
+        "passed": 274,
+        "failed": 2,
+        "total": 276
+      },
+      "tests": {
+        "passed": 3180,
+        "failed": 2,
+        "pending": 0,
+        "total": 3182
+      },
+      "durationSeconds": 365.73,
+      "artifactId": 14312959584,
+      "artifactSha256": "c9e3a9e1c589f6d9af11233344c41ffdc90565bfd27937d20e8fa7de4fdaea58"
+    },
+    "actualCiOrder": [
+      "notification-durability.test.ts",
+      "my-bids-read.test.ts",
+      "own-contact.test.ts"
+    ],
+    "confirmedCauses": {
+      "contact": "MyBids and own-contact shared TEST_DATABASE_URL. A pending AUCTION_FINALIZED expansion was consumed by dispatchOne before its delivery claim. Reproduction retained exactly one pending CONTACT_CONFIRMED target and observed one SENT and one pending AUCTION_FINALIZED root.",
+      "stop": "Claim order is nextAttemptAt then id, not insertion order. Legal reversed due times reproduced the identical SKIPPED-versus-SENT assertion; the second inserted row owned the active HTTP lease and the first remained unclaimed."
+    },
+    "controlledStopObservation": {
+      "assumedFirstRecipientWasActual": false,
+      "assumedRowHadLease": false,
+      "secondRowHadLease": true
+    },
+    "localFocusedRuns": [
+      {
+        "phase": "before",
+        "baseCommit": "e86004ee3dd13c2ccf264f88918833678c9cf554",
+        "elapsedMs": 45101,
+        "exitCode": 1,
+        "counts": {
+          "passed": 42,
+          "failed": 1,
+          "pending": 0,
+          "total": 43
+        },
+        "files": [
+          "tests/notification-durability.test.ts",
+          "tests/my-bids-read.test.ts",
+          "tests/own-contact.test.ts"
+        ],
+        "failedTitles": [
+          "required own-contact boundary commits contact without Telegram calls and retains its deduplicated retired confirmation without delivery"
+        ]
+      },
+      {
+        "phase": "reversed-due-before",
+        "baseCommit": "e86004ee3dd13c2ccf264f88918833678c9cf554",
+        "elapsedMs": 46677,
+        "exitCode": 1,
+        "counts": {
+          "passed": 41,
+          "failed": 2,
+          "pending": 0,
+          "total": 43
+        },
+        "files": [
+          "tests/notification-durability.test.ts",
+          "tests/my-bids-read.test.ts",
+          "tests/own-contact.test.ts"
+        ],
+        "failedTitles": [
+          "durable Telegram delivery: isolated database, simulated transport only does not hold a database transaction during HTTP; Stop returns promptly and the in-flight acknowledgement persists",
+          "required own-contact boundary commits contact without Telegram calls and retains its deduplicated retired confirmation without delivery"
+        ]
+      },
+      {
+        "phase": "after",
+        "baseCommit": "e86004ee3dd13c2ccf264f88918833678c9cf554",
+        "elapsedMs": 50154,
+        "exitCode": 0,
+        "counts": {
+          "passed": 43,
+          "failed": 0,
+          "pending": 0,
+          "total": 43
+        },
+        "files": [
+          "tests/notification-durability.test.ts",
+          "tests/my-bids-read.test.ts",
+          "tests/own-contact.test.ts"
+        ],
+        "failedTitles": []
+      },
+      {
+        "phase": "durability-after",
+        "baseCommit": "e86004ee3dd13c2ccf264f88918833678c9cf554",
+        "elapsedMs": 13612,
+        "exitCode": 0,
+        "counts": {
+          "passed": 12,
+          "failed": 0,
+          "pending": 0,
+          "total": 12
+        },
+        "files": [
+          "tests/notification-durability.test.ts"
+        ],
+        "failedTitles": []
+      }
+    ],
+    "actualReleaseHarness": {
+      "command": "node scripts/run-db-tests.mjs unit tests/notification-durability.test.ts tests/my-bids-read.test.ts tests/own-contact.test.ts",
+      "elapsedMs": 65227,
+      "exitCode": 0,
+      "counts": {
+        "passed": 43,
+        "failed": 0,
+        "pending": 0,
+        "total": 43
+      }
+    },
+    "fixes": [
+      "Give own-contact an OWN_CONTACT_TEST_DATABASE_URL allocated by the release harness and bound by setup before imports, preserving TEST_DATABASE_URL fallback for focused manual runs.",
+      "Make Stop due order deliberate; assert HTTP recipient, live lease and ownership retained by Stop, then exact SENT acknowledgement and Telegram message binding.",
+      "For the adjacent two-row claim, bind SENT and WORKER_STOPPING assertions to the actual HTTP recipient because multirow UPDATE RETURNING does not promise processing order."
+    ],
+    "finalTypeScript": {
+      "command": "node node_modules/typescript/bin/tsc --noEmit --incremental false",
+      "startedUtc": "2026-11-17T09:14:44.4572748Z",
+      "finishedUtc": "2026-11-17T09:16:15.2181490Z",
+      "exitCode": 0,
+      "lastFixtureEditUtc": "2026-11-17T09:14:19.8181827Z"
+    },
+    "sourceSha256": {
+      "scripts/run-db-tests.mjs": "b8247a63d4943424fe7ede2e4c6bf3375544057a9b8cd8b451b67fc59142e1b9",
+      "tests/database-env-setup.ts": "c0b5131a7155c6ec12af8216b9159ce8c73f0e084fc173b7ffe19f358bb15560",
+      "tests/notification-durability.test.ts": "1afca659fa342177dae794888bb0089d432cb46dab419952db24945abd5ac3a5",
+      "tests/own-contact.test.ts": "24245d784b74fc2c1f2efcb8938772f36d3dcaa0844b27b5b6ce7e28f11c50be"
+    },
+    "hashNormalization": "UTF-8 with CRLF normalized to LF",
+    "appSourceChanged": false,
+    "cleanup": {
+      "ownedDatabasesRemoved": 36,
+      "ownedRemaining": 0,
+      "retainedProviderDatabasesNotTargeted": true
+    },
+    "newLinuxFullGateRequired": true
+  }
 }
