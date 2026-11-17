@@ -1,0 +1,55 @@
+{
+  "date": "2026-11-17",
+  "appSourceCommit": "f180e669bf47a54d825f1cb4e0e4007eae44a3ba",
+  "scope": "Focused optimized local HTTPS browser verification with fake identities/provider responses; no live browser payment",
+  "normalTypecheckPassed": true,
+  "combinedBuildPassed": true,
+  "buildCompileReported": "2.7 min",
+  "buildTypecheckReported": "32.8 s",
+  "staticPagesGenerated": 41,
+  "persistentPaymentBrowser": {
+    "startTime": "2026-11-17T19:14:49.123Z",
+    "duration": 80342.099,
+    "expected": 10,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "heroBrowser": {
+    "startTime": "2026-11-17T19:30:45.959Z",
+    "duration": 77983.174,
+    "expected": 8,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "viewports": [
+    320,
+    360,
+    430,
+    1280
+  ],
+  "languages": [
+    "en",
+    "am"
+  ],
+  "liveProviderOnly": {
+    "amountEtb": "5.00",
+    "initializationMs": [
+      1541,
+      1437
+    ],
+    "promptObserved": true,
+    "userCancelled": true,
+    "privateStatuses": [
+      "FAILED",
+      "FAILED"
+    ],
+    "lowwinWalletCreditApplied": false
+  },
+  "limits": [
+    "Provider-only initialization is not end-to-end Lowwin or physical USSD p95",
+    "No successful live payment or production deployment claimed",
+    "Hosted full CI and dependency audit are reported on PR18 separately"
+  ]
+}

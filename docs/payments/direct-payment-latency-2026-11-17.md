@@ -91,3 +91,19 @@ Synthetic browser provider routes made no live requests or database payments.
 Review [English authorization](../screenshots/simple-direct-payment-20261117/bid-authorization-en-360.png),
 [Amharic code entry](../screenshots/simple-direct-payment-20261117/bid-code-am-360.png)
 and [committed top-up](../screenshots/simple-direct-payment-20261117/topup-credited-en-360.png).
+
+The final combined optimized build passed, and eight further actual-app hero
+checks passed at 320 / 360 / 430 / 1280 pixels in English and Amharic. The new
+80,780-byte artwork uses one continuous blue-black background, text on the left,
+and PS5, boxed iPhone 17 Pro Max, BYD Seagull and juicer on the right. Review
+[desktop](../screenshots/simple-direct-payment-20261117/hero-desktop-en.png),
+[mobile](../screenshots/simple-direct-payment-20261117/hero-mobile-am.png) and
+the [sanitized verification manifest](../measurements/simple-direct-ui-2026-11-17.json).
+
+Hosted audit run 355 reported the newly updated
+[Picomatch advisory GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf).
+The installed 4.0.7 appears in the Vitest development dependency chain; six
+reported high-severity entries cascade from that issue. The official advisory
+lists no patched version at review time. This release does not change those
+dependencies, suppress the audit or claim that it passes. The finding remains
+open for an upstream patch or a separately reviewed mitigation.
