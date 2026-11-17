@@ -125,6 +125,7 @@
   "countsOverlapDoNotSum": true,
   "repositoryCi": {
     "allChecksGreen": false,
+    "remainingFailureInventory": "chapa-foundation-gates-2026-11-17.json",
     "fullRun": "https://github.com/devbossmaster/lowwin/actions/runs/44036042628",
     "fullRunResultsBeforeFinalFixtureCorrections": { "testsPassed": 3128, "testsFailed": 29, "testsSkipped": 25, "suiteSetupFailures": 3 },
     "subsequentRun": "https://github.com/devbossmaster/lowwin/actions/runs/44037051175",
