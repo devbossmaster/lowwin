@@ -14,7 +14,11 @@ export type InlineCommand={key:string;purpose:'BID'|'TOP_UP';amount?:string;batc
  * Every provider HTTP origin is intercepted; these fixtures cannot charge. */
 export async function inlineFixture(page:Page,am=false){
  const f=await fixture(page,am),commands:InlineCommand[]=[],quotes:BidBatchQuote[]=[],quoteRequests:unknown[]=[],checks:string[]=[],resolutions:string[]=[],authorizations:Array<{otp?:string}>=[],sdkLoads:string[]=[],unexpected:string[]=[],owned=new Map<string,ChapaCheckoutView>();
- let order:ChapaCheckoutView|null=null,fee=1000,available='25.00',unavailable=false,interrupt=false,missingDiscoveries=0,activeChecks=0,maxChecks=0,authType:'USSD'|'OTP'='USSD',invalidOtp=false;
+ let order:ChapaCheckoutView|null=null,fee=1000,available='25.00',unavailable=false,interrupt=false,missingDiscoveries=0,maxChecks=0,authType:'USSD'|'OTP'='USSD',invalidOtp=false;
+ const activeChecks=new Set<import('@playwright/test').Request>();
+ // Browser fake-clock timeouts can abort a status fetch before this Node-side
+ // 30ms route delay finishes. Such abandoned handlers are not live requests.
+ page.on('requestfailed',request=>activeChecks.delete(request));
  const title=am?'የሙከራ 45W 20,000mAh ፓወር ባንክ — '+f.title:f.title;
  if(am)await f.db.product.update({where:{id:f.auction.productId!},data:{titleAm:title}});
  await page.addInitScript(()=>localStorage.setItem('lowwin:introduction:v1','dismissed'));
@@ -40,8 +44,8 @@ export async function inlineFixture(page:Page,am=false){
  });
  await page.route(/\/api\/payments\/chapa\/inline\?key=/,route=>{if(route.request().method()!=='GET'){unexpected.push(route.request().url());return route.abort()}const key=new URL(route.request().url()).searchParams.get('key')??'';resolutions.push(key);if(missingDiscoveries>0){missingDiscoveries--;return route.fulfill({status:404,json:{code:'NOT_FOUND',error:'Payment not found.'}})}const saved=owned.get(key),result=saved&&order?.id===saved.id?order:saved;return route.fulfill(result?{json:result}:{status:404,json:{code:'NOT_FOUND',error:'Payment not found.'}})});
  await page.route('**/api/payments/chapa/checkouts/**',async route=>{
-  const isCheck=route.request().method()==='POST';if(isCheck){activeChecks++;maxChecks=Math.max(maxChecks,activeChecks);checks.push(new URL(route.request().url()).pathname.split('/').at(-1)!)}
-  try{await new Promise(resolve=>setTimeout(resolve,30));return await route.fulfill(unavailable?{status:503,json:{code:'UNAVAILABLE',error:'Synthetic connection interruption'}}:{json:order})}finally{if(isCheck)activeChecks--}
+  const request=route.request(),isCheck=request.method()==='POST';if(isCheck){activeChecks.add(request);maxChecks=Math.max(maxChecks,activeChecks.size);checks.push(new URL(request.url()).pathname.split('/').at(-1)!)}
+  try{await new Promise(resolve=>setTimeout(resolve,30));return await route.fulfill(unavailable?{status:503,json:{code:'UNAVAILABLE',error:'Synthetic connection interruption'}}:{json:order})}finally{if(isCheck)activeChecks.delete(request)}
  });
  await page.route(/\/api\/payments\/chapa\/checkouts\/[^/]+\/authorize$/,route=>{
   const body=route.request().postDataJSON() as {otp?:string};authorizations.push(body);

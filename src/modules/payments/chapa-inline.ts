@@ -13,7 +13,8 @@ import {eligible,getChapaCheckout,ownChapaCheckout,verifyChapaCheckout} from './
 import {ChapaError,ChapaProviderError,chapaAvailability,chapaHash,chapaWebhookSignatureProfile,createdChapaDirect,createdChapaSession,type ChapaCreate} from './chapa-provider';
 import {chapaInlineAvailability,chapaInlineTransport,createInlineMethodCatalog,inlineMethodCatalog,inlineTransportBinding,isV2InlineCheckout,requireChapaInline,type ChapaInlineTransport} from './chapa-inline-provider';
 import {PAYMENT_TRANSACTION_OPTIONS} from './timing';
-import {markChapaDispatch,measureChapa} from './chapa-timing';
+import {markChapaDispatch,markChapaTransactionStarted,measureChapa} from './chapa-timing';
+import {publishChapaCommitted} from './chapa-committed';
 import {depositBonusStorageReady,getDepositBonusPolicy,quoteDepositBonusInTransaction} from '../wallet/deposit-bonus';
 
 type Authorize=(tx:Prisma.TransactionClient)=>Promise<void>;
@@ -68,7 +69,9 @@ export async function createInlineCheckout(client:PrismaClient,userId:string,raw
   const amount=etbToCents(body.amount);
   if(amount<BigInt(selectedMethod.minimumCents)||amount>BigInt(selectedMethod.maximumCents))throw new ChapaError(422,'METHOD_UNAVAILABLE','This method does not support the quoted amount.');
  }
+ const transactionQueuedAt=performance.now();
  const prepared=await measureChapa('prepare',()=>client.$transaction(async tx=>{
+  markChapaTransactionStarted(transactionQueuedAt);
   // Match every financial writer's barrier order once. Keep the maintenance
   // result until after replay detection so an existing attempt remains readable.
   const halted=await measureChapa('locks',async()=>{
@@ -77,7 +80,7 @@ export async function createInlineCheckout(client:PrismaClient,userId:string,raw
    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`},0))`;
    return halted;
   });
-  if(reauthorize)await reauthorize(tx);const contact=await eligible(tx,userId);
+  if(reauthorize)await measureChapa('reauthorize',()=>reauthorize(tx));const contact=await measureChapa('eligibility',()=>eligible(tx,userId));
   const replay=await tx.chapaCheckout.findUnique({where:{userId_key:{userId,key:body.key}}});if(replay){assertReplay(replay);return {created:false,order:replay}}
   if(halted)throw new ChapaError(503,'AUCTIONS_PAUSED','New payments are paused. Existing payments can still be checked.');
   if(!await allowIdentityRequest(tx,'chapa-inline-create',userId,24,3600000))throw new ChapaError(429,'RATE_LIMITED','Check Transactions before trying another payment.');
@@ -97,7 +100,7 @@ export async function createInlineCheckout(client:PrismaClient,userId:string,raw
   if(body.purpose==='TOP_UP'&&(depositBonus&&(body.approvedDepositBonusVersion!==depositBonus.policyVersion||body.approvedDepositBonusAmount===undefined)||body.approvedDepositBonusAmount!==undefined&&etbToCents(body.approvedDepositBonusAmount)!==BigInt(depositBonus?.amountCents??'0')))throw new ChapaError(409,'DEPOSIT_BONUS_CHANGED','The deposit bonus changed. Review the updated offer before paying.');
   const initialization={apiVersion:'v2',flowVersion:4,flow:body.flow,amountCents:String(amountCents),merchantReference,idempotencyKey,publicKeyFingerprint:health.publicKeyFingerprint!,webhookSignatureProfile:chapaWebhookSignatureProfile()!,paymentMethod:body.paymentMethod,payerPhoneHash:phoneHash(`+${phone}`),returnUrl,returnUrlVersion:1,...(depositBonus?{depositBonus}:{}),...(batch?{batch:ownBatch(batch)}:{})};
   if(!await allowIdentityRequest(tx,'chapa-inline-initialize',id,5,86400000))throw new ChapaError(429,'RATE_LIMITED','Check the original payment before trying again.');
-  const order=await tx.chapaCheckout.create({data:{id,userId,key:body.key,requestHash:hash,purpose:body.purpose,mode:health.mode,credentialFingerprint:health.credentialFingerprint!,initialization:JSON.parse(JSON.stringify(initialization)),chargeType:body.flow,flowVersion:4,batchId:batch?.id,payerPhoneCipher:encryptPhone(phone,contact.botId),phoneCipher:contact.phoneCipher,phoneBotId:contact.botId,merchantReference,amountCents,currency:'ETB',paymentMethod:body.paymentMethod,auctionId:batch?.auctionId,auctionSlug:batch?.auctionSlug,bidNumber:batch?new Prisma.Decimal(batchLines(batch)[0].number):null,feeVersion:batch?.feeVersion,grossFee:batch?new Prisma.Decimal(centsToEtb(batch.grossCents)):null,discountPoints:batch?new Prisma.Decimal(centsToEtb(batch.discountCents)):new Prisma.Decimal(0),couponId:batch?.couponId,status:'SUBMITTING',reason:'AWAITING_PROVIDER',attempts:1,leaseUntil:after(45000),expiresAt:after(body.flow==='INLINE'?300000:86400000),nextCheckAt:after(15000),reconcileUntil:after(30*86400000)}});
+  const order=await measureChapa('intent',()=>tx.chapaCheckout.create({data:{id,userId,key:body.key,requestHash:hash,purpose:body.purpose,mode:health.mode,credentialFingerprint:health.credentialFingerprint!,initialization:JSON.parse(JSON.stringify(initialization)),chargeType:body.flow,flowVersion:4,batchId:batch?.id,payerPhoneCipher:encryptPhone(phone,contact.botId),phoneCipher:contact.phoneCipher,phoneBotId:contact.botId,merchantReference,amountCents,currency:'ETB',paymentMethod:body.paymentMethod,auctionId:batch?.auctionId,auctionSlug:batch?.auctionSlug,bidNumber:batch?new Prisma.Decimal(batchLines(batch)[0].number):null,feeVersion:batch?.feeVersion,grossFee:batch?new Prisma.Decimal(centsToEtb(batch.grossCents)):null,discountPoints:batch?new Prisma.Decimal(centsToEtb(batch.discountCents)):new Prisma.Decimal(0),couponId:batch?.couponId,status:'SUBMITTING',reason:'AWAITING_PROVIDER',attempts:1,leaseUntil:after(45000),expiresAt:after(body.flow==='INLINE'?300000:86400000),nextCheckAt:after(15000),reconcileUntil:after(30*86400000)}}));
   return {created:true,order};
  },PAYMENT_TRANSACTION_OPTIONS));
  return {order:prepared.created?await dispatchInlineCheckout(client,prepared.order,userId,transport,'create'):await initializeInlineCheckout(client,prepared.order,userId,reauthorize,transport)};
@@ -143,7 +146,7 @@ async function dispatchInlineCheckout(client:PrismaClient,order:ChapaCheckout,us
    const created=createdChapaSession(await measureChapa('initialize',()=>transport.create(request)));
    if(!created)throw new ChapaError(502,'PROVIDER_UNAVAILABLE','Payment confirmation is pending. Check the original payment.');
    const rows=await measureChapa('persist',()=>client.chapaCheckout.updateManyAndReturn({where:writable,data:{checkoutUrl:created.checkoutUrl,providerCreatedAt:created.createdAt??null,...(created.expiresAt?{expiresAt:created.expiresAt}:{}),leaseUntil:null,status:'PENDING',reason:'AWAITING_PROVIDER',verificationState:'UNVERIFIED',initializationErrorCode:null,initializationHttpStatus:null,nextCheckAt:new Date()}}));
-   if(rows[0])return ownChapaCheckout(rows[0]);
+   if(rows[0]){void publishChapaCommitted(order.id);return ownChapaCheckout(rows[0])}
   }else{
    const request={amountCents:String(order.amountCents),merchantReference:order.merchantReference,idempotencyKey:String(initialization.idempotencyKey),paymentMethod:order.paymentMethod!,phone:decryptPhone(order.payerPhoneCipher!,order.phoneBotId!)};
    markChapaDispatch();
@@ -151,20 +154,20 @@ async function dispatchInlineCheckout(client:PrismaClient,order:ChapaCheckout,us
    if(!created)throw new ChapaError(502,'PROVIDER_UNAVAILABLE','Payment confirmation is pending. Check the original payment.');
    const authorization={authorizationReference:created.reference,providerRequestId:created.requestId,authType:created.authType,providerCreatedAt:created.createdAt??null,...(created.expiresAt?{expiresAt:created.expiresAt}:{})};
    const rows=await measureChapa('persist',()=>client.chapaCheckout.updateManyAndReturn({where:writable,data:{...authorization,status:'AUTH_NEEDED',reason:null,verificationState:'UNVERIFIED',leaseUntil:null,nextCheckAt:new Date(),initializationErrorCode:null,initializationHttpStatus:null}}));
-   if(rows[0])return ownChapaCheckout(rows[0]);
+   if(rows[0]){void publishChapaCommitted(order.id);return ownChapaCheckout(rows[0])}
    const pending=await measureChapa('persist',()=>client.chapaCheckout.updateManyAndReturn({where:{id:order.id,userId,creditJournalId:null,authorizationReference:null,status:{in:['PENDING','AUTH_NEEDED','VERIFYING']},verificationState:'VERIFIED',providerStatus:{in:['PENDING','AUTH_NEEDED']}},data:authorization}));
-   if(pending[0])return ownChapaCheckout(pending[0]);
+   if(pending[0]){void publishChapaCommitted(order.id);return ownChapaCheckout(pending[0])}
   }
  }catch(error){
   const rejected=error instanceof ChapaProviderError&&error.category==='request';
   const rows=await measureChapa('persist',()=>client.chapaCheckout.updateManyAndReturn({where:writable,data:{leaseUntil:null,status:rejected?'NEEDS_REVIEW':'PENDING',reason:rejected?'INITIALIZATION_REJECTED':'PROVIDER_CONFIRMATION_REQUIRED',verificationState:'UNAVAILABLE',nextCheckAt:after(rejected?300000:15000),initializationErrorCode:error instanceof ChapaProviderError?error.paymentReason??error.providerCode:null,initializationHttpStatus:error instanceof ChapaProviderError?error.httpStatus:null}}));
-  if(rows[0])return ownChapaCheckout(rows[0]);
+  if(rows[0]){void publishChapaCommitted(order.id);return ownChapaCheckout(rows[0])}
  }
  return getChapaCheckout(client,userId,order.id);
 }
 export async function reconcileInlineCheckouts(client:PrismaClient,limit=10,transport:ChapaInlineTransport=chapaInlineTransport){
  const health=chapaAvailability();if(!health.recoveryEnabled)return {checked:0};
- const rows=await client.chapaCheckout.findMany({where:{flowVersion:4,mode:health.mode,credentialFingerprint:health.credentialFingerprint!,creditJournalId:null,reconcileUntil:{gt:new Date()},nextCheckAt:{lte:new Date()},attempts:{lt:500},status:{in:['SUBMITTING','PENDING','AUTH_NEEDED','VERIFYING','NEEDS_REVIEW']}},orderBy:[{nextCheckAt:'asc'},{id:'asc'}],take:Math.max(1,Math.min(20,limit)),select:{id:true}});
+ const rows=await client.chapaCheckout.findMany({where:{flowVersion:4,mode:health.mode,credentialFingerprint:health.credentialFingerprint!,creditJournalId:null,reconcileUntil:{gt:new Date()},nextCheckAt:{lte:new Date()},attempts:{lt:500},OR:[{status:{in:['SUBMITTING','PENDING','AUTH_NEEDED','VERIFYING','NEEDS_REVIEW']}},{verificationSignalVersion:{gt:client.chapaCheckout.fields.verificationHandledSignalVersion}}]},orderBy:[{nextCheckAt:'asc'},{id:'asc'}],take:Math.max(1,Math.min(20,limit)),select:{id:true}});
  let checked=0;for(const row of rows){try{await verifyChapaCheckout(client,row.id,undefined,undefined,transport);checked++}catch{}}
  return {checked};
 }

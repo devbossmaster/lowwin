@@ -41,6 +41,24 @@ function existingLegacyEvent(patch:Partial<EventRow>={}){
 }
 afterEach(()=>{vi.unstubAllEnvs();vi.restoreAllMocks()});
 describe('Chapa HTTP authorization and durable webhook boundary',()=>{
+ it.each(['USER','SYSTEM'])('preserves exact-body-authenticated %s cancellation attribution without changing financial state',async cancelled_by=>{
+  const event={...hint,event:'payment.cancelled',status:'cancelled',cancelled_by,reason:'PAYMENT_CANCELLED',payment_method:'telebirr',updated_at:'2026-11-17T10:00:00Z',message:'private diagnostic 251911111111'};
+  expect((await webhook(signed(event))).status).toBe(200);
+  expect(f.event.mock.calls[0][0].data[0]).toMatchObject({checkoutId:id,providerReasonCode:'PAYMENT_CANCELLED',cancelledBy:cancelled_by,paymentMethod:'telebirr',providerUpdatedAt:new Date('2026-11-17T10:00:00Z')});
+  expect(JSON.stringify(f.event.mock.calls)).not.toContain('private diagnostic');expect(JSON.stringify(f.event.mock.calls)).not.toContain('251911111111');
+  expect(f.update.mock.calls[0][0].data).toEqual({nextCheckAt:expect.any(Date)});
+ });
+ it('never preserves cancellation attribution or reasons from a reusable legacy-secret proof',async()=>{
+  vi.stubEnv('CHAPA_WEBHOOK_SIGNATURE_PROFILE','legacy_secret');
+  expect((await webhook(legacySigned({...hint,event:'payment.cancelled',status:'cancelled',cancelled_by:'USER',reason:'INVALID_PIN'}))).status).toBe(200);
+  const stored=f.event.mock.calls[0][0].data[0];expect(stored.providerReasonCode).toBeUndefined();expect(stored.cancelledBy).toBeUndefined();
+ });
+ it.each([{payment_method:'mpesa'},{meta:{lowwin_attempt:'some-other-attempt'}},{chapa_reference:'CHother'}])('does not queue feedback that conflicts with the frozen payment binding: %j',patch=>{
+  return (async()=>{f.find.mockResolvedValue({id,merchantReference:merchant,mode:'test',chapaReference:hint.chapa_reference,authorizationReference:hint.chapa_reference,paymentMethod:'telebirr',initialization:{},amountCents:1000n,currency:'ETB'});
+   expect((await webhook(signed({...hint,event:'payment.failed',status:'failed',reason:'INVALID_PIN',...patch}))).status).toBe(200);
+   expect(f.event.mock.calls[0][0].data[0]).toMatchObject({checkoutId:null,status:'IGNORED'});expect(f.event.mock.calls[0][0].data[0].providerReasonCode).toBeUndefined();expect(f.update).not.toHaveBeenCalled();expect(f.process).not.toHaveBeenCalled();
+  })();
+ });
  it('rejects a legacy-profile downgrade for a raw-body-pinned owned intent before every write',async()=>{
   vi.stubEnv('CHAPA_WEBHOOK_SIGNATURE_PROFILE','legacy_secret');
   const order={id,flowVersion:4,initialization:{apiVersion:'v2',webhookSignatureProfile:'raw_body'},merchantReference:merchant,mode:'test',chapaReference:hint.chapa_reference,amountCents:1000n,currency:'ETB',creditJournalId:null};f.find.mockResolvedValue(order);

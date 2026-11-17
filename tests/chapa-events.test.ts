@@ -75,9 +75,9 @@ describe('durable Chapa event confirmation',()=>{
    state.event.nextAttemptAt=deferred;
    Object.assign(state.checkout,{providerStatus:'FAILED',verificationState:'VERIFIED',status:'FAILED'});
   });
-  expect(await processChapaEvent(state.client,state.event.id)).toBe(true);
+  expect(await processChapaEvent(state.client,state.event.id)).toBe(false);
   expect(state.event).toMatchObject({status:'QUEUED',attempts:0,nextAttemptAt:deferred,leaseUntil:null,completedAt:null});
-  expect(state.updateMany.mock.calls).toEqual(expect.arrayContaining([[expect.objectContaining({where:expect.objectContaining({nextAttemptAt:new Date(0)}),data:expect.objectContaining({status:'PROCESSED'})})]]));
+  expect(state.updateMany.mock.calls).toEqual(expect.arrayContaining([[expect.objectContaining({where:expect.objectContaining({nextAttemptAt:new Date(0)}),data:expect.objectContaining({status:'QUEUED'})})]]));
   expect(state.checkout.creditJournalId).toBeNull();
   vi.setSystemTime(deferred);
   f.verify.mockImplementation(async()=>{Object.assign(state.checkout,{providerStatus:'SUCCESS',verificationState:'VERIFIED',status:'CREDITED',creditJournalId:'later-canonical-credit'})});
@@ -87,7 +87,7 @@ describe('durable Chapa event confirmation',()=>{
   const state=fixture(4),deferred=new Date(start.getTime()+60000);
   state.readEvent.mockImplementationOnce(async()=>{state.event.nextAttemptAt=deferred;return {...state.event}});
   f.verify.mockImplementation(async()=>{Object.assign(state.checkout,{providerStatus:'FAILED',verificationState:'VERIFIED',status:'FAILED'})});
-  expect(await processChapaEvent(state.client,state.event.id)).toBe(true);
+  expect(await processChapaEvent(state.client,state.event.id)).toBe(false);
   expect(state.event).toMatchObject({status:'QUEUED',attempts:0,nextAttemptAt:deferred,leaseUntil:null,completedAt:null});
   expect(state.checkout.creditJournalId).toBeNull();
  });
@@ -110,9 +110,15 @@ describe('durable Chapa event confirmation',()=>{
   finish();expect(await first).toBe(true);expect(f.verify).toHaveBeenCalledTimes(1);expect(state.event.status).toBe('PROCESSED');
  });
  it.each(['FAILED','CANCELLED','INCOMPLETE','EXPIRED','BLOCKED'])('completes a server-verified terminal %s without claiming a credit',async status=>{
-  const state=fixture();f.verify.mockImplementation(async()=>{Object.assign(state.checkout,{providerStatus:status,verificationState:'VERIFIED',status})});
+  const state=fixture();state.event.event=`payment.${status.toLowerCase()}`;f.verify.mockImplementation(async()=>{Object.assign(state.checkout,{providerStatus:status,verificationState:'VERIFIED',status})});
   expect(await processChapaEvent(state.client,state.event.id)).toBe(true);
   expect(state.event.status).toBe('PROCESSED');expect(state.checkout.creditJournalId).toBeNull();
+ });
+ it.each(['FAILED','CANCELLED','INCOMPLETE','EXPIRED','BLOCKED'])('retains a newer success hint when an available private replica still reports %s',async status=>{
+  const state=fixture();f.verify.mockImplementationOnce(async()=>{Object.assign(state.checkout,{providerStatus:status,verificationState:'VERIFIED',status})});
+  expect(await processChapaEvent(state.client,state.event.id)).toBe(false);expect(state.event).toMatchObject({status:'QUEUED',attempts:1,completedAt:null,leaseUntil:null});expect(state.checkout.creditJournalId).toBeNull();
+  vi.setSystemTime(state.event.nextAttemptAt);f.verify.mockImplementationOnce(async()=>{Object.assign(state.checkout,{providerStatus:'SUCCESS',verificationState:'VERIFIED',status:'CREDITED',creditJournalId:'late-authoritative-credit'})});
+  expect(await processChapaEvent(state.client,state.event.id)).toBe(true);expect(state.event.status).toBe('PROCESSED');expect(f.verify).toHaveBeenCalledTimes(2);
  });
  it('finishes a late paid bid with preserved wallet funds without pretending the bid was accepted',async()=>{
   const state=fixture();Object.assign(state.checkout,{status:'NEEDS_REVIEW',providerStatus:'SUCCESS',verificationState:'VERIFIED',creditJournalId:'existing-credit'});
@@ -138,9 +144,9 @@ describe('durable Chapa event confirmation',()=>{
   const state=fixture();f.verify.mockImplementation(async()=>{Object.assign(state.checkout,{providerStatus:'SUCCESS',verificationState:'MISMATCH',status:'NEEDS_REVIEW'})});
   expect(await processChapaEvent(state.client,state.event.id)).toBe(false);expect(state.event.status).toBe('QUEUED');expect(state.checkout.creditJournalId).toBeNull();
  });
- it('never races an active checkout lease or queries a disabled recovery worker',async()=>{
+ it('passes a delivery into the fenced coordinator during an active lease and skips a disabled worker',async()=>{
   const state=fixture();state.checkout.leaseUntil=new Date(start.getTime()+20000);
-  expect(await processChapaEvent(state.client,state.event.id)).toBe(false);expect(f.verify).not.toHaveBeenCalled();expect(state.event.status).toBe('QUEUED');
+  expect(await processChapaEvent(state.client,state.event.id)).toBe(false);expect(f.verify).toHaveBeenCalledWith(state.client,state.checkout.id,undefined,undefined,expect.anything(),'webhook');expect(state.event.status).toBe('QUEUED');
   f.enabled=false;
   expect(await processChapaEvents(state.client)).toEqual({checked:0});expect(state.findMany).not.toHaveBeenCalled();
  });

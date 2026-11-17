@@ -9,8 +9,10 @@ const aliases:Record<string,ChapaPaymentReasonCode>={
  AUTHORIZATION_REQUIRED:'AUTHORIZATION_REQUIRED',AUTHORIZATION_FAILED:'AUTHORIZATION_FAILED',PAYMENT_BLOCKED:'PAYMENT_BLOCKED',TRANSACTION_BLOCKED:'PAYMENT_BLOCKED',
  PAYMENT_CANCELLED:'PAYMENT_CANCELLED',CUSTOMER_CANCELLED:'PAYMENT_CANCELLED',PAYMENT_EXPIRED:'PAYMENT_EXPIRED',SESSION_EXPIRED:'PAYMENT_EXPIRED',PAYMENT_FAILED_OR_CANCELLED:'PAYMENT_FAILED_OR_CANCELLED',
  "YOU DON'T HAVE ENOUGH BALANCE TO MAKE THIS PAYMENT":'INSUFFICIENT_FUNDS',
- 'THIS CUSTOMER DID NOT ACTIVE CREDIT PAY SERVICE':'INSUFFICIENT_FUNDS',
- 'OTP VERIFICATION FAILED WITH AHADU':'INVALID_OTP',
+ // A disabled credit service and a failed OTP verification do not establish
+ // insufficient funds or an incorrect code. Keep those reasons general.
+ 'THIS CUSTOMER DID NOT ACTIVE CREDIT PAY SERVICE':'AUTHORIZATION_FAILED',
+ 'OTP VERIFICATION FAILED WITH AHADU':'AUTHORIZATION_FAILED',
  'INVALID/UNRECOGNIZED ACCOUNT NUMBER.':'PAYMENT_ACCOUNT_NOT_FOUND',
  'PLEASE MAKE SURE YOUR PHONE NUMBER IS CORRECT':'PAYMENT_ACCOUNT_NOT_FOUND',
 };
@@ -22,6 +24,9 @@ export function safeChapaPaymentReason(value:unknown):ChapaPaymentReasonCode|nul
 export function publicChapaPaymentReason(order:{reason:string|null;providerStatus:string|null;verificationState:string}):ChapaPaymentReasonCode|null{
  return order.verificationState==='VERIFIED'&&chapaReasonStatuses.has(order.providerStatus??'')&&order.reason?.startsWith('CHAPA_')?safeChapaPaymentReason(order.reason.slice(6)):null;
 }
+export function publicChapaCancelledBy(order:{providerStatus:string|null;verificationState:string;providerCancelledBy?:string|null}):'USER'|'SYSTEM'|null{
+ return order.verificationState==='VERIFIED'&&order.providerStatus==='CANCELLED'&&(order.providerCancelledBy==='USER'||order.providerCancelledBy==='SYSTEM')?order.providerCancelledBy:null;
+}
 /** Authorization feedback comes from the provider validation request, not the
  * merchant verification endpoint. It never authorizes credit or a new charge. */
 export function publicChapaAuthorizationReason(order:{status:string;reason:string|null;providerStatus:string|null;verificationState:string}):ChapaPaymentReasonCode|null{
@@ -32,17 +37,21 @@ const messages:Record<ChapaPaymentReasonCode,[string,string]>={
  AUTHORIZATION_FAILED:['Chapa reports that the payment authorization was not completed.','Chapa የክፍያ ፈቃዱ እንዳልተጠናቀቀ አሳውቋል።'],
  PAYMENT_FAILED_OR_CANCELLED:['The payment provider reports that this payment failed or was cancelled.','የክፍያ አቅራቢው ይህ ክፍያ እንዳልተሳካ ወይም እንደተሰረዘ አሳውቋል።'],
  PAYMENT_ACCOUNT_NOT_FOUND:['Chapa could not find this account with the selected payment provider. Use a number registered with that provider.','Chapa በመረጡት የክፍያ አቅራቢ ይህን መለያ ማግኘት አልቻለም። በዚያ አቅራቢ የተመዘገበ ቁጥር ይጠቀሙ።'],
- INSUFFICIENT_FUNDS:['Chapa reports insufficient funds in the payment account.','Chapa በክፍያ መለያው ውስጥ ያለው ገንዘብ እንደማይበቃ አሳውቋል።'],
+ INSUFFICIENT_FUNDS:['Chapa reports insufficient funds in your selected provider account.','Chapa በመረጡት የክፍያ አቅራቢ መለያ ውስጥ ያለው ገንዘብ እንደማይበቃ አሳውቋል።'],
  INVALID_PIN:['Chapa reports an incorrect payment PIN. Use only your payment provider’s secure prompt.','Chapa የክፍያ PIN ትክክል እንዳልሆነ አሳውቋል። የክፍያ አቅራቢዎን ደህንነቱ የተጠበቀ መስኮት ብቻ ይጠቀሙ።'],
  INVALID_OTP:['Chapa reports an incorrect verification code. Use only the provider’s secure payment flow.','Chapa የማረጋገጫ ኮዱ ትክክል እንዳልሆነ አሳውቋል። የአቅራቢውን ደህንነቱ የተጠበቀ የክፍያ ሂደት ብቻ ይጠቀሙ።'],
- AUTHORIZATION_REQUIRED:['Complete the payment authorization on Chapa.','የክፍያ ፈቃዱን በChapa ያጠናቅቁ።'],
+ AUTHORIZATION_REQUIRED:['Approve your provider’s payment prompt or enter its requested one-time code.','የክፍያ አቅራቢዎን የክፍያ ጥያቄ ያጽድቁ ወይም የጠየቀውን የአንድ ጊዜ ኮድ ያስገቡ።'],
  PAYMENT_BLOCKED:['Chapa reports that this payment is blocked.','Chapa ይህ ክፍያ እንደታገደ አሳውቋል።'],
  PAYMENT_CANCELLED:['Chapa confirms that this payment was cancelled.','Chapa ይህ ክፍያ እንደተሰረዘ አረጋግጧል።'],
  PAYMENT_EXPIRED:['Chapa reports that the payment authorization expired.','Chapa የክፍያ ፈቃዱ ጊዜ እንዳለፈ አሳውቋል።'],
 };
-export function chapaPaymentReasonMessage(order:{status:string;providerStatus?:string|null;verificationState?:string;providerReasonCode?:string|null},am=false):string|null{
+const defaultReasons:Record<string,ChapaPaymentReasonCode>={CANCELLED:'PAYMENT_CANCELLED',INCOMPLETE:'AUTHORIZATION_FAILED',EXPIRED:'PAYMENT_EXPIRED',BLOCKED:'PAYMENT_BLOCKED'};
+export function chapaPaymentReasonMessage(order:{status:string;providerStatus?:string|null;verificationState?:string;providerReasonCode?:string|null;providerCancelledBy?:string|null},am=false):string|null{
  if(order.verificationState!=='VERIFIED'||order.status!==order.providerStatus||!chapaReasonStatuses.has(order.providerStatus??''))return null;
- const code=safeChapaPaymentReason(order.providerReasonCode);return code?messages[code][am?1:0]:null;
+ if(order.providerStatus==='CANCELLED'&&order.providerCancelledBy==='USER')return am?'እርስዎ ይህን ክፍያ ሰርዘዋል።':'You cancelled this payment.';
+ const code=safeChapaPaymentReason(order.providerReasonCode)??defaultReasons[order.providerStatus??''];
+ if(code)return messages[code][am?1:0];
+ return order.providerStatus==='FAILED'?(am?'የክፍያ አቅራቢዎ ይህን ክፍያ ማጠናቀቅ አልቻለም።':'Your provider could not complete this payment.'):null;
 }
 /** A request error explains the provider's response; it is not verified paid/failed evidence. */
 export function chapaRequestReasonMessage(value:unknown,am=false){const code=safeChapaPaymentReason(value);return code?messages[code][am?1:0]:null}

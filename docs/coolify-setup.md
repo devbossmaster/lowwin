@@ -6,7 +6,7 @@ Use the **Low Win** project on the existing server, separate from Gojo Games. Cr
 
 Choose **Add Resource → Database → Redis**. Name it `lowwin-redis`, keep the generated password and private/internal access, and leave **Publicly Accessible** disabled. Do not reuse Gojo's Redis or Coolify's own Redis. Start it and copy its **Internal URL** into the web application's `REDIS_URL` field; do not paste the password/URL into chat.
 
-Initial resource limit: 384 MiB RAM / 0.25 CPU. In custom Redis configuration set `maxmemory 256mb` and `maxmemory-policy allkeys-lru`, retaining generated password/bind settings. Lowwin stores only short-lived public catalog/results in Redis; balances, identity/session state, durable queues, financial locks, journals and rate limits remain in PostgreSQL. Cache data needs no financial backup. The app falls back to a bounded local cache if Redis fails; investigate the sanitized Redis warning rather than hiding it.
+Initial resource limit: 384 MiB RAM / 0.25 CPU. In custom Redis configuration set `maxmemory 256mb` and `maxmemory-policy allkeys-lru`, retaining generated password/bind settings. Lowwin stores short-lived public catalog/results in Redis and uses a separate private pub/sub namespace for opaque committed-payment wake-up hints. Balances, identity/session state, durable queues, financial locks, journals and rate limits remain in PostgreSQL. Cache data and lossy hints need no financial backup. The app falls back to a bounded local cache and payment snapshot/polling recovery if Redis fails. See [committed payment streaming](payments/chapa-committed-events.md) for matching WEB/Chapa-worker namespace, Redis permissions and proxy requirements.
 
 ## 2. Common fields for all four applications
 

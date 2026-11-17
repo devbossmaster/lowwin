@@ -27,6 +27,15 @@ server {
     location = /api/wallet/scan { client_max_body_size 6m; limit_req zone=lowwin_api burst=10 nodelay; proxy_pass http://lowwin_web; }
     # Images are base64 inside the authenticated admin command envelope.
     location = /api/admin/command { client_max_body_size 3m; limit_req zone=lowwin_api burst=10 nodelay; proxy_pass http://lowwin_web; }
+    # Owner-authenticated committed Chapa updates must flush each event.
+    location ~ ^/api/payments/chapa/checkouts/[0-9a-fA-F-]+/events$ {
+        limit_req zone=lowwin_api burst=30 nodelay;
+        proxy_buffering off;
+        proxy_cache off;
+        gzip off;
+        proxy_read_timeout 75s;
+        proxy_pass http://lowwin_web;
+    }
     location /api/ { limit_req zone=lowwin_api burst=30 nodelay; proxy_pass http://lowwin_web; }
     location / { proxy_pass http://lowwin_web; }
 }

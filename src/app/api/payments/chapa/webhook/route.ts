@@ -7,6 +7,7 @@ import {chapaAvailability,chapaHash,chapaWebhookAmountMatches,chapaWebhookConfig
 import {authenticateChapaDelivery,chapaDeliveryProfileMatches} from '@/modules/payments/chapa-webhook-profile';
 import {processChapaEvent} from '@/modules/payments/chapa-events';
 import {unsupportedLegacyChapaCheckout} from '@/modules/payments/chapa';
+import {matchesChapaMetadata} from '@/modules/payments/chapa-metadata';
 import type {ChapaWebhookEvent} from '@prisma/client';
 export const runtime='nodejs';
 export async function POST(request:Request){
@@ -29,7 +30,7 @@ export async function POST(request:Request){
    // Permit only a recovery hint here; verification must establish the final
    // payment reference before its balanced receipt can replace that token.
    const hostedSession=order&&isChapaHostedSessionReference(order.checkoutUrl,order.chapaReference,health.mode);
-   const valid=!!order&&!unsupportedLegacyChapaCheckout(order)&&order.mode===health.mode&&(!hint.chapaReference||!order.chapaReference||hint.chapaReference===order.chapaReference||hostedSession)&&chapaWebhookAmountMatches(hint,order.amountCents)&&(!hint.currency||hint.currency===order.currency);
+   const valid=!!order&&!unsupportedLegacyChapaCheckout(order)&&order.mode===health.mode&&(!hint.chapaReference||!order.chapaReference||hint.chapaReference===order.chapaReference||hostedSession)&&(!hint.chapaReference||!order.authorizationReference||hint.chapaReference===order.authorizationReference)&&chapaWebhookAmountMatches(hint,order.amountCents)&&(!hint.currency||hint.currency===order.currency)&&(!hint.paymentMethod||!order.paymentMethod||hint.paymentMethod===order.paymentMethod)&&matchesChapaMetadata(order.initialization,hint.meta,order.id);
    if(legacy){
     // Never accumulate legacy records for arbitrary references or paid orders.
     if(!valid||order!.creditJournalId)return null;
@@ -58,7 +59,11 @@ export async function POST(request:Request){
      }
     }
    }
-   const inserted=await tx.chapaWebhookEvent.createMany({data:[{id,mode:health.mode,configurationFingerprint,bodyHash,merchantReference:hint.merchantReference,chapaReference:hint.chapaReference,event:hint.event,checkoutId:valid?order!.id:null,status:valid?'QUEUED':'IGNORED'}],skipDuplicates:true});
+   // Rich feedback needs exact-body authentication and complete payment binding.
+   // Compatibility proofs may queue a private lookup but cannot attribute a
+   // cancellation or preserve a reason supplied in an unauthenticated body.
+   const feedbackBound=valid&&!legacy&&!!hint.chapaReference&&hint.amountCents!==undefined&&hint.currency===order!.currency;
+   const inserted=await tx.chapaWebhookEvent.createMany({data:[{id,mode:health.mode,configurationFingerprint,bodyHash,merchantReference:hint.merchantReference,chapaReference:hint.chapaReference,event:hint.event,checkoutId:valid?order!.id:null,status:valid?'QUEUED':'IGNORED',...(feedbackBound?{providerReasonCode:hint.reasonCode,cancelledBy:hint.cancelledBy,providerUpdatedAt:hint.updatedAt,paymentMethod:hint.paymentMethod}:{})}],skipDuplicates:true});
    if(!inserted.count)return null;
    if(!valid)return null;
    // A delivery can be older than our last verified state. Queue a fresh

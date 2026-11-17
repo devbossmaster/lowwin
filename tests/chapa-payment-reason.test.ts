@@ -66,8 +66,8 @@ describe('safe reasons from matched merchant verification',()=>{
  it.each(['INSUFFICIENT_FUNDS','insufficient balance.','INVALID_PIN','INCORRECT_PIN','WRONG_PIN','INVALID_OTP','AUTHORIZATION_REQUIRED'])('recognizes only an exact known reason: %s',value=>expect(safeChapaPaymentReason(value)).not.toBeNull());
  it.each([
   ["You don't have enough balance to make this payment",'INSUFFICIENT_FUNDS'],
-  ['This customer did not active Credit Pay service','INSUFFICIENT_FUNDS'],
-  ['OTP verification failed with Ahadu','INVALID_OTP'],
+  ['This customer did not active Credit Pay service','AUTHORIZATION_FAILED'],
+  ['OTP verification failed with Ahadu','AUTHORIZATION_FAILED'],
   ['Invalid/unrecognized account number.','PAYMENT_ACCOUNT_NOT_FOUND'],
   ['Please make sure your phone number is correct','PAYMENT_ACCOUNT_NOT_FOUND'],
  ])('recognizes the exact documented bank reason %s without matching appended payer details',(reason,expected)=>{
@@ -111,10 +111,10 @@ describe('safe reasons from matched merchant verification',()=>{
  });
  it('keeps old pending attempts honest while allowing only an unexpired checkout link',()=>{
   const value=order({status:'PENDING',providerStatus:'PENDING',verificationState:'VERIFIED',reason:'PAYMENT_NOT_COMPLETED',providerReasonCode:null,createdAt:new Date(Date.now()-360000).toISOString(),expiresAt:new Date(Date.now()+60000).toISOString(),checkoutUrl:'https://checkout.chapa.global/payment/hosted/APOldPending'});
-  expect(chapaStatusLabel(value)).toBe('Pending');expect(phase(value)).toBe('pending');
+  expect(chapaStatusLabel(value)).toBe('Waiting for confirmation');expect(phase(value)).toBe('pending');
   const waiting=render(value);expect(waiting).toContain('Continue checkout');expect(waiting).not.toContain('Checkout session ended');
   const recordedExpiry={...value,expiresAt:new Date(Date.now()-1000).toISOString()};
-  expect(chapaStatusLabel(recordedExpiry)).toBe('Pending');expect(phase(recordedExpiry)).toBe('pending');
+  expect(chapaStatusLabel(recordedExpiry)).toBe('Waiting for confirmation');expect(phase(recordedExpiry)).toBe('pending');
   const expiredLink=render(recordedExpiry);expect(expiredLink).not.toContain('Continue checkout');expect(expiredLink).not.toContain('Checkout session ended');expect(recordedExpiry.status).toBe('PENDING');
  });
 });

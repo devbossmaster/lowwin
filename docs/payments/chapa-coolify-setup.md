@@ -1,5 +1,9 @@
 # Chapa v2: Coolify production preparation
 
+For the committed-result SSE transport, deploy matching WEB/Chapa-worker code
+and follow [shared Redis and proxy setup](chapa-committed-events.md). Streaming
+does not change the activation gates or resolve provider TEST blockers below.
+
 For the signature profiles and protected runtime settings, see
 [Signature setup](chapa-signature-webhook.md).
 `raw_body` remains the default. Select `legacy_secret` explicitly on WEB and

@@ -7,6 +7,8 @@ import {verifiedReferralUser,realReferralAuction} from './referral-fixtures';
 import {quoteBidBatch} from '../src/modules/auctions/batch';
 import {createInlineCheckout,findInlineCheckoutByKey} from '../src/modules/payments/chapa-inline';
 import {verifyChapaCheckout} from '../src/modules/payments/chapa';
+import {processChapaEvent} from '../src/modules/payments/chapa-events';
+import {timedChapaResponse} from '../src/modules/payments/chapa-timing';
 import {authorizeDirectCheckout} from '../src/modules/payments/chapa-direct';
 import {type ChapaInlineTransport} from '../src/modules/payments/chapa-inline-provider';
 import {chapaHash,ChapaProviderError} from '../src/modules/payments/chapa-provider';
@@ -39,7 +41,7 @@ describe.skipIf(!database)('v2 Inline owned intent, private verification and ato
   const validate=vi.fn(async(_input:{reference:string;paymentMethod:string;otp?:string})=>({status:'success',data:{status:'SUCCESS'}})),methods=vi.fn(async()=>({status:'success',data:[{name:paymentMethod,slug:paymentMethod,can_process_payments:true,can_process_direct_charge:false,supported_currencies:{ETB:{default_min:100,default_max:10000000,countries:{ET:{is_enabled:true}}}}}]}));
   const transport={inline,create:hosted,lookup:lookups,methods,validate} as unknown as ChapaInlineTransport;
   const start=async(raw:unknown=command)=>{const result=await createInlineCheckout(db,user,raw,undefined,transport);id=result.order.id;merchant=result.order.merchantReference!;return result};
-  const due=async()=>db.chapaCheckout.update({where:{id},data:{nextCheckAt:new Date(0),leaseUntil:null}});
+  const due=async()=>db.chapaCheckout.update({where:{id},data:{nextCheckAt:new Date(0),leaseUntil:null,verificationRetryAfter:null}});
   const verify=async()=>{await due();return verifyChapaCheckout(db,id,user,undefined,transport,true)};
   return {user,auction,quote,command,transport,inline,hosted,lookups,validate,validation,methods,start,verify,due,id:()=>id,persistedBeforeHttp:()=>persistedBeforeHttp,setStatus:(next:string)=>{status=next},alter:(value:Record<string,unknown>)=>{patch=value},failInitialization:(value=true)=>{failInitialization=value},setAuthType:(value:'USSD'|'OTP')=>{authType=value}};
  }
@@ -50,6 +52,30 @@ describe.skipIf(!database)('v2 Inline owned intent, private verification and ato
  it('read-only owned-key recovery returns the same intent and hides another account',async()=>{const f=await fixture('TOP_UP'),{order}=await f.start(),before=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});expect(await findInlineCheckoutByKey(db,f.user,f.command.key)).toMatchObject({id:order.id,flowVersion:4});expect(await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}})).toEqual(before);const other=(await verifiedReferralUser(db)).id;await expect(findInlineCheckoutByKey(db,other,f.command.key)).rejects.toMatchObject({status:404});expect(f.inline).toHaveBeenCalledOnce();expect(f.lookups).not.toHaveBeenCalled()});
  it('rejects another account\'s bid quote and a changed quote hash before charge dispatch',async()=>{const f=await fixture(),other=(await verifiedReferralUser(db)).id;await expect(createInlineCheckout(db,other,f.command,undefined,f.transport)).rejects.toMatchObject({code:'TERMS_CHANGED'});await expect(f.start({...f.command,quoteHash:'c'.repeat(64)})).rejects.toMatchObject({code:'TERMS_CHANGED'});expect(f.inline).not.toHaveBeenCalled();expect(await db.chapaCheckout.count({where:{userId:{in:[f.user,other]}}})).toBe(0);expect(await balance(f.user)).toBe('0');expect(await balance(other)).toBe('0')});
  it('private verified success atomically accepts the complete batch once under concurrent checks',async()=>{const f=await fixture();await f.start();f.setStatus('SUCCESS');await Promise.all([f.verify(),f.verify()]);await f.verify();expect(await db.bid.count({where:{userId:f.user}})).toBe(2);expect(await balance(f.user)).toBe('0');expect(await db.journal.count({where:{kind:'CHAPA_RECEIPT',operation:{userId:f.user}}})).toBe(1);expect(await reconcile(db)).toEqual([])});
+ it('durably retains a concurrent worker webhook signal during provider HTTP and serializes the deferred success into exactly one credit',async()=>{
+  const f=await fixture('TOP_UP');const creation=await timedChapaResponse(async()=>{await f.start();return new Response(null)});await f.due();
+  let release!:()=>void,entered!:()=>void,active=0,maxActive=0;const gate=new Promise<void>(resolve=>release=resolve),started=new Promise<void>(resolve=>entered=resolve);
+  f.lookups.mockImplementationOnce(async()=>{active++;maxActive=Math.max(maxActive,active);const pending=f.validation('PENDING');entered();try{await gate;return {...pending,data:{...pending.data,customer:{phone_number:'251911652904'}}}}finally{active--}});
+  f.lookups.mockImplementationOnce(async()=>{active++;maxActive=Math.max(maxActive,active);try{const success=f.validation('SUCCESS');return {...success,data:{...success.data,customer:{phone_number:'251911652904'}}}}finally{active--}});
+  const verification=timedChapaResponse(async()=>{await verifyChapaCheckout(db,f.id(),f.user,undefined,f.transport);return new Response(null)});
+  try{
+   await started;const row=await db.chapaCheckout.findUniqueOrThrow({where:{id:f.id()}});
+   const event=await db.chapaWebhookEvent.create({data:{mode:'test',configurationFingerprint:chapaHash(process.env.CHAPA_WEBHOOK_SECRET!),bodyHash:chapaHash(randomUUID()),merchantReference:row.merchantReference,chapaReference:row.authorizationReference,event:'payment.success',checkoutId:row.id,nextAttemptAt:new Date(0)}});
+   await Promise.all([verifyChapaCheckout(db,f.id(),f.user,undefined,f.transport),processChapaEvent(db,event.id,f.transport)]);
+   const signalled=await db.chapaCheckout.findUniqueOrThrow({where:{id:f.id()}});expect(signalled.verificationSignalVersion).toBeGreaterThan(signalled.verificationHandledSignalVersion);expect(signalled.leaseUntil).toEqual(row.leaseUntil);expect(f.lookups).toHaveBeenCalledOnce();
+   release();const committed=await verification;const paid=await db.chapaCheckout.findUniqueOrThrow({where:{id:f.id()}});
+   expect(paid).toMatchObject({status:'CREDITED',providerStatus:'SUCCESS',verificationState:'VERIFIED',leaseUntil:null});expect(paid.verificationHandledSignalVersion).toBe(paid.verificationSignalVersion);expect(paid.creditJournalId).not.toBeNull();expect(maxActive).toBe(1);expect(f.lookups).toHaveBeenCalledTimes(2);expect(f.inline).toHaveBeenCalledOnce();
+   await Promise.all([verifyChapaCheckout(db,f.id(),f.user,undefined,f.transport,true),verifyChapaCheckout(db,f.id(),f.user,undefined,f.transport,'webhook')]);
+   expect(await balance(f.user)).toBe('40');expect(await db.journal.count({where:{kind:'CHAPA_RECEIPT',operation:{userId:f.user}}})).toBe(1);expect(await db.bid.count({where:{userId:f.user}})).toBe(0);expect(await reconcile(db)).toEqual([]);
+   console.info('chapa_signal_postgres_fake_provider_timing',{samples:1,creation:creation.headers.get('Server-Timing'),verification:committed.headers.get('Server-Timing')});
+  }finally{release();await verification}
+ });
+ it('uses matching pending Inline validation to skip only a recent private lookup and retains periodic private verification in PostgreSQL',async()=>{
+  const f=await fixture('TOP_UP');await f.start();await f.due();f.validate.mockImplementation(async()=>f.validation('PENDING'));
+  await verifyChapaCheckout(db,f.id(),f.user,undefined,f.transport);expect(f.lookups).toHaveBeenCalledOnce();await f.due();
+  await verifyChapaCheckout(db,f.id(),f.user,undefined,f.transport);expect(f.validate).toHaveBeenCalledTimes(2);expect(f.lookups).toHaveBeenCalledOnce();expect(await balance(f.user)).toBe('0');
+  await db.chapaCheckout.update({where:{id:f.id()},data:{nextCheckAt:new Date(0),lastPrivateCheckAt:new Date(Date.now()-30000)}});await verifyChapaCheckout(db,f.id(),f.user,undefined,f.transport);expect(f.lookups).toHaveBeenCalledTimes(2);expect(await balance(f.user)).toBe('0');
+ });
  it('a public authorization success hint cannot credit a deposit before private verification',async()=>{const f=await fixture('TOP_UP');await f.start();expect(await f.verify()).toMatchObject({status:'PENDING'});expect(f.validate).toHaveBeenCalled();expect(f.lookups).toHaveBeenCalled();expect(await balance(f.user)).toBe('0');f.setStatus('SUCCESS');expect(await f.verify()).toMatchObject({status:'CREDITED'});await f.verify();expect(await balance(f.user)).toBe('40');expect(await db.journal.count({where:{kind:'CHAPA_RECEIPT',operation:{userId:f.user}}})).toBe(1)});
  it.each([{amount:4001},{merchant_reference:'LWforged'},{currency:'USD'},{mode:'live'},{payment_method:undefined},{payment_method:'awashbirr'}])('rejects private evidence mismatch %j without credit or bids',async patch=>{const f=await fixture();await f.start();f.setStatus('SUCCESS');f.alter(patch);expect(await f.verify()).toMatchObject({status:'NEEDS_REVIEW',reason:'EVIDENCE_MISMATCH'});expect(await balance(f.user)).toBe('0');expect(await db.bid.count({where:{userId:f.user}})).toBe(0)});
  it('validates provider OTP on the original attempt and still requires private success',async()=>{const f=await fixture('TOP_UP');f.setAuthType('OTP');const {order}=await f.start();await f.due();expect(await authorizeDirectCheckout(db,f.user,order.id,{otp:'123456'},undefined,f.transport)).toMatchObject({status:'PENDING'});expect(f.validate).toHaveBeenCalledWith(expect.objectContaining({otp:'123456'}));expect(await balance(f.user)).toBe('0');f.setStatus('SUCCESS');expect(await f.verify()).toMatchObject({status:'CREDITED'});expect(f.inline).toHaveBeenCalledOnce()});

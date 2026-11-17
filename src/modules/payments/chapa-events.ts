@@ -4,6 +4,11 @@ import {unsupportedLegacyChapaCheckout,verifyChapaCheckout} from './chapa';
 import {chapaLegacyRecoveryAvailability} from './chapa-legacy-recovery';
 
 function recoveryModes(){const current=chapaAvailability(),legacy=chapaLegacyRecoveryAvailability();return [...new Set([...(current.recoveryEnabled?[current.mode]:[]),...(legacy.recoveryEnabled?[legacy.mode]:[])])]}
+function reconcilesEvent(event:string,providerStatus:string|null){
+ if(!providerStatus)return false;
+ if(event==='payment.failed_or_cancelled')return providerStatus==='FAILED'||providerStatus==='CANCELLED';
+ return event===`payment.${providerStatus.toLowerCase()}`;
+}
 
 /** Only durable authenticated delivery hints enter this queue. A configured
  * legacy proof is not payload integrity; only the original-version private lookup can establish funds.
@@ -20,7 +25,8 @@ export async function processChapaEvent(client:PrismaClient,id:string,transport:
   const current=await client.chapaCheckout.findUniqueOrThrow({where:{id:event.checkoutId}});
   if(current.creditJournalId){verified=credited=true;return true}
   if(unsupportedLegacyChapaCheckout(current)){unsupportedLegacy=true;return false}
-  if(current.leaseUntil&&current.leaseUntil>new Date())return false;
+  // An in-flight verifier must still receive this durable signal. Its fenced
+  // coordinator retains a deferred check rather than dropping this delivery.
   const verification=await verifyChapaCheckout(client,current.id,undefined,undefined,transport,'webhook');
   const result=await client.chapaCheckout.findUniqueOrThrow({where:{id:current.id}});
   // A verified but still pending payment needs another bounded lookup. An early
@@ -30,7 +36,11 @@ export async function processChapaEvent(client:PrismaClient,id:string,transport:
   // A lookup outage preserves the last verified outcome. It cannot establish
   // that this newer event was reconciled; retain its durable retry instead.
   const unavailable=verification&&'verificationUnavailable'in verification&&verification.verificationUnavailable===true;
-  verified=credited||!unavailable&&result.verificationState==='VERIFIED'&&!result.leaseUntil&&!!terminal;
+  // A success delivery can outrun a provider replica still returning FAILED.
+  // That older terminal response cannot consume the newer completion signal.
+  // A committed credit ends every hint; otherwise retain bounded retries until
+  // the private outcome agrees with the event being reconciled.
+  verified=credited||!unavailable&&result.verificationState==='VERIFIED'&&!result.leaseUntil&&!!terminal&&reconcilesEvent(event.event,result.providerStatus);
   return verified;
  }catch{return false}
  finally{

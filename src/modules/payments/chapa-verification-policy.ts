@@ -1,5 +1,14 @@
 type AuthorizationState={chargeType:string;authType:string|null;authorizationReference:string|null;providerStatus:string|null;verificationState:string;createdAt:Date;expiresAt:Date;attempts:number};
 const terminal=new Set(['SUCCESS','FAILED','CANCELLED','INCOMPLETE','EXPIRED','BLOCKED','FAILED_OR_CANCELLED']);
+export const CHAPA_VERIFICATION_LEASE_MS=45000;
+export const CHAPA_PRIVATE_VERIFICATION_INTERVAL_MS=30000;
+
+/** Inline pending is only a scheduling hint. A recent, successful private
+ * lookup is required before saving a redundant GET, and events always bypass
+ * this optimization. The periodic private lookup bounds stale public replies. */
+export function canSkipChapaPrivateVerification(order:AuthorizationState&{lastPrivateCheckAt?:Date|null},matchingPending:boolean,eventCheck:boolean,now=Date.now()){
+ return matchingPending&&!eventCheck&&order.verificationState==='VERIFIED'&&['PENDING','AUTH_NEEDED'].includes(order.providerStatus??'')&&!!order.lastPrivateCheckAt&&now-order.lastPrivateCheckAt.getTime()<CHAPA_PRIVATE_VERIFICATION_INTERVAL_MS;
+}
 
 /** A locally assigned display expiry cannot cancel a provider authorization.
  * Privately verified terminal state needs only a fresh merchant lookup, which
