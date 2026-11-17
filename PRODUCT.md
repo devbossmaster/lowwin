@@ -7,9 +7,9 @@ Lowwin serves Ethiopian customers in the Telegram Mini App and ordinary mobile/d
 
 ## Current product truth
 
-The repository supports frozen, versioned auction terms. Current `lowest-unique-v4` auctions treat the entered bid number as a number, never a monetary hold or winner payment. Only the disclosed ETB submission fee is deducted. Submission fees are non-refundable under v4. Earlier versions keep their own holds, charges, refunds and fallback rules. Existing settlements and published terms are not rewritten by the redesign.
+The repository supports frozen, versioned auction terms. Current `lowest-unique-v5` auctions treat the entered bid number as a number, never a monetary hold or winner payment. Only the disclosed ETB submission fee is deducted. A cancellation automatically returns actual net paid cash fees to wallet cash and restores bonus-funded amounts as bonus with original expiry; discounts and promotional value never become cash. Completed historical auctions keep their original terms, receipts and financial facts. Unsettled auctions adopt v5 only through an explicit audited transition.
 
-The existing v4 fallback remains the earliest accepted bid at the lowest number when no number is unique. A least-frequent / most-recent fallback would require a separate future rules version.
+The lowest unique eligible accepted number wins at the authoritative cutoff. Fewer than two eligible participants or no unique number cancels the auction. A repeated number cannot win under v5. Historical completed results remain accurate to the policy under which they settled.
 
 ## Identity and financial records
 

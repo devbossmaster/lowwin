@@ -269,7 +269,7 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
    attempt.quote=confirmedQuote;setQuote(confirmedQuote);
    if(etbToCents(confirmedQuote.total)!==totalCents){showProgressRef.current=false;setShowProgress(false);reportError(text('The total was updated. Check the amount below, then tap Pay to confirm.','ጠቅላላ ክፍያው ተቀይሯል። ከታች ያለውን መጠን ይመልከቱና ለማረጋገጥ ይክፈሉ።'));return}
    setNumbers(confirmedQuote.lines.map(line=>line.number));setInput('');setEditing(null);
-   const intent={key:attempt.paymentKey,purpose:'BID' as const,batchId:confirmedQuote.id,quoteHash:confirmedQuote.quoteHash,paymentMethod:method,phone:normalizedPhone!,apiVersion:'v2' as const,kind:'inline' as const,flow:'INLINE' as const};
+   const intent={key:attempt.paymentKey,purpose:'BID' as const,batchId:confirmedQuote.id,quoteHash:confirmedQuote.quoteHash,paymentMethod:method,phone:normalizedPhone!,apiVersion:'v2' as const,kind:'direct' as const,flow:'DIRECT' as const};
    retainChapaOriginalAttempt(getMiniQueryClient(),queryIdentity,'bid:'+auction.slug,intent,undefined,confirmedQuote);await payment.createInline(intent);
   }catch(cause){
    if(generation.current===version){showProgressRef.current=false;setShowProgress(false);reportError(cause instanceof ChapaClientError?cause.message:text('Could not prepare your bids. Please retry.','ጨረታዎችዎን ማዘጋጀት አልተቻለም። እንደገና ይሞክሩ።'));if(cause instanceof ChapaClientError&&['QUOTE_CHANGED','STALE_QUOTE','COUPON_UNAVAILABLE','RETRYABLE_CONFLICT','TERMS_CHANGED'].includes(cause.code)){setQuote(null);quoteAttempt.current=null}own.reload();wallet.reload();if(applyCoupon)discount.reload()}

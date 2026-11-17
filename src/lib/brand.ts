@@ -4,7 +4,7 @@ export const LOWWIN_ICON_SRC='/images/lowwin-ribbon-l-icon-20261114-v2.png';
 export const LOWWIN_BRAND_NAME='LowWin';
 export const LOWWIN_BANNER_SRC={en:'/images/lowwin-pearl-banner-en-20261116.webp',am:'/images/lowwin-pearl-banner-am-20261116.webp'} as const;
 /** The Home banner follows its own reference proportions. */
-export const LOWWIN_HOME_BANNER_SRC={en:'/images/lowwin-pearl-home-en-20261116.webp',am:'/images/lowwin-pearl-home-am-20261116.webp'} as const;
+export const LOWWIN_HOME_BANNER_SRC={en:'/images/lowwin-unique-refund-hero-20261117.webp',am:'/images/lowwin-unique-refund-hero-20261117.webp'} as const;
 
 // Built-in campaign artwork follows the selected locale. Published uploads,
 // consent-controlled winner media and product photographs keep their own URLs.
@@ -14,10 +14,10 @@ export function lowwinBanner(language:'en'|'am',configured?:string|null){
 }
 export function lowwinHomeBanner(language:'en'|'am',configured?:string|null){
  const path=configured?.split(/[?#]/,1)[0];
- return !path||legacyBanners.has(path)||Object.values(LOWWIN_HOME_BANNER_SRC).some(src=>src===path)?LOWWIN_HOME_BANNER_SRC[language]:configured!;
+ return !path||legacyBanners.has(path)||/^\/images\/lowwin-pearl-home-(?:en|am)-20261116\.webp$/.test(path)||Object.values(LOWWIN_HOME_BANNER_SRC).some(src=>src===path)?LOWWIN_HOME_BANNER_SRC[language]:configured!;
 }
 
 /** Art direction keeps the complete family/prizes visible in a shallower desktop hero. */
 export function lowwinDesktopHomeBanner(language:'en'|'am',configured?:string|null){
- return lowwinHomeBanner(language,configured)===LOWWIN_HOME_BANNER_SRC[language]?LOWWIN_BANNER_SRC[language]:configured!;
+ return lowwinHomeBanner(language,configured);
 }

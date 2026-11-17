@@ -17,6 +17,7 @@ test('home banner: both languages, image, mobile geometry and existing actions',
   const id=randomInt(9800000000,9900000000);await verifyFixtureContact(db,id);
   await page.route('https://telegram.org/**',route=>route.fulfill({body:''}));
   await page.addInitScript(({data})=>{window.Telegram={WebApp:{initData:data,ready(){},expand(){},setHeaderColor(){},setBackgroundColor(){}}};},{data:signedLaunch({user:JSON.stringify({id,first_name:'Banner fixture'})},process.env.TELEGRAM_BOT_TOKEN)});
+  await page.addInitScript(()=>localStorage.setItem('lowwin:introduction:v1','dismissed'));
   await page.goto('/');
   const hero=page.locator('section[aria-labelledby="home-headline"]');
   for(const language of ['en','am'] as const){
@@ -31,16 +32,16 @@ test('home banner: both languages, image, mobile geometry and existing actions',
    expect(await hero.locator('p').textContent()).toBe(lead);
    await expect(page.locator('#home-headline')).toHaveCount(1);
    await expect(hero.getByText(lead,{exact:true})).toHaveCount(1);
-   const image=hero.locator('img');await expect(image).toHaveAttribute('src',new RegExp(`lowwin-home-banner-${language}\\.webp`));
+   const image=hero.locator('img');await expect(image).toHaveAttribute('src',/lowwin-unique-refund-hero-20261117\.webp/);await expect(image).toHaveAttribute('width','1840');await expect(image).toHaveAttribute('height','800');
    await expect.poll(()=>image.evaluate((node:HTMLImageElement)=>node.complete&&node.naturalWidth>0)).toBe(true);
    await page.evaluate(()=>document.fonts.ready);
    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-   // The approved headline and logo are in the image. Accessible copy stays
-   // available to assistive technology without duplicating the visible text.
-   const bannerBox=(await hero.boundingBox())!,copyBox=(await hero.locator('.sr-only').boundingBox())!;
-   expect(copyBox.width).toBeLessThanOrEqual(1);expect(copyBox.height).toBeLessThanOrEqual(1);
+   // Promotional claims are readable HTML; the language-neutral art has no text.
+   await expect(hero.locator('h1')).toBeVisible();await expect(hero.locator('p')).toBeVisible();
+   const bannerBox=(await hero.boundingBox())!,copyBox=(await hero.locator('h1').boundingBox())!;
+   expect(copyBox.width).toBeGreaterThan(100);expect(copyBox.height).toBeGreaterThan(28);
    expect(bannerBox.width).toBe(page.viewportSize()!.width);
-   expect(bannerBox.height).toBeLessThanOrEqual(235);
+   expect(bannerBox.height).toBeGreaterThan(280);expect(bannerBox.height).toBeLessThanOrEqual(650);
    for(const element of await hero.locator('button,a,small').all()){
     const box=(await element.boundingBox())!;
     expect(box.x).toBeGreaterThanOrEqual(bannerBox.x);
@@ -54,7 +55,7 @@ test('home banner: both languages, image, mobile geometry and existing actions',
    await hero.screenshot({path:`${root}/banner-${info.project.name}-${language}.png`});
    const learn=hero.getByRole('button');await learn.click();await expect(page.getByRole('dialog')).toBeVisible();
    await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);await expect(learn).toBeFocused();
-   await hero.getByRole('link').click();await expect(page.locator('#recent-winners')).toBeFocused();
+   await hero.getByRole('link',{name:language==='en'?'Live auctions':'ክፍት ጨረታዎች',exact:true}).click();await expect(page.locator('#discover-auctions')).toBeFocused();
    await page.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));
   }
   expect(errors).toEqual([]);

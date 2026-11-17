@@ -22,7 +22,7 @@ export function legacyTermsInEtb(value:string):string{
     .replace(/\bLowin\b/g,'Lowwin');
 }
 
-/** V4 entries are numbers; legacy receipts retain their ETB label. */
+/** Fee-only entries are numbers; legacy receipts retain their ETB label. */
 export function formatAuctionBid(value:string,ruleVersion?:string):string {
- return ruleVersion==='lowest-unique-v4'?centsToEtb(etbToCents(value)):formatEtb(value);
+ return ruleVersion==='lowest-unique-v4'||ruleVersion==='lowest-unique-v5'?centsToEtb(etbToCents(value)):formatEtb(value);
 }

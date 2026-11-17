@@ -1,4 +1,5 @@
 'use client';
+import {isSubmissionFeeOnly} from '@/modules/auctions/rules';
 import {Trophy} from 'lucide-react';
 import type {CatalogAuction} from '@/modules/auctions/catalog';
 import {etbToCents,formatAuctionBid} from '@/lib/money';
@@ -16,7 +17,7 @@ export function winnerBannerData(auction:BannerAuction,am=false){
  let value:string;try{if(etbToCents(result.winningPoints)<=0n)return null;value=formatAuctionBid(result.winningPoints,auction.terms.ruleVersion)}catch{return null}
  const photo='winnerPhotoPath' in result&&typeof result.winnerPhotoPath==='string'&&/^\/api\/media\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(result.winnerPhotoPath)?result.winnerPhotoPath:null;
  const banner='winnerBannerPath' in result&&typeof result.winnerBannerPath==='string'&&/^\/api\/media\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(result.winnerBannerPath)?result.winnerBannerPath:null;
- return {title:am?auction.product.titleAm?.trim()||auction.product.title:auction.product.title,value,photo,banner,image:banner??photo??auction.product.images[0]?.path,phone:result.winnerPhoneMasked,number:auction.terms.ruleVersion==='lowest-unique-v4'};
+ return {title:am?auction.product.titleAm?.trim()||auction.product.title:auction.product.title,value,photo,banner,image:banner??photo??auction.product.images[0]?.path,phone:result.winnerPhoneMasked,number:isSubmissionFeeOnly(auction.terms.ruleVersion)};
 }
 
 /** Product-first announcement. Historical photographs keep their original

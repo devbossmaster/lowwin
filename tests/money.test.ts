@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {formatEtb,legacyTermsInEtb,etbToCents,centsToEtb} from '../src/lib/money';
+import {formatAuctionBid,formatEtb,legacyTermsInEtb,etbToCents,centsToEtb} from '../src/lib/money';
 
 describe('1:1 ETB presentation of legacy integer ledger units',()=>{
  it('keeps cents exact through input, formatting and negative wallet history',()=>{
@@ -13,5 +13,9 @@ describe('1:1 ETB presentation of legacy integer ledger units',()=>{
  });
  it('converts immutable historic auction wording only for display',()=>{
   expect(legacyTermsInEtb('A 2 point fee; 1 point or 4 points can win.')).toBe('A ETB 2.00 fee; ETB 1.00 or ETB 4.00 can win.');
+ });
+ it('keeps v5 bid numbers separate from money while preserving legacy paid amounts',()=>{
+  expect(formatAuctionBid('3.60','lowest-unique-v5')).toBe('3.60');expect(formatAuctionBid('3.60','lowest-unique-v4')).toBe('3.60');
+  expect(formatAuctionBid('3.60','lowest-unique-v3')).toBe('ETB 3.60');expect(formatAuctionBid('3.60')).toBe('ETB 3.60');
  });
 });

@@ -14,9 +14,10 @@ describe('one current LowWin campaign banner',()=>{
  });
  it('uses the wide desktop composition only for built-in Home artwork',()=>{
   for(const language of ['en','am'] as const){
-   expect(lowwinDesktopHomeBanner(language)).toBe(LOWWIN_BANNER_SRC[language]);
-   expect(lowwinDesktopHomeBanner(language,LOWWIN_HOME_BANNER_SRC[language])).toBe(LOWWIN_BANNER_SRC[language]);
-   expect(lowwinDesktopHomeBanner(language,'/images/lowwin-home-16x9-en-20261114-v2.webp')).toBe(LOWWIN_BANNER_SRC[language]);
+   expect(lowwinDesktopHomeBanner(language)).toBe(LOWWIN_HOME_BANNER_SRC[language]);
+   expect(lowwinDesktopHomeBanner(language,LOWWIN_HOME_BANNER_SRC[language])).toBe(LOWWIN_HOME_BANNER_SRC[language]);
+   expect(lowwinDesktopHomeBanner(language,'/images/lowwin-home-16x9-en-20261114-v2.webp')).toBe(LOWWIN_HOME_BANNER_SRC[language]);
+   for(const path of ['/images/lowwin-pearl-home-en-20261116.webp','/images/lowwin-pearl-home-am-20261116.webp'])expect(lowwinHomeBanner(language,path)).toBe(LOWWIN_HOME_BANNER_SRC[language]);
    for(const custom of ['/api/media/private-upload','/images/custom-campaign.webp'])expect(lowwinDesktopHomeBanner(language,custom)).toBe(custom);
   }
  });

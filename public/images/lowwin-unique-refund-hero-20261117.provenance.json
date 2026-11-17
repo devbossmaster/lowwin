@@ -1,0 +1,11 @@
+{
+  "created": "2026-11-17",
+  "method": "Built-in image_gen, followed by Sharp resize and WebP encoding",
+  "asset": "/images/lowwin-unique-refund-hero-20261117.webp",
+  "width": 1840,
+  "height": 800,
+  "quality": 82,
+  "source": "exec-9e2329c2-c4ce-4575-9222-8bdfdccf0d3b.png",
+  "prompt": "Use case: ads-marketing. Create a brand-new website hero artwork for Lowwin lowest-unique-number auctions. Wide panoramic composition, exact intended source ratio 1840 by 800 (2.3:1). Clean airy pale ice-blue and white studio, realistic polished product photography with soft daylight and gentle contact shadows. Arrange a premium unbranded charcoal smartphone, white wireless headphones, compact silver laptop and small white speaker in a cohesive product composition on the right 55 percent, on simple white and ice-blue architectural shelves. Left 45 percent is clean pale-blue negative space for separate HTML text. Editorial precision, premium but approachable, navy and blue accents, generous breathing room, crisp uncluttered composition. Devices should be physically plausible and generic, with no logos, no brand marks, no packaging claims, no text, no lettering, no numbers, no ribbons, no badges, no guarantees, no coins, no currency, no UI mockup. No embedded typography anywhere; HTML will supply all English and Amharic copy. Deliver the artwork only, no border or device frame.",
+  "disclosure": "Illustrative generated products; actual auction listings establish the offered product and brand. All English and Amharic promotional copy is HTML."
+}
