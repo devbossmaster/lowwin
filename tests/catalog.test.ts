@@ -24,6 +24,7 @@ describe.skipIf(!testUrl)('public catalog on disposable PostgreSQL',()=>{
     expect(await client.auction.count({where:{code:{startsWith:'DEMO-'}}})).toBe(14);
     expect(await client.productImage.count()).toBe(14);
     expect(await client.auctionTerms.count()).toBe(14);
+    expect(await client.auctionTerms.count({where:{ruleVersion:'lowest-unique-v1',minParticipants:0}})).toBe(14);
   });
   it('returns a small public-only live header list with numeric detail codes',async()=>{
     const result=await catalog.listQuickLiveAuctions(1);

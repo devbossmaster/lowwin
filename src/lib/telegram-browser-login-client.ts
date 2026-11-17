@@ -32,6 +32,15 @@ export async function loadTelegramBrowserLoginConfiguration(signal:AbortSignal,t
 export function telegramEnvironment(app:{initData?:string}|undefined):Exclude<TelegramEnvironment,'detecting'>{
  return app?.initData?'mini':'browser';
 }
+/** A launch URL may arrive before Telegram's SDK. This controls presentation
+ * only; neither a hint nor SDK presence authenticates a customer. */
+export function telegramMiniLaunchHint(location:{search:string;hash:string}):boolean{
+ for(const source of [location.search.replace(/^\?/,''),location.hash.replace(/^#/, '')]){
+  const params=new URLSearchParams(source);
+  if(params.get('tgWebAppData')?.trim()||params.get('tgWebAppPlatform')&&params.get('tgWebAppPlatform')!=='unknown')return true;
+ }
+ return false;
+}
 export function telegramBrowserLoginError(value:string|null):TelegramBrowserLoginError|null{
  return TELEGRAM_BROWSER_LOGIN_ERRORS.includes(value as TelegramBrowserLoginError)?value as TelegramBrowserLoginError:null;
 }

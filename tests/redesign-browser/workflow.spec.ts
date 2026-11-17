@@ -46,10 +46,10 @@ test('browse filters survive navigation and private screens reuse a fresh read',
   // Compile first, then count real requests within the profile freshness window.
   await page.goto('/my-bids');await expect(page.getByRole('heading',{name:'My Bids',exact:true})).toBeVisible();
   const nav=page.getByRole('navigation',{name:'Your navigation'});
-  await nav.getByRole('link',{name:'Profile',exact:true}).click();await expect(page.getByRole('button',{name:'Edit',exact:true})).toBeVisible();
+  await nav.getByRole('link',{name:'Me',exact:true}).click();await expect(page.getByRole('button',{name:'Edit',exact:true})).toBeVisible();
   const initial=reads;expect(initial).toBe(1);
   const began=performance.now();await nav.getByRole('link',{name:'My Bids',exact:true}).click();await expect(page.getByRole('heading',{name:'My Bids',exact:true})).toBeVisible();
-  await nav.getByRole('link',{name:'Profile',exact:true}).click();await expect(page.getByRole('button',{name:'Edit',exact:true})).toBeVisible();
+  await nav.getByRole('link',{name:'Me',exact:true}).click();await expect(page.getByRole('button',{name:'Edit',exact:true})).toBeVisible();
   expect(reads).toBe(initial);
   const roundTripMs=Math.round(performance.now()-began);
   await page.context().addCookies([{name:'lowwin-language',value:'am',domain:'localhost',path:'/'}]);

@@ -36,6 +36,10 @@ describe.skipIf(!base)('cent migration over populated legacy money',()=>{
    const before=await snapshot();
    await pg.query(readFileSync('prisma/migrations/202609300001_cent_money_v3/migration.sql','utf8'));
    expect(await snapshot()).toEqual(before);
+   // The snapshot above isolates the historic cent migration. Current runtime
+   // reconciliation also validates later additive refund evidence, so exercise
+   // it only after completing the remaining supported upgrade chain.
+   for(const dir of dirs.filter(d=>d>'202609300001_cent_money_v3'))await pg.query(readFileSync(`prisma/migrations/${dir}/migration.sql`,'utf8'));
    prisma=new PrismaClient({datasourceUrl:url.href});
    Object.assign(process.env,{NODE_ENV:'test',APP_ENV:'local',DEV_POINTS_ENABLED:'true'});
    await creditDevelopmentPoints(prisma,'legacy-cent-user','0.01','cent-upgrade-credit');

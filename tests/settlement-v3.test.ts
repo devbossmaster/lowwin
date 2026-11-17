@@ -30,16 +30,13 @@ describe.skipIf(!url)('frozen cent-level v3 on disposable PostgreSQL',()=>{
   expect((await getWalletView(db,u)).activity.some(a=>a.availableDelta==='-0.03')).toBe(true);
   expect(await reconcile(db)).toEqual([]);
  });
- it('rejects the fourth adjacent cent amount and later gap filling, without fees or sequence gaps',async()=>{
+ it('accepts adjacent cent amounts and later gap filling with exact fees and sequence order',async()=>{
   const u=await bidUser(db,'10'),a=await auction({endDelayMs:60000});
   for(const amount of ['1.01','1.02','1.03'])await bid(u,a.slug!,amount);
-  const before=await balances(u);
-  await expect(bid(u,a.slug!,'1.04')).rejects.toMatchObject({code:'CONSECUTIVE_LIMIT'});
-  expect(await balances(u)).toEqual(before);
   await bid(u,a.slug!,'1.05');
-  await expect(bid(u,a.slug!,'1.04')).rejects.toMatchObject({code:'CONSECUTIVE_LIMIT'});
+  await bid(u,a.slug!,'1.04');
   const rows=await db.bid.findMany({where:{auctionId:a.id},orderBy:{acceptanceOrder:'asc'}});
-  expect(rows.map(r=>r.acceptanceOrder)).toEqual([1n,2n,3n,4n]);expect(await reconcile(db)).toEqual([]);
+  expect(rows.map(r=>r.acceptanceOrder)).toEqual([1n,2n,3n,4n,5n]);expect(rows.map(r=>r.amount.toString())).toEqual(['1.01','1.02','1.03','1.05','1.04']);expect(await balances(u)).toEqual({available:'8.8',held:'1.05'});expect(await reconcile(db)).toEqual([]);
  });
  it('serializes concurrent gap-filling bids and safely replays equivalent decimal requests',async()=>{
   const u=await bidUser(db),a=await auction({endDelayMs:60000});
@@ -47,17 +44,18 @@ describe.skipIf(!url)('frozen cent-level v3 on disposable PostgreSQL',()=>{
   expect(await bid(u,a.slug!,'1.00',key)).toEqual(original);
   await bid(u,a.slug!,'1.03');
   const attempts=await Promise.allSettled([bid(u,a.slug!,'1.01'),bid(u,a.slug!,'1.02')]);
-  expect(attempts.filter(r=>r.status==='fulfilled')).toHaveLength(1);
-  expect(await db.bid.count({where:{auctionId:a.id}})).toBe(3);expect(await reconcile(db)).toEqual([]);
+  expect(attempts.filter(r=>r.status==='fulfilled')).toHaveLength(2);
+  expect(await db.bid.count({where:{auctionId:a.id}})).toBe(4);expect(await reconcile(db)).toEqual([]);
  });
- it('enforces the same precision, minimum and pattern against direct SQL',async()=>{
+ it('enforces precision and minimum against direct SQL while accepting adjacent paid bids',async()=>{
   const u=await bidUser(db),a=await auction({endDelayMs:60000});
   for(const amount of ['1.01','1.02','1.03'])await bid(u,a.slug!,amount);
-  for(const value of ['1.04','0.99','1.005'])await expect(db.$executeRaw`
+  await bid(u,a.slug!,'1.04');
+  for(const value of ['0.99','1.005'])await expect(db.$executeRaw`
    INSERT INTO "Bid" (id,"userId","auctionId",amount,"termsVersion","feePoints","operationId")
    VALUES (${randomUUID()},${u},${a.id},${value}::numeric,1,0.03,${randomUUID()})
   `).rejects.toThrow();
-  expect(await db.bid.count({where:{auctionId:a.id}})).toBe(3);expect(await reconcile(db)).toEqual([]);
+  expect(await db.bid.count({where:{auctionId:a.id}})).toBe(4);expect(await reconcile(db)).toEqual([]);
  });
  it('charges a higher unique 2.34 ahead of a duplicated 1.97 and releases all excess holds',async()=>{
   const u=await bidUser(db,'10'),v=await bidUser(db,'10'),a=await auction();

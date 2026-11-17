@@ -1,6 +1,9 @@
 {
   "scope": "Local validation only; focused cohorts overlap and are not an aggregate whole-repository CI count",
   "productionSourceCommit": "a3fc1eb",
+  "productionSourceScope": "Measured build before the subsequent consecutive-number and Mini App onboarding updates; final revision CI is reported on PR 17",
+  "consecutiveRanges": {"currentDirectBrowser": {"passed": 4, "failed": 0, "skipped": 0, "viewports": [360,430], "languages": ["en","am"], "coverage": ["Four adjacent single numbers", "101-number range rejected with clear cap", "100-number ranges accepted", "One Direct payment accepts all 100 adjacent cents", "Third decimal rejected"]}, "financialRegression": {"passed": 81, "failed": 0}, "newV5HundredAdjacentDatabaseRegression": {"passed": 1, "failed": 0}},
+  "publicNavigationRegression": {"passed": 36, "failed": 0, "scope": "Current public Home destination and private account boundaries"},
   "optimizedBuild": {"passed": true, "elapsedMs": 203823, "mode": "production", "providersDisabled": true, "database": "fresh disposable loopback PostgreSQL"},
   "typecheck": {"passed": true, "command": "node node_modules/typescript/bin/tsc --noEmit"},
   "loginSecurity": {"passed": 134, "failed": 0, "skipped": 0},

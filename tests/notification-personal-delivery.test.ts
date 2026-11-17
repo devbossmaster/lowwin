@@ -14,8 +14,8 @@ beforeEach(()=>{vi.clearAllMocks();vi.stubEnv('MINI_APP_URL','https://lowwin.tes
 afterEach(()=>vi.unstubAllEnvs());
 
 describe('private notification speed and recipient isolation',()=>{
- it('reserves personal capacity for actual deposit, purchase and winner messages only',()=>{
-  expect(highPriorityKinds).toEqual(['DEPOSIT_CREDITED','BID_ACCEPTED','WINNER_CONGRATULATIONS']);
+ it('reserves personal capacity for committed deposits, purchases, winners and fee refunds',()=>{
+  expect(highPriorityKinds).toEqual(['DEPOSIT_CREDITED','BID_ACCEPTED','WINNER_CONGRATULATIONS','AUCTION_FEE_REFUNDED']);
   expect(highPriorityKinds).not.toContain('BROADCAST');expect(highPriorityKinds).not.toContain('CONTACT_CONFIRMED');
  });
  it('does not share one purchaser receipt or product photo with another recipient',async()=>{
@@ -34,8 +34,8 @@ describe('private notification speed and recipient isolation',()=>{
   await dispatchBatch(f.client,{api:{sendPhoto:send,sendMessage:send}} as never,{limit:1});
   expect(send).not.toHaveBeenCalled();expect(row).toMatchObject({state:'SKIPPED',lastError:'PRIVATE_CHAT_REQUIRED'});
  });
- it('sends the verified deposit receipt without media preparation or media-cache database work',async()=>{
-  const row=job('deposit','DEPOSIT_CREDITED'),f=notificationDispatchFixture([row]),send=vi.fn(async()=>({message_id:2}));
+ it.each(['DEPOSIT_CREDITED','AUCTION_FEE_REFUNDED'])('sends the committed %s receipt without media preparation or media-cache database work',async kind=>{
+  const row=job('receipt',kind),f=notificationDispatchFixture([row]),send=vi.fn(async()=>({message_id:2}));
   content.mockResolvedValue({userId:'player',kind:row.kind,title:'Deposit',body:'Credited',href:'/wallet'});
   await dispatchBatch(f.client,{api:{sendMessage:send,sendPhoto:vi.fn()}} as never,{limit:1});
   expect(row.state).toBe('SENT');expect(send).toHaveBeenCalledTimes(1);expect(photo).not.toHaveBeenCalled();expect(f.tx.telegramMediaCache.findUnique).not.toHaveBeenCalled();

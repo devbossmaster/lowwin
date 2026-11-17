@@ -20,6 +20,11 @@ expired promotion never becomes cash, and coupon discounts create no refund.
 The audited migration adopts unsettled auctions while preserving completed
 results, accepted bids and original financial receipts.
 
+Consecutive numbers are allowed in individual submissions and ranges. The
+100-distinct-number cap, two-decimal precision, duplicate rejection and financial
+guards remain. The v5 proof does not declare a consecutive-number restriction;
+historical completed proofs retain their original policy facts.
+
 Settlement commits bounded durable refund intents. Workers commit each refund
 once, independently of notification delivery. Pending UI amounts never appear
 as paid refunds. See [financial guards and recovery](../payments/unique-only-refunds-2026-11-17.md).
@@ -40,6 +45,21 @@ issuer, audience, expiry, nonce, state, PKCE, canonical callback, contact owners
 account conflict and account-switch protections remain. No UserInfo call was
 introduced. The user clarified that the current password-only admin login must
 be preserved, with no new 2FA enrollment.
+
+Mini App presentation is separate from website login. A Telegram launch uses
+server-verified signed launch data, then first-time contact registration. The
+Mini App never offers the website OIDC login button. First-time players see a
+short guide (the admin-managed video when available), an optional native
+home-screen shortcut on supported Telegram clients, then native contact consent.
+Dismissal permits browsing; native approval alone never verifies the account.
+Returning registered players restore their account and wallet without repeating
+contact consent. The website retains its existing Better Auth Telegram OIDC flow.
+The tutorial video is not ready yet, so the short guide remains the fallback.
+The bot welcome places the optional Telegram channel link beside Launch LowWin.
+
+Public Home navigation now reads the same public visit memory used to save its
+filters and scroll position, retaining extra loaded auction pages on return.
+Private route memory remains scoped to the current account/session.
 
 The review covered server-side staff permissions, fresh revocation, owner-scoped
 payment/refund/history reads, mutation origin checks, bounded inputs and rate
@@ -95,8 +115,14 @@ it does not stub the cancellation, refund or My Bids responses.
 
 ## Presentation and validation
 
-The original 1840 × 800 WebP is 50,550 bytes, with concise EN/AM HTML copy,
-light-blue/white artwork and navy/blue actions. Retired managed banner defaults
+The final 1840 × 800 WebP is 176,656 bytes, with concise EN/AM HTML copy beside
+rich metallic-gold artwork showing a PS5, MacBook, refrigerator, iPhone Pro Max,
+headset and bicycle. It replaces the earlier light-blue composition following
+the user's later gold reference. Text and products share one hero section;
+mobile stacks the readable copy with the artwork. The asset and exact built-in
+generation prompt are recorded in its
+[provenance manifest](../../public/images/lowwin-gold-prizes-hero-20261117.provenance.json).
+Retired managed banner defaults
 cannot silently replace it. Countdown updates remain local to the timer and
 preserve server anchoring, large digits, reduced motion, expiry and resume.
 Broadcast history keeps the original media and has one direct Yes/No resend or
@@ -120,7 +146,7 @@ test count:
 | Committed refund UI and cached-null recovery | Real DB/HTTP UI measurement passed; standalone actual-component cached-null → pending → completed → changed-auction regression passed |
 | Broadcast browser controls | 360px / 1280px passed with decoded original media and direct confirmation actions |
 
-The final production source (`a3fc1eb`) passed an optimized build (203.8 seconds),
+The pre-range-update production source (`a3fc1eb`) passed an optimized build (203.8 seconds),
 normal-project TypeScript checking and a fresh-database production refund smoke
 check after the money-normalization fix. The
 [validation manifest](../measurements/release-validation-2026-11-17.json) records

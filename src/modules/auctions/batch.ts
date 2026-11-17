@@ -7,7 +7,7 @@ import {lockReferralDiscountInTransaction} from '../referrals/service';
 import {ChapaError,chapaHash} from '../payments/chapa-provider';
 import {PAYMENT_TRANSACTION_OPTIONS} from '../payments/timing';
 import {BidError,recordValidatedSubmissionFeeBidInTransaction,type BidReceipt} from './bids';
-import {createsFourConsecutiveAmounts,parseBidCents} from './consecutive-bids';
+import {parseBidCents} from './consecutive-bids';
 import {auctionMaintenance} from './maintenance';
 import {isSubmissionFeeOnly} from './rules';
 import {walletBidsEnabled} from '../wallet/policy';
@@ -52,8 +52,8 @@ export async function validateBatchInTransaction(tx:Tx,userId:string,slug:string
  if(!fee||fee.version!==feeVersion)throw new ChapaError(409,'TERMS_CHANGED','The fee changed. Review a new quote before paying.');
  const normalized=normalizeBatchNumbers(numbers),own=await tx.bid.findMany({where:{userId,auctionId:auction.id},orderBy:[{acceptedAt:'asc'},{id:'asc'}],select:{id:true,amount:true,acceptedAt:true}});
  if(own.length+normalized.length>terms.maxDistinctBids)throw new ChapaError(409,'CAP_REACHED','These entries exceed your remaining submissions.');
- const accepted=own.map(item=>parseBidCents(item.amount.toString())),seen=new Set(accepted.map(String));
- for(const number of normalized){const n=new Prisma.Decimal(number),cents=parseBidCents(number);if(n.lt(1)||n.lt(terms.minPoints)||terms.maxPoints!==null&&n.gt(terms.maxPoints)||!n.sub(terms.minPoints).mod(terms.stepPoints).isZero())throw new ChapaError(422,'INVALID_AMOUNT','Choose amounts within the published bounds and increment.');if(seen.has(String(cents)))throw new ChapaError(409,'OWN_DUPLICATE','You already submitted one of these amounts.');if(createsFourConsecutiveAmounts(accepted,cents))throw new ChapaError(422,'CONSECUTIVE_LIMIT','Leave a gap after three consecutive amounts.');accepted.push(cents);seen.add(String(cents))}
+ const seen=new Set(own.map(item=>String(parseBidCents(item.amount.toString()))));
+ for(const number of normalized){const n=new Prisma.Decimal(number),cents=parseBidCents(number);if(n.lt(1)||n.lt(terms.minPoints)||terms.maxPoints!==null&&n.gt(terms.maxPoints)||!n.sub(terms.minPoints).mod(terms.stepPoints).isZero())throw new ChapaError(422,'INVALID_AMOUNT','Choose amounts within the published bounds and increment.');if(seen.has(String(cents)))throw new ChapaError(409,'OWN_DUPLICATE','You already submitted one of these amounts.');seen.add(String(cents))}
  const discount=couponId?await lockReferralDiscountInTransaction(tx,userId,couponId,fee.feePoints,terms.ruleVersion):null;
  const lines:BatchLine[]=normalized.map((number,position)=>{const saving=position===0&&discount?discount.discountPoints:new Prisma.Decimal(0);return {position,number,grossFee:fee.feePoints.toFixed(2),discount:saving.toFixed(2),netFee:fee.feePoints.sub(saving).toFixed(2),...(position===0&&couponId?{couponId}:{})}});
  const grossCents=etbToCents(fee.feePoints.toFixed(2))*BigInt(lines.length),discountCents=discount?etbToCents(discount.discountPoints.toFixed(2)):0n;

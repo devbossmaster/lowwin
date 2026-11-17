@@ -10,6 +10,7 @@ const group: Record<string, string> = {
   'bids.test.ts': 'BID_TEST_DATABASE_URL', 'submission-fee.test.ts': 'BID_TEST_DATABASE_URL',
   'settlement.test.ts': 'SETTLEMENT_TEST_DATABASE_URL', 'settlement-v2.test.ts': 'SETTLEMENT_TEST_DATABASE_URL',
   'settlement-v5.test.ts':'V5_TEST_DATABASE_URL', 'settlement-v5-transition.test.ts':'V5_TEST_DATABASE_URL',
+  'auction-refund-views.test.ts':'V5_TEST_DATABASE_URL',
   'settlement-v3.test.ts': 'SETTLEMENT_TEST_DATABASE_URL', 'personal.test.ts': 'PERSONAL_TEST_DATABASE_URL',
   'admin.test.ts': 'ADMIN_TEST_DATABASE_URL', 'operations.test.ts': 'OPS_TEST_DATABASE_URL',
   'payments.test.ts': 'PAYMENT_TEST_DATABASE_URL', 'payment-session.test.ts': 'PAYMENT_TEST_DATABASE_URL',
@@ -40,7 +41,7 @@ if (database) {
   }
   process.env.DATABASE_URL = process.env.DIRECT_URL = database;
   process.env.APP_ENV = 'local';
-  if(['settlement-v5.test.ts','settlement-v5-transition.test.ts'].includes(filename))Object.assign(process.env,{
+  if(['settlement-v5.test.ts','settlement-v5-transition.test.ts','auction-refund-views.test.ts'].includes(filename))Object.assign(process.env,{
     NODE_ENV:'test',DEV_POINTS_ENABLED:'true',DEV_IDENTITY_ENABLED:'false',STAGING_DEMO_ENABLED:'false',
     BETTER_AUTH_URL:'https://lowwin.test',MINI_APP_URL:'https://lowwin.test',BETTER_AUTH_SECRET:'fixture-v5-secret-at-least-thirty-two-characters',
     TELEGRAM_BOT_TOKEN:TEST_TOKEN,TELEGRAM_BOT_USERNAME:'lowin_fixture_bot',TELEGRAM_WEBHOOK_SECRET:'fixture-contact-webhook-secret-thirty-two',

@@ -112,8 +112,10 @@ describe.skipIf(!url)('Master Guide Admin operations and private alerts',()=>{
   await db.outbox.updateMany({where:{state:'PENDING'},data:{state:'SKIPPED'}});
   const image=await sharp({create:{width:240,height:240,channels:3,background:'#15803d'}}).png().toBuffer();
   const media=await okay(await cmd('media',{key:randomUUID(),mime:'image/png',data:image.toString('base64'),sourceType:'SUPPLIED',sourceCredit:'DEMO broadcast test',rightsConfirmed:true}));
-  const auction=await bidAuction(db),input={key:randomUUID(),reason:'DEMO broadcast test',text:'Hello {name}, see the new auction.',auctionCode:String(auction.publicCode),imageId:media.id,confirmation:'SEND'};
+  const demo=await bidAuction(db),demoKey=randomUUID(),auction=await bidAuction(db,{isDemo:false}),input={key:randomUUID(),reason:'Synthetic broadcast test',text:'Hello {name}, see the new auction.',auctionCode:String(auction.publicCode),imageId:media.id,confirmation:'SEND'};
   expect((await cmd('broadcast',input,outsider)).status).toBe(403);
+  expect((await cmd('broadcast',{...input,key:demoKey,auctionCode:String(demo.publicCode)})).status).toBe(422);
+  expect(await db.outbox.count({where:{key:`broadcast:${ownerId}:${demoKey}`}})).toBe(0);
   expect((await cmd('broadcast',{...input,imageId:randomUUID()})).status).toBe(422);
   const receipt=await okay(await cmd('broadcast',input));expect(await okay(await cmd('broadcast',input))).toEqual(receipt);
   expect((await cmd('broadcast',{...input,text:'Changed content'})).status).toBe(409);

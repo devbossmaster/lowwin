@@ -1,5 +1,4 @@
 import {centsToEtb,etbToCents} from './money';
-import {createsFourConsecutiveAmounts} from '@/modules/auctions/consecutive-bids';
 import type {BidReceipt} from '@/modules/auctions/bids';
 
 export type BidBatchLine={position:number;number:string;grossFee:string;discount:string;netFee:string};
@@ -16,7 +15,7 @@ export function previewBidFees(entryCount:number,entryFeePoints:string,discountP
  return {entryCount,grossTotal:centsToEtb(gross),discountTotal:centsToEtb(discount),total:centsToEtb(total),totalCents:String(total)};
 }
 export type BidDraftRules={minPoints:string;maxPoints:string|null;stepPoints:string;remainingSubmissions:number;ownBids:readonly {amount:string}[]};
-export type BidDraftError='precision'|'range'|'duplicate'|'consecutive'|'limit';
+export type BidDraftError='precision'|'range'|'duplicate'|'limit';
 export function normalizeBidDraft(value:string):string|null{
  if(!/^(0|[1-9]\d{0,15})(?:\.\d{1,2})?$/.test(value))return null;
  try{return centsToEtb(etbToCents(value))}catch{return null}
@@ -31,7 +30,6 @@ export function validateBidDraft(values:readonly string[],rules:BidDraftRules):{
   const value=etbToCents(number),min=etbToCents(rules.minPoints),max=rules.maxPoints===null?null:etbToCents(rules.maxPoints),step=etbToCents(rules.stepPoints);
   if(value<min||max!==null&&value>max||step<=0n||(value-min)%step!==0n)return {numbers:[],error:'range'};
   if(seen.has(number)||accepted.includes(value))return {numbers:[],error:'duplicate'};
-  if(createsFourConsecutiveAmounts(accepted,value))return {numbers:[],error:'consecutive'};
   seen.add(number);accepted.push(value);numbers.push(number);
  }
  return {numbers,error:null};

@@ -1,6 +1,5 @@
 import {isSubmissionFeeOnly,usesDecimalBids} from './rules';
 import {auctionMaintenance} from './maintenance';
-import {createsFourConsecutiveAmounts,parseBidCents} from './consecutive-bids';
 import {formatEtb} from '@/lib/money';
 import {assertPlayerContact} from '../auth/own-contact';
 import {stagingDemoUser} from './staging-demo';
@@ -37,7 +36,7 @@ export type DirectBidReceipt=Omit<BidReceipt,'wallet'>;
 type ValidatedAuction=Prisma.AuctionGetPayload<{include:{terms:true;feeRevisions:true;product:{include:{category:true}};category:true}}>;
 export type ValidatedSubmissionFeeBid={auction:ValidatedAuction;own:Array<{id:string;amount:Prisma.Decimal;acceptedAt:Date}>;discount:Awaited<ReturnType<typeof lockReferralDiscountInTransaction>>|null};
 
-export type BidErrorCode='AUCTIONS_PAUSED'|'AUCTION_NOT_FOUND'|'AUCTION_CLOSED'|'DEMO_UNAVAILABLE'|'INVALID_AMOUNT'|'CONSECUTIVE_LIMIT'|'OWN_DUPLICATE'|'CAP_REACHED'|'INSUFFICIENT_POINTS'|'KEY_REUSED'|'RETRYABLE_CONFLICT'|'BIDDING_RESTRICTED'|'CONTACT_REQUIRED'|'COUPON_UNAVAILABLE';
+export type BidErrorCode='AUCTIONS_PAUSED'|'AUCTION_NOT_FOUND'|'AUCTION_CLOSED'|'DEMO_UNAVAILABLE'|'INVALID_AMOUNT'|'OWN_DUPLICATE'|'CAP_REACHED'|'INSUFFICIENT_POINTS'|'KEY_REUSED'|'RETRYABLE_CONFLICT'|'BIDDING_RESTRICTED'|'CONTACT_REQUIRED'|'COUPON_UNAVAILABLE';
 export class BidError extends Error {
   constructor(public readonly code:BidErrorCode,public readonly status:number,message:string,public readonly wallet?:{available:string;required:string;shortfall:string;currency:'ETB'}){super(message);this.name='BidError';}
 }
@@ -87,7 +86,6 @@ export async function submitBidInTransaction(tx:Prisma.TransactionClient,input:B
 
   const own=await tx.bid.findMany({where:{userId,auctionId:auction.id},orderBy:[{acceptedAt:'asc'},{id:'asc'}],select:{id:true,amount:true,acceptedAt:true}});
   if(own.some(bid=>bid.amount.eq(amount)))fail('OWN_DUPLICATE',409,'You already submitted this bid number for this auction.');
-  if(usesDecimalBids(terms.ruleVersion)&&createsFourConsecutiveAmounts(own.map(b=>parseBidCents(b.amount.toString())),parseBidCents(amount.toString())))fail('CONSECUTIVE_LIMIT',422,'Leave a gap after three consecutive numbers separated by 0.01.');
   if(own.length>=terms.maxDistinctBids)fail('CAP_REACHED',409,'You have reached the 100 distinct-bid limit for this auction.');
 
   return recordBidInTransaction(tx,command,auction,own,raw,undefined,options.allowDepositBonus!==false);
@@ -177,7 +175,6 @@ export async function submitBid(client:PrismaClient,input:BidInput,raw:Record<st
     const message=error instanceof Error?error.message:'';
     if(message.includes('Referral redemption')||message.includes('Referral coupon'))fail('COUPON_UNAVAILABLE',409,'This earned discount changed or expired. Review the fee and retry.');
     if(message.includes('Auction is not open for bids'))fail('AUCTION_CLOSED',409,'This auction closed before your bid was accepted.');
-    if(message.includes('Four consecutive cent amounts'))fail('CONSECUTIVE_LIMIT',422,'Leave a gap after three consecutive numbers separated by 0.01.');
     if(message.includes('Distinct bid limit reached'))fail('CAP_REACHED',409,'You have reached the 100 distinct-bid limit for this auction.');
     if(message.includes('stale')||message.includes('current fee revision'))fail('RETRYABLE_CONFLICT',409,'Bidding terms changed. Review the current amount and confirm again.');
     if(message.includes('Bid does not match published terms'))fail('INVALID_AMOUNT',422,'The published ETB terms changed or this amount is invalid.');

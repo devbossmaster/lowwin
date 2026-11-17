@@ -6,7 +6,7 @@ import {BrandMark} from './brand-mark';
 import {IntentPrefetchLink} from './intent-prefetch-link';
 import {MiniPhrase,useMiniLocale} from './mini-locale';
 import {useTelegram} from './telegram-provider';
-import {miniNavigationState} from './mini-navigation-state';
+import {rememberedMiniVisit} from './mini-navigation-state';
 import {activeCustomerNavigation,customerNavigationItems} from './customer-navigation-items';
 import styles from './browser-navigation.module.css';
 
@@ -27,7 +27,7 @@ export function CustomerNavigation({className}:{className?:string}={}){
  // Route/API authorization remains independently enforced on the server.
  if(status!=='authenticated'||!me?.user?.id||!queryIdentity)return null;
  return <nav className={`${styles.links} ${className??''}`} data-customer-navigation aria-label={language==='am'?'ዋና አሰሳ':'Main navigation'}>{customerNavigationItems.map(({href,en,am,icon:Icon})=>{
-   const saved=miniNavigationState.visit(queryIdentity,href);
+   const saved=rememberedMiniVisit(queryIdentity,href);
    return <IntentPrefetchLink key={href} href={saved?.href??href} scroll={saved&&saved.scrollY>0?false:undefined} aria-current={active===href?'page':undefined}><Icon size={20} strokeWidth={1.7} aria-hidden="true"/><MiniPhrase en={en} am={am}/></IntentPrefetchLink>;
   })}</nav>;
 }

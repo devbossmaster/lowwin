@@ -9,7 +9,7 @@ describe('batch entry feedback',()=>{
   expect(validateBidDraft(['324'],rules)).toEqual({numbers:['324.00'],error:null});
   expect(validateBidDraft(['324'],{...rules,ownBids:[{amount:'324.0'}]}).error).toBe('duplicate');
  });
- it('checks the whole consecutive run regardless of selection order',()=>{for(const values of [['1.04','1.01','1.03','1.02'],['1.02','1.04','1.01','1.03']])expect(validateBidDraft(values,rules).error).toBe('consecutive');expect(validateBidDraft(['1.04'],{...rules,ownBids:[{amount:'1.01'},{amount:'1.02'},{amount:'1.03'}]}).error).toBe('consecutive');expect(validateBidDraft(['1.01','1.02','1.03','1.05'],rules).error).toBeNull()});
+ it('allows consecutive numbers in any order and beside accepted numbers',()=>{for(const values of [['1.04','1.01','1.03','1.02'],['1.02','1.04','1.01','1.03']])expect(validateBidDraft(values,rules).error).toBeNull();expect(validateBidDraft(['1.04'],{...rules,ownBids:[{amount:'1.01'},{amount:'1.02'},{amount:'1.03'}]})).toEqual({numbers:['1.04'],error:null})});
  it('enforces remaining cap and exact bounds/step',()=>{expect(validateBidDraft(['2','3'],{...rules,remainingSubmissions:1}).error).toBe('limit');expect(validateBidDraft(['1.01'],{...rules,stepPoints:'0.02'}).error).toBe('range');expect(validateBidDraft(['3'],{...rules,maxPoints:'2'}).error).toBe('range')});
  it('includes a valid field value when combined for review',()=>{expect(validateBidDraft(['2.00','4.25'],rules)).toEqual({numbers:['2.00','4.25'],error:null})});
 });

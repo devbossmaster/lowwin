@@ -34,9 +34,16 @@ describe('minimal published auction-ended notice',()=>{
   const f=fixture();f.item.settlement.decision='FIRST_ACCEPTED_LOWEST';
   const content=await campaignContent(f.db,row);expect(caption(content)).toContain('ጨረታው ተጠናቋል');expect(caption(content)).not.toMatch(/Bura|0\.54|Earliest|fallback|unique|accepted/);
  });
- it.each(['NO_WINNER','CANCELLED'])('uses the same generic ended notice after published %s outcome',async outcome=>{
-  const f=fixture();Object.assign(f.item,{status:outcome==='CANCELLED'?'CANCELLED':'CLOSED',settlement:{...f.settlement,outcome,winner:null,winningPoints:null}});
+ it('uses a generic ended notice after a historical published NO_WINNER outcome',async()=>{
+  const f=fixture();Object.assign(f.item,{settlement:{...f.settlement,outcome:'NO_WINNER',winner:null,winningPoints:null}});
   expect((await campaignContent(f.db,row))?.href).toBe('/winners/42');
+ });
+ it('links a published cancellation to its auction without claiming a completed refund',async()=>{
+  const f=fixture();Object.assign(f.item,{status:'CANCELLED',settlement:{...f.settlement,ruleVersion:'lowest-unique-v5',outcome:'CANCELLED',decision:'NO_UNIQUE_BID',winner:null,winningPoints:null}});
+  const content=await campaignContent(f.db,row);
+  expect(content).toMatchObject({href:'/auctions/power-bank',imagePath:'/api/media/'+productId});
+  expect(caption(content)).toContain('Auction cancelled');expect(caption(content)).toContain('committed refund status');
+  expect(caption(content)).not.toMatch(/refunded|credited|returned|Bura|0\.54|cryptonbozz|private-winner/);
  });
  it.each([{settlement:null},{status:'LIVE'},{isDemo:true},{testRunId:'private-test'}])('suppresses unpublished/private/incomplete results: %j',async change=>{
   expect(await campaignContent(fixture(change).db,row)).toBeNull();

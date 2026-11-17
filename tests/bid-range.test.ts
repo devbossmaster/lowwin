@@ -9,10 +9,10 @@ describe('explicit bid ranges',()=>{
  it('adds 1 through 4 as four numbers at step1 rather than301 amounts',()=>{
   expect(previewBidRange('1','4','1',[],rules)).toEqual({complete:true,count:4,step:'1.00',additions:['1.00','2.00','3.00','4.00'],numbers:['1.00','2.00','3.00','4.00'],error:null});
  });
- it('supports exact inclusive decimal ranges while enforcing the existing consecutive rule',()=>{
+ it('supports consecutive inclusive decimal ranges beside accepted numbers',()=>{
   expect(previewBidRange('1','1.02','0.01',[],rules).numbers).toEqual(['1.00','1.01','1.02']);
-  expect(previewBidRange('1','1.03','0.01',[],rules).error).toBe('consecutive');
-  expect(previewBidRange('1.03','1.03','0.01',[],{...rules,ownBids:[{amount:'1'},{amount:'1.01'},{amount:'1.02'}]}).error).toBe('consecutive');
+  expect(previewBidRange('1','1.03','0.01',[],rules).numbers).toEqual(['1.00','1.01','1.02','1.03']);
+  expect(previewBidRange('1.03','1.03','0.01',[],{...rules,ownBids:[{amount:'1'},{amount:'1.01'},{amount:'1.02'}]}).numbers).toEqual(['1.03']);
  });
  it('rejects nonpositive, overprecision and auction-incompatible increments before generating',()=>{
   for(const step of ['0','-1','0.001','1e2',''])expect(previewBidRange('1','4',step,[],rules).error).toBe('step');
@@ -26,6 +26,12 @@ describe('explicit bid ranges',()=>{
  it('applies actual remaining capacity before allocating arrays, including huge input',()=>{
   expect(previewBidRange('1','4','1',['10'],{...rules,remainingSubmissions:4})).toMatchObject({count:0,additions:[],error:'limit'});
   expect(previewBidRange('1','9999999999999999.99','0.01',[],rules)).toMatchObject({count:0,additions:[],error:'limit'});
+ });
+ it('allows 100 adjacent cents and distinguishes the inclusive 101-entry range',()=>{
+  const contiguous=previewBidRange('45','45.99','0.01',[],rules);
+  expect(contiguous.error).toBeNull();expect(contiguous.numbers).toHaveLength(100);expect(contiguous.numbers[0]).toBe('45.00');expect(contiguous.numbers.at(-1)).toBe('45.99');
+  expect(previewBidRange('45','54.9','0.1',[],rules)).toMatchObject({count:100,error:null});
+  expect(previewBidRange('45','55','0.1',[],rules)).toMatchObject({count:0,error:'limit',additions:[]});
  });
  it('does not silently remove duplicate selections or previously accepted numbers',()=>{
   expect(previewBidRange('1','4','1',['2'],rules).error).toBe('duplicate');

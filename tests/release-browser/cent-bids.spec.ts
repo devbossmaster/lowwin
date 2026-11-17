@@ -7,7 +7,7 @@ import {bidAuction} from '../bid-fixtures';
 import {creditDevelopmentPoints,reconcile} from '../../src/modules/wallet/ledger';
 import {submitBid} from '../../src/modules/auctions/bids';
 
-test('v3 decimal confirmation, cent gap, receipt and bilingual mobile layout',async({page},info)=>{
+test('v3 decimal confirmation, contiguous cents, receipt and bilingual mobile layout',async({page},info)=>{
  Object.assign(process.env,{NODE_ENV:'test',DEV_POINTS_ENABLED:'true'});
  const db=new PrismaClient();
  try{
@@ -25,7 +25,7 @@ test('v3 decimal confirmation, cent gap, receipt and bilingual mobile layout',as
   await expect(input).toHaveAttribute('inputmode','decimal');
   await input.fill('0.99');await expect(review).toBeDisabled();
   await input.fill('1.971');await expect(review).toBeDisabled();
-  await input.fill('1.04');await expect(review).toBeDisabled();await expect(page.getByText('Leave a gap after three consecutive cent amounts.')).toBeVisible();
+  await input.fill('1.04');await expect(review).toBeEnabled();
   await input.fill('1.05');await expect(review).toBeEnabled();
   await input.fill('1.97');await review.click();
   await expect(page.locator('.preview-total')).toContainText('ETB 0.97');

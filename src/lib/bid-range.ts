@@ -11,7 +11,7 @@ export function defaultBidRangeStep(auctionStep:string):string{
 }
 
 /** Bounded display-only generation. The normal full-draft validator remains
- * authoritative for duplicate, consecutive, bounds and remaining-entry rules. */
+ * authoritative for duplicate, bounds and remaining-entry rules. */
 export function previewBidRange(from:string,to:string,step:string,selected:readonly string[],rules:BidDraftRules):BidRangePreview{
  const result:BidRangePreview={complete:false,count:0,step:null,additions:[],numbers:[],error:null};
  if(!from||!to)return result;

@@ -54,7 +54,7 @@ BEGIN
  ELSIF n."winningBidId" IS NOT NULL OR n."winnerUserId" IS NOT NULL OR n."winningPoints" IS NOT NULL OR n.proof->'winner' IS DISTINCT FROM 'null'::jsonb OR (n."actorId" IS NULL AND n.reason IS DISTINCT FROM d) THEN RAISE EXCEPTION 'V5 cancellation cannot invent a winner';END IF;
  SELECT coalesce(jsonb_agg(jsonb_build_object('amount',trim_scale(amount)::text,'count',c) ORDER BY amount),'[]'::jsonb) INTO distribution FROM(SELECT amount,count(*) c FROM "Bid" WHERE "auctionId"=a.id AND "acceptedAt"<n.cutoff GROUP BY amount)q;
  IF n.proof->'amountFrequencies' IS DISTINCT FROM distribution OR NOT(n.proof @> jsonb_build_object('settlementId',n.id,'ruleVersion','lowest-unique-v5','termsVersion',t.version,'outcome',n.outcome,'decision',d,'acceptedCount',cnt,'participantCount',pc,'minParticipants',2,'acceptanceCutoff',a."bidSequence"::text,'cutoff',to_char(n.cutoff,'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'feePolicy',CASE WHEN d='LOWEST_UNIQUE' THEN 'KEEP_DISCLOSED_ENTRY_FEES' ELSE 'REFUND_NET_PAID_FEES' END,'refundPolicy','ORIGINAL_FUNDING_V1')) THEN RAISE EXCEPTION 'V5 proof mismatch';END IF;
- IF n.proof->'amountPolicy' IS DISTINCT FROM '{"currency":"NONE","minimum":"1","step":"0.01","maxDecimalPlaces":2,"maxConsecutive":3}'::jsonb OR n.proof->'references' IS DISTINCT FROM '[]'::jsonb THEN RAISE EXCEPTION 'V5 proof must retain number-only policy and separate durable refunds';END IF;
+ IF n.proof->'amountPolicy' IS DISTINCT FROM '{"currency":"NONE","minimum":"1","step":"0.01","maxDecimalPlaces":2}'::jsonb OR n.proof->'references' IS DISTINCT FROM '[]'::jsonb THEN RAISE EXCEPTION 'V5 proof must retain number-only policy and separate durable refunds';END IF;
  RETURN n;
 END $$;
 
@@ -191,15 +191,6 @@ BEGIN
   IF NEW.amount<1 OR NEW.amount<>trunc(NEW.amount,2) THEN
    RAISE EXCEPTION 'Minimum bid is ETB 1.00 with at most two decimals';
   END IF;
-  IF EXISTS (
-   SELECT 1 FROM generate_series(0,3) AS start_offset(n)
-   WHERE NOT EXISTS (
-    SELECT 1 FROM generate_series(0,3) AS member_offset(n)
-    WHERE NEW.amount + (member_offset.n-start_offset.n)*0.01 <> NEW.amount
-     AND NOT EXISTS (SELECT 1 FROM "Bid" b WHERE b."auctionId"=NEW."auctionId"
-      AND b."userId"=NEW."userId" AND b.amount=NEW.amount+(member_offset.n-start_offset.n)*0.01)
-   )
-  ) THEN RAISE EXCEPTION 'Four consecutive cent amounts are not allowed'; END IF;
  ELSIF NEW.amount<>trunc(NEW.amount) OR NEW."feePoints"<>trunc(NEW."feePoints") THEN
   RAISE EXCEPTION 'Legacy auction bids require whole ETB';
  END IF;

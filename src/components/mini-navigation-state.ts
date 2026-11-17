@@ -62,4 +62,8 @@ export function rememberCurrentMiniRoute(identity:string|null){
   else miniNavigationState.remember(identity,href,window.scrollY);
  }
 }
-export function rememberedMiniDestination(identity:string|null,href:string){return publicMiniNavigationState.visit('public',href)?.href??miniNavigationState.visit(identity,href)?.href??href}
+export function rememberedMiniVisit(identity:string|null,href:string){
+ const url=localRoute(href);
+ return url&&isPublicMiniPage(url.pathname)?publicMiniNavigationState.visit('public',href):miniNavigationState.visit(identity,href);
+}
+export function rememberedMiniDestination(identity:string|null,href:string){return rememberedMiniVisit(identity,href)?.href??href}

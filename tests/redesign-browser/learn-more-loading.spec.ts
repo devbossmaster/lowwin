@@ -26,7 +26,7 @@ for(const entry of ['banner','guide'] as const){
    await expect(trigger).toBeVisible();await expect(section).toBeVisible();
    await expect(page.getByRole('navigation',{name:'Your navigation'})).toBeVisible();
    await expect(page.locator('.loading-spinner-ring,.customer-loading')).toHaveCount(0);
-   release();const dialog=page.getByRole('dialog');await expect(dialog).toBeVisible();await expect(dialog.locator('ol>li')).toHaveCount(3);
+   release();const dialog=page.getByRole('dialog');await expect(dialog).toBeVisible();await expect(dialog.locator('[data-tutorial-video-empty]')).toBeVisible();await expect(dialog.getByRole('img')).toHaveAccessibleName(entry==='banner'?'Explainer video coming soon':'የመመሪያ ቪዲዮ በቅርቡ ይቀርባል');
    await expect(dialog.locator('iframe,video')).toHaveCount(0);
    await page.keyboard.press('Escape');await expect(dialog).toHaveCount(0);await expect(trigger).toBeFocused();
    await trigger.click();await expect(dialog).toBeVisible();await page.goBack();await expect(dialog).toHaveCount(0);await expect(trigger).toBeFocused();

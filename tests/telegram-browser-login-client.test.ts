@@ -1,5 +1,5 @@
 import {describe,expect,it,vi} from 'vitest';
-import {loadTelegramBrowserLoginConfiguration,requestTelegramBrowserLogin,telegramBrowserLoginDestination,telegramBrowserLoginError,telegramEnvironment} from '../src/lib/telegram-browser-login-client';
+import {loadTelegramBrowserLoginConfiguration,requestTelegramBrowserLogin,telegramBrowserLoginDestination,telegramBrowserLoginError,telegramEnvironment,telegramMiniLaunchHint} from '../src/lib/telegram-browser-login-client';
 
 describe('browser Telegram login presentation and handoff',()=>{
  it('loads only public readiness booleans and ignores extra fields',async()=>{
@@ -21,6 +21,13 @@ describe('browser Telegram login presentation and handoff',()=>{
  });
  it('keeps SDK presence separate from a Mini App launch',()=>{
   expect(telegramEnvironment(undefined)).toBe('browser');expect(telegramEnvironment({})).toBe('browser');expect(telegramEnvironment({initData:''})).toBe('browser');expect(telegramEnvironment({initData:'signed-launch-data'})).toBe('mini');
+ });
+ it('recognizes delayed SDK URL hints for presentation without converting them into identity proof',()=>{
+  expect(telegramMiniLaunchHint({search:'',hash:'#tgWebAppData=user%3Dfixture%26hash%3Duntrusted'})).toBe(true);
+  expect(telegramMiniLaunchHint({search:'?tgWebAppPlatform=android',hash:''})).toBe(true);
+  expect(telegramMiniLaunchHint({search:'?next=%2Fprofile',hash:''})).toBe(false);
+  expect(telegramMiniLaunchHint({search:'',hash:'#tgWebAppPlatform=unknown'})).toBe(false);
+  expect(telegramEnvironment(undefined)).toBe('browser');
  });
  it('preserves the customer destination and clears callback feedback from a new handoff',()=>{
   expect(telegramBrowserLoginDestination({pathname:'/',search:'?telegramLoginError=expired&next=%2Fauctions%2Fpower-bank%3Fsort%3Dsoon%23bid',hash:''})).toBe('/auctions/power-bank?sort=soon#bid');

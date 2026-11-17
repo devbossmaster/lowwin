@@ -26,7 +26,7 @@ export default defineConfig({
   testDir: './tests/redesign-browser', testIgnore:'**/admin-neutral-workspace.spec.ts', outputDir: process.env.REDESIGN_OUTPUT_DIR??'test-results/redesign', workers: 1,
   timeout: 480000, expect: {timeout: 60000},
   reporter: [['list'], ['json', {outputFile: process.env.REDESIGN_REPORT_PATH??`test-results/redesign/${process.env.REDESIGN_STAGE ?? 'after'}.json`}]],
-  use: {storageState: ENGLISH_UI_STATE, baseURL: origin, ignoreHTTPSErrors: true, browserName: 'chromium',
+  use: {storageState: ENGLISH_UI_STATE, baseURL: origin, ignoreHTTPSErrors: true, browserName: 'chromium',actionTimeout:30000,navigationTimeout:45000,
     ...(process.env.PLAYWRIGHT_CHANNEL ? {channel: process.env.PLAYWRIGHT_CHANNEL} : {}), trace: 'retain-on-failure'},
   webServer: {
     command: production ? 'node scripts/redesign-https-server.mjs' : `node "${nextCli}" dev "${directory}" --webpack --hostname 127.0.0.1 --port ${port}`,

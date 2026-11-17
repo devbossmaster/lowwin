@@ -50,7 +50,7 @@ type Props={auction:BidSheetAuction;serverNow:string;onClose:()=>void;onPhaseCha
 export default function BidSheetContents({auction,serverNow,onClose,onPhaseChange,initialChapaId,initialDraft,onDismissChange}:Props){
  const notice=useMiniNotice();
  const {language}=useMiniLocale(),am=language==='am',text=(en:string,translated:string)=>am?translated:en;
- const {status,me,queryIdentity,refreshMe,openRegistration}=useTelegram(),initialFull=isFullAuction(auction)?auction:undefined;
+ const {status,me,queryIdentity,refreshMe,openRegistration,environment}=useTelegram(),initialFull=isFullAuction(auction)?auction:undefined;
  const detail=usePrivateQuery<CatalogAuction>(auctionDetailUrl(auction.slug),{initialData:initialFull});
  const full=(detail.data?.slug===auction.slug?detail.data:undefined)??initialFull,known=full??auction;
  const description=full?(am?full.product.descriptionAm||full.product.description:full.product.description):'';
@@ -118,7 +118,7 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
  const insufficient=!zero&&(walletAvailable===null||etbToCents(walletAvailable)<totalCents);
  const enabled=method!==null&&(method==='wallet'||providers.some(provider=>provider.slug===method))&&(zero||(method==='wallet'?!!wallet.data?.bidsEnabled:!!methods.data?.enabled&&methodAvailable(method)));
  const walletEnabled=!!wallet.data?.bidsEnabled||zero&&selectedNumbers.length>0;
- const copy:Record<BidDraftError,[string,string]>={precision:['Enter a number with at most two decimals.','እስከ ሁለት አስርዮሽ ያለው ቁጥር ያስገቡ።'],range:['Choose an amount within the displayed range and step.','በሚታየው ክልል እና ልዩነት ውስጥ መጠን ይምረጡ።'],duplicate:['This amount is already selected or submitted.','ይህ መጠን ተመርጧል ወይም ቀድሞ ቀርቧል።'],consecutive:['Only 3 consecutive amounts. Skip at least one step.','ከሦስት በላይ ተከታታይ ቁጥሮች አይፈቀዱም።'],limit:['You have reached the remaining submission limit.','የቀሩትን የጨረታ ገደብ ደርሰዋል።']};
+ const copy:Record<BidDraftError,[string,string]>={precision:['Enter a number with at most two decimals.','እስከ ሁለት አስርዮሽ ያለው ቁጥር ያስገቡ።'],range:['Choose an amount within the displayed range and step.','በሚታየው ክልል እና ልዩነት ውስጥ መጠን ይምረጡ።'],duplicate:['This amount is already selected or submitted.','ይህ መጠን ተመርጧል ወይም ቀድሞ ቀርቧል።'],limit:[`Choose up to ${Math.max(0,rules?.remainingSubmissions??0)} different numbers.`,`እስከ ${Math.max(0,rules?.remainingSubmissions??0)} የተለያዩ ቁጥሮች ይምረጡ።`]};
  const rangeError=(problem:BidRangeError)=>problem==='step'?text(`Use a positive step that is a multiple of ${bounds?.stepPoints??'0.01'}.`,`ከዜሮ በላይ የሆነና የ ${bounds?.stepPoints??'0.01'} ብዜት የሆነ ልዩነት ያስገቡ።`):problem==='alignment'?text('The range must end exactly on your chosen step.','የክልሉ መጨረሻ ከተመረጠው ልዩነት ጋር መጣጣም አለበት።'):text(...copy[problem]);
  useEffect(()=>{const version=++generation.current;return()=>{if(generation.current===version)generation.current++;controllers.current.forEach(c=>c.abort());controllers.current.clear()}},[queryIdentity]);
  useEffect(()=>{if(!toppingUp)onPhaseChange(showProgress&&receipt?'receipt':showProgress&&(busy||walletRetry||payment.started)?'payment':step==='payment'?'checkout':step==='review'?'review':'entry')},[toppingUp,showProgress,receipt,busy,walletRetry,payment.started,step,onPhaseChange]);
@@ -354,7 +354,7 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
  return <>
   <AccountSheetFooter><div className={reference.footer}>
    {<div className={reference.total} data-bid-total aria-live="polite"><span>{text(`${selectedNumbers.length} selected`,`${selectedNumbers.length} ተመርጠዋል`)}</span><strong>{formatEtb(total)}</strong></div>}
-   <button type="button" className={reference.pay} data-payment-action data-bid-pay disabled={payDisabled} aria-busy={busy} onClick={()=>void pay()}>{busy&&<LoaderCircle size={16} className={reference.spin} aria-hidden="true"/>}{pendingOriginal?text('View payment status','የክፍያ ሁኔታ ይመልከቱ'):!authenticated?text('Log in to bid','ለመጫረት ይግቡ'):text('Continue to payment','ወደ ክፍያ ይቀጥሉ')}</button>
+   <button type="button" className={reference.pay} data-payment-action data-bid-pay disabled={payDisabled} aria-busy={busy} onClick={()=>void pay()}>{busy&&<LoaderCircle size={16} className={reference.spin} aria-hidden="true"/>}{pendingOriginal?text('View payment status','የክፍያ ሁኔታ ይመልከቱ'):!authenticated?text(environment==='mini'?'Share contact to bid':'Log in to bid',environment==='mini'?'ለመጫረት ስልክ ቁጥርዎን ያጋሩ':'ለመጫረት ይግቡ'):text('Continue to payment','ወደ ክፍያ ይቀጥሉ')}</button>
   </div></AccountSheetFooter>
   <div className={reference.checkout} data-bid-entry data-bid-step="entry" data-payment-method-form={undefined}>
    <div className={reference.productHeader}><CatalogImage src={known.product.images[0]?.path} alt="" variant="thumbnail" sizes="56px"/><h3 className={reference.productTitle}>{am?known.product.titleAm||known.product.title:known.product.title}</h3></div>

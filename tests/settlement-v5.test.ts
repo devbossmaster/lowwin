@@ -16,7 +16,7 @@ import {createInlineCheckout} from '../src/modules/payments/chapa-inline';
 import {verifyChapaCheckout} from '../src/modules/payments/chapa';
 import type {ChapaInlineTransport} from '../src/modules/payments/chapa-inline-provider';
 import {RULE_V5} from '../src/modules/auctions/rules';
-import {quoteBidBatch} from '../src/modules/auctions/batch';
+import {quoteBidBatch,createAndPayBidBatchWallet} from '../src/modules/auctions/batch';
 import {getPersonalBids} from '../src/modules/profile/personal';
 
 const url=process.env.V5_TEST_DATABASE_URL??process.env.TEST_DATABASE_URL;
@@ -43,6 +43,12 @@ describe.skipIf(!url)('V5 unique-only cancellation and original-funding refunds'
  it('selects only the lowest unique number and never refunds a completed winner auction',async()=>{
   const a=await auction(),u=await bidUser(db),v=await bidUser(db);await bid(u,a.slug!,'1.10');await bid(v,a.slug!,'1.10');const unique=await bid(v,a.slug!,'1.11');await bid(u,a.slug!,'2.00');await due(a);
   const s=await closeAuction(db,a.id);expect(s).toMatchObject({outcome:'WINNER',decision:'LOWEST_UNIQUE',winningBidId:unique.bid.id});await drain(a.id);expect(await auctionRefundProgress(db,a.id)).toMatchObject({cash:'0',bonus:'0'});expect(await reconcile(db)).toEqual([]);
+ });
+ it('accepts a contiguous 100-number range while preserving the distinct cap and two-decimal validation',async()=>{
+  const a=await real(0),u=(await verifiedReferralUser(db,'Contiguous V5 fixture')).id,numbers=Array.from({length:100},(_,i)=>(1+i/100).toFixed(2));
+  const receipt=await createAndPayBidBatchWallet(db,u,{key:randomUUID(),auctionSlug:a.slug!,numbers,feeVersion:1,approvedTotal:'0.00'});expect(receipt.kind).toBe('receipt');expect(await db.bid.count({where:{auctionId:a.id,userId:u}})).toBe(100);
+  await expect(bid(u,a.slug!,'2.00')).rejects.toMatchObject({code:'CAP_REACHED'});await expect(bid(u,a.slug!,'2.001')).rejects.toThrow();
+  const s=await cancelAuction(db,{auctionId:a.id,actor:{id:'fixture-operator',permission:'auction:cancel'},reason:'Contiguous range fixture cancellation',key:randomUUID()});expect(s.proof).toMatchObject({amountPolicy:{currency:'NONE',minimum:'1',step:'0.01',maxDecimalPlaces:2}});expect((s.proof as {amountPolicy:Record<string,unknown>}).amountPolicy).not.toHaveProperty('maxConsecutive');await drain(a.id);expect(await reconcile(db)).toEqual([]);
  });
  it('keeps minimum participants and rejects both premature settlement and late insertion using database time',async()=>{
   const a=await auction(7),u=await bidUser(db,'100');await bid(u,a.slug!,'3.25');await expect(closeAuction(db,a.id)).rejects.toMatchObject({code:'NOT_DUE'});await due(a);await expect(bid(u,a.slug!,'4.00')).rejects.toMatchObject({code:'AUCTION_CLOSED'});

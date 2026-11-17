@@ -7,6 +7,7 @@ import {defaultHomeCopy,resolveHomeCopy} from '../src/components/home-copy';
 import {AuctionRule,ResultExplanation} from '../src/components/auction-rule';
 import {MiniLocaleProvider} from '../src/components/mini-locale';
 import {botHelp} from '../src/content/bot-help';
+import {V5_NUMBER_TERMS,V4_NUMBER_TERMS} from '../src/modules/auctions/rules';
 
 describe('current auction and homepage policy copy',()=>{
  it('replaces old built-in campaign copy while retaining a genuinely custom campaign',()=>{
@@ -18,10 +19,14 @@ describe('current auction and homepage policy copy',()=>{
   const refunds=faqEntries.find(entry=>entry.id==='refund')!.answer;
   expect(refunds.en).toContain('Cash payments return as cash');expect(refunds.en).toContain('original expiry');expect(refunds.en).toContain('Coupon discounts');expect(refunds.am).toContain('ጥሬ ገንዘብ');expect(refunds.am).toContain('ኩፖን');
   expect(faqEntries.find(entry=>entry.id==='fallback')!.answer.en).toContain('A repeated number never wins');
+  expect(document).toContain('Consecutive numbers are allowed');expect(document).toContain('ተከታታይ ቁጥሮች ይፈቀዳሉ');expect(document).not.toMatch(/leave a gap|four consecutive|skip 1\.04/i);
+  expect(V5_NUMBER_TERMS).toContain('Consecutive numbers are allowed');expect(V5_NUMBER_TERMS).not.toContain('leave a gap');expect(V4_NUMBER_TERMS).toContain('leave a gap');
  });
  it('recognizes retired managed policy so saved content cannot restore it',()=>{
   expect(retiredAuctionPolicy({en:'Accepted fees are non-refundable, including cancellation.'})).toBe(true);
   expect(retiredAuctionPolicy({en:'The earliest accepted bid at the lowest number wins.'})).toBe(true);
+  expect(retiredAuctionPolicy({en:'Leave a gap after three consecutive numbers.'})).toBe(true);
+  expect(retiredAuctionPolicy({am:'በ0.01 ልዩነት ከሚከታተሉ ሦስት ቁጥሮች በኋላ ክፍተት ይተዉ።'})).toBe(true);
   expect(retiredAuctionPolicy(termsDocument)).toBe(false);
   expect(retiredAuctionPolicy({en:'Your first accepted bid may qualify for an invitation reward.'})).toBe(false);
  });
@@ -33,6 +38,7 @@ describe('current auction and homepage policy copy',()=>{
   const render=(ruleVersion:string)=>renderToStaticMarkup(createElement(MiniLocaleProvider,{initialLanguage:'en',children:createElement(AuctionRule,{ruleVersion})}));
   expect(render('lowest-unique-v4')).toContain('earliest accepted bid at the lowest number wins');
   expect(render('lowest-unique-v5')).not.toContain('earliest accepted');expect(render('lowest-unique-v5')).toContain('no repeated number can win');
+  expect(render('lowest-unique-v5')).toContain('Consecutive numbers are allowed');expect(render('lowest-unique-v5')).not.toContain('Leave a gap');
  });
  it('keeps both bot help languages aligned without old hold or fallback promises',()=>{
   expect(botHelp.en).toContain('A repeated number never wins');expect(botHelp.en).toContain('Cash returns as cash');expect(botHelp.en).not.toMatch(/v3|is held|first accepted|no additional bid fee/);

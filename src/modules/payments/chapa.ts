@@ -12,7 +12,6 @@ import {fulfillBatchInTransaction} from '../auctions/batch';
 import {BidError,submitBidInTransaction,type BidReceipt} from '../auctions/bids';
 import {auctionMaintenance} from '../auctions/maintenance';
 import {isSubmissionFeeOnly} from '../auctions/rules';
-import {createsFourConsecutiveAmounts,parseBidCents} from '../auctions/consecutive-bids';
 import {lockReferralDiscountInTransaction} from '../referrals/service';
 import {ensureWallet,pointsSchema,seedPlatformAccounts} from '../wallet/ledger';
 import {PAYMENT_TRANSACTION_OPTIONS} from './timing';
@@ -136,7 +135,6 @@ export async function createChapaCheckout(client:PrismaClient,userId:string,raw:
    const own=await tx.bid.findMany({where:{userId,auctionId:a.id},select:{amount:true}});
    if(own.some(b=>b.amount.eq(body.amount)))throw new ChapaError(409,'OWN_DUPLICATE','You already submitted this number.');
    if(own.length>=terms.maxDistinctBids)throw new ChapaError(409,'CAP_REACHED','You reached this auction’s submission limit.');
-   if(createsFourConsecutiveAmounts(own.map(b=>parseBidCents(b.amount.toString())),parseBidCents(body.amount.toString())))throw new ChapaError(422,'CONSECUTIVE_LIMIT','Leave a gap after three consecutive numbers.');
    grossFee=fee.feePoints;
    if(body.couponId)discountPoints=(await lockReferralDiscountInTransaction(tx,userId,body.couponId,grossFee,terms.ruleVersion)).discountPoints;
    amountCents=etbToCents(grossFee.sub(discountPoints).toString());

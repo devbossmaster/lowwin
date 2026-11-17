@@ -11,12 +11,12 @@ import {BrowserNavigation,CustomerNavigation} from '../src/components/browser-na
 import {BottomNavigation} from '../src/components/bottom-navigation';
 import {activeCustomerNavigation} from '../src/components/customer-navigation-items';
 import {MiniLocaleProvider,type MiniLanguage} from '../src/components/mini-locale';
-import {miniNavigationState} from '../src/components/mini-navigation-state';
+import {miniNavigationState,publicMiniNavigationState} from '../src/components/mini-navigation-state';
 const render=(language:MiniLanguage='en')=>renderToStaticMarkup(createElement(MiniLocaleProvider,{initialLanguage:language,children:createElement(BrowserNavigation)}));
 const renderMobile=(language:MiniLanguage='en')=>renderToStaticMarkup(createElement(MiniLocaleProvider,{initialLanguage:language,children:createElement(BottomNavigation)}));
 const renderShared=(language:MiniLanguage='en')=>renderToStaticMarkup(createElement(MiniLocaleProvider,{initialLanguage:language,children:createElement(CustomerNavigation)}));
 beforeEach(()=>{f.path='/my-bids';f.state={status:'authenticated',queryIdentity:'account-a:session-a',me:{user:{id:'account-a'}},environment:'browser'};miniNavigationState.setIdentity(f.state.queryIdentity)});
-afterEach(()=>miniNavigationState.setIdentity(null));
+afterEach(()=>{miniNavigationState.setIdentity(null);publicMiniNavigationState.setIdentity(null);publicMiniNavigationState.setIdentity('public')});
 
 describe('server-confirmed customer navigation',()=>{
  it.each(['loading','guest','contact-required','error'])('hides navigation while %s even with a retained account snapshot',status=>{
@@ -38,6 +38,14 @@ describe('server-confirmed customer navigation',()=>{
   f.state={status:'guest',queryIdentity:null,me:null,environment:'browser'};miniNavigationState.setIdentity(null);expect(render()).not.toContain('view=finished');
   f.state={status:'authenticated',queryIdentity:'account-b:session-b',me:{user:{id:'account-b'}},environment:'browser'};miniNavigationState.setIdentity(f.state.queryIdentity);
   const html=render();expect(html).toContain('href="/my-bids"');expect(html).not.toContain('view=finished');
+ });
+ it('restores public Home filters from the same memory as the loaded pages and scroll',()=>{
+  publicMiniNavigationState.remember('public','/?q=QA%20client%20flow&sort=fee-low',3202);
+  publicMiniNavigationState.rememberPage('public','/?sort=fee-low&q=QA+client+flow',2);
+  for(const html of [render(),renderMobile(),renderShared()])expect(html).toContain('href="/?q=QA%20client%20flow&amp;sort=fee-low"');
+  miniNavigationState.setIdentity('account-b:session-b');f.state.queryIdentity='account-b:session-b';
+  expect(renderMobile()).toContain('href="/?q=QA%20client%20flow&amp;sort=fee-low"');
+  expect(publicMiniNavigationState.page('public','/?sort=fee-low&q=QA+client+flow')).toBe(2);
  });
  it('lets Home render the shared links without a second standalone brand/header',()=>{
   f.path='/';expect(render()).toBe('');

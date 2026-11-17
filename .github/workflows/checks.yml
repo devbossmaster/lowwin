@@ -235,8 +235,8 @@ jobs:
             -keyout "$NOV7_TLS_KEY" -out "$NOV7_TLS_CERT" \
             -days 1 -subj '/CN=localhost' \
             -addext 'subjectAltName=DNS:localhost,IP:127.0.0.1'
-      # Current v2 Inline, OTP, lost-reply recovery, SSE/poll fallback, internal
-      # wallet independence, historical hosted/Direct recovery and ownership.
+      # Current v2 Direct, OTP, lost-reply recovery, SSE/poll fallback, internal
+      # wallet independence, historical Inline/hosted/Direct recovery and ownership.
       - run: node scripts/run-db-tests.mjs chapa
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()

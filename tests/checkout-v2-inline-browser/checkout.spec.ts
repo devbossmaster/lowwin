@@ -19,6 +19,26 @@ async function expectSheetError(dialog:Locator,message:string|RegExp,{dismiss=tr
  if(dismiss){await notice.locator('[data-close-button]').focus();await notice.locator('[data-close-button]').press('Escape');await expect(notice).toHaveCount(0);await expect(dialog).toBeVisible();await expect(dialog.locator('[data-payment-action]')).toBeFocused()}
 }
 
+for(const am of [false,true])test(`current Direct accepts 100 consecutive numbers while enforcing decimal precision and the inclusive range cap ${am?'AM':'EN'}`,async({page},info)=>{
+ const f=await inlineFixture(page,am),text=(en:string,translated:string)=>am?translated:en;
+ try{
+  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await openBid(page,f.title),input=dialog.locator('[data-bid-step="entry"] input[inputmode="decimal"]').first();
+  await input.fill('45.001');await expect(input).toHaveValue('');await expectSheetError(dialog,am?'ሁለት':'two decimals',{dismiss:false});await dialog.locator('[data-sheet-notices] [data-sonner-toast][data-type="error"] [data-close-button]').click();
+  for(const number of ['45','45.01','45.02','45.03']){await input.fill(number);await dialog.locator('[data-bid-add]').click()}
+  await expect(dialog.getByRole('button',{name:am?/ያስወግዱ$/:/^Remove /})).toHaveCount(4);
+  await dialog.getByRole('button',{name:text('Clear all','ሁሉንም አጽዳ'),exact:true}).click();
+  await dialog.getByRole('tab',{name:text('Range','ክልል'),exact:true}).click();const from=dialog.locator('[data-bid-range-from]'),to=dialog.locator('[data-bid-range-to]'),step=dialog.locator('[data-bid-range-step]');
+  await from.fill('45');await to.fill('55');await step.fill('0.1');
+  await expect(dialog.locator('[data-bid-range-error]')).toHaveText(text('Choose up to 100 different numbers.','እስከ 100 የተለያዩ ቁጥሮች ይምረጡ።'));await dialog.screenshot({path:info.outputPath(`range-101-limit-${am?'am':'en'}.png`)});await dialog.locator('[data-bid-add]').click();await expectSheetError(dialog,am?'እስከ 100':'Choose up to 100',{dismiss:false});await dialog.locator('[data-sheet-notices] [data-sonner-toast][data-type="error"] [data-close-button]').click();expect(f.quoteRequests).toHaveLength(0);expect(f.commands).toHaveLength(0);
+  await to.fill('54.9');await expect(dialog.locator('[data-bid-range-preview]')).toContainText('100');await expect(dialog.locator('[data-bid-range-error]')).toHaveCount(0);
+  await to.fill('45.99');await step.fill('0.01');await expect(dialog.locator('[data-bid-range-preview]')).toContainText('100');await dialog.locator('[data-bid-add]').click();
+  await expect(dialog.getByRole('button',{name:am?/ያስወግዱ$/:/^Remove /})).toHaveCount(100);await expect(dialog.getByRole('button',{name:text('Remove 45.00','45.00 ያስወግዱ'),exact:true})).toBeVisible();await expect(dialog.getByRole('button',{name:text('Remove 45.99','45.99 ያስወግዱ'),exact:true})).toBeVisible();await expect(dialog.locator('[data-bid-total]')).toContainText('1,000.00');await dialog.screenshot({path:info.outputPath(`consecutive-100-entry-${am?'am':'en'}.png`)});
+  await continueToBidPayment(dialog);await dialog.getByRole('radio',{name:'telebirr',exact:true}).check();await dialog.locator('[data-payment-action]').click();await expect(dialog.locator('[data-payment-progress="authorization"]')).toBeVisible();
+  expect(f.commands).toHaveLength(1);expect(f.commands[0]).toMatchObject({flow:'DIRECT',purpose:'BID'});expect(f.quoteRequests).toHaveLength(1);const requested=f.quoteRequests[0] as {numbers:string[]};expect(requested.numbers).toHaveLength(100);expect(requested.numbers[0]).toBe('45.00');expect(requested.numbers.at(-1)).toBe('45.99');
+  await dialog.screenshot({path:info.outputPath(`consecutive-100-direct-${am?'am':'en'}.png`)});f.acceptBids();await wakePayment(page);await expect(dialog.getByRole('button',{name:text('Done','ተጠናቋል'),exact:true})).toBeVisible();await expect(dialog).toContainText(am?'100 ጨረታዎች':'100 bids accepted');expect(f.commands).toHaveLength(1);expect(f.unexpected).toHaveLength(0);
+ }finally{await f.cleanup()}
+});
+
 for(const am of [false,true])test(`v2 method selection preserves bid rules and exact fee totals ${am?'AM':'EN'}`,async({page},info)=>{
  const f=await inlineFixture(page,am);
  try{

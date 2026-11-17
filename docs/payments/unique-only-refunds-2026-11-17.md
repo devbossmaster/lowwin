@@ -1,6 +1,6 @@
 # Unique-only auction policy and cancellation refunds
 
-The current policy is `lowest-unique-v5`. At least two eligible participants are required. The lowest accepted number used exactly once wins. If every number is repeated, the decision is `NO_UNIQUE_BID` and the auction is cancelled. Choosing a number does not reserve or charge that number's value.
+The current policy is `lowest-unique-v5`. At least two eligible participants are required. The lowest accepted number used exactly once wins. If every number is repeated, the decision is `NO_UNIQUE_BID` and the auction is cancelled. Choosing a number does not reserve or charge that number's value. Consecutive numbers are allowed; the separate limit remains 100 distinct numbers per participant, with at most two decimal places.
 
 ## Activation and historical evidence
 
@@ -32,7 +32,7 @@ The additive guards validate unique-only winner proofs, participant and cutoff c
 
 ## Validation and measurement
 
-The release DB harness passed 22 tests with zero skips: nine current settlement/refund cases, one pre-v5 migration preservation case and twelve historical submission-fee cases. Coverage includes concurrent settlement/refund workers, rollback after ledger work before commit, mixed cash/bonus/coupon funding, historical fee revisions, original bonus expiry, zero-paid fees, a non-UTC database session, proof tampering and mocked late Inline payment confirmation. A focused follow-up confirms that a 70 ETB fee funded by 50 expired promotional ETB and 20 cash reports only 20 as refunded spendable value in the private bid DTO.
+Scoped database checks cover current settlement/refunds, audited historical transitions, v3/v4 behavior, Direct batches, the cent upgrade and private refund projections. Coverage includes concurrent settlement/refund workers, rollback after ledger work before commit, mixed cash/bonus/coupon funding, historical fee revisions, original bonus expiry, zero-paid fees, a non-UTC database session, proof tampering and mocked late Inline payment confirmation. The current range regression accepts all 100 numbers from 1.00 through 1.99 in one real-auction wallet batch, rejects a 101st distinct number and excess decimal precision, and settles with no consecutive-number limit in its v5 proof. A focused follow-up confirms that a 70 ETB fee funded by 50 expired promotional ETB and 20 cash reports only 20 as refunded spendable value in the private bid DTO.
 
 `scripts/benchmark-unique-refunds.ts` is guarded to explicit loopback `_test` databases with live payments disabled. It uses real synthetic batch purchases at 10, 100 and 1,000 bids, with three samples per size and two or ten refund recipients. It separates committed decision time, publication time and serial one-wallet refund completion. The JSON artifact records raw samples, p50/p95 and slow query prefixes. These are local database measurements; provider, Telegram and browser refresh latency are separate measurements.
 
