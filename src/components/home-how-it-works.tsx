@@ -20,7 +20,7 @@ export function HomeHowItWorks({media,experience}:{media:LearnMoreMedia|null;exp
  return <><section ref={section} id="how-lowwin-works" aria-labelledby="how-bidding-title" className={styles.guide} data-animate={animate||undefined}>
   <header className={styles.heading}><h2 id="how-bidding-title"><MiniPhrase en="How bidding works" am="ጨረታው እንዴት ይሠራል"/></h2></header>
   <ol className={styles.steps}>{steps.map(({image,title,titleAm,body,bodyAm},index)=><li key={image}><div className={styles.stepCopy}><h3><span className={styles.stepNumber} aria-hidden="true">{index+1}</span><MiniPhrase en={title} am={titleAm}/></h3><p><MiniPhrase en={body} am={bodyAm}/></p></div><img className={styles.illustration} src={`/images/how-it-works/${image}.svg`} width={260} height={170} loading="lazy" decoding="async" alt="" aria-hidden="true"/></li>)}</ol>
-  <p className={styles.rules}><MiniPhrase en="Fee-only auctions: only the entry fee is charged." am="በክፍያ ብቻ ጨረታዎች፣ የማስገቢያ ክፍያው ብቻ ይከፈላል።"/></p>
+  <p className={styles.rules}><MiniPhrase en="No unique number? The auction is cancelled and actual paid fees return to your wallet. Promotional credits remain promotional; discounts are not cash." am="ብቸኛ ቁጥር ከሌለ፣ ጨረታው ይሰረዛል፤ በእውነት የተከፈሉ ክፍያዎች ወደ ዋሌትዎ ይመለሳሉ። ጉርሻዎች ጉርሻ ሆነው ይቀጥላሉ፤ ቅናሾች ገንዘብ አይደሉም።"/></p>
   <div className={styles.actions}><button type="button" ref={trigger} aria-haspopup="dialog" onClick={()=>setOpen(true)}><MiniPhrase en="Learn more" am="ተጨማሪ ይወቁ"/><ArrowRight size={15} aria-hidden="true"/></button><Link href="/terms"><MiniPhrase en="Terms" am="ውሎች"/></Link></div>
  </section>{open&&<LearnMoreSheet media={media} intro={experience?{en:experience.learnIntroEn,am:experience.learnIntroAm}:undefined} onClose={()=>setOpen(false)} returnFocusRef={trigger}/>}</>;
 }

@@ -12,7 +12,7 @@ import {ArifPayClientError,arifPayPaymentPhone,arifPayRecoverable,clearArifPayAt
 
 type Props={slug:string;amount:string;feeVersion:number;fee:string;onAccepted:(receipt:DirectBidReceipt)=>void;initialOrder?:ArifPayCheckoutView};
 const terminal=new Set(['BID_ACCEPTED','NEEDS_REVIEW','FAILED','CANCELLED','EXPIRED']);
-const deterministicErrors=new Set(['INVALID_INPUT','INVALID_PHONE','CONTACT_REQUIRED','BIDDING_RESTRICTED','TERMS_CHANGED','LEGACY_TERMS','CAP_REACHED','CONSECUTIVE_LIMIT','INVALID_AMOUNT','AUCTION_CLOSED','PAYMENT_UNAVAILABLE']);
+const deterministicErrors=new Set(['INVALID_INPUT','INVALID_PHONE','CONTACT_REQUIRED','BIDDING_RESTRICTED','TERMS_CHANGED','LEGACY_TERMS','CAP_REACHED','INVALID_AMOUNT','AUCTION_CLOSED','PAYMENT_UNAVAILABLE']);
 export default function ArifPayCheckout(props:Props){
  const {queryIdentity}=useTelegram();
  // A changed session or bid number destroys every previous callback scope.

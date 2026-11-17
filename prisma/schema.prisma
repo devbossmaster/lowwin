@@ -396,8 +396,8 @@ model AuctionTerms {
   auctionId            String    @unique
   auction              Auction   @relation(fields: [auctionId], references: [id], onDelete: Restrict)
   version              Int       @default(1)
-  ruleVersion          String    @default("lowest-unique-v1")
-  minParticipants      Int       @default(0)
+  ruleVersion          String    @default("lowest-unique-v5")
+  minParticipants      Int       @default(2)
   minPoints            Decimal   @db.Decimal
   maxPoints            Decimal?  @db.Decimal
   stepPoints           Decimal   @db.Decimal
@@ -1286,4 +1286,46 @@ model TestRunActor {
 
   @@id([testRunId, userId])
   @@index([userId])
+}
+
+// Audited V5 policy improvements preserve every original receipt and settled result.
+model AuctionPolicyTransition {
+ id String @id @default(uuid())
+ auctionId String @unique
+ before Json
+ after Json
+ actorId String
+ reason String
+ operationKey String @unique
+ createdAt DateTime @default(dbgenerated("(clock_timestamp() AT TIME ZONE 'UTC')")) @db.Timestamp(6)
+}
+
+// Frozen expected funding and separately committed, exactly-once refund evidence.
+model AuctionRefund {
+ id String @id @default(uuid())
+ settlementId String
+ userId String
+ cashPoints Decimal @db.Decimal
+ bonusPoints Decimal @db.Decimal
+ holdPoints Decimal @db.Decimal
+ status String
+ operationId String? @unique
+ releaseOperationId String? @unique
+ createdAt DateTime @default(dbgenerated("(clock_timestamp() AT TIME ZONE 'UTC')")) @db.Timestamp(6)
+ completedAt DateTime? @db.Timestamp(6)
+ @@unique([settlementId,userId])
+ @@index([status,createdAt,id])
+}
+
+model DepositBonusRefund {
+ id String @id @default(uuid())
+ refundId String
+ bonusUseId String @unique
+ checkoutId String
+ userId String
+ amountCents BigInt
+ creditedCents BigInt
+ expiredCents BigInt
+ createdAt DateTime @default(dbgenerated("(clock_timestamp() AT TIME ZONE 'UTC')")) @db.Timestamp(6)
+ @@index([checkoutId])
 }

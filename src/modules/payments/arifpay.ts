@@ -4,7 +4,6 @@ import {z} from 'zod';
 import {BidError,submitBidInTransaction} from '../auctions/bids';
 import {isSubmissionFeeOnly} from '../auctions/rules';
 import {auctionMaintenance} from '../auctions/maintenance';
-import {createsFourConsecutiveAmounts,parseBidCents} from '../auctions/consecutive-bids';
 import {assertPlayerContact,contactBotId,decryptPhone,encryptPhone,normalizePhone,phoneHash} from '../auth/own-contact';
 import {ensureWallet,pointsSchema,seedPlatformAccounts} from '../wallet/ledger';
 import {PAYMENT_TRANSACTION_OPTIONS} from './timing';
@@ -51,7 +50,6 @@ export async function createArifPayCheckout(client:PrismaClient,userId:string,in
   const bids=await tx.bid.findMany({where:{userId,auctionId:a.id},select:{amount:true}});
   if(bids.some(b=>b.amount.eq(body.amount)))throw new ArifPayError(409,'OWN_DUPLICATE','You already submitted this bid number.');
   if(bids.length>=terms.maxDistinctBids)throw new ArifPayError(409,'CAP_REACHED','You reached this auction’s bid limit.');
-  if(createsFourConsecutiveAmounts(bids.map(b=>parseBidCents(b.amount.toString())),parseBidCents(body.amount.toString())))throw new ArifPayError(422,'CONSECUTIVE_LIMIT','Leave a gap after three consecutive numbers.');
   if(await tx.arifPayCheckout.count({where:{userId,createdAt:{gte:new Date(now.getTime()-3600000)}}})>=12)throw new ArifPayError(429,'RATE_LIMITED','Too many payment attempts. Wait before starting another.');
   const order=await tx.arifPayCheckout.create({data:{userId,auctionId:a.id,auctionSlug:body.auctionSlug,key:body.key,requestHash,bidNumber:body.amount,feeVersion:fee.version,fee:fee.feePoints,channel:body.channel,phoneCipher:encryptPhone(`+${phone}`),phoneHash:phoneHash(`+${phone}`),nonce:`lowin_${randomBytes(24).toString('hex')}`,expiresAt:new Date(Math.min(a.endsAt.getTime(),now.getTime()+5*60000)),nextCheckAt:new Date(now.getTime()+15000)}});
   return {order,created:true};

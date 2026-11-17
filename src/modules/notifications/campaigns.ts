@@ -5,6 +5,7 @@ import {formatEtb} from '@/lib/money';
 import {auctionMaintenance} from '../auctions/maintenance';
 import {broadcastMiniAppPath,broadcastButtonLabel} from '@/lib/broadcast-link';
 import {resultRecipientIds} from './result-audience';
+import {readAuctionPromotion} from './auction-promotion';
 import {endingReminders,endingReminder,endingReminderCurrent,notificationRetired,upcomingReminders,upcomingReminder,upcomingReminderCurrent} from './policy';
 
 type Tx=Prisma.TransactionClient;
@@ -19,7 +20,7 @@ export function auctionNotificationImagePath(presentation:unknown,productPath?:s
 export function auctionNotificationImageId(presentation:unknown,productPath?:string){
  return /^\/api\/media\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/i.exec(auctionNotificationImagePath(presentation,productPath)??'')?.[1];
 }
-export type CampaignPayload={auctionId?:string;settlementId?:string;recipientUserId?:string;intentId?:string;body?:string;imageId?:string;imagePath?:string;href?:string;buttonLabel?:string;telegramOnly?:boolean;cursor?:string;audienceBefore?:string;rootKey?:string;deliveryKind?:string};
+export type CampaignPayload={auctionId?:string;settlementId?:string;recipientUserId?:string;intentId?:string;body?:string;imageId?:string;imagePath?:string;href?:string;buttonLabel?:string;telegramOnly?:boolean;parentCampaignId?:string;cursor?:string;audienceBefore?:string;rootKey?:string;deliveryKind?:string};
 export function broadcastRoot(row:Pick<Outbox,'kind'|'key'|'payload'>){
  const p=row.payload as CampaignPayload;
  if(row.kind==='GLOBAL_CAMPAIGN'&&p.deliveryKind==='BROADCAST')return p.rootKey??row.key;
@@ -41,6 +42,7 @@ export async function expandCampaign(tx:Tx,row:Outbox){
  if(broadcastRoot(row)){
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`broadcast:${rootKey}`},0))`;
   if(await broadcastStopped(tx,rootKey)){await tx.outbox.update({where:{id:row.id},data:{state:'SKIPPED',lastError:'CAMPAIGN_STOPPED'}});return 0}
+  if(p.auctionId&&(await readAuctionPromotion(tx,p.auctionId)).issue){await tx.outbox.update({where:{id:row.id},data:{state:'SKIPPED',lastError:'AUCTION_RETIRED'}});return 0}
  }
  // Publication is the authority for every outcome. Canonical settlement keys
  // prevent duplicate logical announcements from legacy/retried root intents.
@@ -95,7 +97,7 @@ export async function campaignContent(tx:Tx,row:Pick<Outbox,'kind'|'payload'>){
  if(row.kind==='BROADCAST'){
   if(!p.body||!p.href)return null;
   // A product promotion must still refer to a visible, accepting auction.
-  if(p.auctionId){const a=await tx.auction.findUnique({where:{id:p.auctionId},select:{status:true,endsAt:true,product:{select:{visible:true}}}});if(!a||a.status!=='LIVE'||!a.product?.visible||!a.endsAt||a.endsAt<=new Date())return null}
+  if(p.auctionId&&(await readAuctionPromotion(tx,p.auctionId)).issue)return null;
   let href:string,buttonLabel:string;try{href=broadcastMiniAppPath(p.href);buttonLabel=broadcastButtonLabel(p.buttonLabel)}catch{return null}
   return {...base,title:'የLowWin መረጃ',body:p.body,href,imageId:p.imageId,imagePath:p.imagePath,buttonLabel};
  }
@@ -124,6 +126,10 @@ export async function campaignContent(tx:Tx,row:Pick<Outbox,'kind'|'payload'>){
   // Publication freezes the product image in its durable root intent. Later
   // Winners-only banners/photos neither change queued messages nor resend them.
   if(p.imagePath!==undefined){base.imagePath=auctionNotificationImagePath({images:[{path:p.imagePath}]});base.imageId=auctionNotificationImageId({images:[{path:p.imagePath}]})}
+  if(settlement.outcome==='CANCELLED'){
+   const title=prefix+'ጨረታው ተሰርዟል / Auction cancelled',body=`የ${shortItem} ጨረታ ተሰርዟል። የተከፈሉ ክፍያዎች መመለሻ ሁኔታን በዋሌትዎ ይመልከቱ።\nThis auction was cancelled. Check your wallet for the committed refund status.`;
+   return {...base,title,body,telegramCaption:`${title}\n\n${body}`,buttonLabel:'ዝርዝሩን ይመልከቱ',href:`/auctions/${a.slug}`};
+  }
   const heading=prefix+'ጨረታው ተጠናቋል',body=`የ${shortItem} ጨረታ ተጠናቋል። ውጤቱን ለማየት ከታች ይጫኑ።`;
   return {...base,title:heading,body,telegramCaption:`${heading}\n\n${body}`,buttonLabel:'ውጤቱን ይመልከቱ',href:`/winners/${a.publicCode}`};
  }

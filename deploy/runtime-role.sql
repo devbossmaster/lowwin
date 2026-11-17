@@ -7,6 +7,16 @@ DO $$ BEGIN
 END $$;
 REVOKE CREATE ON SCHEMA public FROM PUBLIC,lowwin_runtime;
 GRANT USAGE ON SCHEMA public TO lowwin_runtime;
+-- V5 refunds also support runtime-role provisioning after the migration.
+DO $$BEGIN
+ IF to_regclass('public."AuctionRefund"') IS NOT NULL THEN
+  GRANT SELECT,INSERT ON "AuctionRefund" TO lowwin_runtime;
+  GRANT UPDATE(status,"operationId","releaseOperationId","completedAt") ON "AuctionRefund" TO lowwin_runtime;
+  IF NOT EXISTS(SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='AuctionRefund' AND policyname='lowwin_server_access') THEN CREATE POLICY lowwin_server_access ON "AuctionRefund" TO lowwin_runtime USING(true) WITH CHECK(true);END IF;
+ END IF;
+ IF to_regclass('public."AuctionPolicyTransition"') IS NOT NULL THEN GRANT SELECT ON "AuctionPolicyTransition" TO lowwin_runtime;IF NOT EXISTS(SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='AuctionPolicyTransition' AND policyname='lowwin_server_access') THEN CREATE POLICY lowwin_server_access ON "AuctionPolicyTransition" TO lowwin_runtime USING(true);END IF;END IF;
+ IF to_regclass('public."AuctionBidFunding"') IS NOT NULL THEN GRANT SELECT ON "AuctionBidFunding" TO lowwin_runtime;END IF;
+END $$;
 DO $$ DECLARE t text; BEGIN
  FOREACH t IN ARRAY ARRAY['user','session','account','verification','rateLimit','TelegramOwnContact','ContactEvent','Wallet','CurrencyConversion','WalletHoldGuard','LedgerAccount','Journal','Posting','Operation','Category','Product','ProductImage','Auction','AuctionTerms','PublicAuctionResult','AuctionHold','Bid','TopUpIntent','PaymentPolicy','PaymentClaim','PaymentAttempt','PaymentStatementEntry','BotUpdate','Outbox','AuctionSettlement','SettlementMovement','PlayerProfile','AuctionFavorite','StaffMember','StaffSession','StaffTrustedDevice','StaffToken','OwnerBootstrap','AdminAudit','AuctionDraft','ManagedMedia','SiteContent','UserRestriction','FulfillmentCase','NotificationPreference','NotificationInbox','BotChat','TestRun','TestRunActor','TelegramMessage'] LOOP
   -- These obsolete authentication tables are removed by Master Guide Admin.
@@ -23,7 +33,7 @@ END $$;
 -- role useful when it is created after migrations, without granting mutations
 -- on immutable revision and transfer-alias rows.
 DO $$ DECLARE t text; BEGIN
- FOREACH t IN ARRAY ARRAY['AuctionFeeRevision','AuctionControlRevision','PaymentTransferAlias','AdminWalletCredit','ReferralInvite','ReferralCoupon','ReferralRedemption','ReferralRegistrationProof','ResultPublication'] LOOP
+ FOREACH t IN ARRAY ARRAY['AuctionFeeRevision','AuctionControlRevision','PaymentTransferAlias','AdminWalletCredit','ReferralInvite','ReferralCoupon','ReferralRedemption','ReferralRegistrationProof','ResultPublication','DepositBonusRefund'] LOOP
   IF EXISTS(SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename=t) THEN
    IF EXISTS(SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename=t AND tableowner='lowwin_runtime') THEN RAISE EXCEPTION 'Runtime must not own tables'; END IF;
    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',t);

@@ -6,7 +6,7 @@ import {bidAuction} from '../bid-fixtures';
 import {verifyFixtureContact} from '../contact-fixtures';
 import {signedLaunch} from '../helpers';
 
-test('first auction visibility and edge-to-edge uploaded photo',async({page},info)=>{
+test('approved hero leaves the first auction visible and uploaded photos stay edge to edge',async({page},info)=>{
  const db=new PrismaClient({datasourceUrl:process.env.TEST_DATABASE_URL}),root=process.env.DENSITY_CAPTURE_DIR??'test-results/home-density',before=process.env.DENSITY_PHASE==='before';mkdirSync(root,{recursive:true});
  try{
   const marker='QA photo '+randomUUID().slice(0,6),a=await bidAuction(db,{fee:15,isDemo:false,ruleVersion:'lowest-unique-v4',endDelayMs:3600000}),id=randomInt(8000000000,8900000000);
@@ -26,7 +26,7 @@ test('first auction visibility and edge-to-edge uploaded photo',async({page},inf
    const visible=Math.max(0,Math.min(c.y+c.height,bar.y)-Math.max(0,c.y))/c.height;
    const chips=await page.locator('nav[aria-label="Auction categories"] a,nav[aria-label="Auction sorting"] a').evaluateAll(nodes=>nodes.map(node=>{const r=node.getBoundingClientRect();return {height:r.height,textOverflow:node.scrollWidth>node.clientWidth+1}}));
    report[language]={cardTop:Math.round(c.y),cardHeight:Math.round(c.height),navTop:Math.round(bar.y),visiblePercent:Math.round(visible*1000)/10,imageInset:Math.round(art.x-c.x),imageWidth:Math.round(art.width)};
-   if(!before){expect(visible).toBeGreaterThanOrEqual(.75);expect(Math.abs(art.x-c.x)).toBeLessThanOrEqual(1);expect(Math.abs(art.width-c.width)).toBeLessThanOrEqual(1);expect(Math.abs(img.width-art.width)).toBeLessThan(1);expect(await card.locator('img').evaluate(node=>getComputedStyle(node).objectFit)).toBe('cover');for(const chip of chips){expect(chip.height).toBeGreaterThanOrEqual(44);expect(chip.textOverflow).toBe(false)}}
+   if(!before){const hero=page.locator('[data-home-hero]'),heroBox=(await hero.boundingBox())!;await expect(hero.locator('img')).toHaveAttribute('width','1840');await expect(hero.locator('img')).toHaveAttribute('height','800');expect(heroBox.width).toBe(page.viewportSize()!.width);expect(heroBox.height).toBeGreaterThan(280);expect(heroBox.height).toBeLessThanOrEqual(650);expect(c.y).toBeLessThan(bar.y);expect(visible).toBeGreaterThan(0);expect(Math.abs(art.x-c.x)).toBeLessThanOrEqual(1);expect(Math.abs(art.width-c.width)).toBeLessThanOrEqual(1);expect(Math.abs(img.width-art.width)).toBeLessThan(1);expect(await card.locator('img').evaluate(node=>getComputedStyle(node).objectFit)).toBe('cover');for(const chip of chips){expect(chip.height).toBeGreaterThanOrEqual(44);expect(chip.textOverflow).toBe(false)}}
    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:`${root}/${before?'before':'after'}-${info.project.name}-${language}.png`});
   }
   writeFileSync(`${root}/${before?'before':'after'}-${info.project.name}.json`,JSON.stringify(report,null,2));

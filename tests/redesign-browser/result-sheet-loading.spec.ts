@@ -13,10 +13,10 @@ test('result previews open immediately and keep content during slow pagination',
  try{
   const fixture=await richFinalResult(db),id=randomInt(8000000000,8900000000),am=info.project.name==='430';
   await verifyFixtureContact(db,id);await page.route('https://telegram.org/**',route=>route.fulfill({body:''}));
-  await page.addInitScript(({launch})=>{window.Telegram={WebApp:{initData:launch,ready(){},expand(){},setHeaderColor(){},setBackgroundColor(){}}};},{launch:signedLaunch({user:JSON.stringify({id,first_name:'Result loading QA'})},process.env.TELEGRAM_BOT_TOKEN)});
+  await page.addInitScript(({launch})=>{localStorage.setItem('lowwin:introduction:v1','dismissed');window.Telegram={WebApp:{initData:launch,ready(){},expand(){},setHeaderColor(){},setBackgroundColor(){}}};},{launch:signedLaunch({user:JSON.stringify({id,first_name:'Result loading QA'})},process.env.TELEGRAM_BOT_TOKEN)});
   await page.goto('/telegram');await expect(page.getByRole('navigation',{name:'Your navigation'})).toBeVisible();
   if(am){await page.getByRole('button',{name:'Language: English',exact:true}).click();await page.getByRole('menuitemradio',{name:'አማርኛ',exact:true}).click()}
-  const winner=page.locator('#recent-winners').getByRole('button',{name:`${am?'ውጤት':'Result'}: ${am?'የሙከራ ዕቃ · የተጠናቀቀ ጨረታ':fixture.title}`,exact:true}).filter({has:page.locator(`time[datetime="${fixture.settlement.completedAt!.toISOString()}"]`)});await winner.scrollIntoViewIfNeeded();
+  const winner=page.locator(`#recent-winners button[data-winner-code="${fixture.code}"]:not([data-winner-copy])`);await expect(winner).toHaveAccessibleName(`${am?'ውጤት':'Result'}: ${am?'የሙከራ ዕቃ · የተጠናቀቀ ጨረታ':fixture.title}`);await winner.scrollIntoViewIfNeeded();
   await page.route('**/_next/static/chunks/**',async route=>{if(route.request().resourceType()==='script'){scriptRequests++;await scripts.pending}await route.continue()});
   await page.route(`**/api/results/${fixture.code}/breakdown?*`,async route=>{
    const params=new URL(route.request().url()).searchParams;
@@ -26,7 +26,7 @@ test('result previews open immediately and keep content during slow pagination',
    else{initialRequests++;await initial.pending}
    await route.continue();
   });
-  await winner.click();const result=page.getByRole('dialog',{name:am?'የመጨረሻ ውጤት':'Final result',exact:true});await expect(result).toBeVisible();const productImage=result.locator('[data-winner-banner][data-photo="product"]').getByRole('img',{name:am?'የሙከራ ዕቃ · የተጠናቀቀ ጨረታ':fixture.title,exact:true});await expect(productImage).toHaveCount(1);await expect(productImage).toBeVisible();await expect(result).toContainText(am?'የሙከራ ዕቃ · የተጠናቀቀ ጨረታ':fixture.title);expect(participantRequests).toBe(0);await result.locator('[data-result-breakdown]').scrollIntoViewIfNeeded();await expect.poll(()=>scriptRequests).toBeGreaterThan(0);await page.waitForTimeout(600);
+  await winner.click();const result=page.getByRole('dialog',{name:am?'የጨረታ ውጤት':'Auction result',exact:true});await expect(result).toBeVisible();const productImage=result.getByRole('img',{name:am?'የሙከራ ዕቃ · የተጠናቀቀ ጨረታ':fixture.title,exact:true});await expect(productImage).toHaveCount(1);await expect(productImage).toBeVisible();await expect(result).toContainText(am?'የሙከራ ዕቃ · የተጠናቀቀ ጨረታ':fixture.title);expect(participantRequests).toBe(0);await result.locator('[data-result-breakdown]').scrollIntoViewIfNeeded();await expect.poll(()=>scriptRequests).toBeGreaterThan(0);await page.waitForTimeout(600);
   await expect(result).toBeVisible();await expect(page.locator('.loading-spinner-ring,.customer-loading')).toHaveCount(0);
   scripts.release();await expect.poll(()=>initialRequests).toBeGreaterThan(0);await page.waitForTimeout(600);
   await expect(result).toBeVisible();await expect(page.locator('.loading-spinner-ring,.customer-loading')).toHaveCount(0);await page.screenshot({path:info.outputPath('waiting.png')});

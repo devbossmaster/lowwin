@@ -1,5 +1,6 @@
 'use client';
 import {isPublicMiniPage} from '@/lib/mini-public-routes';
+import {withoutCustomerLogin} from '@/lib/customer-login-entry';
 
 type Visit={href:string;scrollY:number;at:number};
 type Progress={page:number;at:number};
@@ -33,7 +34,10 @@ export class SessionNavigationState{
  }
  remember(identity:string|null,href:string,scrollY:number){
   const url=localRoute(href);if(!identity||identity!==this.identity||!url||!Number.isFinite(scrollY))return;
-  this.visits.set(url.pathname,{href:url.pathname+url.search+url.hash,scrollY:Math.max(0,scrollY),at:Date.now()});
+  // Registration handoffs are commands, never a future Home destination.
+  // Replaying a consumed `next` would immediately navigate away after login.
+  const destination=url.pathname==='/'&&(url.searchParams.has('login')||url.searchParams.has('next'))?withoutCustomerLogin(url.href):url.pathname+url.search+url.hash;
+  this.visits.set(url.pathname,{href:destination,scrollY:Math.max(0,scrollY),at:Date.now()});
  }
  visit(identity:string|null,href:string){
   const url=localRoute(href);if(!identity||identity!==this.identity||!url)return null;
@@ -62,4 +66,8 @@ export function rememberCurrentMiniRoute(identity:string|null){
   else miniNavigationState.remember(identity,href,window.scrollY);
  }
 }
-export function rememberedMiniDestination(identity:string|null,href:string){return publicMiniNavigationState.visit('public',href)?.href??miniNavigationState.visit(identity,href)?.href??href}
+export function rememberedMiniVisit(identity:string|null,href:string){
+ const url=localRoute(href);
+ return url&&isPublicMiniPage(url.pathname)?publicMiniNavigationState.visit('public',href):miniNavigationState.visit(identity,href);
+}
+export function rememberedMiniDestination(identity:string|null,href:string){return rememberedMiniVisit(identity,href)?.href??href}

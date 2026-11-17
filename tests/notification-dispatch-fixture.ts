@@ -16,7 +16,7 @@ export function notificationDispatchFixture(jobs:Outbox[],now=new Date()){
   $queryRaw:vi.fn(async(query:TemplateStringsArray|Prisma.Sql,...tagValues:unknown[])=>{
    const sql=('strings' in query?query.strings:query).join(''),values:unknown[]=Array.isArray(query)?tagValues:(query as Prisma.Sql).values;
    if(sql.includes('ELSE NULL END AS reason'))return [{now,leaseUntil:new Date(now.getTime()+120000),reason:null}];
-   if(sql.includes('clock_timestamp() AS now'))return [{now}];
+   if(sql.includes('clock_timestamp() AS now')||sql.includes("clock_timestamp() AT TIME ZONE 'UTC' AS now"))return [{now}];
    if(sql.includes('SELECT u."telegramId"'))return [{...user,...await tx.user.findUnique(),...await tx.botChat.findUnique()}];
    if(sql.includes('SELECT u.id'))return [{id:'player'}];
    if(sql.includes('INSERT INTO "TelegramDeliveryLease"')){const key=String(values[0]);if(logical.has(key))return [];logical.set(key,{key,leaseToken:String(values[3]),sentAt:null});return [{key}]}

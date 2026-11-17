@@ -1,0 +1,33 @@
+import {afterAll,beforeAll,describe,expect,it} from 'vitest';
+import {randomUUID} from 'node:crypto';
+import {execFileSync} from 'node:child_process';
+import {PrismaClient} from '@prisma/client';
+import {bidAuction,bidUser} from './bid-fixtures';
+import {submitBid} from '../src/modules/auctions/bids';
+import {closeAuctionInTransaction} from '../src/modules/auctions/settlement';
+import {processAuctionRefund} from '../src/modules/wallet/auction-refunds';
+import {ownAuctionRefunds} from '../src/modules/profile/auction-refunds';
+import {getPersonalBidAuctionList} from '../src/modules/profile/bid-auction-list';
+import {getPersonalBids} from '../src/modules/profile/personal';
+import {RULE_V5} from '../src/modules/auctions/rules';
+const database=process.env.V5_TEST_DATABASE_URL??process.env.TEST_DATABASE_URL;
+describe.skipIf(!database)('private committed cancellation refund projections',()=>{
+ let db:PrismaClient;
+ beforeAll(()=>{const target=new URL(database!);if(!['127.0.0.1','localhost'].includes(target.hostname)||!target.pathname.endsWith('_test'))throw Error('Disposable loopback test database required');execFileSync(process.execPath,['node_modules/prisma/build/index.js','migrate','deploy'],{env:{...process.env,DATABASE_URL:database!,DIRECT_URL:database!},stdio:'pipe'});db=new PrismaClient({datasourceUrl:database!})},60000);
+ afterAll(async()=>{await db?.$disconnect();await(await import('../src/lib/db')).db.$disconnect()});
+ it('keeps queued amounts uncredited, shows committed refunds once, and never exposes another owner',async()=>{
+  const auction=await bidAuction(db,{ruleVersion:RULE_V5,fee:10,endDelayMs:1800}),[first,second,outsider]=await Promise.all([bidUser(db,'100'),bidUser(db,'100'),bidUser(db,'100')]);
+  const submit=(userId:string)=>submitBid(db,{userId,auctionSlug:auction.slug!,amount:'1.50',feeVersion:1,key:randomUUID()});
+  await Promise.all([submit(first),submit(second)]);await new Promise(resolve=>setTimeout(resolve,Math.max(0,auction.endsAt!.getTime()-Date.now()+20)));
+  const decision=await db.$transaction(tx=>closeAuctionInTransaction(tx,auction.id));expect(decision.decision).toBe('NO_UNIQUE_BID');
+  const code=auction.publicCode.toString(),pending=(await ownAuctionRefunds(db,first,[code])).get(code)!;
+  expect(pending).toMatchObject({status:'pending',cash:'0',completedAt:null});expect((await ownAuctionRefunds(db,outsider,[code])).size).toBe(0);
+  const before=await getPersonalBidAuctionList(db,first,{view:'finished',grouped:'1',auction:code});expect(before.items[0].refund?.status).toBe('pending');
+  expect((await getPersonalBids(db,first)).items[0].feeRefunded).toBe('0');
+  for(let n=0;n<5;n++)if((await processAuctionRefund(db,auction.id)).status==='idle')break;
+  const completed=(await ownAuctionRefunds(db,first,[code])).get(code)!;expect(completed).toMatchObject({status:'completed',cash:'10'});expect(completed.completedAt).toBeTruthy();
+  const after=await getPersonalBidAuctionList(db,first,{view:'finished',grouped:'1',auction:code});expect(after.items[0].refund?.cash).toBe('10');expect(after.items[0].outcome).toBe('CANCELLED');expect(after.items[0].bidCount).toBe(1);
+  expect((await getPersonalBids(db,first)).items[0].feeRefunded).toBe('10');
+  expect((await ownAuctionRefunds(db,outsider,[code])).size).toBe(0);expect(await processAuctionRefund(db,auction.id)).toMatchObject({status:'idle'});
+ });
+});

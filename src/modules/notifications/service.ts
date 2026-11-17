@@ -41,7 +41,7 @@ export async function notificationPhoto(tx:DB,imageId:string|undefined,origin:st
 }
 export async function notificationContent(tx:DB,row:Pick<Outbox,'kind'|'payload'>&Partial<Pick<Outbox,'key'>>){
  if(notificationRetired(row.kind))return null;
- if(['DEPOSIT_CREDITED','BID_ACCEPTED','WINNER_CONGRATULATIONS'].includes(row.kind))return privateNotificationContent(tx,row);
+ if(['DEPOSIT_CREDITED','BID_ACCEPTED','WINNER_CONGRATULATIONS','AUCTION_FEE_REFUNDED'].includes(row.kind))return privateNotificationContent(tx,row);
  return telegramKinds.includes(row.kind)?campaignContent(tx,row):null;
 }
 export async function materializeAlert(tx:DB,row:Pick<Outbox,'key'|'kind'|'payload'>&Partial<Pick<Outbox,'testRunId'>>,prepared?:Awaited<ReturnType<typeof notificationContent>>){

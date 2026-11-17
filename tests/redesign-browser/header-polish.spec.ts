@@ -29,7 +29,7 @@ test('compact header, language keyboard controls and banner assets',async({page}
   const bids=page.getByRole('navigation',{name:'Your navigation',exact:true}).getByRole('link',{name:'My Bids',exact:true});await expect(bids).toHaveAttribute('href','/my-bids');await bids.click();await expect(page).toHaveURL(/\/my-bids$/);
   await page.goto('/');await expect(page.getByRole('button',{name:'Learn more',exact:true}).first()).toBeVisible();
   const banner=page.locator('section[aria-labelledby="home-headline"] img');await expect.poll(()=>banner.evaluate((el:HTMLImageElement)=>el.complete&&el.naturalWidth>0)).toBe(true);
-  for(const path of ['/images/lowin-family-hero.webp','/fonts/dm-sans-latin-500.woff2','/fonts/noto-sans-ethiopic-variable.woff2'])expect((await page.request.get(path,{maxRedirects:0})).status(),path).toBe(200);
+  for(const path of ['/images/lowwin-gold-prizes-hero-20261117.webp','/fonts/inter-latin-variable.woff2','/fonts/noto-sans-ethiopic-variable.woff2'])expect((await page.request.get(path,{maxRedirects:0})).status(),path).toBe(200);
   for(const control of await header.getByRole('button').all()){const box=await control.boundingBox();expect(box!.width).toBeGreaterThanOrEqual(44);expect(box!.height).toBeGreaterThanOrEqual(44)}
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await page.screenshot({path:`${root}/home-${info.project.name}-en.png`});
@@ -38,7 +38,7 @@ test('compact header, language keyboard controls and banner assets',async({page}
   await page.keyboard.press('Enter');await expect(header.getByRole('button',{name:'ቋንቋ: አማርኛ'})).toBeFocused();await expect(page.locator('html')).toHaveAttribute('lang','am');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:`${root}/home-${info.project.name}-am.png`});
   await header.getByRole('button',{name:'ቋንቋ: አማርኛ'}).click();await page.keyboard.press('Escape');await expect(header.getByRole('button',{name:'ቋንቋ: አማርኛ'})).toBeFocused();
-  const bad=await page.evaluate(async()=>{await document.fonts.ready;return Array.from(document.images).filter(image=>image.src.includes('lowwin-home-banner')&&(!image.complete||image.naturalWidth===0)).length});expect(bad).toBe(0);
+  const bad=await page.evaluate(async()=>{await document.fonts.ready;return Array.from(document.images).filter(image=>image.src.includes('lowwin-gold-prizes-hero-20261117')&&(!image.complete||image.naturalWidth===0)).length});expect(bad).toBe(0);
   expect(errors).toEqual([]);
  }finally{await client.$disconnect()}
 });

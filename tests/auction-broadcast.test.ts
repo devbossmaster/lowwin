@@ -14,7 +14,14 @@ describe('live auction broadcast review',()=>{
   expect(same.draftHash).toBe(one.draftHash);
   for(const presentation of [{title:'Updated title',images:[{path:image}]},{title:'Live power bank',images:[{path:'/images/changed.webp'}]}])expect((await auctionBroadcastDraft(tx(auction({presentation})) as never,id,now)).draftHash).not.toBe(one.draftHash);
  });
- it.each([null,{status:'SCHEDULED'},{status:'CANCELLED'},{startsAt:new Date(now.getTime()+1)},{endsAt:now},{publishedAt:null},{publishedAt:new Date(now.getTime()+1)},{publicCode:null},{publicCode:0},{isDemo:true},{testRunId:'fixture'},{settlement:{id:'settled'}},{result:{id:'historic-result'}},{product:{visible:false}}])('rejects an auction that is no longer accepting public bids %j',async change=>{
+ it('accepts a started SCHEDULED auction before the worker changes its raw status',async()=>{
+  expect(await auctionBroadcastDraft(tx(auction({status:'SCHEDULED'})) as never,id,now)).toMatchObject({auctionId:id,miniAppPath:'/auctions/42'});
+ });
+ it('uses the authoritative database clock when no trusted timestamp is provided',async()=>{
+  const db=tx(auction({status:'SCHEDULED'}));db.$queryRaw.mockResolvedValue([{now}] as never);
+  expect(await auctionBroadcastDraft(db as never,id)).toMatchObject({auctionId:id});expect(db.$queryRaw).toHaveBeenCalledOnce();
+ });
+ it.each([null,{status:'CANCELLED'},{startsAt:new Date(now.getTime()+1)},{endsAt:now},{publishedAt:null},{publishedAt:new Date(now.getTime()+1)},{publicCode:null},{publicCode:0},{isDemo:true},{testRunId:'fixture'},{settlement:{id:'settled'}},{result:{id:'historic-result'}},{product:{visible:false}},{category:{visible:false}},{product:{visible:true,category:{visible:false}}}])('rejects an auction that is no longer accepting public bids %j',async change=>{
   await expect(auctionBroadcastDraft(tx(change===null?null:auction(change)) as never,id,now)).rejects.toMatchObject({status:422});
  });
  it.each(['https://elsewhere.example/product.jpg','/api/private/image','/images/../../secret.png'])('rejects a nonpublic or unsafe photo %s',async path=>{

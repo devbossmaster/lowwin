@@ -30,7 +30,7 @@ test('the blank multi-bid form edits chips and prices submission fees with one c
  }finally{await f.cleanup()}
 });
 
-test('accepted duplicates, consecutive cent amounts, and remaining submission limits block Pay',async({page},info)=>{
+test('accepted duplicates and remaining submission limits block Pay while consecutive cents are allowed',async({page},info)=>{
  const am=info.project.name==='430',f=await setup(page,am);let charges=0;
  try{
   await page.route('**/api/auctions/*/bids',async route=>{const response=await route.fetch();return route.fulfill({json:{...await response.json(),remainingSubmissions:4,ownBids:[{id:randomUUID(),amount:'7.00',acceptedAt:new Date().toISOString()}]}})});
@@ -38,8 +38,7 @@ test('accepted duplicates, consecutive cent amounts, and remaining submission li
   await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await openBid(page,f.title),input=amount(dialog,am);await dialog.getByRole('radio',{name:'telebirr',exact:true}).check();await phone(dialog,am).fill('0911652904');
   await input.fill('7');await expect(add(dialog,am)).toBeDisabled();await expect(pay(dialog)).toBeDisabled();
   for(const value of ['1.00','1.01','1.02']){await input.fill(value);await add(dialog,am).click()}
-  await input.fill('1.03');await expect(input).toHaveAttribute('aria-invalid','true');await expect(add(dialog,am)).toBeDisabled();await expect(pay(dialog)).toBeDisabled();
-  await input.fill('2');await add(dialog,am).click();await expect(dialog.locator('[data-bid-remaining]')).toContainText('0');await expect(pay(dialog)).toBeEnabled();
+  await input.fill('1.03');await expect(input).not.toHaveAttribute('aria-invalid','true');await expect(add(dialog,am)).toBeEnabled();await add(dialog,am).click();await expect(dialog.locator('[data-bid-remaining]')).toContainText('0');await expect(pay(dialog)).toBeEnabled();
   await input.fill('3');await expect(add(dialog,am)).toBeDisabled();await expect(pay(dialog)).toBeDisabled();await remove(dialog,am,'1.02').click();await input.fill('3');await expect(add(dialog,am)).toBeEnabled();await expect(pay(dialog)).toBeEnabled();expect(charges).toBe(0);
   await page.screenshot({path:info.outputPath('multi-bid-limits.png'),animations:'disabled'});
  

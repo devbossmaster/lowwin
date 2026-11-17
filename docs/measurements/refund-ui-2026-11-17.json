@@ -1,0 +1,28 @@
+{
+  "scope": "Optimized local HTTPS server; real database cancellation/refund commits and real signed Telegram session, owned private HTTP reads and browser rendering. Cancellation/refund/My Bids responses are not intercepted.",
+  "n": 3,
+  "samples": [
+    {
+      "sample": 1,
+      "decisionCommitToPendingUiMs": 1489,
+      "refundCommitToCompletedUiMs": 2950
+    },
+    {
+      "sample": 2,
+      "decisionCommitToPendingUiMs": 779,
+      "refundCommitToCompletedUiMs": 2941
+    },
+    {
+      "sample": 3,
+      "decisionCommitToPendingUiMs": 843,
+      "refundCommitToCompletedUiMs": 2959
+    }
+  ],
+  "p50RefundCommitToUiMs": 2950,
+  "p95RefundCommitToUiMs": 2959,
+  "limitations": [
+    "Three local samples; not production/network/device p95.",
+    "Decision-to-pending UI includes initial navigation/authentication. Refund completion uses the shipped 3-second pending-only poll.",
+    "The common fixture stubs wallet summary and provider availability; neither establishes a refund outcome."
+  ]
+}

@@ -11,8 +11,9 @@ const FooterTarget=createContext<HTMLElement|null>(null);
 export function AccountSheetFooter({children}:{children:ReactNode}){const target=useContext(FooterTarget);return target?createPortal(children,target):null}
 
 /** Native modal focus containment, Escape handling, and focus restoration. Mount only while open. */
-export function AccountSheet({title,onClose,onBack,children,footer,footerPortal=false,headerActions,returnFocusRef,size='content',layout,presentation}:{title:ReactNode;onClose:()=>void;onBack?:()=>void;children:ReactNode;footer?:ReactNode;footerPortal?:boolean;headerActions?:ReactNode;returnFocusRef?:RefObject<HTMLElement|null>;size?:'content'|'payment';layout?:'bid-entry'|'bid-reference'|'topup-reference'|'checkout';presentation?:'centered'}){
-  const dismiss=useSheetBack(onClose,onBack);
+export function AccountSheet({title,onClose,onBack,onBeforeClose,children,footer,footerPortal=false,headerActions,returnFocusRef,size='content',layout,presentation}:{title:ReactNode;onClose:()=>void;onBack?:()=>void;onBeforeClose?:()=>boolean;children:ReactNode;footer?:ReactNode;footerPortal?:boolean;headerActions?:ReactNode;returnFocusRef?:RefObject<HTMLElement|null>;size?:'content'|'payment';layout?:'bid-entry'|'bid-reference'|'topup-reference'|'checkout';presentation?:'centered'}){
+  const dismissSheet=useSheetBack(onClose,onBack);
+  const dismiss=()=>{if(!onBeforeClose?.())dismissSheet()};
   const dialog=useRef<HTMLDialogElement>(null),closeButton=useRef<HTMLButtonElement>(null),close=useRef(onClose),titleId=useId();
   const {language}=useMiniLocale();
   const noticeId=`lowwin-sheet-${titleId}`,activateNotices=useMiniNoticeTarget(noticeId);

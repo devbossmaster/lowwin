@@ -7,6 +7,8 @@ import {auctionMaintenance} from '../auctions/maintenance';
 import {notificationContent,materializeAlert,notificationPhoto,telegramCampaignText} from './service';
 import {broadcastRoot,expandCampaign,telegramKinds} from './campaigns';
 import {expandParticipantResults} from './participant-results';
+import {expandBroadcastDeletion,telegramMessageDeletable} from './broadcast-delete';
+import {promotionNow} from './auction-promotion';
 import {chapaReceiptKind} from './chapa-receipt';
 import {hasResultSubscription} from './result-audience';
 import {auctionPhoto} from './auction-photo';
@@ -74,12 +76,19 @@ async function dispatchClaim(client:PrismaClient,bot:BotApi,row:ClaimedNotificat
    const p=row.payload as {telegramMessageId?:string},record=p.telegramMessageId?await client.telegramMessage.findUnique({where:{id:p.telegramMessageId}}):null;
    if(!record||!['QUEUED','FAILED'].includes(record.deletionState)){await skip();return}
    try{
-    await withTelegramSendPolicy({priority:'bulk',beforeSend:()=>beforeSend(client,row,context)},()=>bot.api.deleteMessage(record.chatId,Number(record.messageId)));
+    await withTelegramSendPolicy({priority:'bulk',beforeSend:async()=>{
+     await beforeSend(client,row,context);
+     if(!telegramMessageDeletable(record.sentAt,await promotionNow(client))||!Number.isSafeInteger(Number(record.messageId))||record.messageId<=0n)throw new DeliveryGate('TELEGRAM_DELETE_WINDOW_EXPIRED',false);
+    }},()=>bot.api.deleteMessage(record.chatId,Number(record.messageId)));
     await client.$transaction(async tx=>{const changed=await tx.outbox.updateMany({where:{id:row.id,state:'PENDING',leaseToken:row.leaseToken},data:{state:'SENT',sentAt:new Date(),attempts:{increment:1},lastError:null,leaseToken:null,leaseUntil:null}});if(changed.count)await tx.telegramMessage.update({where:{id:record.id},data:{deletionState:'DELETED',deletionAttemptedAt:new Date(),deletionError:null}})});
    }catch(error){
+    if(error instanceof DeliveryGate&&error.reason==='TELEGRAM_DELETE_WINDOW_EXPIRED'){
+     await client.$transaction(async tx=>{const changed=await tx.outbox.updateMany({where:{id:row.id,state:'PENDING',leaseToken:row.leaseToken},data:{state:'SKIPPED',lastError:error.reason,leaseToken:null,leaseUntil:null}});if(changed.count)await tx.telegramMessage.update({where:{id:record.id},data:{deletionState:'UNAVAILABLE',deletionAttemptedAt:new Date(),deletionError:error.reason}})});return;
+    }
     if(error instanceof DeliveryGate||error instanceof TelegramRateDeferredError){await fail(client,row,error);return}
-    const code=(error as {error_code?:number}).error_code,terminal=code===400||code===403||row.attempts>=3;
-    await client.$transaction(async tx=>{const changed=await tx.outbox.updateMany({where:{id:row.id,state:'PENDING',leaseToken:row.leaseToken},data:{state:terminal?'FAILED':'PENDING',attempts:{increment:1},lastError:'TELEGRAM_DELETE_FAILED',nextAttemptAt:new Date(Date.now()+Math.min(3600,2**(row.attempts+1)*5)*1000),leaseToken:null,leaseUntil:null}});if(changed.count)await tx.telegramMessage.update({where:{id:record.id},data:{deletionState:terminal?'UNAVAILABLE':'FAILED',deletionAttemptedAt:new Date(),deletionError:code===400?'DELETE_WINDOW_OR_MESSAGE_UNAVAILABLE':code===403?'CHAT_BLOCKED':'DELETE_RETRY'}})});
+    const failure=error as {error_code?:number;parameters?:{retry_after?:number}},code=failure.error_code,terminal=code===400||code===403||row.attempts>=7;
+    const supplied=Number(failure.parameters?.retry_after),seconds=code===429?(Number.isSafeInteger(supplied)&&supplied>0?Math.min(supplied,2147483647):60):Math.min(3600,2**(row.attempts+1)*5);
+    await client.$transaction(async tx=>{const changed=await tx.outbox.updateMany({where:{id:row.id,state:'PENDING',leaseToken:row.leaseToken},data:{state:terminal?'FAILED':'PENDING',attempts:{increment:1},lastError:code===429?'RATE_LIMIT':'TELEGRAM_DELETE_FAILED',nextAttemptAt:new Date(Date.now()+seconds*1000),leaseToken:null,leaseUntil:null}});if(changed.count)await tx.telegramMessage.update({where:{id:record.id},data:{deletionState:code===400||code===403?'UNAVAILABLE':'FAILED',deletionAttemptedAt:new Date(),deletionError:code===400?'DELETE_WINDOW_OR_MESSAGE_UNAVAILABLE':code===403?'CHAT_BLOCKED':terminal?'DELETE_RETRY_EXHAUSTED':'DELETE_RETRY'}})});
    }
    return;
   }
@@ -108,7 +117,7 @@ async function dispatchClaim(client:PrismaClient,bot:BotApi,row:ClaimedNotificat
   }
   const link=new URL(content.href,process.env.MINI_APP_URL);
   if(link.protocol!=='https:'){await skip();return}
-  const name=safeResultIdentity(user).displayName??'ተጫዋች',startReminder=['AUCTION_UPCOMING','AUCTION_UPCOMING_1_HOUR'].includes(row.kind),paymentReceipt=row.kind===chapaReceiptKind;
+  const name=safeResultIdentity(user).displayName??'ተጫዋች',startReminder=['AUCTION_UPCOMING','AUCTION_UPCOMING_1_HOUR'].includes(row.kind),paymentReceipt=row.kind===chapaReceiptKind||row.kind==='AUCTION_FEE_REFUNDED';
   const body=content.body.includes('{name}')?content.body.replaceAll('{name}',name):`${name},\n${content.body}`;
   const text=paymentReceipt?content.body:row.kind==='BROADCAST'?content.body.replaceAll('{name}',name):'telegramCaption' in content&&typeof content.telegramCaption==='string'?content.telegramCaption.replaceAll('{name}',name):telegramCampaignText(row.kind,content.title,startReminder?content.body:body,startReminder?name:undefined);
   const button='buttonLabel' in content?String(content.buttonLabel):row.kind==='DEPOSIT_CREDITED'?'ዋሌቴን ልይ':row.kind==='BID_ACCEPTED'?'ጨረታዎቼን ልይ':row.kind==='WINNER_CONGRATULATIONS'?'ሽልማቴን ልይ':row.kind==='AUCTION_ENDED'?'ውጤቱን ልይ':'ጨረታውን ልይ';
@@ -122,6 +131,7 @@ async function dispatchClaim(client:PrismaClient,bot:BotApi,row:ClaimedNotificat
    if(paymentReceipt||row.kind==='DEPOSIT_CREDITED')return null;
    let photo=(row.kind.startsWith('AUCTION_')||auctionImage)?(auctionImage?await auctionPhoto(client,auctionImage):null):await notificationPhoto(client,imageId,link.origin);
    if(!photo&&row.kind==='AUCTION_ENDED'&&'fallbackImagePath' in content&&typeof content.fallbackImagePath==='string')photo=await auctionPhoto(client,content.fallbackImagePath);
+   if(!photo&&row.kind==='BROADCAST'&&(auctionImage||imageId))throw Error('Original broadcast media is unavailable');
    return photo;
   };
   const gate:RecipientGate={telegramId:chat.telegramId,chatId:chat.chatId,userId:content.userId,excludeStaff:row.kind==='BROADCAST'||row.kind.startsWith('AUCTION_')};
@@ -164,7 +174,7 @@ export async function expandPendingCampaigns(client:PrismaClient,{limit=4}:{limi
     if(root){const [{locked}]=await tx.$queryRaw<{locked:boolean}[]>`SELECT pg_try_advisory_xact_lock(hashtextextended(${`broadcast:${root}`},0)) AS locked`;if(!locked)throw new DeliveryGate('CAMPAIGN_LOCK_WAIT',true)}
     const rows=await tx.$queryRaw<Outbox[]>`SELECT * FROM "Outbox" WHERE id=${row.id} AND state='PENDING' AND "leaseToken"=${row.leaseToken} FOR UPDATE`;
     if(!rows.length)return;
-    if(row.kind==='AUCTION_PARTICIPANTS')await expandParticipantResults(tx,row);else await expandCampaign(tx,row);
+    if(row.kind==='BROADCAST_DELETE')await expandBroadcastDeletion(tx,row);else if(row.kind==='AUCTION_PARTICIPANTS')await expandParticipantResults(tx,row);else await expandCampaign(tx,row);
     await tx.outbox.updateMany({where:{id:row.id,leaseToken:row.leaseToken},data:{leaseToken:null,leaseUntil:null}});
    },{timeout:10000,maxWait:5000});
   }catch(error){await fail(client,row,error)}

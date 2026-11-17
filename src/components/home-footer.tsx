@@ -12,7 +12,7 @@ export function HomeFooter(){
  const {language}=useMiniLocale();
  return <footer className={styles.footer} role="contentinfo" aria-label={language==='am'?'የLowwin አገናኞች':'Lowwin footer'}>
   <nav className={styles.socials} aria-label={language==='am'?'ማህበራዊ ገጾቻችን':'Our social pages'}>{socials.map(({name,url,Icon})=><a key={name} href={url} target="_blank" rel="noopener noreferrer" aria-label={`Lowwin on ${name}`}><span><Icon size={15} strokeWidth={1.8} aria-hidden="true"/></span></a>)}</nav>
-  <p><MiniPhrase en="18+ only. Bid fees are non-refundable. Please bid responsibly." am="ከ18 ዓመት በላይ ብቻ። የማስገቢያ ክፍያ አይመለስም። በኃላፊነት ይሳተፉ።"/></p>
+  <p><MiniPhrase en="18+ only. Cancelled auctions return actual paid fees to your wallet. Please bid responsibly." am="ከ18 ዓመት በላይ ብቻ። ጨረታ ሲሰረዝ በእውነት የተከፈለው ክፍያ ወደ ዋሌትዎ ይመለሳል። በኃላፊነት ይሳተፉ።"/></p>
   <p>© {new Date().getUTCFullYear()} Lowwin · <MiniPhrase en="Lowest unique bid wins" am="ዝቅተኛው ልዩ ቁጥር ያሸንፋል"/></p>
   <nav className={styles.legal} aria-label={language==='am'?'ውሎችና ሁኔታዎች':'Terms and conditions'}><Link href="/terms"><MiniPhrase en="Terms & Conditions apply" am="ውሎችና ሁኔታዎች ይተገበራሉ"/></Link></nav>
  </footer>;

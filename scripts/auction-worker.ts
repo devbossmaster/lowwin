@@ -13,7 +13,7 @@ try {
     try {
       const result=await processDueAuction(db);
       console.log(JSON.stringify(result));
-      if(!once&&result.status!=='settled'&&result.status!=='published')await setTimeout(1000);
+      if(!once&&result.status!=='settled'&&result.status!=='published'&&result.status!=='refunded')await setTimeout(1000);
     }catch {console.error('Auction database unavailable; retrying.');if(once){process.exitCode=1;break}await setTimeout(5000)}
   }while(running&&!once);
 }finally {await db.$disconnect()}

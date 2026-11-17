@@ -34,10 +34,10 @@ describe('Compact My Bids accepted records',()=>{
   expect((html.match(/data-bid-thumbnail/g)??[])).toHaveLength(1);expect(html).toContain('chosen number 1.00');expect(html.match(/data-bid-auction=/g)).toHaveLength(1);expect(html.match(/>Accepted product</g)).toHaveLength(1);expect(html).toContain('Open auction: Accepted product');expect(html).toContain('Your numbers');
   expect(html).not.toContain('ETB');expect(html).not.toContain('Fee');
  });
- it('uses Finished and historical finite freshness without a polling loop',()=>{
+ it('uses Finished and historical finite freshness without polling when no refund is pending',()=>{
   state.view='finished';state.outcome='PENDING';const html=render();
   expect(state.urls).toEqual(['/api/my-bids?view=finished&page=1&language=en&grouped=1']);
-  expect(state.queryOptions[0]).toEqual({freshnessMs:300000,cancelOnUnmount:true});expect(html).toContain('Finalizing result');expect(html).not.toContain('Not winning');expect(html).not.toContain('Countdown');
+  expect(state.queryOptions[0]).toEqual({pollMs:0,freshnessMs:300000,cancelOnUnmount:true});expect(html).toContain('Finalizing result');expect(html).not.toContain('Not winning');expect(html).not.toContain('Countdown');
  });
  it('retains legacy completed/history navigation as Finished',()=>{
   expect(myBidListView('history')).toBe('finished');expect(myBidListView(null,'completed')).toBe('finished');expect(myBidListView('all')).toBe('live');

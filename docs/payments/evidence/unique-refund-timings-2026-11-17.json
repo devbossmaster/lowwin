@@ -1,0 +1,188 @@
+{
+  "at": "2026-11-17T11:57:37.715Z",
+  "scope": "Isolated PostgreSQL; synthetic authenticated batch purchases; fee 1ETB; two or ten recipients; serial one-wallet refund transactions; no HTTP or production latency claim",
+  "samples": [
+    {
+      "bids": 10,
+      "participants": 2,
+      "deadlineToDecisionMs": 117.014892578125,
+      "decisionTransactionMs": 106.02149999999892,
+      "publicationMs": 41.53529999999955,
+      "decisionToFirstRefundMs": 76.654052734375,
+      "decisionToAllRefundsMs": 106.77099609375
+    },
+    {
+      "bids": 10,
+      "participants": 2,
+      "deadlineToDecisionMs": 70.6689453125,
+      "decisionTransactionMs": 59.39990000000034,
+      "publicationMs": 22.417999999997846,
+      "decisionToFirstRefundMs": 59.470947265625,
+      "decisionToAllRefundsMs": 95.1220703125
+    },
+    {
+      "bids": 10,
+      "participants": 2,
+      "deadlineToDecisionMs": 64.054931640625,
+      "decisionTransactionMs": 57.09290000000328,
+      "publicationMs": 18.094199999999546,
+      "decisionToFirstRefundMs": 49.041015625,
+      "decisionToAllRefundsMs": 80.193115234375
+    },
+    {
+      "bids": 100,
+      "participants": 2,
+      "deadlineToDecisionMs": 382.491943359375,
+      "decisionTransactionMs": 364.752999999997,
+      "publicationMs": 22.847999999998137,
+      "decisionToFirstRefundMs": 53.720947265625,
+      "decisionToAllRefundsMs": 87.715087890625
+    },
+    {
+      "bids": 100,
+      "participants": 2,
+      "deadlineToDecisionMs": 846.364013671875,
+      "decisionTransactionMs": 828.6214000000036,
+      "publicationMs": 22.213000000003376,
+      "decisionToFirstRefundMs": 50.051025390625,
+      "decisionToAllRefundsMs": 83.62109375
+    },
+    {
+      "bids": 100,
+      "participants": 2,
+      "deadlineToDecisionMs": 125.075927734375,
+      "decisionTransactionMs": 113.93590000001132,
+      "publicationMs": 27.255100000009406,
+      "decisionToFirstRefundMs": 66.47412109375,
+      "decisionToAllRefundsMs": 95.99609375
+    },
+    {
+      "bids": 1000,
+      "participants": 10,
+      "deadlineToDecisionMs": 645.236083984375,
+      "decisionTransactionMs": 639.672499999986,
+      "publicationMs": 43.81930000000284,
+      "decisionToFirstRefundMs": 112.798828125,
+      "decisionToAllRefundsMs": 405.60693359375
+    },
+    {
+      "bids": 1000,
+      "participants": 10,
+      "deadlineToDecisionMs": 596.62890625,
+      "decisionTransactionMs": 580.6768999999913,
+      "publicationMs": 45.802700000000186,
+      "decisionToFirstRefundMs": 115.14404296875,
+      "decisionToAllRefundsMs": 402.113037109375
+    },
+    {
+      "bids": 1000,
+      "participants": 10,
+      "deadlineToDecisionMs": 848.028076171875,
+      "decisionTransactionMs": 829.022399999958,
+      "publicationMs": 42.23029999999562,
+      "decisionToFirstRefundMs": 110.89990234375,
+      "decisionToAllRefundsMs": 406.427001953125
+    }
+  ],
+  "slowQueries": [
+    {
+      "phase": "decision",
+      "ms": 341,
+      "sqlPrefix": "\n WITH funding AS(SELECT \"userId\",sum(gross-discount-bonus) AS cash,sum(bonus) AS bonus FROM \"AuctionBidFunding\" WHERE \"auctionId\"=$1 AND \"acceptedAt\"<($2 AT TIME ZONE 'UTC') GROUP"
+    },
+    {
+      "phase": "decision",
+      "ms": 411,
+      "sqlPrefix": "COMMIT"
+    },
+    {
+      "phase": "setup",
+      "ms": 309,
+      "sqlPrefix": "COMMIT"
+    },
+    {
+      "phase": "decision",
+      "ms": 451,
+      "sqlPrefix": "COMMIT"
+    },
+    {
+      "phase": "setup",
+      "ms": 254,
+      "sqlPrefix": "INSERT INTO \"public\".\"Bid\" (\"id\",\"userId\",\"auctionId\",\"amount\",\"termsVersion\",\"feePoints\",\"feeRevisionId\",\"operationId\") VALUES ($1,$2,$3,$4,$5,$6,$7,$8), ($9,$10,$11,$12,$13,$14,$"
+    },
+    {
+      "phase": "setup",
+      "ms": 266,
+      "sqlPrefix": "COMMIT"
+    },
+    {
+      "phase": "setup",
+      "ms": 278,
+      "sqlPrefix": "COMMIT"
+    },
+    {
+      "phase": "decision",
+      "ms": 368,
+      "sqlPrefix": "COMMIT"
+    },
+    {
+      "phase": "setup",
+      "ms": 313,
+      "sqlPrefix": "COMMIT"
+    },
+    {
+      "phase": "setup",
+      "ms": 373,
+      "sqlPrefix": "COMMIT"
+    },
+    {
+      "phase": "setup",
+      "ms": 400,
+      "sqlPrefix": "COMMIT"
+    },
+    {
+      "phase": "decision",
+      "ms": 468,
+      "sqlPrefix": "COMMIT"
+    }
+  ],
+  "summary": [
+    {
+      "bids": 10,
+      "n": 3,
+      "deadlineToDecision": {
+        "p50": 70.6689453125,
+        "p95": 117.014892578125
+      },
+      "decisionToAllRefunds": {
+        "p50": 95.1220703125,
+        "p95": 106.77099609375
+      }
+    },
+    {
+      "bids": 100,
+      "n": 3,
+      "deadlineToDecision": {
+        "p50": 382.491943359375,
+        "p95": 846.364013671875
+      },
+      "decisionToAllRefunds": {
+        "p50": 87.715087890625,
+        "p95": 95.99609375
+      }
+    },
+    {
+      "bids": 1000,
+      "n": 3,
+      "deadlineToDecision": {
+        "p50": 645.236083984375,
+        "p95": 848.028076171875
+      },
+      "decisionToAllRefunds": {
+        "p50": 405.60693359375,
+        "p95": 406.427001953125
+      }
+    }
+  ],
+  "limitations": "Fresh fixture database warmed by purchases; shared local server and loopback latency; three samples per size. Provider, Telegram and commit-to-UI excluded; n=3 is not a production p95 estimate. Baseline report includes an earlier59-second end-to-end outlier and is retained separately; stage separation is explicit here."
+}

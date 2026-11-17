@@ -3,16 +3,16 @@ import type {PrismaClient} from '@prisma/client';
 import {broadcastHistory} from '../src/modules/admin/broadcast-history';
 
 function fixture(changes:Record<string,unknown>={},lastError:string|null=null){
- const root={id:'root',key:'broadcast:fixture',payload:{body:'A fixture update',href:'/auctions/42',buttonLabel:'See the power bank',imageId:'image'},createdAt:new Date('2026-10-30T10:00:00Z'),lastError};
+ const root={id:'root',key:'broadcast:fixture',payload:{body:'A fixture update',href:'/auctions/42',buttonLabel:'See the power bank',imageId:'image',imagePath:'/images/power-bank.webp',parentCampaignId:'original'},createdAt:new Date('2026-10-30T10:00:00Z'),lastError};
  const progress={id:'root',sent:1155n,pending:0n,skipped:265n,failed:1n,batches:0n,failedBatches:0n,blocked:1n,invalid:0n,exhausted:0n,...changes};
- const query=vi.fn().mockResolvedValueOnce([root]).mockResolvedValueOnce([{count:1n}]).mockResolvedValueOnce([progress]);
+ const query=vi.fn().mockResolvedValueOnce([root]).mockResolvedValueOnce([{count:1n}]).mockResolvedValueOnce([progress]).mockResolvedValueOnce([]);
  return {client:{$queryRaw:query,auction:{findMany:vi.fn()}} as unknown as PrismaClient,query};
 }
 
 describe('admin broadcast delivery progress',()=>{
  it('conserves real recipient counts and explains a blocked failure without exposing recipient data',async()=>{
   const {client,query}=fixture(),data=await broadcastHistory(client,{page:2,q:'fixture'});
-  expect(data.items[0]).toMatchObject({sent:1155,pending:0,skipped:265,failed:1,recipientCount:1421,state:'NEEDS_ATTENTION',pendingBatches:0,failureReasons:{blocked:1,invalid:0,exhausted:0,other:0},buttonLabel:'See the power bank',miniAppPath:'/auctions/42'});
+  expect(data.items[0]).toMatchObject({sent:1155,pending:0,skipped:265,failed:1,recipientCount:1421,state:'NEEDS_ATTENTION',pendingBatches:0,failureReasons:{blocked:1,invalid:0,exhausted:0,other:0},buttonLabel:'See the power bank',miniAppPath:'/auctions/42',imagePath:'/images/power-bank.webp',parentCampaignId:'original'});
   expect(JSON.stringify(data)).not.toMatch(/chatId|telegramId|recipientUserId|lastError/);
   const listing=query.mock.calls[0][0];expect(listing.sql).toContain('LIMIT 25 OFFSET ?');expect(listing.values.at(-1)).toBe(25);
  });

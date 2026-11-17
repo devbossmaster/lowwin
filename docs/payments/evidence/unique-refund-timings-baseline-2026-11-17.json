@@ -1,0 +1,108 @@
+{
+  "at": "2026-11-17T11:47:22.089Z",
+  "scope": "Isolated PostgreSQL; synthetic authenticated batch purchases; fee 1ETB; two or ten recipients; serial one-wallet refund transactions; no HTTP or production latency claim",
+  "samples": [
+    {
+      "bids": 10,
+      "participants": 2,
+      "deadlineToDecisionMs": 139.79296875,
+      "decisionToFirstRefundMs": 37.130126953125,
+      "decisionToAllRefundsMs": 62.779052734375
+    },
+    {
+      "bids": 10,
+      "participants": 2,
+      "deadlineToDecisionMs": 93.056884765625,
+      "decisionToFirstRefundMs": 31.439208984375,
+      "decisionToAllRefundsMs": 62.774169921875
+    },
+    {
+      "bids": 10,
+      "participants": 2,
+      "deadlineToDecisionMs": 79.041015625,
+      "decisionToFirstRefundMs": 26.619873046875,
+      "decisionToAllRefundsMs": 51.823974609375
+    },
+    {
+      "bids": 100,
+      "participants": 2,
+      "deadlineToDecisionMs": 252.262939453125,
+      "decisionToFirstRefundMs": 22.68603515625,
+      "decisionToAllRefundsMs": 48.2041015625
+    },
+    {
+      "bids": 100,
+      "participants": 2,
+      "deadlineToDecisionMs": 527.756103515625,
+      "decisionToFirstRefundMs": 26.455810546875,
+      "decisionToAllRefundsMs": 54.02099609375
+    },
+    {
+      "bids": 100,
+      "participants": 2,
+      "deadlineToDecisionMs": 506.737060546875,
+      "decisionToFirstRefundMs": 23.0869140625,
+      "decisionToAllRefundsMs": 43.9619140625
+    },
+    {
+      "bids": 1000,
+      "participants": 10,
+      "deadlineToDecisionMs": 59084.68701171875,
+      "decisionToFirstRefundMs": 91.98291015625,
+      "decisionToAllRefundsMs": 385.631103515625
+    },
+    {
+      "bids": 1000,
+      "participants": 10,
+      "deadlineToDecisionMs": 194.861083984375,
+      "decisionToFirstRefundMs": 27.60791015625,
+      "decisionToAllRefundsMs": 254.968994140625
+    },
+    {
+      "bids": 1000,
+      "participants": 10,
+      "deadlineToDecisionMs": 196.889892578125,
+      "decisionToFirstRefundMs": 22.51416015625,
+      "decisionToAllRefundsMs": 222.8251953125
+    }
+  ],
+  "summary": [
+    {
+      "bids": 10,
+      "n": 3,
+      "deadlineToDecision": {
+        "p50": 93.056884765625,
+        "p95": 139.79296875
+      },
+      "decisionToAllRefunds": {
+        "p50": 62.774169921875,
+        "p95": 62.779052734375
+      }
+    },
+    {
+      "bids": 100,
+      "n": 3,
+      "deadlineToDecision": {
+        "p50": 506.737060546875,
+        "p95": 527.756103515625
+      },
+      "decisionToAllRefunds": {
+        "p50": 48.2041015625,
+        "p95": 54.02099609375
+      }
+    },
+    {
+      "bids": 1000,
+      "n": 3,
+      "deadlineToDecision": {
+        "p50": 196.889892578125,
+        "p95": 59084.68701171875
+      },
+      "decisionToAllRefunds": {
+        "p50": 254.968994140625,
+        "p95": 385.631103515625
+      }
+    }
+  ],
+  "limitations": "Warm shared database and loopback latency; three samples per size. Provider, Telegram and commit-to-UI excluded; n=3 is not a production p95 estimate."
+}

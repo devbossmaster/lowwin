@@ -11,7 +11,7 @@ export async function processOneUpdate(client:PrismaClient,bot:Bot,_contactVerif
  const claim=await client.$transaction(async tx=>{
   const rows=await tx.$queryRaw<Array<{updateId:bigint;payload:unknown;attempts:number;botId:string|null}>>`
    SELECT "updateId",payload,attempts,"botId" FROM "BotUpdate"
-   WHERE "processedAt" IS NULL AND "nextAttemptAt"<=now() AND attempts<8
+   WHERE "processedAt" IS NULL AND "nextAttemptAt"<=(clock_timestamp() AT TIME ZONE 'UTC') AND attempts<8
    ORDER BY "updateId" FOR UPDATE SKIP LOCKED LIMIT 1`;
   const row=rows[0];if(!row)return null;
   const update=row.payload as Update,m='message' in update?update.message:undefined;

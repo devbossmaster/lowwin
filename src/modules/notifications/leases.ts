@@ -5,8 +5,8 @@ import {auctionMaintenance} from '../auctions/maintenance';
 // Prisma DateTime columns store UTC timestamp values without a timezone.
 // Normalize database wall-clock expressions, independently of display time (EAT).
 export const notificationLeaseMs=120_000;
-export const expansionKinds=['GLOBAL_CAMPAIGN','AUCTION_FINALIZED','AUCTION_PARTICIPANTS'];
-export const highPriorityKinds=['DEPOSIT_CREDITED','BID_ACCEPTED','WINNER_CONGRATULATIONS'];
+export const expansionKinds=['GLOBAL_CAMPAIGN','AUCTION_FINALIZED','AUCTION_PARTICIPANTS','BROADCAST_DELETE'];
+export const highPriorityKinds=['DEPOSIT_CREDITED','BID_ACCEPTED','WINNER_CONGRATULATIONS','AUCTION_FEE_REFUNDED'];
 export type ClaimedNotification=Outbox&{leaseToken:string;leaseUntil:Date};
 export type ClaimOptions={limit?:number;priority?:'high'|'bulk';kind?:string};
 const bounded=(value:number|undefined,fallback:number,max:number)=>Math.max(1,Math.min(max,Math.floor(Number.isFinite(value)?value!:fallback)));

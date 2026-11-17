@@ -1,13 +1,13 @@
-/** Only the owner's finalized thirteen automatic messages may be delivered.
+/** Only allowlisted automatic messages and committed refund notices may be delivered.
  * Control jobs are internal queue machinery, never user-facing messages. */
 export const automaticNotificationKinds=[
  'DEPOSIT_CREDITED',
  'AUCTION_ENDING_3_DAYS','AUCTION_ENDING_2_DAYS','AUCTION_ENDING','AUCTION_ENDING_12_HOURS','AUCTION_ENDING_1_HOUR',
  'AUCTION_ENDED','AUCTION_PUBLISHED','AUCTION_UPCOMING_ADDED','AUCTION_UPCOMING','AUCTION_UPCOMING_1_HOUR',
- 'BID_ACCEPTED','WINNER_CONGRATULATIONS',
+ 'BID_ACCEPTED','WINNER_CONGRATULATIONS','AUCTION_FEE_REFUNDED',
 ] as const;
 export const deliveryNotificationKinds=[...automaticNotificationKinds,'BROADCAST'] as const;
-export const internalNotificationKinds=['GLOBAL_CAMPAIGN','AUCTION_FINALIZED','AUCTION_PARTICIPANTS','TELEGRAM_DELETE'] as const;
+export const internalNotificationKinds=['GLOBAL_CAMPAIGN','AUCTION_FINALIZED','AUCTION_PARTICIPANTS','BROADCAST_DELETE','TELEGRAM_DELETE'] as const;
 const permitted=new Set<string>([...deliveryNotificationKinds,...internalNotificationKinds]);
 /** Retire delivery, never the financial records or historical outbox evidence. */
 export const retiredNotificationKinds = [

@@ -1,4 +1,5 @@
 import {centsToEtb,etbToCents} from '@/lib/money';
+import {isSubmissionFeeOnly} from '../auctions/rules';
 
 export type AmharicNotificationCopy={title:string;body:string;buttonLabel:string};
 
@@ -33,7 +34,7 @@ export function bidPurchaseNotificationCopy(facts:{productTitle:string;numbers:r
  const numbers:bigint[]=[];
  for(const value of facts.numbers){const number=money(value);if(number===null||number<=0n||numbers.includes(number))return null;numbers.push(number)}
  const chosen=numbers.slice(0,12).map(centsToEtb).join(' · '),multiple=numbers.length>1;
- const label=facts.ruleVersion&&facts.ruleVersion!=='lowest-unique-v4'?'የጨረታ መጠን':multiple?'የመረጧቸው ቁጥሮች':'የመረጡት ቁጥር';
+ const label=facts.ruleVersion&&!isSubmissionFeeOnly(facts.ruleVersion)?'የጨረታ መጠን':multiple?'የመረጧቸው ቁጥሮች':'የመረጡት ቁጥር';
  const all=numbers.length>12?'\nሁሉንም ቁጥሮች በጨረታዎቼ ውስጥ ይመልከቱ።':'';
  return {title:'✅ ጨረታዎ ተመዝግቧል',body:`${greeting(facts.name)}${product}\n\n${label}: ${chosen}${numbers.length>12?' …':''}${multiple?`\nየቁጥሮች ብዛት: ${numbers.length}`:''}\nየተከፈለ የመመዝገቢያ ክፍያ: ${birr(fee)}${all}`,buttonLabel:'ጨረታዎቼን ልይ'};
 }
@@ -42,7 +43,7 @@ export function bidPurchaseNotificationCopy(facts:{productTitle:string;numbers:r
 export function winnerNotificationCopy(facts:{productTitle:string;chosenNumber:string;ruleVersion?:string;name?:string}):AmharicNotificationCopy|null{
  const product=clean(facts.productTitle,140),number=money(facts.chosenNumber);
  if(!product||number===null||number<=0n)return null;
- const chosen=facts.ruleVersion&&facts.ruleVersion!=='lowest-unique-v4'?birr(number):centsToEtb(number);
+ const chosen=facts.ruleVersion&&!isSubmissionFeeOnly(facts.ruleVersion)?birr(number):centsToEtb(number);
  return {title:'🎉 እንኳን ደስ አለዎት፣ አሸንፈዋል!',body:`${greeting(facts.name)}የ${product} ጨረታን አሸንፈዋል።\nያሸነፈው ቁጥር: ${chosen}\n\nሽልማቱንና የርክክብ መረጃውን ከታች ይመልከቱ።`,buttonLabel:'ሽልማቴን ልይ'};
 }
 

@@ -8,7 +8,7 @@ describe('immutable broadcast preparation across worker batches',()=>{
  it('models a 60-second window with one content read and a fresh final gate per actual send',async()=>{
   vi.stubEnv('MINI_APP_URL','https://lowwin.test');vi.stubEnv('TELEGRAM_BOT_TOKEN','123456789:fixture-only');
   const now=new Date(),jobs:Outbox[]=[],f=notificationDispatchFixture(jobs,now);
-  const read=vi.fn(async()=>({status:'LIVE',endsAt:new Date(now.getTime()+86400000),product:{visible:true}}));
+  const read=vi.fn(async()=>({status:'SCHEDULED',publicCode:42,slug:'fixture',publishedAt:new Date(now.getTime()-1000),startsAt:new Date(now.getTime()-1000),endsAt:new Date(now.getTime()+86400000),isDemo:false,testRunId:null,settlement:null,result:null,product:{visible:true}}));
   Object.assign(f.tx,{auction:{findUnique:read}});
   const send=vi.fn(async()=>({message_id:1})),bot={api:{sendMessage:send,sendPhoto:send}};
   let elapsed=0;vi.spyOn(performance,'now').mockImplementation(()=>elapsed);

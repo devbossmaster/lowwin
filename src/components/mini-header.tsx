@@ -16,10 +16,11 @@ import styles from './mini-header.module.css';
 import {LOWWIN_BRAND_NAME} from '@/lib/brand';
 import {BrandMark} from './brand-mark';
 import {CustomerNavigation} from './browser-navigation';
+import {MiniAccountAction} from './mini-account-action';
 
 export function MiniHeader(){
  const {language,setLanguage,t}=useMiniLocale();
- const {status,me,queryIdentity,openRegistration}=useTelegram(),am=language==='am',path=usePathname();
+ const {status,me,queryIdentity,openRegistration,environment}=useTelegram(),am=language==='am',path=usePathname();
  // This account is set only after the server confirms registration. A contact
  // sharing callback must never make a guest eligible for private wallet reads.
  const registered=status==='authenticated'&&!!me&&!!queryIdentity;
@@ -56,7 +57,7 @@ export function MiniHeader(){
   {registered?<div className={styles.balancePill} data-long-balance={amount!==null&&amount.length>6||undefined}>
    <WalletOverviewTrigger ariaBusy={amount===null||undefined} className={styles.balance} ariaLabel={`${am?'ዋሌት':'Wallet'}${amount!==null?`, ${amount} ETB`:''}`} title={amount!==null?`${amount} ETB`:am?'ቀሪ ሂሳቡን ለማየት ዋሌትን ይክፈቱ':'Open Wallet to check your balance'}><Wallet size={14} strokeWidth={1.75} aria-hidden="true"/><span data-header-balance aria-busy={amount===null||undefined}><span className={styles.balanceAmount}>{amount??<span className={styles.balancePlaceholder} aria-label={am?'ሂሳብ በመጫን ላይ':'Loading balance'}/>}</span><small>ETB</small></span></WalletOverviewTrigger>
    <WalletTopUpTrigger className={styles.addFunds} ariaLabel={am?'ገንዘብ ያስገቡ':'Deposit'}><Plus size={15} strokeWidth={1.75} aria-hidden="true"/></WalletTopUpTrigger>
-  </div>:status==='loading'?<span className={styles.restoring} role="status" aria-label={am?'መለያ በማስመለስ ላይ':'Restoring account'}><span/></span>:<button className={styles.login} type="button" onClick={openRegistration}><LogIn size={14} aria-hidden="true"/>{am?'ይግቡ':'Log in'}</button>}
+  </div>:environment==='mini'?<MiniAccountAction className={styles.login}/>:status==='loading'||environment==='detecting'?<span className={styles.restoring} role="status" aria-label={am?'መለያ በማስመለስ ላይ':'Restoring account'}><span/></span>:<button className={styles.login} type="button" onClick={openRegistration}><LogIn size={14} aria-hidden="true"/>{am?'ይግቡ':'Log in'}</button>}
   <nav className={styles.actions} aria-label={am?'የመለያ ቁጥጥሮች':'Account controls'}>
   <AuctionQuickList className={styles.icon}/>
   <AlertBell className={styles.icon}/>

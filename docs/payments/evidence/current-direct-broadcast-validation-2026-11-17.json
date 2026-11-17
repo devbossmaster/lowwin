@@ -1,0 +1,42 @@
+{
+  "scope": "Current working tree before integration commit; isolated synthetic validation only",
+  "actualProviderCalls": 0,
+  "actualTelegramCalls": 0,
+  "productionDatabaseMutations": 0,
+  "deploymentPerformed": false,
+  "focusedUnitRun": {
+    "passed": 107,
+    "failed": 0,
+    "skipped": 0,
+    "files": ["tests/chapa-current-direct.test.ts", "tests/chapa-provider.test.ts", "tests/chapa-recovery-pointer.test.ts", "tests/chapa-metadata.test.ts", "tests/broadcast-history-actions.test.ts"],
+    "regression": "An owned Direct retry while new creation is paused failed before the adapter forwarded the explicit recovery operation; corrected test passes."
+  },
+  "currentDirectPostgres": {
+    "passed": 9,
+    "failed": 0,
+    "skipped": 0,
+    "port": 55614,
+    "freshDisposableDatabase": true,
+    "databaseDroppedAfterward": true,
+    "migration3Included": true,
+    "coverage": ["immutable Direct5 pre-dispatch intent", "concurrent initialization idempotency", "owned protocol-specific recovery", "Direct capability rejection", "successful USSD validation immediately verifies despite recent pending private read", "OTP correction on original attempt", "exactly-once full-batch acceptance", "late funds credited once without late bids or second refunds", "missing and null JSON identity plus missing row method rejected by SQL", "required pinned signature profile", "approved deposit bonus credited once as promotional value"]
+  },
+  "notificationPostgres": {
+    "passed": 14,
+    "failed": 0,
+    "skipped": 0,
+    "port": 55614,
+    "freshDisposableDatabase": true,
+    "databaseDroppedAfterward": true,
+    "coverage": ["bounded concurrent claims", "priority capacity", "Stop during in-flight HTTP", "late acknowledgement retention", "blocked recipient recheck", "429 retry_after", "shared bot rate budget", "media file-ID reuse", "duplicate resend confirmations", "fresh intentional resend", "contactless linked-bot recipients", "48-hour deletion boundary", "audit and shared-media preservation"]
+  },
+  "broadcastBrowser": {
+    "viewports": [360, 1280],
+    "passedViewports": 2,
+    "scope": "Actual bundled React components and admin CSS with synthetic read models, local images and intercepted admin commands; separate from production server checks",
+    "checks": ["original media visibly decoded", "one accessible Yes/No confirmation", "double Yes click creates one command", "later intentional resend uses a fresh campaign identity", "Delete No sends no command", "Delete Yes sends one direct deletion command", "image upload is reviewable without a permission checkbox", "no viewport overflow", "no page errors"],
+    "screenshots": ["docs/screenshots/broadcast-history/compose-360.png", "docs/screenshots/broadcast-history/compose-1280.png", "docs/screenshots/broadcast-history/history-360.png", "docs/screenshots/broadcast-history/history-1280.png", "docs/screenshots/broadcast-history/resend-360.png", "docs/screenshots/broadcast-history/resend-1280.png"],
+    "impeccableMechanicalFindings": 0
+  },
+  "limitations": "These focused runs overlap and are not a whole-repository CI result. No Chapa acceptance, physical phone authorization, deployed TLS/SSE, real bot delivery or provider speed improvement is established."
+}

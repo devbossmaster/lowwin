@@ -6,18 +6,20 @@ import type {TutorialProps} from './tutorial-content';
 import {useTelegram} from './telegram-provider';
 const IntroductionSheet=dynamic(()=>import('./introduction-sheet'),{loading:()=>null});
 export function FirstVisitIntroduction({enabled=true,...props}:TutorialProps&{enabled?:boolean}){
- const {registrationOpen}=useTelegram();
+ const {registrationOpen,environment,status,completeMiniIntroduction}=useTelegram();
  const [open,setOpen]=useState(false);
  useEffect(()=>{
+  if(environment!=='mini'||status==='loading'||status==='error'||status==='guest')return;
+  if(status==='authenticated'){setOpen(false);completeMiniIntroduction();return}
   if(!enabled||registrationOpen){setOpen(false);return}
-  try{if(introductionDismissed(localStorage))return}catch{/* Storage may be disabled. */}
-  // Home paints first. A player is never part of its critical rendering path.
-  const id=window.setTimeout(()=>{if(!document.querySelector('dialog[open]'))setOpen(true)},400);
+  try{if(introductionDismissed(localStorage)){completeMiniIntroduction();return}}catch{/* Storage may be disabled. */}
+  // Public content paints first; a player never enters the critical path.
+  let id:number;
+  const show=()=>{if(document.querySelector('dialog[open]'))id=window.setTimeout(show,1000);else setOpen(true)};
+  id=window.setTimeout(show,400);
   return()=>window.clearTimeout(id);
- },[enabled,registrationOpen]);
+ },[enabled,registrationOpen,environment,status,completeMiniIntroduction]);
  const remember=()=>{try{dismissIntroduction(localStorage)}catch{}};
- const close=()=>{remember();setOpen(false)};
- // Let route navigation unmount the sheet. Closing it before Next commits the
- // destination races the sheet's history cleanup and can return to Home.
- return open?<IntroductionSheet {...props} onClose={close} onExplore={remember}/>:null;
+ const close=()=>{remember();setOpen(false);completeMiniIntroduction()};
+ return open?<IntroductionSheet {...props} onClose={close}/>:null;
 }

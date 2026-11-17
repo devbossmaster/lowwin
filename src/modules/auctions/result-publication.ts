@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import {Prisma,type PrismaClient,type AuctionSettlement} from '@prisma/client';
 import {z} from 'zod';
-import {RULE_V1,RULE_V2,RULE_V3,RULE_V4} from './rules';
+import {RULE_V1,RULE_V2,RULE_V3,RULE_V4,RULE_V5} from './rules';
 import {clearPublicDataCache} from '@/modules/cache/public-data';
 
 export class ResultPublicationError extends Error{constructor(public readonly code:string){super(code);this.name='ResultPublicationError'}}
@@ -13,24 +13,25 @@ const proofSchema=z.object({settlementId:z.string(),ruleVersion:z.string(),terms
 /** Validate the frozen acceptance snapshot, not a new winner or live bids.
  * The result/ledger are never rewritten by this verification. */
 export async function reviewResult(tx:Prisma.TransactionClient,s:ReviewSettlement){
- const proof=proofSchema.safeParse(s.proof),modern=[RULE_V2,RULE_V3,RULE_V4].includes(s.ruleVersion);
- if(![RULE_V1,RULE_V2,RULE_V3,RULE_V4].includes(s.ruleVersion)||!proof.success)throw new ResultPublicationError('RESULT_PROOF_INVALID');
+ const proof=proofSchema.safeParse(s.proof),v5=s.ruleVersion===RULE_V5,modern=[RULE_V2,RULE_V3,RULE_V4,RULE_V5].includes(s.ruleVersion);
+ if(![RULE_V1,RULE_V2,RULE_V3,RULE_V4,RULE_V5].includes(s.ruleVersion)||!proof.success)throw new ResultPublicationError('RESULT_PROOF_INVALID');
  const p=proof.data;
  if(p.settlementId!==s.id||p.ruleVersion!==s.ruleVersion||p.termsVersion!==s.termsVersion||p.cutoff!==s.cutoff.toISOString()||p.acceptedCount!==s.acceptedCount||p.outcome!==s.outcome)throw new ResultPublicationError('RESULT_PROOF_MISMATCH');
- const where:Prisma.BidWhereInput={auctionId:s.auctionId,acceptedAt:{lt:s.cutoff},...(s.acceptanceCutoff===null?{}:{acceptanceOrder:{lte:s.acceptanceCutoff}})};
+ const where:Prisma.BidWhereInput={auctionId:s.auctionId,acceptedAt:{lt:s.cutoff},...(v5||s.acceptanceCutoff===null?{}:{acceptanceOrder:{lte:s.acceptanceCutoff}})};
  const groups=await tx.bid.groupBy({by:['amount'],where,_count:{_all:true},orderBy:{amount:'asc'}});
  const frequencies=groups.map(row=>({amount:row.amount.toString(),count:row._count._all})),acceptedCount=frequencies.reduce((sum,g)=>sum+g.count,0);
  if(acceptedCount!==s.acceptedCount||p.amountFrequencies.length!==frequencies.length||p.amountFrequencies.some((g,i)=>{try{return !new Prisma.Decimal(g.amount).eq(frequencies[i].amount)||g.count!==frequencies[i].count}catch{return true}}))throw new ResultPublicationError('ACCEPTED_PROOF_MISMATCH');
  const participants=await tx.bid.groupBy({by:['userId'],where}),participantCount=participants.length;
- if(modern){
+ if(modern&&!v5){
   const orders=await tx.bid.aggregate({where,_count:{acceptanceOrder:true},_min:{acceptanceOrder:true},_max:{acceptanceOrder:true}});
   if(s.participantCount!==participantCount||p.participantCount!==participantCount||p.minParticipants!==2||p.acceptanceCutoff!==s.acceptanceCutoff?.toString()||s.acceptanceCutoff!==BigInt(acceptedCount)||orders._count.acceptanceOrder!==acceptedCount||acceptedCount&&(orders._min.acceptanceOrder!==1n||orders._max.acceptanceOrder!==s.acceptanceCutoff))throw new ResultPublicationError('ACCEPTANCE_ORDER_MISMATCH');
  }
- const unique=frequencies.find(row=>row.count===1),selected=unique?.amount??(modern?frequencies[0]?.amount:undefined);
+ if(v5&&(s.participantCount!==participantCount||p.participantCount!==participantCount||p.minParticipants!==2||p.acceptanceCutoff!==s.acceptanceCutoff?.toString()))throw new ResultPublicationError('ACCEPTANCE_ORDER_MISMATCH');
+ const unique=frequencies.find(row=>row.count===1),selected=unique?.amount??(modern&&!v5?frequencies[0]?.amount:undefined);
  const winner=s.outcome==='CANCELLED'?null:selected?await tx.bid.findFirst({where:{...where,amount:new Prisma.Decimal(selected)},orderBy:modern?[{acceptanceOrder:'asc'},{id:'asc'}]:[{amount:'asc'},{acceptanceOrder:'asc'},{id:'asc'}],select:{id:true,userId:true,amount:true,acceptanceOrder:true}}):null;
  if(s.outcome==='CANCELLED'){
   if(s.winnerUserId||s.winningBidId||s.winningPoints||p.winner)throw new ResultPublicationError('CANCELLED_PROOF_MISMATCH');
-  if(modern&&(p.decision!==s.decision||s.decision!=='OWNER_CANCELLED'&&(participantCount>=2||s.decision!=='MINIMUM_PARTICIPANTS')))throw new ResultPublicationError('PARTICIPANT_PROOF_MISMATCH');
+  if(modern&&(p.decision!==s.decision||s.decision!=='OWNER_CANCELLED'&&!(participantCount<2&&s.decision==='MINIMUM_PARTICIPANTS')&&!(v5&&participantCount>=2&&!unique&&s.decision==='NO_UNIQUE_BID')))throw new ResultPublicationError('PARTICIPANT_PROOF_MISMATCH');
  }else{
   if(modern&&(participantCount<2||s.completedAt<s.cutoff||p.decision!==s.decision||s.decision!==(unique?'LOWEST_UNIQUE':'FIRST_ACCEPTED_LOWEST')))throw new ResultPublicationError('PARTICIPANT_PROOF_MISMATCH');
   if(winner?(s.outcome!=='WINNER'||s.winningBidId!==winner.id||s.winnerUserId!==winner.userId||!s.winningPoints?.eq(winner.amount)||!p.winner||p.winner.bidId!==winner.id||p.winner.userId!==winner.userId||!new Prisma.Decimal(p.winner.amount).eq(winner.amount)||modern&&p.winner.acceptanceOrder!==winner.acceptanceOrder?.toString()):(s.outcome!=='NO_WINNER'||s.winningBidId!==null||s.winnerUserId!==null||s.winningPoints!==null||p.winner!==null))throw new ResultPublicationError('WINNER_PROOF_MISMATCH');
@@ -47,7 +48,7 @@ export async function publishSettledResultInTransaction(tx:Prisma.TransactionCli
  if(s.publication)return {auctionId,settlementId:s.id,publishedAt:s.publication.publishedAt.toISOString(),alreadyPublished:true,historical:s.publication.historical};
  // Use the database wall clock for announcement readiness as well as the
  // immutable settlement timestamp and strict frozen bid cutoff checks.
- if((s.outcome!=='CANCELLED'||s.decision==='MINIMUM_PARTICIPANTS')&&s.cutoff>now)throw new ResultPublicationError('RESULT_NOT_READY');
+ if((s.outcome!=='CANCELLED'||s.decision==='MINIMUM_PARTICIPANTS'||s.decision==='NO_UNIQUE_BID')&&s.cutoff>now)throw new ResultPublicationError('RESULT_NOT_READY');
  if((s.auction.isDemo||s.auction.testRunId)&&!options.allowFixture)return {auctionId,settlementId:s.id,skipped:true as const};
  const policy=await tx.resultPublicationPolicy.findUnique({where:{id:'auto'}});if(!policy)throw new ResultPublicationError('PUBLICATION_POLICY_NOT_READY');
  const reviewed=await reviewResult(tx,s),historical=options.forceSilent===true||s.completedAt<policy.automaticFrom;

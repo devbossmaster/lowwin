@@ -9,6 +9,8 @@ const group: Record<string, string> = {
   'telegram-browser-auth.test.ts':'TELEGRAM_BROWSER_TEST_DATABASE_URL',
   'bids.test.ts': 'BID_TEST_DATABASE_URL', 'submission-fee.test.ts': 'BID_TEST_DATABASE_URL',
   'settlement.test.ts': 'SETTLEMENT_TEST_DATABASE_URL', 'settlement-v2.test.ts': 'SETTLEMENT_TEST_DATABASE_URL',
+  'settlement-v5.test.ts':'V5_TEST_DATABASE_URL', 'settlement-v5-transition.test.ts':'V5_TEST_DATABASE_URL',
+  'auction-refund-views.test.ts':'V5_TEST_DATABASE_URL',
   'settlement-v3.test.ts': 'SETTLEMENT_TEST_DATABASE_URL', 'personal.test.ts': 'PERSONAL_TEST_DATABASE_URL',
   'admin.test.ts': 'ADMIN_TEST_DATABASE_URL', 'operations.test.ts': 'OPS_TEST_DATABASE_URL',
   'payments.test.ts': 'PAYMENT_TEST_DATABASE_URL', 'payment-session.test.ts': 'PAYMENT_TEST_DATABASE_URL',
@@ -19,6 +21,7 @@ const group: Record<string, string> = {
   'auction-activity.test.ts': 'ACTIVITY_TEST_DATABASE_URL', 'arifpay-checkout.test.ts': 'ARIFPAY_TEST_DATABASE_URL',
   'chapa-checkout.test.ts':'CHAPA_TEST_DATABASE_URL',
   'chapa-direct-batch.test.ts':'CHAPA_DIRECT_TEST_DATABASE_URL',
+  'chapa-current-direct-db.test.ts':'CHAPA_CURRENT_DIRECT_TEST_DATABASE_URL',
   'chapa-direct-speed.test.ts':'CHAPA_SPEED_TEST_DATABASE_URL',
   'chapa-inline-checkout.test.ts':'CHAPA_INLINE_TEST_DATABASE_URL',
   'wallet-batch-atomic.test.ts':'WALLET_BATCH_TEST_DATABASE_URL',
@@ -38,6 +41,15 @@ if (database) {
   }
   process.env.DATABASE_URL = process.env.DIRECT_URL = database;
   process.env.APP_ENV = 'local';
+  if(['settlement-v5.test.ts','settlement-v5-transition.test.ts','auction-refund-views.test.ts'].includes(filename))Object.assign(process.env,{
+    NODE_ENV:'test',DEV_POINTS_ENABLED:'true',DEV_IDENTITY_ENABLED:'false',STAGING_DEMO_ENABLED:'false',
+    BETTER_AUTH_URL:'https://lowwin.test',MINI_APP_URL:'https://lowwin.test',BETTER_AUTH_SECRET:'fixture-v5-secret-at-least-thirty-two-characters',
+    TELEGRAM_BOT_TOKEN:TEST_TOKEN,TELEGRAM_BOT_USERNAME:'lowin_fixture_bot',TELEGRAM_WEBHOOK_SECRET:'fixture-contact-webhook-secret-thirty-two',
+    PHONE_CONTACT_KEY_ID:'fixture-test',PHONE_CONTACT_KEYS:JSON.stringify({'fixture-test':'e'.repeat(64)}),PHONE_CONTACT_HASH_KEY:'f'.repeat(64),
+    REFERRAL_REWARDS_SCHEMA_READY:'true',REDIS_URL:'',PAYMENTS_LIVE_ENABLED:'false',CHAPA_LIVE_ENABLED:'false',CHAPA_V1_ENABLED:'false',
+    CHAPA_MODE:'test',CHAPA_SCHEMA_READY:'true',CHAPA_ENABLED:'true',CHAPA_INLINE_ENABLED:'true',CHAPA_RECOVERY_ENABLED:'true',
+    CHAPA_PRIVATE_KEY:'CHAPA_TEST_'+'a'.repeat(40),CHAPA_PUBLIC_KEY:'CHAPA_TEST_PUB_'+'b'.repeat(40),CHAPA_WEBHOOK_SECRET:'c'.repeat(64),CHAPA_INLINE_METHODS:'telebirr',PAYMENT_GATEWAY:'CHAPA',WALLET_BIDS_ENABLED:'true',
+  });
   if(['transactions.test.ts','wallet-history.test.ts'].includes(filename))process.env.BETTER_AUTH_SECRET='fixture-history-auth-secret-at-least-thirty-two-characters';
   // These fixtures exercise signed/contact-bound paths without any bot/provider
   // network requests. Do not depend on a developer .env or deployment secrets.

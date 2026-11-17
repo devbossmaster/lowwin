@@ -1,0 +1,13 @@
+{
+  "asset": "lowwin-blue-prizes-hero-20261117.webp",
+  "created": "2026-11-17",
+  "method": "Built-in image_gen imagegen edit of original generated six-product artwork, then resized and encoded with Sharp",
+  "source": "01a1e927-6bf0-7381-b165-ea8da383012f/exec-879303bb-30a7-4a10-a76e-47f5c4603cb6.png",
+  "width": 1840,
+  "height": 800,
+  "bytes": 153106,
+  "quality": 88,
+  "role": "Illustrative prize composition; no product availability or brand endorsement claim",
+  "direction": "User corrected gold to blue. Six products and combined text/art layout retained.",
+  "prompt": "Edit this exact LowWin prize hero image. User corrected their color preference to BLUE, NOT GOLD. Preserve the six existing products and their exact clear positions, sizes and silhouettes: PlayStation 5/controller, open silver MacBook, stainless refrigerator, titanium iPhone Pro Max, black over-ear headset and complete black bicycle. Preserve the wide landscape 1840x800 composition, leftmost22percent quiet space, allsixproductsvisible and bothbikewheelsuncropped. Replace ALL GOLD of the background, flowing metallic ribbon edges, reflective floor, display platforms, reflections and MacBook wallpaper with a sophisticated rich royal BLUE and deep NAVY palette with cool silver/blue specular highlights. Luxurious blue metallic material, saturated cobalt/royalblue with darker navy shadow, realistic reflections. No yellow, gold, amber, orange or beige decor. Keep realistic neutral white/silver/black products themselves, natural refrigerator food colors. Deepbluequietleftbackground should blend well with adjacent navy/royal-blue HTML text panel. Premium polished photorealistic commercial product illustration. No text, no letters, no logos added, no numbers, no captions, no watermark, no UI."
+}

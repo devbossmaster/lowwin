@@ -7,7 +7,7 @@ export async function reconcileDepositBonuses(client:PrismaClient|Prisma.Transac
  if(!await depositBonusStorageReady(client))return [];
  return client.$queryRaw<DepositBonusDrift[]>`
  WITH lots AS (
-  SELECT l.*,COALESCE((SELECT sum(u."amountCents") FROM "DepositBonusUse" u WHERE u."checkoutId"=l."checkoutId"),0) AS used,COALESCE(e."amountCents",0) AS expired
+  SELECT l.*,COALESCE((SELECT sum(u."amountCents") FROM "DepositBonusUse" u WHERE u."checkoutId"=l."checkoutId"),0)-COALESCE((SELECT sum("creditedCents") FROM "DepositBonusRefund" WHERE "checkoutId"=l."checkoutId"),0) AS used,COALESCE(e."amountCents",0) AS expired
   FROM "DepositBonusLot" l LEFT JOIN "DepositBonusExpiry" e ON e."checkoutId"=l."checkoutId"
  ), findings AS (
   SELECT 'wallet:'||w."userId" AS name,'PROJECTION' AS code FROM "Wallet" w LEFT JOIN "LedgerAccount" a ON a."walletId"=w.id AND a.kind='BONUS'

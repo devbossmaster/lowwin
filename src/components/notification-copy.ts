@@ -13,6 +13,12 @@ const messages:Record<string,[string,string,string]>={
 };
 // Translate the display only; stored messages and financial records stay intact.
 export function notificationCopy(item:AlertCopy,language:'en'|'am'){
+ // These new notices contain committed amounts in Amharic then English.
+ // Do not replace them with a historical cancellation translation.
+ if(item.kind==='AUCTION_FEE_REFUNDED'){
+  const index=language==='am'?0:1;
+  return {title:item.title.split(' / ')[index]??item.title,body:item.body.split('\n')[index]??item.body};
+ }
  // New messages are authored in Amharic with verified receipt facts. Older
  // display translations must not replace their amounts, dates or bid numbers.
  if(/[\u1200-\u137f]/.test(item.title)&&!/[A-Za-z]{3}/.test(item.title))return {title:item.title,body:item.body};

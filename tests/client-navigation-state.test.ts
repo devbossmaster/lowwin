@@ -6,6 +6,12 @@ import {invalidatePrivateQueries,loadPrivateJson,prefetchPrivateQuery,readPrivat
 
 afterEach(()=>{setPrivateQueryIdentity(null);vi.unstubAllGlobals();vi.useRealTimers()});
 describe('session-local navigation coordinates',()=>{
+ it('remembers a stable Home view without replaying a consumed registration destination',()=>{
+  const memory=new SessionNavigationState();memory.setIdentity('public');
+  memory.remember('public','/?login=1&next=%2Fpayments&q=red+phone&sort=fee-low#catalog',1234);
+  expect(memory.visit('public','/')).toMatchObject({href:'/?q=red+phone&sort=fee-low#catalog',scrollY:1234});
+  memory.remember('public','/?login=1&next=%2Fpayments',0);expect(memory.visit('public','/')?.href).toBe('/');
+ });
  it('retains result sort and participant pages only for the current session',()=>{
   const memory=new SessionNavigationState();memory.setIdentity('a');memory.rememberResult('a','42',{page:2,sort:'picked',jump:false});memory.rememberPage('a','result:42:50',2);
   expect(memory.result('a','42')).toEqual({page:2,sort:'picked',jump:false});expect(memory.page('a','result:42:50')).toBe(2);

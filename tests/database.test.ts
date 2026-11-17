@@ -140,20 +140,32 @@ describe.skipIf(!testUrl)('isolated PostgreSQL foundation', () => {
     const bot=createBot({contactVerified:async()=>true});
     bot.botInfo={id:123456789,is_bot:true,first_name:'Lowwin test',username:'lowin_fixture_bot',can_join_groups:false,can_read_all_group_messages:false,supports_inline_queries:false,can_connect_to_business:false,has_main_web_app:true,has_topics_enabled:false,allows_users_to_create_topics:false};
     const sent:Array<{method:string,payload:Record<string,unknown>}>=[];
-    bot.api.config.use(async(_prev,method,payload)=>{sent.push({method,payload:payload as unknown as Record<string,unknown>});return {ok:true,result:{message_id:1}} as never;});
+    let releaseDelivery!:()=>void,markDeliveryStarted!:()=>void;
+    const deliveryStarted=new Promise<void>(resolve=>{markDeliveryStarted=resolve}),deliveryGate=new Promise<void>(resolve=>{releaseDelivery=resolve});
+    bot.api.config.use(async(_prev,method,payload)=>{sent.push({method,payload:payload as unknown as Record<string,unknown>});if(sent.length===1){markDeliveryStarted();await deliveryGate}return {ok:true,result:{message_id:1}} as never;});
     const updateId=Date.now();
     await client.botUpdate.create({data:{updateId,payload:{update_id:updateId,message:{message_id:1,date:Math.floor(Date.now()/1000),chat:{id:1,type:'private'},from:{id:1,is_bot:false,first_name:'Fixture'},text:'/start',entities:[{type:'bot_command',offset:0,length:6}]}}}});
-    await Promise.all([processOneUpdate(client,bot),processOneUpdate(client,bot)]);
+    // UTC timestamp columns must retain the two-minute lease in a non-UTC
+    // session while another worker's claimed delivery is still in flight.
+    let nonUtcTransactions=0;
+    const nonUtcClient=new Proxy(client,{get(target,key){
+      if(key==='$transaction')return (callback:(tx:MoneyPrisma.TransactionClient)=>Promise<unknown>,options?:{maxWait?:number;timeout?:number})=>target.$transaction(async tx=>{await tx.$executeRawUnsafe("SET LOCAL TIME ZONE 'Africa/Nairobi'");nonUtcTransactions++;return callback(tx)},options);
+      const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value;
+    }});
+    const firstDelivery=processOneUpdate(nonUtcClient,bot);await deliveryStarted;
+    let secondClaim:boolean;try{secondClaim=await processOneUpdate(nonUtcClient,bot)}finally{releaseDelivery()}
+    await firstDelivery;expect(secondClaim).toBe(false);
+    expect(nonUtcTransactions).toBe(2);
     expect(sent).toHaveLength(1);expect(sent[0].method).toBe('sendPhoto');
-    expect(sent[0].payload.caption).toBe('እንኳን ወደ LowWin በደህና መጡ! ጨረታዎችን ይመልከቱ፣ ለመጫረት ሲዘጋጁ ይግቡ።');
+    expect(sent[0].payload.caption).toBe('እንኳን ወደ LowWin በደህና መጡ! ሚኒ አፑን ይክፈቱ፣ ጨረታዎችን ይመልከቱ። አዲስ ከሆኑ ስልክ ቁጥርዎን በTelegram በማጋራት ምዝገባዎን ያጠናቅቁ።');
     expect(sent[0].payload.reply_markup).toMatchObject({inline_keyboard:expect.arrayContaining([expect.arrayContaining([expect.objectContaining({web_app:{url:process.env.MINI_APP_URL}})])])});
-    expect((await client.botUpdate.findUniqueOrThrow({where:{updateId}})).processedAt).not.toBeNull();
+    expect(await client.botUpdate.findUniqueOrThrow({where:{updateId}})).toMatchObject({attempts:1,processedAt:expect.any(Date)});
     const failureId=updateId+1;
     await client.botUpdate.create({data:{updateId:failureId,payload:{update_id:failureId}}});
     const failing={handleUpdate:async()=>{throw new Error('fixture failure');}} as unknown as InstanceType<typeof Bot>;
-    await processOneUpdate(client,failing);
+    await processOneUpdate(nonUtcClient,failing);
     const failed=await client.botUpdate.findUniqueOrThrow({where:{updateId:failureId}});
-    expect(failed.attempts).toBe(1);expect(failed.processedAt).toBeNull();expect(failed.nextAttemptAt.getTime()).toBeGreaterThan(Date.now());
+    expect(failed.attempts).toBe(1);expect(failed.processedAt).toBeNull();expect(failed.nextAttemptAt.getTime()).toBeGreaterThan(Date.now());expect(failed.nextAttemptAt.getTime()).toBeLessThan(Date.now()+5000);
   });
   it('issues Secure cookies over HTTPS and rejects dev identity on production',async()=>{
     const {handleAuth}=await import('../src/modules/auth/handler');

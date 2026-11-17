@@ -24,10 +24,10 @@ test('auction sheet loads compact scoped styles in English and Amharic',async({p
   for(const language of ['en','am']){
    if(language==='am'){await header.getByRole('button',{name:'Language: English',exact:true}).click();await page.getByRole('menuitemradio',{name:'አማርኛ',exact:true}).click()}
    await header.getByRole('button',{name:/Browse auctions|ጨረታዎችን/}).click();const sheet=page.getByRole('dialog',{name:/^(Auctions|ጨረታዎች)$/});await expect(sheet).toBeVisible();const row=sheet.locator('[data-auction-code]').first();await expect(row).toBeVisible();
-   await expect(row).toHaveCSS('display','grid');await expect(row.locator('img')).toHaveCSS('object-fit','cover');
-   const image=await row.locator('img').boundingBox();expect(image!.width).toBeLessThanOrEqual(76);expect(image!.height).toBeLessThanOrEqual(76);
-   await expect(sheet.getByRole('tablist')).toHaveCSS('display','grid');await expect(sheet.getByRole('tab').first()).toHaveCSS('background-color','rgb(24, 24, 21)');
-   await expect(row.locator('strong')).toHaveCSS('font-size',info.project.use.viewport!.width===360?'12px':'13px');
+   await expect(row).toHaveCSS('display','block');await expect(row.locator('img')).toHaveCSS('object-fit','contain');
+   const image=await row.locator('img').boundingBox(),rowBox=await row.boundingBox();expect(image!.width).toBeCloseTo(rowBox!.width-2,0);expect(image!.width/image!.height).toBeCloseTo(1840/800,1);
+   await expect(sheet.getByRole('tablist')).toHaveCSS('display','grid');await expect(sheet.getByRole('tab').first()).toHaveCSS('background-color','rgb(37, 99, 235)');
+   await expect(row.locator('strong:not([data-countdown-tile])')).toHaveCSS('font-size',info.project.use.viewport!.width===360?'13px':'14px');
    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({animations:'disabled',path:`${directory}/compact-auctions-${info.project.name}-${language}.png`});
    await page.keyboard.press('Escape');await expect(sheet).toHaveCount(0);
   }

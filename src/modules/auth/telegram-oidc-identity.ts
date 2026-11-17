@@ -5,6 +5,7 @@ import {db} from '@/lib/db';
 import {attributeNewReferralInTransaction} from '../referrals/service';
 import {contactBotId,encryptPhone,normalizePhone,phoneHash} from './own-contact';
 import {telegramPhotoUrl} from './telegram-validation';
+import {measureTelegramAuth} from './telegram-timing';
 
 const issuer='https://oauth.telegram.org';
 
@@ -45,18 +46,38 @@ export async function prepareTelegramOIDCIdentity(claims:VerifiedTelegramOIDCPro
  if(claims.phone_number_verified===true&&typeof claims.phone_number==='string'){
   try{consentedPhone=normalizePhone(claims.phone_number)}catch{}
  }
- await client.$transaction(async tx=>{
+ await measureTelegramAuth('oidc_transaction',()=>client.$transaction(async tx=>{
   // Match bot contact registration and Mini App sign-in lock ordering.
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`telegram:${telegramId}`},0))`;
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`own-contact:${botId}:${telegramId}`},0))`;
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`telegram-oidc:${botId}:${claims.sub}`},0))`;
-  const [existing,canonical,oidc,legacy,contact]=await Promise.all([
-   tx.user.findUnique({where:{telegramId},select:{id:true,role:true,staffMember:{select:{userId:true}},ownContact:{select:{id:true}}}}),
-   tx.account.findUnique({where:{providerId_accountId:{providerId:'telegram',accountId:telegramId}},select:{id:true,userId:true,telegramId:true}}),
-   tx.account.findUnique({where:{providerId_accountId:{providerId:'telegram-oidc',accountId:claims.sub}},select:{id:true,userId:true,telegramId:true}}),
-   tx.account.findUnique({where:{providerId_accountId:{providerId:'telegram-oidc',accountId:`${botId}:${claims.sub}`}},select:{id:true,userId:true,telegramId:true}}),
-   tx.telegramOwnContact.findUnique({where:{botId_telegramId:{botId,telegramId}}}),
-  ]);
+  // MATERIALIZED dependencies retain that order in one database round trip.
+  // Promise.all inside a transaction still uses one connection sequentially.
+  await measureTelegramAuth('oidc_locks',()=>tx.$executeRaw`
+   WITH identity_lock AS MATERIALIZED (SELECT pg_advisory_xact_lock(hashtextextended(${`telegram:${telegramId}`},0))),
+   contact_lock AS MATERIALIZED (SELECT pg_advisory_xact_lock(hashtextextended(${`own-contact:${botId}:${telegramId}`},0)) FROM identity_lock)
+   SELECT pg_advisory_xact_lock(hashtextextended(${`telegram-oidc:${botId}:${claims.sub}`},0)) FROM contact_lock`);
+  const rows=await measureTelegramAuth('oidc_lookup',()=>tx.$queryRaw<Array<{
+   userId:string|null;role:string|null;staffId:string|null;userContactId:string|null;
+   canonicalId:string|null;canonicalUserId:string|null;canonicalTelegramId:string|null;
+   oidcId:string|null;oidcUserId:string|null;oidcTelegramId:string|null;
+   legacyId:string|null;legacyUserId:string|null;legacyTelegramId:string|null;
+   contactId:string|null;contactUserId:string|null;revokedAt:Date|null;
+  }>>`SELECT u.id AS "userId",u.role,m."userId" AS "staffId",uc.id AS "userContactId",
+   a.id AS "canonicalId",a."userId" AS "canonicalUserId",a."telegramId" AS "canonicalTelegramId",
+   o.id AS "oidcId",o."userId" AS "oidcUserId",o."telegramId" AS "oidcTelegramId",
+   l.id AS "legacyId",l."userId" AS "legacyUserId",l."telegramId" AS "legacyTelegramId",
+   c.id AS "contactId",c."userId" AS "contactUserId",c."revokedAt"
+   FROM (SELECT 1) seed LEFT JOIN "user" u ON u."telegramId"=${telegramId}
+   LEFT JOIN "StaffMember" m ON m."userId"=u.id
+   LEFT JOIN "TelegramOwnContact" uc ON uc."userId"=u.id
+   LEFT JOIN "account" a ON a."providerId"='telegram' AND a."accountId"=${telegramId}
+   LEFT JOIN "account" o ON o."providerId"='telegram-oidc' AND o."accountId"=${claims.sub}
+   LEFT JOIN "account" l ON l."providerId"='telegram-oidc' AND l."accountId"=${`${botId}:${claims.sub}`}
+   LEFT JOIN "TelegramOwnContact" c ON c."botId"=${botId} AND c."telegramId"=${telegramId}`);
+  const row=rows[0];if(!row)reject('invalid');
+  const existing=row.userId?{id:row.userId,role:row.role,staffMember:row.staffId,ownContact:row.userContactId?{id:row.userContactId}:null}:null;
+  const canonical=row.canonicalId?{id:row.canonicalId,userId:row.canonicalUserId,telegramId:row.canonicalTelegramId}:null;
+  const oidc=row.oidcId?{id:row.oidcId,userId:row.oidcUserId,telegramId:row.oidcTelegramId}:null;
+  const legacy=row.legacyId?{id:row.legacyId,userId:row.legacyUserId,telegramId:row.legacyTelegramId}:null;
+  const contact=row.contactId?{id:row.contactId,userId:row.contactUserId,revokedAt:row.revokedAt}:null;
   if(existing&&(existing.role!=='member'||existing.staffMember)||existing?.ownContact&&existing.ownContact.id!==contact?.id)reject('conflict');
   for(const account of [canonical,oidc,legacy]){
    if(account&&(account.userId!==existing?.id||account.telegramId!==null&&account.telegramId!==telegramId))reject('conflict');
@@ -77,6 +98,6 @@ export async function prepareTelegramOIDCIdentity(claims:VerifiedTelegramOIDCPro
   if(!canonical)await tx.account.create({data:{id:randomUUID(),providerId:'telegram',accountId:telegramId,userId:user.id,telegramId,telegramUsername:username}});
   if(!oidc)await tx.account.create({data:{id:randomUUID(),providerId:'telegram-oidc',accountId:claims.sub,userId:user.id,telegramId}});
   await attributeNewReferralInTransaction(tx,user.id,telegramId,{newAccount:!existing});
- },{maxWait:10000,timeout:20000});
+ },{maxWait:10000,timeout:20000}));
  return {name,...(image?{image}:{})};
 }

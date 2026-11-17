@@ -8,6 +8,7 @@ import {handleAuth} from '../src/modules/auth/handler';
 import {getMiniSession} from '../src/modules/auth/mini-access';
 import {creditDevelopmentPoints} from '../src/modules/wallet/ledger';
 import {readWalletBalance} from '../src/modules/wallet/balance';
+import {GET as readMe} from '../src/app/api/me/route';
 
 const database=process.env.TELEGRAM_BROWSER_TEST_DATABASE_URL,origin='http://localhost:3000';
 const pair=generateKeyPairSync('rsa',{modulusLength:2048}),jwk={...pair.publicKey.export({format:'jwk'}),kid:'upstream-fixture',alg:'RS256',use:'sig'};
@@ -61,6 +62,15 @@ describe.skipIf(!database)('shared Better Auth Telegram browser and Mini App int
   const current=await getMiniSession(cookie(response),db);expect(current?.telegramId).toBe(String(f.claims.id));expect(current?.session.telegramAuthSource).toBe('TELEGRAM_OIDC');
   const contact=await db.telegramOwnContact.findUniqueOrThrow({where:{userId:current!.user.id}});expect(contact.verificationSource).toBe('TELEGRAM_OIDC');expect(contact.oidcSubject).toBe(f.claims.sub);expect(contact.phoneCipher).not.toContain(f.claims.phone_number);
   const account=await db.account.findUniqueOrThrow({where:{providerId_accountId:{providerId:'telegram-oidc',accountId:f.claims.sub}}});expect(account.userId).toBe(current!.user.id);expect(account.accessToken).toBeNull();expect(account.idToken).toBeNull();expect((await db.user.findUniqueOrThrow({where:{id:current!.user.id}})).telegramPhoneNumber).toBeNull();
+ });
+ it('returns the joined private profile immediately after consent without loading wallet or unrelated data',async()=>{
+  const f=await flow(),response=await f.finish(),headers=cookie(response),current=await getMiniSession(headers,db);
+  await db.playerProfile.create({data:{userId:current!.user.id,displayName:'Owned display name'}});
+  const me=await readMe(new Request(origin+'/api/me',{headers})),body=await me.json();
+  expect(me.status).toBe(200);expect(me.headers.get('cache-control')).toContain('private');expect(me.headers.get('server-timing')).toContain('me_session;dur=');
+  expect(body.user).toMatchObject({id:current!.user.id,name:'Owned display name'});expect(body.sessionKey).toMatch(/^[a-f0-9]{64}$/);
+  for(const field of ['wallet','bids','notifications','phone_number','token','role'])expect(body).not.toHaveProperty(field);
+  expect(response.headers.get('server-timing')).toContain('oidc_locks;dur=');expect(response.headers.get('server-timing')).toContain('oidc_lookup;dur=');
  });
  it('restores the existing bot account and wallet using signed numeric ID',async()=>{
   const tid=randomInt(4000000000,5000000000);await verifyFixtureContact(db,tid);const user=await db.user.findUniqueOrThrow({where:{telegramId:String(tid)}});await creditDevelopmentPoints(db,user.id,'83.25','upstream-retain-'+user.id);

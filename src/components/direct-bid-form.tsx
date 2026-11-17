@@ -3,8 +3,7 @@ import {useCallback,useEffect,useMemo,useState} from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import {ArrowRight,LockKeyhole,RefreshCw,ShieldCheck} from 'lucide-react';
-import {createsFourConsecutiveAmounts} from '@/modules/auctions/consecutive-bids';
-import {isSubmissionFeeOnly,usesDecimalBids} from '@/modules/auctions/rules';
+import {isSubmissionFeeOnly} from '@/modules/auctions/rules';
 import {formatEtb,etbToCents,centsToEtb} from '@/lib/money';
 import {useMiniLocale} from './mini-locale';
 import {useTelegram} from './telegram-provider';
@@ -46,7 +45,7 @@ function DirectBidForm({slug,status,compact=false}:Props){
   if(!state||!numberPattern.test(amount))return null;
   const value=etbToCents(amount),minimum=etbToCents(state.terms.minPoints),maximum=state.terms.maxPoints===null?null:etbToCents(state.terms.maxPoints),step=etbToCents(state.terms.stepPoints);
   if(value<minimum||maximum!==null&&value>maximum||step<=0n||(value-minimum)%step!==0n)return null;
-  return {amount:centsToEtb(value),duplicate:state.ownBids.some(bid=>etbToCents(bid.amount)===value),consecutive:usesDecimalBids(state.terms.ruleVersion)&&createsFourConsecutiveAmounts(state.ownBids.map(bid=>etbToCents(bid.amount)),value)};
+  return {amount:centsToEtb(value),duplicate:state.ownBids.some(bid=>etbToCents(bid.amount)===value)};
  },[state,amount]);
  if(authStatus==='loading'||loading&&!state)return <BidPanelSkeleton/>;
  if(authStatus!=='authenticated')return <div className="bid-panel"><h2>{text('Ready when you are','ዝግጁ ሲሆኑ ይጀምሩ')}</h2><IdentityState/></div>;
@@ -55,7 +54,7 @@ function DirectBidForm({slug,status,compact=false}:Props){
  if(!state.open||status!=='live')return <div className="bid-unavailable"><LockKeyhole size={19}/><strong>{text(status==='upcoming'?'Bidding has not opened':status==='cancelled'?'Auction cancelled':'Bidding has closed',status==='upcoming'?'ጨረታው ገና አልተጀመረም':status==='cancelled'?'ጨረታው ተሰርዟል':'ጨረታው ተዘግቷል')}</strong></div>;
  if(state.paymentMode!=='ARIFPAY'||!isSubmissionFeeOnly(state.terms.ruleVersion))return <div className="bid-unavailable"><LockKeyhole size={19}/><p>{text('New entries are unavailable for this older auction. Its published terms and existing results remain available.','ለዚህ የቆየ ጨረታ አዲስ ጨረታ ማቅረብ አይቻልም። የታተሙት ውሎች እና ነባር ውጤቶች ይታያሉ።')}</p></div>;
  if(checkout)return <ArifPayCheckout slug={slug} {...checkout} onAccepted={accepted=>{setReceipt(accepted);setCheckout(null);if(queryIdentity)invalidatePrivateQueries(queryIdentity,confirmedBidQueryScopes(slug));void refreshMe().catch(()=>{})}}/>;
- const valid=!!preview&&!preview.duplicate&&!preview.consecutive&&state.remainingSubmissions>0;
+ const valid=!!preview&&!preview.duplicate&&state.remainingSubmissions>0;
  const stepAmount=(direction:1|-1)=>{
   const min=etbToCents(state.terms.minPoints),max=state.terms.maxPoints===null?null:etbToCents(state.terms.maxPoints),step=etbToCents(state.terms.stepPoints),next=preview?etbToCents(preview.amount)+BigInt(direction)*step:min;
   setAmount(centsToEtb(next<min?min:max!==null&&next>max?max:next));
@@ -67,7 +66,7 @@ function DirectBidForm({slug,status,compact=false}:Props){
   <div className="bid-limits"><span>{text('From','ከ')} <strong>{state.terms.minPoints}{state.terms.maxPoints!==null?` – ${state.terms.maxPoints}`:''}</strong></span><span>{text('Step','ልዩነት')} <strong>{state.terms.stepPoints}</strong></span></div>
   <label className="bid-input-label" htmlFor="etb-bid">{text('Bid number','የጨረታ ቁጥር')}</label><div className="bid-input-wrap">{compact&&<button className="bid-step" type="button" aria-label={text('Decrease bid amount','የጨረታ መጠኑን ቀንስ')} onClick={()=>stepAmount(-1)}>−</button>}<input id="etb-bid" inputMode="decimal" autoComplete="off" maxLength={19} value={amount} onChange={event=>setAmount(event.target.value)} placeholder={text('Your number','የእርስዎ ቁጥር')}/>{compact&&<button className="bid-step" type="button" aria-label={text('Increase bid amount','የጨረታ መጠኑን ጨምር')} onClick={()=>stepAmount(1)}>+</button>}</div>
   {amount&&!preview&&<p className="field-error">{text('Choose a number within the displayed range and step.','በሚታየው ክልል እና ልዩነት ውስጥ ቁጥር ይምረጡ።')}</p>}
-  {preview?.duplicate&&<p className="field-error">{text('You already submitted this number.','ይህን ቁጥር አስቀድመው አቅርበዋል።')}</p>}{preview?.consecutive&&<p className="field-error">{text('Leave a gap after three consecutive numbers.','ከሦስት ተከታታይ ቁጥሮች በኋላ ክፍተት ይተዉ።')}</p>}
+  {preview?.duplicate&&<p className="field-error">{text('You already submitted this number.','ይህን ቁጥር አስቀድመው አቅርበዋል።')}</p>}
   {state.remainingSubmissions===0&&<p className="field-error">{text('You reached this auction’s entry limit.','የዚህ ጨረታ የማቅረቢያ ገደብ ላይ ደርሰዋል።')}</p>}
   <button className="primary-bid-button" data-payment-action disabled={!valid} onClick={()=>{if(preview)setCheckout({amount:preview.amount,feeVersion:state.terms.version,fee:state.terms.entryFeePoints})}}>{text('Continue to payment','ወደ ክፍያ ይቀጥሉ')}<ArrowRight size={18}/></button>
   {error&&<p className="field-error" role="alert">{text('Could not refresh bid details. Please retry.','የጨረታ ዝርዝሮችን ማደስ አልተቻለም። እንደገና ይሞክሩ።')}</p>}
