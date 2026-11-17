@@ -23,7 +23,9 @@ export async function GET(request:Request){
       db.notificationInbox.findMany({where,select:{id:true,kind:true,title:true,body:true,href:true,readAt:true,createdAt:true},orderBy:[{createdAt:'desc'},{id:'asc'}],take:pageSize,skip:(page-1)*pageSize}),
       db.notificationInbox.count({where}),db.notificationInbox.count({where:{AND:[{userId,readAt:null},visibleToCustomer]}}),
     ]);
-    return Response.json({items:items.map(item=>({...item,...(!/[\u1200-\u137f]/.test(item.title)||/[A-Za-z]{3}/.test(item.title)?fallbackAmharicNotificationCopy(item.kind):{}),href:item.href})),total,page,totalPages:Math.ceil(total/pageSize),unread,categories:['all','draws','payments']},{headers:privateHeaders});
+    // Authored bilingual notices contain committed outcome/refund facts. Keep
+    // those facts for the client language selector; fallback only legacy rows.
+    return Response.json({items:items.map(item=>({...item,...(!/[\u1200-\u137f]/.test(item.title)?fallbackAmharicNotificationCopy(item.kind):{}),href:item.href})),total,page,totalPages:Math.ceil(total/pageSize),unread,categories:['all','draws','payments']},{headers:privateHeaders});
   }catch(error){return privateError(error)}
 }
 export async function POST(request:Request){try{requireMutationOrigin(request);const userId=await requireUser(request),body=z.object({action:z.literal('read'),id:z.string().uuid().optional()}).strict().parse(await smallJson(request));await db.notificationInbox.updateMany({where:{userId,readAt:null,...(body.id?{id:body.id}:{})},data:{readAt:new Date()}});return Response.json({saved:true},{headers:privateHeaders})}catch(error){return privateError(error)}}

@@ -6,7 +6,9 @@ import {Bot,InputFile} from 'grammy';
 import {randomUUID} from 'node:crypto';
 import {claimNotifications,claimLogicalDelivery,finishClaim} from '../src/modules/notifications/leases';
 import {dispatchBatch,expandPendingCampaigns} from '../src/modules/notifications/dispatch';
-import {stopBroadcast,broadcastHistory} from '../src/modules/admin/broadcast-history';
+import {stopBroadcast,broadcastHistory,resendBroadcast,deleteBroadcastMessages} from '../src/modules/admin/broadcast-history';
+import {expandBroadcastDeletion} from '../src/modules/notifications/broadcast-delete';
+import {expandCampaign} from '../src/modules/notifications/campaigns';
 import {sendBroadcastPhoto,TelegramMediaDeferredError} from '../src/modules/notifications/broadcast-photo';
 import {TEST_TOKEN} from './helpers';
 import {installTelegramRateLimit} from '../src/modules/notifications/telegram-rate';
@@ -156,6 +158,28 @@ describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated t
   await db.outbox.update({where:{id:root.id},data:{state:'PENDING'}});await expandPendingCampaigns(db,{limit:1});expect(await db.outbox.count({where})).toBe(count);
   const history=await broadcastHistory(db,{page:1,q:root.key});expect(history.items[0]).toMatchObject({eligibleRecipients:count,queued:count,retrying:0,inFlight:0,audienceComplete:true});
   await db.user.update({where:{id:users[2].id},data:{role:'member'}});
+ });
+ it('resends original content into a fresh idempotent campaign and includes linked bot users without shared contact',async()=>{
+  const originalKey=`broadcast:${randomUUID()}`,original=await db.outbox.create({data:{key:originalKey,kind:'GLOBAL_CAMPAIGN',state:'SENT',payload:{deliveryKind:'BROADCAST',rootKey:originalKey,body:'Beta service update',href:'/',buttonLabel:'Open service',imagePath:'/images/lowwin-demo-headphones.webp'}}}),resendKey=`broadcast:${randomUUID()}`;
+  const [one,two]=await Promise.all([db.$transaction(tx=>resendBroadcast(tx,original.id,resendKey)),db.$transaction(tx=>resendBroadcast(tx,original.id,resendKey))]);expect(one.id).toBe(two.id);
+  const copy=await db.outbox.findUniqueOrThrow({where:{id:one.id}});expect(copy.payload).toMatchObject({parentCampaignId:original.id,body:'Beta service update',href:'/',buttonLabel:'Open service',imagePath:'/images/lowwin-demo-headphones.webp'});expect(await db.outbox.findUniqueOrThrow({where:{id:original.id}})).toEqual(original);
+  expect((await db.$transaction(tx=>resendBroadcast(tx,original.id,`broadcast:${randomUUID()}`))).id).not.toBe(one.id);
+  const contact=await db.telegramOwnContact.findUniqueOrThrow({where:{userId:users[19].id}});await db.telegramOwnContact.delete({where:{userId:users[19].id}});
+  try{await db.$transaction(tx=>expandCampaign(tx,copy));expect(await db.outbox.findUnique({where:{key:`${resendKey}:user:${users[19].id}`}})).toMatchObject({kind:'BROADCAST',state:'PENDING'});}finally{await db.telegramOwnContact.create({data:contact})}
+ });
+ it('stops sends and deletes only recorded campaign messages, preserving late acknowledgements and expired audit history',async()=>{
+  const originalKey=`broadcast:${randomUUID()}`,original=await db.outbox.create({data:{key:originalKey,kind:'GLOBAL_CAMPAIGN',state:'SENT',payload:{deliveryKind:'BROADCAST',rootKey:originalKey,body:'Fixture deletion',href:'/'}}});
+  const fresh=await job('BROADCAST',0,originalKey),expired=await job('BROADCAST',1,originalKey),late=await job('BROADCAST',2,originalKey),token=randomUUID(),leaseUntil=new Date(Date.now()+120000);
+  await db.outbox.updateMany({where:{id:{in:[fresh.id,expired.id]}},data:{state:'SENT',sentAt:new Date()}});
+  await db.telegramMessage.create({data:{outboxId:fresh.id,chatId:users[0].telegramId,messageId:501n}});await db.telegramMessage.create({data:{outboxId:expired.id,chatId:users[1].telegramId,messageId:502n,sentAt:new Date(Date.now()-49*3600000)}});
+  const claimed=await db.outbox.update({where:{id:late.id},data:{leaseToken:token,leaseUntil}});
+  const deletion=await db.$transaction(tx=>deleteBroadcastMessages(tx,original.id)),control=await db.outbox.findUniqueOrThrow({where:{id:String(deletion.deletionJobId)}});
+  await db.$transaction(tx=>expandBroadcastDeletion(tx,control));expect(await db.outbox.findUniqueOrThrow({where:{id:control.id}})).toMatchObject({state:'PENDING',lastError:'WAITING_FOR_SEND_ACKNOWLEDGEMENTS'});
+  await finishClaim(db,{...claimed,leaseToken:token,leaseUntil},{state:'SENT',sentAt:new Date()},{chatId:users[2].telegramId,messageId:503});
+  await db.$transaction(tx=>expandBroadcastDeletion(tx,control));expect(await db.outbox.findUniqueOrThrow({where:{id:control.id}})).toMatchObject({state:'SENT'});
+  const remove=vi.fn(async()=>true);await dispatchBatch(db,{api:{deleteMessage:remove}} as unknown as Pick<Bot,'api'>,{limit:10,concurrency:2});expect(remove).toHaveBeenCalledTimes(2);
+  const history=await broadcastHistory(db,{page:1,q:originalKey});expect(history.items[0]).toMatchObject({state:'STOPPED',deletion:{deleted:2,pending:0,failed:0,unavailable:1,preparing:false}});
+  expect(await db.outbox.findUniqueOrThrow({where:{id:original.id}})).toMatchObject({payload:original.payload});expect(await db.telegramMessage.findUniqueOrThrow({where:{outboxId:expired.id}})).toMatchObject({deletionState:'UNAVAILABLE',deletionError:'TELEGRAM_DELETE_WINDOW_EXPIRED'});
  });
  it('single-flights media upload across senders, survives a new API instance and isolates bot and version',async()=>{
   const entered=deferred(),release=deferred(),source=vi.fn(async()=>{entered.resolve();await release.promise;return new InputFile(Buffer.from('simulated-image'))});

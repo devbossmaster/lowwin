@@ -12,7 +12,7 @@ const affected:Record<string,readonly string[]>={
  cancel:['auctions','dashboard','workspace/players','users','workspace/transactions','workspace/winners','fulfillment','results'],
  suspend:['workspace/players','users'],deliveryDone:['workspace/winners','fulfillment','dashboard/summary'],fulfillment:['workspace/winners','fulfillment','dashboard/summary'],
  winnerPhoto:['workspace/winners','results'],winnerBanner:['workspace/winners','results'],resultPublish:['workspace/winners','results','auctions','dashboard'],
- broadcast:['notifications'],broadcastStop:['notifications'],retry:['notifications','jobs'],
+ auctionBroadcast:['notifications'],broadcast:['notifications'],broadcastStop:['notifications'],broadcastResend:['notifications'],broadcastDelete:['notifications'],retry:['notifications','jobs'],
  'save-policy':['referrals','workspace/referrals'],content:['content'],invite:['team','audit'],staff:['team','audit'],
 };
 export function adminMutationResources(action:string,endpoint='command'){

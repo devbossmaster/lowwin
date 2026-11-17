@@ -12,9 +12,9 @@ export class DeliveryGate extends Error{constructor(readonly reason:string,reado
 export async function beforeNotificationSend(client:PrismaClient,row:ClaimedNotification,shouldContinue:()=>boolean,logicalKey?:string,recipient?:RecipientGate){
  if(!shouldContinue())throw new DeliveryGate('WORKER_STOPPING',true);
  if(notificationRetired(row.kind))throw new DeliveryGate('NOTIFICATION_RETIRED',false);
- const p=row.payload as {recipientUserId?:string;auctionId?:string;botId?:string;telegramId?:string;bidId?:string;batchId?:string;checkoutId?:string;intentId?:string;settlementId?:string};
+ const p=row.payload as {recipientUserId?:string;auctionId?:string;botId?:string;telegramId?:string;bidId?:string;batchId?:string;checkoutId?:string;intentId?:string;settlementId?:string;refundId?:string};
  const reminder=endingReminder(row.kind),starting=upcomingReminder(row.kind);
- const privateKind=['DEPOSIT_CREDITED','BID_ACCEPTED','WINNER_CONGRATULATIONS'].includes(row.kind);
+ const privateKind=['DEPOSIT_CREDITED','BID_ACCEPTED','WINNER_CONGRATULATIONS','AUCTION_FEE_REFUNDED'].includes(row.kind);
  const bidId=p.bidId??/^bid:([0-9a-f-]{36}):accepted$/i.exec(row.key)?.[1];
  const botId=process.env.TELEGRAM_BOT_TOKEN?.split(':')[0]??'';
  return client.$transaction(async tx=>{
@@ -40,13 +40,23 @@ export async function beforeNotificationSend(client:PrismaClient,row:ClaimedNoti
      (${!!p.batchId} AND EXISTS(SELECT 1 FROM "BidBatchOrder" b WHERE b.id=${p.batchId??null} AND b."userId"=${p.recipientUserId??null} AND b."auctionId"=${p.auctionId??null} AND b.status='ACCEPTED' AND b.receipt IS NOT NULL))
      OR (${!p.batchId} AND EXISTS(SELECT 1 FROM "Bid" b JOIN "Operation" o ON o.id=b."operationId" WHERE b.id=${bidId??null} AND b."userId"=${p.recipientUserId??null} AND b."auctionId"=${p.auctionId??null} AND o."userId"=b."userId" AND o.scope='BID'))
     ) THEN 'BID_NOT_ACCEPTED'
+    WHEN ${row.kind==='AUCTION_FEE_REFUNDED'} AND NOT EXISTS(
+     SELECT 1 FROM "AuctionRefund" r JOIN "AuctionSettlement" s ON s.id=r."settlementId" JOIN "Operation" op ON op.id=r."operationId" JOIN "Journal" j ON j."operationId"=op.id
+     WHERE r.id=${p.refundId??null} AND r."userId"=${p.recipientUserId??null} AND s.id=${p.settlementId??null} AND s."auctionId"=${p.auctionId??null} AND s.outcome='CANCELLED' AND r.status='COMPLETED' AND r."completedAt"<=stamp.now
+      AND op."userId"=r."userId" AND op.scope='AUCTION_FEE_REFUND' AND op.key=r.id AND op.result->>'refundId'=r.id AND op.result->>'settlementId'=s.id AND j.kind='AUCTION_FEE_REFUND'
+    ) THEN 'REFUND_NOT_COMMITTED'
     WHEN ${row.kind==='WINNER_CONGRATULATIONS'} AND NOT EXISTS(
      SELECT 1 FROM "AuctionSettlement" s JOIN "Auction" a ON a.id=s."auctionId" JOIN "ResultPublication" pub ON pub."settlementId"=s.id JOIN "Bid" b ON b.id=s."winningBidId"
       WHERE s.id=${p.settlementId??null} AND s."auctionId"=${p.auctionId??null} AND s.outcome='WINNER' AND s."winnerUserId"=${p.recipientUserId??null} AND b."userId"=s."winnerUserId" AND b."auctionId"=s."auctionId" AND b.amount=s."winningPoints" AND a.status='CLOSED' AND s.cutoff<=stamp.now AND s."completedAt"<=stamp.now AND pub."publishedAt"<=stamp.now
     ) THEN 'RESULT_NOT_PUBLISHED'
     WHEN ${row.kind==='AUCTION_ENDED'} AND NOT EXISTS(SELECT 1 FROM "Auction" a JOIN "AuctionSettlement" s ON s."auctionId"=a.id JOIN "ResultPublication" pub ON pub."settlementId"=s.id WHERE a.id=${p.auctionId??null} AND (${p.settlementId??null}::text IS NULL OR s.id=${p.settlementId??null}) AND a.status IN ('CLOSED','CANCELLED') AND s.cutoff<=stamp.now AND s."completedAt"<=stamp.now AND pub."publishedAt"<=stamp.now) THEN 'RESULT_NOT_PUBLISHED'
-    WHEN ${row.kind!=='AUCTION_ENDED'&&(row.kind==='BROADCAST'||row.kind.startsWith('AUCTION_'))&&!!p.auctionId} AND NOT EXISTS(SELECT 1 FROM "Auction" a JOIN "Product" product ON product.id=a."productId" WHERE a.id=${p.auctionId??null} AND a.status IN ('LIVE','SCHEDULED') AND a."endsAt">stamp.now AND product.visible AND a."publishedAt"<=stamp.now AND NOT EXISTS(SELECT 1 FROM "AuctionSettlement" s WHERE s."auctionId"=a.id)) THEN 'AUCTION_RETIRED'
-    WHEN ${(row.kind==='BROADCAST'||row.kind==='AUCTION_PUBLISHED')&&!!p.auctionId} AND NOT EXISTS(SELECT 1 FROM "Auction" a WHERE a.id=${p.auctionId??null} AND a.status IN ('LIVE','SCHEDULED') AND a."startsAt"<=stamp.now) THEN 'AUCTION_RETIRED'
+    WHEN ${!['AUCTION_ENDED','AUCTION_FEE_REFUNDED'].includes(row.kind)&&(row.kind==='BROADCAST'||row.kind.startsWith('AUCTION_'))&&!!p.auctionId} AND NOT EXISTS(SELECT 1 FROM "Auction" a JOIN "Product" product ON product.id=a."productId" WHERE a.id=${p.auctionId??null} AND a.status IN ('LIVE','SCHEDULED') AND a."endsAt">stamp.now AND product.visible AND a."publishedAt"<=stamp.now AND NOT EXISTS(SELECT 1 FROM "AuctionSettlement" s WHERE s."auctionId"=a.id)) THEN 'AUCTION_RETIRED'
+    WHEN ${row.kind==='BROADCAST'&&!!p.auctionId} AND NOT EXISTS(
+     SELECT 1 FROM "Auction" a JOIN "Product" product ON product.id=a."productId" JOIN "Category" pc ON pc.id=product."categoryId" LEFT JOIN "Category" ac ON ac.id=a."categoryId"
+     WHERE a.id=${p.auctionId??null} AND a.status IN ('LIVE','SCHEDULED') AND a."startsAt"<=stamp.now AND a."endsAt">stamp.now AND a."publishedAt"<=stamp.now AND a."publicCode">0 AND a.slug IS NOT NULL AND product.visible AND pc.visible AND (ac.id IS NULL OR ac.visible) AND NOT a."isDemo" AND a."testRunId" IS NULL
+      AND NOT EXISTS(SELECT 1 FROM "AuctionSettlement" s WHERE s."auctionId"=a.id) AND NOT EXISTS(SELECT 1 FROM "PublicAuctionResult" r WHERE r."auctionId"=a.id)
+    ) THEN 'AUCTION_RETIRED'
+    WHEN ${row.kind==='AUCTION_PUBLISHED'&&!!p.auctionId} AND NOT EXISTS(SELECT 1 FROM "Auction" a WHERE a.id=${p.auctionId??null} AND a.status IN ('LIVE','SCHEDULED') AND a."startsAt"<=stamp.now) THEN 'AUCTION_RETIRED'
     WHEN ${row.kind==='AUCTION_UPCOMING_ADDED'} AND NOT EXISTS(SELECT 1 FROM "Auction" a WHERE a.id=${p.auctionId??null} AND a."startsAt">stamp.now) THEN 'AUCTION_RETIRED'
     WHEN ${(!!reminder||!!starting)&&!!p.auctionId} AND NOT EXISTS(SELECT 1 FROM "Auction" a WHERE a.id=${p.auctionId??null} AND CASE
      WHEN ${!!reminder} THEN a.status IN ('LIVE','SCHEDULED') AND a."startsAt"<=stamp.now AND a."endsAt">stamp.now+${reminder?.minMs??0}*interval '1 millisecond' AND a."endsAt"<=stamp.now+${reminder?.maxMs??0}*interval '1 millisecond'

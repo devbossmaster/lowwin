@@ -17,11 +17,12 @@ const amount=/^(0|[1-9]\d{0,15})(?:\.\d{1,2})?$/;
 /** Original-key recovery uses only the owned v2 Inline adapter. */
 export function chapaOriginalKeyUrl(intent:ChapaDirectIntent|null|undefined){
  if(!intent||!chapaUuid.test(intent.key))return null;
- return intent.apiVersion==='v2'&&intent.kind==='inline'?chapaOriginalRecoveryUrl(intent.key):null;
+ return intent.apiVersion==='v2'&&(intent.kind==='inline'||intent.kind==='direct')?chapaOriginalRecoveryUrl(intent.key,intent.kind):null;
 }
-export function chapaOriginalRecoveryUrl(key:string|null|undefined){return key&&chapaUuid.test(key)?`/api/payments/chapa/inline?key=${encodeURIComponent(key)}`:null}
+export function chapaOriginalRecoveryUrl(key:string|null|undefined,protocol:'inline'|'direct'='inline'){return key&&chapaUuid.test(key)?`/api/payments/chapa/${protocol==='direct'?'direct/current':'inline'}?key=${encodeURIComponent(key)}`:null}
 export function chapaApiCharge(order:Pick<DirectCheckoutFields,'chargeType'|'apiVersion'|'flowVersion'|'unsupportedLegacy'>){return !order.unsupportedLegacy&&order.apiVersion!=='legacy'&&(order.chargeType==='DIRECT'||order.apiVersion==='v2'&&order.flowVersion===4&&order.chargeType==='INLINE')}
 export function chapaCurrentInline(order:Pick<DirectCheckoutFields,'apiVersion'|'flowVersion'>){return order.apiVersion==='v2'&&order.flowVersion===4}
+export function chapaCurrentV2(order:Pick<DirectCheckoutFields,'apiVersion'|'flowVersion'>){return order.apiVersion==='v2'&&[4,5].includes(order.flowVersion??0)}
 
 /** A failed restore read must keep observing the original owned resource.
  * Wait for the first read to finish; authorization failures require login or

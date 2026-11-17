@@ -4,6 +4,12 @@ import {chapaReceiptKind,chapaReceiptContent,queueChapaReceipt} from '../src/mod
 
 afterEach(()=>vi.unstubAllEnvs());
 describe('concise Amharic-only private notifications',()=>{
+ it('never labels v5 chosen and winning numbers as charged money',()=>{
+  const winner=winnerNotificationCopy({productTitle:'Item',chosenNumber:'3.60',ruleVersion:'lowest-unique-v5'});
+  expect(winner?.body).toContain('ያሸነፈው ቁጥር: 3.60');expect(winner?.body).not.toContain('3.60 ብር');
+  const receipt=bidPurchaseNotificationCopy({productTitle:'Item',numbers:['3.60'],paidFee:'10',ruleVersion:'lowest-unique-v5'});
+  expect(receipt?.body).toContain('የመረጡት ቁጥር: 3.60');expect(receipt?.body).toContain('10.00 ብር');
+ });
  it('shows the committed deposit without inventing a balance or a bonus',()=>{
   const copy=depositNotificationCopy({creditedAmount:'50',name:'ሀና'});
   expect(copy).toEqual({title:'✅ ገንዘብ ገብቷል',body:'ሰላም ሀና፣\n\n50.00 ብር ወደ ዋሌትዎ ገብቷል።',buttonLabel:'ዋሌቴን ልይ'});

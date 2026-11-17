@@ -3,6 +3,10 @@ import {notificationCopy,notificationAge} from '../src/components/notification-c
 import {defaultHomeCopy,resolveHomeCopy} from '../src/components/home-copy';
 
 describe('notification display language',()=>{
+ it('preserves each committed v5 cash and bonus refund fact in the selected language',()=>{
+  const item={kind:'AUCTION_FEE_REFUNDED',title:'ክፍያ ተመልሷል / Fee refund committed',body:'ወደ ዋሌት የተመለሰ: 7.00 ብር። ጉርሻ: 2.00 ብር።\nCash returned: 7.00 ETB. Promotional credit restored: 2.00 ETB with its original expiry.'};
+  expect(notificationCopy(item,'am')).toEqual({title:'ክፍያ ተመልሷል',body:item.body.split('\n')[0]});expect(notificationCopy(item,'en')).toEqual({title:'Fee refund committed',body:item.body.split('\n')[1]});
+ });
  it('shows verified Chapa wallet outcomes in one language without changing their content',()=>{
   const item={kind:'PAYMENT_CREDITED',title:'Wallet credited · ገንዘብ ገብቷል',body:'10.00 ETB verified through Chapa. The bid was not accepted; the funds remain in your wallet.\n10.00 ብር በChapa ተረጋግጦ ገብቷል። ጨረታው አልተቀበለም፤ ገንዘቡ በዋሌትዎ ውስጥ ቀርቷል።'};
   expect(notificationCopy(item,'en')).toEqual({title:'Wallet credited',body:item.body.split('\n')[0]});
@@ -67,7 +71,7 @@ describe('home introduction',()=>{
   expect(resolveHomeCopy(null)).toEqual(defaultHomeCopy);
   const edited={headline:'Custom headline',lead:'Custom copy',headlineAm:'አዲስ ርዕስ',leadAm:'አዲስ መግለጫ'};
   expect(resolveHomeCopy(edited)).toEqual(edited);
-  expect(defaultHomeCopy.lead).toBe('The lowest unique bid wins.');
-  expect(defaultHomeCopy.leadAm).toBe('ዝቅተኛና ያልተደገመ ዋጋ ያሸንፋል።');
+  expect(defaultHomeCopy.lead).toContain('lowest number chosen by one player wins');expect(defaultHomeCopy.lead).toContain('actual paid fees');
+  expect(defaultHomeCopy.leadAm).toContain('ዋሌትዎ ይመለሳል');
  });
 });

@@ -4,9 +4,10 @@ import {automaticNotificationKinds,deliveryNotificationKinds,internalNotificatio
 import {resultRecipientIds,hasResultSubscription} from '../src/modules/notifications/result-audience';
 
 describe('finalized owner notification policy',()=>{
- it('permits exactly thirteen automatic types and the existing manual broadcast',()=>{
-  expect(automaticNotificationKinds).toHaveLength(13);
-  expect(new Set(automaticNotificationKinds).size).toBe(13);
+ it('permits committed refund notices with the automatic types and existing manual broadcast',()=>{
+  expect(automaticNotificationKinds).toContain('AUCTION_FEE_REFUNDED');
+  expect(automaticNotificationKinds).toHaveLength(14);
+  expect(new Set(automaticNotificationKinds).size).toBe(14);
   expect(deliveryNotificationKinds).toEqual([...automaticNotificationKinds,'BROADCAST']);
   for(const kind of [...deliveryNotificationKinds,...internalNotificationKinds])expect(notificationRetired(kind)).toBe(false);
  });

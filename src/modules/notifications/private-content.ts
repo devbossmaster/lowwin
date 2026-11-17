@@ -1,4 +1,4 @@
-import type {Outbox,Prisma} from '@prisma/client';
+import {Prisma,type Outbox} from '@prisma/client';
 import {centsToEtb,etbToCents} from '@/lib/money';
 import {ownDepositBonus} from '../wallet/deposit-bonus';
 import {demoBidAllowed} from '../auctions/bids';
@@ -28,8 +28,14 @@ function receiptContent(userId:string,kind:string,href:string,copy:AmharicNotifi
 
 /** Re-read committed financial proof and ownership. Payloads are locators only. */
 export async function privateNotificationContent(tx:Tx,row:Pick<Outbox,'kind'|'payload'>&Partial<Pick<Outbox,'key'>>):Promise<Content|null>{
- if(!['DEPOSIT_CREDITED','BID_ACCEPTED','WINNER_CONGRATULATIONS'].includes(row.kind))return null;
+ if(!['DEPOSIT_CREDITED','BID_ACCEPTED','WINNER_CONGRATULATIONS','AUCTION_FEE_REFUNDED'].includes(row.kind))return null;
  const payload=object(row.payload),userId=text(payload?.recipientUserId);if(!payload||!userId)return null;
+ if(row.kind==='AUCTION_FEE_REFUNDED'){
+  const refundId=text(payload.refundId),auctionId=text(payload.auctionId),settlementId=text(payload.settlementId);if(!refundId||!auctionId||!settlementId)return null;
+  const [refund]=await tx.$queryRaw<Array<{cash:string;bonus:string;expired:string}>>`SELECT r."cashPoints"::text AS cash,COALESCE((SELECT sum("creditedCents")/100 FROM "DepositBonusRefund" WHERE "refundId"=r.id),0)::text AS bonus,COALESCE((SELECT sum("expiredCents")/100 FROM "DepositBonusRefund" WHERE "refundId"=r.id),0)::text AS expired FROM "AuctionRefund" r JOIN "AuctionSettlement" s ON s.id=r."settlementId" JOIN "Journal" j ON j."operationId"=r."operationId" WHERE r.id=${refundId} AND r."userId"=${userId} AND s.id=${settlementId} AND s."auctionId"=${auctionId} AND s.outcome='CANCELLED' AND r.status='COMPLETED' AND r."completedAt"<=clock_timestamp() AT TIME ZONE 'UTC' AND j.kind='AUCTION_FEE_REFUND'`;
+  if(!refund)return null;
+  return {userId,kind:row.kind,href:'/transactions',title:'ክፍያ ተመልሷል / Fee refund committed',body:`ጨረታው ተሰርዟል። ወደ ዋሌት የተመለሰ: ${refund.cash} ብር። የተመለሰ ጉርሻ: ${refund.bonus} ብር፤ የመጀመሪያው የማብቂያ ጊዜ ይቀጥላል።\nAuction cancelled. Cash returned: ${refund.cash} ETB. Promotional credit restored: ${refund.bonus} ETB with its original expiry.${new Prisma.Decimal(refund.expired).gt(0)?` Expired promotional value: ${refund.expired} ETB; no cash credit.`:''}`,buttonLabel:'ዝርዝሩን ይመልከቱ / View details'};
+ }
  if(row.kind==='DEPOSIT_CREDITED'){
   const checkoutId=text(payload.checkoutId),intentId=text(payload.intentId);
   if(checkoutId){

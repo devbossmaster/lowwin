@@ -22,6 +22,8 @@ import {ChapaError,ChapaProviderError,chapaAvailability,chapaConfigurationFinger
 import {approvedRecoveryBinding,chapaRecoveryBindings} from './chapa-recovery-binding';
 import {chapaMethodCatalog} from './chapa-methods';
 import {chapaInlineAvailability,chapaInlineTransport,inlineTransportBinding,isV2InlineCheckout} from './chapa-inline-provider';
+import {currentDirectAvailability} from './chapa-current-direct-provider';
+import {isCurrentDirectCheckout,isCurrentV2Checkout} from './chapa-current-protocol';
 import {chapaAuthorizationErrorFeedback,chapaAuthorizationFeedback,chapaAuthorizationFeedbackReason,type ChapaAuthorizationFeedback} from './chapa-authorization-feedback';
 import {creditDepositBonusInTransaction,ownDepositBonus} from '../wallet/deposit-bonus';
 import {canSkipChapaPrivateVerification,chapaCompletionStatus,CHAPA_MIN_VERIFICATION_LEASE_REMAINING_MS,CHAPA_VERIFICATION_LEASE_MS,chapaPendingVerificationDelay,shouldRefreshChapaAuthorization,type ChapaCompletionStatus} from './chapa-verification-policy';
@@ -52,7 +54,7 @@ const after=(ms:number)=>new Date(Date.now()+ms);
 const STATUS_REFRESH_MS=2000;
 
 export {walletBidsEnabled} from '../wallet/policy';
-export function publicChapaAvailability(){const value=chapaInlineAvailability();return {enabled:value.enabled,configured:value.configured,mode:value.mode,apiVersion:'v2' as const,walletBidsEnabled:walletBidsEnabled(),minTopup:CHAPA_TOPUP_MIN_ETB,maxTopup:CHAPA_TOPUP_MAX_ETB,reason:value.enabled?null:'Secure payments are not configured.'}}
+export function publicChapaAvailability(){const value=currentDirectAvailability();return {enabled:value.enabled,configured:value.configured,mode:value.mode,apiVersion:'v2' as const,walletBidsEnabled:walletBidsEnabled(),minTopup:CHAPA_TOPUP_MIN_ETB,maxTopup:CHAPA_TOPUP_MAX_ETB,reason:value.enabled?null:'Secure payments are not configured.'}}
 const context={auction:{select:{publicCode:true,status:true,endsAt:true,product:{select:{title:true,titleAm:true}}}}} satisfies Prisma.ChapaCheckoutInclude;
 type OrderContext={auction?:{publicCode:number;status:string;endsAt:Date|null;product:{title:string;titleAm:string|null}|null}|null};
 export function ownChapaCheckout(order:ChapaCheckout&OrderContext){
@@ -230,7 +232,7 @@ async function verifyChapaCheckoutOnce(client:PrismaClient,id:string,userId:stri
  z.string().uuid().parse(id);
  const snapshot=await measureChapa('database',()=>client.chapaCheckout.findFirst({where:{id,...(userId?{userId}:{})}}));if(!snapshot)throw new ChapaError(404,'NOT_FOUND','Payment not found.');
  if(unsupportedLegacyChapaCheckout(snapshot))return ownChapaCheckout(snapshot);
- const legacy=isLegacyChapaCheckout(snapshot),inlineV2=isV2InlineCheckout(snapshot);
+ const legacy=isLegacyChapaCheckout(snapshot),inlineV2=isV2InlineCheckout(snapshot),currentV2=isCurrentV2Checkout(snapshot);
  if(!legacy)requireChapa('recover');
  if(legacy&&transport!==chapaTransport&&(!('protocol' in transport)||transport.protocol!=='v1-recovery'))throw new ChapaError(503,'CONFIGURATION_CHANGED','Historical payments require their original Chapa v1 verification transport.');
  // Select the saved protocol, never the currently preferred creation flow.
@@ -280,9 +282,9 @@ async function verifyChapaCheckoutOnce(client:PrismaClient,id:string,userId:stri
   if(eventCheck!=='webhook'&&eventCheck!=='deferred'&&authorizationFlow&&shouldRefreshChapaAuthorization(snapshot)&&selectedTransport.validate&&(!inlineV2||inlineTransportBinding(snapshot)))try{
    const validation=await measureChapa('validate',()=>selectedTransport.validate!({reference:snapshot.authorizationReference!,paymentMethod:snapshot.paymentMethod!}));
    authorizationFeedback=chapaAuthorizationFeedback(validation,snapshot);
-   const validationProof=parseChapaEvidence(validation),completion=inlineV2&&authorizationFeedback?chapaCompletionStatus(validationProof?.status):null;
+   const validationProof=parseChapaEvidence(validation),completion=currentV2&&authorizationFeedback?chapaCompletionStatus(validationProof?.status):null;
    if(completion&&(snapshot.verificationCompletionStatus!==completion||snapshot.verificationSignalVersion<=snapshot.verificationHandledSignalVersion))await recordChapaVerificationSignal(client,snapshot,authorizationFeedback,completion);
-   const matchingPending=inlineV2&&authorizationFeedback?.kind==='waiting'&&validationProof?.status==='PENDING';
+   const matchingPending=currentV2&&authorizationFeedback?.kind==='waiting'&&validationProof?.status==='PENDING';
    if(canSkipChapaPrivateVerification(snapshot,matchingPending,!!eventCheck||handledSignal>(snapshot.verificationHandledSignalVersion??0))){
     const skipped=await measureChapa('database',()=>client.chapaCheckout.updateMany({where:{...ownedVerification,verificationSignalVersion:handledSignal},data:{leaseUntil:null,nextCheckAt:after(chapaPendingVerificationDelay(snapshot,authorizationFlow)),verificationRetryAfter:null,...(publicChapaAuthorizationReason(snapshot)?{reason:'PAYMENT_NOT_COMPLETED'}:{})}}));
     if(skipped.count)return getChapaCheckout(client,snapshot.userId,id);
@@ -307,11 +309,11 @@ async function verifyChapaCheckoutOnce(client:PrismaClient,id:string,userId:stri
  }
  const evidence=legacy?parseLegacyChapaEvidence(raw):parseChapaEvidence(raw);
  let directBinding=true;
- if(snapshot.chargeType==='DIRECT'&&evidence){
+ if(snapshot.chargeType==='DIRECT'&&!isCurrentDirectCheckout(snapshot)&&evidence){
   directBinding=(!snapshot.authorizationReference||!evidence.chapaReference||snapshot.authorizationReference===evidence.chapaReference)&&(!evidence.paymentMethod||snapshot.paymentMethod===evidence.paymentMethod);
   try{const expected=normalizePhone(decryptPhone(snapshot.payerPhoneCipher!,snapshot.phoneBotId!)),actual=evidence.customer?.phone_number?normalizePhone(evidence.customer.phone_number):null;directBinding=directBinding&&(!actual||actual===expected)&&(evidence.status!=='SUCCESS'||!!actual&&evidence.paymentMethod===snapshot.paymentMethod)}catch{directBinding=false}
  }
- if(inlineV2&&snapshot.chargeType==='INLINE'&&evidence){
+ if(currentV2&&['INLINE','DIRECT'].includes(snapshot.chargeType)&&evidence){
   directBinding=(!snapshot.authorizationReference||!evidence.chapaReference||snapshot.authorizationReference===evidence.chapaReference)&&(!evidence.paymentMethod||snapshot.paymentMethod===evidence.paymentMethod)&&(evidence.status!=='SUCCESS'||!!snapshot.paymentMethod&&evidence.paymentMethod===snapshot.paymentMethod);
   // Customer is optional in merchant verification. If supplied, its phone must
   // match the frozen payer; amount/currency/merchant/reference remain mandatory.

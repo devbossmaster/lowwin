@@ -2,7 +2,7 @@
 import type {ChapaCheckoutConfig} from '@/lib/chapa-client';
 import {isPrivateQueryIdentity,loadPrivateJson,readPrivateQuery} from './private-query-cache';
 
-export const TOP_UP_CONFIG_URL='/api/payments/chapa/inline/config';
+export const TOP_UP_CONFIG_URL='/api/payments/chapa/direct/current/config';
 export const TOP_UP_CONFIG_FRESH_MS=60000;
 export const TOP_UP_PRESETS=['10','50','100','200','500','1000'] as const;
 
