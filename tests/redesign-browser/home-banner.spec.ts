@@ -32,7 +32,7 @@ test('home banner: both languages, image, mobile geometry and existing actions',
    expect(await hero.locator('p').textContent()).toBe(lead);
    await expect(page.locator('#home-headline')).toHaveCount(1);
    await expect(hero.getByText(lead,{exact:true})).toHaveCount(1);
-   const image=hero.locator('img');await expect(image).toHaveAttribute('src',/lowwin-gold-prizes-hero-20261117\.webp/);await expect(image).toHaveAttribute('width','1840');await expect(image).toHaveAttribute('height','800');
+   const image=hero.locator('img');await expect(image).toHaveAttribute('src',/lowwin-blue-prizes-hero-20261117\.webp/);await expect(image).toHaveAttribute('width','1840');await expect(image).toHaveAttribute('height','800');
    await expect.poll(()=>image.evaluate((node:HTMLImageElement)=>node.complete&&node.naturalWidth>0)).toBe(true);
    await page.evaluate(()=>document.fonts.ready);
    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
