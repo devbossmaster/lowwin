@@ -46,6 +46,27 @@ jobs:
             test-results/
             playwright-report/
           retention-days: 7
+  payment-stream-broker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      redis:
+        image: redis:7.4-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      CHAPA_EVENTS_TEST_REDIS_URL: redis://127.0.0.1:6379
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      # Real Redis and separate Node processes; this is not Coolify/device evidence.
+      - run: npx --no-install vitest run tests/chapa-committed-redis.test.ts
   security:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -73,10 +94,20 @@ jobs:
           import json
           with open('security-results.json', encoding='utf-8') as report:
               scanned = json.load(report).get('paths', {}).get('scanned', [])
-          required = 'vendor/better-auth-telegram/index.js'
-          if not any(path.replace('\\', '/').removeprefix('./') == required for path in scanned):
-              raise SystemExit('Telegram authentication runtime was not scanned')
-          print('Telegram authentication runtime scan coverage verified')
+          # The plugin is a pinned npm dependency, audited in the security job.
+          # Require the current application-owned session/proof boundaries.
+          required = {
+              'src/modules/auth/server.ts',
+              'src/modules/auth/mini-access.ts',
+              'src/modules/auth/telegram-validation.ts',
+              'src/modules/auth/telegram-oidc-identity.ts',
+              'src/modules/auth/telegram-oidc-token-request.ts',
+          }
+          covered = {path.replace('\\', '/').removeprefix('./') for path in scanned}
+          missing = required - covered
+          if missing:
+              raise SystemExit('Telegram authentication source was not scanned: ' + ', '.join(sorted(missing)))
+          print('Telegram authentication source scan coverage verified')
           PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
@@ -195,11 +226,8 @@ jobs:
       - run: npm ci
       - run: npm run db:generate
       - run: npx playwright install --with-deps chromium
-      # Creates a fresh loopback database and migrates it. The spec creates its
-      # own synthetic fixtures and mocks payment responses; no merchant keys.
-      - run: node scripts/run-db-tests.mjs chapa
-      # The public-entry and direct-charge changes also run against shipped
-      # production bundles, on their own fresh DB and temporary localhost TLS.
+      # Every payment check uses shipped bundles, a fresh migrated loopback DB,
+      # synthetic identities and intercepted provider HTTP; no merchant keys.
       - name: Create temporary localhost TLS for production browser checks
         run: |
           umask 077
@@ -207,14 +235,15 @@ jobs:
             -keyout "$NOV7_TLS_KEY" -out "$NOV7_TLS_CERT" \
             -days 1 -subj '/CN=localhost' \
             -addext 'subjectAltName=DNS:localhost,IP:127.0.0.1'
-      - run: node scripts/run-db-tests.mjs nov7
+      # Current v2 Inline, OTP, lost-reply recovery, SSE/poll fallback, internal
+      # wallet independence, historical hosted/Direct recovery and ownership.
+      - run: node scripts/run-db-tests.mjs chapa
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
           name: chapa-checkout-ui
           path: |
             test-results/chapa-ui/
-            test-results/nov7-runs/
             test-results/nov7-evidence/
-            test-results/release/nov7-databases.json
+            test-results/release/chapa-databases.json
           retention-days: 7

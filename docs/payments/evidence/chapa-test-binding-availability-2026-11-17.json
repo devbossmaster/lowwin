@@ -1,0 +1,116 @@
+{
+  "at": "2026-11-17T07:35:26.072Z",
+  "scope": "read-only public-key service check and dashboard access review",
+  "keyPairContext": "Captured before the subsequent change to both dedicated TEST keys; see chapa-updated-test-keys-2026-11-17.json and chapa-newpair-inline-test-2026-11-17.json for the newer pair.",
+  "providerWriteRequests": 0,
+  "operatorScreenshot": {
+    "activeRowName": "test",
+    "inactiveRowName": "Lowwin Test",
+    "dedicatedPublicMatchesActiveVisiblePrefix": true,
+    "dedicatedPublicMatchesInactiveVisiblePrefix": false,
+    "dedicatedPrivateHasTestPrivateShape": true,
+    "surroundingWhitespacePresent": false,
+    "privateKeysMasked": true,
+    "businessIdentityVisible": false,
+    "fullKeyValuesRecorded": false,
+    "rotationPerformed": false,
+    "limit": "Visible public-prefix agreement does not independently prove the hidden private key's business binding or operational Inline TEST availability."
+  },
+  "initializationRequests": 0,
+  "newPaymentOperations": 0,
+  "liveRequests": 0,
+  "operatorConfirmation": {
+    "sameDashboardApiKeyRow": true,
+    "source": "Operator confirmation in this session",
+    "variables": [
+      "CHAPA_TEST_VALIDATION_PRIVATE_KEY",
+      "CHAPA_TEST_VALIDATION_PUBLIC_KEY"
+    ],
+    "businessNameProvided": false,
+    "independentlyVerifiedByProvider": false
+  },
+  "dedicatedConfiguration": {
+    "privateShape": "TEST private",
+    "publicShape": "TEST public",
+    "source": ".env",
+    "secretsIncluded": false
+  },
+  "dashboardAccess": {
+    "supportedInventoryChecked": true,
+    "apps": 0,
+    "browsers": 0,
+    "authenticatedDashboardAccessible": false,
+    "confirmation": "Latest supported inventory remained empty after the operator offered to open Coolify"
+  },
+  "originalOperation": {
+    "preserved": true,
+    "additionalInitializationReplaysThisFollowup": 0,
+    "evidence": "chapa-test-inline-diagnosis-2026-11-17.json"
+  },
+  "contract": {
+    "source": "https://docs.chapa.global/docs/v2/integrations/html-checkout",
+    "endpoint": "GET https://api.chapa.global/v2/payments/html",
+    "authorization": "Bearer dedicated TEST public key",
+    "bodyRequired": false,
+    "parametersRequired": false,
+    "paymentInitialization": false
+  },
+  "publicServiceCheck": {
+    "samples": 1,
+    "httpStatus": 200,
+    "headersMs": 944.9,
+    "completeMs": 948.9,
+    "operationStatus": "success",
+    "operatorOnlySanitizedMessage": "HTML Checkout is running",
+    "dataKeys": [
+      "stage",
+      "version"
+    ],
+    "serviceVersion": "2.0.0",
+    "serviceStage": "production",
+    "requestIds": {},
+    "requestIdAvailable": false
+  },
+  "proof": {
+    "sameRowOperatorAttestation": true,
+    "sameBusinessIndependentlyVerified": false,
+    "inlineTestAvailabilityConfirmed": false,
+    "successfulTestPaymentConfirmed": false,
+    "publicServiceResponseObserved": true,
+    "limit": "The public-key HTML health/service response does not establish business ownership of either key, operational Inline TEST initialization, a provider payment outcome, or a LIVE mode transaction.",
+    "publicServiceEnforcesAuthenticationInControl": true,
+    "publicServiceReturnedSameSuccessWithoutKey": false,
+    "publicKeyValidityEstablishedByServiceCheck": false,
+    "configuredPublicKeyServiceAccessObserved": true,
+    "authHeaderPresenceEnforced": true,
+    "invalidKeyControlTested": false
+  },
+  "supportMessageSent": false,
+  "publicServiceUnauthenticatedControl": {
+    "at": "2026-11-17T07:36:37.660Z",
+    "samples": 1,
+    "method": "GET",
+    "endpoint": "/v2/payments/html",
+    "authorizationHeaderSent": false,
+    "requestBodySent": false,
+    "httpStatus": 401,
+    "headersMs": 914.4,
+    "completeMs": 918.5,
+    "operationStatus": "error",
+    "operatorOnlySanitizedMessage": "Authorization header is required",
+    "providerCode": "UNAUTHORIZED",
+    "dataKeys": []
+  },
+  "supportHandoff": {
+    "packet": "../chapa-test-support-handoff-2026-11-17.md",
+    "requiredReplyFields": [
+      "business ID/name and TEST public/private pair ownership",
+      "Inline TEST enabled yes/no per offered method",
+      "payable prerequisite yes/no and exact documented setup",
+      "documented non-real simulator/OTP requirements per method for Inline",
+      "safe recovery instruction for retained unchanged original reference/payload/idempotency key"
+    ],
+    "sent": false
+  },
+  "exactBlocker": "No connected authenticated Chapa TEST dashboard or provider-support reply is available. The operator attested same API-key row, but the service check returns no business/Inline capability context."
+}

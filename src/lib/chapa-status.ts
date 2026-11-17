@@ -16,6 +16,7 @@ export function chapaPaymentPhase({order,opening,restoring,paused,error,errorCod
  if(restoring)return 'restoring';
  if(errorCode&&['UNAUTHORIZED','FORBIDDEN','NOT_FOUND'].includes(errorCode))return 'access';
  if(!order)return 'interrupted';
+ if(order.completionSignalPending)return 'confirming';
  if(chapaDirectRequestRejected(order))return 'review';
  if(errorCode==='CONFIGURATION_CHANGED'||order?.verificationState==='MISMATCH'||order?.status==='NEEDS_REVIEW'||order?.status==='BID_ACCEPTED'&&!order.receipt)return 'review';
  if(chapaVerifiedTerminal(order))return 'failed';

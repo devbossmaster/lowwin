@@ -1,0 +1,143 @@
+{
+  "date": "2026-11-17",
+  "scope": "Chapa browser CI follow-up; deterministic synthetic catalog fixture only",
+  "ci": {
+    "runId": 44051099101,
+    "jobId": 133928818832,
+    "url": "https://github.com/devbossmaster/lowwin/actions/runs/44051099101/job/133928818832",
+    "commit": "e86004ee3dd13c2ccf264f88918833678c9cf554",
+    "status": "completed",
+    "conclusion": "failure",
+    "productionBuild": "passed before Playwright started",
+    "configuredTests": 95,
+    "passed": 82,
+    "failed": 2,
+    "skipped": 11,
+    "browserDuration": "5.4 minutes",
+    "failedCases": [
+      "430 optimized normal launch, cached routes and sheet",
+      "430 optimized throttled launch, cached routes and sheet"
+    ],
+    "failure": "The exact 123 recorded views element was absent because the fixture card was outside the default first catalog page after Home navigation.",
+    "log": ".local/chapa-ci-browser-133928818832.log",
+    "logSha256": "646b790d8e8047ce32a452d3e92b6f81b756424731fd78093ddb254efbf21b14",
+    "artifact": {
+      "id": 14314381764,
+      "url": "https://github.com/devbossmaster/lowwin/actions/runs/44051099101/artifacts/14314381764",
+      "sha256": "11748dd1fef56eb81044dc92f3b2503d1fd06d2b651598f9232474e15c28a44d"
+    }
+  },
+  "artifactEvidence": [
+    {
+      "trace": "chapa-ui/nov7-browser-public-ui-opt-63b84-nch-cached-routes-and-sheet-430/trace.zip",
+      "frameUrls": [
+        "about:blank",
+        "https://localhost:3157/telegram?next=%2F%3Fq%3DNOV7%2520%25C2%25B7%2520Wireless%2520headphones",
+        "https://localhost:3157/?q=NOV7%20%C2%B7%20Wireless%20headphones",
+        "https://localhost:3157/winners",
+        "https://localhost:3157/"
+      ],
+      "homeResponses": [
+        {
+          "url": "https://localhost:3157/api/catalog/auctions?view=home&status=live&sort=featured&page=1",
+          "page": 1,
+          "pageSize": 10,
+          "total": 24,
+          "totalPages": 3,
+          "returnedItems": 10,
+          "markerPresent": false
+        }
+      ]
+    },
+    {
+      "trace": "chapa-ui/nov7-browser-public-ui-opt-c1b9a-nch-cached-routes-and-sheet-430/trace.zip",
+      "frameUrls": [
+        "about:blank",
+        "https://localhost:3157/telegram?next=%2F%3Fq%3DNOV7%2520%25C2%25B7%2520Wireless%2520headphones",
+        "https://localhost:3157/?q=NOV7%20%C2%B7%20Wireless%20headphones",
+        "https://localhost:3157/winners",
+        "https://localhost:3157/"
+      ],
+      "homeResponses": [
+        {
+          "url": "https://localhost:3157/api/catalog/auctions?view=home&status=live&sort=featured&page=1",
+          "page": 1,
+          "pageSize": 10,
+          "total": 24,
+          "totalPages": 3,
+          "returnedItems": 10,
+          "markerPresent": false
+        }
+      ]
+    }
+  ],
+  "confirmedCause": {
+    "initialHome": "Filtered by the owned synthetic marker",
+    "navigation": "Winners then canonical Home / with search cleared",
+    "defaultCatalog": {
+      "sort": "featured",
+      "page": 1,
+      "pageSize": 10,
+      "total": 24,
+      "totalPages": 3,
+      "returnedItems": 10,
+      "markerPresent": false
+    },
+    "applicationContract": "Default featured sorting orders featured auctions before newer non-featured auctions; pagination behaved as implemented.",
+    "classification": "Synthetic fixture discoverability, not a payment or application pagination defect."
+  },
+  "change": {
+    "file": "tests/nov7-browser/public-ui.spec.ts",
+    "details": "Set only the owned synthetic fixture featured in both creation and reuse branches.",
+    "applicationCodeChanged": false,
+    "productionChanged": false,
+    "preservedAssertions": [
+      "Canonical Home navigation",
+      "Exact 123 recorded views",
+      "Four countdown units",
+      "Status and view-count layout separation",
+      "Single-modal opening/closing",
+      "Header balance and notification/learn controls",
+      "Zero financial POSTs",
+      "Zero page errors",
+      "Mobile containment"
+    ]
+  },
+  "focusedProof": {
+    "environment": "Existing optimized production bundle, temporary localhost TLS, fresh migrated loopback database, synthetic signed identities, blank merchant keys and intercepted payment HTTP",
+    "seed": {
+      "totalLive": 16,
+      "pageSize": 10,
+      "markerInitiallyFeatured": false,
+      "markerOnDefaultPageBeforeFixtureSetup": false,
+      "newerNonFeaturedSiblings": 15
+    },
+    "cases": [
+      "360 normal",
+      "360 throttled",
+      "430 normal",
+      "430 throttled"
+    ],
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0,
+    "durationMs": 63356.095,
+    "artifactPrefix": ".local/chapa-public-pagination-20261117",
+    "databaseDropped": true,
+    "ownedServerStopped": true,
+    "retainedActualTestDatabasesTouched": false,
+    "typecheck": {
+      "command": "node node_modules/typescript/bin/tsc --noEmit --incremental false",
+      "exitCode": 0,
+      "log": ".local/chapa-public-pagination-20261117-typecheck.log"
+    },
+    "whitespaceCheck": "passed"
+  },
+  "safety": {
+    "providerPaymentRequestsMade": 0,
+    "liveCallsMade": 0,
+    "actualMerchantCredentialsUsed": false,
+    "realPhonesUsed": false
+  },
+  "status": "Fixture fix and focused proof complete; root will batch the fix with other CI harness corrections and run fresh CI."
+}

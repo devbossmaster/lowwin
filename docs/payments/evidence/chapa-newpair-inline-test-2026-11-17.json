@@ -1,0 +1,115 @@
+{
+  "at": "2026-11-17T08:08:10.743Z",
+  "scope": "actual Chapa v2 TEST API using updated dedicated key pair; fresh loopback PostgreSQL; no deployment",
+  "mode": "test",
+  "method": "telebirr",
+  "testDataOnly": true,
+  "liveFlagsOff": true,
+  "updatedPair": {
+    "samePrivateAsOriginal": false,
+    "samePublicAsOriginal": false,
+    "preflight": "chapa-updated-test-keys-2026-11-17.json"
+  },
+  "fixture": {
+    "source": "https://docs.chapa.global/docs/v2/testing/testing-mobile",
+    "successScenario": "v2 documented success simulator",
+    "directExampleOnly": true,
+    "inlineCompatibilityConfirmed": false,
+    "legacyFixturesUsed": false
+  },
+  "database": {
+    "fresh": true,
+    "name": "lowwin_chapa_newpair_c43fcdc5fbe1_test",
+    "allCurrentMigrationsApplied": true,
+    "signalMigrations": [
+      "202611170001_chapa_payment_signals",
+      "202611170002_chapa_signal_guards"
+    ],
+    "retained": true,
+    "originalDatabaseUntouched": true
+  },
+  "intent": {
+    "newSyntheticOwner": true,
+    "newOperation": true,
+    "referenceAndIdempotencyDistinctFromOriginal": true,
+    "committedBeforeHTTP": true,
+    "initializationPayloadHash": "aa54a0d258e0d6d1388dca0ce12eb1885188f659869f93b47bb5df2b4ddff3dc",
+    "immutableBindingToUpdatedPair": true
+  },
+  "providerCalls": {
+    "methods": 1,
+    "initialize": 1,
+    "validate": 0,
+    "verify": 0
+  },
+  "http": [
+    {
+      "at": "2026-11-17T08:08:19.652Z",
+      "operation": "methods",
+      "outsideFinancialTransaction": true,
+      "httpStatus": 200,
+      "headersMs": 898.3,
+      "safeMessage": "Payment methods retrieved successfully",
+      "detailsPresent": false,
+      "requestId": null
+    },
+    {
+      "at": "2026-11-17T08:08:20.709Z",
+      "operation": "initialize",
+      "outsideFinancialTransaction": true,
+      "httpStatus": 400,
+      "headersMs": 944,
+      "safeMessage": "payable not found",
+      "code": "INVALID_VALUE",
+      "detailsPresent": false,
+      "requestId": null
+    }
+  ],
+  "samples": [
+    {
+      "stage": "initialization",
+      "serverTiming": "lookup;dur=4.9, schema;dur=106.6, capabilities;dur=988.1, transaction_wait;dur=6.0, locks;dur=23.3, eligibility;dur=4.7, intent;dur=23.8, prepare;dur=94.2, dispatch;dur=1103.1, initialize;dur=968.9, persist;dur=19.1, total;dur=2095.0",
+      "status": "NEEDS_REVIEW",
+      "authType": null,
+      "initializationHttpStatus": 400,
+      "initializationErrorCode": "INVALID_VALUE"
+    }
+  ],
+  "result": {
+    "status": "NEEDS_REVIEW",
+    "providerStatus": null,
+    "verificationState": "UNAVAILABLE",
+    "creditCount": 0,
+    "walletBalance": "0",
+    "ledgerReconciles": true,
+    "ownedDTOStatus": "NEEDS_REVIEW",
+    "ownedDTOMatches": true,
+    "otherOwnerDenied": true,
+    "receiptPresent": false,
+    "intentCommittedBeforeHTTP": true,
+    "providerCalls": {
+      "methods": 1,
+      "initialize": 1,
+      "validate": 0,
+      "verify": 0
+    },
+    "webhooksReceived": 0,
+    "databaseRetained": true
+  },
+  "stoppedAfterRejectedInitialization": true,
+  "additionalMethodsAttempted": 0,
+  "duplicatesOrReplaysAttempted": 0,
+  "actualWebhookSamples": 0,
+  "deployedTLSCommitToRenderSamples": 0,
+  "physicalTelegramSamples": 0,
+  "notRun": [
+    "Inline validation: initialization rejected without authorization reference",
+    "Private settlement verification: no accepted initialization",
+    "CBE Birr: stopped after first Telebirr rejection",
+    "M-Pesa: no matching v2 documented 07-prefix fixture established",
+    "Actual webhook: no reachable isolated receiver configured",
+    "Coolify TLS WEB + worker + Redis: authenticated staging discovery pending",
+    "Physical Telegram: user deferred"
+  ],
+  "limit": "New credentials passed service checks but the single Inline TEST request still returned payable not found. The exact merchant/Inline TEST prerequisite remains unconfirmed. No success, settlement, deployed transport, or device claim is supported."
+}

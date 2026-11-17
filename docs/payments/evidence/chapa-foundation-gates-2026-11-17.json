@@ -1,0 +1,107 @@
+{
+  "runId": 44036042628,
+  "jobId": 133879172168,
+  "baseline": "e7d25f2",
+  "comparedCommit": "4c3bbcb",
+  "readOnlySourceComparison": true,
+  "comparisonCommand": "git diff --name-only e7d25f2..4c3bbcb -- <notification/bot/admin/profile/results/media sources and these six test files>",
+  "sourceDiffEmpty": true,
+  "baselineExecutionPerformed": true,
+  "proofLimit": "Actual baseline and head 108-case reproduction is now complete under matching local Windows/Node/PostgreSQL conditions. Historical failure inventory below is retained; final Linux CI remains authoritative for aggregate status.",
+  "remainingHistoricalSchemaSetupFailure": {
+    "file": "tests/chapa-schema.test.ts",
+    "blockedTests": 9,
+    "attemptedRepairRetained": true,
+    "status": "repaired in test fixture; all nine cases passed in 108-case rerun"
+  },
+  "note": "Do not sum overlapping counts. No retired notifications were restored and no privacy or financial contract was weakened.",
+  "historicalSnapshot": true,
+  "baselineExecutionEvidence": "../../chapa-foundation-baseline-reproduction-2026-11-17.json",
+  "historicalFailures": [
+    {
+      "file": "tests/admin-wallet-credit.test.ts",
+      "test": "admin funds on disposable PostgreSQL > commits exact funds, owner attribution, one private alert and one queued bot message without a transaction ID"
+    },
+    {
+      "file": "tests/admin-wallet-credit.test.ts",
+      "test": "admin funds on disposable PostgreSQL > delivers the committed credit through the existing bot dispatcher and retries a transport failure without adding funds again"
+    },
+    {
+      "file": "tests/database.test.ts",
+      "test": "isolated PostgreSQL foundation > processes queued bot commands once across workers and retries failed delivery"
+    },
+    {
+      "file": "tests/operations.test.ts",
+      "test": "Master Guide Admin operations and private alerts > schedules an upcoming reminder once and deduplicates recipient jobs in the database"
+    },
+    {
+      "file": "tests/operations.test.ts",
+      "test": "Master Guide Admin operations and private alerts > schedules global closing alerts once and suppresses stale future events"
+    },
+    {
+      "file": "tests/operations.test.ts",
+      "test": "Master Guide Admin operations and private alerts > uses intercepted grammY transport, respects 429 and blocked chats with bounded retries"
+    },
+    {
+      "file": "tests/operations.test.ts",
+      "test": "Master Guide Admin operations and private alerts > documents and tests crash-after-send replay without repeating points or inbox entries"
+    },
+    {
+      "file": "tests/operations.test.ts",
+      "test": "Master Guide Admin operations and private alerts > queues an Owner-only image broadcast idempotently with a personalized Bid button"
+    },
+    {
+      "file": "tests/operations.test.ts",
+      "test": "Master Guide Admin operations and private alerts > fans global events past 500 users without duplicate recipients or post-event signups"
+    },
+    {
+      "file": "tests/operations.test.ts",
+      "test": "Master Guide Admin operations and private alerts > keeps ordinary bid receipts in the inbox without sending an extra Telegram category"
+    },
+    {
+      "file": "tests/operations.test.ts",
+      "test": "Master Guide Admin operations and private alerts > stops remaining batches and retries after an in-flight broadcast send finishes"
+    },
+    {
+      "file": "tests/own-contact.test.ts",
+      "test": "required own-contact boundary > commits contact without Telegram calls and deduplicates its durable confirmation"
+    },
+    {
+      "file": "tests/personal.test.ts",
+      "test": "Phase 4B public outcomes and private pages on PostgreSQL > shows only allowlisted winner identity and a verified masked phone, without private proof or other bidders"
+    },
+    {
+      "file": "tests/personal.test.ts",
+      "test": "Phase 4B public outcomes and private pages on PostgreSQL > filters real notifications by category and never reads or marks another customer’s inbox"
+    },
+    {
+      "file": "tests/personal.test.ts",
+      "test": "Phase 4B public outcomes and private pages on PostgreSQL > shows genuine settled draws, honest pending/cancelled states and no illustrative winners"
+    },
+    {
+      "file": "tests/winner-photo-db.test.ts",
+      "test": "winner presentation on isolated PostgreSQL > adds, replaces and resets the photo while all winning and ledger facts remain identical"
+    }
+  ],
+  "finalRepairs": {
+    "productionCodeChanged": false,
+    "cohortPassed": 108,
+    "cohortFailed": 0,
+    "cohortSkipped": 0,
+    "localFull": {
+      "filesPassed": 275,
+      "filesTotal": 276,
+      "assertionsPassed": 3175,
+      "assertionFailures": 0,
+      "blockedCases": 7,
+      "cause": "Windows cleanup EPERM before contact suite"
+    },
+    "correctedContactSuite": {
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    "finalTypeScript": "passed",
+    "linuxFullGate": "must reach terminal after frozen repair batch push"
+  }
+}

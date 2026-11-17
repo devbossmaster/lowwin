@@ -14,6 +14,12 @@ const phase=(value:ChapaCheckoutView,error='')=>chapaPaymentPhase({order:value,o
 const render=(value:ChapaCheckoutView,patch:Partial<ReturnType<typeof useChapaPayment>>={})=>renderToStaticMarkup(createElement(MiniLocaleProvider,{initialLanguage:'en',children:createElement(ChapaPaymentStatus,{payment:{order:value,opening:false,restoring:false,paused:false,error:'',busy:false,attempt:null,handoff:'idle',canStartAgain:false,...patch} as ReturnType<typeof useChapaPayment>})}));
 
 describe('safe reasons from matched merchant verification',()=>{
+ it('keeps a retained completion signal checking despite stale retry capability, initialization rejection and hosted continuation',()=>{
+  const value=order({status:'PENDING',providerStatus:'FAILED',completionSignalPending:true,initializationIssue:'request',reason:'INITIALIZATION_REJECTED',checkoutUrl:'https://checkout.chapa.global/owned-original'});
+  const html=render(value,{canStartAgain:true});expect(html).toContain('Payment status: Checking original payment');
+  for(const absent of ['Start new checkout','Continue checkout','Retry original request','reports insufficient funds','Checkout could not start'])expect(html).not.toContain(absent);
+  const noUrl=render({...value,checkoutUrl:null},{canStartAgain:true});expect(noUrl).not.toContain('Check the phone number');expect(noUrl).not.toContain('Start new checkout');
+ });
  it.each([
   ['request','Check the phone number, payment method and amount'],
   ['reference','The original payment needs confirmation'],
@@ -66,8 +72,8 @@ describe('safe reasons from matched merchant verification',()=>{
  it.each(['INSUFFICIENT_FUNDS','insufficient balance.','INVALID_PIN','INCORRECT_PIN','WRONG_PIN','INVALID_OTP','AUTHORIZATION_REQUIRED'])('recognizes only an exact known reason: %s',value=>expect(safeChapaPaymentReason(value)).not.toBeNull());
  it.each([
   ["You don't have enough balance to make this payment",'INSUFFICIENT_FUNDS'],
-  ['This customer did not active Credit Pay service','INSUFFICIENT_FUNDS'],
-  ['OTP verification failed with Ahadu','INVALID_OTP'],
+  ['This customer did not active Credit Pay service','AUTHORIZATION_FAILED'],
+  ['OTP verification failed with Ahadu','AUTHORIZATION_FAILED'],
   ['Invalid/unrecognized account number.','PAYMENT_ACCOUNT_NOT_FOUND'],
   ['Please make sure your phone number is correct','PAYMENT_ACCOUNT_NOT_FOUND'],
  ])('recognizes the exact documented bank reason %s without matching appended payer details',(reason,expected)=>{
@@ -111,10 +117,10 @@ describe('safe reasons from matched merchant verification',()=>{
  });
  it('keeps old pending attempts honest while allowing only an unexpired checkout link',()=>{
   const value=order({status:'PENDING',providerStatus:'PENDING',verificationState:'VERIFIED',reason:'PAYMENT_NOT_COMPLETED',providerReasonCode:null,createdAt:new Date(Date.now()-360000).toISOString(),expiresAt:new Date(Date.now()+60000).toISOString(),checkoutUrl:'https://checkout.chapa.global/payment/hosted/APOldPending'});
-  expect(chapaStatusLabel(value)).toBe('Pending');expect(phase(value)).toBe('pending');
+  expect(chapaStatusLabel(value)).toBe('Waiting for confirmation');expect(phase(value)).toBe('pending');
   const waiting=render(value);expect(waiting).toContain('Continue checkout');expect(waiting).not.toContain('Checkout session ended');
   const recordedExpiry={...value,expiresAt:new Date(Date.now()-1000).toISOString()};
-  expect(chapaStatusLabel(recordedExpiry)).toBe('Pending');expect(phase(recordedExpiry)).toBe('pending');
+  expect(chapaStatusLabel(recordedExpiry)).toBe('Waiting for confirmation');expect(phase(recordedExpiry)).toBe('pending');
   const expiredLink=render(recordedExpiry);expect(expiredLink).not.toContain('Continue checkout');expect(expiredLink).not.toContain('Checkout session ended');expect(recordedExpiry.status).toBe('PENDING');
  });
 });

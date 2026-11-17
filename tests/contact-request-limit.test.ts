@@ -1,7 +1,8 @@
 import {PrismaClient} from '@prisma/client';
 import {execFileSync} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
-import {cpSync,mkdtempSync,rmSync} from 'node:fs';
+import {cpSync,mkdtempSync} from 'node:fs';
+import {rm} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {tmpdir} from 'node:os';
 import {join,resolve,sep} from 'node:path';
@@ -49,7 +50,9 @@ describe.skipIf(!url)('atomic contact-request cooldown on disposable PostgreSQL'
     } finally {
       const target=resolve(migrationDir);
       if(!target.startsWith(temporaryRoot+sep)||!target.slice(temporaryRoot.length+1).startsWith('lowwin-contact-limiter-'))throw Error('Unexpected migration fixture directory');
-      rmSync(target,{recursive:true,force:true});
+      // Windows may briefly retain Prisma's working-directory handle after its
+      // process exits. Retry EPERM with bounded backoff; permanent failures throw.
+      await rm(target,{recursive:true,force:true,maxRetries:10,retryDelay:100});
     }
     db = new PrismaClient({datasourceUrl: url});
     otherClient = new PrismaClient({datasourceUrl: url});

@@ -32,6 +32,7 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
  const currentInline=!!order&&chapaCurrentInline(order),hosted=currentInline&&order?.chargeType==='HOSTED';
  const otpNeeded=phase==='authorization'&&order?.authType==='OTP';
  const finished=phase==='success'||phase==='preserved';
+ const completionPending=!finished&&order?.completionSignalPending===true;
  const terminal=phase==='terminal';
  const authorizationError=bidPaymentAuthorizationError(order);
  const numbers=receipt?.batch.lines.map(line=>line.number)??(order?.batchNumbers?.length?order.batchNumbers:order?.batch?.lines.map(line=>line.number))??(order?.bidNumber?[order.bidNumber]:summary.numbers);
@@ -41,18 +42,19 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
  const providerName=provider==='coupon'?text('Coupon','ኩፖን'):provider==='wallet'?text('LowWin Wallet','LowWin ዋሌት'):provider?providerNames[provider]??text('Payment provider','የክፍያ አቅራቢ'):text('Payment provider','የክፍያ አቅራቢ');
  const phone=maskedBidPaymentPhone(order?.payerPhoneMasked??summary.phone);
  const title=am?order?.auctionTitleAm||summary.auctionTitleAm||order?.auctionTitle||summary.auctionTitle:order?.auctionTitle||summary.auctionTitle;
- const safeReason=order?chapaPaymentReasonMessage(order,am)??chapaRequestReasonMessage(order.initializationReasonCode,am):null;
- const requestReason=chapaRequestReasonMessage(payment.errorCode,am);
+ const safeReason=order&&!completionPending?chapaPaymentReasonMessage(order,am)??chapaRequestReasonMessage(order.initializationReasonCode,am):null;
+ const requestReason=completionPending?null:chapaRequestReasonMessage(payment.errorCode,am);
  const invalidOtp=otpNeeded&&(payment.errorCode==='INVALID_OTP'||order?.authorizationReasonCode==='INVALID_OTP');
  const reasonMessage=!finished?(invalidOtp?text('That code was not accepted. Check the code and try again.','ኮዱ አልተቀበለም። ኮዱን ያረጋግጡና እንደገና ይሞክሩ።'):safeReason??chapaRequestReasonMessage(authorizationError,am)??requestReason):null;
  const connectionDelayed=!finished&&!terminal&&!authorizationError&&!invalidOtp&&!requestReason&&bidPaymentConnectionDelayed({...payment,error:payment.error||error,now});
+ const supportReference=order?.merchantReference??order?.id??payment.directAttempt?.key;
  const safeRetry=terminal&&bidPaymentCanRetry(order)&&payment.canStartAgain&&!busy;
  const retryAction=onChangePayment??onRetry;
  const canRetryOriginal=phase==='uncertain'&&!authorizationError&&!busy&&!!payment.directAttempt&&bidPaymentCanRetryOriginal(order);
  // A slow display clock is not a reason to ask the customer to verify. The
  // existing poller owns active checks; expose recovery only when it is paused
  // or the original request has an uncertain outcome.
- const hostedUrl=hosted&&!finished&&!terminal&&order.providerStatus!=='SUCCESS'&&order.verificationState!=='MISMATCH'&&Date.parse(order.expiresAt)>now?chapaCheckoutUrl(order.checkoutUrl):null;
+ const hostedUrl=hosted&&!completionPending&&!finished&&!terminal&&order.providerStatus!=='SUCCESS'&&order.verificationState!=='MISMATCH'&&Date.parse(order.expiresAt)>now?chapaCheckoutUrl(order.checkoutUrl):null;
  const canCheck=(hosted||phase==='uncertain'||payment.paused&&(phase==='confirming'||phase==='authorization'&&!otpNeeded))&&(!!order||payment.started&&(!payment.directAttempt||!!chapaOriginalKeyUrl(payment.directAttempt))&&!walletRetry)&&!finished&&!terminal;
  const normalWaiting=!finished&&!terminal&&!otpNeeded&&!canCheck&&!hostedUrl&&!(phase==='uncertain'&&walletRetry&&onRetryWallet)&&!!onClose;
  const headings:Record<BidPaymentProgressPhase,[string,string]>={
@@ -72,10 +74,11 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
   confirming:[order?.providerStatus==='SUCCESS'?(deposit?'Payment received. We are confirming your wallet credit.':'Payment received. Waiting for LowWin to accept your bids.'):'Waiting for your provider’s confirmation. This page updates automatically.',order?.providerStatus==='SUCCESS'?(deposit?'ክፍያዎ ደርሷል። የዋሌት ገቢዎን በማረጋገጥ ላይ ነን።':'ክፍያዎ ደርሷል። LowWin ጨረታዎችዎን እስኪቀበል እየጠበቅን ነው።'):'የክፍያ አቅራቢዎን ማረጋገጫ በመጠባበቅ ላይ ነን። ይህ ገጽ በራሱ ይዘምናል።'],
   success:[deposit?'Your available balance has been updated.':'Your bids are ready in My Bids.',deposit?'ለመጠቀም የሚችሉት ቀሪ ሂሳብ ተዘምኗል።':'ጨረታዎችዎን በእኔ ጨረታዎች ማየት ይችላሉ።'],
   preserved:['Your bids were not accepted. The payment is available in your LowWin wallet.','ጨረታዎችዎ አልተቀበሉም። ክፍያው በLowWin ዋሌትዎ ውስጥ ይገኛል።'],
-  terminal:[deposit?'Try again to review your amount and payment details.':'Try again to review your bids and payment details.',deposit?'መጠኑንና የክፍያ ዝርዝሮችዎን ለማየት እንደገና ይሞክሩ።':'ጨረታዎችዎንና የክፍያ ዝርዝሮችዎን ለማየት እንደገና ይሞክሩ።'],
-  uncertain:[walletRetry?'Confirm the result by retrying the original payment.':'Check this original payment before paying again.',walletRetry?'የመጀመሪያውን ክፍያ እንደገና በመሞከር ውጤቱን ያረጋግጡ።':'እንደገና ከመክፈልዎ በፊት ይህንኑ ክፍያ ያረጋግጡ።'],
+  terminal:[order?.status==='INCOMPLETE'?'Payment authorization was not completed.':order?.status==='BLOCKED'?'Your provider blocked this payment. Contact your provider for help.':order?.status==='CANCELLED'?'This payment was cancelled.':order?.status==='EXPIRED'?'Your provider’s payment authorization expired.':order?.status==='FAILED'?'Your provider could not complete this payment.':deposit?'Try again to review your amount and payment details.':'Try again to review your bids and payment details.',order?.status==='INCOMPLETE'?'የክፍያ ፈቃዱ አልተጠናቀቀም።':order?.status==='BLOCKED'?'የክፍያ አቅራቢዎ ይህን ክፍያ አግዶታል። እርዳታ ለማግኘት አቅራቢዎን ያነጋግሩ።':order?.status==='CANCELLED'?'ይህ ክፍያ ተሰርዟል።':order?.status==='EXPIRED'?'የክፍያ አቅራቢዎ የክፍያ ፈቃድ ጊዜ አልፏል።':order?.status==='FAILED'?'የክፍያ አቅራቢዎ ይህን ክፍያ ማጠናቀቅ አልቻለም።':deposit?'መጠኑንና የክፍያ ዝርዝሮችዎን ለማየት እንደገና ይሞክሩ።':'ጨረታዎችዎንና የክፍያ ዝርዝሮችዎን ለማየት እንደገና ይሞክሩ።'],
+  uncertain:[walletRetry?'Confirm the result by retrying the original payment.':'We are still checking the original payment. Please do not pay again yet.',walletRetry?'የመጀመሪያውን ክፍያ እንደገና በመሞከር ውጤቱን ያረጋግጡ።':'የጀመሩትን ክፍያ እያረጋገጥን ነው። እስከዚያው ድረስ እንደገና አይክፈሉ።'],
  };
  if(authorizationError&&!terminal)headings[phase]=['Payment authorization stopped','የክፍያ ፈቃዱ ቆሟል'];
+ if(completionPending&&order?.providerStatus!=='SUCCESS')messages.confirming=['We are still checking the original payment. Please do not pay again yet.','የጀመሩትን ክፍያ እያረጋገጥን ነው። እስከዚያው ድረስ እንደገና አይክፈሉ።'];
  if(internalWallet&&!finished){
   if(preparing||busy){headings[phase]=['Paying from your wallet…','ከዋሌትዎ በመክፈል ላይ…'];messages[phase]=['Accepting your selected bids.','የመረጧቸውን ጨረታዎች በመቀበል ላይ ነን።']}
   else if(walletRetry){headings[phase]=['Confirm your wallet payment','የዋሌት ክፍያዎን ያረጋግጡ'];messages[phase]=['Retry the original request to retrieve its result. This will not create a second debit.','ውጤቱን ለማግኘት የመጀመሪያውን ጥያቄ ይድገሙ። ሁለተኛ ክፍያ አይፈጥርም።']}
@@ -93,6 +96,7 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
   <div className={styles.stateIcon} data-tone="attention"><TriangleAlert size={25} aria-hidden="true"/></div>
   <h3>{text('Historical payment','የቆየ ክፍያ')}</h3>
   <p>{text('This payment is read-only. Its recorded status is available in Transactions. Contact support if it still needs review.','ይህ ክፍያ ለማየት ብቻ ነው። የተመዘገበውን ሁኔታ በግብይቶች ይመልከቱ። ማረጋገጥ ካስፈለገው እርዳታ ይጠይቁ።')}</p>
+  {supportReference&&<p className={styles.connection} data-payment-support-reference>{text('Support reference','የእርዳታ መለያ')}: {supportReference}</p>}
   <div className={styles.actions}><Link className={styles.primary} href="/payments" onClick={onClose}>{text('Transactions','ግብይቶች')}</Link>{onClose&&<button type="button" className={styles.outline} onClick={onClose}>{text('Close','ዝጋ')}</button>}</div>
  </section>;
 
@@ -106,7 +110,8 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
     <div className={styles.stateIcon} aria-hidden="true">{finished?<Check size={27}/>:terminal||authorizationError||order?.verificationState==='MISMATCH'?<TriangleAlert size={26}/>:otpNeeded?<Smartphone size={27}/>:<LoaderCircle className={styles.spin} size={27} data-bid-submitting={phase==='preparing'||undefined}/>}</div>
     <div role={reasonMessage?'alert':'status'} aria-live={reasonMessage?'assertive':'polite'} aria-atomic="true"><h3 id={`${id}-heading`}>{text(...headings[phase])}</h3><p className={reasonMessage?styles.reason:undefined} data-payment-reason={reasonMessage?true:undefined}>{reasonMessage??text(...messages[phase])}</p></div>
    </div>
-   {connectionDelayed&&<p className={styles.connection} role="status" data-payment-connection>{text('We’re still checking...','በማረጋገጥ ላይ...')}</p>}
+   {connectionDelayed&&<p className={styles.connection} role="status" data-payment-connection>{text('We’re still checking the original payment. Do not pay again.','የመጀመሪያውን ክፍያ እያረጋገጥን ነው። እንደገና አይክፈሉ።')}</p>}
+   {!finished&&(phase==='uncertain'||connectionDelayed||completionPending)&&supportReference&&<p className={styles.connection} data-payment-support-reference>{text('Support reference','የእርዳታ መለያ')}: {supportReference}</p>}
    <dl className={styles.summary}>
     {deposit?<div><dt>{text('For','ለ')}</dt><dd>{text('Wallet top-up','የዋሌት ገቢ')}</dd></div>:<><div><dt>{text('Auction','ጨረታ')}</dt><dd className={styles.auction}>{title}</dd></div><div><dt>{text(numbers.length===1?'Your bid amount':'Bid count',numbers.length===1?'የጨረታ መጠንዎ':'የጨረታ ብዛት')}</dt><dd>{numbers.length===1?numbers[0]:numbers.length?text(`${numbers.length} selected`,`${numbers.length} ተመርጠዋል`):'—'}</dd></div></>}
     <div className={styles.total}><dt>{text(finished?'Paid':'Total payable',finished?'የተከፈለ':'ጠቅላላ ክፍያ')}</dt><dd>{total===null?'—':formatEtb(total)}</dd></div>

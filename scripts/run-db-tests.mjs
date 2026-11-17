@@ -14,7 +14,7 @@ if(!['unit','browser','payments','smoke','redesign','admin','chapa','nov7'].incl
 // Normal CI supplies no files and still runs every suite with the no-skip gate.
 const files=process.argv.slice(3);
 if(files.length&&(mode!=='unit'||files.some(file=>!/^tests\/[a-z0-9-]+\.test\.ts$/.test(file)||!existsSync(file))))throw Error('Unit subsets must name existing tests/name.test.ts files.');
-const variables=['TEST_DATABASE_URL','BID_TEST_DATABASE_URL','SETTLEMENT_TEST_DATABASE_URL','PERSONAL_TEST_DATABASE_URL','ADMIN_TEST_DATABASE_URL','MASTER_ADMIN_TEST_DATABASE_URL','OPS_TEST_DATABASE_URL','PAYMENT_TEST_DATABASE_URL','ARIFPAY_TEST_DATABASE_URL','CHAPA_TEST_DATABASE_URL','CHAPA_DIRECT_TEST_DATABASE_URL','ADMIN_CREDIT_TEST_DATABASE_URL','ACTIVITY_TEST_DATABASE_URL','CATALOG_WORKFLOW_TEST_DATABASE_URL','CATALOG_TEST_DATABASE_URL','REFERRAL_TEST_DATABASE_URL','RESULT_TEST_DATABASE_URL','DEPOSIT_BONUS_GUARD_TEST_DATABASE_URL','TELEGRAM_BROWSER_TEST_DATABASE_URL'];
+const variables=['TEST_DATABASE_URL','BID_TEST_DATABASE_URL','SETTLEMENT_TEST_DATABASE_URL','PERSONAL_TEST_DATABASE_URL','ADMIN_TEST_DATABASE_URL','MASTER_ADMIN_TEST_DATABASE_URL','OPS_TEST_DATABASE_URL','PAYMENT_TEST_DATABASE_URL','ARIFPAY_TEST_DATABASE_URL','CHAPA_TEST_DATABASE_URL','CHAPA_DIRECT_TEST_DATABASE_URL','CHAPA_SPEED_TEST_DATABASE_URL','CHAPA_INLINE_TEST_DATABASE_URL','WALLET_BATCH_TEST_DATABASE_URL','WINNER_BANNER_TEST_DATABASE_URL','RESULT_NOTIFICATION_TEST_DATABASE_URL','ADMIN_PAYMENT_TABLE_TEST_DATABASE_URL','NOTIFICATION_DURABILITY_TEST_DATABASE_URL','ADMIN_CREDIT_TEST_DATABASE_URL','ACTIVITY_TEST_DATABASE_URL','CATALOG_WORKFLOW_TEST_DATABASE_URL','CATALOG_TEST_DATABASE_URL','REFERRAL_TEST_DATABASE_URL','RESULT_TEST_DATABASE_URL','DEPOSIT_BONUS_GUARD_TEST_DATABASE_URL','TELEGRAM_BROWSER_TEST_DATABASE_URL','OWN_CONTACT_TEST_DATABASE_URL'];
 const env={...process.env};
 const admin=new URL(base);admin.pathname='/postgres';
 const client=new Client({connectionString:admin.href});
@@ -28,8 +28,8 @@ try {
   }
 } finally {await client.end();}
 env.DATABASE_URL=env.DIRECT_URL=env.TEST_DATABASE_URL;
-if(mode==='chapa'||mode==='nov7')Object.assign(env,{CHAPA_TEST_DATABASE_URL:env.TEST_DATABASE_URL,CHAPA_ENABLED:'false',CHAPA_RECOVERY_ENABLED:'false',CHAPA_SCHEMA_READY:'false',CHAPA_MODE:'test',CHAPA_PRIVATE_KEY:'',CHAPA_WEBHOOK_SECRET:'',CHAPA_RECOVERY_BINDINGS:'',CHAPA_LIVE_ENABLED:'false',CHAPA_MERCHANT_REVIEWED:'false',CHAPA_DIRECT_EBIRR_ENABLED:'false',WALLET_BIDS_ENABLED:'false',WALLET_BIDS_LIVE_ENABLED:'false',PAYMENTS_LIVE_ENABLED:'false',ARIFPAY_ENABLED:'false'});
-if(mode==='nov7'){
+if(mode==='chapa'||mode==='nov7')Object.assign(env,{REDIS_URL:'',CHAPA_TEST_DATABASE_URL:env.TEST_DATABASE_URL,CHAPA_ENABLED:'false',CHAPA_INLINE_ENABLED:'false',CHAPA_RECOVERY_ENABLED:'false',CHAPA_SCHEMA_READY:'false',CHAPA_MODE:'test',CHAPA_PRIVATE_KEY:'',CHAPA_PUBLIC_KEY:'',CHAPA_WEBHOOK_SECRET:'',CHAPA_TEST_VALIDATION_PRIVATE_KEY:'',CHAPA_TEST_VALIDATION_PUBLIC_KEY:'',CHAPA_TEST_VALIDATION_WEBHOOK_SECRET:'',CHAPA_V1_ENABLED:'false',CHAPA_V1_RECOVERY_ENABLED:'false',CHAPA_V1_SECRET_KEY:'',CHAPA_V1_PUBLIC_KEY:'',CHAPA_V1_WEBHOOK_SECRET:'',CHAPA_RECOVERY_BINDINGS:'',CHAPA_LIVE_ENABLED:'false',CHAPA_MERCHANT_REVIEWED:'false',CHAPA_DIRECT_EBIRR_ENABLED:'false',WALLET_BIDS_ENABLED:'false',WALLET_BIDS_LIVE_ENABLED:'false',PAYMENTS_LIVE_ENABLED:'false',ARIFPAY_ENABLED:'false'});
+if(mode==='chapa'||mode==='nov7'){
  const port=Number(env.NOV7_PORT??3157);if(!Number.isSafeInteger(port)||port<1024||port>65535)throw Error('Invalid isolated November browser port.');
  const origin=`https://localhost:${port}`;
  // Build and runtime use the same isolated fixture identity configuration.
@@ -41,7 +41,9 @@ mkdirSync('test-results/release',{recursive:true});
 writeFileSync(`test-results/release/${mode}-databases.json`,JSON.stringify(names,null,2));
 const run=(args)=>{const r=spawnSync(process.execPath,args,{env,stdio:'inherit'});if(r.status!==0)process.exit(r.status??1)};
 if(mode==='unit') {
-  run(['node_modules/vitest/vitest.mjs','run',...files,'--reporter=default','--reporter=json','--outputFile=test-results/release/unit.json']);
+  // Redis owns a separate required CI job and isolated service. All database
+  // opt-ins still execute here, with the existing zero-skips release gate.
+  run(['node_modules/vitest/vitest.mjs','run',...files,'--exclude=tests/chapa-committed-redis.test.ts','--reporter=default','--reporter=json','--outputFile=test-results/release/unit.json']);
   const report=JSON.parse(readFileSync('test-results/release/unit.json','utf8'));
   if(report.numPendingTests||report.numTodoTests)throw Error('Release requires every opt-in database test to execute.');
 } else {
@@ -52,10 +54,10 @@ if(mode==='unit') {
     run(['node_modules/next/dist/bin/next','build','--webpack']);
     env.NODE_ENV=runtimeNodeEnv??'development';
   }else if(mode!=='chapa'&&mode!=='nov7')run(['node_modules/tsx/dist/cli.mjs','scripts/seed-catalog.ts']);
-  if(mode==='nov7'){
+  if(mode==='chapa'||mode==='nov7'){
     const runtimeNodeEnv=env.NODE_ENV;env.NODE_ENV='production';
     run(['node_modules/next/dist/bin/next','build','--webpack']);
-    env.NODE_ENV=runtimeNodeEnv??'development';
+    env.NODE_ENV=mode==='chapa'?'production':runtimeNodeEnv??'development';
   }
   if(mode==='redesign'&&env.REDESIGN_PRODUCTION==='1'){
     env.LOWIN_UI_TEST_MODE='local';

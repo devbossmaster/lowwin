@@ -1,0 +1,292 @@
+{
+  "at": "2026-11-17T08:34:39.230Z",
+  "workflowRun": 44038433916,
+  "job": 133887030702,
+  "jobUrl": "https://github.com/devbossmaster/lowwin/actions/runs/44038433916/job/133887030702",
+  "head": "4778d19a06626bd8be48f82cb7f0f00bafa053ae",
+  "baseline": "e7d25f2c2a2376f65390a83b02dafbbc95366d4b",
+  "conclusion": "cancelled",
+  "configuredJobTimeoutMinutes": 25,
+  "startedAt": "2026-11-17T07:24:44Z",
+  "cancelledAt": "2026-11-17T07:49:56Z",
+  "cancellationAssessment": "Timing matches the configured 25-minute limit after long failing assertions. The log does not identify a cancellation actor. Setup and production build succeeded.",
+  "plannedTests": 74,
+  "reportedBeforeCancellation": {
+    "passed": 11,
+    "failed": 19,
+    "skipped": 1,
+    "width": 360,
+    "remainingWithoutReportedTerminalResult": 43
+  },
+  "longestFailure": {
+    "case": "home-return-reuse.spec.ts:7",
+    "durationMs": 480000,
+    "cause": "Waiting for absent Profile link instead of current Me link"
+  },
+  "artifact": {
+    "id": 14309373222,
+    "bytes": 107394513,
+    "sha256": "d0a0911f105b91c2fc1b07867068e387e67a007d163fd21a186fabd85de57f90"
+  },
+  "cases": [
+    {
+      "trace": "test-results/redesign/auction-browser-sheet-ui-a-f6156-ss-compact-sheet-navigation-360/trace.zip",
+      "observedCause": "Duplicate live-count locator matches header and bottom navigation",
+      "ciError": "Error: expect(locator).toHaveText(expected) failed\n\nLocator: locator('[data-live-auction-indicator]')\nExpected: \"8\"\nError: strict mode violation: locator('[data-live-auction-indicator]') resolved to 2 elements:\n    1) <span aria-hidden=\"true\" class=\"header-panels_badge__7xXWI\" data-live-auction-indicator=\"true\">8</span> aka getByRole('navigation', { name: 'Account controls' }).getByLabel('Browse auctions, 8 live')\n    2) <span aria-hidden=\"true\" class=\"header-panels_badge__7xXWI\" data-live-auction-indicator=\"true\">8</span> aka getByRole('navigation', { name: 'Your navigation' }).getByLabel('Browse auctions, 8 live')\n\nCall log:\n  - Expect \"toHaveText\" with timeout 60000ms\n  - waiting for locator('[data-live-auction-indicator]')\n",
+      "representativeDOMReproducedOnBaselineAndHead": true,
+      "exactOriginalCaseBaselineRun": false
+    },
+    {
+      "trace": "test-results/redesign/auction-browser-sheet-ui-d-446e4-and-refresh-content-visible-360/trace.zip",
+      "observedCause": "Duplicate live-count locator matches header and bottom navigation",
+      "ciError": "Error: expect(locator).toHaveText(expected) failed\n\nLocator: locator('[data-live-auction-indicator]')\nExpected: \"12\"\nError: strict mode violation: locator('[data-live-auction-indicator]') resolved to 2 elements:\n    1) <span aria-hidden=\"true\" class=\"header-panels_badge__7xXWI\" data-live-auction-indicator=\"true\">12</span> aka getByRole('navigation', { name: 'Account controls' }).getByLabel('Browse auctions, 12 live')\n    2) <span aria-hidden=\"true\" class=\"header-panels_badge__7xXWI\" data-live-auction-indicator=\"true\">12</span> aka getByRole('navigation', { name: 'Your navigation' }).getByLabel('Browse auctions, 12 live')\n\nCall log:\n  - Expect \"toHaveText\" with timeout 60000ms\n  - waiting for locator('[data-live-auction-indicator]')\n",
+      "representativeDOMReproducedOnBaselineAndHead": true,
+      "exactOriginalCaseBaselineRun": false
+    },
+    {
+      "trace": "test-results/redesign/auction-browser-styles-auc-efdbc-yles-in-English-and-Amharic-360/trace.zip",
+      "observedCause": "Expected grid; quick row display is block",
+      "ciError": "Error: expect(locator).toHaveCSS(expected) failed\n\nLocator:  getByRole('dialog', { name: /^(Auctions|ጨረታዎች)$/ }).locator('[data-auction-code]').first()\nExpected: \"grid\"\nReceived: \"block\"\nTimeout:  60000ms\n\nCall log:\n  - Expect \"toHaveCSS\" with timeout 60000ms\n  - waiting for getByRole('dialog', { name: /^(Auctions|ጨረታዎች)$/ }).locator('[data-auction-code]').first()\n    63 × locator resolved to <button type=\"button\" data-auction-code=\"990001\" data-auction-status=\"live\" class=\"auction-browser-sheet_row__mWhEE\" aria-label=\"Bid on DEMO · Compact auction 1\">…</button>\n       - unexpected value \"block\"\n",
+      "representativeDOMReproducedOnBaselineAndHead": true,
+      "exactOriginalCaseBaselineRun": false
+    },
+    {
+      "trace": "test-results/redesign/auction-sheet-client-loadi-61db1--selection-cannot-overwrite-360/trace.zip",
+      "observedCause": "Card button locator matches Place a bid and Share",
+      "ciError": "Error: locator.click: Error: strict mode violation: locator('#discover-auctions .auction-card').filter({ has: getByRole('heading', { name: 'QA immediate 09cb38 first', exact: true }) }).getByRole('button') resolved to 2 elements:\n    1) <button type=\"button\" class=\"primary-button card-action auction-card-badges_placeBid__PUm76\">…</button> aka getByRole('button', { name: 'Place a bid' }).nth(1)\n    2) <button type=\"button\" data-auction-share=\"true\" class=\"auction-share_share__Fxzin  auction-card-badges_share__ABj0C\">…</button> aka getByRole('button', { name: 'Share' }).nth(1)\n\nCall log:\n  - waiting for locator('#discover-auctions .auction-card').filter({ has: getByRole('heading', { name: 'QA immediate 09cb38 first', exact: true }) }).getByRole('button')\n",
+      "representativeDOMReproducedOnBaselineAndHead": true,
+      "exactOriginalCaseBaselineRun": false
+    },
+    {
+      "trace": "test-results/redesign/bid-wallet-ui-Wallet-Chapa-28e08-read-only-in-both-languages-360/trace.zip",
+      "observedCause": "Card button locator matches Place a bid and Share",
+      "ciError": "Error: locator.click: Error: strict mode violation: locator('#discover-auctions .auction-card').first().getByRole('button') resolved to 2 elements:\n    1) <button type=\"button\" class=\"primary-button card-action auction-card-badges_placeBid__PUm76\">…</button> aka getByRole('button', { name: 'Place a bid' })\n    2) <button type=\"button\" data-auction-share=\"true\" class=\"auction-share_share__Fxzin  auction-card-badges_share__ABj0C\">…</button> aka getByRole('button', { name: 'Share' })\n\nCall log:\n  - waiting for locator('#discover-auctions .auction-card').first().getByRole('button')\n",
+      "representativeDOMReproducedOnBaselineAndHead": true,
+      "exactOriginalCaseBaselineRun": false
+    },
+    {
+      "trace": "test-results/redesign/client-flow-performance-fo-d9aa6-gation-request-measurements-360/trace.zip",
+      "observedCause": "Browse auctions locator matches header and bottom navigation",
+      "ciError": "Error: locator.click: Error: strict mode violation: getByRole('button', { name: /^Browse auctions/ }) resolved to 2 elements:\n    1) <button type=\"button\" aria-expanded=\"false\" aria-haspopup=\"dialog\" aria-label=\"Browse auctions, 23 live\" class=\"header-panels_trigger__TuRk8 mini-header_icon__rlaCB\">…</button> aka getByRole('navigation', { name: 'Account controls' }).getByLabel('Browse auctions, 23 live')\n    2) <button type=\"button\" aria-expanded=\"false\" aria-haspopup=\"dialog\" aria-label=\"Browse auctions, 23 live\" class=\"header-panels_trigger__TuRk8 bottom-navigation_bidButton__IthZI\">…</button> aka getByRole('navigation', { name: 'Your navigation' }).getByLabel('Browse auctions, 23 live')\n\nCall log:\n  - waiting for getByRole('button', { name: /^Browse auctions/ })\n",
+      "representativeDOMReproducedOnBaselineAndHead": true,
+      "exactOriginalCaseBaselineRun": false
+    },
+    {
+      "trace": "test-results/redesign/contact-gate-guest-bid-sel-cba9a-n-automatic-quote-or-charge-360/trace.zip",
+      "observedCause": "Card button locator matches Place a bid and Share",
+      "ciError": "Error: locator.click: Error: strict mode violation: locator('.auction-card').filter({ hasText: 'Guest draft 2cf5ccf8' }).getByRole('button') resolved to 2 elements:\n    1) <button type=\"button\" class=\"primary-button card-action auction-card-badges_placeBid__PUm76\">…</button> aka getByRole('button', { name: 'Place a bid' })\n    2) <button type=\"button\" data-auction-share=\"true\" class=\"auction-share_share__Fxzin  auction-card-badges_share__ABj0C\">…</button> aka getByRole('button', { name: 'Share' })\n\nCall log:\n  - waiting for locator('.auction-card').filter({ hasText: 'Guest draft 2cf5ccf8' }).getByRole('button')\n",
+      "representativeDOMReproducedOnBaselineAndHead": true,
+      "exactOriginalCaseBaselineRun": false
+    },
+    {
+      "trace": "test-results/redesign/contact-gate-only-server-c-71a1a-and-retains-the-public-page-360/trace.zip",
+      "observedCause": "Authenticated fixture serves private 401 and clears restored identity",
+      "ciError": "Error: expect(locator).toContainText(expected) failed\n\nLocator: locator('[data-header-balance]')\nExpected substring: \"25.00\"\nTimeout: 60000ms\nError: element(s) not found\n\nCall log:\n  - Expect \"toContainText\" with timeout 60000ms\n  - waiting for locator('[data-header-balance]')\n",
+      "representativeDOMReproducedOnBaselineAndHead": false,
+      "exactOriginalCaseBaselineRun": false
+    },
+    {
+      "trace": "test-results/redesign/contact-gate-public-Home-r-44cc2-ellation-preserves-browsing-360/trace.zip",
+      "observedCause": "Held bootstrap ordering leaves Share contact unavailable",
+      "ciError": "Error: expect(locator).toBeEnabled() failed\n\nLocator: getByRole('dialog', { name: 'Log in to Lowwin' }).getByRole('button', { name: 'Share contact', exact: true })\nExpected: enabled\nTimeout: 60000ms\nError: element(s) not found\n\nCall log:\n  - Expect \"toBeEnabled\" with timeout 60000ms\n  - waiting for getByRole('dialog', { name: 'Log in to Lowwin' }).getByRole('button', { name: 'Share contact', exact: true })\n",
+      "representativeDOMReproducedOnBaselineAndHead": false,
+      "exactOriginalCaseBaselineRun": false
+    },
+    {
+      "trace": "test-results/redesign/contact-gate-registered-vi-675fb-out-another-contact-request-360/trace.zip",
+      "observedCause": "Expected tutorial page heading is absent",
+      "ciError": "Error: expect(locator).toHaveText(expected) failed\n\nLocator: locator('[data-customer-page-header] h1')\nExpected: \"How it works\"\nTimeout: 60000ms\nError: element(s) not found\n\nCall log:\n  - Expect \"toHaveText\" with timeout 60000ms\n  - waiting for locator('[data-customer-page-header] h1')\n",
+      "representativeDOMReproducedOnBaselineAndHead": false,
+      "exactOriginalCaseBaselineRun": false
+    },
+    {
+      "trace": "test-results/redesign/header-account-account-hea-10de2-language-and-unread-updates-360/trace.zip",
+      "observedCause": "Expected 0.00 ETB; DOM text is 0.00ETB",
+      "ciError": "Error: expect(locator).toHaveText(expected) failed\n\nLocator:  getByRole('banner', { name: 'Mini App header' }).locator('[data-header-balance]')\nExpected: \"0.00 ETB\"\nReceived: \"0.00ETB\"\nTimeout:  60000ms\n\nCall log:\n  - Expect \"toHaveText\" with timeout 60000ms\n  - waiting for getByRole('banner', { name: 'Mini App header' }).locator('[data-header-balance]')\n    63 × locator resolved to <span data-header-balance=\"true\">…</span>\n       - unexpected value \"0.00ETB\"\n",
+      "representativeDOMReproducedOnBaselineAndHead": true,
+      "exactOriginalCaseBaselineRun": false
+    },
+    {
+      "trace": "test-results/redesign/home-banner-home-banner-bo-e52f4-ometry-and-existing-actions-360/trace.zip",
+      "observedCause": "Expected previous banner asset; current source uses pearl banner",
+      "ciError": "Error: expect(locator).toHaveAttribute(expected) failed\n\nLocator: locator('section[aria-labelledby=\"home-headline\"]').locator('img')\nExpected pattern: /lowwin-home-banner-en\\.webp/\nReceived string:  \"/_next/image?url=%2Fimages%2Flowwin-pearl-home-en-20261116.webp&w=3840&q=75\"\nTimeout: 60000ms\n\nCall log:\n  - Expect \"toHaveAttribute\" with timeout 60000ms\n  - waiting for locator('section[aria-labelledby=\"home-headline\"]').locator('img')\n    63 × locator resolved to <img width=\"1600\" height=\"900\" loading=\"eager\" decoding=\"async\" fetchpriority=\"high\" sizes=\"(max-width:639px) 100vw, 900px\" alt=\"LowWin promotional image; illustrative scene\" src=\"/_next/image?url=%2Fimages%2Flowwin-pearl-home-en-20261116.webp&w=3840&q=75\" srcset=\"/_next/image?url=%2Fimages%2Flowwin-pearl-home-en-20261116.webp&w=640&q=75 640w, /_next/image?url=%2Fimages%2Flowwin-pearl-home-en-20261116.webp&w=750&q=75 750w, /_next/image?url=%2Fimages%2Flowwin-pearl-home-en-20261116.webp&w=828&q=75 8…/>\n       - unexpected value \"/_next/image?url=%2Fimages%2Flowwin-pearl-home-en-20261116.webp&w=3840&q=75\"\n",
+      "representativeDOMReproducedOnBaselineAndHead": true,
+      "exactOriginalCaseBaselineRun": false
+    },
+    {
+      "trace": "test-results/redesign/home-return-reuse-returnin-fe06f-d-batch-and-scroll-position-360/trace.zip",
+      "observedCause": "Waits for missing Profile link; current link is Me",
+      "ciError": "Error: locator.click: Test timeout of 480000ms exceeded.\nCall log:\n  - waiting for getByRole('navigation', { name: 'Your navigation' }).getByRole('link', { name: 'Profile', exact: true })\n",
+      "representativeDOMReproducedOnBaselineAndHead": true,
+      "exactOriginalCaseBaselineRun": false
+    },
+    {
+      "trace": "test-results/redesign/home-winners-homepage-fina-009fa-ches-and-Winners-navigation-360/trace.zip",
+      "observedCause": "Expected five links; current navigation has four links and a Bid button",
+      "ciError": "Error: expect(locator).toHaveCount(expected) failed\n\nLocator:  getByRole('navigation', { name: 'Your navigation' }).getByRole('link')\nExpected: 5\nReceived: 4\nTimeout:  60000ms\n\nCall log:\n  - Expect \"toHaveCount\" with timeout 60000ms\n  - waiting for getByRole('navigation', { name: 'Your navigation' }).getByRole('link')\n    63 × locator resolved to 4 elements\n       - unexpected value \"4\"\n",
+      "representativeDOMReproducedOnBaselineAndHead": true,
+      "exactOriginalCaseBaselineRun": false
+    },
+    {
+      "trace": "test-results/redesign/launch-readiness-SDK-failu-5e8d4-ry-a-late-SDK-signs-in-once-360/trace.zip",
+      "observedCause": "Expected Reconnect absent in observed SDK-unavailable fallback",
+      "ciError": "Error: expect(locator).toBeEnabled() failed\n\nLocator: getByRole('dialog', { name: 'Log in to Lowwin' }).getByRole('button', { name: 'Reconnect', exact: true })\nExpected: enabled\nTimeout: 15000ms\nError: element(s) not found\n\nCall log:\n  - Expect \"toBeEnabled\" with timeout 15000ms\n  - waiting for getByRole('dialog', { name: 'Log in to Lowwin' }).getByRole('button', { name: 'Reconnect', exact: true })\n",
+      "representativeDOMReproducedOnBaselineAndHead": false,
+      "exactOriginalCaseBaselineRun": false
+    },
+    {
+      "trace": "test-results/redesign/learn-more-loading-banner--fc9e7-sible-while-its-sheet-loads-360/trace.zip",
+      "observedCause": "Expected three ordered list items; current tutorial contains none",
+      "ciError": "Error: expect(locator).toHaveCount(expected) failed\n\nLocator:  getByRole('dialog').locator('ol>li')\nExpected: 3\nReceived: 0\nTimeout:  60000ms\n\nCall log:\n  - Expect \"toHaveCount\" with timeout 60000ms\n  - waiting for getByRole('dialog').locator('ol>li')\n    63 × locator resolved to 0 elements\n       - unexpected value \"0\"\n",
+      "representativeDOMReproducedOnBaselineAndHead": true,
+      "exactOriginalCaseBaselineRun": false
+    },
+    {
+      "trace": "test-results/redesign/learn-more-loading-guide-L-46430-sible-while-its-sheet-loads-360/trace.zip",
+      "observedCause": "Expected three ordered list items; current tutorial contains none",
+      "ciError": "Error: expect(locator).toHaveCount(expected) failed\n\nLocator:  getByRole('dialog').locator('ol>li')\nExpected: 3\nReceived: 0\nTimeout:  60000ms\n\nCall log:\n  - Expect \"toHaveCount\" with timeout 60000ms\n  - waiting for getByRole('dialog').locator('ol>li')\n    63 × locator resolved to 0 elements\n       - unexpected value \"0\"\n",
+      "representativeDOMReproducedOnBaselineAndHead": true,
+      "exactOriginalCaseBaselineRun": false
+    },
+    {
+      "trace": "test-results/redesign/my-bids-client-ui-My-Bids--08ced-honest-zero-and-empty-state-360/trace.zip",
+      "observedCause": "Expected removed data-my-bids-summary strong elements",
+      "ciError": "Error: expect(locator).toHaveText(expected) failed\n\nLocator: locator('[data-my-bids-summary] strong')\nTimeout: 60000ms\n- Expected  - 6\n+ Received  + 1\n\n- Array [\n-   \"0\",\n-   \"0\",\n-   \"0\",\n-   \"—\",\n- ]\n+ Array []\n\nCall log:\n  - Expect \"toHaveText\" with timeout 60000ms\n  - waiting for locator('[data-my-bids-summary] strong')\n    64 × locator resolved to 0 elements\n",
+      "representativeDOMReproducedOnBaselineAndHead": false,
+      "exactOriginalCaseBaselineRun": false
+    },
+    {
+      "trace": "test-results/redesign/my-bids-client-ui-My-Bids--8aa05-receipts-in-English-Amharic-360/trace.zip",
+      "observedCause": "Expected removed data-my-bids-summary strong elements",
+      "ciError": "Error: expect(locator).toHaveText(expected) failed\n\nLocator: locator('[data-my-bids-summary]').locator('strong')\nTimeout: 60000ms\n- Expected  - 6\n+ Received  + 1\n\n- Array [\n-   \"23\",\n-   \"0\",\n-   \"1\",\n-   \"—\",\n- ]\n+ Array []\n\nCall log:\n  - Expect \"toHaveText\" with timeout 60000ms\n  - waiting for locator('[data-my-bids-summary]').locator('strong')\n    64 × locator resolved to 0 elements\n",
+      "representativeDOMReproducedOnBaselineAndHead": false,
+      "exactOriginalCaseBaselineRun": false
+    }
+  ],
+  "focusedReproduction": {
+    "type": "Controlled DOM probe; synthetic client authentication; fresh isolated loopback PostgreSQL",
+    "baseline": {
+      "passed": 1,
+      "failed": 0,
+      "testMs": 22800,
+      "runnerMs": 36554,
+      "next": "16.4.2 development server"
+    },
+    "head": {
+      "passed": 1,
+      "failed": 0,
+      "testMs": 3200,
+      "runnerMs": 20798,
+      "next": "16.4.6 retained production bundle"
+    },
+    "performanceComparable": false,
+    "noFinancialPosts": true,
+    "noProviderCalls": true,
+    "noDeployment": true,
+    "fullBaseline74Run": false,
+    "fullHead74Rerun": false,
+    "observations": {
+      "balanceText": {
+        "baseline": "0.00ETB",
+        "head": "0.00ETB",
+        "same": true
+      },
+      "liveIndicatorCount": {
+        "baseline": 2,
+        "head": 2,
+        "same": true
+      },
+      "browseTriggerCount": {
+        "baseline": 2,
+        "head": 2,
+        "same": true
+      },
+      "cardButtons": {
+        "baseline": [
+          "Place a bid",
+          "Share"
+        ],
+        "head": [
+          "Place a bid",
+          "Share"
+        ],
+        "same": true
+      },
+      "navigationLinks": {
+        "baseline": [
+          "Home",
+          "My Bids",
+          "Winners",
+          "Me"
+        ],
+        "head": [
+          "Home",
+          "My Bids",
+          "Winners",
+          "Me"
+        ],
+        "same": true
+      },
+      "profileLinkCount": {
+        "baseline": 0,
+        "head": 0,
+        "same": true
+      },
+      "meLinkCount": {
+        "baseline": 1,
+        "head": 1,
+        "same": true
+      },
+      "bannerSource": {
+        "baseline": "/_next/image?url=%2Fimages%2Flowwin-pearl-home-en-20261116.webp&w=3840&q=75",
+        "head": "/_next/image?url=%2Fimages%2Flowwin-pearl-home-en-20261116.webp&w=3840&q=75",
+        "same": true
+      },
+      "quickRowDisplay": {
+        "baseline": "block",
+        "head": "block",
+        "same": true
+      },
+      "tutorialOrderedListItems": {
+        "baseline": 0,
+        "head": 0,
+        "same": true
+      },
+      "financialWrites": {
+        "baseline": 0,
+        "head": 0,
+        "same": true
+      }
+    },
+    "limitations": "Shared DOM causes for 13 of 19 CI failures were reproduced, not complete original-case or full-suite baseline execution. Six registration/SDK/My Bids cases retain exact artifact errors without exact baseline reruns. The contact suite was verified separately; it does not close the entire redesign gate.",
+    "setupCorrections": "The baseline Next security stop required a legitimate identical retry. One local seed omitted required image alt and failed before browser use; corrected before successful observations. No baseline dependency or app-source upgrade."
+  },
+  "unchangedRelevantSourceFiles": [
+    "src/components/auction-browser-sheet.module.css",
+    "src/components/auction-card-badges.module.css",
+    "src/components/auction-quick-list.tsx",
+    "src/components/mini-header.tsx",
+    "src/components/bottom-navigation.tsx",
+    "src/components/tutorial-content.tsx",
+    "src/components/tutorial-video.tsx",
+    "src/components/home-hero.tsx",
+    "src/components/telegram-provider.tsx",
+    "src/components/contact-gate.tsx",
+    "src/components/my-bids-page.tsx"
+  ],
+  "sourceComparisonIsNotSoleCausalEvidence": true,
+  "cleanup": {
+    "ownedProbeServersStopped": true,
+    "remainingOwnedProbeDatabases": [],
+    "retainedActualTestDatabasesUntouched": true
+  },
+  "gate": "OPEN: require scoped contract/fixture triage and a complete successful required redesign run. Do not skip this gate or claim whole CI green.",
+  "localEvidence": [
+    ".local/chapa-redesign-44038433916-job-133887030702.log",
+    ".local/chapa-redesign-44038433916-trace-errors.json",
+    ".local/redesign-triage-baseline-observations.json",
+    ".local/redesign-triage-head-observations.json",
+    ".local/redesign-triage-baseline-probe.log",
+    ".local/redesign-triage-head-probe.log"
+  ]
+}

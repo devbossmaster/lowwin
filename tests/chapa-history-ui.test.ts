@@ -15,6 +15,11 @@ function render(overrides:Partial<ChapaCheckoutView>,language:'en'|'am'='en'){
  return renderToStaticMarkup(createElement(MiniLocaleProvider,{initialLanguage:language,children:createElement(ChapaPaymentHistory)}));
 }
 describe('transaction money movement presentation',()=>{
+ it('keeps a retained completion signal checking above an earlier private failure and preserves committed money',()=>{
+  const pending=render({status:'NEEDS_REVIEW',providerStatus:'FAILED',verificationState:'VERIFIED',completionSignalPending:true});
+  expect(pending).toContain('data-payment-summary="checking">Checking payment…');expect(pending).not.toContain('data-payment-summary="failed"');
+  expect(render({status:'CREDITED',providerStatus:'SUCCESS',verificationState:'VERIFIED',completionSignalPending:true})).toContain('data-payment-summary="done">Done');
+ });
  it('summarizes only committed payments and provider-confirmed failures',()=>{
   expect(render({status:'CREDITED'})).toContain('data-payment-summary="done">Done');
   expect(render({status:'NEEDS_REVIEW',purpose:'BID',fundsPreserved:true})).toContain('data-payment-summary="done">Done');

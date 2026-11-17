@@ -8,7 +8,7 @@ type ProgressState={order:ChapaCheckoutView|null;busy:boolean;restoring:boolean;
 /** A retry can return to entry only after an owned, terminal server outcome.
  * Display deadlines, transport errors and provider success never qualify. */
 export function bidPaymentCanRetry(order:ChapaCheckoutView|null){
- if(!order||order.unsupportedLegacy||order.apiVersion==='legacy'&&order.legacyRecoveryAvailable!==true||order.fundsPreserved||chapaConfirmed(order)||order.providerStatus==='SUCCESS'||order.verificationState==='MISMATCH')return false;
+ if(!order||order.completionSignalPending||order.unsupportedLegacy||order.apiVersion==='legacy'&&order.legacyRecoveryAvailable!==true||order.fundsPreserved||chapaConfirmed(order)||order.providerStatus==='SUCCESS'||order.verificationState==='MISMATCH')return false;
  if(order.reason==='INITIALIZATION_REJECTED'&&chapaDirectRequestRejected(order))return true;
  return ['FAILED','CANCELLED','INCOMPLETE','EXPIRED','BLOCKED','FAILED_OR_CANCELLED'].includes(order.status)&&chapaVerifiedTerminal(order);
 }
@@ -17,13 +17,14 @@ export function bidPaymentCanRetry(order:ChapaCheckoutView|null){
  * authorization reference. An owned ID still supports the same operation. */
 export function bidPaymentCanRetryOriginal(order:ChapaCheckoutView|null){
  if(!order)return true;
+ if(order.completionSignalPending)return false;
  return chapaApiCharge(order)&&['SUBMITTING','PENDING'].includes(order.status)&&!order.authorizationReference&&!chapaConfirmed(order)&&order.providerStatus!=='SUCCESS'&&order.verificationState!=='MISMATCH'&&order.initializationIssue!=='state'&&!chapaDirectRequestRejected(order);
 }
 
 /** A bound authorization rejection describes that authorization, not the
  * financial outcome. Keep reconciling the original payment before any retry. */
 export function bidPaymentAuthorizationError(order:ChapaCheckoutView|null){
- if(!order||!chapaApiCharge(order)||chapaConfirmed(order)||order.providerStatus==='SUCCESS'||order.verificationState==='MISMATCH'||order.status==='NEEDS_REVIEW'||!['SUBMITTING','PENDING','AUTH_NEEDED','VERIFYING'].includes(order.status))return null;
+ if(!order||order.completionSignalPending||!chapaApiCharge(order)||chapaConfirmed(order)||order.providerStatus==='SUCCESS'||order.verificationState==='MISMATCH'||order.status==='NEEDS_REVIEW'||!['SUBMITTING','PENDING','AUTH_NEEDED','VERIFYING'].includes(order.status))return null;
  const reason=safeChapaPaymentReason(order.authorizationReasonCode);
  if(order.authType==='OTP'&&reason==='INVALID_OTP')return null;
  return reason&&reason!=='AUTHORIZATION_REQUIRED'?reason:null;
@@ -49,6 +50,7 @@ export function bidPaymentProgressPhase(state:ProgressState):BidPaymentProgressP
  if(state.walletRetry)return 'uncertain';
  if(errorCode&&['UNAUTHORIZED','FORBIDDEN','NOT_FOUND','CONFIGURATION_CHANGED'].includes(errorCode))return 'uncertain';
  if(!order)return state.busy||state.restoring?'connecting':'uncertain';
+ if(order.completionSignalPending)return 'confirming';
  if(order.verificationState==='MISMATCH'||order.status==='NEEDS_REVIEW'||chapaDirectRequestRejected(order))return 'uncertain';
  if(order.providerStatus==='SUCCESS')return 'confirming';
  if(order.status==='BID_ACCEPTED'||order.status==='EXPIRED')return 'uncertain';

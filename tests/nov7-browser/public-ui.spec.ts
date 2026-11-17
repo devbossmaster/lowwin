@@ -15,11 +15,13 @@ test.beforeAll(async()=>{
  try{
   const body={managedExperience:{bannerEn:'',bannerAm:'',learnIntroEn:'Isolated test explanation: choose the lowest unique bid.',learnIntroAm:'ዝቅተኛውን ልዩ ጨረታ ይምረጡ።',video:{youtube:'',local:'/videos/nov7-tutorial.mp4',poster:'/images/lowin-family-hero.webp'},socials:[]}};
   await db.siteContent.upsert({where:{id:'home'},create:{id:'home',body},update:{body}});
-  const existing=await db.auction.findFirst({where:{product:{title:marker}},select:{publicCode:true,slug:true}});
-  if(existing){code=String(existing.publicCode);slug=existing.slug!;return}
+  // Home returns to its default featured first page. Other suites create more
+  // than one page of auctions; keep this owned fixture deliberately visible.
+  const existing=await db.auction.findFirst({where:{product:{title:marker}},select:{id:true,publicCode:true,slug:true}});
+  if(existing){await db.auction.update({where:{id:existing.id},data:{featured:true}});code=String(existing.publicCode);slug=existing.slug!;return}
   const auction=await bidAuction(db,{fee:10,ruleVersion:'lowest-unique-v4',isDemo:false,endDelayMs:3*86400000});
   await db.product.update({where:{id:auction.productId!},data:{title:marker,titleAm:'የሙከራ ሽቦ አልባ ማዳመጫ',description:'Isolated browser-test product. No real prize or live payment.',descriptionAm:'የአሳሽ ሙከራ ዕቃ ነው።',images:{create:{path:'/images/lowwin-demo-headphones.webp',alt:'Isolated test headphones',sourceType:'ORIGINAL',sortOrder:0}}}});
-  await db.auction.update({where:{id:auction.id},data:{publicViewCount:123n}});code=String(auction.publicCode);slug=auction.slug!;
+  await db.auction.update({where:{id:auction.id},data:{featured:true,publicViewCount:123n}});code=String(auction.publicCode);slug=auction.slug!;
  }finally{await db.$disconnect()}
 });
 async function identity(page:Page,registered=true){
@@ -57,30 +59,30 @@ for(const network of ['normal','throttled'] as const)test(`optimized ${network} 
  const started=Date.now();await page.goto('/telegram?next='+encodeURIComponent('/?q='+encodeURIComponent(marker)));await expect(fixtureCard(page)).toHaveCount(1);const publicHomeMs=Date.now()-started;await expect(page.locator('[data-header-balance]')).toContainText('123.45');
  const coldHomeMs=Date.now()-started;await page.waitForTimeout(300);
  const coldRequestCount=requests.length,coldTransferredBytes=requests.reduce((sum,row)=>sum+row.bytes,0);
- const card=fixtureCard(page),button=card.getByRole('button');
+ const card=fixtureCard(page),button=card.getByRole('button',{name:'Place a bid',exact:true});
  const firstSheetMs=await tapTime(page,button,'dialog[open]');await expect(page.getByRole('dialog')).toContainText(marker);await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);
  const repeatSheetMs=await tapTime(page,button,'dialog[open]');await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);
  const nav=page.getByRole('navigation',{name:'Your navigation'});await nav.getByRole('link',{name:'Winners',exact:true}).click();await expect(page.locator('[data-customer-page-header] h1')).toHaveText('Winners');
  const repeatHomeMs=await tapTime(page,nav.getByRole('link',{name:'Home',exact:true}),'#discover-auctions .auction-card');await expect(page.locator('[data-header-balance]')).toContainText('123.45');
- if(isAfter){await expect(card.locator('[aria-label="123 recorded views"]')).toBeVisible();await expect(card.locator('[data-countdown-unit]')).toHaveCount(4);const status=await card.locator('.status-tag').boundingBox(),views=await card.locator('[aria-label="123 recorded views"]').boundingBox();expect(status!.x+status!.width).toBeLessThan(views!.x);await expect(page.getByRole('banner').getByRole('button',{name:/Notifications/})).toHaveCount(0);await expect(page.getByRole('banner').getByRole('link',{name:'How Lowwin works'})).toBeVisible()}
+ if(isAfter){await expect(card.locator('[aria-label="123 recorded views"]')).toBeVisible();await expect(card.locator('[data-countdown-unit]')).toHaveCount(4);const status=await card.locator('.status-tag').boundingBox(),views=await card.locator('[aria-label="123 recorded views"]').boundingBox();expect(status!.x+status!.width).toBeLessThan(views!.x);await expect(page.getByRole('banner').getByRole('button',{name:/Notifications/})).toBeVisible();await expect(page.locator('[data-home-hero]').getByRole('button',{name:'Learn more',exact:true})).toBeVisible()}
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);expect(financialWrites).toBe(0);expect(errors).toEqual([]);
  mkdirSync(destination,{recursive:true});await page.screenshot({path:`${destination}/${network}-${info.project.name}.png`,animations:'disabled'});
  const evidence={stage,network,width:info.project.name,build:'optimized production, isolated loopback database, mocked wallet/alerts/provider availability; synthetic signed Telegram account',publicHomeMs,coldHomeMs,repeatHomeMs,firstSheetMs,repeatSheetMs,coldRequestCount,coldTransferredBytes,totalRequestCount:requests.length,totalTransferredBytes:requests.reduce((sum,row)=>sum+row.bytes,0),financialWrites,requests,errors};writeFileSync(`${destination}/performance-${network}-${info.project.name}.json`,JSON.stringify(evidence,null,2));
 });
-test('guest introduction, explicit Login, public tutorial, lazy video and reduced motion',async({page},info)=>{
- test.skip(!isAfter,'New public browsing and tutorial do not exist in the baseline');
- await identity(page,false);await page.addInitScript(()=>localStorage.removeItem('lowwin:introduction:v1'));
+test('optional guest channel invitation, explicit Login, lazy public tutorial and reduced motion',async({page},info)=>{
+ test.skip(!isAfter,'This comparison runs in the historical after stage');
+ await identity(page,false);await page.addInitScript(()=>localStorage.removeItem('lowwin:channel-invite:v1'));
  let videoRequests=0;await page.route('**/videos/nov7-tutorial.mp4',route=>{videoRequests++;return route.fulfill({status:404,body:''})});
- await page.goto('/');await expect(fixtureCard(page)).toHaveCount(1);await expect(page.getByRole('banner').getByRole('button',{name:'Log in',exact:true})).toBeVisible();
- const welcome=page.getByRole('dialog',{name:'Welcome to Lowwin'});await expect(welcome).toBeVisible();await expect.poll(()=>welcome.locator('[data-tutorial-video] img').evaluate(image=>(image as HTMLImageElement).complete&&(image as HTMLImageElement).naturalWidth>0)).toBe(true);mkdirSync(destination,{recursive:true});await page.screenshot({path:`${destination}/introduction-${info.project.name}.png`,animations:'disabled'});await expect(page.locator('iframe,video')).toHaveCount(0);expect(videoRequests).toBe(0);await welcome.getByRole('button',{name:'Watch how it works'}).click();await expect.poll(()=>videoRequests).toBe(1);await expect(welcome.getByRole('status')).toContainText('The video is unavailable');await welcome.getByRole('button',{name:'Continue to auctions'}).click();await expect(welcome).toHaveCount(0);expect(await page.evaluate(()=>localStorage.getItem('lowwin:introduction:v1'))).toBe('dismissed');
- await page.getByRole('banner').getByRole('link',{name:'How Lowwin works'}).click();await expect(page.locator('[data-customer-page-header] h1')).toHaveText('How it works');await expect(page.getByText('Find an auction',{exact:true})).toBeVisible();await expect(page.getByRole('banner',{name:'Mini App header'})).toHaveCount(0);
- await page.goBack();await expect(fixtureCard(page)).toHaveCount(1);await expect(welcome).toHaveCount(0);await page.emulateMedia({reducedMotion:'reduce'});await expect(page.locator('[data-countdown-unit]').first()).toBeVisible();
+ await page.goto('/?q='+encodeURIComponent(marker));await expect(fixtureCard(page)).toHaveCount(1);
+ const welcome=page.getByRole('dialog').filter({has:page.locator('[data-telegram-channel-invite]')});await expect(welcome).toBeVisible();await expect(welcome.getByRole('link',{name:'Join our Telegram channel',exact:true})).toHaveAttribute('href',/^https:\/\/t\.me\//);mkdirSync(destination,{recursive:true});await page.screenshot({path:`${destination}/introduction-${info.project.name}.png`,animations:'disabled'});await expect(page.locator('iframe,video')).toHaveCount(0);expect(videoRequests).toBe(0);await welcome.getByRole('button',{name:'Close',exact:true}).click();await expect(welcome).toHaveCount(0);expect(await page.evaluate(()=>localStorage.getItem('lowwin:channel-invite:v1'))).toBe('dismissed');await expect(page.getByRole('banner').getByRole('button',{name:'Log in',exact:true})).toBeVisible();
+ await page.locator('[data-home-hero]').getByRole('button',{name:'Learn more',exact:true}).click();const tutorial=page.getByRole('dialog',{name:'How LowWin works',exact:true});await expect(tutorial).toBeVisible();await expect.poll(()=>tutorial.locator('[data-tutorial-video] img').evaluate(image=>(image as HTMLImageElement).complete&&(image as HTMLImageElement).naturalWidth>0)).toBe(true);expect(videoRequests).toBe(0);await tutorial.getByRole('button',{name:'Watch how it works',exact:true}).click();await expect.poll(()=>videoRequests).toBe(1);await expect(tutorial.getByRole('status')).toContainText('The video could not load.');await tutorial.getByRole('button',{name:'Close',exact:true}).click();await expect(tutorial).toHaveCount(0);
+ await expect(fixtureCard(page)).toHaveCount(1);await expect(welcome).toHaveCount(0);await page.emulateMedia({reducedMotion:'reduce'});await expect(page.locator('[data-countdown-unit]').first()).toBeVisible();
  await page.getByRole('button',{name:'Language: English',exact:true}).click();await page.getByRole('menuitemradio',{name:'አማርኛ',exact:true}).click();await expect(page.getByRole('banner').getByRole('button',{name:'ይግቡ',exact:true})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  mkdirSync(destination,{recursive:true});await page.screenshot({path:`${destination}/public-am-${info.project.name}.png`,animations:'disabled'});
 });
 test('countdown pauses while hidden and resumes without replaying missed flips',async({page})=>{
- test.skip(!isAfter,'The baseline uses the old timer presentation');
- await page.clock.install();await identity(page,false);await page.goto('/');const card=fixtureCard(page);await card.scrollIntoViewIfNeeded();const timer=card.getByRole('timer');await expect(timer.locator('[data-countdown-unit]')).toHaveCount(4);
+ test.skip(!isAfter,'This timer comparison runs in the historical after stage');
+ await page.clock.install();await identity(page,false);await page.goto('/?q='+encodeURIComponent(marker));const card=fixtureCard(page);await card.scrollIntoViewIfNeeded();const timer=card.getByRole('timer');await expect(timer.locator('[data-countdown-unit]')).toHaveCount(4);
  const before=await timer.getAttribute('aria-label');await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,get:()=>true});document.dispatchEvent(new Event('visibilitychange'))});await page.clock.fastForward(65000);expect(await timer.getAttribute('aria-label')).toBe(before);
  await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,get:()=>false});document.dispatchEvent(new Event('visibilitychange'))});await expect.poll(()=>timer.getAttribute('aria-label')).not.toBe(before);await expect(timer.locator('[data-countdown-flip]')).toHaveCount(0);
  await page.evaluate(()=>{const spacer=document.createElement('div');spacer.dataset.countdownSpacer='true';spacer.style.height='2000px';document.querySelector('main')!.prepend(spacer);window.scrollTo(0,0)});await expect(timer).not.toBeInViewport();await page.clock.runFor(50);const offscreen=await timer.getAttribute('aria-label');await page.clock.fastForward(5000);expect(await timer.getAttribute('aria-label')).toBe(offscreen);
@@ -89,7 +91,7 @@ test('countdown pauses while hidden and resumes without replaying missed flips',
 });
 
 test('split-flap countdown rolls over only changed units and clears both animated halves',async({page},info)=>{
- test.skip(!isAfter,'The baseline uses the old timer presentation');
+ test.skip(!isAfter,'This timer comparison runs in the historical after stage');
  const db=new PrismaClient();
  let title:string,auctionSlug:string;
  try{
@@ -129,8 +131,8 @@ test('split-flap countdown rolls over only changed units and clears both animate
  expect(await timer.evaluate(node=>node.scrollWidth<=node.clientWidth)).toBe(true);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);mkdirSync(destination,{recursive:true});await card.screenshot({path:`${destination}/split-flap-${info.project.name}.png`,animations:'disabled'});
  await timer.evaluate(node=>(node as HTMLElement&{__countdownObserver?:MutationObserver}).__countdownObserver?.disconnect());await page.goto('/auctions/'+auctionSlug);const detailTimer=page.getByRole('region',{name:'Auction activity',exact:true}).getByRole('timer');await expect(detailTimer).toBeVisible();await expect(detailTimer.locator('[data-countdown-tile]')).toHaveCount(4);await detailTimer.screenshot({path:`${destination}/split-flap-large-${info.project.name}.png`,animations:'disabled'});mkdirSync('.local/countdown-reference',{recursive:true});await page.screenshot({path:'.local/countdown-reference/detail-first.png',fullPage:true,animations:'disabled'});
 });
-test('notifications live in Profile without adding a bottom destination',async({page})=>{
- test.skip(!isAfter,'The baseline still has a header notification bell');
- let alertReads=0;page.on('request',request=>{if(request.url().includes('/api/alerts?summary=1'))alertReads++});await identity(page);await page.goto('/telegram?next=%2F');await expect(page.locator('[data-header-balance]')).toContainText('123.45');expect(alertReads).toBe(0);
- const nav=page.getByRole('navigation',{name:'Your navigation'});await expect(nav.getByRole('link')).toHaveCount(5);await nav.getByRole('link',{name:'Profile',exact:true}).click();const notifications=page.getByRole('link',{name:/Notifications/});await expect(notifications).toBeVisible();await expect(notifications).toHaveAttribute('href','/profile/alerts');await expect(notifications.locator('[data-unread-indicator]')).toHaveText('3');expect(alertReads).toBe(1);await expect(page.getByRole('banner',{name:'Mini App header'})).toHaveCount(0);
+test('owned notification surfaces share the unread summary without adding a bottom destination',async({page})=>{
+ test.skip(!isAfter,'This account-surface comparison runs in the historical after stage');
+ let alertReads=0;page.on('request',request=>{if(request.url().includes('/api/alerts?summary=1'))alertReads++});await identity(page);await page.goto('/telegram?next=%2F');await expect(page.locator('[data-header-balance]')).toContainText('123.45');await expect(page.getByRole('banner').getByRole('button',{name:'Notifications, 3 unread',exact:true})).toBeVisible();expect(alertReads).toBe(1);
+ const nav=page.getByRole('navigation',{name:'Your navigation'});await expect(nav.getByRole('link')).toHaveCount(4);await expect(nav.getByRole('button',{name:/Browse auctions/})).toHaveCount(1);await expect(nav.getByRole('link',{name:/Notifications/})).toHaveCount(0);await nav.getByRole('link',{name:'Me',exact:true}).click();const notifications=page.getByRole('link',{name:/Notifications/});await expect(notifications).toBeVisible();await expect(notifications).toHaveAttribute('href','/profile/alerts');await expect(notifications.locator('[data-unread-indicator]')).toHaveText('3');expect(alertReads).toBe(1);await expect(page.getByRole('banner',{name:'Mini App header'})).toHaveCount(0);
 });

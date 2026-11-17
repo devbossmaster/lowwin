@@ -150,9 +150,11 @@ test('Master Guide Admin uses a real verified admin session and compact responsi
   await page.getByRole('searchbox',{name:'Search',exact:true}).fill('headphones');await page.getByRole('button',{name:'Search',exact:true}).click();await expect(winnerTable.locator('tbody tr')).toHaveCount(1);
 
   await navigate(page,'Broadcast');await expect(page.getByRole('heading',{name:'Broadcast',exact:true})).toBeVisible();
-  await expect(page.getByLabel('Image',{exact:false})).toHaveAttribute('type','file');await page.getByLabel('Message',{exact:true}).fill('Hello {name}, discover the next Lowwin auction.');await page.getByLabel('Button text',{exact:true}).fill('Open auctions');await page.getByRole('combobox',{name:/^Open page/}).selectOption('/');
-  const preview=page.getByRole('complementary',{name:'Broadcast preview',exact:true});await expect(preview).toContainText('Hello Abebe,');await expect(preview).toContainText('Open auctions');await expect(preview).toContainText('Telegram bot only.');
-  await capturePair('broadcast');await page.getByRole('button',{name:'Review broadcast',exact:true}).click();await expect(page.getByRole('button',{name:'Send broadcast',exact:true})).toBeVisible();await page.getByRole('button',{name:'Keep editing',exact:true}).click();
+  const composer=page.getByRole('region',{name:'Compose broadcast',exact:true});
+  await composer.getByRole('textbox',{name:/^Message/}).fill('Hello {name}, discover the next Lowwin auction.');await composer.getByText('Image & button',{exact:true}).click();
+  await expect(composer.getByLabel('Image',{exact:false})).toHaveAttribute('type','file');await composer.getByLabel('Button text',{exact:true}).fill('Open auctions');await composer.getByRole('combobox',{name:/^Open page/}).selectOption('/');
+  const preview=page.getByRole('complementary',{name:'Broadcast preview',exact:true});await expect(preview).toContainText('Hello Abebe,');await expect(preview).toContainText('Open auctions');await expect(composer).toContainText('Sends to eligible players who have started the bot. Blocked chats and staff are excluded.');
+  await capturePair('broadcast');await composer.getByRole('button',{name:'Review & send',exact:true}).click();await expect(composer.getByRole('button',{name:'Send to players',exact:true})).toBeVisible();await composer.getByRole('button',{name:'Back',exact:true}).click();
   expect(writes).toEqual([]);expect(authPosts.filter(path=>path.includes('/lowin/staff/'))).toEqual([]);expect(errors).toEqual([]);
   await page.setViewportSize({width:1440,height:1000});await page.getByRole('button',{name:'Sign out',exact:true}).click();await expect(page).toHaveURL(/\/admin\/login$/);
   expect((await page.request.get('/api/admin/dashboard')).status()).toBe(401);expect(await db.session.count({where:{id:grant.sessionId}})).toBe(0);

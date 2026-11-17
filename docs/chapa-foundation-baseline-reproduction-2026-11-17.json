@@ -1,0 +1,506 @@
+{
+  "capturedAt": "2026-11-17",
+  "baselineAndHeadSameFailureTitles": true,
+  "command": "node scripts/run-db-tests.mjs unit tests/admin-wallet-credit.test.ts tests/database.test.ts tests/operations.test.ts tests/own-contact.test.ts tests/personal.test.ts tests/winner-photo-db.test.ts tests/chapa-schema.test.ts",
+  "setup": "Separate exact-revision worktrees, own npm dependencies and generated Prisma client, fresh loopback PostgreSQL databases, CI=true TZ=UTC, provider/live credentials disabled, intercepted Telegram transport and local email sink",
+  "ciComparison": {
+    "run": 44038433916,
+    "job": 133887031034,
+    "node": "24.22.2",
+    "platform": "Ubuntu",
+    "passed": 3157,
+    "failed": 16,
+    "skipped": 9,
+    "failedFiles": 7,
+    "passedFiles": 269
+  },
+  "migrationSetupFailure": "P3018 / 42704: the staged schema fixture omitted 202610290002_chapa_event_transactions but applied dependent later migrations, so ChapaCheckout_flowVersion_check was absent",
+  "runs": [
+    {
+      "revision": "baseline",
+      "commit": "e7d25f2c2a2376f65390a83b02dafbbc95366d4b",
+      "node": "24.11.0",
+      "platform": "win32",
+      "postgres": "127.0.0.1:55613",
+      "isolatedGeneratedClient": true,
+      "sourceSchemaDigest": "01a120f0c73ea0e8d9a27af9dc41be47b9738dbd5e98199f14cb45ef0350f25a",
+      "generatedSchemaDigest": "01a120f0c73ea0e8d9a27af9dc41be47b9738dbd5e98199f14cb45ef0350f25a",
+      "elapsedMs": 120794,
+      "exitCode": 1,
+      "counts": {
+        "passed": 83,
+        "failed": 16,
+        "pending": 9,
+        "total": 108
+      },
+      "failures": [
+        {
+          "file": "admin-wallet-credit.test.ts",
+          "setupFailure": false,
+          "titles": [
+            "admin funds on disposable PostgreSQL commits exact funds, owner attribution, one private alert and one queued bot message without a transaction ID",
+            "admin funds on disposable PostgreSQL delivers the committed credit through the existing bot dispatcher and retries a transport failure without adding funds again"
+          ]
+        },
+        {
+          "file": "chapa-schema.test.ts",
+          "setupFailure": true,
+          "titles": [
+            null
+          ]
+        },
+        {
+          "file": "database.test.ts",
+          "setupFailure": false,
+          "titles": [
+            "isolated PostgreSQL foundation processes queued bot commands once across workers and retries failed delivery"
+          ]
+        },
+        {
+          "file": "operations.test.ts",
+          "setupFailure": false,
+          "titles": [
+            "Master Guide Admin operations and private alerts schedules an upcoming reminder once and deduplicates recipient jobs in the database",
+            "Master Guide Admin operations and private alerts schedules global closing alerts once and suppresses stale future events",
+            "Master Guide Admin operations and private alerts uses intercepted grammY transport, respects 429 and blocked chats with bounded retries",
+            "Master Guide Admin operations and private alerts documents and tests crash-after-send replay without repeating points or inbox entries",
+            "Master Guide Admin operations and private alerts queues an Owner-only image broadcast idempotently with a personalized Bid button",
+            "Master Guide Admin operations and private alerts fans global events past 500 users without duplicate recipients or post-event signups",
+            "Master Guide Admin operations and private alerts keeps ordinary bid receipts in the inbox without sending an extra Telegram category",
+            "Master Guide Admin operations and private alerts stops remaining batches and retries after an in-flight broadcast send finishes"
+          ]
+        },
+        {
+          "file": "own-contact.test.ts",
+          "setupFailure": false,
+          "titles": [
+            "required own-contact boundary commits contact without Telegram calls and deduplicates its durable confirmation"
+          ]
+        },
+        {
+          "file": "personal.test.ts",
+          "setupFailure": false,
+          "titles": [
+            "Phase 4B public outcomes and private pages on PostgreSQL shows only allowlisted winner identity and a verified masked phone, without private proof or other bidders",
+            "Phase 4B public outcomes and private pages on PostgreSQL filters real notifications by category and never reads or marks another customer’s inbox",
+            "Phase 4B public outcomes and private pages on PostgreSQL shows genuine settled draws, honest pending/cancelled states and no illustrative winners"
+          ]
+        },
+        {
+          "file": "winner-photo-db.test.ts",
+          "setupFailure": false,
+          "titles": [
+            "winner presentation on isolated PostgreSQL adds, replaces and resets the photo while all winning and ledger facts remain identical"
+          ]
+        }
+      ]
+    },
+    {
+      "revision": "head",
+      "commit": "4778d19a06626bd8be48f82cb7f0f00bafa053ae",
+      "node": "24.11.0",
+      "platform": "win32",
+      "postgres": "127.0.0.1:55613",
+      "isolatedGeneratedClient": true,
+      "sourceSchemaDigest": "ce6caca4e1578768358c10d72f5a446481c7d2f4f01f93e54409eaa1d20daf39",
+      "generatedSchemaDigest": "ce6caca4e1578768358c10d72f5a446481c7d2f4f01f93e54409eaa1d20daf39",
+      "elapsedMs": 128528,
+      "exitCode": 1,
+      "counts": {
+        "passed": 83,
+        "failed": 16,
+        "pending": 9,
+        "total": 108
+      },
+      "failures": [
+        {
+          "file": "admin-wallet-credit.test.ts",
+          "setupFailure": false,
+          "titles": [
+            "admin funds on disposable PostgreSQL commits exact funds, owner attribution, one private alert and one queued bot message without a transaction ID",
+            "admin funds on disposable PostgreSQL delivers the committed credit through the existing bot dispatcher and retries a transport failure without adding funds again"
+          ]
+        },
+        {
+          "file": "chapa-schema.test.ts",
+          "setupFailure": true,
+          "titles": [
+            null
+          ]
+        },
+        {
+          "file": "database.test.ts",
+          "setupFailure": false,
+          "titles": [
+            "isolated PostgreSQL foundation processes queued bot commands once across workers and retries failed delivery"
+          ]
+        },
+        {
+          "file": "operations.test.ts",
+          "setupFailure": false,
+          "titles": [
+            "Master Guide Admin operations and private alerts schedules an upcoming reminder once and deduplicates recipient jobs in the database",
+            "Master Guide Admin operations and private alerts schedules global closing alerts once and suppresses stale future events",
+            "Master Guide Admin operations and private alerts uses intercepted grammY transport, respects 429 and blocked chats with bounded retries",
+            "Master Guide Admin operations and private alerts documents and tests crash-after-send replay without repeating points or inbox entries",
+            "Master Guide Admin operations and private alerts queues an Owner-only image broadcast idempotently with a personalized Bid button",
+            "Master Guide Admin operations and private alerts fans global events past 500 users without duplicate recipients or post-event signups",
+            "Master Guide Admin operations and private alerts keeps ordinary bid receipts in the inbox without sending an extra Telegram category",
+            "Master Guide Admin operations and private alerts stops remaining batches and retries after an in-flight broadcast send finishes"
+          ]
+        },
+        {
+          "file": "own-contact.test.ts",
+          "setupFailure": false,
+          "titles": [
+            "required own-contact boundary commits contact without Telegram calls and deduplicates its durable confirmation"
+          ]
+        },
+        {
+          "file": "personal.test.ts",
+          "setupFailure": false,
+          "titles": [
+            "Phase 4B public outcomes and private pages on PostgreSQL shows only allowlisted winner identity and a verified masked phone, without private proof or other bidders",
+            "Phase 4B public outcomes and private pages on PostgreSQL filters real notifications by category and never reads or marks another customer’s inbox",
+            "Phase 4B public outcomes and private pages on PostgreSQL shows genuine settled draws, honest pending/cancelled states and no illustrative winners"
+          ]
+        },
+        {
+          "file": "winner-photo-db.test.ts",
+          "setupFailure": false,
+          "titles": [
+            "winner presentation on isolated PostgreSQL adds, replaces and resets the photo while all winning and ledger facts remain identical"
+          ]
+        }
+      ]
+    }
+  ],
+  "postgresVersion": "17.9",
+  "limitations": "Baseline and head were reproduced under identical local Windows Node 24.11.0 configuration; CI uses Ubuntu Node 24.22.2. This comparison does not claim identical cross-platform timing.",
+  "fixtureCausesAndPreservedContracts": [
+    {
+      "file": "admin-wallet-credit.test.ts",
+      "cause": "Assertions used retired English copy; exact committed cents, attribution, one journal/inbox, transport retry and owner binding remain required."
+    },
+    {
+      "file": "database.test.ts",
+      "cause": "Public /start sends its welcome photo with Amharic caption; worker exclusivity and failure retry assertions are retained."
+    },
+    {
+      "file": "operations.test.ts",
+      "cause": "Fixtures omitted reachable private bot subscriptions, chose the wrong disjoint reminder window, used retired AUCTION_RESULT, bypassed current opt-out and receipt-proof rules, and expected immediate resend after uncertain acknowledgement."
+    },
+    {
+      "file": "own-contact.test.ts",
+      "cause": "CONTACT_CONFIRMED is explicitly retired. Registration and deduplicated durable audit intent are required; no Telegram delivery is allowed."
+    },
+    {
+      "file": "personal.test.ts",
+      "cause": "Allowlist omitted public presentationVersion; signed session refresh omitted the existing username; inbox fixtures used retired kinds and expected Telegram-only broadcasts in Mini App inbox."
+    },
+    {
+      "file": "winner-photo-db.test.ts",
+      "cause": "closeAuction now automatically publishes after settlement. Transaction-only settlement restores a real prepublication boundary; anonymous 404, no-store, replacement/removal and unchanged financial facts remain asserted."
+    },
+    {
+      "file": "chapa-schema.test.ts",
+      "cause": "Fixture applied dependent later migrations while omitting their prerequisite. Deploy ordered prerequisites, seed old funds, then target and successors; preservation, ACL/RLS, immutable payment evidence and exact ledger guards remain asserted."
+    }
+  ],
+  "fixedHead": {
+    "baseCommit": "4778d19a06626bd8be48f82cb7f0f00bafa053ae",
+    "workingTreeFixturePatch": true,
+    "elapsedMs": 159507,
+    "exitCode": 0,
+    "counts": {
+      "passed": 108,
+      "failed": 0,
+      "pending": 0,
+      "total": 108
+    },
+    "files": [
+      "tests/admin-wallet-credit.test.ts",
+      "tests/database.test.ts",
+      "tests/operations.test.ts",
+      "tests/own-contact.test.ts",
+      "tests/personal.test.ts",
+      "tests/winner-photo-db.test.ts",
+      "tests/chapa-schema.test.ts"
+    ],
+    "sourceFixtureSha256": {
+      "tests/admin-wallet-credit.test.ts": "7a9d49ff3edeb3d464b285eb97915fafc988a4792d41dab0f59ba7bf84b57a1f",
+      "tests/database.test.ts": "2e87be0b3ca40b5eff6f718122450410812a15335c7af458ca372dd1557dd052",
+      "tests/operations.test.ts": "f2f6ddb5ee0177f61cac37b5e0b88993ad2436f2cee94b08bba0edac76ef8b06",
+      "tests/own-contact.test.ts": "dc1b8ade383fbadf4a2a1a1dfb4aae91247682fd85d259f77a92cecc9a06cf13",
+      "tests/personal.test.ts": "863859baca8ddb1261e87fd4bada4476e65e6ac09b4d631a862cd37bc1c91a40",
+      "tests/winner-photo-db.test.ts": "f52d2fd903cae6009a1a297571fe144266350d6dbb2f4d5b4ef4a47c583ab68d",
+      "tests/chapa-schema.test.ts": "f463eaa1a386069895704e9976c8ff9962969ba51c2ac2d7168f1047074df3bf"
+    },
+    "productionCodeChanged": false,
+    "privacyAndAccountingAssertionsPreserved": true,
+    "fixtureHashNormalization": "UTF-8 source with CRLF normalized to LF"
+  },
+  "localFullFoundation": {
+    "baseCommit": "4778d19a06626bd8be48f82cb7f0f00bafa053ae",
+    "command": "node scripts/run-db-tests.mjs unit",
+    "elapsedMs": 1254380,
+    "vitestDurationMs": 1227540,
+    "exitCode": 1,
+    "files": {
+      "passed": 275,
+      "failed": 1,
+      "total": 276
+    },
+    "tests": {
+      "passed": 3175,
+      "failed": 0,
+      "pending": 7,
+      "total": 3182
+    },
+    "status": "Blocked by Windows temporary-directory cleanup; this is not a passing full gate",
+    "failure": {
+      "file": "tests/contact-request-limit.test.ts",
+      "phase": "beforeAll cleanup after Prisma deploy",
+      "code": "EPERM",
+      "line": 52,
+      "path": "TEMP/lowwin-contact-limiter-*",
+      "blockedTests": 7
+    },
+    "requiredLinuxFullGateStillPending": true
+  },
+  "contactCleanup": {
+    "focusedRuns": [
+      {
+        "revision": "contact-baseline",
+        "commit": "e7d25f2c2a2376f65390a83b02dafbbc95366d4b",
+        "node": "24.11.0",
+        "platform": "win32",
+        "elapsedMs": 36490,
+        "exitCode": 0,
+        "counts": {
+          "passed": 7,
+          "failed": 0,
+          "pending": 0,
+          "total": 7
+        },
+        "generatedClientMatchesRevision": true,
+        "sourceSchemaDigest": "01a120f0c73ea0e8d9a27af9dc41be47b9738dbd5e98199f14cb45ef0350f25a",
+        "generatedSchemaDigest": "01a120f0c73ea0e8d9a27af9dc41be47b9738dbd5e98199f14cb45ef0350f25a"
+      },
+      {
+        "revision": "contact-head",
+        "commit": "4778d19a06626bd8be48f82cb7f0f00bafa053ae",
+        "node": "24.11.0",
+        "platform": "win32",
+        "elapsedMs": 43228,
+        "exitCode": 0,
+        "counts": {
+          "passed": 7,
+          "failed": 0,
+          "pending": 0,
+          "total": 7
+        },
+        "generatedClientMatchesRevision": true,
+        "sourceSchemaDigest": "ce6caca4e1578768358c10d72f5a446481c7d2f4f01f93e54409eaa1d20daf39",
+        "generatedSchemaDigest": "ce6caca4e1578768358c10d72f5a446481c7d2f4f01f93e54409eaa1d20daf39"
+      },
+      {
+        "revision": "contact-fixed-head",
+        "commit": "4778d19a06626bd8be48f82cb7f0f00bafa053ae",
+        "node": "24.11.0",
+        "platform": "win32",
+        "elapsedMs": 29550,
+        "exitCode": 0,
+        "counts": {
+          "passed": 7,
+          "failed": 0,
+          "pending": 0,
+          "total": 7
+        },
+        "generatedClientMatchesRevision": true,
+        "sourceSchemaDigest": "ce6caca4e1578768358c10d72f5a446481c7d2f4f01f93e54409eaa1d20daf39",
+        "generatedSchemaDigest": "ce6caca4e1578768358c10d72f5a446481c7d2f4f01f93e54409eaa1d20daf39"
+      }
+    ],
+    "interpretation": "The focused suite passes on baseline and original head; the full-run cleanup EPERM is transient Windows filesystem contention, not a cooldown assertion failure",
+    "controlledWindowsReproduction": {
+      "node": "24.11.0",
+      "platform": "win32",
+      "barrier": "Child holds the directory as its current working directory, then releases it after 300 ms",
+      "originalCleanupError": "EPERM",
+      "retryCountLimit": 10,
+      "retryDelayMs": 100,
+      "boundedCleanupMs": 332.1458,
+      "removed": true
+    },
+    "correction": "Await fs/promises.rm with recursive true, force true, maxRetries 10 and retryDelay 100 after the existing resolved temporary-path guard; permanent failures still throw",
+    "apiReference": "https://nodejs.org/docs/latest-v24.x/api/fs.html#fspromisesrmpath-options",
+    "synchronousRetryInsufficientInControlledNode2411Probe": true,
+    "productionCodeChanged": false
+  },
+  "finalTypeScript": {
+    "command": "node node_modules/typescript/bin/tsc --noEmit --incremental false",
+    "exitCode": 0,
+    "startedAfterFinalTestSourceEdit": true
+  },
+  "finalFixtureSha256": {
+    "tests/admin-wallet-credit.test.ts": "7a9d49ff3edeb3d464b285eb97915fafc988a4792d41dab0f59ba7bf84b57a1f",
+    "tests/database.test.ts": "2e87be0b3ca40b5eff6f718122450410812a15335c7af458ca372dd1557dd052",
+    "tests/operations.test.ts": "f2f6ddb5ee0177f61cac37b5e0b88993ad2436f2cee94b08bba0edac76ef8b06",
+    "tests/own-contact.test.ts": "dc1b8ade383fbadf4a2a1a1dfb4aae91247682fd85d259f77a92cecc9a06cf13",
+    "tests/personal.test.ts": "863859baca8ddb1261e87fd4bada4476e65e6ac09b4d631a862cd37bc1c91a40",
+    "tests/winner-photo-db.test.ts": "f52d2fd903cae6009a1a297571fe144266350d6dbb2f4d5b4ef4a47c583ab68d",
+    "tests/chapa-schema.test.ts": "f463eaa1a386069895704e9976c8ff9962969ba51c2ac2d7168f1047074df3bf",
+    "tests/contact-request-limit.test.ts": "d3d052b53fac32b257b52f4b244af80613671c5057a158b9e2622907abbbb5df"
+  },
+  "fixtureHashNormalization": "UTF-8 source with CRLF normalized to LF",
+  "ciFollowup44051099101": {
+    "baseCommit": "e86004ee3dd13c2ccf264f88918833678c9cf554",
+    "ci": {
+      "run": 44051099101,
+      "job": 133928818691,
+      "testFiles": {
+        "passed": 274,
+        "failed": 2,
+        "total": 276
+      },
+      "tests": {
+        "passed": 3180,
+        "failed": 2,
+        "pending": 0,
+        "total": 3182
+      },
+      "durationSeconds": 365.73,
+      "artifactId": 14312959584,
+      "artifactSha256": "c9e3a9e1c589f6d9af11233344c41ffdc90565bfd27937d20e8fa7de4fdaea58"
+    },
+    "actualCiOrder": [
+      "notification-durability.test.ts",
+      "my-bids-read.test.ts",
+      "own-contact.test.ts"
+    ],
+    "confirmedCauses": {
+      "contact": "MyBids and own-contact shared TEST_DATABASE_URL. A pending AUCTION_FINALIZED expansion was consumed by dispatchOne before its delivery claim. Reproduction retained exactly one pending CONTACT_CONFIRMED target and observed one SENT and one pending AUCTION_FINALIZED root.",
+      "stop": "Claim order is nextAttemptAt then id, not insertion order. Legal reversed due times reproduced the identical SKIPPED-versus-SENT assertion; the second inserted row owned the active HTTP lease and the first remained unclaimed."
+    },
+    "controlledStopObservation": {
+      "assumedFirstRecipientWasActual": false,
+      "assumedRowHadLease": false,
+      "secondRowHadLease": true
+    },
+    "localFocusedRuns": [
+      {
+        "phase": "before",
+        "baseCommit": "e86004ee3dd13c2ccf264f88918833678c9cf554",
+        "elapsedMs": 45101,
+        "exitCode": 1,
+        "counts": {
+          "passed": 42,
+          "failed": 1,
+          "pending": 0,
+          "total": 43
+        },
+        "files": [
+          "tests/notification-durability.test.ts",
+          "tests/my-bids-read.test.ts",
+          "tests/own-contact.test.ts"
+        ],
+        "failedTitles": [
+          "required own-contact boundary commits contact without Telegram calls and retains its deduplicated retired confirmation without delivery"
+        ]
+      },
+      {
+        "phase": "reversed-due-before",
+        "baseCommit": "e86004ee3dd13c2ccf264f88918833678c9cf554",
+        "elapsedMs": 46677,
+        "exitCode": 1,
+        "counts": {
+          "passed": 41,
+          "failed": 2,
+          "pending": 0,
+          "total": 43
+        },
+        "files": [
+          "tests/notification-durability.test.ts",
+          "tests/my-bids-read.test.ts",
+          "tests/own-contact.test.ts"
+        ],
+        "failedTitles": [
+          "durable Telegram delivery: isolated database, simulated transport only does not hold a database transaction during HTTP; Stop returns promptly and the in-flight acknowledgement persists",
+          "required own-contact boundary commits contact without Telegram calls and retains its deduplicated retired confirmation without delivery"
+        ]
+      },
+      {
+        "phase": "after",
+        "baseCommit": "e86004ee3dd13c2ccf264f88918833678c9cf554",
+        "elapsedMs": 50154,
+        "exitCode": 0,
+        "counts": {
+          "passed": 43,
+          "failed": 0,
+          "pending": 0,
+          "total": 43
+        },
+        "files": [
+          "tests/notification-durability.test.ts",
+          "tests/my-bids-read.test.ts",
+          "tests/own-contact.test.ts"
+        ],
+        "failedTitles": []
+      },
+      {
+        "phase": "durability-after",
+        "baseCommit": "e86004ee3dd13c2ccf264f88918833678c9cf554",
+        "elapsedMs": 13612,
+        "exitCode": 0,
+        "counts": {
+          "passed": 12,
+          "failed": 0,
+          "pending": 0,
+          "total": 12
+        },
+        "files": [
+          "tests/notification-durability.test.ts"
+        ],
+        "failedTitles": []
+      }
+    ],
+    "actualReleaseHarness": {
+      "command": "node scripts/run-db-tests.mjs unit tests/notification-durability.test.ts tests/my-bids-read.test.ts tests/own-contact.test.ts",
+      "elapsedMs": 65227,
+      "exitCode": 0,
+      "counts": {
+        "passed": 43,
+        "failed": 0,
+        "pending": 0,
+        "total": 43
+      }
+    },
+    "fixes": [
+      "Give own-contact an OWN_CONTACT_TEST_DATABASE_URL allocated by the release harness and bound by setup before imports, preserving TEST_DATABASE_URL fallback for focused manual runs.",
+      "Make Stop due order deliberate; assert HTTP recipient, live lease and ownership retained by Stop, then exact SENT acknowledgement and Telegram message binding.",
+      "For the adjacent two-row claim, bind SENT and WORKER_STOPPING assertions to the actual HTTP recipient because multirow UPDATE RETURNING does not promise processing order."
+    ],
+    "finalTypeScript": {
+      "command": "node node_modules/typescript/bin/tsc --noEmit --incremental false",
+      "startedUtc": "2026-11-17T09:14:44.4572748Z",
+      "finishedUtc": "2026-11-17T09:16:15.2181490Z",
+      "exitCode": 0,
+      "lastFixtureEditUtc": "2026-11-17T09:14:19.8181827Z"
+    },
+    "sourceSha256": {
+      "scripts/run-db-tests.mjs": "b8247a63d4943424fe7ede2e4c6bf3375544057a9b8cd8b451b67fc59142e1b9",
+      "tests/database-env-setup.ts": "c0b5131a7155c6ec12af8216b9159ce8c73f0e084fc173b7ffe19f358bb15560",
+      "tests/notification-durability.test.ts": "1afca659fa342177dae794888bb0089d432cb46dab419952db24945abd5ac3a5",
+      "tests/own-contact.test.ts": "24245d784b74fc2c1f2efcb8938772f36d3dcaa0844b27b5b6ce7e28f11c50be"
+    },
+    "hashNormalization": "UTF-8 with CRLF normalized to LF",
+    "appSourceChanged": false,
+    "cleanup": {
+      "ownedDatabasesRemoved": 36,
+      "ownedRemaining": 0,
+      "retainedProviderDatabasesNotTargeted": true
+    },
+    "newLinuxFullGateRequired": true
+  }
+}

@@ -1,0 +1,347 @@
+{
+  "date": "2026-11-17",
+  "baseline": "e7d25f2c2a2376f65390a83b02dafbbc95366d4b",
+  "reviewedCodeCommit": "bd428b3a7ce43212b9dd403877162103852b5e1e",
+  "branch": "feat/responsive-chapa-confirmation-20261117",
+  "pullRequest": "https://github.com/devbossmaster/lowwin/pull/16",
+  "sourceDigest": {
+    "algorithm": "sha256",
+    "files": 660,
+    "value": "a13202596f3eeb81f80d2a17c3aca466ad86ad1fbbd87b87a7eb2f4a49b220d0",
+    "scope": "application source, package manifests, Prisma schema and migrations, Next configuration",
+    "unchangedThroughFinalBuild": true
+  },
+  "framework": {
+    "next": "16.4.6",
+    "advisory": "https://github.com/vercel/next.js/security/advisories/GHSA-mfr8-8qww-v76h",
+    "patchedFloor": "16.4.5",
+    "reactUnchanged": true,
+    "fullNpmAudit": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    }
+  },
+  "validation": [
+    {
+      "kind": "focused-vitest",
+      "result": "passed",
+      "filesPassed": 58,
+      "filesSkipped": 8,
+      "testsPassed": 821,
+      "testsSkipped": 190,
+      "seconds": 131.97,
+      "assertions": [
+        "Repeated pending feedback cannot indefinitely suppress retained completion evidence",
+        "Delayed initialization and verification cannot release a successor lease",
+        "One observer request remains active across handoff, remount and account changes"
+      ],
+      "limits": "Opt-in database and Redis cases skip in this command; separate evidence follows. Provider transport is simulated."
+    },
+    {
+      "kind": "isolated-postgresql-coordination-and-migration",
+      "result": "passed",
+      "testsPassed": 33,
+      "seconds": 34.76,
+      "assertions": [
+        "Baseline balance and pending rows survive both additive migrations",
+        "Signals received during provider HTTP survive cleanup and prompt a deferred private check",
+        "Fresh private terminal proof is required to resolve completion evidence",
+        "Periodic private pending checks and busy OTP backoff remain bounded",
+        "Only one committed financial credit exists after repeated settlement",
+        "Credited webhook feedback is immutable while worker coordination stays mutable"
+      ],
+      "disposableDatabasesRemoved": true,
+      "actualRetainedProviderAttemptUnchanged": true
+    },
+    {
+      "kind": "isolated-postgresql-transactions-and-account-isolation",
+      "result": "passed",
+      "testsPassed": 15,
+      "elapsedMs": 27065,
+      "disposableDatabaseRemoved": true
+    },
+    {
+      "kind": "readiness-schema",
+      "result": "passed",
+      "unitCases": 15,
+      "actualPostgresqlMetadataCases": 4,
+      "scope": "Both migration records, column types/defaults, guards, trigger bindings and reconciliation index; read-only metadata checks"
+    },
+    {
+      "kind": "production-bundle-payment-browser-fixtures",
+      "result": "passed",
+      "widths": [
+        360,
+        430
+      ],
+      "testsPassed": 29,
+      "intentionalDuplicateCasesSkipped": 11,
+      "elapsedMs": 171969,
+      "limits": "Provider HTTP and EventSource callbacks are fixtures; not actual Chapa settlement or deployed TLS evidence"
+    },
+    {
+      "kind": "production-bundle-admin-regression",
+      "result": "passed",
+      "widths": [
+        360,
+        430,
+        1440
+      ],
+      "testsPassed": 3,
+      "applicationWrites": 0
+    },
+    {
+      "kind": "standalone-typescript",
+      "command": "npx tsc --noEmit",
+      "result": "passed"
+    },
+    {
+      "kind": "fresh-production-build",
+      "command": "npm run build",
+      "result": "passed",
+      "elapsedMs": 222683,
+      "disposableDatabaseRemoved": true,
+      "livePaymentAndTelegramCredentialsExcluded": true
+    },
+    {
+      "kind": "exact-release-harness-hosted-and-direct-database-regression",
+      "result": "passed",
+      "testsPassed": 116,
+      "testsSkipped": 0,
+      "seconds": 94.05,
+      "scope": "68 hosted and 48 Direct batch cases; retry fixtures explicitly advance backoff and assert hints cannot bypass it"
+    },
+    {
+      "kind": "baseline-ui-copy-contract-fixtures",
+      "result": "passed",
+      "testsPassed": 20,
+      "files": 3,
+      "seconds": 8.51,
+      "productSourceUnchangedFromBaseline": true
+    },
+    {
+      "kind": "database-fixture-isolation-and-auth-setup",
+      "result": "four-suites-passed",
+      "testsPassed": 31,
+      "files": 4,
+      "scope": "Admin payment table, notification durability, transactions and wallet history",
+      "historicalChapaSchemaSuite": "Subsequently repaired with chronological prerequisites and successors; included in 108 passing cases. See followupEvidence."
+    },
+    {
+      "kind": "real-redis-cross-process-ci",
+      "result": "passed",
+      "testsPassed": 1,
+      "processes": 3,
+      "evidence": "chapa-redis-ci-2026-11-17.json",
+      "limits": "Real Redis socket interruption/reconnect and namespace isolation; no Coolify proxy, database commit or device"
+    }
+  ],
+  "countsOverlapDoNotSum": true,
+  "repositoryCi": {
+    "allChecksGreen": false,
+    "remainingFailureInventory": "chapa-foundation-gates-2026-11-17.json",
+    "fullRun": "https://github.com/devbossmaster/lowwin/actions/runs/44036042628",
+    "fullRunResultsBeforeFinalFixtureCorrections": {
+      "testsPassed": 3128,
+      "testsFailed": 29,
+      "testsSkipped": 25,
+      "suiteSetupFailures": 3
+    },
+    "subsequentRun": "https://github.com/devbossmaster/lowwin/actions/runs/44037051175",
+    "subsequentJobsConfirmedPassed": [
+      "payment-stream-broker",
+      "security",
+      "static-secrets",
+      "browser-admin"
+    ],
+    "remainingGate": "Fresh Linux foundation and migrated payment-browser workflow must reach terminal. Separate redesign gate remains open with actual representative baseline reproduction and explicit limits; no all-green claim.",
+    "lastCompletedPreRepairRun": "https://github.com/devbossmaster/lowwin/actions/runs/44038433916",
+    "lastCompletedPreRepairResults": {
+      "foundation": {
+        "passed": 3157,
+        "failed": 16,
+        "skippedOrBlocked": 9
+      },
+      "browserChapa": {
+        "passed": 25,
+        "failed": 77,
+        "skipped": 2,
+        "cleanupError": true
+      },
+      "browserRedesign": {
+        "passed": 11,
+        "failed": 19,
+        "skipped": 1,
+        "conclusion": "cancelled at 25-minute job timeout; 43 planned cases no terminal result"
+      }
+    },
+    "finalLocalRepairEvidence": {
+      "foundationCohort": {
+        "passed": 108,
+        "failed": 0,
+        "skipped": 0
+      },
+      "correctedContactSuite": {
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0
+      },
+      "paymentBrowserDistinctCases": {
+        "passed": 84,
+        "failed": 0,
+        "intentionalDuplicateSkips": 11,
+        "acrossFocusedReruns": true,
+        "restoredAuthorizationModalCases": 4
+      },
+      "fullLocalFoundation": {
+        "passed": 3175,
+        "assertionFailures": 0,
+        "blockedByCleanup": 7,
+        "fullGatePassed": false
+      }
+    },
+    "currentChecks": "https://github.com/devbossmaster/lowwin/pull/16/checks",
+    "followupRun": {
+      "commit": "e86004ee3dd13c2ccf264f88918833678c9cf554",
+      "url": "https://github.com/devbossmaster/lowwin/actions/runs/44051099101",
+      "foundation": {
+        "job": 133928818691,
+        "result": "failure",
+        "passed": 3180,
+        "failed": 2,
+        "skipped": 0,
+        "seconds": 365.73,
+        "typecheckAndBuild": "skipped after unit failure",
+        "failures": [
+          "Cross-suite campaign expansion before retired contact notification in shared fixture database",
+          "Stop fixture assumed which equally due outbox row was claimed"
+        ]
+      },
+      "browserChapa": {
+        "job": 133928818832,
+        "result": "failure",
+        "passed": 82,
+        "failed": 2,
+        "skipped": 11,
+        "productionBuild": "passed",
+        "allPaymentScenarios": "passed",
+        "failures": [
+          "430px normal and throttled canonical Home-return fixture fell outside unfiltered page1"
+        ]
+      },
+      "passedJobs": [
+        "static-secrets",
+        "security",
+        "payment-stream-broker",
+        "browser-admin"
+      ],
+      "redesign": "Separate known-open gate; inspect run for terminal status"
+    },
+    "followupFixtureCorrection": {
+      "applicationSourceChanged": false,
+      "contactDatabaseIsolation": "OWN_CONTACT_TEST_DATABASE_URL allocated per suite before imports",
+      "notificationStop": "Deliberate due order for limit1; actual HTTP recipient and live lease bind multirow Stop expectations",
+      "publicHome": "Only owned synthetic marker is featured, including reuse; no app pagination change",
+      "orderedCohort": {
+        "passed": 43,
+        "failed": 0,
+        "skipped": 0
+      },
+      "releaseHarnessCohort": {
+        "passed": 43,
+        "failed": 0,
+        "skipped": 0
+      },
+      "finalDurability": {
+        "passed": 12,
+        "failed": 0,
+        "skipped": 0
+      },
+      "crowdedCatalogProof": {
+        "passed": 4,
+        "failed": 0,
+        "newerNonFeaturedSiblings": 15,
+        "widths": [
+          360,
+          430
+        ],
+        "networks": [
+          "normal",
+          "throttled"
+        ]
+      },
+      "typeScript": "passed after final source edit",
+      "countsOverlapDoNotSum": true,
+      "foundationEvidence": "../../chapa-foundation-baseline-reproduction-2026-11-17.json",
+      "paginationEvidence": "chapa-ci-44051099101-pagination-2026-11-17.json",
+      "freshLinuxAggregateRequired": true
+    }
+  },
+  "actualProvider": {
+    "evidence": "chapa-test-inline-diagnosis-2026-11-17.json",
+    "mode": "test",
+    "methodsHttpStatus": 200,
+    "initializationHttpStatus": 400,
+    "providerCode": "INVALID_VALUE",
+    "safeMessage": "payable not found",
+    "rootCauseConfirmed": false,
+    "originalOperationPreserved": true,
+    "distinctNewOperationsDuringReview": 1,
+    "acceptedTestPayments": 0,
+    "committedProviderCredits": 0,
+    "authenticatedWebhookDeliveries": 0,
+    "merchantKeyPairBusinessBindingRequiresProviderConfirmation": true,
+    "originalPairEvidenceHistorical": true,
+    "newPair": {
+      "evidence": "chapa-newpair-inline-test-2026-11-17.json",
+      "initializationCalls": 1,
+      "method": "telebirr",
+      "httpStatus": 400,
+      "code": "INVALID_VALUE",
+      "message": "payable not found",
+      "acceptedPayments": 0,
+      "credits": 0,
+      "receipts": 0,
+      "webhooks": 0,
+      "originalOperationRetained": true,
+      "latency": {
+        "samples": 1,
+        "applicationTotalMs": 2095,
+        "coldCapabilitiesMs": 988.1,
+        "initializationHttpMs": 968.9,
+        "rejectedOperationOnly": true
+      }
+    }
+  },
+  "deployment": {
+    "stagingTargetIdentified": false,
+    "coolifyTlsVerification": "not-run",
+    "commitToScreenSamples": 0,
+    "physicalTelegram": "deferred-by-user",
+    "productionDeploymentPerformed": false,
+    "merged": false,
+    "runbook": "../chapa-staging-rollout-2026-11-17.md",
+    "additiveMigrations": [
+      "202611170001_chapa_payment_signals",
+      "202611170002_chapa_signal_guards"
+    ],
+    "temporaryDashboardWebhookRemoval": "operator-action-required-no-authenticated-dashboard-access",
+    "apiHealthAccess": "validated HTTPS health200, unauthenticated inventory401; resource identity unverified"
+  },
+  "followupEvidence": {
+    "date": "2026-11-17",
+    "foundation": "../../chapa-foundation-baseline-reproduction-2026-11-17.json",
+    "browser": "chapa-browser-ci-baseline-reproduction-2026-11-17.json",
+    "redesign": "chapa-redesign-ci-gates-2026-11-17.json",
+    "providerNewKeys": "chapa-newpair-inline-test-2026-11-17.json",
+    "providerReadOnlyChecks": "chapa-updated-test-keys-2026-11-17.json",
+    "stagingAccess": "chapa-coolify-access-2026-11-17.json",
+    "productionCodeChangedInTriageBatch": false,
+    "sourceDigestStillMatches": true,
+    "finalTypeScript": "passed"
+  }
+}

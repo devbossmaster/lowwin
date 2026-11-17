@@ -579,7 +579,13 @@ model ChapaCheckout {
   status                String    @default("SUBMITTING")
   flowVersion           Int       @default(2)
   providerStatus        String?
+  providerCancelledBy   String?
   verificationState     String    @default("UNVERIFIED")
+  verificationSignalVersion Int   @default(0)
+  verificationHandledSignalVersion Int @default(0)
+  verificationCompletionStatus String?
+  lastPrivateCheckAt    DateTime?
+  verificationRetryAfter DateTime?
   initializationErrorCode String?
   initializationHttpStatus Int?
   reason                String?
@@ -641,6 +647,10 @@ model ChapaWebhookEvent {
   merchantReference        String?
   chapaReference           String?
   event                    String
+  providerReasonCode       String?
+  cancelledBy              String?
+  providerUpdatedAt        DateTime?
+  paymentMethod            String?
   checkoutId               String?
   status                   String   @default("QUEUED")
   attempts                 Int      @default(0)
@@ -651,6 +661,7 @@ model ChapaWebhookEvent {
 
   @@unique([mode, configurationFingerprint, bodyHash])
   @@index([merchantReference, receivedAt])
+  @@index([checkoutId, receivedAt])
   @@index([status, nextAttemptAt])
 }
 

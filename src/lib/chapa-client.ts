@@ -5,7 +5,7 @@ import type {BidBatchQuote,ChapaDirectIntent} from './bid-batch-client';
 export type DepositBonusPolicy={configured:boolean;enabled:boolean;percent:number;minAmount:string;maxBonus:string|null;validityDays:number;endsAt:string|null;version:number};
 export type DepositBonusQuote={amount:string;totalCredit:string;policyVersion:number;validityDays:number;credited:boolean};
 export type ChapaIntent={key:string;purpose:'TOP_UP';amount:string}|{key:string;purpose:'BID';auctionSlug:string;amount:string;feeVersion:number;couponId?:string};
-export type ChapaCheckoutView=DirectCheckoutFields&{providerStatus?:string|null;providerReasonCode?:string|null;authorizationReasonCode?:string|null;verificationState?:string;initializationIssue?:ChapaApiErrorCategory|null;merchantReference?:string;paymentMethod?:string|null;auctionTitle?:string|null;auctionTitleAm?:string|null;auctionCode?:string|null;auctionStatus?:string|null;auctionEndsAt?:string|null;id:string;purpose:'TOP_UP'|'BID';mode:'test'|'live';amount:string;amountCents:string;currency:'ETB';status:string;reason:string|null;checkoutUrl:string|null;auctionSlug:string|null;bidNumber:string|null;feeVersion:number|null;grossFee:string|null;discountPoints:string;createdAt:string;expiresAt:string;pollAfterMs:number;fundsPreserved:boolean;receipt:BidReceipt|null};
+export type ChapaCheckoutView=DirectCheckoutFields&{providerStatus?:string|null;providerReasonCode?:string|null;providerCancelledBy?:'USER'|'SYSTEM'|null;completionSignalPending?:boolean;authorizationReasonCode?:string|null;verificationState?:string;initializationIssue?:ChapaApiErrorCategory|null;merchantReference?:string;paymentMethod?:string|null;auctionTitle?:string|null;auctionTitleAm?:string|null;auctionCode?:string|null;auctionStatus?:string|null;auctionEndsAt?:string|null;id:string;purpose:'TOP_UP'|'BID';mode:'test'|'live';amount:string;amountCents:string;currency:'ETB';status:string;reason:string|null;checkoutUrl:string|null;auctionSlug:string|null;bidNumber:string|null;feeVersion:number|null;grossFee:string|null;discountPoints:string;createdAt:string;expiresAt:string;pollAfterMs:number;fundsPreserved:boolean;receipt:BidReceipt|null};
 export type ChapaAvailability={enabled:boolean;configured:boolean;mode:'test'|'live';walletBidsEnabled:boolean;minTopup:string;maxTopup:string;reason:string|null};
 export type DirectCheckoutFields={depositBonus?:DepositBonusQuote|null;apiVersion?:'v2'|'legacy';unsupportedLegacy?:boolean;legacyRecoveryAvailable?:boolean;flowVersion?:number;chargeType?:'DIRECT'|'HOSTED'|'INLINE';authType?:'USSD'|'OTP'|null;authorizationReference?:string|null;payerPhoneMasked?:string|null;batch?:BidBatchQuote|null;batchNumbers?:string[];receipts?:BidReceipt[];initializationReasonCode?:string|null;updatedAt?:string;verificationUnavailable?:boolean};
 export type ChapaCheckoutConfig={depositBonus?:DepositBonusPolicy;apiVersion?:'v2';enabled:boolean;configured:boolean;mode:'test'|'live';minTopup:string;maxTopup:string;methods:import('./bid-batch-client').DirectPaymentMethod[];phone:string|null;cbeBankEnabled:boolean;cbeGuideUrl:string|null};
@@ -52,15 +52,20 @@ export function chapaConfirmed(order:Pick<ChapaCheckoutView,'purpose'|'status'|'
 /** A structured rejected initialization is not an outstanding phone prompt.
  * Historical rows may still say PENDING; verified outcomes take precedence. */
 export function chapaDirectRequestRejected(order:ChapaCheckoutView|null){
- return !!order&&chapaApiCharge(order)&&!order.authorizationReference&&!chapaConfirmed(order)&&!order.providerStatus&&order.verificationState!=='MISMATCH'&&['SUBMITTING','PENDING','NEEDS_REVIEW'].includes(order.status)&&order.initializationIssue==='request';
+ return !!order&&!order.completionSignalPending&&chapaApiCharge(order)&&!order.authorizationReference&&!chapaConfirmed(order)&&!order.providerStatus&&order.verificationState!=='MISMATCH'&&['SUBMITTING','PENDING','NEEDS_REVIEW'].includes(order.status)&&order.initializationIssue==='request';
 }
 const terminalProviderStates=new Set(['FAILED','CANCELLED','INCOMPLETE','EXPIRED','BLOCKED','FAILED_OR_CANCELLED']);
-export function chapaVerifiedTerminal(order:ChapaCheckoutView|null){return !!order&&order.verificationState==='VERIFIED'&&terminalProviderStates.has(order.providerStatus??'')}
+export function chapaVerifiedTerminal(order:ChapaCheckoutView|null){return !!order&&!order.completionSignalPending&&order.verificationState==='VERIFIED'&&terminalProviderStates.has(order.providerStatus??'')}
 /** Accepted authorization is provider state. A transport error or a local
  * display/checking deadline cannot revoke it. Recorded expiry is not proof of
  * failure: a fresh owned server check must establish the terminal outcome. */
 export function chapaAwaitingAuthorization(order:ChapaCheckoutView|null){
- return !!order&&chapaApiCharge(order)&&!!order.authorizationReference&&['USSD','OTP'].includes(order.authType??'')&&['SUBMITTING','PENDING','AUTH_NEEDED','VERIFYING'].includes(order.status)&&!chapaConfirmed(order)&&order.providerStatus!=='SUCCESS'&&order.verificationState!=='MISMATCH'&&!chapaVerifiedTerminal(order);
+ return !!order&&!order.completionSignalPending&&chapaApiCharge(order)&&!!order.authorizationReference&&['USSD','OTP'].includes(order.authType??'')&&['SUBMITTING','PENDING','AUTH_NEEDED','VERIFYING'].includes(order.status)&&!chapaConfirmed(order)&&order.providerStatus!=='SUCCESS'&&order.verificationState!=='MISMATCH'&&!chapaVerifiedTerminal(order);
+}
+/** A status read can finish after a rejected OTP submission. An unchanged
+ * challenge does not retract that rejection; the next submission clears it. */
+export function chapaRetainOtpError(previous:ChapaCheckoutView|null,next:ChapaCheckoutView,errorCode:string|null){
+ return errorCode==='INVALID_OTP'&&previous?.id===next.id&&previous.authType==='OTP'&&!!previous.authorizationReference&&previous.authorizationReference===next.authorizationReference&&next.authType==='OTP'&&chapaAwaitingAuthorization(next);
 }
 /** Concurrent status/OTP responses can arrive in a different order. Never
  * replace authoritative completion with an older unconfirmed snapshot. */
@@ -68,11 +73,11 @@ export function acceptChapaSnapshot(previous:ChapaCheckoutView|null,next:ChapaCh
  if(!previous||previous.id!==next.id)return true;
  if(chapaConfirmed(previous)&&!chapaConfirmed(next))return false;
  if(previous.verificationState==='MISMATCH'&&['UNAVAILABLE','UNVERIFIED',undefined].includes(next.verificationState))return false;
- if(chapaVerifiedTerminal(previous)&&!chapaVerifiedTerminal(next)&&next.providerStatus!=='SUCCESS'&&!chapaConfirmed(next))return false;
+ if(chapaVerifiedTerminal(previous)&&!chapaVerifiedTerminal(next)&&!next.completionSignalPending&&next.providerStatus!=='SUCCESS'&&!chapaConfirmed(next))return false;
  if(previous.providerStatus==='SUCCESS'&&next.providerStatus!=='SUCCESS'&&!chapaConfirmed(next))return false;
  // A slower pre-cancellation read must not restart a completed phone prompt.
  // A later server-verified success can still reconcile a late payment.
- if(!chapaRecoverable(previous)&&['SUBMITTING','PENDING','AUTH_NEEDED'].includes(next.status)&&next.providerStatus!=='SUCCESS'&&!chapaConfirmed(next))return false;
+ if(!chapaRecoverable(previous)&&!next.completionSignalPending&&['SUBMITTING','PENDING','AUTH_NEEDED'].includes(next.status)&&next.providerStatus!=='SUCCESS'&&!chapaConfirmed(next))return false;
  const before=Date.parse(previous.updatedAt??''),after=Date.parse(next.updatedAt??'');
  return !Number.isFinite(before)||!Number.isFinite(after)||after>=before;
 }
@@ -93,10 +98,13 @@ export function chapaPollingPaused(order:ChapaCheckoutView,now=Date.now()){
 export function chapaCanResumeCheckout(attempt:ChapaAttempt|null,order:ChapaCheckoutView|null){
  if(!attempt)return false;
  if(!order)return !attempt.orderId;
- if(order.apiVersion==='legacy'||order.unsupportedLegacy||order.initializationIssue==='state'||chapaDirectRequestRejected(order))return false;
+ if(order.completionSignalPending||order.apiVersion==='legacy'||order.unsupportedLegacy||order.initializationIssue==='state'||chapaDirectRequestRejected(order))return false;
  return !order.checkoutUrl&&!chapaConfirmed(order)&&['SUBMITTING','PENDING'].includes(order.status)&&(!order.reason||['INITIALIZATION_PENDING','PROVIDER_CONFIRMATION_REQUIRED','PROVIDER_REFERENCE_UNAVAILABLE','PROVIDER_EVENT_RECEIVED'].includes(order.reason));
 }
-export function chapaRecoverable(order:Pick<ChapaCheckoutView,'status'|'fundsPreserved'>&Partial<Pick<ChapaCheckoutView,'apiVersion'|'unsupportedLegacy'|'legacyRecoveryAvailable'>>){return !order.unsupportedLegacy&&(order.apiVersion!=='legacy'||order.legacyRecoveryAvailable===true)&&!order.fundsPreserved&&!['CREDITED','BID_ACCEPTED','FAILED','CANCELLED','EXPIRED','BLOCKED','INCOMPLETE','FAILED_OR_CANCELLED'].includes(order.status)}
+export function chapaRecoverable(order:Pick<ChapaCheckoutView,'status'|'fundsPreserved'>&Partial<Pick<ChapaCheckoutView,'apiVersion'|'unsupportedLegacy'|'legacyRecoveryAvailable'|'completionSignalPending'>>){
+ return !order.unsupportedLegacy&&(order.apiVersion!=='legacy'||order.legacyRecoveryAvailable===true)&&!order.fundsPreserved&&
+  (order.completionSignalPending===true&&!['CREDITED','BID_ACCEPTED'].includes(order.status)||!['CREDITED','BID_ACCEPTED','FAILED','CANCELLED','EXPIRED','BLOCKED','INCOMPLETE','FAILED_OR_CANCELLED'].includes(order.status));
+}
 export type WalletPaymentShortfall={available:string;required:string;shortfall:string;currency:'ETB'};
 export class ChapaClientError extends Error{constructor(message:string,readonly status=0,readonly code='UNAVAILABLE',readonly wallet?:WalletPaymentShortfall){super(message)}}
 /** Status and explicit authorization can serialize public validation (15s)

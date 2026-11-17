@@ -1,0 +1,271 @@
+{
+  "date": "2026-11-17",
+  "scope": "Production payment-browser CI migration; synthetic UI fixtures only",
+  "reproduction": {
+    "test": "one direct top-up survives sheet closure, resumes in Transactions and confirms the same payment automatically",
+    "scenarioIdentical": true,
+    "viewport": {
+      "width": 360,
+      "height": 800
+    },
+    "originalSpecIdenticalBetweenGitRevisions": true,
+    "baseline": {
+      "commit": "e7d25f2c2a2376f65390a83b02dafbbc95366d4b",
+      "framework": "Next.js 16.4.2",
+      "runtime": "isolated development server on D:; own baseline migrations and generated Prisma client",
+      "stats": {
+        "startTime": "2026-11-17T07:59:27.618Z",
+        "duration": 96469.265,
+        "expected": 0,
+        "skipped": 0,
+        "unexpected": 1,
+        "flaky": 0
+      },
+      "schemaSha256": "98fa94ccdff7442da28637dc43e23e9f15a64ae60db374a7a2f621ccbca772c2",
+      "generatedSchemaSha256": "46b58ffd0d39e677cc23494ea673fdb95108c9a499cb62dafe18585c3ad1d2f9",
+      "generatedSchemaMatchesNonWhitespaceTokens": true,
+      "log": ".local/payment-browser-baseline-test.log",
+      "schemaFormattingNote": "Prisma formats the generated schema; its non-whitespace token stream exactly matches the baseline source schema."
+    },
+    "head": {
+      "commit": "4778d19a06626bd8be48f82cb7f0f00bafa053ae",
+      "framework": "Next.js 16.4.6",
+      "runtime": "existing optimized production bundle",
+      "buildId": "J3-So8mC3l7Y_uVvdGR3H",
+      "stats": {
+        "startTime": "2026-11-17T07:45:24.298Z",
+        "duration": 17368.760000000002,
+        "expected": 0,
+        "skipped": 0,
+        "unexpected": 1,
+        "flaky": 0
+      },
+      "log": ".local/payment-browser-head-test.log"
+    },
+    "commonFailure": {
+      "step": "old top-up amount textbox lookup, before payment creation",
+      "selector": "dialog textbox accessible name Amount, exact",
+      "currentAccessibleName": "Amount to add",
+      "timeoutMs": 8000
+    },
+    "unchangedRelevantApplicationFiles": [
+      "src/components/wallet-top-up.tsx",
+      "src/components/bottom-navigation.tsx",
+      "src/components/transactions-page.tsx"
+    ],
+    "databases": "Fresh per variant, both own schemas migrated; repro databases dropped; retained real TEST attempt database untouched",
+    "runtimeComparisonIsNotLatencyBenchmark": true
+  },
+  "migration": {
+    "applicationSourceChanged": false,
+    "entryPoint": "node scripts/run-db-tests.mjs chapa",
+    "runtime": "production webpack build plus temporary localhost TLS",
+    "currentCoverage": [
+      "v2 Inline only initiation",
+      "telebirr, cbebirr, mpesa method and phone rules",
+      "same-attempt USSD and OTP",
+      "lost initialization response and original-key discovery",
+      "confirmed cancellation before another explicit Pay",
+      "atomic internal wallet UI and external-outage independence",
+      "fee-quote provider switching and wallet independence",
+      "committed SSE with held provider poll",
+      "EventSource fallback and unresolved completion hints",
+      "compact bilingual summary and responsive forms",
+      "English/Amharic compact authorization reason stays in the same contained modal through verified INVALID_PIN"
+    ],
+    "retainedCoverage": [
+      "owned historical hosted TOP_UP and BID return",
+      "unavailable and mismatch review followed by verified completion",
+      "no historical hosted relaunch for success or elapsed validity",
+      "historical Direct USSD details closure and recovery",
+      "historical Direct OTP authorizes only original checkout",
+      "signed Telegram account switch rejects old in-flight payment response",
+      "private initialization diagnostics stay hidden",
+      "public entry, native-contact consent and navigation",
+      "consented winner photo publication/reset with immutable settlement"
+    ]
+  },
+  "safety": {
+    "realMerchantKeysUsed": false,
+    "providerPaymentRequestsMade": 0,
+    "liveCallsMade": 0,
+    "realPhonesUsed": false,
+    "actualProviderSettlementOrPhysicalUssdProven": false
+  },
+  "validation": {
+    "status": "complete",
+    "applicationSourceChanged": false,
+    "productionBuild": "Reused existing Next16.4.6 production bundle because only tests/config/workflow changed.",
+    "runs": [
+      {
+        "artifactPrefix": ".local/chapa-payment-ci-final-20261117",
+        "stats": {
+          "startTime": "2026-11-17T08:06:19.396Z",
+          "duration": 664123.7059999999,
+          "expected": 62,
+          "skipped": 11,
+          "unexpected": 18,
+          "flaky": 0
+        },
+        "paymentSubset": {
+          "passed": 53,
+          "failed": 0,
+          "skipped": 11
+        },
+        "note": "53 payment/compatibility cases passed plus 11 deliberate duplicate-width skips; preserved old public/contact/winner fixtures failed and were corrected in later focused runs."
+      },
+      {
+        "artifactPrefix": ".local/chapa-public-regression-20261117",
+        "stats": {
+          "startTime": "2026-11-17T08:18:07.979Z",
+          "duration": 248041.284,
+          "expected": 24,
+          "skipped": 0,
+          "unexpected": 3,
+          "flaky": 0
+        },
+        "retainedFinalPassed": {
+          "passed": 24,
+          "failed": 0,
+          "skipped": 0
+        },
+        "note": "24 final public/contact/navigation cases passed; the guest cases and then-loaded old winner fixture failed."
+      },
+      {
+        "artifactPrefix": ".local/chapa-last-fixtures-20261117",
+        "stats": {
+          "startTime": "2026-11-17T08:22:50.737Z",
+          "duration": 100207.72899999999,
+          "expected": 1,
+          "skipped": 0,
+          "unexpected": 2,
+          "flaky": 0
+        },
+        "winnerFinalPassed": {
+          "passed": 1,
+          "failed": 0,
+          "skipped": 0
+        },
+        "note": "Final consented complete-banner gate passed; guest cases still used an earlier fixture snapshot."
+      },
+      {
+        "artifactPrefix": ".local/chapa-guest-final-20261117",
+        "stats": {
+          "startTime": "2026-11-17T08:25:18.769Z",
+          "duration": 23767.106,
+          "expected": 2,
+          "skipped": 0,
+          "unexpected": 0,
+          "flaky": 0
+        },
+        "guestFinal": {
+          "passed": 2,
+          "failed": 0,
+          "skipped": 0
+        },
+        "note": "Final corrected guest-draft case passed at360 and430."
+      },
+      {
+        "artifactPrefix": ".local/chapa-reference-final-20261117",
+        "stats": {
+          "startTime": "2026-11-17T08:55:26.596Z",
+          "duration": 15051.659000000001,
+          "expected": 4,
+          "skipped": 0,
+          "unexpected": 0,
+          "flaky": 0
+        },
+        "referenceFinal": {
+          "passed": 4,
+          "failed": 0,
+          "skipped": 0
+        },
+        "note": "Review found this existing new-payment UI suite absent from the CI match list; added it and ran all four360/430 EN/AM cases with the same production bundle."
+      }
+    ],
+    "aggregateFinalDistinctCases": {
+      "passed": 84,
+      "failed": 0,
+      "skipped": 11
+    },
+    "aggregationNote": "84 distinct executable cases have final passing evidence across focused reruns; no single green95-case run is claimed. Eleven pre-existing430-width skips avoid repeating the full single-lifecycle Inline cases already executed at360.",
+    "allOwnedBrowserDatabasesDropped": true,
+    "ownedServerPortsReleased": [
+      3156,
+      3157
+    ],
+    "typecheck": {
+      "command": "node node_modules/typescript/bin/tsc --noEmit --incremental false",
+      "frozenFinalRun": "passed",
+      "exitCode": 0,
+      "log": ".local/chapa-browser-frozen-typecheck-20261117.log"
+    },
+    "nextCi": "Fresh revised workflow run required after root pushes frozen batch; old run is terminal failure.",
+    "applicationSourceScope": "Only this browser CI triage batch; the parent payment feature contains application changes.",
+    "configuredCases": 95,
+    "followupReview": {
+      "coverageGapFixed": "playwright.chapa.config.ts mobile testMatch now includes **/reference-bid-browser/payment-status.spec.ts",
+      "otherConfirmedBlockingIssues": [],
+      "credentials": "Application Chapa private/public/webhook keys, dedicated validation keys and v1 keys are explicitly blank in the CI runner; creation/recovery/live flags are disabled and provider browser HTTP is intercepted.",
+      "productionChanged": false,
+      "referenceDatabaseDropped": true,
+      "typecheckNote": "The final standalone TypeScript pass preceded this one additional string in the config match list; no TypeScript logic or application code changed afterward."
+    }
+  },
+  "oldCi": {
+    "runId": 44038433916,
+    "jobId": 133887031287,
+    "url": "https://github.com/devbossmaster/lowwin/actions/runs/44038433916/job/133887031287",
+    "headCommit": "4778d19a06626bd8be48f82cb7f0f00bafa053ae",
+    "mergeCommit": "f3fcdc177142034ec9e88bd6d705c9ed890c6bdb",
+    "status": "completed",
+    "conclusion": "failure",
+    "failedStep": "node scripts/run-db-tests.mjs chapa",
+    "stepExitCode": 1,
+    "testSummary": {
+      "failed": 77,
+      "passed": 25,
+      "skipped": 2,
+      "duration": "23.2 minutes"
+    },
+    "otherError": "AggregateError: Browser test server cleanup failed",
+    "laterSteps": {
+      "temporaryTls": "skipped",
+      "productionNov7": "skipped"
+    },
+    "observedFailureGroups": [
+      "Retired Direct creation paths and stale Top up wallet / Amount selectors",
+      "Missing Transactions bottom-navigation destination",
+      "Generic card button lookup matches Place a bid and Share",
+      "Later localhost3156 connection-refused cascade; child exit cause not established by these logs"
+    ],
+    "connectionRefusedFailures": 15,
+    "log": ".local/chapa-ci-browser-133887031287.log",
+    "logSha256": "0632a83bee035da6e37e8b66b1da7cd95c711dca00744eaf0be25027a27c5275",
+    "classificationLimit": "Two representative selector failures were executed on baseline and head; this is not a claim that all 77 CI failures were individually reproduced."
+  },
+  "additionalReproduction": {
+    "test": "optimized normal launch, cached routes and sheet",
+    "baselineStats": {
+      "startTime": "2026-11-17T08:12:34.415Z",
+      "duration": 64931.336,
+      "expected": 0,
+      "skipped": 0,
+      "unexpected": 1,
+      "flaky": 0
+    },
+    "baselineLog": ".local/payment-browser-public-baseline-test.log",
+    "headEvidence": ".local/chapa-payment-ci-final-20261117-results.json",
+    "sameFailure": "Strict selector card.getByRole(button) resolves to both Place a bid and Share",
+    "unchangedApplicationFilesVerifiedAgainstBaseline": [
+      "src/components/mini-header.tsx",
+      "src/components/introduction-sheet.tsx",
+      "src/components/first-visit-introduction.tsx",
+      "src/components/home-hero.tsx",
+      "src/components/tutorial-video.tsx",
+      "src/components/admin-winner-photo.tsx",
+      "src/components/winner-banner.tsx",
+      "src/modules/admin/winner-banner.ts"
+    ]
+  }
+}

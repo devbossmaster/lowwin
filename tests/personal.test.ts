@@ -23,7 +23,8 @@ describe.skipIf(!url)('Phase 4B public outcomes and private pages on PostgreSQL'
   async function signIn(telegramId=randomInt(4000000000,5000000000)) {
     await verifyFixtureContact(client,telegramId);
     const {handleAuth}=await import('../src/modules/auth/handler');
-    const response=await handleAuth(request('/api/auth/telegram/miniapp/signin',undefined,'POST',{initData:signedLaunch({user:JSON.stringify({id:telegramId,first_name:'Private secret name'})})}));
+    const existing=await client.user.findUnique({where:{telegramId:String(telegramId)},select:{telegramUsername:true}});
+    const response=await handleAuth(request('/api/auth/telegram/miniapp/signin',undefined,'POST',{initData:signedLaunch({user:JSON.stringify({id:telegramId,first_name:'Private secret name',...(existing?.telegramUsername?{username:existing.telegramUsername}:{})})})}));
     expect(response.status).toBe(200);
     const user=await client.user.findUniqueOrThrow({where:{telegramId:String(telegramId)}});
     return {id:user.id,cookie:response.headers.get('set-cookie')!.split(';')[0],telegramId};
@@ -68,7 +69,7 @@ describe.skipIf(!url)('Phase 4B public outcomes and private pages on PostgreSQL'
     const route=await import('../src/app/api/results/[auctionCode]/route');
     const response=await route.GET(request(`/api/results/${publicCode(winner)}`,first.cookie),{params:Promise.resolve({auctionCode:publicCode(winner)})});
     expect(response.status).toBe(200);expect(response.headers.get('cache-control')).toContain('no-store');const body=await response.json();
-    expect(Object.keys(body).sort()).toEqual(['slug','code','status','publishedAt','featured','isDemo','startsAt','endsAt','bidCount','viewCount','product','category','fulfillment','terms','result'].sort());
+    expect(Object.keys(body).sort()).toEqual(['slug','code','status','publishedAt','featured','isDemo','startsAt','endsAt','bidCount','viewCount','product','category','fulfillment','terms','result','presentationVersion'].sort());
     expect(Object.keys(body.result).sort()).toEqual(['decision','outcome','winningPoints','explanation','isDemo','closedAt','publishedAt','source','demoLabel','winnerDisplay','winnerUsername','winnerPhoneMasked','winnerPhotoPath','winnerBannerPath','winnerBannerVersion','acceptedBidCount'].sort());
     const settlement=await client.auctionSettlement.findUniqueOrThrow({where:{auctionId:winner.id},include:{movements:true}});
     expect(settlement.proof).toHaveProperty('amountFrequencies');
@@ -170,21 +171,23 @@ describe.skipIf(!url)('Phase 4B public outcomes and private pages on PostgreSQL'
     const route=await import('../src/app/api/alerts/route');
     const ownDraw=randomUUID(),ownPayment=randomUUID(),otherPayment=randomUUID(),retiredTransfer=randomUUID();
     await client.notificationInbox.createMany({data:[
-      {id:retiredTransfer,key:`account-fixture:${retiredTransfer}`,userId:first.id,kind:'DEPOSIT_CREDITED',title:'Historical wallet credit',body:'Historical transfer stays in the audit record',href:'/wallet'},
-      {id:ownDraw,key:`account-fixture:${ownDraw}`,userId:first.id,kind:'AUCTION_WON',title:'Your draw result',body:'Private own draw update',href:'/my-bids'},
-      {id:ownPayment,key:`account-fixture:${ownPayment}`,userId:first.id,kind:'PAYMENT_ACCEPTED',title:'Own payment',body:'Private own payment update',href:'/wallet'},
-      {id:otherPayment,key:`account-fixture:${otherPayment}`,userId:second.id,kind:'PAYMENT_ACCEPTED',title:'Other customer payment secret',body:'Do not expose this',href:'/wallet'},
+      {id:retiredTransfer,key:`account-fixture:${retiredTransfer}`,userId:first.id,kind:'PAYMENT_CREDITED',title:'Historical wallet credit',body:'Historical transfer stays in the audit record',href:'/wallet'},
+      {id:ownDraw,key:`account-fixture:${ownDraw}`,userId:first.id,kind:'AUCTION_ENDED',title:'Your draw result',body:'Private own draw update',href:'/my-bids'},
+      {id:ownPayment,key:`account-fixture:${ownPayment}`,userId:first.id,kind:'DEPOSIT_CREDITED',title:'Own payment',body:'Private own payment update',href:'/wallet'},
+      {id:otherPayment,key:`account-fixture:${otherPayment}`,userId:second.id,kind:'DEPOSIT_CREDITED',title:'Other customer payment secret',body:'Do not expose this',href:'/wallet'},
     ]});
     const all=await route.GET(request('/api/alerts',first.cookie));expect(all.headers.get('cache-control')).toContain('no-store');const allBody=await all.json();
     expect(allBody.categories).toEqual(['all','draws','payments']);expect(allBody.items.map((item:{id:string})=>item.id)).toEqual(expect.arrayContaining([ownDraw,ownPayment]));expect(allBody.items.map((item:{id:string})=>item.id)).not.toContain(otherPayment);expect(allBody.items.map((item:{id:string})=>item.id)).not.toContain(retiredTransfer);expect(await client.notificationInbox.findUnique({where:{id:retiredTransfer}})).not.toBeNull();expect(JSON.stringify(allBody)).not.toContain('Other customer payment secret');
     const drawIds=(await (await route.GET(request('/api/alerts?category=draws',first.cookie))).json()).items.map((item:{id:string})=>item.id);
     expect(drawIds).toContain(ownDraw);expect(drawIds).not.toContain(ownPayment);expect(drawIds).not.toContain(otherPayment);
-    expect((await (await route.GET(request('/api/alerts?category=payments',first.cookie))).json()).items.map((item:{id:string})=>item.id)).toEqual([ownPayment]);
+    const payments=(await (await route.GET(request('/api/alerts?category=payments',first.cookie))).json()).items;
+    expect(payments.map((item:{id:string})=>item.id)).toContain(ownPayment);expect(payments.every((item:{kind:string})=>['DEPOSIT_CREDITED','BID_ACCEPTED'].includes(item.kind))).toBe(true);
     expect((await route.GET(request('/api/alerts?category=unknown',first.cookie))).status).toBe(422);expect((await route.GET(request('/api/alerts'))).status).toBe(401);
     expect((await route.POST(request('/api/alerts',first.cookie,'POST',{action:'read',id:otherPayment}))).status).toBe(200);
     expect((await client.notificationInbox.findUniqueOrThrow({where:{id:otherPayment}})).readAt).toBeNull();
     const promotion=randomUUID();await client.notificationInbox.create({data:{key:`account-fixture:${promotion}`,userId:first.id,kind:'BROADCAST',title:'Actual owner update',body:'Actual configured message',href:'/'}});
-    expect((await (await route.GET(request('/api/alerts',first.cookie))).json()).categories).toContain('promotions');
+    const afterPromotion=await (await route.GET(request('/api/alerts',first.cookie))).json();expect(afterPromotion.categories).not.toContain('promotions');expect(afterPromotion.items.some((item:{kind:string})=>item.kind==='BROADCAST')).toBe(false);
+    expect(await client.notificationInbox.count({where:{userId:first.id,kind:'BROADCAST'}})).toBe(1);
     expect((await route.POST(request('/api/alerts',first.cookie,'POST',{action:'read'}))).status).toBe(200);expect((await (await route.GET(request('/api/alerts?summary=1',first.cookie))).json()).unread).toBe(0);
   });
   it('shows genuine settled draws, honest pending/cancelled states and no illustrative winners',async()=>{

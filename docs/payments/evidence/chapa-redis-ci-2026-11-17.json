@@ -1,0 +1,36 @@
+{
+  "kind": "REAL_REDIS_CI_CROSS_PROCESS_INTEGRATION",
+  "repository": "devbossmaster/lowwin",
+  "pullRequest": 16,
+  "headCommit": "327186ae2d9d0f6b25aa76f2c9727e68108fb6d6",
+  "testedMergeCommit": "ab0d56baba29f96c7be11d7aba4d783aa3ca7d47",
+  "runId": 44033962707,
+  "jobId": 133872377109,
+  "job": "payment-stream-broker",
+  "jobUrl": "https://github.com/devbossmaster/lowwin/actions/runs/44033962707/job/133872377109",
+  "conclusion": "success",
+  "nodeVersion": "24.22.2",
+  "redisVersion": "7.4.12",
+  "command": "npx --no-install vitest run tests/chapa-committed-redis.test.ts",
+  "testFilesPassed": 1,
+  "testsPassed": 1,
+  "testElapsedMs": 5976,
+  "suiteElapsedMs": 6270,
+  "independentNodeProcesses": 3,
+  "assertions": [
+    "Actual publisher/subscriber helpers communicate over Redis across processes",
+    "Different deployment namespaces do not receive each other's hints",
+    "Only opaque synthetic checkout hints are published",
+    "A controlled local subscriber socket drop loses its in-flight hint safely",
+    "After the five-second backoff a replacement connection delivers once without accumulated listeners"
+  ],
+  "limits": {
+    "runtimeIncludesDeliberateReconnectWaitMs": 5100,
+    "isCommitToRenderLatencyMeasurement": false,
+    "coolifyTlsProxyExercised": false,
+    "browserOrMiniAppExercised": false,
+    "providerOrDatabaseConnected": false,
+    "physicalTelegramExercised": false,
+    "deployedTlsCommitToRenderSamples": 0
+  }
+}
