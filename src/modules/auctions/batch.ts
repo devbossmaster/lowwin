@@ -2,7 +2,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {Prisma,type BidBatchOrder,type PrismaClient} from '@prisma/client';
 import {z} from 'zod';
 import {centsToEtb,etbToCents} from '@/lib/money';
-import {assertPlayerContact} from '../auth/own-contact';
+import {assertPlayerContact,contactBotId} from '../auth/own-contact';
 import {lockReferralDiscountInTransaction} from '../referrals/service';
 import {ChapaError,chapaHash} from '../payments/chapa-provider';
 import {PAYMENT_TRANSACTION_OPTIONS} from '../payments/timing';
@@ -41,10 +41,22 @@ async function lockBatchWriter(tx:Tx,userId:string,slug:string,allowReceiptRepla
  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`},0))`;
  return halted;
 }
+/** One fresh snapshot retains contact ownership and every participation guard.
+ * The existing tightly gated no-Telegram fixture exception remains delegated
+ * to its original authorizer; ordinary Telegram members use one statement. */
+export async function assertBatchEligibilityInTransaction(tx:Tx,userId:string){
+ const [row]=await tx.$queryRaw<Array<{telegramId:string|null;role:string;contactTelegramId:string|null;botId:string|null;revokedAt:Date|null;staffId:string|null;suspended:boolean}>>`
+  SELECT u."telegramId",u.role,c."telegramId" AS "contactTelegramId",c."botId",c."revokedAt",s."userId" AS "staffId",COALESCE(r.suspended,false) AS suspended
+  FROM "user" u LEFT JOIN "TelegramOwnContact" c ON c."userId"=u.id
+  LEFT JOIN "StaffMember" s ON s."userId"=u.id LEFT JOIN "UserRestriction" r ON r."userId"=u.id WHERE u.id=${userId}`;
+ if(!row)throw Error('CONTACT_REQUIRED');
+ if(!row.telegramId)await assertPlayerContact(tx,userId);
+ else if(!row.contactTelegramId||row.revokedAt||row.contactTelegramId!==row.telegramId||row.botId!==contactBotId())throw Error('CONTACT_REQUIRED');
+ if(row.role!=='member'||row.staffId||row.suspended)throw new ChapaError(403,'BIDDING_RESTRICTED','Bidding is unavailable for this account.');
+}
 export async function validateBatchInTransaction(tx:Tx,userId:string,slug:string,numbers:string[],feeVersion:number,couponId?:string,locksHeld=false){
  if(!locksHeld)await measureChapa('locks',()=>lockBatchWriter(tx,userId,slug));
- await assertPlayerContact(tx,userId);
- if(await tx.staffMember.findUnique({where:{userId}})||(await tx.userRestriction.findUnique({where:{userId}}))?.suspended)throw new ChapaError(403,'BIDDING_RESTRICTED','Bidding is unavailable for this account.');
+ await measureChapa('eligibility',()=>assertBatchEligibilityInTransaction(tx,userId));
  const auction=await tx.auction.findUnique({where:{slug},include:{terms:true,feeRevisions:{orderBy:[{effectiveAt:'desc'},{version:'desc'}],take:1},product:{include:{category:true}},category:true}}),[{now}]=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AT TIME ZONE 'UTC' AS now`;
  if(!auction?.publishedAt||auction.publishedAt>now||!auction.startsAt||auction.startsAt>now||!auction.endsAt||auction.endsAt<=now||!['SCHEDULED','LIVE'].includes(auction.status)||!auction.product?.visible||!auction.product.category.visible||!auction.category?.visible)throw new ChapaError(409,'AUCTION_CLOSED','This auction is closed.');
  if(auction.isDemo||auction.testRunId||auction.product.isDemo||!auction.terms||!isSubmissionFeeOnly(auction.terms.ruleVersion))throw new ChapaError(409,'LEGACY_TERMS','This order supports real submission-fee auctions only.');

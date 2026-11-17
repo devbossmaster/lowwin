@@ -32,14 +32,18 @@ test('home banner: both languages, image, mobile geometry and existing actions',
    expect(await hero.locator('p').textContent()).toBe(lead);
    await expect(page.locator('#home-headline')).toHaveCount(1);
    await expect(hero.getByText(lead,{exact:true})).toHaveCount(1);
-   const image=hero.locator('img');await expect(image).toHaveAttribute('src',/lowwin-blue-prizes-hero-20261117\.webp/);await expect(image).toHaveAttribute('width','1840');await expect(image).toHaveAttribute('height','800');
+   const image=hero.locator('img');await expect(image).toHaveAttribute('src',/lowwin-blue-black-prizes-20261117\.webp/);await expect(image).toHaveAttribute('width','1840');await expect(image).toHaveAttribute('height','800');
    await expect.poll(()=>image.evaluate((node:HTMLImageElement)=>node.complete&&node.naturalWidth>0)).toBe(true);
    await page.evaluate(()=>document.fonts.ready);
    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
    // Promotional claims are readable HTML; the language-neutral art has no text.
    await expect(hero.locator('h1')).toBeVisible();await expect(hero.locator('p')).toBeVisible();
    const bannerBox=(await hero.boundingBox())!,copyBox=(await hero.locator('h1').boundingBox())!;
-   const copyFrame=(await hero.locator('[data-hero-copy]').boundingBox())!,artFrame=(await hero.locator('[data-hero-artwork]').boundingBox())!;expect(copyFrame.y+copyFrame.height).toBeLessThanOrEqual(artFrame.y);await expect(image).toHaveAttribute('alt',language==='en'?'Illustrative game console, laptop, refrigerator, phone, headphones and bicycle':'ለማሳያ የተዘጋጁ የጨዋታ መሣሪያ፣ ላፕቶፕ፣ ማቀዝቀዣ፣ ስልክ፣ ማዳመጫ እና ብስክሌት');
+   const copyFrame=(await hero.locator('[data-hero-copy]').boundingBox())!,artFrame=(await hero.locator('[data-hero-artwork]').boundingBox())!,imageFrame=(await image.boundingBox())!;
+   expect(artFrame.x).toBeCloseTo(bannerBox.x,1);expect(artFrame.y).toBeCloseTo(bannerBox.y,1);expect(artFrame.width).toBeCloseTo(bannerBox.width,1);expect(artFrame.height).toBeCloseTo(bannerBox.height,1);
+   expect(copyFrame.y+copyFrame.height).toBeLessThanOrEqual(imageFrame.y+imageFrame.height*.13);
+   expect((artFrame.x-imageFrame.x)/imageFrame.width).toBeCloseTo(.4,2);expect(imageFrame.x+imageFrame.width).toBeCloseTo(bannerBox.x+bannerBox.width,1);
+   await expect(image).toHaveAttribute('alt',language==='en'?'Illustrative PS5, boxed iPhone 17 Pro Max, BYD Seagull car and juicer':'ለማሳያ የተዘጋጁ PS5፣ በሳጥን ያለ iPhone 17 Pro Max፣ BYD Seagull መኪና እና ጭማቂ መጭመቂያ');
    expect(copyBox.width).toBeGreaterThan(100);expect(copyBox.height).toBeGreaterThan(28);
    expect(bannerBox.width).toBe(page.viewportSize()!.width);
    expect(bannerBox.height).toBeGreaterThan(280);expect(bannerBox.height).toBeLessThanOrEqual(650);

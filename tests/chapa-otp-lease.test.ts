@@ -1,6 +1,7 @@
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {ChapaCheckout,PrismaClient} from '@prisma/client';
 import {chapaHash,type ChapaTransport} from '../src/modules/payments/chapa-provider';
+import {timedChapaResponse} from '../src/modules/payments/chapa-timing';
 
 const service=vi.hoisted(()=>({verify:vi.fn(),read:vi.fn()}));
 vi.mock('../src/modules/payments/chapa',()=>({
@@ -48,6 +49,11 @@ beforeEach(()=>{
 afterEach(()=>{vi.useRealTimers();vi.unstubAllEnvs();vi.restoreAllMocks()});
 
 describe.each([['Inline',true],['Direct',false]] as const)('%s OTP dispatch lease',(_name,inline)=>{
+ it('reports the authorization validation duration without recording OTP or payment identifiers',async()=>{
+  const f=fixture(inline),response=await timedChapaResponse(async()=>{await f.authorize();return Response.json({status:'AUTH_NEEDED'})});
+  expect(response.headers.get('Server-Timing')).toMatch(/^validate;dur=\d+\.\d, total;dur=\d+\.\d$/);
+  expect(response.headers.get('Server-Timing')).not.toMatch(/123456|CHowned|LWowned/);expect(f.validate).toHaveBeenCalledOnce();
+ });
  it('starts its dispatch lease after slow reauthorization and keeps HTTP outside the transaction',async()=>{
   const f=fixture(inline);await f.authorize(async()=>{vi.advanceTimersByTime(25000)});
   expect(f.validate).toHaveBeenCalledExactlyOnceWith({reference:'CHowned',paymentMethod:'telebirr',otp:'123456'});

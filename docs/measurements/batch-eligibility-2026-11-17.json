@@ -1,0 +1,62 @@
+{
+  "at": "2026-11-17T18:55:32.764Z",
+  "scope": "Owned loopback PostgreSQL, real verified member/contact rows; no provider HTTP. Deferred samples add20ms before each Prisma eligibility operation; this models round-trip cost and is not production latency.",
+  "n": 5,
+  "delayPerOperationMs": 20,
+  "baseline": {
+    "statements": 4,
+    "plainMs": 5.725199999999859,
+    "p50Ms": 123.3110000000006,
+    "p95Ms": 127.73339999999916
+  },
+  "joined": {
+    "statements": 1,
+    "plainMs": 0.9613999999992302,
+    "p50Ms": 29.964899999999943,
+    "p95Ms": 30.94750000000022
+  },
+  "prior": [
+    {
+      "ms": 127.73339999999916,
+      "statements": 4
+    },
+    {
+      "ms": 123.3110000000006,
+      "statements": 4
+    },
+    {
+      "ms": 123.60480000000007,
+      "statements": 4
+    },
+    {
+      "ms": 120.98079999999936,
+      "statements": 4
+    },
+    {
+      "ms": 123.05119999999988,
+      "statements": 4
+    }
+  ],
+  "current": [
+    {
+      "ms": 29.865899999999783,
+      "statements": 1
+    },
+    {
+      "ms": 28.15610000000015,
+      "statements": 1
+    },
+    {
+      "ms": 30.94750000000022,
+      "statements": 1
+    },
+    {
+      "ms": 29.964899999999943,
+      "statements": 1
+    },
+    {
+      "ms": 30.102100000000064,
+      "statements": 1
+    }
+  ]
+}

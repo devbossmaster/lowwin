@@ -274,10 +274,12 @@ async function verifyChapaCheckoutOnce(client:PrismaClient,id:string,userId:stri
  const ownedVerification={id,creditJournalId:null,leaseUntil:verificationLease};
  let raw:unknown,privateCheckedAt:Date,authorizationFeedback=providedAuthorizationFeedback;try{
   // USSD polling refreshes the provider's charge state. An authenticated event
-  // already signals a state change, so verify it without another validation
-  // round trip. OTPs belong only to the explicit authorization mutation.
+  // or its retained, unhandled Direct5 terminal signal already requests private
+  // verification: do not add another authorization round trip before it. The
+  // signal never proves payment. OTPs belong only to explicit authorization.
   const authorizationFlow=snapshot.chargeType==='DIRECT'||inlineV2&&snapshot.chargeType==='INLINE';
-  if(eventCheck!=='webhook'&&eventCheck!=='deferred'&&authorizationFlow&&shouldRefreshChapaAuthorization(snapshot)&&selectedTransport.validate&&(!inlineV2||inlineTransportBinding(snapshot)))try{
+  const retainedDirectCompletion=isCurrentDirectCheckout(snapshot)&&chapaCompletionStatus(snapshot.verificationCompletionStatus)!==null&&handledSignal>snapshot.verificationHandledSignalVersion;
+  if(eventCheck!=='webhook'&&eventCheck!=='deferred'&&!retainedDirectCompletion&&authorizationFlow&&shouldRefreshChapaAuthorization(snapshot)&&selectedTransport.validate&&(!inlineV2||inlineTransportBinding(snapshot)))try{
    const validation=await measureChapa('validate',()=>selectedTransport.validate!({reference:snapshot.authorizationReference!,paymentMethod:snapshot.paymentMethod!}));
    authorizationFeedback=chapaAuthorizationFeedback(validation,snapshot);
    const validationProof=parseChapaEvidence(validation),completion=currentV2&&authorizationFeedback?chapaCompletionStatus(validationProof?.status):null;

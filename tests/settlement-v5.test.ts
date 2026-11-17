@@ -18,6 +18,7 @@ import type {ChapaInlineTransport} from '../src/modules/payments/chapa-inline-pr
 import {RULE_V5} from '../src/modules/auctions/rules';
 import {quoteBidBatch,createAndPayBidBatchWallet} from '../src/modules/auctions/batch';
 import {getPersonalBids} from '../src/modules/profile/personal';
+import {readWalletProjection} from '../src/modules/wallet/balance';
 
 const url=process.env.V5_TEST_DATABASE_URL??process.env.TEST_DATABASE_URL;
 describe.skipIf(!url)('V5 unique-only cancellation and original-funding refunds',()=>{
@@ -76,6 +77,7 @@ describe.skipIf(!url)('V5 unique-only cancellation and original-funding refunds'
   const receipt=await bid(f.uid,a.slug!,'2.50',1,coupon.coupon.id);expect(receipt.charge).toMatchObject({netFeePoints:'90',bonusUsed:'50.00'});expect(await cash(f.uid)).toBe('60');
   await cancelAuction(db,{auctionId:a.id,actor:{id:'fixture-operator',permission:'auction:cancel'},reason:'Fixture cancellation',key:randomUUID()});await drain(a.id);
   expect(await cash(f.uid)).toBe('100');expect(await readDepositBonusFunds(db,f.uid)).toMatchObject({bonusAvailable:'50'});expect((await db.depositBonusLot.findUniqueOrThrow({where:{checkoutId:f.order.id}})).expiresAt).toEqual(beforeLot.expiresAt);
+  expect(await readWalletProjection(db,f.uid)).toMatchObject({available:'150',cashAvailable:'100',bonusAvailable:'50',bonusExpiresAt:beforeLot.expiresAt.toISOString()});
   expect(await db.depositBonusRefund.aggregate({where:{userId:f.uid},_sum:{creditedCents:true}})).toMatchObject({_sum:{creditedCents:5000n}});expect(await reconcile(db)).toEqual([]);expect(await reconcileDepositBonuses(db)).toEqual([]);
  });
  it('never converts expired promotional fee value into refundable cash',async()=>{
@@ -83,6 +85,7 @@ describe.skipIf(!url)('V5 unique-only cancellation and original-funding refunds'
   const sql=new Client({connectionString:url!});await sql.connect();await sql.query('BEGIN');try{await sql.query('ALTER TABLE "DepositBonusLot" DISABLE TRIGGER bonus_immutable');await sql.query('UPDATE "DepositBonusLot" SET "expiresAt"=date_trunc(\'milliseconds\',clock_timestamp() AT TIME ZONE \'UTC\'),"createdAt"=date_trunc(\'milliseconds\',clock_timestamp() AT TIME ZONE \'UTC\')-"validityDays"*interval \'1 day\' WHERE "checkoutId"=$1',[f.order.id]);await sql.query('ALTER TABLE "DepositBonusLot" ENABLE TRIGGER bonus_immutable');await sql.query('COMMIT')}catch(e){await sql.query('ROLLBACK');throw e}finally{await sql.end()}
   await cancelAuction(db,{auctionId:a.id,actor:{id:'fixture-operator',permission:'auction:cancel'},reason:'Fixture cancellation',key:randomUUID()});await drain(a.id);await expireDepositBonusLots(db);
   expect(await cash(f.uid)).toBe('100');expect(await readDepositBonusFunds(db,f.uid)).toMatchObject({bonusAvailable:'0'});expect(await db.depositBonusRefund.aggregate({where:{userId:f.uid},_sum:{expiredCents:true,creditedCents:true}})).toMatchObject({_sum:{expiredCents:5000n,creditedCents:0n}});expect(await reconcile(db)).toEqual([]);expect(await reconcileDepositBonuses(db)).toEqual([]);
+  expect(await readWalletProjection(db,f.uid)).toMatchObject({available:'100',cashAvailable:'100',bonusAvailable:'0',bonusExpiresAt:null});
   const own=(await getPersonalBids(db,f.uid)).items.find(row=>row.auction.code===a.publicCode.toString());expect(own?.feeRefunded).toBe('20');expect(own?.refund?.status).toBe('completed');expect(new Prisma.Decimal(own?.refund?.cash??0).toString()).toBe('20');expect(new Prisma.Decimal(own?.refund?.bonus??0).toString()).toBe('0');expect(new Prisma.Decimal(own?.refund?.bonusExpired??0).toString()).toBe('50');
  });
  it('blocks tampered refund funding and fallback proofs, including a non-UTC database session',async()=>{

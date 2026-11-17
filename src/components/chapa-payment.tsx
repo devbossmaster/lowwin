@@ -130,7 +130,7 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
   catch(cause){if(current(version))update({errorCode:cause instanceof ChapaClientError?cause.code:'UNAVAILABLE',error:language==='am'?'ግንኙነቱ ተቋርጧል። ይህንኑ ጥያቄ እንደገና ይሞክሩ ወይም ግብይቶችን ይመልከቱ።':cause instanceof ChapaClientError?cause.message:'Connection interrupted. Retry this request or view Transactions.'})}
   finally{navigation.cancel();if(current(version)){locked.current=false;update({busy:false,handoff:stateRef.current.handoff==='opening'?'failed':stateRef.current.handoff})}}
  },[queryIdentity,current,update,run,language]);
- const createInline=useCallback(async(intent:ChapaDirectIntent)=>{
+ const createInline=useCallback(async(intent:ChapaDirectIntent,{preserveTiming=false}:{preserveTiming?:boolean}={})=>{
   if(!queryIdentity||locked.current||!isPrivateQueryIdentity(queryIdentity))return;
   const version=epoch.current,next=stateRef.current.directAttempt??intent;
   if(next.apiVersion!=='v2'||!(next.kind==='inline'&&['INLINE','HOSTED'].includes(next.flow??'')||next.kind==='direct'&&next.flow==='DIRECT')||next.purpose==='BID'&&!('batchId'in next))return;
@@ -144,7 +144,7 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
    return;
   }
   if(retainOriginal)retainChapaOriginalAttempt(getMiniQueryClient(),queryIdentity,scope,next,stateRef.current.order?.id??stateRef.current.recoveryId??undefined);
-  beginTiming(true);locked.current=true;update({directAttempt:next,recoveryKey:next.key,recoveryProtocol:next.kind==='direct'?'direct':'inline',busy:true,active:true,error:'',errorCode:null,paused:false});
+  beginTiming(!preserveTiming);locked.current=true;update({directAttempt:next,recoveryKey:next.key,recoveryProtocol:next.kind==='direct'?'direct':'inline',busy:true,active:true,error:'',errorCode:null,paused:false});
   const navigation=next.flow==='HOSTED'?prepareChapaNavigation():null,controller=new AbortController();controllers.current.add(controller);
   try{
    const {apiVersion:_,kind:__,...body}=next;

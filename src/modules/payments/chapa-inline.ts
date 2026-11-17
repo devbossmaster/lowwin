@@ -10,7 +10,7 @@ import {decryptPhone,encryptPhone,phoneHash} from '../auth/own-contact';
 import {batchLines,ownBatch,validateBatchInTransaction} from '../auctions/batch';
 import {auctionMaintenance} from '../auctions/maintenance';
 import {eligible,getChapaCheckout,ownChapaCheckout,verifyChapaCheckout} from './chapa';
-import {ChapaError,ChapaProviderError,chapaAvailability,chapaHash,chapaWebhookSignatureProfile,chapaTransport,createdChapaDirect,createdChapaSession,type ChapaCreate,type ChapaTransport} from './chapa-provider';
+import {ChapaError,ChapaProviderError,chapaAvailability,chapaHash,chapaWebhookSignatureProfile,chapaTransport,createdChapaDirect,createdCurrentChapaDirect,createdChapaSession,type ChapaCreate,type ChapaTransport} from './chapa-provider';
 import {chapaInlineAvailability,chapaInlineTransport,createInlineMethodCatalog,inlineMethodCatalog,inlineTransportBinding,isV2InlineCheckout,requireChapaInline,type ChapaInlineTransport} from './chapa-inline-provider';
 import {PAYMENT_TRANSACTION_OPTIONS} from './timing';
 import {markChapaDispatch,markChapaTransactionStarted,measureChapa} from './chapa-timing';
@@ -169,7 +169,8 @@ async function dispatchInlineCheckout(client:PrismaClient,order:ChapaCheckout,us
   }else{
    const request={amountCents:String(order.amountCents),merchantReference:order.merchantReference,idempotencyKey:String(initialization.idempotencyKey),paymentMethod:order.paymentMethod!,phone:decryptPhone(order.payerPhoneCipher!,order.phoneBotId!),...(isCurrentDirectCheckout(order)?{metadata:initialization.metadata as Record<string,string>}:{})};
    markChapaDispatch();
-   const created=createdChapaDirect(await measureChapa('initialize',()=>transport.inline(request,operation)));
+   const response=await measureChapa('initialize',()=>transport.inline(request,operation));
+   const created=isCurrentDirectCheckout(order)?createdCurrentChapaDirect(response,order.paymentMethod!):createdChapaDirect(response);
    if(!created)throw new ChapaError(502,'PROVIDER_UNAVAILABLE','Payment confirmation is pending. Check the original payment.');
    const authorization={authorizationReference:created.reference,providerRequestId:created.requestId,authType:created.authType,providerCreatedAt:created.createdAt??null,...(created.expiresAt?{expiresAt:created.expiresAt}:{})};
    const rows=await measureChapa('persist',()=>client.chapaCheckout.updateManyAndReturn({where:writable,data:{...authorization,status:'AUTH_NEEDED',reason:null,verificationState:'UNVERIFIED',leaseUntil:null,nextCheckAt:new Date(),initializationErrorCode:null,initializationHttpStatus:null}}));

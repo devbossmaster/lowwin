@@ -52,19 +52,27 @@ function TopUp({onClose,returnFocusRef,initialChapaId,retryDraft,embedded=false,
   // The registered contact supplies the phone again; no payment is initialized.
  },[authenticated,me?.user?.id,payment.started]);
  useEffect(()=>{alive.current=true;return()=>{alive.current=false}},[]);
- const reportError=(message:string)=>{setError(message);if(message)notice(message,'error',{id:`topup-validation:${id}`,duration:6000})};
+ const reportError=(message:string)=>{setError(message);if(message&&!showProgress)notice(message,'error',{id:`topup-validation:${id}`,duration:6000})};
  const wallet=usePrivateQuery<WalletBalance>('/api/wallet',{enabled:authenticated,freshnessMs:15000});
  // One cached reader stays mounted while the customer moves through this sheet.
  const savedSettings=queryIdentity?readPrivateQuery<TopupConfig>(queryIdentity,TOP_UP_CONFIG_URL,{freshnessMs:60000})?.value:null;
  const methods=usePrivateQuery<TopupConfig>(TOP_UP_CONFIG_URL,{enabled:authenticated,freshnessMs:topUpConfigFreshness(savedSettings)}),settings=methods.data;
- const progressVisible=showProgress&&payment.started;
+ const progressVisible=showProgress;
  const backToAmount=useCallback(()=>{setStage('amount');setError('')},[]);
  const back=!progressVisible&&stage!=='amount'?backToAmount:null;
  useEffect(()=>{onDismissChange?.(back);return()=>onDismissChange?.(null)},[back,onDismissChange]);
  useEffect(()=>{onProgressChange?.(progressVisible);return()=>onProgressChange?.(false)},[progressVisible,onProgressChange]);
- useEffect(()=>{const order=payment.order;if(onCredited&&order?.purpose==='TOP_UP'&&order.status==='CREDITED'&&chapaConfirmed(order)&&reportedCredit.current!==order.id){reportedCredit.current=order.id;onCredited(order)}},[payment.order,onCredited]);
+ useEffect(()=>{const order=payment.order;if(!embedded&&onCredited&&order?.purpose==='TOP_UP'&&order.status==='CREDITED'&&chapaConfirmed(order)&&reportedCredit.current!==order.id){reportedCredit.current=order.id;onCredited(order)}},[payment.order,onCredited,embedded]);
+ const finishTopUp=()=>{
+  const order=payment.order;
+  if(embedded&&onCredited&&order?.purpose==='TOP_UP'&&order.status==='CREDITED'&&chapaConfirmed(order)){
+   if(reportedCredit.current!==order.id){reportedCredit.current=order.id;onCredited(order)}
+   return;
+  }
+  onClose?.();
+ };
  useEffect(()=>{if(phoneEdited.current)return;const registered=normalizePaymentPhone(settings?.phone??'');if(registered)setPhone(registered.slice(3))},[settings?.phone]);
- useEffect(()=>{if(!payment.started&&payment.errorCode==='DEPOSIT_BONUS_CHANGED'){setShowProgress(false);setStage('payment');setError(payment.error);methods.reload()}},[payment.started,payment.errorCode,payment.error,methods.reload]);
+ useEffect(()=>{if(!payment.started&&payment.errorCode==='DEPOSIT_BONUS_CHANGED'){setError(payment.error);methods.reload()}},[payment.started,payment.errorCode,payment.error,methods.reload]);
  useEffect(()=>{if(!progressVisible&&payment.error)notice(payment.error,'error',{id:`topup-validation:${id}`,duration:6000})},[progressVisible,payment.error,notice,id]);
  let total='0.00',valid=false;
  try{total=centsToEtb(etbToCents(amount));valid=amountAllowed(amount,settings)}catch{}
@@ -117,7 +125,7 @@ function TopUp({onClose,returnFocusRef,initialChapaId,retryDraft,embedded=false,
   try{await payment.createInline({apiVersion:'v2',kind:'direct',flow:'DIRECT',key:crypto.randomUUID(),purpose:'TOP_UP',amount:total,paymentMethod:method,phone:normalizedPhone,...(policy?{approvedDepositBonusVersion:policy.version,approvedDepositBonusAmount:bonus.bonusAmount}:{})})}finally{submitting.current=false}
  };
  const action=<div className={reference.actions}><button className={reference.pay} type="submit" form={id} data-payment-action data-top-up-submit disabled={busy} aria-busy={busy}>{busy&&<LoaderCircle className={reference.spin} size={17} aria-hidden="true"/>}{preparing?text('Loading payment options…','የክፍያ መንገዶች በመጫን ላይ…'):payment.started?text('View payment status','የክፍያ ሁኔታ ይመልከቱ'):!authenticated?text('Log in to top up','ለመሙላት ይግቡ'):stage==='amount'?text('Continue to payment','ወደ ክፍያ ይቀጥሉ'):stage==='bonus'?text('Continue without bonus','ያለ ጉርሻ ይቀጥሉ'):text(`Pay ${formatEtb(total)}`,`${formatEtb(total)} ይክፈሉ`)}</button>{stage==='bonus'&&<button className={reference.secondary} type="button" onClick={backToAmount}><ArrowLeft size={15} aria-hidden="true"/>{text('Change amount','መጠኑን ይቀይሩ')}</button>}</div>;
- const contents=progressVisible?<WalletTopUpProgress payment={{...payment,busy,error:error||payment.error}} amount={initialChapaId&&!payment.order?null:total} provider={method} phone={phone} onRetry={()=>void retry()} onChangePayment={()=>void retry()} onClose={onClose} footerPortal={!!onClose}/>:<form id={id} className={reference.form} data-wallet-top-up data-top-up-step={stage} data-payment-method-form={stage==='payment'?true:undefined} noValidate onSubmit={event=>{event.preventDefault();if(stage==='amount')continueToPayment();else if(stage==='bonus'){reportError('');setStage('payment')}else void pay()}}>
+ const contents=progressVisible?<WalletTopUpProgress payment={{...payment,busy,error:error||payment.error}} amount={initialChapaId&&!payment.order?null:total} provider={method} phone={phone} onRetry={()=>void retry()} onChangePayment={()=>void retry()} onEditPayment={()=>{if(payment.started)return;setShowProgress(false);setStage('payment');reportError('')}} onClose={onClose?finishTopUp:undefined} footerPortal={!!onClose}/>:<form id={id} className={reference.form} data-wallet-top-up data-top-up-step={stage} data-payment-method-form={stage==='payment'?true:undefined} noValidate onSubmit={event=>{event.preventDefault();if(stage==='amount')continueToPayment();else if(stage==='bonus'){reportError('');setStage('payment')}else void pay()}}>
   {payment.started&&<p className={reference.hint} role="status" data-top-up-pending-payment>{text('Your previous payment is still recorded. Check its status before paying again.','የቀደመው ክፍያዎ ተመዝግቧል። እንደገና ከመክፈልዎ በፊት ሁኔታውን ያረጋግጡ።')} <button type="button" onClick={viewPayment}>{text('View payment status','የክፍያ ሁኔታ ይመልከቱ')}</button></p>}
   {stage==='amount'?<>
    <div className={reference.balance}><span>{text('Available balance','ያለዎት ቀሪ ሂሳብ')}</span><strong data-wallet-top-up-balance>{walletDisplay(wallet.data?.available)??(authenticated?<span className={reference.placeholder} aria-label={text('Loading balance','ቀሪ ሂሳብ በመጫን ላይ')}/>:text('Log in','ይግቡ'))}</strong></div>
@@ -142,7 +150,7 @@ function TopUp({onClose,returnFocusRef,initialChapaId,retryDraft,embedded=false,
   {onClose?<AccountSheetFooter>{action}</AccountSheetFooter>:action}
  </form>;
  const title=<span className={reference.title}><Wallet size={18} aria-hidden="true"/>{text('Add funds','ገንዘብ ያስገቡ')}</span>;
- return embedded?contents:onClose?<AccountSheet size="payment" layout="topup-reference" title={progressVisible?text('Payment','ክፍያ'):title} onBack={back??undefined} onClose={onClose} returnFocusRef={returnFocusRef} footerPortal>{contents}</AccountSheet>:<section className={styles.page}><h1>{title}</h1>{contents}</section>;
+ return embedded?contents:onClose?<AccountSheet size="payment" layout={progressVisible?'bid-entry':'topup-reference'} presentation={progressVisible?'centered':undefined} title={progressVisible?text('Payment','ክፍያ'):title} onBack={back??undefined} onClose={onClose} returnFocusRef={returnFocusRef} footerPortal>{contents}</AccountSheet>:<section className={styles.page}><h1>{title}</h1>{contents}</section>;
 }
 export default function WalletTopUpSheet(props:Props&{onClose:()=>void}){const {queryIdentity}=useTelegram();return <TopUp key={`${queryIdentity??'guest'}:${props.initialChapaId??''}`} {...props}/>}
 export function WalletTopUpPage(){const {queryIdentity}=useTelegram();return <TopUp key={queryIdentity??'guest'}/>}

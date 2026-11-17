@@ -171,6 +171,20 @@ export type ChapaCreate={amountCents:string;merchantReference:string;idempotency
 export type ChapaDirectCreate={amountCents:string;merchantReference:string;idempotencyKey:string;paymentMethod:string;phone:string;metadata?:Record<string,string>};
 export type ChapaTransport={create:(input:ChapaCreate)=>Promise<unknown>;lookup:(paymentReference:string)=>Promise<unknown>;methods:()=>Promise<unknown>;direct?:(input:ChapaDirectCreate,operation?:'create'|'recover')=>Promise<unknown>;validate?:(input:{reference:string;paymentMethod:string;otp?:string})=>Promise<unknown>};
 export function createdChapaDirect(raw:unknown){const p=z.object({status:z.literal('success'),data:z.object({auth_type:z.enum(['USSD','OTP']),chapa_reference:reference,payment_status:z.string().max(40),request_id:z.string().min(1).max(256),created_at:instant.optional(),expires_at:instant.optional()})}).safeParse(raw);if(!p.success)return null;const d=p.data.data;return {authType:d.auth_type,reference:d.chapa_reference,requestId:d.request_id,createdAt:d.created_at?new Date(d.created_at):undefined,expiresAt:d.expires_at?new Date(d.expires_at):undefined}}
+/** Observed v2 Direct USSD acceptance can return an empty auth_type. Only the
+ * current, capability-checked Direct intent may use this narrow compatibility
+ * shape. Acceptance binds authorization references, never proves payment. */
+export function createdCurrentChapaDirect(raw:unknown,paymentMethod:string,now=Date.now()){
+ const parsed=z.object({status:z.literal('success'),data:z.object({auth_type:z.enum(['USSD','OTP','']),chapa_reference:reference,payment_status:z.string().max(40),request_id:z.string().min(1).max(256).refine(value=>value.trim().length>0),created_at:instant.optional().catch(undefined),expires_at:instant.optional().catch(undefined)})}).safeParse(raw);
+ if(!parsed.success)return null;const data=parsed.data.data;
+ if(data.auth_type===''&&(!['telebirr','mpesa'].includes(paymentMethod)||data.payment_status!=='Accepted'))return null;
+ const createdAt=data.created_at?new Date(data.created_at):undefined,expiry=data.expires_at?new Date(data.expires_at):undefined;
+ // The observed accepted envelope had nanosecond timestamps resolving to the
+ // same JS millisecond. An invalid/past/nonlater hint must not replace the
+ // saved local observation window or imply a provider cancellation.
+ const expiresAt=expiry&&expiry.getTime()>now&&(!createdAt||expiry>createdAt)?expiry:undefined;
+ return {authType:data.auth_type||'USSD',reference:data.chapa_reference,requestId:data.request_id,createdAt,expiresAt};
+}
 const createSchema=z.object({amountCents:centsString.refine(v=>centsPattern.test(v)&&BigInt(v)>=100n),merchantReference,idempotencyKey:z.string().regex(/^[A-Za-z0-9:._-]{16,128}$/),returnUrl:z.url().max(2048).optional(),returnUrlVersion:z.literal(1).optional(),callbackUrl:z.url().max(2048).optional(),customer:customerSchema.strict().optional(),meta:z.record(z.string().max(80),z.string().max(256)).optional(),preferredPaymentMethods:z.array(z.string().regex(/^[a-z0-9_-]{1,80}$/)).min(1).max(10).optional(),preferredPaymentMethodsVersion:z.literal(1).optional(),description:z.string().trim().min(1).max(200).optional()}).strict();
 async function boundedJson(response:Response){
  const reader=response.body?.getReader();if(!reader)throw new ChapaError(502,'PROVIDER_UNAVAILABLE','Payment confirmation is pending. Check this same payment again.');
