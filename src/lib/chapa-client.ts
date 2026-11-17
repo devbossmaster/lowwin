@@ -62,6 +62,11 @@ export function chapaVerifiedTerminal(order:ChapaCheckoutView|null){return !!ord
 export function chapaAwaitingAuthorization(order:ChapaCheckoutView|null){
  return !!order&&!order.completionSignalPending&&chapaApiCharge(order)&&!!order.authorizationReference&&['USSD','OTP'].includes(order.authType??'')&&['SUBMITTING','PENDING','AUTH_NEEDED','VERIFYING'].includes(order.status)&&!chapaConfirmed(order)&&order.providerStatus!=='SUCCESS'&&order.verificationState!=='MISMATCH'&&!chapaVerifiedTerminal(order);
 }
+/** A status read can finish after a rejected OTP submission. An unchanged
+ * challenge does not retract that rejection; the next submission clears it. */
+export function chapaRetainOtpError(previous:ChapaCheckoutView|null,next:ChapaCheckoutView,errorCode:string|null){
+ return errorCode==='INVALID_OTP'&&previous?.id===next.id&&previous.authType==='OTP'&&!!previous.authorizationReference&&previous.authorizationReference===next.authorizationReference&&next.authType==='OTP'&&chapaAwaitingAuthorization(next);
+}
 /** Concurrent status/OTP responses can arrive in a different order. Never
  * replace authoritative completion with an older unconfirmed snapshot. */
 export function acceptChapaSnapshot(previous:ChapaCheckoutView|null,next:ChapaCheckoutView){

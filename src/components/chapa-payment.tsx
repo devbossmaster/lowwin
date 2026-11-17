@@ -5,7 +5,7 @@ import {ArrowUpRight,Check,Clock3,LoaderCircle,TriangleAlert} from 'lucide-react
 import {useTelegram} from './telegram-provider';
 import {useMiniLocale} from './mini-locale';
 import {confirmedChapaQueryScopes,getMiniQueryClient,invalidatePrivateQueries,isPrivateQueryIdentity,loadPrivateJson,PrivateQueryError,seedPrivateQuery,subscribePrivateQueries} from './private-query-cache';
-import {acceptChapaSnapshot,clearChapaAttempts,chapaApiCharge,chapaCurrentInline,chapaOriginalKeyUrl,chapaOriginalRecoveryUrl,chapaCanResumeCheckout,chapaCheckoutUrl,chapaConfirmed,chapaDirectRequestRejected,chapaRecoverable,chapaPollingDeadline,chapaPollingPaused,chapaRestorePollingId,chapaUuid,ChapaClientError,requestChapaJson,type ChapaAttempt,type ChapaCheckoutView,type ChapaIntent} from '@/lib/chapa-client';
+import {acceptChapaSnapshot,clearChapaAttempts,chapaApiCharge,chapaCurrentInline,chapaOriginalKeyUrl,chapaOriginalRecoveryUrl,chapaCanResumeCheckout,chapaCheckoutUrl,chapaConfirmed,chapaDirectRequestRejected,chapaRecoverable,chapaPollingDeadline,chapaPollingPaused,chapaRestorePollingId,chapaRetainOtpError,chapaUuid,ChapaClientError,requestChapaJson,type ChapaAttempt,type ChapaCheckoutView,type ChapaIntent} from '@/lib/chapa-client';
 import {CHAPA_LONG_WAIT_MS,chapaLongWait,chapaPaymentPhase} from '@/lib/chapa-status';
 import {chapaPaymentReasonMessage,chapaRequestReasonMessage} from '@/lib/chapa-payment-reason';
 import {formatEtb} from '@/lib/money';
@@ -52,7 +52,8 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
    if(chapaConfirmed(order))clearChapaOriginalAttempt(getMiniQueryClient(),queryIdentity,scope,intent?{intentKey:intent.key}:{orderId:order.id});
    else if(intent)retainChapaOriginalAttempt(getMiniQueryClient(),queryIdentity,scope,intent,order.id);
   }
-  update({order,recoveryId:order.id,error:'',errorCode:null,restoring:false});const confirmedScopes=confirmedChapaQueryScopes(order),scopes=confirmedScopes??(!chapaRecoverable(order)?['/api/payments/chapa/checkouts','/api/my-bids','/api/transactions']:null),revision=`${order.id}:${confirmedScopes?'confirmed':order.status}`;
+  const keepOtpError=chapaRetainOtpError(stateRef.current.order,order,stateRef.current.errorCode);
+  update({order,recoveryId:order.id,...(keepOtpError?{}:{error:'',errorCode:null}),restoring:false});const confirmedScopes=confirmedChapaQueryScopes(order),scopes=confirmedScopes??(!chapaRecoverable(order)?['/api/payments/chapa/checkouts','/api/my-bids','/api/transactions']:null),revision=`${order.id}:${confirmedScopes?'confirmed':order.status}`;
   if(queryIdentity&&scopes&&invalidated.current!==revision){invalidated.current=revision;invalidatePrivateQueries(queryIdentity,scopes);if(confirmedScopes)void refreshMe().catch(()=>{})}
   if(queryIdentity&&isPrivateQueryIdentity(queryIdentity))seedPrivateQuery(queryIdentity,`/api/payments/chapa/checkouts/${order.id}`,order);
  },[scope,update,queryIdentity,refreshMe,retainOriginal,ownerId]);
