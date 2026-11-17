@@ -1,0 +1,23 @@
+{
+  "scope": "Local validation only; focused cohorts overlap and are not an aggregate whole-repository CI count",
+  "productionSourceCommit": "a3fc1eb",
+  "optimizedBuild": {"passed": true, "elapsedMs": 203823, "mode": "production", "providersDisabled": true, "database": "fresh disposable loopback PostgreSQL"},
+  "typecheck": {"passed": true, "command": "node node_modules/typescript/bin/tsc --noEmit"},
+  "loginSecurity": {"passed": 134, "failed": 0, "skipped": 0},
+  "broaderRegression": {"passed": 204, "failed": 0, "skipped": 12, "skipResolution": "All twelve historical submission-fee cases executed in the separate 22-case financial release cohort"},
+  "financialRelease": {"passed": 22, "failed": 0, "skipped": 0},
+  "directAndBroadcastUnits": {"passed": 107, "failed": 0, "skipped": 0},
+  "directPostgres": {"passed": 9, "failed": 0, "skipped": 0},
+  "notificationPostgres": {"passed": 14, "failed": 0, "skipped": 0},
+  "frontendContracts": {"passed": 107, "failed": 0, "skipped": 0},
+  "moneyRendering": {"passed": 4, "failed": 0, "skipped": 0, "actualPostgresProbe": "Raw bonus 50.0000000000000000 normalized to 50 and rendered as ETB 50.00; cash 40 and expired 0 also rendered correctly"},
+  "heroBrowser": {"passed": 10, "failed": 0, "skipped": 2, "flaky": 0, "viewports": [320,430,1280], "languages": ["en","am"], "skipReason": "Duplicate lifecycle scenarios at other widths"},
+  "initialPaymentBrowser": {"passed": 84, "failed": 5, "skipped": 12, "configured": 101, "causes": ["Historical Inline OTP continuation gate", "Concurrent fixtures changed the exact view counter"], "resolution": "Gate fixed; fixture isolation fixed without weakening assertions"},
+  "finalTargetedPaymentBrowser": {"passed": 9, "failed": 0, "skipped": 1, "flaky": 0, "coverage": ["Both historical Inline OTP failures", "Historical Direct OTP recovery", "Direct5 reload before order ID is known", "All four normal/throttled exact-counter launch scenarios"]},
+  "refundBrowser": {"measurementSamples": 3, "finalProductionSmokePassed": true, "finalProductionSmokeElapsedMs": 10000, "actualDatabaseCommitsAndOwnedHttp": true, "cachedNullWatchRegressionPassed": true},
+  "broadcastBrowser": {"passedViewports": [360,1280], "actualComponentWithSyntheticReadModels": true},
+  "dependencyAudit": {"vulnerabilities": 0},
+  "hostedCi": "Reported on the PR separately; no hosted success inferred from local runs",
+  "externalActions": {"productionMigration": false, "productionDeployment": false, "realCharge": false, "customerBroadcast": false},
+  "externalLimits": ["Actual merchant TEST acceptance and webhook delivery", "Physical-phone USSD/OTP", "Production database/proxy/SSE latency", "Earlier financial 59-second outlier retained with unresolved cause; not reproduced in the separated nine-sample run"]
+}

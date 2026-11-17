@@ -18,7 +18,7 @@ test.beforeAll(async()=>{
   // Home returns to its default featured first page. Other suites create more
   // than one page of auctions; keep this owned fixture deliberately visible.
   const existing=await db.auction.findFirst({where:{product:{title:marker}},select:{id:true,publicCode:true,slug:true}});
-  if(existing){await db.auction.update({where:{id:existing.id},data:{featured:true}});code=String(existing.publicCode);slug=existing.slug!;return}
+  if(existing){await db.auction.update({where:{id:existing.id},data:{featured:true,publicViewCount:123n}});code=String(existing.publicCode);slug=existing.slug!;return}
   const auction=await bidAuction(db,{fee:10,ruleVersion:'lowest-unique-v4',isDemo:false,endDelayMs:3*86400000});
   await db.product.update({where:{id:auction.productId!},data:{title:marker,titleAm:'የሙከራ ሽቦ አልባ ማዳመጫ',description:'Isolated browser-test product. No real prize or live payment.',descriptionAm:'የአሳሽ ሙከራ ዕቃ ነው።',images:{create:{path:'/images/lowwin-demo-headphones.webp',alt:'Isolated test headphones',sourceType:'ORIGINAL',sortOrder:0}}}});
   await db.auction.update({where:{id:auction.id},data:{featured:true,publicViewCount:123n}});code=String(auction.publicCode);slug=auction.slug!;
