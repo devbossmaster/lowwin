@@ -1,6 +1,6 @@
 import {AsyncLocalStorage} from 'node:async_hooks';
 
-type Phase='oidc_token'|'oidc_profile'|'oidc_identity'|'oidc_session';
+type Phase='oidc_token'|'oidc_profile'|'oidc_identity'|'oidc_transaction'|'oidc_locks'|'oidc_lookup'|'oidc_session'|'me_session'|'me_account';
 type Timing={started:number;phases:Map<Phase,number>};
 const timingContext=new AsyncLocalStorage<Timing>();
 

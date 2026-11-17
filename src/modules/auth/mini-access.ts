@@ -13,7 +13,7 @@ import {contactBotId} from './own-contact';
 export function localMiniPreview(headers:Headers) {
   try { assertLocalIdentitySurface(headers);return true; } catch { return false; }
 }
-type BoundRow={id:string;token:string;userId:string;expiresAt:Date;createdAt:Date;updatedAt:Date;telegramLaunchId:string|null;telegramAuthSource:string;name:string;image:string|null;telegramId:string|null;staffId:string|null;contactTelegramId:string|null;contactBotId:string|null;revokedAt:Date|null;lastFour:string|null};
+type BoundRow={id:string;token:string;userId:string;expiresAt:Date;createdAt:Date;updatedAt:Date;telegramLaunchId:string|null;telegramAuthSource:string;name:string;role:string;image:string|null;telegramId:string|null;staffId:string|null;contactTelegramId:string|null;contactBotId:string|null;revokedAt:Date|null;lastFour:string|null};
 async function signedSessionToken(headers:Headers){
   const env=getEnv(),name=(env.BETTER_AUTH_URL.startsWith('https:')?'__Secure-':'')+'better-auth.session_token';
   const value=parseCookies(headers.get('cookie')??'').get(name);if(!value||value.length>512)return null;
@@ -28,16 +28,17 @@ async function readBoundSession(headers:Headers,client:PrismaClient|Prisma.Trans
   const token=await signedSessionToken(headers);if(!token)return null;
   // One indexed lookup and joins replace the adapter's sequential session,
   // user, staff and contact reads. Revocation is checked on every request.
-  const rows=await client.$queryRaw<BoundRow[]>`SELECT s.id,s.token,s."userId",s."expiresAt",s."createdAt",s."updatedAt",s."telegramLaunchId",s."telegramAuthSource",u.name,u.image,u."telegramId",m."userId" AS "staffId",c."telegramId" AS "contactTelegramId",c."botId" AS "contactBotId",c."revokedAt",c."lastFour"
+  const rows=await client.$queryRaw<BoundRow[]>`SELECT s.id,s.token,s."userId",s."expiresAt",s."createdAt",s."updatedAt",s."telegramLaunchId",s."telegramAuthSource",COALESCE(p."displayName",u.name) AS name,u.role,u.image,u."telegramId",m."userId" AS "staffId",c."telegramId" AS "contactTelegramId",c."botId" AS "contactBotId",c."revokedAt",c."lastFour"
     FROM "session" s JOIN "user" u ON u.id=s."userId"
     LEFT JOIN "StaffMember" m ON m."userId"=u.id LEFT JOIN "TelegramOwnContact" c ON c."userId"=u.id
+    LEFT JOIN "PlayerProfile" p ON p."userId"=u.id
     WHERE s.token=${token} AND s."expiresAt">(clock_timestamp() AT TIME ZONE 'UTC') LIMIT 1`;
   const row=rows[0];if(!row)return null;
   const current={session:{id:row.id,token:row.token,userId:row.userId,expiresAt:row.expiresAt,createdAt:row.createdAt,updatedAt:row.updatedAt,telegramLaunchId:row.telegramLaunchId,telegramAuthSource:row.telegramAuthSource},user:{id:row.userId,name:row.name,image:row.image}};
   const preview=row.userId==='lowin-local-test-user'&&localMiniPreview(headers);
   // Both proof sources are issued only after server-side Telegram verification.
   // Ordinary browser/staff cookies without that bound proof remain unauthorized.
-  if(!preview&&(!['MINI_APP','TELEGRAM_OIDC'].includes(row.telegramAuthSource)||!row.telegramLaunchId||row.telegramLaunchId!==row.telegramId||row.staffId))return null;
+  if(!preview&&(row.role!=='member'||!['MINI_APP','TELEGRAM_OIDC'].includes(row.telegramAuthSource)||!row.telegramLaunchId||row.telegramLaunchId!==row.telegramId||row.staffId))return null;
   const verified=!!row.contactTelegramId&&!row.revokedAt&&row.contactTelegramId===row.telegramId&&row.contactBotId===contactBotId();
   if(!preview&&requireContact&&!verified)return null;
   // Preserve Better Auth's existing daily sliding renewal, outside the normal

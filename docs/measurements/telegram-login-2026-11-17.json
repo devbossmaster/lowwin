@@ -1,0 +1,305 @@
+{
+  "at": "2026-11-17T11:35:25.224Z",
+  "scope": "Full installed OIDC provider callback, JWT/JWKS, identity/contact binding, signed session and owned account bootstrap; synthetic provider HTTP",
+  "success": true,
+  "groups": [
+    {
+      "state": "warm",
+      "user": "new",
+      "n": 20,
+      "p50Ms": 52.7,
+      "p95Ms": 68.1,
+      "samples": [
+        {
+          "totalMs": 67.60939999999937,
+          "queries": 32,
+          "serverTiming": "oidc_token;dur=1.5, oidc_locks;dur=1.9, oidc_lookup;dur=2.9, oidc_transaction;dur=17.7, oidc_identity;dur=17.7, oidc_profile;dur=24.6, oidc_session;dur=3.8, me_session;dur=3.3, me_account;dur=0.1, oidc_total;dur=67.5"
+        },
+        {
+          "totalMs": 58.83860000000095,
+          "queries": 32,
+          "serverTiming": "oidc_token;dur=0.9, oidc_locks;dur=0.9, oidc_lookup;dur=2.1, oidc_transaction;dur=14.1, oidc_identity;dur=14.2, oidc_profile;dur=21.7, oidc_session;dur=3.3, me_session;dur=3.2, me_account;dur=0.1, oidc_total;dur=58.7"
+        },
+        {
+          "totalMs": 91.98910000000069,
+          "queries": 32,
+          "serverTiming": "oidc_token;dur=1.0, oidc_locks;dur=1.1, oidc_lookup;dur=2.3, oidc_transaction;dur=16.7, oidc_identity;dur=16.8, oidc_profile;dur=23.1, oidc_session;dur=5.2, me_session;dur=6.8, me_account;dur=0.1, oidc_total;dur=91.9"
+        },
+        {
+          "totalMs": 65.35270000000128,
+          "queries": 32,
+          "serverTiming": "oidc_token;dur=0.7, oidc_locks;dur=1.6, oidc_lookup;dur=3.6, oidc_transaction;dur=20.5, oidc_identity;dur=20.6, oidc_profile;dur=26.4, oidc_session;dur=3.3, me_session;dur=2.9, me_account;dur=0.1, oidc_total;dur=65.3"
+        },
+        {
+          "totalMs": 47.64840000000004,
+          "queries": 32,
+          "serverTiming": "oidc_token;dur=1.1, oidc_locks;dur=0.8, oidc_lookup;dur=0.8, oidc_transaction;dur=9.6, oidc_identity;dur=9.6, oidc_profile;dur=14.9, oidc_session;dur=3.2, me_session;dur=2.8, me_account;dur=0.1, oidc_total;dur=47.6"
+        },
+        {
+          "totalMs": 43.92439999999988,
+          "queries": 32,
+          "serverTiming": "oidc_token;dur=0.7, oidc_locks;dur=0.8, oidc_lookup;dur=0.8, oidc_transaction;dur=10.3, oidc_identity;dur=10.4, oidc_profile;dur=15.8, oidc_session;dur=2.7, me_session;dur=1.3, me_account;dur=0.0, oidc_total;dur=43.9"
+        },
+        {
+          "totalMs": 66.47040000000015,
+          "queries": 32,
+          "serverTiming": "oidc_token;dur=1.0, oidc_locks;dur=0.8, oidc_lookup;dur=1.0, oidc_transaction;dur=10.9, oidc_identity;dur=11.0, oidc_profile;dur=17.8, oidc_session;dur=3.4, me_session;dur=3.9, me_account;dur=0.7, oidc_total;dur=66.3"
+        },
+        {
+          "totalMs": 68.10210000000006,
+          "queries": 32,
+          "serverTiming": "oidc_token;dur=1.2, oidc_locks;dur=1.6, oidc_lookup;dur=1.4, oidc_transaction;dur=15.2, oidc_identity;dur=15.4, oidc_profile;dur=22.9, oidc_session;dur=2.7, me_session;dur=2.2, me_account;dur=0.1, oidc_total;dur=68.0"
+        },
+        {
+          "totalMs": 53.61230000000069,
+          "queries": 32,
+          "serverTiming": "oidc_token;dur=0.9, oidc_locks;dur=1.1, oidc_lookup;dur=1.0, oidc_transaction;dur=11.2, oidc_identity;dur=11.3, oidc_profile;dur=17.8, oidc_session;dur=2.7, me_session;dur=1.6, me_account;dur=0.1, oidc_total;dur=53.5"
+        },
+        {
+          "totalMs": 53.29789999999957,
+          "queries": 32,
+          "serverTiming": "oidc_token;dur=0.6, oidc_locks;dur=1.0, oidc_lookup;dur=1.1, oidc_transaction;dur=11.3, oidc_identity;dur=11.3, oidc_profile;dur=16.7, oidc_session;dur=3.3, me_session;dur=2.3, me_account;dur=0.1, oidc_total;dur=53.2"
+        },
+        {
+          "totalMs": 54.79290000000037,
+          "queries": 32,
+          "serverTiming": "oidc_token;dur=1.0, oidc_locks;dur=0.9, oidc_lookup;dur=0.9, oidc_transaction;dur=12.2, oidc_identity;dur=12.2, oidc_profile;dur=18.0, oidc_session;dur=4.6, me_session;dur=1.8, me_account;dur=0.1, oidc_total;dur=54.7"
+        },
+        {
+          "totalMs": 52.37750000000051,
+          "queries": 32,
+          "serverTiming": "oidc_token;dur=0.7, oidc_locks;dur=0.9, oidc_lookup;dur=0.9, oidc_transaction;dur=11.7, oidc_identity;dur=11.7, oidc_profile;dur=17.4, oidc_session;dur=2.8, me_session;dur=1.8, me_account;dur=0.0, oidc_total;dur=52.3"
+        },
+        {
+          "totalMs": 52.19180000000051,
+          "queries": 32,
+          "serverTiming": "oidc_token;dur=0.6, oidc_locks;dur=0.8, oidc_lookup;dur=0.9, oidc_transaction;dur=11.8, oidc_identity;dur=11.8, oidc_profile;dur=18.5, oidc_session;dur=2.9, me_session;dur=1.8, me_account;dur=0.0, oidc_total;dur=52.1"
+        },
+        {
+          "totalMs": 52.67760000000089,
+          "queries": 32,
+          "serverTiming": "oidc_token;dur=0.7, oidc_locks;dur=1.1, oidc_lookup;dur=0.9, oidc_transaction;dur=12.6, oidc_identity;dur=12.7, oidc_profile;dur=20.1, oidc_session;dur=2.6, me_session;dur=1.3, me_account;dur=0.0, oidc_total;dur=52.6"
+        },
+        {
+          "totalMs": 55.804299999999785,
+          "queries": 32,
+          "serverTiming": "oidc_token;dur=0.8, oidc_locks;dur=0.8, oidc_lookup;dur=0.8, oidc_transaction;dur=11.3, oidc_identity;dur=11.4, oidc_profile;dur=18.4, oidc_session;dur=3.0, me_session;dur=1.4, me_account;dur=0.0, oidc_total;dur=55.8"
+        },
+        {
+          "totalMs": 47.283799999999246,
+          "queries": 32,
+          "serverTiming": "oidc_token;dur=0.6, oidc_locks;dur=1.2, oidc_lookup;dur=1.1, oidc_transaction;dur=11.7, oidc_identity;dur=11.8, oidc_profile;dur=17.0, oidc_session;dur=2.6, me_session;dur=1.4, me_account;dur=0.0, oidc_total;dur=47.2"
+        },
+        {
+          "totalMs": 44.705400000000736,
+          "queries": 32,
+          "serverTiming": "oidc_token;dur=0.5, oidc_locks;dur=0.8, oidc_lookup;dur=0.9, oidc_transaction;dur=9.7, oidc_identity;dur=9.7, oidc_profile;dur=16.0, oidc_session;dur=2.6, me_session;dur=1.3, me_account;dur=0.0, oidc_total;dur=44.7"
+        },
+        {
+          "totalMs": 49.28240000000005,
+          "queries": 32,
+          "serverTiming": "oidc_token;dur=0.6, oidc_locks;dur=0.7, oidc_lookup;dur=0.8, oidc_transaction;dur=10.1, oidc_identity;dur=10.1, oidc_profile;dur=16.0, oidc_session;dur=3.1, me_session;dur=1.8, me_account;dur=0.1, oidc_total;dur=49.2"
+        },
+        {
+          "totalMs": 47.63889999999992,
+          "queries": 32,
+          "serverTiming": "oidc_token;dur=0.6, oidc_locks;dur=0.7, oidc_lookup;dur=0.8, oidc_transaction;dur=12.0, oidc_identity;dur=12.0, oidc_profile;dur=16.7, oidc_session;dur=2.4, me_session;dur=1.4, me_account;dur=0.0, oidc_total;dur=47.6"
+        },
+        {
+          "totalMs": 40.68369999999959,
+          "queries": 32,
+          "serverTiming": "oidc_token;dur=0.6, oidc_locks;dur=0.7, oidc_lookup;dur=0.8, oidc_transaction;dur=10.1, oidc_identity;dur=10.1, oidc_profile;dur=15.4, oidc_session;dur=2.1, me_session;dur=1.7, me_account;dur=0.0, oidc_total;dur=40.6"
+        }
+      ]
+    },
+    {
+      "state": "warm",
+      "user": "returning",
+      "n": 20,
+      "p50Ms": 36.2,
+      "p95Ms": 43.9,
+      "samples": [
+        {
+          "totalMs": 35.410900000000765,
+          "queries": 26,
+          "serverTiming": "oidc_token;dur=0.7, oidc_locks;dur=0.7, oidc_lookup;dur=1.0, oidc_transaction;dur=2.8, oidc_identity;dur=2.8, oidc_profile;dur=8.1, oidc_session;dur=2.2, me_session;dur=1.2, me_account;dur=0.0, oidc_total;dur=35.4"
+        },
+        {
+          "totalMs": 47.06109999999899,
+          "queries": 26,
+          "serverTiming": "oidc_token;dur=0.6, oidc_locks;dur=0.9, oidc_lookup;dur=1.2, oidc_transaction;dur=3.4, oidc_identity;dur=3.4, oidc_profile;dur=10.3, oidc_session;dur=3.2, me_session;dur=1.4, me_account;dur=0.0, oidc_total;dur=47.0"
+        },
+        {
+          "totalMs": 37.47280000000137,
+          "queries": 26,
+          "serverTiming": "oidc_token;dur=0.7, oidc_locks;dur=0.7, oidc_lookup;dur=0.8, oidc_transaction;dur=2.5, oidc_identity;dur=2.5, oidc_profile;dur=8.0, oidc_session;dur=2.6, me_session;dur=2.1, me_account;dur=0.0, oidc_total;dur=37.4"
+        },
+        {
+          "totalMs": 34.57430000000022,
+          "queries": 26,
+          "serverTiming": "oidc_token;dur=0.5, oidc_locks;dur=0.7, oidc_lookup;dur=0.9, oidc_transaction;dur=2.6, oidc_identity;dur=2.6, oidc_profile;dur=7.9, oidc_session;dur=2.4, me_session;dur=1.2, me_account;dur=0.0, oidc_total;dur=34.5"
+        },
+        {
+          "totalMs": 38.764499999999316,
+          "queries": 26,
+          "serverTiming": "oidc_token;dur=0.4, oidc_locks;dur=0.7, oidc_lookup;dur=1.1, oidc_transaction;dur=2.9, oidc_identity;dur=2.9, oidc_profile;dur=12.2, oidc_session;dur=2.2, me_session;dur=1.4, me_account;dur=0.0, oidc_total;dur=38.7"
+        },
+        {
+          "totalMs": 32.36540000000059,
+          "queries": 26,
+          "serverTiming": "oidc_token;dur=0.5, oidc_locks;dur=0.7, oidc_lookup;dur=0.9, oidc_transaction;dur=2.5, oidc_identity;dur=2.5, oidc_profile;dur=7.1, oidc_session;dur=2.2, me_session;dur=1.2, me_account;dur=0.0, oidc_total;dur=32.3"
+        },
+        {
+          "totalMs": 30.642900000000736,
+          "queries": 26,
+          "serverTiming": "oidc_token;dur=0.4, oidc_locks;dur=0.7, oidc_lookup;dur=0.8, oidc_transaction;dur=2.4, oidc_identity;dur=2.5, oidc_profile;dur=6.8, oidc_session;dur=2.3, me_session;dur=1.3, me_account;dur=0.0, oidc_total;dur=30.6"
+        },
+        {
+          "totalMs": 30.839999999998327,
+          "queries": 26,
+          "serverTiming": "oidc_token;dur=0.4, oidc_locks;dur=0.7, oidc_lookup;dur=0.8, oidc_transaction;dur=2.4, oidc_identity;dur=2.4, oidc_profile;dur=6.5, oidc_session;dur=2.3, me_session;dur=1.2, me_account;dur=0.0, oidc_total;dur=30.8"
+        },
+        {
+          "totalMs": 43.87960000000021,
+          "queries": 26,
+          "serverTiming": "oidc_token;dur=0.5, oidc_locks;dur=0.7, oidc_lookup;dur=0.9, oidc_transaction;dur=2.7, oidc_identity;dur=2.7, oidc_profile;dur=8.1, oidc_session;dur=3.6, me_session;dur=3.6, me_account;dur=0.1, oidc_total;dur=43.8"
+        },
+        {
+          "totalMs": 43.25619999999981,
+          "queries": 26,
+          "serverTiming": "oidc_token;dur=0.5, oidc_locks;dur=2.1, oidc_lookup;dur=1.4, oidc_transaction;dur=5.2, oidc_identity;dur=5.2, oidc_profile;dur=10.8, oidc_session;dur=2.5, me_session;dur=1.4, me_account;dur=0.2, oidc_total;dur=43.2"
+        },
+        {
+          "totalMs": 37.75590000000011,
+          "queries": 26,
+          "serverTiming": "oidc_token;dur=0.6, oidc_locks;dur=0.9, oidc_lookup;dur=0.9, oidc_transaction;dur=2.8, oidc_identity;dur=2.8, oidc_profile;dur=8.5, oidc_session;dur=2.4, me_session;dur=1.5, me_account;dur=0.0, oidc_total;dur=37.7"
+        },
+        {
+          "totalMs": 34.758099999999104,
+          "queries": 26,
+          "serverTiming": "oidc_token;dur=0.5, oidc_locks;dur=0.7, oidc_lookup;dur=1.0, oidc_transaction;dur=2.6, oidc_identity;dur=2.6, oidc_profile;dur=7.9, oidc_session;dur=2.4, me_session;dur=1.1, me_account;dur=0.0, oidc_total;dur=34.7"
+        },
+        {
+          "totalMs": 35.05409999999938,
+          "queries": 26,
+          "serverTiming": "oidc_token;dur=0.5, oidc_locks;dur=1.1, oidc_lookup;dur=1.0, oidc_transaction;dur=3.2, oidc_identity;dur=3.2, oidc_profile;dur=7.9, oidc_session;dur=2.8, me_session;dur=1.4, me_account;dur=0.0, oidc_total;dur=35.0"
+        },
+        {
+          "totalMs": 36.50849999999991,
+          "queries": 26,
+          "serverTiming": "oidc_token;dur=0.4, oidc_locks;dur=0.8, oidc_lookup;dur=0.9, oidc_transaction;dur=2.7, oidc_identity;dur=2.8, oidc_profile;dur=8.2, oidc_session;dur=2.7, me_session;dur=1.8, me_account;dur=0.0, oidc_total;dur=36.5"
+        },
+        {
+          "totalMs": 39.97479999999996,
+          "queries": 26,
+          "serverTiming": "oidc_token;dur=0.7, oidc_locks;dur=1.2, oidc_lookup;dur=1.2, oidc_transaction;dur=3.8, oidc_identity;dur=3.8, oidc_profile;dur=9.5, oidc_session;dur=2.5, me_session;dur=1.5, me_account;dur=0.0, oidc_total;dur=39.9"
+        },
+        {
+          "totalMs": 33.956200000000536,
+          "queries": 26,
+          "serverTiming": "oidc_token;dur=0.4, oidc_locks;dur=0.7, oidc_lookup;dur=0.8, oidc_transaction;dur=2.4, oidc_identity;dur=2.4, oidc_profile;dur=6.9, oidc_session;dur=2.3, me_session;dur=1.5, me_account;dur=0.1, oidc_total;dur=33.9"
+        },
+        {
+          "totalMs": 36.18499999999949,
+          "queries": 26,
+          "serverTiming": "oidc_token;dur=0.4, oidc_locks;dur=0.8, oidc_lookup;dur=0.9, oidc_transaction;dur=2.7, oidc_identity;dur=2.7, oidc_profile;dur=7.6, oidc_session;dur=2.5, me_session;dur=1.3, me_account;dur=0.0, oidc_total;dur=36.1"
+        },
+        {
+          "totalMs": 42.88709999999992,
+          "queries": 26,
+          "serverTiming": "oidc_token;dur=0.7, oidc_locks;dur=1.0, oidc_lookup;dur=1.1, oidc_transaction;dur=3.5, oidc_identity;dur=3.5, oidc_profile;dur=9.1, oidc_session;dur=5.0, me_session;dur=2.3, me_account;dur=0.0, oidc_total;dur=42.8"
+        },
+        {
+          "totalMs": 42.300100000000384,
+          "queries": 26,
+          "serverTiming": "oidc_token;dur=0.6, oidc_locks;dur=0.7, oidc_lookup;dur=0.8, oidc_transaction;dur=2.6, oidc_identity;dur=2.6, oidc_profile;dur=8.7, oidc_session;dur=2.6, me_session;dur=1.2, me_account;dur=0.0, oidc_total;dur=42.3"
+        },
+        {
+          "totalMs": 33.42789999999877,
+          "queries": 26,
+          "serverTiming": "oidc_token;dur=0.5, oidc_locks;dur=0.7, oidc_lookup;dur=0.8, oidc_transaction;dur=2.5, oidc_identity;dur=2.5, oidc_profile;dur=7.5, oidc_session;dur=2.2, me_session;dur=1.2, me_account;dur=0.0, oidc_total;dur=33.4"
+        }
+      ]
+    },
+    {
+      "state": "cold",
+      "user": "new",
+      "n": 5,
+      "p50Ms": 185.3,
+      "p95Ms": 294,
+      "samples": [
+        {
+          "totalMs": 170.24969999999848,
+          "queries": 32,
+          "serverTiming": "oidc_token;dur=0.6, oidc_locks;dur=1.2, oidc_lookup;dur=17.3, oidc_transaction;dur=38.2, oidc_identity;dur=38.2, oidc_profile;dur=46.5, oidc_session;dur=6.7, me_session;dur=5.5, me_account;dur=0.1, oidc_total;dur=170.2"
+        },
+        {
+          "totalMs": 294.0470999999998,
+          "queries": 32,
+          "serverTiming": "oidc_token;dur=0.7, oidc_locks;dur=1.5, oidc_lookup;dur=18.8, oidc_transaction;dur=45.7, oidc_identity;dur=45.7, oidc_profile;dur=56.5, oidc_session;dur=9.6, me_session;dur=7.0, me_account;dur=0.1, oidc_total;dur=294.0"
+        },
+        {
+          "totalMs": 192.29190000000017,
+          "queries": 32,
+          "serverTiming": "oidc_token;dur=0.5, oidc_locks;dur=1.3, oidc_lookup;dur=20.6, oidc_transaction;dur=42.2, oidc_identity;dur=42.2, oidc_profile;dur=52.6, oidc_session;dur=11.3, me_session;dur=8.1, me_account;dur=0.1, oidc_total;dur=192.2"
+        },
+        {
+          "totalMs": 162.9878000000008,
+          "queries": 32,
+          "serverTiming": "oidc_token;dur=0.6, oidc_locks;dur=1.3, oidc_lookup;dur=18.0, oidc_transaction;dur=36.5, oidc_identity;dur=36.6, oidc_profile;dur=43.6, oidc_session;dur=8.5, me_session;dur=5.3, me_account;dur=0.1, oidc_total;dur=162.9"
+        },
+        {
+          "totalMs": 185.30040000000008,
+          "queries": 32,
+          "serverTiming": "oidc_token;dur=0.7, oidc_locks;dur=1.6, oidc_lookup;dur=29.7, oidc_transaction;dur=54.9, oidc_identity;dur=55.0, oidc_profile;dur=62.7, oidc_session;dur=9.2, me_session;dur=6.2, me_account;dur=0.1, oidc_total;dur=185.2"
+        }
+      ]
+    },
+    {
+      "state": "cold",
+      "user": "returning",
+      "n": 5,
+      "p50Ms": 149.6,
+      "p95Ms": 181.6,
+      "samples": [
+        {
+          "totalMs": 137.96429999999964,
+          "queries": 26,
+          "serverTiming": "oidc_token;dur=0.5, oidc_locks;dur=1.1, oidc_lookup;dur=16.8, oidc_transaction;dur=19.0, oidc_identity;dur=19.0, oidc_profile;dur=25.7, oidc_session;dur=6.3, me_session;dur=4.5, me_account;dur=0.0, oidc_total;dur=137.9"
+        },
+        {
+          "totalMs": 181.5681999999979,
+          "queries": 26,
+          "serverTiming": "oidc_token;dur=0.5, oidc_locks;dur=1.3, oidc_lookup;dur=16.4, oidc_transaction;dur=18.7, oidc_identity;dur=18.8, oidc_profile;dur=47.3, oidc_session;dur=7.2, me_session;dur=7.0, me_account;dur=0.1, oidc_total;dur=181.5"
+        },
+        {
+          "totalMs": 151.23170000000027,
+          "queries": 26,
+          "serverTiming": "oidc_token;dur=0.4, oidc_locks;dur=1.2, oidc_lookup;dur=18.5, oidc_transaction;dur=20.7, oidc_identity;dur=20.7, oidc_profile;dur=28.2, oidc_session;dur=6.8, me_session;dur=5.7, me_account;dur=0.1, oidc_total;dur=151.2"
+        },
+        {
+          "totalMs": 137.25530000000072,
+          "queries": 26,
+          "serverTiming": "oidc_token;dur=0.4, oidc_locks;dur=1.3, oidc_lookup;dur=17.8, oidc_transaction;dur=20.2, oidc_identity;dur=20.2, oidc_profile;dur=27.1, oidc_session;dur=7.7, me_session;dur=6.4, me_account;dur=0.1, oidc_total;dur=137.2"
+        },
+        {
+          "totalMs": 149.58789999999863,
+          "queries": 26,
+          "serverTiming": "oidc_token;dur=0.5, oidc_locks;dur=1.5, oidc_lookup;dur=20.4, oidc_transaction;dur=23.0, oidc_identity;dur=23.0, oidc_profile;dur=29.7, oidc_session;dur=6.8, me_session;dur=5.8, me_account;dur=0.0, oidc_total;dur=149.5"
+        }
+      ]
+    }
+  ],
+  "providerCalls": {
+    "token": 51,
+    "jwks": 11,
+    "userInfo": 0
+  },
+  "databaseCleaned": true,
+  "limitations": [
+    "Excludes user approval time, actual Telegram HTTP, redirect transport, browser hydration and production database/proxy latency.",
+    "Cold means fresh auth/JWKS instance and reconnected Prisma pool at callback; warm means reused instance, cached JWKS and open pool.",
+    "These synthetic measurements do not establish a production p95 or guarantee the 1-2 second target."
+  ],
+  "generatedAt": "2026-11-17T11:35:43.189Z"
+}
