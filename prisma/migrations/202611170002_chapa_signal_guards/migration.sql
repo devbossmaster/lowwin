@@ -23,4 +23,3 @@ END $$;
 -- providerStatus or authorizes fulfillment before private verification.
 ALTER TABLE "ChapaCheckout" ADD COLUMN "verificationCompletionStatus" TEXT
  CHECK ("verificationCompletionStatus" IS NULL OR "verificationCompletionStatus" IN ('SUCCESS','FAILED','CANCELLED','INCOMPLETE','EXPIRED','BLOCKED','FAILED_OR_CANCELLED'));
-

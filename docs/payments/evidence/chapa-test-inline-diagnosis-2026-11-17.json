@@ -1,0 +1,201 @@
+{
+  "mode": "test",
+  "at": "2026-11-17T06:35:58.229Z",
+  "scope": "retained original Inline operation; dedicated TEST keys; documented simulator only",
+  "physicalUSSD": false,
+  "realPhoneUsed": false,
+  "originalAttempt": "retained-original-telebirr",
+  "requests": [
+    {
+      "operation": "methods",
+      "httpStatus": 200,
+      "headersMs": 867.7,
+      "completeMs": 872.9,
+      "operatorOnlySanitizedMessage": "Payment methods retrieved successfully",
+      "errorDetailsType": "undefined",
+      "requestIdAvailable": false,
+      "checkedRequestIdLocations": [
+        "request_id",
+        "data.request_id",
+        "error.request_id",
+        "x-request-id",
+        "request-id",
+        "x-correlation-id",
+        "cf-ray"
+      ]
+    },
+    {
+      "operation": "identical-original-initialize-replay",
+      "httpStatus": 400,
+      "headersMs": 1661.9,
+      "completeMs": 1662.8,
+      "providerCode": "INVALID_VALUE",
+      "operatorOnlySanitizedMessage": "payable not found",
+      "errorDetailsType": "null",
+      "requestIdAvailable": false,
+      "checkedRequestIdLocations": [
+        "request_id",
+        "data.request_id",
+        "error.request_id",
+        "x-request-id",
+        "request-id",
+        "x-correlation-id",
+        "cf-ray"
+      ]
+    }
+  ],
+  "contract": {
+    "initialize": "POST https://api.chapa.global/v2/payments/inline",
+    "authentication": "Bearer public TEST key",
+    "contentType": "application/json",
+    "referenceMaximumLength": 20,
+    "amountUnit": "integer cents",
+    "customerField": "top-level mobile",
+    "source": "https://docs.chapa.global/docs/v2/integrations/inline-js",
+    "simulatorSource": "https://docs.chapa.global/docs/v2/testing/testing-mobile",
+    "apiCollectionSource": "https://docs.chapa.global/api-playground/v2",
+    "apiCollectionAgreesWithPublishedInlinePage": true,
+    "noDocumentedPayableIdentifierOrPayableSetupField": true
+  },
+  "newOperationCreated": false,
+  "original": {
+    "merchantReferenceHash": "e2c16dcc4913b89acd6fdf42277f728e80068f086a2692bddadbd6b013343bb0",
+    "payloadHash": "9fbc85e5e91e82ced886c8fe93e1ba738c146961d7761e5b485489a530241876",
+    "immutableIntentCommittedBeforeOriginalDispatch": true,
+    "status": "NEEDS_REVIEW",
+    "providerStatus": null,
+    "verificationState": "UNAVAILABLE",
+    "creditJournalPresent": false
+  },
+  "payloadValidation": {
+    "sameOriginalBody": true,
+    "sameOriginalReference": true,
+    "sameOriginalIdempotencyKey": true,
+    "sameOriginalOwner": true,
+    "sameOriginalCredentialFingerprint": true,
+    "amountInteger": true,
+    "amountCents": "10000",
+    "currency": "ETB",
+    "paymentMethod": "telebirr",
+    "merchantReferenceLength": 20,
+    "simulatorFixture": "documented-success",
+    "optionalCustomerFieldsOmitted": true
+  },
+  "capability": [
+    {
+      "method": "mpesa",
+      "canProcessPayments": true,
+      "canProcessDirectCharge": true,
+      "currency": "ETB",
+      "ethiopiaEnabled": true,
+      "minimumCents": 500,
+      "maximumCents": 100000000
+    },
+    {
+      "method": "telebirr",
+      "canProcessPayments": true,
+      "canProcessDirectCharge": true,
+      "currency": "ETB",
+      "ethiopiaEnabled": true,
+      "minimumCents": 100,
+      "maximumCents": 100000000
+    },
+    {
+      "method": "cbebirr",
+      "canProcessPayments": true,
+      "canProcessDirectCharge": true,
+      "currency": "ETB",
+      "ethiopiaEnabled": true,
+      "minimumCents": 100,
+      "maximumCents": 100000000
+    }
+  ],
+  "replayAccepted": false,
+  "sanitizedTransportClassification": {
+    "category": "request",
+    "providerCode": "INVALID_VALUE",
+    "httpStatus": 400
+  },
+  "after": {
+    "originalLocalIntentUnchanged": true,
+    "localStatus": "NEEDS_REVIEW",
+    "localProviderStatus": null,
+    "localVerificationState": "UNAVAILABLE",
+    "creditJournalPresent": false
+  },
+  "messagePolicy": "Provider diagnostic text is operator evidence only; it does not change payment state or customer copy.",
+  "bindingReview": {
+    "ownedOriginalKeyUnchanged": true,
+    "mode": "test",
+    "savedModeMatchesDedicatedTestKeys": true,
+    "savedPrivateCredentialFingerprintMatches": true,
+    "savedPublicCredentialFingerprintMatches": true,
+    "apiVersion": "v2",
+    "flowVersion": 4,
+    "initializationFlow": "INLINE",
+    "chargeType": "INLINE",
+    "paymentMethod": "telebirr",
+    "webhookSignatureProfile": "raw_body",
+    "originalReferenceMatches": true,
+    "originalIdempotencyKeyMatches": true,
+    "authorizationReferencePresent": false,
+    "providerReferencePresent": false,
+    "fingerprintMeaning": "Current dedicated TEST public/private keys match those frozen on the original intent. This does not prove Chapa bound the two keys to the same business.",
+    "publicPrivateKeyPairBusinessBindingIndependentlyVerified": false
+  },
+  "requestCount": {
+    "initializationBeforeThisDiagnosis": 1,
+    "identicalOriginalDiagnosticReplay": 1,
+    "initializationTotalForRetainedAttempt": 2,
+    "acceptedInitializationTotal": 0,
+    "distinctNewOperationsDuringDiagnosis": 0
+  },
+  "outcome": {
+    "acceptedTestPayments": 0,
+    "newCredits": 0,
+    "originalAttemptPreserved": true,
+    "originalLocalStatus": "NEEDS_REVIEW",
+    "originalVerificationState": "UNAVAILABLE",
+    "webhookCount": 0
+  },
+  "diagnosis": {
+    "confirmed": "The identical original documented Inline request still returns HTTP 400 INVALID_VALUE with message payable not found, while private-key capability access succeeds.",
+    "rootCauseEstablished": false,
+    "inference": "A merchant/provider payable or TEST initialization prerequisite may be unavailable; the response does not identify which prerequisite. API-key pair ownership cannot be established solely by matching TEST prefixes.",
+    "applicationPayloadMismatchFound": false,
+    "modeOrSavedCredentialMismatchFound": false,
+    "customerCancellationOrPinFailureEstablished": false,
+    "businessBindingLimitation": "Private payment-method GET success and public Inline HTTP 400 do not independently reveal whether the public/private keys belong to the same Chapa business. Confirm through the merchant dashboard or Chapa support."
+  },
+  "fixtureLimits": {
+    "officialSimulatorDocumentedFor": "Direct Charge example; general mobile TEST scenarios",
+    "inlineSimulatorCompatibilityEstablished": false,
+    "mpesaIssue": "The only documented success simulator has a 09 prefix; Lowwin requires a 07 prefix for M-Pesa. No documented working M-Pesa simulator substitute was found.",
+    "realPhoneSubstitutionAllowed": false
+  },
+  "supportHandoff": {
+    "needed": "Chapa should confirm this TEST key pair business binding, Inline TEST initialization availability, and whether any payable prerequisite exists beyond the published contract; provide a documented Inline-compatible simulator for all three methods.",
+    "safeObservedMessage": "payable not found",
+    "providerRequestId": null,
+    "privateReferenceLocation": ".local/chapa-test-e2e-20261117-state.json",
+    "existingEvidence": ".local/chapa-test-e2e-20261117-report.json",
+    "doNotSend": [
+      "API keys",
+      "webhook secret",
+      "PIN or OTP",
+      "raw customer payload"
+    ],
+    "webhookCleanup": "The former temporary tunnel URL must be removed manually from the TEST dashboard when an authenticated dashboard session is available; no dashboard cleanup was performed here.",
+    "obsoleteTestWebhookUrl": "https://kiss-fees-ambient-transportation.trycloudflare.com/api/payments/chapa/webhook",
+    "dashboardCleanupPerformed": false,
+    "productionWebhookChanged": false
+  },
+  "reasonPolicyReview": {
+    "providerMessageCustomerVisible": false,
+    "providerMessageFinancialAuthority": false,
+    "unknownOutcomeKeepsOriginalAttempt": true,
+    "onlyExactBodyAuthenticatedBoundEventCanSupplyReasonOrCancelledBy": true,
+    "userCancellationRequiresVerifiedCancelledAndSupportedUSER": true,
+    "secretRotationDoesNotInvalidatePreviouslyAuthenticatedStoredFeedback": true
+  }
+}

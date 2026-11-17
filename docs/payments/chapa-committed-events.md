@@ -87,6 +87,10 @@ The `checkout-v2-inline-browser/committed-events` fixture additionally holds the
 provider-check response, injects an owned SSE callback and records its duration
 to the confirmed DOM update. Its `simulated-sse-timing.json` samples measure
 callback/render work only, excluding Redis, proxy, network and real commit time.
+The opt-in cross-process test subsequently passed against real Redis in
+[GitHub Actions](evidence/chapa-redis-ci-2026-11-17.json): one integration case,
+including namespace isolation and subscriber reconnection. It does not establish
+Coolify TLS streaming, device behavior or commit-to-render latency.
 
 Contracts: [Redis pub/sub delivery](https://redis.io/docs/latest/develop/pubsub/),
 [node-redis subscriber connections](https://github.com/redis/node-redis/blob/master/docs/pub-sub.md),

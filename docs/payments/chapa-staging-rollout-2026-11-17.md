@@ -80,6 +80,7 @@ CHAPA_RECOVERY_ENABLED=false
 CHAPA_SCHEMA_READY=false
 CHAPA_INLINE_ENABLED=false
 CHAPA_INLINE_METHODS=telebirr,cbebirr,mpesa
+CHAPA_WEBHOOK_SIGNATURE_PROFILE=raw_body
 CHAPA_TEST_ENVIRONMENT_REVIEWED=false
 CHAPA_MERCHANT_REVIEWED=false
 CHAPA_LIVE_ENABLED=false
@@ -114,8 +115,8 @@ npm run db:generate
 npm run db:migrate
 ```
 
-This includes `202611170001_chapa_payment_signals` and any subsequent reviewed
-guard migration. Do not use `db push`, reset, seed, or delete payment history.
+This includes `202611170001_chapa_payment_signals` and
+`202611170002_chapa_signal_guards`. Do not use `db push`, reset, seed, or delete payment history.
 Set `CHAPA_SCHEMA_READY=true` only after migration/grants validation. Preserve
 all existing provider activation/recovery flags until the operator verifies the
 TEST merchant configuration and actual readiness. A healthy WEB is useful for
@@ -157,10 +158,12 @@ npx --no-install tsx scripts/check-chapa-inline.ts --schema
 npx --no-install tsx scripts/check-chapa-inline.ts --methods
 ```
 
-The first reads configuration/schema metadata; the second adds a read-only
-provider method lookup in reviewed TEST mode. Neither initializes a payment.
-Also verify the candidate release's complete migration list, since the Inline
-readiness command is not a substitute for the new signal-guard migration check.
+The first reads configuration/schema metadata, requiring the existing Inline
+migration plus both confirmation migrations, their columns and active guard
+definitions. Require `schema.status=ok`; a migration row alone is insufficient.
+The second adds a read-only provider method lookup in reviewed TEST mode.
+Neither initializes a payment. Also verify the candidate release's complete
+migration list so any future additive migration is included.
 Check `configured/enabled` through the owned configuration API before acceptance.
 If the provider still rejects the documented TEST simulator, record that
 blocker, pause new creation again and preserve the original attempt.
@@ -300,6 +303,12 @@ Without that variable the test explicitly skips; non-loopback or non-Redis URLs
 are rejected. This is CI/local broker integration, not deployed Coolify TLS,
 payment settlement or device evidence. Its subprocess import smoke passed locally;
 actual broker execution was unavailable here because no Redis service was running.
+The subsequent GitHub Actions run **44033962707**, job **133872377109**, passed
+the real broker test at head `327186a` using Node 24.22.2 and Redis 7.4.12:
+one test in 5,976 ms (suite 6.27 seconds, including the deliberate 5.1-second
+reconnect wait). This is a successful real CI integration sample, not a payment
+latency sample. See [sanitized CI evidence](evidence/chapa-redis-ci-2026-11-17.json).
+The deployed TLS/device rows at the top remain NOT RUN with zero samples.
 
 ## Rollback without deleting financial state
 

@@ -1,0 +1,124 @@
+{
+  "date": "2026-11-17",
+  "baseline": "e7d25f2c2a2376f65390a83b02dafbbc95366d4b",
+  "reviewedCodeCommit": "bd428b3a7ce43212b9dd403877162103852b5e1e",
+  "branch": "feat/responsive-chapa-confirmation-20261117",
+  "pullRequest": "https://github.com/devbossmaster/lowwin/pull/16",
+  "sourceDigest": {
+    "algorithm": "sha256",
+    "files": 660,
+    "value": "a13202596f3eeb81f80d2a17c3aca466ad86ad1fbbd87b87a7eb2f4a49b220d0",
+    "scope": "application source, package manifests, Prisma schema and migrations, Next configuration",
+    "unchangedThroughFinalBuild": true
+  },
+  "framework": {
+    "next": "16.4.6",
+    "advisory": "https://github.com/vercel/next.js/security/advisories/GHSA-mfr8-8qww-v76h",
+    "patchedFloor": "16.4.5",
+    "reactUnchanged": true,
+    "fullNpmAudit": { "info": 0, "low": 0, "moderate": 0, "high": 0, "critical": 0, "total": 0 }
+  },
+  "validation": [
+    {
+      "kind": "focused-vitest",
+      "result": "passed",
+      "filesPassed": 58,
+      "filesSkipped": 8,
+      "testsPassed": 821,
+      "testsSkipped": 190,
+      "seconds": 131.97,
+      "limits": "Opt-in database and Redis cases skip in this command; separate evidence follows. Provider transport is simulated."
+    },
+    {
+      "kind": "isolated-postgresql-coordination-and-migration",
+      "result": "passed",
+      "testsPassed": 33,
+      "seconds": 34.76,
+      "assertions": [
+        "Baseline balance and pending rows survive both additive migrations",
+        "Signals received during provider HTTP survive cleanup and prompt a deferred private check",
+        "Repeated public pending feedback cannot indefinitely suppress a retained completion signal",
+        "Fresh private terminal proof is required to resolve completion evidence",
+        "Delayed initialization and verification cannot release a successor lease",
+        "Only one committed financial credit exists after repeated settlement",
+        "Credited webhook feedback is immutable while worker coordination stays mutable"
+      ],
+      "disposableDatabasesRemoved": true,
+      "actualRetainedProviderAttemptUnchanged": true
+    },
+    {
+      "kind": "isolated-postgresql-transactions-and-account-isolation",
+      "result": "passed",
+      "testsPassed": 15,
+      "elapsedMs": 27065,
+      "disposableDatabaseRemoved": true
+    },
+    {
+      "kind": "readiness-schema",
+      "result": "passed",
+      "unitCases": 15,
+      "actualPostgresqlMetadataCases": 4,
+      "scope": "Both migration records, column types/defaults, guards, trigger bindings and reconciliation index; read-only metadata checks"
+    },
+    {
+      "kind": "production-bundle-payment-browser-fixtures",
+      "result": "passed",
+      "widths": [360, 430],
+      "testsPassed": 29,
+      "intentionalDuplicateCasesSkipped": 11,
+      "elapsedMs": 171969,
+      "limits": "Provider HTTP and EventSource callbacks are fixtures; not actual Chapa settlement or deployed TLS evidence"
+    },
+    {
+      "kind": "production-bundle-admin-regression",
+      "result": "passed",
+      "widths": [360, 430, 1440],
+      "testsPassed": 3,
+      "applicationWrites": 0
+    },
+    { "kind": "standalone-typescript", "command": "npx tsc --noEmit", "result": "passed" },
+    {
+      "kind": "fresh-production-build",
+      "command": "npm run build",
+      "result": "passed",
+      "elapsedMs": 222683,
+      "disposableDatabaseRemoved": true,
+      "livePaymentAndTelegramCredentialsExcluded": true
+    },
+    {
+      "kind": "real-redis-cross-process-ci",
+      "result": "passed",
+      "testsPassed": 1,
+      "processes": 3,
+      "evidence": "chapa-redis-ci-2026-11-17.json",
+      "limits": "Real Redis socket interruption/reconnect and namespace isolation; no Coolify proxy, database commit or device"
+    }
+  ],
+  "countsOverlapDoNotSum": true,
+  "actualProvider": {
+    "evidence": "chapa-test-inline-diagnosis-2026-11-17.json",
+    "mode": "test",
+    "methodsHttpStatus": 200,
+    "initializationHttpStatus": 400,
+    "providerCode": "INVALID_VALUE",
+    "safeMessage": "payable not found",
+    "rootCauseConfirmed": false,
+    "originalOperationPreserved": true,
+    "distinctNewOperationsDuringReview": 0,
+    "acceptedTestPayments": 0,
+    "committedProviderCredits": 0,
+    "authenticatedWebhookDeliveries": 0,
+    "merchantKeyPairBusinessBindingRequiresProviderConfirmation": true
+  },
+  "deployment": {
+    "stagingTargetIdentified": false,
+    "coolifyTlsVerification": "not-run",
+    "commitToScreenSamples": 0,
+    "physicalTelegram": "deferred-by-user",
+    "productionDeploymentPerformed": false,
+    "merged": false,
+    "runbook": "../chapa-staging-rollout-2026-11-17.md",
+    "additiveMigrations": ["202611170001_chapa_payment_signals", "202611170002_chapa_signal_guards"],
+    "temporaryDashboardWebhookRemoval": "operator-action-required-no-authenticated-dashboard-access"
+  }
+}
