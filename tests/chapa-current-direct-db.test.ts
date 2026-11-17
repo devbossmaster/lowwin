@@ -10,6 +10,8 @@ import {verifyChapaCheckout} from '../src/modules/payments/chapa';
 import {authorizeDirectCheckout} from '../src/modules/payments/chapa-direct';
 import {ChapaProviderError,type ChapaDirectCreate,type ChapaTransport} from '../src/modules/payments/chapa-provider';
 import {reconcile} from '../src/modules/wallet/ledger';
+import {type ChapaCompletionStatus} from '../src/modules/payments/chapa-verification-policy';
+import {chapaPollingDeadline} from '../src/lib/chapa-client';
 import {TEST_TOKEN} from './helpers';
 const database=process.env.CHAPA_CURRENT_DIRECT_TEST_DATABASE_URL;
 
@@ -25,17 +27,33 @@ describe.skipIf(!database)('current Direct5 owned creation and private committed
  async function fixture(purpose:'TOP_UP'|'BID'='TOP_UP',endDelayMs=3600000){
   const user=(await verifiedReferralUser(db)).id,auction=purpose==='BID'?await realReferralAuction(db,20,endDelayMs):null,quote=auction?await quoteBidBatch(db,user,{key:randomUUID(),auctionSlug:auction.slug!,numbers:['2','4'],feeVersion:1}):null;
   const command={key:randomUUID(),purpose,flow:'DIRECT',paymentMethod:'telebirr',phone:'0911652904',...(quote?{batchId:quote.id,quoteHash:quote.quoteHash}:{amount:'40.00'})};
-  let id='',merchant='',status='PENDING',validationStatus='PENDING',authType='USSD',capable=true,patch:Record<string,unknown>={};const reference='CH'+randomUUID();
+  let id='',merchant='',status='PENDING',validationStatus='PENDING',authType='USSD',initializationStatus='PENDING',capable=true,patch:Record<string,unknown>={},initializationDates:Record<string,string>={};const reference='CH'+randomUUID();
   const proof=()=>({status:'success',data:{merchant_reference:merchant,chapa_reference:reference,amount:4000,currency:'ETB',status,mode:'test',payment_method:'telebirr',meta:{checkout_id:id},...patch}});
-  const direct=vi.fn(async(request:ChapaDirectCreate)=>{merchant=request.merchantReference;const row=await db.chapaCheckout.findUniqueOrThrow({where:{merchantReference:merchant}});id=row.id;expect(request.metadata).toEqual({checkout_id:id});expect(row.flowVersion).toBe(5);return {status:'success',data:{auth_type:authType,chapa_reference:reference,payment_status:'PENDING',request_id:'req_'+randomUUID(),expires_at:new Date(Date.now()+300000).toISOString()}}});
+  const direct=vi.fn(async(request:ChapaDirectCreate)=>{merchant=request.merchantReference;const row=await db.chapaCheckout.findUniqueOrThrow({where:{merchantReference:merchant}});id=row.id;expect(request.metadata).toEqual({checkout_id:id});expect(row.flowVersion).toBe(5);return {status:'success',data:{auth_type:authType,chapa_reference:reference,payment_status:initializationStatus,request_id:'req_'+randomUUID(),expires_at:new Date(Date.now()+300000).toISOString(),...initializationDates}}});
   const lookup=vi.fn(async()=>proof()),validate=vi.fn(async(_input:{reference:string;paymentMethod:string;otp?:string})=>({...proof(),data:{...proof().data,status:validationStatus}}));
   const transport:ChapaTransport={direct,lookup,validate,create:vi.fn(async()=>{throw Error('Hosted creation is forbidden')}),methods:vi.fn(async()=>({status:'success',data:[{name:'Telebirr',slug:'telebirr',can_process_payments:true,can_process_direct_charge:capable,supported_currencies:{ETB:{default_min:100,default_max:4320000,countries:{ET:{is_enabled:true}}}}}]}))};
   const due=()=>db.chapaCheckout.update({where:{id},data:{nextCheckAt:new Date(0),verificationRetryAfter:null}});
-  return {user,auction,command,transport,direct,lookup,validate,id:()=>id,proof,start:(change:Record<string,unknown>={})=>createCurrentDirectCheckout(db,user,{...command,...change},undefined,transport),due,verify:async()=>{await due();return verifyChapaCheckout(db,id,user,undefined,transport)},setStatus:(value:string)=>{status=value},setValidation:(value:string)=>{validationStatus=value},setAuth:(value:string)=>{authType=value},setCapable:(value:boolean)=>{capable=value},alter:(value:Record<string,unknown>)=>{patch=value}};
+  return {user,auction,command,transport,direct,lookup,validate,id:()=>id,proof,start:(change:Record<string,unknown>={})=>createCurrentDirectCheckout(db,user,{...command,...change},undefined,transport),due,verify:async()=>{await due();return verifyChapaCheckout(db,id,user,undefined,transport)},setStatus:(value:string)=>{status=value},setValidation:(value:string)=>{validationStatus=value},setAuth:(value:string)=>{authType=value},setInitializationStatus:(value:string)=>{initializationStatus=value},setInitializationDates:(value:Record<string,string>)=>{initializationDates=value},setCapable:(value:boolean)=>{capable=value},alter:(value:Record<string,unknown>)=>{patch=value}};
  }
  it('commits a distinct immutable Direct5 intent before dispatch without any public key or hosted call',async()=>{
   const f=await fixture(),{order}=await f.start();expect(order).toMatchObject({flowVersion:5,chargeType:'DIRECT',apiVersion:'v2',status:'AUTH_NEEDED',authType:'USSD',amount:'40.00'});
   const row=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});expect(row.initialization).toMatchObject({apiVersion:'v2',flowVersion:5,flow:'DIRECT',metadata:{checkout_id:row.id},idempotencyKey:`lowwin-direct-v5:${row.id}`,webhookSignatureProfile:'raw_body'});expect(row.initialization).not.toHaveProperty('publicKeyFingerprint');expect(await balance(f.user)).toBe('0');expect(f.lookup).not.toHaveBeenCalled();
+ });
+ it.each(['FAILED','SUCCESS'])('retains accepted empty-auth USSD authorization on one unpaid intent until private %s evidence',async status=>{
+  const f=await fixture();f.setAuth('');f.setInitializationStatus('Accepted');
+  const {order}=await f.start();expect(order).toMatchObject({status:'AUTH_NEEDED',authType:'USSD',verificationState:'UNVERIFIED',providerStatus:null,reason:null});
+  const row=await db.chapaCheckout.findUniqueOrThrow({where:{id:f.id()}});expect(row.authorizationReference).toBe(f.proof().data.chapa_reference);expect(row.providerRequestId).toMatch(/^req_/);expect(await balance(f.user)).toBe('0');expect(f.lookup).not.toHaveBeenCalled();
+  expect((await f.start()).order.id).toBe(order.id);expect(f.direct).toHaveBeenCalledOnce();
+  expect(await f.verify()).toMatchObject({providerStatus:'PENDING',verificationState:'VERIFIED'});expect(await balance(f.user)).toBe('0');
+  f.setStatus(status);f.setValidation(status);expect(await f.verify()).toMatchObject({status:status==='SUCCESS'?'CREDITED':'FAILED',providerStatus:status,verificationState:'VERIFIED'});
+  await f.verify();expect(await balance(f.user)).toBe(status==='SUCCESS'?'40':'0');expect(f.direct).toHaveBeenCalledOnce();expect(await db.journal.count({where:{kind:'CHAPA_RECEIPT',operation:{userId:f.user}}})).toBe(status==='SUCCESS'?1:0);
+ });
+ it('keeps the saved future observation window for the exact accepted nanosecond-expiry envelope',async()=>{
+  const f=await fixture();f.setAuth('');f.setInitializationStatus('Accepted');f.setInitializationDates({created_at:'2026-11-17T18:56:30.326927837Z',expires_at:'2026-11-17T18:56:30.326927992Z'});
+  const before=Date.now(),{order}=await f.start();expect(order).toMatchObject({status:'AUTH_NEEDED',authType:'USSD',verificationState:'UNVERIFIED'});
+  const row=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});expect(row.providerCreatedAt).toEqual(new Date('2026-11-17T18:56:30.326Z'));expect(row.expiresAt.getTime()).toBeGreaterThan(before+240000);
+  expect(chapaPollingDeadline({createdAt:order.createdAt,expiresAt:order.expiresAt,apiVersion:'v2',flowVersion:5,chargeType:'DIRECT'})).toBeGreaterThan(before+240000);
+  expect(await verifyChapaCheckout(db,f.id(),f.user,undefined,f.transport)).toMatchObject({providerStatus:'PENDING',verificationState:'VERIFIED'});expect(f.lookup).toHaveBeenCalledOnce();expect(f.direct).toHaveBeenCalledOnce();expect(await balance(f.user)).toBe('0');
  });
  it('retains one provider operation across concurrent duplicate commands and protocol-specific owned-key discovery',async()=>{
   const f=await fixture(),[one,two]=await Promise.all([f.start(),f.start()]);expect(one.order.id).toBe(two.order.id);expect(f.direct).toHaveBeenCalledOnce();expect(await findCurrentDirectCheckoutByKey(db,f.user,f.command.key)).toMatchObject({id:one.order.id});
@@ -45,6 +63,23 @@ describe.skipIf(!database)('current Direct5 owned creation and private committed
  it('successful USSD validation immediately verifies privately and credits despite a recent pending private lookup',async()=>{
   const f=await fixture();await f.start();await f.verify();expect(f.lookup).toHaveBeenCalledOnce();expect(await balance(f.user)).toBe('0');f.setValidation('SUCCESS');f.setStatus('SUCCESS');
   const result=await f.verify();expect(result).toMatchObject({status:'CREDITED',providerStatus:'SUCCESS',verificationState:'VERIFIED',completionSignalPending:false});expect(f.lookup).toHaveBeenCalledTimes(2);expect(f.direct).toHaveBeenCalledOnce();expect(await balance(f.user)).toBe('40');await f.verify();expect(await db.journal.count({where:{kind:'CHAPA_RECEIPT',operation:{userId:f.user}}})).toBe(1);
+ });
+ it.each<ChapaCompletionStatus>(['SUCCESS','FAILED','CANCELLED','INCOMPLETE','EXPIRED','BLOCKED','FAILED_OR_CANCELLED'])('privately rechecks a retained %s signal without redundant USSD validation or trusting the signal as payment',async completion=>{
+  const f=await fixture();await f.start();
+  // The authenticated-event path records a bound hint, but its first private
+  // lookup can still be pending. The next ordinary observer must check that
+  // original payment directly instead of refreshing the phone authorization.
+  expect(await verifyChapaCheckout(db,f.id(),f.user,undefined,f.transport,'webhook',undefined,completion)).toMatchObject({providerStatus:'PENDING',completionSignalPending:true});
+  expect(f.validate).not.toHaveBeenCalled();f.lookup.mockClear();
+  expect(await f.verify()).toMatchObject({providerStatus:'PENDING',verificationState:'VERIFIED',completionSignalPending:true});
+  expect(f.validate).not.toHaveBeenCalled();expect(f.lookup).toHaveBeenCalledOnce();expect(await balance(f.user)).toBe('0');expect(await db.journal.count({where:{kind:'CHAPA_RECEIPT',operation:{userId:f.user}}})).toBe(0);
+ });
+ it('fulfills a retained completion signal only after private success and credits the original operation once',async()=>{
+  const f=await fixture();await f.start();await verifyChapaCheckout(db,f.id(),f.user,undefined,f.transport,'webhook',undefined,'SUCCESS');
+  f.lookup.mockClear();f.setStatus('SUCCESS');
+  expect(await f.verify()).toMatchObject({status:'CREDITED',providerStatus:'SUCCESS',verificationState:'VERIFIED',completionSignalPending:false});
+  expect(f.validate).not.toHaveBeenCalled();expect(f.lookup).toHaveBeenCalledOnce();expect(f.direct).toHaveBeenCalledOnce();expect(await balance(f.user)).toBe('40');
+  await f.verify();expect(f.lookup).toHaveBeenCalledOnce();expect(await db.journal.count({where:{kind:'CHAPA_RECEIPT',operation:{userId:f.user}}})).toBe(1);expect(await reconcile(db)).toEqual([]);
  });
  it('keeps rejected OTP on the same attempt and requires private success after a corrected code',async()=>{
   const f=await fixture();f.setAuth('OTP');await f.start();f.validate.mockRejectedValueOnce(new ChapaProviderError(400,'INVALID_OTP',undefined,'INVALID_OTP'));

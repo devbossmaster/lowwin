@@ -18,7 +18,7 @@ export function HomeHero({copy,videoId,media,experience}:{copy:Copy;videoId?:str
  const headline=language==='am'?copy.headlineAm:copy.headline;
  const lead=language==='am'?copy.leadAm:copy.lead;
  const configuredBanner=language==='am'?experience?.bannerAm:experience?.bannerEn;
- const {props:image}=getImageProps({alt:language==='am'?'ለማሳያ የተዘጋጁ የጨዋታ መሣሪያ፣ ላፕቶፕ፣ ማቀዝቀዣ፣ ስልክ፣ ማዳመጫ እና ብስክሌት':'Illustrative game console, laptop, refrigerator, phone, headphones and bicycle',quality:75,loading:'eager',fetchPriority:'high',src:lowwinHomeBanner(language,configuredBanner),width:1840,height:800,sizes:'(min-width:1280px) 1232px, (min-width:1024px) calc(100vw - 48px), 100vw'});
+ const {props:image}=getImageProps({alt:language==='am'?'ለማሳያ የተዘጋጁ PS5፣ በሳጥን ያለ iPhone 17 Pro Max፣ BYD Seagull መኪና እና ጭማቂ መጭመቂያ':'Illustrative PS5, boxed iPhone 17 Pro Max, BYD Seagull car and juicer',quality:75,loading:'eager',fetchPriority:'high',src:lowwinHomeBanner(language,configuredBanner),width:1840,height:800,sizes:'(min-width:1280px) 1232px, (min-width:1024px) calc(100vw - 48px), 167vw'});
  return <>
   <section className={`relative overflow-hidden ${styles.banner} ${styles.artworkBanner}`} aria-labelledby="home-headline" lang={language} data-home-hero>
    <div className={styles.bannerArtwork} data-hero-artwork><img {...image}/></div>

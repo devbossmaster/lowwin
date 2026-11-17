@@ -19,12 +19,17 @@ for(const am of [false,true])test(`hero and detail timer stay readable ${am?'AM'
  if(info.project.name==='1280')await page.addInitScript(()=>{delete window.Telegram});
  try{
   await page.goto('/');const hero=page.locator('[data-home-hero]');await expect(hero.locator('h1')).toHaveText(am?defaultHomeCopy.headlineAm:defaultHomeCopy.headline);await expect(hero.locator('h1')).toBeVisible();
-  const art=hero.locator('img');await expect(art).toHaveAttribute('width','1840');await expect(art).toHaveAttribute('height','800');await expect(art).toHaveAttribute('src',/lowwin-blue-prizes-hero-20261117/);await expect.poll(()=>art.evaluate((node:HTMLImageElement)=>node.complete&&node.naturalWidth>0)).toBe(true);
-  const layout=await hero.evaluate(node=>{const copy=node.querySelector('[data-hero-copy]')!.getBoundingClientRect(),frame=node.querySelector('[data-hero-artwork]')!.getBoundingClientRect(),image=node.querySelector('img')!.getBoundingClientRect();return {copyRight:copy.right,copyBottom:copy.bottom,artLeft:frame.left,artTop:frame.top,leftCrop:(frame.left-image.left)/image.width,rightCrop:(image.right-frame.right)/image.width}});
-  if(info.project.name==='1280')expect(layout.copyRight).toBeLessThanOrEqual(layout.artLeft+1);else expect(layout.copyBottom).toBeLessThanOrEqual(layout.artTop);
-  // The first22% is quiet blue. Every prize, including the bike wheels, stays
-  // inside the remaining78%; no top, bottom or right crop is introduced.
-  expect(layout.leftCrop).toBeCloseTo(.22,2);expect(Math.abs(layout.rightCrop)).toBeLessThan(.01);
+  const art=hero.locator('img');await expect(art).toHaveAttribute('width','1840');await expect(art).toHaveAttribute('height','800');await expect(art).toHaveAttribute('src',/lowwin-blue-black-prizes-20261117/);await expect.poll(()=>art.evaluate((node:HTMLImageElement)=>node.complete&&node.naturalWidth>0)).toBe(true);
+  const layout=await hero.evaluate(node=>{const bounds=node.getBoundingClientRect(),copy=node.querySelector('[data-hero-copy]')!.getBoundingClientRect(),frame=node.querySelector('[data-hero-artwork]')!.getBoundingClientRect(),image=node.querySelector('img')!.getBoundingClientRect();return {heroLeft:bounds.left,heroTop:bounds.top,heroWidth:bounds.width,heroHeight:bounds.height,copyRight:copy.right,copyBottom:copy.bottom,artLeft:frame.left,artTop:frame.top,artWidth:frame.width,artHeight:frame.height,imageTop:image.top,imageHeight:image.height,leftCrop:(frame.left-image.left)/image.width,rightCrop:(image.right-frame.right)/image.width}});
+  // One background frame covers the whole hero; text never occupies a second panel.
+  expect(layout.artLeft).toBeCloseTo(layout.heroLeft,1);expect(layout.artTop).toBeCloseTo(layout.heroTop,1);expect(layout.artWidth).toBeCloseTo(layout.heroWidth,1);expect(layout.artHeight).toBeCloseTo(layout.heroHeight,1);
+  if(info.project.name==='1280'){
+   expect(layout.copyRight).toBeLessThanOrEqual(layout.heroLeft+layout.heroWidth*.4);expect(Math.abs(layout.leftCrop)).toBeLessThan(.01);
+  }else{
+   // Mobile crops only the quiet first40%; products begin below the HTML controls.
+   expect(layout.leftCrop).toBeCloseTo(.4,2);expect(layout.copyBottom).toBeLessThanOrEqual(layout.imageTop+layout.imageHeight*.13);
+  }
+  expect(Math.abs(layout.rightCrop)).toBeLessThan(.01);
   const learn=hero.getByRole('button',{name:am?'ተጨማሪ ይወቁ':'Learn more',exact:true});await learn.click();await expect(page.getByRole('dialog')).toBeVisible();await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);await expect(learn).toBeFocused();
   await hero.getByRole('link',{name:am?'ክፍት ጨረታዎች':'Live auctions',exact:true}).click();await expect(page.locator('#discover-auctions')).toBeFocused();await hero.scrollIntoViewIfNeeded();await page.evaluate(()=>document.fonts.ready);await hero.screenshot({path:info.outputPath(`hero-${am?'am':'en'}.png`)});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);

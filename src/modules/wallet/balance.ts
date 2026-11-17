@@ -9,7 +9,7 @@ export async function readWalletProjection(client:WalletReader,userId:string){
  const ready=await depositBonusStorageReady(client);
  const bonusJoin=ready?Prisma.sql`LEFT JOIN LATERAL (
   SELECT COALESCE(sum(l."amountCents"-COALESCE(u.used,0)),0)/100::numeric AS amount,min(l."expiresAt") AS "expiresAt"
-  FROM "DepositBonusLot" l LEFT JOIN LATERAL(SELECT sum("amountCents") AS used FROM "DepositBonusUse" WHERE "checkoutId"=l."checkoutId") u ON true
+  FROM "DepositBonusLot" l LEFT JOIN LATERAL(SELECT COALESCE(sum("amountCents"),0)-COALESCE((SELECT sum("creditedCents") FROM "DepositBonusRefund" WHERE "checkoutId"=l."checkoutId"),0) AS used FROM "DepositBonusUse" WHERE "checkoutId"=l."checkoutId") u ON true
   WHERE l."userId"=w."userId" AND l."expiresAt">clock_timestamp() AT TIME ZONE 'UTC' AND l."amountCents">COALESCE(u.used,0)
   AND NOT EXISTS(SELECT 1 FROM "DepositBonusExpiry" e WHERE e."checkoutId"=l."checkoutId")
  ) bonus ON true`:Prisma.sql`LEFT JOIN LATERAL(SELECT 0::numeric AS amount,NULL::timestamp AS "expiresAt") bonus ON true`;

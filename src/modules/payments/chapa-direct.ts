@@ -179,7 +179,7 @@ export async function authorizeDirectCheckout(client:PrismaClient,userId:string,
   // one bounded renewal still cannot leave the original timeout budget intact.
   deferred=owned&&authorizationLease.getTime()-Date.now()<AUTHORIZATION_MIN_REMAINING_MS;
   if(owned&&!deferred){
-   try{feedback=chapaAuthorizationFeedback(await selectedTransport.validate({reference:order.authorizationReference,paymentMethod:order.paymentMethod!,otp:body.otp}),order)}
+   try{feedback=chapaAuthorizationFeedback(await measureChapa('validate',()=>selectedTransport.validate!({reference:order.authorizationReference!,paymentMethod:order.paymentMethod!,otp:body.otp})),order)}
    catch(error){feedback=chapaAuthorizationErrorFeedback(error);if(!feedback)throw error}
   }
  }}
