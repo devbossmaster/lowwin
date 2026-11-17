@@ -30,9 +30,9 @@
 .homeControls>.bone:first-child{width:80px;height:44px;border-radius:24px}
 .homeAuctionGrid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
 .homeAuctionGrid>.auctionCard:nth-child(n+2){display:none}
-.heroBlock{position:relative;min-width:0;overflow:hidden;border-radius:0;background:#dca52c}
-.hero{display:grid;align-content:center;gap:11px;width:100%;min-width:0;min-height:500px;aspect-ratio:auto;border-radius:0;padding:24px;background:linear-gradient(110deg,#f2c14e,#dca52c 48%,#bd7b0b)}
-.hero .bone{background:#c7a967}
+.heroBlock{position:relative;min-width:0;overflow:hidden;border-radius:0;background:#0b2d75}
+.hero{display:grid;align-content:center;gap:11px;width:100%;min-width:0;min-height:500px;aspect-ratio:auto;border-radius:0;padding:24px;background:linear-gradient(110deg,#071a47,#0b2d75 48%,#103f9d)}
+.hero .bone{background:#477ac7}
 .heroTitle{width:55%;height:clamp(32px,4vw,58px)}
 .heroCopy{width:46%;height:16px}
 .heroActions{position:absolute;left:16px;bottom:16px;display:flex;gap:8px;width:calc(100% - 32px);max-width:368px}

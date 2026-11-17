@@ -2,25 +2,205 @@
   "scope": "Local validation only; focused cohorts overlap and are not an aggregate whole-repository CI count",
   "productionSourceCommit": "a3fc1eb",
   "productionSourceScope": "Measured build before the subsequent consecutive-number and Mini App onboarding updates; final revision CI is reported on PR 17",
-  "consecutiveRanges": {"currentDirectBrowser": {"passed": 4, "failed": 0, "skipped": 0, "viewports": [360,430], "languages": ["en","am"], "coverage": ["Four adjacent single numbers", "101-number range rejected with clear cap", "100-number ranges accepted", "One Direct payment accepts all 100 adjacent cents", "Third decimal rejected"]}, "financialRegression": {"passed": 81, "failed": 0}, "newV5HundredAdjacentDatabaseRegression": {"passed": 1, "failed": 0}},
-  "publicNavigationRegression": {"passed": 36, "failed": 0, "scope": "Current public Home destination and private account boundaries"},
-  "optimizedBuild": {"passed": true, "elapsedMs": 203823, "mode": "production", "providersDisabled": true, "database": "fresh disposable loopback PostgreSQL"},
-  "typecheck": {"passed": true, "command": "node node_modules/typescript/bin/tsc --noEmit"},
-  "loginSecurity": {"passed": 134, "failed": 0, "skipped": 0},
-  "broaderRegression": {"passed": 204, "failed": 0, "skipped": 12, "skipResolution": "All twelve historical submission-fee cases executed in the separate 22-case financial release cohort"},
-  "financialRelease": {"passed": 22, "failed": 0, "skipped": 0},
-  "directAndBroadcastUnits": {"passed": 107, "failed": 0, "skipped": 0},
-  "directPostgres": {"passed": 9, "failed": 0, "skipped": 0},
-  "notificationPostgres": {"passed": 14, "failed": 0, "skipped": 0},
-  "frontendContracts": {"passed": 107, "failed": 0, "skipped": 0},
-  "moneyRendering": {"passed": 4, "failed": 0, "skipped": 0, "actualPostgresProbe": "Raw bonus 50.0000000000000000 normalized to 50 and rendered as ETB 50.00; cash 40 and expired 0 also rendered correctly"},
-  "heroBrowser": {"passed": 10, "failed": 0, "skipped": 2, "flaky": 0, "viewports": [320,430,1280], "languages": ["en","am"], "skipReason": "Duplicate lifecycle scenarios at other widths"},
-  "initialPaymentBrowser": {"passed": 84, "failed": 5, "skipped": 12, "configured": 101, "causes": ["Historical Inline OTP continuation gate", "Concurrent fixtures changed the exact view counter"], "resolution": "Gate fixed; fixture isolation fixed without weakening assertions"},
-  "finalTargetedPaymentBrowser": {"passed": 9, "failed": 0, "skipped": 1, "flaky": 0, "coverage": ["Both historical Inline OTP failures", "Historical Direct OTP recovery", "Direct5 reload before order ID is known", "All four normal/throttled exact-counter launch scenarios"]},
-  "refundBrowser": {"measurementSamples": 3, "finalProductionSmokePassed": true, "finalProductionSmokeElapsedMs": 10000, "actualDatabaseCommitsAndOwnedHttp": true, "cachedNullWatchRegressionPassed": true},
-  "broadcastBrowser": {"passedViewports": [360,1280], "actualComponentWithSyntheticReadModels": true},
-  "dependencyAudit": {"vulnerabilities": 0},
+  "consecutiveRanges": {
+    "currentDirectBrowser": {
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "viewports": [
+        360,
+        430
+      ],
+      "languages": [
+        "en",
+        "am"
+      ],
+      "coverage": [
+        "Four adjacent single numbers",
+        "101-number range rejected with clear cap",
+        "100-number ranges accepted",
+        "One Direct payment accepts all 100 adjacent cents",
+        "Third decimal rejected"
+      ]
+    },
+    "financialRegression": {
+      "passed": 81,
+      "failed": 0
+    },
+    "newV5HundredAdjacentDatabaseRegression": {
+      "passed": 1,
+      "failed": 0
+    }
+  },
+  "publicNavigationRegression": {
+    "passed": 36,
+    "failed": 0,
+    "scope": "Current public Home destination and private account boundaries"
+  },
+  "optimizedBuild": {
+    "passed": true,
+    "elapsedMs": 203823,
+    "mode": "production",
+    "providersDisabled": true,
+    "database": "fresh disposable loopback PostgreSQL"
+  },
+  "typecheck": {
+    "passed": true,
+    "command": "node node_modules/typescript/bin/tsc --noEmit"
+  },
+  "loginSecurity": {
+    "passed": 134,
+    "failed": 0,
+    "skipped": 0
+  },
+  "broaderRegression": {
+    "passed": 204,
+    "failed": 0,
+    "skipped": 12,
+    "skipResolution": "All twelve historical submission-fee cases executed in the separate 22-case financial release cohort"
+  },
+  "financialRelease": {
+    "passed": 22,
+    "failed": 0,
+    "skipped": 0
+  },
+  "directAndBroadcastUnits": {
+    "passed": 107,
+    "failed": 0,
+    "skipped": 0
+  },
+  "directPostgres": {
+    "passed": 9,
+    "failed": 0,
+    "skipped": 0
+  },
+  "notificationPostgres": {
+    "passed": 14,
+    "failed": 0,
+    "skipped": 0
+  },
+  "frontendContracts": {
+    "passed": 107,
+    "failed": 0,
+    "skipped": 0
+  },
+  "moneyRendering": {
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0,
+    "actualPostgresProbe": "Raw bonus 50.0000000000000000 normalized to 50 and rendered as ETB 50.00; cash 40 and expired 0 also rendered correctly"
+  },
+  "heroBrowser": {
+    "passed": 10,
+    "failed": 0,
+    "skipped": 2,
+    "flaky": 0,
+    "viewports": [
+      320,
+      430,
+      1280
+    ],
+    "languages": [
+      "en",
+      "am"
+    ],
+    "skipReason": "Duplicate lifecycle scenarios at other widths"
+  },
+  "initialPaymentBrowser": {
+    "passed": 84,
+    "failed": 5,
+    "skipped": 12,
+    "configured": 101,
+    "causes": [
+      "Historical Inline OTP continuation gate",
+      "Concurrent fixtures changed the exact view counter"
+    ],
+    "resolution": "Gate fixed; fixture isolation fixed without weakening assertions"
+  },
+  "finalTargetedPaymentBrowser": {
+    "passed": 9,
+    "failed": 0,
+    "skipped": 1,
+    "flaky": 0,
+    "coverage": [
+      "Both historical Inline OTP failures",
+      "Historical Direct OTP recovery",
+      "Direct5 reload before order ID is known",
+      "All four normal/throttled exact-counter launch scenarios"
+    ]
+  },
+  "refundBrowser": {
+    "measurementSamples": 3,
+    "finalProductionSmokePassed": true,
+    "finalProductionSmokeElapsedMs": 10000,
+    "actualDatabaseCommitsAndOwnedHttp": true,
+    "cachedNullWatchRegressionPassed": true
+  },
+  "broadcastBrowser": {
+    "passedViewports": [
+      360,
+      1280
+    ],
+    "actualComponentWithSyntheticReadModels": true
+  },
+  "dependencyAudit": {
+    "vulnerabilities": 0
+  },
   "hostedCi": "Reported on the PR separately; no hosted success inferred from local runs",
-  "externalActions": {"productionMigration": false, "productionDeployment": false, "realCharge": false, "customerBroadcast": false},
-  "externalLimits": ["Actual merchant TEST acceptance and webhook delivery", "Physical-phone USSD/OTP", "Production database/proxy/SSE latency", "Earlier financial 59-second outlier retained with unresolved cause; not reproduced in the separated nine-sample run"]
+  "externalActions": {
+    "productionMigration": false,
+    "productionDeployment": false,
+    "realCharge": false,
+    "customerBroadcast": false
+  },
+  "externalLimits": [
+    "Actual merchant TEST acceptance and webhook delivery",
+    "Physical-phone USSD/OTP",
+    "Production database/proxy/SSE latency",
+    "Earlier financial 59-second outlier retained with unresolved cause; not reproduced in the separated nine-sample run"
+  ],
+  "finalFunctionalBuild": {
+    "sourceCommit": "9e6b7f64797c303ef5a794632a2359b233067c93",
+    "passed": true,
+    "normalTypecheckPassed": true,
+    "optimizedCompileMs": 102000,
+    "staticPages": 41,
+    "mode": "optimized HTTPS loopback, disposable PostgreSQL, external providers disabled",
+    "paletteNote": "Subsequent user correction changes only the hero palette from gold to blue; final blue screenshot matrix is recorded separately"
+  },
+  "nativeOnboardingBrowser": {
+    "passed": 9,
+    "failed": 0,
+    "skipped": 0,
+    "flaky": 0,
+    "durationMs": 58400,
+    "width": 360,
+    "coverage": [
+      "Automatic first-time native contact once",
+      "Cancel and continue browsing",
+      "Server confirmation before wallet/account access",
+      "Bounded polling and stale callbacks",
+      "Existing registered launch skips consent",
+      "Delayed SDK never offers website OIDC",
+      "Unsupported SDK and explicit retry",
+      "Guest draft retained without charge"
+    ]
+  },
+  "combinedHeroAndGuideBrowser": {
+    "passed": 8,
+    "failed": 0,
+    "skipped": 0,
+    "flaky": 0,
+    "durationMs": 68200,
+    "viewports": [
+      320,
+      430,
+      1280
+    ],
+    "languages": [
+      "en",
+      "am"
+    ],
+    "palette": "Pre-correction gold; six-product crop/layout, guide, native shortcut and contact cancellation verified"
+  }
 }

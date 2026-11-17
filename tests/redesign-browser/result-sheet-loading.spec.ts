@@ -16,7 +16,7 @@ test('result previews open immediately and keep content during slow pagination',
   await page.addInitScript(({launch})=>{localStorage.setItem('lowwin:introduction:v1','dismissed');window.Telegram={WebApp:{initData:launch,ready(){},expand(){},setHeaderColor(){},setBackgroundColor(){}}};},{launch:signedLaunch({user:JSON.stringify({id,first_name:'Result loading QA'})},process.env.TELEGRAM_BOT_TOKEN)});
   await page.goto('/telegram');await expect(page.getByRole('navigation',{name:'Your navigation'})).toBeVisible();
   if(am){await page.getByRole('button',{name:'Language: English',exact:true}).click();await page.getByRole('menuitemradio',{name:'አማርኛ',exact:true}).click()}
-  const winner=page.locator('#recent-winners').getByRole('button',{name:`${am?'ውጤት':'Result'}: ${am?'የሙከራ ዕቃ · የተጠናቀቀ ጨረታ':fixture.title}`,exact:true}).filter({has:page.locator(`time[datetime="${fixture.settlement.completedAt!.toISOString()}"]`)});await winner.scrollIntoViewIfNeeded();
+  const winner=page.locator(`#recent-winners button[data-winner-code="${fixture.code}"]:not([data-winner-copy])`);await expect(winner).toHaveAccessibleName(`${am?'ውጤት':'Result'}: ${am?'የሙከራ ዕቃ · የተጠናቀቀ ጨረታ':fixture.title}`);await winner.scrollIntoViewIfNeeded();
   await page.route('**/_next/static/chunks/**',async route=>{if(route.request().resourceType()==='script'){scriptRequests++;await scripts.pending}await route.continue()});
   await page.route(`**/api/results/${fixture.code}/breakdown?*`,async route=>{
    const params=new URL(route.request().url()).searchParams;

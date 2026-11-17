@@ -54,9 +54,9 @@ test('authenticated mobile screens and local timing evidence', async ({page, bro
     expect((await client.ledgerAccount.findUniqueOrThrow({where:{name:`user:${user.id}:available`}})).balance.toString()).toBe('970');
     expect(financialPosts).toHaveLength(1);expect(financialPosts[0]).toBe('/api/payments/chapa/batches/wallet');
     await page.screenshot({path:`${root}/wallet-bid-receipt-${info.project.name}-en.png`});await sheet.getByRole('button',{name:'Done',exact:true}).click();
-    await page.goto('/my-bids');const owned=page.locator(`[data-bid-auction="${auction.publicCode}"]`);await expect(owned).toContainText('3.60');await expect(owned).toContainText('Live');
+    await page.goto('/my-bids');const owned=page.locator(`[data-bid-auction="${auction.publicCode}"]`);await expect(owned).toContainText('3.60');await expect(owned).toContainText('Bid accepted');await expect(owned.getByRole('timer')).toBeVisible();
     await page.goto('/payments');await page.locator('[data-payment-id]').first().click();const receipt=page.getByRole('dialog',{name:'Transaction details',exact:true});
-    await expect(receipt).toContainText('ETB 30.00');await expect(receipt).toContainText('3.60');await expect(receipt).toContainText('Lowwin Wallet');await receipt.getByRole('button',{name:'Done',exact:true}).click();
+    await expect(receipt).toContainText('ETB 30.00');await expect(receipt.getByText('Chosen number',{exact:true}).locator('..').locator('dd')).toHaveText('3.6');await expect(receipt).toContainText('Lowwin Wallet');await receipt.getByRole('button',{name:'Done',exact:true}).click();
     await page.goto('/profile');await expect(page.getByRole('region',{name:'Your wallet',exact:true})).toContainText('970.00 ETB');await expect(page.getByRole('link',{name:'Top up wallet',exact:true})).toBeVisible();
     await page.getByRole('button',{name:'Edit',exact:true}).click();const editor=page.getByRole('dialog',{name:'Edit profile',exact:true});
     await editor.getByLabel('Nickname',{exact:true}).fill('DEMO review player');await editor.getByRole('button',{name:'Save profile',exact:true}).click();await expect(page.getByText('Profile saved.',{exact:true})).toBeVisible();
@@ -72,10 +72,10 @@ test('authenticated mobile screens and local timing evidence', async ({page, bro
       await zeroSheet.getByRole('textbox',{name:'Your bid number',exact:true}).fill('7.31');await zeroSheet.locator('[data-payment-action]').click();await expect(zeroSheet.locator('[data-bid-step=payment]')).toBeVisible();
       await zeroSheet.getByRole('radio',{name:'LowWin Wallet',exact:true}).check();await zeroSheet.locator('[data-payment-action]').click();await expect(zeroSheet.locator('[data-bid-step=payment]')).toContainText('Your LowWin Wallet has 0 ETB');
       expect(posts).toEqual([]);await expect(zeroSheet.locator('[data-bid-payment-summary]')).toContainText('7.31');await zeroSheet.getByRole('button',{name:'Add funds',exact:true}).click();
-      await expect(zeroSheet.locator('[data-wallet-top-up]')).toBeVisible();const amount=zeroSheet.getByRole('textbox',{name:'Amount',exact:true});await amount.fill('100');await expect(amount).toHaveValue('100');
+      await expect(zeroSheet.locator('[data-wallet-top-up]')).toBeVisible();const amount=zeroSheet.getByRole('textbox',{name:'Amount to add',exact:true});await amount.fill('100');await expect(amount).toHaveValue('100');
       await zeroSheet.locator('[data-payment-action]').click();await expect(zeroSheet.locator('[data-top-up-step=payment]')).toBeVisible();await expect(zeroSheet.getByRole('radio')).toHaveCount(0);
       await zeroSheet.locator('[data-payment-action]').click();await expect(zeroSheet).toContainText('Choose a payment method.');expect(posts).toEqual([]);
-      await zero.keyboard.press('Escape');await expect(zeroSheet.locator('[data-top-up-step=amount]')).toBeVisible();await zero.keyboard.press('Escape');await expect(zeroSheet.locator('[data-bid-payment-summary]')).toContainText('7.31');
+      await zero.goBack();await expect(zeroSheet.locator('[data-top-up-step=amount]')).toBeVisible();await zero.goBack();await expect(zeroSheet.locator('[data-bid-payment-summary]')).toContainText('7.31');
       const zeroUser=await client.user.findUniqueOrThrow({where:{telegramId:String(zeroId)}});expect(await client.bid.count({where:{userId:zeroUser.id}})).toBe(0);expect(await client.chapaCheckout.count({where:{userId:zeroUser.id}})).toBe(0);
     }finally{await zeroContext.close()}
     await page.goto('/wallet?tab=transactions&type=activity');await expect(page).toHaveURL(/\/profile#wallet$/);await expect(page.getByRole('region',{name:'Your wallet',exact:true})).toContainText('970.00 ETB');

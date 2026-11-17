@@ -115,13 +115,13 @@ it does not stub the cancellation, refund or My Bids responses.
 
 ## Presentation and validation
 
-The final 1840 × 800 WebP is 176,656 bytes, with concise EN/AM HTML copy beside
-rich metallic-gold artwork showing a PS5, MacBook, refrigerator, iPhone Pro Max,
+The final 1840 × 800 WebP is 153,106 bytes, with concise EN/AM HTML copy beside
+rich royal-blue and navy artwork showing a PS5, MacBook, refrigerator, iPhone Pro Max,
 headset and bicycle. It replaces the earlier light-blue composition following
-the user's later gold reference. Text and products share one hero section;
+the user's final correction from gold to blue. Text and products share one hero section;
 mobile stacks the readable copy with the artwork. The asset and exact built-in
 generation prompt are recorded in its
-[provenance manifest](../../public/images/lowwin-gold-prizes-hero-20261117.provenance.json).
+[provenance manifest](../../public/images/lowwin-blue-prizes-hero-20261117.provenance.json).
 Retired managed banner defaults
 cannot silently replace it. Countdown updates remain local to the timer and
 preserve server anchoring, large digits, reduced motion, expiry and resume.
@@ -145,6 +145,8 @@ test count:
 | Payment/public browser matrix | Initial 101 configured: 84 passed, 5 failed, 12 intentional width skips; all five failures resolved and targeted rerun passed 9 cases with 1 duplicate width skip |
 | Committed refund UI and cached-null recovery | Real DB/HTTP UI measurement passed; standalone actual-component cached-null → pending → completed → changed-auction regression passed |
 | Broadcast browser controls | 360px / 1280px passed with decoded original media and direct confirmation actions |
+| Native Mini App registration and SDK recovery | 9 passed, no skips; signed launch, bounded server contact confirmation, cancellation and late SDK recovery |
+| Combined prize hero, guide and native shortcut | 8 passed, no skips at 320 / 430 / 1280px; final blue palette replaces the gold artwork used by this first geometry run |
 
 The pre-range-update production source (`a3fc1eb`) passed an optimized build (203.8 seconds),
 normal-project TypeScript checking and a fresh-database production refund smoke
@@ -152,6 +154,15 @@ check after the money-normalization fix. The
 [validation manifest](../measurements/release-validation-2026-11-17.json) records
 these scopes. Hosted CI status belongs to the PR and is not inferred from local
 results.
+
+The later optimized onboarding build (`9e6b7f6`) compiled in 102 seconds, passed
+its TypeScript phase and generated 41 static pages. Normal-project TypeScript
+also passed. Follow-up checks found and corrected a saved Home registration
+intent replay: `login` and `next` are commands and are removed from remembered
+Home visits, while ordinary filters, scroll and account isolation remain.
+The bot update claim also compares its UTC timestamp lease with a UTC clock;
+a deterministic non-UTC concurrent-worker regression prevents duplicate welcome
+delivery. Final hosted revision status is reported on PR #17.
 
 The payment browser failures exposed an actual historical Inline OTP continuation
 gate and cross-run pollution of a fixture's exact view count. The gate now uses

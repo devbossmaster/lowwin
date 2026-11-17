@@ -1,20 +1,20 @@
-.banner{position:relative;isolation:isolate;width:100%;min-width:0;overflow:hidden;background:linear-gradient(110deg,#f2c14e,#dca52c 48%,#bd7b0b);color:#18253d;--surface-ink:#18253d}
+.banner{position:relative;isolation:isolate;width:100%;min-width:0;overflow:hidden;background:linear-gradient(110deg,#071a47,#0b2d75 48%,#103f9d);color:#f7faff;--surface-ink:#f7faff}
 .artworkBanner{display:grid;grid-template-columns:minmax(0,1fr)}
 .bannerArtwork{order:2;position:relative;min-width:0;aspect-ratio:1435.2/800;margin-top:18px;overflow:hidden}
 .bannerArtwork img{display:block;width:128.205129%;max-width:none;height:100%;object-fit:contain;transform:translateX(-22%)}
 .bannerCopy{position:relative;z-index:1;min-width:0;max-width:600px;padding:26px 24px 0}
-.bannerCopy h1{margin:0;max-width:16ch;color:#18253d;font-size:clamp(28px,7.3vw,38px);font-weight:750;line-height:1.12;letter-spacing:-.035em;text-wrap:balance}
-.bannerCopy p{margin:14px 0 0;max-width:44ch;color:#30250e;font-size:14px;line-height:1.7;text-wrap:pretty}
+.bannerCopy h1{margin:0;max-width:16ch;color:#f7faff;font-size:clamp(28px,7.3vw,38px);font-weight:750;line-height:1.12;letter-spacing:-.035em;text-wrap:balance}
+.bannerCopy p{margin:14px 0 0;max-width:44ch;color:#e1ebff;font-size:14px;line-height:1.7;text-wrap:pretty}
 .banner:lang(am) h1{max-width:20ch;letter-spacing:0;line-height:1.45;font-size:clamp(25px,6.8vw,34px)}
 .banner:lang(am) p{line-height:1.85}
 .introActions{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:20px}
-.banner .introActions :is(a,button){display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;max-width:100%;padding:12px 18px;border:1px solid #986313;border-radius:24px;background:#f3cb69;color:#182d4a;font:inherit;font-size:14px;font-weight:650;line-height:1.5;text-align:center;text-decoration:none;cursor:pointer;transition:background-color 150ms ease}
-.banner .introActions .liveAction{border-color:#182d4a;background:#182d4a;color:#fff}
-.banner .introActions :is(a,button):focus-visible{outline:3px solid #182d4a;outline-offset:3px}
-.banner .introActions button:hover:not(:disabled):not([aria-disabled=true]){background:#ffe4a1;color:#182d4a}
-.banner .introActions .liveAction:hover{background:#263f61;color:#fff}
+.banner .introActions :is(a,button){display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;max-width:100%;padding:12px 18px;border:1px solid #83a8f3;border-radius:24px;background:#11377f;color:#f7faff;font:inherit;font-size:14px;font-weight:650;line-height:1.5;text-align:center;text-decoration:none;cursor:pointer;transition:background-color 150ms ease}
+.banner .introActions .liveAction{border-color:#f7faff;background:#f7faff;color:#102b65}
+.banner .introActions :is(a,button):focus-visible{outline:3px solid #f7faff;outline-offset:3px}
+.banner .introActions button:hover:not(:disabled):not([aria-disabled=true]){background:#244b91;color:#f7faff}
+.banner .introActions .liveAction:hover{background:#e1ebff;color:#102b65}
 .introActions svg{flex:none}
-.illustration{position:absolute;right:12px;bottom:8px;color:#4b3b1e;font-size:9px;line-height:1.5;background:#fff0c9e8;padding:2px 5px;border-radius:3px}
+.illustration{position:absolute;right:12px;bottom:8px;color:#e1ebff;font-size:9px;line-height:1.5;background:#071a47e8;padding:2px 5px;border-radius:3px}
 @media(min-width:640px){.bannerCopy{padding:32px 32px 0}.bannerCopy h1{font-size:38px}.bannerCopy p{font-size:15px}}
 @media(min-width:1024px){:global(.app-frame[data-app-layout=browser]) .artworkBanner{grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);align-items:center;min-height:360px}:global(.app-frame[data-app-layout=browser]) .bannerArtwork{grid-column:2;grid-row:1;margin:0;align-self:center}:global(.app-frame[data-app-layout=browser]) .bannerCopy{grid-column:1;grid-row:1;width:auto;max-width:none;padding:32px clamp(28px,3vw,44px)}:global(.app-frame[data-app-layout=browser]) .bannerCopy h1{font-size:clamp(32px,3.3vw,44px)}:global(.app-frame[data-app-layout=browser]) .bannerCopy p{font-size:15px}:global(.app-frame[data-app-layout=browser]) .banner:lang(am) h1{font-size:clamp(28px,2.7vw,36px)}}
 @media(prefers-reduced-motion:reduce){.banner .introActions :is(a,button){transition:none}}
