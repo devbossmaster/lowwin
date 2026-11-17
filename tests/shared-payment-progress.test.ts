@@ -16,6 +16,12 @@ const base={order,busy:false,restoring:false,paused:false,error:'',started:true,
 function render(purpose:'BID'|'TOP_UP',payment=base,am=false){return renderToStaticMarkup(createElement(MiniLocaleProvider,{initialLanguage:am?'am':'en',children:purpose==='TOP_UP'?createElement(WalletTopUpProgress,{payment:{...payment,order:payment.order?{...payment.order,purpose}:null},amount:'35.00',provider:'telebirr',phone:'0912345678',onRetry:()=>{},onClose:()=>{},footerPortal:true}):createElement(PaymentProgress,{payment,summary:{auctionTitle:'Owned auction',numbers:['4.25'],total:'35.00',provider:'telebirr',phone:'0912345678'},onRetry:()=>{},onClose:()=>{}})}))}
 beforeEach(()=>{clock.now=started});
 describe('shared bid and deposit status surface',()=>{
+ it.each(['BID','TOP_UP'] as const)('%s suppresses terminal retry, stale reasons and OTP entry until a retained completion signal is reconciled',purpose=>{
+  const pending={...order,status:'NEEDS_REVIEW',providerStatus:'FAILED',verificationState:'VERIFIED',completionSignalPending:true,providerReasonCode:'INVALID_PIN',initializationReasonCode:'INSUFFICIENT_FUNDS',authorizationReasonCode:'INVALID_OTP',authType:'OTP' as const,merchantReference:'LWretained-signal'};
+  const html=render(purpose,{...base,order:pending});expect(html).toContain('data-payment-progress="confirming"');expect(html).toContain('still checking the original payment');expect(html).toContain('Support reference: LWretained-signal');
+  for(const absent of ['Try again','Retry original request','Confirm code','one-time-code','incorrect payment PIN','insufficient funds','Payment not completed'])expect(html).not.toContain(absent);
+  expect(render(purpose,{...base,order:pending},true)).toContain('የጀመሩትን ክፍያ');
+ });
  it('keeps cancellation attribution exact and generic failure free of guessed PIN reasons',()=>{
   const cancelled={...order,status:'CANCELLED',providerStatus:'CANCELLED',verificationState:'VERIFIED',verificationUnavailable:false};
   expect(render('TOP_UP',{...base,order:{...cancelled,providerCancelledBy:'USER'}})).toContain('You cancelled this payment.');

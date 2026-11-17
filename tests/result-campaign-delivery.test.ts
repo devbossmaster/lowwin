@@ -1,4 +1,6 @@
 import {afterAll,beforeAll,describe,expect,it,vi} from 'vitest';
+import {execFileSync} from 'node:child_process';
+import {createRequire} from 'node:module';
 import {PrismaClient,type Prisma,type Outbox} from '@prisma/client';
 import type {Bot} from 'grammy';
 import {randomUUID} from 'node:crypto';
@@ -16,6 +18,7 @@ describe.skipIf(!url)('published result Telegram campaign, isolated database and
  beforeAll(async()=>{
   const target=new URL(url!);if(!['127.0.0.1','localhost'].includes(target.hostname)||!target.pathname.endsWith('_test'))throw Error('Disposable loopback database required');
   Object.assign(process.env,{DATABASE_URL:url,DIRECT_URL:url,NODE_ENV:'test',APP_ENV:'local',DEV_POINTS_ENABLED:'true',DEV_IDENTITY_ENABLED:'false',TELEGRAM_BOT_TOKEN:TEST_TOKEN,MINI_APP_URL:'https://lowwin.example/telegram',PHONE_CONTACT_KEY_ID:'fixture-test',PHONE_CONTACT_KEYS:JSON.stringify({'fixture-test':'e'.repeat(64)}),REFERRAL_REWARDS_SCHEMA_READY:'false'});
+  execFileSync(process.execPath,[createRequire(import.meta.url).resolve('prisma/build/index.js'),'migrate','deploy'],{env:process.env,stdio:'pipe'});
   db=new PrismaClient();
   subscribers=Array.from({length:252},(_,i)=>({id:randomUUID(),telegramId:String(780000000+i)}));
   excluded=Array.from({length:8},(_,i)=>({id:randomUUID(),telegramId:String(790000000+i)}));

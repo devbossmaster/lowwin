@@ -56,4 +56,10 @@ describe('allowlisted signed webhook feedback',()=>{
    expect(chapaPaymentReasonMessage({...cancelled,...patch})??'').not.toContain('You cancelled');
   }
  });
+ it('recognizes the documented simulator cancellation code without inventing USER attribution',()=>{
+  const hint=parseChapaWebhook({webhook_type:'payment',event:'payment.cancelled',status:'cancelled',reason:'USER_CANCELLED'});
+  expect(hint?.reasonCode).toBe('PAYMENT_CANCELLED');expect(hint?.cancelledBy).toBeUndefined();
+  const cancelled={status:'CANCELLED',providerStatus:'CANCELLED',verificationState:'VERIFIED',providerReasonCode:hint?.reasonCode};
+  expect(chapaPaymentReasonMessage(cancelled)).toContain('was cancelled');expect(chapaPaymentReasonMessage(cancelled)).not.toContain('You cancelled');
+ });
 });

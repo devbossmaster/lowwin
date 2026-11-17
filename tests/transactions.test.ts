@@ -65,6 +65,17 @@ describe.skipIf(!database)('owner-only unified transactions on isolated PostgreS
  it('reports late verified bid funds as incoming wallet funds without inventing an accepted bid',async()=>{
   const user=(await verifiedReferralUser(db)).id,paid=await external(user,{batch:true,late:true});expect((await paid.verify()).fundsPreserved).toBe(true);expect((await getTransactions(db,user)).items).toEqual([expect.objectContaining({source:'chapa',type:'BID',summary:'done',direction:'incoming',fundsPreserved:true})]);expect(await db.bid.count({where:{userId:user}})).toBe(0);
  });
+ it('keeps a newly retained completion signal checking without changing money or hiding a committed credit',async()=>{
+  const user=(await verifiedReferralUser(db)).id,failed=await external(user,{failed:true}),paid=await external(user);
+  await failed.verify();await paid.verify();
+  for(const id of [failed.order.id,paid.order.id])await db.chapaCheckout.update({where:{id},data:{verificationSignalVersion:{increment:1},verificationCompletionStatus:'SUCCESS'}});
+  const before=await db.ledgerAccount.findMany({where:{name:{startsWith:`user:${user}:`}},select:{id:true,balance:true}});
+  const byId=new Map((await getTransactions(db,user)).items.map(row=>[row.id,row]));
+  expect(byId.get(failed.order.id)).toMatchObject({summary:'checking',direction:'none'});
+  expect(byId.get(paid.order.id)).toMatchObject({summary:'done',direction:'incoming'});
+  expect(await db.ledgerAccount.findMany({where:{name:{startsWith:`user:${user}:`}},select:{id:true,balance:true}})).toEqual(before);
+  expect(await reconcile(db)).toEqual([]);
+ });
  it('requires a session, rejects ownership overrides, and protects list/detail responses from shared caches',async()=>{
   const user=await verifiedReferralUser(db),other=await verifiedReferralUser(db);await creditDevelopmentPoints(db,user.id,'100',randomUUID());const auction=await realReferralAuction(db,1);await submitBid(db,{userId:user.id,auctionSlug:auction.slug!,amount:'2',feeVersion:1,key:randomUUID()});const row=(await getTransactions(db,user.id)).items[0];
   await expect(getWalletTransaction(db,other.id,row.id)).rejects.toMatchObject({status:404});

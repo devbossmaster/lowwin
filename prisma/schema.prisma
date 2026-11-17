@@ -583,6 +583,7 @@ model ChapaCheckout {
   verificationState     String    @default("UNVERIFIED")
   verificationSignalVersion Int   @default(0)
   verificationHandledSignalVersion Int @default(0)
+  verificationCompletionStatus String?
   lastPrivateCheckAt    DateTime?
   verificationRetryAfter DateTime?
   initializationErrorCode String?

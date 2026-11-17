@@ -2,6 +2,7 @@ import type {PrismaClient} from '@prisma/client';
 import {chapaAvailability,chapaTransport,type ChapaTransport} from './chapa-provider';
 import {unsupportedLegacyChapaCheckout,verifyChapaCheckout} from './chapa';
 import {chapaLegacyRecoveryAvailability} from './chapa-legacy-recovery';
+import {chapaCompletionStatus} from './chapa-verification-policy';
 
 function recoveryModes(){const current=chapaAvailability(),legacy=chapaLegacyRecoveryAvailability();return [...new Set([...(current.recoveryEnabled?[current.mode]:[]),...(legacy.recoveryEnabled?[legacy.mode]:[])])]}
 function reconcilesEvent(event:string,providerStatus:string|null){
@@ -27,7 +28,12 @@ export async function processChapaEvent(client:PrismaClient,id:string,transport:
   if(unsupportedLegacyChapaCheckout(current)){unsupportedLegacy=true;return false}
   // An in-flight verifier must still receive this durable signal. Its fenced
   // coordinator retains a deferred check rather than dropping this delivery.
-  const verification=await verifyChapaCheckout(client,current.id,undefined,undefined,transport,'webhook');
+  // New pinned intents require exact-body authentication. Historical reusable
+  // secret hints still trigger private verification without retaining trusted
+  // terminal metadata from a payload whose integrity was not established.
+  const pinned=current.initialization&&typeof current.initialization==='object'&&!Array.isArray(current.initialization)&&(current.initialization as Record<string,unknown>).webhookSignatureProfile==='raw_body';
+  const completion=pinned?chapaCompletionStatus(event.event.startsWith('payment.')?event.event.slice(8).toUpperCase():null):null;
+  const verification=await verifyChapaCheckout(client,current.id,undefined,undefined,transport,'webhook',undefined,completion??undefined);
   const result=await client.chapaCheckout.findUniqueOrThrow({where:{id:current.id}});
   // A verified but still pending payment needs another bounded lookup. An early
   // provider read must not consume the only notification before SUCCESS exists.
@@ -38,9 +44,10 @@ export async function processChapaEvent(client:PrismaClient,id:string,transport:
   const unavailable=verification&&'verificationUnavailable'in verification&&verification.verificationUnavailable===true;
   // A success delivery can outrun a provider replica still returning FAILED.
   // That older terminal response cannot consume the newer completion signal.
-  // A committed credit ends every hint; otherwise retain bounded retries until
-  // the private outcome agrees with the event being reconciled.
-  verified=credited||!unavailable&&result.verificationState==='VERIFIED'&&!result.leaseUntil&&!!terminal&&reconcilesEvent(event.event,result.providerStatus);
+  // A committed credit ends every hint. A different private terminal outcome
+  // can also resolve it once the latest generation has a fresh acknowledgement.
+  const freshTerminal=result.verificationCompletionStatus===null&&result.verificationHandledSignalVersion>=result.verificationSignalVersion&&!!result.lastPrivateCheckAt&&result.lastPrivateCheckAt>=event.receivedAt;
+  verified=credited||!unavailable&&result.verificationState==='VERIFIED'&&!result.leaseUntil&&!!terminal&&(reconcilesEvent(event.event,result.providerStatus)||freshTerminal);
   return verified;
  }catch{return false}
  finally{

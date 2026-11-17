@@ -94,10 +94,20 @@ jobs:
           import json
           with open('security-results.json', encoding='utf-8') as report:
               scanned = json.load(report).get('paths', {}).get('scanned', [])
-          required = 'vendor/better-auth-telegram/index.js'
-          if not any(path.replace('\\', '/').removeprefix('./') == required for path in scanned):
-              raise SystemExit('Telegram authentication runtime was not scanned')
-          print('Telegram authentication runtime scan coverage verified')
+          # The plugin is a pinned npm dependency, audited in the security job.
+          # Require the current application-owned session/proof boundaries.
+          required = {
+              'src/modules/auth/server.ts',
+              'src/modules/auth/mini-access.ts',
+              'src/modules/auth/telegram-validation.ts',
+              'src/modules/auth/telegram-oidc-identity.ts',
+              'src/modules/auth/telegram-oidc-token-request.ts',
+          }
+          covered = {path.replace('\\', '/').removeprefix('./') for path in scanned}
+          missing = required - covered
+          if missing:
+              raise SystemExit('Telegram authentication source was not scanned: ' + ', '.join(sorted(missing)))
+          print('Telegram authentication source scan coverage verified')
           PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()

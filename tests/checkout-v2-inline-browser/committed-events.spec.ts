@@ -1,7 +1,7 @@
 import {expect,test} from '@playwright/test';
 import {randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
-import {inlineFixture,selectBids} from './fixtures';
+import {inlineFixture,selectBids,wakePayment} from './fixtures';
 
 test('simulated committed SSE renders the owned receipt while provider polling is still pending',async({page},info)=>{
  const f=await inlineFixture(page);let release!:()=>void,posts=0;
@@ -60,5 +60,28 @@ test('missing EventSource keeps automatic owned polling recovery without another
   await dialog.getByRole('radio',{name:'telebirr',exact:true}).check();await dialog.locator('[data-payment-action]').click();
   await expect(dialog.locator('[data-payment-progress="authorization"]')).toBeVisible();await expect.poll(()=>f.checks.length).toBeGreaterThan(0);
   f.acceptBids();await expect(dialog.getByRole('button',{name:'Done',exact:true})).toBeVisible();expect(f.commands).toHaveLength(1);expect(f.maxActiveChecks()).toBeLessThanOrEqual(1);expect(f.unexpected).toHaveLength(0);
+ }finally{await f.cleanup()}
+});
+
+test('retained completion hints stay checking until a fresh private terminal result resolves the original attempt',async({page})=>{
+ const f=await inlineFixture(page);await page.addInitScript(()=>Reflect.set(window,'EventSource',undefined));
+ const resume=async()=>{
+  await page.evaluate(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,value:'hidden'});document.dispatchEvent(new Event('visibilitychange'))});
+  await wakePayment(page);
+ };
+ try{
+  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await selectBids(page,f.title);
+  await dialog.getByRole('radio',{name:'telebirr',exact:true}).check();await dialog.locator('[data-payment-action]').click();
+  await expect(dialog.locator('[data-payment-progress="authorization"]')).toBeVisible();const original=f.order().id;
+  f.setOrder({status:'NEEDS_REVIEW',providerStatus:'FAILED',verificationState:'VERIFIED',completionSignalPending:true,updatedAt:new Date().toISOString()});await resume();
+  await expect(dialog.locator('[data-payment-progress="confirming"]')).toBeVisible();
+  await expect(dialog.getByRole('button',{name:'Try again',exact:true})).toHaveCount(0);
+  await expect(dialog.getByRole('button',{name:'Done',exact:true})).toHaveCount(0);
+  f.setOrder({status:'PENDING',providerStatus:'PENDING',completionSignalPending:true,updatedAt:new Date().toISOString()});await resume();
+  await expect(dialog.locator('[data-payment-progress="confirming"]')).toBeVisible();
+  f.setOrder({status:'FAILED',providerStatus:'FAILED',completionSignalPending:false,updatedAt:new Date().toISOString()});await resume();
+  await expect(dialog.getByRole('button',{name:'Try again',exact:true})).toBeVisible();
+  expect(new Set(f.checks)).toEqual(new Set([original]));expect(f.commands).toHaveLength(1);
+  expect(f.maxActiveChecks()).toBeLessThanOrEqual(1);expect(f.unexpected).toHaveLength(0);
  }finally{await f.cleanup()}
 });

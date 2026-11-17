@@ -3,7 +3,8 @@ import {chapaInlineAvailability,chapaInlineConfiguredMethods} from './chapa-inli
 
 type Environment=Record<string,string|undefined>;
 export const CHAPA_INLINE_MIGRATION='202611120001_chapa_v2_inline';
-export type ChapaInlineSchemaSnapshot={migrationApplied:boolean;identityConstraint:boolean;guardTrigger:boolean;reconcileIndex:boolean};
+export const CHAPA_CONFIRMATION_MIGRATIONS=['202611170001_chapa_payment_signals','202611170002_chapa_signal_guards'] as const;
+export type ChapaInlineSchemaSnapshot={migrationApplied:boolean;identityConstraint:boolean;guardTrigger:boolean;reconcileIndex:boolean;signalMigrationApplied:boolean;signalGuardsMigrationApplied:boolean;signalColumns:boolean;webhookFeedbackColumns:boolean;signalIndex:boolean;eventFeedbackGuard:boolean;providerEvidenceGuard:boolean;completionStatusConstraint:boolean};
 
 /** Offline by default. Explicit methods checks use only the existing guarded
  * TEST GET. No credential value, fingerprint or customer record is reported. */
@@ -18,8 +19,8 @@ export async function checkChapaInlineReadiness(raw:Environment=process.env,read
  if(raw.CHAPA_INLINE_ENABLED!=='true')disabledCreationGates.push('CHAPA_INLINE_ENABLED');
  if(health.mode==='live'&&raw.CHAPA_LIVE_ENABLED!=='true')disabledCreationGates.push('CHAPA_LIVE_ENABLED');
  const configuredMethods=chapaInlineConfiguredMethods(raw),known=['telebirr','cbebirr','mpesa'],supplied=raw.CHAPA_INLINE_METHODS?.split(',').map(value=>value.trim()).filter(Boolean),cbeBankEnabled=false;
- const schema:{status:'not-requested'|'unavailable'|'pending'|'incomplete'|'ok';expectedMigration:string}&Partial<ChapaInlineSchemaSnapshot>={status:'not-requested',expectedMigration:CHAPA_INLINE_MIGRATION};
- if(readSchema){try{const snapshot=await readSchema();Object.assign(schema,snapshot,{status:!snapshot.migrationApplied?'pending':snapshot.identityConstraint&&snapshot.guardTrigger&&snapshot.reconcileIndex?'ok':'incomplete'})}catch{schema.status='unavailable'}}
+ const schema:{status:'not-requested'|'unavailable'|'pending'|'incomplete'|'ok';expectedMigration:string;requiredConfirmationMigrations:readonly string[]}&Partial<ChapaInlineSchemaSnapshot>={status:'not-requested',expectedMigration:CHAPA_INLINE_MIGRATION,requiredConfirmationMigrations:CHAPA_CONFIRMATION_MIGRATIONS};
+ if(readSchema){try{const snapshot=await readSchema(),checks=['identityConstraint','guardTrigger','reconcileIndex','signalColumns','webhookFeedbackColumns','signalIndex','eventFeedbackGuard','providerEvidenceGuard','completionStatusConstraint'] as const;Object.assign(schema,snapshot,{status:!snapshot.migrationApplied||!snapshot.signalMigrationApplied||!snapshot.signalGuardsMigrationApplied?'pending':checks.every(field=>snapshot[field]===true)?'ok':'incomplete'})}catch{schema.status='unavailable'}}
  const methods={...common.methods,...(common.methods.items?{items:common.methods.items.filter(method=>configuredMethods.includes(method.slug as 'telebirr'|'cbebirr'|'mpesa'))}:{})};
  const configurationReady=health.enabled&&missing.length===0&&configuredMethods.length>0&&(schema.status==='ok'||schema.status==='not-requested');
  const providerConnectivity=methods.status==='ok'?'reachable' as const:methods.status==='not-requested'?'not-checked' as const:methods.status;

@@ -14,6 +14,12 @@ const phase=(value:ChapaCheckoutView,error='')=>chapaPaymentPhase({order:value,o
 const render=(value:ChapaCheckoutView,patch:Partial<ReturnType<typeof useChapaPayment>>={})=>renderToStaticMarkup(createElement(MiniLocaleProvider,{initialLanguage:'en',children:createElement(ChapaPaymentStatus,{payment:{order:value,opening:false,restoring:false,paused:false,error:'',busy:false,attempt:null,handoff:'idle',canStartAgain:false,...patch} as ReturnType<typeof useChapaPayment>})}));
 
 describe('safe reasons from matched merchant verification',()=>{
+ it('keeps a retained completion signal checking despite stale retry capability, initialization rejection and hosted continuation',()=>{
+  const value=order({status:'PENDING',providerStatus:'FAILED',completionSignalPending:true,initializationIssue:'request',reason:'INITIALIZATION_REJECTED',checkoutUrl:'https://checkout.chapa.global/owned-original'});
+  const html=render(value,{canStartAgain:true});expect(html).toContain('Payment status: Checking original payment');
+  for(const absent of ['Start new checkout','Continue checkout','Retry original request','reports insufficient funds','Checkout could not start'])expect(html).not.toContain(absent);
+  const noUrl=render({...value,checkoutUrl:null},{canStartAgain:true});expect(noUrl).not.toContain('Check the phone number');expect(noUrl).not.toContain('Start new checkout');
+ });
  it.each([
   ['request','Check the phone number, payment method and amount'],
   ['reference','The original payment needs confirmation'],

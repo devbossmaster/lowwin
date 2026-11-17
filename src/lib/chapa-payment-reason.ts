@@ -7,7 +7,7 @@ const aliases:Record<string,ChapaPaymentReasonCode>={
  INVALID_OTP:'INVALID_OTP',INCORRECT_OTP:'INVALID_OTP','THE OTP ENTERED IS INCORRECT':'INVALID_OTP','THE OTP ENTERED IS INCORRECT.':'INVALID_OTP',
  PAYMENT_ACCOUNT_NOT_FOUND:'PAYMENT_ACCOUNT_NOT_FOUND',PHONE_NOT_REGISTERED:'PAYMENT_ACCOUNT_NOT_FOUND',NUMBER_NOT_REGISTERED:'PAYMENT_ACCOUNT_NOT_FOUND',CUSTOMER_NOT_REGISTERED:'PAYMENT_ACCOUNT_NOT_FOUND',ACCOUNT_NOT_FOUND:'PAYMENT_ACCOUNT_NOT_FOUND',INVALID_ACCOUNT_NUMBER:'PAYMENT_ACCOUNT_NOT_FOUND','PHONE NUMBER IS NOT REGISTERED':'PAYMENT_ACCOUNT_NOT_FOUND','INVALID ACCOUNT NUMBER':'PAYMENT_ACCOUNT_NOT_FOUND',
  AUTHORIZATION_REQUIRED:'AUTHORIZATION_REQUIRED',AUTHORIZATION_FAILED:'AUTHORIZATION_FAILED',PAYMENT_BLOCKED:'PAYMENT_BLOCKED',TRANSACTION_BLOCKED:'PAYMENT_BLOCKED',
- PAYMENT_CANCELLED:'PAYMENT_CANCELLED',CUSTOMER_CANCELLED:'PAYMENT_CANCELLED',PAYMENT_EXPIRED:'PAYMENT_EXPIRED',SESSION_EXPIRED:'PAYMENT_EXPIRED',PAYMENT_FAILED_OR_CANCELLED:'PAYMENT_FAILED_OR_CANCELLED',
+ PAYMENT_CANCELLED:'PAYMENT_CANCELLED',CUSTOMER_CANCELLED:'PAYMENT_CANCELLED',USER_CANCELLED:'PAYMENT_CANCELLED',PAYMENT_EXPIRED:'PAYMENT_EXPIRED',SESSION_EXPIRED:'PAYMENT_EXPIRED',PAYMENT_FAILED_OR_CANCELLED:'PAYMENT_FAILED_OR_CANCELLED',
  "YOU DON'T HAVE ENOUGH BALANCE TO MAKE THIS PAYMENT":'INSUFFICIENT_FUNDS',
  // A disabled credit service and a failed OTP verification do not establish
  // insufficient funds or an incorrect code. Keep those reasons general.
@@ -46,7 +46,8 @@ const messages:Record<ChapaPaymentReasonCode,[string,string]>={
  PAYMENT_EXPIRED:['Chapa reports that the payment authorization expired.','Chapa የክፍያ ፈቃዱ ጊዜ እንዳለፈ አሳውቋል።'],
 };
 const defaultReasons:Record<string,ChapaPaymentReasonCode>={CANCELLED:'PAYMENT_CANCELLED',INCOMPLETE:'AUTHORIZATION_FAILED',EXPIRED:'PAYMENT_EXPIRED',BLOCKED:'PAYMENT_BLOCKED'};
-export function chapaPaymentReasonMessage(order:{status:string;providerStatus?:string|null;verificationState?:string;providerReasonCode?:string|null;providerCancelledBy?:string|null},am=false):string|null{
+export function chapaPaymentReasonMessage(order:{status:string;providerStatus?:string|null;verificationState?:string;providerReasonCode?:string|null;providerCancelledBy?:string|null;completionSignalPending?:boolean},am=false):string|null{
+ if(order.completionSignalPending)return null;
  if(order.verificationState!=='VERIFIED'||order.status!==order.providerStatus||!chapaReasonStatuses.has(order.providerStatus??''))return null;
  if(order.providerStatus==='CANCELLED'&&order.providerCancelledBy==='USER')return am?'እርስዎ ይህን ክፍያ ሰርዘዋል።':'You cancelled this payment.';
  const code=safeChapaPaymentReason(order.providerReasonCode)??defaultReasons[order.providerStatus??''];

@@ -1,6 +1,6 @@
-# Override Semgrep's default vendor/ exclusion: the reviewed Telegram runtime
-# under vendor/better-auth-telegram is application authentication source.
-# Ignore only private work areas, installed dependencies and generated outputs.
+# Scan application-owned authentication sources; checks.yml verifies coverage.
+# Pinned npm dependencies are audited separately. Ignore private work areas,
+# installed dependencies and generated outputs.
 .git/
 node_modules/
 .next/
