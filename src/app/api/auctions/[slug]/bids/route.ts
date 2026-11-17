@@ -7,6 +7,7 @@ import {requirePaymentSession} from '@/modules/payments/session';
 import {walletBidsEnabled} from '@/modules/payments/chapa';
 import {PAYMENT_TRANSACTION_OPTIONS} from '@/modules/payments/timing';
 import {measureChapa,timedChapaResponse} from '@/modules/payments/chapa-timing';
+import {isSubmissionFeeOnly} from '@/modules/auctions/rules';
 
 export const runtime='nodejs';
 async function userId(request:Request) {
@@ -28,7 +29,7 @@ export async function GET(request:Request,{params}:{params:Promise<{slug:string}
     // Checkout reads its independently cached account coupon count through the
     // lean referral projection; do not repeat that SQL behind bid-limit reads.
     const {wallet:_,previousMax:__,...state}=await getOwnBidState(db,id,slug,process.env,false,false);
-    return Response.json({...state,paymentMode:state.terms.ruleVersion==='lowest-unique-v4'?(process.env.PAYMENT_GATEWAY==='CHAPA'?'CHAPA':'UNCONFIGURED'):'LEGACY_READ_ONLY',walletBidsEnabled:walletBidsEnabled()},{headers:privateHeaders});
+    return Response.json({...state,paymentMode:isSubmissionFeeOnly(state.terms.ruleVersion)?(process.env.PAYMENT_GATEWAY==='CHAPA'?'CHAPA':'UNCONFIGURED'):'LEGACY_READ_ONLY',walletBidsEnabled:walletBidsEnabled()},{headers:privateHeaders});
   } catch(error){return errorResponse(error)}
 }
 export async function POST(request:Request,{params}:{params:Promise<{slug:string}>}) {

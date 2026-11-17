@@ -70,17 +70,21 @@ export async function reconcile(client: PrismaClient | Prisma.TransactionClient)
     ) f ON true WHERE COALESCE(f.points,0)<>b."feePoints"
     UNION ALL
     SELECT 'FEE_REFUND' AS kind, 'settlement-user:' || m.id AS name, COALESCE(f.points,0)::numeric AS projected,
-      CASE WHEN s.outcome='CANCELLED' AND s."ruleVersion"<>'lowest-unique-v4' THEN (SELECT COALESCE(SUM(b."feePoints"),0)::numeric FROM "Bid" b WHERE b."auctionId"=s."auctionId" AND b."userId"=m."userId") ELSE 0 END AS actual
+      CASE WHEN s.outcome='CANCELLED' AND s."ruleVersion" NOT IN ('lowest-unique-v4','lowest-unique-v5') THEN (SELECT COALESCE(SUM(b."feePoints"),0)::numeric FROM "Bid" b WHERE b."auctionId"=s."auctionId" AND b."userId"=m."userId") ELSE 0 END AS actual
     FROM "SettlementMovement" m JOIN "AuctionSettlement" s ON s.id=m."settlementId" LEFT JOIN LATERAL (
       SELECT SUM(-p.delta) AS points FROM "Journal" j JOIN "Posting" p ON p."journalId"=j.id
       JOIN "LedgerAccount" a ON a.id=p."accountId" AND a.kind='FEES' WHERE j."operationId"=m."refundOperationId"
-    ) f ON true WHERE COALESCE(f.points,0)<>CASE WHEN s.outcome='CANCELLED' AND s."ruleVersion"<>'lowest-unique-v4' THEN (SELECT COALESCE(SUM(b."feePoints"),0) FROM "Bid" b WHERE b."auctionId"=s."auctionId" AND b."userId"=m."userId") ELSE 0 END
+    ) f ON true WHERE COALESCE(f.points,0)<>CASE WHEN s.outcome='CANCELLED' AND s."ruleVersion" NOT IN ('lowest-unique-v4','lowest-unique-v5') THEN (SELECT COALESCE(SUM(b."feePoints"),0) FROM "Bid" b WHERE b."auctionId"=s."auctionId" AND b."userId"=m."userId") ELSE 0 END
     UNION ALL
-    SELECT 'SETTLEMENT' AS kind, 'settlement:' || s.id AS name, COALESCE(f.points,0)::numeric AS projected, (CASE WHEN s."ruleVersion"='lowest-unique-v4' THEN 0 ELSE COALESCE(s."winningPoints",0) END) AS actual
+    SELECT 'SETTLEMENT' AS kind, 'settlement:' || s.id AS name, COALESCE(f.points,0)::numeric AS projected, (CASE WHEN s."ruleVersion" IN ('lowest-unique-v4','lowest-unique-v5') THEN 0 ELSE COALESCE(s."winningPoints",0) END) AS actual
     FROM "AuctionSettlement" s LEFT JOIN LATERAL (
       SELECT SUM(p.delta) AS points FROM "SettlementMovement" m JOIN "Journal" j ON j."operationId"=m."chargeOperationId"
       JOIN "Posting" p ON p."journalId"=j.id JOIN "LedgerAccount" a ON a.id=p."accountId" AND a.kind='SETTLEMENT' WHERE m."settlementId"=s.id
-    ) f ON true WHERE COALESCE(f.points,0)<>(CASE WHEN s."ruleVersion"='lowest-unique-v4' THEN 0 ELSE COALESCE(s."winningPoints",0) END)
+    ) f ON true WHERE COALESCE(f.points,0)<>(CASE WHEN s."ruleVersion" IN ('lowest-unique-v4','lowest-unique-v5') THEN 0 ELSE COALESCE(s."winningPoints",0) END)
+    UNION ALL
+    SELECT 'FEE_REFUND' AS kind,'refund:'||r.id AS name,COALESCE(paid.points,0)::numeric AS projected,CASE WHEN r.status='COMPLETED' THEN r."cashPoints"+r."bonusPoints" ELSE 0 END AS actual
+    FROM "AuctionRefund" r LEFT JOIN LATERAL(SELECT sum(-p.delta) AS points FROM "Journal" j JOIN "Posting" p ON p."journalId"=j.id JOIN "LedgerAccount" a ON a.id=p."accountId" WHERE j."operationId"=r."operationId" AND a.name='platform:fees')paid ON true
+    WHERE COALESCE(paid.points,0)<>CASE WHEN r.status='COMPLETED' THEN r."cashPoints"+r."bonusPoints" ELSE 0 END
     ORDER BY kind, name`;
   if(process.env.REFERRAL_REWARDS_SCHEMA_READY!=='true')return findings;
   const discounts=await client.$queryRaw<typeof findings>`

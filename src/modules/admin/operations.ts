@@ -1,6 +1,6 @@
 import {readOverview,readOverviewSummary,readOverviewAuctions,auctionList,displayAuctionStatus} from './workspace-read';
 import {queueGlobal} from '../notifications/campaigns';
-import {RULE_V4,V4_NUMBER_TERMS,V2_MIN_PARTICIPANTS,V2_FALLBACK_TERMS,V4_CANCELLATION_TERMS,isSubmissionFeeOnly} from '../auctions/rules';
+import {RULE_V5,V4_NUMBER_TERMS,V2_MIN_PARTICIPANTS,V5_WINNER_TERMS,V5_CANCELLATION_TERMS,isSubmissionFeeOnly} from '../auctions/rules';
 import { randomUUID } from 'node:crypto';
 import { Prisma,type PrismaClient } from '@prisma/client';
 import sharp from 'sharp';
@@ -49,11 +49,14 @@ export async function cancellationImpact(tx:Prisma.TransactionClient,auctionId:s
   const auction=await tx.auction.findUniqueOrThrow({where:{id:auctionId},select:{id:true,code:true,status:true,publishedAt:true,acceptedBidCount:true,terms:{select:{ruleVersion:true}},settlement:{select:{id:true}},result:{select:{id:true}}}});
   if(!auction.publishedAt||!['LIVE','SCHEDULED'].includes(auction.status)||auction.settlement||auction.result)throw new AdminError(409,'Only an unsettled published auction can be cancelled.');
   const [fees,holds]=await Promise.all([tx.bid.groupBy({by:['userId'],where:{auctionId},_sum:{feePoints:true},_count:{id:true}}),tx.auctionHold.findMany({where:{auctionId},select:{points:true,wallet:{select:{userId:true}}}})]);
-  const participants=new Map<string,{userId:string;heldPoints:string;feeRefund:string;acceptedBids:number}>();
+  const funding=auction.terms?.ruleVersion===RULE_V5?await tx.$queryRaw<Array<{userId:string;cash:string;bonus:string}>>`SELECT "userId",sum(gross-discount-bonus)::text AS cash,sum(bonus)::text AS bonus FROM "AuctionBidFunding" WHERE "auctionId"=${auctionId} GROUP BY "userId"`:[];
+  const byFunding=new Map(funding.map(row=>[row.userId,row]));
+  const participants=new Map<string,{userId:string;heldPoints:string;feeRefund:string;bonusRefund?:string;acceptedBids:number}>();
   for(const row of fees)participants.set(row.userId,{userId:row.userId,heldPoints:'0',feeRefund:isSubmissionFeeOnly(auction.terms?.ruleVersion)?'0':(row._sum.feePoints??0n).toString(),acceptedBids:row._count.id});
+  if(auction.terms?.ruleVersion===RULE_V5)for(const row of participants.values()){row.feeRefund=byFunding.get(row.userId)?.cash??'0';row.bonusRefund=byFunding.get(row.userId)?.bonus??'0'}
   for(const hold of holds){const previous=participants.get(hold.wallet.userId)??{userId:hold.wallet.userId,heldPoints:'0',feeRefund:'0',acceptedBids:0};previous.heldPoints=hold.points.toString();participants.set(previous.userId,previous)}
   const rows=[...participants.values()].sort((a,b)=>a.userId<b.userId?-1:a.userId>b.userId?1:0);
-  const impact={auctionId,code:auction.code,affectedBidders:fees.length,acceptedBids:auction.acceptedBidCount,heldPoints:rows.reduce((sum,row)=>sum.add(row.heldPoints),new Prisma.Decimal(0)).toString(),feeRefund:rows.reduce((sum,row)=>sum.add(row.feeRefund),new Prisma.Decimal(0)).toString(),participants:rows};
+  const impact={auctionId,code:auction.code,affectedBidders:fees.length,acceptedBids:auction.acceptedBidCount,heldPoints:rows.reduce((sum,row)=>sum.add(row.heldPoints),new Prisma.Decimal(0)).toString(),feeRefund:rows.reduce((sum,row)=>sum.add(row.feeRefund),new Prisma.Decimal(0)).toString(),bonusRefund:rows.reduce((sum,row)=>sum.add(row.bonusRefund??'0'),new Prisma.Decimal(0)).toString(),participants:rows};
   return {...impact,impactHash:digest(JSON.stringify(impact))};
 }
 export async function publicationPreflight(tx:Prisma.TransactionClient,auctionId:string) {
@@ -134,7 +137,7 @@ export async function adminMutation(client:PrismaClient,headers:Headers,action:A
       const item=await tx.product.findUniqueOrThrow({where:{id:body.productId}});await tx.$queryRaw`SELECT id FROM "Category" WHERE id=${item.categoryId} FOR UPDATE`;
       const checked=await publicationPreflight(tx,data.auctionId);if(checked.auction.draft?.version!==data.version)throw new AdminError(409,'Draft changed. Repeat preflight.');if(checked.errors.length)throw new AdminError(422,checked.errors.join(' '));const p=checked.product!;
       const endsAt=new Date(body.endsAt);
-      await tx.auctionTerms.create({data:{auctionId:data.auctionId,ruleVersion:RULE_V4,minParticipants:V2_MIN_PARTICIPANTS,minPoints:new Prisma.Decimal(body.minPoints),maxPoints:null,stepPoints:new Prisma.Decimal(body.stepPoints),entryFeePoints:new Prisma.Decimal(body.entryFeePoints),maxDistinctBids:100,noWinnerTerms:V2_FALLBACK_TERMS+" "+V4_NUMBER_TERMS,cancellationTerms:V4_CANCELLATION_TERMS,fulfillmentSnapshot:body.fulfillmentSummary,publishedEndsAt:endsAt,maxExtensionMinutes:body.maxExtensionMinutes,allowPaidShortening:body.allowPaidShortening,shortenNoticeMinutes:body.shortenNoticeMinutes}});
+      await tx.auctionTerms.create({data:{auctionId:data.auctionId,ruleVersion:RULE_V5,minParticipants:V2_MIN_PARTICIPANTS,minPoints:new Prisma.Decimal(body.minPoints),maxPoints:null,stepPoints:new Prisma.Decimal(body.stepPoints),entryFeePoints:new Prisma.Decimal(body.entryFeePoints),maxDistinctBids:100,noWinnerTerms:V5_WINNER_TERMS+" "+V4_NUMBER_TERMS,cancellationTerms:V5_CANCELLATION_TERMS,fulfillmentSnapshot:body.fulfillmentSummary,publishedEndsAt:endsAt,maxExtensionMinutes:body.maxExtensionMinutes,allowPaidShortening:body.allowPaidShortening,shortenNoticeMinutes:body.shortenNoticeMinutes}});
       await tx.auctionFeeRevision.create({data:{auctionId:data.auctionId,version:1,feePoints:new Prisma.Decimal(body.entryFeePoints),effectiveAt:checked.now,actorId:actor.id,reason:'Initial submission fee',operationKey:`${operationKey}:fee`}});
       const presentation={title:p.title,titleAm:p.titleAm,description:p.description,descriptionAm:p.descriptionAm,condition:p.condition,conditionAm:p.conditionAm,images:p.images.map(image=>({path:image.path,alt:image.alt,sourceType:image.sourceType,sourceCredit:image.sourceCredit}))};
       const auction=await tx.auction.update({where:{id:data.auctionId},data:{productId:p.id,categoryId:p.categoryId,isDemo:p.isDemo,isSettlementFixture:p.isDemo&&demoBidAllowed(process.env),startsAt:new Date(body.startsAt),endsAt,publishedAt:checked.now,status:'SCHEDULED',featured:body.featured,fulfillmentSummary:body.fulfillmentSummary,fulfillmentSummaryAm:body.fulfillmentSummaryAm||null,fulfillmentRegion:body.fulfillmentRegion,fulfillmentRegionAm:body.fulfillmentRegionAm||null,presentation:asJson(presentation)}});target=auction.id;await queueGlobal(tx,`global:published:${data.auctionId}`,auction.startsAt!>checked.now?'AUCTION_UPCOMING_ADDED':'AUCTION_PUBLISHED',{auctionId:data.auctionId});
@@ -199,7 +202,7 @@ export async function adminMutation(client:PrismaClient,headers:Headers,action:A
       if(data.impactHash!==impact.impactHash)throw new AdminError(409,'Cancellation impact changed. Review the new preview before confirming.');
       const settled=await cancelAuctionInTransaction(tx,{auctionId:data.auctionId,actor:{id:actor.id,permission:'auction:cancel'},reason:data.reason,key:data.key});
       const retired=await retireAuctionPromotions(tx,data.auctionId,actor.now);
-      target=data.auctionId;receipt={auctionId:target,code:impact.code,status:settled.outcome,heldReleased:impact.heldPoints,feesRefunded:impact.feeRefund,affectedBidders:impact.affectedBidders,...retired};
+      target=data.auctionId;receipt={auctionId:target,code:impact.code,status:settled.outcome,...(settled.ruleVersion===RULE_V5?{heldReleaseQueued:impact.heldPoints,feesQueued:impact.feeRefund,bonusQueued:impact.bonusRefund,refundStatus:'PENDING'}:{heldReleased:impact.heldPoints,feesRefunded:impact.feeRefund}),affectedBidders:impact.affectedBidders,...retired};
     }else if(action==='replace'){
       const data=schemas.replace.parse(input),original=await tx.auction.findUniqueOrThrow({where:{id:data.auctionId},include:{terms:true,draft:true}});
       if(original.status!=='CANCELLED'||!original.terms||!original.productId)throw new AdminError(409,'Cancel the published auction before creating its replacement.');

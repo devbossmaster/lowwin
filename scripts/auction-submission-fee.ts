@@ -10,6 +10,6 @@ try{
  const target=new URL(url);console.log(JSON.stringify({host:target.hostname,database:target.pathname.slice(1),mode:args.includes('--apply')?'apply':'preview'}));
  db=new PrismaClient({datasources:{db:{url}}});
  const result=await adoptSubmissionFee(db,code,fee,args.includes('--apply'));console.log(JSON.stringify(result,null,2));
- if(result.applied)await clearPublicDataCache();else console.log('Preview only. Add --apply to convert this auction and release its bid holds.');
+ await clearPublicDataCache();
 }catch(error){console.error(error instanceof Error&&!(error instanceof Error&&error.name.startsWith('Prisma'))?error.message:'Database operation failed. No partial conversion was committed.');process.exitCode=1}
 finally{await db?.$disconnect()}

@@ -69,7 +69,7 @@ export async function readDepositBonusFunds(client:DB,userId:string,ready?:boole
  if(!(ready??await depositBonusStorageReady(client)))return {bonusAvailable:'0',bonusExpiresAt:null};
  const [row]=await client.$queryRaw<Array<{amount:string;expiresAt:Date|null}>>`
   SELECT COALESCE(sum(l."amountCents"-COALESCE(u.used,0)),0)::text AS amount,min(l."expiresAt") AS "expiresAt"
-  FROM "DepositBonusLot" l LEFT JOIN LATERAL (SELECT sum("amountCents") AS used FROM "DepositBonusUse" WHERE "checkoutId"=l."checkoutId") u ON true
+  FROM "DepositBonusLot" l LEFT JOIN LATERAL (SELECT COALESCE(sum("amountCents"),0)-COALESCE((SELECT sum("creditedCents") FROM "DepositBonusRefund" WHERE "checkoutId"=l."checkoutId"),0) AS used FROM "DepositBonusUse" WHERE "checkoutId"=l."checkoutId") u ON true
   WHERE l."userId"=${userId} AND l."expiresAt">clock_timestamp() AT TIME ZONE 'UTC'
    AND l."amountCents">COALESCE(u.used,0) AND NOT EXISTS(SELECT 1 FROM "DepositBonusExpiry" e WHERE e."checkoutId"=l."checkoutId")`;
  return {bonusAvailable:new Prisma.Decimal(centsToEtb(BigInt(row?.amount??'0'))).toString(),bonusExpiresAt:row?.expiresAt?.toISOString()??null};
@@ -81,7 +81,7 @@ export async function consumeDepositBonusInTransaction(tx:Tx,input:{userId:strin
  if(input.netFeeCents<=0n||!(ready??await depositBonusStorageReady(tx)))return 0n;
  const lots=await tx.$queryRaw<Array<{checkoutId:string;remaining:bigint;expiresAt:Date}>>`
   WITH active AS (SELECT l."checkoutId",(l."amountCents"-COALESCE(u.used,0))::bigint AS remaining,l."expiresAt"
-  FROM "DepositBonusLot" l LEFT JOIN LATERAL(SELECT sum("amountCents") AS used FROM "DepositBonusUse" WHERE "checkoutId"=l."checkoutId") u ON true
+  FROM "DepositBonusLot" l LEFT JOIN LATERAL(SELECT COALESCE(sum("amountCents"),0)-COALESCE((SELECT sum("creditedCents") FROM "DepositBonusRefund" WHERE "checkoutId"=l."checkoutId"),0) AS used FROM "DepositBonusUse" WHERE "checkoutId"=l."checkoutId") u ON true
   WHERE l."userId"=${input.userId} AND l."expiresAt">clock_timestamp() AT TIME ZONE 'UTC' AND l."amountCents">COALESCE(u.used,0)
    AND NOT EXISTS(SELECT 1 FROM "DepositBonusExpiry" e WHERE e."checkoutId"=l."checkoutId")), ranked AS (
    SELECT *,COALESCE(sum(remaining) OVER(ORDER BY "expiresAt","checkoutId" ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),0) AS prior FROM active)
@@ -105,7 +105,7 @@ export async function expireDepositBonusLots(client:PrismaClient,limit=20){
   await tx.$executeRawUnsafe("SET LOCAL lock_timeout='250ms'");await tx.$executeRawUnsafe("SET LOCAL statement_timeout='1000ms'");
   const [lock]=await tx.$queryRaw<Array<{locked:boolean}>>`SELECT pg_try_advisory_xact_lock(hashtextextended(${`wallet:${row.userId}`},0)) AS locked`;if(!lock?.locked)return;
   const wallet=await tx.wallet.findUniqueOrThrow({where:{userId:row.userId}});await tx.$executeRaw`SELECT lock_wallet_hold_state(${wallet.id})`;
-  const [lot]=await tx.$queryRaw<Array<{remaining:bigint;now:Date}>>`SELECT (l."amountCents"-COALESCE((SELECT sum(u."amountCents") FROM "DepositBonusUse" u WHERE u."checkoutId"=l."checkoutId"),0))::bigint AS remaining,clock_timestamp() AT TIME ZONE 'UTC' AS now FROM "DepositBonusLot" l WHERE l."checkoutId"=${row.checkoutId} AND l."expiresAt"<=clock_timestamp() AT TIME ZONE 'UTC' AND NOT EXISTS(SELECT 1 FROM "DepositBonusExpiry" e WHERE e."checkoutId"=l."checkoutId")`;
+  const [lot]=await tx.$queryRaw<Array<{remaining:bigint;now:Date}>>`SELECT (l."amountCents"+COALESCE((SELECT sum("creditedCents") FROM "DepositBonusRefund" WHERE "checkoutId"=l."checkoutId"),0)-COALESCE((SELECT sum(u."amountCents") FROM "DepositBonusUse" u WHERE u."checkoutId"=l."checkoutId"),0))::bigint AS remaining,clock_timestamp() AT TIME ZONE 'UTC' AS now FROM "DepositBonusLot" l WHERE l."checkoutId"=${row.checkoutId} AND l."expiresAt"<=clock_timestamp() AT TIME ZONE 'UTC' AND NOT EXISTS(SELECT 1 FROM "DepositBonusExpiry" e WHERE e."checkoutId"=l."checkoutId")`;
   if(!lot)return;
   let journalId:string|null=null;
   if(lot.remaining>0n){
@@ -123,7 +123,7 @@ export async function listOwnDepositBonuses(client:PrismaClient,userId:string,ra
  if(!ready)return {policy,items:[],page,nextPage:null as number|null};
  const rows=await client.$queryRaw<Array<{id:string;amount:bigint;remaining:bigint;creditedAt:Date;expiresAt:Date;now:Date}>>`
   SELECT l."checkoutId" AS id,l."amountCents" AS amount,(l."amountCents"-COALESCE(u.used,0))::bigint AS remaining,l."createdAt" AS "creditedAt",l."expiresAt",clock_timestamp() AT TIME ZONE 'UTC' AS now
-  FROM "DepositBonusLot" l LEFT JOIN LATERAL(SELECT sum("amountCents") AS used FROM "DepositBonusUse" WHERE "checkoutId"=l."checkoutId") u ON true
+  FROM "DepositBonusLot" l LEFT JOIN LATERAL(SELECT COALESCE(sum("amountCents"),0)-COALESCE((SELECT sum("creditedCents") FROM "DepositBonusRefund" WHERE "checkoutId"=l."checkoutId"),0) AS used FROM "DepositBonusUse" WHERE "checkoutId"=l."checkoutId") u ON true
   WHERE l."userId"=${userId} ORDER BY l."createdAt" DESC,l."checkoutId" DESC OFFSET ${(page-1)*pageSize} LIMIT ${pageSize+1}`;
  return {policy,items:rows.slice(0,pageSize).map(row=>({id:row.id,amount:centsToEtb(row.amount),remaining:centsToEtb(row.expiresAt<=row.now?0n:row.remaining),creditedAt:row.creditedAt.toISOString(),expiresAt:row.expiresAt.toISOString(),status:row.remaining===0n?'used' as const:row.expiresAt<=row.now?'expired' as const:'active' as const})),page,nextPage:rows.length>pageSize?page+1:null};
 }

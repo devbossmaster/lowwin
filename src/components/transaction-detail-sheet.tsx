@@ -3,6 +3,7 @@ import {useCallback,useState,type RefObject} from 'react';
 import dynamic from 'next/dynamic';
 import {Check,Clock3,Copy,LoaderCircle,ShieldCheck,TriangleAlert} from 'lucide-react';
 import {AccountSheet} from './account-sheet';
+import {AuctionRefundNotice} from './auction-refund-notice';
 import {useMiniLocale} from './mini-locale';
 import {useChapaPayment} from './chapa-payment';
 import {usePrivateQuery} from './private-query';
@@ -11,7 +12,7 @@ import {getMiniQueryClient} from './private-query-cache';
 import {readPaymentRetryDraft} from '@/lib/payment-retry-draft';
 import {clearChapaOriginalAttempt} from '@/lib/chapa-original-attempt';
 import type {BidSheetPhase} from './bid-sheet';
-import {chapaConfirmed,chapaCheckoutUrl,type ChapaCheckoutView} from '@/lib/chapa-client';
+import {chapaAwaitingAuthorization,chapaConfirmed,chapaCheckoutUrl,type ChapaCheckoutView} from '@/lib/chapa-client';
 import {bidPaymentCanRetry,maskedBidPaymentPhone} from '@/lib/bid-payment-progress';
 import {chapaPaymentReasonMessage} from '@/lib/chapa-payment-reason';
 import {paymentSummaryLabel,paymentSummaryState} from '@/lib/payment-summary';
@@ -49,13 +50,14 @@ function ChapaDetails({row,trigger,onClose}:Props){
     {order?.fundsPreserved&&<Info label={t('Saved to wallet','በዋሌት የተቀመጠ')} value={formatEtb(order.amount)}/>}
     {reference&&<Info label={t('Reference','ማጣቀሻ')} value={<button className={styles.copy} type="button" aria-label={t('Copy reference','ማጣቀሻውን ቅዳ')} onClick={()=>void navigator.clipboard.writeText(reference).then(()=>setCopied(true)).catch(()=>setCopied(false))}><span>{reference}</span>{copied?<Check size={16}/>:<Copy size={16}/>}</button>}/>}
    </dl>
+   {order?.purpose==='BID'&&order.status==='BID_ACCEPTED'&&order.auctionCode&&<AuctionRefundNotice code={order.auctionCode}/>}
    {reason&&<p className={styles.failure} role="status"><TriangleAlert size={16}/>{reason}</p>}
    {summary==='checking'&&<p className={styles.notice}>{t(order?.providerStatus==='SUCCESS'?'Payment is verified. Lowwin is completing the bid record.':'This payment is not confirmed yet. Check its status before paying again.',order?.providerStatus==='SUCCESS'?'ክፍያው ተረጋግጧል። የጨረታ መዝገቡ በመጠናቀቅ ላይ ነው።':'ይህ ክፍያ ገና አልተረጋገጠም። እንደገና ከመክፈልዎ በፊት ሁኔታውን ያረጋግጡ።')}</p>}
    {order?.fundsPreserved&&<p className={styles.notice}>{t('The bid was not accepted. The verified payment was saved to your wallet.','ጨረታው አልተቀበለም። የተረጋገጠው ክፍያ በዋሌትዎ ተቀምጧል።')}</p>}
    {payment.error&&<p className={styles.failure} role="status"><TriangleAlert size={16}/>{payment.error}</p>}
    <div className={styles.detailActions}>
     {retryable?<button type="button" className={styles.primary} onClick={()=>void retry()} disabled={retrying||payment.busy}>{retrying?<LoaderCircle size={17} className={styles.spin}/>:null}{t(retrying?'Checking payment…':'Try again',retrying?'ክፍያው በማረጋገጥ ላይ…':'እንደገና ይሞክሩ')}</button>:summary==='checking'?<button type="button" className={styles.primary} onClick={()=>void payment.check()} disabled={payment.busy||payment.restoring}>{payment.busy||payment.restoring?<LoaderCircle size={17} className={styles.spin}/>:null}{t('Check payment','ክፍያውን ያረጋግጡ')}</button>:null}
-    {summary==='checking'&&!order?.completionSignalPending&&order?.chargeType==='DIRECT'&&order.authorizationReference&&order.authType==='OTP'&&<button type="button" className={styles.secondary} onClick={()=>setContinuing(true)}>{t('Continue authorization','ፈቃዱን ይቀጥሉ')}</button>}
+    {summary==='checking'&&order?.authType==='OTP'&&chapaAwaitingAuthorization(order)&&<button type="button" className={styles.secondary} onClick={()=>setContinuing(true)}>{t('Continue authorization','ፈቃዱን ይቀጥሉ')}</button>}
     {hosted&&<a className={styles.secondary} href={hosted} target="_blank" rel="noopener noreferrer">{t('Continue original checkout','የመጀመሪያውን ክፍያ ይቀጥሉ')}</a>}
     <button type="button" className={summary==='done'?styles.primary:styles.secondary} onClick={onClose}>{t(summary==='done'?'Done':'Close',summary==='done'?'ተጠናቋል':'ዝጋ')}</button>
    </div><p className={styles.security}><ShieldCheck size={14}/>{t('Payment status verified by Lowwin','የክፍያ ሁኔታ በLowwin ይረጋገጣል')}</p>
@@ -68,6 +70,7 @@ function WalletDetails({row,trigger,onClose}:Props){
  return <AccountSheet size="payment" title={t('Transaction details','የግብይት ዝርዝር')} onClose={onClose} returnFocusRef={trigger}><div className={styles.detail}>
   <div className={styles.detailHero} data-summary="done"><span className={styles.detailIcon}><Check size={23}/></span><p>{t('Bid submission fee','የጨረታ ማቅረቢያ ክፍያ')}</p><strong>{formatEtb(row.amount)}</strong><span className={styles.detailStatus}>{t('Done','ተጠናቋል')}</span></div>
   <dl className={styles.information}><Info label={t('Amount','መጠን')} value={formatEtb(item?.amount??row.amount)}/><Info label={t('Payment method','የክፍያ መንገድ')} value={t('Lowwin Wallet','Lowwin ዋሌት')}/><Info label={t('Auction','ጨረታ')} value={am?row.titleAm||row.title:row.title}/>{item&&<Info label={t('Chosen number','የተመረጠ ቁጥር')} value={item.bidNumber}/>}<Info label={t('Created','የተጀመረበት')} value={formatDate(row.createdAt,am)}/>{item&&item.discountPoints!=='0'&&<><Info label={t('Submission fee','የማቅረቢያ ክፍያ')} value={formatEtb(item.grossFee)}/><Info label={t('Coupon discount','የኩፖን ቅናሽ')} value={formatEtb(item.discountPoints)}/></>}{item&&<Info label={t('Reference','ማጣቀሻ')} value={<button className={styles.copy} type="button" aria-label={t('Copy reference','ማጣቀሻውን ቅዳ')} onClick={()=>void navigator.clipboard.writeText(item.references.journalId).then(()=>setCopied(true))}><span>{item.references.journalId}</span>{copied?<Check size={16}/>:<Copy size={16}/>}</button>}/>}</dl>
+  {item?.auctionCode&&<AuctionRefundNotice code={item.auctionCode}/>}
   {query.error&&<p className={styles.notice}>{t('Extra details could not load.','ተጨማሪ ዝርዝሩን ማምጣት አልተቻለም።')} <button type="button" onClick={query.reload}>{t('Retry','እንደገና')}</button></p>}
   <button type="button" className={styles.primary} onClick={onClose}>{t('Done','ተጠናቋል')}</button>
  </div></AccountSheet>;

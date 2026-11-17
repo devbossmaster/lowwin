@@ -1,6 +1,8 @@
 import {Prisma,type PrismaClient} from '@prisma/client';
 import {z} from 'zod';
 import type {PersonalBidListItem} from './bid-list';
+import {ownAuctionRefunds} from './auction-refunds';
+import type {AuctionRefundView} from '@/lib/auction-refund';
 
 const bidCursorSchema=z.object({at:z.string().regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d{1,6})?$/),id:z.string().uuid()}).strict();
 function decodeCursor(value:string|undefined){
@@ -13,7 +15,7 @@ export const personalBidAuctionListQuerySchema=z.object({
  grouped:z.literal('1'),auction:z.string().regex(/^\d{1,10}$/).optional(),bidCursor:z.string().min(1).max(240).regex(/^[A-Za-z0-9_-]+$/).optional(),
 }).strict().refine(value=>!value.bidCursor||!!value.auction,{path:['bidCursor'],message:'An auction is required for bid continuation'});
 
-export type PersonalBidAuctionGroup={auction:PersonalBidListItem['auction'];outcome:PersonalBidListItem['outcome'];bids:Array<Omit<PersonalBidListItem,'auction'>>;bidCount:number;hasMoreBids:boolean;nextBidCursor:string|null};
+export type PersonalBidAuctionGroup={auction:PersonalBidListItem['auction'];outcome:PersonalBidListItem['outcome'];refund?:AuctionRefundView;bids:Array<Omit<PersonalBidListItem,'auction'>>;bidCount:number;hasMoreBids:boolean;nextBidCursor:string|null};
 export type PersonalBidAuctionList={items:PersonalBidAuctionGroup[];page:number;pageSize:number;hasNext:boolean;serverNow:string};
 type BidRow={id:string;amount:string;acceptedAt:string;outcome:PersonalBidListItem['outcome'];cursorAt:string};
 type GroupRow={id:string;ruleVersion:string|null;code:string;slug:string|null;status:string;title:string;titleAm:string|null;imagePath:string|null;imageAlt:string|null;startsAt:string|null;endsAt:string|null;isDemo:boolean;outcome:PersonalBidListItem['outcome'];bidCount:number;bids:BidRow[]};
@@ -73,5 +75,6 @@ export async function getPersonalBidAuctionList(client:PrismaClient,userId:strin
   const bids=row.bids.slice(0,bidLimit),last=bids.at(-1),hasMoreBids=row.bids.length>bidLimit;
   return {auction:{ruleVersion:row.ruleVersion,code:row.code,slug:row.slug,status:row.status,title:row.title,titleAm:row.titleAm,image:row.imagePath?{path:row.imagePath,alt:row.imageAlt??row.title}:null,startsAt:row.startsAt?new Date(row.startsAt).toISOString():null,endsAt:row.endsAt?new Date(row.endsAt).toISOString():null,isDemo:row.isDemo},outcome:row.outcome,bids:bids.map(bid=>({id:bid.id,amount:bid.amount,acceptedAt:new Date(bid.acceptedAt).toISOString(),outcome:bid.outcome})),bidCount:row.bidCount,hasMoreBids,nextBidCursor:hasMoreBids&&last?Buffer.from(JSON.stringify({at:last.cursorAt,id:last.id})).toString('base64url'):null};
  });
- return {items,page:query.auction?1:query.page,pageSize,hasNext:result.hasNext,serverNow:result.serverNow.toISOString()};
+ const refunds=await ownAuctionRefunds(client,userId,items.filter(item=>item.outcome==='CANCELLED'&&item.auction.ruleVersion==='lowest-unique-v5').map(item=>item.auction.code));
+ return {items:items.map(item=>({...item,...(refunds.has(item.auction.code)?{refund:refunds.get(item.auction.code)!}:{})})),page:query.auction?1:query.page,pageSize,hasNext:result.hasNext,serverNow:result.serverNow.toISOString()};
 }

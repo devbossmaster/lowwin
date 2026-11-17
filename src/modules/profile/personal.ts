@@ -5,6 +5,7 @@ import { publicAuctionSelect,publicWhere,toPublicAuction } from '../auctions/cat
 import { PrivateApiError } from '../auth/private-api';
 import {ownProfileContactSelect,profileContactDisplay} from './account-contact';
 import {getReferralOverview,referralSchemaReady} from '../referrals/service';
+import {ownAuctionRefunds} from './auction-refunds';
 
 export const displayProfileSchema=z.object({displayName:z.string().trim().min(1).max(60).regex(/^[^\p{Cc}\p{Cf}]+$/u),bio:z.string().trim().max(160).regex(/^[^\p{Cc}\p{Cf}]*$/u),contactEmail:z.string().trim().max(254).refine(value=>value===''||z.email().safeParse(value).success).optional(),city:z.string().trim().max(80).regex(/^[^\p{Cc}\p{Cf}]*$/u).optional()}).strict();
 export const pageSchema=z.coerce.number().int().min(1).max(1000).default(1);
@@ -30,16 +31,24 @@ export async function getPersonalBids(client:PrismaClient,userId:string,input:un
     const providers=process.env.ARIFPAY_SCHEMA_READY==='true'&&rows.length?await tx.arifPayCheckout.findMany({where:{userId,bidId:{in:rows.map(bid=>bid.id)},status:'BID_ACCEPTED',creditJournalId:{not:null}},select:{bidId:true,transactionId:true,channel:true,fee:true}}):[];
     const discounts=referralSchemaReady()&&rows.length?await tx.referralRedemption.findMany({where:{userId,bidId:{in:rows.map(bid=>bid.id)}},select:{bidId:true,grossFeePoints:true,discountPoints:true,coupon:{select:{percent:true}}}}):[];
     const chapa=process.env.CHAPA_SCHEMA_READY==='true'&&rows.length?await tx.chapaCheckout.findMany({where:{userId,bidId:{in:rows.map(bid=>bid.id)},status:'BID_ACCEPTED',creditJournalId:{not:null}},select:{id:true,bidId:true,merchantReference:true,paymentMethod:true,amountCents:true}}):[];
+    const refunds=await ownAuctionRefunds(tx,userId,rows.filter(bid=>bid.auction.terms?.ruleVersion==='lowest-unique-v5'&&bid.auction.status==='CANCELLED').map(bid=>bid.auction.publicCode.toString()));
+    const completedRefundBidIds=rows.filter(bid=>refunds.get(bid.auction.publicCode.toString())?.status==='completed').map(bid=>bid.id);
+    const expiredBonus=completedRefundBidIds.length?await tx.$queryRaw<Array<{bidId:string;expired:string}>>(Prisma.sql`
+      SELECT u."bidId",(sum(r."expiredCents")::numeric/100)::text AS expired
+      FROM "DepositBonusRefund" r JOIN "DepositBonusUse" u ON u.id=r."bonusUseId"
+      WHERE r."userId"=${userId} AND u."bidId" IN (${Prisma.join(completedRefundBidIds)}) GROUP BY u."bidId"`):[];
     return {items:rows.map(bid=>{
       const result=bid.auction.settlement?.publication&&bid.auction.settlement.publication.publishedAt<=now?bid.auction.settlement:null;
       const outcome=result?(result.outcome==='WINNER'?(result.winningBidId===bid.id?'WON':'LOST'):result.outcome):bid.auction.status==='CANCELLED'?'CANCELLED':bid.auction.status==='CLOSED'||bid.auction.endsAt&&bid.auction.endsAt<=now?'PENDING':'LIVE';
-      const journal=bid.operation.journal,paid=bid.feePoints.gt(0)&&journal?.kind==='BID_FEE'&&journal.postings.some(posting=>posting.account.kind==='AVAILABLE'&&posting.account.wallet?.userId===userId&&posting.delta.eq(bid.feePoints.negated()))&&journal.postings.some(posting=>posting.account.kind==='FEES'&&posting.delta.eq(bid.feePoints));
+      const journal=bid.operation.journal,paid=bid.feePoints.gt(0)&&journal?.kind==='BID_FEE'&&journal.postings.filter(posting=>['AVAILABLE','BONUS'].includes(posting.account.kind)&&posting.account.wallet?.userId===userId&&posting.delta.lt(0)).reduce((total,posting)=>total.sub(posting.delta),new Prisma.Decimal(0)).eq(bid.feePoints)&&journal.postings.some(posting=>posting.account.kind==='FEES'&&posting.delta.eq(bid.feePoints));
       const provider=providers.find(order=>order.bidId===bid.id&&order.fee.eq(bid.feePoints)&&!!order.transactionId);
       const incoming=chapa.find(order=>order.bidId===bid.id);
       const payment={checkoutId:incoming?.id??null,status:bid.feePoints.isZero()?'NOT_REQUIRED' as const:incoming||paid?'PAID' as const:'UNAVAILABLE' as const,method:incoming?'CHAPA' as const:paid?(provider?(provider.channel==='TELEBIRR'?'ARIFPAY_TELEBIRR' as const:provider.channel==='MPESA'?'ARIFPAY_MPESA' as const:null):'WALLET' as const):null,transactionRef:incoming?incoming.merchantReference:paid&&provider?provider.transactionId:null};
       const redemption=discounts.find(row=>row.bidId===bid.id&&row.grossFeePoints.eq(bid.feePoints));
       const discount=redemption?{points:redemption.discountPoints.toString(),percent:redemption.coupon.percent,netFeePoints:bid.feePoints.sub(redemption.discountPoints).toString()}:null;
-      return {id:bid.id,amount:bid.amount.toString(),acceptedAt:bid.acceptedAt.toISOString(),feePoints:bid.feePoints.toString(),payment,discount,outcome,decision:result?.decision??null,feeRefunded:result?.outcome==='CANCELLED'&&!isSubmissionFeeOnly(bid.auction.terms?.ruleVersion)?bid.feePoints.toString():'0',closedAt:result?.completedAt.toISOString()??null,auction:{ruleVersion:bid.auction.terms?.ruleVersion,code:bid.auction.publicCode.toString(),slug:bid.auction.slug,title:bid.auction.product?.title??bid.auction.publicCode.toString(),titleAm:bid.auction.product?.titleAm??null,image:bid.auction.product?.images[0]??null,endsAt:bid.auction.endsAt?.toISOString()??null,isDemo:bid.auction.isDemo,views:bid.auction.publicViewCount.toString()}};
+      const refund=refunds.get(bid.auction.publicCode.toString());
+      const feeRefunded=bid.auction.terms?.ruleVersion==='lowest-unique-v5'?(refund?.status==='completed'?new Prisma.Decimal(discount?.netFeePoints??bid.feePoints).sub(expiredBonus.find(row=>row.bidId===bid.id)?.expired??0).toString():'0'):result?.outcome==='CANCELLED'&&!isSubmissionFeeOnly(bid.auction.terms?.ruleVersion)?bid.feePoints.toString():'0';
+      return {id:bid.id,amount:bid.amount.toString(),acceptedAt:bid.acceptedAt.toISOString(),feePoints:bid.feePoints.toString(),payment,discount,outcome,decision:result?.decision??null,feeRefunded,...(refund?{refund}:{}),closedAt:result?.completedAt.toISOString()??null,auction:{ruleVersion:bid.auction.terms?.ruleVersion,code:bid.auction.publicCode.toString(),slug:bid.auction.slug,title:bid.auction.product?.title??bid.auction.publicCode.toString(),titleAm:bid.auction.product?.titleAm??null,image:bid.auction.product?.images[0]??null,endsAt:bid.auction.endsAt?.toISOString()??null,isDemo:bid.auction.isDemo,views:bid.auction.publicViewCount.toString()}};
     }),page:query.page,pageSize:20 as const,total,totalPages:Math.ceil(total/20),counts:{total:all,active:live,won,live,history:all-live}};
   },{isolationLevel:Prisma.TransactionIsolationLevel.RepeatableRead});
 }

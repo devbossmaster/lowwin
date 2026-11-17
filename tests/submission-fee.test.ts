@@ -107,18 +107,16 @@ describe.skipIf(!url)('submission-fee-only bidding on disposable PostgreSQL',()=
   }
   expect(await reconcile(db)).toEqual([]);
  });
- it('converts a live V3 auction atomically, releases old holds and preserves receipts',async()=>{
+ it('retires the V4 conversion command without changing frozen receipts or funds',async()=>{
   const a=await bidAuction(db,{ruleVersion:'lowest-unique-v3',fee:5}),u=await bidUser(db,'100');
   const original=await bid(u,a.slug!,'3.6');
   expect(await balance(u)).toEqual({available:'91.4',held:'3.6'});
-  expect(await adoptSubmissionFee(db,a.code,'30')).toMatchObject({applied:false,heldEtbToRelease:'3.6'});
+  await expect(adoptSubmissionFee(db,a.code,'30')).rejects.toThrow('retired');
   expect(await balance(u)).toEqual({available:'91.4',held:'3.6'});
-  expect(await adoptSubmissionFee(db,a.code,'30',true)).toMatchObject({applied:true,heldEtbToRelease:'3.6'});
-  expect(await balance(u)).toEqual({available:'95',held:'0'});
+  await expect(adoptSubmissionFee(db,a.code,'30',true)).rejects.toThrow('retired');
+  expect(await balance(u)).toEqual({available:'91.4',held:'3.6'});
   const stored=await db.operation.findFirstOrThrow({where:{scope:'BID',userId:u}});expect(stored.result).toEqual(original);
-  await expect(bid(u,a.slug!,'99999')).rejects.toMatchObject({code:'RETRYABLE_CONFLICT'});
-  await bid(u,a.slug!,'99999',randomUUID(),2);expect(await balance(u)).toEqual({available:'65',held:'0'});
-  await cancelAuction(db,{auctionId:a.id,actor:{id:'fixture-owner',permission:'auction:cancel'},reason:'Check converted policy',key:randomUUID()});
-  expect(await balance(u)).toEqual({available:'65',held:'0'});expect(await reconcile(db)).toEqual([]);
+  expect((await db.auctionTerms.findUniqueOrThrow({where:{auctionId:a.id}})).ruleVersion).toBe('lowest-unique-v3');
+  expect(await reconcile(db)).toEqual([]);
  });
 });

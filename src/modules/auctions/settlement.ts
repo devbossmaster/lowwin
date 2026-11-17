@@ -1,4 +1,6 @@
-import {RULE_V1,RULE_V2,RULE_V3,RULE_V4,isSubmissionFeeOnly,usesDecimalBids} from './rules';
+import {RULE_V1,RULE_V2,RULE_V3,RULE_V4,RULE_V5,isSubmissionFeeOnly,usesDecimalBids} from './rules';
+import {settleV5} from './settlement-v5';
+import {processAuctionRefund} from '../wallet/auction-refunds';
 import { createHash,randomUUID } from 'node:crypto';
 import { Prisma,type PrismaClient } from '@prisma/client';
 import { z } from 'zod';
@@ -40,6 +42,7 @@ async function completeLocked(tx:Prisma.TransactionClient,auctionId:string,cance
   if(!auction.publishedAt||auction.publishedAt>now||!['LIVE','SCHEDULED'].includes(auction.status)||!auction.endsAt||!auction.terms)throw new SettlementError('AUCTION_NOT_SETTLEABLE');
   if(auction.isDemo&&(!auction.isSettlementFixture||!(demoBidAllowed(raw)||stagingDemoEnabled(raw))))throw new SettlementError('DEMO_SETTLEMENT_FORBIDDEN');
   if(!cancellation&&auction.endsAt>now)throw new SettlementError('NOT_DUE');
+  if(auction.terms.ruleVersion===RULE_V5)return settleV5(tx,auction,now,cancellation,requestHash);
   if(![RULE_V1,RULE_V2,RULE_V3,RULE_V4].includes(auction.terms.ruleVersion))throw new SettlementError('UNSUPPORTED_RULE');
 
   const bids=await tx.bid.findMany({where:{auctionId,acceptedAt:{lt:auction.endsAt}},orderBy:[{amount:'asc'},{acceptanceOrder:'asc'},{id:'asc'}],include:{feeRevision:true,operation:{include:{journal:{include:{postings:{include:{account:true}}}}}}}});
@@ -120,6 +123,9 @@ export async function cancelAuction(client:PrismaClient,input:CancelInput,raw:Re
 /** Durable work is the due auction row, not an in-memory claim. SKIP LOCKED lets
  * independent processes work concurrently. A crash releases the transaction lock. */
 export async function processDueAuction(client:PrismaClient,raw:Record<string,string|undefined>=process.env){
+  // Refund progress is independent of publication and notification transport.
+  // One wallet per transaction bounds work and recovers safely after a crash.
+  const refunded=await processAuctionRefund(client);
   // Bound recovery to one row, then still service one closing auction. A large
   // historical backfill must not postpone new financial settlements.
   const recovered=await recoverUnpublishedResult(client);
@@ -142,7 +148,7 @@ export async function processDueAuction(client:PrismaClient,raw:Record<string,st
       return {status:'settled' as const,auctionId:attempted,settlementId:settled.id};
     },txOptions);
     if(result.status==='settled')try{await publishSettledResult(client,result.auctionId)}catch(error){return {...result,publication:await recordPublicationFailure(client,result.auctionId,error)}}
-    return result.status==='idle'?recovered:result;
+    return result.status==='idle'?(recovered.status==='idle'?refunded:recovered):result;
   }catch(error){
     if(!attempted)throw error;
     // Persist bounded retry timing after the failed transaction has rolled back.

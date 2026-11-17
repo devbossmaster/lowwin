@@ -17,6 +17,7 @@ import {AuctionCountdown} from './auction-countdown';
 import {CatalogImage} from './catalog-image';
 import {IntentPrefetchLink as Link} from './intent-prefetch-link';
 import {OfflineRetry} from './offline-retry';
+import {RefundStatus} from './auction-refund-notice';
 import {myBidListView,myBidOutcomeLabel,myBidsQueryUrl,myBidsGroupQueryUrl,type MyBidListView} from './my-bids-list-copy';
 import styles from './my-bids-page.module.css';
 
@@ -32,7 +33,9 @@ function PlayerBids({initialView}:{initialView:MyBidListView|'all'|'history'}){
  const {queryIdentity}=useTelegram(),{language}=useMiniLocale(),am=language==='am',text=(en:string,translated:string)=>am?translated:en;
  const {params,set}=useMiniQueryState(),[page,setPage]=useMiniPage(),view=myBidListView(params.get('view')??initialView,params.get('status'));
  const [selected,setSelected]=useState<PersonalBidListItem|null>(null),trigger=useRef<HTMLElement|null>(null),invalidateTimer=useRef<ReturnType<typeof setTimeout>|null>(null),changedScopes=useRef(new Set<string>());
- const query=usePrivateQuery<PersonalBidAuctionList>(myBidsQueryUrl(view,page,language),{freshnessMs:view==='finished'?300000:15000,cancelOnUnmount:true}),data=query.data;
+ const [refundsPending,setRefundsPending]=useState(false);
+ const query=usePrivateQuery<PersonalBidAuctionList>(myBidsQueryUrl(view,page,language),{pollMs:refundsPending?3000:0,freshnessMs:refundsPending?2000:view==='finished'?300000:15000,cancelOnUnmount:true}),data=query.data;
+ useEffect(()=>{setRefundsPending(!!data?.items.some(item=>item.refund?.status==='pending'))},[data]);
  useEffect(()=>{setSelected(null)},[view,page,language]);
  useEffect(()=>()=>{if(invalidateTimer.current)clearTimeout(invalidateTimer.current)},[]);
  // Every visible Live row shares the existing batched activity request. One
@@ -86,6 +89,7 @@ function BidAuctionCard({group,live,serverNow,observedAt,onChanged,onOpen,priori
    <span className={styles.rowBody}><span className={styles.rowTitle}>{title}</span><span className={styles.status} data-outcome={outcome}>{myBidOutcomeLabel(outcome,am)}{group.auction.isDemo&&<> · DEMO</>}</span>{live&&target&&<span className={styles.clock}><Clock3 size={12} aria-hidden="true"/><AuctionCountdown target={target} serverNow={serverNow} observedAt={observedAt} label="Ends" showLabel={false} variant="inline" onElapsed={changed}/></span>}</span>
    <ChevronRight className={styles.chevron} size={16} aria-hidden="true"/>
   </button>
+  {group.refund&&<RefundStatus refund={group.refund}/>}
   <div className={styles.numbersHeading}>{am?(feeOnly?'የመረጧቸው ቁጥሮች':'የጨረታ መጠኖች'):(feeOnly?'Your numbers':'Your bid amounts')} <span>{group.bidCount}</span></div>
   <ul className={styles.numbers} tabIndex={bids.length>12?0:undefined} aria-label={am?'የተቀበሉ ጨረታዎች':'Accepted bids'}>{bids.map(bid=>{
    const number=formatAuctionBid(bid.amount,group.auction.ruleVersion??undefined),label=myBidOutcomeLabel(bid.outcome,am);
