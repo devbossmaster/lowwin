@@ -27,6 +27,11 @@
       "testsPassed": 821,
       "testsSkipped": 190,
       "seconds": 131.97,
+      "assertions": [
+        "Repeated pending feedback cannot indefinitely suppress retained completion evidence",
+        "Delayed initialization and verification cannot release a successor lease",
+        "One observer request remains active across handoff, remount and account changes"
+      ],
       "limits": "Opt-in database and Redis cases skip in this command; separate evidence follows. Provider transport is simulated."
     },
     {
@@ -37,9 +42,8 @@
       "assertions": [
         "Baseline balance and pending rows survive both additive migrations",
         "Signals received during provider HTTP survive cleanup and prompt a deferred private check",
-        "Repeated public pending feedback cannot indefinitely suppress a retained completion signal",
         "Fresh private terminal proof is required to resolve completion evidence",
-        "Delayed initialization and verification cannot release a successor lease",
+        "Periodic private pending checks and busy OTP backoff remain bounded",
         "Only one committed financial credit exists after repeated settlement",
         "Credited webhook feedback is immutable while worker coordination stays mutable"
       ],
@@ -86,6 +90,30 @@
       "livePaymentAndTelegramCredentialsExcluded": true
     },
     {
+      "kind": "exact-release-harness-hosted-and-direct-database-regression",
+      "result": "passed",
+      "testsPassed": 116,
+      "testsSkipped": 0,
+      "seconds": 94.05,
+      "scope": "68 hosted and 48 Direct batch cases; retry fixtures explicitly advance backoff and assert hints cannot bypass it"
+    },
+    {
+      "kind": "baseline-ui-copy-contract-fixtures",
+      "result": "passed",
+      "testsPassed": 20,
+      "files": 3,
+      "seconds": 8.51,
+      "productSourceUnchangedFromBaseline": true
+    },
+    {
+      "kind": "database-fixture-isolation-and-auth-setup",
+      "result": "four-suites-passed",
+      "testsPassed": 31,
+      "files": 4,
+      "scope": "Admin payment table, notification durability, transactions and wallet history",
+      "historicalChapaSchemaSuite": "Attempted repair still failed against the old schema and was reverted; original CI blocker remains"
+    },
+    {
       "kind": "real-redis-cross-process-ci",
       "result": "passed",
       "testsPassed": 1,
@@ -95,6 +123,14 @@
     }
   ],
   "countsOverlapDoNotSum": true,
+  "repositoryCi": {
+    "allChecksGreen": false,
+    "fullRun": "https://github.com/devbossmaster/lowwin/actions/runs/44036042628",
+    "fullRunResultsBeforeFinalFixtureCorrections": { "testsPassed": 3128, "testsFailed": 29, "testsSkipped": 25, "suiteSetupFailures": 3 },
+    "subsequentRun": "https://github.com/devbossmaster/lowwin/actions/runs/44037051175",
+    "subsequentJobsConfirmedPassed": ["payment-stream-broker", "security", "static-secrets", "browser-admin"],
+    "remainingGate": "Unrelated baseline foundation failures are not hidden or treated as passing. Inspect latest PR checks after the final test-only corrections."
+  },
   "actualProvider": {
     "evidence": "chapa-test-inline-diagnosis-2026-11-17.json",
     "mode": "test",

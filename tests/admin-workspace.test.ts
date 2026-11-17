@@ -7,8 +7,8 @@ import {centsToEtb,etbToCents} from '../src/lib/admin-money';
 
 describe('Admin workspace contracts',()=>{
  beforeEach(()=>{vi.stubEnv('ARIFPAY_SCHEMA_READY','true');vi.stubEnv('CHAPA_SCHEMA_READY','false')});
- it('keeps six simple primary business areas and private test auctions out of ordinary queues',()=>{
-  expect(adminAreas).toEqual(['Overview','Auctions and Catalog','Players','Payments','Winners','Broadcast']);
+ it('keeps Bonus alongside the existing business areas and excludes private test auctions from ordinary queues',()=>{
+  expect(adminAreas).toEqual(['Overview','Auctions and Catalog','Players','Payments','Bonus','Winners','Broadcast']);
   expect(auctionStatusWhere('',new Date())).toMatchObject({testRunId:null});
   expect(auctionStatusWhere('LIVE',new Date())).toMatchObject({testRunId:null});
   expect(auctionStatusWhere('IN_PROGRESS',new Date())).toMatchObject({testRunId:null,status:{in:['SCHEDULED','LIVE']},settlement:{is:null}});
@@ -21,6 +21,8 @@ describe('Admin workspace contracts',()=>{
   expect(areaLanding('SUPPORT','Players')).toBe('/admin/users');
   expect(areaLanding('FULFILLMENT','Winners')).toBe('/admin/fulfillment');
   expect(areaLanding('PAYMENTS_OPERATOR','Payments')).toBe('/admin/payments');
+  expect(areaLanding('OWNER','Bonus')).toBe('/admin/bonus');
+  expect(areaLanding('SUPPORT','Bonus')).toBeUndefined();
   expect(areaLanding('AUDITOR','Winners')).toBe('/admin/fulfillment');
   expect(areaLanding('AUDITOR','Overview')).toBe('/admin');
   expect(areaLanding('FULFILLMENT','Payments')).toBeUndefined();

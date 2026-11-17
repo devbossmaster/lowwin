@@ -1,7 +1,7 @@
 import {describe,it,expect} from 'vitest';
 import {withTelegramCommunity,TELEGRAM_COMMUNITY_FOOTER,TELEGRAM_SUPPORT_URL} from '../src/lib/telegram-community';
 import {telegramCampaignText} from '../src/modules/notifications/service';
-describe('Telegram community footer',()=>{
+describe('Telegram community links and campaign copy',()=>{
  it('keeps both handles below the content and within the photo caption budget',()=>{
   const message=withTelegramCommunity('🎉'.repeat(1500));
   expect(Array.from(message).length).toBe(1000);
@@ -14,8 +14,9 @@ describe('Telegram community footer',()=>{
   expect(message.startsWith('Bura,\n')).toBe(true);
   expect(message).not.toContain('Lowwin update');
   expect(message).not.toContain('የLowwin መረጃ');
-  expect(message).toContain(TELEGRAM_COMMUNITY_FOOTER);
+  expect(message).toBe('Bura,\nA new auction is ready.');
+  expect(message).not.toContain(TELEGRAM_COMMUNITY_FOOTER);
  });
- it('keeps event headings on automatic notifications',()=>expect(telegramCampaignText('AUCTION_PUBLISHED','New auction','Phone')).toBe(`New auction\nPhone\n\n${TELEGRAM_COMMUNITY_FOOTER}`));
+ it('keeps event headings separated from automatic notification bodies without appending a community footer',()=>expect(telegramCampaignText('AUCTION_PUBLISHED','New auction','Phone')).toBe('New auction\n\nPhone'));
  it('uses the direct support chat',()=>expect(TELEGRAM_SUPPORT_URL).toBe('https://t.me/lowwinsupport'));
 });

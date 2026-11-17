@@ -13,6 +13,8 @@ const group: Record<string, string> = {
   'admin.test.ts': 'ADMIN_TEST_DATABASE_URL', 'operations.test.ts': 'OPS_TEST_DATABASE_URL',
   'payments.test.ts': 'PAYMENT_TEST_DATABASE_URL', 'payment-session.test.ts': 'PAYMENT_TEST_DATABASE_URL',
   'admin-wallet-credit.test.ts': 'ADMIN_CREDIT_TEST_DATABASE_URL',
+  'admin-payment-table-db.test.ts':'ADMIN_PAYMENT_TABLE_TEST_DATABASE_URL',
+  'notification-durability.test.ts':'NOTIFICATION_DURABILITY_TEST_DATABASE_URL',
   'auction-activity.test.ts': 'ACTIVITY_TEST_DATABASE_URL', 'arifpay-checkout.test.ts': 'ARIFPAY_TEST_DATABASE_URL',
   'chapa-checkout.test.ts':'CHAPA_TEST_DATABASE_URL',
   'chapa-direct-batch.test.ts':'CHAPA_DIRECT_TEST_DATABASE_URL',
@@ -35,6 +37,7 @@ if (database) {
   }
   process.env.DATABASE_URL = process.env.DIRECT_URL = database;
   process.env.APP_ENV = 'local';
+  if(['transactions.test.ts','wallet-history.test.ts'].includes(filename))process.env.BETTER_AUTH_SECRET='fixture-history-auth-secret-at-least-thirty-two-characters';
   // These fixtures exercise signed/contact-bound paths without any bot/provider
   // network requests. Do not depend on a developer .env or deployment secrets.
   if(['referral-rewards.test.ts','result-breakdown.test.ts','result-publication.test.ts','chapa-checkout.test.ts'].includes(filename))Object.assign(process.env,{

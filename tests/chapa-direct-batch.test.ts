@@ -27,7 +27,8 @@ describe.skipIf(!database)('direct charges and atomic batches on isolated Postgr
  },60000);
  afterAll(async()=>{await db?.$disconnect();const shared=await import('../src/lib/db');await shared.db.$disconnect()});
  const balance=async(id:string)=>(await db.ledgerAccount.findUnique({where:{name:`user:${id}:available`}}))?.balance.toString()??'0';
- const due=async(id:string)=>{await db.chapaCheckout.update({where:{id},data:{leaseUntil:null,nextCheckAt:new Date(0)}})};
+ // Force the next synthetic check due, including its provider-error backoff.
+ const due=async(id:string)=>{await db.chapaCheckout.update({where:{id},data:{leaseUntil:null,nextCheckAt:new Date(0),verificationRetryAfter:null}})};
  async function fixture(options:{numbers?:string[];fee?:number;initialBalance?:string;coupon?:boolean;endDelayMs?:number}={}){
   const user=(await verifiedReferralUser(db)).id,auction=await realReferralAuction(db,options.fee??50,options.endDelayMs),coupon=options.coupon?(await earnedReferralCoupon(db,user)).coupon:null;
   if(options.initialBalance)await creditDevelopmentPoints(db,user,options.initialBalance,randomUUID());

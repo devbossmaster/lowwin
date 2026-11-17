@@ -1,6 +1,8 @@
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,describe,expect,it,vi} from 'vitest';
 import {PrismaClient} from '@prisma/client';
+import {execFileSync} from 'node:child_process';
+import {createRequire} from 'node:module';
 import {verifiedReferralUser,realReferralAuction,earnedReferralCoupon} from './referral-fixtures';
 import {creditDevelopmentPoints} from '../src/modules/wallet/ledger';
 import {submitBid} from '../src/modules/auctions/bids';
@@ -8,13 +10,14 @@ import {createChapaCheckout,verifyChapaCheckout} from '../src/modules/payments/c
 import type {ChapaCreate,ChapaTransport} from '../src/modules/payments/chapa-provider';
 import {readChapaTable} from '../src/modules/admin/master-table-read';
 
-const database=process.env.TEST_DATABASE_URL;
+const database=process.env.ADMIN_PAYMENT_TABLE_TEST_DATABASE_URL??process.env.TEST_DATABASE_URL;
 describe.skipIf(!database)('combined admin payments on isolated PostgreSQL',()=>{
  let db:PrismaClient,userId:string,queryName:string,walletBidId:string,chapaBidId:string,couponBidId:string;
  const actor={id:'isolated-payment-auditor',role:'OWNER' as const,now:new Date()},base={page:1,q:'',status:'',sort:'newest' as const};
  beforeAll(async()=>{
   const target=new URL(database!);if(!['localhost','127.0.0.1'].includes(target.hostname)||!target.pathname.endsWith('_test'))throw Error('Disposable loopback admin payment database required');
   Object.assign(process.env,{DATABASE_URL:database,DIRECT_URL:database,APP_ENV:'local',NODE_ENV:'test',DEV_POINTS_ENABLED:'true',DEV_IDENTITY_ENABLED:'false',STAGING_DEMO_ENABLED:'false',CHAPA_SCHEMA_READY:'true',CHAPA_MODE:'test',CHAPA_ENABLED:'true',CHAPA_RECOVERY_ENABLED:'true',CHAPA_PRIVATE_KEY:'CHAPA_TEST_'+'a'.repeat(40),CHAPA_WEBHOOK_SECRET:'local-admin-payments-signature-secret-thirty-two',PAYMENT_GATEWAY:'CHAPA',BETTER_AUTH_URL:'https://lowwin.test',MINI_APP_URL:'https://lowwin.test',TELEGRAM_BOT_TOKEN:'123456789:test_token',TELEGRAM_BOT_USERNAME:'lowwin_fixture_bot',TELEGRAM_WEBHOOK_SECRET:'local-admin-payments-contact-secret-thirty-two',PHONE_CONTACT_KEY_ID:'admin-payments-test',PHONE_CONTACT_KEYS:JSON.stringify({'admin-payments-test':'e'.repeat(64)}),PHONE_CONTACT_HASH_KEY:'f'.repeat(64),REFERRAL_REWARDS_SCHEMA_READY:'true',CHAPA_PAYMENT_ALERT_TELEGRAM_ID:''});
+  execFileSync(process.execPath,[createRequire(import.meta.url).resolve('prisma/build/index.js'),'migrate','deploy'],{env:process.env,stdio:'pipe'});
   db=new PrismaClient({datasourceUrl:database});
   await db.referralPolicy.create({data:{enabled:true,discountPercent:10,expiryDays:30,updatedBy:actor.id}});
   queryName='Admin payment table '+randomUUID();userId=(await verifiedReferralUser(db,queryName)).id;base.q=queryName;

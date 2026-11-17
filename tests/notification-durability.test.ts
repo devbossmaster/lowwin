@@ -1,5 +1,7 @@
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {PrismaClient,type Outbox} from '@prisma/client';
+import {execFileSync} from 'node:child_process';
+import {createRequire} from 'node:module';
 import {Bot,InputFile} from 'grammy';
 import {randomUUID} from 'node:crypto';
 import {claimNotifications,claimLogicalDelivery,finishClaim} from '../src/modules/notifications/leases';
@@ -10,7 +12,7 @@ import {TEST_TOKEN} from './helpers';
 import {installTelegramRateLimit} from '../src/modules/notifications/telegram-rate';
 import {notificationDatabaseSnapshot,notificationTimingSnapshot} from '../src/modules/notifications/diagnostics';
 
-const url=process.env.TEST_DATABASE_URL;
+const url=process.env.NOTIFICATION_DURABILITY_TEST_DATABASE_URL??process.env.TEST_DATABASE_URL;
 describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated transport only',()=>{
  let db:PrismaClient,users:Array<{id:string;telegramId:string}>,messagesBefore=0;
  const maintenance=async(action:string)=>{const latest=await db.adminAudit.findFirst({orderBy:{createdAt:'desc'},select:{createdAt:true}});return db.adminAudit.create({data:{actorId:'isolated',action,target:'all',details:{},createdAt:new Date(Math.max(Date.now(),(latest?.createdAt.getTime()??0)+1))}})};
@@ -20,12 +22,13 @@ describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated t
  beforeAll(async()=>{
   const target=new URL(url!);if(!['127.0.0.1','localhost'].includes(target.hostname)||!target.pathname.endsWith('_test'))throw Error('Isolated loopback _test database required');
   Object.assign(process.env,{DATABASE_URL:url,DIRECT_URL:url,TELEGRAM_BOT_TOKEN:TEST_TOKEN,MINI_APP_URL:'https://lowwin.test/telegram'});
+  execFileSync(process.execPath,[createRequire(import.meta.url).resolve('prisma/build/index.js'),'migrate','deploy'],{env:process.env,stdio:'pipe'});
   target.searchParams.set('options','-c TimeZone=Africa/Addis_Ababa');
   db=new PrismaClient({datasourceUrl:target.toString()});const base=830000000+Math.floor(Math.random()*1000000);users=Array.from({length:20},(_,i)=>({id:randomUUID(),telegramId:String(base+i)}));
   await db.user.createMany({data:users.map(u=>({...u,name:'Fixture recipient',role:'member'}))});
   await db.botChat.createMany({data:users.map(u=>({telegramId:u.telegramId,chatId:u.telegramId}))});
   await db.telegramOwnContact.createMany({data:users.map(u=>({userId:u.id,telegramId:u.telegramId,botId:'123456789',phoneCipher:'isolated-unused-cipher',phoneHash:randomUUID(),lastFour:'2904',verifiedAt:new Date(),sourceUpdateId:BigInt(u.telegramId)}))});
- });
+ },60000);
  beforeEach(async()=>{
   // This suite owns a disposable database; never configure a production URL.
   await db.outbox.updateMany({where:{state:'PENDING'},data:{state:'SKIPPED',leaseToken:null,leaseUntil:null}});await db.telegramDeliveryLease.deleteMany();await db.telegramMediaCache.deleteMany();await maintenance('AUCTIONS_MAINTENANCE_RESUMED');messagesBefore=await db.telegramMessage.count();
