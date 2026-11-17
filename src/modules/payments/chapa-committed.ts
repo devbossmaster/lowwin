@@ -5,7 +5,7 @@ const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const makeClient=(url:string)=>createClient({url,disableOfflineQueue:true,socket:{connectTimeout:500,reconnectStrategy:false}});
 type Client=ReturnType<typeof makeClient>;
 type Listener=()=>void;
-type Connection={url:string;channel:string;client:Client;connecting?:Promise<void>;subscribing?:Promise<void>;retryAt:number;subscribed:boolean};
+type Connection={url:string;channel:string;client:Client;connecting?:Promise<void>;subscribing?:Promise<void>;retryAt:number;subscribed:boolean;failed:boolean};
 type State={publisher?:Connection;subscriber?:Connection;listeners:Map<string,Set<Listener>>};
 const shared=globalThis as unknown as {lowwinChapaCommitted?:State};
 const state=():State=>shared.lowwinChapaCommitted??={listeners:new Map()};
@@ -25,42 +25,49 @@ function connection(kind:'publisher'|'subscriber'){
  const parsed=new URL(url);
  if(!['redis:','rediss:'].includes(parsed.protocol)||(process.env.APP_ENV==='production'&&!parsed.password))return;
  const current=state(),channel=chapaCommittedChannel();let value=current[kind];
- if(!value||value.url!==url||value.channel!==channel){
+ if(!value||value.url!==url||value.channel!==channel||value.failed&&value.retryAt<=Date.now()){
   if(value?.client.isOpen)value.client.destroy();
-  const client=makeClient(url);value={url,channel,client,retryAt:0,subscribed:false};current[kind]=value;
+  const client=makeClient(url);value={url,channel,client,retryAt:0,subscribed:false,failed:false};current[kind]=value;
   const owned=value;
-  client.on('error',()=>{owned.subscribed=false;owned.retryAt=Date.now()+5000});
+  client.on('error',()=>unavailable(owned));
  }
  return value;
+}
+function unavailable(value:Connection){
+ value.failed=true;value.subscribed=false;value.retryAt=Date.now()+5000;
+ if(value.client.isOpen)value.client.destroy();
 }
 async function bounded<T>(value:Connection,operation:()=>Promise<T>):Promise<T>{
  let timer:ReturnType<typeof setTimeout>|undefined;
  try{
   return await Promise.race([operation(),new Promise<T>((_resolve,reject)=>{
-   timer=setTimeout(()=>{if(value.client.isOpen)value.client.destroy();reject(Error('Payment signal broker unavailable.'))},500);
+   timer=setTimeout(()=>{unavailable(value);reject(Error('Payment signal broker unavailable.'))},500);
   })]);
  }finally{clearTimeout(timer)}
 }
 async function ready(value:Connection){
- if(value.retryAt>Date.now())return false;
+ if(value.failed||value.retryAt>Date.now())return false;
  try{
   if(!value.client.isReady){
    value.connecting??=bounded(value,()=>value.client.connect()).then(()=>{}).finally(()=>{value.connecting=undefined});
    await value.connecting;
   }
   return value.client.isReady;
- }catch{value.retryAt=Date.now()+5000;if(value.client.isOpen)value.client.destroy();return false}
+ }catch{unavailable(value);return false}
 }
 
 /** Call only after the database write/transaction has committed. A lost signal
  * cannot lose a payment: reconnect/resume reads and polling use PostgreSQL. */
 export async function publishChapaCommitted(checkoutId:string):Promise<void>{
  if(!UUID.test(checkoutId))return;
+ let owned:Connection|undefined;
  try{
-  const value=connection('publisher');if(!value||!await ready(value))return;
+  const value=connection('publisher');owned=value;if(!value||!await ready(value))return;
   await bounded(value,()=>value.client.withCommandOptions({timeout:500}).publish(value.channel,JSON.stringify({v:1,id:checkoutId.toLowerCase()})));
  }catch{
-  const value=state().publisher;if(value){value.retryAt=Date.now()+5000;if(value.client.isOpen)value.client.destroy()}
+  // A failed older publication must not close a replacement connection after
+  // a deployment namespace/credential rotation changed the shared state.
+  if(owned)unavailable(owned);
   // A broker outage must not change a committed result or expose its details.
  }
 }
@@ -86,7 +93,7 @@ export async function subscribeChapaCommitted(checkoutId:string,listener:Listene
      if(signal.v!==1||typeof signal.id!=='string'||!UUID.test(signal.id)||Object.keys(signal).some(key=>!['v','id'].includes(key)))return;
      for(const notify of state().listeners.get(signal.id.toLowerCase())??[]){try{notify()}catch{/* A closed stream cannot break another owner. */}}
     }catch{/* Invalid broker hints are ignored. */}
-   })).then(()=>{value.subscribed=true}).catch(()=>{value.subscribed=false;value.retryAt=Date.now()+5000;if(value.client.isOpen)value.client.destroy()}).finally(()=>{value.subscribing=undefined});
+   })).then(()=>{value.subscribed=true}).catch(()=>unavailable(value)).finally(()=>{value.subscribing=undefined});
    await value.subscribing;
   }
  }catch{/* Polling and connection snapshot recovery remain available. */}

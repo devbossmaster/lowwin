@@ -2,7 +2,9 @@
 
 Deploy the reviewed application revision to **lowwin-web** and the existing
 **lowwin-chapa** recovery worker. Keep the current activation/recovery flags and
-merchant bindings. This transport needs no schema migration or new service.
+merchant bindings. The SSE transport adds no additional database tables or
+service. Apply the release's reviewed additive migrations first, including
+payment signal coordination and the subsequent signal-guard migration.
 It does not change internal-wallet bidding.
 
 ## Shared private broker

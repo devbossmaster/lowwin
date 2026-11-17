@@ -22,6 +22,9 @@ type Options={
 
 type SharedObserver={identity:string;id:string;owners:Set<Options>;primary:Options;generation:number;stop:()=>void;latest:ChapaCheckoutView|null};
 const observers=new Map<string,SharedObserver>();
+// A surface can hand ownership to another component while its old request is
+// still settling. Keep the flight fence across observer restarts/remounts.
+const ownedRequests=new Map<string,Promise<ChapaCheckoutView|null>>();
 let observerIdentity:string|null=null;
 /** Explicit account scope is mandatory for sharing. Tests can use the local
  * startChapaObserver primitive without creating an unscoped shared resource. */
@@ -40,7 +43,11 @@ export function retainChapaObserver(identity:string,id:string,options:Options){
    if(!current()||!acceptChapaSnapshot(owned.latest,order))return;owned.latest=order;fanout(owned,owner=>owner.onSnapshot(order));
   };
   const request=async(kind:'readSnapshot'|'verify')=>{
-   const order=await primary[kind]();if(current()&&order)receive(order);return order;
+   const previous=ownedRequests.get(key);if(previous)try{await previous}catch{/* A new owner can recover after the old request aborts. */}
+   if(!current()||!valid(primary))return null;
+   const flight=Promise.resolve().then(()=>primary[kind]());ownedRequests.set(key,flight);
+   try{const order=await flight;if(current()&&order)receive(order);return order}
+   finally{if(ownedRequests.get(key)===flight)ownedRequests.delete(key)}
   };
   owned.stop=startChapaObserver(id,{
    ...primary,readSnapshot:()=>request('readSnapshot'),verify:()=>request('verify'),onSnapshot:receive,

@@ -89,6 +89,19 @@ describe('one owned SSE and verification observer',()=>{
   first();await vi.advanceTimersByTimeAsync(0);expect(f.sources[0].close).toHaveBeenCalledOnce();expect(other.createSource).toHaveBeenCalledOnce();expect(other.verify).toHaveBeenCalledOnce();
   other.sources[0].frame({...pending,status:'CREDITED'});expect(other.onSnapshot).toHaveBeenLastCalledWith(expect.objectContaining({status:'CREDITED'}));expect(f.onSnapshot).not.toHaveBeenLastCalledWith(expect.objectContaining({status:'CREDITED'}));second();
  });
+ it('fences a primary handoff until the previous owner request has settled',async()=>{
+  vi.useFakeTimers();const f=fixture(),other=fixture();let finish!:(order:ChapaCheckoutView)=>void;
+  f.readSnapshot.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve}));
+  const first=retainChapaObserver('account-a',id,f.options),second=retainChapaObserver('account-a',id,other.options);await vi.advanceTimersByTimeAsync(0);
+  first();await vi.advanceTimersByTimeAsync(0);expect(f.sources[0].close).toHaveBeenCalledOnce();expect(other.readSnapshot).not.toHaveBeenCalled();expect(other.verify).not.toHaveBeenCalled();
+  finish(pending);await vi.advanceTimersByTimeAsync(0);expect(other.readSnapshot).toHaveBeenCalledOnce();expect(other.verify).toHaveBeenCalledOnce();expect(f.onSnapshot).not.toHaveBeenCalled();second();
+ });
+ it('retains the request fence when the last surface closes and immediately remounts',async()=>{
+  vi.useFakeTimers();const f=fixture(),other=fixture();let finish!:(order:ChapaCheckoutView)=>void;
+  f.verify.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve}));const first=retainChapaObserver('account-a',id,f.options);await vi.advanceTimersByTimeAsync(0);
+  expect(f.verify).toHaveBeenCalledOnce();first();const second=retainChapaObserver('account-a',id,other.options);await vi.advanceTimersByTimeAsync(0);expect(other.readSnapshot).not.toHaveBeenCalled();
+  finish(pending);await vi.advanceTimersByTimeAsync(0);expect(other.readSnapshot).toHaveBeenCalledOnce();expect(other.verify).toHaveBeenCalledOnce();second();
+ });
  it('stops old account streams before sharing another account and ignores their late frames',async()=>{
   vi.useFakeTimers();const f=fixture(),other=fixture(),first=retainChapaObserver('account-a',id,f.options);await vi.advanceTimersByTimeAsync(0);const count=f.onSnapshot.mock.calls.length;
   const second=retainChapaObserver('account-b',id,other.options);expect(f.sources[0].close).toHaveBeenCalledOnce();f.sources[0].frame({...pending,status:'CREDITED'});expect(f.onSnapshot).toHaveBeenCalledTimes(count);

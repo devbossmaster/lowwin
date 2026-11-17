@@ -46,6 +46,27 @@ jobs:
             test-results/
             playwright-report/
           retention-days: 7
+  payment-stream-broker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      redis:
+        image: redis:7.4-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      CHAPA_EVENTS_TEST_REDIS_URL: redis://127.0.0.1:6379
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      # Real Redis and separate Node processes; this is not Coolify/device evidence.
+      - run: npx --no-install vitest run tests/chapa-committed-redis.test.ts
   security:
     runs-on: ubuntu-latest
     timeout-minutes: 15
