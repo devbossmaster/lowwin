@@ -40,7 +40,7 @@ describe('shared bid and deposit status surface',()=>{
   for(const am of [false,true]){
    const message=am?'እርስዎ ይህን ክፍያ ሰርዘዋል።':'You cancelled this payment.',user=render(purpose,{...base,order:{...cancelled,providerCancelledBy:'USER'}},am);
    expect(user.split(message)).toHaveLength(2);expect(user.match(/data-payment-reason="true"/g)).toHaveLength(1);expect(user).not.toContain('data-payment-inline-error');
-   for(const providerCancelledBy of ['SYSTEM',null])expect(render(purpose,{...base,order:{...cancelled,providerCancelledBy}},am)).not.toContain(message);
+   for(const providerCancelledBy of ['SYSTEM',null] as const)expect(render(purpose,{...base,order:{...cancelled,providerCancelledBy}},am)).not.toContain(message);
    const unverified=render(purpose,{...base,order:{...cancelled,providerCancelledBy:'USER',verificationState:'UNVERIFIED'}},am);expectSteadyAuthorization(unverified);expect(unverified).not.toContain(message);expect(unverified).not.toContain('data-payment-reason');
   }
   const failed=render(purpose,{...base,order:{...cancelled,status:'FAILED',providerStatus:'FAILED',providerReasonCode:'arbitrary bank text'}});
