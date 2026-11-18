@@ -64,7 +64,7 @@ export async function validateBatchInTransaction(tx:Tx,userId:string,slug:string
  await measureChapa('eligibility',()=>assertBatchEligibilityInTransaction(tx,userId));
  return priceBatchInTransaction(tx,userId,slug,numbers,feeVersion,couponId);
 }
-async function priceBatchInTransaction(tx:Tx,userId:string,slug:string,numbers:string[],feeVersion:number,couponId?:string){
+export async function priceBatchInTransaction(tx:Tx,userId:string,slug:string,numbers:string[],feeVersion:number,couponId?:string){
  const auction=await tx.auction.findUnique({where:{slug},include:{terms:true,feeRevisions:{orderBy:[{effectiveAt:'desc'},{version:'desc'}],take:1},product:{include:{category:true}},category:true}}),[{now}]=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AT TIME ZONE 'UTC' AS now`;
  if(!auction?.publishedAt||auction.publishedAt>now||!auction.startsAt||auction.startsAt>now||!auction.endsAt||auction.endsAt<=now||!['SCHEDULED','LIVE'].includes(auction.status)||!auction.product?.visible||!auction.product.category.visible||!auction.category?.visible)throw new ChapaError(409,'AUCTION_CLOSED','This auction is closed.');
  if(auction.isDemo||auction.testRunId||auction.product.isDemo||!auction.terms||!isSubmissionFeeOnly(auction.terms.ruleVersion))throw new ChapaError(409,'LEGACY_TERMS','This order supports real submission-fee auctions only.');
@@ -187,6 +187,11 @@ async function acceptWalletBatch(tx:Tx,batch:BidBatchOrder,validated?:Awaited<Re
  * The selection key is the durable operation key, including after a lost reply. */
 export async function createAndPayBidBatchWallet(client:PrismaClient,userId:string,raw:unknown,reauthorize?:Authorize){
  const {approvedTotal,...input}=command.extend({approvedTotal:z.string().regex(/^(0|[1-9]\d{0,15})(?:\.\d{1,2})?$/)}).strict().parse(raw),numbers=normalizeBatchNumbers(input.numbers),requestHash=chapaHash(JSON.stringify({...input,numbers,approvedTotal:centsToEtb(etbToCents(approvedTotal))}));
+ const cashCommand=reauthorize?.forWalletCashCommand;
+ if(cashCommand&&!input.couponId){
+  const receipt=await measureChapa('cash_command',()=>cashCommand(client,userId,{key:input.key,auctionSlug:input.auctionSlug,numbers,feeVersion:input.feeVersion,approvedTotal:centsToEtb(etbToCents(approvedTotal)),requestHash}));
+  if(receipt)return receipt;
+ }
  return client.$transaction(async tx=>{
   const halted=await measureChapa('locks',()=>lockBatchWriter(tx,userId,input.auctionSlug,true));
   const check=reauthorize?.forWalletBatch;

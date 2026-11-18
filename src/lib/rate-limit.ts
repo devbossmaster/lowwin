@@ -24,15 +24,22 @@ export async function allowIdentityRequests(client:PrismaClient|Prisma.Transacti
   ) SELECT bool_and(counted.count<=limits.maximum) AS allowed FROM counted JOIN limits USING(key)`);
  return result?.allowed===true;
 }
-/** Durable atomic limit keyed only by a server-verified identity, never a forwarded IP. */
-export async function allowIdentityRequest(client:PrismaClient|Prisma.TransactionClient,scope:string,identity:string,maximum:number,windowMs=60000) {
- const key=`app:${scope}:${createHash('sha256').update(identity).digest('hex')}`;
- const [row]=await client.$queryRaw<{count:number}[]>`
+/** A conditional source can share the statement that authenticates the identity. */
+export function countIdentityRequest(key:Prisma.Sql,maximum:number,windowMs:number,source=Prisma.empty){
+ return Prisma.sql`
   INSERT INTO "rateLimit" (id,key,count,"lastRequest")
-  VALUES (${randomUUID()},${key},1,(extract(epoch FROM clock_timestamp())*1000)::bigint)
+  SELECT ${randomUUID()},${key},1,(extract(epoch FROM clock_timestamp())*1000)::bigint ${source}
   ON CONFLICT (key) DO UPDATE SET
     count=CASE WHEN "rateLimit"."lastRequest" < (extract(epoch FROM clock_timestamp())*1000)::bigint-${windowMs} THEN 1 ELSE LEAST("rateLimit".count+1,${maximum+1}) END,
     "lastRequest"=CASE WHEN "rateLimit"."lastRequest" < (extract(epoch FROM clock_timestamp())*1000)::bigint-${windowMs} THEN (extract(epoch FROM clock_timestamp())*1000)::bigint ELSE "rateLimit"."lastRequest" END
   RETURNING count`;
+}
+
+export const userMutationLimit={scope:'mutation',maximum:60,windowMs:60000} as const;
+
+/** Durable atomic limit keyed only by a server-verified identity, never a forwarded IP. */
+export async function allowIdentityRequest(client:PrismaClient|Prisma.TransactionClient,scope:string,identity:string,maximum:number,windowMs=60000) {
+ const key=`app:${scope}:${createHash('sha256').update(identity).digest('hex')}`;
+ const [row]=await client.$queryRaw<{count:number}[]>(countIdentityRequest(Prisma.sql`${key}`,maximum,windowMs));
  return row.count<=maximum;
 }

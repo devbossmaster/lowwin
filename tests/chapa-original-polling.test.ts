@@ -5,6 +5,33 @@ const order={id:'a2345678-1234-4234-8234-123456789012',apiVersion:'v2',flowVersi
 const visibility=()=>Object.assign(new EventTarget(),{visibilityState:'visible' as DocumentVisibilityState});
 afterEach(()=>vi.useRealTimers());
 describe('read-only original Inline key discovery',()=>{
+ it('delays discovery during a normal initialization response, then reads only the original key',async()=>{
+  vi.useFakeTimers();const read=vi.fn().mockResolvedValue(order),received=vi.fn();
+  const stop=startChapaOriginalPolling(read,received,visibility(),{isCurrent:()=>true,wake:null,initialDelayMs:5000});
+  await vi.advanceTimersByTimeAsync(4999);expect(read).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(1);expect(read).toHaveBeenCalledOnce();expect(received).toHaveBeenCalledExactlyOnceWith(order);
+  await vi.advanceTimersByTimeAsync(60000);expect(read).toHaveBeenCalledOnce();stop();
+ });
+ it('checks immediately on returning from the wallet app before the delayed discovery starts',async()=>{
+  vi.useFakeTimers();const source=visibility(),wake=new EventTarget(),read=vi.fn().mockResolvedValue(order),received=vi.fn();
+  const stop=startChapaOriginalPolling(read,received,source,{isCurrent:()=>true,wake,initialDelayMs:5000});
+  await vi.advanceTimersByTimeAsync(100);source.visibilityState='hidden';source.dispatchEvent(new Event('visibilitychange'));
+  await vi.advanceTimersByTimeAsync(100);source.visibilityState='visible';source.dispatchEvent(new Event('visibilitychange'));wake.dispatchEvent(new Event('focus'));wake.dispatchEvent(new Event('online'));
+  await vi.advanceTimersByTimeAsync(0);expect(read).toHaveBeenCalledOnce();expect(received).toHaveBeenCalledExactlyOnceWith(order);
+  await vi.advanceTimersByTimeAsync(60000);expect(read).toHaveBeenCalledOnce();stop();
+ });
+ it('cancels the delayed discovery when the original response arrives normally',async()=>{
+  vi.useFakeTimers();const read=vi.fn(),received=vi.fn(),wake=new EventTarget();
+  const stop=startChapaOriginalPolling(read,received,visibility(),{isCurrent:()=>true,wake,initialDelayMs:5000});
+  await vi.advanceTimersByTimeAsync(1000);stop();wake.dispatchEvent(new Event('focus'));await vi.advanceTimersByTimeAsync(60000);
+  expect(read).not.toHaveBeenCalled();expect(received).not.toHaveBeenCalled();
+ });
+ it('keeps pre-commit404s nonterminal and bounded when initialization is still pending',async()=>{
+  vi.useFakeTimers();const read=vi.fn().mockRejectedValue(new ChapaClientError('Not committed yet',404,'NOT_FOUND')),received=vi.fn(),error=vi.fn(),pause=vi.fn();
+  const stop=startChapaOriginalPolling(read,received,visibility(),{isCurrent:()=>true,wake:null,initialDelayMs:5000,maximumReads:3,onError:error,onPause:pause});
+  await vi.advanceTimersByTimeAsync(4999);expect(read).not.toHaveBeenCalled();await vi.advanceTimersByTimeAsync(60000);
+  expect(read).toHaveBeenCalledTimes(3);expect(error).not.toHaveBeenCalled();expect(received).not.toHaveBeenCalled();expect(pause).toHaveBeenCalledOnce();stop();
+ });
  it('automatically discovers the original after pre-commit404s, then stops before the owned-ID observer takes over',async()=>{
   vi.useFakeTimers();const read=vi.fn().mockRejectedValueOnce(new ChapaClientError('Not found',404,'NOT_FOUND')).mockRejectedValueOnce(new ChapaClientError('Not found',404,'NOT_FOUND')).mockResolvedValue(order),received=vi.fn(),error=vi.fn(),pause=vi.fn();
   const stop=startChapaOriginalPolling(read,received,visibility(),{isCurrent:()=>true,onError:error,onPause:pause,wake:null});

@@ -2,7 +2,7 @@ import {ChapaClientError,chapaUuid,type ChapaCheckoutView} from './chapa-client'
 
 type Events=Pick<EventTarget,'addEventListener'|'removeEventListener'>;
 type Visibility=Events&Pick<Document,'visibilityState'>;
-type Options={isCurrent:()=>boolean;onError?:(error:unknown)=>void;onPause?:()=>void;onResume?:()=>void;wake?:Events|null;budgetMs?:number;maximumReads?:number};
+type Options={isCurrent:()=>boolean;onError?:(error:unknown)=>void;onPause?:()=>void;onResume?:()=>void;wake?:Events|null;budgetMs?:number;maximumReads?:number;initialDelayMs?:number};
 
 /** Discover an already-owned Inline attempt after its initialization reply was
  * lost. The caller supplies GET only; no initialization or fresh key exists in
@@ -46,5 +46,10 @@ export function startChapaOriginalPolling(read:(signal:AbortSignal)=>Promise<Cha
   void check();
  }
  visibility.addEventListener('visibilitychange',onWake);wake?.addEventListener('focus',onWake);wake?.addEventListener('online',onWake);
- void check();return stop;
+ // Current creation may still be returning normally. Delay background key
+ // discovery, while a real foreground return can check immediately via onWake.
+ const initialDelay=options.initialDelayMs;
+ if(typeof initialDelay==='number'&&Number.isFinite(initialDelay)&&initialDelay>0)timer=setTimeout(()=>void check(),initialDelay);
+ else void check();
+ return stop;
 }

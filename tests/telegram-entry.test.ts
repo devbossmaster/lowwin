@@ -2,7 +2,7 @@ import {verifyFixtureContact} from './contact-fixtures';
 import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
 import {PrismaClient} from '@prisma/client';
 import {execFileSync} from 'node:child_process';
-import {randomInt} from 'node:crypto';
+import {createHash,randomInt,randomUUID} from 'node:crypto';
 import {signedLaunch,TEST_TOKEN} from './helpers';
 const url=process.env.TEST_DATABASE_URL;
 describe.skipIf(!url)('Telegram-only entry boundary',()=>{
@@ -25,6 +25,23 @@ describe.skipIf(!url)('Telegram-only entry boundary',()=>{
   const removed=await launch(raw(),cookie);expect((await removed.json()).me.user.image).toBeNull();expect((await db.user.findUniqueOrThrow({where:{id:initial.me.user.id}})).image).toBeNull();
  });
  it('denies guests, spoofed browser headers and forged or stale launches',async()=>{expect(await access.getMiniSession(new Headers({'user-agent':'Telegram','x-telegram-user-id':'1'}),db)).toBeNull();expect((await sign('forged')).status).toBe(401);expect((await sign(signedLaunch({auth_date:'1'}))).status).toBe(401)});
+ it('counts only valid payment sessions and shares the ordinary durable mutation quota',async()=>{
+  const first=await sign(signedLaunch({user:JSON.stringify({id:randomInt(6700000000,6800000000),first_name:'Payment quota fixture'})}));
+  expect(first.status).toBe(200);
+  const headers=new Headers({cookie:cookies(first)}),session=(await access.getMiniSession(headers,db))!;
+  const key=`app:mutation:${createHash('sha256').update(session.user.id).digest('hex')}`;
+  const {allowIdentityRequest}=await import('../src/lib/rate-limit');
+  expect(await allowIdentityRequest(db,'mutation',session.user.id,60)).toBe(true);
+  await db.rateLimit.update({where:{key},data:{count:59}});
+  const requests=await Promise.all(Array.from({length:3},()=>access.getCountedMiniSession(headers,{directKey:randomUUID()},db)));
+  expect(requests.filter(result=>result?.rateAllowed)).toHaveLength(1);
+  expect(requests.every(result=>result?.identity.user.id===session.user.id&&result.directOriginal===false)).toBe(true);
+  expect((await db.rateLimit.findUniqueOrThrow({where:{key}})).count).toBe(61);
+  await db.rateLimit.delete({where:{key}});
+  await db.telegramOwnContact.update({where:{userId:session.user.id},data:{revokedAt:new Date()}});
+  expect(await access.getCountedMiniSession(headers,{},db)).toBeNull();
+  expect(await db.rateLimit.findUnique({where:{key}})).toBeNull();
+ });
  it('binds the exact issued session to verified Telegram identity and denies unbound or revoked sessions',async()=>{const response=await sign(signedLaunch({user:JSON.stringify({id:randomInt(6000000000,6100000000),first_name:'Boundary test'})}));expect(response.status).toBe(200);const headers=new Headers({cookie:response.headers.getSetCookie().map(v=>v.split(';')[0]).join('; ')});const session=await access.getMiniSession(headers,db);expect(session).not.toBeNull();await db.session.update({where:{id:session!.session.id},data:{telegramLaunchId:null}});expect(await access.getMiniSession(headers,db)).toBeNull();await db.session.update({where:{id:session!.session.id},data:{telegramLaunchId:'wrong-identity'}});expect(await access.getMiniSession(headers,db)).toBeNull();await db.session.delete({where:{id:session!.session.id}});expect(await access.getMiniSession(headers,db)).toBeNull()});
  it('public tunnel configuration cannot enable the local preview exception',()=>{const old=process.env.MINI_APP_URL;process.env.MINI_APP_URL='https://example.ngrok-free.app';try{expect(access.localMiniPreview(new Headers({host:'localhost:3000','x-forwarded-host':'localhost:3000'}))).toBe(false)}finally{process.env.MINI_APP_URL=old}});
  it('returns the private account at sign-in and reuses only the same live Telegram session',async()=>{

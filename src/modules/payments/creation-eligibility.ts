@@ -1,4 +1,5 @@
-import {Prisma} from '@prisma/client';
+import {Prisma,type PrismaClient} from '@prisma/client';
+import type {WalletCashCommandInput,WalletCashCommandResult} from '../auctions/wallet-cash-command';
 import {contactBotId} from '../auth/own-contact';
 import {PrivateApiError} from '../auth/private-api';
 import {ChapaError} from './chapa-provider';
@@ -9,6 +10,7 @@ export type WalletBatchAuthorization={replayExists:boolean;assertEligible:()=>vo
 export type PaymentSessionAuthorizer=((tx:Prisma.TransactionClient)=>Promise<void>)&{
  forCurrentDirectCreate?:(tx:Prisma.TransactionClient,userId:string,key:string)=>Promise<PaymentCreationContact>;
  forWalletBatch?:(tx:Prisma.TransactionClient,userId:string,key:string)=>Promise<WalletBatchAuthorization>;
+ forWalletCashCommand?:(client:PrismaClient,userId:string,input:WalletCashCommandInput)=>Promise<WalletCashCommandResult|null>;
 };
 type CreationRow={telegramLaunchId:string|null;telegramAuthSource:string;telegramId:string|null;role:string;contactTelegramId:string|null;botId:string|null;phoneCipher:string|null;revokedAt:Date|null;staffId:string|null;suspended:boolean;replayExists:boolean};
 const unauthorized=()=>new PrivateApiError(401,'Sign in through Telegram.');

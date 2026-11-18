@@ -99,5 +99,10 @@ DO $$ DECLARE browser_role text; BEGIN
  END LOOP;
 END $$;
 GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA public TO lowwin_runtime;
+DO $$ BEGIN
+ IF to_regprocedure('public.lowwin_cash_wallet_batch(jsonb,jsonb)') IS NOT NULL THEN
+  GRANT EXECUTE ON FUNCTION public.lowwin_cash_wallet_batch(jsonb,jsonb) TO lowwin_runtime;
+ END IF;
+END $$;
 REVOKE ALL ON TABLE public."_prisma_migrations" FROM lowwin_runtime;
 COMMIT;
