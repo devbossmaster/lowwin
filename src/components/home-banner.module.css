@@ -1,38 +1,37 @@
 @font-face{font-family:'Lowwin Banner';src:url('/fonts/sora-latin-800.woff2') format('woff2');font-style:normal;font-weight:800;font-display:swap}
-.banner{position:relative;isolation:isolate;width:100%;min-width:0;overflow:hidden;background:#020718;color:#f7faff;--surface-ink:#f7faff}
-.artworkBanner{border-radius:16px;box-shadow:inset 0 0 0 1px #4388ff55}
-.bannerMain{position:relative;isolation:isolate;display:flex;flex-direction:column;justify-content:center;min-height:290px;padding:24px 18px 28px}
-.bannerMain::after{position:absolute;z-index:2;inset:0;pointer-events:none;border-radius:16px 16px 0 0;border-top:1px solid #528cff88;content:''}
-.bannerArtwork{position:absolute;z-index:-1;inset:0;min-width:0;overflow:hidden;pointer-events:none;background:linear-gradient(115deg,#020718 20%,#06132e 65%,#082966)}
-.bannerArtwork img{position:absolute;right:-2%;top:50%;display:block;width:100%;max-width:none;height:auto;object-fit:contain;transform:translateY(-50%);mask-image:linear-gradient(to right,transparent,#000 18%),linear-gradient(to bottom,transparent,#000 10%,#000 90%,transparent);mask-composite:intersect}
+.banner{position:relative;isolation:isolate;width:100%;min-width:0;overflow:hidden;background:#07182d;color:#f7faff;--surface-ink:#f7faff}
+.artworkBanner{border-radius:0}
+.bannerMain{position:relative;isolation:isolate;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;width:100%;min-height:500px;aspect-ratio:3/4;padding:28px 18px}
+.bannerArtwork{position:absolute;z-index:-1;inset:0;overflow:hidden;pointer-events:none;background:#07182d}
+.bannerArtwork picture{display:block;width:100%;height:100%}
+.bannerArtwork img{display:block;width:100%;height:100%;object-fit:cover;object-position:right center}
+.bannerArtwork::after{position:absolute;inset:0;content:'';background:linear-gradient(90deg,#051429e8 0%,#051429cf 32%,#05142959 51%,transparent 72%)}
 .bannerCopy{position:relative;min-width:0;width:45%}
-.bannerCopy h1{margin:0;max-width:16ch;color:#f7faff;font-family:'Lowwin Banner',Inter,sans-serif;font-size:clamp(20px,5.8vw,28px);font-weight:800;line-height:1.16;letter-spacing:-.03em;text-wrap:balance}
+.bannerCopy h1{margin:0;max-width:16ch;color:#f7faff;font-family:'Lowwin Banner',Inter,sans-serif;font-size:clamp(20px,5.6vw,26px);font-weight:800;line-height:1.2;letter-spacing:-.03em;text-wrap:balance}
 .bannerCopy h1 span{display:block}
-.bannerCopy h1 .headlineAccent{margin-top:8px;color:#87caff}
-.bannerCopy p{margin:14px 0 0;max-width:38ch;color:#dceaff;font-size:13px;line-height:1.65;text-wrap:pretty}
-.banner:lang(am) h1{max-width:20ch;font-family:'Lowwin Ethiopic',Inter,sans-serif;letter-spacing:0;line-height:1.5;font-size:clamp(20px,5.6vw,26px)}
-.banner:lang(am) p{line-height:1.85}
-.introActions{position:relative;display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:22px}
-.banner .introActions :is(a,button){display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;max-width:100%;padding:10px 14px;border:1px solid #7096c9;border-radius:24px;background:#08172f;color:#f7faff;font:inherit;font-size:12px;font-weight:650;line-height:1.5;text-align:center;text-decoration:none;cursor:pointer;transition:background-color 150ms ease}
-.banner .introActions .liveAction{border-color:#f7faff;background:#f7faff;color:#08204d}
+.bannerCopy h1 .headlineAccent{margin-top:8px;color:#82beff}
+.bannerCopy p{margin:16px 0 0;max-width:38ch;color:#e4efff;font-size:13px;line-height:1.7;text-wrap:pretty}
+.banner:lang(am) h1{max-width:20ch;font-family:'Lowwin Ethiopic',Inter,sans-serif;letter-spacing:0;line-height:1.5;font-size:clamp(20px,5.3vw,25px)}
+.banner:lang(am) p{font-size:13px;line-height:1.85}
+.introActions{position:relative;display:flex;flex-direction:column;align-items:stretch;width:45%;gap:8px;margin-top:22px}
+.banner .introActions :is(a,button){display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;max-width:100%;padding:10px 10px;border:1px solid #91b1da;border-radius:24px;background:#07182dc9;color:#f7faff;font:inherit;font-size:12px;font-weight:650;line-height:1.5;text-align:center;text-decoration:none;cursor:pointer;transition:background-color 150ms ease}
+.banner .introActions .liveAction{border-color:#2563eb;background:#2563eb;color:#fff}
 .banner .introActions :is(a,button):focus-visible{outline:3px solid #a5dcff;outline-offset:3px}
-.banner .introActions button:hover:not(:disabled):not([aria-disabled=true]){background:#163b72;color:#f7faff}
-.banner .introActions .liveAction:hover{background:#dceeff;color:#08204d}
+.banner .introActions button:hover:not(:disabled):not([aria-disabled=true]){background:#173d6f;color:#fff}
+.banner .introActions .liveAction:hover{background:#1d4ed8;color:#fff}
 .introActions svg{flex:none}
-.illustration{position:absolute;right:12px;bottom:8px;max-width:calc(100% - 24px);color:#c5daef;font-size:9px;line-height:1.5;background:#020718d9;padding:2px 5px;border-radius:3px}
-.bannerNote{position:relative;margin:0;padding:14px 18px 18px;color:#c5daef;font-size:12px;line-height:1.75;text-wrap:pretty;background:linear-gradient(90deg,#020718,#06132e)}
-@media(min-width:640px){.bannerMain{min-height:370px;padding:32px}.bannerCopy h1{font-size:34px}.bannerCopy p{font-size:14px}.bannerNote{padding-inline:32px}}
-@media(min-width:1024px){
- :global(.app-frame[data-app-layout=browser]) .bannerMain{min-height:360px;aspect-ratio:1840/800;padding:32px clamp(24px,3vw,48px)}
- :global(.app-frame[data-app-layout=browser]) .bannerArtwork img{right:0;width:100%;height:100%;object-fit:cover;object-position:right center;mask-image:none}
- :global(.app-frame[data-app-layout=browser]) .bannerCopy{width:37%;max-width:none}
- :global(.app-frame[data-app-layout=browser]) .bannerCopy h1{font-size:clamp(28px,3vw,44px)}
- :global(.app-frame[data-app-layout=browser]) .bannerCopy p{font-size:14px;line-height:1.65}
- :global(.app-frame[data-app-layout=browser]) .banner:lang(am) h1{font-size:clamp(25px,2.6vw,36px)}
- :global(.app-frame[data-app-layout=browser]) .banner:lang(am) p{line-height:1.8}
- :global(.app-frame[data-app-layout=browser]) .introActions{width:40%;gap:10px;margin-top:24px}
- :global(.app-frame[data-app-layout=browser]) .banner .introActions :is(a,button){padding-inline:18px;font-size:14px;min-height:48px}
- :global(.app-frame[data-app-layout=browser]) .bannerNote{padding:16px clamp(24px,3vw,48px);font-size:13px}
+@media(min-width:640px){
+ :global(.app-frame[data-app-layout=browser]) .bannerMain{min-height:440px;aspect-ratio:1840/800;padding:32px clamp(24px,3vw,48px)}
+ :global(.app-frame[data-app-layout=browser]) .bannerCopy{width:38%;max-width:480px}
+ :global(.app-frame[data-app-layout=browser]) .bannerCopy h1{font-size:clamp(28px,3.4vw,44px)}
+ :global(.app-frame[data-app-layout=browser]) .bannerCopy p{font-size:14px;line-height:1.7}
+ :global(.app-frame[data-app-layout=browser]) .banner:lang(am) h1{font-size:clamp(24px,2.7vw,36px)}
+ :global(.app-frame[data-app-layout=browser]) .banner:lang(am) p{line-height:1.85}
+ :global(.app-frame[data-app-layout=browser]) .introActions{flex-direction:row;flex-wrap:wrap;align-items:center;width:40%;gap:10px;margin-top:24px}
+ :global(.app-frame[data-app-layout=browser]) .banner .introActions :is(a,button){padding-inline:16px;font-size:14px;min-height:48px}
+}
+@media(min-width:640px) and (max-width:1023px){
+ :global(.app-frame[data-app-layout=browser]) .bannerArtwork img{object-fit:contain;object-position:right center;mask-image:linear-gradient(to bottom,transparent,#000 10%,#000 90%,transparent)}
 }
 @media(prefers-reduced-motion:reduce){.banner .introActions :is(a,button){transition:none}}
 .categories{display:flex;gap:6px;padding:4px 16px;overflow-x:auto;scrollbar-width:none;overscroll-behavior-x:contain}.categories::-webkit-scrollbar{display:none}.categories a{position:relative;isolation:isolate;display:inline-flex;align-items:center;justify-content:center;flex:none;min-width:44px;min-height:44px;padding:0 12px;border-radius:22px;background:transparent;color:#54524c;font-size:12px;font-weight:600;text-decoration:none}.categories a::before{content:"";position:absolute;z-index:-1;inset:5px 0;border-radius:20px;background:#fff}.categories .allCategory{background:transparent;color:#fff}.categories .allCategory::before{background:var(--action-primary,#2563eb)}
