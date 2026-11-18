@@ -232,10 +232,8 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
    try{
     // Join the existing owned read if the customer continues before it arrives.
     // This validates the draft only; no wallet command or provider initialization.
-    const [currentState]=await Promise.all([
-     state?Promise.resolve(state):loadPrivateJson<BidState>(queryIdentity,`/api/auctions/${auction.slug}/bids`),
-     methods.data?Promise.resolve(methods.data):loadTopUpConfiguration(queryIdentity).catch(()=>null),
-    ]);
+    const methodsReady=methods.data?Promise.resolve(methods.data):loadTopUpConfiguration(queryIdentity).catch(()=>null);
+    const currentState=state??await loadPrivateJson<BidState>(queryIdentity,`/api/auctions/${auction.slug}/bids`);
     if(version!==generation.current||!isPrivateQueryIdentity(queryIdentity))return;
     if(!currentState.open){reportError(text('This auction is not accepting bids.','ይህ ጨረታ አዲስ ጨረታ አይቀበልም።'));return}
     const checked=validateBidDraft(values,{...currentState.terms,remainingSubmissions:currentState.remainingSubmissions,ownBids:currentState.ownBids});
@@ -253,6 +251,10 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
      const attempt:BidQuoteAttempt=quoteAttempt.current?.fingerprint===readyFingerprint?quoteAttempt.current:{fingerprint:readyFingerprint,key:crypto.randomUUID(),paymentKey:crypto.randomUUID()};quoteAttempt.current=attempt;
      void loadQuote(attempt).catch(()=>{/* The visible payment stage owns recovery. */});
     }
+    // Pricing does not use the payment-method catalogue. Prepare the quote
+    // while the catalogue is still loading, then reveal the payment options.
+    await methodsReady;
+    if(version!==generation.current||!isPrivateQueryIdentity(queryIdentity))return;
     flow.continueToPayment(checked.numbers.length>1);
    }catch(cause){if(version===generation.current)reportError(cause instanceof ChapaClientError?cause.message:text('Could not load your bid details. Check your connection and try again.','የጨረታ ዝርዝሮችዎን መጫን አልቻልንም። ግንኙነትዎን ያረጋግጡና እንደገና ይሞክሩ።'))}
    finally{if(version===generation.current){lock.current=false;setBusy(false)}}

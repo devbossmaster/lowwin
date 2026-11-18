@@ -28,13 +28,13 @@ test('wallet Pay cannot reuse an in-flight background quote key or create an ext
  }finally{release();await f.cleanup()}
 });
 
-test('Continue joins settings already warming and opens payment choices ready in one sheet',async({page})=>{
+test('Continue prepares the bid quote while settings warm and opens choices ready in one sheet',async({page})=>{
  const f=await inlineFixture(page);let release!:()=>void,configReads=0;
  const gate=new Promise<void>(done=>{release=done});
  await page.route('**/api/payments/chapa/direct/current/config',async route=>{configReads++;await gate;return route.fallback()});
  try{
   await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await openBid(page,f.title),entry=dialog.locator('[data-bid-step=entry]');await entry.locator('input[inputmode=decimal]').first().fill('4.25');await expect.poll(()=>configReads).toBe(1);
-  await dialog.locator('[data-payment-action]').click();await expect(entry).toBeVisible();await expect(dialog.locator('[data-bid-step=payment]')).toHaveCount(0);await expect(dialog.locator('[data-payment-action]')).toBeDisabled();expect(f.commands).toHaveLength(0);expect(configReads).toBe(1);
-  release();await expect(dialog.locator('[data-bid-step=payment]')).toBeVisible();for(const method of ['telebirr','CBE Birr','M-Pesa'])await expect(dialog.getByRole('radio',{name:method,exact:true})).toBeEnabled();await expect(page.getByRole('dialog')).toHaveCount(1);expect(configReads).toBe(1);expect(f.commands).toHaveLength(0);expect(f.unexpected).toHaveLength(0);
+  await dialog.locator('[data-payment-action]').click();await expect(entry).toBeVisible();await expect(dialog.locator('[data-bid-step=payment]')).toHaveCount(0);await expect(dialog.locator('[data-payment-action]')).toBeDisabled();await expect.poll(()=>f.quoteRequests.length).toBe(1);expect(f.commands).toHaveLength(0);expect(configReads).toBe(1);
+  release();await expect(dialog.locator('[data-bid-step=payment]')).toBeVisible();for(const method of ['telebirr','CBE Birr','M-Pesa'])await expect(dialog.getByRole('radio',{name:method,exact:true})).toBeEnabled();await expect(page.getByRole('dialog')).toHaveCount(1);expect(configReads).toBe(1);expect(f.quoteRequests).toHaveLength(1);expect(f.commands).toHaveLength(0);expect(f.unexpected).toHaveLength(0);
  }finally{release();await f.cleanup()}
 });

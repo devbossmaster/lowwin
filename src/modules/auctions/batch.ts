@@ -8,7 +8,7 @@ import {ChapaError,chapaHash} from '../payments/chapa-provider';
 import {PAYMENT_TRANSACTION_OPTIONS} from '../payments/timing';
 import {BidError,recordValidatedSubmissionFeeBidInTransaction,type BidReceipt} from './bids';
 import {parseBidCents} from './consecutive-bids';
-import {auctionMaintenance} from './maintenance';
+import {auctionMaintenance,lockAuctionMaintenance} from './maintenance';
 import {isSubmissionFeeOnly} from './rules';
 import {walletBidsEnabled} from '../wallet/policy';
 import {readWalletProjection} from '../wallet/balance';
@@ -65,12 +65,19 @@ export async function validateBatchInTransaction(tx:Tx,userId:string,slug:string
  return priceBatchInTransaction(tx,userId,slug,numbers,feeVersion,couponId);
 }
 export async function priceBatchInTransaction(tx:Tx,userId:string,slug:string,numbers:string[],feeVersion:number,couponId?:string){
- const auction=await tx.auction.findUnique({where:{slug},include:{terms:true,feeRevisions:{orderBy:[{effectiveAt:'desc'},{version:'desc'}],take:1},product:{include:{category:true}},category:true}}),[{now}]=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AT TIME ZONE 'UTC' AS now`;
+ const auction=await tx.auction.findUnique({where:{slug},include:{terms:true,feeRevisions:{orderBy:[{effectiveAt:'desc'},{version:'desc'}],take:1},product:{include:{category:true}},category:true}});
+ // One statement supplies the current time and owned bid history. The amount
+ // travels as text so the JSON projection cannot round a decimal bid.
+ const [{now,previousBids}]=await tx.$queryRaw<Array<{now:Date;previousBids:{id:string;amount:string;acceptedAt:string}[]}>>`
+  SELECT clock_timestamp() AT TIME ZONE 'UTC' AS now,COALESCE(jsonb_agg(jsonb_build_object(
+   'id',b.id,'amount',b.amount::text,'acceptedAt',b."acceptedAt" AT TIME ZONE 'UTC'
+  ) ORDER BY b."acceptedAt",b.id),'[]'::jsonb) AS "previousBids"
+  FROM "Bid" b WHERE b."userId"=${userId} AND b."auctionId"=${auction?.id??''}`;
  if(!auction?.publishedAt||auction.publishedAt>now||!auction.startsAt||auction.startsAt>now||!auction.endsAt||auction.endsAt<=now||!['SCHEDULED','LIVE'].includes(auction.status)||!auction.product?.visible||!auction.product.category.visible||!auction.category?.visible)throw new ChapaError(409,'AUCTION_CLOSED','This auction is closed.');
  if(auction.isDemo||auction.testRunId||auction.product.isDemo||!auction.terms||!isSubmissionFeeOnly(auction.terms.ruleVersion))throw new ChapaError(409,'LEGACY_TERMS','This order supports real submission-fee auctions only.');
  const terms=auction.terms,fee=auction.feeRevisions[0];
  if(!fee||fee.version!==feeVersion)throw new ChapaError(409,'TERMS_CHANGED','The fee changed. Review a new quote before paying.');
- const normalized=normalizeBatchNumbers(numbers),own=await tx.bid.findMany({where:{userId,auctionId:auction.id},orderBy:[{acceptedAt:'asc'},{id:'asc'}],select:{id:true,amount:true,acceptedAt:true}});
+ const normalized=normalizeBatchNumbers(numbers),own=previousBids.map(bid=>({id:bid.id,amount:new Prisma.Decimal(bid.amount),acceptedAt:new Date(bid.acceptedAt)}));
  if(own.length+normalized.length>terms.maxDistinctBids)throw new ChapaError(409,'CAP_REACHED','These entries exceed your remaining submissions.');
  const seen=new Set(own.map(item=>String(parseBidCents(item.amount.toString()))));
  for(const number of normalized){const n=new Prisma.Decimal(number),cents=parseBidCents(number);if(n.lt(1)||n.lt(terms.minPoints)||terms.maxPoints!==null&&n.gt(terms.maxPoints)||!n.sub(terms.minPoints).mod(terms.stepPoints).isZero())throw new ChapaError(422,'INVALID_AMOUNT','Choose amounts within the published bounds and increment.');if(seen.has(String(cents)))throw new ChapaError(409,'OWN_DUPLICATE','You already submitted one of these amounts.');seen.add(String(cents))}
@@ -83,18 +90,21 @@ export async function priceBatchInTransaction(tx:Tx,userId:string,slug:string,nu
 export async function quoteBidBatch(client:PrismaClient,userId:string,raw:unknown,reauthorize?:Authorize){
  const input=command.parse(raw),numbers=normalizeBatchNumbers(input.numbers),requestHash=chapaHash(JSON.stringify({...input,numbers}));
  return client.$transaction(async tx=>{
-  const previous=await tx.bidBatchOrder.findUnique({where:{userId_key:{userId,key:input.key}}});
+  const check=input.couponId?undefined:reauthorize?.forBidBatchQuote;
+  if(check)await measureChapa('locks',()=>lockAuctionMaintenance(tx));
+  const fresh=check?await measureChapa('eligibility',()=>check(tx,userId,input.key)):null;
+  const previous=fresh?.replayExists===false?null:await tx.bidBatchOrder.findUnique({where:{userId_key:{userId,key:input.key}}});
   if(previous){if(previous.requestHash!==requestHash)throw new ChapaError(409,'KEY_REUSED','Changed selections require a new quote.');return ownBatch(previous)}
-  if(reauthorize)await reauthorize(tx);
+  if(!fresh&&reauthorize)await reauthorize(tx);
   let priced:Awaited<ReturnType<typeof priceBatchInTransaction>>;
   if(input.couponId)priced=await validateBatchInTransaction(tx,userId,input.auctionSlug,numbers,input.feeVersion,input.couponId);
   else{
    // A coupon-free quote only describes a price. Keep the maintenance
    // barrier, but let a simultaneous Pay acquire the financial writer locks.
    // Both payment paths validate the price and bids again under those locks.
-   if(await auctionMaintenance(tx))throw new ChapaError(503,'AUCTIONS_PAUSED','Auctions are paused. Existing funds remain safe.');
-   await measureChapa('eligibility',()=>assertBatchEligibilityInTransaction(tx,userId));
-   priced=await priceBatchInTransaction(tx,userId,input.auctionSlug,numbers,input.feeVersion);
+   if(fresh?fresh.maintenanceHalted:await auctionMaintenance(tx))throw new ChapaError(503,'AUCTIONS_PAUSED','Auctions are paused. Existing funds remain safe.');
+   if(fresh)fresh.assertEligible();else await measureChapa('eligibility',()=>assertBatchEligibilityInTransaction(tx,userId));
+   priced=await measureChapa('pricing',()=>priceBatchInTransaction(tx,userId,input.auctionSlug,numbers,input.feeVersion));
   }
   return ownBatch(await persistBidBatchQuoteInTransaction(tx,userId,input,priced,requestHash));
  },PAYMENT_TRANSACTION_OPTIONS);

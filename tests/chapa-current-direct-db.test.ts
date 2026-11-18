@@ -3,9 +3,11 @@ import {Prisma,PrismaClient} from '@prisma/client';
 import {randomUUID} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {createRequire} from 'node:module';
-import {verifiedReferralUser,realReferralAuction} from './referral-fixtures';
+import {readFileSync} from 'node:fs';
+import {earnedReferralCoupon,verifiedReferralUser,realReferralAuction} from './referral-fixtures';
 import {quoteBidBatch} from '../src/modules/auctions/batch';
 import {createCurrentDirectCheckout,findCurrentDirectCheckoutByKey,findInlineCheckoutByKey,prepareCurrentDirectCreation} from '../src/modules/payments/chapa-inline';
+import {prepareAtomicDirectBid} from '../src/modules/payments/chapa-direct-bid-prepare';
 import {prepareOwnedChapaVerification,verifyChapaCheckout} from '../src/modules/payments/chapa';
 import {authorizeCurrentDirectCreation,type PaymentSessionAuthorizer} from '../src/modules/payments/creation-eligibility';
 import {contactBotId} from '../src/modules/auth/own-contact';
@@ -36,15 +38,16 @@ describe.skipIf(!database)('current Direct5 owned creation and private committed
   const lookup=vi.fn(async()=>proof()),validate=vi.fn(async(_input:{reference:string;paymentMethod:string;otp?:string})=>({...proof(),data:{...proof().data,status:validationStatus}}));
   const transport:ChapaTransport={direct,lookup,validate,create:vi.fn(async()=>{throw Error('Hosted creation is forbidden')}),methods:vi.fn(async()=>({status:'success',data:[{name:'Telebirr',slug:'telebirr',can_process_payments:true,can_process_direct_charge:capable,supported_currencies:{ETB:{default_min:100,default_max:4320000,countries:{ET:{is_enabled:true}}}}}]}))};
   const due=()=>db.chapaCheckout.update({where:{id},data:{nextCheckAt:new Date(0),verificationRetryAfter:null}});
-  return {user,auction,command,transport,direct,lookup,validate,id:()=>id,proof,start:(change:Record<string,unknown>={})=>createCurrentDirectCheckout(db,user,{...command,...change},undefined,transport),due,verify:async()=>{await due();return verifyChapaCheckout(db,id,user,undefined,transport)},setStatus:(value:string)=>{status=value},setValidation:(value:string)=>{validationStatus=value},setAuth:(value:string)=>{authType=value},setInitializationStatus:(value:string)=>{initializationStatus=value},setInitializationDates:(value:Record<string,string>)=>{initializationDates=value},setCapable:(value:boolean)=>{capable=value},alter:(value:Record<string,unknown>)=>{patch=value}};
+  return {user,auction,quote,command,transport,direct,lookup,validate,id:()=>id,proof,start:(change:Record<string,unknown>={})=>createCurrentDirectCheckout(db,user,{...command,...change},undefined,transport),due,verify:async()=>{await due();return verifyChapaCheckout(db,id,user,undefined,transport)},setStatus:(value:string)=>{status=value},setValidation:(value:string)=>{validationStatus=value},setAuth:(value:string)=>{authType=value},setInitializationStatus:(value:string)=>{initializationStatus=value},setInitializationDates:(value:Record<string,string>)=>{initializationDates=value},setCapable:(value:boolean)=>{capable=value},alter:(value:Record<string,unknown>)=>{patch=value}};
  }
  async function creationBinding(userId:string){
   const {telegramId}=await db.user.findUniqueOrThrow({where:{id:userId},select:{telegramId:true}});
   const session=await db.session.create({data:{id:randomUUID(),token:randomUUID(),userId,expiresAt:new Date(Date.now()+60000),telegramLaunchId:telegramId,telegramAuthSource:'MINI_APP'}});
   const binding={sessionId:session.id,sessionToken:session.token,userId,telegramId:telegramId!,telegramAuthSource:session.telegramAuthSource,botId:contactBotId()};
   const authorize:PaymentSessionAuthorizer=vi.fn(async()=>{});
-  authorize.forCurrentDirectCreate=(tx,owner,key)=>authorizeCurrentDirectCreation(tx,binding,owner,key);
-  return {session,authorize};
+  authorize.forCurrentDirectCreate=vi.fn((tx,owner,key)=>authorizeCurrentDirectCreation(tx,binding,owner,key));
+  authorize.forCurrentDirectBid=vi.fn((client,owner,input)=>prepareAtomicDirectBid(client,binding,owner,input));
+  return {session,authorize,binding};
  }
  it.each(['TOP_UP','BID'] as const)('checks two prepared %s requests again under the existing locks and dispatches the original key once',async purpose=>{
   const f=await fixture(purpose),{authorize}=await creationBinding(f.user);
@@ -58,13 +61,65 @@ describe.skipIf(!database)('current Direct5 owned creation and private committed
   await expect((await prepareCurrentDirectCreation(db,f.user,{...f.command,phone:'0912345678'},f.transport))(authorize)).rejects.toMatchObject({code:'KEY_REUSED'});
   expect(await balance(f.user)).toBe('0');
  });
- it('rejects a deleted session after the early read without dispatching or creating an intent',async()=>{
-  const f=await fixture(),{session,authorize}=await creationBinding(f.user);
-  const start=await prepareCurrentDirectCreation(db,f.user,f.command,f.transport);
+ it.each(['TOP_UP','BID'] as const)('rejects a deleted session after the early %s read without dispatching or creating an intent',async purpose=>{
+  const f=await fixture(purpose),{session,authorize}=await creationBinding(f.user);
+  const start=await prepareCurrentDirectCreation(db,f.user,f.command,f.transport,false);
   await db.session.delete({where:{id:session.id}});
   await expect(start(authorize)).rejects.toMatchObject({status:401});
   expect(f.direct).not.toHaveBeenCalled();
   expect(await db.chapaCheckout.count({where:{userId:f.user}})).toBe(0);
+ });
+ it('commits the eligible Direct bid preparation under the restricted runtime role',async()=>{
+  const f=await fixture('BID'),{authorize,binding}=await creationBinding(f.user);
+  const {Client}=await import('pg'),sql=new Client({connectionString:database});await sql.connect();
+  try{await sql.query(readFileSync('deploy/runtime-role.sql','utf8'))}finally{await sql.end()}
+  const run=authorize.forCurrentDirectBid!;
+  authorize.forCurrentDirectBid=async(client,owner,input)=>client.$transaction(async tx=>{
+   await tx.$executeRaw`SET LOCAL ROLE lowwin_runtime`;
+   return run(tx as unknown as PrismaClient,owner,input);
+  });
+  const prepare=await prepareCurrentDirectCreation(db,f.user,f.command,f.transport,false),{order}=await prepare(authorize);
+  expect(authorize.forCurrentDirectCreate).not.toHaveBeenCalled();
+  expect(run).toHaveBeenCalledOnce();expect(f.direct).toHaveBeenCalledOnce();
+  expect(order).toMatchObject({status:'AUTH_NEEDED',flowVersion:5,purpose:'BID',amount:'40.00'});
+  const row=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});
+  expect(row.initialization).toMatchObject({flow:'DIRECT',amountCents:'4000',batch:{id:f.quote!.id,lines:[{number:'2.00'},{number:'4.00'}]}});
+  expect(row.phoneBotId).toBe(binding.botId);
+  for(const key of [`app:chapa-inline-create:${chapaHash(f.user)}`,`app:chapa-inline-initialize:${chapaHash(order.id)}`])expect((await db.rateLimit.findUniqueOrThrow({where:{key}})).count).toBe(1);
+ });
+ it('does not dispatch or fall back on an ambiguous preparation reply and recovers the same immutable original',async()=>{
+  const f=await fixture('BID'),{authorize,binding}=await creationBinding(f.user);
+  const interrupted=db.$extends({query:{$queryRaw:async({args,query})=>{await query(args);throw Error('Committed preparation reply lost')}}}) as unknown as PrismaClient;
+  authorize.forCurrentDirectBid=(_,owner,input)=>prepareAtomicDirectBid(interrupted,binding,owner,input);
+  const prepare=await prepareCurrentDirectCreation(db,f.user,f.command,f.transport,false);
+  await expect(prepare(authorize)).rejects.toThrow('Committed preparation reply lost');
+  expect(authorize.forCurrentDirectCreate).not.toHaveBeenCalled();expect(f.direct).not.toHaveBeenCalled();
+  const original=await findCurrentDirectCheckoutByKey(db,f.user,f.command.key);
+  expect(original.status).toBe('SUBMITTING');
+  expect((await f.start()).order.id).toBe(original.id);expect(f.direct).not.toHaveBeenCalled();
+  await db.chapaCheckout.update({where:{id:original.id},data:{leaseUntil:new Date(0)}});
+  expect((await f.start()).order).toMatchObject({id:original.id,status:'AUTH_NEEDED'});
+  expect(f.direct).toHaveBeenCalledOnce();expect(await db.chapaCheckout.count({where:{userId:f.user}})).toBe(1);
+ });
+ it('uses the established locked coupon checks and dispatches the exact discounted amount',async()=>{
+  const f=await fixture('BID'),{authorize}=await creationBinding(f.user),{coupon}=await earnedReferralCoupon(db,f.user);
+  const quote=await quoteBidBatch(db,f.user,{key:randomUUID(),auctionSlug:f.auction!.slug!,numbers:['2','4'],feeVersion:1,couponId:coupon.id});
+  const prepare=await prepareCurrentDirectCreation(db,f.user,{...f.command,batchId:quote.id,quoteHash:quote.quoteHash},f.transport,false),{order}=await prepare(authorize);
+  expect(authorize.forCurrentDirectCreate).toHaveBeenCalledOnce();expect(f.direct).toHaveBeenCalledOnce();
+  expect(order).toMatchObject({status:'AUTH_NEEDED',amount:'38.00'});
+  expect(f.direct).toHaveBeenCalledWith(expect.objectContaining({amountCents:'3800'}),'create');
+  expect(await db.referralRedemption.count({where:{couponId:coupon.id}})).toBe(0);
+ });
+ it('cannot use a foreign quote and retains authoritative fee and method limits',async()=>{
+  const f=await fixture('BID'),other=(await verifiedReferralUser(db)).id,foreign=await creationBinding(other),own=await creationBinding(f.user);
+  const attempt=async(userId:string,authorize:PaymentSessionAuthorizer)=>(await prepareCurrentDirectCreation(db,userId,f.command,f.transport,false))(authorize);
+  await expect(attempt(other,foreign.authorize)).rejects.toMatchObject({code:'TERMS_CHANGED'});
+  f.transport.methods=vi.fn(async()=>({status:'success',data:[{name:'Telebirr',slug:'telebirr',can_process_payments:true,can_process_direct_charge:true,supported_currencies:{ETB:{default_min:5000,default_max:4320000,countries:{ET:{is_enabled:true}}}}}]}));
+  await expect(attempt(f.user,own.authorize)).rejects.toMatchObject({code:'METHOD_UNAVAILABLE'});
+  await db.auctionFeeRevision.create({data:{auctionId:f.auction!.id,version:2,feePoints:24,reason:'Isolated Direct fee revision'}});
+  await expect(attempt(f.user,own.authorize)).rejects.toMatchObject({code:'TERMS_CHANGED'});
+  expect(f.direct).not.toHaveBeenCalled();expect(await db.chapaCheckout.count({where:{batchId:f.quote!.id}})).toBe(0);
+  expect(await db.rateLimit.count({where:{key:`app:chapa-inline-create:${chapaHash(f.user)}`}})).toBe(0);
  });
  it('prepares a coupon-free quote without waiting for the wallet writer',async()=>{
   const {id:userId}=await verifiedReferralUser(db),auction=await realReferralAuction(db,20);
@@ -118,14 +173,14 @@ describe.skipIf(!database)('current Direct5 owned creation and private committed
   await expect(findInlineCheckoutByKey(db,f.user,f.command.key)).rejects.toMatchObject({status:404});await expect(findCurrentDirectCheckoutByKey(db,(await verifiedReferralUser(db)).id,f.command.key)).rejects.toMatchObject({status:404});
  });
  it('rejects methods lacking Direct capability before persisting or dispatching a charge',async()=>{const f=await fixture();f.setCapable(false);await expect(f.start()).rejects.toMatchObject({code:'METHOD_UNAVAILABLE'});expect(f.direct).not.toHaveBeenCalled();expect(await db.chapaCheckout.count({where:{userId:f.user}})).toBe(0)});
- it('reads a newly committed maintenance halt after waiting for the separately acquired barrier',async()=>{
-  const f=await fixture();let acquired!:()=>void,release!:()=>void;
+ it.each(['TOP_UP','BID'] as const)('reads a newly committed maintenance halt before the %s dispatch',async purpose=>{
+  const f=await fixture(purpose),{authorize}=await creationBinding(f.user),prepare=await prepareCurrentDirectCreation(db,f.user,f.command,f.transport,false);let acquired!:()=>void,release!:()=>void;
   const ready=new Promise<void>(resolve=>{acquired=resolve}),gate=new Promise<void>(resolve=>{release=resolve});
   const writer=db.$transaction(async tx=>{
    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('lowwin:auction-maintenance',0))`;
    await tx.adminAudit.create({data:{actorId:'isolated-direct-maintainer',action:'AUCTIONS_MAINTENANCE_HALTED',target:'direct-barrier-regression',details:{runId:'direct-barrier-regression'}}});acquired();await gate;
   },{timeout:10000,maxWait:5000});
-  await ready;const outcome=f.start().then(value=>value,error=>error);
+  await ready;const outcome=prepare(authorize).then(value=>value,error=>error);
   try{
    await vi.waitFor(async()=>{const [row]=await db.$queryRaw<{waiting:boolean}[]>`SELECT EXISTS(SELECT 1 FROM pg_locks WHERE locktype='advisory' AND mode='ShareLock' AND NOT granted AND database=(SELECT oid FROM pg_database WHERE datname=current_database())) AS waiting`;expect(row.waiting).toBe(true)},{timeout:3000,interval:25});
    expect(f.direct).not.toHaveBeenCalled();release();await writer;expect(await outcome).toMatchObject({code:'AUCTIONS_PAUSED'});expect(f.direct).not.toHaveBeenCalled();expect(await db.chapaCheckout.count({where:{userId:f.user}})).toBe(0);
@@ -134,13 +189,13 @@ describe.skipIf(!database)('current Direct5 owned creation and private committed
    await db.$transaction(async tx=>{await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('lowwin:auction-maintenance',0))`;await tx.adminAudit.create({data:{actorId:'isolated-direct-maintainer',action:'AUCTIONS_MAINTENANCE_RESUMED',target:'direct-barrier-regression',details:{runId:'direct-barrier-regression'}}})});
   }
  });
- it('commits both original creation/dispatch budgets once and rolls them back together when creation is exhausted',async()=>{
-  const f=await fixture();await f.start();
+ it.each(['TOP_UP','BID'] as const)('commits both original %s budgets once and rolls them back together when creation is exhausted',async purpose=>{
+  const f=await fixture(purpose),{authorize}=await creationBinding(f.user);await createCurrentDirectCheckout(db,f.user,f.command,authorize,f.transport);
   const creation=`app:chapa-inline-create:${chapaHash(f.user)}`,initialization=`app:chapa-inline-initialize:${chapaHash(f.id())}`;
   expect((await db.rateLimit.findUniqueOrThrow({where:{key:creation}})).count).toBe(1);expect((await db.rateLimit.findUniqueOrThrow({where:{key:initialization}})).count).toBe(1);
   await f.start();expect((await db.rateLimit.findUniqueOrThrow({where:{key:initialization}})).count).toBe(1);expect(f.direct).toHaveBeenCalledOnce();
-  const exhausted=await fixture();for(let index=0;index<24;index++)expect(await allowIdentityRequest(db,'chapa-inline-create',exhausted.user,24,3600000)).toBe(true);
-  const before=await db.rateLimit.count({where:{key:{startsWith:'app:chapa-inline-initialize:'}}});await expect(exhausted.start()).rejects.toMatchObject({code:'RATE_LIMITED'});
+  const exhausted=await fixture(purpose),bound=await creationBinding(exhausted.user);for(let index=0;index<24;index++)expect(await allowIdentityRequest(db,'chapa-inline-create',exhausted.user,24,3600000)).toBe(true);
+  const before=await db.rateLimit.count({where:{key:{startsWith:'app:chapa-inline-initialize:'}}});await expect(createCurrentDirectCheckout(db,exhausted.user,exhausted.command,bound.authorize,exhausted.transport)).rejects.toMatchObject({code:'RATE_LIMITED'});
   expect(await db.chapaCheckout.count({where:{userId:exhausted.user}})).toBe(0);expect(exhausted.direct).not.toHaveBeenCalled();expect((await db.rateLimit.findUniqueOrThrow({where:{key:`app:chapa-inline-create:${chapaHash(exhausted.user)}`}})).count).toBe(24);expect(await db.rateLimit.count({where:{key:{startsWith:'app:chapa-inline-initialize:'}}})).toBe(before);
  });
  it('successful USSD validation immediately verifies privately and credits despite a recent pending private lookup',async()=>{
