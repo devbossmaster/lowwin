@@ -14,6 +14,7 @@ for(const am of [false,true])test(`compact authorization updates the same modal 
   await page.goto('/telegram?next='+encodeURIComponent(f.home));
   const dialog=await selectBids(page,f.title);
   await dialog.getByRole('radio',{name:'telebirr',exact:true}).check();
+  await dialog.locator('[data-payment-phone] input').fill('0911652904');
   await dialog.locator('[data-payment-action]').click();
   const progress=dialog.locator('[data-payment-progress]');
   await expect(progress).toHaveAttribute('data-payment-progress','authorization');

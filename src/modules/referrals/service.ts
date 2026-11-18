@@ -87,11 +87,15 @@ async function storePendingReferralStart(tx:Tx,telegramId:string,botId:string,to
 /** Caller holds the existing telegram identity lock and proves this user is new. */
 export async function attributeNewReferralInTransaction(tx:Tx,userId:string,telegramId:string,{newAccount,signedStartParam}:{newAccount:boolean;signedStartParam?:string|null},raw:Record<string,string|undefined>=process.env){
  if(!newAccount||!referralSchemaReady(raw))return;
+ const token=referralToken(signedStartParam);
+ const pending=await tx.referralPendingSignup.findUnique({where:{botId_telegramId:{botId:contactBotId(),telegramId}}});
+ // A signup without a signed referral token or pending bot referral has
+ // nothing to attribute. Avoid policy, clock and eligibility reads in that case.
+ if(!token&&(!pending||pending.consumedUserId))return;
  const now=await databaseNow(tx),policy=await getReferralPolicy(tx,raw);if(!policy.enabled)return;
  if(await tx.referralSignup.findUnique({where:{referredUserId:userId}})||await tx.bid.findFirst({where:{userId}}))return;
- const pending=await tx.referralPendingSignup.findUnique({where:{botId_telegramId:{botId:contactBotId(),telegramId}}});
  const usablePending=pending&&!pending.consumedUserId&&pending.expiresAt>now?pending:null;
- const token=referralToken(signedStartParam),direct=token?await tx.referralInvite.findUnique({where:{token}}):null;
+ const direct=token?await tx.referralInvite.findUnique({where:{token}}):null;
  const sponsor=usablePending?.referrerUserId??direct?.userId;
  if(!sponsor||sponsor===userId||!await eligibleSponsor(tx,sponsor))return;
  if(usablePending)await tx.referralPendingSignup.update({where:{id:usablePending.id},data:{consumedUserId:userId}});

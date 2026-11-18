@@ -108,7 +108,7 @@ describe.skipIf(!database)('LowWin identity policy for upstream verified Telegra
  });
  it('rolls back every prepared identity write when the final account write fails',async()=>{
   const claims=profile(),wrapped={$transaction:(task:(tx:Prisma.TransactionClient)=>Promise<unknown>,options:{maxWait:number;timeout:number})=>db.$transaction(async tx=>{
-   const original=tx.account.create.bind(tx.account),account={...tx.account,create:async(args:Parameters<typeof tx.account.create>[0])=>{if(args.data.providerId==='telegram-oidc')throw Error('synthetic-commit-failure');return original(args)}};
+   const account={...tx.account,createMany:async()=>{throw Error('synthetic-commit-failure')}};
    return task(new Proxy(tx,{get(target,key,receiver){return key==='account'?account:Reflect.get(target,key,receiver)}}));
   },options)} as unknown as PrismaClient;
   await expect(prepareTelegramOIDCIdentity(claims,settings,wrapped)).rejects.toThrow('synthetic-commit-failure');await expectNoIdentity(claims);expect(await db.account.count({where:{providerId:'telegram',accountId:String(claims.id)}})).toBe(0);
