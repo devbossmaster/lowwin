@@ -1,0 +1,356 @@
+[
+  {
+    "width": 320,
+    "language": "en",
+    "status": 200,
+    "hero": {
+      "x": 0,
+      "y": 145,
+      "width": 320,
+      "height": 180,
+      "right": 320,
+      "bottom": 325
+    },
+    "copy": {
+      "x": 12,
+      "y": 179.359375,
+      "width": 133.1875,
+      "height": 59.265625,
+      "right": 145.1875,
+      "bottom": 238.625
+    },
+    "art": {
+      "x": 0,
+      "y": 145,
+      "width": 320,
+      "height": 180,
+      "right": 320,
+      "bottom": 325
+    },
+    "image": {
+      "x": 0,
+      "y": 145,
+      "width": 320,
+      "height": 180,
+      "right": 320,
+      "bottom": 325
+    },
+    "overflow": false,
+    "textFits": true,
+    "actions": [
+      {
+        "x": 12,
+        "y": 246.625,
+        "width": 85.796875,
+        "height": 44,
+        "right": 97.796875,
+        "bottom": 290.625
+      },
+      {
+        "x": 103.796875,
+        "y": 246.625,
+        "width": 85.796875,
+        "height": 44,
+        "right": 189.59375,
+        "bottom": 290.625
+      }
+    ],
+    "imageSource": "http://localhost:3192/_next/image?url=%2Fimages%2Flowwin-family-home-blue-20261118.webp&w=640&q=75",
+    "headingFont": "\"Lowwin Banner\", Inter, sans-serif"
+  },
+  {
+    "width": 320,
+    "language": "am",
+    "status": 200,
+    "hero": {
+      "x": 0,
+      "y": 145,
+      "width": 320,
+      "height": 180,
+      "right": 320,
+      "bottom": 325
+    },
+    "copy": {
+      "x": 12,
+      "y": 183.78125,
+      "width": 133.1875,
+      "height": 50.4375,
+      "right": 145.1875,
+      "bottom": 234.21875
+    },
+    "art": {
+      "x": 0,
+      "y": 145,
+      "width": 320,
+      "height": 180,
+      "right": 320,
+      "bottom": 325
+    },
+    "image": {
+      "x": 0,
+      "y": 145,
+      "width": 320,
+      "height": 180,
+      "right": 320,
+      "bottom": 325
+    },
+    "overflow": false,
+    "textFits": true,
+    "actions": [
+      {
+        "x": 12,
+        "y": 242.21875,
+        "width": 85.796875,
+        "height": 44,
+        "right": 97.796875,
+        "bottom": 286.21875
+      },
+      {
+        "x": 103.796875,
+        "y": 242.21875,
+        "width": 85.796875,
+        "height": 44,
+        "right": 189.59375,
+        "bottom": 286.21875
+      }
+    ],
+    "imageSource": "http://localhost:3192/_next/image?url=%2Fimages%2Flowwin-family-home-blue-20261118.webp&w=640&q=75",
+    "headingFont": "\"Lowwin Ethiopic\", Inter, sans-serif"
+  },
+  {
+    "width": 430,
+    "language": "en",
+    "status": 200,
+    "hero": {
+      "x": 0,
+      "y": 145,
+      "width": 430,
+      "height": 241.875,
+      "right": 430,
+      "bottom": 386.875
+    },
+    "copy": {
+      "x": 12,
+      "y": 200.78125,
+      "width": 182.6875,
+      "height": 78.296875,
+      "right": 194.6875,
+      "bottom": 279.078125
+    },
+    "art": {
+      "x": 0,
+      "y": 145,
+      "width": 430,
+      "height": 241.875,
+      "right": 430,
+      "bottom": 386.875
+    },
+    "image": {
+      "x": 0,
+      "y": 145,
+      "width": 430,
+      "height": 241.875,
+      "right": 430,
+      "bottom": 386.875
+    },
+    "overflow": false,
+    "textFits": true,
+    "actions": [
+      {
+        "x": 12,
+        "y": 287.078125,
+        "width": 118.796875,
+        "height": 44,
+        "right": 130.796875,
+        "bottom": 331.078125
+      },
+      {
+        "x": 136.796875,
+        "y": 287.078125,
+        "width": 118.796875,
+        "height": 44,
+        "right": 255.59375,
+        "bottom": 331.078125
+      }
+    ],
+    "imageSource": "http://localhost:3192/_next/image?url=%2Fimages%2Flowwin-family-home-blue-20261118.webp&w=640&q=75",
+    "headingFont": "\"Lowwin Banner\", Inter, sans-serif"
+  },
+  {
+    "width": 430,
+    "language": "am",
+    "status": 200,
+    "hero": {
+      "x": 0,
+      "y": 145,
+      "width": 430,
+      "height": 241.875,
+      "right": 430,
+      "bottom": 386.875
+    },
+    "copy": {
+      "x": 12,
+      "y": 206.71875,
+      "width": 182.6875,
+      "height": 66.4375,
+      "right": 194.6875,
+      "bottom": 273.15625
+    },
+    "art": {
+      "x": 0,
+      "y": 145,
+      "width": 430,
+      "height": 241.875,
+      "right": 430,
+      "bottom": 386.875
+    },
+    "image": {
+      "x": 0,
+      "y": 145,
+      "width": 430,
+      "height": 241.875,
+      "right": 430,
+      "bottom": 386.875
+    },
+    "overflow": false,
+    "textFits": true,
+    "actions": [
+      {
+        "x": 12,
+        "y": 281.15625,
+        "width": 118.796875,
+        "height": 44,
+        "right": 130.796875,
+        "bottom": 325.15625
+      },
+      {
+        "x": 136.796875,
+        "y": 281.15625,
+        "width": 118.796875,
+        "height": 44,
+        "right": 255.59375,
+        "bottom": 325.15625
+      }
+    ],
+    "imageSource": "http://localhost:3192/_next/image?url=%2Fimages%2Flowwin-family-home-blue-20261118.webp&w=640&q=75",
+    "headingFont": "\"Lowwin Ethiopic\", Inter, sans-serif"
+  },
+  {
+    "width": 1280,
+    "language": "en",
+    "status": 200,
+    "hero": {
+      "x": 24,
+      "y": 192,
+      "width": 1232,
+      "height": 535.640625,
+      "right": 1256,
+      "bottom": 727.640625
+    },
+    "copy": {
+      "x": 62.390625,
+      "y": 325.90625,
+      "width": 438.96875,
+      "height": 195.828125,
+      "right": 501.359375,
+      "bottom": 521.734375
+    },
+    "art": {
+      "x": 24,
+      "y": 192,
+      "width": 1232,
+      "height": 535.640625,
+      "right": 1256,
+      "bottom": 727.640625
+    },
+    "image": {
+      "x": 24,
+      "y": 192,
+      "width": 1232,
+      "height": 535.640625,
+      "right": 1256,
+      "bottom": 727.640625
+    },
+    "overflow": false,
+    "textFits": true,
+    "actions": [
+      {
+        "x": 62.390625,
+        "y": 545.734375,
+        "width": 146.078125,
+        "height": 48,
+        "right": 208.46875,
+        "bottom": 593.734375
+      },
+      {
+        "x": 218.46875,
+        "y": 545.734375,
+        "width": 132.125,
+        "height": 48,
+        "right": 350.59375,
+        "bottom": 593.734375
+      }
+    ],
+    "imageSource": "http://localhost:3192/_next/image?url=%2Fimages%2Flowwin-family-home-blue-20261118.webp&w=1920&q=75",
+    "headingFont": "\"Lowwin Banner\", Inter, sans-serif"
+  },
+  {
+    "width": 1280,
+    "language": "am",
+    "status": 200,
+    "hero": {
+      "x": 24,
+      "y": 192,
+      "width": 1232,
+      "height": 535.640625,
+      "right": 1256,
+      "bottom": 727.640625
+    },
+    "copy": {
+      "x": 62.390625,
+      "y": 317.96875,
+      "width": 438.96875,
+      "height": 211.703125,
+      "right": 501.359375,
+      "bottom": 529.671875
+    },
+    "art": {
+      "x": 24,
+      "y": 192,
+      "width": 1232,
+      "height": 535.640625,
+      "right": 1256,
+      "bottom": 727.640625
+    },
+    "image": {
+      "x": 24,
+      "y": 192,
+      "width": 1232,
+      "height": 535.640625,
+      "right": 1256,
+      "bottom": 727.640625
+    },
+    "overflow": false,
+    "textFits": true,
+    "actions": [
+      {
+        "x": 62.390625,
+        "y": 553.671875,
+        "width": 140.71875,
+        "height": 48,
+        "right": 203.109375,
+        "bottom": 601.671875
+      },
+      {
+        "x": 213.109375,
+        "y": 553.671875,
+        "width": 134.40625,
+        "height": 48,
+        "right": 347.515625,
+        "bottom": 601.671875
+      }
+    ],
+    "imageSource": "http://localhost:3192/_next/image?url=%2Fimages%2Flowwin-family-home-blue-20261118.webp&w=1920&q=75",
+    "headingFont": "\"Lowwin Ethiopic\", Inter, sans-serif"
+  }
+]

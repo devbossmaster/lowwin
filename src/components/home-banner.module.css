@@ -1,34 +1,35 @@
 @font-face{font-family:'Lowwin Banner';src:url('/fonts/sora-latin-800.woff2') format('woff2');font-style:normal;font-weight:800;font-display:swap}
-.banner{position:relative;isolation:isolate;width:100%;min-width:0;overflow:hidden;background:#07182d;color:#f7faff;--surface-ink:#f7faff}
+.banner{position:relative;isolation:isolate;container-type:inline-size;width:100%;min-width:0;overflow:hidden;background:#07182d;color:#f7faff;--surface-ink:#f7faff}
 .artworkBanner{border-radius:0}
-.bannerMain{position:relative;isolation:isolate;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;width:100%;min-height:500px;aspect-ratio:3/4;padding:28px 18px}
+.bannerMain{position:relative;isolation:isolate;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;width:100%;aspect-ratio:16/9;padding:10px 12px}
 .bannerArtwork{position:absolute;z-index:-1;inset:0;overflow:hidden;pointer-events:none;background:#07182d}
-.bannerArtwork picture{display:block;width:100%;height:100%}
-.bannerArtwork img{display:block;width:100%;height:100%;object-fit:cover;object-position:right center}
+.bannerArtwork img{display:block;width:100%;height:100%;object-fit:contain;object-position:right center}
 .bannerArtwork::after{position:absolute;inset:0;content:'';background:linear-gradient(90deg,#051429e8 0%,#051429cf 32%,#05142959 51%,transparent 72%)}
 .bannerCopy{position:relative;min-width:0;width:45%}
-.bannerCopy h1{margin:0;max-width:16ch;color:#f7faff;font-family:'Lowwin Banner',Inter,sans-serif;font-size:clamp(20px,5.6vw,26px);font-weight:800;line-height:1.2;letter-spacing:-.03em;text-wrap:balance}
+.bannerCopy h1{margin:0;max-width:16ch;color:#f7faff;font-family:'Lowwin Banner',Inter,sans-serif;font-size:clamp(14px,4.8cqi,24px);font-weight:800;line-height:1.2;letter-spacing:-.03em;text-wrap:balance}
 .bannerCopy h1 span{display:block}
-.bannerCopy h1 .headlineAccent{margin-top:8px;color:#82beff}
-.bannerCopy p{margin:16px 0 0;max-width:38ch;color:#e4efff;font-size:13px;line-height:1.7;text-wrap:pretty}
-.banner:lang(am) h1{max-width:20ch;font-family:'Lowwin Ethiopic',Inter,sans-serif;letter-spacing:0;line-height:1.5;font-size:clamp(20px,5.3vw,25px)}
+.bannerCopy h1 .headlineAccent{margin-top:4px;color:#82beff}
+.bannerCopy p{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap;color:#e4efff}
+.banner:lang(am) h1{max-width:20ch;font-family:'Lowwin Ethiopic',Inter,sans-serif;letter-spacing:0;line-height:1.4;font-size:clamp(14px,4.4cqi,22px)}
 .banner:lang(am) p{font-size:13px;line-height:1.85}
-.introActions{position:relative;display:flex;flex-direction:column;align-items:stretch;width:45%;gap:8px;margin-top:22px}
-.banner .introActions :is(a,button){display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;max-width:100%;padding:10px 10px;border:1px solid #91b1da;border-radius:24px;background:#07182dc9;color:#f7faff;font:inherit;font-size:12px;font-weight:650;line-height:1.5;text-align:center;text-decoration:none;cursor:pointer;transition:background-color 150ms ease}
+.introActions{position:relative;display:flex;align-items:stretch;width:60%;gap:6px;margin-top:8px}
+.banner .introActions :is(a,button){display:inline-flex;flex:1;align-items:center;justify-content:center;gap:0;min-width:0;min-height:44px;max-width:100%;padding:6px 8px;border:1px solid #91b1da;border-radius:24px;background:#07182dc9;color:#f7faff;font:inherit;font-size:11px;font-weight:650;line-height:1.3;text-align:center;text-decoration:none;cursor:pointer;transition:background-color 150ms ease}
 .banner .introActions .liveAction{border-color:#2563eb;background:#2563eb;color:#fff}
 .banner .introActions :is(a,button):focus-visible{outline:3px solid #a5dcff;outline-offset:3px}
 .banner .introActions button:hover:not(:disabled):not([aria-disabled=true]){background:#173d6f;color:#fff}
 .banner .introActions .liveAction:hover{background:#1d4ed8;color:#fff}
-.introActions svg{flex:none}
+.introActions svg{display:none;flex:none}
 @media(min-width:640px){
  :global(.app-frame[data-app-layout=browser]) .bannerMain{min-height:440px;aspect-ratio:1840/800;padding:32px clamp(24px,3vw,48px)}
  :global(.app-frame[data-app-layout=browser]) .bannerCopy{width:38%;max-width:480px}
  :global(.app-frame[data-app-layout=browser]) .bannerCopy h1{font-size:clamp(28px,3.4vw,44px)}
- :global(.app-frame[data-app-layout=browser]) .bannerCopy p{font-size:14px;line-height:1.7}
+ :global(.app-frame[data-app-layout=browser]) .bannerCopy p{position:static;width:auto;height:auto;margin:16px 0 0;overflow:visible;clip-path:none;white-space:normal;max-width:38ch;font-size:14px;line-height:1.7;text-wrap:pretty}
  :global(.app-frame[data-app-layout=browser]) .banner:lang(am) h1{font-size:clamp(24px,2.7vw,36px)}
  :global(.app-frame[data-app-layout=browser]) .banner:lang(am) p{line-height:1.85}
  :global(.app-frame[data-app-layout=browser]) .introActions{flex-direction:row;flex-wrap:wrap;align-items:center;width:40%;gap:10px;margin-top:24px}
- :global(.app-frame[data-app-layout=browser]) .banner .introActions :is(a,button){padding-inline:16px;font-size:14px;min-height:48px}
+ :global(.app-frame[data-app-layout=browser]) .banner .introActions :is(a,button){flex:none;gap:6px;padding:10px 16px;font-size:14px;min-height:48px}
+ :global(.app-frame[data-app-layout=browser]) .introActions svg{display:block}
+ :global(.app-frame[data-app-layout=browser]) .bannerArtwork img{object-fit:cover}
 }
 @media(min-width:640px) and (max-width:1023px){
  :global(.app-frame[data-app-layout=browser]) .bannerArtwork img{object-fit:contain;object-position:right center;mask-image:linear-gradient(to bottom,transparent,#000 10%,#000 90%,transparent)}

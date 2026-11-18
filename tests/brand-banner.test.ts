@@ -8,11 +8,12 @@ describe('one current LowWin campaign banner',()=>{
  it('preserves published uploads and unrelated private/product paths exactly',()=>{for(const path of ['/api/media/11111111-1111-4111-a111-111111111111','/images/custom-campaign.webp','/images/lowwin-home-banner-en.webp/private','/images/private-winner.webp'])expect(lowwinBanner('am',path)).toBe(path)});
  it('refreshes former built-in Home artwork to the approved identity while preserving custom uploads',()=>{
   for(const language of ['en','am'] as const){
-   for(const old of ['/images/lowwin-blue-black-prizes-20261117.webp','/images/lowwin-blue-black-prizes-20261118.webp','/images/lowwin-home-16x9-en-20261114.webp','/images/lowwin-home-16x9-am-20261114.webp','/images/lowwin-light-blue-banner-en-20261114.webp']){expect(lowwinHomeBanner(language,old+'?v=old')).toBe(LOWWIN_HOME_BANNER_SRC[language]);expect(lowwinMobileHomeBanner(language,old+'?v=old')).toBe(LOWWIN_HOME_MOBILE_BANNER_SRC[language]);}
+   for(const old of ['/images/lowwin-family-home-blue-mobile-20261118.webp','/images/lowwin-blue-black-prizes-20261117.webp','/images/lowwin-blue-black-prizes-20261118.webp','/images/lowwin-home-16x9-en-20261114.webp','/images/lowwin-home-16x9-am-20261114.webp','/images/lowwin-light-blue-banner-en-20261114.webp']){expect(lowwinHomeBanner(language,old+'?v=old')).toBe(LOWWIN_HOME_BANNER_SRC[language]);expect(lowwinMobileHomeBanner(language,old+'?v=old')).toBe(LOWWIN_HOME_MOBILE_BANNER_SRC[language]);}
    const custom='/api/media/11111111-1111-4111-a111-111111111111';expect(lowwinHomeBanner(language,custom)).toBe(custom);expect(lowwinMobileHomeBanner(language,custom)).toBe(custom);
   }
  });
- it('uses the wide desktop composition only for built-in Home artwork',()=>{
+ it('uses one landscape composition on phones and desktop while preserving custom artwork',()=>{
+  expect(LOWWIN_HOME_MOBILE_BANNER_SRC).toBe(LOWWIN_HOME_BANNER_SRC);
   for(const language of ['en','am'] as const){
    expect(lowwinDesktopHomeBanner(language)).toBe(LOWWIN_HOME_BANNER_SRC[language]);
    expect(lowwinMobileHomeBanner(language)).toBe(LOWWIN_HOME_MOBILE_BANNER_SRC[language]);

@@ -5,7 +5,8 @@ export const LOWWIN_BRAND_NAME='LowWin';
 export const LOWWIN_BANNER_SRC={en:'/images/lowwin-pearl-banner-en-20261116.webp',am:'/images/lowwin-pearl-banner-am-20261116.webp'} as const;
 /** The Home banner follows its own reference proportions. */
 export const LOWWIN_HOME_BANNER_SRC={en:'/images/lowwin-family-home-blue-20261118.webp',am:'/images/lowwin-family-home-blue-20261118.webp'} as const;
-export const LOWWIN_HOME_MOBILE_BANNER_SRC={en:'/images/lowwin-family-home-blue-mobile-20261118.webp',am:'/images/lowwin-family-home-blue-mobile-20261118.webp'} as const;
+/** The same landscape scene is used on phones and desktop. */
+export const LOWWIN_HOME_MOBILE_BANNER_SRC=LOWWIN_HOME_BANNER_SRC;
 
 // Built-in campaign artwork follows the selected locale. Published uploads,
 // consent-controlled winner media and product photographs keep their own URLs.
@@ -15,13 +16,12 @@ export function lowwinBanner(language:'en'|'am',configured?:string|null){
 }
 export function lowwinHomeBanner(language:'en'|'am',configured?:string|null){
  const path=configured?.split(/[?#]/,1)[0];
- return !path||/^\/images\/lowwin-blue-black-prizes-2026111[78]\.webp$/.test(path)||legacyBanners.has(path)||/^\/images\/lowwin-pearl-home-(?:en|am)-20261116\.webp$/.test(path)||Object.values(LOWWIN_HOME_BANNER_SRC).some(src=>src===path)?LOWWIN_HOME_BANNER_SRC[language]:configured!;
+ return !path||path==='/images/lowwin-family-home-blue-mobile-20261118.webp'||/^\/images\/lowwin-blue-black-prizes-2026111[78]\.webp$/.test(path)||legacyBanners.has(path)||/^\/images\/lowwin-pearl-home-(?:en|am)-20261116\.webp$/.test(path)||Object.values(LOWWIN_HOME_BANNER_SRC).some(src=>src===path)?LOWWIN_HOME_BANNER_SRC[language]:configured!;
 }
 
-/** Preserve custom artwork URLs while selecting a complete family scene for phones. */
+/** Preserve custom artwork URLs while sharing the landscape family scene. */
 export function lowwinMobileHomeBanner(language:'en'|'am',configured?:string|null){
- const desktop=lowwinHomeBanner(language,configured);
- return Object.values(LOWWIN_HOME_BANNER_SRC).some(src=>src===desktop)?LOWWIN_HOME_MOBILE_BANNER_SRC[language]:desktop;
+ return lowwinHomeBanner(language,configured);
 }
 
 /** Art direction keeps the complete family/prizes visible in a shallower desktop hero. */
