@@ -38,6 +38,39 @@ describe('read-only original Inline key discovery',()=>{
   await vi.advanceTimersByTimeAsync(1000);stop();wake.dispatchEvent(new Event('focus'));await vi.advanceTimersByTimeAsync(60000);
   expect(read).not.toHaveBeenCalled();expect(received).not.toHaveBeenCalled();
  });
+ it.each(['wallet return','reconnect'])('replaces one stalled creation lookup on %s and ignores its late response',async trigger=>{
+  vi.useFakeTimers();
+  const wake=new EventTarget(),source=visibility(),received=vi.fn(),error=vi.fn(),onWalletReturn=vi.fn();
+  const handlers=new Map<string,()=>void>();
+  const telegram={onEvent:(event:string,listener:()=>void)=>{handlers.set(event,listener)},offEvent:(event:string)=>{handlers.delete(event)}};
+  let completeStale!:(result:ChapaCheckoutView)=>void;
+  let completeFresh!:(result:ChapaCheckoutView)=>void;
+  const read=vi.fn<(signal:AbortSignal)=>Promise<ChapaCheckoutView>>()
+   .mockImplementationOnce(()=>new Promise(resolve=>{completeStale=resolve}))
+   .mockImplementationOnce(()=>new Promise(resolve=>{completeFresh=resolve}));
+  const stop=startChapaOriginalPolling(read,received,source,{isCurrent:()=>true,wake,telegram,onWalletReturn,onError:error});
+  await vi.advanceTimersByTimeAsync(2500);
+  if(trigger==='wallet return'){wake.dispatchEvent(new Event('blur'));wake.dispatchEvent(new Event('focus'))}
+  else wake.dispatchEvent(new Event('online'));
+  wake.dispatchEvent(new Event('focus'));
+  expect(read).toHaveBeenCalledTimes(2);
+  expect(read.mock.calls[0][0].aborted).toBe(true);
+  expect(read.mock.calls[1][0].aborted).toBe(false);
+  expect(onWalletReturn).toHaveBeenCalledTimes(trigger==='wallet return'?1:0);
+  handlers.get('activated')!();
+  expect(read).toHaveBeenCalledTimes(2);
+  expect(onWalletReturn).toHaveBeenCalledOnce();
+  completeStale(order);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(received).not.toHaveBeenCalled();
+  expect(error).not.toHaveBeenCalled();
+  const credited={...order,status:'CREDITED'};
+  completeFresh(credited);
+  await vi.advanceTimersByTimeAsync(10000);
+  expect(received).toHaveBeenCalledExactlyOnceWith(credited);
+  expect(read).toHaveBeenCalledTimes(2);
+  stop();
+ });
  it('keeps pre-commit404s nonterminal and bounded when initialization is still pending',async()=>{
   vi.useFakeTimers();const read=vi.fn().mockRejectedValue(new ChapaClientError('Not committed yet',404,'NOT_FOUND')),received=vi.fn(),error=vi.fn(),pause=vi.fn();
   const stop=startChapaOriginalPolling(read,received,visibility(),{isCurrent:()=>true,wake:null,initialDelayMs:5000,maximumReads:3,onError:error,onPause:pause});
