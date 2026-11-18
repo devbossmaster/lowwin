@@ -19,23 +19,32 @@ async function paymentIdentity(request:Request){
 // Validate the signed cookie before opening a money transaction. Do not build
 // a Better Auth adapter or refresh a session inside that transaction. Instead,
 // re-read the authenticated session and its current binding in one DB query.
-function paymentSession(request:Request,current:PaymentIdentity,directTopUpReady=false){
+function paymentSession(request:Request,current:PaymentIdentity,preparation?:{directBidReady:boolean;directTopUpReady:boolean}){
  const preview=current.user.id==='lowin-local-test-user'&&localMiniPreview(request.headers);
  const telegramId=current.telegramId;
  if(!preview&&!telegramId)throw new PrivateApiError(401,'Sign in through Telegram.');
  const botId=preview?null:contactBotId();
+ const boundSession=()=>({
+  id:current.session.id,token:current.session.token,userId:current.user.id,expiresAt:{gt:new Date()},
+  ...(!preview?{telegramLaunchId:telegramId,telegramAuthSource:current.session.telegramAuthSource}:{}),
+ }) satisfies Prisma.SessionWhereInput;
+ const boundMember={
+  telegramId,staffMember:{is:null},ownContact:{is:{telegramId:telegramId!,botId:botId!,revokedAt:null}},
+ } satisfies Prisma.UserWhereInput;
  const reauthorize:PaymentSessionAuthorizer=async(tx:Prisma.TransactionClient)=>{
   const valid=await tx.session.findFirst({where:{
-   id:current.session.id,token:current.session.token,userId:current.user.id,expiresAt:{gt:new Date()},
-   ...(!preview?{telegramLaunchId:telegramId,telegramAuthSource:current.session.telegramAuthSource,user:{is:{telegramId,staffMember:{is:null},ownContact:{is:{telegramId:telegramId!,botId:botId!,revokedAt:null}}}}}:{}),
+   ...boundSession(),...(!preview?{user:{is:boundMember}}:{}),
   },select:{id:true}});
   if(!valid)throw new PrivateApiError(401,'Sign in through Telegram.');
  };
  if(!preview){
   const binding={sessionId:current.session.id,sessionToken:current.session.token,userId:current.user.id,telegramId:telegramId!,telegramAuthSource:current.session.telegramAuthSource,botId:botId!};
+  reauthorize.directVerificationFilter=()=>({
+   userId:binding.userId,user:{is:{...boundMember,sessions:{some:boundSession()}}},
+  });
   reauthorize.forCurrentDirectCreate=(tx,userId,key)=>authorizeCurrentDirectCreation(tx,binding,userId,key);
-  reauthorize.forCurrentDirectBid=(client,userId,input)=>binding.botId===contactBotId()?prepareAtomicDirectBid(client,binding,userId,input):Promise.resolve(null);
-  if(directTopUpReady)reauthorize.forCurrentDirectTopUp=(client,userId,input)=>binding.botId===contactBotId()?prepareAtomicDirectTopUp(client,binding,userId,input):Promise.resolve(null);
+  if(preparation?.directBidReady)reauthorize.forCurrentDirectBid=(client,userId,input)=>binding.botId===contactBotId()?prepareAtomicDirectBid(client,binding,userId,input):Promise.resolve(null);
+  if(preparation?.directTopUpReady)reauthorize.forCurrentDirectTopUp=(client,userId,input)=>binding.botId===contactBotId()?prepareAtomicDirectTopUp(client,binding,userId,input):Promise.resolve(null);
   reauthorize.forWalletBatch=(tx,userId,key)=>authorizeWalletBatch(tx,binding,userId,key);
   reauthorize.forBidBatchQuote=(tx,userId,key)=>authorizeBidBatchQuote(tx,binding,userId,key);
   reauthorize.forWalletCashCommand=(client,userId,input)=>binding.botId===contactBotId()?runAtomicCashWalletCommand(client,binding,userId,input):Promise.resolve(null);
@@ -54,7 +63,7 @@ export async function requireCountedPaymentSession(request:Request,options:{dire
  const result=await measureChapa('auth_session',()=>getCountedMiniSession(request.headers,options));
  if(!result)throw new PrivateApiError(401,'Sign in through Telegram.');
  if(!result.rateAllowed)throw mutationRateError();
- return {...paymentSession(request,result.identity,result.directTopUpReady),directOriginal:result.directOriginal};
+ return {...paymentSession(request,result.identity,result),directOriginal:result.directOriginal};
 }
 
 /** Overlap only bounded read-only preparation with the unchanged durable quota.

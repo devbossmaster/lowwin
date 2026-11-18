@@ -12,6 +12,7 @@ export type PaymentCreationContact={phoneCipher:string;botId:string;replayExists
 export type WalletBatchAuthorization={replayExists:boolean;assertEligible:()=>void};
 type BidBatchQuoteAuthorization=WalletBatchAuthorization&{maintenanceHalted:boolean};
 export type PaymentSessionAuthorizer=((tx:Prisma.TransactionClient)=>Promise<void>)&{
+ directVerificationFilter?:()=>Prisma.ChapaCheckoutWhereInput;
  forCurrentDirectCreate?:(tx:Prisma.TransactionClient,userId:string,key:string)=>Promise<PaymentCreationContact>;
  forCurrentDirectBid?:(client:PrismaClient,userId:string,input:DirectBidPreparation)=>Promise<ChapaCheckout|null>;
  forCurrentDirectTopUp?:(client:PrismaClient,userId:string,input:DirectTopUpPreparation)=>Promise<ChapaCheckout|null>;
