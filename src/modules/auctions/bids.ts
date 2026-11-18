@@ -98,27 +98,49 @@ export async function submitBidInTransaction(tx:Prisma.TransactionClient,input:B
 export async function recordValidatedSubmissionFeeBidInTransaction(tx:Prisma.TransactionClient,input:BidInput,prepared:ValidatedSubmissionFeeBid,raw:Record<string,string|undefined>=process.env,allowDepositBonus=true,deferNotification=false):Promise<BidReceipt>{
   const command=bidInputSchema.parse(input),terms=prepared.auction.terms,fee=prepared.auction.feeRevisions[0];
   if(prepared.auction.slug!==command.auctionSlug||!terms||!isSubmissionFeeOnly(terms.ruleVersion)||!fee||fee.version!==command.feeVersion||command.couponId!==(prepared.discount?.couponId))fail('RETRYABLE_CONFLICT',409,'Review the current bid order before paying.');
-  return recordBidInTransaction(tx,command,prepared.auction,prepared.own,raw,prepared.discount,allowDepositBonus,deferNotification);
+  return recordBidInTransaction(tx,command,prepared.auction,prepared.own,raw,prepared.discount,allowDepositBonus,deferNotification,true);
 }
 
-async function recordBidInTransaction(tx:Prisma.TransactionClient,command:z.output<typeof bidInputSchema>,auction:ValidatedAuction,own:ValidatedSubmissionFeeBid['own'],raw:Record<string,string|undefined>,lockedDiscount?:ValidatedSubmissionFeeBid['discount'],allowDepositBonus=true,deferNotification=false):Promise<BidReceipt>{
+type WalletBidAccount={id:string;kind:string;balance:Prisma.Decimal};
+/** Only the validated batch path already owns the auction/wallet writer locks.
+ * Read mutable balances in a NEW statement after the hold-state lock finishes;
+ * a snapshot opened before waiting on that lock must not authorize a debit. */
+async function completeBatchWallet(tx:Prisma.TransactionClient,userId:string,auctionId:string){
+  const [wallet]=await tx.$queryRaw<{id:string}[]>`
+    WITH locked AS MATERIALIZED (
+      SELECT w.id,lock_wallet_hold_state(w.id) FROM "Wallet" w WHERE w."userId"=${userId}
+    ) SELECT id FROM locked`;
+  if(!wallet)return null;
+  const rows=await tx.$queryRaw<Array<WalletBidAccount&{holdPoints:Prisma.Decimal|null;feeAccountId:string|null}>>`
+    SELECT a.id,a.kind,a.balance,h.points AS "holdPoints",fees.id AS "feeAccountId"
+    FROM "LedgerAccount" a
+    LEFT JOIN "AuctionHold" h ON h."walletId"=a."walletId" AND h."auctionId"=${auctionId}
+    LEFT JOIN "LedgerAccount" fees ON fees.name='platform:fees'
+    WHERE a."walletId"=${wallet.id}`;
+  // An incomplete installation keeps the original initialization/fallback.
+  if(!rows.some(account=>account.kind==='AVAILABLE')||!rows.some(account=>account.kind==='HELD'))return null;
+  const first=rows[0];
+  return {wallet,accounts:rows as WalletBidAccount[],hold:first.holdPoints===null?null:{points:first.holdPoints},feeAccount:first.feeAccountId?{id:first.feeAccountId}:null};
+}
+
+async function recordBidInTransaction(tx:Prisma.TransactionClient,command:z.output<typeof bidInputSchema>,auction:ValidatedAuction,own:ValidatedSubmissionFeeBid['own'],raw:Record<string,string|undefined>,lockedDiscount?:ValidatedSubmissionFeeBid['discount'],allowDepositBonus=true,deferNotification=false,batchValidated=false):Promise<BidReceipt>{
   const {userId,auctionSlug,amount,key,feeVersion,couponId}=command,terms=auction.terms!,fee=auction.feeRevisions[0];
   const requestHash=createHash('sha256').update(JSON.stringify({auctionSlug,amount:amount.toString(),feeVersion,couponId})).digest('hex');
 
   // Most bidders already have both accounts. Keep the same hold-state lock,
   // avoiding account upserts on this path; initialize incomplete wallets using
   // the original helper before any balance, posting or hold can be changed.
-  let wallet=await tx.wallet.findUnique({where:{userId}});
-  if(wallet)await tx.$executeRaw`SELECT lock_wallet_hold_state(${wallet.id})`;
-  else wallet=await ensureWallet(tx,userId);
-  let accounts=await tx.ledgerAccount.findMany({where:{walletId:wallet.id}});
+  const complete=batchValidated?await completeBatchWallet(tx,userId,auction.id):null;
+  let wallet:{id:string}|null=complete?.wallet??await tx.wallet.findUnique({where:{userId}});
+  if(!complete){if(wallet)await tx.$executeRaw`SELECT lock_wallet_hold_state(${wallet.id})`;else wallet=await ensureWallet(tx,userId)}
+  let accounts:WalletBidAccount[]=complete?.accounts??await tx.ledgerAccount.findMany({where:{walletId:wallet!.id}});
   if(!accounts.some(account=>account.kind==='AVAILABLE')||!accounts.some(account=>account.kind==='HELD')){
     wallet=await ensureWallet(tx,userId);
     accounts=await tx.ledgerAccount.findMany({where:{walletId:wallet.id}});
   }
   const available=accounts.find(account=>account.kind==='AVAILABLE')!;
   const held=accounts.find(account=>account.kind==='HELD')!;
-  const hold=await tx.auctionHold.findUnique({where:{walletId_auctionId:{walletId:wallet.id,auctionId:auction.id}}});
+  const hold=complete?complete.hold:await tx.auctionHold.findUnique({where:{walletId_auctionId:{walletId:wallet!.id,auctionId:auction.id}}});
   const previousMax=hold?.points??new Prisma.Decimal(0);
   const extraReserved=isSubmissionFeeOnly(terms.ruleVersion)?new Prisma.Decimal(0):Prisma.Decimal.max(amount.sub(previousMax),0);
   let discount=lockedDiscount??null;
@@ -143,7 +165,7 @@ async function recordBidInTransaction(tx:Prisma.TransactionClient,command:z.outp
   if(extraReserved.gt(0))await adjustAuctionHoldInTransaction(tx,{userId,auctionId:auction.id,direction:'RESERVE',points:extraReserved.toString(),key:`bid-hold:${createHash('sha256').update(`${userId}:${key}`).digest('hex')}`,reference:`bid:${bid.id}`});
   // Platform accounts are immutable. Normal purchases only read the existing
   // fee account; retain initialization for an empty/incomplete installation.
-  let feeAccount=fee.feePoints.gt(0)?await tx.ledgerAccount.findUnique({where:{name:'platform:fees'},select:{id:true}}):null;
+  let feeAccount=fee.feePoints.gt(0)?complete?complete.feeAccount:await tx.ledgerAccount.findUnique({where:{name:'platform:fees'},select:{id:true}}):null;
   if(fee.feePoints.gt(0)&&!feeAccount){await seedPlatformAccounts(tx);feeAccount=await tx.ledgerAccount.findUniqueOrThrow({where:{name:'platform:fees'},select:{id:true}})}
   const receipt:BidReceipt={
     bid:{id:bid.id,auctionCode:auction.code,auctionSlug,amount:amount.toString(),acceptedAt:bid.acceptedAt.toISOString(),termsVersion:fee.version,feePoints:fee.feePoints.toString()},

@@ -3,7 +3,7 @@ import {getMiniSession,localMiniPreview} from '../auth/mini-access';
 import {contactBotId} from '../auth/own-contact';
 import {limitUserMutation,PrivateApiError} from '../auth/private-api';
 import {measureChapa} from './chapa-timing';
-import {authorizeCurrentDirectCreation,type PaymentSessionAuthorizer} from './creation-eligibility';
+import {authorizeCurrentDirectCreation,authorizeWalletBatch,type PaymentSessionAuthorizer} from './creation-eligibility';
 export type {PaymentSessionAuthorizer} from './creation-eligibility';
 
 type PaymentIdentity=NonNullable<Awaited<ReturnType<typeof getMiniSession>>>;
@@ -28,7 +28,11 @@ function paymentSession(request:Request,current:PaymentIdentity){
   },select:{id:true}});
   if(!valid)throw new PrivateApiError(401,'Sign in through Telegram.');
  };
- if(!preview)reauthorize.forCurrentDirectCreate=(tx,userId,key)=>authorizeCurrentDirectCreation(tx,{sessionId:current.session.id,sessionToken:current.session.token,userId:current.user.id,telegramId:telegramId!,telegramAuthSource:current.session.telegramAuthSource,botId:botId!},userId,key);
+ if(!preview){
+  const binding={sessionId:current.session.id,sessionToken:current.session.token,userId:current.user.id,telegramId:telegramId!,telegramAuthSource:current.session.telegramAuthSource,botId:botId!};
+  reauthorize.forCurrentDirectCreate=(tx,userId,key)=>authorizeCurrentDirectCreation(tx,binding,userId,key);
+  reauthorize.forWalletBatch=(tx,userId,key)=>authorizeWalletBatch(tx,binding,userId,key);
+ }
  return {userId:current.user.id,reauthorize};
 }
 

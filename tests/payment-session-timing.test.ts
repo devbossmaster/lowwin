@@ -27,9 +27,9 @@ describe('payment session timing boundary',()=>{
   f.session.mockResolvedValueOnce(null);await expect(requirePaymentSession(new Request('https://lowwin.test/api/payments/chapa/direct/current',{method:'POST'}))).rejects.toMatchObject({status:401});expect(f.limit).not.toHaveBeenCalled();
  });
  it('exposes the fused capability only for an authenticated non-preview binding',async()=>{
-  expect((await requirePaymentSession(new Request('https://lowwin.test/pay'))).reauthorize.forCurrentDirectCreate).toEqual(expect.any(Function));
+  const member=await requirePaymentSession(new Request('https://lowwin.test/pay'));expect(member.reauthorize.forCurrentDirectCreate).toEqual(expect.any(Function));expect(member.reauthorize.forWalletBatch).toEqual(expect.any(Function));
   f.preview.mockReturnValue(true);f.session.mockResolvedValueOnce({user:{id:'lowin-local-test-user'},telegramId:null,session:{id:'local-session',token:'local-token',telegramAuthSource:'MINI_APP'}});
-  expect((await requirePaymentSession(new Request('https://lowwin.test/pay'))).reauthorize.forCurrentDirectCreate).toBeUndefined();
+  const preview=await requirePaymentSession(new Request('https://lowwin.test/pay'));expect(preview.reauthorize.forCurrentDirectCreate).toBeUndefined();expect(preview.reauthorize.forWalletBatch).toBeUndefined();
  });
  it('starts owned read-only preparation while the quota is pending and cannot return it before quota acceptance',async()=>{
   let release!:()=>void;f.limit.mockReturnValueOnce(new Promise<void>(resolve=>{release=resolve}));const read=vi.fn(async(userId:string)=>({owner:userId,replay:null}));let settled=false;
