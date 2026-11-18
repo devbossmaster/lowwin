@@ -1,10 +1,10 @@
 # Landscape hero on every screen — 18 November 2026
 
-The Home hero now uses the existing wide family-at-home photograph on mobile, Telegram and desktop. Compact layouts use 16:9 proportions, with a left headline and a row of touch-friendly actions. The full family and packed PS5/iPhone remain visible. Desktop keeps its wide composition and visible explanation.
+The Home hero now uses the existing wide family-at-home photograph on mobile, Telegram and desktop. Every layout matches the image's exact 1840:800 proportions, with no surrounding blue bands. Compact layouts retain a left headline and a row of touch-friendly actions. The full family and packed PS5/iPhone remain visible. Desktop keeps its wide composition and visible explanation.
 
 The long compact hero lead remains accessible to screen readers; the complete number/refund explanation is also visible in How bidding works. Custom administrator artwork URLs are preserved. The prior portrait asset remains public for cached clients, and configured built-in portrait URLs resolve to the wide version.
 
-The loading skeleton follows the new proportions. This change creates no new artwork and adds no migration or environment setting. Deployment scope is the web service.
+The loading skeleton follows the same proportions. Explicit frame height, cover fitting and removal of the tablet mask prevent letterboxing at every width. The source image is shown without cropping because its proportions match the frame. This change creates no new artwork and adds no migration or environment setting. Deployment scope is the web service.
 
 39 focused unit tests and TypeScript checking passed. Fourteen Chromium composition checks covered English and Amharic at 320, 360, 430, 640, 1024 and 1280px plus a compact Mini App frame in a wide window. All were landscape with unclipped text and touch targets of at least 44px. Six checks in the running Next.js app passed image decoding, HTTP 200 artwork access, landscape geometry, both actions and focus restoration. The local runtime used an unreachable loopback fixture database and wrote no records.
 

@@ -33,6 +33,8 @@ test('home banner: both languages, image, mobile geometry and existing actions',
    await expect(page.locator('#home-headline')).toHaveCount(1);
    const image=hero.locator('img');await expect(image).toHaveAttribute('src',/lowwin-family-home-blue-20261118\.webp/);await expect(image).toHaveAttribute('width','1840');await expect(image).toHaveAttribute('height','800');
    await expect.poll(()=>image.evaluate((node:HTMLImageElement)=>node.complete&&node.naturalWidth>0)).toBe(true);
+   const sourceRatio=await image.evaluate((node:HTMLImageElement)=>node.naturalWidth/node.naturalHeight);
+   await expect(image).toHaveCSS('object-fit','cover');await expect(image).toHaveCSS('mask-image','none');
    await expect(hero.locator('picture,source')).toHaveCount(0);expect(await image.evaluate((node:HTMLImageElement)=>decodeURIComponent(node.currentSrc))).toContain('lowwin-family-home-blue-20261118.webp');
    await page.evaluate(()=>document.fonts.ready);
    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
@@ -47,7 +49,7 @@ test('home banner: both languages, image, mobile geometry and existing actions',
    await expect(image).toHaveAttribute('alt',language==='en'?'Illustrative family at home holding boxed PS5 and iPhone Pro Max, with blue luggage and gadgets':'ለማሳያ የተዘጋጀ ቤተሰብ በቤት ውስጥ፣ በሳጥን ያሉ PS5 እና iPhone Pro Max ይዞ፣ ከሰማያዊ ሻንጣና ሌሎች መሣሪያዎች ጋር');
    expect(copyBox.width).toBeGreaterThan(100);expect(copyBox.height).toBeGreaterThan(28);
    expect(bannerBox.width).toBe(page.viewportSize()!.width);
-   expect(bannerBox.width).toBeGreaterThan(bannerBox.height);expect(bannerBox.width/bannerBox.height).toBeCloseTo(16/9,1);expect(bannerBox.height).toBeLessThanOrEqual(650);
+   expect(bannerBox.width).toBeGreaterThan(bannerBox.height);expect(bannerBox.width/bannerBox.height).toBeCloseTo(1840/800,2);expect(bannerBox.width/bannerBox.height).toBeCloseTo(sourceRatio,2);expect(bannerBox.height).toBeLessThanOrEqual(650);
    for(const element of await hero.locator('button,a,small').all()){
     const box=(await element.boundingBox())!;
     expect(box.x).toBeGreaterThanOrEqual(bannerBox.x);

@@ -20,6 +20,8 @@ for(const am of [false,true])test(`hero and detail timer stay readable ${am?'AM'
  try{
   await page.goto('/');const hero=page.locator('[data-home-hero]');await expect(hero.locator('h1')).toHaveText(am?defaultHomeCopy.headlineAm:defaultHomeCopy.headline);await expect(hero.locator('h1')).toBeVisible();
   const art=hero.locator('img');await expect(art).toHaveAttribute('width','1840');await expect(art).toHaveAttribute('height','800');await expect(art).toHaveAttribute('src',/lowwin-family-home-blue-20261118/);await expect.poll(()=>art.evaluate((node:HTMLImageElement)=>node.complete&&node.naturalWidth>0)).toBe(true);
+  const sourceRatio=await art.evaluate((node:HTMLImageElement)=>node.naturalWidth/node.naturalHeight);
+  await expect(art).toHaveCSS('object-fit','cover');await expect(art).toHaveCSS('mask-image','none');
   expect(await art.evaluate((node:HTMLImageElement)=>decodeURIComponent(node.currentSrc))).toContain('lowwin-family-home-blue-20261118.webp');
   await expect(hero.locator('p')).toHaveCount(1);await expect(hero.locator('p')).toHaveText(am?defaultHomeCopy.leadAm:defaultHomeCopy.lead);
   await expect(hero.locator('p')).toHaveCSS('position',info.project.name==='1280'?'static':'absolute');
@@ -27,10 +29,10 @@ for(const am of [false,true])test(`hero and detail timer stay readable ${am?'AM'
   // The family-at-home photograph fills the hero behind all readable HTML copy.
   expect(layout.artLeft).toBeCloseTo(layout.heroLeft,1);expect(layout.artTop).toBeCloseTo(layout.heroTop,1);expect(layout.artWidth).toBeCloseTo(layout.heroWidth,1);expect(layout.artHeight).toBeCloseTo(layout.heroHeight,1);
   expect(layout.heroWidth).toBeGreaterThan(layout.heroHeight);
+  expect(layout.heroWidth/layout.heroHeight).toBeCloseTo(1840/800,2);expect(layout.heroWidth/layout.heroHeight).toBeCloseTo(sourceRatio,2);
   if(info.project.name==='1280'){
    expect(layout.copyRight).toBeLessThanOrEqual(layout.heroLeft+layout.heroWidth*.4);expect(Math.abs(layout.leftCrop)).toBeLessThan(.01);
   }else{
-   expect(layout.heroWidth/layout.heroHeight).toBeCloseTo(16/9,1);
    expect(layout.copyRight).toBeLessThanOrEqual(layout.heroLeft+layout.heroWidth*.47);expect(Math.abs(layout.leftCrop)).toBeLessThan(.01);
   }
   expect(Math.abs(layout.rightCrop)).toBeLessThan(.01);
