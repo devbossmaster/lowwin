@@ -1,6 +1,6 @@
 import {afterAll,beforeAll,describe,expect,it,vi} from 'vitest';
 import {Prisma,PrismaClient} from '@prisma/client';
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {createRequire} from 'node:module';
 import {quoteBidBatch,payBidBatchWallet,createAndPayBidBatchWallet,getOwnWalletBidBatch} from '../src/modules/auctions/batch';
@@ -40,6 +40,38 @@ describe.skipIf(!database)('internal wallet batch command on isolated PostgreSQL
   const userId=(await verifiedReferralUser(db)).id,auction=await realReferralAuction(db,10);await creditDevelopmentPoints(db,userId,'25',randomUUID());
   return {userId,auction,command:{key:randomUUID(),auctionSlug:auction.slug!,numbers:['2','9'],feeVersion:1,approvedTotal:'20.00'}};
  }
+ it('reads fresh wallet balances after a waited hold-state lock before constructing the committed receipt',async()=>{
+  const f=await unquotedFixture(),wallet=await db.wallet.findUniqueOrThrow({where:{userId:f.userId}}),available=await db.ledgerAccount.findUniqueOrThrow({where:{name:`user:${f.userId}:available`}}),issuance=await db.ledgerAccount.findUniqueOrThrow({where:{name:'platform:issuance'}});
+  let acquired!:()=>void,failed!:(error:unknown)=>void,release!:()=>void;
+  const ready=new Promise<void>((resolve,reject)=>{acquired=resolve;failed=reject}),gate=new Promise<void>(resolve=>{release=resolve});
+  // This controlled writer owns the database hold-state guard. It commits a
+  // balanced grant while the batch is waiting, exercising the snapshot fence.
+  const writer=db.$transaction(async tx=>{
+   await tx.$executeRaw`SELECT lock_wallet_hold_state(${wallet.id})`;acquired();await gate;
+   const operation=await tx.operation.create({data:{userId:f.userId,scope:'DEV_CREDIT',key:randomUUID(),requestHash:createHash('sha256').update('7').digest('hex'),result:{available:'32',credited:'7'}}});
+   await tx.journal.create({data:{operationId:operation.id,kind:'DEV_CREDIT',reference:`DEV_CREDIT:${operation.id}`,postings:{create:[{accountId:issuance.id,delta:new Prisma.Decimal(-7)},{accountId:available.id,delta:new Prisma.Decimal(7)}]}}});
+  },{timeout:10000,maxWait:5000});void writer.catch(failed);
+  await ready;const pending=createAndPayBidBatchWallet(db,f.userId,{...f.command,numbers:['2'],approvedTotal:'10.00'});void pending.catch(()=>{});
+  try{
+   await vi.waitFor(async()=>{const [row]=await db.$queryRaw<{waiting:boolean}[]>`SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%lock_wallet_hold_state%') AS waiting`;expect(row.waiting).toBe(true)},{timeout:3000,interval:25});
+   release();await writer;const paid=await pending;if(paid.kind!=='receipt')throw Error('Committed receipt required');
+   const committed=await db.operation.findFirstOrThrow({where:{userId:f.userId,scope:'BID'}});
+   expect(paid.receipt.wallet.available).toBe('22.00');expect((committed.result as {wallet:{available:string}}).wallet.available).toBe('22');expect(await balance(f.userId)).toBe('22.00');expect(await db.bid.count({where:{userId:f.userId}})).toBe(1);expect(await reconcile(db)).toEqual([]);
+  }finally{release();await Promise.allSettled([writer,pending])}
+ });
+ it('waits for the auction row before taking the wallet writer key or advancing wallet state',async()=>{
+  const f=await unquotedFixture(),wallet=await db.wallet.findUniqueOrThrow({where:{userId:f.userId}}),before=await db.walletHoldGuard.findUniqueOrThrow({where:{walletId:wallet.id}}),authorize=vi.fn(async()=>{});
+  let acquired!:()=>void,failed!:(error:unknown)=>void,release!:()=>void;
+  const ready=new Promise<void>((resolve,reject)=>{acquired=resolve;failed=reject}),gate=new Promise<void>(resolve=>{release=resolve});
+  const blocker=db.$transaction(async tx=>{await tx.$queryRaw`SELECT id FROM "Auction" WHERE id=${f.auction.id} FOR UPDATE`;acquired();await gate},{timeout:10000,maxWait:5000});void blocker.catch(failed);
+  await ready;const pending=createAndPayBidBatchWallet(db,f.userId,f.command,authorize);void pending.catch(()=>{});
+  try{
+   await vi.waitFor(async()=>{const [row]=await db.$queryRaw<{waiting:boolean}[]>`SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%locked_auction%') AS waiting`;expect(row.waiting).toBe(true)},{timeout:3000,interval:25});
+   const [probe]=await db.$queryRaw<{available:boolean}[]>`SELECT pg_try_advisory_xact_lock(hashtextextended(${`wallet:${f.userId}`},0)) AS available`;
+   expect(probe.available).toBe(true);expect(authorize).not.toHaveBeenCalled();expect((await db.walletHoldGuard.findUniqueOrThrow({where:{walletId:wallet.id}})).revision).toBe(before.revision);expect(await db.bid.count({where:{userId:f.userId}})).toBe(0);
+   release();await blocker;expect((await pending).kind).toBe('receipt');expect(authorize).toHaveBeenCalledOnce();expect(await balance(f.userId)).toBe('5.00');
+  }finally{release();await Promise.allSettled([blocker,pending])}
+ });
  it('creates the quote and complete wallet payment in one transaction and recovers the committed receipt read-only',async()=>{
   const f=await unquotedFixture(),fetch=vi.spyOn(globalThis,'fetch').mockRejectedValue(Error('No provider HTTP allowed'));
   try{

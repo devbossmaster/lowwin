@@ -66,6 +66,21 @@ describe.skipIf(!database)('current Direct5 owned creation and private committed
   expect(f.direct).not.toHaveBeenCalled();
   expect(await db.chapaCheckout.count({where:{userId:f.user}})).toBe(0);
  });
+ it('prepares a coupon-free quote without waiting for the wallet writer',async()=>{
+  const {id:userId}=await verifiedReferralUser(db),auction=await realReferralAuction(db,20);
+  let held!:()=>void,release!:()=>void;
+  const ready=new Promise<void>(resolve=>{held=resolve}),gate=new Promise<void>(resolve=>{release=resolve});
+  const writer=db.$transaction(async tx=>{await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`},0))`;held();await gate});
+  await ready;
+  const quoted=quoteBidBatch(db,userId,{key:randomUUID(),auctionSlug:auction.slug!,numbers:['2','4'],feeVersion:1});
+  let timer:ReturnType<typeof setTimeout>|undefined;
+  try{
+   const timeout=new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error('Coupon-free quote waited for the wallet writer')),2500)});
+   await expect(Promise.race([quoted,timeout])).resolves.toMatchObject({total:'40.00',status:'QUOTED'});
+   expect(await db.bid.count({where:{userId}})).toBe(0);
+   expect(await balance(userId)).toBe('0');
+  }finally{clearTimeout(timer);release();await Promise.allSettled([quoted,writer])}
+ });
  it('preloads only an owned status and still requires private proof after the fresh verification lease',async()=>{
   const f=await fixture(),{order}=await f.start(),other=await verifiedReferralUser(db);
   await f.due();f.setStatus('SUCCESS');f.setValidation('SUCCESS');
