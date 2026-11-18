@@ -9,6 +9,8 @@ import {LOWWIN_BANNER_SRC,LOWWIN_HOME_BANNER_SRC,LOWWIN_ICON_SRC,LOWWIN_LOGO_SRC
 // Keep built-in marketing assets available to existing cached page bundles.
 const previousBrandAssets=new Set(['/images/lowwin-home-16x9-en-20261114-v3.webp','/images/lowwin-home-16x9-am-20261114-v3.webp','/images/lowwin-light-blue-banner-en-20261114-v3.webp','/images/lowwin-light-blue-banner-am-20261114-v3.webp','/images/lowwin-home-16x9-en-20261114-v2.webp','/images/lowwin-home-16x9-am-20261114-v2.webp','/images/lowwin-light-blue-banner-en-20261114-v2.webp','/images/lowwin-light-blue-banner-am-20261114-v2.webp','/images/lowwin-flat-mark-20261114.svg','/images/lowwin-flat-icon-20261114.png','/images/lowwin-hammer-mark-20261114.svg','/images/lowwin-hammer-icon-20261114.png','/images/lowwin-ribbon-l-blue-20261114.webp','/images/lowwin-ribbon-l-icon-20261114.png','/images/lowwin-home-16x9-en-20261114.webp','/images/lowwin-home-16x9-am-20261114.webp','/images/lowwin-light-blue-banner-en-20261114.webp','/images/lowwin-light-blue-banner-am-20261114.webp']);
 
+previousBrandAssets.add('/images/lowwin-blue-black-prizes-20261117.webp');
+
 // These handlers enforce getMiniSession/requireUser themselves before any
 // private read or mutation. Do not run another full session lookup in Proxy.
 const guardedApis=new Set(['/api/me','/api/my-bids','/api/my-bids/refunds','/api/results','/api/results/winners','/api/favorites','/api/profile','/api/profile/wins','/api/alerts','/api/fulfillment','/api/support','/api/wallet','/api/wallet/top-ups','/api/wallet/scan','/api/wallet/preview','/api/payments/arifpay','/api/payments/arifpay/checkouts']);

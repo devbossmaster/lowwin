@@ -21,7 +21,7 @@ describe('Home availability during a failed server refresh',()=>{
  it('retains the cold-loading layout until a result or error arrives',()=>{const html=render();expect(html).toContain('data-route-skeleton="home"');expect(html).not.toContain('data-home-unavailable');expect(html).not.toContain('data-home-hero')});
  it.each(['en','am'] as const)('keeps public guidance visible with truthful unavailable resources in %s',language=>{
   const html=render({error:true},language);expect(html).toContain('data-home-hero');expect(html).toContain(defaultHomeCopy.headline);expect(html).toContain('data-how-it-works');expect(html).toContain('<footer>');
-  expect(html).toContain('data-home-unavailable="auctions"');expect(html).toContain('data-home-unavailable="winners"');expect(html).not.toMatch(/data-route-skeleton|data-auction-feed|data-winners-feed|No live auctions|Confirmed winners will appear/);
+  expect(html).toContain('id="discover-auctions" tabindex="-1"');expect(html).toContain('data-home-unavailable="auctions"');expect(html).toContain('data-home-unavailable="winners"');expect(html).not.toMatch(/data-route-skeleton|data-auction-feed|data-winners-feed|No live auctions|Confirmed winners will appear/);
   expect(html).toContain(language==='en'?'Live auctions are temporarily unavailable.':'ክፍት ጨረታዎችን ለጊዜው ማምጣት አልተቻለም።');expect(html.match(/<button\b/g)).toHaveLength(3);
  });
  it('preserves successful cached records during a refresh error',()=>{const html=render({view:cached,categories:cached.categories,auctions:cached.auctions,winners:cached.winners,error:true});expect(html).toContain('SAVED-AUCTION');expect(html).toContain('SAVED-WINNER');expect(html).not.toMatch(/data-home-unavailable|data-route-skeleton/)});

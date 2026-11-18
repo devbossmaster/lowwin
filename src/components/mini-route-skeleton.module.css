@@ -30,13 +30,13 @@
 .homeControls>.bone:first-child{width:80px;height:44px;border-radius:24px}
 .homeAuctionGrid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
 .homeAuctionGrid>.auctionCard:nth-child(n+2){display:none}
-.heroBlock{position:relative;min-width:0;overflow:hidden;border-radius:0;background:#020020}
-.hero{display:grid;align-content:start;gap:14px;width:100%;min-width:0;min-height:550px;aspect-ratio:auto;border-radius:0;padding:28px 24px;background:linear-gradient(145deg,#020020 20%,#070331 60%,#160969)}
-.hero .bone{background:#50468e}
-.heroTitle{width:85%;height:76px}
-.heroCopy{width:92%;height:74px}
-.heroActions{position:absolute;left:24px;top:230px;display:flex;gap:10px;width:calc(100% - 48px);max-width:368px}
-.heroActions>.bone{flex:1;height:48px;border-radius:24px;background:#160969}
+.heroBlock{position:relative;min-width:0;overflow:hidden;border-radius:16px;background:#020718;padding-bottom:72px}
+.hero{display:grid;align-content:center;gap:14px;width:100%;min-width:0;min-height:320px;aspect-ratio:auto;border-radius:16px;padding:24px 18px 90px;background:linear-gradient(115deg,#020718 20%,#06132e 65%,#082966)}
+.hero .bone{background:#34517a}
+.heroTitle{width:45%;height:100px}
+.heroCopy{width:45%;height:60px}
+.heroActions{position:absolute;left:18px;bottom:100px;display:flex;gap:8px;width:calc(100% - 36px);max-width:300px}
+.heroActions>.bone{flex:1;height:44px;border-radius:24px;background:#163b72}
 .heroActions>.bone+span{background:var(--bone-light)}
 .heroCaption{position:absolute;right:12px;bottom:8px;width:25%;max-width:160px;height:5px;background:#50468e}
 .gallery{width:100%;aspect-ratio:1840/800;border-radius:16px;background:var(--bone)}
@@ -120,4 +120,4 @@
 }
 
 
-@media(min-width:1024px){:global(.app-frame[data-app-layout=browser]) .hero{align-content:center;min-height:360px;aspect-ratio:1840/800;padding:24px 32px 102px}:global(.app-frame[data-app-layout=browser]) .heroTitle{width:32%;height:90px}:global(.app-frame[data-app-layout=browser]) .heroCopy{width:32%;height:76px}:global(.app-frame[data-app-layout=browser]) .heroActions{left:32px;top:auto;bottom:32px;width:32%;max-width:none}}
+@media(min-width:1024px){:global(.app-frame[data-app-layout=browser]) .heroBlock{border-radius:16px;padding-bottom:54px}:global(.app-frame[data-app-layout=browser]) .hero{align-content:center;min-height:360px;aspect-ratio:1840/800;padding:32px 40px 100px}:global(.app-frame[data-app-layout=browser]) .heroTitle{width:32%;height:100px}:global(.app-frame[data-app-layout=browser]) .heroCopy{width:32%;height:56px}:global(.app-frame[data-app-layout=browser]) .heroActions{left:40px;top:auto;bottom:86px;width:32%;max-width:none}}

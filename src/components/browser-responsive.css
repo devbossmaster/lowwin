@@ -6,8 +6,6 @@
  .app-frame[data-app-layout=browser]{max-width:900px;--catalog-columns:repeat(2,minmax(0,1fr));--home-hero-ratio:2.3}
  .app-frame[data-app-layout=browser] .mini-bottom-navigation{max-width:900px}
  .app-frame[data-app-layout=browser] .home-header-slot header{padding-inline:24px;gap:16px;grid-template-columns:minmax(80px,1fr) auto auto}
- .app-frame[data-app-layout=browser] [data-home-hero] h1{font-size:38px}
- .app-frame[data-app-layout=browser] [data-home-hero] p{font-size:14px;max-width:28ch}
 }
 @media(min-width:1024px){
  .app-frame[data-app-layout=browser]{--customer-nav-height:0px;max-width:1280px;padding:24px 24px 40px;min-height:100dvh}
@@ -19,7 +17,6 @@
  .app-frame[data-app-layout=browser] [data-home-header]>[data-customer-navigation]{display:flex;grid-column:2;justify-self:center}
  .app-frame[data-app-layout=browser] [data-home-header]>[data-header-account-controls]{grid-column:3;display:flex;align-items:center;justify-content:flex-end;gap:8px;min-width:0;max-width:100%;justify-self:end}
  .app-frame[data-app-layout=browser] [data-header-account-controls]>div[data-long-balance]{max-width:180px}
- .app-frame[data-app-layout=browser] [data-home-hero]{border-radius:0}
  .app-frame[data-app-layout=browser] [data-customer-page-header]{max-width:860px;margin:0 auto 20px;border-radius:16px}
  .app-frame[data-app-layout=browser] [data-winners-page]{width:100%;max-width:none;padding-inline:0}
  .app-frame[data-app-layout=browser] [data-winners-page] [data-route-skeleton=winners]{max-width:none}
