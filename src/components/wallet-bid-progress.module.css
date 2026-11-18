@@ -1,5 +1,5 @@
 .progress{padding:7px 0 2px;text-align:center;color:var(--brand-ink, #211a30)}
-.icon{position:relative;display:grid;place-items:center;width:48px;height:48px;margin:0 auto 13px;border-radius:50%;background:#f4ecd4;color:#86661b}
+.icon{position:relative;display:grid;place-items:center;width:48px;height:48px;margin:0 auto 13px;border-radius:50%;background:var(--action-disabled);color:var(--action-primary)}
 .progress[data-wallet-bid-progress=success] .icon{background:var(--brand-soft, #eee8fa);color:var(--brand-primary-strong, #5533be)}
 .icon .spin{position:absolute;right:-3px;bottom:0;padding:2px;border-radius:50%;background:#fff;box-sizing:content-box;animation:wallet-spin 1s linear infinite}
 .progress h3{margin:0 0 7px;font-size:19px;font-weight:650;line-height:1.4;letter-spacing:-.02em;text-wrap:balance;overflow-wrap:anywhere}

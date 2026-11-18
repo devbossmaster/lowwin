@@ -32,14 +32,14 @@ function amountAllowed(value:string,config:TopupConfig|null){try{const cents=etb
 function methodAllowed(value:string,slug:string,config:TopupConfig|null){try{const cents=etbToCents(value),item=methodsFor(config).find(item=>item.slug===slug);return !!item&&amountAllowed(value,config)&&(!item.minAmountCents||cents>=BigInt(item.minAmountCents))&&(!item.maxAmountCents||cents<=BigInt(item.maxAmountCents))}catch{return false}}
 export function walletDisplay(value?:string){try{return value===undefined?null:`${centsToEtb(etbToCents(value))} ETB`}catch{return null}}
 
-type Props={onClose?:()=>void;returnFocusRef?:RefObject<HTMLElement|null>;initialChapaId?:string;retryDraft?:{amount:string;paymentMethod:string;phone:string};embedded?:boolean;onProgressChange?:(active:boolean)=>void;onDismissChange?:(back:(()=>void)|null)=>void;onCredited?:(order:ChapaCheckoutView)=>void};
+type Props={onClose?:()=>void;returnFocusRef?:RefObject<HTMLElement|null>;initialChapaId?:string;retryDraft?:{amount:string;paymentMethod:string};embedded?:boolean;onProgressChange?:(active:boolean)=>void;onDismissChange?:(back:(()=>void)|null)=>void;onCredited?:(order:ChapaCheckoutView)=>void};
 function TopUp({onClose,returnFocusRef,initialChapaId,retryDraft,embedded=false,onProgressChange,onDismissChange,onCredited}:Props){
  const notice=useMiniNotice();
  const {language}=useMiniLocale(),am=language==='am',text=(en:string,translated:string)=>am?translated:en;
  const {status,me,queryIdentity,openRegistration}=useTelegram(),authenticated=status==='authenticated'&&!!me?.user?.id&&!!queryIdentity;
- const payment=useChapaPayment('topup',initialChapaId,{retainOriginal:true}),original=payment.directAttempt?.purpose==='TOP_UP'?payment.directAttempt:null;
- const [amount,setAmount]=useState(()=>retryDraft?.amount??''),[method,setMethod]=useState(()=>retryDraft?.paymentMethod??''),[phone,setPhone]=useState(()=>normalizePaymentPhone(retryDraft?.phone??'')?.slice(3)??''),[error,setError]=useState(''),[retrying,setRetrying]=useState(false),[stage,setStage]=useState<'amount'|'bonus'|'payment'>(retryDraft?'payment':'amount'),[showProgress,setShowProgress]=useState(!!initialChapaId);
- const id=useId(),submitting=useRef(false),phoneEdited=useRef(!!retryDraft?.phone),reportedCredit=useRef<string|null>(null),alive=useRef(true);
+ const payment=useChapaPayment('topup',initialChapaId,{retainOriginal:true});
+ const [amount,setAmount]=useState(()=>retryDraft?.amount??''),[method,setMethod]=useState(()=>retryDraft?.paymentMethod??''),[phone,setPhone]=useState(''),[error,setError]=useState(''),[retrying,setRetrying]=useState(false),[stage,setStage]=useState<'amount'|'bonus'|'payment'>(retryDraft?'payment':'amount'),[showProgress,setShowProgress]=useState(!!initialChapaId);
+ const id=useId(),submitting=useRef(false),reportedCredit=useRef<string|null>(null),alive=useRef(true);
  const [preparing,setPreparing]=useState(false);
  const authResumeRestored=useRef(false),authResumeDraft=useRef<TelegramTopupResumeDraft|null>(null);
  authResumeDraft.current=payment.started||payment.busy||retrying||preparing?null:{kind:'topup',amount,method:supported.has(method)?method as TelegramTopupResumeDraft['method']:null,stage};
@@ -49,7 +49,6 @@ function TopUp({onClose,returnFocusRef,initialChapaId,retryDraft,embedded=false,
   authResumeRestored.current=true;
   const saved=consumeTelegramResumeDraft(me.user.id,'topup');if(!saved)return;
   setAmount(saved.amount);setMethod(saved.method??'');setStage(saved.stage);
-  // The registered contact supplies the phone again; no payment is initialized.
  },[authenticated,me?.user?.id,payment.started]);
  useEffect(()=>{alive.current=true;return()=>{alive.current=false}},[]);
  const reportError=(message:string)=>{setError(message);if(message&&!showProgress)notice(message,'error',{id:`topup-validation:${id}`,duration:6000})};
@@ -71,7 +70,6 @@ function TopUp({onClose,returnFocusRef,initialChapaId,retryDraft,embedded=false,
   }
   onClose?.();
  };
- useEffect(()=>{if(phoneEdited.current)return;const registered=normalizePaymentPhone(settings?.phone??'');if(registered)setPhone(registered.slice(3))},[settings?.phone]);
  useEffect(()=>{if(!payment.started&&payment.errorCode==='DEPOSIT_BONUS_CHANGED'){setError(payment.error);methods.reload()}},[payment.started,payment.errorCode,payment.error,methods.reload]);
  useEffect(()=>{if(!progressVisible&&payment.error)notice(payment.error,'error',{id:`topup-validation:${id}`,duration:6000})},[progressVisible,payment.error,notice,id]);
  let total='0.00',valid=false;
@@ -92,8 +90,6 @@ function TopUp({onClose,returnFocusRef,initialChapaId,retryDraft,embedded=false,
    const saved=queryIdentity?readPaymentRetryDraft(getMiniQueryClient(),queryIdentity,current.id):null;
    if(!queryIdentity||!isPrivateQueryIdentity(queryIdentity)||!payment.startAgain())return;
    setAmount(current.amount);setMethod(current.paymentMethod??saved?.paymentMethod??method);
-   const nextPhone=normalizePaymentPhone(saved?.phone??original?.phone??phone);
-   if(nextPhone){phoneEdited.current=true;setPhone(nextPhone.slice(3))}
    setStage('payment');setShowProgress(false);
   }catch{reportError(text('Could not check the original payment. Its status is preserved.','የመጀመሪያውን ክፍያ ማረጋገጥ አልተቻለም። ሁኔታው ተጠብቋል።'))}finally{submitting.current=false;setRetrying(false)}
  };
@@ -141,7 +137,7 @@ function TopUp({onClose,returnFocusRef,initialChapaId,retryDraft,embedded=false,
    <dl className={reference.summary}><div><dt>{text('Deposit','የሚገባ ገንዘብ')}</dt><dd>{formatEtb(total)}</dd></div>{bonus.active&&<><div data-deposit-bonus-preview><dt>{text('Bidding bonus','የጨረታ ጉርሻ')}</dt><dd>+{formatEtb(bonus.bonusAmount)}</dd></div><div className={reference.total}><dt>{text('Total after credit','ከገባ በኋላ ጠቅላላ')}</dt><dd>{formatEtb(bonus.totalCredit)}</dd></div></>}</dl>
    {bonus.active&&etbToCents(bonus.bonusAmount)>0n&&<p className={reference.bonusNote}>{text(`Bonus is valid for ${policy!.validityDays} days after verified credit.`,`ጉርሻው ክፍያው ከተረጋገጠ በኋላ ለ ${policy!.validityDays} ቀናት ይቆያል።`)}</p>}
    <ReferencePaymentMethods name={`${id}-method`} method={method||null} onChange={value=>{setMethod(value);reportError('')}} available={methodsFor(settings).map(item=>item.slug)} allowed={allowed} disabled={busy}>
-    <div className={reference.phone} data-payment-phone><label htmlFor={`${id}-phone`}>{text('Payment phone number','የክፍያ ስልክ ቁጥር')}</label><div className={reference.phoneField}><span aria-hidden="true">+251</span><input id={`${id}-phone`} type="tel" inputMode="tel" autoComplete="tel-national" maxLength={18} value={phone} disabled={busy} onChange={event=>{phoneEdited.current=true;setPhone(normalizePaymentPhone(event.target.value)?.slice(3)??event.target.value);reportError('')}} aria-invalid={!!phone&&!!phoneProblem||undefined} aria-describedby={`${id}-phone-help`}/></div><p className={reference.hint} id={`${id}-phone-help`}>{text('Use the number registered with your provider.','በክፍያ አቅራቢዎ የተመዘገበውን ቁጥር ይጠቀሙ።')}</p></div>
+    <div className={reference.phone} data-payment-phone><label htmlFor={`${id}-phone`}>{text('Payment phone number','የክፍያ ስልክ ቁጥር')}</label><div className={reference.phoneField}><span aria-hidden="true">+251</span><input id={`${id}-phone`} type="tel" inputMode="tel" autoComplete="off" maxLength={18} value={phone} disabled={busy} onChange={event=>{setPhone(normalizePaymentPhone(event.target.value)?.slice(3)??event.target.value);reportError('')}} aria-invalid={!!phone&&!!phoneProblem||undefined} aria-describedby={`${id}-phone-help`}/></div><p className={reference.hint} id={`${id}-phone-help`}>{text('Use the number registered with your provider.','በክፍያ አቅራቢዎ የተመዘገበውን ቁጥር ይጠቀሙ።')}</p></div>
    </ReferencePaymentMethods>
   </>}
   {stage==='payment'&&!methods.fetching&&(methods.error&&!methodsFor(settings).length||settings&&!methodsFor(settings).length)&&<p className={reference.error} role="status">{text('Top-up methods could not be loaded.','የመሙያ መንገዶችን መጫን አልተቻለም።')} <button type="button" onClick={()=>{reportError('');methods.reload()}}>{text('Retry','እንደገና')}</button></p>}

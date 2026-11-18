@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import type {PrismaClient} from '@prisma/client';
+import type {Prisma,PrismaClient} from '@prisma/client';
 import {APIError} from 'better-auth/api';
 import {db} from '@/lib/db';
 import {attributeNewReferralInTransaction} from '../referrals/service';
@@ -95,8 +95,12 @@ export async function prepareTelegramOIDCIdentity(claims:VerifiedTelegramOIDCPro
   const user=existing??await tx.user.create({data:{id:randomUUID(),name,image,telegramId,telegramUsername:username,role:'member'},select:{id:true}});
   if(!contact&&protectedPhone)await tx.telegramOwnContact.create({data:{telegramId,botId,userId:user.id,...protectedPhone,verifiedAt:new Date(),sourceUpdateId:null,verificationSource:'TELEGRAM_OIDC',oidcIssuer:issuer,oidcSubject:claims.sub}});
   else if(contact&&!contact.userId)await tx.telegramOwnContact.update({where:{id:contact.id},data:{userId:user.id}});
-  if(!canonical)await tx.account.create({data:{id:randomUUID(),providerId:'telegram',accountId:telegramId,userId:user.id,telegramId,telegramUsername:username}});
-  if(!oidc)await tx.account.create({data:{id:randomUUID(),providerId:'telegram-oidc',accountId:claims.sub,userId:user.id,telegramId}});
+  const newAccounts:Prisma.AccountCreateManyInput[]=[];
+  if(!canonical)newAccounts.push({id:randomUUID(),providerId:'telegram',accountId:telegramId,userId:user.id,telegramId,telegramUsername:username});
+  if(!oidc)newAccounts.push({id:randomUUID(),providerId:'telegram-oidc',accountId:claims.sub,userId:user.id,telegramId});
+  // The owner and both bindings were checked under the same identity locks.
+  // Fail the whole transaction on a conflict instead of skipping either row.
+  if(newAccounts.length)await measureTelegramAuth('oidc_bindings',()=>tx.account.createMany({data:newAccounts}));
   await attributeNewReferralInTransaction(tx,user.id,telegramId,{newAccount:!existing});
  },{maxWait:10000,timeout:20000}));
  return {name,...(image?{image}:{})};

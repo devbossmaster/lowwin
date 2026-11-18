@@ -43,7 +43,7 @@ import {BidCouponControl} from './bid-coupon-control';
 import {CatalogImage} from './catalog-image';
 const WalletTopUp=dynamic(()=>import('./wallet-top-up'),{ssr:false});
 type Method='wallet'|typeof providers[number]['slug'];
-export type BidCheckoutDraft={numbers:string[];method?:string|null;phone?:string|null};
+export type BidCheckoutDraft={numbers:string[];method?:string|null};
 type BidState=Omit<Awaited<ReturnType<typeof getOwnBidState>>,'wallet'|'previousMax'>&{referralDiscountsAvailable?:boolean;couponAvailableCount?:number|null};
 type DiscountQuote=Awaited<ReturnType<typeof getBidDiscountQuote>>;
 type Props={auction:BidSheetAuction;serverNow:string;onClose:()=>void;onPhaseChange:(phase:BidSheetPhase)=>void;initialChapaId?:string;initialDraft?:BidCheckoutDraft;onDismissChange?:(handler:(()=>void)|null)=>void};
@@ -63,7 +63,7 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
  const fundingDraft=queryIdentity?readBidFundingDraft(getMiniQueryClient(),queryIdentity,auction.slug):null;
  const original=queryIdentity?readChapaOriginalAttempt(getMiniQueryClient(),queryIdentity,'bid:'+auction.slug):null;
  const directDraft=payment.directAttempt?.purpose==='BID'?payment.directAttempt:null,originalQuote=original?.intent.purpose==='BID'&&original.bidQuote?.auctionSlug===auction.slug?original.bidQuote:null;
- const restoredMethod=initialDraft?.method??fundingDraft?.method,restoredPhone=initialDraft?.phone??fundingDraft?.phone??'';
+ const restoredMethod=initialDraft?.method??fundingDraft?.method,restoredPhone=initialDraft?'':fundingDraft?.phone??'';
  const flow=usePaymentCheckoutFlow(),step=flow.step;
  const restoredReview=useRef(false);
  useEffect(()=>{if(!restoredReview.current&&initialDraft?.numbers.length){restoredReview.current=true;flow.openPayment()}},[initialDraft,flow.openPayment]);
@@ -75,7 +75,7 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
  const [walletCommand,setWalletCommand]=useState<WalletBidCommand|null>(savedWalletCommand),[walletObserving,setWalletObserving]=useState(false),[showProgress,setShowProgress]=useState(!!initialChapaId),showProgressRef=useRef(showProgress);showProgressRef.current=showProgress;
  const initialWalletRecovery=useRef<WalletBidTarget|null>(savedWalletCommand?{command:savedWalletCommand}:walletRecovery?{quote:walletRecovery}:null);
  const [toppingUp,setToppingUp]=useState(false),[fundingNotice,setFundingNotice]=useState(''),[walletFailure,setWalletFailure]=useState<WalletPaymentShortfall|null>(null),fundingRetained=useRef(!!fundingDraft),fundingOpen=useRef(false);fundingOpen.current=toppingUp;
- const id=useId(),lock=useRef(false),phoneEdited=useRef(!!normalizePaymentPhone(restoredPhone)),generation=useRef(0),controllers=useRef(new Set<AbortController>());
+ const id=useId(),lock=useRef(false),generation=useRef(0),controllers=useRef(new Set<AbortController>());
  const quoteAttempt=useRef<BidQuoteAttempt|null>(walletRecovery?{fingerprint:'',key:walletRecovery.id,paymentKey:walletRecovery.id,quote:walletRecovery}:null);
  const loadQuote=useCallback((attempt:BidQuoteAttempt)=>loadBidQuote(attempt,()=>{
   const controller=new AbortController();attempt.controller=controller;controllers.current.add(controller);
@@ -130,7 +130,6 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
  useEffect(()=>{setWalletFailure(null)},[wallet.updatedAt,fingerprint]);
  useEffect(()=>{if(fundingRetained.current&&queryIdentity&&!receipt&&!payment.started)retainBidFundingDraft(getMiniQueryClient(),queryIdentity,auction.slug,{numbers:draft.error?numbers:draft.numbers,method:method??'wallet',phone,applyCoupon})},[queryIdentity,auction.slug,fingerprint,numbers,method,phone,applyCoupon,receipt,payment.started]);
  useEffect(()=>{if(queryIdentity&&payment.order?.purpose==='BID'&&payment.order.status==='BID_ACCEPTED'&&payment.order.receipt){clearBidFundingDraft(getMiniQueryClient(),queryIdentity,auction.slug);fundingRetained.current=false}},[queryIdentity,auction.slug,payment.order?.purpose,payment.order?.status,payment.order?.receipt]);
- useEffect(()=>{if(!phoneEdited.current){const registered=normalizePaymentPhone(methods.data?.phone??'');if(registered)setPhone(registered.slice(3))}},[methods.data?.phone]);
  const quotePhase=step==='review'||step==='payment',discountReady=!applyCoupon||!!coupon&&!discount.fetching;
  // Prepare the immutable quote before a method is selected. Review, method
  // changes and final Pay share one draft-owned request; only Pay can charge.
@@ -299,10 +298,8 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
    const previous=quote??reconciled.batch,selection=previous?.lines.map(line=>line.number)??(reconciled.bidNumber?[reconciled.bidNumber]:draft.numbers);
    const saved=queryIdentity?readPaymentRetryDraft(getMiniQueryClient(),queryIdentity,reconciled.id):null;
    const nextMethod=reconciled.paymentMethod??saved?.paymentMethod??directDraft?.paymentMethod??method;
-   const nextPhone=normalizePaymentPhone(saved?.phone??directDraft?.phone??phone);
    if(!payment.startAgain())return;
    setMethod(nextMethod&&providers.some(provider=>provider.slug===nextMethod)?nextMethod as Method:null);
-   if(nextPhone){phoneEdited.current=true;setPhone(nextPhone.slice(3))}
    setQuote(null);quoteAttempt.current=null;setWalletRetry(false);setWalletCommand(null);setReceipt(null);
    setNumbers(selection);setInput('');setEditing(null);reportError('');showProgressRef.current=false;setShowProgress(false);flow.openPayment();own.reload();if(applyCoupon)discount.reload();
   }catch{reportError(text('Could not check the original payment. Its status is preserved.','የመጀመሪያውን ክፍያ ማረጋገጥ አልተቻለም። ሁኔታው ተጠብቋል።'))}finally{setBusy(false)}
@@ -356,7 +353,7 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
    </section>
    {fundingNotice&&<p className={reference.notice} role="status" data-bid-funding-notice>{fundingNotice}</p>}
    <ReferencePaymentMethods name={`${id}-method`} method={method} onChange={value=>{setMethod(value as Method);reportError('')}} available={enabledMethods.map(item=>item.slug)} allowed={methodAvailable} disabled={frozen} wallet={{enabled:walletEnabled&&(walletAvailable!==null||zero),balance:walletAvailable}}>
-    {method!=='wallet'&&!zero&&<div className={reference.phone} data-payment-phone><label htmlFor={`${id}-phone`}>{text('Payment phone number','የክፍያ ስልክ ቁጥር')}</label><div className={reference.phoneField}><span aria-hidden="true">+251</span><input id={`${id}-phone`} type="tel" inputMode="tel" autoComplete="tel-national" maxLength={18} value={phone} onChange={event=>{phoneEdited.current=true;setPhone(normalizePaymentPhone(event.target.value)?.slice(3)??event.target.value);reportError('')}} aria-invalid={!!phone&&!!phoneProblem||undefined} aria-describedby={`${id}-phone-note`}/></div><p id={`${id}-phone-note`} className={reference.inputHint}>{text('Use the number registered with your provider.','በክፍያ አቅራቢዎ የተመዘገበውን ቁጥር ይጠቀሙ።')}</p></div>}
+    {method!=='wallet'&&!zero&&<div className={reference.phone} data-payment-phone><label htmlFor={`${id}-phone`}>{text('Payment phone number','የክፍያ ስልክ ቁጥር')}</label><div className={reference.phoneField}><span aria-hidden="true">+251</span><input id={`${id}-phone`} type="tel" inputMode="tel" autoComplete="off" maxLength={18} value={phone} disabled={busy} onChange={event=>{setPhone(normalizePaymentPhone(event.target.value)?.slice(3)??event.target.value);reportError('')}} aria-invalid={!!phone&&!!phoneProblem||undefined} aria-describedby={`${id}-phone-note`}/></div><p id={`${id}-phone-note`} className={reference.inputHint}>{text('Use the number registered with your provider.','በክፍያ አቅራቢዎ የተመዘገበውን ቁጥር ይጠቀሙ።')}</p></div>}
    </ReferencePaymentMethods>
    {method==='wallet'&&<div className={reference.balanceNote}><Wallet size={15} aria-hidden="true"/><p>{text('Pay from your LowWin balance.','ከLowWin ቀሪ ሂሳብዎ ይክፈሉ።')}</p><button type="button" onClick={openTopUp}>{text('Add funds','ገንዘብ ያስገቡ')}</button></div>}
    {method==='wallet'&&insufficient&&!zero&&<p className={reference.error} role="status" data-wallet-insufficient>{text(`${formatEtb(total)} is required. Add funds or choose another method.`,`${formatEtb(total)} ያስፈልጋል። ገንዘብ ያስገቡ ወይም ሌላ መንገድ ይምረጡ።`)}</p>}

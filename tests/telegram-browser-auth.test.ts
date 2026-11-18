@@ -60,6 +60,7 @@ describe.skipIf(!database)('shared Better Auth Telegram browser and Mini App int
  });
  it('creates a verified browser account through the standard callback and issues the existing signed cookie',async()=>{
   const f=await flow(),response=await f.finish();expect(response.status).toBe(303);expect(response.headers.get('location')).toBe(origin+'/my-bids?tab=live');
+  expect(response.headers.get('server-timing')).toContain('oidc_bindings;dur=');
   expect(response.headers.get('server-timing')).toMatch(/oidc_session;dur=.*oidc_callback;dur=.*oidc_redirect;dur=/);
   expect(response.headers.get('cache-control')).toContain('private, no-store');
   expect(response.headers.getSetCookie()).toContain('lowwin-browser-restore=1; Path=/; Max-Age=300; HttpOnly; SameSite=Lax');

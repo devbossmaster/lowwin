@@ -30,7 +30,7 @@ test('simulated committed SSE renders the owned receipt while provider polling i
  });
  try{
   await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await selectBids(page,f.title);
-  await dialog.getByRole('radio',{name:'telebirr',exact:true}).check();await dialog.locator('[data-payment-action]').click();
+  await dialog.getByRole('radio',{name:'telebirr',exact:true}).check();await dialog.locator('[data-payment-phone] input').fill('0911652904');await dialog.locator('[data-payment-action]').click();
   await expect(dialog.locator('[data-payment-progress="authorization"]')).toBeVisible();await expect.poll(()=>posts).toBe(1);
   await expect.poll(()=>page.evaluate(()=>Reflect.get(window,'fixtureChapaSources').filter((source:{closed:boolean})=>!source.closed).length)).toBe(1);
   // An unrelated payment cannot populate this receipt, even in a fixture.
@@ -66,7 +66,7 @@ test('missing EventSource keeps automatic owned polling recovery without another
  const f=await inlineFixture(page);await page.addInitScript(()=>Reflect.set(window,'EventSource',undefined));
  try{
   await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await selectBids(page,f.title);
-  await dialog.getByRole('radio',{name:'telebirr',exact:true}).check();await dialog.locator('[data-payment-action]').click();
+  await dialog.getByRole('radio',{name:'telebirr',exact:true}).check();await dialog.locator('[data-payment-phone] input').fill('0911652904');await dialog.locator('[data-payment-action]').click();
   await expect(dialog.locator('[data-payment-progress="authorization"]')).toBeVisible();await expect.poll(()=>f.checks.length).toBeGreaterThan(0);
   f.acceptBids();await expect(resultClose(dialog)).toBeVisible();expect(f.commands).toHaveLength(1);expect(f.maxActiveChecks()).toBeLessThanOrEqual(1);expect(f.unexpected).toHaveLength(0);
  }finally{await f.cleanup()}
@@ -95,7 +95,7 @@ test('wallet return prioritizes one owned verification after the current request
  });
  try{
   await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await selectBids(page,f.title);
-  await dialog.getByRole('radio',{name:'telebirr',exact:true}).check();await dialog.locator('[data-payment-action]').click();
+  await dialog.getByRole('radio',{name:'telebirr',exact:true}).check();await dialog.locator('[data-payment-phone] input').fill('0911652904');await dialog.locator('[data-payment-action]').click();
   await expectSharedAuthorization(dialog);
   const id=f.order().id;
   await expect.poll(()=>checks).toEqual([{id,hint:null}]);
@@ -133,7 +133,7 @@ test('Telegram activation discovers the owned Telebirr payment before a stalled 
  try{
   await page.clock.install();
   await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await selectBids(page,f.title);
-  await dialog.getByRole('radio',{name:'telebirr',exact:true}).check();
+  await dialog.getByRole('radio',{name:'telebirr',exact:true}).check();await dialog.locator('[data-payment-phone] input').fill('0911652904');
   await page.evaluate(()=>{
    const app=window.Telegram!.WebApp!,activated=new Set<()=>void>();
    app.onEvent=(event,handler)=>{if(event==='activated')activated.add(handler)};
@@ -172,7 +172,7 @@ test('retained completion hints stay checking until a fresh private terminal res
  };
  try{
   await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await selectBids(page,f.title);
-  await dialog.getByRole('radio',{name:'telebirr',exact:true}).check();await dialog.locator('[data-payment-action]').click();
+  await dialog.getByRole('radio',{name:'telebirr',exact:true}).check();await dialog.locator('[data-payment-phone] input').fill('0911652904');await dialog.locator('[data-payment-action]').click();
   await expect(dialog.locator('[data-payment-progress="authorization"]')).toBeVisible();await expectSharedAuthorization(dialog);const original=f.order().id;
   f.setOrder({status:'NEEDS_REVIEW',providerStatus:'FAILED',verificationState:'VERIFIED',completionSignalPending:true,updatedAt:new Date().toISOString()});await resume();
   await expect(dialog.locator('[data-payment-progress="confirming"]')).toBeVisible();await expectSharedAuthorization(dialog);
