@@ -33,6 +33,7 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
  const [snapshot,setSnapshot]=useState<Snapshot>(()=>empty()),state=snapshot.identity===queryIdentity?snapshot:empty(),stateRef=useRef(state);stateRef.current=state;
  const epoch=useRef(0),controllers=useRef(new Set<AbortController>()),locked=useRef(false),invalidated=useRef<string|null>(null);
  const pendingCreation=useRef<{key:string;released:boolean;onOwned:()=>void}|null>(null);
+ const pendingWalletReturn=useRef<{key:string;at:number}|null>(null);
  const uiTiming=useRef<PaymentUiTiming|null>(null);
  const beginTiming=useCallback((fresh=false)=>{if(fresh||!uiTiming.current)uiTiming.current=beginPaymentUiTiming()},[]);
  const markPresented=useCallback((stage:'feedback'|'authorization'|'confirmed')=>{uiTiming.current?.mark(stage);if(stage==='confirmed')uiTiming.current?.mark('code-confirmed')},[]);
@@ -91,13 +92,13 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
  },[run,current]);
  useEffect(()=>{
   try{clearChapaAttempts(window.sessionStorage)}catch{}
-  const version=++epoch.current;locked.current=false;pendingCreation.current=null;statusRead.current=null;originalRead.current=null;invalidated.current=null;uiTiming.current=null;const next=empty();stateRef.current=next;setSnapshot(next);
+  const version=++epoch.current;locked.current=false;pendingCreation.current=null;pendingWalletReturn.current=null;statusRead.current=null;originalRead.current=null;invalidated.current=null;uiTiming.current=null;const next=empty();stateRef.current=next;setSnapshot(next);
   // Missing-ID originals use the one bounded key observer below. Issuing a
   // separate restore GET here would overlap discovery and misread a pre-commit
   // 404 as an authoritative missing payment.
   const restoreUrl=next.recoveryId&&chapaUuid.test(next.recoveryId)?`/api/payments/chapa/checkouts/${next.recoveryId.toLowerCase()}`:null;
   if(queryIdentity&&restoreUrl)void loadPrivateJson<ChapaCheckoutView>(queryIdentity,restoreUrl,{freshnessMs:5000}).then(order=>{if(current(version))receive(order)}).catch(cause=>{if(current(version))update({restoring:false,errorCode:cause instanceof ChapaClientError?cause.code:cause instanceof PrivateQueryError?({401:'UNAUTHORIZED',403:'FORBIDDEN',404:'NOT_FOUND'}[cause.status]??'UNAVAILABLE'):'UNAVAILABLE',error:language==='am'?'የክፍያውን ሁኔታ ማምጣት አልተቻለም።':'Payment status could not load. Try again.'})});
-  const unsubscribe=subscribePrivateQueries(event=>{if(event.kind==='authorization'||event.kind==='session'&&event.identity!==queryIdentity){epoch.current++;statusRead.current=null;controllers.current.forEach(c=>c.abort());if(queryIdentity)stopChapaObservers(queryIdentity)}});
+  const unsubscribe=subscribePrivateQueries(event=>{if(event.kind==='authorization'||event.kind==='session'&&event.identity!==queryIdentity){epoch.current++;statusRead.current=null;pendingWalletReturn.current=null;controllers.current.forEach(c=>c.abort());if(queryIdentity)stopChapaObservers(queryIdentity)}});
   return()=>{
    const last=stateRef.current;
    if(retainOriginal&&queryIdentity&&last.identity===queryIdentity)clearSettledChapaOriginalAttempt(getMiniQueryClient(),queryIdentity,scope,last.order,last.directAttempt?.key);
@@ -110,10 +111,14 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
  useEffect(()=>{
   if(!orderId||!isPrivateQueryIdentity(queryIdentity)||confirmed||!waiting||state.restoring&&!state.order)return;
   const version=epoch.current;
+  const returned=pendingWalletReturn.current;
+  const initialWalletReturnAt=returned&&returned.key===stateRef.current.directAttempt?.key?returned.at:undefined;
+  pendingWalletReturn.current=null;
   // A single observer receives committed SSE snapshots and keeps bounded
   // verification as fallback. Reconnect/resume reads only this owned attempt.
   return retainChapaObserver(queryIdentity!,orderId,{
    initialOrder:state.order,
+   initialWalletReturnAt,
    readSnapshot:()=>run(`/api/payments/chapa/checkouts/${orderId}`),verify:trigger=>verifyOwned(orderId,trigger),
    onSnapshot:order=>{if(current(version))receive(order)},isCurrent:()=>current(version),
    onPause:()=>update({paused:true}),
@@ -126,11 +131,12 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
  const discoverWhileCreating=state.busy&&state.directAttempt?.apiVersion==='v2'&&state.directAttempt.kind==='direct'&&state.directAttempt.flow==='DIRECT';
  const originalUrl=!orderId&&state.active&&(!state.busy||discoverWhileCreating)&&!state.restoring?chapaOriginalKeyUrl(state.directAttempt)??chapaOriginalRecoveryUrl(state.recoveryKey,state.recoveryProtocol):null;
  const originalDelay=discoverWhileCreating?5000:0;
- const observeTelebirrReturn=discoverWhileCreating&&state.directAttempt?.paymentMethod==='telebirr';
+ const creatingDirectKey=discoverWhileCreating?state.directAttempt?.key:undefined;
  useEffect(()=>{
   if(!originalUrl||!isPrivateQueryIdentity(queryIdentity))return;
   const version=epoch.current;
-  return startChapaOriginalPolling(()=>readOriginal(originalUrl),order=>{if(current(version)){
+  const read=(signal:AbortSignal)=>creatingDirectKey?requestChapaJson<ChapaCheckoutView>(originalUrl,{},signal):readOriginal(originalUrl);
+  return startChapaOriginalPolling(read,order=>{if(current(version)){
    receive(order);
    // A signed owned response can reach us before the original HTTP reply. The
    // saved operation now owns observation/OTP; release only its creation token.
@@ -140,11 +146,12 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
    }
   }},document,{
    initialDelayMs:originalDelay,
-   telegram:observeTelebirrReturn?window.Telegram?.WebApp:undefined,
+   telegram:creatingDirectKey?window.Telegram?.WebApp:undefined,
+   onWalletReturn:creatingDirectKey?at=>{pendingWalletReturn.current={key:creatingDirectKey,at}}:undefined,
    isCurrent:()=>current(version),onPause:()=>update({paused:true}),onResume:()=>update({paused:false}),
    onError:cause=>{if(current(version))update({error:cause instanceof ChapaClientError?cause.message:'Could not reach payment confirmation. We will retry automatically.',errorCode:cause instanceof ChapaClientError?cause.code:'UNAVAILABLE'})},
   });
- },[originalUrl,originalDelay,observeTelebirrReturn,queryIdentity,current,receive,readOriginal,update]);
+ },[originalUrl,originalDelay,creatingDirectKey,queryIdentity,current,receive,readOriginal,update]);
  const create=useCallback(async(intent:ChapaIntent)=>{
   if(!queryIdentity||locked.current||!isPrivateQueryIdentity(queryIdentity))return;
   const version=epoch.current,next=stateRef.current.attempt??{version:1 as const,intent};locked.current=true;update({attempt:next,busy:true,active:true,error:'',errorCode:null,paused:false,handoff:'opening'});const navigation=prepareChapaNavigation();
@@ -238,7 +245,7 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
   const latest=stateRef.current,order=latest.order;
   if(latest.identity!==queryIdentity||!isPrivateQueryIdentity(queryIdentity)||locked.current||latest.busy||latest.restoring||!latest.active||!order||!bidPaymentCanRetry(order)&&!(order.purpose==='TOP_UP'&&order.status==='CREDITED'&&chapaConfirmed(order)))return false;
   if(retainOriginal&&queryIdentity)clearSettledChapaOriginalAttempt(getMiniQueryClient(),queryIdentity,scope,order,latest.directAttempt?.key);
-  epoch.current++;controllers.current.forEach(c=>c.abort());controllers.current.clear();statusRead.current=null;originalRead.current=null;invalidated.current=null;uiTiming.current=null;
+  epoch.current++;controllers.current.forEach(c=>c.abort());controllers.current.clear();statusRead.current=null;originalRead.current=null;pendingWalletReturn.current=null;invalidated.current=null;uiTiming.current=null;
   const next=empty(false);stateRef.current=next;setSnapshot(next);return true;
  };
  return {...state,opening:state.handoff==='opening',started:state.active,create,createInline,createDirect,authorize,check,canStartAgain,startAgain,beginTiming,markPresented};

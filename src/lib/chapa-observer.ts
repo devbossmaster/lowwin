@@ -16,6 +16,7 @@ type Options={
  isCurrent?:()=>boolean;
  deadlineAt?:number|null;
  observeDirect?:boolean;
+ initialWalletReturnAt?:number;
  visibility?:Visibility;
  wake?:Events|null;
  telegram?:Telegram|null;
@@ -27,6 +28,7 @@ const observers=new Map<string,SharedObserver>();
 // A surface can hand ownership to another component while its old request is
 // still settling. Keep the flight fence across observer restarts/remounts.
 const ownedRequests=new Map<string,Promise<ChapaCheckoutView|null>>();
+const walletReturnLifetimeMs=10000;
 let observerIdentity:string|null=null;
 /** Explicit account scope is mandatory for sharing. Tests can use the local
  * startChapaObserver primitive without creating an unscoped shared resource. */
@@ -51,8 +53,10 @@ export function retainChapaObserver(identity:string,id:string,options:Options){
    try{const order=await flight;if(current()&&order)receive(order);return order}
    finally{if(ownedRequests.get(key)===flight)ownedRequests.delete(key)}
   };
+  const initialWalletReturnAt=primary.initialWalletReturnAt;
   owned.stop=startChapaObserver(id,{
    ...primary,initialOrder:owned.latest??primary.initialOrder,readSnapshot:()=>request('readSnapshot'),verify:trigger=>request('verify',trigger),onSnapshot:receive,
+   initialWalletReturnAt:generation===1?initialWalletReturnAt:undefined,
    isCurrent:()=>current()&&[...owned.owners].some(valid),
    onPause:()=>fanout(owned,owner=>owner.onPause()),onResume:()=>fanout(owned,owner=>owner.onResume?.()),
    onError:error=>fanout(owned,owner=>owner.onError?.(error)),
@@ -104,6 +108,15 @@ export function startChapaObserver(id:string,options:Options){
   if(now-lastWalletReturnAt<750||!currentDirect(latest)||latest?.authType!=='USSD'||!latest.authorizationReference)return false;
   lastWalletReturnAt=now;pendingWalletReturnUntil=0;walletReturnWanted=true;verifyWanted=true;
   return true;
+ };
+ const rememberWalletReturn=(returnedAt:number)=>{
+  const now=Date.now();
+  if(returnedAt>now||now-returnedAt>=walletReturnLifetimeMs||!currentDirect(latest))return false;
+  const queued=queueWalletReturn(now);
+  // A carrier can show and close its prompt before initialization saves
+  // the reference. Keep the hint briefly for this same owned payment.
+  if(!queued&&!latest?.authorizationReference)pendingWalletReturnUntil=returnedAt+walletReturnLifetimeMs;
+  return queued;
  };
  const accept=(order:ChapaCheckoutView|null,pushed=false)=>{
   if(!live()||!order||order.id!==id||!acceptChapaSnapshot(latest,order))return false;
@@ -214,10 +227,7 @@ export function startChapaObserver(id:string,options:Options){
   if(visibility.visibilityState!=='visible'){wasHidden=true;away=true;clearTimeout(timer);disconnect();return}
   const now=Date.now();
   const returned=resuming&&(away||telegramActivated);
-  const walletReturn=returned&&queueWalletReturn(now);
-  // The carrier can show and close its prompt before initialization saves
-  // the reference. Bind this short-lived hint to the same observed payment.
-  if(returned&&!walletReturn&&currentDirect(latest)&&latest?.paymentMethod==='telebirr'&&!latest.authorizationReference)pendingWalletReturnUntil=now+10000;
+  const walletReturn=returned&&rememberWalletReturn(now);
   if(resuming)away=false;
   if(!wasHidden&&!walletReturn&&now-lastWakeAt<750)return;
   wasHidden=false;lastWakeAt=now;
@@ -239,6 +249,7 @@ export function startChapaObserver(id:string,options:Options){
  }
  visibility.addEventListener('visibilitychange',onReturn);wake?.addEventListener('focus',onReturn);wake?.addEventListener('blur',onAway);wake?.addEventListener('online',onReconnect);
  try{telegram?.onEvent?.('activated',onActivated);telegram?.onEvent?.('deactivated',onAway)}catch{/* Older Telegram clients use visibility/focus. */}
+ if(options.initialWalletReturnAt!==undefined)rememberWalletReturn(options.initialWalletReturnAt);
  snapshotWanted=!verificationFirst;verifyWanted=true;connect();void drain();
  return stop;
 }

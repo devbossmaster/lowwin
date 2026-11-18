@@ -157,6 +157,39 @@ describe('one owned SSE and verification observer',()=>{
   f.wake.dispatchEvent(new Event('blur'));f.wake.dispatchEvent(new Event('focus'));
   await vi.advanceTimersByTimeAsync(0);expect(f.verify.mock.calls).toEqual([[],[],['wallet-return']]);stop();
  });
+ it.each(['mpesa','telebirr'] as const)('uses a recent %s wallet return for the first owned USSD check',async paymentMethod=>{
+  vi.useFakeTimers();
+  const f=fixture(),wallet={...currentDirect,paymentMethod,status:'AUTH_NEEDED',authType:'USSD' as const,authorizationReference:'owned-reference'};
+  f.verify.mockResolvedValue({...wallet,status:'FAILED'});
+  const stop=startChapaObserver(id,{...f.options,initialOrder:wallet,initialWalletReturnAt:Date.now()-1200});
+  await vi.advanceTimersByTimeAsync(0);
+  expect(f.verify.mock.calls).toEqual([['wallet-return']]);
+  expect(f.readSnapshot).not.toHaveBeenCalled();
+  stop();
+ });
+ it('holds the return from creation briefly while waiting for a committed USSD reference',async()=>{
+  vi.useFakeTimers();
+  const f=fixture(),initial={...currentDirect,paymentMethod:'mpesa',authorizationReference:null};
+  f.verify.mockResolvedValue(initial);
+  const stop=startChapaObserver(id,{...f.options,initialOrder:initial,initialWalletReturnAt:Date.now()-1200});
+  await vi.advanceTimersByTimeAsync(0);
+  expect(f.verify.mock.calls).toEqual([[]]);
+  const ready={...initial,authType:'USSD' as const,authorizationReference:'owned-reference'};
+  f.verify.mockResolvedValue(ready);
+  f.sources[0].frame(ready);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(f.verify.mock.calls).toEqual([[],['wallet-return']]);
+  stop();
+ });
+ it('ignores a return left over from an old authorization window',async()=>{
+  vi.useFakeTimers();
+  const f=fixture(),wallet={...currentDirect,paymentMethod:'mpesa',status:'AUTH_NEEDED',authType:'USSD' as const,authorizationReference:'owned-reference'};
+  f.verify.mockResolvedValue(wallet);
+  const stop=startChapaObserver(id,{...f.options,initialOrder:wallet,initialWalletReturnAt:Date.now()-11000});
+  await vi.advanceTimersByTimeAsync(0);
+  expect(f.verify.mock.calls).toEqual([[]]);
+  stop();
+ });
  it.each([
   {authType:'OTP',authorizationReference:'owned-reference'},
   {authType:'USSD',authorizationReference:null},
