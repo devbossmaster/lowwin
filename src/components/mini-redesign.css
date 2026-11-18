@@ -44,7 +44,7 @@
 .launch-progress{display:flex;align-items:center;justify-content:center;gap:10px}
 .launch-progress p{margin:0;font-size:13px;line-height:1.5}
 .launch-progress .loading-spinner-ring{width:20px;height:20px;border-width:2px}
-.payment-resume-error{max-width:440px;min-height:65dvh;margin:0 auto;padding:64px 24px 32px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px}
+.payment-resume-error{max-width:var(--customer-surface-width);min-height:65dvh;margin:0 auto;padding:64px 24px 32px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px}
 .payment-resume-error h1{margin:0;font-size:22px;line-height:1.35;letter-spacing:-.02em}
 .payment-resume-error p{margin:0;max-width:34ch;font-size:14px;line-height:1.65;color:var(--brand-muted, #72697e)}
 .payment-resume-error a{display:flex;align-items:center;justify-content:center;min-height:44px;padding:10px 22px;border-radius:24px;background:var(--action-primary, #2563eb);color:var(--action-ink, #fff);font-size:13px;text-decoration:none}

@@ -29,12 +29,10 @@ for(const am of [false,true])test(`hero and detail timer stay readable ${am?'AM'
   // The family-at-home photograph fills the hero behind all readable HTML copy.
   expect(layout.artLeft).toBeCloseTo(layout.heroLeft,1);expect(layout.artTop).toBeCloseTo(layout.heroTop,1);expect(layout.artWidth).toBeCloseTo(layout.heroWidth,1);expect(layout.artHeight).toBeCloseTo(layout.heroHeight,1);
   expect(layout.heroWidth).toBeGreaterThan(layout.heroHeight);
+  expect(layout.heroWidth).toBeCloseTo(Math.min(page.viewportSize()!.width,430),0);
   expect(layout.heroWidth/layout.heroHeight).toBeCloseTo(1840/880,2);expect(layout.heroWidth/layout.heroHeight).toBeCloseTo(sourceRatio/1.1,2);
-  if(info.project.name==='1280'){
-   expect(layout.copyRight).toBeLessThanOrEqual(layout.heroLeft+layout.heroWidth*.4);expect(Math.abs(layout.leftCrop)).toBeLessThan(.01);
-  }else{
-   expect(layout.copyRight).toBeLessThanOrEqual(layout.heroLeft+layout.heroWidth*.47);expect(Math.abs(layout.leftCrop)).toBeLessThan(.01);
-  }
+  expect(layout.copyRight).toBeLessThanOrEqual(layout.heroLeft+layout.heroWidth*.47);
+  expect(Math.abs(layout.leftCrop)).toBeLessThan(.01);
   expect(Math.abs(layout.rightCrop)).toBeLessThan(.01);
   const learn=hero.getByRole('button',{name:am?'እንዴት ይሠራል?':'How it works?',exact:true});await learn.click();await expect(page.getByRole('dialog')).toBeVisible();await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);await expect(learn).toBeFocused();
   const winners=hero.getByRole('link',{name:am?'አሸናፊዎች':'Winners',exact:true});await expect(winners).toBeVisible();await expect(winners).toHaveAttribute('href','/winners');await hero.scrollIntoViewIfNeeded();await page.evaluate(()=>document.fonts.ready);await hero.screenshot({path:info.outputPath(`hero-${am?'am':'en'}.png`)});

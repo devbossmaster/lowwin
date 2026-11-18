@@ -53,17 +53,3 @@
 .action:hover:not(:disabled):not([aria-disabled=true]){background:var(--action-hover, #1d4ed8);color:var(--action-ink, #fff)}
 .action:active:not(:disabled):not([aria-disabled=true]){background:var(--action-pressed, #1e40af)}
 .action:disabled,.action[aria-disabled=true]{background:var(--action-disabled, #dbe7fb);color:var(--action-disabled-ink, #52647f);--surface-ink:var(--action-disabled-ink, #52647f);opacity:1}
-@media(min-width:1024px){
- :global(.app-frame[data-app-layout=browser]) .page{max-width:none;padding:12px 0 32px}
- :global(.app-frame[data-app-layout=browser]) .tabs{max-width:420px;margin-inline:auto;background:var(--brand-soft,#f2f2f7)}
- :global(.app-frame[data-app-layout=browser]) .list,:global(.app-frame[data-app-layout=browser]) .loading>div{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
- :global(.app-frame[data-app-layout=browser]) .row,:global(.app-frame[data-app-layout=browser]) .rowSkeleton{padding:14px;border-radius:16px}
- :global(.app-frame[data-app-layout=browser]) .rowTitle{font-size:15px;line-height:1.5;font-weight:600}
- :global(.app-frame[data-app-layout=browser]) .status{font-size:13px}
- :global(.app-frame[data-app-layout=browser]) .clock :global(.countdown){font-size:12px}
- :global(.app-frame[data-app-layout=browser]) .chevron{color:var(--brand-muted,#657181)}
- :global(.app-frame[data-app-layout=browser]) .status[data-outcome=WON],:global(.app-frame[data-app-layout=browser]) .status[data-outcome=PENDING],:global(.app-frame[data-app-layout=browser]) .empty>svg{color:var(--action-pressed,#1e40af)}
-}
-@media(min-width:1024px) and (hover:hover){
- :global(.app-frame[data-app-layout=browser]) .row:hover{background:var(--brand-soft,#f2f2f7);border-color:var(--brand-line,#e4e7ec)}
-}

@@ -2,13 +2,12 @@
 @font-face{font-family:'Inter';src:url('/fonts/inter-latin-variable.woff2') format('woff2');font-style:normal;font-weight:100 900;font-display:swap;unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
 @font-face{font-family:'Lowwin Ethiopic';src:url('/fonts/noto-sans-ethiopic-variable.woff2') format('woff2');font-style:normal;font-weight:100 900;font-display:swap;unicode-range:U+030E,U+1200-1399,U+2D80-2DDE,U+AB01-AB2E,U+1E7E0-1E7FE}
 @theme{--font-sans:'Inter','Lowwin Ethiopic',sans-serif;--color-primary:#6d4cfd;--color-primary-foreground:#fff;--color-forest:#382171;--color-mint:#eee8fa}
+:root { --customer-surface-width: 430px; }
 body{font-family:'Inter','Lowwin Ethiopic',sans-serif;font-weight:400}
 [lang='am']{font-family:'Lowwin Ethiopic','Inter',sans-serif}
 .telegram-entry.launch-loader {
   position: relative;
   isolation: isolate;
-  max-width: none;
-  width: 100%;
   min-height: var(--tg-viewport-stable-height, 100dvh);
   align-items: center;
   justify-content: center;
@@ -47,7 +46,9 @@ body{font-family:'Inter','Lowwin Ethiopic',sans-serif;font-weight:400}
 }
 
 .app-frame,.telegram-entry { --mini-safe-top:max(env(safe-area-inset-top, 0px),var(--tg-safe-area-inset-top, 0px)); --mini-safe-bottom:max(env(safe-area-inset-bottom, 0px),var(--tg-safe-area-inset-bottom, 0px)); }
-.app-frame { max-width:480px; min-height:100dvh; margin:auto; background:linear-gradient(to bottom,#008000 0 360px,var(--color-background, #fff) 360px); padding-bottom:calc(104px + var(--mini-safe-bottom) + var(--tg-content-safe-area-inset-bottom, 0px)); --surface-ink: #000; color: var(--surface-ink, #000); }
+.app-frame,.telegram-entry { width:100%; max-width:var(--customer-surface-width); margin-inline:auto; }
+.app-frame { --customer-nav-height:69px; min-height:100dvh; background:linear-gradient(to bottom,#008000 0 360px,var(--color-background, #fff) 360px); padding-bottom:calc(104px + var(--mini-safe-bottom) + var(--tg-content-safe-area-inset-bottom, 0px)); --surface-ink: #000; color: var(--surface-ink, #000); }
+.app-frame[data-customer-registered=false] { --customer-nav-height:0px; padding-bottom:calc(24px + var(--mini-safe-bottom) + var(--tg-content-safe-area-inset-bottom,0px)); }
 .app-frame {
   --auction-card-width: 380px;
   --auction-card-gutters: clamp(16px, 6vw, 32px);
@@ -362,7 +363,7 @@ h3 { font-size:15px; font-weight:600; }
 
 .payment-confirmation>p{text-align:left;font-size:14px;line-height:1.65;margin:12px 0}.payment-confirmation>strong{display:block;margin:14px 0}.payment-confirmation>h3{margin-top:24px}.payment-confirmation>label{margin-top:16px}
 
-.telegram-entry{max-width:440px;margin:0 auto;min-height:100dvh;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;padding:32px 24px;padding-top:calc(32px + var(--mini-safe-top) + var(--tg-content-safe-area-inset-top, 0px));padding-bottom:calc(32px + var(--mini-safe-bottom) + var(--tg-content-safe-area-inset-bottom, 0px));background:#fff;--surface-ink: #000;color: var(--surface-ink, #000)}.telegram-entry h1{font-size:clamp(32px,8vw,42px);line-height:1.1;letter-spacing:-.04em;margin:40px 0 16px}.telegram-entry p{line-height:1.6;color:var(--surface-ink, #000);margin:0 0 24px}.telegram-entry .primary-button{width:100%;text-align:center}
+.telegram-entry{min-height:100dvh;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;padding:32px 24px;padding-top:calc(32px + var(--mini-safe-top) + var(--tg-content-safe-area-inset-top, 0px));padding-bottom:calc(32px + var(--mini-safe-bottom) + var(--tg-content-safe-area-inset-bottom, 0px));background:#fff;--surface-ink: #000;color: var(--surface-ink, #000)}.telegram-entry h1{font-size:clamp(32px,8vw,42px);line-height:1.1;letter-spacing:-.04em;margin:40px 0 16px}.telegram-entry p{line-height:1.6;color:var(--surface-ink, #000);margin:0 0 24px}.telegram-entry .primary-button{width:100%;text-align:center}
 /* Telegram Mini App: white canvas, accessible forest green actions. Admin keeps its own tokens. */
 .app-frame,.telegram-entry{--mini-action:#008000;--mini-action-ink:#172412;--mini-soft:#f9f9f9}
 .app-frame .primary-button,.telegram-entry .primary-button,.app-frame .primary-bid-button,.app-frame .catalog-search button{background:var(--mini-action);color:#fff;gap:8px;--surface-ink:#fff}

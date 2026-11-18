@@ -1,4 +1,4 @@
-.dialog{position:fixed;inset:auto 0 0;width:min(480px,100vw);max-height:calc(94dvh - env(safe-area-inset-top,0px));margin:0 auto;padding-bottom:env(safe-area-inset-bottom,0px);padding:0;overflow:auto;border:0;border-radius:24px 24px 0 0;background:#fff;color:#000;box-shadow:0 24px 60px rgb(0 0 0 / 30%)}
+.dialog{position:fixed;inset:auto 0 0;width:min(100%,var(--customer-surface-width));max-height:calc(94dvh - env(safe-area-inset-top,0px));margin:0 auto;padding-bottom:env(safe-area-inset-bottom,0px);padding:0;overflow:auto;border:0;border-radius:24px 24px 0 0;background:#fff;color:#000;box-shadow:0 24px 60px rgb(0 0 0 / 30%)}
 .dialog::backdrop{background:rgb(24 24 21 / 48%)}
 .header{display:flex;align-items:center;gap:10px;padding:16px 16px 12px}
 .icon{display:grid;place-items:center;width:36px;height:36px;flex:none;border-radius:50%;background:#f1eee3;color:var(--brand-ink, #211a30)}

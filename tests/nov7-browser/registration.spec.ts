@@ -104,7 +104,7 @@ test('native approval alone cannot unlock the app and a timed-out check can be r
  await respond(page,0,true);
  await expect.poll(()=>state.calls.contactChecks).toBeGreaterThan(0);
  await expect(page.getByRole('button',{name:'Confirming your contact',exact:true})).toBeDisabled();
- await expect(page.getByRole('alert')).toContainText('Telegram has not confirmed your contact yet',{timeout:35000});
+ await expect(page.getByRole('main').getByRole('alert')).toContainText('Telegram has not confirmed your contact yet',{timeout:35000});
  expect(state.calls.contactChecks).toBe(15);
  expect(state.calls.signIns).toBe(1);
  expect(state.calls.me).toBe(0);

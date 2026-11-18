@@ -4,6 +4,11 @@
   text-align: center;
 }
 
+.screen:global(.telegram-entry) {
+  --mini-action: var(--action-primary);
+  --mini-action-hover: var(--action-hover);
+}
+
 .screen h1 {
   font-size: clamp(26px, 7vw, 34px);
   margin: 8px 0 0;
