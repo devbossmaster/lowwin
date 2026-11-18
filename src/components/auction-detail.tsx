@@ -13,6 +13,7 @@ import {AuctionGallery} from './auction-gallery';
 import {AuctionResultDetail} from './auction-result-detail';
 import {WinnerCelebration} from './celebration';
 import {AuctionMoreChances} from './auction-more-chances';
+import {ProductDescription} from './product-description';
 import {AuctionCountdown} from './auction-countdown';
 import {AuctionShareOptions} from './auction-share';
 import {isSubmissionFeeOnly} from '@/modules/auctions/rules';
@@ -78,6 +79,7 @@ export function AuctionDetail({auction:initialAuction,serverNow}:{auction:Catalo
    <div className={styles.numbers}><div><Gavel size={14} aria-hidden="true"/><span><strong>{auction.bidCount.toLocaleString()}</strong><small><MiniPhrase en="Total bids" am="ጠቅላላ ጨረታዎች"/></small></span></div><div><Eye size={14} aria-hidden="true"/><span><strong>{BigInt(auction.viewCount).toLocaleString()}</strong><small><MiniPhrase en="Views" am="እይታዎች"/></small></span></div></div>
   </section>
   <p className={styles.privacy}><LockKeyhole size={14} aria-hidden="true"/><MiniPhrase en="Chosen numbers stay private until the result is published." am="የተመረጡ ቁጥሮች ውጤቱ እስኪታተም ድረስ በሚስጥር ይቆያሉ።"/></p>
+  <ProductDescription description={auction.product.description} descriptionAm={auction.product.descriptionAm} compact/>
   <AuctionMoreChances currentCode={auction.code} dialogOpen={bidding}/>
   <section className={styles.actions} aria-label={am?'ጨረታውን ያጋሩ':'Share this auction'}><AuctionShareOptions title={title} code={auction.code}/></section>
   </div>

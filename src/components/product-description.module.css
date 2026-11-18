@@ -5,4 +5,11 @@
 .specs dt{font-weight:600;overflow-wrap:anywhere}
 .specs dd{margin:0;color:#4b6257;overflow-wrap:anywhere}
 .paragraph{margin:0;padding:10px 0;color:#172d24;font-size:16px;line-height:1.75;overflow-wrap:anywhere}
+.section.preview{margin:9px 0 0;padding:9px 11px;border:1px solid #e4ebf4;border-radius:12px;background:#f8faff;color:#16202c}
+.preview h2{margin:0 0 3px;font-size:12px;line-height:1.4}
+.preview .paragraph{padding:0;color:#536171;font-size:12px;line-height:1.6}
+.preview .paragraph+.paragraph{margin-top:6px}
+.preview .specs>div{gap:8px;padding:5px 0;border-color:#e4ebf4;color:#536171;font-size:12px;line-height:1.55}
+.preview .specs dd{color:#344054}
+.expand{display:inline-flex;align-items:center;min-height:36px;margin:0;padding:0 2px;border:0;background:none;color:#1d4ed8;font:inherit;font-size:12px;font-weight:600;text-decoration:underline;text-underline-offset:3px}
 @media(max-width:370px){.specs>div{gap:12px;font-size:15px}}
