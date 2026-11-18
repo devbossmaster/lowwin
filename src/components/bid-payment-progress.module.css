@@ -60,3 +60,14 @@
 .progress[data-payment-panel=persistent] .status{min-height:132px;box-sizing:border-box;gap:14px;padding:12px 0 4px}
 .progress[data-payment-panel=persistent] .stateIcon{width:56px;height:56px;background:var(--brand-soft);color:var(--action-primary,#2563eb)}
 .progress[data-payment-panel=persistent] .status p{max-width:32ch}
+.progress[data-payment-view=authorization] .stateIcon{width:64px;height:64px;background:#eee5d2;color:#493b20}
+.progress[data-payment-view=authorization] .status{min-height:148px;padding-top:14px;gap:16px}
+.progress[data-payment-view=authorization] .status h3{font-size:19px;font-weight:600}
+.progress[data-payment-view=authorization] .status p{min-height:46px;max-width:31ch}
+.progress[data-payment-view=authorization] .activity{height:5px;margin:8px 0 24px;background:#ebe9e3;border-radius:6px}
+.progress[data-payment-view=authorization] .activity>span{width:40%;background:#d49c16;animation:authorization-line 1.6s linear infinite}
+.progress[data-payment-view=authorization] .summary{padding-top:18px}
+.progress[data-payment-view=authorization] .summary>div{padding:7px 0}
+.progress[data-payment-view=authorization] .security{margin-top:20px}
+@keyframes authorization-line{from{transform:translateX(-110%)}to{transform:translateX(360%)}}
+@media(prefers-reduced-motion:reduce){.progress[data-payment-view=authorization] .activity>span{animation:none;transform:translateX(75%)}}

@@ -13,8 +13,8 @@ test('switching external providers keeps one outstanding fee quote without charg
   await dialog.getByRole('textbox',{name:'Payment phone number',exact:true}).fill('0911652904');
   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
   expect(requests).toBe(1);expect(aborted).toBe(0);expect(f.commands).toHaveLength(0);
-  release();await expect(dialog.locator('[data-payment-action]')).toBeEnabled();
-  expect(f.quoteRequests).toHaveLength(1);expect(f.commands).toHaveLength(0);expect(f.sdkLoads).toHaveLength(0);
+  await expect(dialog.locator('[data-payment-action]')).toBeEnabled();await expect(dialog.locator('[data-payment-action]')).toHaveAttribute('aria-busy','false');
+  release();await expect.poll(()=>f.quoteRequests.length).toBe(1);expect(f.commands).toHaveLength(0);expect(f.sdkLoads).toHaveLength(0);
  }finally{release();await f.db.$disconnect()}
 });
 
@@ -25,7 +25,7 @@ test('wallet payment does not wait for an outstanding external fee quote',async(
  try{
   await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await selectBids(page,f.title);
   await dialog.getByRole('radio',{name:/^telebirr$/i}).check();await expect.poll(()=>requests).toBe(1);
-  await expect(dialog.locator('[data-payment-action]')).toBeDisabled();
+  await expect(dialog.locator('[data-payment-action]')).toBeEnabled();await expect(dialog.locator('[data-payment-action]')).toHaveAttribute('aria-busy','false');
   await dialog.getByRole('radio',{name:'LowWin Wallet',exact:true}).check();
   await expect(dialog.getByText('Confirming your total…',{exact:true})).toHaveCount(0);
   await expect(dialog.locator('[data-payment-action]')).toBeEnabled();
