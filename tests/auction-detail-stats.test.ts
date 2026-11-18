@@ -20,7 +20,7 @@ const auction={code:'5',slug:'bid-total-fixture',status:'live',isDemo:false,resu
  product:{title:'Power bank',description:'A product',condition:'New',images:[]},category:{slug:'accessories',name:'Accessories'},fulfillment:{summary:'Collect the prize',region:'Addis Ababa'},
  terms:{version:1,ruleVersion:'lowest-unique-v4',entryFeePoints:'50',minPoints:'1',maxPoints:null,stepPoints:'0.01',maxDistinctBids:100,noWinnerTerms:'Frozen terms',cancellationTerms:'Frozen terms'},
 } as unknown as CatalogAuction;
-const render=(language:'en'|'am'='en')=>renderToStaticMarkup(createElement(MiniLocaleProvider,{initialLanguage:language,children:createElement(AuctionDetail,{auction,serverNow:now})}));
+const render=(language:'en'|'am'='en',item=auction)=>renderToStaticMarkup(createElement(MiniLocaleProvider,{initialLanguage:language,children:createElement(AuctionDetail,{auction:item,serverNow:now})}));
 beforeEach(()=>{state.activity=null;state.catalog=null});
 
 describe('public auction total accepted bids',()=>{
@@ -41,7 +41,7 @@ describe('public auction total accepted bids',()=>{
   expect(html).toContain('Fee per bid');expect(html).toContain('ETB 50.00');expect(html).toContain('Auction code');
   expect(html).toContain('data-auction-bid');expect(html).toContain('Place a bid');expect(html).not.toContain('Pay ETB 50.00 &amp; bid');
   expect(html).toContain('Chosen numbers stay private until the result is published.');
-  expect(html).not.toContain('Frozen terms');expect(html).not.toContain('Collect the prize');expect(html).not.toContain('A product');
+  expect(html).not.toContain('Frozen terms');expect(html).not.toContain('Collect the prize');
   expect(html).toContain('href="/terms"');
   expect(html.indexOf('Fee per bid')).toBeLessThan(html.indexOf('More chances'));
   expect(html.indexOf('Total bids')).toBeLessThan(html.indexOf('More chances'));
@@ -49,7 +49,23 @@ describe('public auction total accepted bids',()=>{
   expect(html.indexOf('data-product-gallery')).toBeLessThan(html.indexOf('<h1>'));
  });
  it('keeps the existing countdown and scheduled Ethiopian-time information',()=>{
-  const html=render();expect(html).toContain('role="timer"');expect(html).toContain(`dateTime="${endsAt}"`);expect(html).toContain('3:33 AM');expect(html).toContain('EAT');
+  const html=render();expect(html).toContain('role="timer"');expect(html).toContain(`dateTime="${endsAt}"`);expect(html).toContain('3:33 AM');expect(html).toContain('GMT+3');
+ });
+ it('puts the short description in one section before more chances without an expand control',()=>{
+  const html=render();
+  expect(html.match(/A product/g)).toHaveLength(1);
+  expect(html.indexOf('Product details')).toBeLessThan(html.indexOf('More chances'));
+  expect(html).not.toContain('Read more');
+ });
+ it('previews long descriptions in the selected language and skips blank descriptions',()=>{
+  const descriptionAm='ተንቀሳቃሽ የኃይል ባንክ። '.repeat(12)+'የመጨረሻ ዝርዝር';
+  const item={...auction,product:{...auction.product,descriptionAm}};
+  const html=render('am',item);
+  expect(html).toContain('ተንቀሳቃሽ የኃይል ባንክ።');
+  expect(html).toContain('aria-expanded="false"');
+  expect(html).toContain('ተጨማሪ አንብብ');
+  expect(html).not.toContain('የመጨረሻ ዝርዝር');
+  expect(render('en',{...auction,product:{...auction.product,description:'  '}})).not.toContain('data-product-description');
  });
  it('recommends only other auctions still accepting entries',()=>{
   state.catalog={serverNow:now,items:[auction,{...auction,code:'6',product:{...auction.product,title:'Other live prize'}},{...auction,code:'7',endsAt:now},{...auction,code:'8',status:'upcoming'}]};

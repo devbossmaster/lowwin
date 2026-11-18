@@ -1,6 +1,9 @@
 import {createAuth} from './server';
 import {browserLoginConfig,telegramLoginSettings,telegramLoginRequestOrigin,telegramLoginDestination,telegramLoginFailure,TELEGRAM_LOGIN_PROVIDER,TELEGRAM_BROWSER_RESTORE_COOKIE} from './telegram-login';
 import {measureTelegramAuth,timedTelegramAuthResponse} from './telegram-timing';
+import {REFERRAL_BOT_RECOVERY_PARAMETER,WEBSITE_REFERRAL_PARAMETER} from '@/lib/referral-invite';
+import {WEBSITE_REFERRAL_COOKIE} from '../referrals/website-cookie';
+import {withTelegramReferralFallback} from './telegram-oidc-referral';
 
 const headers={'Cache-Control':'private, no-store, max-age=0','Vary':'Cookie','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'};
 /** HTTP boundary only: protocol state, PKCE, JWT validation and cookies belong
@@ -17,8 +20,11 @@ async function handleTelegramOIDCRequest(request:Request,path:string){
   let body:Record<string,unknown>;
   try{body=await request.json()}catch{return Response.json({error:'Invalid login request.'},{status:400,headers})}
   if(!body||typeof body!=='object'||Array.isArray(body))return Response.json({error:'Invalid login request.'},{status:400,headers});
-  const destination=telegramLoginDestination(body.callbackURL??'/',settings.origin);
-  if(body.provider!==TELEGRAM_LOGIN_PROVIDER||!destination||Object.keys(body).some(key=>!['provider','callbackURL','errorCallbackURL','newUserCallbackURL','disableRedirect'].includes(key)))return Response.json({error:'Invalid login request.'},{status:400,headers});
+  const suppliedDestination=telegramLoginDestination(body.callbackURL??'/',settings.origin);
+  if(body.provider!==TELEGRAM_LOGIN_PROVIDER||!suppliedDestination||Object.keys(body).some(key=>!['provider','callbackURL','errorCallbackURL','newUserCallbackURL','disableRedirect'].includes(key)))return Response.json({error:'Invalid login request.'},{status:400,headers});
+  const destinationUrl=new URL(suppliedDestination,settings.origin);
+  for(const parameter of [WEBSITE_REFERRAL_PARAMETER,REFERRAL_BOT_RECOVERY_PARAMETER])if(destinationUrl.searchParams.has(parameter))destinationUrl.searchParams.delete(parameter);
+  const destination=destinationUrl.pathname+destinationUrl.search+destinationUrl.hash;
   const errorUrl=new URL('/',settings.origin);errorUrl.searchParams.set('login','1');errorUrl.searchParams.set('next',destination);
   const proposed=telegramLoginDestination(body.errorCallbackURL,settings.origin);
   if(proposed){const lang=new URL(proposed,settings.origin).searchParams.get('lang');if(lang==='en'||lang==='am')errorUrl.searchParams.set('lang',lang)}
@@ -29,7 +35,8 @@ async function handleTelegramOIDCRequest(request:Request,path:string){
   if(request.method!=='GET'||query.getAll('state').length!==1||query.getAll('code').length>1||query.getAll('error').length>1)return loginError(settings.origin,'invalid');
  }
  try{
-  const response=await measureTelegramAuth(callback?'oidc_callback':'oidc_start',()=>createAuth().handler(request));
+  const authenticate=()=>measureTelegramAuth(callback?'oidc_callback':'oidc_start',()=>createAuth().handler(request));
+  const {result:response,referral}=callback?await withTelegramReferralFallback(authenticate):{result:await authenticate(),referral:null};
   const output=new Headers(response.headers);
   for(const [key,value]of Object.entries(headers))output.set(key,value);
   if(callback)return measureTelegramAuth('oidc_redirect',async()=>{
@@ -37,14 +44,16 @@ async function handleTelegramOIDCRequest(request:Request,path:string){
    if(!location){
     let code:string|null=null;
     try{const error=await response.json() as {code?:unknown};if(typeof error.code==='string')code=error.code}catch{}
-    return loginError(settings.origin,telegramLoginFailure(code),output);
+    const failure=telegramLoginFailure(code);
+    return loginError(settings.origin,failure,output,undefined,null,failure==='contact_required'?referral:null);
    }
    if(response.status>=500)return loginError(settings.origin,'unavailable',output);
    const target=new URL(location,settings.origin);
    if(target.origin!==settings.origin)return loginError(settings.origin,'invalid',output);
    if(target.searchParams.has('error')){
     const next=telegramLoginDestination(target.searchParams.get('next'),settings.origin)??'/';
-    return loginError(settings.origin,telegramLoginFailure(target.searchParams.get('error')),output,next,target.searchParams.get('lang'));
+    const code=telegramLoginFailure(target.searchParams.get('error'));
+    return loginError(settings.origin,code,output,next,target.searchParams.get('lang'),code==='contact_required'?referral:null);
    }
    if(!telegramLoginDestination(target.href,settings.origin))return loginError(settings.origin,'invalid',output);
    const secure=settings.origin.startsWith('https:');
@@ -54,6 +63,7 @@ async function handleTelegramOIDCRequest(request:Request,path:string){
    // and the destination still verifies the signed session cookie on the server.
    if(sessionCookie?.slice(cookiePrefix.length).split(';',1)[0]&&!/;\s*max-age=0(?:;|$)/i.test(sessionCookie)){
     output.append('Set-Cookie',`${TELEGRAM_BROWSER_RESTORE_COOKIE}=1; Path=/; Max-Age=300; HttpOnly; SameSite=Lax${secure?'; Secure':''}`);
+    if(request.headers.get('cookie')?.includes(`${WEBSITE_REFERRAL_COOKIE}=`))output.append('Set-Cookie',`${WEBSITE_REFERRAL_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${secure?'; Secure':''}`);
    }
    return new Response(null,{status:303,headers:output});
   });
@@ -66,8 +76,9 @@ async function handleTelegramOIDCRequest(request:Request,path:string){
   return callback?loginError(settings.origin,'unavailable'):Response.json({error:'Telegram sign-in is temporarily unavailable.'},{status:503,headers});
  }
 }
-function loginError(origin:string,code:string,existing?:Headers,next='/',language:string|null=null){
+function loginError(origin:string,code:string,existing?:Headers,next='/',language:string|null=null,referral:string|null=null){
  const target=new URL('/',origin);target.searchParams.set('telegramLoginError',code);target.searchParams.set('next',next);if(language==='am'||language==='en')target.searchParams.set('lang',language);
+ if(referral)target.searchParams.set(REFERRAL_BOT_RECOVERY_PARAMETER,referral);
  const output=new Headers(existing);for(const [key,value]of Object.entries(headers))output.set(key,value);output.set('Location',target.href);
  return new Response(null,{status:303,headers:output});
 }

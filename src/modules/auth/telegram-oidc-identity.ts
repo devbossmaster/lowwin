@@ -6,6 +6,7 @@ import {attributeNewReferralInTransaction} from '../referrals/service';
 import {contactBotId,encryptPhone,normalizePhone,phoneHash} from './own-contact';
 import {telegramPhotoUrl} from './telegram-validation';
 import {measureTelegramAuth} from './telegram-timing';
+import {rememberTelegramReferralFallback} from './telegram-oidc-referral';
 
 const issuer='https://oauth.telegram.org';
 
@@ -39,7 +40,7 @@ function profileName(claims:VerifiedTelegramOIDCProfile){
  *
  * This commits identity/contact policy only. Better Auth remains responsible
  * for the OAuth callback and session issuance after the mapper returns. */
-export async function prepareTelegramOIDCIdentity(claims:VerifiedTelegramOIDCProfile,settings:{clientId:string},client:PrismaClient=db):Promise<{name:string;image?:string}>{
+export async function prepareTelegramOIDCIdentity(claims:VerifiedTelegramOIDCProfile,settings:{clientId:string;websiteReferralCode?:string|null},client:PrismaClient=db):Promise<{name:string;image?:string}>{
  const telegramId=telegramIdentity(claims,settings.clientId),botId=settings.clientId;
  const name=profileName(claims),image=telegramPhotoUrl(claims.picture),username=typeof claims.preferred_username==='string'&&/^[A-Za-z0-9_]{1,64}$/.test(claims.preferred_username)?claims.preferred_username:null;
  let consentedPhone:string|null=null;
@@ -85,7 +86,10 @@ export async function prepareTelegramOIDCIdentity(claims:VerifiedTelegramOIDCPro
   if(contact&&(contact.revokedAt||contact.userId&&contact.userId!==existing?.id))reject('conflict');
   let protectedPhone:{phoneHash:string;phoneCipher:string;lastFour:string}|null=null;
   if(!contact){
-   if(!consentedPhone)reject('contact_required');
+   if(!consentedPhone){
+    if(!existing)rememberTelegramReferralFallback(settings.websiteReferralCode);
+    reject('contact_required');
+   }
    const hash=phoneHash(consentedPhone);
    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`phone:${hash}`},0))`;
    const owner=await tx.telegramOwnContact.findUnique({where:{phoneHash:hash},select:{telegramId:true,botId:true}});
@@ -101,7 +105,7 @@ export async function prepareTelegramOIDCIdentity(claims:VerifiedTelegramOIDCPro
   // The owner and both bindings were checked under the same identity locks.
   // Fail the whole transaction on a conflict instead of skipping either row.
   if(newAccounts.length)await measureTelegramAuth('oidc_bindings',()=>tx.account.createMany({data:newAccounts}));
-  await attributeNewReferralInTransaction(tx,user.id,telegramId,{newAccount:!existing});
+  await attributeNewReferralInTransaction(tx,user.id,telegramId,{newAccount:!existing,websiteReferralCode:settings.websiteReferralCode});
  },{maxWait:10000,timeout:20000}));
  return {name,...(image?{image}:{})};
 }

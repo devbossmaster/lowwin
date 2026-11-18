@@ -1,6 +1,7 @@
 import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {Prisma,type PrismaClient} from '@prisma/client';
 import {z} from 'zod';
+import {botReferralShareUrl,referralInviteCode,websiteReferralShareUrl} from '@/lib/referral-invite';
 import {assertPlayerContact,contactBotId} from '../auth/own-contact';
 import {ensureWallet,seedPlatformAccounts} from '../wallet/ledger';
 import {isSubmissionFeeOnly} from '../auctions/rules';
@@ -31,7 +32,7 @@ export async function availableReferralCouponCount(client:DB,userId:string,now:D
 }
 function referralToken(payload:string|undefined|null){return typeof payload==='string'?/^ref_([A-Za-z0-9_-]{12})$/.exec(payload)?.[1]??null:null}
 async function eligibleSponsor(tx:DB,userId:string){const user=await tx.user.findUnique({where:{id:userId},select:{telegramId:true}});return !!user?.telegramId&&!userId.startsWith('demo-showcase-')&&!await tx.testRunActor.findFirst({where:{userId}})&&!await tx.staffMember.findUnique({where:{userId}})&&!await tx.userRestriction.findFirst({where:{userId,suspended:true}})}
-function emptyOverview(){return {configured:false,enabled:false,shareUrl:null as string|null,discountPercent:null as number|null,expiryDays:null as number|null,counts:{signedUp:0,qualified:0,earned:0,available:0},coupons:[] as Array<{id:string;percent:number;expiresAt:string;status:'AVAILABLE'|'USED'|'EXPIRED'}>}}
+function emptyOverview(){return {configured:false,enabled:false,shareUrl:null as string|null,webShareUrl:null as string|null,discountPercent:null as number|null,expiryDays:null as number|null,counts:{signedUp:0,qualified:0,earned:0,available:0},coupons:[] as Array<{id:string;percent:number;expiresAt:string;status:'AVAILABLE'|'USED'|'EXPIRED'}>}}
 
 /** Private account overview. Only coordinates/DTOs are cached by the client. */
 export async function getReferralOverview(client:PrismaClient,userId:string,raw:Record<string,string|undefined>=process.env){
@@ -50,8 +51,9 @@ export async function getReferralOverview(client:PrismaClient,userId:string,raw:
    tx.referralCoupon.findMany({where:{ownerUserId:userId,redemption:null,expiresAt:{gt:now}},orderBy:[{expiresAt:'asc'},{id:'asc'}],take:20,include:{redemption:{select:{id:true}}}}),
    tx.referralCoupon.findMany({where:{ownerUserId:userId,OR:[{redemption:{isNot:null}},{expiresAt:{lte:now}}]},orderBy:[{createdAt:'desc'},{id:'asc'}],take:5,include:{redemption:{select:{id:true}}}}),
   ]);
-  const username=raw.TELEGRAM_BOT_USERNAME,shareUrl=invite&&policy.enabled&&username&&/^[A-Za-z0-9_]+bot$/i.test(username)?`https://t.me/${username}?start=ref_${invite.token}`:null;
-  return {configured:policy.configured,enabled:policy.enabled,shareUrl,discountPercent:policy.configured?policy.discountPercent:null,expiryDays:policy.configured?policy.expiryDays:null,counts:{signedUp,qualified,earned,available},coupons:[...usable,...recent].map(c=>({id:c.id,percent:c.percent,expiresAt:c.expiresAt.toISOString(),status:c.redemption?'USED' as const:c.expiresAt<=now?'EXPIRED' as const:'AVAILABLE' as const}))};
+  const shareUrl=invite&&policy.enabled?botReferralShareUrl(invite.token,raw.TELEGRAM_BOT_USERNAME):null;
+  const webShareUrl=invite&&policy.enabled?websiteReferralShareUrl(invite.token,raw.BETTER_AUTH_URL):null;
+  return {configured:policy.configured,enabled:policy.enabled,shareUrl,webShareUrl,discountPercent:policy.configured?policy.discountPercent:null,expiryDays:policy.configured?policy.expiryDays:null,counts:{signedUp,qualified,earned,available},coupons:[...usable,...recent].map(c=>({id:c.id,percent:c.percent,expiresAt:c.expiresAt.toISOString(),status:c.redemption?'USED' as const:c.expiresAt<=now?'EXPIRED' as const:'AVAILABLE' as const}))};
  },{isolationLevel:Prisma.TransactionIsolationLevel.ReadCommitted});
 }
 
@@ -85,9 +87,9 @@ async function storePendingReferralStart(tx:Tx,telegramId:string,botId:string,to
 }
 
 /** Caller holds the existing telegram identity lock and proves this user is new. */
-export async function attributeNewReferralInTransaction(tx:Tx,userId:string,telegramId:string,{newAccount,signedStartParam}:{newAccount:boolean;signedStartParam?:string|null},raw:Record<string,string|undefined>=process.env){
+export async function attributeNewReferralInTransaction(tx:Tx,userId:string,telegramId:string,{newAccount,signedStartParam,websiteReferralCode}:{newAccount:boolean;signedStartParam?:string|null;websiteReferralCode?:string|null},raw:Record<string,string|undefined>=process.env){
  if(!newAccount||!referralSchemaReady(raw))return;
- const token=referralToken(signedStartParam);
+ const token=referralToken(signedStartParam)??referralInviteCode(websiteReferralCode);
  const pending=await tx.referralPendingSignup.findUnique({where:{botId_telegramId:{botId:contactBotId(),telegramId}}});
  // A signup without a signed referral token or pending bot referral has
  // nothing to attribute. Avoid policy, clock and eligibility reads in that case.
@@ -95,7 +97,7 @@ export async function attributeNewReferralInTransaction(tx:Tx,userId:string,tele
  const now=await databaseNow(tx),policy=await getReferralPolicy(tx,raw);if(!policy.enabled)return;
  if(await tx.referralSignup.findUnique({where:{referredUserId:userId}})||await tx.bid.findFirst({where:{userId}}))return;
  const usablePending=pending&&!pending.consumedUserId&&pending.expiresAt>now?pending:null;
- const direct=token?await tx.referralInvite.findUnique({where:{token}}):null;
+ const direct=!usablePending&&token?await tx.referralInvite.findUnique({where:{token}}):null;
  const sponsor=usablePending?.referrerUserId??direct?.userId;
  if(!sponsor||sponsor===userId||!await eligibleSponsor(tx,sponsor))return;
  if(usablePending)await tx.referralPendingSignup.update({where:{id:usablePending.id},data:{consumedUserId:userId}});

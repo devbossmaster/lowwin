@@ -1,7 +1,7 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
 import dynamic from 'next/dynamic';
-import {Bell,Check,ChevronRight,Copy,Gavel,Gift,Heart,Mail,MapPin,Pencil,Plus,ReceiptText,Share2,ShieldCheck,Ticket,Trophy,UsersRound,Wallet} from 'lucide-react';
+import {Bell,ChevronRight,Gavel,Gift,Heart,Mail,MapPin,Pencil,Plus,ReceiptText,ShieldCheck,Ticket,Trophy,Wallet} from 'lucide-react';
 import {IntentPrefetchLink as Link} from '@/components/intent-prefetch-link';
 import {invalidatePrivateQueries} from '@/components/private-query-cache';
 import {usePrivateQuery,PrivateState} from '@/components/private-query';
@@ -11,17 +11,13 @@ import {OfflineRetry} from '@/components/offline-retry';
 import {WalletTopUpTrigger} from '@/components/wallet-top-up-trigger';
 import {WalletOverviewTrigger} from '@/components/wallet-overview-trigger';
 import {useMiniLocale} from '@/components/mini-locale';
+import {ReferralShareCard,type ReferralOverview} from '@/components/referral-share-card';
 import {centsToEtb,etbToCents} from '@/lib/money';
 import type {getPlayerProfile} from '@/modules/profile/personal';
 import type {WalletBalance} from '@/modules/wallet/balance';
 import styles from '@/components/profile-page.module.css';
 
 const AccountSheet=dynamic(()=>import('@/components/account-sheet').then(module=>module.AccountSheet),{loading:()=>null});
-type ReferralOverview={
-  configured:boolean;enabled:boolean;shareUrl:string|null;discountPercent:number|null;expiryDays:number|null;
-  counts:{signedUp:number;qualified:number;earned:number;available:number};
-  coupons:{id:string;percent:number;expiresAt:string;status:'AVAILABLE'|'USED'|'EXPIRED'}[];
-};
 type ProfileData=Awaited<ReturnType<typeof getPlayerProfile>>&{
   contactEmail?:string;city?:string;contactDetailsEditable?:boolean;phoneDisplay?:string|null;contactVerified?:boolean;referral?:ReferralOverview;
 };
@@ -38,33 +34,14 @@ function PlayerProfile(){
   const {language}=useMiniLocale(),am=language==='am',text=(en:string,translated:string)=>am?translated:en;
   const {refreshMe,me,queryIdentity,signOut}=useTelegram();
   const [editing,setEditing]=useState(false),[saving,setSaving]=useState(false),[message,setMessage]=useState('');
-  const [sharing,setSharing]=useState(false),[copied,setCopied]=useState(false),[shareMessage,setShareMessage]=useState('');
   const [loggingOut,setLoggingOut]=useState(false),[logoutMessage,setLogoutMessage]=useState('');
-  useEffect(()=>{setMessage('');setShareMessage('');setCopied(false);setLogoutMessage('')},[language]);
-  const [failedPhoto,setFailedPhoto]=useState<string|null>(null),editTrigger=useRef<HTMLButtonElement>(null),linkInput=useRef<HTMLInputElement>(null);
+  useEffect(()=>{setMessage('');setLogoutMessage('')},[language]);
+  const [failedPhoto,setFailedPhoto]=useState<string|null>(null),editTrigger=useRef<HTMLButtonElement>(null);
   const photo=me?.user.image?.startsWith('https://')&&failedPhoto!==me.user.image?me.user.image:null;
   const referral=data?.referral,knownRewards=!!referral?.configured,available=knownRewards?referral.counts.available:null;
-  const shareUrl=referral?.enabled?referral.shareUrl:null,referralActive=!!shareUrl;
   const initials=(data?.displayName??me?.user.name??'').trim().split(/\s+/).filter(Boolean).slice(0,2).map(part=>Array.from(part)[0]).join('').toLocaleUpperCase(language)||'L';
   let balance:string|null=null;
   try{if(wallet.data)balance=centsToEtb(etbToCents(wallet.data.available))}catch{/* Keep an unavailable balance distinct from zero. */}
-  async function copyLink(){
-    if(!shareUrl)return;
-    setShareMessage('');
-    try{await navigator.clipboard.writeText(shareUrl);setCopied(true);setShareMessage(text('Link copied.','ሊንኩ ተቀድቷል።'))}
-    catch{linkInput.current?.focus();linkInput.current?.select();setShareMessage(text('Press and hold the link to copy it.','ሊንኩን ለመቅዳት ተጭነው ይያዙት።'))}
-  }
-  async function shareLink(){
-    if(!shareUrl)return;
-    setSharing(true);setShareMessage('');
-    const invitation=text('Join me on Lowwin.','በLowwin ላይ ይቀላቀሉኝ።');
-    try{
-      if(window.Telegram?.WebApp?.openTelegramLink)window.Telegram.WebApp.openTelegramLink('https://t.me/share/url?'+new URLSearchParams({url:shareUrl,text:invitation}));
-      else if(navigator.share)await navigator.share({title:'Lowwin',text:invitation,url:shareUrl});
-      else await copyLink();
-    }catch(error){if(!(error instanceof DOMException&&error.name==='AbortError'))setShareMessage(text('Could not share your link. Try copying it instead.','ሊንኩን ማጋራት አልተቻለም። በመቅዳት ይሞክሩ።'))}
-    finally{setSharing(false)}
-  }
   async function save(event:React.FormEvent<HTMLFormElement>){
     event.preventDefault();if(!data)return;
     const form=new FormData(event.currentTarget);setSaving(true);setMessage('');
@@ -110,14 +87,7 @@ function PlayerProfile(){
         <Link href="/winning-bids"><span className={styles.shortcutIcon}><Trophy size={20} aria-hidden="true"/></span><span><strong>{text('My wins','ያሸነፍኳቸው')}</strong><small>{text('Prizes and delivery updates','ሽልማቶች እና የርክክብ ዝማኔዎች')}</small></span><ChevronRight size={17} aria-hidden="true"/></Link>
         <Link href="/profile/favorites"><span className={styles.shortcutIcon}><Heart size={20} aria-hidden="true"/></span><span><strong>{text('Saved prizes','የተቀመጡ ሽልማቶች')}</strong><small>{text('Auctions you saved','ያስቀመጧቸው ጨረታዎች')}</small></span><ChevronRight size={17} aria-hidden="true"/></Link>
       </nav>
-      <section className={styles.panel} aria-labelledby="refer-heading">
-        <div className={styles.panelHeading}><h2 id="refer-heading"><UsersRound size={17} aria-hidden="true"/>{text('Refer & earn','ይጋብዙ እና ያግኙ')}</h2><span className={styles.referralState} data-active={referralActive||undefined}>{referralActive?text('Active','ንቁ'):knownRewards&&!referral?.enabled?text('Paused','ቆሟል'):text('Unavailable','አይገኝም')}</span></div>
-        <p className={styles.description}>{referralActive&&typeof referral?.discountPercent==='number'?text(`Share your link. When a new friend registers with it and makes their first accepted bid, you earn one ${referral.discountPercent}% discount on a submission fee.`,`ሊንክዎን ያጋሩ። አዲስ ጓደኛዎ በሊንኩ ተመዝግቦ የመጀመሪያ ጨረታው ሲቀበል፣ ለአንድ የማስገቢያ ክፍያ ${referral.discountPercent}% ቅናሽ ያገኛሉ።`):knownRewards&&!referral?.enabled?text('New invitations are paused. Your earned discounts keep their original expiry.','አዲስ ግብዣዎች ቆመዋል። ያገኟቸው ቅናሾች የመጀመሪያ የማብቂያ ቀናቸውን ይይዛሉ።'):text('Your invitation link and reward terms will appear here when Refer & earn is ready.','የመጋበዣ ሊንክዎ እና የሽልማት ውሎች አገልግሎቱ ሲዘጋጅ እዚህ ይታያሉ።')}</p>
-        {shareUrl&&<div className={styles.referralLink}><input ref={linkInput} readOnly value={shareUrl} aria-label={text('Your referral link','የመጋበዣ ሊንክዎ')}/><button type="button" onClick={()=>void copyLink()} aria-label={text('Copy referral link','የመጋበዣ ሊንክ ይቅዱ')}>{copied?<Check size={17} aria-hidden="true"/>:<Copy size={17} aria-hidden="true"/>}</button></div>}
-        <button className={styles.shareButton} type="button" disabled={!shareUrl||sharing} onClick={()=>void shareLink()}><Share2 size={17} aria-hidden="true"/>{sharing?text('Opening…','በመክፈት ላይ…'):text('Share my link','ሊንኬን አጋራ')}</button>
-        {shareMessage&&<p className={styles.inlineNotice} role="status">{shareMessage}</p>}
-        <div className={styles.referralStats}>{[{en:'Signed up',am:'የተመዘገቡ',value:knownRewards?referral.counts.signedUp:null},{en:'First bids',am:'የመጀመሪያ ጨረታ',value:knownRewards?referral.counts.qualified:null},{en:'Rewards earned',am:'የተገኙ ሽልማቶች',value:knownRewards?referral.counts.earned:null}].map(item=><div key={item.en}><strong>{item.value??'—'}</strong><span>{text(item.en,item.am)}</span></div>)}</div>
-      </section>
+      <ReferralShareCard overview={referral}/>
       <section className={styles.panel} aria-labelledby="discounts-heading">
         <div className={styles.panelHeading}><h2 id="discounts-heading"><Ticket size={17} aria-hidden="true"/>{text('My discounts','የእኔ ቅናሾች')}</h2><span className={styles.count}>{available===null?text('Unavailable','አይገኝም'):text(`${available} available`,`${available} ይገኛሉ`)}</span></div>
         <p className={styles.description}>{text('Apply an earned discount in the bid sheet. It reduces the submission fee, not your chosen number.','በጨረታ ማቅረቢያው ላይ ያገኙትን ቅናሽ ይጠቀሙ። ቅናሹ የማስገቢያ ክፍያውን ይቀንሳል፣ የመረጡትን ቁጥር አይደለም።')}</p>
