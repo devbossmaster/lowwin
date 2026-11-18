@@ -8,6 +8,7 @@ import {earnedReferralCoupon,verifiedReferralUser,realReferralAuction} from './r
 import {quoteBidBatch} from '../src/modules/auctions/batch';
 import {createCurrentDirectCheckout,findCurrentDirectCheckoutByKey,findInlineCheckoutByKey,prepareCurrentDirectCreation} from '../src/modules/payments/chapa-inline';
 import {prepareAtomicDirectBid} from '../src/modules/payments/chapa-direct-bid-prepare';
+import {prepareAtomicDirectTopUp} from '../src/modules/payments/chapa-direct-topup-prepare';
 import {prepareOwnedChapaVerification,verifyChapaCheckout} from '../src/modules/payments/chapa';
 import {authorizeCurrentDirectCreation,type PaymentSessionAuthorizer} from '../src/modules/payments/creation-eligibility';
 import {contactBotId} from '../src/modules/auth/own-contact';
@@ -47,6 +48,7 @@ describe.skipIf(!database)('current Direct5 owned creation and private committed
   const authorize:PaymentSessionAuthorizer=vi.fn(async()=>{});
   authorize.forCurrentDirectCreate=vi.fn((tx,owner,key)=>authorizeCurrentDirectCreation(tx,binding,owner,key));
   authorize.forCurrentDirectBid=vi.fn((client,owner,input)=>prepareAtomicDirectBid(client,binding,owner,input));
+  authorize.forCurrentDirectTopUp=vi.fn((client,owner,input)=>prepareAtomicDirectTopUp(client,binding,owner,input));
   return {session,authorize,binding};
  }
  it.each(['TOP_UP','BID'] as const)('checks two prepared %s requests again under the existing locks and dispatches the original key once',async purpose=>{
@@ -69,28 +71,37 @@ describe.skipIf(!database)('current Direct5 owned creation and private committed
   expect(f.direct).not.toHaveBeenCalled();
   expect(await db.chapaCheckout.count({where:{userId:f.user}})).toBe(0);
  });
- it('commits the eligible Direct bid preparation under the restricted runtime role',async()=>{
-  const f=await fixture('BID'),{authorize,binding}=await creationBinding(f.user);
+ it.each(['TOP_UP','BID'] as const)('commits eligible Direct %s under the restricted runtime role',async purpose=>{
+  const f=await fixture(purpose),{authorize,binding}=await creationBinding(f.user);
   const {Client}=await import('pg'),sql=new Client({connectionString:database});await sql.connect();
   try{await sql.query(readFileSync('deploy/runtime-role.sql','utf8'))}finally{await sql.end()}
-  const run=authorize.forCurrentDirectBid!;
-  authorize.forCurrentDirectBid=async(client,owner,input)=>client.$transaction(async tx=>{
+  const atomicTopUp=authorize.forCurrentDirectTopUp!,atomicBid=authorize.forCurrentDirectBid!;
+  if(purpose==='TOP_UP')authorize.forCurrentDirectTopUp=(client,owner,input)=>client.$transaction(async tx=>{
    await tx.$executeRaw`SET LOCAL ROLE lowwin_runtime`;
-   return run(tx as unknown as PrismaClient,owner,input);
+   return atomicTopUp(tx as unknown as PrismaClient,owner,input);
   });
-  const prepare=await prepareCurrentDirectCreation(db,f.user,f.command,f.transport,false),{order}=await prepare(authorize);
+  else authorize.forCurrentDirectBid=(client,owner,input)=>client.$transaction(async tx=>{
+   await tx.$executeRaw`SET LOCAL ROLE lowwin_runtime`;
+   return atomicBid(tx as unknown as PrismaClient,owner,input);
+  });
+  const command=purpose==='TOP_UP'?{...f.command,amount:'5.00',approvedDepositBonusVersion:1,approvedDepositBonusAmount:'0.00'}:f.command;
+  const prepare=await prepareCurrentDirectCreation(db,f.user,command,f.transport,false),{order}=await prepare(authorize);
   expect(authorize.forCurrentDirectCreate).not.toHaveBeenCalled();
-  expect(run).toHaveBeenCalledOnce();expect(f.direct).toHaveBeenCalledOnce();
-  expect(order).toMatchObject({status:'AUTH_NEEDED',flowVersion:5,purpose:'BID',amount:'40.00'});
+  expect(purpose==='TOP_UP'?atomicTopUp:atomicBid).toHaveBeenCalledOnce();
+  expect(order).toMatchObject({status:'AUTH_NEEDED',flowVersion:5,purpose,amount:purpose==='TOP_UP'?'5.00':'40.00'});
   const row=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});
-  expect(row.initialization).toMatchObject({flow:'DIRECT',amountCents:'4000',batch:{id:f.quote!.id,lines:[{number:'2.00'},{number:'4.00'}]}});
+  const amountCents=purpose==='TOP_UP'?'500':'4000';
+  expect(f.direct).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({amountCents}),'create');
+  expect(row.initialization).toMatchObject({flow:'DIRECT',amountCents,...(f.quote?{batch:{id:f.quote.id,lines:[{number:'2.00'},{number:'4.00'}]}}:{})});
+  if(purpose==='TOP_UP')expect(row.initialization).not.toHaveProperty('depositBonus');
   expect(row.phoneBotId).toBe(binding.botId);
   for(const key of [`app:chapa-inline-create:${chapaHash(f.user)}`,`app:chapa-inline-initialize:${chapaHash(order.id)}`])expect((await db.rateLimit.findUniqueOrThrow({where:{key}})).count).toBe(1);
  });
- it('does not dispatch or fall back on an ambiguous preparation reply and recovers the same immutable original',async()=>{
-  const f=await fixture('BID'),{authorize,binding}=await creationBinding(f.user);
+ it.each(['TOP_UP','BID'] as const)('does not dispatch or fall back on an ambiguous %s preparation reply and recovers the same immutable original',async purpose=>{
+  const f=await fixture(purpose),{authorize,binding}=await creationBinding(f.user);
   const interrupted=db.$extends({query:{$queryRaw:async({args,query})=>{await query(args);throw Error('Committed preparation reply lost')}}}) as unknown as PrismaClient;
-  authorize.forCurrentDirectBid=(_,owner,input)=>prepareAtomicDirectBid(interrupted,binding,owner,input);
+  if(purpose==='TOP_UP')authorize.forCurrentDirectTopUp=(_,owner,input)=>prepareAtomicDirectTopUp(interrupted,binding,owner,input);
+  else authorize.forCurrentDirectBid=(_,owner,input)=>prepareAtomicDirectBid(interrupted,binding,owner,input);
   const prepare=await prepareCurrentDirectCreation(db,f.user,f.command,f.transport,false);
   await expect(prepare(authorize)).rejects.toThrow('Committed preparation reply lost');
   expect(authorize.forCurrentDirectCreate).not.toHaveBeenCalled();expect(f.direct).not.toHaveBeenCalled();
@@ -100,6 +111,26 @@ describe.skipIf(!database)('current Direct5 owned creation and private committed
   await db.chapaCheckout.update({where:{id:original.id},data:{leaseUntil:new Date(0)}});
   expect((await f.start()).order).toMatchObject({id:original.id,status:'AUTH_NEEDED'});
   expect(f.direct).toHaveBeenCalledOnce();expect(await db.chapaCheckout.count({where:{userId:f.user}})).toBe(1);
+ });
+ it('stops a stale zero-bonus approval before dispatch and records the accepted offer on the canonical path',async()=>{
+  const f=await fixture(),{authorize}=await creationBinding(f.user);
+  const prior=await db.depositBonusPolicy.findUnique({where:{id:'default'}});
+  const policy={enabled:true,minCents:500n,percent:10,version:7};
+  await db.depositBonusPolicy.upsert({where:{id:'default'},create:policy,update:policy});
+  try{
+   const start=async(amount:string,version:number)=>(await prepareCurrentDirectCreation(db,f.user,{...f.command,approvedDepositBonusVersion:version,approvedDepositBonusAmount:amount},f.transport,false))(authorize);
+   await expect(start('0.00',1)).rejects.toMatchObject({code:'DEPOSIT_BONUS_CHANGED'});
+   expect(authorize.forCurrentDirectTopUp).toHaveBeenCalledOnce();
+   expect(f.direct).not.toHaveBeenCalled();
+   expect(await db.chapaCheckout.count({where:{userId:f.user}})).toBe(0);
+   const {order}=await start('4.00',7);
+   expect(f.direct).toHaveBeenCalledOnce();
+   const saved=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});
+   expect(saved.initialization).toMatchObject({depositBonus:{amountCents:'400',policyVersion:7}});
+  }finally{
+   if(prior)await db.depositBonusPolicy.update({where:{id:'default'},data:prior});
+   else await db.depositBonusPolicy.update({where:{id:'default'},data:{enabled:false,version:1}});
+  }
  });
  it('uses the established locked coupon checks and dispatches the exact discounted amount',async()=>{
   const f=await fixture('BID'),{authorize}=await creationBinding(f.user),{coupon}=await earnedReferralCoupon(db,f.user);

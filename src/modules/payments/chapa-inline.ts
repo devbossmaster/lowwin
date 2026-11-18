@@ -98,10 +98,12 @@ export async function createInlineCheckout(client:PrismaClient,userId:string,raw
  * The complete immutable intent and its first dispatch lease commit together. */
 async function createParsedCheckout(client:PrismaClient,userId:string,{body,phone}:ReturnType<typeof parsePaymentIntent>,reauthorize:Authorize|undefined,transport:ChapaInlineTransport,protocol:'INLINE'|'DIRECT',original?:ChapaCheckout|null){
  const hash=requestHash(body,phone),previousLookup=original===undefined?lookupOriginal(client,userId,body.key):Promise.resolve(original);
+ const approvedBonusCents=body.purpose==='TOP_UP'&&body.approvedDepositBonusAmount!==undefined?etbToCents(body.approvedDepositBonusAmount):null;
+ const atomicTopUp=protocol==='DIRECT'&&body.purpose==='TOP_UP'&&(approvedBonusCents===null||approvedBonusCents===0n)?reauthorize?.forCurrentDirectTopUp:undefined;
  // A safe new Direct top-up can overlap its read-only schema probe with owned
  // key discovery. Capture rejection immediately: an existing original must
  // recover even when rollout readiness is unavailable or creation is paused.
- const probeBonus=protocol==='DIRECT'&&body.purpose==='TOP_UP'&&body.flow==='DIRECT'&&['telebirr','cbebirr','mpesa'].includes(body.paymentMethod)&&currentDirectAvailability().enabled&&etbToCents(body.amount)>=CHAPA_TOPUP_MIN_CENTS&&etbToCents(body.amount)<=CHAPA_TOPUP_MAX_CENTS;
+ const probeBonus=!atomicTopUp&&protocol==='DIRECT'&&body.purpose==='TOP_UP'&&body.flow==='DIRECT'&&['telebirr','cbebirr','mpesa'].includes(body.paymentMethod)&&currentDirectAvailability().enabled&&etbToCents(body.amount)>=CHAPA_TOPUP_MIN_CENTS&&etbToCents(body.amount)<=CHAPA_TOPUP_MAX_CENTS;
  const bonusProbe=probeBonus?measureChapa('schema',()=>depositBonusStorageReady(client)).then(ready=>({ok:true as const,ready}),error=>({ok:false as const,error})):null;
  const previous=await previousLookup;
  const assertReplay=(order:ChapaCheckout)=>{if(!(protocol==='DIRECT'?isCurrentDirectCheckout(order):isV2InlineCheckout(order))||order.requestHash!==hash)throw new ChapaError(409,'KEY_REUSED','Keep the original payment details.')};
@@ -119,8 +121,8 @@ async function createParsedCheckout(client:PrismaClient,userId:string,{body,phon
  if(body.flow!==protocol||!['telebirr','cbebirr','mpesa'].includes(body.paymentMethod))throw new ChapaError(422,'METHOD_UNAVAILABLE','Choose an enabled payment method.');
  // Schema readiness and capabilities do not depend on one another. Keep both
  // outside financial locks and overlap their cold reads before preparation.
- const [bonusReady,capabilities]=await Promise.all([
-  body.purpose==='TOP_UP'?bonusProbe?bonusProbe.then(result=>{if(!result.ok)throw result.error;return result.ready}):measureChapa('schema',()=>depositBonusStorageReady(client)):Promise.resolve(false),
+ let [bonusReady,capabilities]=await Promise.all([
+  body.purpose==='TOP_UP'&&!atomicTopUp?bonusProbe?bonusProbe.then(result=>{if(!result.ok)throw result.error;return result.ready}):measureChapa('schema',()=>depositBonusStorageReady(client)):Promise.resolve(false),
   capabilitiesFor(transport,protocol),
  ]);
  const selectedMethod=capabilities.find(method=>method.slug===body.paymentMethod);
@@ -141,6 +143,12 @@ async function createParsedCheckout(client:PrismaClient,userId:string,{body,phon
   assertCurrentConfig();const {id,initialization}=buildInitialization();
   const order=await measureChapa('prepare',()=>reauthorize.forCurrentDirectBid!(client,userId,{checkoutId:id,key:body.key,batchId:body.batchId,quoteHash:body.quoteHash,requestHash:hash,phone,mode:health.mode,credentialFingerprint:health.credentialFingerprint!,initialization,minimumCents:selectedMethod.minimumCents,maximumCents:selectedMethod.maximumCents}));
   if(order){assertCurrentConfig();return {order:await dispatchInlineCheckout(client,order,userId,transport,'create')}}
+ }
+ if(atomicTopUp&&body.purpose==='TOP_UP'){
+  assertCurrentConfig();const {id,initialization}=buildInitialization();
+  const order=await measureChapa('prepare',()=>atomicTopUp(client,userId,{checkoutId:id,key:body.key,requestHash:hash,phone,amountCents:String(etbToCents(body.amount)),approvedBonusCents:approvedBonusCents?.toString()??null,mode:health.mode,credentialFingerprint:health.credentialFingerprint!,initialization,minimumCents:selectedMethod.minimumCents,maximumCents:selectedMethod.maximumCents}));
+  if(order){assertCurrentConfig();return {order:await dispatchInlineCheckout(client,order,userId,transport,'create')}}
+  bonusReady=await measureChapa('schema',()=>depositBonusStorageReady(client));
  }
  const transactionQueuedAt=performance.now();
  const prepared=await measureChapa('prepare',()=>client.$transaction(async tx=>{

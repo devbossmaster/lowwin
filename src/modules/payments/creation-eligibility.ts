@@ -1,5 +1,6 @@
 import {Prisma,type ChapaCheckout,type PrismaClient} from '@prisma/client';
 import type {DirectBidPreparation} from './chapa-direct-bid-prepare';
+import type {DirectTopUpPreparation} from './chapa-direct-topup-prepare';
 import type {WalletCashCommandInput,WalletCashCommandResult} from '../auctions/wallet-cash-command';
 import {contactBotId} from '../auth/own-contact';
 import {PrivateApiError} from '../auth/private-api';
@@ -13,6 +14,7 @@ type BidBatchQuoteAuthorization=WalletBatchAuthorization&{maintenanceHalted:bool
 export type PaymentSessionAuthorizer=((tx:Prisma.TransactionClient)=>Promise<void>)&{
  forCurrentDirectCreate?:(tx:Prisma.TransactionClient,userId:string,key:string)=>Promise<PaymentCreationContact>;
  forCurrentDirectBid?:(client:PrismaClient,userId:string,input:DirectBidPreparation)=>Promise<ChapaCheckout|null>;
+ forCurrentDirectTopUp?:(client:PrismaClient,userId:string,input:DirectTopUpPreparation)=>Promise<ChapaCheckout|null>;
  forWalletBatch?:(tx:Prisma.TransactionClient,userId:string,key:string)=>Promise<WalletBatchAuthorization>;
  forBidBatchQuote?:(tx:Prisma.TransactionClient,userId:string,key:string)=>Promise<BidBatchQuoteAuthorization>;
  forWalletCashCommand?:(client:PrismaClient,userId:string,input:WalletCashCommandInput)=>Promise<WalletCashCommandResult|null>;

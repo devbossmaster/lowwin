@@ -103,6 +103,34 @@ describe('one owned SSE and verification observer',()=>{
   const stop=startChapaObserver(id,{...f.options,initialOrder:currentDirect});await vi.advanceTimersByTimeAsync(0);f.sources[0].dispatchEvent(new Event('open'));f.wake.dispatchEvent(new Event('focus'));f.wake.dispatchEvent(new Event('online'));expect(f.verify).toHaveBeenCalledOnce();
   finish(currentDirect);await vi.advanceTimersByTimeAsync(0);expect(f.verify).toHaveBeenCalledTimes(2);expect(f.readSnapshot).not.toHaveBeenCalled();stop();
  });
+ it('checks immediately once on Telebirr after a slow pending reply without a wallet event',async()=>{
+  vi.useFakeTimers();const f=fixture(),wallet={...currentDirect,status:'AUTH_NEEDED',paymentMethod:'telebirr',authType:'USSD' as const,authorizationReference:'owned-reference'};
+  let finish!:(order:ChapaCheckoutView)=>void,finishSecond!:(order:ChapaCheckoutView)=>void;
+  f.verify.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve}))
+   .mockImplementationOnce(()=>new Promise(resolve=>{finishSecond=resolve})).mockResolvedValue(wallet);
+  const stop=startChapaObserver(id,{...f.options,initialOrder:wallet,createSource:null});
+  await vi.advanceTimersByTimeAsync(8240);expect(f.verify.mock.calls).toEqual([[]]);
+  finish(wallet);await vi.advanceTimersByTimeAsync(0);expect(f.verify.mock.calls).toEqual([[],[]]);
+  await vi.advanceTimersByTimeAsync(3000);expect(f.verify).toHaveBeenCalledTimes(2);
+  finishSecond(wallet);await vi.advanceTimersByTimeAsync(1999);expect(f.verify).toHaveBeenCalledTimes(2);
+  await vi.advanceTimersByTimeAsync(1);expect(f.verify).toHaveBeenCalledTimes(3);expect(f.readSnapshot).not.toHaveBeenCalled();stop();
+ });
+ it.each([{verificationUnavailable:true},{verificationState:'UNAVAILABLE'},{paymentMethod:'mpesa'},{authType:'OTP' as const}])('keeps the normal wait after a slow check for %j',async(overrides)=>{
+  vi.useFakeTimers();const f=fixture(),wallet={...currentDirect,status:'AUTH_NEEDED',paymentMethod:'telebirr',authType:'USSD' as const,authorizationReference:'owned-reference',...overrides};
+  let finish!:(order:ChapaCheckoutView)=>void;
+  f.verify.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve})).mockResolvedValue(wallet);
+  const stop=startChapaObserver(id,{...f.options,initialOrder:wallet,createSource:null});
+  await vi.advanceTimersByTimeAsync(8240);finish(wallet);await vi.advanceTimersByTimeAsync(1999);expect(f.verify.mock.calls).toEqual([[]]);
+  await vi.advanceTimersByTimeAsync(1);expect(f.verify.mock.calls).toEqual([[],[]]);stop();
+ });
+ it('keeps the existing slower schedule when a verification passed its authorization deadline',async()=>{
+  vi.useFakeTimers();const f=fixture(),wallet={...currentDirect,status:'AUTH_NEEDED',paymentMethod:'telebirr',authType:'USSD' as const,authorizationReference:'owned-reference'};
+  let finish!:(order:ChapaCheckoutView)=>void;
+  f.verify.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve})).mockResolvedValue(wallet);
+  const stop=startChapaObserver(id,{...f.options,initialOrder:wallet,deadlineAt:Date.now()+5000,createSource:null});
+  await vi.advanceTimersByTimeAsync(8240);finish(wallet);await vi.advanceTimersByTimeAsync(29999);expect(f.verify.mock.calls).toEqual([[]]);
+  await vi.advanceTimersByTimeAsync(1);expect(f.verify.mock.calls).toEqual([[],[]]);stop();
+ });
  it('preserves one owned wallet-return check behind an older pending request',async()=>{
   vi.useFakeTimers();const f=fixture(),wallet={...currentDirect,status:'AUTH_NEEDED',authType:'USSD' as const,authorizationReference:'owned-reference'};
   const handlers=new Map<string,()=>void>();
