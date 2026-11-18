@@ -1,9 +1,10 @@
-import type { Prisma, PrismaClient } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
 import {createHash} from 'node:crypto';
 import {parseCookies} from 'better-auth/cookies';
 import {constantTimeEqual,makeSignature} from 'better-auth/crypto';
 import {db} from '@/lib/db';
 import {getEnv} from '@/lib/env';
+import {countIdentityRequest,userMutationLimit} from '@/lib/rate-limit';
 import {createAuth} from './server';
 import {assertLocalIdentitySurface} from './local-identity';
 import {contactBotId} from './own-contact';
@@ -13,7 +14,9 @@ import {contactBotId} from './own-contact';
 export function localMiniPreview(headers:Headers) {
   try { assertLocalIdentitySurface(headers);return true; } catch { return false; }
 }
-type BoundRow={id:string;token:string;userId:string;expiresAt:Date;createdAt:Date;updatedAt:Date;telegramLaunchId:string|null;telegramAuthSource:string;name:string;role:string;image:string|null;telegramId:string|null;staffId:string|null;contactTelegramId:string|null;contactBotId:string|null;revokedAt:Date|null;lastFour:string|null};
+type BoundRow={id:string;token:string;userId:string;expiresAt:Date;createdAt:Date;updatedAt:Date;telegramLaunchId:string|null;telegramAuthSource:string;name:string;image:string|null;telegramId:string|null;lastFour:string|null;preview:boolean;contactVerified:boolean;needsRenewal:boolean;mutationCount:number|null;directOriginal:boolean};
+type BoundSession={session:Pick<BoundRow,'id'|'token'|'userId'|'expiresAt'|'createdAt'|'updatedAt'|'telegramLaunchId'|'telegramAuthSource'>;user:{id:string;name:string;image:string|null};telegramId:string|null;contactStatus:{verified:boolean;masked:string|null}};
+type SessionRead={identity:BoundSession;rateAllowed:boolean;directOriginal:boolean};
 async function signedSessionToken(headers:Headers){
   const env=getEnv(),name=(env.BETTER_AUTH_URL.startsWith('https:')?'__Secure-':'')+'better-auth.session_token';
   const value=parseCookies(headers.get('cookie')??'').get(name);if(!value||value.length>512)return null;
@@ -24,30 +27,37 @@ async function signedSessionToken(headers:Headers){
   if(signature.length!==44||!signature.endsWith('=')||!constantTimeEqual(signature,await makeSignature(token,env.BETTER_AUTH_SECRET)))return null;
   return token;
 }
-async function readBoundSession(headers:Headers,client:PrismaClient|Prisma.TransactionClient,requireContact:boolean,refreshed=false):Promise<{session:{id:string;token:string;userId:string;expiresAt:Date;createdAt:Date;updatedAt:Date;telegramLaunchId:string|null;telegramAuthSource:string};user:{id:string;name:string;image:string|null};telegramId:string|null;contactStatus:{verified:boolean;masked:string|null}}|null> {
+async function readBoundSession(headers:Headers,client:PrismaClient|Prisma.TransactionClient,requireContact:boolean,mutation?:{directKey?:string},refreshed=false):Promise<SessionRead|null> {
   const token=await signedSessionToken(headers);if(!token)return null;
-  // One indexed lookup and joins replace the adapter's sequential session,
-  // user, staff and contact reads. Revocation is checked on every request.
-  const rows=await client.$queryRaw<BoundRow[]>`SELECT s.id,s.token,s."userId",s."expiresAt",s."createdAt",s."updatedAt",s."telegramLaunchId",s."telegramAuthSource",COALESCE(p."displayName",u.name) AS name,u.role,u.image,u."telegramId",m."userId" AS "staffId",c."telegramId" AS "contactTelegramId",c."botId" AS "contactBotId",c."revokedAt",c."lastFour"
+  const preview=localMiniPreview(headers),botId=contactBotId();
+  const identity=Prisma.sql`SELECT s.id,s.token,s."userId",s."expiresAt",s."createdAt",s."updatedAt",s."telegramLaunchId",s."telegramAuthSource",COALESCE(p."displayName",u.name) AS name,u.image,u."telegramId",c."lastFour",
+    local.preview, contact.verified AS "contactVerified", (${!refreshed} AND s."updatedAt"<=(clock_timestamp() AT TIME ZONE 'UTC')-INTERVAL '24 hours') AS "needsRenewal"
     FROM "session" s JOIN "user" u ON u.id=s."userId"
     LEFT JOIN "StaffMember" m ON m."userId"=u.id LEFT JOIN "TelegramOwnContact" c ON c."userId"=u.id
     LEFT JOIN "PlayerProfile" p ON p."userId"=u.id
-    WHERE s.token=${token} AND s."expiresAt">(clock_timestamp() AT TIME ZONE 'UTC') LIMIT 1`;
+    CROSS JOIN LATERAL (SELECT (${preview} AND u.id='lowin-local-test-user') AS preview) local
+    CROSS JOIN LATERAL (SELECT COALESCE(c."telegramId"=u."telegramId" AND c."botId"=${botId} AND c."revokedAt" IS NULL,false) AS verified) contact
+    WHERE s.token=${token} AND s."expiresAt">(clock_timestamp() AT TIME ZONE 'UTC')
+      AND (local.preview OR (u.role='member' AND s."telegramAuthSource" IN ('MINI_APP','TELEGRAM_OIDC') AND s."telegramLaunchId"=u."telegramId" AND s."telegramLaunchId"<>'' AND m."userId" IS NULL
+      AND (${!requireContact} OR contact.verified))) LIMIT 1`;
+  // Pay requests count against the same durable quota as other mutations.
+  // Only a fresh, bound identity can consume a token, even on a rejected bid.
+  const quota=userMutationLimit;
+  const sql=mutation?Prisma.sql`
+    WITH bound AS MATERIALIZED (${identity}), counted AS (
+      ${countIdentityRequest(Prisma.sql`${`app:${quota.scope}:`} || encode(sha256(convert_to(bound."userId",'UTF8')),'hex')`,quota.maximum,quota.windowMs,Prisma.sql`FROM bound WHERE NOT bound."needsRenewal"`)}
+    ) SELECT bound.*, counted.count AS "mutationCount",
+      ${mutation.directKey?Prisma.sql`CASE WHEN counted.count<=${quota.maximum} THEN EXISTS(SELECT 1 FROM "ChapaCheckout" WHERE "userId"=bound."userId" AND key=${mutation.directKey}) ELSE false END`:Prisma.sql`false`} AS "directOriginal"
+    FROM bound LEFT JOIN counted ON true`:Prisma.sql`SELECT bound.*, NULL::integer AS "mutationCount", false AS "directOriginal" FROM (${identity}) AS bound`;
+  const rows=await client.$queryRaw<BoundRow[]>(sql);
   const row=rows[0];if(!row)return null;
   const current={session:{id:row.id,token:row.token,userId:row.userId,expiresAt:row.expiresAt,createdAt:row.createdAt,updatedAt:row.updatedAt,telegramLaunchId:row.telegramLaunchId,telegramAuthSource:row.telegramAuthSource},user:{id:row.userId,name:row.name,image:row.image}};
-  const preview=row.userId==='lowin-local-test-user'&&localMiniPreview(headers);
-  // Both proof sources are issued only after server-side Telegram verification.
-  // Ordinary browser/staff cookies without that bound proof remain unauthorized.
-  if(!preview&&(row.role!=='member'||!['MINI_APP','TELEGRAM_OIDC'].includes(row.telegramAuthSource)||!row.telegramLaunchId||row.telegramLaunchId!==row.telegramId||row.staffId))return null;
-  const verified=!!row.contactTelegramId&&!row.revokedAt&&row.contactTelegramId===row.telegramId&&row.contactBotId===contactBotId();
-  if(!preview&&requireContact&&!verified)return null;
   // Preserve Better Auth's existing daily sliding renewal, outside the normal
   // fast path. Re-read bindings after renewal so a concurrent revoke fails.
-  if(!refreshed&&Date.now()-row.updatedAt.getTime()>=86400000){if(!await createAuth(client).api.getSession({headers}))return null;return readBoundSession(headers,client,requireContact,true)}
-  if(preview)return {...current,telegramId:null,contactStatus:{verified:true,masked:null}};
-  // The contact endpoint can reuse this same server-validated snapshot. It is
-  // shared only while a lookup is pending; later requests recheck revocation.
-  return {...current,telegramId:row.telegramId,contactStatus:{verified,masked:verified?`•••• ${row.lastFour}`:null}};
+  if(row.needsRenewal){if(!await createAuth(client).api.getSession({headers}))return null;return readBoundSession(headers,client,requireContact,mutation,true)}
+  const bound=row.preview?{...current,telegramId:null,contactStatus:{verified:true,masked:null}}:
+    {...current,telegramId:row.telegramId,contactStatus:{verified:row.contactVerified,masked:row.contactVerified?`•••• ${row.lastFour}`:null}};
+  return {identity:bound,rateAllowed:!mutation||row.mutationCount!==null&&row.mutationCount<=quota.maximum,directOriginal:row.directOriginal};
 }
 // Cards load their private state together. Share only an unfinished lookup for
 // the same cookie; never retain an authorization result between requests.
@@ -67,8 +77,14 @@ function getBoundSession(headers:Headers,client:PrismaClient|Prisma.TransactionC
   return pending;
 }
 export async function getLaunchSession(headers:Headers,client:PrismaClient|Prisma.TransactionClient=db) {
-  return getBoundSession(headers,client,false);
+  return (await getBoundSession(headers,client,false))?.identity??null;
 }
 export async function getMiniSession(headers:Headers,client:PrismaClient|Prisma.TransactionClient=db) {
-  return getBoundSession(headers,client,true);
+  return (await getBoundSession(headers,client,true))?.identity??null;
+}
+
+// Every mutation counts independently, so these reads skip the in-flight
+// session coalescer used by private GET routes.
+export function getCountedMiniSession(headers:Headers,options:{directKey?:string},client:PrismaClient=db){
+  return readBoundSession(headers,client,true,options);
 }

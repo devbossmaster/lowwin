@@ -8,6 +8,9 @@ import {requirePaymentSession} from '../src/modules/payments/session';
 import {eligible} from '../src/modules/payments/chapa';
 import {createCurrentDirectCheckout} from '../src/modules/payments/chapa-inline';
 import type {ChapaTransport} from '../src/modules/payments/chapa-provider';
+import {createAndPayBidBatchWallet} from '../src/modules/auctions/batch';
+import {bidAuction} from './bid-fixtures';
+import {creditDevelopmentPoints} from '../src/modules/wallet/ledger';
 
 const database=process.env.PAYMENT_TEST_DATABASE_URL;
 describe.skipIf(!database)('creation-only fresh payment authorization on isolated PostgreSQL',()=>{
@@ -15,6 +18,7 @@ describe.skipIf(!database)('creation-only fresh payment authorization on isolate
  beforeAll(async()=>{
   const target=new URL(database!);if(!['127.0.0.1','localhost'].includes(target.hostname)||!target.pathname.endsWith('_test'))throw Error('Disposable loopback _test database required');
   Object.assign(process.env,{DATABASE_URL:database,DIRECT_URL:database,APP_ENV:'local',NODE_ENV:'test',BETTER_AUTH_URL:'https://localhost:3000',MINI_APP_URL:'https://localhost:3000',BETTER_AUTH_SECRET:'fixture-only-secret-at-least-thirty-two-characters',TELEGRAM_BOT_TOKEN:TEST_TOKEN,TELEGRAM_BOT_USERNAME:'lowin_fixture_bot',TELEGRAM_WEBHOOK_SECRET:'fixture-only-webhook-secret-thirty-two',DEV_IDENTITY_ENABLED:'false',PHONE_CONTACT_KEY_ID:'creation-test',PHONE_CONTACT_KEYS:JSON.stringify({'creation-test':'e'.repeat(64)}),PHONE_CONTACT_HASH_KEY:'f'.repeat(64),PAYMENTS_LIVE_ENABLED:'false',CHAPA_ENABLED:'true',CHAPA_MODE:'test',CHAPA_PRIVATE_KEY:'CHAPA_TEST_'+'a'.repeat(40),CHAPA_PUBLIC_KEY:'',CHAPA_WEBHOOK_SECRET:'c'.repeat(64),CHAPA_SCHEMA_READY:'true',CHAPA_INLINE_ENABLED:'false',CHAPA_RECOVERY_ENABLED:'true',CHAPA_WEBHOOK_SIGNATURE_PROFILE:'raw_body',PAYMENT_GATEWAY:'CHAPA',REDIS_URL:''});
+  process.env.STAGING_DEMO_ENABLED='false';
   execFileSync(process.execPath,['node_modules/prisma/build/index.js','migrate','deploy'],{env:process.env,stdio:'pipe'});
   db=new PrismaClient({datasourceUrl:database,log:[{level:'query',emit:'event'}]});(db as PrismaClient<Prisma.PrismaClientOptions,'query'>).$on('query',event=>capture?.push(event.query));await db.$connect();
  },60000);
@@ -28,7 +32,8 @@ describe.skipIf(!database)('creation-only fresh payment authorization on isolate
   const auth=await requirePaymentSession(new Request('https://localhost:3000/api/payments/chapa/direct/current',{method:'POST',headers})),session=await db.session.findFirstOrThrow({where:{userId:auth.userId}}),contact=await db.telegramOwnContact.findUniqueOrThrow({where:{userId:auth.userId}}),key=randomUUID();
   expect(auth.reauthorize.forCurrentDirectCreate).toEqual(expect.any(Function));
   const authorize=(tx:Prisma.TransactionClient,userId=auth.userId,checkoutKey=key)=>auth.reauthorize.forCurrentDirectCreate!(tx,userId,checkoutKey);
-  return {auth,session,contact,key,userId:auth.userId,authorize,check:()=>db.$transaction(tx=>authorize(tx))};
+  const walletAuthorize=(tx:Prisma.TransactionClient,userId=auth.userId,batchKey=key)=>auth.reauthorize.forWalletBatch!(tx,userId,batchKey);
+  return {auth,session,contact,key,userId:auth.userId,authorize,walletAuthorize,check:()=>db.$transaction(tx=>authorize(tx)),walletCheck:()=>db.$transaction(tx=>walletAuthorize(tx))};
  }
  it.each(['MINI_APP','TELEGRAM_OIDC'] as const)('accepts the current signed/contact-bound %s identity in one creation statement',async source=>{
   const f=await fixture(source),queries:string[]=[];capture=queries;let result;try{result=await f.check()}finally{capture=null}
@@ -50,15 +55,19 @@ describe.skipIf(!database)('creation-only fresh payment authorization on isolate
   if(change==='missing-contact')await db.telegramOwnContact.delete({where:{userId:f.userId}});
   if(change.startsWith('staff-'))await db.staffMember.create({data:{userId:f.userId,active:change==='staff-active',recoveryHashes:[]}});
   await expect(f.check()).rejects.toMatchObject({status:401});
+  // Role changes also revoke the bound session through the database trigger.
+  await expect(f.walletCheck()).rejects.toMatchObject({status:401});
  });
  it('keeps creation restrictions out of original-payment reauthorization and accepts an explicitly lifted suspension',async()=>{
   const f=await fixture();await db.userRestriction.create({data:{userId:f.userId,suspended:true,reason:'Isolated creation restriction'}});
   await expect(db.$transaction(f.auth.reauthorize)).resolves.toBeUndefined();await expect(f.check()).rejects.toMatchObject({status:403,code:'BIDDING_RESTRICTED'});
-  await db.userRestriction.update({where:{userId:f.userId},data:{suspended:false}});await expect(f.check()).resolves.toMatchObject({replayExists:false});
+  const replayOnly=await f.walletCheck();expect(replayOnly.replayExists).toBe(false);expect(()=>replayOnly.assertEligible()).toThrow('Bidding is unavailable');
+  await db.userRestriction.update({where:{userId:f.userId},data:{suspended:false}});await expect(f.check()).resolves.toMatchObject({replayExists:false});const lifted=await f.walletCheck();expect(()=>lifted.assertEligible()).not.toThrow();
  });
  it('still requires an encrypted contact for creation without altering historical callback requirements',async()=>{
   const f=await fixture();await db.telegramOwnContact.update({where:{userId:f.userId},data:{phoneCipher:''}});
   await expect(db.$transaction(f.auth.reauthorize)).resolves.toBeUndefined();await expect(f.check()).rejects.toThrow('CONTACT_REQUIRED');
+  const wallet=await f.walletCheck();expect(()=>wallet.assertEligible()).not.toThrow();
  });
  it('cannot reuse a valid creation check after role or contact changes in the same transaction',async()=>{
   for(const change of ['role','contact']){const f=await fixture();await db.$transaction(async tx=>{await f.authorize(tx);if(change==='role')await db.user.update({where:{id:f.userId},data:{role:'admin'}});else await db.telegramOwnContact.update({where:{userId:f.userId},data:{revokedAt:new Date()}});await expect(f.authorize(tx)).rejects.toMatchObject({status:401})})}
@@ -84,5 +93,28 @@ describe.skipIf(!database)('creation-only fresh payment authorization on isolate
   try{await db.$transaction(async tx=>{await f.auth.reauthorize(tx);await eligible(tx,f.userId);await tx.chapaCheckout.findUnique({where:{userId_key:{userId:f.userId,key:f.key}}})})}finally{capture=null}
   capture=current;try{await f.check()}finally{capture=null}
   expect(prior.filter(sql=>/^\s*SELECT\b/i.test(sql))).toHaveLength(3);expect(current.filter(sql=>/^\s*SELECT\b/i.test(sql))).toHaveLength(1);
+ });
+ it.each(['MINI_APP','TELEGRAM_OIDC'] as const)('returns one private wallet %s replay/eligibility snapshot without any extra assertion reads',async source=>{
+  const f=await fixture(source),queries:string[]=[];capture=queries;
+  try{await db.$transaction(async tx=>{const result=await f.walletAuthorize(tx);expect(result.replayExists).toBe(false);expect(()=>result.assertEligible()).not.toThrow();expect(()=>result.assertEligible()).not.toThrow()})}finally{capture=null}
+  expect(queries.filter(sql=>/^\s*SELECT\b/i.test(sql))).toHaveLength(1);expect(queries.join('\n')).toContain('"BidBatchOrder"');
+ });
+ it.each(['suspended','member-role'] as const)('preserves committed wallet facts and existing replay authorization after %s changes',async change=>{
+  const f=await fixture(),other=await fixture(),prior={DEV_POINTS_ENABLED:process.env.DEV_POINTS_ENABLED,WALLET_BIDS_ENABLED:process.env.WALLET_BIDS_ENABLED,REFERRAL_REWARDS_SCHEMA_READY:process.env.REFERRAL_REWARDS_SCHEMA_READY};Object.assign(process.env,{DEV_POINTS_ENABLED:'true',WALLET_BIDS_ENABLED:'true',REFERRAL_REWARDS_SCHEMA_READY:'false'});
+  const fused=vi.fn(f.auth.reauthorize.forWalletBatch!);const authorizer=Object.assign(f.auth.reauthorize,{forWalletBatch:fused});
+  const fetch=vi.spyOn(globalThis,'fetch').mockRejectedValue(Error('No provider HTTP in internal-wallet fixture'));
+  try{
+   const auction=await bidAuction(db,{ruleVersion:'lowest-unique-v5',isDemo:false,fee:10});await db.product.update({where:{id:auction.productId!},data:{isDemo:false}});await creditDevelopmentPoints(db,f.userId,'25',randomUUID());
+   const command={key:f.key,auctionSlug:auction.slug!,numbers:['2','9'],feeVersion:1,approvedTotal:'20.00'},first=await createAndPayBidBatchWallet(db,f.userId,command,authorizer);expect(first.kind).toBe('receipt');
+   const snapshot=async()=>({balance:(await db.ledgerAccount.findUniqueOrThrow({where:{name:`user:${f.userId}:available`}})).balance.toString(),bids:await db.bid.count({where:{userId:f.userId}}),operations:await db.operation.count({where:{userId:f.userId,scope:'BID'}}),postings:await db.posting.count({where:{journal:{operation:{userId:f.userId}}}})}),before=await snapshot();expect(before).toMatchObject({balance:'5',bids:2,operations:2});
+   if(change==='suspended')await db.userRestriction.create({data:{userId:f.userId,suspended:true,reason:'Isolated wallet restriction'}});else await db.user.update({where:{id:f.userId},data:{role:'admin'}});
+   if(change==='member-role'){
+    await expect(createAndPayBidBatchWallet(db,f.userId,command,authorizer)).rejects.toMatchObject({status:401});expect(await snapshot()).toEqual(before);expect(fused).toHaveBeenCalledTimes(2);
+    await expect(createAndPayBidBatchWallet(db,f.userId,{...command,key:randomUUID(),numbers:['3','8']},authorizer)).rejects.toMatchObject({status:401});expect(await snapshot()).toEqual(before);expect(fetch).not.toHaveBeenCalled();return;
+   }
+   const replay=await createAndPayBidBatchWallet(db,f.userId,command,authorizer);expect(replay).toEqual(first);expect(await snapshot()).toEqual(before);expect(fused).toHaveBeenCalledTimes(2);
+   expect((await f.walletCheck()).replayExists).toBe(true);expect((await db.$transaction(tx=>other.walletAuthorize(tx,other.userId,f.key))).replayExists).toBe(false);
+   await expect(createAndPayBidBatchWallet(db,f.userId,{...command,key:randomUUID(),numbers:['3','8']},authorizer)).rejects.toMatchObject({status:403,code:'BIDDING_RESTRICTED'});expect(await snapshot()).toEqual(before);expect(fetch).not.toHaveBeenCalled();
+  }finally{fetch.mockRestore();for(const [key,value] of Object.entries(prior))if(value===undefined)delete process.env[key];else process.env[key]=value}
  });
 });

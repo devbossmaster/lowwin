@@ -32,6 +32,7 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
  const empty=(restore=true):Snapshot=>{const saved=restore?retained():null,pointer=restore&&retainOriginal&&!initialId&&ownerId?readChapaRecoveryPointer(chapaRecoveryStorage(),ownerId,scope):null,recoveryId=restore?initialId??saved?.orderId??pointer?.orderId??null:null,recoveryKey=saved?.intent.apiVersion==='v2'&&['inline','direct'].includes(saved.intent.kind??'')?saved.intent.key:pointer?.key??null,recoveryProtocol=saved?.intent.kind==='direct'?'direct':pointer?.protocol??'inline',retired=!!saved?.intent.apiVersion&&String(saved.intent.apiVersion)!=='v2';return {identity:queryIdentity,attempt:null,directAttempt:saved?.intent??null,recoveryKey,recoveryProtocol,recoveryId,order:null,error:retired&&!recoveryId?'This historical payment is read-only. View Transactions for its recorded status.':'',errorCode:retired&&!recoveryId?'LEGACY_PAYMENT_UNSUPPORTED':null,busy:false,restoring:!!recoveryId,paused:false,active:!!recoveryId||!!saved||!!recoveryKey,handoff:'idle'}};
  const [snapshot,setSnapshot]=useState<Snapshot>(()=>empty()),state=snapshot.identity===queryIdentity?snapshot:empty(),stateRef=useRef(state);stateRef.current=state;
  const epoch=useRef(0),controllers=useRef(new Set<AbortController>()),locked=useRef(false),invalidated=useRef<string|null>(null);
+ const pendingCreation=useRef<{key:string;released:boolean;onOwned:()=>void}|null>(null);
  const uiTiming=useRef<PaymentUiTiming|null>(null);
  const beginTiming=useCallback((fresh=false)=>{if(fresh||!uiTiming.current)uiTiming.current=beginPaymentUiTiming()},[]);
  const markPresented=useCallback((stage:'feedback'|'authorization'|'confirmed')=>{uiTiming.current?.mark(stage);if(stage==='confirmed')uiTiming.current?.mark('code-confirmed')},[]);
@@ -83,7 +84,7 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
  },[run]);
  useEffect(()=>{
   try{clearChapaAttempts(window.sessionStorage)}catch{}
-  const version=++epoch.current;locked.current=false;statusRead.current=null;originalRead.current=null;invalidated.current=null;uiTiming.current=null;const next=empty();stateRef.current=next;setSnapshot(next);
+  const version=++epoch.current;locked.current=false;pendingCreation.current=null;statusRead.current=null;originalRead.current=null;invalidated.current=null;uiTiming.current=null;const next=empty();stateRef.current=next;setSnapshot(next);
   // Missing-ID originals use the one bounded key observer below. Issuing a
   // separate restore GET here would overlap discovery and misread a pre-commit
   // 404 as an authoritative missing payment.
@@ -115,15 +116,26 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
    onError:cause=>update({error:cause instanceof ChapaClientError?cause.message:'Could not reach payment confirmation. We will retry automatically.',errorCode:cause instanceof ChapaClientError?cause.code:'UNAVAILABLE'}),
   });
  },[orderId,queryIdentity,confirmed,waiting,pollingDeadline,observeDirect,state.restoring,verifyOwned,update,run,current,receive]);
- const originalUrl=!orderId&&state.active&&!state.busy&&!state.restoring?chapaOriginalKeyUrl(state.directAttempt)??chapaOriginalRecoveryUrl(state.recoveryKey,state.recoveryProtocol):null;
+ const discoverWhileCreating=state.busy&&state.directAttempt?.apiVersion==='v2'&&state.directAttempt.kind==='direct'&&state.directAttempt.flow==='DIRECT';
+ const originalUrl=!orderId&&state.active&&(!state.busy||discoverWhileCreating)&&!state.restoring?chapaOriginalKeyUrl(state.directAttempt)??chapaOriginalRecoveryUrl(state.recoveryKey,state.recoveryProtocol):null;
+ const originalDelay=discoverWhileCreating?5000:0;
  useEffect(()=>{
   if(!originalUrl||!isPrivateQueryIdentity(queryIdentity))return;
   const version=epoch.current;
-  return startChapaOriginalPolling(()=>readOriginal(originalUrl),order=>{if(current(version))receive(order)},document,{
+  return startChapaOriginalPolling(()=>readOriginal(originalUrl),order=>{if(current(version)){
+   receive(order);
+   // A signed owned response can reach us before the original HTTP reply. The
+   // saved operation now owns observation/OTP; release only its creation token.
+   const creation=pendingCreation.current;
+   if(creation&&creation.key===stateRef.current.directAttempt?.key&&stateRef.current.order?.id===order.id&&order.apiVersion==='v2'&&order.flowVersion===5&&order.chargeType==='DIRECT'){
+    creation.released=true;locked.current=false;update({busy:false});creation.onOwned();
+   }
+  }},document,{
+   initialDelayMs:originalDelay,
    isCurrent:()=>current(version),onPause:()=>update({paused:true}),onResume:()=>update({paused:false}),
    onError:cause=>{if(current(version))update({error:cause instanceof ChapaClientError?cause.message:'Could not reach payment confirmation. We will retry automatically.',errorCode:cause instanceof ChapaClientError?cause.code:'UNAVAILABLE'})},
   });
- },[originalUrl,queryIdentity,current,receive,readOriginal,update]);
+ },[originalUrl,originalDelay,queryIdentity,current,receive,readOriginal,update]);
  const create=useCallback(async(intent:ChapaIntent)=>{
   if(!queryIdentity||locked.current||!isPrivateQueryIdentity(queryIdentity))return;
   const version=epoch.current,next=stateRef.current.attempt??{version:1 as const,intent};locked.current=true;update({attempt:next,busy:true,active:true,error:'',errorCode:null,paused:false,handoff:'opening'});const navigation=prepareChapaNavigation();
@@ -146,8 +158,10 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
   }
   if(retainOriginal)retainChapaOriginalAttempt(getMiniQueryClient(),queryIdentity,scope,next,stateRef.current.order?.id??stateRef.current.recoveryId??undefined);
   beginTiming(!preserveTiming);locked.current=true;update({directAttempt:next,recoveryKey:next.key,recoveryProtocol:next.kind==='direct'?'direct':'inline',busy:true,active:true,error:'',errorCode:null,paused:false});
+  let onOwned=()=>{};const observed=new Promise<void>(resolve=>{onOwned=resolve});
+  const creation=next.kind==='direct'?{key:next.key,released:false,onOwned}:null;if(creation)pendingCreation.current=creation;
   const navigation=next.flow==='HOSTED'?prepareChapaNavigation():null,controller=new AbortController();controllers.current.add(controller);
-  try{
+  const response=(async()=>{try{
    const {apiVersion:_,kind:__,...body}=next;
    uiTiming.current?.mark('request');
    const endpoint=next.kind==='direct'?'/api/payments/chapa/direct/current':'/api/payments/chapa/inline';
@@ -158,12 +172,15 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
    // A newly outstanding attempt only needs its history rows refreshed here.
    if(chapaRecoverable(result.order))invalidatePrivateQueries(queryIdentity,['/api/payments/chapa/checkouts','/api/my-bids','/api/transactions']);
    if(navigation&&!chapaConfirmed(result.order)&&chapaRecoverable(result.order))update({handoff:navigation.open(result.order.checkoutUrl)?'opened':'failed'});
-  }catch(cause){if(current(version)){
+  }catch(cause){if(current(version)&&!creation?.released){
    const rejected=chapaDirectCreationRejected(cause);
    if(rejected&&retainOriginal)clearChapaOriginalAttempt(getMiniQueryClient(),queryIdentity,scope,{intentKey:next.key});
    if(rejected&&retainOriginal&&ownerId)clearChapaRecoveryPointer(chapaRecoveryStorage(),ownerId,scope,{key:next.key});
    update({...(rejected?{active:false,directAttempt:null,recoveryKey:null}:{}),errorCode:cause instanceof ChapaClientError?cause.code:'UNAVAILABLE',error:cause instanceof ChapaClientError?cause.message:language==='am'?'የመጀመሪያውን ክፍያ እየፈተሽን ነው። እንደገና አይክፈሉ።':'We are checking the original payment. Do not pay again.'});
-  }}finally{navigation?.cancel();controllers.current.delete(controller);if(current(version)){locked.current=false;update({busy:false})}}
+  }}finally{navigation?.cancel();controllers.current.delete(controller);if(pendingCreation.current===creation)pendingCreation.current=null;if(current(version)&&!creation?.released){locked.current=false;update({busy:false})}}})();
+  // Keep the original response handled without holding the caller's preparing
+  // state once its authenticated owned resource can be observed independently.
+  if(creation)await Promise.race([response,observed]);else await response;
  },[queryIdentity,current,update,receive,scope,retainOriginal,beginTiming,language,ownerId]);
  // Historical direct charges retain their original operation and v2 endpoint.
  // before HTTP; an interrupted response must retry that same operation/key.
