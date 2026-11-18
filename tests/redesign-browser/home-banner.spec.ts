@@ -49,7 +49,7 @@ test('home banner: both languages, image, mobile geometry and existing actions',
    await expect(image).toHaveAttribute('alt',language==='en'?'Illustrative family at home holding boxed PS5 and iPhone Pro Max, with blue luggage and gadgets':'ለማሳያ የተዘጋጀ ቤተሰብ በቤት ውስጥ፣ በሳጥን ያሉ PS5 እና iPhone Pro Max ይዞ፣ ከሰማያዊ ሻንጣና ሌሎች መሣሪያዎች ጋር');
    expect(copyBox.width).toBeGreaterThan(100);expect(copyBox.height).toBeGreaterThan(28);
    expect(bannerBox.width).toBe(page.viewportSize()!.width);
-   expect(bannerBox.width).toBeGreaterThan(bannerBox.height);expect(bannerBox.width/bannerBox.height).toBeCloseTo(1840/800,2);expect(bannerBox.width/bannerBox.height).toBeCloseTo(sourceRatio,2);expect(bannerBox.height).toBeLessThanOrEqual(650);
+   expect(bannerBox.width).toBeGreaterThan(bannerBox.height);expect(bannerBox.width/bannerBox.height).toBeCloseTo(1840/880,2);expect(bannerBox.width/bannerBox.height).toBeCloseTo(sourceRatio/1.1,2);expect(bannerBox.height).toBeLessThanOrEqual(650);
    for(const element of await hero.locator('button,a,small').all()){
     const box=(await element.boundingBox())!;
     expect(box.x).toBeGreaterThanOrEqual(bannerBox.x);

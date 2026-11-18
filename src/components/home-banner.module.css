@@ -1,7 +1,7 @@
 @font-face{font-family:'Lowwin Banner';src:url('/fonts/sora-latin-800.woff2') format('woff2');font-style:normal;font-weight:800;font-display:swap}
 .banner{position:relative;isolation:isolate;container-type:inline-size;width:100%;min-width:0;overflow:hidden;background:#07182d;color:#f7faff;--surface-ink:#f7faff}
 .artworkBanner{border-radius:0}
-.bannerMain{position:relative;isolation:isolate;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;width:100%;height:calc(100cqi * 800 / 1840);aspect-ratio:1840/800;padding:10px 12px}
+.bannerMain{position:relative;isolation:isolate;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;width:100%;height:calc(100cqi * 880 / 1840);aspect-ratio:1840/880;padding:10px 12px}
 .bannerArtwork{position:absolute;z-index:-1;inset:0;overflow:hidden;pointer-events:none;background:#07182d}
 .bannerArtwork img{display:block;width:100%;height:100%;object-fit:cover;object-position:right center}
 .bannerArtwork::after{position:absolute;inset:0;content:'';background:linear-gradient(90deg,#051429e8 0%,#051429cf 32%,#05142959 51%,transparent 72%)}

@@ -31,7 +31,7 @@
 .homeAuctionGrid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
 .homeAuctionGrid>.auctionCard:nth-child(n+2){display:none}
 .heroBlock{position:relative;container-type:inline-size;min-width:0;overflow:hidden;border-radius:0;background:#07182d}
-.hero{display:grid;align-content:center;gap:4px;width:100%;min-width:0;height:calc(100cqi * 800 / 1840);aspect-ratio:1840/800;border-radius:0;padding:10px 12px 60px;background:linear-gradient(90deg,#07182d,#153659)}
+.hero{display:grid;align-content:center;gap:4px;width:100%;min-width:0;height:calc(100cqi * 880 / 1840);aspect-ratio:1840/880;border-radius:0;padding:10px 12px 60px;background:linear-gradient(90deg,#07182d,#153659)}
 .hero .bone{background:#34517a}
 .heroTitle{width:45%;height:44px}
 .heroCopy{display:none;width:45%;height:150px}
