@@ -4,11 +4,12 @@ import dynamic from 'next/dynamic';
 import {usePathname,useSearchParams} from 'next/navigation';
 import {useTelegram} from './telegram-provider';
 import {MiniPhrase} from './mini-locale';
+import {NotificationsInboxSkeleton} from './notifications-inbox-skeleton';
 import {chapaUuid} from '@/lib/chapa-client';
 
 const WalletTopUpSheet=dynamic(()=>import('./wallet-top-up'),{loading:()=>null});
 const AccountSheet=dynamic(()=>import('./account-sheet').then(module=>module.AccountSheet),{loading:()=>null});
-const NotificationsInbox=dynamic(()=>import('./notifications-inbox').then(module=>module.NotificationsInbox),{loading:()=>null});
+const NotificationsInbox=dynamic(()=>import('./notifications-inbox').then(module=>module.NotificationsInbox),{loading:()=> <NotificationsInboxSkeleton showFilters/>});
 
 /** Compatibility URLs open current sheets, then remove the consumed intent. */
 export function LegacyAccountActions(){

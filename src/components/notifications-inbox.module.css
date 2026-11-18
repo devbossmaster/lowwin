@@ -24,4 +24,12 @@
 .inbox button:disabled{opacity:.5;cursor:default}.inbox ::selection{background:var(--action-disabled,#dbe7fb);color:var(--brand-ink,#16202c)}
 @media(hover:hover){.filters button:not([aria-pressed=true]):hover{background:var(--action-disabled,#dbe7fb);color:var(--action-pressed,#1e40af)}.tools button:hover:not(:disabled),.meta button:hover:not(:disabled){color:var(--action-pressed,#1e40af);text-decoration:underline;text-underline-offset:3px}}
 @media(max-width:359px){.notification{gap:10px;padding-inline:8px}.filters{gap:6px}.filters button{padding-inline:12px}.notification h3{font-size:13px}.tools{gap:8px}.tools button{font-size:11px}}
-@media(prefers-reduced-motion:reduce){.filters button{transition:none}}
+.skeletonBone{display:block;flex:none;min-width:0;height:12px;border-radius:5px;background:var(--brand-line,#e4e7ec);animation:notification-pulse 1.8s ease-in-out infinite}
+.skeletonFilters .skeletonBone{height:44px;width:64px;border-radius:22px;background:var(--brand-soft,#f2f2f7)}.skeletonFilters .skeletonBone:nth-child(2){width:96px}.skeletonFilters .skeletonBone:nth-child(3){width:104px}
+.skeletonCount{width:64px}.skeletonBulkAction{width:96px}
+.skeletonRow{background:#f7faff}.skeletonRow .icon{height:32px;border-radius:10px;background:var(--action-disabled,#dbe7fb)}
+.skeletonHeading{align-items:center;min-height:25px}.skeletonTitle{width:62%;height:14px}.skeletonRow:nth-child(even) .skeletonTitle{width:78%}
+.skeletonBody{display:grid;gap:6px;height:40px;padding-block:3px;box-sizing:border-box}.skeletonBody .skeletonBone{width:94%;height:14px}.skeletonBody .skeletonBone+span{width:80%}
+.skeletonMeta{min-height:44px}.skeletonTime{width:64px;height:10px}.skeletonReadAction{width:54px;height:10px}
+@keyframes notification-pulse{0%,100%{opacity:.55}50%{opacity:1}}
+@media(prefers-reduced-motion:reduce){.filters button{transition:none}.skeletonBone{animation:none}}
