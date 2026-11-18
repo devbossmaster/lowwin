@@ -1,0 +1,1222 @@
+[
+  {
+    "width": 320,
+    "language": "en",
+    "pass": true,
+    "screenshot": "docs/screenshots/blue-black-banner-20261118/320-en.png",
+    "hero": {
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 371.0625,
+      "right": 320,
+      "bottom": 371.0625
+    },
+    "main": {
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 297.0625,
+      "right": 320,
+      "bottom": 297.0625
+    },
+    "copy": {
+      "x": 18,
+      "y": 24,
+      "width": 127.796875,
+      "height": 179.0625,
+      "right": 145.796875,
+      "bottom": 203.0625
+    },
+    "image": {
+      "x": 6.390625,
+      "y": 78.96875,
+      "width": 320,
+      "height": 139.125,
+      "right": 326.390625,
+      "bottom": 218.09375
+    },
+    "imageDecoded": true,
+    "naturalWidth": 1840,
+    "naturalHeight": 800,
+    "text": [
+      {
+        "text": "One unique number. A chance to win.",
+        "x": 18,
+        "y": 24,
+        "width": 127.796875,
+        "height": 100.75,
+        "right": 145.796875,
+        "bottom": 124.75,
+        "insideHero": true,
+        "overflow": false,
+        "font": "\"Lowwin Banner\", Inter, sans-serif",
+        "fontSize": "20px"
+      },
+      {
+        "text": "The lowest number chosen by one player wins.",
+        "x": 18,
+        "y": 138.75,
+        "width": 127.796875,
+        "height": 64.3125,
+        "right": 145.796875,
+        "bottom": 203.0625,
+        "insideHero": true,
+        "overflow": false,
+        "font": "Inter, \"Lowwin Ethiopic\", sans-serif",
+        "fontSize": "13px"
+      },
+      {
+        "text": "Illustrative scene",
+        "x": 226.265625,
+        "y": 271.5625,
+        "width": 81.734375,
+        "height": 17.5,
+        "right": 308,
+        "bottom": 289.0625,
+        "insideHero": true,
+        "overflow": false,
+        "font": "Inter, \"Lowwin Ethiopic\", sans-serif",
+        "fontSize": "9px"
+      },
+      {
+        "text": "No unique number? The auction is cancelled and actual paid fees return to your wallet.",
+        "x": 0,
+        "y": 297.0625,
+        "width": 320,
+        "height": 74,
+        "right": 320,
+        "bottom": 371.0625,
+        "insideHero": true,
+        "overflow": false,
+        "font": "Inter, \"Lowwin Ethiopic\", sans-serif",
+        "fontSize": "12px"
+      }
+    ],
+    "actions": [
+      {
+        "text": "Live auctions",
+        "x": 18,
+        "y": 225.0625,
+        "width": 131.203125,
+        "height": 44,
+        "right": 149.203125,
+        "bottom": 269.0625,
+        "insideMain": true,
+        "overflow": false
+      },
+      {
+        "text": "Learn more",
+        "x": 157.203125,
+        "y": 225.0625,
+        "width": 119.109375,
+        "height": 44,
+        "right": 276.3125,
+        "bottom": 269.0625,
+        "insideMain": true,
+        "overflow": false
+      }
+    ],
+    "horizontalOverflow": false,
+    "fontLoaded": true,
+    "ethiopicFontLoaded": true
+  },
+  {
+    "width": 320,
+    "language": "am",
+    "pass": true,
+    "screenshot": "docs/screenshots/blue-black-banner-20261118/320-am.png",
+    "hero": {
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 378.515625,
+      "right": 320,
+      "bottom": 378.515625
+    },
+    "main": {
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 302.140625,
+      "right": 320,
+      "bottom": 302.140625
+    },
+    "copy": {
+      "x": 18,
+      "y": 24,
+      "width": 127.796875,
+      "height": 184.140625,
+      "right": 145.796875,
+      "bottom": 208.140625
+    },
+    "image": {
+      "x": 6.390625,
+      "y": 81.5,
+      "width": 320,
+      "height": 139.125,
+      "right": 326.390625,
+      "bottom": 220.625
+    },
+    "imageDecoded": true,
+    "naturalWidth": 1840,
+    "naturalHeight": 800,
+    "text": [
+      {
+        "text": "አንድ ብቸኛ ቁጥር። የማሸነፍ ዕድል።",
+        "x": 18,
+        "y": 24,
+        "width": 127.796875,
+        "height": 98,
+        "right": 145.796875,
+        "bottom": 122,
+        "insideHero": true,
+        "overflow": false,
+        "font": "\"Lowwin Ethiopic\", Inter, sans-serif",
+        "fontSize": "20px"
+      },
+      {
+        "text": "አንድ ተሳታፊ ብቻ ከመረጣቸው ቁጥሮች ዝቅተኛው ያሸንፋል።",
+        "x": 18,
+        "y": 136,
+        "width": 127.796875,
+        "height": 72.140625,
+        "right": 145.796875,
+        "bottom": 208.140625,
+        "insideHero": true,
+        "overflow": false,
+        "font": "\"Lowwin Ethiopic\", Inter, sans-serif",
+        "fontSize": "13px"
+      },
+      {
+        "text": "ለማሳያ የተዘጋጀ ምስል",
+        "x": 225.859375,
+        "y": 276.640625,
+        "width": 82.140625,
+        "height": 17.5,
+        "right": 308,
+        "bottom": 294.140625,
+        "insideHero": true,
+        "overflow": false,
+        "font": "\"Lowwin Ethiopic\", Inter, sans-serif",
+        "fontSize": "9px"
+      },
+      {
+        "text": "ብቸኛ ቁጥር ከሌለ፣ ጨረታው ይሰረዛል፤ በእውነት የከፈሉት ክፍያ ወደ ዋሌትዎ ይመለሳል።",
+        "x": 0,
+        "y": 302.140625,
+        "width": 320,
+        "height": 76.375,
+        "right": 320,
+        "bottom": 378.515625,
+        "insideHero": true,
+        "overflow": false,
+        "font": "\"Lowwin Ethiopic\", Inter, sans-serif",
+        "fontSize": "12px"
+      }
+    ],
+    "actions": [
+      {
+        "text": "ክፍት ጨረታዎች",
+        "x": 18,
+        "y": 230.140625,
+        "width": 126.625,
+        "height": 44,
+        "right": 144.625,
+        "bottom": 274.140625,
+        "insideMain": true,
+        "overflow": false
+      },
+      {
+        "text": "ተጨማሪ ይወቁ",
+        "x": 152.625,
+        "y": 230.140625,
+        "width": 121.0625,
+        "height": 44,
+        "right": 273.6875,
+        "bottom": 274.140625,
+        "insideMain": true,
+        "overflow": false
+      }
+    ],
+    "horizontalOverflow": false,
+    "fontLoaded": false,
+    "ethiopicFontLoaded": true
+  },
+  {
+    "width": 360,
+    "language": "en",
+    "pass": true,
+    "screenshot": "docs/screenshots/blue-black-banner-20261118/360-en.png",
+    "hero": {
+      "x": 0,
+      "y": 0,
+      "width": 360,
+      "height": 375.125,
+      "right": 360,
+      "bottom": 375.125
+    },
+    "main": {
+      "x": 0,
+      "y": 0,
+      "width": 360,
+      "height": 301.125,
+      "right": 360,
+      "bottom": 301.125
+    },
+    "copy": {
+      "x": 18,
+      "y": 24,
+      "width": 145.796875,
+      "height": 183.125,
+      "right": 163.796875,
+      "bottom": 207.125
+    },
+    "image": {
+      "x": 7.1875,
+      "y": 72.3046875,
+      "width": 360,
+      "height": 156.515625,
+      "right": 367.1875,
+      "bottom": 228.8203125
+    },
+    "imageDecoded": true,
+    "naturalWidth": 1840,
+    "naturalHeight": 800,
+    "text": [
+      {
+        "text": "One unique number. A chance to win.",
+        "x": 18,
+        "y": 24,
+        "width": 145.796875,
+        "height": 104.8125,
+        "right": 163.796875,
+        "bottom": 128.8125,
+        "insideHero": true,
+        "overflow": false,
+        "font": "\"Lowwin Banner\", Inter, sans-serif",
+        "fontSize": "20.88px"
+      },
+      {
+        "text": "The lowest number chosen by one player wins.",
+        "x": 18,
+        "y": 142.8125,
+        "width": 145.796875,
+        "height": 64.3125,
+        "right": 163.796875,
+        "bottom": 207.125,
+        "insideHero": true,
+        "overflow": false,
+        "font": "Inter, \"Lowwin Ethiopic\", sans-serif",
+        "fontSize": "13px"
+      },
+      {
+        "text": "Illustrative scene",
+        "x": 266.265625,
+        "y": 275.625,
+        "width": 81.734375,
+        "height": 17.5,
+        "right": 348,
+        "bottom": 293.125,
+        "insideHero": true,
+        "overflow": false,
+        "font": "Inter, \"Lowwin Ethiopic\", sans-serif",
+        "fontSize": "9px"
+      },
+      {
+        "text": "No unique number? The auction is cancelled and actual paid fees return to your wallet.",
+        "x": 0,
+        "y": 301.125,
+        "width": 360,
+        "height": 74,
+        "right": 360,
+        "bottom": 375.125,
+        "insideHero": true,
+        "overflow": false,
+        "font": "Inter, \"Lowwin Ethiopic\", sans-serif",
+        "fontSize": "12px"
+      }
+    ],
+    "actions": [
+      {
+        "text": "Live auctions",
+        "x": 18,
+        "y": 229.125,
+        "width": 131.203125,
+        "height": 44,
+        "right": 149.203125,
+        "bottom": 273.125,
+        "insideMain": true,
+        "overflow": false
+      },
+      {
+        "text": "Learn more",
+        "x": 157.203125,
+        "y": 229.125,
+        "width": 119.109375,
+        "height": 44,
+        "right": 276.3125,
+        "bottom": 273.125,
+        "insideMain": true,
+        "overflow": false
+      }
+    ],
+    "horizontalOverflow": false,
+    "fontLoaded": true,
+    "ethiopicFontLoaded": true
+  },
+  {
+    "width": 360,
+    "language": "am",
+    "pass": true,
+    "screenshot": "docs/screenshots/blue-black-banner-20261118/360-am.png",
+    "hero": {
+      "x": 0,
+      "y": 0,
+      "width": 360,
+      "height": 366.375,
+      "right": 360,
+      "bottom": 366.375
+    },
+    "main": {
+      "x": 0,
+      "y": 0,
+      "width": 360,
+      "height": 290,
+      "right": 360,
+      "bottom": 290
+    },
+    "copy": {
+      "x": 18,
+      "y": 29.59375,
+      "width": 145.796875,
+      "height": 160.796875,
+      "right": 163.796875,
+      "bottom": 190.390625
+    },
+    "image": {
+      "x": 7.1875,
+      "y": 66.7421875,
+      "width": 360,
+      "height": 156.515625,
+      "right": 367.1875,
+      "bottom": 223.2578125
+    },
+    "imageDecoded": true,
+    "naturalWidth": 1840,
+    "naturalHeight": 800,
+    "text": [
+      {
+        "text": "አንድ ብቸኛ ቁጥር። የማሸነፍ ዕድል።",
+        "x": 18,
+        "y": 29.59375,
+        "width": 145.796875,
+        "height": 98.703125,
+        "right": 163.796875,
+        "bottom": 128.296875,
+        "insideHero": true,
+        "overflow": false,
+        "font": "\"Lowwin Ethiopic\", Inter, sans-serif",
+        "fontSize": "20.16px"
+      },
+      {
+        "text": "አንድ ተሳታፊ ብቻ ከመረጣቸው ቁጥሮች ዝቅተኛው ያሸንፋል።",
+        "x": 18,
+        "y": 142.296875,
+        "width": 145.796875,
+        "height": 48.09375,
+        "right": 163.796875,
+        "bottom": 190.390625,
+        "insideHero": true,
+        "overflow": false,
+        "font": "\"Lowwin Ethiopic\", Inter, sans-serif",
+        "fontSize": "13px"
+      },
+      {
+        "text": "ለማሳያ የተዘጋጀ ምስል",
+        "x": 265.859375,
+        "y": 264.5,
+        "width": 82.140625,
+        "height": 17.5,
+        "right": 348,
+        "bottom": 282,
+        "insideHero": true,
+        "overflow": false,
+        "font": "\"Lowwin Ethiopic\", Inter, sans-serif",
+        "fontSize": "9px"
+      },
+      {
+        "text": "ብቸኛ ቁጥር ከሌለ፣ ጨረታው ይሰረዛል፤ በእውነት የከፈሉት ክፍያ ወደ ዋሌትዎ ይመለሳል።",
+        "x": 0,
+        "y": 290,
+        "width": 360,
+        "height": 76.375,
+        "right": 360,
+        "bottom": 366.375,
+        "insideHero": true,
+        "overflow": false,
+        "font": "\"Lowwin Ethiopic\", Inter, sans-serif",
+        "fontSize": "12px"
+      }
+    ],
+    "actions": [
+      {
+        "text": "ክፍት ጨረታዎች",
+        "x": 18,
+        "y": 212.390625,
+        "width": 126.625,
+        "height": 44,
+        "right": 144.625,
+        "bottom": 256.390625,
+        "insideMain": true,
+        "overflow": false
+      },
+      {
+        "text": "ተጨማሪ ይወቁ",
+        "x": 152.625,
+        "y": 212.390625,
+        "width": 121.0625,
+        "height": 44,
+        "right": 273.6875,
+        "bottom": 256.390625,
+        "insideMain": true,
+        "overflow": false
+      }
+    ],
+    "horizontalOverflow": false,
+    "fontLoaded": false,
+    "ethiopicFontLoaded": true
+  },
+  {
+    "width": 430,
+    "language": "en",
+    "pass": true,
+    "screenshot": "docs/screenshots/blue-black-banner-20261118/430-en.png",
+    "hero": {
+      "x": 0,
+      "y": 0,
+      "width": 430,
+      "height": 372.5625,
+      "right": 430,
+      "bottom": 372.5625
+    },
+    "main": {
+      "x": 0,
+      "y": 0,
+      "width": 430,
+      "height": 298.5625,
+      "right": 430,
+      "bottom": 298.5625
+    },
+    "copy": {
+      "x": 18,
+      "y": 24,
+      "width": 177.296875,
+      "height": 180.5625,
+      "right": 195.296875,
+      "bottom": 204.5625
+    },
+    "image": {
+      "x": 8.59375,
+      "y": 55.8046875,
+      "width": 430,
+      "height": 186.953125,
+      "right": 438.59375,
+      "bottom": 242.7578125
+    },
+    "imageDecoded": true,
+    "naturalWidth": 1840,
+    "naturalHeight": 800,
+    "text": [
+      {
+        "text": "One unique number. A chance to win.",
+        "x": 18,
+        "y": 24,
+        "width": 177.296875,
+        "height": 123.6875,
+        "right": 195.296875,
+        "bottom": 147.6875,
+        "insideHero": true,
+        "overflow": false,
+        "font": "\"Lowwin Banner\", Inter, sans-serif",
+        "fontSize": "24.94px"
+      },
+      {
+        "text": "The lowest number chosen by one player wins.",
+        "x": 18,
+        "y": 161.6875,
+        "width": 177.296875,
+        "height": 42.875,
+        "right": 195.296875,
+        "bottom": 204.5625,
+        "insideHero": true,
+        "overflow": false,
+        "font": "Inter, \"Lowwin Ethiopic\", sans-serif",
+        "fontSize": "13px"
+      },
+      {
+        "text": "Illustrative scene",
+        "x": 336.265625,
+        "y": 273.0625,
+        "width": 81.734375,
+        "height": 17.5,
+        "right": 418,
+        "bottom": 290.5625,
+        "insideHero": true,
+        "overflow": false,
+        "font": "Inter, \"Lowwin Ethiopic\", sans-serif",
+        "fontSize": "9px"
+      },
+      {
+        "text": "No unique number? The auction is cancelled and actual paid fees return to your wallet.",
+        "x": 0,
+        "y": 298.5625,
+        "width": 430,
+        "height": 74,
+        "right": 430,
+        "bottom": 372.5625,
+        "insideHero": true,
+        "overflow": false,
+        "font": "Inter, \"Lowwin Ethiopic\", sans-serif",
+        "fontSize": "12px"
+      }
+    ],
+    "actions": [
+      {
+        "text": "Live auctions",
+        "x": 18,
+        "y": 226.5625,
+        "width": 131.203125,
+        "height": 44,
+        "right": 149.203125,
+        "bottom": 270.5625,
+        "insideMain": true,
+        "overflow": false
+      },
+      {
+        "text": "Learn more",
+        "x": 157.203125,
+        "y": 226.5625,
+        "width": 119.109375,
+        "height": 44,
+        "right": 276.3125,
+        "bottom": 270.5625,
+        "insideMain": true,
+        "overflow": false
+      }
+    ],
+    "horizontalOverflow": false,
+    "fontLoaded": true,
+    "ethiopicFontLoaded": true
+  },
+  {
+    "width": 430,
+    "language": "am",
+    "pass": true,
+    "screenshot": "docs/screenshots/blue-black-banner-20261118/430-am.png",
+    "hero": {
+      "x": 0,
+      "y": 0,
+      "width": 430,
+      "height": 350.609375,
+      "right": 430,
+      "bottom": 350.609375
+    },
+    "main": {
+      "x": 0,
+      "y": 0,
+      "width": 430,
+      "height": 296.421875,
+      "right": 430,
+      "bottom": 296.421875
+    },
+    "copy": {
+      "x": 18,
+      "y": 24,
+      "width": 177.296875,
+      "height": 178.421875,
+      "right": 195.296875,
+      "bottom": 202.421875
+    },
+    "image": {
+      "x": 8.59375,
+      "y": 54.7265625,
+      "width": 430,
+      "height": 186.953125,
+      "right": 438.59375,
+      "bottom": 241.6796875
+    },
+    "imageDecoded": true,
+    "naturalWidth": 1840,
+    "naturalHeight": 800,
+    "text": [
+      {
+        "text": "አንድ ብቸኛ ቁጥር። የማሸነፍ ዕድል።",
+        "x": 18,
+        "y": 24,
+        "width": 177.296875,
+        "height": 116.328125,
+        "right": 195.296875,
+        "bottom": 140.328125,
+        "insideHero": true,
+        "overflow": false,
+        "font": "\"Lowwin Ethiopic\", Inter, sans-serif",
+        "fontSize": "24.08px"
+      },
+      {
+        "text": "አንድ ተሳታፊ ብቻ ከመረጣቸው ቁጥሮች ዝቅተኛው ያሸንፋል።",
+        "x": 18,
+        "y": 154.328125,
+        "width": 177.296875,
+        "height": 48.09375,
+        "right": 195.296875,
+        "bottom": 202.421875,
+        "insideHero": true,
+        "overflow": false,
+        "font": "\"Lowwin Ethiopic\", Inter, sans-serif",
+        "fontSize": "13px"
+      },
+      {
+        "text": "ለማሳያ የተዘጋጀ ምስል",
+        "x": 335.859375,
+        "y": 270.921875,
+        "width": 82.140625,
+        "height": 17.5,
+        "right": 418,
+        "bottom": 288.421875,
+        "insideHero": true,
+        "overflow": false,
+        "font": "\"Lowwin Ethiopic\", Inter, sans-serif",
+        "fontSize": "9px"
+      },
+      {
+        "text": "ብቸኛ ቁጥር ከሌለ፣ ጨረታው ይሰረዛል፤ በእውነት የከፈሉት ክፍያ ወደ ዋሌትዎ ይመለሳል።",
+        "x": 0,
+        "y": 296.421875,
+        "width": 430,
+        "height": 54.1875,
+        "right": 430,
+        "bottom": 350.609375,
+        "insideHero": true,
+        "overflow": false,
+        "font": "\"Lowwin Ethiopic\", Inter, sans-serif",
+        "fontSize": "12px"
+      }
+    ],
+    "actions": [
+      {
+        "text": "ክፍት ጨረታዎች",
+        "x": 18,
+        "y": 224.421875,
+        "width": 126.625,
+        "height": 44,
+        "right": 144.625,
+        "bottom": 268.421875,
+        "insideMain": true,
+        "overflow": false
+      },
+      {
+        "text": "ተጨማሪ ይወቁ",
+        "x": 152.625,
+        "y": 224.421875,
+        "width": 121.0625,
+        "height": 44,
+        "right": 273.6875,
+        "bottom": 268.421875,
+        "insideMain": true,
+        "overflow": false
+      }
+    ],
+    "horizontalOverflow": false,
+    "fontLoaded": false,
+    "ethiopicFontLoaded": true
+  },
+  {
+    "width": 1024,
+    "language": "en",
+    "pass": true,
+    "screenshot": "docs/screenshots/blue-black-banner-20261118/1024-en.png",
+    "hero": {
+      "x": 24,
+      "y": 24,
+      "width": 976,
+      "height": 479.09375,
+      "right": 1000,
+      "bottom": 503.09375
+    },
+    "main": {
+      "x": 24,
+      "y": 24,
+      "width": 976,
+      "height": 424.34375,
+      "right": 1000,
+      "bottom": 448.34375
+    },
+    "copy": {
+      "x": 54.71875,
+      "y": 142,
+      "width": 338.375,
+      "height": 116.34375,
+      "right": 393.09375,
+      "bottom": 258.34375
+    },
+    "image": {
+      "x": 24,
+      "y": 24,
+      "width": 976,
+      "height": 424.34375,
+      "right": 1000,
+      "bottom": 448.34375
+    },
+    "imageDecoded": true,
+    "naturalWidth": 1840,
+    "naturalHeight": 800,
+    "text": [
+      {
+        "text": "One unique number. A chance to win.",
+        "x": 54.71875,
+        "y": 142,
+        "width": 338.375,
+        "height": 79.25,
+        "right": 393.09375,
+        "bottom": 221.25,
+        "insideHero": true,
+        "overflow": false,
+        "font": "\"Lowwin Banner\", Inter, sans-serif",
+        "fontSize": "30.72px"
+      },
+      {
+        "text": "The lowest number chosen by one player wins.",
+        "x": 54.71875,
+        "y": 235.25,
+        "width": 335.609375,
+        "height": 23.09375,
+        "right": 390.328125,
+        "bottom": 258.34375,
+        "insideHero": true,
+        "overflow": false,
+        "font": "Inter, \"Lowwin Ethiopic\", sans-serif",
+        "fontSize": "14px"
+      },
+      {
+        "text": "Illustrative scene",
+        "x": 906.265625,
+        "y": 422.84375,
+        "width": 81.734375,
+        "height": 17.5,
+        "right": 988,
+        "bottom": 440.34375,
+        "insideHero": true,
+        "overflow": false,
+        "font": "Inter, \"Lowwin Ethiopic\", sans-serif",
+        "fontSize": "9px"
+      },
+      {
+        "text": "No unique number? The auction is cancelled and actual paid fees return to your wallet.",
+        "x": 24,
+        "y": 448.34375,
+        "width": 976,
+        "height": 54.75,
+        "right": 1000,
+        "bottom": 503.09375,
+        "insideHero": true,
+        "overflow": false,
+        "font": "Inter, \"Lowwin Ethiopic\", sans-serif",
+        "fontSize": "13px"
+      }
+    ],
+    "actions": [
+      {
+        "text": "Live auctions",
+        "x": 54.71875,
+        "y": 282.34375,
+        "width": 152.078125,
+        "height": 48,
+        "right": 206.796875,
+        "bottom": 330.34375,
+        "insideMain": true,
+        "overflow": false
+      },
+      {
+        "text": "Learn more",
+        "x": 216.796875,
+        "y": 282.34375,
+        "width": 138.125,
+        "height": 48,
+        "right": 354.921875,
+        "bottom": 330.34375,
+        "insideMain": true,
+        "overflow": false
+      }
+    ],
+    "horizontalOverflow": false,
+    "fontLoaded": true,
+    "ethiopicFontLoaded": true
+  },
+  {
+    "width": 1024,
+    "language": "am",
+    "pass": true,
+    "screenshot": "docs/screenshots/blue-black-banner-20261118/1024-am.png",
+    "hero": {
+      "x": 24,
+      "y": 24,
+      "width": 976,
+      "height": 479.734375,
+      "right": 1000,
+      "bottom": 503.734375
+    },
+    "main": {
+      "x": 24,
+      "y": 24,
+      "width": 976,
+      "height": 424.34375,
+      "right": 1000,
+      "bottom": 448.34375
+    },
+    "copy": {
+      "x": 54.71875,
+      "y": 136.640625,
+      "width": 338.375,
+      "height": 127.0625,
+      "right": 393.09375,
+      "bottom": 263.703125
+    },
+    "image": {
+      "x": 24,
+      "y": 24,
+      "width": 976,
+      "height": 424.34375,
+      "right": 1000,
+      "bottom": 448.34375
+    },
+    "imageDecoded": true,
+    "naturalWidth": 1840,
+    "naturalHeight": 800,
+    "text": [
+      {
+        "text": "አንድ ብቸኛ ቁጥር። የማሸነፍ ዕድል።",
+        "x": 54.71875,
+        "y": 136.640625,
+        "width": 338.375,
+        "height": 87.875,
+        "right": 393.09375,
+        "bottom": 224.515625,
+        "insideHero": true,
+        "overflow": false,
+        "font": "\"Lowwin Ethiopic\", Inter, sans-serif",
+        "fontSize": "26.624px"
+      },
+      {
+        "text": "አንድ ተሳታፊ ብቻ ከመረጣቸው ቁጥሮች ዝቅተኛው ያሸንፋል።",
+        "x": 54.71875,
+        "y": 238.515625,
+        "width": 335.609375,
+        "height": 25.1875,
+        "right": 390.328125,
+        "bottom": 263.703125,
+        "insideHero": true,
+        "overflow": false,
+        "font": "\"Lowwin Ethiopic\", Inter, sans-serif",
+        "fontSize": "14px"
+      },
+      {
+        "text": "ለማሳያ የተዘጋጀ ምስል",
+        "x": 905.859375,
+        "y": 422.84375,
+        "width": 82.140625,
+        "height": 17.5,
+        "right": 988,
+        "bottom": 440.34375,
+        "insideHero": true,
+        "overflow": false,
+        "font": "\"Lowwin Ethiopic\", Inter, sans-serif",
+        "fontSize": "9px"
+      },
+      {
+        "text": "ብቸኛ ቁጥር ከሌለ፣ ጨረታው ይሰረዛል፤ በእውነት የከፈሉት ክፍያ ወደ ዋሌትዎ ይመለሳል።",
+        "x": 24,
+        "y": 448.34375,
+        "width": 976,
+        "height": 55.390625,
+        "right": 1000,
+        "bottom": 503.734375,
+        "insideHero": true,
+        "overflow": false,
+        "font": "\"Lowwin Ethiopic\", Inter, sans-serif",
+        "fontSize": "13px"
+      }
+    ],
+    "actions": [
+      {
+        "text": "ክፍት ጨረታዎች",
+        "x": 54.71875,
+        "y": 287.703125,
+        "width": 146.71875,
+        "height": 48,
+        "right": 201.4375,
+        "bottom": 335.703125,
+        "insideMain": true,
+        "overflow": false
+      },
+      {
+        "text": "ተጨማሪ ይወቁ",
+        "x": 211.4375,
+        "y": 287.703125,
+        "width": 140.40625,
+        "height": 48,
+        "right": 351.84375,
+        "bottom": 335.703125,
+        "insideMain": true,
+        "overflow": false
+      }
+    ],
+    "horizontalOverflow": false,
+    "fontLoaded": false,
+    "ethiopicFontLoaded": true
+  },
+  {
+    "width": 1280,
+    "language": "en",
+    "pass": true,
+    "screenshot": "docs/screenshots/blue-black-banner-20261118/1280-en.png",
+    "hero": {
+      "x": 24,
+      "y": 24,
+      "width": 1232,
+      "height": 590.390625,
+      "right": 1256,
+      "bottom": 614.390625
+    },
+    "main": {
+      "x": 24,
+      "y": 24,
+      "width": 1232,
+      "height": 535.640625,
+      "right": 1256,
+      "bottom": 559.640625
+    },
+    "copy": {
+      "x": 62.390625,
+      "y": 188.71875,
+      "width": 427.421875,
+      "height": 134.1875,
+      "right": 489.8125,
+      "bottom": 322.90625
+    },
+    "image": {
+      "x": 24,
+      "y": 23.9921875,
+      "width": 1232,
+      "height": 535.640625,
+      "right": 1256,
+      "bottom": 559.6328125
+    },
+    "imageDecoded": true,
+    "naturalWidth": 1840,
+    "naturalHeight": 800,
+    "text": [
+      {
+        "text": "One unique number. A chance to win.",
+        "x": 62.390625,
+        "y": 188.71875,
+        "width": 427.421875,
+        "height": 97.09375,
+        "right": 489.8125,
+        "bottom": 285.8125,
+        "insideHero": true,
+        "overflow": false,
+        "font": "\"Lowwin Banner\", Inter, sans-serif",
+        "fontSize": "38.4px"
+      },
+      {
+        "text": "The lowest number chosen by one player wins.",
+        "x": 62.390625,
+        "y": 299.8125,
+        "width": 335.609375,
+        "height": 23.09375,
+        "right": 398,
+        "bottom": 322.90625,
+        "insideHero": true,
+        "overflow": false,
+        "font": "Inter, \"Lowwin Ethiopic\", sans-serif",
+        "fontSize": "14px"
+      },
+      {
+        "text": "Illustrative scene",
+        "x": 1162.265625,
+        "y": 534.140625,
+        "width": 81.734375,
+        "height": 17.5,
+        "right": 1244,
+        "bottom": 551.640625,
+        "insideHero": true,
+        "overflow": false,
+        "font": "Inter, \"Lowwin Ethiopic\", sans-serif",
+        "fontSize": "9px"
+      },
+      {
+        "text": "No unique number? The auction is cancelled and actual paid fees return to your wallet.",
+        "x": 24,
+        "y": 559.640625,
+        "width": 1232,
+        "height": 54.75,
+        "right": 1256,
+        "bottom": 614.390625,
+        "insideHero": true,
+        "overflow": false,
+        "font": "Inter, \"Lowwin Ethiopic\", sans-serif",
+        "fontSize": "13px"
+      }
+    ],
+    "actions": [
+      {
+        "text": "Live auctions",
+        "x": 62.390625,
+        "y": 346.90625,
+        "width": 152.078125,
+        "height": 48,
+        "right": 214.46875,
+        "bottom": 394.90625,
+        "insideMain": true,
+        "overflow": false
+      },
+      {
+        "text": "Learn more",
+        "x": 224.46875,
+        "y": 346.90625,
+        "width": 138.125,
+        "height": 48,
+        "right": 362.59375,
+        "bottom": 394.90625,
+        "insideMain": true,
+        "overflow": false
+      }
+    ],
+    "horizontalOverflow": false,
+    "fontLoaded": true,
+    "ethiopicFontLoaded": true
+  },
+  {
+    "width": 1280,
+    "language": "am",
+    "pass": true,
+    "screenshot": "docs/screenshots/blue-black-banner-20261118/1280-am.png",
+    "hero": {
+      "x": 24,
+      "y": 24,
+      "width": 1232,
+      "height": 591.03125,
+      "right": 1256,
+      "bottom": 615.03125
+    },
+    "main": {
+      "x": 24,
+      "y": 24,
+      "width": 1232,
+      "height": 535.640625,
+      "right": 1256,
+      "bottom": 559.640625
+    },
+    "copy": {
+      "x": 62.390625,
+      "y": 182.296875,
+      "width": 427.421875,
+      "height": 147.03125,
+      "right": 489.8125,
+      "bottom": 329.328125
+    },
+    "image": {
+      "x": 24,
+      "y": 23.9921875,
+      "width": 1232,
+      "height": 535.640625,
+      "right": 1256,
+      "bottom": 559.6328125
+    },
+    "imageDecoded": true,
+    "naturalWidth": 1840,
+    "naturalHeight": 800,
+    "text": [
+      {
+        "text": "አንድ ብቸኛ ቁጥር። የማሸነፍ ዕድል።",
+        "x": 62.390625,
+        "y": 182.296875,
+        "width": 427.421875,
+        "height": 107.84375,
+        "right": 489.8125,
+        "bottom": 290.140625,
+        "insideHero": true,
+        "overflow": false,
+        "font": "\"Lowwin Ethiopic\", Inter, sans-serif",
+        "fontSize": "33.28px"
+      },
+      {
+        "text": "አንድ ተሳታፊ ብቻ ከመረጣቸው ቁጥሮች ዝቅተኛው ያሸንፋል።",
+        "x": 62.390625,
+        "y": 304.140625,
+        "width": 335.609375,
+        "height": 25.1875,
+        "right": 398,
+        "bottom": 329.328125,
+        "insideHero": true,
+        "overflow": false,
+        "font": "\"Lowwin Ethiopic\", Inter, sans-serif",
+        "fontSize": "14px"
+      },
+      {
+        "text": "ለማሳያ የተዘጋጀ ምስል",
+        "x": 1161.859375,
+        "y": 534.140625,
+        "width": 82.140625,
+        "height": 17.5,
+        "right": 1244,
+        "bottom": 551.640625,
+        "insideHero": true,
+        "overflow": false,
+        "font": "\"Lowwin Ethiopic\", Inter, sans-serif",
+        "fontSize": "9px"
+      },
+      {
+        "text": "ብቸኛ ቁጥር ከሌለ፣ ጨረታው ይሰረዛል፤ በእውነት የከፈሉት ክፍያ ወደ ዋሌትዎ ይመለሳል።",
+        "x": 24,
+        "y": 559.640625,
+        "width": 1232,
+        "height": 55.390625,
+        "right": 1256,
+        "bottom": 615.03125,
+        "insideHero": true,
+        "overflow": false,
+        "font": "\"Lowwin Ethiopic\", Inter, sans-serif",
+        "fontSize": "13px"
+      }
+    ],
+    "actions": [
+      {
+        "text": "ክፍት ጨረታዎች",
+        "x": 62.390625,
+        "y": 353.328125,
+        "width": 146.71875,
+        "height": 48,
+        "right": 209.109375,
+        "bottom": 401.328125,
+        "insideMain": true,
+        "overflow": false
+      },
+      {
+        "text": "ተጨማሪ ይወቁ",
+        "x": 219.109375,
+        "y": 353.328125,
+        "width": 140.40625,
+        "height": 48,
+        "right": 359.515625,
+        "bottom": 401.328125,
+        "insideMain": true,
+        "overflow": false
+      }
+    ],
+    "horizontalOverflow": false,
+    "fontLoaded": false,
+    "ethiopicFontLoaded": true
+  }
+]

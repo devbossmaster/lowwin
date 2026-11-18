@@ -1,0 +1,356 @@
+[
+  {
+    "width": 320,
+    "language": "en",
+    "status": 200,
+    "hero": {
+      "x": 0,
+      "y": 145,
+      "width": 320,
+      "height": 371.0625,
+      "right": 320,
+      "bottom": 516.0625
+    },
+    "copy": {
+      "x": 18,
+      "y": 169,
+      "width": 127.796875,
+      "height": 179.0625,
+      "right": 145.796875,
+      "bottom": 348.0625
+    },
+    "art": {
+      "x": 0,
+      "y": 145,
+      "width": 320,
+      "height": 297.0625,
+      "right": 320,
+      "bottom": 442.0625
+    },
+    "image": {
+      "x": 6.390625,
+      "y": 224.03125,
+      "width": 320,
+      "height": 139,
+      "right": 326.390625,
+      "bottom": 363.03125
+    },
+    "overflow": false,
+    "textFits": true,
+    "actions": [
+      {
+        "x": 18,
+        "y": 370.0625,
+        "width": 131.203125,
+        "height": 44,
+        "right": 149.203125,
+        "bottom": 414.0625
+      },
+      {
+        "x": 157.203125,
+        "y": 370.0625,
+        "width": 119.109375,
+        "height": 44,
+        "right": 276.3125,
+        "bottom": 414.0625
+      }
+    ],
+    "imageSource": "http://localhost:3190/_next/image?url=%2Fimages%2Flowwin-blue-black-prizes-20261118.webp&w=640&q=75",
+    "headingFont": "\"Lowwin Banner\", Inter, sans-serif"
+  },
+  {
+    "width": 320,
+    "language": "am",
+    "status": 200,
+    "hero": {
+      "x": 0,
+      "y": 145,
+      "width": 320,
+      "height": 387.515625,
+      "right": 320,
+      "bottom": 532.515625
+    },
+    "copy": {
+      "x": 18,
+      "y": 169,
+      "width": 127.796875,
+      "height": 193.140625,
+      "right": 145.796875,
+      "bottom": 362.140625
+    },
+    "art": {
+      "x": 0,
+      "y": 145,
+      "width": 320,
+      "height": 311.140625,
+      "right": 320,
+      "bottom": 456.140625
+    },
+    "image": {
+      "x": 6.390625,
+      "y": 231.0625,
+      "width": 320,
+      "height": 139,
+      "right": 326.390625,
+      "bottom": 370.0625
+    },
+    "overflow": false,
+    "textFits": true,
+    "actions": [
+      {
+        "x": 18,
+        "y": 384.140625,
+        "width": 126.625,
+        "height": 44,
+        "right": 144.625,
+        "bottom": 428.140625
+      },
+      {
+        "x": 152.625,
+        "y": 384.140625,
+        "width": 121.0625,
+        "height": 44,
+        "right": 273.6875,
+        "bottom": 428.140625
+      }
+    ],
+    "imageSource": "http://localhost:3190/_next/image?url=%2Fimages%2Flowwin-blue-black-prizes-20261118.webp&w=640&q=75",
+    "headingFont": "\"Lowwin Ethiopic\", Inter, sans-serif"
+  },
+  {
+    "width": 430,
+    "language": "en",
+    "status": 200,
+    "hero": {
+      "x": 0,
+      "y": 145,
+      "width": 430,
+      "height": 372.5625,
+      "right": 430,
+      "bottom": 517.5625
+    },
+    "copy": {
+      "x": 18,
+      "y": 169,
+      "width": 177.296875,
+      "height": 180.5625,
+      "right": 195.296875,
+      "bottom": 349.5625
+    },
+    "art": {
+      "x": 0,
+      "y": 145,
+      "width": 430,
+      "height": 298.5625,
+      "right": 430,
+      "bottom": 443.5625
+    },
+    "image": {
+      "x": 8.59375,
+      "y": 200.890625,
+      "width": 430,
+      "height": 186.78125,
+      "right": 438.59375,
+      "bottom": 387.671875
+    },
+    "overflow": false,
+    "textFits": true,
+    "actions": [
+      {
+        "x": 18,
+        "y": 371.5625,
+        "width": 131.203125,
+        "height": 44,
+        "right": 149.203125,
+        "bottom": 415.5625
+      },
+      {
+        "x": 157.203125,
+        "y": 371.5625,
+        "width": 119.109375,
+        "height": 44,
+        "right": 276.3125,
+        "bottom": 415.5625
+      }
+    ],
+    "imageSource": "http://localhost:3190/_next/image?url=%2Fimages%2Flowwin-blue-black-prizes-20261118.webp&w=640&q=75",
+    "headingFont": "\"Lowwin Banner\", Inter, sans-serif"
+  },
+  {
+    "width": 430,
+    "language": "am",
+    "status": 200,
+    "hero": {
+      "x": 0,
+      "y": 145,
+      "width": 430,
+      "height": 361.4375,
+      "right": 430,
+      "bottom": 506.4375
+    },
+    "copy": {
+      "x": 18,
+      "y": 169,
+      "width": 177.296875,
+      "height": 189.25,
+      "right": 195.296875,
+      "bottom": 358.25
+    },
+    "art": {
+      "x": 0,
+      "y": 145,
+      "width": 430,
+      "height": 307.25,
+      "right": 430,
+      "bottom": 452.25
+    },
+    "image": {
+      "x": 8.59375,
+      "y": 205.234375,
+      "width": 430,
+      "height": 186.78125,
+      "right": 438.59375,
+      "bottom": 392.015625
+    },
+    "overflow": false,
+    "textFits": true,
+    "actions": [
+      {
+        "x": 18,
+        "y": 380.25,
+        "width": 126.625,
+        "height": 44,
+        "right": 144.625,
+        "bottom": 424.25
+      },
+      {
+        "x": 152.625,
+        "y": 380.25,
+        "width": 121.0625,
+        "height": 44,
+        "right": 273.6875,
+        "bottom": 424.25
+      }
+    ],
+    "imageSource": "http://localhost:3190/_next/image?url=%2Fimages%2Flowwin-blue-black-prizes-20261118.webp&w=640&q=75",
+    "headingFont": "\"Lowwin Ethiopic\", Inter, sans-serif"
+  },
+  {
+    "width": 1280,
+    "language": "en",
+    "status": 200,
+    "hero": {
+      "x": 24,
+      "y": 192,
+      "width": 1232,
+      "height": 590.390625,
+      "right": 1256,
+      "bottom": 782.390625
+    },
+    "copy": {
+      "x": 62.390625,
+      "y": 356.71875,
+      "width": 427.421875,
+      "height": 134.1875,
+      "right": 489.8125,
+      "bottom": 490.90625
+    },
+    "art": {
+      "x": 24,
+      "y": 192,
+      "width": 1232,
+      "height": 535.640625,
+      "right": 1256,
+      "bottom": 727.640625
+    },
+    "image": {
+      "x": 24,
+      "y": 191.9921875,
+      "width": 1232,
+      "height": 535.640625,
+      "right": 1256,
+      "bottom": 727.6328125
+    },
+    "overflow": false,
+    "textFits": true,
+    "actions": [
+      {
+        "x": 62.390625,
+        "y": 514.90625,
+        "width": 152.078125,
+        "height": 48,
+        "right": 214.46875,
+        "bottom": 562.90625
+      },
+      {
+        "x": 224.46875,
+        "y": 514.90625,
+        "width": 138.125,
+        "height": 48,
+        "right": 362.59375,
+        "bottom": 562.90625
+      }
+    ],
+    "imageSource": "http://localhost:3190/_next/image?url=%2Fimages%2Flowwin-blue-black-prizes-20261118.webp&w=1920&q=75",
+    "headingFont": "\"Lowwin Banner\", Inter, sans-serif"
+  },
+  {
+    "width": 1280,
+    "language": "am",
+    "status": 200,
+    "hero": {
+      "x": 24,
+      "y": 192,
+      "width": 1232,
+      "height": 591.03125,
+      "right": 1256,
+      "bottom": 783.03125
+    },
+    "copy": {
+      "x": 62.390625,
+      "y": 345.3125,
+      "width": 427.421875,
+      "height": 157,
+      "right": 489.8125,
+      "bottom": 502.3125
+    },
+    "art": {
+      "x": 24,
+      "y": 192,
+      "width": 1232,
+      "height": 535.640625,
+      "right": 1256,
+      "bottom": 727.640625
+    },
+    "image": {
+      "x": 24,
+      "y": 191.9921875,
+      "width": 1232,
+      "height": 535.640625,
+      "right": 1256,
+      "bottom": 727.6328125
+    },
+    "overflow": false,
+    "textFits": true,
+    "actions": [
+      {
+        "x": 62.390625,
+        "y": 526.3125,
+        "width": 146.71875,
+        "height": 48,
+        "right": 209.109375,
+        "bottom": 574.3125
+      },
+      {
+        "x": 219.109375,
+        "y": 526.3125,
+        "width": 140.40625,
+        "height": 48,
+        "right": 359.515625,
+        "bottom": 574.3125
+      }
+    ],
+    "imageSource": "http://localhost:3190/_next/image?url=%2Fimages%2Flowwin-blue-black-prizes-20261118.webp&w=1920&q=75",
+    "headingFont": "\"Lowwin Ethiopic\", Inter, sans-serif"
+  }
+]
