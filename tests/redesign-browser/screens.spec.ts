@@ -34,10 +34,10 @@ test('authenticated mobile screens and local timing evidence', async ({page, bro
       if(name==='home')await expect.poll(()=>page.locator('[data-home-hero] img').evaluate((el:HTMLImageElement)=>el.complete&&el.naturalWidth>0)).toBe(true);
       await page.screenshot({path:`${root}/${name}-${info.project.name}-en.png`,fullPage:true});
     }
-    await page.goto('/');const learnTrigger=page.locator('[data-home-hero]').getByRole('button',{name:'Learn more',exact:true});await learnTrigger.click();
+    await page.goto('/');const learnTrigger=page.locator('[data-home-hero]').getByRole('button',{name:'How it works?',exact:true});await learnTrigger.click();
     const learn=page.getByRole('dialog');await expect(learn.locator('[data-tutorial-video-empty]')).toBeVisible();await expect(learn.locator('iframe,video')).toHaveCount(0);
     await page.screenshot({path:`${root}/learn-more-${info.project.name}-en.png`});await page.keyboard.press('Escape');await expect(learn).toHaveCount(0);await expect(learnTrigger).toBeFocused();
-    await page.locator('[data-home-hero]').getByRole('link',{name:'Live auctions',exact:true}).click();await expect(page.locator('#discover-auctions')).toBeFocused();await expect(page.locator('#discover-auctions')).toBeInViewport();
+    await page.locator('[data-home-hero]').getByRole('link',{name:'Winners',exact:true}).click();await expect(page).toHaveURL(/\/winners$/);await expect(page.getByRole('heading',{name:'Winners',exact:true}).first()).toBeVisible();
     await page.getByRole('navigation',{name:'Your navigation'}).getByRole('link',{name:'Me',exact:true}).click();await page.getByRole('link',{name:/^Notifications/}).click();
     const notifications=page.getByRole('dialog',{name:'Notifications',exact:true});await expect(notifications).toBeVisible();
     for(const filter of ['All','Winners','Payments'])await expect(notifications.getByRole('button',{name:filter,exact:true})).toBeVisible();await page.keyboard.press('Escape');await expect(notifications).toHaveCount(0);

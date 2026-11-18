@@ -11,7 +11,8 @@ import {V5_NUMBER_TERMS,V4_NUMBER_TERMS} from '../src/modules/auctions/rules';
 
 describe('current auction and homepage policy copy',()=>{
  it('replaces old built-in campaign copy while retaining a genuinely custom campaign',()=>{
-  for(const headline of ['Small price. Big joy.','A little different wins.'])expect(resolveHomeCopy({headline,lead:'Old campaign'})).toEqual(defaultHomeCopy);
+  for(const headline of ['Small price. Big joy.','A little different wins.','One unique number. A chance to win.'])expect(resolveHomeCopy({headline,lead:'Old campaign'})).toEqual(defaultHomeCopy);
+  expect(defaultHomeCopy).toEqual({headline:'Small price. Big joy.',headlineAm:'ትንሽ ዋጋ። ትልቅ ደስታ።',lead:'The lowest unique bid wins.',leadAm:'ዝቅተኛና ያልተደገመ ዋጋ ያሸንፋል።'});
   expect(resolveHomeCopy({headline:'A custom approved heading',lead:'Custom copy'})).toMatchObject({headline:'A custom approved heading',lead:'Custom copy'});
  });
  it('describes no-unique cancellation and actual net-fee funding boundaries in both languages',()=>{

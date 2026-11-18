@@ -38,9 +38,9 @@ test('home banner: both languages, image, mobile geometry and existing actions',
    await expect(hero.locator('picture,source')).toHaveCount(0);expect(await image.evaluate((node:HTMLImageElement)=>decodeURIComponent(node.currentSrc))).toContain('lowwin-family-home-blue-20261118.webp');
    await page.evaluate(()=>document.fonts.ready);
    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-   // The compact landscape banner keeps its headline visible and its full lead
-   // available to assistive technology; the page guide visibly explains the rules.
-   await expect(hero.locator('h1')).toBeVisible();await expect(hero.locator('p')).toHaveCSS('position','absolute');await expect(hero.locator('p')).toHaveCSS('clip-path','inset(50%)');await expect(hero.locator('p')).not.toHaveAttribute('aria-hidden','true');
+   // The approved headline and supporting line remain visible over the artwork
+   // in both languages, including compact Mini App layouts.
+   await expect(hero.locator('h1')).toBeVisible();await expect(hero.locator('p')).toBeVisible();await expect(hero.locator('p')).toHaveCSS('position','static');await expect(hero.locator('p')).toHaveCSS('clip-path','none');await expect(hero.locator('p')).not.toHaveAttribute('aria-hidden','true');
    const bannerBox=(await hero.boundingBox())!,copyBox=(await hero.locator('h1').boundingBox())!;
    const copyFrame=(await hero.locator('[data-hero-copy]').boundingBox())!,artFrame=(await hero.locator('[data-hero-artwork]').boundingBox())!,imageFrame=(await image.boundingBox())!;
    expect(artFrame.x).toBeCloseTo(bannerBox.x,1);expect(artFrame.y).toBeCloseTo(bannerBox.y,1);expect(artFrame.width).toBeCloseTo(bannerBox.width,1);expect(artFrame.height).toBeCloseTo(bannerBox.height,1);
@@ -50,7 +50,7 @@ test('home banner: both languages, image, mobile geometry and existing actions',
    expect(copyBox.width).toBeGreaterThan(100);expect(copyBox.height).toBeGreaterThan(28);
    expect(bannerBox.width).toBe(page.viewportSize()!.width);
    expect(bannerBox.width).toBeGreaterThan(bannerBox.height);expect(bannerBox.width/bannerBox.height).toBeCloseTo(1840/880,2);expect(bannerBox.width/bannerBox.height).toBeCloseTo(sourceRatio/1.1,2);expect(bannerBox.height).toBeLessThanOrEqual(650);
-   for(const element of await hero.locator('button,a,small').all()){
+   for(const element of await hero.locator('p,button,a,small').all()){
     const box=(await element.boundingBox())!;
     expect(box.x).toBeGreaterThanOrEqual(bannerBox.x);
     expect(box.x+box.width).toBeLessThanOrEqual(bannerBox.x+bannerBox.width+1);
@@ -61,9 +61,9 @@ test('home banner: both languages, image, mobile geometry and existing actions',
     expect(box.y).toBeGreaterThanOrEqual(bannerBox.y);
    }
    await hero.screenshot({path:`${root}/banner-${info.project.name}-${language}.png`});
-   const learn=hero.getByRole('button');await learn.click();await expect(page.getByRole('dialog')).toBeVisible();
+   const learn=hero.getByRole('button',{name:language==='en'?'How it works?':'እንዴት ይሠራል?',exact:true});await learn.click();await expect(page.getByRole('dialog')).toBeVisible();
    await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);await expect(learn).toBeFocused();
-   await hero.getByRole('link',{name:language==='en'?'Live auctions':'ክፍት ጨረታዎች',exact:true}).click();await expect(page.locator('#discover-auctions')).toBeFocused();
+   const winners=hero.getByRole('link',{name:language==='en'?'Winners':'አሸናፊዎች',exact:true});await expect(winners).toBeVisible();await expect(winners).toHaveAttribute('href','/winners');
    await page.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));
   }
   expect(errors).toEqual([]);

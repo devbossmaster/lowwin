@@ -14,7 +14,7 @@ test('sheet returns keyboard focus to its trigger', async ({page}) => {
     await page.route('https://telegram.org/**', route => route.fulfill({body: ''}));
     await page.addInitScript(({data}) => {window.Telegram = {WebApp: {initData: data, ready() {}, expand() {}, setHeaderColor() {}, setBackgroundColor() {}}};}, {data: signedLaunch({user: JSON.stringify({id, first_name: 'Focus fixture'})}, process.env.TELEGRAM_BOT_TOKEN)});
     await page.goto('/');
-    const trigger = page.getByRole('button', {name: 'Learn more'}).first();
+    const trigger = page.locator('[data-home-hero]').getByRole('button', {name: 'How it works?', exact: true});
     await expect(trigger).toBeVisible();
     await trigger.focus();
     await trigger.click();

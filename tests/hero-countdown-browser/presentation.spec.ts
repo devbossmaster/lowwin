@@ -24,7 +24,7 @@ for(const am of [false,true])test(`hero and detail timer stay readable ${am?'AM'
   await expect(art).toHaveCSS('object-fit','cover');await expect(art).toHaveCSS('mask-image','none');
   expect(await art.evaluate((node:HTMLImageElement)=>decodeURIComponent(node.currentSrc))).toContain('lowwin-family-home-blue-20261118.webp');
   await expect(hero.locator('p')).toHaveCount(1);await expect(hero.locator('p')).toHaveText(am?defaultHomeCopy.leadAm:defaultHomeCopy.lead);
-  await expect(hero.locator('p')).toHaveCSS('position',info.project.name==='1280'?'static':'absolute');
+  await expect(hero.locator('p')).toBeVisible();await expect(hero.locator('p')).toHaveCSS('position','static');await expect(hero.locator('p')).toHaveCSS('clip-path','none');
   const layout=await hero.evaluate(node=>{const bounds=node.getBoundingClientRect(),copy=node.querySelector('[data-hero-copy]')!.getBoundingClientRect(),frame=node.querySelector('[data-hero-artwork]')!.getBoundingClientRect(),image=node.querySelector('img')!.getBoundingClientRect();return {heroLeft:bounds.left,heroTop:bounds.top,heroWidth:bounds.width,heroHeight:bounds.height,copyRight:copy.right,copyBottom:copy.bottom,artLeft:frame.left,artTop:frame.top,artWidth:frame.width,artHeight:frame.height,imageTop:image.top,imageHeight:image.height,leftCrop:(frame.left-image.left)/image.width,rightCrop:(image.right-frame.right)/image.width}});
   // The family-at-home photograph fills the hero behind all readable HTML copy.
   expect(layout.artLeft).toBeCloseTo(layout.heroLeft,1);expect(layout.artTop).toBeCloseTo(layout.heroTop,1);expect(layout.artWidth).toBeCloseTo(layout.heroWidth,1);expect(layout.artHeight).toBeCloseTo(layout.heroHeight,1);
@@ -36,8 +36,8 @@ for(const am of [false,true])test(`hero and detail timer stay readable ${am?'AM'
    expect(layout.copyRight).toBeLessThanOrEqual(layout.heroLeft+layout.heroWidth*.47);expect(Math.abs(layout.leftCrop)).toBeLessThan(.01);
   }
   expect(Math.abs(layout.rightCrop)).toBeLessThan(.01);
-  const learn=hero.getByRole('button',{name:am?'ተጨማሪ ይወቁ':'Learn more',exact:true});await learn.click();await expect(page.getByRole('dialog')).toBeVisible();await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);await expect(learn).toBeFocused();
-  await hero.getByRole('link',{name:am?'ክፍት ጨረታዎች':'Live auctions',exact:true}).click();await expect(page.locator('#discover-auctions')).toBeFocused();await hero.scrollIntoViewIfNeeded();await page.evaluate(()=>document.fonts.ready);await hero.screenshot({path:info.outputPath(`hero-${am?'am':'en'}.png`)});
+  const learn=hero.getByRole('button',{name:am?'እንዴት ይሠራል?':'How it works?',exact:true});await learn.click();await expect(page.getByRole('dialog')).toBeVisible();await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);await expect(learn).toBeFocused();
+  const winners=hero.getByRole('link',{name:am?'አሸናፊዎች':'Winners',exact:true});await expect(winners).toBeVisible();await expect(winners).toHaveAttribute('href','/winners');await hero.scrollIntoViewIfNeeded();await page.evaluate(()=>document.fonts.ready);await hero.screenshot({path:info.outputPath(`hero-${am?'am':'en'}.png`)});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await page.goto('/auctions/'+f.auction.publicCode);const timer=page.locator('[data-auction-detail] [data-countdown-group]').first();await expect(timer.locator('[data-countdown-unit]').first()).toHaveAttribute('data-countdown-value','12');await timer.evaluate(node=>node.scrollIntoView({block:'center'}));await expect(timer.locator('[data-countdown-unit]')).toHaveCount(4);await page.evaluate(()=>document.fonts.ready);
   await page.waitForTimeout(1400);await expect.poll(()=>timer.evaluate(node=>node.getAnimations({subtree:true}).every(animation=>animation.playState!=='paused'))).toBe(true);
