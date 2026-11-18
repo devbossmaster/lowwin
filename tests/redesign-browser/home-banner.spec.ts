@@ -29,20 +29,21 @@ test('home banner: both languages, image, mobile geometry and existing actions',
    const headline=language==='en'?defaultHomeCopy.headline:defaultHomeCopy.headlineAm;
    const lead=language==='en'?defaultHomeCopy.lead:defaultHomeCopy.leadAm;
    await expect(hero.locator('h1')).toHaveText(headline);
-   expect((await hero.locator('p').allTextContents()).join(' ')).toBe(lead);
+   await expect(hero.locator('p')).toHaveCount(1);await expect(hero.locator('p')).toHaveText(lead);await expect(hero.locator('small')).toHaveCount(0);
    await expect(page.locator('#home-headline')).toHaveCount(1);
-   const image=hero.locator('img');await expect(image).toHaveAttribute('src',/lowwin-blue-black-prizes-20261118\.webp/);await expect(image).toHaveAttribute('width','1840');await expect(image).toHaveAttribute('height','800');
+   const image=hero.locator('img');await expect(image).toHaveAttribute('src',/lowwin-family-home-blue-20261118\.webp/);await expect(image).toHaveAttribute('width','1840');await expect(image).toHaveAttribute('height','800');
    await expect.poll(()=>image.evaluate((node:HTMLImageElement)=>node.complete&&node.naturalWidth>0)).toBe(true);
+   await expect(hero.locator('picture source')).toHaveAttribute('media','all');expect(await image.evaluate((node:HTMLImageElement)=>decodeURIComponent(node.currentSrc))).toContain('lowwin-family-home-blue-mobile-20261118.webp');
    await page.evaluate(()=>document.fonts.ready);
    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
    // Promotional claims are readable HTML; the language-neutral art has no text.
    await expect(hero.locator('h1')).toBeVisible();for(const paragraph of await hero.locator('p').all())await expect(paragraph).toBeVisible();
    const bannerBox=(await hero.boundingBox())!,copyBox=(await hero.locator('h1').boundingBox())!;
    const copyFrame=(await hero.locator('[data-hero-copy]').boundingBox())!,artFrame=(await hero.locator('[data-hero-artwork]').boundingBox())!,imageFrame=(await image.boundingBox())!;
-   expect(artFrame.x).toBeCloseTo(bannerBox.x,1);expect(artFrame.y).toBeCloseTo(bannerBox.y,1);expect(artFrame.width).toBeCloseTo(bannerBox.width,1);expect(artFrame.height).toBeLessThan(bannerBox.height);
+   expect(artFrame.x).toBeCloseTo(bannerBox.x,1);expect(artFrame.y).toBeCloseTo(bannerBox.y,1);expect(artFrame.width).toBeCloseTo(bannerBox.width,1);expect(artFrame.height).toBeCloseTo(bannerBox.height,1);
    expect(copyFrame.x+copyFrame.width).toBeLessThanOrEqual(bannerBox.x+bannerBox.width*.47);
-   expect((artFrame.x-imageFrame.x)/imageFrame.width).toBeCloseTo(-.02,2);expect(imageFrame.x+imageFrame.width).toBeCloseTo(bannerBox.x+bannerBox.width*1.02,1);
-   await expect(image).toHaveAttribute('alt',language==='en'?'Illustrative PS5, boxed iPhone 17 Pro Max, BYD Seagull car and juicer':'ለማሳያ የተዘጋጁ PS5፣ በሳጥን ያለ iPhone 17 Pro Max፣ BYD Seagull መኪና እና ጭማቂ መጭመቂያ');
+   expect(imageFrame.x).toBeCloseTo(artFrame.x,1);expect(imageFrame.y).toBeCloseTo(artFrame.y,1);expect(imageFrame.width).toBeCloseTo(artFrame.width,1);expect(imageFrame.height).toBeCloseTo(artFrame.height,1);
+   await expect(image).toHaveAttribute('alt',language==='en'?'Illustrative family at home holding boxed PS5 and iPhone Pro Max, with blue luggage and gadgets':'ለማሳያ የተዘጋጀ ቤተሰብ በቤት ውስጥ፣ በሳጥን ያሉ PS5 እና iPhone Pro Max ይዞ፣ ከሰማያዊ ሻንጣና ሌሎች መሣሪያዎች ጋር');
    expect(copyBox.width).toBeGreaterThan(100);expect(copyBox.height).toBeGreaterThan(28);
    expect(bannerBox.width).toBe(page.viewportSize()!.width);
    expect(bannerBox.height).toBeGreaterThan(280);expect(bannerBox.height).toBeLessThanOrEqual(650);

@@ -19,17 +19,18 @@ for(const am of [false,true])test(`hero and detail timer stay readable ${am?'AM'
  if(info.project.name==='1280')await page.addInitScript(()=>{delete window.Telegram});
  try{
   await page.goto('/');const hero=page.locator('[data-home-hero]');await expect(hero.locator('h1')).toHaveText(am?defaultHomeCopy.headlineAm:defaultHomeCopy.headline);await expect(hero.locator('h1')).toBeVisible();
-  const art=hero.locator('img');await expect(art).toHaveAttribute('width','1840');await expect(art).toHaveAttribute('height','800');await expect(art).toHaveAttribute('src',/lowwin-blue-black-prizes-20261118/);await expect.poll(()=>art.evaluate((node:HTMLImageElement)=>node.complete&&node.naturalWidth>0)).toBe(true);
+  const art=hero.locator('img');await expect(art).toHaveAttribute('width','1840');await expect(art).toHaveAttribute('height','800');await expect(art).toHaveAttribute('src',/lowwin-family-home-blue-20261118/);await expect.poll(()=>art.evaluate((node:HTMLImageElement)=>node.complete&&node.naturalWidth>0)).toBe(true);
+  expect(await art.evaluate((node:HTMLImageElement)=>decodeURIComponent(node.currentSrc))).toContain(info.project.name==='1280'?'lowwin-family-home-blue-20261118.webp':'lowwin-family-home-blue-mobile-20261118.webp');
+  await expect(hero.locator('p')).toHaveCount(1);await expect(hero.locator('p')).toHaveText(am?defaultHomeCopy.leadAm:defaultHomeCopy.lead);
   const layout=await hero.evaluate(node=>{const bounds=node.getBoundingClientRect(),copy=node.querySelector('[data-hero-copy]')!.getBoundingClientRect(),frame=node.querySelector('[data-hero-artwork]')!.getBoundingClientRect(),image=node.querySelector('img')!.getBoundingClientRect();return {heroLeft:bounds.left,heroTop:bounds.top,heroWidth:bounds.width,heroHeight:bounds.height,copyRight:copy.right,copyBottom:copy.bottom,artLeft:frame.left,artTop:frame.top,artWidth:frame.width,artHeight:frame.height,imageTop:image.top,imageHeight:image.height,leftCrop:(frame.left-image.left)/image.width,rightCrop:(image.right-frame.right)/image.width}});
-  // The main composition keeps copy left and complete product artwork right;
-  // the complete cancellation explanation remains readable beneath it.
-  expect(layout.artLeft).toBeCloseTo(layout.heroLeft,1);expect(layout.artTop).toBeCloseTo(layout.heroTop,1);expect(layout.artWidth).toBeCloseTo(layout.heroWidth,1);expect(layout.artHeight).toBeLessThan(layout.heroHeight);
+  // The family-at-home photograph fills the hero behind all readable HTML copy.
+  expect(layout.artLeft).toBeCloseTo(layout.heroLeft,1);expect(layout.artTop).toBeCloseTo(layout.heroTop,1);expect(layout.artWidth).toBeCloseTo(layout.heroWidth,1);expect(layout.artHeight).toBeCloseTo(layout.heroHeight,1);
   if(info.project.name==='1280'){
    expect(layout.copyRight).toBeLessThanOrEqual(layout.heroLeft+layout.heroWidth*.4);expect(Math.abs(layout.leftCrop)).toBeLessThan(.01);
   }else{
-   expect(layout.copyRight).toBeLessThanOrEqual(layout.heroLeft+layout.heroWidth*.47);expect(layout.leftCrop).toBeCloseTo(-.02,2);
+   expect(layout.copyRight).toBeLessThanOrEqual(layout.heroLeft+layout.heroWidth*.47);expect(Math.abs(layout.leftCrop)).toBeLessThan(.01);
   }
-  expect(Math.abs(layout.rightCrop)).toBeLessThan(.03);
+  expect(Math.abs(layout.rightCrop)).toBeLessThan(.01);
   const learn=hero.getByRole('button',{name:am?'ተጨማሪ ይወቁ':'Learn more',exact:true});await learn.click();await expect(page.getByRole('dialog')).toBeVisible();await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);await expect(learn).toBeFocused();
   await hero.getByRole('link',{name:am?'ክፍት ጨረታዎች':'Live auctions',exact:true}).click();await expect(page.locator('#discover-auctions')).toBeFocused();await hero.scrollIntoViewIfNeeded();await page.evaluate(()=>document.fonts.ready);await hero.screenshot({path:info.outputPath(`hero-${am?'am':'en'}.png`)});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);

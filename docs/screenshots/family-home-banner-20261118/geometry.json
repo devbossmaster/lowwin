@@ -1,0 +1,254 @@
+[
+  {
+    "label": "320-en",
+    "height": 500,
+    "width": 320,
+    "overflow": false,
+    "textFits": true,
+    "actions": [
+      {
+        "height": 44,
+        "inside": true
+      },
+      {
+        "height": 44,
+        "inside": true
+      }
+    ],
+    "copyRight": 145.796875
+  },
+  {
+    "label": "320-am",
+    "height": 500,
+    "width": 320,
+    "overflow": false,
+    "textFits": true,
+    "actions": [
+      {
+        "height": 44,
+        "inside": true
+      },
+      {
+        "height": 44,
+        "inside": true
+      }
+    ],
+    "copyRight": 145.796875
+  },
+  {
+    "label": "360-en",
+    "height": 500,
+    "width": 360,
+    "overflow": false,
+    "textFits": true,
+    "actions": [
+      {
+        "height": 44,
+        "inside": true
+      },
+      {
+        "height": 44,
+        "inside": true
+      }
+    ],
+    "copyRight": 163.796875
+  },
+  {
+    "label": "360-am",
+    "height": 500,
+    "width": 360,
+    "overflow": false,
+    "textFits": true,
+    "actions": [
+      {
+        "height": 44,
+        "inside": true
+      },
+      {
+        "height": 44,
+        "inside": true
+      }
+    ],
+    "copyRight": 163.796875
+  },
+  {
+    "label": "430-en",
+    "height": 573.328125,
+    "width": 430,
+    "overflow": false,
+    "textFits": true,
+    "actions": [
+      {
+        "height": 44,
+        "inside": true
+      },
+      {
+        "height": 44,
+        "inside": true
+      }
+    ],
+    "copyRight": 195.296875
+  },
+  {
+    "label": "430-am",
+    "height": 573.328125,
+    "width": 430,
+    "overflow": false,
+    "textFits": true,
+    "actions": [
+      {
+        "height": 44,
+        "inside": true
+      },
+      {
+        "height": 44,
+        "inside": true
+      }
+    ],
+    "copyRight": 195.296875
+  },
+  {
+    "label": "640-en",
+    "height": 440,
+    "width": 640,
+    "overflow": false,
+    "textFits": true,
+    "actions": [
+      {
+        "height": 48,
+        "inside": true
+      },
+      {
+        "height": 48,
+        "inside": true
+      }
+    ],
+    "copyRight": 248.953125
+  },
+  {
+    "label": "640-am",
+    "height": 440,
+    "width": 640,
+    "overflow": false,
+    "textFits": true,
+    "actions": [
+      {
+        "height": 48,
+        "inside": true
+      },
+      {
+        "height": 48,
+        "inside": true
+      }
+    ],
+    "copyRight": 248.953125
+  },
+  {
+    "label": "1024-en",
+    "height": 440,
+    "width": 976,
+    "overflow": false,
+    "textFits": true,
+    "actions": [
+      {
+        "height": 48,
+        "inside": true
+      },
+      {
+        "height": 48,
+        "inside": true
+      }
+    ],
+    "copyRight": 378.25
+  },
+  {
+    "label": "1024-am",
+    "height": 440,
+    "width": 976,
+    "overflow": false,
+    "textFits": true,
+    "actions": [
+      {
+        "height": 48,
+        "inside": true
+      },
+      {
+        "height": 48,
+        "inside": true
+      }
+    ],
+    "copyRight": 378.25
+  },
+  {
+    "label": "1280-en",
+    "height": 535.640625,
+    "width": 1232,
+    "overflow": false,
+    "textFits": true,
+    "actions": [
+      {
+        "height": 48,
+        "inside": true
+      },
+      {
+        "height": 48,
+        "inside": true
+      }
+    ],
+    "copyRight": 477.359375
+  },
+  {
+    "label": "1280-am",
+    "height": 535.640625,
+    "width": 1232,
+    "overflow": false,
+    "textFits": true,
+    "actions": [
+      {
+        "height": 48,
+        "inside": true
+      },
+      {
+        "height": 48,
+        "inside": true
+      }
+    ],
+    "copyRight": 477.359375
+  },
+  {
+    "label": "1280-mini-en",
+    "height": 640,
+    "width": 480,
+    "overflow": false,
+    "textFits": true,
+    "actions": [
+      {
+        "height": 44,
+        "inside": true
+      },
+      {
+        "height": 44,
+        "inside": true
+      }
+    ],
+    "copyRight": 217.796875
+  },
+  {
+    "label": "1280-mini-am",
+    "height": 640,
+    "width": 480,
+    "overflow": false,
+    "textFits": true,
+    "actions": [
+      {
+        "height": 44,
+        "inside": true
+      },
+      {
+        "height": 44,
+        "inside": true
+      }
+    ],
+    "copyRight": 217.796875
+  }
+]
