@@ -82,21 +82,3 @@
 .shareButton:hover:not(:disabled):not([aria-disabled=true]){background:var(--action-hover, #1d4ed8);color:var(--action-ink, #fff)}
 .shareButton:active:not(:disabled):not([aria-disabled=true]){background:var(--action-pressed, #1e40af)}
 .shareButton:disabled,.shareButton[aria-disabled=true]{background:var(--action-disabled, #dbe7fb);color:var(--action-disabled-ink, #52647f);--surface-ink:var(--action-disabled-ink, #52647f);opacity:1}
-@media(min-width:1024px){
- :global(.app-frame[data-app-layout=browser]) .page{max-width:none;padding:12px 0 32px}
- :global(.app-frame[data-app-layout=browser]) .identity,:global(.app-frame[data-app-layout=browser]) .wallet{background:var(--action-pressed,#1e40af)}
- :global(.app-frame[data-app-layout=browser]) .identityBody p,:global(.app-frame[data-app-layout=browser]) .walletSplit{color:#e0eaff}
- :global(.app-frame[data-app-layout=browser]) .identityBody h2{font-size:20px;font-weight:650}
- :global(.app-frame[data-app-layout=browser]) .panelHeading h2{font-size:18px;font-weight:650}
- :global(.app-frame[data-app-layout=browser]) .description,:global(.app-frame[data-app-layout=browser]) .basicInfo>div{font-size:14px}
- :global(.app-frame[data-app-layout=browser]) .summary{gap:16px}
- :global(.app-frame[data-app-layout=browser]) .summary>div{padding:20px}
- :global(.app-frame[data-app-layout=browser]) .summary>div>span{font-size:13px}
- :global(.app-frame[data-app-layout=browser]) .shortcuts{grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
- :global(.app-frame[data-app-layout=browser]) .shortcuts>a+a{border-top:0}
- :global(.app-frame[data-app-layout=browser]) .goldNumber,:global(.app-frame[data-app-layout=browser]) .useDiscount{color:var(--action-pressed,#1e40af)}
- :global(.app-frame[data-app-layout=browser]) .referralStats>div,:global(.app-frame[data-app-layout=browser]) .discounts li{background:var(--brand-soft,#f2f2f7)}
- :global(.app-frame[data-app-layout=browser]) .referralState[data-active],:global(.app-frame[data-app-layout=browser]) .notifications>strong{background:var(--action-disabled,#dbe7fb);color:var(--action-pressed,#1e40af)}
- :global(.app-frame[data-app-layout=browser]) .discounts strong{color:var(--brand-ink,#16202c)}
- :global(.app-frame[data-app-layout=browser]) .discounts small{color:var(--brand-muted,#657181);font-size:12px}
-}

@@ -4,7 +4,7 @@ import {signedLaunch,TEST_TOKEN} from './helpers';
 
 const mocks=vi.hoisted(()=>({
   transaction:vi.fn(),createAuth:vi.fn(),handler:vi.fn(),limit:vi.fn(),
-  launchSession:vi.fn(),bindContact:vi.fn(),bootstrap:vi.fn(),
+  launchSession:vi.fn(),contactStatus:vi.fn(),bootstrap:vi.fn(),
   tx:{$executeRaw:vi.fn(),user:{findUnique:vi.fn()},account:{findUnique:vi.fn(),create:vi.fn()},session:{updateMany:vi.fn()}},
 }));
 vi.mock('../src/lib/db',()=>({db:{$transaction:mocks.transaction}}));
@@ -12,7 +12,7 @@ vi.mock('../src/lib/rate-limit',()=>({allowIdentityRequest:mocks.limit}));
 vi.mock('../src/modules/auth/server',()=>({createAuth:mocks.createAuth}));
 vi.mock('../src/modules/auth/staff-plugin',()=>({staffActions:[]}));
 vi.mock('../src/modules/admin/rate-limit',()=>({staffRateLimit:vi.fn()}));
-vi.mock('../src/modules/auth/own-contact',()=>({bindOwnContact:mocks.bindContact}));
+vi.mock('../src/modules/auth/own-contact',()=>({contactStatus:mocks.contactStatus}));
 vi.mock('../src/modules/auth/mini-access',()=>({getLaunchSession:mocks.launchSession}));
 vi.mock('../src/modules/auth/mini-account',()=>({telegramBootstrap:mocks.bootstrap}));
 import {handleAuth} from '../src/modules/auth/handler';
@@ -34,12 +34,12 @@ beforeEach(()=>{
   mocks.limit.mockReset().mockResolvedValue(true);
   mocks.launchSession.mockReset().mockResolvedValue(null);
   mocks.tx.$executeRaw.mockReset().mockResolvedValue(1);
-  mocks.tx.user.findUnique.mockReset().mockResolvedValue(null);
-  mocks.tx.account.findUnique.mockReset().mockResolvedValue(null);
+  mocks.tx.user.findUnique.mockReset().mockResolvedValue({id:'private-player',role:'member',staffMember:null});
+  mocks.tx.account.findUnique.mockReset().mockResolvedValue({userId:'private-player',telegramId:'778899'});
   mocks.tx.account.create.mockReset().mockRejectedValue(new Error('Unexpected account repair'));
   mocks.tx.session.updateMany.mockReset().mockResolvedValue({count:1});
-  mocks.bindContact.mockReset().mockResolvedValue(undefined);
-  mocks.bootstrap.mockReset().mockResolvedValue({ok:true,status:'contact-required',me:null});
+  mocks.contactStatus.mockReset().mockResolvedValue({verified:true,masked:null});
+  mocks.bootstrap.mockReset().mockResolvedValue({ok:true,status:'authenticated',me:{user:{id:'private-player'}}});
   mocks.handler.mockReset().mockImplementation(async()=>Response.json({
     session:{id:'private-session',userId:'private-player'},user:{id:'private-player',name:'Private player'},
   },{headers:{'Set-Cookie':'private-issued-cookie'}}));
@@ -62,8 +62,15 @@ describe('safe Telegram authentication diagnostics',()=>{
     mocks.launchSession.mockResolvedValue({telegramId:'991122',user:{id:'other-player',name:'Other player'},session:{id:'other-session'},contactStatus:{verified:true,masked:'•••• 1234'}});
     expect((await launch(signedLaunch({user:JSON.stringify({id:778899,first_name:'Private player'})}),'private-cookie')).status).toBe(200);
     expect(mocks.transaction).toHaveBeenCalledOnce();
-    expect(mocks.bindContact).toHaveBeenCalledWith(mocks.tx,'private-player','778899');
+    expect(mocks.contactStatus).toHaveBeenCalledWith(mocks.tx,'private-player','778899');
     expect(mocks.bootstrap).toHaveBeenCalledWith(mocks.tx,{id:'private-player',name:'Private player'},'778899','private-session',null);
+  });
+  it('returns contact-required without creating an account or calling the auth plugin',async()=>{
+    mocks.tx.user.findUnique.mockResolvedValue(null);mocks.tx.account.findUnique.mockResolvedValue(null);
+    const response=await launch();
+    expect(await response.json()).toEqual({ok:true,status:'contact-required',me:null});
+    expect(response.headers.has('set-cookie')).toBe(false);
+    expect(mocks.tx.account.create).not.toHaveBeenCalled();expect(mocks.handler).not.toHaveBeenCalled();
   });
   it('reports initialization errorCode before any session can be issued',async()=>{
     mocks.limit.mockRejectedValue(new Prisma.PrismaClientInitializationError('private connection credentials','6.19.3','P1001'));

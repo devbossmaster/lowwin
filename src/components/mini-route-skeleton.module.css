@@ -90,34 +90,3 @@
 .legalSection{display:grid;gap:16px;padding-block:8px}
 @keyframes breathe{0%,100%{opacity:.65}50%{opacity:1}}
 @media(prefers-reduced-motion:reduce){.bone{animation:none}}
-@media(min-width:640px){
- :global(.app-frame[data-app-layout=browser]) .root[data-route-skeleton=home]{max-width:none;padding:18px 16px 32px}
- :global(.app-frame[data-app-layout=browser]) .homeAuctionGrid{grid-template-columns:var(--catalog-columns,repeat(2,minmax(0,1fr)))}
- :global(.app-frame[data-app-layout=browser]) .homeAuctionGrid>.auctionCard:nth-child(n+2){display:block}
- :global(.app-frame[data-app-layout=browser]) .homeAuctionGrid>.auctionCard:nth-child(3){display:none}
-}
-@media(min-width:1024px){
- :global(.app-frame[data-app-layout=browser]) .root{max-width:none;padding:18px 0 32px}
- :global(.app-frame[data-app-layout=browser]) .compact{padding:8px 0 16px}
- :global(.app-frame[data-app-layout=browser]) .catalogGrid{grid-template-columns:repeat(2,minmax(0,1fr))}
- :global(.app-frame[data-app-layout=browser]) .winnerGrid{grid-template-columns:repeat(2,minmax(0,1fr))}
- :global(.app-frame[data-app-layout=browser]) .profileGrid{gap:16px}
- :global(.app-frame[data-app-layout=browser]) .bidRows{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
- :global(.app-frame[data-app-layout=browser]) .root[data-route-skeleton=home]{padding:0 0 32px}
- :global(.app-frame[data-app-layout=browser]) .home{gap:22px}
- :global(.app-frame[data-app-layout=browser]) .homeHeader{justify-content:space-between;min-height:62px;margin:0;padding-inline:16px}
- :global(.app-frame[data-app-layout=browser][data-customer-registered=true]) .homeHeader{justify-content:flex-end}
- :global(.app-frame[data-app-layout=browser][data-customer-registered=true]) .homeBrand{display:none}
- :global(.app-frame[data-app-layout=browser]) .heroBlock{margin-top:-22px;border-radius:0}
- :global(.app-frame[data-app-layout=browser]) .hero{border-radius:0}
- :global(.app-frame[data-app-layout=browser]) .homeContent{padding-inline:16px}
- :global(.app-frame[data-app-layout=browser]) .heroTitle{max-width:360px}
- :global(.app-frame[data-app-layout=browser]) .heroCopy{max-width:280px}
- :global(.app-frame[data-app-layout=browser]) .heroActions>.bone{max-width:180px}
-}
-@media(min-width:1280px){
- :global(.app-frame[data-app-layout=browser]) .homeAuctionGrid>.auctionCard:nth-child(3){display:block}
-}
-
-
-@media(min-width:1024px){:global(.app-frame[data-app-layout=browser]) .heroBlock{border-radius:0;padding-bottom:0}:global(.app-frame[data-app-layout=browser]) .hero{align-content:center;padding:32px 40px 110px}:global(.app-frame[data-app-layout=browser]) .heroTitle{width:38%;height:100px}:global(.app-frame[data-app-layout=browser]) .heroCopy{display:block;width:38%;height:120px}:global(.app-frame[data-app-layout=browser]) .heroActions{left:40px;top:auto;bottom:32px;flex-direction:row;width:38%;max-width:none}}

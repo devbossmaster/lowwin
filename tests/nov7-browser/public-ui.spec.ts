@@ -38,6 +38,7 @@ async function identity(page:Page,registered=true){
  await page.route('**/api/alerts?summary=1',route=>route.fulfill({json:{unread:3}}));
  await page.route('**/api/payments/chapa',route=>route.fulfill({json:{enabled:false,mode:'test',configured:false}}));
  await page.route(`**/api/catalog/auctions/${code}/view`,route=>route.fulfill({json:{views:'123',counted:false}}));
+ return id;
 }
 async function tapTime(page:Page,button:Locator,visibleSelector:string){
  await button.evaluate((element,selector)=>element.addEventListener('click',()=>{
@@ -69,21 +70,26 @@ for(const network of ['normal','throttled'] as const)test(`optimized ${network} 
  mkdirSync(destination,{recursive:true});await page.screenshot({path:`${destination}/${network}-${info.project.name}.png`,animations:'disabled'});
  const evidence={stage,network,width:info.project.name,build:'optimized production, isolated loopback database, mocked wallet/alerts/provider availability; synthetic signed Telegram account',publicHomeMs,coldHomeMs,repeatHomeMs,firstSheetMs,repeatSheetMs,coldRequestCount,coldTransferredBytes,totalRequestCount:requests.length,totalTransferredBytes:requests.reduce((sum,row)=>sum+row.bytes,0),financialWrites,requests,errors};writeFileSync(`${destination}/performance-${network}-${info.project.name}.json`,JSON.stringify(evidence,null,2));
 });
-test('Mini App guide, optional native shortcut and contact consent stay separate from website login',async({page},info)=>{
+test('Mini App contact registration unlocks the optional guide and native shortcut',async({page},info)=>{
  test.skip(!isAfter,'This comparison runs in the historical after stage');
- await identity(page,false);await page.addInitScript(()=>{
+ const telegramId=await identity(page,false);await page.addInitScript(()=>{
   localStorage.removeItem('lowwin:mini-introduction:v2');
-  const state=window as unknown as {__shortcutRequests:number;__contactRequests:number};state.__shortcutRequests=0;state.__contactRequests=0;
+  const state=window as unknown as {__shortcutRequests:number;__contactRequests:number;__shareContact?:(shared:boolean)=>void};state.__shortcutRequests=0;state.__contactRequests=0;
   const app=window.Telegram!.WebApp!;app.isVersionAtLeast=()=>true;
   app.addToHomeScreen=()=>{state.__shortcutRequests++};app.checkHomeScreenStatus=callback=>callback('missed');
-  app.requestContact=callback=>{state.__contactRequests++;callback(false)};
+  app.requestContact=callback=>{state.__contactRequests++;state.__shareContact=callback};
  });
  let videoRequests=0;await page.route('**/videos/nov7-tutorial.mp4',route=>{videoRequests++;return route.fulfill({status:404,body:''})});
- await page.goto('/?q='+encodeURIComponent(marker));await expect(fixtureCard(page)).toHaveCount(1);
- const guide=page.getByRole('dialog').filter({has:page.locator('[data-mini-introduction="guide"]')});await expect(guide).toBeVisible();
+ const guide=page.getByRole('dialog').filter({has:page.locator('[data-mini-introduction="guide"]')});
+ await page.goto('/?q='+encodeURIComponent(marker));
+ await expect(page.getByRole('heading',{name:'Share your Telegram contact',exact:true})).toBeVisible();
+ await expect(fixtureCard(page)).toHaveCount(0);await expect(guide).toHaveCount(0);
  await expect(page.getByRole('button',{name:/^(Log in|Continue with Telegram)$/})).toHaveCount(0);
+ await expect.poll(()=>page.evaluate(()=>(window as unknown as {__contactRequests:number}).__contactRequests)).toBe(1);
+ const db=new PrismaClient();try{await verifyFixtureContact(db,telegramId)}finally{await db.$disconnect()}
+ await page.evaluate(()=>(window as unknown as {__shareContact:(shared:boolean)=>void}).__shareContact(true));
+ await expect(fixtureCard(page)).toHaveCount(1);await expect(guide).toBeVisible();
  await expect(page.locator('iframe,video')).toHaveCount(0);expect(videoRequests).toBe(0);
- expect(await page.evaluate(()=>(window as unknown as {__contactRequests:number}).__contactRequests)).toBe(0);
  mkdirSync(destination,{recursive:true});await page.screenshot({path:`${destination}/introduction-${info.project.name}.png`,animations:'disabled'});
  await guide.getByRole('button',{name:'Close',exact:true}).click();
  const shortcut=page.getByRole('dialog').filter({has:page.locator('[data-mini-introduction="shortcut"]')});await expect(shortcut).toBeVisible();
@@ -91,9 +97,8 @@ test('Mini App guide, optional native shortcut and contact consent stay separate
  await shortcut.getByRole('button',{name:'Add to home screen',exact:true}).click();
  expect(await page.evaluate(()=>(window as unknown as {__shortcutRequests:number}).__shortcutRequests)).toBe(1);
  await shortcut.getByRole('button',{name:'Continue',exact:true}).click();
- await expect.poll(()=>page.evaluate(()=>(window as unknown as {__contactRequests:number}).__contactRequests)).toBe(1);
- await expect(page.getByRole('dialog')).toContainText('Contact sharing was cancelled');
- await page.getByRole('dialog').getByRole('button',{name:'Keep browsing',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);
+ await expect(page.getByRole('dialog')).toHaveCount(0);
+ expect(await page.evaluate(()=>(window as unknown as {__contactRequests:number}).__contactRequests)).toBe(1);
  expect(await page.evaluate(()=>localStorage.getItem('lowwin:mini-introduction:v2'))).toBe('dismissed');
  await page.locator('[data-home-hero]').getByRole('button',{name:'How it works?',exact:true}).click();const tutorial=page.getByRole('dialog',{name:'How LowWin works',exact:true});await expect(tutorial).toBeVisible();await expect.poll(()=>tutorial.locator('[data-tutorial-video] img').evaluate(image=>(image as HTMLImageElement).complete&&(image as HTMLImageElement).naturalWidth>0)).toBe(true);expect(videoRequests).toBe(0);await tutorial.getByRole('button',{name:'Watch how it works',exact:true}).click();await expect.poll(()=>videoRequests).toBe(1);await expect(tutorial.getByRole('status')).toContainText('The video could not load.');await tutorial.getByRole('button',{name:'Close',exact:true}).click();
  await expect(fixtureCard(page)).toHaveCount(1);await page.emulateMedia({reducedMotion:'reduce'});await expect(page.locator('[data-countdown-unit]').first()).toBeVisible();

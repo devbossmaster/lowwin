@@ -22,7 +22,7 @@ export function HomeHero({copy,videoId,media,experience}:{copy:Copy;videoId?:str
  const leadParts=lead.match(/^(The lowest unique|ዝቅተኛና ያልተደገመ)\s+([\s\S]+)$/);
  const configuredBanner=language==='am'?experience?.bannerAm:experience?.bannerEn;
  const alt=language==='am'?'ለማሳያ የተዘጋጀ ቤተሰብ በቤት ውስጥ፣ በሳጥን ያሉ PS5 እና iPhone Pro Max ይዞ፣ ከሰማያዊ ሻንጣና ሌሎች መሣሪያዎች ጋር':'Illustrative family at home holding boxed PS5 and iPhone Pro Max, with blue luggage and gadgets';
- const {props:image}=getImageProps({alt,quality:75,loading:'eager',fetchPriority:'high',src:lowwinHomeBanner(language,configuredBanner),width:1840,height:800,sizes:'(min-width:1280px) 1232px, (min-width:1024px) calc(100vw - 48px), 100vw'});
+ const {props:image}=getImageProps({alt,quality:75,loading:'eager',fetchPriority:'high',src:lowwinHomeBanner(language,configuredBanner),width:1840,height:800,sizes:'(max-width: 430px) 100vw, 430px'});
  return <>
   <section className={`relative overflow-hidden ${styles.banner} ${styles.artworkBanner}`} aria-labelledby="home-headline" lang={language} data-home-hero>
    <div className={styles.bannerMain}>

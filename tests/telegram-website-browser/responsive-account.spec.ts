@@ -51,28 +51,32 @@ async function setup(page:Page,am:boolean){
 }
 async function noOverflow(page:Page){expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true)}
 async function width(node:Locator){return node.evaluate(element=>element.getBoundingClientRect().width)}
-async function pageWidth(page:Page,node:Locator,desktop:boolean){
+async function pageWidth(page:Page,node:Locator){
  const header=page.locator('[data-customer-page-header]');await expect(header).toBeVisible();
- if(desktop){expect(await width(header)).toBeCloseTo(860,0);expect(await width(node)).toBeGreaterThan(800);expect(await width(node)).toBeLessThanOrEqual(861)}
- else expect(await width(node)).toBeLessThanOrEqual(Math.min(page.viewportSize()!.width,480)+1);
+ const maxWidth=Math.min(page.viewportSize()!.width,430);
+ expect(await width(header)).toBeCloseTo(maxWidth,0);
+ expect(await width(node)).toBeLessThanOrEqual(maxWidth+1);
  await noOverflow(page);
 }
 
 for(const am of [false,true])test(`responsive account pages and loading placeholders ${am?'AM':'EN'}`,async({page},info)=>{
- const f=await setup(page,am),desktop=page.viewportSize()!.width>=1024;
+ const f=await setup(page,am);
  for(const [path,api,variant] of [['/my-bids','/api/my-bids','bids'],['/winners','/api/results/winners','winners'],['/profile','/api/profile','profile']] as const){
-  await page.goto(path);await expect(page.locator('.app-frame')).toHaveAttribute('data-app-layout','browser');
+  await page.goto(path);await expect(page.locator('.app-frame')).toHaveAttribute('data-app-environment','browser');
+  const navigation=page.getByRole('navigation',{name:'Your navigation',exact:true});
+  await expect(navigation).toBeVisible();
+  expect(await width(navigation)).toBeCloseTo(Math.min(page.viewportSize()!.width,430),0);
+  await expect(page.locator('[data-customer-navigation], [data-browser-navigation]')).toHaveCount(0);
   await expect.poll(()=>f.reads.some(read=>read.startsWith(api))).toBe(true);
   const skeleton=variant==='bids'?page.locator('section:has([data-my-bids-tabs])'):page.locator(`[data-route-skeleton=${variant}]`).last();
-  await expect(skeleton).toBeVisible();await pageWidth(page,skeleton,desktop);
-  if(variant==='winners')expect(await skeleton.locator('[data-skeleton-part=winner-grid]').evaluate(element=>getComputedStyle(element).gridTemplateColumns.split(' ').length)).toBe(desktop?2:1);
+  await expect(skeleton).toBeVisible();await pageWidth(page,skeleton);
+  if(variant==='winners')expect(await skeleton.locator('[data-skeleton-part=winner-grid]').evaluate(element=>getComputedStyle(element).gridTemplateColumns.split(' ').length)).toBe(1);
   await page.screenshot({path:info.outputPath(`${variant}-loading-${am?'am':'en'}.png`),fullPage:true,animations:'disabled'});
   f.release(api);
   if(variant==='bids'){
-   const list=page.locator('[data-my-bids-list]');await expect(list).toBeVisible();expect(await list.evaluate(element=>getComputedStyle(element).gridTemplateColumns.split(' ').length)).toBe(desktop?2:1);
+   const list=page.locator('[data-my-bids-list]');await expect(list).toBeVisible();expect(await list.evaluate(element=>getComputedStyle(element).gridTemplateColumns.split(' ').length)).toBe(1);
    await expect(list.locator('[data-bid-auction]')).toHaveCount(2);await expect(list.locator('[data-bid-id]')).toHaveCount(4);await expect(list.locator('[data-bid-thumbnail]')).toHaveCount(2);
-   if(desktop){await expect(list.locator('[data-outcome]').first()).toHaveCSS('font-size','13px');await expect(list.locator('[data-bid-auction]').first().getByRole('button').getByText(am?fixtureTitleAm:fixtureTitle,{exact:true})).toHaveCSS('font-size','15px')}
-  }else if(variant==='profile'){const profile=page.locator('[data-profile-ready=true]');await expect(profile).toBeVisible();await pageWidth(page,profile,desktop)}
+  }else if(variant==='profile'){const profile=page.locator('[data-profile-ready=true]');await expect(profile).toBeVisible();await pageWidth(page,profile)}
   else await expect(page.locator('[data-winners-ready=true]')).toBeVisible();
   await noOverflow(page);await page.screenshot({path:info.outputPath(`${variant}-ready-${am?'am':'en'}.png`),fullPage:true,animations:'disabled'});
  }

@@ -1,4 +1,4 @@
-.sheet{position:fixed;inset:auto 0 var(--sheet-keyboard-inset,0px);margin:0 auto;width:min(100%,480px);max-width:100%;max-height:calc(var(--sheet-viewport-height,100dvh) - max(24px,env(safe-area-inset-top,0px),var(--tg-safe-area-inset-top,0px),var(--tg-content-safe-area-inset-top,0px)));border:0;border-radius:28px 28px 0 0;padding:0;background:#fff;color:var(--brand-ink, #211a30);box-shadow:0 -12px 50px #0002;overflow:hidden;overscroll-behavior:contain}
+.sheet{position:fixed;inset:auto 0 var(--sheet-keyboard-inset,0px);margin:0 auto;width:min(100%,var(--customer-surface-width));max-width:100%;max-height:calc(var(--sheet-viewport-height,100dvh) - max(24px,env(safe-area-inset-top,0px),var(--tg-safe-area-inset-top,0px),var(--tg-content-safe-area-inset-top,0px)));border:0;border-radius:28px 28px 0 0;padding:0;background:#fff;color:var(--brand-ink, #211a30);box-shadow:0 -12px 50px #0002;overflow:hidden;overscroll-behavior:contain}
 .sheet[open]{display:flex;flex-direction:column;animation:arrive .2s cubic-bezier(.16,1,.3,1)}
 .sheet[data-size=payment]{max-height:calc(var(--sheet-viewport-height,100dvh) - max(48px,env(safe-area-inset-top,0px),var(--tg-safe-area-inset-top,0px)));border-radius:24px 24px 0 0}
 .sheet[data-size=payment][data-keyboard-open=true]{max-height:calc(var(--sheet-viewport-height,100dvh) - max(24px,env(safe-area-inset-top,0px),var(--tg-safe-area-inset-top,0px)))}
@@ -28,7 +28,7 @@
 .sheet[data-layout=bid-entry] .body{padding-bottom:6px;flex:1}
 .sheet[data-layout=bid-entry] .footer{padding-top:7px}
 .sheet[data-layout=bid-entry][data-keyboard-open=true] :global([data-sheet-preview]),.sheet[data-layout=bid-entry][data-keyboard-open=true] :global([data-bid-description]){display:none}
-.sheet[data-presentation=centered]{inset:calc(var(--sheet-viewport-height,100dvh)/2) auto auto 50%;margin:0;width:min(calc(100% - 32px),400px);max-height:calc(var(--sheet-viewport-height,100dvh) - 40px);border-radius:24px;transform:translate(-50%,-50%)}
+.sheet[data-presentation=centered]{inset:calc(var(--sheet-viewport-height,100dvh)/2) auto auto 50%;margin:0;width:calc(min(100%,var(--customer-surface-width)) - 32px);max-height:calc(var(--sheet-viewport-height,100dvh) - 40px);border-radius:24px;transform:translate(-50%,-50%)}
 .sheet[data-presentation=centered][open]{animation:centered-arrive .16s ease-out}
 .sheet[data-presentation=centered] .handle{display:none}
 .sheet[data-presentation=centered] .header{padding:8px 12px 2px 18px}
@@ -47,7 +47,7 @@
 
 /* Reference bid checkout: one compact sheet; other account/payment sheets keep
    their existing framing. Native dialog focus and keyboard sizing are shared. */
-.sheet[data-layout=bid-reference]{width:min(calc(100% - 28px),448px);max-height:calc(var(--sheet-viewport-height,100dvh) - max(20px,env(safe-area-inset-top,0px),var(--tg-safe-area-inset-top,0px)));border-radius:28px 28px 0 0;background:#fdfcf9}
+.sheet[data-layout=bid-reference]{width:calc(min(100%,var(--customer-surface-width)) - 28px);max-height:calc(var(--sheet-viewport-height,100dvh) - max(20px,env(safe-area-inset-top,0px),var(--tg-safe-area-inset-top,0px)));border-radius:28px 28px 0 0;background:#fdfcf9}
 .sheet[data-layout=bid-reference]::backdrop{background:#25241f99;backdrop-filter:blur(5px)}
 .sheet[data-layout=bid-reference] .handle{display:none}
 .sheet[data-layout=bid-reference] .header{min-height:54px;padding:6px 10px 0 16px;gap:8px}
@@ -62,7 +62,7 @@
 .sheet[data-layout=bid-reference][data-keyboard-open=true]{max-height:calc(var(--sheet-viewport-height,100dvh) - 12px)}
 @media(max-width:340px){.sheet[data-layout=bid-reference]{width:calc(100% - 16px)}.sheet[data-layout=bid-reference] .body{padding-inline:12px}.sheet[data-layout=bid-reference] .header{padding-inline:12px 6px}.sheet[data-layout=bid-reference] .footer{padding-inline:12px}}
 @media(prefers-reduced-motion:reduce){.sheet[data-layout=bid-reference]::backdrop{backdrop-filter:none}}
-.sheet[data-layout=topup-reference]{width:min(calc(100% - 28px),448px);max-height:calc(var(--sheet-viewport-height,100dvh) - max(20px,env(safe-area-inset-top,0px),var(--tg-safe-area-inset-top,0px)));border-radius:28px 28px 0 0;background:#fdfcf9}
+.sheet[data-layout=topup-reference]{width:calc(min(100%,var(--customer-surface-width)) - 28px);max-height:calc(var(--sheet-viewport-height,100dvh) - max(20px,env(safe-area-inset-top,0px),var(--tg-safe-area-inset-top,0px)));border-radius:28px 28px 0 0;background:#fdfcf9}
 .sheet[data-layout=topup-reference]::backdrop{background:#25241f99;backdrop-filter:blur(5px)}
 .sheet[data-layout=topup-reference] .handle{display:none}
 .sheet[data-layout=topup-reference] .header{position:relative;min-height:60px;padding:8px 52px 6px;box-sizing:border-box;justify-content:center}

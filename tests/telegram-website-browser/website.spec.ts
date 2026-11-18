@@ -26,10 +26,12 @@ for(const am of [false,true])test(`ordinary website browsing and explicit offici
  const f=await website(page,am);
  try{
   await page.goto(f.home);const frame=page.locator('.app-frame');await expect(frame).toHaveAttribute('data-app-environment','browser');await expect(page.locator('.auction-card')).toHaveCount(3);
-  const websiteOrigin=new URL(page.url()).origin,width=page.viewportSize()!.width;expect(await frame.evaluate(node=>node.getBoundingClientRect().width)).toBeLessThanOrEqual(width);
-  expect(await page.locator('.auction-card').first().evaluate(node=>getComputedStyle(node.parentElement!).gridTemplateColumns.split(' ').length)).toBe(width>=1280?3:width>=640?2:1);
-  // Guest browsing must not expose the authenticated desktop account navigation.
-  await expect(page.locator('[data-browser-navigation]')).toHaveCount(0);
+  const websiteOrigin=new URL(page.url()).origin;
+  const geometry=await frame.evaluate(node=>{const box=node.getBoundingClientRect();return {width:box.width,left:box.left,viewport:document.documentElement.clientWidth}});
+  expect(geometry.width).toBeCloseTo(Math.min(geometry.viewport,430),0);
+  expect(geometry.left).toBeCloseTo((geometry.viewport-geometry.width)/2,0);
+  expect(await page.locator('.auction-card').first().evaluate(node=>getComputedStyle(node.parentElement!).gridTemplateColumns.split(' ').length)).toBe(1);
+  // Guest browsing keeps the verified-customer navigation hidden at every width.
   await expect(page.locator('.mini-bottom-navigation')).toHaveCount(0);
   await page.getByRole('button',{name:am?'ይግቡ':'Log in',exact:true}).first().click();const dialog=page.getByRole('dialog');await expect(dialog.locator('[data-browser-telegram-login]')).toBeVisible();await expect(dialog.locator('input')).toHaveCount(0);await expect(dialog.getByRole('button',{name:am?'በTelegram ይቀጥሉ':'Continue with Telegram',exact:true})).toBeEnabled();expect(f.starts).toHaveLength(0);expect(f.approvals).toHaveLength(0);expect(f.charges).toHaveLength(0);expect(await page.evaluate(()=>(window as unknown as {nativeContactRequests:number}).nativeContactRequests)).toBe(0);
   expect(await dialog.evaluate(node=>node.scrollWidth<=node.clientWidth+1)).toBe(true);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await dialog.screenshot({path:info.outputPath(`browser-login-${am?'am':'en'}.png`)});

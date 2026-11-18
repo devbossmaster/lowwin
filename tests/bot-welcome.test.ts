@@ -18,7 +18,9 @@ describe('public Telegram app and channel entry',()=>{
  }
  it.each([false,true])('sends one concise welcome and Launch and channel buttons, registered=%s',async verified=>{
   const {sent,contactVerified}=await send({},verified);
-  expect(sent).toHaveLength(1);expect(sent[0].method).toBe('sendPhoto');expect(sent[0].payload.photo).toBeInstanceOf(InputFile);expect(String(sent[0].payload.caption)).toContain('እንኳን ወደ LowWin');
+  expect(sent).toHaveLength(1);expect(sent[0].method).toBe('sendPhoto');expect(sent[0].payload.photo).toBeInstanceOf(InputFile);
+  expect(sent[0].payload.caption).toContain('እንኳን ወደ LowWin');
+  expect(sent[0].payload.caption).toContain('አዲስ ከሆኑ ጨረታዎችን ከመመልከትዎ በፊት በTelegram የራስዎን ስልክ ቁጥር');
   expect(sent[0].payload.reply_markup).toEqual({inline_keyboard:[[{text:'LowWinን ይክፈቱ',web_app:{url:'https://lowwin.test/telegram'}},{text:'ቻናላችንን ይቀላቀሉ',url:'https://t.me/lowwinet'}]]});
   expect(contactVerified).not.toHaveBeenCalled();expect(f.checkout).not.toHaveBeenCalled();
  });

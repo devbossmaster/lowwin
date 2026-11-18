@@ -25,7 +25,8 @@ for(const am of [false,true])test(`public product detail, sharing and explicit b
    return route.fallback();
   });
   await page.goto('/auctions/'+code);const detail=page.locator('[data-auction-detail]:visible');await expect(detail).toHaveCount(1);await expect(detail).toBeVisible();
-  await expect(page.locator('.app-frame')).toHaveAttribute('data-app-layout','browser');await expect(detail.getByRole('heading',{level:1})).toHaveText(f.title);
+  const frame=page.locator('.app-frame');
+  await expect(frame).toHaveAttribute('data-app-environment','browser');await expect(detail.getByRole('heading',{level:1})).toHaveText(f.title);
   const image=detail.locator('[data-auction-hero] img').first();await expect(image).toBeVisible();await expect(image).toHaveCSS('object-fit','contain');
   await expect.poll(()=>image.evaluate(element=>(element as HTMLImageElement).complete&&(element as HTMLImageElement).naturalWidth>0)).toBe(true);
   const imageBox=await image.boundingBox();expect(imageBox!.width/imageBox!.height).toBeCloseTo(1840/800,1);
@@ -34,6 +35,11 @@ for(const am of [false,true])test(`public product detail, sharing and explicit b
   await shares.getByRole('button',{name:'Telegram',exact:true}).click();const urls=await page.evaluate(()=>Reflect.get(window,'detailShares') as string[]);expect(urls).toHaveLength(1);
   const share=new URL(urls[0]);expect(share.origin+share.pathname).toBe('https://t.me/share/url');expect(share.searchParams.get('text')).toBe(f.title+' · LowWin');const launch=new URL(share.searchParams.get('url')!);expect(launch.origin).toBe('https://t.me');expect(launch.searchParams.get('startapp')).toBe('auction_'+code);
   const bid=detail.locator('[data-auction-bid]');await expect(bid).toHaveCount(1);await expect(bid).toBeVisible();await expect(bid.locator('..')).toHaveCSS('position','fixed');
+  const navigation=page.getByRole('navigation',{name:'Your navigation',exact:true});await expect(navigation).toBeVisible();
+  const frameBox=(await frame.boundingBox())!,bidBox=(await bid.locator('..').boundingBox())!,navBox=(await navigation.boundingBox())!;
+  expect(frameBox.width).toBeCloseTo(Math.min(page.viewportSize()!.width,430),0);
+  expect(bidBox.x).toBeCloseTo(frameBox.x,0);expect(bidBox.width).toBeCloseTo(frameBox.width,0);
+  expect(navBox.x).toBeCloseTo(frameBox.x,0);expect(navBox.width).toBeCloseTo(frameBox.width,0);
   expect(await bid.evaluate(element=>{const rgb=getComputedStyle(element).backgroundColor.match(/\d+/g)!.map(Number);return rgb[2]>rgb[0]&&rgb[2]>rgb[1]})).toBe(true);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   await page.screenshot({path:info.outputPath(`product-top-${am?'am':'en'}.png`),animations:'disabled'});

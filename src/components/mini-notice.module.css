@@ -1,3 +1,5 @@
+.pageToaster:global([data-sonner-toaster][data-x-position=right]){left:auto;right:max(16px,calc((100% - var(--customer-surface-width))/2 + 16px));width:calc(min(100%,var(--customer-surface-width)) - 32px)}
+.pageToaster:global([data-sonner-toaster]) :global([data-sonner-toast]){width:100%}
 .sheetNotices{position:absolute;inset:0;z-index:10;pointer-events:none}
 .sheetNotices .sheetToaster:global([data-sonner-toaster]){position:absolute;inset:var(--sheet-notice-top,72px) 12px auto;width:calc(100% - 24px);transform:none;pointer-events:none}
 .sheetNotices .sheetToaster:global([data-sonner-toaster]) :global([data-sonner-toast]){left:0;right:0;width:100%;padding:14px 48px 14px 14px;gap:9px;border:1px solid #e6e1d6;border-radius:16px;background:#fffdf8;color:#25241f;box-shadow:0 5px 20px color-mix(in srgb, var(--brand-ink, #211a30) 12.16%, transparent);font-size:14px;line-height:1.5;pointer-events:auto}

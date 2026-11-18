@@ -9,15 +9,13 @@ import {useTelegram} from './telegram-provider';
 import {rememberedMiniVisit} from './mini-navigation-state';
 import {AuctionQuickList} from './auction-quick-list';
 
-// Mobile keeps its primary Bid action in the middle. Desktop navigation uses
-// customerNavigationItems unchanged, including its existing order and labels.
-const mobileOrder=['/','/my-bids','bid','/winners','/profile'] as const;
+const destinations=['/','/my-bids','bid','/winners','/profile'] as const;
 
 export function BottomNavigation(){
  const path=usePathname(),{queryIdentity,status,me}=useTelegram();
  if(status!=='authenticated'||!me?.user?.id||!queryIdentity)return null;
  const active=activeCustomerNavigation(path);
- return <nav className={`${styles.bar} mini-bottom-navigation`} aria-label="Your navigation">{mobileOrder.map(destination=>{
+ return <nav className={`${styles.bar} mini-bottom-navigation`} aria-label="Your navigation">{destinations.map(destination=>{
   if(destination==='bid')return <div key="bid" className={styles.bidItem} data-bid="true"><AuctionQuickList className={styles.bidButton}/><span className={styles.label}><MiniPhrase en="Bid" am="ይጫረቱ"/></span></div>;
   const {href,en,am,icon}=items.find(item=>item.href===destination)!;
   const Icon=href==='/my-bids'?Ticket:icon;
