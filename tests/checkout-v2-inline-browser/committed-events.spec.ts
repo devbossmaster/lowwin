@@ -1,7 +1,16 @@
-import {expect,test} from '@playwright/test';
+import {expect,test,type Locator} from '@playwright/test';
 import {randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {inlineFixture,selectBids,wakePayment} from './fixtures';
+
+const resultClose=(dialog:Locator)=>dialog.locator('[data-payment-result-actions]').getByRole('button',{name:'Close',exact:true});
+async function expectSharedAuthorization(dialog:Locator){
+ await expect(dialog.locator('[data-payment-view="authorization"]')).toBeVisible();
+ await expect(dialog.getByRole('heading',{name:'Waiting for authorization…',exact:true})).toBeVisible();
+ await expect(dialog.locator('[data-payment-result-actions]')).toHaveCount(0);
+ await expect(dialog.getByRole('button',{name:/^(Check payment|Retry original request|Try again)$/})).toHaveCount(0);
+ await expect(dialog.locator('[data-payment-support-reference]')).toHaveCount(0);
+}
 
 test('simulated committed SSE renders the owned receipt while provider polling is still pending',async({page},info)=>{
  const f=await inlineFixture(page);let release!:()=>void,posts=0;
@@ -29,7 +38,7 @@ test('simulated committed SSE renders the owned receipt while provider polling i
    const sources=Reflect.get(window,'fixtureChapaSources') as EventTarget[];
    sources.at(-1)!.dispatchEvent(new MessageEvent('checkout',{data:JSON.stringify({checkout:order})}));
   },{...f.order(),id:randomUUID(),status:'BID_ACCEPTED',providerStatus:'SUCCESS'});
-  await expect(dialog.getByRole('button',{name:'Done',exact:true})).toHaveCount(0);
+  await expect(resultClose(dialog)).toHaveCount(0);
   f.acceptBids();
   await page.evaluate(order=>{
    const sources=Reflect.get(window,'fixtureChapaSources') as Array<EventTarget&{closed:boolean}>;
@@ -41,7 +50,7 @@ test('simulated committed SSE renders the owned receipt while provider polling i
    performance.mark('fixture:chapa-sse-callback');
    sources.filter(source=>!source.closed).forEach(source=>source.dispatchEvent(new MessageEvent('checkout',{data:JSON.stringify({checkout:order})})));
   },f.order());
-  await expect(dialog.getByRole('button',{name:'Done',exact:true})).toBeVisible();expect(posts).toBe(1);
+  await expect(resultClose(dialog)).toBeVisible();expect(posts).toBe(1);
   await expect.poll(()=>page.evaluate(()=>performance.getEntriesByName('fixture:chapa-sse-callback-to-render').length)).toBe(1);
   const callbackToRenderMs=await page.evaluate(()=>performance.getEntriesByName('fixture:chapa-sse-callback-to-render')[0].duration);
   const measurement={sampleCount:1,callbackToRenderMs,width:info.project.name,kind:'SIMULATED_EVENTSOURCE_CALLBACK_TO_DOM',providerPollHeld:true,networkRedisCommitLatencyMeasured:false};
@@ -49,7 +58,7 @@ test('simulated committed SSE renders the owned receipt while provider polling i
   await expect.poll(()=>page.evaluate(()=>Reflect.get(window,'fixtureChapaSources').every((source:{closed:boolean})=>source.closed))).toBe(true);
   // A queued callback after cleanup cannot regress the displayed receipt.
   await page.evaluate(order=>Reflect.get(window,'fixtureChapaSources').forEach((source:EventTarget)=>source.dispatchEvent(new MessageEvent('checkout',{data:JSON.stringify({checkout:order})}))),{...f.order(),status:'PENDING',providerStatus:null,receipt:null});
-  await expect(dialog.getByRole('button',{name:'Done',exact:true})).toBeVisible();expect(f.commands).toHaveLength(1);expect(f.sdkLoads).toHaveLength(0);expect(f.unexpected).toHaveLength(0);
+  await expect(resultClose(dialog)).toBeVisible();expect(f.commands).toHaveLength(1);expect(f.sdkLoads).toHaveLength(0);expect(f.unexpected).toHaveLength(0);
  }finally{release();await f.cleanup()}
 });
 
@@ -59,7 +68,7 @@ test('missing EventSource keeps automatic owned polling recovery without another
   await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await selectBids(page,f.title);
   await dialog.getByRole('radio',{name:'telebirr',exact:true}).check();await dialog.locator('[data-payment-action]').click();
   await expect(dialog.locator('[data-payment-progress="authorization"]')).toBeVisible();await expect.poll(()=>f.checks.length).toBeGreaterThan(0);
-  f.acceptBids();await expect(dialog.getByRole('button',{name:'Done',exact:true})).toBeVisible();expect(f.commands).toHaveLength(1);expect(f.maxActiveChecks()).toBeLessThanOrEqual(1);expect(f.unexpected).toHaveLength(0);
+  f.acceptBids();await expect(resultClose(dialog)).toBeVisible();expect(f.commands).toHaveLength(1);expect(f.maxActiveChecks()).toBeLessThanOrEqual(1);expect(f.unexpected).toHaveLength(0);
  }finally{await f.cleanup()}
 });
 
@@ -72,13 +81,13 @@ test('retained completion hints stay checking until a fresh private terminal res
  try{
   await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await selectBids(page,f.title);
   await dialog.getByRole('radio',{name:'telebirr',exact:true}).check();await dialog.locator('[data-payment-action]').click();
-  await expect(dialog.locator('[data-payment-progress="authorization"]')).toBeVisible();const original=f.order().id;
+  await expect(dialog.locator('[data-payment-progress="authorization"]')).toBeVisible();await expectSharedAuthorization(dialog);const original=f.order().id;
   f.setOrder({status:'NEEDS_REVIEW',providerStatus:'FAILED',verificationState:'VERIFIED',completionSignalPending:true,updatedAt:new Date().toISOString()});await resume();
-  await expect(dialog.locator('[data-payment-progress="confirming"]')).toBeVisible();
+  await expect(dialog.locator('[data-payment-progress="confirming"]')).toBeVisible();await expectSharedAuthorization(dialog);
   await expect(dialog.getByRole('button',{name:'Try again',exact:true})).toHaveCount(0);
-  await expect(dialog.getByRole('button',{name:'Done',exact:true})).toHaveCount(0);
+  await expect(resultClose(dialog)).toHaveCount(0);
   f.setOrder({status:'PENDING',providerStatus:'PENDING',completionSignalPending:true,updatedAt:new Date().toISOString()});await resume();
-  await expect(dialog.locator('[data-payment-progress="confirming"]')).toBeVisible();
+  await expect(dialog.locator('[data-payment-progress="confirming"]')).toBeVisible();await expectSharedAuthorization(dialog);
   f.setOrder({status:'FAILED',providerStatus:'FAILED',completionSignalPending:false,updatedAt:new Date().toISOString()});await resume();
   await expect(dialog.getByRole('button',{name:'Try again',exact:true})).toBeVisible();
   expect(new Set(f.checks)).toEqual(new Set([original]));expect(f.commands).toHaveLength(1);

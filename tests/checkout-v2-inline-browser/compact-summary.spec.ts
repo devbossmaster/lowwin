@@ -8,7 +8,8 @@ for(const am of [false,true])test(`compact payment summary keeps numbers, Edit a
   const titleAm=f.title+' · የሩጋ 45W 20,000mAh ፓወር ባንክ ፈጣን ቻርጅ';
   await f.db.product.update({where:{id:f.auction.productId!},data:{title,titleAm}});
   await page.goto('/telegram?next='+encodeURIComponent(f.home));
-  const dialog=await selectBids(page,f.title,['66.00']),summary=dialog.locator('[data-bid-payment-summary]');
+  const firstQuote=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/payments/chapa/batches/quote');
+  const dialog=await selectBids(page,f.title,['66.00']),summary=dialog.locator('[data-bid-payment-summary]');await(await firstQuote).finished();await expect.poll(()=>f.quoteRequests.length).toBe(1);
   await expect(summary.getByRole('heading')).toHaveText(am?titleAm:title);
   await expect(summary).toContainText('66.00');
   await expect(summary).not.toContainText('ETB');
@@ -28,6 +29,6 @@ for(const am of [false,true])test(`compact payment summary keeps numbers, Edit a
   await expect(dialog.locator('[data-bid-total]')).toContainText('30.00');
   box=await inspect();expect(box.height).toBeLessThanOrEqual(144);expect(box.overflow).toBe(false);
   await dialog.screenshot({path:info.outputPath(`compact-payment-multiple-${am?'am':'en'}.png`),animations:'disabled'});
-  expect(f.quoteRequests).toHaveLength(0);expect(f.commands).toHaveLength(0);expect(f.unexpected).toHaveLength(0);
+  await expect.poll(()=>f.quoteRequests.length).toBe(2);expect(f.commands).toHaveLength(0);expect(f.unexpected).toHaveLength(0);
  }finally{await f.db.$disconnect()}
 });

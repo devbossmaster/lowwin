@@ -51,6 +51,30 @@ describe('private access during database outages',()=>{
     expect(access.getMiniSession).not.toHaveBeenCalled();access.getMiniSession.mockResolvedValue(null);
     for(const path of ['/api/payments/chapa/direct/extra','/api/payments/chapa/batches/not-a-uuid/wallet',`/api/payments/chapa/checkouts/${id}/authorize/extra`])expect((await proxy(new NextRequest('http://localhost'+path))).status).toBe(401);
   });
+  it.each([
+    ['/api/payments/chapa/direct/current','GET'],
+    ['/api/payments/chapa/direct/current','POST'],
+    ['/api/payments/chapa/direct/current/config','GET'],
+    ['/api/payments/chapa/direct/bid','POST'],
+    ['/api/payments/chapa/batches/wallet?key=11111111-1111-4111-a111-111111111111','GET'],
+    ['/api/payments/chapa/batches/wallet','POST'],
+  ])('delegates %s %s to its fresh owner-authenticated handler without a Proxy database read',async(path,method)=>{
+    access.getMiniSession.mockRejectedValue(Error('Proxy must not open another session lookup'));
+    expect((await proxy(new NextRequest('http://localhost'+path,{method}))).headers.get('x-middleware-next')).toBe('1');
+    expect(access.getMiniSession).not.toHaveBeenCalled();
+  });
+  it.each([
+    '/api/payments/chapa/direct/current/extra',
+    '/api/payments/chapa/direct/current/config/extra',
+    '/api/payments/chapa/direct/currently',
+    '/api/payments/chapa/direct/current/configuration',
+    '/api/payments/chapa/direct/bid/extra',
+    '/api/payments/chapa/batches/wallet/extra',
+  ])('keeps neighboring payment path %s behind Proxy authentication',async path=>{
+    access.getMiniSession.mockResolvedValue(null);
+    expect((await proxy(new NextRequest('http://localhost'+path))).status).toBe(401);
+    expect(access.getMiniSession).toHaveBeenCalledOnce();
+  });
   it('does not run database auth for known public assets or already guarded APIs',async()=>{
     access.getMiniSession.mockRejectedValue(new Error('Private authentication is unavailable'));
     for(const path of ['/logo.png','/banner11.png','/images/lowin-family-hero.webp','/fonts/dm-sans-latin-400.woff2','/fonts/dm-sans-latin-500.woff2','/fonts/dm-sans-latin-600.woff2','/fonts/dm-sans-latin-700.woff2','/fonts/noto-sans-ethiopic-variable.woff2','/api/payments/arifpay','/api/payments/arifpay/checkouts','/api/payments/arifpay/checkouts/11111111-1111-4111-a111-111111111111','/api/payments/arifpay/webhook','/api/media/11111111-1111-4111-a111-111111111111','/fonts/poppins-latin-400.woff2','/api/favorites','/api/favorites/phone','/api/my-bids','/api/alerts?summary=1','/api/auctions/phone/bids','/api/payments/verify-et/webhook']){

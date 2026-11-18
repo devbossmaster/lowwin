@@ -4,9 +4,9 @@ import type {ChapaInlineTransport} from '../src/modules/payments/chapa-inline-pr
 import {createInlineCheckout,findInlineCheckoutByKey} from '../src/modules/payments/chapa-inline';
 import {chapaHash} from '../src/modules/payments/chapa-provider';
 
-const spies=vi.hoisted(()=>({authorize:vi.fn(),eligible:vi.fn(),validateBatch:vi.fn(),verify:vi.fn(),get:vi.fn(),rate:vi.fn()}));
+const spies=vi.hoisted(()=>({authorize:vi.fn(),eligible:vi.fn(),validateBatch:vi.fn(),verify:vi.fn(),get:vi.fn(),rate:vi.fn(),rateBatch:vi.fn()}));
 vi.mock('../src/modules/auth/own-contact',()=>({decryptPhone:()=> '251911652904',encryptPhone:()=> 'encrypted-payer',phoneHash:(value:string)=>'hash:'+value}));
-vi.mock('../src/lib/rate-limit',()=>({allowIdentityRequest:spies.rate}));
+vi.mock('../src/lib/rate-limit',()=>({allowIdentityRequest:spies.rate,allowIdentityRequests:spies.rateBatch}));
 vi.mock('../src/modules/auctions/batch',()=>({batchLines:(batch:{lines:unknown})=>batch.lines,ownBatch:(batch:any)=>({id:batch.id,quoteHash:batch.quoteHash,auctionSlug:batch.auctionSlug,feeVersion:batch.feeVersion,lines:batch.lines,totalCents:String(batch.totalCents)}),validateBatchInTransaction:spies.validateBatch}));
 vi.mock('../src/modules/payments/chapa',()=>({eligible:spies.eligible,ownChapaCheckout:(order:unknown)=>order,getChapaCheckout:spies.get,verifyChapaCheckout:spies.verify}));
 
@@ -23,19 +23,66 @@ function fixture(){
   updateManyAndReturn:vi.fn(async({where,data}:any)=>{if(!matches(order,where))return [];order={...order!,...data};return [order]}),
   updateMany:vi.fn(async({where,data}:any)=>{if(!matches(order,where))return {count:0};order={...order!,...data,attempts:typeof data.attempts==='object'?order!.attempts+data.attempts.increment:order!.attempts};return {count:1}}),
  };
- const transaction={chapaCheckout:checkout,bidBatchOrder:{findFirst:vi.fn(async()=>batch)},adminAudit:{findFirst:vi.fn(async()=>{gates.push('maintenance-read');return halted?{action:'AUCTIONS_MAINTENANCE_HALTED'}:null})},$queryRaw:vi.fn(async(strings:TemplateStringsArray)=>{const sql=strings.join('');if(sql.includes('to_regclass'))return [{ready:!!bonusPolicy}];if(sql.includes('DepositBonusPolicy'))return bonusPolicy?[{...bonusPolicy,now:new Date()}]:[];gates.push('auction-lock');return []}),$executeRaw:vi.fn(async(strings:TemplateStringsArray)=>{gates.push(strings.join('').includes('pg_advisory_xact_lock_shared')?'maintenance-lock':'wallet-lock');return 1})};
+ const transaction={chapaCheckout:checkout,bidBatchOrder:{findFirst:vi.fn(async()=>batch)},adminAudit:{findFirst:vi.fn(async()=>{gates.push('maintenance-read');return halted?{action:'AUCTIONS_MAINTENANCE_HALTED'}:null})},$queryRaw:vi.fn(async(strings:TemplateStringsArray)=>{const sql=strings.join('');if(sql.includes('to_regclass'))return [{ready:!!bonusPolicy}];if(sql.includes('WITH maintenance AS MATERIALIZED')){gates.push('maintenance-read','wallet-lock');return [{halted}]}if(sql.includes('DepositBonusPolicy'))return bonusPolicy?[{...bonusPolicy,now:new Date()}]:[];gates.push('auction-lock');return []}),$executeRaw:vi.fn(async(strings:TemplateStringsArray)=>{gates.push(strings.join('').includes('pg_advisory_xact_lock_shared')?'maintenance-lock':'wallet-lock');return 1})};
  const db={...transaction,$transaction:vi.fn(async(operation:any)=>{inTransaction=true;try{return await operation(transaction)}finally{inTransaction=false}})} as unknown as PrismaClient;
- const methods=vi.fn(async()=>({status:'success',data:[{name:'telebirr',slug:'telebirr',can_process_payments:true,supported_currencies:{ETB:{default_min:100,default_max:1000000,countries:{ET:{is_enabled:true,min_amount:100,max_amount:1000000}}}}}]}));
+ const methods=vi.fn(async()=>({status:'success',data:[{name:'telebirr',slug:'telebirr',can_process_payments:true,can_process_direct_charge:true,supported_currencies:{ETB:{default_min:100,default_max:1000000,countries:{ET:{is_enabled:true,min_amount:100,max_amount:1000000}}}}}]}));
  const inline=vi.fn(async(input:any)=>{expect(inTransaction).toBe(false);expect(order).not.toBeNull();expect(order!.amountCents).toBe(BigInt(input.amountCents));expect(order!.merchantReference).toBe(input.merchantReference);return {status:'success',data:{auth_type:'USSD',chapa_reference:'CHowned-reference',payment_status:'PENDING',request_id:'request-owned',expires_at:new Date(Date.now()+300000).toISOString()}}});
  const transport={inline,methods,create:vi.fn(),lookup:vi.fn(),validate:vi.fn()} as unknown as ChapaInlineTransport;
  spies.get.mockImplementation(async()=>order);spies.verify.mockImplementation(async()=>order);spies.validateBatch.mockResolvedValue({totalCents:10000n,lines});
  return {db,transport,inline,checkout,batch,transaction,gates,setBonusPolicy:(value:any)=>{bonusPolicy=value},setHalted:(value:boolean)=>{halted=value},order:()=>order,changeOrder:(patch:Partial<ChapaCheckout>)=>{order={...order!,...patch}}};
 }
 beforeEach(()=>{
- vi.clearAllMocks();spies.rate.mockResolvedValue(true);spies.eligible.mockResolvedValue({phoneCipher:'encrypted-contact',botId:'bot'});
+ vi.clearAllMocks();spies.rate.mockResolvedValue(true);spies.rateBatch.mockResolvedValue(true);spies.eligible.mockResolvedValue({phoneCipher:'encrypted-contact',botId:'bot'});
  for(const [name,value] of Object.entries({APP_ENV:'local',NODE_ENV:'test',DATABASE_URL:'postgresql://local@127.0.0.1:55608/chapa_inline_test',CHAPA_MODE:'test',CHAPA_SCHEMA_READY:'true',MINI_APP_URL:'https://lowwin.test',BETTER_AUTH_URL:'https://lowwin.test',PAYMENT_GATEWAY:'CHAPA',CHAPA_ENABLED:'true',CHAPA_INLINE_ENABLED:'true',CHAPA_PRIVATE_KEY:'CHAPA_TEST_'+'a'.repeat(32),CHAPA_PUBLIC_KEY:'CHAPA_TEST_PUB_'+'b'.repeat(32),CHAPA_WEBHOOK_SECRET:'local-inline-webhook-secret-at-least-thirty-two-characters'}))vi.stubEnv(name,value);
 });
-afterEach(()=>vi.unstubAllEnvs());
+afterEach(()=>{vi.unstubAllEnvs();vi.restoreAllMocks()});
+
+describe('current Direct preparation round trips',()=>{
+ const command={key,purpose:'TOP_UP',flow:'DIRECT',paymentMethod:'telebirr',phone:'0911652904',amount:'5.00'};
+ const start=(f:ReturnType<typeof fixture>)=>createInlineCheckout(f.db,'owner',command,spies.authorize,f.transport,'DIRECT');
+ it('overlaps schema readiness with owned-key lookup before any financial lock',async()=>{
+  const f=fixture();let releaseLookup!:(value:null)=>void,releaseSchema!:(rows:Array<{ready:boolean}>)=>void;
+  f.checkout.findUnique.mockImplementationOnce(()=>new Promise(resolve=>{releaseLookup=resolve}));
+  f.transaction.$queryRaw.mockImplementationOnce(()=>new Promise(resolve=>{releaseSchema=resolve}));
+  const pending=start(f);await vi.waitFor(()=>{expect(f.checkout.findUnique).toHaveBeenCalledOnce();expect(f.transaction.$queryRaw).toHaveBeenCalledOnce()});
+  expect(f.db.$transaction).not.toHaveBeenCalled();expect(f.transport.methods).not.toHaveBeenCalled();
+  releaseSchema([{ready:false}]);releaseLookup(null);expect((await pending).order.status).toBe('AUTH_NEEDED');
+ });
+ it('does not let a failed readiness probe block the original owned authorization',async()=>{
+  const f=fixture(),first=await start(f),now=Date.now();vi.spyOn(Date,'now').mockReturnValue(now+31000);
+  f.transaction.$queryRaw.mockRejectedValueOnce(Error('Rollout schema unavailable'));
+  expect((await start(f)).order.id).toBe(first.order.id);expect(f.inline).toHaveBeenCalledOnce();expect(f.db.$transaction).toHaveBeenCalledOnce();expect(spies.rateBatch).toHaveBeenCalledOnce();
+ });
+ it('returns the original authorization while an independent readiness probe is still pending',async()=>{
+  const f=fixture(),first=await start(f),now=Date.now();vi.spyOn(Date,'now').mockReturnValue(now+31000);
+  let release!:(rows:Array<{ready:boolean}>)=>void;f.transaction.$queryRaw.mockImplementationOnce(()=>new Promise(resolve=>{release=resolve}));
+  const retained=await start(f);expect(retained.order.id).toBe(first.order.id);expect(f.inline).toHaveBeenCalledOnce();release([{ready:false}]);
+ });
+ it('keeps a failed readiness check authoritative for a genuinely new attempt',async()=>{
+  const f=fixture();f.transaction.$queryRaw.mockRejectedValueOnce(Error('Rollout schema unavailable'));
+  await expect(start(f)).rejects.toThrow('Rollout schema unavailable');expect(f.db.$transaction).not.toHaveBeenCalled();expect(f.checkout.create).not.toHaveBeenCalled();expect(f.inline).not.toHaveBeenCalled();
+ });
+ it('does not start readiness or capability work when recovering an original while creation is paused',async()=>{
+  const f=fixture(),first=await start(f),reads=f.transaction.$queryRaw.mock.calls.length;
+  vi.stubEnv('CHAPA_ENABLED','false');vi.stubEnv('CHAPA_RECOVERY_ENABLED','true');
+  expect((await start(f)).order.id).toBe(first.order.id);expect(f.transaction.$queryRaw).toHaveBeenCalledTimes(reads);expect(f.inline).toHaveBeenCalledOnce();expect(f.transport.methods).toHaveBeenCalledOnce();
+ });
+ it('takes the maintenance barrier separately before the fresh maintenance read and wallet lock',async()=>{
+  const f=fixture();await start(f);
+  expect(f.gates).toEqual(['maintenance-lock','maintenance-read','wallet-lock']);expect(f.transaction.$executeRaw).toHaveBeenCalledOnce();expect(f.transaction.adminAudit.findFirst).not.toHaveBeenCalled();
+  expect(f.transaction.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(f.transaction.$queryRaw.mock.invocationCallOrder[1]);
+  expect(spies.authorize.mock.invocationCallOrder[0]).toBeGreaterThan(f.transaction.$queryRaw.mock.invocationCallOrder[1]);
+ });
+ it('retains maintenance rejection and consumes both original rate budgets before intent or provider work',async()=>{
+  const halted=fixture();halted.setHalted(true);await expect(start(halted)).rejects.toMatchObject({code:'AUCTIONS_PAUSED'});expect(halted.inline).not.toHaveBeenCalled();expect(halted.checkout.create).not.toHaveBeenCalled();expect(spies.rateBatch).not.toHaveBeenCalled();
+  const f=fixture();await start(f);
+  expect(spies.rate).not.toHaveBeenCalled();expect(spies.rateBatch).toHaveBeenCalledExactlyOnceWith(f.transaction,[{scope:'chapa-inline-create',identity:'owner',maximum:24,windowMs:3600000},{scope:'chapa-inline-initialize',identity:f.order()!.id,maximum:5,windowMs:86400000}]);
+  expect(spies.rateBatch.mock.invocationCallOrder[0]).toBeLessThan(f.checkout.create.mock.invocationCallOrder[0]);expect(f.inline).toHaveBeenCalledOnce();
+ });
+ it('does not create or dispatch if either batched budget is exhausted',async()=>{
+  const f=fixture();spies.rateBatch.mockResolvedValueOnce(false);await expect(start(f)).rejects.toMatchObject({code:'RATE_LIMITED'});expect(f.checkout.create).not.toHaveBeenCalled();expect(f.inline).not.toHaveBeenCalled();
+ });
+});
 
 describe('owned v2 Inline creation boundary',()=>{
  it.each(['0','1.00','4.99'])('rejects a fresh %s ETB top-up before method/provider calls or financial writes',async amount=>{

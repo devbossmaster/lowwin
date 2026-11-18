@@ -12,6 +12,7 @@ const group: Record<string, string> = {
   'settlement-v5.test.ts':'V5_TEST_DATABASE_URL', 'settlement-v5-transition.test.ts':'V5_TEST_DATABASE_URL',
   'auction-refund-views.test.ts':'V5_TEST_DATABASE_URL',
   'batch-eligibility.test.ts':'V5_TEST_DATABASE_URL',
+  'rate-limit-batch.test.ts':'RATE_LIMIT_BATCH_TEST_DATABASE_URL',
   'settlement-v3.test.ts': 'SETTLEMENT_TEST_DATABASE_URL', 'personal.test.ts': 'PERSONAL_TEST_DATABASE_URL',
   'admin.test.ts': 'ADMIN_TEST_DATABASE_URL', 'operations.test.ts': 'OPS_TEST_DATABASE_URL',
   'payments.test.ts': 'PAYMENT_TEST_DATABASE_URL', 'payment-session.test.ts': 'PAYMENT_TEST_DATABASE_URL',

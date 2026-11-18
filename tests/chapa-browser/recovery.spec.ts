@@ -60,7 +60,7 @@ for(const historic of [{flowVersion:3,chargeType:'DIRECT' as const},{flowVersion
  });
  try{
   await page.goto('/payments');await page.locator('[data-payment-id]').click();const sheet=page.getByRole('dialog');await sheet.getByRole('button',{name:'Continue authorization',exact:true}).click();
-  const code=sheet.getByLabel('One-time code',{exact:true});await expect(code).toBeVisible();await expect(sheet).toContainText('Never enter your wallet PIN here.');await code.fill('123456');await sheet.getByRole('button',{name:'Confirm code',exact:true}).click();await expect.poll(()=>authorizations.length).toBe(1);expect(authorizations[0]).toEqual({otp:'123456'});await expect(sheet.getByRole('button',{name:'Done',exact:true})).toHaveCount(0);
-  complete=true;await wakePayment(page);await expect(sheet.getByRole('button',{name:'Done',exact:true})).toBeVisible();expect(creates).toBe(0);expect(f.commands).toHaveLength(0);expect(f.unexpected).toHaveLength(0);expect(await f.db.chapaCheckout.count({where:{userId:f.user.id}})).toBe(0);
+  const code=sheet.getByLabel('One-time code',{exact:true});await expect(code).toBeVisible();await expect(sheet).toContainText('Never enter your wallet PIN here.');await code.fill('123456');await sheet.getByRole('button',{name:'Confirm code',exact:true}).click();await expect.poll(()=>authorizations.length).toBe(1);expect(authorizations[0]).toEqual({otp:'123456'});await expect(sheet.locator('[data-payment-result-actions]').getByRole('button',{name:'Close',exact:true})).toHaveCount(0);
+  complete=true;await wakePayment(page);await expect(sheet.locator('[data-payment-result-actions]').getByRole('button',{name:'Close',exact:true})).toBeVisible();expect(creates).toBe(0);expect(f.commands).toHaveLength(0);expect(f.unexpected).toHaveLength(0);expect(await f.db.chapaCheckout.count({where:{userId:f.user.id}})).toBe(0);
  }finally{await f.cleanup()}
 });

@@ -11,6 +11,7 @@ import {centsToEtb,etbToCents,formatEtb} from '@/lib/money';
 import {normalizeBidDraft,normalizePaymentPhone,previewBidFees,validateBidDraft,type BidBatchQuote,type BidBatchReceipt,type BidDraftError} from '@/lib/bid-batch-client';
 import {ChapaClientError,requestChapaJson,type ChapaCheckoutConfig,type WalletPaymentShortfall} from '@/lib/chapa-client';
 import {usableBidDiscount} from '@/lib/bid-discount-preview';
+import {loadBidQuote,walletBidAttemptKey,type BidQuoteAttempt} from '@/lib/bid-quote-readiness';
 import {paymentPhoneProblem,paymentPhoneProblemMessage} from '@/lib/payment-phone';
 import {defaultBidRangeStep,previewBidRange,type BidRangeError} from '@/lib/bid-range';
 import {clearBidWalletRecovery,readBidWalletRecovery,retainBidWalletRecovery} from '@/lib/bid-wallet-recovery';
@@ -28,7 +29,7 @@ import {useMiniNotice} from './mini-notice';
 import {usePrivateQuery} from './private-query';
 import {useTelegram} from './telegram-provider';
 import {confirmedBidQueryScopes,getMiniQueryClient,invalidatePrivateQueries,isPrivateQueryIdentity,loadPrivateJson,readPrivateQuery} from './private-query-cache';
-import {TOP_UP_CONFIG_URL,topUpConfigFreshness} from './top-up-prefetch';
+import {loadTopUpConfiguration,TOP_UP_CONFIG_URL,topUpConfigFreshness} from './top-up-prefetch';
 import {useChapaPayment} from './chapa-payment';
 import BidPaymentProgress from './bid-payment-progress';
 import {usePaymentCheckoutFlow} from './payment-checkout-flow';
@@ -70,12 +71,16 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
  const [numberMode,setNumberMode]=useState<'individual'|'range'>('individual'),[rangeFrom,setRangeFrom]=useState(''),[rangeTo,setRangeTo]=useState(''),[rangeStep,setRangeStep]=useState<string|null>(null);
  const [method,setMethod]=useState<Method|null>(restoredMethod&&['wallet','telebirr','mpesa','cbebirr'].includes(restoredMethod)?restoredMethod as Method:null),[phone,setPhone]=useState(normalizePaymentPhone(restoredPhone)?.slice(3)??'');
  const [quote,setQuote]=useState<BidBatchQuote|null>(initialChapaId?walletRecovery??originalQuote:null),[busy,setBusy]=useState(false),[error,setError]=useState('');
- const [receipt,setReceipt]=useState<BidBatchReceipt|null>(null),[applyCoupon,setApplyCoupon]=useState(fundingDraft?.applyCoupon??false),[walletRetry,setWalletRetry]=useState(!!walletRecovery||!!savedWalletCommand),[quoteBusy,setQuoteBusy]=useState(false),[quoteRetry,setQuoteRetry]=useState(0);
+ const [receipt,setReceipt]=useState<BidBatchReceipt|null>(null),[applyCoupon,setApplyCoupon]=useState(fundingDraft?.applyCoupon??false),[walletRetry,setWalletRetry]=useState(!!walletRecovery||!!savedWalletCommand),[quoteRetry,setQuoteRetry]=useState(0);
  const [walletCommand,setWalletCommand]=useState<WalletBidCommand|null>(savedWalletCommand),[walletObserving,setWalletObserving]=useState(false),[showProgress,setShowProgress]=useState(!!initialChapaId),showProgressRef=useRef(showProgress);showProgressRef.current=showProgress;
  const initialWalletRecovery=useRef<WalletBidTarget|null>(savedWalletCommand?{command:savedWalletCommand}:walletRecovery?{quote:walletRecovery}:null);
  const [toppingUp,setToppingUp]=useState(false),[fundingNotice,setFundingNotice]=useState(''),[walletFailure,setWalletFailure]=useState<WalletPaymentShortfall|null>(null),fundingRetained=useRef(!!fundingDraft),fundingOpen=useRef(false);fundingOpen.current=toppingUp;
  const id=useId(),lock=useRef(false),phoneEdited=useRef(!!normalizePaymentPhone(restoredPhone)),generation=useRef(0),controllers=useRef(new Set<AbortController>());
- const quoteAttempt=useRef<{fingerprint:string;key:string;quote?:BidBatchQuote;paymentKey:string}|null>(walletRecovery?{fingerprint:'',key:walletRecovery.id,paymentKey:walletRecovery.id,quote:walletRecovery}:null);
+ const quoteAttempt=useRef<BidQuoteAttempt|null>(walletRecovery?{fingerprint:'',key:walletRecovery.id,paymentKey:walletRecovery.id,quote:walletRecovery}:null);
+ const loadQuote=useCallback((attempt:BidQuoteAttempt)=>loadBidQuote(attempt,()=>{
+  const controller=new AbortController();attempt.controller=controller;controllers.current.add(controller);
+  return requestChapaJson<BidBatchQuote>('/api/payments/chapa/batches/quote',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...JSON.parse(attempt.fingerprint),key:attempt.key})},controller.signal).finally(()=>{controllers.current.delete(controller);if(attempt.controller===controller)attempt.controller=undefined});
+ }),[]);
  const reportError=useCallback((message:string)=>{setError(message);if(message&&!showProgressRef.current)notice(message,'error',{id:`bid-validation:${id}`,duration:6000})},[notice,id]);
  useEffect(()=>{if(!showProgress&&!payment.started&&payment.error)notice(payment.error,'error',{id:`bid-validation:${id}`,duration:6000})},[showProgress,payment.started,payment.error,notice,id]);
  // Dismissing the complete checkout clears its editable draft, never an unknown payment.
@@ -126,22 +131,21 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
  useEffect(()=>{if(fundingRetained.current&&queryIdentity&&!receipt&&!payment.started)retainBidFundingDraft(getMiniQueryClient(),queryIdentity,auction.slug,{numbers:draft.error?numbers:draft.numbers,method:method??'wallet',phone,applyCoupon})},[queryIdentity,auction.slug,fingerprint,numbers,method,phone,applyCoupon,receipt,payment.started]);
  useEffect(()=>{if(queryIdentity&&payment.order?.purpose==='BID'&&payment.order.status==='BID_ACCEPTED'&&payment.order.receipt){clearBidFundingDraft(getMiniQueryClient(),queryIdentity,auction.slug);fundingRetained.current=false}},[queryIdentity,auction.slug,payment.order?.purpose,payment.order?.status,payment.order?.receipt]);
  useEffect(()=>{if(!phoneEdited.current){const registered=normalizePaymentPhone(methods.data?.phone??'');if(registered)setPhone(registered.slice(3))}},[methods.data?.phone]);
- // Review creates only an immutable server quote. Providers and the wallet are
- // contacted solely by the final Pay action below; moving between steps keeps readers mounted.
- // Pricing does not depend on the external provider or payer phone, so switching
- // providers for an unchanged draft keeps the same quote request alive.
+ const quotePhase=step==='review'||step==='payment',discountReady=!applyCoupon||!!coupon&&!discount.fetching;
+ // Prepare the immutable quote before a method is selected. Review, method
+ // changes and final Pay share one draft-owned request; only Pay can charge.
  useEffect(()=>{
-  if(step!=='payment'||!external||zero||busy||!queryIdentity||!state||!active||!current||draft.error||!draft.numbers.length||payment.started)return;
-  if(quoteAttempt.current?.fingerprint===fingerprint&&quoteAttempt.current.quote)return;
-  const attempt=quoteAttempt.current?.fingerprint===fingerprint?quoteAttempt.current:{fingerprint,key:crypto.randomUUID(),paymentKey:crypto.randomUUID(),quote:undefined as BidBatchQuote|undefined};quoteAttempt.current=attempt;
-  const version=generation.current,controller=new AbortController();controllers.current.add(controller);let mounted=true;setQuoteBusy(true);setQuote(null);reportError('');
-  void requestChapaJson<BidBatchQuote>('/api/payments/chapa/batches/quote',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...JSON.parse(fingerprint),key:attempt.key})},controller.signal).then(next=>{
+  if(!quotePhase||!discountReady||zero||!queryIdentity||!state||!active||!current||draft.error||!draft.numbers.length||payment.started)return;
+  if(quoteAttempt.current?.fingerprint===fingerprint&&quoteAttempt.current.quote){setQuote(quoteAttempt.current.quote);return}
+  const attempt:BidQuoteAttempt=quoteAttempt.current?.fingerprint===fingerprint?quoteAttempt.current:{fingerprint,key:crypto.randomUUID(),paymentKey:crypto.randomUUID()};quoteAttempt.current=attempt;
+  const version=generation.current;let mounted=true;setQuote(null);reportError('');
+  void loadQuote(attempt).then(next=>{
    if(!mounted||version!==generation.current||!isPrivateQueryIdentity(queryIdentity)||quoteAttempt.current!==attempt)return;
    attempt.quote=next;setQuote(next);
    if(etbToCents(next.total)!==etbToCents(preview.total))reportError(text('The total changed. Review the amount before paying.','ጠቅላላ ክፍያው ተቀይሯል። ከመክፈልዎ በፊት መጠኑን ይመልከቱ።'));
-  }).catch(cause=>{if(mounted&&version===generation.current)reportError(cause instanceof ChapaClientError?cause.message:text('Could not confirm the total. Please retry.','ጠቅላላ ክፍያውን ማረጋገጥ አልተቻለም። እንደገና ይሞክሩ።'))}).finally(()=>{controllers.current.delete(controller);if(mounted)setQuoteBusy(false)});
-  return()=>{mounted=false;controller.abort();controllers.current.delete(controller);setQuoteBusy(false)};
- },[step,external,zero,busy,fingerprint,queryIdentity,!!state,active,current,payment.started,quoteRetry]);
+  }).catch(cause=>{if(mounted&&version===generation.current&&quoteAttempt.current===attempt)reportError(cause instanceof ChapaClientError?cause.message:text('Could not confirm the total. Please retry.','ጠቅላላ ክፍያውን ማረጋገጥ አልተቻለም። እንደገና ይሞክሩ።'))});
+  return()=>{mounted=false;attempt.controller?.abort()};
+ },[quotePhase,discountReady,zero,fingerprint,queryIdentity,!!state,active,current,payment.started,quoteRetry,loadQuote]);
  // These codes are definitive pre-creation rejections, not uncertain charges.
  // The hook preserves all transport/server ambiguities on their original key.
  useEffect(()=>{
@@ -179,7 +183,7 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
    if('command'in target)clearWalletBidCommand(getMiniQueryClient(),queryIdentity,target.command);
    if(result.kind==='quote'){
     const next=result.quote,command='command'in target?target.command:null;
-    if(command)quoteAttempt.current={fingerprint:JSON.stringify({auctionSlug:command.auctionSlug,numbers:command.numbers,feeVersion:command.feeVersion,...(command.couponId?{couponId:command.couponId}:{})}),key:command.key,paymentKey:crypto.randomUUID(),quote:next};
+    if(command)quoteAttempt.current={fingerprint:JSON.stringify({auctionSlug:command.auctionSlug,numbers:command.numbers,feeVersion:command.feeVersion,...(command.couponId?{couponId:command.couponId}:{})}),key:command.key,paymentKey:crypto.randomUUID(),walletKey:command.key,walletQuote:true,quote:next};
     setQuote(next);setNumbers(next.lines.map(line=>line.number));setInput('');setEditing(null);setWalletRetry(false);setWalletCommand(null);showProgressRef.current=false;setShowProgress(false);
     reportError(text('The total was updated. Check the amount below, then tap Pay to confirm.','ጠቅላላ ክፍያው ተቀይሯል። ከታች ያለውን መጠን ይመልከቱና ለማረጋገጥ ይክፈሉ።'));return;
    }
@@ -228,7 +232,10 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
    try{
     // Join the existing owned read if the customer continues before it arrives.
     // This validates the draft only; no wallet command or provider initialization.
-    const currentState=state??await loadPrivateJson<BidState>(queryIdentity,`/api/auctions/${auction.slug}/bids`);
+    const [currentState]=await Promise.all([
+     state?Promise.resolve(state):loadPrivateJson<BidState>(queryIdentity,`/api/auctions/${auction.slug}/bids`),
+     methods.data?Promise.resolve(methods.data):loadTopUpConfiguration(queryIdentity).catch(()=>null),
+    ]);
     if(version!==generation.current||!isPrivateQueryIdentity(queryIdentity))return;
     if(!currentState.open){reportError(text('This auction is not accepting bids.','ይህ ጨረታ አዲስ ጨረታ አይቀበልም።'));return}
     const checked=validateBidDraft(values,{...currentState.terms,remainingSubmissions:currentState.remainingSubmissions,ownBids:currentState.ownBids});
@@ -240,15 +247,21 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
      const receivedAt=readPrivateQuery<DiscountQuote>(queryIdentity,discountUrl)?.updatedAt??discount.updatedAt;
      if(!usableBidDiscount(offer,currentState.terms.version,currentState.terms.entryFeePoints,receivedAt)){reportError(text('This coupon is unavailable. Remove it or choose another.','ይህ ኩፖን አይገኝም። ያስወግዱት ወይም ሌላ ይምረጡ።'));return}
     }
-    setNumbers(checked.numbers);setInput('');setEditing(null);flow.continueToPayment(checked.numbers.length>1);
+    setNumbers(checked.numbers);setInput('');setEditing(null);
+    if(!zero&&(!applyCoupon||coupon)){
+     const readyFingerprint=JSON.stringify({...body,numbers:checked.numbers,feeVersion:currentState.terms.version});
+     const attempt:BidQuoteAttempt=quoteAttempt.current?.fingerprint===readyFingerprint?quoteAttempt.current:{fingerprint:readyFingerprint,key:crypto.randomUUID(),paymentKey:crypto.randomUUID()};quoteAttempt.current=attempt;
+     void loadQuote(attempt).catch(()=>{/* The visible payment stage owns recovery. */});
+    }
+    flow.continueToPayment(checked.numbers.length>1);
    }catch(cause){if(version===generation.current)reportError(cause instanceof ChapaClientError?cause.message:text('Could not load your bid details. Check your connection and try again.','የጨረታ ዝርዝሮችዎን መጫን አልቻልንም። ግንኙነትዎን ያረጋግጡና እንደገና ይሞክሩ።'))}
    finally{if(version===generation.current){lock.current=false;setBusy(false)}}
    return;
   }
-  // Reviewing a batch only advances the existing sheet. Quotes and all
-  // financial commands remain on the explicit payment path below.
+  // Review advances the existing sheet while the same quote prepares in the
+  // background. Financial commands remain on the explicit Pay path below.
   if(step==='review'){reportError('');flow.openPayment();return}
-  if(!state||external&&quoteBusy)return;
+  if(!state)return;
   if(method===null){reportError(text('Choose a payment method.','የክፍያ መንገድ ይምረጡ።'));return}
   if(!enabled){reportError(text('This payment method is unavailable for this total. Choose another method.','ይህ የክፍያ መንገድ ለዚህ መጠን አይገኝም። ሌላ ይምረጡ።'));return}
   if(applyCoupon&&(!coupon||discount.fetching)){reportError(text(discount.fetching?'Your coupon is still loading. Please try again in a moment.':'This coupon is unavailable. Remove it or select another coupon.','ኩፖኑን ያረጋግጡ ወይም ያስወግዱት።'));return}
@@ -258,13 +271,13 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
   if(quoteAttempt.current?.fingerprint!==fingerprint)quoteAttempt.current={fingerprint,key:crypto.randomUUID(),paymentKey:crypto.randomUUID()};
   const attempt=quoteAttempt.current;setReceipt(null);payment.beginTiming(true);
   if(zero||method==='wallet'){
-   if(attempt.quote){retainBidWalletRecovery(getMiniQueryClient(),queryIdentity,attempt.quote);setWalletCommand(null);setWalletRetry(false);await executeWallet({quote:attempt.quote});return}
-   const command:WalletBidCommand={...body,key:attempt.key,approvedTotal:total};
+   if(attempt.quote&&attempt.walletQuote){retainBidWalletRecovery(getMiniQueryClient(),queryIdentity,attempt.quote);setWalletCommand(null);setWalletRetry(false);await executeWallet({quote:attempt.quote});return}
+   const command:WalletBidCommand={...body,key:walletBidAttemptKey(attempt),approvedTotal:total};
    retainWalletBidCommand(getMiniQueryClient(),queryIdentity,command);setWalletCommand(command);setWalletRetry(false);await executeWallet({command});return;
   }
   const version=generation.current,controller=new AbortController();controllers.current.add(controller);lock.current=true;setBusy(true);reportError('');presentPayment();
   try{
-   const confirmedQuote=attempt.quote??await requestChapaJson<BidBatchQuote>('/api/payments/chapa/batches/quote',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,key:attempt.key})},controller.signal);
+   const confirmedQuote=await loadQuote(attempt);
    if(generation.current!==version||!isPrivateQueryIdentity(queryIdentity))return;
    attempt.quote=confirmedQuote;setQuote(confirmedQuote);
    if(etbToCents(confirmedQuote.total)!==totalCents){reportError(text('The total was updated. Review the amount before paying.','ጠቅላላ ክፍያው ተቀይሯል። ከመክፈልዎ በፊት መጠኑን ይመልከቱ።'));return}
@@ -331,7 +344,7 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
  if(step==='payment')return <>
   <AccountSheetFooter><div className={reference.footer}>
    <div className={reference.total} data-bid-total><span>{text('Total payable','ጠቅላላ ክፍያ')}</span><strong>{formatEtb(total)}</strong></div>
-   <button type="button" className={reference.pay} data-payment-action data-bid-pay disabled={busy||external&&quoteBusy} aria-busy={busy||external&&quoteBusy} onClick={event=>{if(event.detail<=1)void pay()}}>{(busy||external&&quoteBusy)&&<LoaderCircle size={17} className={reference.spin} aria-hidden="true"/>}{pendingOriginal?text('View payment status','የክፍያ ሁኔታ ይመልከቱ'):text(zero?'Submit bids':method==='wallet'?`Pay ${formatEtb(total)} from wallet`:`Pay ${formatEtb(total)} & bid`,zero?'ጨረታዎችን ያቅርቡ':`${formatEtb(total)} ከፍለው ይጫረቱ`)}</button>
+   <button type="button" className={reference.pay} data-payment-action data-bid-pay disabled={busy} aria-busy={busy} onClick={event=>{if(event.detail<=1)void pay()}}>{busy&&<LoaderCircle size={17} className={reference.spin} aria-hidden="true"/>}{pendingOriginal?text('View payment status','የክፍያ ሁኔታ ይመልከቱ'):text(zero?'Submit bids':method==='wallet'?`Pay ${formatEtb(total)} from wallet`:`Pay ${formatEtb(total)} & bid`,zero?'ጨረታዎችን ያቅርቡ':`${formatEtb(total)} ከፍለው ይጫረቱ`)}</button>
   </div></AccountSheetFooter>
   <div className={reference.checkout} data-bid-step="payment" data-payment-method-form>
    <section className={reference.paymentOverview} data-bid-payment-summary aria-label={text('Payment summary','የክፍያ ማጠቃለያ')}>
@@ -347,7 +360,6 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
    {method==='wallet'&&insufficient&&!zero&&<p className={reference.error} role="status" data-wallet-insufficient>{text(`${formatEtb(total)} is required. Add funds or choose another method.`,`${formatEtb(total)} ያስፈልጋል። ገንዘብ ያስገቡ ወይም ሌላ መንገድ ይምረጡ።`)}</p>}
    {methods.fetching&&!methods.data&&<p className={reference.notice} role="status">{text('Loading payment methods…','የክፍያ መንገዶች በመጫን ላይ…')}</p>}
    {!methods.fetching&&!enabledMethods.length&&(methods.error||methods.data)&&<p className={reference.notice} role="status">{text('External payments are unavailable.','የውጭ ክፍያዎች አይገኙም።')} <button type="button" onClick={methods.reload}>{text('Retry','እንደገና')}</button></p>}
-   {external&&quoteBusy&&<p className={reference.notice} role="status">{text('Confirming your total…','ጠቅላላ ክፍያዎን በማረጋገጥ ላይ…')}</p>}
    {error&&<p className={reference.error} role="alert">{error}</p>}
   </div>
  </>;

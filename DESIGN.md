@@ -37,7 +37,14 @@ Bid entry is a short first step: numbers, validation, chips, coupon/range tools 
 
 Top-up uses an amount step with presets and a qualifying deposit-offer preview, then the same external selection/status presentation. Explain continuing below the bonus minimum inside the same sheet. Wallet cannot fund itself.
 
-Use one compact processing/result surface. Show authorization only when accepted by the provider. Never collect a wallet PIN. Confirm success only after verified payment and completed bid acceptance or wallet credit. Unknown transport outcomes keep the original attempt. Terminal retry reconciles the original and restores the draft without charging automatically. Closing dismisses the UI without cancelling a provider request.
+Use one compact processing/result surface from explicit Pay through provider authorization. Never collect a wallet PIN. Confirm success only after verified payment and completed bid acceptance or wallet credit. Unknown transport outcomes keep the original attempt. Terminal retry reconciles the original and restores the draft without charging automatically. Closing dismisses the UI without cancelling a provider request.
+
+The November 18 payment reference uses one shared, centered authorization view
+with a warm spinner and an amber segment moving along a thin gray track.
+Keep pending copy and geometry stable through network recovery and private
+verification. OTP input stays within that view. A verified result replaces it:
+failure offers Try again and Close; success offers Close. Do not add manual
+verification buttons or intermediate status dialogs to current Direct payments.
 
 Bonus and deposited funds remain distinct. Show principal, actual bonus and total credit explicitly. Percent, minimum, cap, validity and offer end are server-configured. Do not promise a disabled, expired or unavailable offer.
 
