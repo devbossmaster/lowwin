@@ -1,5 +1,5 @@
 import {campaignContent,scheduleGlobalAlerts,telegramKinds} from './campaigns';
-import type {Prisma,Outbox} from '@prisma/client';
+import {Prisma,type Outbox} from '@prisma/client';
 import {InputFile} from 'grammy';
 import {existsSync,statSync} from 'node:fs';
 import {resolve} from 'node:path';
@@ -61,26 +61,67 @@ export async function enqueueAlert(tx:DB,input:{key:string;kind:string;auctionId
 export const scheduleAlerts=scheduleGlobalAlerts;
 export {dispatchOne,dispatchBatch,expandPendingCampaigns} from './dispatch';
 
+const endingKinds=endingReminders.map(reminder=>reminder.kind);
+const promotionKinds=['AUCTION_PUBLISHED','AUCTION_UPCOMING_ADDED',...upcomingReminders.map(reminder=>reminder.kind),...endingKinds,'GLOBAL_CAMPAIGN'];
+const safeDeleteWindowMs=47*60*60*1000;
+
+async function retireAuctionNotifications(tx:DB,auctionId:string,now:Date,endingOnly:boolean){
+ const jobKind=endingOnly
+  ?Prisma.sql`(job.kind IN (${Prisma.join(endingKinds)}) OR
+    (job.kind='GLOBAL_CAMPAIGN' AND job.payload->>'deliveryKind' IN (${Prisma.join(endingKinds)})))`
+  :Prisma.sql`job.kind IN (${Prisma.join(promotionKinds)})`;
+ const jobFilter=Prisma.sql`job.payload ? 'auctionId' AND job.payload->>'auctionId'=${auctionId} AND ${jobKind}`;
+ const reason=endingOnly?'SUPERSEDED_BY_DEADLINE_CHANGE':'AUCTION_RETIRED';
+ const retiredAt=Prisma.sql`(${now.toISOString()}::timestamptz AT TIME ZONE 'UTC')`;
+ const [summary]=await tx.$queryRaw<Array<{matched:number;skipped:number}>>(Prisma.sql`
+  WITH jobs AS MATERIALIZED (
+   SELECT job.id,job.key FROM "Outbox" job WHERE ${jobFilter}
+  ), inbox_removed AS (
+   DELETE FROM "NotificationInbox" inbox USING jobs WHERE inbox.key=jobs.key
+  ), skipped AS (
+   UPDATE "Outbox" job
+   SET state='SKIPPED',"lastError"=${reason},"leaseToken"=NULL,"leaseUntil"=NULL
+   FROM jobs WHERE job.id=jobs.id AND job.state='PENDING'
+   AND (job."leaseUntil" IS NULL OR job."leaseUntil"<=${retiredAt})
+   RETURNING job.id
+  )
+  SELECT (SELECT count(*) FROM jobs)::int AS matched,(SELECT count(*) FROM skipped)::int AS skipped
+ `);
+ if(endingOnly&&!summary.matched)return {...summary,telegramDeletesQueued:0,telegramDeletesUnavailable:0};
+
+ // Acknowledge delivered messages in bulk after the send jobs were retired.
+ // This stays in the auction transaction so a rollback also rolls back deletion requests.
+ const messageFilter=endingOnly
+  ?Prisma.sql`message."outboxId" IN (SELECT job.id FROM "Outbox" job WHERE ${jobFilter})`
+  :Prisma.sql`message."auctionId"=${auctionId}`;
+ const oldestDeletable=Prisma.sql`(${new Date(now.getTime()-safeDeleteWindowMs).toISOString()}::timestamptz AT TIME ZONE 'UTC')`;
+ const [deletions]=await tx.$queryRaw<Array<{telegramDeletesQueued:number;telegramDeletesUnavailable:number}>>(Prisma.sql`
+  WITH messages AS (
+   UPDATE "TelegramMessage" message
+   SET "deletionState"=CASE WHEN message."sentAt">${oldestDeletable} THEN 'QUEUED' ELSE 'UNAVAILABLE' END,
+       "deletionError"=CASE WHEN message."sentAt">${oldestDeletable} THEN message."deletionError" ELSE 'TELEGRAM_DELETE_WINDOW_EXPIRED' END,
+       "deletionRequestedAt"=${retiredAt}
+   WHERE ${messageFilter} AND message."deletionState"='DELIVERED'
+   RETURNING message.id,message."testRunId",message."deletionState"
+  ), queued AS (
+   INSERT INTO "Outbox" (id,key,kind,payload,"testRunId","createdAt","nextAttemptAt")
+   SELECT gen_random_uuid()::text,'telegram-delete:'||id,'TELEGRAM_DELETE',jsonb_build_object('telegramMessageId',id),"testRunId",${retiredAt},${retiredAt}
+   FROM messages WHERE "deletionState"='QUEUED'
+   ON CONFLICT (key) DO NOTHING
+  )
+  SELECT count(*) FILTER (WHERE "deletionState"='QUEUED')::int AS "telegramDeletesQueued",
+         count(*) FILTER (WHERE "deletionState"='UNAVAILABLE')::int AS "telegramDeletesUnavailable"
+  FROM messages
+ `);
+ return {...summary,...deletions};
+}
+
 export async function retireAuctionPromotions(tx:DB,auctionId:string,now:Date){
- const promotional=['AUCTION_PUBLISHED','AUCTION_UPCOMING_ADDED',...upcomingReminders.map(r=>r.kind),...endingReminders.map(r=>r.kind),'GLOBAL_CAMPAIGN'];
- const jobs=await tx.outbox.findMany({where:{kind:{in:promotional},payload:{path:['auctionId'],equals:auctionId}},select:{id:true,key:true,state:true}});
- if(jobs.length)await tx.notificationInbox.deleteMany({where:{key:{in:jobs.map(job=>job.key)}}});
- const pending=jobs.filter(job=>job.state==='PENDING');
- const stopped=pending.length?await tx.outbox.updateMany({where:{id:{in:pending.map(job=>job.id)},OR:[{leaseUntil:null},{leaseUntil:{lte:now}}]},data:{state:'SKIPPED',lastError:'AUCTION_RETIRED',leaseToken:null,leaseUntil:null}}):{count:0};
- const messages=await tx.telegramMessage.findMany({where:{auctionId,deletionState:'DELIVERED'}});let queued=0,unavailable=0;
- for(const message of messages){
-  if(now.getTime()-message.sentAt.getTime()>=47*3600000){await tx.telegramMessage.update({where:{id:message.id},data:{deletionState:'UNAVAILABLE',deletionRequestedAt:now,deletionError:'TELEGRAM_DELETE_WINDOW_EXPIRED'}});unavailable++;continue}
-  await tx.outbox.create({data:{key:`telegram-delete:${message.id}`,kind:'TELEGRAM_DELETE',payload:{telegramMessageId:message.id},testRunId:message.testRunId}});
-  await tx.telegramMessage.update({where:{id:message.id},data:{deletionState:'QUEUED',deletionRequestedAt:now}});queued++;
- }
- return {pendingSkipped:stopped.count,telegramDeletesQueued:queued,telegramDeletesUnavailable:unavailable};
+ const {skipped,telegramDeletesQueued,telegramDeletesUnavailable}=await retireAuctionNotifications(tx,auctionId,now,false);
+ return {pendingSkipped:skipped,telegramDeletesQueued,telegramDeletesUnavailable};
 }
 
 export async function retireAuctionEndingAlerts(tx:DB,auctionId:string,now:Date){
- const candidates=await tx.outbox.findMany({where:{kind:{in:['GLOBAL_CAMPAIGN',...endingReminders.map(r=>r.kind)]},payload:{path:['auctionId'],equals:auctionId}},select:{id:true,key:true,kind:true,state:true,payload:true}});
- const jobs=candidates.filter(row=>endingReminders.some(r=>r.kind===row.kind||r.kind===(row.payload as {deliveryKind?:string}).deliveryKind));if(!jobs.length)return {endingAlertsRetired:0,telegramDeletesQueued:0,telegramDeletesUnavailable:0};
- await tx.notificationInbox.deleteMany({where:{key:{in:jobs.map(row=>row.key)}}});const pending=jobs.filter(row=>row.state==='PENDING');if(pending.length)await tx.outbox.updateMany({where:{id:{in:pending.map(row=>row.id)},OR:[{leaseUntil:null},{leaseUntil:{lte:now}}]},data:{state:'SKIPPED',lastError:'SUPERSEDED_BY_DEADLINE_CHANGE',leaseToken:null,leaseUntil:null}});
- const messages=await tx.telegramMessage.findMany({where:{outboxId:{in:jobs.map(row=>row.id)},deletionState:'DELIVERED'}});let queued=0,unavailable=0;
- for(const message of messages){if(now.getTime()-message.sentAt.getTime()>=47*3600000){await tx.telegramMessage.update({where:{id:message.id},data:{deletionState:'UNAVAILABLE',deletionRequestedAt:now,deletionError:'TELEGRAM_DELETE_WINDOW_EXPIRED'}});unavailable++;continue}await tx.outbox.create({data:{key:`telegram-delete:${message.id}`,kind:'TELEGRAM_DELETE',payload:{telegramMessageId:message.id},testRunId:message.testRunId}});await tx.telegramMessage.update({where:{id:message.id},data:{deletionState:'QUEUED',deletionRequestedAt:now}});queued++}
- return {endingAlertsRetired:jobs.length,telegramDeletesQueued:queued,telegramDeletesUnavailable:unavailable};
+ const {matched,telegramDeletesQueued,telegramDeletesUnavailable}=await retireAuctionNotifications(tx,auctionId,now,true);
+ return {endingAlertsRetired:matched,telegramDeletesQueued,telegramDeletesUnavailable};
 }

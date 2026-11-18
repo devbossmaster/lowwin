@@ -1,13 +1,11 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import {createHash} from 'node:crypto';
-import {parseCookies} from 'better-auth/cookies';
-import {constantTimeEqual,makeSignature} from 'better-auth/crypto';
 import {db} from '@/lib/db';
-import {getEnv} from '@/lib/env';
 import {countIdentityRequest,userMutationLimit} from '@/lib/rate-limit';
 import {createAuth} from './server';
 import {assertLocalIdentitySurface} from './local-identity';
 import {contactBotId} from './own-contact';
+import {signedSessionToken} from './signed-session';
 
 // The only preview exception is explicitly enabled, operator-key-protected,
 // loopback development. Public/tunnel/hosted configuration always fails closed.
@@ -17,16 +15,6 @@ export function localMiniPreview(headers:Headers) {
 type BoundRow={id:string;token:string;userId:string;expiresAt:Date;createdAt:Date;updatedAt:Date;telegramLaunchId:string|null;telegramAuthSource:string;name:string;image:string|null;telegramId:string|null;lastFour:string|null;preview:boolean;contactVerified:boolean;needsRenewal:boolean;mutationCount:number|null;directOriginal:boolean;directBidReady:boolean;directTopUpReady:boolean};
 type BoundSession={session:Pick<BoundRow,'id'|'token'|'userId'|'expiresAt'|'createdAt'|'updatedAt'|'telegramLaunchId'|'telegramAuthSource'>;user:{id:string;name:string;image:string|null};telegramId:string|null;contactStatus:{verified:boolean;masked:string|null}};
 type SessionRead={identity:BoundSession;rateAllowed:boolean;directOriginal:boolean;directBidReady:boolean;directTopUpReady:boolean};
-async function signedSessionToken(headers:Headers){
-  const env=getEnv(),name=(env.BETTER_AUTH_URL.startsWith('https:')?'__Secure-':'')+'better-auth.session_token';
-  const value=parseCookies(headers.get('cookie')??'').get(name);if(!value||value.length>512)return null;
-  const dot=value.lastIndexOf('.');if(dot<1)return null;
-  const token=value.slice(0,dot),signature=value.slice(dot+1);
-  // Match the installed Better Auth cookie protocol, using its own signer and
-  // constant-time comparison. A database token alone is never accepted.
-  if(signature.length!==44||!signature.endsWith('=')||!constantTimeEqual(signature,await makeSignature(token,env.BETTER_AUTH_SECRET)))return null;
-  return token;
-}
 async function readBoundSession(headers:Headers,client:PrismaClient|Prisma.TransactionClient,requireContact:boolean,mutation?:{directKey?:string},refreshed=false):Promise<SessionRead|null> {
   const token=await signedSessionToken(headers);if(!token)return null;
   const preview=localMiniPreview(headers),botId=contactBotId();

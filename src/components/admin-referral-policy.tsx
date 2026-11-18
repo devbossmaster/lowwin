@@ -19,7 +19,7 @@ export function AdminReferralPolicy(){
     <form key={policy.version} className="admin-form" onChange={()=>{setDirty(true);setSaved(null);mutation.clear()}} onSubmit={async event=>{
      event.preventDefault();const form=new FormData(event.currentTarget);
      const receipt=await mutation.run<ReferralPolicyReceipt>('save-policy',{version:policy.version,discountPercent:Number(form.get('discountPercent')),expiryDays:Number(form.get('expiryDays')),enabled:form.get('enabled')==='on',reason:String(form.get('reason')??'')});
-     if(receipt){setDirty(false);setSaved(receipt);query.reload()}
+     if(receipt){setDirty(false);setSaved(receipt)}
     }}>
      <fieldset disabled={!data.schemaReady||mutation.busy} className={styles.fields}>
       <div className={styles.two}><label>Discount percentage<input name="discountPercent" type="number" min={5} max={15} step={1} required defaultValue={policy.discountPercent} aria-describedby="referral-percent-help"/><small id="referral-percent-help">5–15% off one submission fee.</small></label><label>Valid for (days)<input name="expiryDays" type="number" min={15} max={30} step={1} required defaultValue={policy.expiryDays} aria-describedby="referral-expiry-help"/><small id="referral-expiry-help">15–30 days from when the reward is earned.</small></label></div>

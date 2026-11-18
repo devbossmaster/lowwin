@@ -38,7 +38,7 @@ export function AdminMessages(){
  const confirm=async()=>{
   if(!confirmation)return;const {campaign:c,action,resendId}=confirmation;
   const result=await mutation.run(action==='resend'?'broadcastResend':action==='delete'?'broadcastDelete':'broadcastStop',{id:c.id,reason:action==='resend'?'Administrator confirmed resend of original broadcast':action==='delete'?'Administrator requested deletion of sent broadcast messages':'Administrator stopped remaining Telegram broadcast',...(action==='resend'?{resendId,confirmation:'RESEND'}:action==='delete'?{confirmation:'DELETE'}:{})});
-  if(result){setConfirmation(null);setNotice(action==='resend'?'New campaign queued. The original campaign is unchanged.':action==='delete'?'Deletion queued. Follow the pending, deleted and unavailable counts below.':'Remaining sends stopped.');query.reload()}
+  if(result){setConfirmation(null);setNotice(action==='resend'?'New campaign queued. The original campaign is unchanged.':action==='delete'?'Deletion queued. Follow the pending, deleted and unavailable counts below.':'Remaining sends stopped.')}
  };
  return <div className="admin-people">
   <AdminHeading title="Broadcast" description="Compose an update, follow the queue, or manage delivered messages." refresh={view==='compose'?undefined:query.reload}>{owner&&<AdminLink className="admin-button secondary" href="/admin/auctions"><Plus size={16}/>Promote an auction</AdminLink>}</AdminHeading>
