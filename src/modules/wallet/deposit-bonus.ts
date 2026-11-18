@@ -17,7 +17,10 @@ export async function depositBonusStorageReady(client:DB,fresh=false){
  entry.result=(async()=>{
   try{
    const rows=await client.$queryRaw<Array<{ready:boolean}>>`SELECT to_regclass('public."DepositBonusPolicy"') IS NOT NULL AND to_regclass('public."DepositBonusLot"') IS NOT NULL AND to_regclass('public."DepositBonusUse"') IS NOT NULL AND to_regclass('public."DepositBonusExpiry"') IS NOT NULL AS ready`;
-   entry.until=Date.now()+30000;return rows[0]?.ready===true;
+   const ready=rows[0]?.ready===true;
+   // Cache schema existence, never the mutable bonus policy. A known schema
+   // survives normal payment entry; missing rollout tables are retried sooner.
+   entry.until=Date.now()+(ready?300000:30000);return ready;
   }catch(error){if(storage.get(client)===entry)storage.delete(client);throw error}
  })();
  return entry.result;

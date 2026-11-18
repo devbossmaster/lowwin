@@ -58,6 +58,7 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
  const canCheck=(hosted||phase==='uncertain'||payment.paused&&(phase==='confirming'||phase==='authorization'&&!otpNeeded))&&(!!order||payment.started&&(!payment.directAttempt||!!chapaOriginalKeyUrl(payment.directAttempt))&&!walletRetry)&&!finished&&!terminal;
  const editableRejection=!order&&!payment.started&&!busy&&!!(error||payment.error)&&!!onEditPayment;
  const simpleDirect=!legacy&&!hosted&&!internalWallet;
+ const terminalReason=simpleDirect&&terminal?safeReason:null;
  const result=finished||terminal||editableRejection;
  const normalWaiting=!finished&&!terminal&&!otpNeeded&&!canCheck&&!hostedUrl&&!editableRejection&&!(phase==='uncertain'&&walletRetry&&onRetryWallet)&&!!onClose;
  const headings:Record<BidPaymentProgressPhase,[string,string]>={
@@ -121,7 +122,7 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
   <section className={styles.progress} data-payment-panel="persistent" data-payment-view={simpleDirect?result?'result':'authorization':undefined} data-payment-progress={phase} data-bid-payment-progress={!deposit?phase:undefined} data-wallet-payment-progress={deposit?phase:undefined} data-direct-approval={phase==='authorization'?otpNeeded?'otp':'phone':phase==='connecting'?'connecting':phase==='confirming'?'confirming':undefined} data-payment-state={terminal?'failed':phase==='success'?'confirmed':phase==='uncertain'?'pending':phase} data-payment-authorization-error={authorizationError??undefined} aria-labelledby={`${id}-heading`}>
    <div className={styles.status} data-tone={terminal||editableRejection?'error':finished?'success':'pending'}>
     <div className={styles.stateIcon} aria-hidden="true">{finished?<Check size={27}/>:terminal||editableRejection?<TriangleAlert size={26}/>:<LoaderCircle className={styles.spin} size={27} data-bid-submitting={phase==='preparing'||undefined}/>}</div>
-    <div role="status" aria-live="polite" aria-atomic="true"><h3 id={`${id}-heading`}>{text(...headings[phase])}</h3><p>{text(...messages[phase])}</p></div>
+    <div role={terminalReason?'alert':'status'} aria-live={terminalReason?'assertive':'polite'} aria-atomic="true"><h3 id={`${id}-heading`}>{text(...headings[phase])}</h3><p data-payment-reason={terminalReason?true:undefined}>{terminalReason??text(...messages[phase])}</p></div>
    </div>
    {steadyPending&&<div className={styles.activity} data-payment-activity aria-hidden="true"><span/></div>}
    {inlineIssue&&(!simpleDirect||otpNeeded||editableRejection)&&<p className={styles.inlineError} role="alert" data-payment-reason data-payment-inline-error>{inlineIssue}</p>}

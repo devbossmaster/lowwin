@@ -37,6 +37,9 @@ again and Close. Success provides Close. Retry restores the original editable
 draft and requires another explicit Pay. Embedded top-up Close restores the
 bid draft without submitting it. Financial settlement, leases, private
 verification, webhook accounting and historical recovery are unchanged.
+The result description includes a verified provider reason when available.
+The Transactions page shows its loading skeleton until the interactive view
+is ready so that an early Top up tap cannot land on a view about to unmount.
 
 ## Measurements and limits
 
@@ -46,13 +49,21 @@ Private verification returned FAILED, 500 cents, ETB and the matching reference.
 No Lowwin credit was created. The customer's initial four-second estimate was
 explicitly withdrawn as a guess: physical prompt latency is unmeasured.
 
-Current initialization measured against isolated local PostgreSQL with provider
-HTTP mocked took 21–32 ms before top-up dispatch and 56–116 ms for bid quote
-plus initialization. Warm public production requests took approximately
-200–280 ms from the development PC. These figures do not prove production
-authenticated payment or carrier latency. No fixed 15-second application delay
-was found; production create Server-Timing and a jointly timed phone recording
-are required to attribute the remaining gap.
+An authenticated 5 ETB Telebirr top-up on the customer's Telegram Mini App
+returned HTTP 202 after 7,738 ms. Handler timing showed 5,567 ms before the
+provider call, 720 ms for Chapa, and 637 ms to persist the authorization.
+The attempt ended in verified failure. The baseline window probe missed the
+native prompt, so the recording does not give a Pay-to-USSD duration. See the
+[sanitized baseline](../measurements/payment-phone-baseline-2026-11-18.json).
+
+The Direct path now checks bonus schema readiness alongside the owned-key
+lookup and keeps successful schema checks warm for five minutes. The bonus
+policy still reads fresh. Top-up preparation takes the maintenance barrier
+first, then reads fresh maintenance state and locks the wallet in one query.
+The two creation limits update atomically in one database statement. With
+local PostgreSQL and mocked Chapa, warm pre-dispatch statements fell from
+13 to 11 for top-up and from 32 to 31 for bid quote plus creation. The
+production timing still needs a repeat on the deployed revision.
 
 A read-only probe from this PC to the configured remote database measured
 1,669 ms for cold connection and 188–406 ms for five SELECT 1 round trips.

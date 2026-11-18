@@ -3,7 +3,7 @@ import {Prisma,type PrismaClient,type ChapaCheckout} from '@prisma/client';
 import {z} from 'zod';
 import {centsToEtb,etbToCents} from '@/lib/money';
 import {CHAPA_TOPUP_MIN_CENTS,CHAPA_TOPUP_MIN_ETB,CHAPA_TOPUP_MAX_CENTS,CHAPA_TOPUP_MAX_ETB} from '@/lib/chapa-topup-policy';
-import {allowIdentityRequest} from '@/lib/rate-limit';
+import {allowIdentityRequest,allowIdentityRequests} from '@/lib/rate-limit';
 import {normalizePaymentPhone,paymentPhoneProblem,paymentPhoneProblemMessage} from '@/lib/payment-phone';
 import {classifyChapaApiError} from '@/lib/chapa-api-error';
 import {decryptPhone,encryptPhone,phoneHash} from '../auth/own-contact';
@@ -29,6 +29,21 @@ const localGuide='/video/cbe-bank-payment.mp4';
 export function safeInlineCbeGuideUrl(raw=process.env.CHAPA_INLINE_CBE_GUIDE_URL){try{if(!raw||raw===localGuide)return localGuide;const url=new URL(raw);return url.protocol==='https:'&&!url.username&&!url.password?url.href:null}catch{return null}}
 const capabilitiesFor=(transport:ChapaInlineTransport,protocol:'INLINE'|'DIRECT'='INLINE')=>measureChapa('capabilities',()=>(protocol==='DIRECT'?currentDirectMethods(transport===currentDirectTransport?chapaTransport:transport):transport===chapaInlineTransport?inlineMethodCatalog:createInlineMethodCatalog(transport)).get());
 const currentBinding=(order:ChapaCheckout)=>isCurrentDirectCheckout(order)?currentDirectBinding(order):inlineTransportBinding(order);
+
+async function lockCurrentTopUpPreparation(tx:Prisma.TransactionClient,userId:string){
+ // This statement must finish before the maintenance read starts: a SELECT
+ // snapshot taken before waiting for an exclusive maintenance writer is stale.
+ await tx.$executeRaw`SELECT pg_advisory_xact_lock_shared(hashtextextended('lowwin:auction-maintenance',0))`;
+ const [state]=await tx.$queryRaw<{halted:boolean}[]>`
+  WITH maintenance AS MATERIALIZED (
+   SELECT COALESCE((SELECT action='AUCTIONS_MAINTENANCE_HALTED' FROM "AdminAudit"
+    WHERE action IN ('AUCTIONS_MAINTENANCE_HALTED','AUCTIONS_MAINTENANCE_RESUMED') ORDER BY "createdAt" DESC,id DESC LIMIT 1),false) AS halted
+  ), locked AS MATERIALIZED (
+   SELECT halted,pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`},0)) FROM maintenance
+  ) SELECT halted FROM locked`;
+ if(!state)throw new Error('Payment maintenance state is unavailable');
+ return state.halted;
+}
 
 export async function chapaInlineConfig(client:PrismaClient,userId:string){
  const health=chapaInlineAvailability();
@@ -60,7 +75,13 @@ export async function findInlineCheckoutByKey(client:PrismaClient,userId:string,
 export async function createInlineCheckout(client:PrismaClient,userId:string,raw:unknown,reauthorize?:Authorize,transport:ChapaInlineTransport=chapaInlineTransport,protocol:'INLINE'|'DIRECT'='INLINE'){
  const body=input.parse(raw),phone=normalizePaymentPhone(body.phone),problem=paymentPhoneProblem(body.phone,body.paymentMethod);
  if(!phone||problem)throw new ChapaError(422,'INVALID_PHONE',paymentPhoneProblemMessage(problem??'invalid'));
- const hash=requestHash(body,phone),previous=await measureChapa('lookup',()=>client.chapaCheckout.findUnique({where:{userId_key:{userId,key:body.key}}}));
+ const hash=requestHash(body,phone),previousLookup=measureChapa('lookup',()=>client.chapaCheckout.findUnique({where:{userId_key:{userId,key:body.key}}}));
+ // A safe new Direct top-up can overlap its read-only schema probe with owned
+ // key discovery. Capture rejection immediately: an existing original must
+ // recover even when rollout readiness is unavailable or creation is paused.
+ const probeBonus=protocol==='DIRECT'&&body.purpose==='TOP_UP'&&body.flow==='DIRECT'&&['telebirr','cbebirr','mpesa'].includes(body.paymentMethod)&&currentDirectAvailability().enabled&&etbToCents(body.amount)>=CHAPA_TOPUP_MIN_CENTS&&etbToCents(body.amount)<=CHAPA_TOPUP_MAX_CENTS;
+ const bonusProbe=probeBonus?measureChapa('schema',()=>depositBonusStorageReady(client)).then(ready=>({ok:true as const,ready}),error=>({ok:false as const,error})):null;
+ const previous=await previousLookup;
  const assertReplay=(order:ChapaCheckout)=>{if(!(protocol==='DIRECT'?isCurrentDirectCheckout(order):isV2InlineCheckout(order))||order.requestHash!==hash)throw new ChapaError(409,'KEY_REUSED','Keep the original payment details.')};
  if(previous){assertReplay(previous);return {order:await initializeInlineCheckout(client,previous,userId,reauthorize,transport)}}
  if(protocol==='INLINE'&&transport===chapaInlineTransport)throw new ChapaError(410,'PAYMENT_VERSION_RETIRED','Reload payment options to use the current secure checkout. Existing payments remain available in Transactions.');
@@ -77,7 +98,7 @@ export async function createInlineCheckout(client:PrismaClient,userId:string,raw
  // Schema readiness and capabilities do not depend on one another. Keep both
  // outside financial locks and overlap their cold reads before preparation.
  const [bonusReady,capabilities]=await Promise.all([
-  body.purpose==='TOP_UP'?measureChapa('schema',()=>depositBonusStorageReady(client)):Promise.resolve(false),
+  body.purpose==='TOP_UP'?bonusProbe?bonusProbe.then(result=>{if(!result.ok)throw result.error;return result.ready}):measureChapa('schema',()=>depositBonusStorageReady(client)):Promise.resolve(false),
   capabilitiesFor(transport,protocol),
  ]);
  const selectedMethod=capabilities.find(method=>method.slug===body.paymentMethod);
@@ -92,6 +113,7 @@ export async function createInlineCheckout(client:PrismaClient,userId:string,raw
   // Match every financial writer's barrier order once. Keep the maintenance
   // result until after replay detection so an existing attempt remains readable.
   const halted=await measureChapa('locks',async()=>{
+   if(protocol==='DIRECT'&&body.purpose==='TOP_UP')return lockCurrentTopUpPreparation(tx,userId);
    const halted=await auctionMaintenance(tx);
    if(body.purpose==='BID')await tx.$queryRaw`SELECT a.id FROM "Auction" a JOIN "BidBatchOrder" b ON b."auctionId"=a.id WHERE b.id=${body.batchId} AND b."userId"=${userId} FOR UPDATE OF a`;
    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`},0))`;
@@ -100,7 +122,7 @@ export async function createInlineCheckout(client:PrismaClient,userId:string,raw
   if(reauthorize)await measureChapa('reauthorize',()=>reauthorize(tx));const contact=await measureChapa('eligibility',()=>eligible(tx,userId));
   const replay=await tx.chapaCheckout.findUnique({where:{userId_key:{userId,key:body.key}}});if(replay){assertReplay(replay);return {created:false,order:replay}}
   if(halted)throw new ChapaError(503,'AUCTIONS_PAUSED','New payments are paused. Existing payments can still be checked.');
-  if(!await allowIdentityRequest(tx,'chapa-inline-create',userId,24,3600000))throw new ChapaError(429,'RATE_LIMITED','Check Transactions before trying another payment.');
+  if(protocol!=='DIRECT'&&!await allowIdentityRequest(tx,'chapa-inline-create',userId,24,3600000))throw new ChapaError(429,'RATE_LIMITED','Check Transactions before trying another payment.');
   const batch=body.purpose==='BID'?await tx.bidBatchOrder.findFirst({where:{id:body.batchId,userId}}):null;
   if(body.purpose==='BID'){
    if(!batch||batch.quoteHash!==body.quoteHash||batch.status!=='QUOTED')throw new ChapaError(409,'TERMS_CHANGED','Review your bid quote again.');
@@ -117,7 +139,9 @@ export async function createInlineCheckout(client:PrismaClient,userId:string,raw
   if(body.purpose==='TOP_UP'&&(depositBonus&&(body.approvedDepositBonusVersion!==depositBonus.policyVersion||body.approvedDepositBonusAmount===undefined)||body.approvedDepositBonusAmount!==undefined&&etbToCents(body.approvedDepositBonusAmount)!==BigInt(depositBonus?.amountCents??'0')))throw new ChapaError(409,'DEPOSIT_BONUS_CHANGED','The deposit bonus changed. Review the updated offer before paying.');
   const flowVersion=protocol==='DIRECT'?5:4;
   const initialization={apiVersion:'v2',flowVersion,flow:body.flow,amountCents:String(amountCents),merchantReference,idempotencyKey,...(protocol==='DIRECT'?{metadata:{checkout_id:id}}:{publicKeyFingerprint:health.publicKeyFingerprint!}),webhookSignatureProfile:chapaWebhookSignatureProfile()!,paymentMethod:body.paymentMethod,payerPhoneHash:phoneHash(`+${phone}`),returnUrl,returnUrlVersion:1,...(depositBonus?{depositBonus}:{}),...(batch?{batch:ownBatch(batch)}:{})};
-  if(!await allowIdentityRequest(tx,'chapa-inline-initialize',id,5,86400000))throw new ChapaError(429,'RATE_LIMITED','Check the original payment before trying again.');
+  if(protocol==='DIRECT'){
+   if(!await allowIdentityRequests(tx,[{scope:'chapa-inline-create',identity:userId,maximum:24,windowMs:3600000},{scope:'chapa-inline-initialize',identity:id,maximum:5,windowMs:86400000}]))throw new ChapaError(429,'RATE_LIMITED','Check Transactions before trying another payment.');
+  }else if(!await allowIdentityRequest(tx,'chapa-inline-initialize',id,5,86400000))throw new ChapaError(429,'RATE_LIMITED','Check the original payment before trying again.');
   const order=await measureChapa('intent',()=>tx.chapaCheckout.create({data:{id,userId,key:body.key,requestHash:hash,purpose:body.purpose,mode:health.mode,credentialFingerprint:health.credentialFingerprint!,initialization:JSON.parse(JSON.stringify(initialization)),chargeType:body.flow,flowVersion,batchId:batch?.id,payerPhoneCipher:encryptPhone(phone,contact.botId),phoneCipher:contact.phoneCipher,phoneBotId:contact.botId,merchantReference,amountCents,currency:'ETB',paymentMethod:body.paymentMethod,auctionId:batch?.auctionId,auctionSlug:batch?.auctionSlug,bidNumber:batch?new Prisma.Decimal(batchLines(batch)[0].number):null,feeVersion:batch?.feeVersion,grossFee:batch?new Prisma.Decimal(centsToEtb(batch.grossCents)):null,discountPoints:batch?new Prisma.Decimal(centsToEtb(batch.discountCents)):new Prisma.Decimal(0),couponId:batch?.couponId,status:'SUBMITTING',reason:'AWAITING_PROVIDER',attempts:1,leaseUntil:after(45000),expiresAt:after(body.flow==='HOSTED'?86400000:300000),nextCheckAt:after(15000),reconcileUntil:after(30*86400000)}}));
   return {created:true,order};
  },PAYMENT_TRANSACTION_OPTIONS));

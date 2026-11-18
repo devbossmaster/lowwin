@@ -2,14 +2,15 @@ import type {Prisma} from '@prisma/client';
 import {getMiniSession,localMiniPreview} from '../auth/mini-access';
 import {contactBotId} from '../auth/own-contact';
 import {limitUserMutation,PrivateApiError} from '../auth/private-api';
+import {measureChapa} from './chapa-timing';
 
 // Validate the signed cookie before opening a money transaction. Do not build
 // a Better Auth adapter or refresh a session inside that transaction. Instead,
 // re-read the authenticated session and its current binding in one DB query.
 export async function requirePaymentSession(request:Request){
- const current=await getMiniSession(request.headers);
+ const current=await measureChapa('auth_session',()=>getMiniSession(request.headers));
  if(!current)throw new PrivateApiError(401,'Sign in through Telegram.');
- await limitUserMutation(request,current.user.id);
+ await measureChapa('auth_limit',()=>limitUserMutation(request,current.user.id));
  const preview=current.user.id==='lowin-local-test-user'&&localMiniPreview(request.headers);
  const telegramId=current.telegramId;
  if(!preview&&!telegramId)throw new PrivateApiError(401,'Sign in through Telegram.');

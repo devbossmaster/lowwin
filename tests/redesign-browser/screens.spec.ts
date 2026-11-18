@@ -13,8 +13,8 @@ const origin = process.env.BETTER_AUTH_URL!;
 
 test('authenticated mobile screens and local timing evidence', async ({page, browser}, info) => {
   const client=new PrismaClient({datasourceUrl:process.env.TEST_DATABASE_URL});mkdirSync(root,{recursive:true});
-  const errors:string[]=[],financialPosts:string[]=[];page.on('pageerror',error=>errors.push(error.message));
-  page.on('request',request=>{const path=new URL(request.url()).pathname;if(request.method()==='POST'&&/\/api\/payments\//.test(path))financialPosts.push(path)});
+  const errors:string[]=[],financialPosts:string[]=[],quotePosts:string[]=[];page.on('pageerror',error=>errors.push(error.message));
+  page.on('request',request=>{const path=new URL(request.url()).pathname;if(request.method()==='POST'&&/\/api\/payments\//.test(path))(path==='/api/payments/chapa/batches/quote'?quotePosts:financialPosts).push(path)});
   const telegramId=randomInt(6000000000,7000000000),launch=signedLaunch({user:JSON.stringify({id:telegramId,first_name:'Redesign fixture'})},process.env.TELEGRAM_BOT_TOKEN);
   const timings:Record<string,unknown>={stage,width:info.project.name,mode:'Optimized loopback UI with synthetic wallet funds; no external payment or Telegram device latency claim'};
   try{
@@ -48,7 +48,7 @@ test('authenticated mobile screens and local timing evidence', async ({page, bro
     expect(await client.bid.count({where:{auctionId:auction.id,userId:user.id}})).toBe(0);expect(financialPosts).toEqual([]);
     await sheet.locator('[data-payment-action]').click();await expect(sheet.locator('[data-bid-step=payment]')).toBeVisible();
     await sheet.getByRole('radio',{name:'LowWin Wallet',exact:true}).check();await expect(sheet.locator('[data-bid-total]')).toContainText('ETB 30.00');
-    expect(financialPosts).toEqual([]);const payBegan=performance.now();await sheet.locator('[data-payment-action]').click();
+    await expect.poll(()=>quotePosts.length).toBe(1);expect(await client.bid.count({where:{auctionId:auction.id,userId:user.id}})).toBe(0);expect((await client.ledgerAccount.findUniqueOrThrow({where:{name:`user:${user.id}:available`}})).balance.toString()).toBe('1000');expect(financialPosts).toEqual([]);const payBegan=performance.now();await sheet.locator('[data-payment-action]').click();
     await expect(sheet.locator('[data-wallet-bid-progress=success]')).toBeVisible();await expect(sheet).toContainText('Paid from wallet');
     timings.walletCommitToReceiptMs=Math.round(performance.now()-payBegan);expect(await client.bid.count({where:{auctionId:auction.id,userId:user.id}})).toBe(1);
     expect((await client.ledgerAccount.findUniqueOrThrow({where:{name:`user:${user.id}:available`}})).balance.toString()).toBe('970');
@@ -66,12 +66,12 @@ test('authenticated mobile screens and local timing evidence', async ({page, bro
     const zeroId=randomInt(7000000000,8000000000);await verifyFixtureContact(client,zeroId);
     const zeroContext=await browser.newContext({viewport:original,baseURL:origin,ignoreHTTPSErrors:true,storageState:ENGLISH_UI_STATE,extraHTTPHeaders:{'x-forwarded-for':`198.19.${Math.floor(zeroId%65536/256)}.${zeroId%256}`}});
     try{
-      const zero=await zeroContext.newPage(),posts:string[]=[];zero.on('request',request=>{if(request.method()==='POST'&&/\/api\/payments\//.test(new URL(request.url()).pathname))posts.push(request.url())});
+      const zero=await zeroContext.newPage(),posts:string[]=[],quotes:string[]=[];zero.on('request',request=>{const path=new URL(request.url()).pathname;if(request.method()==='POST'&&/\/api\/payments\//.test(path))(path==='/api/payments/chapa/batches/quote'?quotes:posts).push(path)});
       await zero.route('https://telegram.org/**',route=>route.fulfill({body:''}));await zero.addInitScript(({data})=>{window.Telegram={WebApp:{initData:data,ready(){},expand(){},setHeaderColor(){},setBackgroundColor(){}}};},{data:signedLaunch({user:JSON.stringify({id:zeroId,first_name:'Zero balance fixture'})},process.env.TELEGRAM_BOT_TOKEN)});
       await zero.goto('/auctions/'+auction.publicCode);await zero.locator('#bid-review').getByRole('button',{name:'Place a bid',exact:true}).click();const zeroSheet=zero.getByRole('dialog');
       await zeroSheet.getByRole('textbox',{name:'Your bid number',exact:true}).fill('7.31');await zeroSheet.locator('[data-payment-action]').click();await expect(zeroSheet.locator('[data-bid-step=payment]')).toBeVisible();
       await zeroSheet.getByRole('radio',{name:'LowWin Wallet',exact:true}).check();await zeroSheet.locator('[data-payment-action]').click();await expect(zeroSheet.locator('[data-bid-step=payment]')).toContainText('Your LowWin Wallet has 0 ETB');
-      expect(posts).toEqual([]);await expect(zeroSheet.locator('[data-bid-payment-summary]')).toContainText('7.31');await zeroSheet.getByRole('button',{name:'Add funds',exact:true}).click();
+      await expect.poll(()=>quotes.length).toBe(1);expect(posts).toEqual([]);await expect(zeroSheet.locator('[data-bid-payment-summary]')).toContainText('7.31');await zeroSheet.getByRole('button',{name:'Add funds',exact:true}).click();
       await expect(zeroSheet.locator('[data-wallet-top-up]')).toBeVisible();const amount=zeroSheet.getByRole('textbox',{name:'Amount to add',exact:true});await amount.fill('100');await expect(amount).toHaveValue('100');
       await zeroSheet.locator('[data-payment-action]').click();await expect(zeroSheet.locator('[data-top-up-step=payment]')).toBeVisible();await expect(zeroSheet.getByRole('radio')).toHaveCount(0);
       await zeroSheet.locator('[data-payment-action]').click();await expect(zeroSheet).toContainText('Choose a payment method.');expect(posts).toEqual([]);

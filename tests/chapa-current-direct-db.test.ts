@@ -8,7 +8,8 @@ import {quoteBidBatch} from '../src/modules/auctions/batch';
 import {createCurrentDirectCheckout,findCurrentDirectCheckoutByKey,findInlineCheckoutByKey} from '../src/modules/payments/chapa-inline';
 import {verifyChapaCheckout} from '../src/modules/payments/chapa';
 import {authorizeDirectCheckout} from '../src/modules/payments/chapa-direct';
-import {ChapaProviderError,type ChapaDirectCreate,type ChapaTransport} from '../src/modules/payments/chapa-provider';
+import {ChapaProviderError,chapaHash,type ChapaDirectCreate,type ChapaTransport} from '../src/modules/payments/chapa-provider';
+import {allowIdentityRequest} from '../src/lib/rate-limit';
 import {reconcile} from '../src/modules/wallet/ledger';
 import {type ChapaCompletionStatus} from '../src/modules/payments/chapa-verification-policy';
 import {chapaPollingDeadline} from '../src/lib/chapa-client';
@@ -60,6 +61,31 @@ describe.skipIf(!database)('current Direct5 owned creation and private committed
   await expect(findInlineCheckoutByKey(db,f.user,f.command.key)).rejects.toMatchObject({status:404});await expect(findCurrentDirectCheckoutByKey(db,(await verifiedReferralUser(db)).id,f.command.key)).rejects.toMatchObject({status:404});
  });
  it('rejects methods lacking Direct capability before persisting or dispatching a charge',async()=>{const f=await fixture();f.setCapable(false);await expect(f.start()).rejects.toMatchObject({code:'METHOD_UNAVAILABLE'});expect(f.direct).not.toHaveBeenCalled();expect(await db.chapaCheckout.count({where:{userId:f.user}})).toBe(0)});
+ it('reads a newly committed maintenance halt after waiting for the separately acquired barrier',async()=>{
+  const f=await fixture();let acquired!:()=>void,release!:()=>void;
+  const ready=new Promise<void>(resolve=>{acquired=resolve}),gate=new Promise<void>(resolve=>{release=resolve});
+  const writer=db.$transaction(async tx=>{
+   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('lowwin:auction-maintenance',0))`;
+   await tx.adminAudit.create({data:{actorId:'isolated-direct-maintainer',action:'AUCTIONS_MAINTENANCE_HALTED',target:'direct-barrier-regression',details:{runId:'direct-barrier-regression'}}});acquired();await gate;
+  },{timeout:10000,maxWait:5000});
+  await ready;const outcome=f.start().then(value=>value,error=>error);
+  try{
+   await vi.waitFor(async()=>{const [row]=await db.$queryRaw<{waiting:boolean}[]>`SELECT EXISTS(SELECT 1 FROM pg_locks WHERE locktype='advisory' AND mode='ShareLock' AND NOT granted AND database=(SELECT oid FROM pg_database WHERE datname=current_database())) AS waiting`;expect(row.waiting).toBe(true)},{timeout:3000,interval:25});
+   expect(f.direct).not.toHaveBeenCalled();release();await writer;expect(await outcome).toMatchObject({code:'AUCTIONS_PAUSED'});expect(f.direct).not.toHaveBeenCalled();expect(await db.chapaCheckout.count({where:{userId:f.user}})).toBe(0);
+  }finally{
+   release();await writer.catch(()=>{});await outcome;
+   await db.$transaction(async tx=>{await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('lowwin:auction-maintenance',0))`;await tx.adminAudit.create({data:{actorId:'isolated-direct-maintainer',action:'AUCTIONS_MAINTENANCE_RESUMED',target:'direct-barrier-regression',details:{runId:'direct-barrier-regression'}}})});
+  }
+ });
+ it('commits both original creation/dispatch budgets once and rolls them back together when creation is exhausted',async()=>{
+  const f=await fixture();await f.start();
+  const creation=`app:chapa-inline-create:${chapaHash(f.user)}`,initialization=`app:chapa-inline-initialize:${chapaHash(f.id())}`;
+  expect((await db.rateLimit.findUniqueOrThrow({where:{key:creation}})).count).toBe(1);expect((await db.rateLimit.findUniqueOrThrow({where:{key:initialization}})).count).toBe(1);
+  await f.start();expect((await db.rateLimit.findUniqueOrThrow({where:{key:initialization}})).count).toBe(1);expect(f.direct).toHaveBeenCalledOnce();
+  const exhausted=await fixture();for(let index=0;index<24;index++)expect(await allowIdentityRequest(db,'chapa-inline-create',exhausted.user,24,3600000)).toBe(true);
+  const before=await db.rateLimit.count({where:{key:{startsWith:'app:chapa-inline-initialize:'}}});await expect(exhausted.start()).rejects.toMatchObject({code:'RATE_LIMITED'});
+  expect(await db.chapaCheckout.count({where:{userId:exhausted.user}})).toBe(0);expect(exhausted.direct).not.toHaveBeenCalled();expect((await db.rateLimit.findUniqueOrThrow({where:{key:`app:chapa-inline-create:${chapaHash(exhausted.user)}`}})).count).toBe(24);expect(await db.rateLimit.count({where:{key:{startsWith:'app:chapa-inline-initialize:'}}})).toBe(before);
+ });
  it('successful USSD validation immediately verifies privately and credits despite a recent pending private lookup',async()=>{
   const f=await fixture();await f.start();await f.verify();expect(f.lookup).toHaveBeenCalledOnce();expect(await balance(f.user)).toBe('0');f.setValidation('SUCCESS');f.setStatus('SUCCESS');
   const result=await f.verify();expect(result).toMatchObject({status:'CREDITED',providerStatus:'SUCCESS',verificationState:'VERIFIED',completionSignalPending:false});expect(f.lookup).toHaveBeenCalledTimes(2);expect(f.direct).toHaveBeenCalledOnce();expect(await balance(f.user)).toBe('40');await f.verify();expect(await db.journal.count({where:{kind:'CHAPA_RECEIPT',operation:{userId:f.user}}})).toBe(1);

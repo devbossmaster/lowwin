@@ -15,34 +15,49 @@ const order={id:'owned-progress',purpose:'BID',chargeType:'DIRECT',status:'AUTH_
 const base={order,busy:false,restoring:false,paused:false,error:'',started:true,canStartAgain:true,markPresented:()=>{}} as unknown as ReturnType<typeof useChapaPayment>;
 function render(purpose:'BID'|'TOP_UP',payment=base,am=false){return renderToStaticMarkup(createElement(MiniLocaleProvider,{initialLanguage:am?'am':'en',children:purpose==='TOP_UP'?createElement(WalletTopUpProgress,{payment:{...payment,order:payment.order?{...payment.order,purpose}:null},amount:'35.00',provider:'telebirr',phone:'0912345678',onRetry:()=>{},onClose:()=>{},footerPortal:true}):createElement(PaymentProgress,{payment,summary:{auctionTitle:'Owned auction',numbers:['4.25'],total:'35.00',provider:'telebirr',phone:'0912345678'},onRetry:()=>{},onClose:()=>{}})}))}
 beforeEach(()=>{clock.now=started});
+function expectSteadyAuthorization(html:string){
+ expect(html).toContain('data-payment-view="authorization"');expect(html).toContain('data-payment-activity="true"');expect(html).toContain('lucide-loader-circle');
+ for(const absent of ['data-payment-result-actions','data-payment-support-reference','data-payment-connection','Check payment','Retry original request','>Try again</button>'])expect(html).not.toContain(absent);
+}
 describe('shared bid and deposit status surface',()=>{
  it.each(['BID','TOP_UP'] as const)('%s keeps one pending heading and spinner across dispatch, authorization and private fulfillment',purpose=>{
   const stages=[{...base,order:null,busy:true},{...base,order:{...order,status:'SUBMITTING',providerStatus:null,authorizationReference:null} as ChapaCheckoutView},base,{...base,order:{...order,authType:'OTP'} as ChapaCheckoutView},{...base,order:{...order,status:'PENDING',providerStatus:'SUCCESS',verificationState:'VERIFIED'} as ChapaCheckoutView}];
-  for(const payment of stages){const html=render(purpose,payment);expect(html.match(/data-payment-panel="persistent"/g)).toHaveLength(1);expect(html.match(/Processing payment…/g)).toHaveLength(1);expect(html).toContain('lucide-loader-circle');expect(html).not.toContain('Waiting for authorization');expect(html).not.toContain('Confirming your payment');expect(html).not.toContain('Wallet credited');expect(html).not.toContain('bids accepted');expect(html).not.toContain('role="progressbar"')}
+  for(const payment of stages){const html=render(purpose,payment);expect(html.match(/data-payment-panel="persistent"/g)).toHaveLength(1);expect(html.match(/Waiting for authorization…/g)).toHaveLength(1);expectSteadyAuthorization(html);expect(html).not.toContain('Confirming your payment');expect(html).not.toContain('Wallet credited');expect(html).not.toContain('bids accepted');expect(html).not.toContain('role="progressbar"')}
  });
  it('only offers editing after a definite pre-creation rejection, preserving ambiguous originals',()=>{
   const show=(started:boolean)=>renderToStaticMarkup(createElement(MiniLocaleProvider,{initialLanguage:'en',children:createElement(PaymentProgress,{payment:{...base,order:null,busy:false,started,error:'Payment details changed.',errorCode:'DEPOSIT_BONUS_CHANGED'},summary:{auctionTitle:'Owned auction',numbers:['4.25'],total:'35.00',provider:'telebirr',phone:null},onEditPayment:()=>{},onClose:()=>{}})}));
-  const rejected=show(false);expect(rejected).toContain('data-payment-inline-error="true"');expect(rejected).toContain('Review payment details');expect(rejected).toContain('Processing payment…');
-  const ambiguous=show(true);expect(ambiguous).not.toContain('Review payment details');expect(ambiguous).not.toContain('Try again</button>');
+  const rejected=show(false);expect(rejected).toContain('data-payment-inline-error="true"');expect(rejected).toContain('data-payment-view="result"');expect(rejected).toContain('Payment could not start');expect(rejected.match(/<button/g)).toHaveLength(2);expect(rejected).toContain('>Try again</button>');expect(rejected).toContain('>Close</button>');expect(rejected).not.toContain('data-payment-activity');
+  const ambiguous=show(true);expectSteadyAuthorization(ambiguous);expect(ambiguous).not.toContain('Review payment details');expect(ambiguous).not.toContain('Try again</button>');expect(ambiguous).not.toContain('<button');
  });
  it.each(['BID','TOP_UP'] as const)('%s suppresses terminal retry, stale reasons and OTP entry until a retained completion signal is reconciled',purpose=>{
   const pending={...order,status:'NEEDS_REVIEW',providerStatus:'FAILED',verificationState:'VERIFIED',completionSignalPending:true,providerReasonCode:'INVALID_PIN',initializationReasonCode:'INSUFFICIENT_FUNDS',authorizationReasonCode:'INVALID_OTP',authType:'OTP' as const,merchantReference:'LWretained-signal'};
-  const html=render(purpose,{...base,order:pending});expect(html).toContain('data-payment-progress="confirming"');expect(html).toContain('Processing payment…');expect(html).toContain('Support reference: LWretained-signal');
+  const html=render(purpose,{...base,order:pending});expect(html).toContain('data-payment-progress="confirming"');expect(html).toContain('Waiting for authorization…');expectSteadyAuthorization(html);expect(html).not.toContain('LWretained-signal');
   for(const absent of ['Try again','Retry original request','Confirm code','one-time-code','incorrect payment PIN','insufficient funds','Payment not completed'])expect(html).not.toContain(absent);
-  expect(render(purpose,{...base,order:pending},true)).toContain('ክፍያዎ በመካሄድ ላይ');
+  expect(render(purpose,{...base,order:pending},true)).toContain('የክፍያ ፈቃድ በመጠባበቅ ላይ');
  });
- it('keeps cancellation attribution exact and generic failure free of guessed PIN reasons',()=>{
+ it.each(['BID','TOP_UP'] as const)('%s keeps cancellation attribution exact and generic failure free of guessed PIN reasons',purpose=>{
   const cancelled={...order,status:'CANCELLED',providerStatus:'CANCELLED',verificationState:'VERIFIED',verificationUnavailable:false};
-  expect(render('TOP_UP',{...base,order:{...cancelled,providerCancelledBy:'USER'}})).toContain('You cancelled this payment.');
-  expect(render('TOP_UP',{...base,order:{...cancelled,providerCancelledBy:'SYSTEM'}})).not.toContain('You cancelled');
-  const failed=render('TOP_UP',{...base,order:{...cancelled,status:'FAILED',providerStatus:'FAILED',providerReasonCode:'arbitrary bank text'}});
-  expect(failed).toContain('Your provider could not complete this payment.');expect(failed).not.toContain('PIN');expect(failed).not.toContain('arbitrary bank text');
+  for(const am of [false,true]){
+   const message=am?'እርስዎ ይህን ክፍያ ሰርዘዋል።':'You cancelled this payment.',user=render(purpose,{...base,order:{...cancelled,providerCancelledBy:'USER'}},am);
+   expect(user.split(message)).toHaveLength(2);expect(user.match(/data-payment-reason="true"/g)).toHaveLength(1);expect(user).not.toContain('data-payment-inline-error');
+   for(const providerCancelledBy of ['SYSTEM',null])expect(render(purpose,{...base,order:{...cancelled,providerCancelledBy}},am)).not.toContain(message);
+   const unverified=render(purpose,{...base,order:{...cancelled,providerCancelledBy:'USER',verificationState:'UNVERIFIED'}},am);expectSteadyAuthorization(unverified);expect(unverified).not.toContain(message);expect(unverified).not.toContain('data-payment-reason');
+  }
+  const failed=render(purpose,{...base,order:{...cancelled,status:'FAILED',providerStatus:'FAILED',providerReasonCode:'arbitrary bank text'}});
+  expect(failed.split('Your provider could not complete this payment.')).toHaveLength(2);expect(failed).not.toContain('PIN');expect(failed).not.toContain('arbitrary bank text');
  });
- it('shows an unresolved support reference and keeps the original attempt through local expiry',()=>{
+ it.each(['BID','TOP_UP'] as const)('%s presents the exact verified provider reason once in either language without a second generic error',purpose=>{
+  const reasons=[{code:'INVALID_PIN',en:'Chapa reports an incorrect payment PIN.',am:'Chapa የክፍያ PIN ትክክል እንዳልሆነ አሳውቋል።'},{code:'INSUFFICIENT_FUNDS',en:'Chapa reports insufficient funds in your selected provider account.',am:'Chapa በመረጡት የክፍያ አቅራቢ መለያ ውስጥ ያለው ገንዘብ እንደማይበቃ አሳውቋል።'}];
+  for(const reason of reasons)for(const am of [false,true]){
+   const html=render(purpose,{...base,order:{...order,status:'FAILED',providerStatus:'FAILED',verificationState:'VERIFIED',providerReasonCode:reason.code}},am);
+   expect(html.split(am?reason.am:reason.en)).toHaveLength(2);expect(html.match(/data-payment-reason="true"/g)).toHaveLength(1);expect(html).toContain('role="alert"');expect(html).toContain('data-payment-view="result"');expect(html).not.toContain('data-payment-inline-error');expect(html).not.toContain('Your provider could not complete this payment.');expect(html).not.toContain('የክፍያ አቅራቢዎ ይህን ክፍያ ማጠናቀቅ አልቻለም።');expect(html.match(/<button/g)).toHaveLength(2);
+  }
+ });
+ it('keeps the original attempt and steady authorization through local expiry without exposing support diagnostics',()=>{
   clock.now=started+600000;
   const html=render('TOP_UP',{...base,order:{...order,merchantReference:'LWowned-support'},error:'private raw diagnostic'});
-  expect(html).toContain('Support reference: LWowned-support');expect(html).toContain('Do not pay again.');expect(html).not.toContain('Try again');expect(html).not.toContain('private raw diagnostic');expect(html).not.toContain('Payment expired');
-  expect(render('TOP_UP',{...base,order:{...order,merchantReference:'LWowned-support'},error:'offline'},true)).toContain('የእርዳታ መለያ');
+  expectSteadyAuthorization(html);expect(html).toContain('Approve the request on your phone when it appears.');expect(html).not.toContain('LWowned-support');expect(html).not.toContain('private raw diagnostic');expect(html).not.toContain('Payment expired');expect(html).not.toContain('<button');
+  const am=render('TOP_UP',{...base,order:{...order,merchantReference:'LWowned-support'},error:'offline'},true);expectSteadyAuthorization(am);expect(am).toContain('የክፍያ ፈቃድ በመጠባበቅ ላይ…');expect(am).not.toContain('የእርዳታ መለያ');
  });
  it('uses a wallet-only paying state and committed internal-wallet receipt without phone authorization',()=>{
   const summary={auctionTitle:'Owned auction',numbers:['4.25'],total:'35.00',provider:'wallet',phone:null};
@@ -64,17 +79,16 @@ describe('shared bid and deposit status surface',()=>{
   });
   it(`${purpose} keeps accepted authorization primary through transient verification errors, pauses and the old display deadline`,()=>{
    clock.now=started+95000;const html=render(purpose,{...base,paused:true,error:'Temporary verification error',errorCode:'UNAVAILABLE'});
-   expect(html).toContain('Processing payment…');expect(html).toContain('Approve the request on your phone when it appears.');expect(html).toContain('data-payment-progress="authorization"');expect(html).toContain('data-payment-connection');expect(html).toContain('Total payable');expect(html).toContain('Check payment');expect(html).not.toContain('Payment not confirmed yet');expect(html).not.toContain('Payment not completed');expect(html).not.toContain('Try again');expect(html).not.toContain('<ol');expect(html).not.toContain('Confirm code');expect(html).not.toContain('0912345678');
+   expectSteadyAuthorization(html);expect(html).toContain('Waiting for authorization…');expect(html).toContain('Approve the request on your phone when it appears.');expect(html).toContain('data-payment-progress="authorization"');expect(html).toContain('Total payable');expect(html).not.toContain('Payment not confirmed yet');expect(html).not.toContain('Payment not completed');expect(html).not.toContain('Try again');expect(html).not.toContain('<button');expect(html).not.toContain('<ol');expect(html).not.toContain('Confirm code');expect(html).not.toContain('0912345678');
   });
-  it(`${purpose} keeps a security mismatch ahead of authorization`,()=>{const html=render(purpose,{...base,order:{...order,verificationState:'MISMATCH'}});expect(html).toContain('Payment needs review');expect(html).not.toContain('Waiting for authorization');expect(html).not.toContain('Try again')});
+  it(`${purpose} retains an unresolved security mismatch without presenting a result or another charge action`,()=>{const html=render(purpose,{...base,order:{...order,verificationState:'MISMATCH'}});expect(html).toContain('data-payment-progress="uncertain"');expect(html).toContain('data-payment-state="pending"');expectSteadyAuthorization(html);expect(html).not.toContain('Payment not completed');expect(html).not.toContain('<button')});
   it(`${purpose} presents an actual safe terminal reason without claiming that nothing was charged`,()=>{const html=render(purpose,{...base,order:{...order,status:'FAILED',providerStatus:'FAILED',verificationState:'VERIFIED',verificationUnavailable:false,providerReasonCode:'INSUFFICIENT_FUNDS'}});expect(html).toContain('Payment not completed');expect(html).toContain('insufficient funds');expect(html).toContain('Try again');expect(html).toContain('Close');expect(html).toContain('Total payable');expect(html).not.toContain('Nothing was charged');expect(html).not.toContain('<ol')});
-  it(`${purpose} displays a bound authorization error without pretending it is a terminal payment outcome`,()=>{
+  it(`${purpose} keeps bound authorization feedback pending without a terminal result or extra action`,()=>{
    const html=render(purpose,{...base,order:{...order,status:'PENDING',providerStatus:'PENDING',verificationState:'VERIFIED',authorizationReasonCode:'INVALID_PIN'}});
-   expect(html).toContain('Processing payment…');expect(html).toContain('incorrect payment PIN');expect(html).toContain('data-payment-authorization-error="INVALID_PIN"');expect(html).toContain('data-payment-state="pending"');expect(html).toContain('data-payment-inline-error="true"');expect(html).toContain('Check payment');expect(html).toContain('Close');expect(html.match(/<button/g)).toHaveLength(2);
-   expect(html).not.toContain('Try again');expect(html).not.toContain('Retry original');expect(html).toContain('lucide-loader-circle');expect(html).not.toContain('Waiting for authorization');expect(html).not.toContain('data-payment-connection');expect(html).not.toContain('Nothing was charged');
+   expectSteadyAuthorization(html);expect(html).toContain('Waiting for authorization…');expect(html).toContain('data-payment-authorization-error="INVALID_PIN"');expect(html).toContain('data-payment-state="pending"');expect(html).not.toContain('data-payment-inline-error');expect(html).not.toContain('incorrect payment PIN');expect(html).not.toContain('<button');expect(html).not.toContain('Payment not completed');expect(html).not.toContain('Nothing was charged');
   });
  }
- it('does not call verified provider success a credited deposit until the wallet commit exists',()=>{const pending=render('TOP_UP',{...base,order:{...order,status:'PENDING',providerStatus:'SUCCESS',verificationState:'VERIFIED'}});expect(pending).toContain('Processing payment…');expect(pending).toContain('data-payment-panel="persistent"');expect(pending).not.toContain('Wallet credited');expect(pending).not.toContain('>Paid</dt>');const credited=render('TOP_UP',{...base,order:{...order,status:'CREDITED',providerStatus:'SUCCESS',verificationState:'VERIFIED'}});expect(credited).toContain('Wallet credited');expect(credited).toContain('>Paid</dt>');expect(credited).toContain('>Done</button>');expect(credited).not.toContain('Top up again')});
+ it('does not call verified provider success a credited deposit until the wallet commit exists',()=>{const pending=render('TOP_UP',{...base,order:{...order,status:'PENDING',providerStatus:'SUCCESS',verificationState:'VERIFIED'}});expect(pending).toContain('Waiting for authorization…');expect(pending).toContain('data-payment-panel="persistent"');expect(pending).not.toContain('Wallet credited');expect(pending).not.toContain('>Paid</dt>');const credited=render('TOP_UP',{...base,order:{...order,status:'CREDITED',providerStatus:'SUCCESS',verificationState:'VERIFIED'}});expect(credited).toContain('Wallet credited');expect(credited).toContain('>Paid</dt>');expect(credited).toContain('>Close</button>');expect(credited).not.toContain('Top up again')});
  it('shows bonus credit only after the verified wallet commit and preserves the separate principal',()=>{
   const quote={amount:'10.10',totalCredit:'111.11',policyVersion:2,validityDays:7,credited:false};
   const pending=render('TOP_UP',{...base,order:{...order,amount:'101.01',status:'PENDING',providerStatus:'SUCCESS',verificationState:'VERIFIED',depositBonus:quote}});
@@ -82,21 +96,21 @@ describe('shared bid and deposit status surface',()=>{
   const credited=render('TOP_UP',{...base,order:{...order,amount:'101.01',status:'CREDITED',providerStatus:'SUCCESS',verificationState:'VERIFIED',depositBonus:{...quote,credited:true}}});
   expect(credited).toContain('Bidding bonus credited');expect(credited).toContain('ETB 10.10');expect(credited).toContain('ETB 101.01');expect(credited).toContain('ETB 111.11');
  });
- it('keeps Check primary and only offers explicit same-key recovery before authorization exists',()=>{
+ it('retains uncertain originals before authorization without offering manual initialization or another charge',()=>{
   const intent={key:'00000000-0000-4000-8000-000000000001',purpose:'TOP_UP' as const,amount:'35.00',paymentMethod:'telebirr',phone:'251911000000',apiVersion:'v2' as const,kind:'inline' as const,flow:'INLINE' as const};
   const unknown=render('TOP_UP',{...base,order:null,directAttempt:intent,error:'Interrupted',errorCode:'UNAVAILABLE'});
-  expect(unknown).toContain('Check payment');expect(unknown).toContain('Retry original request');expect(unknown).toContain('Close');expect(unknown).not.toContain('Try again');
+  expectSteadyAuthorization(unknown);expect(unknown).not.toContain('<button');expect(unknown).not.toContain('Payment could not start');
   const outstanding=render('TOP_UP',{...base,directAttempt:intent,error:'Interrupted',errorCode:'UNAVAILABLE',paused:true});
-  expect(outstanding).toContain('Check payment');expect(outstanding).not.toContain('Retry original request');expect(outstanding).not.toContain('Try again');
+  expectSteadyAuthorization(outstanding);expect(outstanding).not.toContain('<button');expect(outstanding).not.toContain('Payment could not start');
  });
  it('only mounts the code field for an actual provider-requested OTP',()=>{const ussd=render('TOP_UP');expect(ussd).not.toContain('one-time-code');const otp=render('TOP_UP',{...base,order:{...order,authType:'OTP',verificationState:'VERIFIED'}});expect(otp).toContain('autoComplete="one-time-code"');expect(otp).toContain('Never enter your wallet PIN here');expect(otp).toContain('Confirm code');expect(otp).not.toContain('name="pin"')});
  it('retains the original provider OTP field when that code is rejected and hides stale authorization errors after verified success',()=>{
   const rejected=render('TOP_UP',{...base,order:{...order,authType:'OTP',authorizationReasonCode:'INVALID_OTP'}});
   expect(rejected).toContain('That code was not accepted');expect(rejected).toContain('autoComplete="one-time-code"');expect(rejected).toContain('Confirm code');expect(rejected).not.toContain('Try again');
   const confirming=render('TOP_UP',{...base,order:{...order,status:'PENDING',providerStatus:'SUCCESS',verificationState:'VERIFIED',authorizationReasonCode:'INVALID_PIN'}});
-  expect(confirming).toContain('Processing payment…');expect(confirming).not.toContain('incorrect payment PIN');expect(confirming).not.toContain('Payment authorization stopped');
+  expect(confirming).toContain('Waiting for authorization…');expect(confirming).not.toContain('incorrect payment PIN');expect(confirming).not.toContain('Payment authorization stopped');
  });
- it('uses the same compact surface and localized summary for deposits',()=>{const html=render('TOP_UP',base,true);expect(html).toContain('data-wallet-payment-progress="authorization"');expect(html).toContain('የዋሌት ገቢ');expect(html).toContain('ክፍያዎ በመካሄድ ላይ');expect(html).toContain('data-payment-progress');expect(html).not.toContain('data-bid-payment-progress');expect(html).not.toContain('Connect');expect(html).not.toContain('<ol')});
+ it('uses the same compact surface and localized summary for deposits',()=>{const html=render('TOP_UP',base,true);expect(html).toContain('data-wallet-payment-progress="authorization"');expect(html).toContain('የዋሌት ገቢ');expect(html).toContain('የክፍያ ፈቃድ በመጠባበቅ ላይ');expect(html).toContain('data-payment-progress');expect(html).not.toContain('data-bid-payment-progress');expect(html).not.toContain('Connect');expect(html).not.toContain('<ol')});
  it('retains the established hosted-payment recovery path',()=>{expect(render('TOP_UP',{...base,order:{...order,chargeType:'HOSTED'}})).toContain('data-hosted-recovery')});
  it.each(['BID','TOP_UP'] as const)('%s enabled original-version recovery checks the owned attempt without offering old authorization or initialization',purpose=>{
   const legacy={...order,apiVersion:'legacy' as const,unsupportedLegacy:false,legacyRecoveryAvailable:true,chargeType:'INLINE' as const,authType:'OTP' as const,providerStatus:null};
@@ -126,6 +140,6 @@ describe('shared bid and deposit status surface',()=>{
   const failed={...order,apiVersion:'v2' as const,flowVersion:4,chargeType:'INLINE' as const,paymentMethod:'ebirr',status:'CANCELLED',providerStatus:'CANCELLED',verificationState:'VERIFIED',providerReasonCode:'PAYMENT_CANCELLED'};
   const html=renderToStaticMarkup(createElement(MiniLocaleProvider,{initialLanguage:'en',children:createElement(PaymentProgress,{payment:{...base,order:failed},summary:{auctionTitle:'Owned auction',numbers:['4.25'],total:'35.00',provider:'ebirr',phone:'0912345678'},onRetry:()=>{},onChangePayment:()=>{},onClose:()=>{}})}));
   expect(html).toContain('Payment cancelled');expect(html).not.toContain('Change payment');expect(html).toContain('Try again');expect(html).toContain('Close');expect(html.match(/<button/g)).toHaveLength(2);expect(html).toContain('/payments/ebirr.svg');expect(html).not.toContain('Nothing was charged');
-  const pending=render('TOP_UP',{...base,order:{...failed,purpose:'TOP_UP',status:'PENDING',providerStatus:'SUCCESS'}});expect(pending).toContain('Processing payment…');expect(pending).not.toContain('Wallet credited');
+  const pending=render('TOP_UP',{...base,order:{...failed,purpose:'TOP_UP',status:'PENDING',providerStatus:'SUCCESS'}});expect(pending).toContain('Waiting for authorization…');expect(pending).not.toContain('Wallet credited');
  });
 });

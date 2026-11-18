@@ -1,0 +1,29 @@
+{
+  "scope": "Actual authenticated Telegram Mini App on customer phone; approved 5 ETB Telebirr top-up; no PIN collected",
+  "recordedAt": "2026-11-18T04:28:18.802Z",
+  "applicationRevision": "before PR 19 deployment",
+  "initializationHttpStatus": 202,
+  "initializationRequestMs": 7738,
+  "serverTimingMs": {
+    "auth": 1261.9,
+    "lookup": 629.0,
+    "capabilities": 0.3,
+    "schema": 753.5,
+    "transaction_wait": 251.2,
+    "locks": 757.3,
+    "reauthorize": 254.0,
+    "eligibility": 252.1,
+    "intent": 261.3,
+    "prepare": 2919.6,
+    "dispatch": 5566.9,
+    "initialize": 720.1,
+    "persist": 636.5,
+    "total": 6925.9
+  },
+  "timingNote": "Phases overlap. dispatch is elapsed handler time before provider HTTP. Handler timing excludes Proxy and network.",
+  "finalPrivateUiState": "failed",
+  "resultObservedAfterMs": 48480,
+  "resultTimingNote": "Includes unmeasured customer interaction and polling; not a measurement from cancellation to final result.",
+  "nativePromptLatencyMs": null,
+  "nativeTimingNote": "The baseline window-focus probe did not capture first native prompt onset. Do not infer prompt latency from API timing."
+}
