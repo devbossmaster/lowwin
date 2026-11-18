@@ -35,12 +35,24 @@ describe.skipIf(!url)('Telegram-only entry boundary',()=>{
   await db.rateLimit.update({where:{key},data:{count:59}});
   const requests=await Promise.all(Array.from({length:3},()=>access.getCountedMiniSession(headers,{directKey:randomUUID()},db)));
   expect(requests.filter(result=>result?.rateAllowed)).toHaveLength(1);
-  expect(requests.every(result=>result?.identity.user.id===session.user.id&&result.directOriginal===false)).toBe(true);
+  expect(requests.every(result=>result?.identity.user.id===session.user.id&&result.directOriginal===false&&result.directTopUpReady===true)).toBe(true);
   expect((await db.rateLimit.findUniqueOrThrow({where:{key}})).count).toBe(61);
   await db.rateLimit.delete({where:{key}});
   await db.telegramOwnContact.update({where:{userId:session.user.id},data:{revokedAt:new Date()}});
   expect(await access.getCountedMiniSession(headers,{},db)).toBeNull();
   expect(await db.rateLimit.findUnique({where:{key}})).toBeNull();
+ });
+ it('detects a pending top-up migration within the counted session lookup',async()=>{
+  const first=await sign(signedLaunch({user:JSON.stringify({id:randomInt(6700000000,6800000000),first_name:'Top-up rollout fixture'})}));
+  expect(first.status).toBe(200);
+  const headers=new Headers({cookie:cookies(first)}),options={directKey:randomUUID()};
+  const rollback=Error('Restore atomic top-up routine name');
+  await expect(db.$transaction(async tx=>{
+   await tx.$executeRaw`ALTER FUNCTION public.lowwin_prepare_direct_topup(jsonb,jsonb) RENAME TO lowwin_test_missing_topup`;
+   expect(await access.getCountedMiniSession(headers,options,tx as unknown as PrismaClient)).toMatchObject({rateAllowed:true,directTopUpReady:false});
+   throw rollback;
+  })).rejects.toBe(rollback);
+  expect(await access.getCountedMiniSession(headers,options,db)).toMatchObject({rateAllowed:true,directTopUpReady:true});
  });
  it('binds the exact issued session to verified Telegram identity and denies unbound or revoked sessions',async()=>{const response=await sign(signedLaunch({user:JSON.stringify({id:randomInt(6000000000,6100000000),first_name:'Boundary test'})}));expect(response.status).toBe(200);const headers=new Headers({cookie:response.headers.getSetCookie().map(v=>v.split(';')[0]).join('; ')});const session=await access.getMiniSession(headers,db);expect(session).not.toBeNull();await db.session.update({where:{id:session!.session.id},data:{telegramLaunchId:null}});expect(await access.getMiniSession(headers,db)).toBeNull();await db.session.update({where:{id:session!.session.id},data:{telegramLaunchId:'wrong-identity'}});expect(await access.getMiniSession(headers,db)).toBeNull();await db.session.delete({where:{id:session!.session.id}});expect(await access.getMiniSession(headers,db)).toBeNull()});
  it('public tunnel configuration cannot enable the local preview exception',()=>{const old=process.env.MINI_APP_URL;process.env.MINI_APP_URL='https://example.ngrok-free.app';try{expect(access.localMiniPreview(new Headers({host:'localhost:3000','x-forwarded-host':'localhost:3000'}))).toBe(false)}finally{process.env.MINI_APP_URL=old}});

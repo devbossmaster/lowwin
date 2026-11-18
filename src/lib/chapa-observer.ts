@@ -94,6 +94,7 @@ export function startChapaObserver(id:string,options:Options){
  if(latest)delay=Number.isFinite(latest.pollAfterMs)?Math.min(60000,Math.max(2000,latest.pollAfterMs)):5000;
  let wasHidden=visibility.visibilityState!=='visible',away=wasHidden,lastWakeAt=-Infinity,lastWalletReturnAt=-Infinity,fastUntil=Date.now()+30000;
  let pendingWalletReturnUntil=0;
+ let usedSlowVerificationRetry=false;
  let source:Source|null=null,timer:ReturnType<typeof setTimeout>|undefined,reconnect:ReturnType<typeof setTimeout>|undefined;
  const live=()=>active&&(options.isCurrent?.()??true);
  const foreground=()=>live()&&visibility.visibilityState==='visible';
@@ -105,12 +106,12 @@ export function startChapaObserver(id:string,options:Options){
   return true;
  };
  const accept=(order:ChapaCheckoutView|null,pushed=false)=>{
-  if(!live()||!order||order.id!==id||!acceptChapaSnapshot(latest,order))return;
+  if(!live()||!order||order.id!==id||!acceptChapaSnapshot(latest,order))return false;
   const authorizationReady=order.authType==='USSD'&&!!order.authorizationReference&&order.authorizationReference!==latest?.authorizationReference;
   const completionReady=order.completionSignalPending&&!latest?.completionSignalPending;
   latest=order;verificationFirst||=currentDirect(order);
   if(pushed)options.onSnapshot(order);
-  if(chapaConfirmed(order)||!chapaRecoverable(order)){stop();return}
+  if(chapaConfirmed(order)||!chapaRecoverable(order)){stop();return false}
   delay=Number.isFinite(order.pollAfterMs)?Math.min(60000,Math.max(2000,order.pollAfterMs)):5000;
   // Recovery can discover the immutable intent before Chapa returns its USSD
   // reference. Use that committed change (or a new completion hint) to bring
@@ -118,6 +119,7 @@ export function startChapaObserver(id:string,options:Options){
   const now=Date.now();
   const resumedBeforeReference=authorizationReady&&now<pendingWalletReturnUntil&&queueWalletReturn(now);
   if(resumedBeforeReference||pushed&&currentDirect(order)&&(authorizationReady||completionReady)){verifyWanted=true;void drain()}
+  return true;
  };
  const schedule=()=>{
   clearTimeout(timer);
@@ -138,7 +140,19 @@ export function startChapaObserver(id:string,options:Options){
     if(verificationFirst){snapshotWanted=false;if(!verifyWanted)break}
     const snapshot=snapshotWanted,trigger=!snapshot&&walletReturnWanted?'wallet-return':undefined;
     if(snapshot)snapshotWanted=false;else{verifyWanted=false;walletReturnWanted=false}
-    try{accept(await(snapshot?options.readSnapshot():trigger?options.verify(trigger):options.verify()))}
+    const startedAt=Date.now();
+    try{
+     const order=await(snapshot?options.readSnapshot():trigger?options.verify(trigger):options.verify());
+     const accepted=accept(order);
+     const now=Date.now();
+     // The phone prompt can hold delivery of a nonterminal response without
+     // firing a lifecycle event. Use one already-due check in the same queue.
+     if(!snapshot&&accepted&&foreground()&&!verifyWanted&&!usedSlowVerificationRetry&&now<fastUntil&&now<deadline&&now-startedAt>=delay&&
+      currentDirect(order)&&order?.paymentMethod==='telebirr'&&order.authType==='USSD'&&order.authorizationReference&&
+      (order.status==='AUTH_NEEDED'||order.status==='PENDING')&&!order.verificationUnavailable&&order.verificationState!=='UNAVAILABLE'){
+      usedSlowVerificationRetry=true;verifyWanted=true;
+     }
+    }
     catch(error){
      if(!live())return;
      options.onError?.(error);
