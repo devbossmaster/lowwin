@@ -56,6 +56,7 @@ describe('private access during database outages',()=>{
     ['/api/payments/chapa/direct/current','POST'],
     ['/api/payments/chapa/direct/current/config','GET'],
     ['/api/payments/chapa/direct/bid','POST'],
+    ['/api/payments/chapa/checkouts/11111111-1111-4111-a111-111111111111/events','GET'],
     ['/api/payments/chapa/batches/wallet?key=11111111-1111-4111-a111-111111111111','GET'],
     ['/api/payments/chapa/batches/wallet','POST'],
   ])('delegates %s %s to its fresh owner-authenticated handler without a Proxy database read',async(path,method)=>{
@@ -69,6 +70,8 @@ describe('private access during database outages',()=>{
     '/api/payments/chapa/direct/currently',
     '/api/payments/chapa/direct/current/configuration',
     '/api/payments/chapa/direct/bid/extra',
+    '/api/payments/chapa/checkouts/11111111-1111-4111-a111-111111111111/events/extra',
+    '/api/payments/chapa/checkouts/not-a-uuid/events',
     '/api/payments/chapa/batches/wallet/extra',
   ])('keeps neighboring payment path %s behind Proxy authentication',async path=>{
     access.getMiniSession.mockResolvedValue(null);

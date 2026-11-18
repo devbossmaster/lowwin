@@ -18,8 +18,8 @@ import {publishChapaCommitted} from './chapa-committed';
 import {depositBonusStorageReady,getDepositBonusPolicy,quoteDepositBonusInTransaction} from '../wallet/deposit-bonus';
 import {currentDirectAvailability,currentDirectBinding,currentDirectEngineTransport,currentDirectTransport,currentDirectMethods,requireCurrentDirect} from './chapa-current-direct-provider';
 import {isCurrentDirectCheckout,isCurrentV2Checkout} from './chapa-current-protocol';
+import type {PaymentSessionAuthorizer as Authorize} from './session';
 
-type Authorize=(tx:Prisma.TransactionClient)=>Promise<void>;
 const common={key:z.string().uuid(),flow:z.enum(['INLINE','HOSTED','DIRECT']),paymentMethod:z.enum(['telebirr','cbebirr','mpesa','ebirr','cbe-bank']),phone:z.string().min(9).max(40)};
 const input=z.discriminatedUnion('purpose',[z.object({...common,purpose:z.literal('BID'),batchId:z.string().uuid(),quoteHash:z.string().regex(/^[a-f0-9]{64}$/)}).strict(),z.object({...common,purpose:z.literal('TOP_UP'),amount:z.string().regex(/^(0|[1-9]\d{0,7})(?:\.\d{1,2})?$/),approvedDepositBonusVersion:z.number().int().nonnegative().optional(),approvedDepositBonusAmount:z.string().regex(/^(0|[1-9]\d{0,7})(?:\.\d{1,2})?$/).optional()}).strict()]);
 type InlineInput=z.infer<typeof input>;
@@ -64,18 +64,35 @@ export async function findCurrentDirectCheckoutByKey(client:PrismaClient,userId:
 export function createCurrentDirectCheckout(client:PrismaClient,userId:string,raw:unknown,reauthorize?:Authorize,transport:ChapaTransport=chapaTransport){
  return createInlineCheckout(client,userId,raw,reauthorize,transport===chapaTransport?currentDirectTransport:currentDirectEngineTransport(transport),'DIRECT');
 }
+
+/** This owned lookup can run alongside the mutation limit after authentication.
+ * The route awaits the limit before invoking the request-bound continuation. */
+export async function prepareCurrentDirectCreation(client:PrismaClient,userId:string,raw:unknown,transport:ChapaTransport=chapaTransport){
+ const intent=parsePaymentIntent(raw);
+ const previous=await lookupOriginal(client,userId,intent.body.key);
+ return (reauthorize?:Authorize)=>createParsedCheckout(client,userId,intent,reauthorize,transport===chapaTransport?currentDirectTransport:currentDirectEngineTransport(transport),'DIRECT',previous);
+}
 /** A lost response may discover the existing owned attempt, never initialize it. */
 export async function findInlineCheckoutByKey(client:PrismaClient,userId:string,key:string){
  const order=await client.chapaCheckout.findUnique({where:{userId_key:{userId,key:z.string().uuid().parse(key)}}});
  if(!order||!isV2InlineCheckout(order))throw new ChapaError(404,'NOT_FOUND','Payment not found.');
  return ownChapaCheckout(order);
 }
-/** Quote, contact, ownership and financial guards finish before provider HTTP.
- * The complete immutable intent and its first dispatch lease commit together. */
-export async function createInlineCheckout(client:PrismaClient,userId:string,raw:unknown,reauthorize?:Authorize,transport:ChapaInlineTransport=chapaInlineTransport,protocol:'INLINE'|'DIRECT'='INLINE'){
+function parsePaymentIntent(raw:unknown){
  const body=input.parse(raw),phone=normalizePaymentPhone(body.phone),problem=paymentPhoneProblem(body.phone,body.paymentMethod);
  if(!phone||problem)throw new ChapaError(422,'INVALID_PHONE',paymentPhoneProblemMessage(problem??'invalid'));
- const hash=requestHash(body,phone),previousLookup=measureChapa('lookup',()=>client.chapaCheckout.findUnique({where:{userId_key:{userId,key:body.key}}}));
+ return {body,phone};
+}
+function lookupOriginal(client:PrismaClient,userId:string,key:string){
+ return measureChapa('lookup',()=>client.chapaCheckout.findUnique({where:{userId_key:{userId,key}}}));
+}
+export async function createInlineCheckout(client:PrismaClient,userId:string,raw:unknown,reauthorize?:Authorize,transport:ChapaInlineTransport=chapaInlineTransport,protocol:'INLINE'|'DIRECT'='INLINE'){
+ return createParsedCheckout(client,userId,parsePaymentIntent(raw),reauthorize,transport,protocol);
+}
+/** Quote, contact, ownership and financial guards finish before provider HTTP.
+ * The complete immutable intent and its first dispatch lease commit together. */
+async function createParsedCheckout(client:PrismaClient,userId:string,{body,phone}:ReturnType<typeof parsePaymentIntent>,reauthorize:Authorize|undefined,transport:ChapaInlineTransport,protocol:'INLINE'|'DIRECT',original?:ChapaCheckout|null){
+ const hash=requestHash(body,phone),previousLookup=original===undefined?lookupOriginal(client,userId,body.key):Promise.resolve(original);
  // A safe new Direct top-up can overlap its read-only schema probe with owned
  // key discovery. Capture rejection immediately: an existing original must
  // recover even when rollout readiness is unavailable or creation is paused.
@@ -119,8 +136,14 @@ export async function createInlineCheckout(client:PrismaClient,userId:string,raw
    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`},0))`;
    return halted;
   });
-  if(reauthorize)await measureChapa('reauthorize',()=>reauthorize(tx));const contact=await measureChapa('eligibility',()=>eligible(tx,userId));
-  const replay=await tx.chapaCheckout.findUnique({where:{userId_key:{userId,key:body.key}}});if(replay){assertReplay(replay);return {created:false,order:replay}}
+  const checkCreation=protocol==='DIRECT'?reauthorize?.forCurrentDirectCreate:undefined;
+  const fresh=checkCreation?await measureChapa('reauthorize',()=>checkCreation(tx,userId,body.key)):null;
+  if(!fresh&&reauthorize)await measureChapa('reauthorize',()=>reauthorize(tx));
+  const contact=fresh??await measureChapa('eligibility',()=>eligible(tx,userId));
+  if(fresh?.replayExists!==false){
+   const replay=await tx.chapaCheckout.findUnique({where:{userId_key:{userId,key:body.key}}});
+   if(replay){assertReplay(replay);return {created:false,order:replay}}
+  }
   if(halted)throw new ChapaError(503,'AUCTIONS_PAUSED','New payments are paused. Existing payments can still be checked.');
   if(protocol!=='DIRECT'&&!await allowIdentityRequest(tx,'chapa-inline-create',userId,24,3600000))throw new ChapaError(429,'RATE_LIMITED','Check Transactions before trying another payment.');
   const batch=body.purpose==='BID'?await tx.bidBatchOrder.findFirst({where:{id:body.batchId,userId}}):null;

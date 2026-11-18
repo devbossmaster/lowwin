@@ -16,6 +16,7 @@ const group: Record<string, string> = {
   'settlement-v3.test.ts': 'SETTLEMENT_TEST_DATABASE_URL', 'personal.test.ts': 'PERSONAL_TEST_DATABASE_URL',
   'admin.test.ts': 'ADMIN_TEST_DATABASE_URL', 'operations.test.ts': 'OPS_TEST_DATABASE_URL',
   'payments.test.ts': 'PAYMENT_TEST_DATABASE_URL', 'payment-session.test.ts': 'PAYMENT_TEST_DATABASE_URL',
+  'payment-creation-eligibility.test.ts':'PAYMENT_TEST_DATABASE_URL',
   'admin-wallet-credit.test.ts': 'ADMIN_CREDIT_TEST_DATABASE_URL',
   'admin-payment-table-db.test.ts':'ADMIN_PAYMENT_TABLE_TEST_DATABASE_URL',
   'notification-durability.test.ts':'NOTIFICATION_DURABILITY_TEST_DATABASE_URL',

@@ -100,11 +100,12 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
  const observeDirect=!!state.order&&(chapaApiCharge(state.order)||chapaCurrentV2(state.order))||state.directAttempt?.apiVersion==='v2'&&['inline','direct'].includes(state.directAttempt.kind??'');
  const pollingDeadline=state.order?chapaPollingDeadline(state.order):null;
  useEffect(()=>{
-  if(!orderId||!isPrivateQueryIdentity(queryIdentity)||confirmed||!waiting)return;
+  if(!orderId||!isPrivateQueryIdentity(queryIdentity)||confirmed||!waiting||state.restoring&&!state.order)return;
   const version=epoch.current;
   // A single observer receives committed SSE snapshots and keeps bounded
   // verification as fallback. Reconnect/resume reads only this owned attempt.
   return retainChapaObserver(queryIdentity!,orderId,{
+   initialOrder:state.order,
    readSnapshot:()=>run(`/api/payments/chapa/checkouts/${orderId}`),verify:()=>verifyOwned(orderId),
    onSnapshot:order=>{if(current(version))receive(order)},isCurrent:()=>current(version),
    onPause:()=>update({paused:true}),
@@ -113,7 +114,7 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
    onResume:()=>update({paused:false}),
    onError:cause=>update({error:cause instanceof ChapaClientError?cause.message:'Could not reach payment confirmation. We will retry automatically.',errorCode:cause instanceof ChapaClientError?cause.code:'UNAVAILABLE'}),
   });
- },[orderId,queryIdentity,confirmed,waiting,pollingDeadline,observeDirect,verifyOwned,update,run,current,receive]);
+ },[orderId,queryIdentity,confirmed,waiting,pollingDeadline,observeDirect,state.restoring,verifyOwned,update,run,current,receive]);
  const originalUrl=!orderId&&state.active&&!state.busy&&!state.restoring?chapaOriginalKeyUrl(state.directAttempt)??chapaOriginalRecoveryUrl(state.recoveryKey,state.recoveryProtocol):null;
  useEffect(()=>{
   if(!originalUrl||!isPrivateQueryIdentity(queryIdentity))return;
