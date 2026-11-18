@@ -10,7 +10,7 @@ import {CHAPA_LONG_WAIT_MS,chapaLongWait,chapaPaymentPhase} from '@/lib/chapa-st
 import {chapaPaymentReasonMessage,chapaRequestReasonMessage} from '@/lib/chapa-payment-reason';
 import {formatEtb} from '@/lib/money';
 import {prepareChapaNavigation} from '@/lib/chapa-navigation';
-import {retainChapaObserver,stopChapaObservers} from '@/lib/chapa-observer';
+import {retainChapaObserver,stopChapaObservers,type ChapaVerificationTrigger} from '@/lib/chapa-observer';
 import {startChapaOriginalPolling} from '@/lib/chapa-original-polling';
 import {chapaStatusLabel} from '@/lib/chapa-status-label';
 import {chapaDirectCreationRejected} from '@/lib/chapa-direct-request';
@@ -64,7 +64,7 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
  },[current,receive]);
  // Manual recovery and the single observer share one owned status request.
  // This does not replay initialization or bypass the server verification lease.
- const statusRead=useRef<{id:string;request:Promise<ChapaCheckoutView|null>}|null>(null);
+ const statusRead=useRef<{id:string;trigger?:ChapaVerificationTrigger;request:Promise<ChapaCheckoutView|null>}|null>(null);
  const originalRead=useRef<{url:string;request:Promise<ChapaCheckoutView>}|null>(null);
  const readOriginal=useCallback((url:string)=>{
   if(originalRead.current?.url===url)return originalRead.current.request;
@@ -75,13 +75,20 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
   const release=()=>{controllers.current.delete(controller);if(originalRead.current===flight)originalRead.current=null};
   void request.then(release,release);return request;
  },[]);
- const verifyOwned=useCallback((id:string)=>{
-  if(statusRead.current?.id===id)return statusRead.current.request;
-  const request=run(`/api/payments/chapa/checkouts/${id}`,{method:'POST'});
-  const flight={id,request};statusRead.current=flight;
-  void request.then(()=>{if(statusRead.current===flight)statusRead.current=null},()=>{if(statusRead.current===flight)statusRead.current=null});
+ const verifyOwned=useCallback(function verify(id:string,trigger?:ChapaVerificationTrigger):Promise<ChapaCheckoutView|null>{
+  const previous=statusRead.current;
+  if(previous?.id===id){
+   if(!trigger||previous.trigger===trigger)return previous.request;
+   const version=epoch.current;
+   // Manual Verify may own the current POST. Wait for that result; preserve
+   // a queued return hint only if the same account still needs verification.
+   return previous.request.then(order=>order&&current(version)&&chapaRecoverable(order)&&!chapaConfirmed(order)?verify(id,trigger):order);
+  }
+  const request=run(`/api/payments/chapa/checkouts/${id}`,{method:'POST',...(trigger?{headers:{'X-Lowwin-Wallet-Return':'1'}}:{})});
+  const flight={id,trigger,request};statusRead.current=flight;
+  const release=()=>{if(statusRead.current===flight)statusRead.current=null};void request.then(release,release);
   return request;
- },[run]);
+ },[run,current]);
  useEffect(()=>{
   try{clearChapaAttempts(window.sessionStorage)}catch{}
   const version=++epoch.current;locked.current=false;pendingCreation.current=null;statusRead.current=null;originalRead.current=null;invalidated.current=null;uiTiming.current=null;const next=empty();stateRef.current=next;setSnapshot(next);
@@ -107,7 +114,7 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
   // verification as fallback. Reconnect/resume reads only this owned attempt.
   return retainChapaObserver(queryIdentity!,orderId,{
    initialOrder:state.order,
-   readSnapshot:()=>run(`/api/payments/chapa/checkouts/${orderId}`),verify:()=>verifyOwned(orderId),
+   readSnapshot:()=>run(`/api/payments/chapa/checkouts/${orderId}`),verify:trigger=>verifyOwned(orderId,trigger),
    onSnapshot:order=>{if(current(version))receive(order)},isCurrent:()=>current(version),
    onPause:()=>update({paused:true}),
    deadlineAt:pollingDeadline,

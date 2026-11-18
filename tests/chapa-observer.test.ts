@@ -29,6 +29,31 @@ describe('one owned SSE and verification observer',()=>{
   f.verify.mockResolvedValue({...currentDirect,status:'CREDITED'});f.visibility.visibilityState='visible';f.visibility.dispatchEvent(new Event('visibilitychange'));await vi.advanceTimersByTimeAsync(0);
   expect(f.verify).toHaveBeenCalledTimes(2);expect(f.readSnapshot).not.toHaveBeenCalled();expect(f.sources[1].close).toHaveBeenCalledOnce();stop();
  });
+ it('checks immediately when the original Direct5 checkout receives its committed USSD reference',async()=>{
+  vi.useFakeTimers();const f=fixture(),starting={...currentDirect,status:'SUBMITTING',updatedAt:'2026-11-18T08:00:00.000Z'};
+  const ready={...starting,status:'AUTH_NEEDED',authType:'USSD' as const,authorizationReference:'owned-reference',updatedAt:'2026-11-18T08:00:00.100Z'};
+  let settlePending!:(order:ChapaCheckoutView)=>void;
+  f.verify.mockImplementationOnce(()=>new Promise(resolve=>{settlePending=resolve})).mockResolvedValue(ready);
+  const stop=startChapaObserver(id,{...f.options,initialOrder:starting});await vi.advanceTimersByTimeAsync(100);
+  f.sources[0].frame(ready);f.sources[0].frame(ready);expect(f.verify).toHaveBeenCalledOnce();
+  settlePending(starting);await vi.advanceTimersByTimeAsync(0);
+  expect(f.verify).toHaveBeenCalledTimes(2);expect(f.readSnapshot).not.toHaveBeenCalled();
+  f.sources[0].frame(ready);await vi.advanceTimersByTimeAsync(100);expect(f.verify).toHaveBeenCalledTimes(2);stop();
+ });
+ it('brings a retained Direct5 completion signal forward without treating it as a receipt',async()=>{
+  vi.useFakeTimers();const f=fixture(),hint={...currentDirect,completionSignalPending:true};
+  f.verify.mockResolvedValueOnce(currentDirect).mockResolvedValue(hint);
+  const stop=startChapaObserver(id,{...f.options,initialOrder:currentDirect});await vi.advanceTimersByTimeAsync(100);
+  f.sources[0].frame(hint);await vi.advanceTimersByTimeAsync(0);
+  expect(f.verify).toHaveBeenCalledTimes(2);expect(f.sources[0].close).not.toHaveBeenCalled();
+  f.sources[0].frame(hint);await vi.advanceTimersByTimeAsync(100);expect(f.verify).toHaveBeenCalledTimes(2);stop();
+ });
+ it('does not postpone the due Direct5 verification while its event stream reconnects',async()=>{
+  vi.useFakeTimers();const f=fixture();f.verify.mockResolvedValue(currentDirect);
+  const stop=startChapaObserver(id,{...f.options,initialOrder:currentDirect});await vi.advanceTimersByTimeAsync(1500);
+  f.sources[0].dispatchEvent(new Event('error'));await vi.advanceTimersByTimeAsync(499);expect(f.verify).toHaveBeenCalledOnce();
+  await vi.advanceTimersByTimeAsync(1);expect(f.verify).toHaveBeenCalledTimes(2);stop();
+ });
  it.each([
   {apiVersion:'v2',flowVersion:4,chargeType:'INLINE'},
   {apiVersion:'v2',flowVersion:2,chargeType:'DIRECT'},
@@ -59,6 +84,44 @@ describe('one owned SSE and verification observer',()=>{
   vi.useFakeTimers();const f=fixture();let finish!:(order:ChapaCheckoutView)=>void;f.verify.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve}));
   const stop=startChapaObserver(id,{...f.options,initialOrder:currentDirect});await vi.advanceTimersByTimeAsync(0);f.sources[0].dispatchEvent(new Event('open'));f.wake.dispatchEvent(new Event('focus'));f.wake.dispatchEvent(new Event('online'));expect(f.verify).toHaveBeenCalledOnce();
   finish(currentDirect);await vi.advanceTimersByTimeAsync(0);expect(f.verify).toHaveBeenCalledTimes(2);expect(f.readSnapshot).not.toHaveBeenCalled();stop();
+ });
+ it('preserves one owned wallet-return check behind an older pending request',async()=>{
+  vi.useFakeTimers();const f=fixture(),wallet={...currentDirect,status:'AUTH_NEEDED',authType:'USSD' as const,authorizationReference:'owned-reference'};
+  const handlers=new Map<string,()=>void>();
+  const telegram={onEvent:(event:string,listener:()=>void)=>{handlers.set(event,listener)},offEvent:(event:string)=>{handlers.delete(event)}};
+  let finish!:(order:ChapaCheckoutView)=>void;
+  f.verify.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve})).mockResolvedValue(wallet);
+  const stop=startChapaObserver(id,{...f.options,initialOrder:wallet,telegram});
+  f.visibility.visibilityState='hidden';f.visibility.dispatchEvent(new Event('visibilitychange'));
+  await vi.advanceTimersByTimeAsync(60000);expect(f.verify.mock.calls).toEqual([[]]);expect(f.sources[0].close).toHaveBeenCalledOnce();
+  f.visibility.visibilityState='visible';f.visibility.dispatchEvent(new Event('visibilitychange'));
+  f.wake.dispatchEvent(new Event('focus'));f.wake.dispatchEvent(new Event('online'));handlers.get('activated')!();
+  expect(f.verify.mock.calls).toEqual([[]]);
+  finish(wallet);await vi.advanceTimersByTimeAsync(0);
+  expect(f.verify.mock.calls).toEqual([[],['wallet-return']]);expect(f.readSnapshot).not.toHaveBeenCalled();expect(f.sources[1].close).not.toHaveBeenCalled();
+  stop();expect(handlers.size).toBe(0);
+ });
+ it('detects a blur/focus wallet return while the document stays visible',async()=>{
+  vi.useFakeTimers();const f=fixture(),wallet={...currentDirect,status:'AUTH_NEEDED',authType:'USSD' as const,authorizationReference:'owned-reference'};
+  f.verify.mockResolvedValue(wallet);
+  const stop=startChapaObserver(id,{...f.options,initialOrder:wallet});
+  await vi.advanceTimersByTimeAsync(0);
+  f.wake.dispatchEvent(new Event('focus'));f.wake.dispatchEvent(new Event('online'));
+  await vi.advanceTimersByTimeAsync(0);expect(f.verify.mock.calls).toEqual([[],[]]);
+  f.wake.dispatchEvent(new Event('blur'));f.wake.dispatchEvent(new Event('focus'));
+  await vi.advanceTimersByTimeAsync(0);expect(f.verify.mock.calls).toEqual([[],[],['wallet-return']]);stop();
+ });
+ it.each([
+  {authType:'OTP',authorizationReference:'owned-reference'},
+  {authType:'USSD',authorizationReference:null},
+  {authType:'USSD',authorizationReference:'owned-reference',flowVersion:2},
+ ])('never attaches the wallet-return hint to a different protocol or authorization %j',async authorization=>{
+  vi.useFakeTimers();const f=fixture(),order={...currentDirect,...authorization,status:'AUTH_NEEDED'} as ChapaCheckoutView;
+  f.readSnapshot.mockResolvedValue(order);f.verify.mockResolvedValue(order);
+  const stop=startChapaObserver(id,{...f.options,initialOrder:order});
+  await vi.advanceTimersByTimeAsync(0);
+  f.wake.dispatchEvent(new Event('blur'));f.wake.dispatchEvent(new Event('focus'));await vi.advanceTimersByTimeAsync(0);
+  expect(f.verify).toHaveBeenCalledTimes(2);expect(f.verify.mock.calls).toEqual([[],[]]);stop();
  });
  it('keeps the current owned protocol and request fence when observation transfers to another surface',async()=>{
   vi.useFakeTimers();const f=fixture(),other=fixture();let finish!:(order:ChapaCheckoutView)=>void;f.verify.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve}));

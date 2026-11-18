@@ -72,6 +72,50 @@ test('missing EventSource keeps automatic owned polling recovery without another
  }finally{await f.cleanup()}
 });
 
+test('wallet return prioritizes one owned verification after the current request',async({page})=>{
+ const f=await inlineFixture(page);
+ const checks:Array<{id:string;hint:string|null}>=[];
+ let releaseOld!:()=>void,releaseReturn!:()=>void;
+ const oldReply=new Promise<void>(resolve=>{releaseOld=resolve}),returnReply=new Promise<void>(resolve=>{releaseReturn=resolve});
+ await page.addInitScript(()=>Reflect.set(window,'EventSource',undefined));
+ await page.route(/\/api\/payments\/chapa\/checkouts\/[^/]+$/,async route=>{
+  const request=route.request();
+  if(request.method()!=='POST'){await route.fallback();return}
+  const id=new URL(request.url()).pathname.split('/').at(-1)!;
+  const hint=request.headers()['x-lowwin-wallet-return']??null;
+  checks.push({id,hint});
+  if(checks.length===1){
+   const pending=f.order();
+   await oldReply;
+   await route.fulfill({json:pending}).catch(()=>{});
+   return;
+  }
+  if(hint==='1')await returnReply;
+  await route.fulfill({json:f.order()}).catch(()=>{});
+ });
+ try{
+  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await selectBids(page,f.title);
+  await dialog.getByRole('radio',{name:'telebirr',exact:true}).check();await dialog.locator('[data-payment-action]').click();
+  await expectSharedAuthorization(dialog);
+  const id=f.order().id;
+  await expect.poll(()=>checks).toEqual([{id,hint:null}]);
+  await page.evaluate(()=>{
+   Object.defineProperty(document,'visibilityState',{configurable:true,value:'hidden'});
+   document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await wakePayment(page);
+  expect(checks).toEqual([{id,hint:null}]);
+  await expect(resultClose(dialog)).toHaveCount(0);
+  releaseOld();
+  await expect.poll(()=>checks).toEqual([{id,hint:null},{id,hint:'1'}]);
+  await expect(resultClose(dialog)).toHaveCount(0);
+  f.acceptBids();releaseReturn();
+  await expect(resultClose(dialog)).toBeVisible();
+  expect(checks).toEqual([{id,hint:null},{id,hint:'1'}]);
+  expect(f.commands).toHaveLength(1);expect(f.unexpected).toHaveLength(0);
+ }finally{releaseOld();releaseReturn();await f.cleanup()}
+});
+
 test('retained completion hints stay checking until a fresh private terminal result resolves the original attempt',async({page})=>{
  const f=await inlineFixture(page);await page.addInitScript(()=>Reflect.set(window,'EventSource',undefined));
  const resume=async()=>{
