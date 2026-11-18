@@ -251,6 +251,11 @@ export async function verifyChapaCheckout(client:PrismaClient,id:string,userId?:
  return runChapaVerification(client,id,userId,reauthorize,transport,eventCheck,providedAuthorizationFeedback,completionSignal);
 }
 
+/** Only the authenticated webhook worker supplies this server-read checkout. */
+export function verifyChapaWebhookCheckout(client:PrismaClient,snapshot:ChapaCheckout,transport:ChapaTransport,completion?:ChapaCompletionStatus){
+ return runChapaVerification(client,snapshot.id,undefined,undefined,transport,'webhook',undefined,completion,snapshot);
+}
+
 async function readVerificationCheckout(client:PrismaClient,id:string,userId?:string){
  z.string().uuid().parse(id);
  const snapshot=await measureChapa('database',()=>client.chapaCheckout.findFirst({where:{id,...(userId?{userId}:{})}}));
@@ -307,8 +312,9 @@ async function verifyChapaCheckoutOnce(client:PrismaClient,id:string,userId:stri
  // Returning from the native wallet can bring forward one owned USSD check.
  // The hint is scheduling only. Current leases and provider backoff win.
  const waitingForPoll=snapshot.nextCheckAt.getTime()>now;
- const earlyReturn=waitingForPoll&&!eventCheck&&walletReturn&&!!userId&&!!reauthorize&&isCurrentDirectCheckout(snapshot)&&
+ const returnedFromWallet=!eventCheck&&walletReturn&&!!userId&&!!reauthorize&&isCurrentDirectCheckout(snapshot)&&
   pending.includes(snapshot.status)&&snapshot.expiresAt.getTime()>now&&shouldRefreshChapaAuthorization(snapshot);
+ const earlyReturn=waitingForPoll&&returnedFromWallet;
  if(snapshot.leaseUntil&&snapshot.leaseUntil.getTime()>now||snapshot.verificationRetryAfter&&snapshot.verificationRetryAfter.getTime()>now||!eventCheck&&waitingForPoll&&!earlyReturn)return ownChapaCheckout(snapshot);
  let verificationLease=after(CHAPA_VERIFICATION_LEASE_MS);const handledSignal=snapshot.verificationSignalVersion??0;
  const acquired=await measureChapa('database',()=>client.$transaction(async tx=>{
@@ -323,12 +329,15 @@ async function verifyChapaCheckoutOnce(client:PrismaClient,id:string,userId:stri
  if(!acquired)return ownChapaCheckout(snapshot);
  if(!acquired.count)return ownChapaCheckout(await measureChapa('database',()=>client.chapaCheckout.findUniqueOrThrow({where:{id}})));
  work.changed=true;
- if(verificationLease.getTime()-Date.now()<CHAPA_MIN_VERIFICATION_LEASE_REMAINING_MS){
+ // A pending wallet-return lookup can need both the usual refresh and a
+ // second private lookup. Reserve time for that additional bounded request.
+ const minimumLeaseRemaining=CHAPA_MIN_VERIFICATION_LEASE_REMAINING_MS+(returnedFromWallet?10000:0);
+ if(verificationLease.getTime()-Date.now()<minimumLeaseRemaining){
   const renewedLease=after(CHAPA_VERIFICATION_LEASE_MS);
   const renewed=await measureChapa('database',()=>client.chapaCheckout.updateMany({where:{id,creditJournalId:null,leaseUntil:verificationLease},data:{leaseUntil:renewedLease}}));
   if(!renewed.count)return getChapaCheckout(client,snapshot.userId,id);
   verificationLease=renewedLease;
-  if(verificationLease.getTime()-Date.now()<CHAPA_MIN_VERIFICATION_LEASE_REMAINING_MS){
+  if(verificationLease.getTime()-Date.now()<minimumLeaseRemaining){
    await measureChapa('database',()=>client.chapaCheckout.updateMany({where:{id,creditJournalId:null,leaseUntil:verificationLease},data:{leaseUntil:null}}));
    return getChapaCheckout(client,snapshot.userId,id);
   }
@@ -337,25 +346,44 @@ async function verifyChapaCheckoutOnce(client:PrismaClient,id:string,userId:stri
  // Fence every resulting write by our claimed value: an old request must not
  // clear another verifier's lease or replace evidence recorded by its owner.
  const ownedVerification={id,creditJournalId:null,leaseUntil:verificationLease};
- let raw:unknown,privateCheckedAt:Date,authorizationFeedback=providedAuthorizationFeedback;try{
+ const readPrivateProof=async()=>{
+  const raw=await measureChapa('verify',()=>selectedTransport.lookup(snapshot.merchantReference));
+  return {raw,checkedAt:new Date()};
+ };
+ let privateProof:Awaited<ReturnType<typeof readPrivateProof>>|undefined,authorizationFeedback=providedAuthorizationFeedback;
+ try{
   // USSD polling refreshes the provider's charge state. An authenticated event
   // or its retained, unhandled Direct5 terminal signal already requests private
-  // verification: do not add another authorization round trip before it. The
-  // signal never proves payment. OTPs belong only to explicit authorization.
+  // verification. After an owned wallet return, also ask for private evidence
+  // first so a final result can settle without a redundant USSD refresh.
   const authorizationFlow=snapshot.chargeType==='DIRECT'||inlineV2&&snapshot.chargeType==='INLINE';
   const retainedDirectCompletion=isCurrentDirectCheckout(snapshot)&&chapaCompletionStatus(snapshot.verificationCompletionStatus)!==null&&handledSignal>snapshot.verificationHandledSignalVersion;
-  if(eventCheck!=='webhook'&&eventCheck!=='deferred'&&!retainedDirectCompletion&&authorizationFlow&&shouldRefreshChapaAuthorization(snapshot)&&selectedTransport.validate&&(!inlineV2||inlineTransportBinding(snapshot)))try{
+  if(returnedFromWallet&&!retainedDirectCompletion)try{
+   privateProof=await readPrivateProof();
+  }catch(error){
+   // The merchant reference can briefly be unavailable before the wallet
+   // authorization is visible. Let the usual refresh reconcile that case.
+   if(!(error instanceof ChapaProviderError&&error.httpStatus===404&&selectedTransport.validate))throw error;
+  }
+  const firstStatus=privateProof&&parseChapaEvidence(privateProof.raw)?.status;
+  const refreshAuthorization=!privateProof||firstStatus==='PENDING'||firstStatus==='AUTH_NEEDED';
+  if(refreshAuthorization&&eventCheck!=='webhook'&&eventCheck!=='deferred'&&!retainedDirectCompletion&&authorizationFlow&&shouldRefreshChapaAuthorization(snapshot)&&selectedTransport.validate&&(!inlineV2||inlineTransportBinding(snapshot)))try{
    const validation=await measureChapa('validate',()=>selectedTransport.validate!({reference:snapshot.authorizationReference!,paymentMethod:snapshot.paymentMethod!}));
    authorizationFeedback=chapaAuthorizationFeedback(validation,snapshot);
    const validationProof=parseChapaEvidence(validation),completion=currentV2&&authorizationFeedback?chapaCompletionStatus(validationProof?.status):null;
-   if(completion&&(snapshot.verificationCompletionStatus!==completion||snapshot.verificationSignalVersion<=snapshot.verificationHandledSignalVersion))await recordChapaVerificationSignal(client,snapshot,authorizationFeedback,completion);
+   if(completion){
+    // Only a new private lookup can confirm a terminal wallet refresh.
+    privateProof=undefined;
+    if(snapshot.verificationCompletionStatus!==completion||snapshot.verificationSignalVersion<=snapshot.verificationHandledSignalVersion)await recordChapaVerificationSignal(client,snapshot,authorizationFeedback,completion);
+   }
    const matchingPending=currentV2&&authorizationFeedback?.kind==='waiting'&&validationProof?.status==='PENDING';
-   if(canSkipChapaPrivateVerification(snapshot,matchingPending,!!eventCheck||handledSignal>(snapshot.verificationHandledSignalVersion??0))){
+   if(!returnedFromWallet&&canSkipChapaPrivateVerification(snapshot,matchingPending,!!eventCheck||handledSignal>(snapshot.verificationHandledSignalVersion??0))){
     const skipped=await measureChapa('database',()=>client.chapaCheckout.updateMany({where:{...ownedVerification,verificationSignalVersion:handledSignal},data:{leaseUntil:null,nextCheckAt:after(chapaPendingVerificationDelay(snapshot,authorizationFlow)),verificationRetryAfter:null,...(publicChapaAuthorizationReason(snapshot)?{reason:'PAYMENT_NOT_COMPLETED'}:{})}}));
     if(skipped.count)return getChapaCheckout(client,snapshot.userId,id);
    }
   }catch(error){if(error instanceof ChapaProviderError&&error.httpStatus===429)throw error;authorizationFeedback=chapaAuthorizationErrorFeedback(error)}
-  raw=await measureChapa('verify',()=>selectedTransport.lookup(snapshot.merchantReference));privateCheckedAt=new Date()}catch(error){
+  privateProof??=await readPrivateProof();
+ }catch(error){
   const category=error instanceof ChapaProviderError?error.category:'temporary';
   const policy={configuration:{reason:'PROVIDER_CONFIGURATION_REQUIRED',delay:300000},reference:{reason:'PROVIDER_REFERENCE_UNAVAILABLE',delay:60000},state:{reason:'PROVIDER_STATE_UNAVAILABLE',delay:60000},request:{reason:'PROVIDER_REQUEST_REJECTED',delay:60000},temporary:{reason:'PROVIDER_CONFIRMATION_REQUIRED',delay:error instanceof ChapaProviderError&&error.httpStatus===429?60000:30000}}[category];
   // HTTP errors describe this API request, not whether the customer paid.
@@ -372,6 +400,7 @@ async function verifyChapaCheckoutOnce(client:PrismaClient,id:string,userId:stri
   }
   return {...await getChapaCheckout(client,snapshot.userId,id),verificationUnavailable:true};
  }
+ const {raw,checkedAt:privateCheckedAt}=privateProof;
  const evidence=legacy?parseLegacyChapaEvidence(raw):parseChapaEvidence(raw);
  let directBinding=true;
  if(snapshot.chargeType==='DIRECT'&&!isCurrentDirectCheckout(snapshot)&&evidence){

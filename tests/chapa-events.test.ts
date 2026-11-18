@@ -4,27 +4,27 @@ import type {PrismaClient} from '@prisma/client';
 const f=vi.hoisted(()=>({enabled:true,legacyEnabled:false,verify:vi.fn()}));
 vi.mock('../src/modules/payments/chapa-provider',()=>({chapaAvailability:()=>({recoveryEnabled:f.enabled,mode:'test'}),chapaTransport:{create:vi.fn(),lookup:vi.fn(),methods:vi.fn()}}));
 vi.mock('../src/modules/payments/chapa-legacy-recovery',()=>({chapaLegacyRecoveryAvailability:()=>({recoveryEnabled:f.legacyEnabled,mode:'test'})}));
-vi.mock('../src/modules/payments/chapa',()=>({verifyChapaCheckout:f.verify,unsupportedLegacyChapaCheckout:(order:{flowVersion?:number})=>order.flowVersion===3&&!f.legacyEnabled}));
+vi.mock('../src/modules/payments/chapa',()=>({verifyChapaWebhookCheckout:f.verify,unsupportedLegacyChapaCheckout:(order:{flowVersion?:number})=>order.flowVersion===3&&!f.legacyEnabled}));
 import {processChapaEvent,processChapaEvents} from '../src/modules/payments/chapa-events';
 
 const start=new Date('2026-10-29T12:00:00Z');
 function fixture(attempts=0){
  const event={id:'durable-event',checkoutId:'owned-checkout',mode:'test',status:'QUEUED',attempts,nextAttemptAt:new Date(0),leaseUntil:null as Date|null,completedAt:null as Date|null,receivedAt:new Date(start.getTime()-120000),event:'payment.success'};
  const checkout={id:'owned-checkout',flowVersion:4,initialization:{webhookSignatureProfile:'raw_body' as string|undefined},creditJournalId:null as string|null,leaseUntil:null as Date|null,providerStatus:'PENDING',verificationState:'UNVERIFIED',status:'PENDING'};
+ const claim=vi.fn(async({where,data}:any)=>{
+  if(where.status!==event.status||event.attempts>=where.attempts.lt||event.nextAttemptAt>new Date()||event.leaseUntil&&event.leaseUntil>new Date())return [];
+  event.attempts+=data.attempts.increment;event.leaseUntil=data.leaseUntil;
+  return [{...event}];
+ });
  const updateMany=vi.fn(async({where,data}:any)=>{
   if(where.status!==event.status)return {count:0};
-  if(data.attempts){
-   if(event.attempts>=where.attempts.lt||event.nextAttemptAt>new Date()||event.leaseUntil&&event.leaseUntil>new Date())return {count:0};
-   event.attempts+=data.attempts.increment;event.leaseUntil=data.leaseUntil;return {count:1};
-  }
   if(where.leaseUntil?.getTime()!==event.leaseUntil?.getTime())return {count:0};
   if(where.nextAttemptAt&&where.nextAttemptAt.getTime()!==event.nextAttemptAt.getTime())return {count:0};
   Object.assign(event,data);return {count:1};
  });
  const findMany=vi.fn(async()=>[{id:event.id}]);
- const readEvent=vi.fn(async()=>({...event}));
- const client={chapaWebhookEvent:{updateMany,findUniqueOrThrow:readEvent,findMany},chapaCheckout:{findUniqueOrThrow:vi.fn(async()=>({...checkout}))}};
- return {event,checkout,updateMany,findMany,readEvent,client:client as unknown as PrismaClient};
+ const client={chapaWebhookEvent:{updateMany,updateManyAndReturn:claim,findMany},chapaCheckout:{findUniqueOrThrow:vi.fn(async()=>({...checkout}))}};
+ return {event,checkout,updateMany,findMany,claim,client:client as unknown as PrismaClient};
 }
 
 beforeEach(()=>{f.enabled=true;f.legacyEnabled=false;vi.clearAllMocks();vi.useFakeTimers();vi.setSystemTime(start);f.verify.mockResolvedValue(undefined)});
@@ -33,11 +33,11 @@ afterEach(()=>{vi.useRealTimers();vi.restoreAllMocks()});
 describe('durable Chapa event confirmation',()=>{
  it.each(['payment.pending','payment.auth_needed'])('keeps %s as a generic reconciliation hint without retaining a terminal completion',async event=>{
   const state=fixture();state.event.event=event;
-  await processChapaEvent(state.client,state.event.id);expect(f.verify).toHaveBeenCalledWith(state.client,state.checkout.id,undefined,undefined,expect.anything(),'webhook',undefined,undefined);
+  await processChapaEvent(state.client,state.event.id);expect(f.verify).toHaveBeenCalledWith(state.client,state.checkout,expect.anything(),undefined);
  });
  it('does not retain terminal payload metadata for an unpinned historical signature profile',async()=>{
   const state=fixture();state.checkout.initialization.webhookSignatureProfile=undefined;
-  await processChapaEvent(state.client,state.event.id);expect(f.verify).toHaveBeenCalledWith(state.client,state.checkout.id,undefined,undefined,expect.anything(),'webhook',undefined,undefined);
+  await processChapaEvent(state.client,state.event.id);expect(f.verify).toHaveBeenCalledWith(state.client,state.checkout,expect.anything(),undefined);
  });
  it('uses original-version verification for configured historical recovery even when v2 is paused',async()=>{
   f.enabled=false;f.legacyEnabled=true;const state=fixture();state.checkout.flowVersion=3;
@@ -62,7 +62,7 @@ describe('durable Chapa event confirmation',()=>{
  it.each(['PENDING','AUTH_NEEDED'])('keeps verified %s responses queued until a final result instead of trusting the success hint',async status=>{
   const state=fixture();f.verify.mockImplementation(async()=>{Object.assign(state.checkout,{providerStatus:status,verificationState:'VERIFIED',status})});
   expect(await processChapaEvent(state.client,state.event.id)).toBe(false);
-  expect(f.verify).toHaveBeenCalledWith(state.client,state.checkout.id,undefined,undefined,expect.anything(),'webhook',undefined,'SUCCESS');
+  expect(f.verify).toHaveBeenCalledWith(state.client,expect.objectContaining({id:state.checkout.id}),expect.anything(),'SUCCESS');
   expect(state.checkout.creditJournalId).toBeNull();expect(state.event).toMatchObject({status:'QUEUED',attempts:1,completedAt:null,leaseUntil:null});
   expect(state.event.nextAttemptAt.getTime()).toBeGreaterThan(start.getTime());
   expect(await processChapaEvent(state.client,state.event.id)).toBe(false);expect(f.verify).toHaveBeenCalledTimes(1);
@@ -91,9 +91,14 @@ describe('durable Chapa event confirmation',()=>{
   f.verify.mockImplementation(async()=>{Object.assign(state.checkout,{providerStatus:'SUCCESS',verificationState:'VERIFIED',status:'CREDITED',creditJournalId:'later-canonical-credit'})});
   expect(await processChapaEvent(state.client,state.event.id)).toBe(true);expect(state.event.status).toBe('PROCESSED');expect(f.verify).toHaveBeenCalledTimes(2);
  });
- it('preserves a deferred hint that arrives after lease claim but before the worker reads the event',async()=>{
+ it('preserves a deferred hint that arrives just after the atomic lease claim on the final attempt',async()=>{
   const state=fixture(4),deferred=new Date(start.getTime()+60000);
-  state.readEvent.mockImplementationOnce(async()=>{state.event.nextAttemptAt=deferred;return {...state.event}});
+  const claim=state.claim.getMockImplementation()!;
+  state.claim.mockImplementationOnce(async args=>{
+   const claimed=await claim(args);
+   state.event.nextAttemptAt=deferred;
+   return claimed;
+  });
   f.verify.mockImplementation(async()=>{Object.assign(state.checkout,{providerStatus:'FAILED',verificationState:'VERIFIED',status:'FAILED'})});
   expect(await processChapaEvent(state.client,state.event.id)).toBe(false);
   expect(state.event).toMatchObject({status:'QUEUED',attempts:0,nextAttemptAt:deferred,leaseUntil:null,completedAt:null});
@@ -162,7 +167,7 @@ describe('durable Chapa event confirmation',()=>{
  });
  it('passes a delivery into the fenced coordinator during an active lease and skips a disabled worker',async()=>{
   const state=fixture();state.checkout.leaseUntil=new Date(start.getTime()+20000);
-  expect(await processChapaEvent(state.client,state.event.id)).toBe(false);expect(f.verify).toHaveBeenCalledWith(state.client,state.checkout.id,undefined,undefined,expect.anything(),'webhook',undefined,'SUCCESS');expect(state.event.status).toBe('QUEUED');
+  expect(await processChapaEvent(state.client,state.event.id)).toBe(false);expect(f.verify).toHaveBeenCalledWith(state.client,state.checkout,expect.anything(),'SUCCESS');expect(state.event.status).toBe('QUEUED');
   f.enabled=false;
   expect(await processChapaEvents(state.client)).toEqual({checked:0});expect(state.findMany).not.toHaveBeenCalled();
  });

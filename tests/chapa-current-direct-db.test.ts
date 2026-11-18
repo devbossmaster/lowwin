@@ -157,12 +157,57 @@ describe.skipIf(!database)('current Direct5 owned creation and private committed
   await Promise.all([check(true),check(true)]);
   await check(true);
   expect(f.validate).toHaveBeenCalledOnce();expect(f.lookup).toHaveBeenCalledOnce();
+  expect(f.lookup.mock.invocationCallOrder[0]).toBeLessThan(f.validate.mock.invocationCallOrder[0]);
   expect(await db.bid.count({where:{userId:f.user}})).toBe(0);
   const saved=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});
   expect(saved.attempts).toBe(2);expect(saved.leaseUntil).toBeNull();
   f.setStatus('SUCCESS');f.setValidation('SUCCESS');await f.due();
   await expect(check(false)).resolves.toMatchObject({status:'BID_ACCEPTED',verificationState:'VERIFIED'});
   expect(await db.bid.count({where:{userId:f.user}})).toBe(2);
+ });
+ it.each([true,false])('settles a privately completed auction wallet return without validation (poll due: %s)',async(due)=>{
+  const f=await fixture('BID'),{order}=await f.start();
+  await db.chapaCheckout.update({where:{id:order.id},data:{nextCheckAt:new Date(Date.now()+(due?-1:30_000))}});
+  f.setStatus('SUCCESS');
+  const returned=await prepareOwnedChapaVerification(db,order.id,f.user,f.transport,true);
+  await expect(returned(vi.fn(async()=>{}))).resolves.toMatchObject({status:'BID_ACCEPTED',verificationState:'VERIFIED'});
+  expect(f.lookup).toHaveBeenCalledOnce();expect(f.validate).not.toHaveBeenCalled();
+  expect(await db.bid.count({where:{userId:f.user}})).toBe(2);
+  expect(await db.journal.count({where:{kind:'CHAPA_RECEIPT',operation:{userId:f.user}}})).toBe(1);
+ });
+ it('records a privately cancelled wallet return without running another authorization',async()=>{
+  const f=await fixture(),{order}=await f.start();f.setStatus('CANCELLED');
+  const returned=await prepareOwnedChapaVerification(db,order.id,f.user,f.transport,true);
+  await expect(returned(async()=>{})).resolves.toMatchObject({status:'CANCELLED',providerStatus:'CANCELLED',verificationState:'VERIFIED'});
+  expect(f.lookup).toHaveBeenCalledOnce();expect(f.validate).not.toHaveBeenCalled();
+  expect(await balance(f.user)).toBe('0');
+ });
+ it('looks up fresh private evidence when a pending wallet return refresh detects completion',async()=>{
+  const f=await fixture(),{order}=await f.start();
+  f.setValidation('SUCCESS');
+  f.lookup.mockImplementationOnce(async()=>{const pendingProof=f.proof();f.setStatus('SUCCESS');return pendingProof});
+  const returned=await prepareOwnedChapaVerification(db,order.id,f.user,f.transport,true);
+  await expect(returned(async()=>{})).resolves.toMatchObject({status:'CREDITED',providerStatus:'SUCCESS'});
+  expect(f.lookup).toHaveBeenCalledTimes(2);expect(f.validate).toHaveBeenCalledOnce();
+  expect(f.lookup.mock.invocationCallOrder[0]).toBeLessThan(f.validate.mock.invocationCallOrder[0]);
+  expect(f.validate.mock.invocationCallOrder[0]).toBeLessThan(f.lookup.mock.invocationCallOrder[1]);
+ });
+ it('retains authorization refresh when the initial merchant lookup has no reference yet',async()=>{
+  const f=await fixture(),{order}=await f.start();f.setStatus('SUCCESS');
+  f.lookup.mockRejectedValueOnce(new ChapaProviderError(404,'PAYMENT_NOT_FOUND'));
+  const returned=await prepareOwnedChapaVerification(db,order.id,f.user,f.transport,true);
+  await expect(returned(async()=>{})).resolves.toMatchObject({status:'CREDITED',providerStatus:'SUCCESS'});
+  expect(f.lookup).toHaveBeenCalledTimes(2);expect(f.validate).toHaveBeenCalledOnce();
+ });
+ it('keeps provider rate limiting on a private-first wallet return',async()=>{
+  const f=await fixture(),{order}=await f.start();
+  f.lookup.mockRejectedValueOnce(new ChapaProviderError(429,'RATE_LIMITED'));
+  const returned=await prepareOwnedChapaVerification(db,order.id,f.user,f.transport,true);
+  await expect(returned(async()=>{})).resolves.toMatchObject({verificationUnavailable:true});
+  const retry=await prepareOwnedChapaVerification(db,order.id,f.user,f.transport,true);
+  await expect(retry(async()=>{})).resolves.toMatchObject({verificationState:'UNAVAILABLE'});
+  expect(f.lookup).toHaveBeenCalledOnce();expect(f.validate).not.toHaveBeenCalled();
+  expect(await balance(f.user)).toBe('0');
  });
  it('keeps the existing provider deadline, lease and fresh session checks on return',async()=>{
   const f=await fixture(),{order}=await f.start(),reauthorize=vi.fn(async()=>{}),future=new Date(Date.now()+30_000);
