@@ -4,7 +4,7 @@ import {execFileSync} from 'node:child_process';
 import {randomInt,randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {assertPlayerContact} from '../src/modules/auth/own-contact';
-import {assertBatchEligibilityInTransaction,validateBatchInTransaction} from '../src/modules/auctions/batch';
+import {assertBatchEligibilityInTransaction,quoteBidBatch,validateBatchInTransaction} from '../src/modules/auctions/batch';
 import {ChapaError} from '../src/modules/payments/chapa-provider';
 import {verifiedReferralUser} from './referral-fixtures';
 import {bidAuction} from './bid-fixtures';
@@ -27,6 +27,18 @@ describe.skipIf(!database)('fresh batch eligibility on isolated PostgreSQL',()=>
  it('retains the gated no-Telegram local fixture exception and fails closed outside it',async()=>{const id=(await db.user.create({data:{id:randomUUID(),name:'Local preview member'}})).id;await equivalent(id,'ALLOW');const env=process.env.APP_ENV;try{process.env.APP_ENV='production';await equivalent(id,'CONTACT_REQUIRED')}finally{if(env===undefined)delete process.env.APP_ENV;else process.env.APP_ENV=env}});
  it('reads member-role and contact revocation changes freshly inside an existing transaction',async()=>{const role=await member(),contact=await member();await db.$transaction(async tx=>{await assertBatchEligibilityInTransaction(tx,role);await db.user.update({where:{id:role},data:{role:'admin'}});await expect(assertBatchEligibilityInTransaction(tx,role)).rejects.toMatchObject({code:'BIDDING_RESTRICTED'});await assertBatchEligibilityInTransaction(tx,contact);await db.telegramOwnContact.update({where:{userId:contact},data:{revokedAt:new Date()}});await expect(assertBatchEligibilityInTransaction(tx,contact)).rejects.toThrow('CONTACT_REQUIRED')})});
  it('retains real auction bounds, precision, distinct cap and authoritative fee checks',async()=>{const id=await member(),a=await bidAuction(db,{ruleVersion:'lowest-unique-v5',fee:1,isDemo:false});await db.product.update({where:{id:a.productId!},data:{isDemo:false}});const validate=(numbers:string[],version=1)=>db.$transaction(tx=>validateBatchInTransaction(tx,id,a.slug!,numbers,version));expect((await validate(['1.00','1.01','1.02','1.03'])).lines).toHaveLength(4);await expect(validate(Array.from({length:101},(_,i)=>(1+i/100).toFixed(2)))).rejects.toMatchObject({code:'CAP_REACHED'});await expect(validate(['1.001'])).rejects.toThrow();await expect(validate(['1','1.00'])).rejects.toMatchObject({code:'OWN_DUPLICATE'});await expect(validate(['1.00'],2)).rejects.toMatchObject({code:'TERMS_CHANGED'})});
+ it('quotes the newest fee when effective times tie and rejects invisible or missing auctions',async()=>{
+  const user=await member(),auction=await bidAuction(db,{ruleVersion:'lowest-unique-v5',fee:1,isDemo:false});
+  await db.product.update({where:{id:auction.productId!},data:{isDemo:false}});
+  const originalFee=await db.auctionFeeRevision.findUniqueOrThrow({where:{auctionId_version:{auctionId:auction.id,version:1}}});
+  await db.auctionFeeRevision.create({data:{auctionId:auction.id,version:2,feePoints:'1.03',effectiveAt:originalFee.effectiveAt,reason:'Same timestamp fixture'}});
+  const command={key:randomUUID(),auctionSlug:auction.slug!,numbers:['1.01','2.03'],feeVersion:2};
+  await expect(quoteBidBatch(db,user,{...command,feeVersion:1})).rejects.toMatchObject({code:'TERMS_CHANGED'});
+  await expect(quoteBidBatch(db,user,command)).resolves.toMatchObject({total:'2.06',lines:[{number:'1.01',netFee:'1.03'},{number:'2.03',netFee:'1.03'}]});
+  await db.category.update({where:{id:auction.categoryId!},data:{visible:false}});
+  await expect(quoteBidBatch(db,user,{...command,key:randomUUID()})).rejects.toMatchObject({code:'AUCTION_CLOSED'});
+  await expect(quoteBidBatch(db,user,{...command,key:randomUUID(),auctionSlug:'missing-fixture-auction'})).rejects.toMatchObject({code:'AUCTION_CLOSED'});
+ });
  it('reduces verified-member eligibility to one SQL statement and measures deferred round-trip cost',async()=>{
   const id=await member(),delayMs=20;
   function deferred(tx:Prisma.TransactionClient){return new Proxy(tx,{get(target,key){const value=Reflect.get(target,key);const wrap=(fn:Function,owner:unknown)=>(...args:unknown[])=>new Promise(resolve=>setTimeout(resolve,delayMs)).then(()=>Reflect.apply(fn,owner,args));if(key==='$queryRaw')return wrap(value,target);if(['user','telegramOwnContact','staffMember','userRestriction'].includes(String(key)))return new Proxy(value,{get(owner,method){const fn=Reflect.get(owner,method);return typeof fn==='function'?wrap(fn,owner):fn}});return typeof value==='function'?value.bind(target):value}})}

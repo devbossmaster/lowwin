@@ -2,9 +2,10 @@ import {ChapaClientError,chapaUuid,type ChapaCheckoutView} from './chapa-client'
 
 type Events=Pick<EventTarget,'addEventListener'|'removeEventListener'>;
 type Visibility=Events&Pick<Document,'visibilityState'>;
-type Options={isCurrent:()=>boolean;onError?:(error:unknown)=>void;onPause?:()=>void;onResume?:()=>void;wake?:Events|null;budgetMs?:number;maximumReads?:number;initialDelayMs?:number};
+type Telegram={onEvent?:(event:string,listener:()=>void)=>void;offEvent?:(event:string,listener:()=>void)=>void};
+type Options={isCurrent:()=>boolean;onError?:(error:unknown)=>void;onPause?:()=>void;onResume?:()=>void;wake?:Events|null;telegram?:Telegram;budgetMs?:number;maximumReads?:number;initialDelayMs?:number};
 
-/** Discover an already-owned Inline attempt after its initialization reply was
+/** Discover an already-owned payment after its initialization reply was
  * lost. The caller supplies GET only; no initialization or fresh key exists in
  * this observer. A missing row may still be committing, so 404 is not failure.
  * Stop before handing the ID to the existing single verification observer. */
@@ -13,7 +14,10 @@ export function startChapaOriginalPolling(read:(signal:AbortSignal)=>Promise<Cha
  const budget=Math.max(1,options.budgetMs??30000),maximum=Math.max(1,options.maximumReads??8),wake=options.wake===undefined?(typeof window==='undefined'?null:window):options.wake;
  let deadline=Date.now()+budget,hiddenAt:number|null=visibility.visibilityState==='visible'?null:Date.now();
  const valid=()=>active&&options.isCurrent();
- function stop(){active=false;clearTimeout(timer);controller?.abort();visibility.removeEventListener('visibilitychange',onWake);wake?.removeEventListener('focus',onWake);wake?.removeEventListener('online',onWake)}
+ function stop(){
+  active=false;clearTimeout(timer);controller?.abort();visibility.removeEventListener('visibilitychange',onWake);wake?.removeEventListener('focus',onWake);wake?.removeEventListener('online',onWake);
+  try{options.telegram?.offEvent?.('activated',onWake)}catch{/* Visibility remains a fallback. */}
+ }
  function exhausted(){if(!paused&&reads<maximum&&Date.now()<deadline)return false;clearTimeout(timer);if(!paused){paused=true;options.onPause?.()}return true}
  function schedule(){
   clearTimeout(timer);if(!valid()){stop();return}if(visibility.visibilityState!=='visible')return;if(exhausted())return;
@@ -46,6 +50,8 @@ export function startChapaOriginalPolling(read:(signal:AbortSignal)=>Promise<Cha
   void check();
  }
  visibility.addEventListener('visibilitychange',onWake);wake?.addEventListener('focus',onWake);wake?.addEventListener('online',onWake);
+ // A native wallet can return to Telegram without a browser focus transition.
+ try{options.telegram?.onEvent?.('activated',onWake)}catch{/* Older Telegram clients use visibility/focus. */}
  // Current creation may still be returning normally. Delay background key
  // discovery, while a real foreground return can check immediately via onWake.
  const initialDelay=options.initialDelayMs;

@@ -165,6 +165,71 @@ describe.skipIf(!database)('current Direct5 owned creation and private committed
   await expect(check(false)).resolves.toMatchObject({status:'BID_ACCEPTED',verificationState:'VERIFIED'});
   expect(await db.bid.count({where:{userId:f.user}})).toBe(2);
  });
+ it.each(['SUCCESS','CANCELLED'] as const)('finds private Telebirr %s on the first short poll without a wallet event',async(status)=>{
+  const f=await fixture('BID'),{order}=await f.start();
+  await expect(f.verify()).resolves.toMatchObject({status:'PENDING',pollAfterMs:2000});
+  const waiting=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});
+  expect(waiting.nextCheckAt.getTime()-waiting.lastPrivateCheckAt!.getTime()).toBe(2000);
+  // Simulate provider completion by the scheduled follow-up, without firing a
+  // visibility event or using a terminal response from Validate Direct Charge.
+  f.setStatus(status);
+  await expect(f.verify()).resolves.toMatchObject({status:status==='SUCCESS'?'BID_ACCEPTED':status,providerStatus:status,verificationState:'VERIFIED'});
+  expect(f.lookup).toHaveBeenCalledTimes(2);expect(f.validate).toHaveBeenCalledOnce();
+  expect(await db.bid.count({where:{userId:f.user}})).toBe(status==='SUCCESS'?2:0);
+  expect(await db.journal.count({where:{kind:'CHAPA_RECEIPT',operation:{userId:f.user}}})).toBe(status==='SUCCESS'?1:0);
+ });
+ it('limits ordinary Telebirr verification to two early intervals and honors longer due times',async()=>{
+  const f=await fixture(),{order}=await f.start();
+  for(const expected of [2000,2000,5000]){
+   await expect(f.verify()).resolves.toMatchObject({status:'PENDING'});
+   const waiting=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});
+   if(expected===2000)expect(waiting.nextCheckAt.getTime()-waiting.lastPrivateCheckAt!.getTime()).toBe(2000);
+   else expect(waiting.nextCheckAt.getTime()-waiting.updatedAt.getTime()).toBeGreaterThanOrEqual(4750);
+  }
+  expect(f.lookup).toHaveBeenCalledTimes(3);
+  await expect(verifyChapaCheckout(db,order.id,f.user,undefined,f.transport)).resolves.toMatchObject({status:'PENDING'});
+  expect(f.validate).toHaveBeenCalledTimes(3);expect(f.lookup).toHaveBeenCalledTimes(3);
+  await expect(f.verify()).resolves.toMatchObject({status:'PENDING'});
+  expect(f.validate).toHaveBeenCalledTimes(4);expect(f.lookup).toHaveBeenCalledTimes(3);
+ });
+ it.each(['PENDING','SUCCESS'] as const)('checks private %s on one short ordinary retry after a later owned Telebirr wallet return',async(status)=>{
+  const f=await fixture(),{order}=await f.start();
+  await db.chapaCheckout.update({where:{id:order.id},data:{attempts:10,nextCheckAt:new Date(Date.now()+30000)}});
+  const returned=await prepareOwnedChapaVerification(db,order.id,f.user,f.transport,true);
+  await expect(returned(async()=>{})).resolves.toMatchObject({status:'PENDING',verificationState:'VERIFIED',pollAfterMs:2000});
+  const waiting=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});
+  expect(waiting.nextCheckAt.getTime()-waiting.lastPrivateCheckAt!.getTime()).toBe(2000);
+  f.setStatus(status);
+  await new Promise(resolve=>setTimeout(resolve,Math.max(0,waiting.nextCheckAt.getTime()-Date.now()+10)));
+  // The normal POST does not carry another wallet-return hint, and the
+  // provider's authorization endpoint still says PENDING.
+  const verify=await prepareOwnedChapaVerification(db,order.id,f.user,f.transport);
+  await expect(verify(async()=>{})).resolves.toMatchObject({status:status==='SUCCESS'?'CREDITED':status,providerStatus:status});
+  expect(f.lookup).toHaveBeenCalledTimes(2);expect(f.validate).toHaveBeenCalledTimes(status==='SUCCESS'?1:2);
+  const next=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});
+  if(status==='PENDING')expect(next.nextCheckAt.getTime()-next.updatedAt.getTime()).toBeGreaterThanOrEqual(4750);
+  expect(await balance(f.user)).toBe(status==='SUCCESS'?'40':'0');
+ });
+ it.each(['PENDING','CANCELLED'] as const)('commits private Direct5 %s while a separate writer holds the auction and wallet locks',async(status)=>{
+  const f=await fixture('BID'),{order}=await f.start();f.setStatus(status);
+  let acquired!:()=>void,release!:()=>void;
+  const ready=new Promise<void>(resolve=>{acquired=resolve}),gate=new Promise<void>(resolve=>{release=resolve});
+  const writer=db.$transaction(async tx=>{
+   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('lowwin:auction-maintenance',0))`;
+   await tx.$executeRaw`SELECT id FROM "Auction" WHERE id=${f.auction!.id} FOR UPDATE`;
+   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${f.user}`},0))`;
+   acquired();await gate;
+  },{timeout:10000,maxWait:5000});
+  let verification:Promise<unknown>|undefined,timer:ReturnType<typeof setTimeout>|undefined;
+  try{
+   await ready;
+   const returned=await prepareOwnedChapaVerification(db,order.id,f.user,f.transport,true);
+   verification=returned(async()=>{});
+   const limit=new Promise<never>((_resolve,reject)=>{timer=setTimeout(()=>reject(Error('Checkout status waited for a financial lock.')),3000)});
+   await expect(Promise.race([verification,limit])).resolves.toMatchObject({status,providerStatus:status,verificationState:'VERIFIED'});
+   expect(await db.journal.count({where:{kind:'CHAPA_RECEIPT',operation:{userId:f.user}}})).toBe(0);
+  }finally{clearTimeout(timer);release();await Promise.allSettled([writer,verification])}
+ });
  it.each([true,false])('settles a privately completed auction wallet return without validation (poll due: %s)',async(due)=>{
   const f=await fixture('BID'),{order}=await f.start();
   await db.chapaCheckout.update({where:{id:order.id},data:{nextCheckAt:new Date(Date.now()+(due?-1:30_000))}});
@@ -274,8 +339,11 @@ describe.skipIf(!database)('current Direct5 owned creation and private committed
   expect(await db.chapaCheckout.count({where:{userId:exhausted.user}})).toBe(0);expect(exhausted.direct).not.toHaveBeenCalled();expect((await db.rateLimit.findUniqueOrThrow({where:{key:`app:chapa-inline-create:${chapaHash(exhausted.user)}`}})).count).toBe(24);expect(await db.rateLimit.count({where:{key:{startsWith:'app:chapa-inline-initialize:'}}})).toBe(before);
  });
  it('successful USSD validation immediately verifies privately and credits despite a recent pending private lookup',async()=>{
-  const f=await fixture();await f.start();await f.verify();expect(f.lookup).toHaveBeenCalledOnce();expect(await balance(f.user)).toBe('0');f.setValidation('SUCCESS');f.setStatus('SUCCESS');
+  const f=await fixture();await f.start();await f.verify();expect(f.lookup).toHaveBeenCalledOnce();expect(await balance(f.user)).toBe('0');
+  await db.chapaCheckout.update({where:{id:f.id()},data:{attempts:5}});
+  f.validate.mockClear();f.setValidation('SUCCESS');f.setStatus('SUCCESS');
   const result=await f.verify();expect(result).toMatchObject({status:'CREDITED',providerStatus:'SUCCESS',verificationState:'VERIFIED',completionSignalPending:false});expect(f.lookup).toHaveBeenCalledTimes(2);expect(f.direct).toHaveBeenCalledOnce();expect(await balance(f.user)).toBe('40');await f.verify();expect(await db.journal.count({where:{kind:'CHAPA_RECEIPT',operation:{userId:f.user}}})).toBe(1);
+  expect(f.validate).toHaveBeenCalledOnce();
  });
  it.each<ChapaCompletionStatus>(['SUCCESS','FAILED','CANCELLED','INCOMPLETE','EXPIRED','BLOCKED','FAILED_OR_CANCELLED'])('privately rechecks a retained %s signal without redundant USSD validation or trusting the signal as payment',async completion=>{
   const f=await fixture();await f.start();
