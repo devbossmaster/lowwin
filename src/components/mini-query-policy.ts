@@ -15,12 +15,12 @@ export function miniQueryPolicy(url:string){
  if(path==='/api/payments/chapa/inline/config')return MINI_QUERY_POLICIES.paymentConfiguration;
  if(path==='/api/transactions'||path==='/api/payments/chapa/checkouts')return MINI_QUERY_POLICIES.transactions;
  if(path==='/api/my-bids'&&['finished','history'].includes(new URL(url,'https://lowwin.invalid').searchParams.get('view')??''))return MINI_QUERY_POLICIES.historical;
- if(path.startsWith('/api/wallet')||path==='/api/me'||path.startsWith('/api/payments/'))return MINI_QUERY_POLICIES.wallet;
+ if(path.startsWith('/api/wallet')||path.startsWith('/api/payments/'))return MINI_QUERY_POLICIES.wallet;
  if(path.startsWith('/api/results/'))return MINI_QUERY_POLICIES.historical;
  if(path.startsWith('/api/auctions/')||path==='/api/my-bids')return MINI_QUERY_POLICIES.bids;
  if(path.startsWith('/api/catalog/auctions/'))return MINI_QUERY_POLICIES.detail;
  if(path.startsWith('/api/catalog/'))return MINI_QUERY_POLICIES.catalog;
- if(path==='/api/profile')return MINI_QUERY_POLICIES.account;
+ if(path==='/api/profile'||path==='/api/me')return MINI_QUERY_POLICIES.account;
  return MINI_QUERY_POLICIES.private;
 }
 export function matchesPrivateResource(key:string,scope:string){

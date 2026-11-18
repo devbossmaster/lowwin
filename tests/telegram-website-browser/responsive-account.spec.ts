@@ -31,6 +31,7 @@ async function setup(page:Page,am:boolean){
   const request=route.request(),url=new URL(request.url()),path=url.pathname;reads.push(path+url.search);
   if(request.method()!=='GET'&&request.method()!=='HEAD'){
    if(path==='/api/alerts'){writes.push(request.postDataJSON());unread=false;return route.fulfill({json:{ok:true}})}
+   if(request.method()==='POST'&&/^\/api\/catalog\/auctions\/[^/]+\/view$/.test(path))return route.fulfill({json:{counted:false,views:0}});
    financial.push(path);return route.abort();
   }
   if(gates.has(path))await gates.get(path)!.promise;

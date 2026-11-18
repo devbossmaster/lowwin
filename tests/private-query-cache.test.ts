@@ -5,7 +5,7 @@ import type {ChapaCheckoutView} from '../src/lib/chapa-client';
 describe('session private query cache',()=>{
  it('refreshes authoritative bid resources from a return page, preserving other auctions and accounts',()=>{
   const cache=new SessionPrivateQueryCache();cache.setIdentity('owner:session');
-  const affected=['/api/wallet','/api/me','/api/my-bids?page=2','/api/payments/chapa/checkouts','/api/wallet/top-ups?page=2','/api/catalog/auctions?view=home','/api/catalog/auctions/paid-auction','/api/auctions/paid-auction/bids','/api/auctions/paid-auction/discount-quote?feeVersion=2','/api/profile','/api/referrals/coupons'];
+  const affected=['/api/wallet','/api/my-bids?page=2','/api/payments/chapa/checkouts','/api/wallet/top-ups?page=2','/api/catalog/auctions?view=home','/api/catalog/auctions/paid-auction','/api/auctions/paid-auction/bids','/api/auctions/paid-auction/discount-quote?feeVersion=2','/api/profile','/api/referrals/coupons'];
   const untouched=['/api/auctions/other-auction/bids','/api/results/completed?page=2'];
   for(const key of [...affected,...untouched])cache.seed('owner:session',key,{saved:true});
   const order={purpose:'BID',auctionSlug:'paid-auction',status:'BID_ACCEPTED',fundsPreserved:false,receipt:{bid:{id:'accepted'}}} as ChapaCheckoutView;
@@ -32,13 +32,13 @@ describe('session private query cache',()=>{
   expect(cache.read('a:session','/api/wallet')).toMatchObject({value:{available:'15.00'},fresh:true});
   expect(confirmedBidQueryScopes('selected-auction')).toEqual(expect.arrayContaining([...PAYMENT_QUERY_SCOPES,'/api/my-bids','/api/catalog/auctions','/api/auctions/selected-auction']));
  });
- it('seeds the verified bootstrap without another read and rejects another identity',async()=>{
+ it('reuses seeded private data and rejects another identity',async()=>{
   const cache=new SessionPrivateQueryCache();cache.setIdentity('account:session');
-  cache.seed('account:session','/api/me',{user:{id:'account'}});
+  cache.seed('account:session','/api/profile',{user:{id:'account'}});
   const loader=vi.fn(async()=>({user:{id:'unexpected'}}));
-  expect(await cache.load('account:session','/api/me',loader)).toEqual({user:{id:'account'}});expect(loader).not.toHaveBeenCalled();
-  cache.setIdentity('other:session');expect(cache.read('other:session','/api/me')).toBeNull();
-  expect(()=>cache.seed('account:session','/api/me',{user:{id:'account'}})).toThrow(ObsoletePrivateQueryError);
+  expect(await cache.load('account:session','/api/profile',loader)).toEqual({user:{id:'account'}});expect(loader).not.toHaveBeenCalled();
+  cache.setIdentity('other:session');expect(cache.read('other:session','/api/profile')).toBeNull();
+  expect(()=>cache.seed('account:session','/api/profile',{user:{id:'account'}})).toThrow(ObsoletePrivateQueryError);
  });
  it('bounds entries and updates least-recently-used order on reads',async()=>{
   const cache=new SessionPrivateQueryCache(2,1000,4);cache.setIdentity('account-a');

@@ -39,6 +39,7 @@ describe.skipIf(!database)('shared Better Auth Telegram browser and Mini App int
   const error=new URL('/',origin);error.searchParams.set('login','1');error.searchParams.set('next',next);error.searchParams.set('lang','en');
   const start=await handleAuth(new Request(origin+'/api/auth/sign-in/social',{method:'POST',headers:{origin,'content-type':'application/json','x-forwarded-for':`127.${randomInt(1,254)}.${randomInt(1,254)}.${randomInt(1,254)}`},body:JSON.stringify({provider:'telegram-oidc',callbackURL:next,errorCallbackURL:error.pathname+error.search,disableRedirect:true})}));
   expect(start.status,await start.clone().text()).toBe(200);
+  expect(start.headers.get('server-timing')).toContain('oidc_start;dur=');
   const url=new URL((await start.json()).url),state=url.searchParams.get('state')!,cookie=start.headers.getSetCookie().map(c=>c.split(';')[0]).join('; '),now=Math.floor(Date.now()/1000),tid=randomInt(4000000000,5000000000);
   expect(url.searchParams.get('code_challenge_method')).toBe('S256');expect(url.searchParams.get('nonce')).toBeTruthy();
   const row=await db.verification.findFirstOrThrow({where:{value:{contains:state}}}),saved=JSON.parse(row.value);
@@ -59,9 +60,27 @@ describe.skipIf(!database)('shared Better Auth Telegram browser and Mini App int
  });
  it('creates a verified browser account through the standard callback and issues the existing signed cookie',async()=>{
   const f=await flow(),response=await f.finish();expect(response.status).toBe(303);expect(response.headers.get('location')).toBe(origin+'/my-bids?tab=live');
+  expect(response.headers.get('server-timing')).toMatch(/oidc_session;dur=.*oidc_callback;dur=.*oidc_redirect;dur=/);
+  expect(response.headers.get('cache-control')).toContain('private, no-store');
+  expect(response.headers.getSetCookie()).toContain('lowwin-browser-restore=1; Path=/; Max-Age=300; HttpOnly; SameSite=Lax');
   const current=await getMiniSession(cookie(response),db);expect(current?.telegramId).toBe(String(f.claims.id));expect(current?.session.telegramAuthSource).toBe('TELEGRAM_OIDC');
   const contact=await db.telegramOwnContact.findUniqueOrThrow({where:{userId:current!.user.id}});expect(contact.verificationSource).toBe('TELEGRAM_OIDC');expect(contact.oidcSubject).toBe(f.claims.sub);expect(contact.phoneCipher).not.toContain(f.claims.phone_number);
   const account=await db.account.findUniqueOrThrow({where:{providerId_accountId:{providerId:'telegram-oidc',accountId:f.claims.sub}}});expect(account.userId).toBe(current!.user.id);expect(account.accessToken).toBeNull();expect(account.idToken).toBeNull();expect((await db.user.findUniqueOrThrow({where:{id:current!.user.id}})).telegramPhoneNumber).toBeNull();
+ });
+ it('inserts a fully bound Telegram session before any cookie can be issued',async()=>{
+  await db.$executeRaw`CREATE FUNCTION require_bound_telegram_test_session() RETURNS trigger LANGUAGE plpgsql AS $$
+   BEGIN
+    IF NEW."telegramAuthSource"<>'TELEGRAM_OIDC' OR NEW."telegramLaunchId" IS NULL THEN RAISE EXCEPTION 'Expected an already bound session'; END IF;
+    RETURN NEW;
+   END $$`;
+  await db.$executeRaw`CREATE TRIGGER require_bound_telegram_test_session BEFORE INSERT ON "session" FOR EACH ROW EXECUTE FUNCTION require_bound_telegram_test_session()`;
+  try{
+   const f=await flow(),response=await f.finish();
+   expect((await getMiniSession(cookie(response),db))?.telegramId).toBe(String(f.claims.id));
+  }finally{
+   await db.$executeRaw`DROP TRIGGER require_bound_telegram_test_session ON "session"`;
+   await db.$executeRaw`DROP FUNCTION require_bound_telegram_test_session()`;
+  }
  });
  it('returns the joined private profile immediately after consent without loading wallet or unrelated data',async()=>{
   const f=await flow(),response=await f.finish(),headers=cookie(response),current=await getMiniSession(headers,db);
@@ -100,6 +119,7 @@ describe.skipIf(!database)('shared Better Auth Telegram browser and Mini App int
  it('keeps cancellation in the sign-in sheet without exchanging a code',async()=>{
   const f=await flow({},'/auctions/power-bank#bid-review'),before=provider.mock.calls.length,response=await handleAuth(f.request(`state=${f.state}&error=access_denied&error_description=do-not-reflect-this`));
   expect(response.headers.get('location')).toContain('telegramLoginError=cancelled');expect(new URL(response.headers.get('location')!).searchParams.get('next')).toBe('/auctions/power-bank#bid-review');expect(response.headers.get('location')).not.toContain('do-not-reflect');expect(provider.mock.calls.length).toBe(before);
+  expect(response.headers.getSetCookie().some(value=>value.startsWith('lowwin-browser-restore='))).toBe(false);
  });
  it('rejects a missing browser binding and expired state without creating an account',async()=>{
   const f=await flow(),before=provider.mock.calls.length;expect((await handleAuth(f.request(undefined,''))).headers.get('location')).toContain('telegramLoginError=invalid');

@@ -136,7 +136,7 @@ export function seedPrivateQuery<T>(identity:string,url:string,value:T,updatedAt
 export function readPrivateQuery<T>(identity:string,url:string,options:{language?:string;freshnessMs?:number}={}){return cache.read<T>(identity,privateQueryKey(url,options.language),options.freshnessMs??privateQueryFreshness(url),miniQueryPolicy(url).retainMs)}
 export function subscribePrivateQueries(listener:(event:CacheEvent)=>void){return cache.subscribe(listener)}
 export function invalidatePrivateQueries(identity:string,scopes?:readonly string[]){cache.invalidate(identity,scopes)}
-export const WALLET_QUERY_SCOPES=['/api/wallet','/api/me','/api/alerts'] as const;
+export const WALLET_QUERY_SCOPES=['/api/wallet','/api/alerts'] as const;
 export const PAYMENT_QUERY_SCOPES=[...WALLET_QUERY_SCOPES,'/api/payments/chapa/checkouts','/api/transactions','/api/wallet/top-ups'] as const;
 export function confirmedBidQueryScopes(slug?:string){return [...PAYMENT_QUERY_SCOPES,'/api/my-bids','/api/profile','/api/catalog/auctions','/api/referrals',slug?`/api/auctions/${encodeURIComponent(slug)}`:'/api/auctions']}
 /** A return page can resolve either payment purpose. The committed order,

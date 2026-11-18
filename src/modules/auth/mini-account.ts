@@ -9,6 +9,11 @@ type ContactSnapshot = Awaited<ReturnType<typeof contactStatus>>;
 // Shared by sign-in and account refresh. Never return cookies or session tokens.
 export function miniSessionKey(sessionId:string){return createHash('sha256').update('lowwin-ui-session:').update(sessionId).digest('hex')}
 
+export function miniAccountFromSession(session:{user:Player;session:{id:string}}){
+ const {user}=session;
+ return {sessionKey:miniSessionKey(session.session.id),user:{id:user.id,name:user.name,image:user.image??null}};
+}
+
 export async function readMiniAccount(client:Client, user:Player, sessionId?:string,profileSnapshot?:{displayName:string}|null) {
   // /api/me already joined this same user's profile while checking the live
   // session. Other callers retain their authoritative profile lookup.

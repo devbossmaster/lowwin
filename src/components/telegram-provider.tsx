@@ -1,20 +1,33 @@
 'use client';
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import {useQuery,useQueryClient} from '@tanstack/react-query';
 import {usePathname} from 'next/navigation';
 import {MINI_AUTH_TIMEOUT_MS,TelegramLaunchError,miniAuthError,signInTelegram,signOutMiniAccount,type MiniAccount} from '@/lib/mini-auth-client';
 import {enableTelegramFullscreen,observeTelegramSdk,type TelegramViewportApp} from '@/lib/telegram-sdk-client';
 import {telegramEnvironment,telegramMiniLaunchHint,type TelegramEnvironment} from '@/lib/telegram-browser-login-client';
 import {clearTelegramAuthResume} from '@/lib/telegram-auth-resume';
 import {chapaRecoveryStorage,clearChapaRecoveryPointers} from '@/lib/chapa-recovery-pointer';
-import {invalidatePrivateQueries,loadPrivateJson,seedPrivateQuery,setPrivateQueryIdentity,subscribePrivateQueries} from './private-query-cache';
+import {CURRENT_ACCOUNT_QUERY_KEY,type BrowserAccountBootstrap} from '@/lib/current-account';
+import {clearCurrentAccount,fetchCurrentAccount,loadCurrentAccount} from './current-account-query';
+import {invalidatePrivateQueries,loadPrivateJson,setPrivateQueryIdentity,subscribePrivateQueries} from './private-query-cache';
 type WebApp = TelegramViewportApp & { BackButton?:{isVisible?:boolean;show:()=>void;hide:()=>void;onClick:(handler:()=>void)=>void;offClick:(handler:()=>void)=>void};ready: () => void; close?:()=>void; openLink?:(url:string)=>void; openTelegramLink?:(url:string)=>void; requestContact?:(callback:(shared:boolean)=>void)=>void; setHeaderColor?: (color: string) => void; setBackgroundColor?: (color: string) => void };
 declare global { interface Window { Telegram?: { WebApp?: WebApp } } }
 type Me = MiniAccount;
 type Status = 'loading' | 'guest' | 'contact-required' | 'authenticated' | 'error';
 const Context = createContext<{ status: Status; environment:TelegramEnvironment; queryIdentity:string|null; verifyingTelegram: boolean; me: Me | null; error: string; needsReopen: boolean; retry: () => void; finishContact: () => Promise<void>; refreshMe: () => Promise<void>; signOut:()=>Promise<void>; devLogin: (accessKey: string) => void; devEnabled: boolean; botUrl: string | null;miniIntroductionComplete:boolean;completeMiniIntroduction:()=>void;registrationAutoRequest:boolean;registrationOpen:boolean;openRegistration:()=>void;closeRegistration:()=>void }>({ status: 'loading', environment:'detecting', queryIdentity:null, verifyingTelegram: false, me: null, error: '', needsReopen: false, retry: () => {}, finishContact: async () => {}, refreshMe: async () => {}, signOut:async()=>{}, devLogin: () => {}, devEnabled: false, botUrl: null,miniIntroductionComplete:false,completeMiniIntroduction:()=>{},registrationAutoRequest:false,registrationOpen:false,openRegistration:()=>{},closeRegistration:()=>{} });
 export const useTelegram = () => useContext(Context);
-export function TelegramProvider({ children, devEnabled, botUrl }: { children: React.ReactNode; devEnabled: boolean; botUrl: string | null }) {
+function accountIdentity(account:Me,attempt:number){return account.user.id+':'+(account.sessionKey??String(attempt))}
+function announceSession(channel:BroadcastChannel|null,sessionKey:string|null|undefined){
+  // The display-only fingerprint only lets same-session tabs skip a hint.
+  // A receiver still reads its own signed session before publishing an account.
+  try{channel?.postMessage({sessionKey})}catch{/* Tabs can still check their session on return. */}
+}
+export function TelegramProvider({children,devEnabled,botUrl,initialAccount}:{children:React.ReactNode;devEnabled:boolean;botUrl:string|null;initialAccount?:Promise<BrowserAccountBootstrap>}) {
   const pathname=usePathname(),previousPath=useRef(pathname);
+  const client=useQueryClient();
+  const {data:currentAccount}=useQuery({queryKey:CURRENT_ACCOUNT_QUERY_KEY,queryFn:fetchCurrentAccount,enabled:false});
+  const browserBootstrap=useRef(initialAccount),browserEvents=useRef<BroadcastChannel|null>(null);
+  const announceBrowserSession=useRef(true);
   const [status, setStatus] = useState<Status>('loading');
   const [environment,setEnvironment]=useState<TelegramEnvironment>('detecting');
   const miniDetected=useRef(typeof window!=='undefined'&&telegramMiniLaunchHint(window.location)),onboardingLaunch=useRef<string|null>(null),automaticRegistrationLaunch=useRef<string|null>(null);
@@ -31,55 +44,65 @@ export function TelegramProvider({ children, devEnabled, botUrl }: { children: R
   const [queryIdentity,setQueryIdentity]=useState<string|null>(null);
   const identityRef=useRef<string|null>(null);
   const accountRef=useRef<Me|null>(null);
+  const lastVerifiedOwner=useRef<string|null>(null);
   const refreshSequence=useRef(0);
   const accountUpdatedAt=useRef(0);
-  const [me, setMe] = useState<Me | null>(null);
   const [error, setError] = useState('');
   const [needsReopen, setNeedsReopen] = useState(false);
   const [localBrowser, setLocalBrowser] = useState(false);
   const launchAttempt=useRef<string|null>(null);
   const attemptSequence=useRef(0);
   const authenticating=useRef(false);
+  const signingOut=useRef(false);
+  const me=currentAccount&&queryIdentity===accountIdentity(currentAccount,attemptSequence.current)?currentAccount:null;
   const clearAccount=useCallback(()=>{
     refreshSequence.current++;
-    identityRef.current=null;accountRef.current=null;setPrivateQueryIdentity(null);setQueryIdentity(null);setMe(null);
-  },[]);
+    identityRef.current=null;accountRef.current=null;setPrivateQueryIdentity(null);clearCurrentAccount(client);setQueryIdentity(null);
+  },[client]);
   const acceptAccount=useCallback((account:Me)=>{
     clearChapaRecoveryPointers(chapaRecoveryStorage(),account.user.id);
-    if(accountRef.current&&accountRef.current.user.id!==account.user.id)clearTelegramAuthResume();
+    if(lastVerifiedOwner.current&&lastVerifiedOwner.current!==account.user.id)clearTelegramAuthResume();
+    lastVerifiedOwner.current=account.user.id;
     const profileChanged=accountRef.current?.user.id===account.user.id&&JSON.stringify(accountRef.current.user)!==JSON.stringify(account.user);
     accountRef.current=account;
-    const identity=account.user.id+':'+(account.sessionKey??String(attemptSequence.current));
+    const identity=accountIdentity(account,attemptSequence.current);
     const changedIdentity=identityRef.current!==identity;
     identityRef.current=identity;accountUpdatedAt.current=Date.now();
-    setPrivateQueryIdentity(identity);seedPrivateQuery(identity,'/api/me',account);setQueryIdentity(identity);setMe(account);
-    // Start the owned balance read as soon as the server accepts registration.
-    // Header and sheet readers join this same single-flight cache request. A
-    // wallet outage must not delay or fail otherwise valid account restoration.
-    if(changedIdentity)void loadPrivateJson(identity,'/api/wallet').catch(()=>{});
+    setPrivateQueryIdentity(identity);client.setQueryData(CURRENT_ACCOUNT_QUERY_KEY,account);setQueryIdentity(identity);
+    // Preserve Mini App prewarming. Website wallet consumers load independently
+    // once mounted and the account query never waits for their requests.
+    if(changedIdentity&&miniDetected.current)void loadPrivateJson(identity,'/api/wallet').catch(()=>{});
     setRegistrationOpen(false);
     if(profileChanged)invalidatePrivateQueries(identity,['/api/profile']);
-  },[]);
+  },[client]);
   const refreshMe=useCallback(async()=>{
     const attempt=attemptSequence.current,sequence=++refreshSequence.current;
     const identity=identityRef.current;
     if(!identity)return;
-    const account=await loadPrivateJson<Me>(identity,'/api/me',{force:true});
+    const account=await loadCurrentAccount(client,true);
     if(attempt!==attemptSequence.current||sequence!==refreshSequence.current||identity!==identityRef.current)return;
-    acceptAccount(account);
-  },[acceptAccount,clearAccount]);
+    if(account)acceptAccount(account);else{clearAccount();setStatus('guest')}
+  },[acceptAccount,clearAccount,client]);
   const signOut=useCallback(async()=>{
     if(authenticating.current)throw new Error('Please wait for sign-in to finish.');
-    authenticating.current=true;
+    authenticating.current=true;signingOut.current=true;
     ++attemptSequence.current;
     try{
       await signOutMiniAccount();
       clearChapaRecoveryPointers(chapaRecoveryStorage());
       clearTelegramAuthResume();
+      lastVerifiedOwner.current=null;
       // The same SDK launch must not immediately sign the user back in.
       launchAttempt.current=window.Telegram?.WebApp?.initData??'';
-      clearAccount();setError('');setNeedsReopen(environment==='mini');setVerifyingTelegram(false);setStatus('guest');
-    }finally{authenticating.current=false}
+      browserBootstrap.current=undefined;clearAccount();setError('');setNeedsReopen(environment==='mini');setVerifyingTelegram(false);setStatus('guest');
+      if(environment==='browser')announceSession(browserEvents.current,null);
+    }catch(cause){
+      if(environment==='browser'){
+        browserBootstrap.current=undefined;clearAccount();setError(miniAuthError(cause));setStatus('error');
+        announceSession(browserEvents.current,undefined);
+      }
+      throw cause;
+    }finally{signingOut.current=false;authenticating.current=false}
   },[clearAccount,environment]);
   useEffect(()=>subscribePrivateQueries(event=>{
     if(event.kind==='authorization'&&event.identity===identityRef.current){
@@ -87,16 +110,17 @@ export function TelegramProvider({ children, devEnabled, botUrl }: { children: R
     }
   }),[clearAccount]);
   useEffect(()=>{
+    if(environment!=='mini')return;
     const visible=()=>{if(!document.hidden&&identityRef.current&&Date.now()-accountUpdatedAt.current>=15_000)void refreshMe().catch(()=>{})};
     document.addEventListener('visibilitychange',visible);
     return()=>document.removeEventListener('visibilitychange',visible);
-  },[refreshMe]);
+  },[environment,refreshMe]);
   useEffect(()=>()=>{
-    attemptSequence.current++;refreshSequence.current++;identityRef.current=null;setPrivateQueryIdentity(null);
+    attemptSequence.current++;refreshSequence.current++;identityRef.current=null;setPrivateQueryIdentity(null);clearCurrentAccount(client);
     // React may replay mount effects. Let the new lifetime authenticate rather
     // than leaving it locked behind the discarded lifetime's request.
     authenticating.current=false;launchAttempt.current=null;
-  },[]);
+  },[client]);
   const authenticate = useCallback(async (dev = false, accessKey?: string) => {
     // The SDK callback, mount effect and Retry must not create parallel sign-ins.
     if(authenticating.current)return;
@@ -105,6 +129,7 @@ export function TelegramProvider({ children, devEnabled, botUrl }: { children: R
     clearAccount();setStatus('loading'); setError(''); setNeedsReopen(false);
     const app = window.Telegram?.WebApp;
     const mode=resolveEnvironment();
+    const restorationStarted=mode==='browser'?performance.now():null;
     if(app?.initData&&onboardingLaunch.current!==app.initData){onboardingLaunch.current=app.initData;automaticRegistrationLaunch.current=null;setMiniIntroductionComplete(false);setRegistrationAutoRequest(false)}
     launchAttempt.current=app?.initData??'';
     // The spinner is presentation only. The server verifies Telegram identity and contact proof.
@@ -126,29 +151,68 @@ export function TelegramProvider({ children, devEnabled, botUrl }: { children: R
         if(!response.ok)throw new Error('Local test sign-in was denied. Check the operator key and localhost configuration.');
         if(attempt!==attemptSequence.current)return;
       }
-      const response = await fetch('/api/me', { cache: 'no-store', signal: AbortSignal.timeout(MINI_AUTH_TIMEOUT_MS) });
+      const bootstrap=mode==='browser'&&!dev?browserBootstrap.current:undefined;
+      browserBootstrap.current=undefined;
+      const initial=await bootstrap;
       if(attempt!==attemptSequence.current)return;
-      if (response.status === 401) { setMe(null); setStatus('guest'); return; }
-      if (!response.ok) throw new Error('Your account could not be loaded. Please retry.');
-      const account=await response.json();if(attempt!==attemptSequence.current)return;acceptAccount(account); setStatus('authenticated');
-    } catch (err) { if(attempt!==attemptSequence.current)return;setMe(null); setNeedsReopen(err instanceof TelegramLaunchError); setError(miniAuthError(err)); setStatus('error'); }
+      if(initial?.kind==='unavailable')throw Error('Your account could not be loaded. Please retry.');
+      const account=initial?.kind==='verified'?initial.account:initial?.kind==='guest'?null:await loadCurrentAccount(client);
+      if(attempt!==attemptSequence.current)return;
+      if(!account){setStatus('guest');return}
+      acceptAccount(account);setStatus('authenticated');
+      try{if(restorationStarted!==null)performance.measure('lowwin:auth:browser-restoration',{start:restorationStarted,end:performance.now()})}catch{/* Timing is optional. */}
+      if(mode==='browser'&&!dev&&announceBrowserSession.current){
+       announceBrowserSession.current=false;
+       announceSession(browserEvents.current,account.sessionKey);
+      }
+    } catch (err) { if(attempt!==attemptSequence.current)return;clearAccount();setNeedsReopen(err instanceof TelegramLaunchError); setError(miniAuthError(err)); setStatus('error'); }
     finally { if(attempt===attemptSequence.current){authenticating.current=false;setVerifyingTelegram(false)} }
-  }, [acceptAccount,clearAccount,resolveEnvironment]);
+  }, [acceptAccount,clearAccount,client,resolveEnvironment]);
   const finishContact=useCallback(async()=>{
     const attempt=++attemptSequence.current;
     clearAccount();setStatus('loading');setError('');setNeedsReopen(false);setVerifyingTelegram(true);
     try{
       // /api/me requires the stored Telegram-bound session and verified contact.
       // Reusing that session avoids a second Mini App sign-in after the bot confirms contact.
-      const response=await fetch('/api/me',{cache:'no-store',signal:AbortSignal.timeout(MINI_AUTH_TIMEOUT_MS)});
+      const account=await loadCurrentAccount(client);
       if(attempt!==attemptSequence.current)return;
-      if(response.status===401||response.status===403)throw new TelegramLaunchError();
-      if(!response.ok)throw new Error('Contact was shared, but your account could not load. Tap Retry.');
-      const account=await response.json();if(attempt!==attemptSequence.current)return;
+      if(!account)throw new TelegramLaunchError();
       acceptAccount(account);setStatus('authenticated');
-    }catch(cause){if(attempt!==attemptSequence.current)return;setMe(null);setNeedsReopen(cause instanceof TelegramLaunchError);setError(miniAuthError(cause));setStatus('error')}
+    }catch(cause){if(attempt!==attemptSequence.current)return;clearAccount();setNeedsReopen(cause instanceof TelegramLaunchError);setError(miniAuthError(cause));setStatus('error')}
     finally{if(attempt===attemptSequence.current)setVerifyingTelegram(false)}
-  },[acceptAccount,clearAccount]);
+  },[acceptAccount,clearAccount,client]);
+  useEffect(()=>{
+    // A changed-session hint hides the previous account immediately. A plain
+    // return to the tab validates without discarding same-session payment state.
+    const synchronize=()=>{
+      if(signingOut.current||resolveEnvironment()!=='browser')return;
+      browserBootstrap.current=undefined;
+      announceBrowserSession.current=false;
+      authenticating.current=false;
+      void authenticate();
+    };
+    const recheck=()=>{
+      if(signingOut.current||resolveEnvironment()!=='browser')return;
+      if(identityRef.current)void refreshMe().catch(()=>{});
+      else if(!authenticating.current)synchronize();
+    };
+    let channel:BroadcastChannel|null=null;
+    try{
+      channel=new BroadcastChannel('lowwin-browser-session');browserEvents.current=channel;
+      channel.onmessage=event=>{
+        if(!event.data||typeof event.data!=='object'||!('sessionKey' in event.data))return;
+        const expected=event.data.sessionKey;
+        if(expected===undefined){recheck();return}
+        if(typeof expected==='string'&&expected===accountRef.current?.sessionKey)return;
+        if(expected===null||typeof expected==='string')synchronize();
+      };
+    }catch{/* Session restoration works without cross-tab notifications. */}
+    const restored=(event:PageTransitionEvent)=>{if(event.persisted)recheck()};
+    const visible=()=>{if(!document.hidden&&identityRef.current)recheck()};
+    window.addEventListener('pageshow',restored);
+    document.addEventListener('visibilitychange',visible);
+    return()=>{window.removeEventListener('pageshow',restored);document.removeEventListener('visibilitychange',visible);browserEvents.current=null;channel?.close()};
+  },[authenticate,refreshMe,resolveEnvironment]);
   const autoAuthenticate=useCallback(()=>{const app=window.Telegram?.WebApp,launch=app?.initData??'';resolveEnvironment();if(launchAttempt.current===launch)return;void authenticate()},[authenticate,resolveEnvironment]);
   useEffect(()=>{
     const launch=window.Telegram?.WebApp?.initData;

@@ -1,6 +1,6 @@
 import {createAuth} from './server';
-import {browserLoginConfig,telegramLoginSettings,telegramLoginRequestOrigin,telegramLoginDestination,telegramLoginFailure,TELEGRAM_LOGIN_PROVIDER} from './telegram-login';
-import {timedTelegramAuthResponse} from './telegram-timing';
+import {browserLoginConfig,telegramLoginSettings,telegramLoginRequestOrigin,telegramLoginDestination,telegramLoginFailure,TELEGRAM_LOGIN_PROVIDER,TELEGRAM_BROWSER_RESTORE_COOKIE} from './telegram-login';
+import {measureTelegramAuth,timedTelegramAuthResponse} from './telegram-timing';
 
 const headers={'Cache-Control':'private, no-store, max-age=0','Vary':'Cookie','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'};
 /** HTTP boundary only: protocol state, PKCE, JWT validation and cookies belong
@@ -29,9 +29,10 @@ async function handleTelegramOIDCRequest(request:Request,path:string){
   if(request.method!=='GET'||query.getAll('state').length!==1||query.getAll('code').length>1||query.getAll('error').length>1)return loginError(settings.origin,'invalid');
  }
  try{
-  const response=await createAuth().handler(request),output=new Headers(response.headers);
+  const response=await measureTelegramAuth(callback?'oidc_callback':'oidc_start',()=>createAuth().handler(request));
+  const output=new Headers(response.headers);
   for(const [key,value]of Object.entries(headers))output.set(key,value);
-  if(callback){
+  if(callback)return measureTelegramAuth('oidc_redirect',async()=>{
    const location=response.headers.get('location');
    if(!location){
     let code:string|null=null;
@@ -46,8 +47,16 @@ async function handleTelegramOIDCRequest(request:Request,path:string){
     return loginError(settings.origin,telegramLoginFailure(target.searchParams.get('error')),output,next,target.searchParams.get('lang'));
    }
    if(!telegramLoginDestination(target.href,settings.origin))return loginError(settings.origin,'invalid',output);
+   const secure=settings.origin.startsWith('https:');
+   const cookiePrefix=`${secure?'__Secure-':''}better-auth.session_token=`;
+   const sessionCookie=output.getSetCookie().filter(value=>value.startsWith(cookiePrefix)).at(-1);
+   // The marker chooses the initial rendering path. It carries no account data
+   // and the destination still verifies the signed session cookie on the server.
+   if(sessionCookie?.slice(cookiePrefix.length).split(';',1)[0]&&!/;\s*max-age=0(?:;|$)/i.test(sessionCookie)){
+    output.append('Set-Cookie',`${TELEGRAM_BROWSER_RESTORE_COOKIE}=1; Path=/; Max-Age=300; HttpOnly; SameSite=Lax${secure?'; Secure':''}`);
+   }
    return new Response(null,{status:303,headers:output});
-  }
+  });
   if(!response.ok)return Response.json({error:'Telegram sign-in is temporarily unavailable.'},{status:response.status===429?429:503,headers:output});
   const result=await response.json() as {url?:unknown};
   if(typeof result.url!=='string'||new URL(result.url).origin!=='https://oauth.telegram.org'||new URL(result.url).pathname!=='/auth')throw Error('Unexpected authorization destination');

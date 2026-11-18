@@ -3,6 +3,8 @@ import {cookies,headers} from 'next/headers';
 import {MiniLocaleProvider,MiniPhrase} from '@/components/mini-locale';
 import {MiniIdentityBoundary} from '@/components/mini-identity-boundary';
 import {assertLocalIdentitySurface} from '@/modules/auth/local-identity';
+import {browserAccountBootstrap} from '@/modules/auth/customer-page';
+import {browserLoginConfig,TELEGRAM_BROWSER_RESTORE_COOKIE} from '@/modules/auth/telegram-login';
 import {LOWWIN_ICON_SRC} from '@/lib/brand';
 import './globals.css';
 import '@/components/mini-redesign.css';
@@ -12,8 +14,13 @@ export const metadata: Metadata = { title: { default: 'LowWin — A little diffe
 export const viewport: Viewport = { width: 'device-width', initialScale: 1, viewportFit: 'cover', themeColor: '#F2F2F7' };
 export const dynamic = 'force-dynamic';
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  const language=(await cookies()).get('lowwin-language')?.value==='en'?'en':'am';
-  let devEnabled=false;try{assertLocalIdentitySurface(new Headers(await headers()));devEnabled=true}catch{}
+  const [requestCookies,requestHeaders]=await Promise.all([cookies(),headers()]);
+  const language=requestCookies.get('lowwin-language')?.value==='en'?'en':'am';
+  let devEnabled=false;try{assertLocalIdentitySurface(new Headers(requestHeaders));devEnabled=true}catch{}
+  // Only recent website callbacks ask the document to stream a verified
+  // account. Regular navigation keeps its in-memory query and Mini App launch
+  // still requires actual Telegram init data.
+  const initialAccount=!devEnabled&&requestHeaders.get('sec-fetch-dest')==='document'&&requestCookies.get(TELEGRAM_BROWSER_RESTORE_COOKIE)?.value==='1'?browserAccountBootstrap():undefined;
   const name=process.env.TELEGRAM_BOT_USERNAME,botUrl=name&&/^[A-Za-z0-9_]+bot$/i.test(name)?`https://t.me/${name}?start=lowin`:null;
-  return <html lang={language} suppressHydrationWarning><body><MiniLocaleProvider initialLanguage={language}><a className="skip-link" href="#main"><MiniPhrase en="Skip to content" am="ወደ ዋናው ይዘት ይሂዱ"/></a><MiniIdentityBoundary devEnabled={devEnabled} botUrl={botUrl}>{children}</MiniIdentityBoundary></MiniLocaleProvider></body></html>;
+  return <html lang={language} suppressHydrationWarning><body><MiniLocaleProvider initialLanguage={language}><a className="skip-link" href="#main"><MiniPhrase en="Skip to content" am="ወደ ዋናው ይዘት ይሂዱ"/></a><MiniIdentityBoundary devEnabled={devEnabled} botUrl={botUrl} browserLogin={browserLoginConfig()} initialAccount={initialAccount}>{children}</MiniIdentityBoundary></MiniLocaleProvider></body></html>;
 }

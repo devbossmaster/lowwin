@@ -13,7 +13,7 @@ vi.mock('../src/components/help-pages',()=>({LegalPage:()=>null}));
 vi.mock('../src/components/tutorial-content',()=>({TutorialContent:()=>null}));
 vi.mock('../src/components/offline-retry',()=>({OfflineRetry:()=>null}));
 vi.mock('../src/components/home-categories',()=>({HomeCategories:()=>null}));
-import {requireCustomerPage} from '../src/modules/auth/customer-page';
+import {browserAccountBootstrap,requireCustomerPage} from '../src/modules/auth/customer-page';
 import AuctionPage from '../src/app/(mini)/auctions/[slug]/page';
 import ResultPage from '../src/app/(mini)/winners/[auctionCode]/page';
 import Category from '../src/app/(mini)/categories/[slug]/page';
@@ -47,5 +47,17 @@ describe('server-rendered customer data authorization',()=>{
  });
  it('keeps only the existing independently validated loopback preview exception',async()=>{
   f.preview.mockReturnValue(true);await expect(requireCustomerPage('/profile')).resolves.toEqual({preview:true});expect(f.session).not.toHaveBeenCalled();
+ });
+ it('projects browser restoration from a currently verified OIDC session without exposing credentials',async()=>{
+  f.session.mockResolvedValue({user:{id:'owned-player',name:'Player',image:null},session:{id:'server-session-id',token:'private-token',telegramAuthSource:'TELEGRAM_OIDC'}});
+  const result=await browserAccountBootstrap();
+  expect(result).toEqual({kind:'verified',account:{sessionKey:expect.stringMatching(/^[a-f0-9]{64}$/),user:{id:'owned-player',name:'Player',image:null}}});
+  expect(JSON.stringify(result)).not.toMatch(/private-token|server-session-id/);
+ });
+ it('distinguishes a missing session, non-browser proof and a retryable database error',async()=>{
+  f.session.mockResolvedValueOnce(null).mockResolvedValueOnce({session:{telegramAuthSource:'MINI_APP'}}).mockRejectedValueOnce(Error('unavailable'));
+  await expect(browserAccountBootstrap()).resolves.toEqual({kind:'guest'});
+  await expect(browserAccountBootstrap()).resolves.toEqual({kind:'client-check'});
+  await expect(browserAccountBootstrap()).resolves.toEqual({kind:'unavailable'});
  });
 });

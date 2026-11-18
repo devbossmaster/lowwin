@@ -1,6 +1,7 @@
 import {miniReturnPath} from '@/lib/mini-return';
 
 export const TELEGRAM_LOGIN_PROVIDER='telegram-oidc';
+export const TELEGRAM_BROWSER_RESTORE_COOKIE='lowwin-browser-restore';
 export const TELEGRAM_LOGIN_MIGRATION='202611130002_telegram_browser_login';
 export type TelegramLoginSettings={clientId:string;clientSecret:string;origin:string;callback:string};
 
