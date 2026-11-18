@@ -12,16 +12,16 @@ const TelegramEntryRecovery=lazy(()=>import('./telegram-entry-recovery'));
 
 export function TelegramEntry({onComplete}:{onComplete?:()=>void}={}){
   const pathname=usePathname(),router=useRouter();
-  const {status}=useTelegram();
+  const {status,environment}=useTelegram();
   const telegramLaunch=typeof window!=='undefined'&&Boolean(window.Telegram?.WebApp?.initData);
   useEffect(()=>{
     if(pathname==='/telegram'){
+      if(environment==='detecting'||status==='loading'||environment==='mini'&&status!=='authenticated')return;
       const start=new URLSearchParams(window.Telegram?.WebApp?.initData).get('start_param');
       const payment=chapaReturnStartPath(start);
       const destination=payment??auctionStartPath(start)??miniReturnPath(new URL(window.location.href).searchParams.get('next'));
       const next=destination+(destination.includes('#')?'':window.location.hash);
-      // Public product links remain browseable. Protected destinations register
-      // on Home first, preventing /telegram redirect loops.
+      // Ordinary browser arrivals retain their public/protected route choice.
       router.replace(status==='authenticated'||isPublicMiniPage(new URL(next,window.location.origin).pathname)?next:customerLoginPath(next));return;
     }
     if(status!=='authenticated'||!telegramLaunch)return;
@@ -34,8 +34,8 @@ export function TelegramEntry({onComplete}:{onComplete?:()=>void}={}){
       // Refresh the server's session view without remounting the query/return gate.
       router.refresh();
     }
-  },[status,telegramLaunch,pathname,onComplete,router]);
-  if(pathname==='/telegram')return null;
+  },[status,environment,telegramLaunch,pathname,onComplete,router]);
+  if(pathname==='/telegram')return <LaunchSplash/>;
   if(status==='loading'||(status==='authenticated'&&telegramLaunch))return <LaunchSplash complete={status==='authenticated'}/>;
   return <Suspense fallback={<LaunchSplash/>}><TelegramEntryRecovery/></Suspense>;
 }

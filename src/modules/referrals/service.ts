@@ -61,17 +61,27 @@ export async function recordBotReferralStart(client:PrismaClient,telegramId:stri
  return client.$transaction(async tx=>{
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`telegram:${telegramId}`},0))`;
   if(await tx.user.findUnique({where:{telegramId}}))return false;
-  const policy=await getReferralPolicy(tx,raw);if(!policy.enabled)return false;
-  const invite=await tx.referralInvite.findUnique({where:{token}});if(!invite||!await eligibleSponsor(tx,invite.userId))return false;
-  const now=await databaseNow(tx);
-  const prior=await tx.referralPendingSignup.findUnique({where:{botId_telegramId:{botId,telegramId}}});
-  if(prior){
-   if(prior.consumedUserId||prior.expiresAt>now||!await eligibleSponsor(tx,prior.referrerUserId))return false;
-   await tx.referralPendingSignup.update({where:{id:prior.id},data:{renewedAt:now,expiresAt:new Date(now.getTime()+30*DAY)}});return true;
-  }
-  await tx.referralPendingSignup.create({data:{botId,telegramId,referrerUserId:invite.userId,createdAt:now,expiresAt:new Date(now.getTime()+30*DAY)}});
-  return true;
+  return storePendingReferralStart(tx,telegramId,botId,token,raw);
  });
+}
+
+/** The caller proved a new identity and signed start parameter under its Telegram lock. */
+export async function recordSignedMiniReferralStartInTransaction(tx:Tx,telegramId:string,payload:string,raw:Record<string,string|undefined>=process.env){
+ const token=referralToken(payload);if(!referralSchemaReady(raw)||!token)return false;
+ return storePendingReferralStart(tx,telegramId,contactBotId(),token,raw);
+}
+
+async function storePendingReferralStart(tx:Tx,telegramId:string,botId:string,token:string,raw:Record<string,string|undefined>){
+ const policy=await getReferralPolicy(tx,raw);if(!policy.enabled)return false;
+ const invite=await tx.referralInvite.findUnique({where:{token}});if(!invite||!await eligibleSponsor(tx,invite.userId))return false;
+ const now=await databaseNow(tx);
+ const prior=await tx.referralPendingSignup.findUnique({where:{botId_telegramId:{botId,telegramId}}});
+ if(prior){
+  if(prior.consumedUserId||prior.expiresAt>now||!await eligibleSponsor(tx,prior.referrerUserId))return false;
+  await tx.referralPendingSignup.update({where:{id:prior.id},data:{renewedAt:now,expiresAt:new Date(now.getTime()+30*DAY)}});return true;
+ }
+ await tx.referralPendingSignup.create({data:{botId,telegramId,referrerUserId:invite.userId,createdAt:now,expiresAt:new Date(now.getTime()+30*DAY)}});
+ return true;
 }
 
 /** Caller holds the existing telegram identity lock and proves this user is new. */

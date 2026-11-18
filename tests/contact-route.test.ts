@@ -1,18 +1,20 @@
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {Prisma} from '@prisma/client';
+import {signedLaunch,TEST_TOKEN} from './helpers';
 
 const mocks=vi.hoisted(()=>({
   launchSession:vi.fn(),localPreview:vi.fn(),contactStatus:vi.fn(),transaction:vi.fn(),sendMessage:vi.fn(),createBot:vi.fn(),
-  userLookup:vi.fn(),contactLookup:vi.fn(),requestLimit:vi.fn(),
+  userLookup:vi.fn(),contactLookup:vi.fn(),requestLimit:vi.fn(),signedLimit:vi.fn(),registered:vi.fn(),
 }));
 vi.mock('../src/lib/db',()=>({db:{
   $transaction:mocks.transaction,user:{findUniqueOrThrow:mocks.userLookup},telegramOwnContact:{findUnique:mocks.contactLookup},
 }}));
 vi.mock('../src/modules/auth/mini-access',()=>({getLaunchSession:mocks.launchSession,getMiniSession:vi.fn(),localMiniPreview:mocks.localPreview}));
-vi.mock('../src/modules/auth/own-contact',()=>({contactStatus:mocks.contactStatus}));
+vi.mock('../src/lib/env',()=>({getEnv:()=>({TELEGRAM_BOT_TOKEN:TEST_TOKEN})}));
+vi.mock('../src/modules/auth/own-contact',()=>({contactStatus:mocks.contactStatus,isRegisteredTelegramUser:mocks.registered}));
 vi.mock('../src/modules/auth/contact-request-limit',()=>({allowContactRequest:mocks.requestLimit}));
 vi.mock('../src/modules/bot/bot',()=>({createBot:mocks.createBot}));
-vi.mock('../src/lib/rate-limit',()=>({allowIdentityRequest:vi.fn()}));
+vi.mock('../src/lib/rate-limit',()=>({allowIdentityRequest:mocks.signedLimit}));
 import {GET,POST} from '../src/app/api/onboarding/contact/route';
 import {db} from '../src/lib/db';
 import {CONTACT_REPLY_KEYBOARD,CONTACT_REQUEST_MESSAGE} from '../src/modules/bot/onboarding-copy';
@@ -24,6 +26,9 @@ const snapshot=(verified=false)=>({
 });
 function request(method:'GET'|'POST',requestOrigin=origin){
   return new Request(`${origin}/api/onboarding/contact`,{method,headers:{origin:requestOrigin,cookie:'private-session-cookie'}});
+}
+function signedPoll(initData=signedLaunch(),requestOrigin=origin){
+  return new Request(`${origin}/api/onboarding/contact`,{method:'POST',headers:{origin:requestOrigin,'content-type':'application/json'},body:JSON.stringify({initData})});
 }
 function expectPrivateTiming(response:Response){
   expect(response.headers.get('cache-control')).toContain('private');
@@ -57,6 +62,8 @@ beforeEach(()=>{
   for(const lookup of [mocks.contactStatus,mocks.userLookup,mocks.contactLookup])lookup.mockImplementation(()=>{throw new Error('Duplicate contact lookup must not run')});
   mocks.transaction.mockImplementation(()=>{throw new Error('Direct route transaction must not run')});
   mocks.requestLimit.mockResolvedValue(true);
+  mocks.signedLimit.mockResolvedValue(true);
+  mocks.registered.mockResolvedValue(false);
   mocks.createBot.mockReturnValue({api:{sendMessage:mocks.sendMessage}});
   mocks.sendMessage.mockResolvedValue({message_id:1});
   vi.spyOn(console,'warn').mockImplementation(()=>{});
@@ -146,7 +153,36 @@ describe('contact route bound-session snapshot and safe diagnostics',()=>{
 
   it('retires contact-first bot keyboards without sending or accepting browser contact proof',async()=>{
     const response=await POST(request('POST'));
-    expect(response.status).toBe(410);expect(await response.json()).toEqual({error:'Share your contact using the Log in sheet inside Telegram.',code:'NATIVE_CONTACT_REQUIRED'});
+    expect(response.status).toBe(410);expect(await response.json()).toEqual({error:'Share your contact inside Telegram.',code:'NATIVE_CONTACT_REQUIRED'});
     expectNoContactLookup();expect(mocks.requestLimit).not.toHaveBeenCalled();expect(mocks.createBot).not.toHaveBeenCalled();expect(mocks.sendMessage).not.toHaveBeenCalled();expectPrivateTiming(response);
+  });
+
+  it.each([true,false])('reads signed own-contact status without a cookie, returning verified=%s',async verified=>{
+    mocks.registered.mockResolvedValueOnce(verified);
+    const response=await POST(signedPoll());
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({verified,masked:null});
+    expect(mocks.signedLimit).toHaveBeenCalledWith(db,'onboarding-contact','778899',36);
+    expect(mocks.registered).toHaveBeenCalledWith(db,'778899');
+    expect(mocks.launchSession).not.toHaveBeenCalled();expect(mocks.sendMessage).not.toHaveBeenCalled();
+    expectPrivateTiming(response);
+  });
+
+  it.each(['forged',signedLaunch({auth_date:'1'})])('rejects forged or stale contact status requests before database access',async initData=>{
+    expect((await POST(signedPoll(initData))).status).toBe(401);
+    expect(mocks.signedLimit).not.toHaveBeenCalled();expect(mocks.registered).not.toHaveBeenCalled();
+  });
+
+  it('rejects cross-origin signed requests before spending contact verification quota',async()=>{
+    expect((await POST(signedPoll(signedLaunch(),'https://untrusted.example'))).status).toBe(403);
+    expect(mocks.signedLimit).not.toHaveBeenCalled();expect(mocks.registered).not.toHaveBeenCalled();
+  });
+
+  it('rate-limits signed contact status requests without reading the contact',async()=>{
+    mocks.signedLimit.mockResolvedValueOnce(false);
+    const response=await POST(signedPoll());
+    expect(response.status).toBe(429);
+    expect(response.headers.get('retry-after')).toBe('60');
+    expect(mocks.registered).not.toHaveBeenCalled();expectPrivateTiming(response);
   });
 });

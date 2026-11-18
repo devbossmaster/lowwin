@@ -7,10 +7,10 @@ import {databaseErrorSummary} from '@/lib/database-error';
 import { assertLocalIdentityAccess } from './local-identity';
 import { createAuth } from './server';
 import { miniAppBody, validateTelegramInitData } from './telegram-validation';
-import {bindOwnContact} from './own-contact';
+import {contactStatus} from './own-contact';
 import {getLaunchSession} from './mini-access';
 import {telegramBootstrap} from './mini-account';
-import {attributeNewReferralInTransaction} from '../referrals/service';
+import {recordSignedMiniReferralStartInTransaction} from '../referrals/service';
 import {handleTelegramOIDC} from './telegram-oidc-handler';
 
 export async function handleAuth(request: Request) {
@@ -50,6 +50,8 @@ export async function handleAuth(request: Request) {
   if (path === '/telegram/miniapp/signin' || path === '/lowin/dev-identity') {
     const started=performance.now();
     const responseHeaders={'Cache-Control':'private, no-store, max-age=0','Vary':'Cookie'};
+    const sharedContactRequired=new Error('Verified Telegram contact required.');
+    const contactRequired=()=>Response.json({ok:true,status:'contact-required',me:null},{headers:{...responseHeaders,'Server-Timing':`auth;dur=${Math.round(performance.now()-started)}`}});
     let identity: string;
     let telegramPhoto:string|null|undefined;
     let telegramStartParam:string|undefined;
@@ -73,6 +75,7 @@ export async function handleAuth(request: Request) {
         stage='session-read';
         const current=await getLaunchSession(request.headers);
         if(current?.telegramId===identity) {
+          if(!current.contactStatus.verified)return contactRequired();
           stage='account-bootstrap';
           const result=await telegramBootstrap(db,current.user,identity,current.session.id,telegramPhoto,current.contactStatus);
           return Response.json(result,{headers:{...responseHeaders,'Server-Timing':`auth;dur=${Math.round(performance.now()-started)}`}});
@@ -88,10 +91,18 @@ export async function handleAuth(request: Request) {
         if(path==='/telegram/miniapp/signin'){
           const canonical=await tx.account.findUnique({where:{providerId_accountId:{providerId:'telegram',accountId:identity}},select:{userId:true,telegramId:true}});
           if(existed&&(existed.role!=='member'||existed.staffMember)||canonical&&(canonical.userId!==existed?.id||canonical.telegramId!==null&&canonical.telegramId!==identity))throw new Response(null,{status:403});
+          stage='contact-bind';
+          // A signed launch identifies the customer. The bot's authenticated
+          // own-contact transaction is the only Mini App registration path.
+          if(!existed){
+            if(telegramStartParam)await recordSignedMiniReferralStartInTransaction(tx,identity,telegramStartParam);
+            return contactRequired();
+          }
+          if(!(await contactStatus(tx,existed.id,identity)).verified)return contactRequired();
           // Bot contact registration predates an authentication account. A fresh
           // signed numeric identity can bind only that same existing member,
           // under the shared identity lock; phone/name matching never links it.
-          if(existed&&!canonical)await tx.account.create({data:{id:randomUUID(),providerId:'telegram',accountId:identity,userId:existed.id,telegramId:identity}});
+          if(!canonical)await tx.account.create({data:{id:randomUUID(),providerId:'telegram',accountId:identity,userId:existed.id,telegramId:identity}});
         }
         stage='plugin-sign-in';
         const response = await createAuth(tx).handler(request);
@@ -106,11 +117,10 @@ export async function handleAuth(request: Request) {
           if(!issued.session?.id||!issued.user?.id||issued.session.userId!==issued.user.id)throw new Error('Missing issued session');
           const bound=await tx.session.updateMany({where:{id:issued.session.id,userId:issued.user.id,user:{telegramId:identity,staffMember:null}},data:{telegramLaunchId:identity,telegramAuthSource:'MINI_APP'}});
           if(bound.count!==1)throw new Error('Launch identity mismatch');
-          await attributeNewReferralInTransaction(tx,issued.user.id,identity,{newAccount:!existed,signedStartParam:telegramStartParam});
-          stage='contact-bind';
-          await bindOwnContact(tx,issued.user.id,identity);
           stage='account-bootstrap';
-          result=await telegramBootstrap(tx,issued.user,identity,issued.session.id,telegramPhoto);
+          const bootstrap=await telegramBootstrap(tx,issued.user,identity,issued.session.id,telegramPhoto);
+          if(bootstrap.status==='contact-required')throw sharedContactRequired;
+          result=bootstrap;
         }
         // Do not return the plugin's session token in a browser-readable JSON body.
         const headers = new Headers(response.headers);
@@ -120,6 +130,7 @@ export async function handleAuth(request: Request) {
         return Response.json(result, { headers });
       }, { maxWait:10000,timeout:30000 });
     } catch (error) {
+      if(error===sharedContactRequired)return contactRequired();
       if (error instanceof Response) return Response.json({ error: 'Sign-in could not be completed. Reopen Lowwin or retry.' }, { status: error.status,headers:responseHeaders });
       // Safe diagnostics: no launch data, cookies, user IDs or database URLs.
       const {code,kind,sqlState,reason}=databaseErrorSummary(error);

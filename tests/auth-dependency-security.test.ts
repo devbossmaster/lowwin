@@ -118,14 +118,15 @@ describe.skipIf(!database)('installed authentication advisory boundaries on Post
   expect(await db.account.findMany({where:{providerId:'telegram',accountId:telegramId}})).toEqual([expect.objectContaining({id:accountId,userId})]);
  });
 
- it('creates an ordinary member from signed Mini App data and rejects invalid signatures',async()=>{
+ it('cannot auto-create a Mini App identity even with valid signed Telegram data',async()=>{
   const telegramId=781234567891;
   const initData=signedLaunch({user:JSON.stringify({id:telegramId,first_name:'New Telegram fixture'})});
-  const response=await auth.handler(request('telegram/miniapp/signin',{initData}));
-  expect(response.status,await response.clone().text()).toBe(200);
-  const body=await response.json();expect(body.user).toMatchObject({telegramId:String(telegramId),role:'member'});
-  expect(await db.staffMember.findUnique({where:{userId:body.user.id}})).toBeNull();
   const before=await db.session.count();
+  const response=await auth.handler(request('telegram/miniapp/signin',{initData}));
+  expect(response.status,await response.clone().text()).toBe(404);
+  expect(response.headers.getSetCookie()).toEqual([]);
+  expect(await db.user.findUnique({where:{telegramId:String(telegramId)}})).toBeNull();
+  expect(await db.account.count({where:{providerId:'telegram',accountId:String(telegramId)}})).toBe(0);
   const invalid=await auth.handler(request('telegram/miniapp/signin',{initData:signedLaunch({},'wrong-token')}));
   expect(invalid.status).toBe(401);expect(invalid.headers.getSetCookie().some(value=>value.includes('session_token='))).toBe(false);
   expect(await db.session.count()).toBe(before);

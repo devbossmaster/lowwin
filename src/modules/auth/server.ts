@@ -71,7 +71,7 @@ function buildAuth(client:PrismaClient|Prisma.TransactionClient,env:ReturnType<t
     rateLimit: { enabled:true,storage:'database',window:60,max:30,customRules:{'/sign-up/email':{window:60,max:3},'/sign-in/email':{window:60,max:5},'/send-verification-email':{window:60,max:3},'/request-password-reset':{window:60,max:3},'/reset-password':{window:60,max:5}} },
     plugins: [telegram({ botToken: env.TELEGRAM_BOT_TOKEN, botUsername: env.TELEGRAM_BOT_USERNAME,
       loginWidget: false, maxAuthAge: 300,allowUserToLink:false,
-      miniApp: { enabled: true, validateInitData: true, allowAutoSignin: true },
+      miniApp: { enabled: true, validateInitData: true, allowAutoSignin: false },
       oidc:login?{enabled:true,clientId:login.clientId,clientSecret:login.clientSecret,requestPhone:true,requestBotAccess:true,disableIdTokenSignIn:true,disableSignUp:true,
         mapOIDCProfileToUser:async claims=>{
           if(!('$transaction' in client))throw new APIError('FORBIDDEN',{message:'Browser login requires its own request.'});

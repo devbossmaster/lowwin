@@ -1,71 +1,77 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
-import {LoaderCircle,Phone,ShieldCheck} from 'lucide-react';
+import {LoaderCircle,Phone} from 'lucide-react';
+import {LOWWIN_LOGO_SRC} from '@/lib/brand';
 import {useTelegram} from './telegram-provider';
-import {AccountSheet} from './account-sheet';
+import {LaunchSplash} from './launch-splash';
 import {TelegramBotLink} from './telegram-bot-link';
 import {MiniPhrase,useMiniLocale} from './mini-locale';
 import {watchContactApproval} from '@/lib/contact-approval';
 import styles from './contact-gate.module.css';
 
-/** Native consent follows the first Mini walkthrough or an explicit retry. Dismissal leaves the app and
- * any bid draft mounted; SDK approval never substitutes for server proof. */
-export function ContactGate({autoRequest=false}:{autoRequest?:boolean}={}){
- const {status,finishContact,botUrl,closeRegistration,retry,needsReopen,error:identityError}=useTelegram();
+/** Gate the Mini App until the bot has verified contact for this signed launch. */
+export function ContactGate(){
+ const {status,finishContact,botUrl,retry,needsReopen,error:identityError}=useTelegram();
  const {language}=useMiniLocale(),am=language==='am';
  const [phase,setPhase]=useState<'ready'|'approval'|'confirming'|'declined'|'unsupported'|'error'>('ready');
  const [error,setError]=useState('');
  const alive=useRef(true),generation=useRef(0),timer=useRef<ReturnType<typeof setTimeout>|null>(null),approval=useRef<ReturnType<typeof watchContactApproval>|null>(null),controller=useRef<AbortController|null>(null);
- const automaticRequested=useRef(false);
+ const automaticLaunch=useRef<string|null>(null);
  function clear(){if(timer.current)clearTimeout(timer.current);timer.current=null;approval.current?.cancel();approval.current=null;controller.current?.abort();controller.current=null}
  useEffect(()=>{alive.current=true;return()=>{alive.current=false;generation.current++;clear()}},[]);
  useEffect(()=>{if(status==='error'){generation.current++;clear();setPhase('error')}},[status]);
  function current(attempt:number){return alive.current&&attempt===generation.current}
- function close(){generation.current++;clear();closeRegistration()}
- async function poll(attempt:number,count=0):Promise<void>{
+ async function poll(attempt:number,initData:string,count=0):Promise<void>{
   if(!current(attempt))return;
   controller.current=new AbortController();
   try{
-   const response=await fetch('/api/onboarding/contact',{cache:'no-store',signal:AbortSignal.any([controller.current.signal,AbortSignal.timeout(6000)])});
-   if(!current(attempt))return;
+   const response=await fetch('/api/onboarding/contact',{
+    method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({initData}),
+    signal:AbortSignal.any([controller.current.signal,AbortSignal.timeout(6000)]),
+   });
+   if(!current(attempt)||window.Telegram?.WebApp?.initData!==initData)return;
    if(response.status===401||response.status===403)throw Error(am?'ከTelegram መለያዎ እንደገና Lowwinን ይክፈቱ።':'Reopen Lowwin from your Telegram account.');
    if(!response.ok)throw Error(am?'ማረጋገጥ አልተቻለም። እንደገና ይሞክሩ።':'Could not confirm your contact. Please retry.');
-   const result=await response.json();if(!current(attempt))return;
-   if(result.verified){await finishContact();return}
+   const result=await response.json();if(!current(attempt)||window.Telegram?.WebApp?.initData!==initData)return;
+   if(result.verified===true){setPhase('ready');await finishContact();return}
    if(count>=14)throw Error(am?'የTelegram ማረጋገጫ ገና አልደረሰም። ትንሽ ቆይተው እንደገና ይሞክሩ።':'Telegram has not confirmed your contact yet. Wait a moment and try again.');
-   timer.current=setTimeout(()=>void poll(attempt,count+1),Math.min(1500,250+count*250));
+   timer.current=setTimeout(()=>void poll(attempt,initData,count+1),Math.min(1500,250+count*250));
   }catch(cause){if(current(attempt)){setPhase('error');setError(cause instanceof Error?cause.message:'Please retry.')}}
  }
  function shareContact(){
-  if(phase==='approval'||phase==='confirming'||status==='loading')return;
-  const attempt=++generation.current;clear();setError('');
+  if(approval.current||phase==='confirming'||status!=='contact-required')return;
   const app=window.Telegram?.WebApp;
+  const initData=app?.initData;
+  if(!initData)return;
+  automaticLaunch.current=initData;
+  const attempt=++generation.current;clear();setError('');
   if(!app?.requestContact||app.isVersionAtLeast&&!app.isVersionAtLeast('6.9')){setPhase('unsupported');return}
-  if(status!=='contact-required'){setPhase('error');setError(am?'ከTelegram ውስጥ Lowwinን ይክፈቱ።':'Open Lowwin inside Telegram to log in.');return}
   setPhase('approval');
   approval.current=watchContactApproval(shared=>{
    if(!current(attempt))return;approval.current=null;
    if(!shared){setPhase('declined');return}
-   setPhase('confirming');void poll(attempt);
+   setPhase('confirming');void poll(attempt,initData);
   },()=>{if(current(attempt)){approval.current=null;setPhase('error');setError(am?'ማረጋገጫው ዘግይቷል። እንደገና ይሞክሩ።':'Telegram confirmation timed out. Please retry.')}});
   try{app.requestContact(approval.current.respond)}catch{approval.current?.cancel();approval.current=null;setPhase('unsupported')}
  }
  useEffect(()=>{
-  if(!autoRequest||automaticRequested.current||status!=='contact-required')return;
-  // Schedule after the sheet commits. Cleanup cancels React's replayed effect,
-  // so one launch creates exactly one native contact request.
-  const request=setTimeout(()=>{if(!alive.current||automaticRequested.current)return;automaticRequested.current=true;shareContact()},0);
+  const launch=window.Telegram?.WebApp?.initData;
+  if(!launch||status!=='contact-required'||automaticLaunch.current===launch)return;
+  // Wait for the contact screen to commit. Cleanup cancels React's replay.
+  const request=setTimeout(()=>{if(!alive.current||automaticLaunch.current===launch)return;automaticLaunch.current=launch;shareContact()},0);
   return()=>clearTimeout(request);
- },[autoRequest,status]);
- const busy=phase==='approval'||phase==='confirming'||status==='loading';
- return <AccountSheet title={<MiniPhrase en="Share your Telegram contact" am="የTelegram ስልክ ቁጥርዎን ያጋሩ"/>} onClose={close}>
-  <div className={styles.content}><span className={styles.icon}><ShieldCheck size={28}/></span><h3><MiniPhrase en="Your account, securely connected" am="መለያዎን በደህንነት ያገናኙ"/></h3><p><MiniPhrase en="Share your own Telegram contact to bid and use your wallet. Browsing is always available." am="ለመጫረት እና ዋሌትዎን ለመጠቀም የራስዎን የTelegram ስልክ ቁጥር ያጋሩ። ጨረታዎችን ያለምዝገባ ማየት ይችላሉ።"/></p>
-  {phase==='declined'&&<p role="status"><MiniPhrase en="Contact sharing was cancelled. You can keep browsing or try again." am="ስልክ ቁጥር ማጋራት ተሰርዟል። መመልከት መቀጠል ወይም እንደገና መሞከር ይችላሉ።"/></p>}
+ },[status]);
+ if(status==='loading')return <LaunchSplash/>;
+ const busy=phase==='approval'||phase==='confirming';
+ return <main id="main" className={`telegram-entry ${styles.screen}`} aria-labelledby="contact-heading">
+  <img src={LOWWIN_LOGO_SRC} alt="Lowwin" width={56} height={56} data-lowwin-logo/>
+  <h1 id="contact-heading"><MiniPhrase en="Share your Telegram contact" am="የTelegram ስልክ ቁጥርዎን ያጋሩ"/></h1>
+  <p><MiniPhrase en="Share your own number through Telegram to finish registration and open Lowwin." am="ምዝገባዎን ለማጠናቀቅ እና Lowwinን ለመክፈት የራስዎን ስልክ ቁጥር በTelegram ያጋሩ።"/></p>
+  {phase==='declined'&&<p role="status"><MiniPhrase en="Contact sharing was cancelled. Tap Share contact to try again." am="ስልክ ቁጥር ማጋራት ተሰርዟል። እንደገና ለመሞከር የማጋራት ቁልፉን ይጫኑ።"/></p>}
   {(error||status==='error')&&<p className={styles.error} role="alert">{error||identityError}</p>}
   {phase==='unsupported'&&<p role="status"><MiniPhrase en="Update Telegram, then open Lowwin from the bot to share your contact." am="Telegramን ያዘምኑ፣ ከዚያ ስልክ ቁጥርዎን ለማጋራት Lowwinን ከቦቱ ይክፈቱ።"/></p>}
-  {(status==='contact-required'||status==='loading')&&phase!=='unsupported'&&<button className="primary-button" onClick={shareContact} disabled={busy}>{busy?<LoaderCircle className={styles.spin} size={18}/>:<Phone size={18}/>}<MiniPhrase en={phase==='confirming'?'Confirming your contact':phase==='approval'?'Approve in Telegram':status==='loading'?'Connecting to Telegram':'Share contact'} am={phase==='confirming'?'ስልክ ቁጥርዎ በማረጋገጥ ላይ':phase==='approval'?'በTelegram ያጽድቁ':status==='loading'?'ከTelegram በመገናኘት ላይ':'ስልክ ቁጥርዎን ያጋሩ'}/></button>}
+  {status==='contact-required'&&phase!=='unsupported'&&<button type="button" className="primary-button" onClick={shareContact} disabled={busy} aria-live="polite">{busy?<LoaderCircle aria-hidden="true" className={styles.spin} size={18}/>:<Phone aria-hidden="true" size={18}/>}<MiniPhrase en={phase==='confirming'?'Confirming your contact':phase==='approval'?'Approve in Telegram':'Share contact'} am={phase==='confirming'?'ስልክ ቁጥርዎ በማረጋገጥ ላይ':phase==='approval'?'በTelegram ያጽድቁ':'ስልክ ቁጥርዎን ያጋሩ'}/></button>}
   {status==='error'&&!busy&&!needsReopen&&<button className="primary-button" onClick={retry}><MiniPhrase en="Reconnect" am="እንደገና ይገናኙ"/></button>}
   {botUrl&&(phase==='unsupported'||status==='guest'||status==='error')&&<TelegramBotLink className="primary-button" href={botUrl}><MiniPhrase en="Open in Telegram" am="በTelegram ይክፈቱ"/></TelegramBotLink>}
-  <button className="text-link" onClick={close}><MiniPhrase en="Keep browsing" am="መመልከት ይቀጥሉ"/></button></div>
- </AccountSheet>;
+ </main>;
 }

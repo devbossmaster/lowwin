@@ -22,7 +22,33 @@ describe.skipIf(!url)('required own-contact boundary',()=>{
  it('stores encrypted contact without phone or vCard and deduplicates update delivery',async()=>{const id=next(),body={update_id:id,message:message(id)};await receive(body);await receive(body);const row=await db.botUpdate.findUniqueOrThrow({where:{updateId:BigInt(id)}});expect(JSON.stringify(row.payload)).not.toContain(body.message.contact.phone_number);expect(JSON.stringify(row.payload)).not.toContain('private-vcard');expect(row.botId).toBe(contactBotId());expect(await db.botUpdate.count({where:{updateId:BigInt(id)}})).toBe(1)});
  for(const scenario of ['missing-id','other-contact','other-chat','group','forwarded','wrong-bot','invalid-phone'] as const)it(`rejects ${scenario}`,async()=>{const id=next(),m=message(id) as Record<string,any>;if(scenario==='missing-id')delete m.contact.user_id;if(scenario==='other-contact')m.contact.user_id++;if(scenario==='other-chat')m.chat.id++;if(scenario==='group')m.chat.type='group';if(scenario==='forwarded')m.forward_origin={type:'user'};if(scenario==='invalid-phone')m.contact.phone_number='invalid';expect(await processContact(m,scenario==='wrong-bot'?'999':contactBotId())).toBe('REJECTED_IDENTITY');expect(await db.telegramOwnContact.findUnique({where:{botId_telegramId:{botId:contactBotId(),telegramId:String(id)}}})).toBeNull()});
  it('serializes same-phone claims, never merges users and keeps only one owner',async()=>{const a=next(),b=next(),phone=`+999${String(a).padStart(11,'0')}`;const result=await Promise.all([processContact(message(a,phone)),processContact(message(b,phone))]);expect(result.sort()).toEqual(['CONFLICT_REQUIRES_SUPPORT','VERIFIED']);expect(await db.telegramOwnContact.count({where:{telegramId:{in:[String(a),String(b)]}}})).toBe(1)});
- it('binds a prelaunch contact; unverified signed sessions have no Mini App access; revocation denies access again',async()=>{const id=next(),{handleAuth}=await import('../src/modules/auth/handler'),{getLaunchSession,getMiniSession}=await import('../src/modules/auth/mini-access');const sign=()=>handleAuth(new Request('http://localhost:3000/api/auth/telegram/miniapp/signin',{method:'POST',headers:{origin:'http://localhost:3000','content-type':'application/json'},body:JSON.stringify({initData:signedLaunch({user:JSON.stringify({id,first_name:'Contact fixture'})})})}));let r=await sign();expect(r.status).toBe(200);let headers=new Headers({cookie:r.headers.getSetCookie().map(v=>v.split(';')[0]).join('; ')});expect(await getLaunchSession(headers,db)).not.toBeNull();expect(await getMiniSession(headers,db)).toBeNull();const {GET}=await import('../src/app/api/me/route');expect((await GET(new Request('http://localhost/api/me',{headers}))).status).toBe(401);expect(await processContact(message(id))).toBe('VERIFIED');r=await sign();headers=new Headers({cookie:r.headers.getSetCookie().map(v=>v.split(';')[0]).join('; ')});const session=await getMiniSession(headers,db);expect(session).not.toBeNull();expect((await GET(new Request('http://localhost/api/me',{headers}))).status).toBe(200);expect((await GET(new Request('http://localhost/api/me',{headers}))).status).toBe(200);expect((await contactStatus(db,session!.user.id)).masked).toMatch(/^•••• \d{4}$/);await db.telegramOwnContact.update({where:{userId:session!.user.id},data:{revokedAt:new Date()}});expect(await getMiniSession(headers,db)).toBeNull();expect(await processContact(message(id))).toBe('CONFLICT_REQUIRES_SUPPORT')});
+ it('requires committed own contact before creating any player, account or session',async()=>{
+  const id=next(),telegramId=String(id),{handleAuth}=await import('../src/modules/auth/handler'),{getMiniSession}=await import('../src/modules/auth/mini-access');
+  const {POST:contact}=await import('../src/app/api/onboarding/contact/route'),{GET:me}=await import('../src/app/api/me/route');
+  const origin='http://localhost:3000',initData=signedLaunch({user:JSON.stringify({id,first_name:'Contact fixture'})});
+  const request=(path:string)=>new Request(origin+path,{method:'POST',headers:{origin,'content-type':'application/json'},body:JSON.stringify({initData})});
+  const sign=()=>handleAuth(request('/api/auth/telegram/miniapp/signin'));
+  const verify=()=>contact(request('/api/onboarding/contact'));
+  const before=await db.session.count(),pending=await sign();
+  expect(await pending.json()).toEqual({ok:true,status:'contact-required',me:null});
+  expect(pending.headers.getSetCookie()).toEqual([]);
+  expect(await db.user.findUnique({where:{telegramId}})).toBeNull();
+  expect(await db.account.count({where:{providerId:'telegram',accountId:telegramId}})).toBe(0);
+  expect(await db.session.count()).toBe(before);
+  expect(await (await verify()).json()).toEqual({verified:false,masked:null});
+  expect((await me(new Request(origin+'/api/me'))).status).toBe(401);
+  expect(await processContact(message(id))).toBe('VERIFIED');
+  expect(await (await verify()).json()).toEqual({verified:true,masked:null});
+  const result=await sign(),headers=new Headers({cookie:result.headers.getSetCookie().map(v=>v.split(';')[0]).join('; ')});
+  const session=await getMiniSession(headers,db);expect(session).not.toBeNull();
+  expect((await me(new Request(origin+'/api/me',{headers}))).status).toBe(200);
+  expect((await contactStatus(db,session!.user.id)).masked).toMatch(/^•••• \d{4}$/);
+  await db.telegramOwnContact.update({where:{userId:session!.user.id},data:{revokedAt:new Date()}});
+  expect(await getMiniSession(headers,db)).toBeNull();
+  expect(await (await verify()).json()).toEqual({verified:false,masked:null});
+  expect((await sign()).headers.getSetCookie()).toEqual([]);
+  expect(await processContact(message(id))).toBe('CONFLICT_REQUIRES_SUPPORT');
+ });
  it('registers on verified contact before launch and reuses the same user at signed launch',async()=>{
   const id=next(),tid=String(id),{handleAuth}=await import('../src/modules/auth/handler');
   expect(await isRegisteredTelegramUser(db,tid)).toBe(false);
@@ -71,10 +97,15 @@ describe.skipIf(!url)('required own-contact boundary',()=>{
  });
  it('serializes contact registration racing signed launch without duplicate users or sessions from contact',async()=>{
   const id=next(),{handleAuth}=await import('../src/modules/auth/handler');
-  const [contact,login]=await Promise.all([processContact(message(id)),handleAuth(new Request('http://localhost:3000/api/auth/telegram/miniapp/signin',{method:'POST',headers:{origin:'http://localhost:3000','content-type':'application/json'},body:JSON.stringify({initData:signedLaunch({user:JSON.stringify({id,first_name:'Concurrent player'})})})}))]);
+  const sign=()=>handleAuth(new Request('http://localhost:3000/api/auth/telegram/miniapp/signin',{method:'POST',headers:{origin:'http://localhost:3000','content-type':'application/json'},body:JSON.stringify({initData:signedLaunch({user:JSON.stringify({id,first_name:'Concurrent player'})})})}));
+  const [contact,login]=await Promise.all([processContact(message(id)),sign()]);
   expect(contact).toBe('VERIFIED');expect(login.status).toBe(200);
   const user=await db.user.findUniqueOrThrow({where:{telegramId:String(id)}});
   expect(await db.user.count({where:{telegramId:String(id)}})).toBe(1);
+  if((await login.json()).status==='contact-required'){
+   expect(await db.session.count({where:{userId:user.id}})).toBe(0);
+   expect(await (await sign()).json()).toMatchObject({status:'authenticated',me:{user:{id:user.id}}});
+  }
   expect(await db.session.count({where:{userId:user.id}})).toBe(1);
   expect((await contactStatus(db,user.id)).verified).toBe(true);
  });
@@ -103,13 +134,13 @@ describe.skipIf(!url)('required own-contact boundary',()=>{
  it('retired fallback never shares contact or sends a bot keyboard and keeps own-contact proof required',async()=>{
   const id=next(),{handleAuth}=await import('../src/modules/auth/handler'),{POST,GET}=await import('../src/app/api/onboarding/contact/route');
   const signed=await handleAuth(new Request('http://localhost:3000/api/auth/telegram/miniapp/signin',{method:'POST',headers:{origin:'http://localhost:3000','content-type':'application/json'},body:JSON.stringify({initData:signedLaunch({user:JSON.stringify({id,first_name:'Fallback fixture'})})})}));
-  expect(signed.status).toBe(200);const cookie=signed.headers.getSetCookie().map(v=>v.split(';')[0]).join('; ');
+  expect(signed.status).toBe(200);expect(signed.headers.getSetCookie()).toEqual([]);
   const request=(headers:Record<string,string>)=>new Request('http://localhost:3000/api/onboarding/contact',{method:'POST',headers});
   expect((await POST(request({origin:'http://localhost:3000','x-telegram-user-id':String(id)}))).status).toBe(401);
-  expect((await POST(request({cookie,origin:'https://evil.invalid'}))).status).toBe(403);
-  sendMessage.mockClear();expect((await POST(request({cookie,origin:'http://localhost:3000'}))).status).toBe(410);expect(sendMessage).not.toHaveBeenCalled();
-  expect((await (await GET(new Request('http://localhost:3000/api/onboarding/contact',{headers:{cookie}}))).json()).verified).toBe(false);
-  const {GET:me}=await import('../src/app/api/me/route');expect((await me(new Request('http://localhost:3000/api/me',{headers:{cookie}}))).status).toBe(401);
+  expect((await POST(request({origin:'https://evil.invalid'}))).status).toBe(403);
+  sendMessage.mockClear();expect((await POST(request({origin:'http://localhost:3000'}))).status).toBe(401);expect(sendMessage).not.toHaveBeenCalled();
+  expect((await GET(new Request('http://localhost:3000/api/onboarding/contact'))).status).toBe(401);
+  const {GET:me}=await import('../src/app/api/me/route');expect((await me(new Request('http://localhost:3000/api/me'))).status).toBe(401);
  });
  it('does not mutate audit records',async()=>{const id=next();await processContact(message(id));const e=await db.contactEvent.findFirstOrThrow({where:{telegramId:String(id)}});await expect(db.contactEvent.update({where:{id:e.id},data:{outcome:'CHANGED'}})).rejects.toThrow()});
  it('staging fixture capability rejects production, hosted and different targets',()=>{expect(stagingDemoEnabled({APP_ENV:'production',STAGING_DEMO_ENABLED:'true'})).toBe(false);expect(stagingDemoEnabled({...process.env,VERCEL:'1',APP_ENV:'staging'})).toBe(false);expect(stagingDemoUser('any-browser-id',{...process.env,APP_ENV:'staging',STAGING_DEMO_ENABLED:'true'})).toBe(false)});

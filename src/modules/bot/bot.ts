@@ -23,7 +23,7 @@ export function createBot(_options:{contactVerified?:(telegramId:string)=>Promis
     const destination=paymentReturn?new URL(paymentReturn,env.MINI_APP_URL).href:env.MINI_APP_URL;
     // The public bot welcome is Amharic by default; account identity and referral
     // attribution remain independent of Telegram's interface language.
-    const caption='እንኳን ወደ LowWin በደህና መጡ! ሚኒ አፑን ይክፈቱ፣ ጨረታዎችን ይመልከቱ። አዲስ ከሆኑ ስልክ ቁጥርዎን በTelegram በማጋራት ምዝገባዎን ያጠናቅቁ።';
+    const caption='እንኳን ወደ LowWin በደህና መጡ!\n\nሚኒ አፑን ይክፈቱ። አዲስ ከሆኑ ጨረታዎችን ከመመልከትዎ በፊት በTelegram የራስዎን ስልክ ቁጥር በማጋራት ምዝገባዎን ያጠናቅቁ።';
     await sendWelcomeBanner(ctx.api,ctx.chat.id,caption,new InlineKeyboard().webApp('LowWinን ይክፈቱ',destination).url('ቻናላችንን ይቀላቀሉ',TELEGRAM_CHANNEL_URL),'am');
   });
   bot.command('help', async ctx => { await ctx.reply(botHelp[ctx.from?.language_code?.startsWith('am')?'am':'en']); });
