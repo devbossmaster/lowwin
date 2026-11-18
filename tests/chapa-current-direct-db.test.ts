@@ -148,6 +148,36 @@ describe.skipIf(!database)('current Direct5 owned creation and private committed
   expect(await balance(f.user)).toBe('40');
   expect(await db.journal.count({where:{kind:'CHAPA_RECEIPT',operation:{userId:f.user}}})).toBe(1);
  });
+ it('brings an owned USSD check forward once on wallet return and waits for private proof',async()=>{
+  const f=await fixture('BID'),{order}=await f.start(),reauthorize=vi.fn(async()=>{});
+  await db.chapaCheckout.update({where:{id:order.id},data:{nextCheckAt:new Date(Date.now()+30_000)}});
+  const check=async(walletReturn:boolean)=>(await prepareOwnedChapaVerification(db,order.id,f.user,f.transport,walletReturn))(reauthorize);
+  await expect(check(false)).resolves.toMatchObject({status:'AUTH_NEEDED'});
+  expect(f.validate).not.toHaveBeenCalled();expect(f.lookup).not.toHaveBeenCalled();
+  await Promise.all([check(true),check(true)]);
+  await check(true);
+  expect(f.validate).toHaveBeenCalledOnce();expect(f.lookup).toHaveBeenCalledOnce();
+  expect(await db.bid.count({where:{userId:f.user}})).toBe(0);
+  const saved=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});
+  expect(saved.attempts).toBe(2);expect(saved.leaseUntil).toBeNull();
+  f.setStatus('SUCCESS');f.setValidation('SUCCESS');await f.due();
+  await expect(check(false)).resolves.toMatchObject({status:'BID_ACCEPTED',verificationState:'VERIFIED'});
+  expect(await db.bid.count({where:{userId:f.user}})).toBe(2);
+ });
+ it('keeps the existing provider deadline, lease and fresh session checks on return',async()=>{
+  const f=await fixture(),{order}=await f.start(),reauthorize=vi.fn(async()=>{}),future=new Date(Date.now()+30_000);
+  const check=async()=>(await prepareOwnedChapaVerification(db,order.id,f.user,f.transport,true))(reauthorize);
+  await db.chapaCheckout.update({where:{id:order.id},data:{nextCheckAt:future,verificationRetryAfter:future}});
+  await check();
+  await db.chapaCheckout.update({where:{id:order.id},data:{verificationRetryAfter:null,leaseUntil:future}});
+  await check();
+  expect(reauthorize).not.toHaveBeenCalled();expect(f.lookup).not.toHaveBeenCalled();
+  await db.chapaCheckout.update({where:{id:order.id},data:{leaseUntil:null}});
+  reauthorize.mockRejectedValueOnce(Object.assign(Error('Session revoked'),{status:401}));
+  await expect(check()).rejects.toMatchObject({status:401});
+  expect(f.lookup).not.toHaveBeenCalled();expect(f.validate).not.toHaveBeenCalled();
+  expect(await balance(f.user)).toBe('0');
+ });
  it('commits a distinct immutable Direct5 intent before dispatch without any public key or hosted call',async()=>{
   const f=await fixture(),{order}=await f.start();expect(order).toMatchObject({flowVersion:5,chargeType:'DIRECT',apiVersion:'v2',status:'AUTH_NEEDED',authType:'USSD',amount:'40.00'});
   const row=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});expect(row.initialization).toMatchObject({apiVersion:'v2',flowVersion:5,flow:'DIRECT',metadata:{checkout_id:row.id},idempotencyKey:`lowwin-direct-v5:${row.id}`,webhookSignatureProfile:'raw_body'});expect(row.initialization).not.toHaveProperty('publicKeyFingerprint');expect(await balance(f.user)).toBe('0');expect(f.lookup).not.toHaveBeenCalled();
