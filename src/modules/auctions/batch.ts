@@ -8,7 +8,7 @@ import {ChapaError,chapaHash} from '../payments/chapa-provider';
 import {PAYMENT_TRANSACTION_OPTIONS} from '../payments/timing';
 import {BidError,recordValidatedSubmissionFeeBidInTransaction,type BidReceipt} from './bids';
 import {parseBidCents} from './consecutive-bids';
-import {auctionMaintenance,lockAuctionMaintenance} from './maintenance';
+import {auctionMaintenance,lockAuctionMaintenance,readAuctionMaintenance} from './maintenance';
 import {isSubmissionFeeOnly} from './rules';
 import {walletBidsEnabled} from '../wallet/policy';
 import {readWalletProjection} from '../wallet/balance';
@@ -115,10 +115,12 @@ export async function persistBidBatchQuoteInTransaction(tx:Tx,userId:string,inpu
  const id=randomUUID(),quoteHash=chapaHash(JSON.stringify({id,userId,ruleVersion:priced.auction.terms!.ruleVersion,feeVersion:input.feeVersion,lines:priced.lines,totalCents:String(priced.totalCents)}));
  return tx.bidBatchOrder.create({data:{id,userId,key:input.key,requestHash,quoteHash,auctionId:priced.auction.id,auctionSlug:input.auctionSlug,ruleVersion:priced.auction.terms!.ruleVersion,feeVersion:input.feeVersion,lines:priced.lines,totalCents:priced.totalCents,grossCents:priced.grossCents,discountCents:priced.discountCents,couponId:input.couponId}});
 }
-export async function fulfillBatchInTransaction(tx:Tx,batch:BidBatchOrder,validated?:Awaited<ReturnType<typeof validateBatchInTransaction>>,allowDepositBonus=false){
- const prior=validated?batch:await tx.bidBatchOrder.findUniqueOrThrow({where:{id:batch.id}});
+type FulfillBatchOptions={validated?:Awaited<ReturnType<typeof validateBatchInTransaction>>;allowDepositBonus?:boolean;locksHeld?:boolean};
+export async function fulfillBatchInTransaction(tx:Tx,batch:BidBatchOrder,{validated,allowDepositBonus=false,locksHeld=false}:FulfillBatchOptions={}){
+ const prior=validated||locksHeld?batch:await tx.bidBatchOrder.findUniqueOrThrow({where:{id:batch.id}});
  if(prior.status==='ACCEPTED'&&prior.receipt)return prior.receipt as unknown as BidReceipt&{bids:BidReceipt['bid'][];receipts:BidReceipt[]};
- const lines=batchLines(batch),current=validated??await validateBatchInTransaction(tx,batch.userId,batch.auctionSlug,lines.map(item=>item.number),batch.feeVersion,batch.couponId??undefined);
+ if(locksHeld&&!validated&&(await readAuctionMaintenance(tx)).halted)throw new ChapaError(503,'AUCTIONS_PAUSED','Auctions are paused. Existing funds remain safe.');
+ const lines=batchLines(batch),current=validated??await validateBatchInTransaction(tx,batch.userId,batch.auctionSlug,lines.map(item=>item.number),batch.feeVersion,batch.couponId??undefined,locksHeld);
  if(current.auction.terms!.ruleVersion!==batch.ruleVersion||current.totalCents!==batch.totalCents||JSON.stringify(current.lines)!==JSON.stringify(lines))throw new ChapaError(409,'TERMS_CHANGED','The quote or coupon changed. No bids were accepted.');
  // validateBatchInTransaction holds the shared wallet writer lock. Reject an
  // unaffordable complete order before creating even the first entry/outbox row.
@@ -188,7 +190,7 @@ export async function payBidBatchWallet(client:PrismaClient,userId:string,id:str
 async function acceptWalletBatch(tx:Tx,batch:BidBatchOrder,validated?:Awaited<ReturnType<typeof validateBatchInTransaction>>){
  if(batch.totalCents>0n&&!walletBidsEnabled())throw new ChapaError(503,'WALLET_UNAVAILABLE','Wallet payments are currently unavailable.');
  const current=validated??await measureChapa('pricing',()=>validateBatchInTransaction(tx,batch.userId,batch.auctionSlug,batchLines(batch).map(line=>line.number),batch.feeVersion,batch.couponId??undefined,true));
- const receipt=await measureChapa('fulfill',()=>fulfillBatchInTransaction(tx,batch,current,true));
+ const receipt=await measureChapa('fulfill',()=>fulfillBatchInTransaction(tx,batch,{validated:current,allowDepositBonus:true}));
  return walletBatchReceipt({...batch,status:'ACCEPTED'},receipt,await readWalletProjection(tx,batch.userId));
 }
 

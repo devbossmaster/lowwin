@@ -4,10 +4,11 @@ type Events=Pick<EventTarget,'addEventListener'|'removeEventListener'>;
 type Visibility=Events&Pick<Document,'visibilityState'>;
 type Source=Pick<EventTarget,'addEventListener'>&{close:()=>void};
 type Telegram={onEvent?:(event:string,listener:()=>void)=>void;offEvent?:(event:string,listener:()=>void)=>void};
+export type ChapaVerificationTrigger='wallet-return';
 type Options={
  initialOrder?:ChapaCheckoutView|null;
  readSnapshot:()=>Promise<ChapaCheckoutView|null>;
- verify:()=>Promise<ChapaCheckoutView|null>;
+ verify:(trigger?:ChapaVerificationTrigger)=>Promise<ChapaCheckoutView|null>;
  onSnapshot:(order:ChapaCheckoutView)=>void;
  onPause:()=>void;
  onResume?:()=>void;
@@ -43,15 +44,15 @@ export function retainChapaObserver(identity:string,id:string,options:Options){
   const receive=(order:ChapaCheckoutView)=>{
    if(!current()||!acceptChapaSnapshot(owned.latest,order))return;owned.latest=order;fanout(owned,owner=>owner.onSnapshot(order));
   };
-  const request=async(kind:'readSnapshot'|'verify')=>{
+  const request=async(kind:'readSnapshot'|'verify',trigger?:ChapaVerificationTrigger)=>{
    const previous=ownedRequests.get(key);if(previous)try{await previous}catch{/* A new owner can recover after the old request aborts. */}
    if(!current()||!valid(primary))return null;
-   const flight=Promise.resolve().then(()=>primary[kind]());ownedRequests.set(key,flight);
+   const flight=Promise.resolve().then(()=>kind==='verify'&&trigger?primary.verify(trigger):primary[kind]());ownedRequests.set(key,flight);
    try{const order=await flight;if(current()&&order)receive(order);return order}
    finally{if(ownedRequests.get(key)===flight)ownedRequests.delete(key)}
   };
   owned.stop=startChapaObserver(id,{
-   ...primary,initialOrder:owned.latest??primary.initialOrder,readSnapshot:()=>request('readSnapshot'),verify:()=>request('verify'),onSnapshot:receive,
+   ...primary,initialOrder:owned.latest??primary.initialOrder,readSnapshot:()=>request('readSnapshot'),verify:trigger=>request('verify',trigger),onSnapshot:receive,
    isCurrent:()=>current()&&[...owned.owners].some(valid),
    onPause:()=>fanout(owned,owner=>owner.onPause()),onResume:()=>fanout(owned,owner=>owner.onResume?.()),
    onError:error=>fanout(owned,owner=>owner.onError?.(error)),
@@ -86,12 +87,12 @@ export function startChapaObserver(id:string,options:Options){
  const factory=options.createSource===undefined?(typeof EventSource==='undefined'?null:(url:string)=>new EventSource(url)):options.createSource;
  const fixedDeadline=typeof options.deadlineAt==='number'&&Number.isFinite(options.deadlineAt)?options.deadlineAt:null;
  let deadline=options.observeDirect?fixedDeadline??Infinity:Math.min(Date.now()+300000,fixedDeadline??Infinity);
- let active=true,paused=false,inFlight=false,snapshotWanted=false,verifyWanted=false,healthy=false,delay=5000,failures=0;
+ let active=true,paused=false,inFlight=false,snapshotWanted=false,verifyWanted=false,walletReturnWanted=false,healthy=false,delay=5000,failures=0;
  let latest=options.initialOrder?.id===id?options.initialOrder:null;
  const currentDirect=(order:ChapaCheckoutView|null)=>!!order&&order.apiVersion==='v2'&&order.flowVersion===5&&order.chargeType==='DIRECT'&&!order.unsupportedLegacy;
  let verificationFirst=currentDirect(latest);
  if(latest)delay=Number.isFinite(latest.pollAfterMs)?Math.min(60000,Math.max(2000,latest.pollAfterMs)):5000;
- let wasHidden=visibility.visibilityState!=='visible',lastWakeAt=-Infinity,fastUntil=Date.now()+30000;
+ let wasHidden=visibility.visibilityState!=='visible',away=wasHidden,lastWakeAt=-Infinity,lastWalletReturnAt=-Infinity,fastUntil=Date.now()+30000;
  let source:Source|null=null,timer:ReturnType<typeof setTimeout>|undefined,reconnect:ReturnType<typeof setTimeout>|undefined;
  const live=()=>active&&(options.isCurrent?.()??true);
  const foreground=()=>live()&&visibility.visibilityState==='visible';
@@ -99,10 +100,16 @@ export function startChapaObserver(id:string,options:Options){
  const disconnect=()=>{healthy=false;source?.close();source=null;clearTimeout(reconnect)};
  const accept=(order:ChapaCheckoutView|null,pushed=false)=>{
   if(!live()||!order||order.id!==id||!acceptChapaSnapshot(latest,order))return;
+  const authorizationReady=order.authType==='USSD'&&!!order.authorizationReference&&order.authorizationReference!==latest?.authorizationReference;
+  const completionReady=order.completionSignalPending&&!latest?.completionSignalPending;
   latest=order;verificationFirst||=currentDirect(order);
   if(pushed)options.onSnapshot(order);
   if(chapaConfirmed(order)||!chapaRecoverable(order)){stop();return}
   delay=Number.isFinite(order.pollAfterMs)?Math.min(60000,Math.max(2000,order.pollAfterMs)):5000;
+  // Recovery can discover the immutable intent before Chapa returns its USSD
+  // reference. Use that committed change (or a new completion hint) to bring
+  // forward the next owned check, without waiting for the ordinary poll timer.
+  if(pushed&&currentDirect(order)&&(authorizationReady||completionReady)){verifyWanted=true;void drain()}
  };
  const schedule=()=>{
   clearTimeout(timer);
@@ -121,16 +128,16 @@ export function startChapaObserver(id:string,options:Options){
     // Once an owned current Direct response exists, verification itself returns
     // the fresh owned snapshot. Do not serialize another GET ahead of it.
     if(verificationFirst){snapshotWanted=false;if(!verifyWanted)break}
-    const snapshot=snapshotWanted;
-    if(snapshot)snapshotWanted=false;else verifyWanted=false;
-    try{accept(await(snapshot?options.readSnapshot():options.verify()))}
+    const snapshot=snapshotWanted,trigger=!snapshot&&walletReturnWanted?'wallet-return':undefined;
+    if(snapshot)snapshotWanted=false;else{verifyWanted=false;walletReturnWanted=false}
+    try{accept(await(snapshot?options.readSnapshot():trigger?options.verify(trigger):options.verify()))}
     catch(error){
      if(!live())return;
      options.onError?.(error);
      if(error instanceof ChapaClientError&&[401,403,404].includes(error.status)){stop();return}
      delay=Math.min(30000,delay*2);
-     // Do not follow a failed snapshot with another immediate request.
-     verifyWanted=false;break;
+     // Back off unless a separate wallet return arrived during this request.
+     if(!walletReturnWanted){verifyWanted=false;break}
     }
    }
   }finally{
@@ -171,29 +178,42 @@ export function startChapaObserver(id:string,options:Options){
     disconnect();failures++;
     // Native automatic retries are closed; only this bounded schedule retries.
     if(foreground()&&failures<6)reconnect=setTimeout(connect,Math.min(30000,1000*2**(failures-1)));
-    schedule();
+    // Active authorization polls already have their own cadence. Repeated
+    // stream reconnect failures must not keep pushing their deadline back.
+    if(!options.observeDirect)schedule();
    });
   }catch{
    failures++;
    if(foreground()&&failures<6)reconnect=setTimeout(connect,Math.min(30000,1000*2**(failures-1)));
   }
  };
- const onWake=()=>{
+ const onWake=(resuming:boolean,telegramActivated=false)=>{
   if(!live()){stop();return}
-  if(visibility.visibilityState!=='visible'){wasHidden=true;clearTimeout(timer);disconnect();return}
-  const now=Date.now();if(!wasHidden&&now-lastWakeAt<750)return;wasHidden=false;lastWakeAt=now;
+  if(visibility.visibilityState!=='visible'){wasHidden=true;away=true;clearTimeout(timer);disconnect();return}
+  const now=Date.now();
+  const walletReturn=resuming&&(away||telegramActivated)&&now-lastWalletReturnAt>=750&&currentDirect(latest)&&latest?.authType==='USSD'&&!!latest.authorizationReference;
+  if(resuming)away=false;
+  if(!wasHidden&&!walletReturn&&now-lastWakeAt<750)return;
+  wasHidden=false;lastWakeAt=now;
+  if(walletReturn){lastWalletReturnAt=now;walletReturnWanted=true}
   fastUntil=now+30000;failures=0;snapshotWanted=!verificationFirst;verifyWanted=true;
   if(!options.observeDirect&&fixedDeadline!==null&&now>=deadline){pause();void drain();return}
   if(paused){paused=false;deadline=now+300000;options.onResume?.()}
   connect();void drain();
  };
+ const onReturn=()=>onWake(true);
+ const onReconnect=()=>onWake(false);
+ const onActivated=()=>onWake(true,true);
+ // Android's native phone window can cover the Mini App without changing
+ // document visibility. Still only send the stronger hint on a real return.
+ const onAway=()=>{away=true};
  function stop(){
   if(!active)return;active=false;clearTimeout(timer);disconnect();
-  visibility.removeEventListener('visibilitychange',onWake);wake?.removeEventListener('focus',onWake);wake?.removeEventListener('online',onWake);
-  try{telegram?.offEvent?.('activated',onWake)}catch{/* Older Telegram clients use visibility/focus. */}
+  visibility.removeEventListener('visibilitychange',onReturn);wake?.removeEventListener('focus',onReturn);wake?.removeEventListener('blur',onAway);wake?.removeEventListener('online',onReconnect);
+  try{telegram?.offEvent?.('activated',onActivated);telegram?.offEvent?.('deactivated',onAway)}catch{/* Older Telegram clients use visibility/focus. */}
  }
- visibility.addEventListener('visibilitychange',onWake);wake?.addEventListener('focus',onWake);wake?.addEventListener('online',onWake);
- try{telegram?.onEvent?.('activated',onWake)}catch{/* Older Telegram clients use visibility/focus. */}
+ visibility.addEventListener('visibilitychange',onReturn);wake?.addEventListener('focus',onReturn);wake?.addEventListener('blur',onAway);wake?.addEventListener('online',onReconnect);
+ try{telegram?.onEvent?.('activated',onActivated);telegram?.onEvent?.('deactivated',onAway)}catch{/* Older Telegram clients use visibility/focus. */}
  snapshotWanted=!verificationFirst;verifyWanted=true;connect();void drain();
  return stop;
 }
