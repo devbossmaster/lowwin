@@ -1,6 +1,6 @@
 import type {PrismaClient} from '@prisma/client';
 import {chapaAvailability,chapaTransport,type ChapaTransport} from './chapa-provider';
-import {unsupportedLegacyChapaCheckout,verifyChapaCheckout} from './chapa';
+import {unsupportedLegacyChapaCheckout,verifyChapaWebhookCheckout} from './chapa';
 import {chapaLegacyRecoveryAvailability} from './chapa-legacy-recovery';
 import {chapaCompletionStatus} from './chapa-verification-policy';
 
@@ -17,9 +17,8 @@ function reconcilesEvent(event:string,providerStatus:string|null){
 export async function processChapaEvent(client:PrismaClient,id:string,transport:ChapaTransport=chapaTransport){
  const modes=recoveryModes();if(!modes.length)return false;
  const now=new Date(),lease=new Date(Date.now()+30000);
- const claimed=await client.chapaWebhookEvent.updateMany({where:{id,mode:{in:modes},status:'QUEUED',attempts:{lt:5},nextAttemptAt:{lte:now},OR:[{leaseUntil:null},{leaseUntil:{lte:now}}]},data:{leaseUntil:lease,attempts:{increment:1}}});
- if(!claimed.count)return false;
- const event=await client.chapaWebhookEvent.findUniqueOrThrow({where:{id}});
+ const [event]=await client.chapaWebhookEvent.updateManyAndReturn({where:{id,mode:{in:modes},status:'QUEUED',attempts:{lt:5},nextAttemptAt:{lte:now},OR:[{leaseUntil:null},{leaseUntil:{lte:now}}]},data:{leaseUntil:lease,attempts:{increment:1}}});
+ if(!event)return false;
  let verified=false,credited=false,unsupportedLegacy=false;
  try{
   if(!event.checkoutId){verified=true;return true}
@@ -33,7 +32,7 @@ export async function processChapaEvent(client:PrismaClient,id:string,transport:
   // terminal metadata from a payload whose integrity was not established.
   const pinned=current.initialization&&typeof current.initialization==='object'&&!Array.isArray(current.initialization)&&(current.initialization as Record<string,unknown>).webhookSignatureProfile==='raw_body';
   const completion=pinned?chapaCompletionStatus(event.event.startsWith('payment.')?event.event.slice(8).toUpperCase():null):null;
-  const verification=await verifyChapaCheckout(client,current.id,undefined,undefined,transport,'webhook',undefined,completion??undefined);
+  const verification=await verifyChapaWebhookCheckout(client,current,transport,completion??undefined);
   const result=await client.chapaCheckout.findUniqueOrThrow({where:{id:current.id}});
   // A verified but still pending payment needs another bounded lookup. An early
   // provider read must not consume the only notification before SUCCESS exists.
@@ -56,9 +55,6 @@ export async function processChapaEvent(client:PrismaClient,id:string,transport:
    // An unconfigured original version remains available for staff review.
    // Never replace its verification with the active version's transport.
    await client.chapaWebhookEvent.updateMany({where,data:{leaseUntil:null,status:'NEEDS_VERIFICATION',completedAt:null}});
-  }else if(!credited&&event.nextAttemptAt>now){
-   // A hint was coalesced after claiming this lease but before reading the job.
-   await client.chapaWebhookEvent.updateMany({where,data:{leaseUntil:null,status:'QUEUED',attempts:0,completedAt:null}});
   }else{
    const completed=await client.chapaWebhookEvent.updateMany({where:{...where,...(!credited?{nextAttemptAt:event.nextAttemptAt}:{})},data:{leaseUntil:null,status:verified?'PROCESSED':event.attempts>=5?'NEEDS_VERIFICATION':'QUEUED',completedAt:verified?new Date():null,nextAttemptAt:new Date(Date.now()+Math.min(300000,5000*2**event.attempts))}});
    if(!credited&&!completed.count){
