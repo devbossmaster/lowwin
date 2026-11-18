@@ -4,6 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {createRequire} from 'node:module';
 import {readFileSync} from 'node:fs';
+import {makeSignature} from 'better-auth/crypto';
 import {earnedReferralCoupon,verifiedReferralUser,realReferralAuction} from './referral-fixtures';
 import {quoteBidBatch} from '../src/modules/auctions/batch';
 import {createCurrentDirectCheckout,findCurrentDirectCheckoutByKey,findInlineCheckoutByKey,prepareCurrentDirectCreation} from '../src/modules/payments/chapa-inline';
@@ -20,6 +21,7 @@ import {type ChapaCompletionStatus} from '../src/modules/payments/chapa-verifica
 import {chapaPollingDeadline} from '../src/lib/chapa-client';
 import {TEST_TOKEN} from './helpers';
 const database=process.env.CHAPA_CURRENT_DIRECT_TEST_DATABASE_URL;
+const sessionSecret='isolated-direct-verification-fixture-secret';
 
 describe.skipIf(!database)('current Direct5 owned creation and private committed fulfillment',()=>{
  let db:PrismaClient;
@@ -50,6 +52,18 @@ describe.skipIf(!database)('current Direct5 owned creation and private committed
   authorize.forCurrentDirectBid=vi.fn((client,owner,input)=>prepareAtomicDirectBid(client,binding,owner,input));
   authorize.forCurrentDirectTopUp=vi.fn((client,owner,input)=>prepareAtomicDirectTopUp(client,binding,owner,input));
   return {session,authorize,binding};
+ }
+ async function ownedVerification(f:Awaited<ReturnType<typeof fixture>>,id:string){
+  process.env.BETTER_AUTH_SECRET=sessionSecret;
+  const {session}=await creationBinding(f.user);
+  const cookie='__Secure-better-auth.session_token='+encodeURIComponent(`${session.token}.${await makeSignature(session.token,sessionSecret)}`);
+  const {requirePaymentSessionWithRead}=await import('../src/modules/payments/session');
+  const {prepared,reauthorize}=await requirePaymentSessionWithRead(
+   new Request(`https://lowwin.test/api/payments/chapa/checkouts/${id}`,{method:'POST',headers:{cookie}}),
+   userId=>prepareOwnedChapaVerification(db,id,userId,f.transport),
+  );
+  const transactionAuthorization=Object.assign(vi.fn(reauthorize),reauthorize);
+  return {session,transactionAuthorization,verify:()=>prepared(transactionAuthorization)};
  }
  it.each(['TOP_UP','BID'] as const)('checks two prepared %s requests again under the existing locks and dispatches the original key once',async purpose=>{
   const f=await fixture(purpose),{authorize}=await creationBinding(f.user);
@@ -178,6 +192,26 @@ describe.skipIf(!database)('current Direct5 owned creation and private committed
   expect(reauthorize).toHaveBeenCalled();
   expect(await balance(f.user)).toBe('40');
   expect(await db.journal.count({where:{kind:'CHAPA_RECEIPT',operation:{userId:f.user}}})).toBe(1);
+ });
+ it.each(['TOP_UP','BID'] as const)('checks and persists a cancelled Direct %s using the signed session in both writes',async purpose=>{
+  const f=await fixture(purpose),{order}=await f.start();
+  f.setStatus('CANCELLED');
+  const check=await ownedVerification(f,order.id);
+  expect(await check.verify()).toMatchObject({status:'CANCELLED',verificationState:'VERIFIED'});
+  expect(check.transactionAuthorization).not.toHaveBeenCalled();
+  expect(f.lookup).toHaveBeenCalledOnce();expect(f.validate).not.toHaveBeenCalled();
+  expect(await balance(f.user)).toBe('0');
+  expect(await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}})).toMatchObject({leaseUntil:null,creditJournalId:null});
+ });
+ it.each(['before claim','before commit'] as const)('rejects a signed session revoked %s',async when=>{
+  const f=await fixture(),{order}=await f.start(),check=await ownedVerification(f,order.id);
+  f.setStatus('CANCELLED');
+  const revoke=()=>db.session.delete({where:{id:check.session.id}});
+  if(when==='before claim')await revoke();
+  else f.lookup.mockImplementationOnce(async()=>{await revoke();return f.proof()});
+  await expect(check.verify()).rejects.toMatchObject({status:401});
+  expect(f.lookup).toHaveBeenCalledTimes(when==='before claim'?0:1);
+  expect(await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}})).toMatchObject({status:'AUTH_NEEDED',creditJournalId:null});
  });
  it('brings an owned USSD check forward once on wallet return and waits for private proof',async()=>{
   const f=await fixture('BID'),{order}=await f.start(),reauthorize=vi.fn(async()=>{});

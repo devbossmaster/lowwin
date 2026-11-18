@@ -14,9 +14,9 @@ import {contactBotId} from './own-contact';
 export function localMiniPreview(headers:Headers) {
   try { assertLocalIdentitySurface(headers);return true; } catch { return false; }
 }
-type BoundRow={id:string;token:string;userId:string;expiresAt:Date;createdAt:Date;updatedAt:Date;telegramLaunchId:string|null;telegramAuthSource:string;name:string;image:string|null;telegramId:string|null;lastFour:string|null;preview:boolean;contactVerified:boolean;needsRenewal:boolean;mutationCount:number|null;directOriginal:boolean;directTopUpReady:boolean};
+type BoundRow={id:string;token:string;userId:string;expiresAt:Date;createdAt:Date;updatedAt:Date;telegramLaunchId:string|null;telegramAuthSource:string;name:string;image:string|null;telegramId:string|null;lastFour:string|null;preview:boolean;contactVerified:boolean;needsRenewal:boolean;mutationCount:number|null;directOriginal:boolean;directBidReady:boolean;directTopUpReady:boolean};
 type BoundSession={session:Pick<BoundRow,'id'|'token'|'userId'|'expiresAt'|'createdAt'|'updatedAt'|'telegramLaunchId'|'telegramAuthSource'>;user:{id:string;name:string;image:string|null};telegramId:string|null;contactStatus:{verified:boolean;masked:string|null}};
-type SessionRead={identity:BoundSession;rateAllowed:boolean;directOriginal:boolean;directTopUpReady:boolean};
+type SessionRead={identity:BoundSession;rateAllowed:boolean;directOriginal:boolean;directBidReady:boolean;directTopUpReady:boolean};
 async function signedSessionToken(headers:Headers){
   const env=getEnv(),name=(env.BETTER_AUTH_URL.startsWith('https:')?'__Secure-':'')+'better-auth.session_token';
   const value=parseCookies(headers.get('cookie')??'').get(name);if(!value||value.length>512)return null;
@@ -48,8 +48,9 @@ async function readBoundSession(headers:Headers,client:PrismaClient|Prisma.Trans
       ${countIdentityRequest(Prisma.sql`${`app:${quota.scope}:`} || encode(sha256(convert_to(bound."userId",'UTF8')),'hex')`,quota.maximum,quota.windowMs,Prisma.sql`FROM bound WHERE NOT bound."needsRenewal"`)}
     ) SELECT bound.*, counted.count AS "mutationCount",
       ${mutation.directKey?Prisma.sql`CASE WHEN counted.count<=${quota.maximum} THEN EXISTS(SELECT 1 FROM "ChapaCheckout" WHERE "userId"=bound."userId" AND key=${mutation.directKey}) ELSE false END`:Prisma.sql`false`} AS "directOriginal",
+      ${mutation.directKey?Prisma.sql`COALESCE(has_function_privilege(to_regprocedure('public.lowwin_prepare_direct_bid(jsonb,jsonb)'), 'EXECUTE'),false)`:Prisma.sql`false`} AS "directBidReady",
       ${mutation.directKey?Prisma.sql`COALESCE(has_function_privilege(to_regprocedure('public.lowwin_prepare_direct_topup(jsonb,jsonb)'), 'EXECUTE'),false)`:Prisma.sql`false`} AS "directTopUpReady"
-    FROM bound LEFT JOIN counted ON true`:Prisma.sql`SELECT bound.*, NULL::integer AS "mutationCount", false AS "directOriginal", false AS "directTopUpReady" FROM (${identity}) AS bound`;
+    FROM bound LEFT JOIN counted ON true`:Prisma.sql`SELECT bound.*, NULL::integer AS "mutationCount", false AS "directOriginal", false AS "directBidReady", false AS "directTopUpReady" FROM (${identity}) AS bound`;
   const rows=await client.$queryRaw<BoundRow[]>(sql);
   const row=rows[0];if(!row)return null;
   const current={session:{id:row.id,token:row.token,userId:row.userId,expiresAt:row.expiresAt,createdAt:row.createdAt,updatedAt:row.updatedAt,telegramLaunchId:row.telegramLaunchId,telegramAuthSource:row.telegramAuthSource},user:{id:row.userId,name:row.name,image:row.image}};
@@ -58,7 +59,7 @@ async function readBoundSession(headers:Headers,client:PrismaClient|Prisma.Trans
   if(row.needsRenewal){if(!await createAuth(client).api.getSession({headers}))return null;return readBoundSession(headers,client,requireContact,mutation,true)}
   const bound=row.preview?{...current,telegramId:null,contactStatus:{verified:true,masked:null}}:
     {...current,telegramId:row.telegramId,contactStatus:{verified:row.contactVerified,masked:row.contactVerified?`•••• ${row.lastFour}`:null}};
-  return {identity:bound,rateAllowed:!mutation||row.mutationCount!==null&&row.mutationCount<=quota.maximum,directOriginal:row.directOriginal,directTopUpReady:row.directTopUpReady};
+  return {identity:bound,rateAllowed:!mutation||row.mutationCount!==null&&row.mutationCount<=quota.maximum,directOriginal:row.directOriginal,directBidReady:row.directBidReady,directTopUpReady:row.directTopUpReady};
 }
 // Cards load their private state together. Share only an unfinished lookup for
 // the same cookie; never retain an authorization result between requests.
