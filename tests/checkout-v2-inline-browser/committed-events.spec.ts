@@ -156,7 +156,7 @@ test('Telegram activation discovers the owned Telebirr payment before a stalled 
   expect(initializationReplied).toBe(false);
 
   f.acceptBids();releaseVerification();
-  await expect(resultClose(dialog)).toBeVisible();await expect(dialog).toContainText('2 bids accepted');
+  await expect(resultClose(dialog)).toBeVisible();await expect(dialog.getByRole('heading',{name:'Bid accepted',exact:true})).toBeVisible();
   expect(initializationReplied).toBe(false);
   releaseInitialization();await expect.poll(()=>initializationReplied).toBe(true);
   await expect(resultClose(dialog)).toBeVisible();
