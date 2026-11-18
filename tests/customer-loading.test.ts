@@ -91,6 +91,36 @@ describe('launch and route-specific customer loading',()=>{
    expect(html).toContain('data-route-skeleton="profile"');expect(html).not.toMatch(/<img|loading-spinner-ring/);
   }
  });
+ it.each(['/', '/auctions'])('loads notification rows inside a sheet independently of the underlying route %s',path=>{
+  state.path=path;
+  for(const language of ['en','am'] as const){
+   for(const status of ['loading','authenticated']){
+    const html=render(createElement(PrivateState,{query:{...waiting,status},variant:'alerts'}),language);
+    expect(html).toContain('data-notifications-skeleton');
+    expect(html.match(/data-notification-skeleton-row/g)?.length).toBeGreaterThanOrEqual(3);
+    expect(html.match(/role="status"/g)).toHaveLength(1);expect(html).toContain('aria-busy="true"');
+    expect(html).toContain(language==='en'?'Loading notifications…':'ማሳወቂያዎችን በመጫን ላይ…');
+    expect(html).toContain('aria-hidden="true"');
+    expect(html).not.toMatch(/data-route-skeleton|data-skeleton-part="hero"|auction-card|loading-spinner-ring|<button|<a\b|ETB|\d+ unread/);
+   }
+  }
+ });
+ it('keeps notification results and recovery states visible instead of restarting the sheet skeleton',()=>{
+  state.path='/';
+  for(const query of [
+   {...waiting,data:{items:[]}},
+   {...waiting,data:{items:[{id:'fixture'}]},fetching:true},
+   {...waiting,data:{items:[{id:'fixture'}]},error:'Timed out'},
+   {...waiting,error:'Timed out'},
+   {...waiting,status:'guest'},
+  ]){
+   const html=render(createElement(PrivateState,{query,variant:'alerts'}));
+   expect(html).not.toMatch(/data-notifications-skeleton|data-route-skeleton/);
+   if(query.error)expect(html).toContain('Retry</button>');
+   if('fetching' in query)expect(html).toContain('Updating…');
+   if(query.status==='guest')expect(html).toContain('Account verification required.');
+  }
+ });
  it('shows a retryable error rather than loading geometry after an initial request fails',()=>{
   const html=render(createElement(PrivateState,{query:{...waiting,error:'Timed out'},variant:'profile'}));
   expect(html).toContain('role="alert"');expect(html).toContain('Could not load this page. Please retry.');

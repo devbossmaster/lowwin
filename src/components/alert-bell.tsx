@@ -5,12 +5,13 @@ import {usePathname} from 'next/navigation';
 import {Bell} from 'lucide-react';
 import {useTelegram} from './telegram-provider';
 import {usePrivateQuery} from './private-query';
-import {MiniPhrase,useMiniLocale} from './mini-locale';
+import {useMiniLocale} from './mini-locale';
 import {AccountSheet} from './account-sheet';
+import {NotificationsInboxSkeleton} from './notifications-inbox-skeleton';
 import styles from './header-panels.module.css';
 // Keep lazy content inside its own boundary so it cannot replace the Home
 // header and unwind the open sheet's browser-history entry while loading.
-const NotificationsInbox=dynamic(()=>import('./notifications-inbox').then(module=>module.NotificationsInbox),{loading:()=> <p role="status"><MiniPhrase en="Loading notifications…" am="ማሳወቂያዎችን በመጫን ላይ…"/></p>});
+const NotificationsInbox=dynamic(()=>import('./notifications-inbox').then(module=>module.NotificationsInbox),{loading:()=> <NotificationsInboxSkeleton showFilters/>});
 export function AlertBell({className}:{className?:string}){
   const {queryIdentity}=useTelegram();return <PlayerAlerts key={queryIdentity??'guest'} className={className}/>;
 }
