@@ -1,9 +1,9 @@
 @font-face{font-family:'Lowwin Banner';src:url('/fonts/sora-latin-800.woff2') format('woff2');font-style:normal;font-weight:800;font-display:swap}
 .banner{position:relative;isolation:isolate;container-type:inline-size;width:100%;min-width:0;overflow:hidden;background:#07182d;color:#f7faff;--surface-ink:#f7faff}
 .artworkBanner{border-radius:0}
-.bannerMain{position:relative;isolation:isolate;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;width:100%;aspect-ratio:16/9;padding:10px 12px}
+.bannerMain{position:relative;isolation:isolate;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;width:100%;height:calc(100cqi * 800 / 1840);aspect-ratio:1840/800;padding:10px 12px}
 .bannerArtwork{position:absolute;z-index:-1;inset:0;overflow:hidden;pointer-events:none;background:#07182d}
-.bannerArtwork img{display:block;width:100%;height:100%;object-fit:contain;object-position:right center}
+.bannerArtwork img{display:block;width:100%;height:100%;object-fit:cover;object-position:right center}
 .bannerArtwork::after{position:absolute;inset:0;content:'';background:linear-gradient(90deg,#051429e8 0%,#051429cf 32%,#05142959 51%,transparent 72%)}
 .bannerCopy{position:relative;min-width:0;width:45%}
 .bannerCopy h1{margin:0;max-width:16ch;color:#f7faff;font-family:'Lowwin Banner',Inter,sans-serif;font-size:clamp(14px,4.8cqi,24px);font-weight:800;line-height:1.2;letter-spacing:-.03em;text-wrap:balance}
@@ -19,8 +19,8 @@
 .banner .introActions button:hover:not(:disabled):not([aria-disabled=true]){background:#173d6f;color:#fff}
 .banner .introActions .liveAction:hover{background:#1d4ed8;color:#fff}
 .introActions svg{display:none;flex:none}
-@media(min-width:640px){
- :global(.app-frame[data-app-layout=browser]) .bannerMain{min-height:440px;aspect-ratio:1840/800;padding:32px clamp(24px,3vw,48px)}
+@media(min-width:1024px){
+ :global(.app-frame[data-app-layout=browser]) .bannerMain{padding:32px clamp(24px,3vw,48px)}
  :global(.app-frame[data-app-layout=browser]) .bannerCopy{width:38%;max-width:480px}
  :global(.app-frame[data-app-layout=browser]) .bannerCopy h1{font-size:clamp(28px,3.4vw,44px)}
  :global(.app-frame[data-app-layout=browser]) .bannerCopy p{position:static;width:auto;height:auto;margin:16px 0 0;overflow:visible;clip-path:none;white-space:normal;max-width:38ch;font-size:14px;line-height:1.7;text-wrap:pretty}
@@ -30,9 +30,6 @@
  :global(.app-frame[data-app-layout=browser]) .banner .introActions :is(a,button){flex:none;gap:6px;padding:10px 16px;font-size:14px;min-height:48px}
  :global(.app-frame[data-app-layout=browser]) .introActions svg{display:block}
  :global(.app-frame[data-app-layout=browser]) .bannerArtwork img{object-fit:cover}
-}
-@media(min-width:640px) and (max-width:1023px){
- :global(.app-frame[data-app-layout=browser]) .bannerArtwork img{object-fit:contain;object-position:right center;mask-image:linear-gradient(to bottom,transparent,#000 10%,#000 90%,transparent)}
 }
 @media(prefers-reduced-motion:reduce){.banner .introActions :is(a,button){transition:none}}
 .categories{display:flex;gap:6px;padding:4px 16px;overflow-x:auto;scrollbar-width:none;overscroll-behavior-x:contain}.categories::-webkit-scrollbar{display:none}.categories a{position:relative;isolation:isolate;display:inline-flex;align-items:center;justify-content:center;flex:none;min-width:44px;min-height:44px;padding:0 12px;border-radius:22px;background:transparent;color:#54524c;font-size:12px;font-weight:600;text-decoration:none}.categories a::before{content:"";position:absolute;z-index:-1;inset:5px 0;border-radius:20px;background:#fff}.categories .allCategory{background:transparent;color:#fff}.categories .allCategory::before{background:var(--action-primary,#2563eb)}
