@@ -4,16 +4,16 @@ import {useEffect,useId,useRef,useState} from 'react';
 import {ArrowLeft,ArrowRight,Check,Plus} from 'lucide-react';
 import {AdminPhoto} from './admin-catalog';
 import {eat} from './admin-ui';
+import {ADDIS_ABABA_TIME_LABEL,formatAddisDateTimeLocal,parseAddisDateTimeLocal} from '@/lib/addis-time';
 
 type Row=Record<string,any>;
 type Props={item:Row;products:Row[];auctionId:string|null;busy:boolean;owner:boolean;dirty:boolean;preflight:Row|null;onChange:()=>void;onFind:(query:string)=>Promise<Row[]>;onSave:(body:Row)=>void;onReview:()=>void;onPublish:()=>void};
-const localTime=(value?:string)=>value?new Date(new Date(value).getTime()-new Date(value).getTimezoneOffset()*60000).toISOString().slice(0,16):'';
-const dateLabel=(value:string)=>value?eat(new Date(value)):'Choose a time';
+const dateLabel=(value:string)=>value?eat(parseAddisDateTimeLocal(value)):'Choose a time';
 
 export function AdminAuctionDraft({item,products,auctionId,busy,owner,dirty,preflight,onChange,onFind,onSave,onReview,onPublish}:Props){
  const body=item.draft?.body??{},form=useRef<HTMLFormElement>(null),[step,setStep]=useState(auctionId?2:0),[language,setLanguage]=useState('en'),[query,setQuery]=useState(''),[remoteMatches,setRemoteMatches]=useState<Row[]>([]),[searching,setSearching]=useState(false),[searchError,setSearchError]=useState('');
- const [productId,setProductId]=useState<string>(body.productId??''),[fee,setFee]=useState(body.entryFeePoints??''),[start,setStart]=useState(localTime(body.startsAt)),[end,setEnd]=useState(localTime(body.endsAt));
- const product=products.find(p=>p.id===productId),duration=start&&end?(new Date(end).getTime()-new Date(start).getTime())/86400000:0;
+ const [productId,setProductId]=useState<string>(body.productId??''),[fee,setFee]=useState(body.entryFeePoints??''),[start,setStart]=useState(formatAddisDateTimeLocal(body.startsAt)),[end,setEnd]=useState(formatAddisDateTimeLocal(body.endsAt));
+ const product=products.find(p=>p.id===productId),duration=start&&end?(parseAddisDateTimeLocal(end).getTime()-parseAddisDateTimeLocal(start).getTime())/86400000:0;
  const steps=['Product','Schedule','Delivery & publish'],[editingDelivery,setEditingDelivery]=useState(false),[summaryExpanded,setSummaryExpanded]=useState(false),summaryId=useId();
  const reviewMode=step===2&&!!auctionId&&!dirty&&!editingDelivery;
  const term=query.trim().toLocaleLowerCase();
@@ -36,8 +36,8 @@ export function AdminAuctionDraft({item,products,auctionId,busy,owner,dirty,pref
   const details=invalid.closest('details');if(details)details.open=true;
   requestAnimationFrame(()=>{invalid.focus();invalid.reportValidity()});return true;
  }
- function preset(days:number){if(!start)return;setEnd(localTime(new Date(new Date(start).getTime()+days*86400000).toISOString()));onChange()}
- function submit(){if(revealInvalid(true))return;const f=new FormData(form.current!);onSave({productId,startsAt:new Date(start).toISOString(),endsAt:new Date(end).toISOString(),minPoints:'1.00',stepPoints:'0.01',entryFeePoints:fee,fulfillmentSummary:f.get('fulfillmentSummary'),fulfillmentSummaryAm:f.get('fulfillmentSummaryAm'),fulfillmentRegion:f.get('fulfillmentRegion'),fulfillmentRegionAm:f.get('fulfillmentRegionAm'),featured:f.get('featured')==='on',maxExtensionMinutes:Number(f.get('maxExtensionMinutes')),allowPaidShortening:f.get('allowPaidShortening')==='on',shortenNoticeMinutes:Number(f.get('shortenNoticeMinutes'))})}
+ function preset(days:number){if(!start)return;setEnd(formatAddisDateTimeLocal(new Date(parseAddisDateTimeLocal(start).getTime()+days*86400000)));onChange()}
+ function submit(){if(revealInvalid(true))return;const f=new FormData(form.current!);onSave({productId,startsAt:parseAddisDateTimeLocal(start).toISOString(),endsAt:parseAddisDateTimeLocal(end).toISOString(),minPoints:'1.00',stepPoints:'0.01',entryFeePoints:fee,fulfillmentSummary:f.get('fulfillmentSummary'),fulfillmentSummaryAm:f.get('fulfillmentSummaryAm'),fulfillmentRegion:f.get('fulfillmentRegion'),fulfillmentRegionAm:f.get('fulfillmentRegionAm'),featured:f.get('featured')==='on',maxExtensionMinutes:Number(f.get('maxExtensionMinutes')),allowPaidShortening:f.get('allowPaidShortening')==='on',shortenNoticeMinutes:Number(f.get('shortenNoticeMinutes'))})}
  return <div className="auction-draft-layout">
   <section className="admin-panel auction-draft-main">
    <nav className="auction-draft-steps" aria-label="Auction setup steps">{steps.map((label,index)=><button type="button" key={label} aria-current={step===index?'step':undefined} disabled={busy} onClick={()=>setStep(index)}><span>{index+1}</span>{label}</button>)}</nav>
@@ -51,7 +51,7 @@ export function AdminAuctionDraft({item,products,auctionId,busy,owner,dirty,pref
      <label className="admin-check"><input type="checkbox" name="featured" defaultChecked={body.featured??false}/>Feature on Home</label>
     </fieldset>
     <fieldset data-step="1" hidden={step!==1} disabled={busy}>
-     <legend>Set the schedule</legend><p>Times use {Intl.DateTimeFormat().resolvedOptions().timeZone}. The summary shows EAT.</p>
+     <legend>Set the schedule</legend><p>Enter times in {ADDIS_ABABA_TIME_LABEL}.</p>
      <div className="admin-two"><label>Starts<input name="startsAt" type="datetime-local" value={start} onChange={event=>setStart(event.target.value)} required/></label><label>Ends<input name="endsAt" type="datetime-local" value={end} min={start||undefined} onChange={event=>setEnd(event.target.value)} required/></label></div>
      <div className="auction-duration" role="group" aria-label="Auction duration"><span>Run for</span>{[7,14,21].map(days=><button type="button" className="secondary" key={days} disabled={!start} aria-pressed={duration===days} onClick={()=>preset(days)}>{days} days</button>)}</div>
      <label>Submission fee (ETB)<input name="entryFeePoints" inputMode="decimal" pattern="(0|[1-9][0-9]{0,8})([.][0-9]{1,2})?" value={fee} onChange={event=>setFee(event.target.value)} placeholder="Set the fee for this auction" required/><small>Charged per accepted bid. On cancellation, actual paid cash fees return to wallet cash; bonus returns as bonus, never cash. Coupon discounts are not refundable value.</small></label><div className="auction-fixed-rules"><Check size={18}/><p><strong>Numbers from 1.00 · 0.01 steps</strong><span>No maximum. Players pay only the submission fee.</span></p></div>

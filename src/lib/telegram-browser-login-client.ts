@@ -1,5 +1,6 @@
 import {miniReturnPath} from './mini-return';
 import {customerLoginRequest} from './customer-login-entry';
+import {REFERRAL_BOT_RECOVERY_PARAMETER,WEBSITE_REFERRAL_PARAMETER} from './referral-invite';
 
 export const TELEGRAM_BROWSER_LOGIN_ERRORS=['cancelled','expired','unavailable','invalid','contact_required','conflict'] as const;
 export type TelegramBrowserLoginError=typeof TELEGRAM_BROWSER_LOGIN_ERRORS[number];
@@ -40,6 +41,8 @@ export function telegramBrowserLoginDestination(location:{pathname:string;search
  }
  query.delete('login');
  query.delete('telegramLoginError');
+ query.delete(WEBSITE_REFERRAL_PARAMETER);
+ query.delete(REFERRAL_BOT_RECOVERY_PARAMETER);
  const search=query.toString();
  return miniReturnPath(location.pathname+(search?'?'+search:'')+location.hash);
 }

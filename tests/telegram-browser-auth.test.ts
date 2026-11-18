@@ -9,6 +9,9 @@ import {getMiniSession} from '../src/modules/auth/mini-access';
 import {creditDevelopmentPoints} from '../src/modules/wallet/ledger';
 import {readWalletBalance} from '../src/modules/wallet/balance';
 import {GET as readMe} from '../src/app/api/me/route';
+import {getReferralOverview,recordBotReferralStart} from '../src/modules/referrals/service';
+import {sealWebsiteReferral,WEBSITE_REFERRAL_COOKIE} from '../src/modules/referrals/website-cookie';
+import {REFERRAL_BOT_RECOVERY_PARAMETER,botRegistrationReferralUrl} from '../src/lib/referral-invite';
 
 const database=process.env.TELEGRAM_BROWSER_TEST_DATABASE_URL,origin='http://localhost:3000';
 const pair=generateKeyPairSync('rsa',{modulusLength:2048}),jwk={...pair.publicKey.export({format:'jwk'}),kid:'upstream-fixture',alg:'RS256',use:'sig'};
@@ -35,9 +38,11 @@ describe.skipIf(!database)('shared Better Auth Telegram browser and Mini App int
   execFileSync(process.execPath,['node_modules/prisma/build/index.js','migrate','deploy'],{env:process.env,stdio:'pipe'});db=new PrismaClient();vi.stubGlobal('fetch',provider);
  },60000);
  afterAll(async()=>{vi.unstubAllGlobals();await db?.$disconnect();const {db:shared}=await import('../src/lib/db');await shared.$disconnect()});
- async function flow(overrides:Record<string,unknown>={},next='/my-bids?tab=live'){
+ async function flow(overrides:Record<string,unknown>={},next='/my-bids?tab=live',browserCookie?:string){
   const error=new URL('/',origin);error.searchParams.set('login','1');error.searchParams.set('next',next);error.searchParams.set('lang','en');
-  const start=await handleAuth(new Request(origin+'/api/auth/sign-in/social',{method:'POST',headers:{origin,'content-type':'application/json','x-forwarded-for':`127.${randomInt(1,254)}.${randomInt(1,254)}.${randomInt(1,254)}`},body:JSON.stringify({provider:'telegram-oidc',callbackURL:next,errorCallbackURL:error.pathname+error.search,disableRedirect:true})}));
+  const headers=new Headers({origin,'content-type':'application/json','x-forwarded-for':`127.${randomInt(1,254)}.${randomInt(1,254)}.${randomInt(1,254)}`});
+  if(browserCookie)headers.set('cookie',browserCookie);
+  const start=await handleAuth(new Request(origin+'/api/auth/sign-in/social',{method:'POST',headers,body:JSON.stringify({provider:'telegram-oidc',callbackURL:next,errorCallbackURL:error.pathname+error.search,disableRedirect:true})}));
   expect(start.status,await start.clone().text()).toBe(200);
   expect(start.headers.get('server-timing')).toContain('oidc_start;dur=');
   const url=new URL((await start.json()).url),state=url.searchParams.get('state')!,cookie=start.headers.getSetCookie().map(c=>c.split(';')[0]).join('; '),now=Math.floor(Date.now()/1000),tid=randomInt(4000000000,5000000000);
@@ -46,7 +51,7 @@ describe.skipIf(!database)('shared Better Auth Telegram browser and Mini App int
   const claims={iss:'https://oauth.telegram.org',aud:'123456789',sub:'fixture-sub-'+randomUUID(),id:tid,name:'Synthetic browser player',iat:now,exp:now+3600,nonce:url.searchParams.get('nonce'),phone_number:'2519'+String(tid).slice(-8),phone_number_verified:true,...overrides};
   const header=Buffer.from(JSON.stringify({alg:'RS256',typ:'JWT',kid:jwk.kid})).toString('base64url'),payload=Buffer.from(JSON.stringify(claims)).toString('base64url'),code='fixture-'+randomUUID();
   issued.set(code,{token:header+'.'+payload+'.'+sign('RSA-SHA256',Buffer.from(header+'.'+payload),pair.privateKey).toString('base64url'),verifier:saved.codeVerifier});
-  const request=(query=`state=${encodeURIComponent(state)}&code=${code}`,binding=cookie)=>new Request(origin+'/api/auth/callback/telegram-oidc?'+query,{headers:{cookie:binding}});
+  const request=(query=`state=${encodeURIComponent(state)}&code=${code}`,binding=[cookie,browserCookie].filter(Boolean).join('; '))=>new Request(origin+'/api/auth/callback/telegram-oidc?'+query,{headers:{cookie:binding}});
   return {state,cookie,claims,row,saved,code,request,finish:()=>handleAuth(request())};
  }
  function cookie(response:Response){const session=response.headers.getSetCookie().find(c=>c.startsWith('better-auth.session_token='));expect(session, response.headers.get('location')??'').toBeTruthy();return new Headers({cookie:session!.split(';')[0]})}
@@ -147,5 +152,56 @@ describe.skipIf(!database)('shared Better Auth Telegram browser and Mini App int
  });
  it('refuses an expired Better Auth session',async()=>{
   const f=await flow(),headers=cookie(await f.finish()),current=await getMiniSession(headers,db);await db.session.update({where:{id:current!.session.id},data:{expiresAt:new Date(Date.now()-1000)}});expect(await getMiniSession(headers,db)).toBeNull();
+ });
+ describe('website referral attribution',()=>{
+  beforeAll(async()=>{
+   process.env.REFERRAL_REWARDS_SCHEMA_READY='true';
+   await db.referralPolicy.upsert({where:{id:'default'},create:{enabled:true,discountPercent:10,expiryDays:30,updatedBy:'local-fixture-owner'},update:{enabled:true}});
+  });
+  afterAll(()=>{process.env.REFERRAL_REWARDS_SCHEMA_READY='false'});
+  async function invite(){
+   const tid=randomInt(8000000000,8900000000);
+   await verifyFixtureContact(db,tid);
+   const sponsor=await db.user.findUniqueOrThrow({where:{telegramId:String(tid)}});
+   const overview=await getReferralOverview(db,sponsor.id);
+   const token=new URL(overview.webShareUrl!).searchParams.get('ref')!;
+   const botPayload=new URL(overview.shareUrl!).searchParams.get('start')!;
+   expect(botPayload).toBe('ref_'+token);
+   return {sponsor,token,botPayload,browserCookie:`${WEBSITE_REFERRAL_COOKIE}=${sealWebsiteReferral(token)}`};
+  }
+  it('credits the verified new account once using the invite pinned to the original login',async()=>{
+   const first=await invite(),second=await invite();
+   const f=await flow({},'/?ref='+second.token+'&lang=en',first.browserCookie);
+   expect(f.saved.serverContext?.lowwinWebsiteReferral).toBe(first.token);
+   const response=await handleAuth(f.request(undefined,f.cookie+'; '+second.browserCookie));
+   expect(response.headers.get('location')).toBe(origin+'/?lang=en');
+   expect(response.headers.getSetCookie()).toContain(`${WEBSITE_REFERRAL_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`);
+   const current=await getMiniSession(cookie(response),db);
+   const referredUserId=current!.user.id;
+   expect(await db.referralSignup.findUnique({where:{referredUserId}})).toMatchObject({referrerUserId:first.sponsor.id,firstBidId:null});
+   const returning=await flow({id:f.claims.id,sub:f.claims.sub},'/',second.browserCookie);
+   expect((await getMiniSession(cookie(await returning.finish()),db))?.user.id).toBe(referredUserId);
+   expect(await db.referralSignup.count({where:{referredUserId}})).toBe(1);
+   expect(await db.referralSignup.findUnique({where:{referredUserId}})).toMatchObject({referrerUserId:first.sponsor.id});
+  });
+  it('honors a prior verified bot start alongside the website invitation',async()=>{
+   const telegram=await invite(),website=await invite(),f=await flow({},'/',website.browserCookie);
+   expect(await recordBotReferralStart(db,String(f.claims.id),'123456789',telegram.botPayload)).toBe(true);
+   const current=await getMiniSession(cookie(await f.finish()),db);
+   expect(await db.referralSignup.findUnique({where:{referredUserId:current!.user.id}})).toMatchObject({referrerUserId:telegram.sponsor.id});
+  });
+  it('carries the same invite into bot contact registration when no verified phone claim is returned',async()=>{
+   const first=await invite(),second=await invite(),f=await flow({phone_number_verified:false},'/',first.browserCookie);
+   const response=await handleAuth(f.request(undefined,f.cookie+'; '+second.browserCookie)),target=new URL(response.headers.get('location')!);
+   expect(target.searchParams.get('telegramLoginError')).toBe('contact_required');
+   expect(target.searchParams.get(REFERRAL_BOT_RECOVERY_PARAMETER)).toBe(first.token);
+   expect(await db.user.count({where:{telegramId:String(f.claims.id)}})).toBe(0);
+   const botUrl=botRegistrationReferralUrl('https://t.me/lowin_fixture_bot?start=lowin',target.searchParams.get(REFERRAL_BOT_RECOVERY_PARAMETER));
+   const start=new URL(botUrl!).searchParams.get('start')!;
+   expect(await recordBotReferralStart(db,String(f.claims.id),'123456789',start)).toBe(true);
+   await verifyFixtureContact(db,f.claims.id);
+   const registered=await db.user.findUniqueOrThrow({where:{telegramId:String(f.claims.id)}});
+   expect(await db.referralSignup.findUnique({where:{referredUserId:registered.id}})).toMatchObject({referrerUserId:first.sponsor.id});
+  });
  });
 });

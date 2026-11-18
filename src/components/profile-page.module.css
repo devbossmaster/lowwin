@@ -35,6 +35,15 @@
 .panelHeading h2{display:flex;align-items:center;gap:8px;min-width:0;margin:0;font-size:17px;font-weight:750;line-height:1.45;letter-spacing:-.02em}
 .panelHeading h2>svg{flex:none;color:var(--brand-primary, #6d4cfd)}
 .description{margin:0;color:var(--brand-muted, #72697e);font-size:13px;line-height:1.7}
+.referralPanel{border:1px solid var(--action-disabled);background:linear-gradient(165deg,#eef5ff 0%,#fff 66%)}
+.referralPanel .panelHeading h2{font-size:18px}
+.referralPanel .panelHeading h2>svg,.referralChannel>svg{color:var(--action-primary)}
+.referralChannel{display:flex;align-items:center;gap:6px;margin:15px 0 5px;color:var(--brand-muted-on-soft);font-size:11px;font-weight:650}
+.referralPanel .referralLink{margin-top:0}
+.referralPanel .referralLink:focus-within{border-color:var(--action-primary)}
+.referralPanel .referralLink button{color:var(--action-hover);background:#eff5ff}
+.referralPanel .referralStats>div{background:#f3f6fc}
+.referralPanel .referralState[data-active]{background:var(--action-disabled);color:var(--action-pressed)}
 .referralLink{display:flex;align-items:center;gap:4px;min-height:48px;margin:16px 0 10px;padding:2px 3px 2px 13px;border:1px solid var(--brand-line, #e4dcf0);border-radius:26px;background:#fff}
 .referralLink input{min-width:0;width:100%;height:42px;padding:0;border:0;outline:none;background:transparent;color:var(--brand-ink, #211a30);font:inherit;font-size:11px;font-weight:600;text-overflow:ellipsis}
 .referralLink button{display:grid;place-items:center;width:44px;height:44px;flex:none;padding:0;border:0;border-radius:50%;background:var(--brand-soft, #eee8fa);color:var(--brand-muted, #72697e);cursor:pointer}

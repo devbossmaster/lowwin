@@ -8,6 +8,7 @@ import {chapaUuid} from '@/lib/chapa-client';
 import {Clock3,Eye,Gavel,Hash,LockKeyhole,ShieldCheck,Ticket} from 'lucide-react';
 import type {CatalogAuction} from '@/modules/auctions/catalog';
 import {formatEtb} from '@/lib/money';
+import {ADDIS_ABABA_TIME_OFFSET,ADDIS_ABABA_TIME_ZONE} from '@/lib/addis-time';
 import {AuctionGallery} from './auction-gallery';
 import {AuctionResultDetail} from './auction-result-detail';
 import {WinnerCelebration} from './celebration';
@@ -49,24 +50,35 @@ export function AuctionDetail({auction:initialAuction,serverNow}:{auction:Catalo
  const auction={...known,...(resultQuery.data?{result:resultQuery.data.result}:{}),status:activity?.status??known.status,viewCount:views??known.viewCount,bidCount:activity?.bids??known.bidCount,startsAt:activity?.startsAt??known.startsAt,endsAt:activity?.endsAt??known.endsAt};
  const {language}=useMiniLocale(),am=language==='am',live=auction.status==='live',upcoming=auction.status==='upcoming';
  const title=am?(auction.product.titleAm?.trim()||auction.product.title):auction.product.title;
- const date=(value:string)=>new Date(value).toLocaleString('en',{dateStyle:'medium',timeStyle:'short',timeZone:'Africa/Addis_Ababa'});
+ const date=(value:string)=>new Date(value).toLocaleString('en',{dateStyle:'medium',timeStyle:'short',timeZone:ADDIS_ABABA_TIME_ZONE});
  const paymentSheet=bidding?<BidSheet auction={auction} serverNow={serverNow} onClose={closeBidding} initialChapaId={returnId}/>:null;
  if(['closed','cancelled','closing'].includes(auction.status))return <><ArifPayReturn auctionSlug={auction.slug}/>{auction.result?.outcome==='WINNER'&&<WinnerCelebration id={`winner:${auction.code}`}/>}<AuctionResultDetail auction={auction}/>{returnId&&paymentSheet}</>;
  return <article className={styles.page} data-auction-detail>
   <ArifPayReturn auctionSlug={auction.slug}/>
   <div className={styles.hero} data-auction-hero><AuctionGallery images={auction.product.images} title={title} isDemo={auction.isDemo} priority sizes="(max-width: 430px) 100vw, 430px" status={<span className={styles.status}><i aria-hidden="true"/><MiniPhrase en={live?'Live':'Upcoming'} am={live?'ክፍት':'የሚመጣ'}/></span>}/></div>
   <div className={styles.content}>
- <header className={styles.intro}><h1>{title}</h1><Link className={styles.category} href={`/?category=${encodeURIComponent(auction.category.slug)}#discover-auctions`}><MiniCategoryName slug={auction.category.slug} name={auction.category.name} nameAm={auction.category.nameAm}/></Link></header>
-  <dl className={styles.purchaseFacts} data-auction-facts><div className={styles.fee}><dt><Ticket size={16} aria-hidden="true"/><MiniPhrase en="Fee per bid" am="የአንድ ጨረታ ክፍያ"/></dt><dd>{formatEtb(auction.terms.entryFeePoints)}</dd></div><div className={styles.auctionCode}><dt><Hash size={16} aria-hidden="true"/><MiniPhrase en="Auction code" am="የጨረታ ኮድ"/></dt><dd>{auction.code}</dd></div></dl>
+  <header className={styles.intro}>
+   <h1>{title}</h1>
+   <div className={styles.auctionMeta}>
+    <dl className={styles.purchaseFacts} data-auction-facts>
+     <div className={styles.fee}><dt><Ticket size={13} aria-hidden="true"/><MiniPhrase en="Fee per bid" am="የአንድ ጨረታ ክፍያ"/></dt><dd>{formatEtb(auction.terms.entryFeePoints)}</dd></div>
+     <div><dt><Hash size={13} aria-hidden="true"/><MiniPhrase en="Auction code" am="የጨረታ ኮድ"/></dt><dd>{auction.code}</dd></div>
+    </dl>
+    <Link className={styles.category} href={`/?category=${encodeURIComponent(auction.category.slug)}#discover-auctions`}><MiniCategoryName slug={auction.category.slug} name={auction.category.name} nameAm={auction.category.nameAm}/></Link>
+   </div>
+  </header>
   {live?<div className={styles.bidding} id="bid-review"><button data-auction-bid className="primary-button card-action" onPointerEnter={warmBid} onFocus={warmBid} onTouchStart={warmBid} onClick={()=>setBidding(true)}><Gavel size={18} aria-hidden="true"/><MiniPhrase en="Place a bid" am="ይጫረቱ"/></button><Link className={styles.termsLink} href="/terms"><ShieldCheck size={13} aria-hidden="true"/><MiniPhrase en={auction.terms.ruleVersion==='lowest-unique-v5'?'Paid fees return on cancellation':isSubmissionFeeOnly(auction.terms.ruleVersion)?'Submission fee only · Non-refundable':'Terms and conditions apply'} am={auction.terms.ruleVersion==='lowest-unique-v5'?'ጨረታ ሲሰረዝ የተከፈለው ክፍያ ይመለሳል':isSubmissionFeeOnly(auction.terms.ruleVersion)?'የማቅረቢያ ክፍያ ብቻ · አይመለስም':'ውሎች እና ሁኔታዎች ተፈጻሚ ይሆናሉ'}/></Link></div>:<p className={styles.upcoming}><MiniPhrase en="Bidding opens at the scheduled start time." am="ጨረታው በተወሰነው የመጀመሪያ ጊዜ ይከፈታል።"/></p>}
   {paymentSheet}
   <section className={styles.stats} aria-label={am?'የጨረታው እንቅስቃሴ':'Auction activity'}>
-   <p><Clock3 size={15} aria-hidden="true"/><MiniPhrase en={live?'Time remaining':upcoming?'Starts in':auction.status==='closing'?'Bidding ended':auction.status==='cancelled'?'Auction cancelled':'Auction closed'} am={live?'ቀሪ ጊዜ':upcoming?'የሚጀምረው በ':auction.status==='cancelled'?'ጨረታው ተሰርዟል':'ጨረታው ተጠናቋል'}/></p>
-   <div className={styles.clock}>{live||upcoming?<AuctionCountdown target={upcoming?auction.startsAt:auction.endsAt} serverNow={serverNow} label={upcoming?'Starts':'Ends'} showLabel={false} tiles onElapsed={refreshActivity}/>:<strong>{date(auction.endsAt)}</strong>}</div><p className={styles.schedule}><MiniPhrase en={upcoming?'Starts':'Closes'} am={upcoming?'ይጀምራል':'ይዘጋል'}/> <time dateTime={upcoming?auction.startsAt:auction.endsAt}>{date(upcoming?auction.startsAt:auction.endsAt)}</time> EAT</p>
-   <div className={styles.numbers}><div><Gavel size={18} aria-hidden="true"/><span><strong>{auction.bidCount.toLocaleString()}</strong><small><MiniPhrase en="Total bids" am="ጠቅላላ ጨረታዎች"/></small></span></div><div><Eye size={18} aria-hidden="true"/><span><strong>{BigInt(auction.viewCount).toLocaleString()}</strong><small><MiniPhrase en="Views" am="እይታዎች"/></small></span></div></div>
+   <div className={styles.countdownPanel}>
+    <p className={styles.timerLabel}><Clock3 size={14} aria-hidden="true"/><MiniPhrase en={live?'Time remaining':upcoming?'Starts in':'Bidding ended'} am={live?'ቀሪ ጊዜ':upcoming?'የሚጀምረው በ':'ጨረታው ተጠናቋል'}/></p>
+    <div className={styles.clock}>{live||upcoming?<AuctionCountdown target={upcoming?auction.startsAt:auction.endsAt} serverNow={serverNow} label={upcoming?'Starts':'Ends'} showLabel={false} tiles onElapsed={refreshActivity}/>:<strong>{date(auction.endsAt)}</strong>}</div>
+    <p className={styles.schedule}><MiniPhrase en={upcoming?'Starts':'Closes'} am={upcoming?'ይጀምራል':'ይዘጋል'}/> <time dateTime={upcoming?auction.startsAt:auction.endsAt}>{date(upcoming?auction.startsAt:auction.endsAt)} {ADDIS_ABABA_TIME_OFFSET}</time></p>
+   </div>
+   <div className={styles.numbers}><div><Gavel size={14} aria-hidden="true"/><span><strong>{auction.bidCount.toLocaleString()}</strong><small><MiniPhrase en="Total bids" am="ጠቅላላ ጨረታዎች"/></small></span></div><div><Eye size={14} aria-hidden="true"/><span><strong>{BigInt(auction.viewCount).toLocaleString()}</strong><small><MiniPhrase en="Views" am="እይታዎች"/></small></span></div></div>
   </section>
   <p className={styles.privacy}><LockKeyhole size={14} aria-hidden="true"/><MiniPhrase en="Chosen numbers stay private until the result is published." am="የተመረጡ ቁጥሮች ውጤቱ እስኪታተም ድረስ በሚስጥር ይቆያሉ።"/></p>
-  <AuctionMoreChances currentCode={auction.code}/>
+  <AuctionMoreChances currentCode={auction.code} dialogOpen={bidding}/>
   <section className={styles.actions} aria-label={am?'ጨረታውን ያጋሩ':'Share this auction'}><AuctionShareOptions title={title} code={auction.code}/></section>
   </div>
  </article>;

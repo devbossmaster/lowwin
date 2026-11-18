@@ -2,6 +2,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {AlertCircle,LoaderCircle,ShieldCheck} from 'lucide-react';
 import {LOWWIN_LOGO_SRC} from '@/lib/brand';
+import {botRegistrationReferralUrl,referralCodeFromParams,REFERRAL_BOT_RECOVERY_PARAMETER} from '@/lib/referral-invite';
 import {requestTelegramBrowserLogin,telegramBrowserLoginDestination,telegramBrowserLoginError,type TelegramBrowserLoginError,type TelegramBrowserLoginConfiguration} from '@/lib/telegram-browser-login-client';
 import {rememberTelegramAuthResume} from '@/lib/telegram-auth-resume';
 import {AccountSheet} from './account-sheet';
@@ -24,6 +25,12 @@ function TelegramMark(){return <svg width="21" height="21" viewBox="0 0 24 24" f
 export default function BrowserTelegramLogin({configuration}:{configuration:TelegramBrowserLoginConfiguration}){
  const {language}=useMiniLocale(),{status,me,retry,closeRegistration,botUrl}=useTelegram();
  const [pending,setPending]=useState(false),[errorCode,setErrorCode]=useState<TelegramBrowserLoginError|'network'|null>(()=>typeof window==='undefined'?null:telegramBrowserLoginError(new URLSearchParams(window.location.search).get('telegramLoginError')));
+ const [registrationReferral]=useState(()=>{
+  if(typeof window==='undefined')return null;
+  const query=new URLSearchParams(window.location.search);
+  return (query.get('telegramLoginError')==='contact_required'?referralCodeFromParams(query,REFERRAL_BOT_RECOVERY_PARAMETER):null)??referralCodeFromParams(query);
+ });
+ const registrationBotUrl=botRegistrationReferralUrl(botUrl,registrationReferral);
  const navigation=useRef<AbortController|null>(null);
  const ready=configuration.enabled&&configuration.configured,restoring=status==='loading',sessionUnavailable=status==='error';
  const canChooseSignIn=!restoring&&!sessionUnavailable;
@@ -32,7 +39,7 @@ export default function BrowserTelegramLogin({configuration}:{configuration:Tele
   window.addEventListener('pageshow',resumed);
   return()=>{window.removeEventListener('pageshow',resumed);navigation.current?.abort();navigation.current=null};
  },[]);
- function clearFeedback(){const url=new URL(window.location.href);if(url.searchParams.has('telegramLoginError')){url.searchParams.delete('telegramLoginError');url.searchParams.delete('next');window.history.replaceState(window.history.state,'',url.pathname+url.search+url.hash)}}
+ function clearFeedback(){const url=new URL(window.location.href);if(url.searchParams.has('telegramLoginError')){url.searchParams.delete('telegramLoginError');url.searchParams.delete(REFERRAL_BOT_RECOVERY_PARAMETER);url.searchParams.delete('next');window.history.replaceState(window.history.state,'',url.pathname+url.search+url.hash)}}
  function close(){navigation.current?.abort();navigation.current=null;clearFeedback();closeRegistration()}
  async function start(){
   if(navigation.current||!ready||!canChooseSignIn)return;
@@ -58,10 +65,10 @@ export default function BrowserTelegramLogin({configuration}:{configuration:Tele
    {restoring&&<p className={styles.loading} role="status"><LoaderCircle size={17} className={styles.spin} aria-hidden="true"/><MiniPhrase en="Restoring your account…" am="መለያዎን በመመለስ ላይ…"/></p>}
    {sessionUnavailable&&<div className={styles.unavailable}><p role="status"><MiniPhrase en="We couldn’t check your session. Check your connection and try again." am="መግቢያዎን ማረጋገጥ አልቻልንም። ግንኙነትዎን ያረጋግጡና እንደገና ይሞክሩ።"/></p><button type="button" className={styles.primary} onClick={retry}><MiniPhrase en="Retry connection" am="ግንኙነቱን እንደገና ይሞክሩ"/></button></div>}
    {canChooseSignIn&&<>
-    {ready?<button className={styles.primary} type="button" disabled={pending} onClick={start} aria-busy={pending}>{pending?<LoaderCircle size={20} className={styles.spin} aria-hidden="true"/>:<TelegramMark/>}<MiniPhrase en={pending?'Opening Telegram…':'Continue with Telegram'} am={pending?'Telegram በመክፈት ላይ…':'በTelegram ይቀጥሉ'}/></button>:<div className={styles.unavailable}><p role="status"><MiniPhrase en="Website sign-in is currently unavailable. You can use LowWin in Telegram or keep browsing." am="የድረ ገጽ መግቢያ ለጊዜው አይገኝም። LowWinን በTelegram ይክፈቱ ወይም መመልከት ይቀጥሉ።"/></p>{botUrl&&<TelegramBotLink className={styles.primary} href={botUrl}><TelegramMark/><MiniPhrase en="Open LowWin in Telegram" am="LowWinን በTelegram ይክፈቱ"/></TelegramBotLink>}</div>}
+    {ready?<button className={styles.primary} type="button" disabled={pending} onClick={start} aria-busy={pending}>{pending?<LoaderCircle size={20} className={styles.spin} aria-hidden="true"/>:<TelegramMark/>}<MiniPhrase en={pending?'Opening Telegram…':'Continue with Telegram'} am={pending?'Telegram በመክፈት ላይ…':'በTelegram ይቀጥሉ'}/></button>:<div className={styles.unavailable}><p role="status"><MiniPhrase en="Website sign-in is currently unavailable. You can use LowWin in Telegram or keep browsing." am="የድረ ገጽ መግቢያ ለጊዜው አይገኝም። LowWinን በTelegram ይክፈቱ ወይም መመልከት ይቀጥሉ።"/></p>{registrationBotUrl&&<TelegramBotLink className={styles.primary} href={registrationBotUrl}><TelegramMark/><MiniPhrase en="Open LowWin in Telegram" am="LowWinን በTelegram ይክፈቱ"/></TelegramBotLink>}</div>}
    </>}
    {ready&&canChooseSignIn&&<p className={styles.explanation}><MiniPhrase en="For a new account, allow phone sharing on Telegram. Use the same Telegram account here and in the bot to keep your wallet and bids." am="ለአዲስ መለያ ስልክ ቁጥርዎን በTelegram ለማጋራት ይፍቀዱ። ዋሌትዎን እና ጨረታዎችዎን ለመቀጠል እዚህና በቦቱ ተመሳሳይ የTelegram መለያ ይጠቀሙ።"/></p>}
-   {canChooseSignIn&&errorCode==='contact_required'&&botUrl&&<TelegramBotLink className={styles.secondary} href={botUrl}><MiniPhrase en="Finish registration in Telegram" am="ምዝገባን በTelegram ያጠናቅቁ"/></TelegramBotLink>}
+   {canChooseSignIn&&errorCode==='contact_required'&&registrationBotUrl&&<TelegramBotLink className={styles.secondary} href={registrationBotUrl}><MiniPhrase en="Finish registration in Telegram" am="ምዝገባን በTelegram ያጠናቅቁ"/></TelegramBotLink>}
    <button type="button" className={styles.browse} onClick={close}><MiniPhrase en="Keep browsing" am="መመልከት ይቀጥሉ"/></button>
    <p className={styles.security}><ShieldCheck size={14} aria-hidden="true"/><MiniPhrase en="Secure sign-in through Telegram" am="በTelegram ደህንነቱ የተጠበቀ መግቢያ"/></p>
   </div>

@@ -5,6 +5,7 @@ export type TelegramViewportApp={
  initData?:string;platform?:string;version?:string;isActive?:boolean;isExpanded?:boolean;isFullscreen?:boolean;
  expand?:()=>void;requestFullscreen?:()=>void;isVersionAtLeast?:(version:string)=>boolean;
  addToHomeScreen?:()=>void;checkHomeScreenStatus?:(callback:(status:'unsupported'|'unknown'|'added'|'missed')=>void)=>void;
+ shareMessage?:(messageId:string,callback?:(sent:boolean)=>void)=>void;
  onEvent?:(event:string,listener:TelegramViewportEvent)=>void;offEvent?:(event:string,listener:TelegramViewportEvent)=>void;
 };
 /** Native presentation only, never an identity or contact-verification signal.

@@ -1,6 +1,6 @@
 import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
-import { APIError,createAuthEndpoint,createAuthMiddleware } from 'better-auth/api';
+import { APIError,addOAuthServerContext,createAuthEndpoint,createAuthMiddleware,getOAuthState } from 'better-auth/api';
 import { setSessionCookie } from 'better-auth/cookies';
 import { telegram } from 'better-auth-telegram';
 import {createHash} from 'node:crypto';
@@ -10,12 +10,14 @@ import { getEnv } from '@/lib/env';
 import { assertLocalIdentityAccess } from './local-identity';
 import { masterAdminDatabaseHooks } from './staff-plugin';
 import {emailAdapter} from '../admin/email';
-import {telegramLoginSettings,type TelegramLoginSettings} from './telegram-login';
+import {TELEGRAM_LOGIN_PROVIDER,telegramLoginSettings,type TelegramLoginSettings} from './telegram-login';
 import {prepareTelegramOIDCIdentity} from './telegram-oidc-identity';
 import {authLogSummary} from './safe-logger';
 import {telegramOIDCTokenRequest} from './telegram-oidc-token-request';
 import {oidcProof,telegramOIDCCallback,telegramSessionClient,telegramSessionConflict} from './telegram-oidc-session';
 import {measureTelegramAuth} from './telegram-timing';
+import {websiteReferralFromCookie} from '../referrals/website-cookie';
+import {referralInviteCode} from '@/lib/referral-invite';
 
 // One bounded entry per live Prisma client preserves the upstream provider's
 // remote-JWKS cache. This shares configuration, never sessions or verified
@@ -47,6 +49,10 @@ function buildAuth(client:PrismaClient|Prisma.TransactionClient,env:ReturnType<t
     },
     hooks:{before:createAuthMiddleware(async ctx=>{
       if(['/sign-up/email','/sign-in/email'].includes(ctx.path)&&ctx.body&&['role','emailVerified','staffMember','isAdmin'].some(key=>key in ctx.body))throw new APIError('BAD_REQUEST',{message:'Account permissions cannot be supplied during registration or sign-in.'});
+      if(ctx.path==='/sign-in/social'&&ctx.body?.provider===TELEGRAM_LOGIN_PROVIDER){
+        const referral=websiteReferralFromCookie(new Headers(ctx.headers));
+        if(referral)await addOAuthServerContext({lowwinWebsiteReferral:referral});
+      }
     })},
     databaseHooks:{...staffHooks,
       user:{create:{before:async()=>({data:{role:'member',telegramPhoneNumber:null}})},update:{before:async(data:Record<string,unknown>)=>({data:{...data,telegramPhoneNumber:null}})}},
@@ -75,7 +81,8 @@ function buildAuth(client:PrismaClient|Prisma.TransactionClient,env:ReturnType<t
       oidc:login?{enabled:true,clientId:login.clientId,clientSecret:login.clientSecret,requestPhone:true,requestBotAccess:true,disableIdTokenSignIn:true,disableSignUp:true,
         mapOIDCProfileToUser:async claims=>{
           if(!('$transaction' in client))throw new APIError('FORBIDDEN',{message:'Browser login requires its own request.'});
-          const profile=await measureTelegramAuth('oidc_identity',()=>prepareTelegramOIDCIdentity(claims,login,client as PrismaClient));
+          const websiteReferralCode=referralInviteCode((await getOAuthState())?.serverContext?.lowwinWebsiteReferral);
+          const profile=await measureTelegramAuth('oidc_identity',()=>prepareTelegramOIDCIdentity(claims,{...login,websiteReferralCode},client as PrismaClient));
           await oidcProof.set({telegramId:String(claims.id),subject:claims.sub});
           return profile;
         },
