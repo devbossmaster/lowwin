@@ -126,6 +126,7 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
  const discoverWhileCreating=state.busy&&state.directAttempt?.apiVersion==='v2'&&state.directAttempt.kind==='direct'&&state.directAttempt.flow==='DIRECT';
  const originalUrl=!orderId&&state.active&&(!state.busy||discoverWhileCreating)&&!state.restoring?chapaOriginalKeyUrl(state.directAttempt)??chapaOriginalRecoveryUrl(state.recoveryKey,state.recoveryProtocol):null;
  const originalDelay=discoverWhileCreating?5000:0;
+ const observeTelebirrReturn=discoverWhileCreating&&state.directAttempt?.paymentMethod==='telebirr';
  useEffect(()=>{
   if(!originalUrl||!isPrivateQueryIdentity(queryIdentity))return;
   const version=epoch.current;
@@ -139,10 +140,11 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
    }
   }},document,{
    initialDelayMs:originalDelay,
+   telegram:observeTelebirrReturn?window.Telegram?.WebApp:undefined,
    isCurrent:()=>current(version),onPause:()=>update({paused:true}),onResume:()=>update({paused:false}),
    onError:cause=>{if(current(version))update({error:cause instanceof ChapaClientError?cause.message:'Could not reach payment confirmation. We will retry automatically.',errorCode:cause instanceof ChapaClientError?cause.code:'UNAVAILABLE'})},
   });
- },[originalUrl,originalDelay,queryIdentity,current,receive,readOriginal,update]);
+ },[originalUrl,originalDelay,observeTelebirrReturn,queryIdentity,current,receive,readOriginal,update]);
  const create=useCallback(async(intent:ChapaIntent)=>{
   if(!queryIdentity||locked.current||!isPrivateQueryIdentity(queryIdentity))return;
   const version=epoch.current,next=stateRef.current.attempt??{version:1 as const,intent};locked.current=true;update({attempt:next,busy:true,active:true,error:'',errorCode:null,paused:false,handoff:'opening'});const navigation=prepareChapaNavigation();

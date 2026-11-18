@@ -20,6 +20,18 @@ describe('read-only original Inline key discovery',()=>{
   await vi.advanceTimersByTimeAsync(0);expect(read).toHaveBeenCalledOnce();expect(received).toHaveBeenCalledExactlyOnceWith(order);
   await vi.advanceTimersByTimeAsync(60000);expect(read).toHaveBeenCalledOnce();stop();
  });
+ it('discovers the original on Telegram activation before the delayed read without a browser focus event',async()=>{
+  vi.useFakeTimers();const read=vi.fn().mockResolvedValue(order),received=vi.fn();
+  const telegram={onEvent:vi.fn(),offEvent:vi.fn()};
+  const stop=startChapaOriginalPolling(read,received,visibility(),{isCurrent:()=>true,wake:null,telegram,initialDelayMs:5000});
+  await vi.advanceTimersByTimeAsync(300);
+  expect(read).not.toHaveBeenCalled();
+  const [event,activate]=telegram.onEvent.mock.calls[0];expect(event).toBe('activated');activate();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(read).toHaveBeenCalledOnce();expect(received).toHaveBeenCalledExactlyOnceWith(order);
+  expect(telegram.offEvent).toHaveBeenCalledWith('activated',activate);
+  activate();await vi.advanceTimersByTimeAsync(5000);expect(read).toHaveBeenCalledOnce();stop();
+ });
  it('cancels the delayed discovery when the original response arrives normally',async()=>{
   vi.useFakeTimers();const read=vi.fn(),received=vi.fn(),wake=new EventTarget();
   const stop=startChapaOriginalPolling(read,received,visibility(),{isCurrent:()=>true,wake,initialDelayMs:5000});

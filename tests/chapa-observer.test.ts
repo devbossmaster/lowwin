@@ -40,6 +40,24 @@ describe('one owned SSE and verification observer',()=>{
   expect(f.verify).toHaveBeenCalledTimes(2);expect(f.readSnapshot).not.toHaveBeenCalled();
   f.sources[0].frame(ready);await vi.advanceTimersByTimeAsync(100);expect(f.verify).toHaveBeenCalledTimes(2);stop();
  });
+ it.each([500,11000])('uses a wallet return before Telebirr saves its reference only while fresh (%sms)',async(delay)=>{
+  vi.useFakeTimers();const f=fixture();
+  const starting={...currentDirect,status:'SUBMITTING',paymentMethod:'telebirr',updatedAt:'2026-11-18T08:00:00.000Z'};
+  const ready={...starting,status:'AUTH_NEEDED',authType:'USSD' as const,authorizationReference:'owned-reference',updatedAt:'2026-11-18T08:00:00.100Z'};
+  f.verify.mockResolvedValue(starting);
+  const stop=startChapaObserver(id,{...f.options,initialOrder:starting});
+  await vi.advanceTimersByTimeAsync(0);
+  f.wake.dispatchEvent(new Event('blur'));f.wake.dispatchEvent(new Event('focus'));
+  await vi.advanceTimersByTimeAsync(delay);
+  expect(f.verify.mock.calls.every(args=>args.length===0)).toBe(true);
+  f.verify.mockResolvedValue(ready);f.sources[0].frame(ready);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(f.verify.mock.lastCall).toEqual(delay<10000?['wallet-return']:[]);
+  f.sources[0].frame(ready);
+  await vi.advanceTimersByTimeAsync(2000);
+  expect(f.verify.mock.lastCall).toEqual([]);
+  stop();
+ });
  it('brings a retained Direct5 completion signal forward without treating it as a receipt',async()=>{
   vi.useFakeTimers();const f=fixture(),hint={...currentDirect,completionSignalPending:true};
   f.verify.mockResolvedValueOnce(currentDirect).mockResolvedValue(hint);

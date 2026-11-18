@@ -1,5 +1,5 @@
 import {createHash,randomUUID} from 'node:crypto';
-import {Prisma,type BidBatchOrder,type PrismaClient} from '@prisma/client';
+import {Prisma,type Auction,type BidBatchOrder,type PrismaClient} from '@prisma/client';
 import {z} from 'zod';
 import {centsToEtb,etbToCents} from '@/lib/money';
 import {assertPlayerContact,contactBotId} from '../auth/own-contact';
@@ -64,20 +64,45 @@ export async function validateBatchInTransaction(tx:Tx,userId:string,slug:string
  await measureChapa('eligibility',()=>assertBatchEligibilityInTransaction(tx,userId));
  return priceBatchInTransaction(tx,userId,slug,numbers,feeVersion,couponId);
 }
+type BatchPriceRow=Pick<Auction,'id'|'code'|'slug'|'status'|'publishedAt'|'startsAt'|'endsAt'|'isDemo'|'testRunId'|'presentation'>&{
+ productTitle:string|null;productTitleAm:string|null;productVisible:boolean|null;productDemo:boolean|null;
+ productCategoryVisible:boolean|null;auctionCategoryVisible:boolean|null;
+ ruleVersion:string|null;minPoints:Prisma.Decimal|null;maxPoints:Prisma.Decimal|null;stepPoints:Prisma.Decimal|null;maxDistinctBids:number|null;
+ feeId:string|null;feeVersion:number|null;feePoints:Prisma.Decimal|null;
+ now:Date;previousBids:{id:string;amount:string;acceptedAt:string}[];
+};
 export async function priceBatchInTransaction(tx:Tx,userId:string,slug:string,numbers:string[],feeVersion:number,couponId?:string){
- const auction=await tx.auction.findUnique({where:{slug},include:{terms:true,feeRevisions:{orderBy:[{effectiveAt:'desc'},{version:'desc'}],take:1},product:{include:{category:true}},category:true}});
- // One statement supplies the current time and owned bid history. The amount
- // travels as text so the JSON projection cannot round a decimal bid.
- const [{now,previousBids}]=await tx.$queryRaw<Array<{now:Date;previousBids:{id:string;amount:string;acceptedAt:string}[]}>>`
-  SELECT clock_timestamp() AT TIME ZONE 'UTC' AS now,COALESCE(jsonb_agg(jsonb_build_object(
-   'id',b.id,'amount',b.amount::text,'acceptedAt',b."acceptedAt" AT TIME ZONE 'UTC'
-  ) ORDER BY b."acceptedAt",b.id),'[]'::jsonb) AS "previousBids"
-  FROM "Bid" b WHERE b."userId"=${userId} AND b."auctionId"=${auction?.id??''}`;
- if(!auction?.publishedAt||auction.publishedAt>now||!auction.startsAt||auction.startsAt>now||!auction.endsAt||auction.endsAt<=now||!['SCHEDULED','LIVE'].includes(auction.status)||!auction.product?.visible||!auction.product.category.visible||!auction.category?.visible)throw new ChapaError(409,'AUCTION_CLOSED','This auction is closed.');
- if(auction.isDemo||auction.testRunId||auction.product.isDemo||!auction.terms||!isSubmissionFeeOnly(auction.terms.ruleVersion))throw new ChapaError(409,'LEGACY_TERMS','This order supports real submission-fee auctions only.');
- const terms=auction.terms,fee=auction.feeRevisions[0];
- if(!fee||fee.version!==feeVersion)throw new ChapaError(409,'TERMS_CHANGED','The fee changed. Review a new quote before paying.');
- const normalized=normalizeBatchNumbers(numbers),own=previousBids.map(bid=>({id:bid.id,amount:new Prisma.Decimal(bid.amount),acceptedAt:new Date(bid.acceptedAt)}));
+ // The terms, fee, clock and owned bids use one fresh snapshot after any
+ // caller-held locks. Transmit bid amounts as text to preserve decimal precision.
+ const [row]=await tx.$queryRaw<BatchPriceRow[]>`
+  SELECT a.id,a.code,a.slug,a.status,a."publishedAt",a."startsAt",a."endsAt",a."isDemo",a."testRunId",a.presentation,
+   p.title AS "productTitle",p."titleAm" AS "productTitleAm",p.visible AS "productVisible",p."isDemo" AS "productDemo",
+   pc.visible AS "productCategoryVisible",ac.visible AS "auctionCategoryVisible",
+   t."ruleVersion",t."minPoints",t."maxPoints",t."stepPoints",t."maxDistinctBids",
+   fee.id AS "feeId",fee.version AS "feeVersion",fee."feePoints",
+   clock_timestamp() AT TIME ZONE 'UTC' AS now,owned."previousBids"
+  FROM "Auction" a
+  LEFT JOIN "Product" p ON p.id=a."productId"
+  LEFT JOIN "Category" pc ON pc.id=p."categoryId"
+  LEFT JOIN "Category" ac ON ac.id=a."categoryId"
+  LEFT JOIN "AuctionTerms" t ON t."auctionId"=a.id
+  LEFT JOIN LATERAL (
+   SELECT f.id,f.version,f."feePoints" FROM "AuctionFeeRevision" f WHERE f."auctionId"=a.id
+   ORDER BY f."effectiveAt" DESC,f.version DESC LIMIT 1
+  ) fee ON true
+  CROSS JOIN LATERAL (
+   SELECT COALESCE(jsonb_agg(jsonb_build_object('id',b.id,'amount',b.amount::text,'acceptedAt',b."acceptedAt" AT TIME ZONE 'UTC')
+    ORDER BY b."acceptedAt",b.id),'[]'::jsonb) AS "previousBids"
+   FROM "Bid" b WHERE b."userId"=${userId} AND b."auctionId"=a.id
+  ) owned
+  WHERE a.slug=${slug}`;
+ if(!row?.publishedAt||row.publishedAt>row.now||!row.startsAt||row.startsAt>row.now||!row.endsAt||row.endsAt<=row.now||!['SCHEDULED','LIVE'].includes(row.status)||!row.productVisible||!row.productCategoryVisible||!row.auctionCategoryVisible)throw new ChapaError(409,'AUCTION_CLOSED','This auction is closed.');
+ if(row.isDemo||row.testRunId||row.productDemo!==false||!row.ruleVersion||!isSubmissionFeeOnly(row.ruleVersion)||row.minPoints===null||row.stepPoints===null||row.maxDistinctBids===null)throw new ChapaError(409,'LEGACY_TERMS','This order supports real submission-fee auctions only.');
+ if(!row.feeId||row.feeVersion!==feeVersion||row.feePoints===null)throw new ChapaError(409,'TERMS_CHANGED','The fee changed. Review a new quote before paying.');
+ const terms={ruleVersion:row.ruleVersion,minPoints:row.minPoints,maxPoints:row.maxPoints,stepPoints:row.stepPoints,maxDistinctBids:row.maxDistinctBids};
+ const fee={id:row.feeId,version:row.feeVersion,feePoints:row.feePoints};
+ const auction={id:row.id,code:row.code,slug:row.slug,isDemo:row.isDemo,testRunId:row.testRunId,presentation:row.presentation,terms,feeRevisions:[fee],product:{title:row.productTitle,titleAm:row.productTitleAm,isDemo:row.productDemo}};
+ const normalized=normalizeBatchNumbers(numbers),own=row.previousBids.map(bid=>({id:bid.id,amount:new Prisma.Decimal(bid.amount),acceptedAt:new Date(bid.acceptedAt)}));
  if(own.length+normalized.length>terms.maxDistinctBids)throw new ChapaError(409,'CAP_REACHED','These entries exceed your remaining submissions.');
  const seen=new Set(own.map(item=>String(parseBidCents(item.amount.toString()))));
  for(const number of normalized){const n=new Prisma.Decimal(number),cents=parseBidCents(number);if(n.lt(1)||n.lt(terms.minPoints)||terms.maxPoints!==null&&n.gt(terms.maxPoints)||!n.sub(terms.minPoints).mod(terms.stepPoints).isZero())throw new ChapaError(422,'INVALID_AMOUNT','Choose amounts within the published bounds and increment.');if(seen.has(String(cents)))throw new ChapaError(409,'OWN_DUPLICATE','You already submitted one of these amounts.');seen.add(String(cents))}

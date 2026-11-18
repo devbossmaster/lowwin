@@ -33,7 +33,12 @@ const receiptSchema=z.object({
 });
 export type BidReceipt=z.infer<typeof receiptSchema>;
 export type DirectBidReceipt=Omit<BidReceipt,'wallet'>;
-type ValidatedAuction=Prisma.AuctionGetPayload<{include:{terms:true;feeRevisions:true;product:{include:{category:true}};category:true}}>;
+type ValidatedAuction=Prisma.AuctionGetPayload<{select:{
+ id:true;code:true;slug:true;isDemo:true;testRunId:true;
+ terms:{select:{ruleVersion:true;maxDistinctBids:true}};
+ feeRevisions:{select:{id:true;version:true;feePoints:true}};
+ product:{select:{isDemo:true}};
+}}>;
 export type ValidatedSubmissionFeeBid={auction:ValidatedAuction;own:Array<{id:string;amount:Prisma.Decimal;acceptedAt:Date}>;discount:Awaited<ReturnType<typeof lockReferralDiscountInTransaction>>|null};
 
 export type BidErrorCode='AUCTIONS_PAUSED'|'AUCTION_NOT_FOUND'|'AUCTION_CLOSED'|'DEMO_UNAVAILABLE'|'INVALID_AMOUNT'|'OWN_DUPLICATE'|'CAP_REACHED'|'INSUFFICIENT_POINTS'|'KEY_REUSED'|'RETRYABLE_CONFLICT'|'BIDDING_RESTRICTED'|'CONTACT_REQUIRED'|'COUPON_UNAVAILABLE';

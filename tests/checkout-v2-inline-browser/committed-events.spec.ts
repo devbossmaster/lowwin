@@ -116,6 +116,54 @@ test('wallet return prioritizes one owned verification after the current request
  }finally{releaseOld();releaseReturn();await f.cleanup()}
 });
 
+test('Telegram activation discovers the owned Telebirr payment before a stalled initialization reply',async({page})=>{
+ const f=await inlineFixture(page),releaseInitialization=f.holdNextInitializationReply();
+ let releaseVerification!:()=>void,initializationReplied=false;
+ const verificationGate=new Promise<void>(resolve=>{releaseVerification=resolve});
+ const checks:string[]=[];
+ page.on('response',response=>{
+  if(response.request().method()==='POST'&&new URL(response.url()).pathname==='/api/payments/chapa/direct/current')initializationReplied=true;
+ });
+ await page.route(/\/api\/payments\/chapa\/checkouts\/[^/]+$/,async route=>{
+  if(route.request().method()!=='POST'){await route.fallback();return}
+  checks.push(new URL(route.request().url()).pathname.split('/').at(-1)!);
+  await verificationGate;
+  await route.fulfill({json:f.order()}).catch(()=>{});
+ });
+ try{
+  await page.clock.install();
+  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await selectBids(page,f.title);
+  await dialog.getByRole('radio',{name:'telebirr',exact:true}).check();
+  await page.evaluate(()=>{
+   const app=window.Telegram!.WebApp!,activated=new Set<()=>void>();
+   app.onEvent=(event,handler)=>{if(event==='activated')activated.add(handler)};
+   app.offEvent=(event,handler)=>{if(event==='activated')activated.delete(handler)};
+   Reflect.set(window,'fixtureWalletActivation',{count:()=>activated.size,emit:()=>{for(const handler of [...activated])handler()}});
+   Reflect.set(window,'EventSource',undefined);
+  });
+  const pay=dialog.locator('[data-payment-action]');await expect(pay).toBeEnabled();
+  // Keep the five-second fallback clock frozen. Only the SDK event can wake it.
+  await page.clock.pauseAt(await page.evaluate(()=>Date.now()+1000));
+  await pay.evaluate(node=>(node as HTMLButtonElement).click());
+  await expect.poll(()=>f.commands).toHaveLength(1);
+  await expect.poll(()=>page.evaluate(()=>Reflect.get(window,'fixtureWalletActivation').count())).toBe(1);
+  expect(f.resolutions).toHaveLength(0);expect(initializationReplied).toBe(false);
+
+  await page.evaluate(()=>Reflect.get(window,'fixtureWalletActivation').emit());
+  await expect.poll(()=>f.resolutions).toEqual([f.commands[0].key]);
+  await expect.poll(()=>checks).toEqual([f.order().id]);
+  await expectSharedAuthorization(dialog);await expect(resultClose(dialog)).toHaveCount(0);
+  expect(initializationReplied).toBe(false);
+
+  f.acceptBids();releaseVerification();
+  await expect(resultClose(dialog)).toBeVisible();await expect(dialog.getByRole('heading',{name:'Bid accepted',exact:true})).toBeVisible();
+  expect(initializationReplied).toBe(false);
+  releaseInitialization();await expect.poll(()=>initializationReplied).toBe(true);
+  await expect(resultClose(dialog)).toBeVisible();
+  expect(f.commands).toHaveLength(1);expect(f.authorizations).toHaveLength(0);expect(f.unexpected).toHaveLength(0);
+ }finally{releaseInitialization();releaseVerification();await f.cleanup()}
+});
+
 test('retained completion hints stay checking until a fresh private terminal result resolves the original attempt',async({page})=>{
  const f=await inlineFixture(page);await page.addInitScript(()=>Reflect.set(window,'EventSource',undefined));
  const resume=async()=>{

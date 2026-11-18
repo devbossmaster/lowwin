@@ -93,11 +93,17 @@ export function startChapaObserver(id:string,options:Options){
  let verificationFirst=currentDirect(latest);
  if(latest)delay=Number.isFinite(latest.pollAfterMs)?Math.min(60000,Math.max(2000,latest.pollAfterMs)):5000;
  let wasHidden=visibility.visibilityState!=='visible',away=wasHidden,lastWakeAt=-Infinity,lastWalletReturnAt=-Infinity,fastUntil=Date.now()+30000;
+ let pendingWalletReturnUntil=0;
  let source:Source|null=null,timer:ReturnType<typeof setTimeout>|undefined,reconnect:ReturnType<typeof setTimeout>|undefined;
  const live=()=>active&&(options.isCurrent?.()??true);
  const foreground=()=>live()&&visibility.visibilityState==='visible';
  const pause=()=>{if(!paused){paused=true;options.onPause()}};
  const disconnect=()=>{healthy=false;source?.close();source=null;clearTimeout(reconnect)};
+ const queueWalletReturn=(now:number)=>{
+  if(now-lastWalletReturnAt<750||!currentDirect(latest)||latest?.authType!=='USSD'||!latest.authorizationReference)return false;
+  lastWalletReturnAt=now;pendingWalletReturnUntil=0;walletReturnWanted=true;verifyWanted=true;
+  return true;
+ };
  const accept=(order:ChapaCheckoutView|null,pushed=false)=>{
   if(!live()||!order||order.id!==id||!acceptChapaSnapshot(latest,order))return;
   const authorizationReady=order.authType==='USSD'&&!!order.authorizationReference&&order.authorizationReference!==latest?.authorizationReference;
@@ -109,7 +115,9 @@ export function startChapaObserver(id:string,options:Options){
   // Recovery can discover the immutable intent before Chapa returns its USSD
   // reference. Use that committed change (or a new completion hint) to bring
   // forward the next owned check, without waiting for the ordinary poll timer.
-  if(pushed&&currentDirect(order)&&(authorizationReady||completionReady)){verifyWanted=true;void drain()}
+  const now=Date.now();
+  const resumedBeforeReference=authorizationReady&&now<pendingWalletReturnUntil&&queueWalletReturn(now);
+  if(resumedBeforeReference||pushed&&currentDirect(order)&&(authorizationReady||completionReady)){verifyWanted=true;void drain()}
  };
  const schedule=()=>{
   clearTimeout(timer);
@@ -191,11 +199,14 @@ export function startChapaObserver(id:string,options:Options){
   if(!live()){stop();return}
   if(visibility.visibilityState!=='visible'){wasHidden=true;away=true;clearTimeout(timer);disconnect();return}
   const now=Date.now();
-  const walletReturn=resuming&&(away||telegramActivated)&&now-lastWalletReturnAt>=750&&currentDirect(latest)&&latest?.authType==='USSD'&&!!latest.authorizationReference;
+  const returned=resuming&&(away||telegramActivated);
+  const walletReturn=returned&&queueWalletReturn(now);
+  // The carrier can show and close its prompt before initialization saves
+  // the reference. Bind this short-lived hint to the same observed payment.
+  if(returned&&!walletReturn&&currentDirect(latest)&&latest?.paymentMethod==='telebirr'&&!latest.authorizationReference)pendingWalletReturnUntil=now+10000;
   if(resuming)away=false;
   if(!wasHidden&&!walletReturn&&now-lastWakeAt<750)return;
   wasHidden=false;lastWakeAt=now;
-  if(walletReturn){lastWalletReturnAt=now;walletReturnWanted=true}
   fastUntil=now+30000;failures=0;snapshotWanted=!verificationFirst;verifyWanted=true;
   if(!options.observeDirect&&fixedDeadline!==null&&now>=deadline){pause();void drain();return}
   if(paused){paused=false;deadline=now+300000;options.onResume?.()}
