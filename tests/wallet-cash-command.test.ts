@@ -17,6 +17,10 @@ describe('cash wallet command rollout and ambiguity boundaries',()=>{
   const {db,query}=client(databaseError('42883','function public.lowwin_cash_wallet_batch(jsonb, jsonb) does not exist'));
   expect(await runAtomicCashWalletCommand(db,binding,binding.userId,input)).toBeNull();expect(query).toHaveBeenCalledOnce();
  });
+ it('recognizes the actual Prisma PostgreSQL ERROR prefix for the named missing entrypoint',async()=>{
+  const {db,query}=client(databaseError('42883','ERROR: function public.lowwin_cash_wallet_batch(jsonb, jsonb) does not exist\nHINT: No function matches the given name and argument types.'));
+  expect(await runAtomicCashWalletCommand(db,binding,binding.userId,input)).toBeNull();expect(query).toHaveBeenCalledOnce();
+ });
  for(const error of [databaseError('42883','function other_internal_function(jsonb) does not exist'),databaseError('57014','canceling statement due to statement timeout'),databaseError('42501','permission denied for function lowwin_cash_wallet_batch'),new TypeError('Lost connection after command dispatch')])it(`preserves an uncertain/unsupported database error without another mutation: ${error.message}`,async()=>{
   const {db,query}=client(error);await expect(runAtomicCashWalletCommand(db,binding,binding.userId,input)).rejects.toBe(error);expect(query).toHaveBeenCalledOnce();
  });

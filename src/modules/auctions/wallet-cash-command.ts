@@ -21,7 +21,7 @@ const record=(value:unknown):Record<string,unknown>|null=>value!==null&&typeof v
  * connection, timeout, failed trigger or malformed committed result is uncertain
  * and must never run a second mutation as a fallback. */
 function missingEntrypoint(error:unknown){
- return error instanceof Prisma.PrismaClientKnownRequestError&&error.code==='P2010'&&error.meta?.code==='42883'&&typeof error.meta.message==='string'&&/^function (?:public\.)?lowwin_cash_wallet_batch\(/.test(error.meta.message);
+ return error instanceof Prisma.PrismaClientKnownRequestError&&error.code==='P2010'&&error.meta?.code==='42883'&&typeof error.meta.message==='string'&&/^(?:ERROR: )?function (?:public\.)?lowwin_cash_wallet_batch\(/.test(error.meta.message);
 }
 function databaseError(error:unknown):never{
  if(error instanceof Prisma.PrismaClientKnownRequestError&&error.code==='P2010'){
