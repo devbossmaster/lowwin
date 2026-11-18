@@ -27,7 +27,7 @@ test('compact header, language keyboard controls and banner assets',async({page}
   await bell.click();const notifications=page.getByRole('dialog',{name:'Notifications'});await expect(notifications).toBeVisible();await page.keyboard.press('Escape');await expect(bell).toBeFocused();
   await header.getByRole('button',{name:/^Browse auctions/}).click();await expect(page.getByRole('dialog',{name:'Auctions',exact:true})).toBeVisible();await page.keyboard.press('Escape');
   const bids=page.getByRole('navigation',{name:'Your navigation',exact:true}).getByRole('link',{name:'My Bids',exact:true});await expect(bids).toHaveAttribute('href','/my-bids');await bids.click();await expect(page).toHaveURL(/\/my-bids$/);
-  await page.goto('/');await expect(page.getByRole('button',{name:'Learn more',exact:true}).first()).toBeVisible();
+  await page.goto('/');await expect(page.locator('[data-home-hero]').getByRole('button',{name:'How it works?',exact:true})).toBeVisible();
   const banner=page.locator('section[aria-labelledby="home-headline"] img');await expect.poll(()=>banner.evaluate((el:HTMLImageElement)=>el.complete&&el.naturalWidth>0)).toBe(true);
   for(const path of ['/images/lowwin-gold-prizes-hero-20261117.webp','/fonts/inter-latin-variable.woff2','/fonts/noto-sans-ethiopic-variable.woff2'])expect((await page.request.get(path,{maxRedirects:0})).status(),path).toBe(200);
   for(const control of await header.getByRole('button').all()){const box=await control.boundingBox();expect(box!.width).toBeGreaterThanOrEqual(44);expect(box!.height).toBeGreaterThanOrEqual(44)}

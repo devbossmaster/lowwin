@@ -68,10 +68,11 @@ describe('notification display language',()=>{
 describe('home introduction',()=>{
  it('replaces retired copy in both languages while preserving Owner edits',()=>{
   expect(resolveHomeCopy({headline:'A little different wins.',lead:'Old showcase'})).toEqual(defaultHomeCopy);
+  expect(resolveHomeCopy({headline:'One unique number. A chance to win.',lead:'Old showcase'})).toEqual(defaultHomeCopy);
   expect(resolveHomeCopy(null)).toEqual(defaultHomeCopy);
   const edited={headline:'Custom headline',lead:'Custom copy',headlineAm:'አዲስ ርዕስ',leadAm:'አዲስ መግለጫ'};
   expect(resolveHomeCopy(edited)).toEqual(edited);
-  expect(defaultHomeCopy.lead).toContain('lowest number chosen by one player wins');expect(defaultHomeCopy.lead).toContain('actual paid fees');
-  expect(defaultHomeCopy.leadAm).toContain('ዋሌትዎ ይመለሳል');
+  expect(defaultHomeCopy.headline).toBe('Small price. Big joy.');expect(defaultHomeCopy.headlineAm).toBe('ትንሽ ዋጋ። ትልቅ ደስታ።');
+  expect(defaultHomeCopy.lead).toBe('The lowest unique bid wins.');expect(defaultHomeCopy.leadAm).toBe('ዝቅተኛና ያልተደገመ ዋጋ ያሸንፋል።');
  });
 });

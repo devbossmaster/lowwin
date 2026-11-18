@@ -15,7 +15,7 @@ for(const entry of ['banner','guide'] as const){
    await page.goto('/telegram');await expect(page.getByRole('navigation',{name:'Your navigation'})).toBeVisible();
    if(entry==='guide'){await page.getByRole('button',{name:'Language: English',exact:true}).click();await page.getByRole('menuitemradio',{name:'አማርኛ',exact:true}).click();await expect(page.locator('html')).toHaveAttribute('lang','am')}
    const section=page.locator(entry==='banner'?'section[aria-labelledby="home-headline"]':'#how-lowwin-works');
-   const trigger=section.getByRole('button',{name:entry==='banner'?'Learn more':'ተጨማሪ ይወቁ',exact:true});
+   const trigger=section.getByRole('button',{name:entry==='banner'?'How it works?':'ተጨማሪ ይወቁ',exact:true});
    await trigger.scrollIntoViewIfNeeded();
    // Hold the actual on-demand JS transport rather than testing a mock loader.
    await page.route('**/_next/static/chunks/**',async route=>{if(route.request().resourceType()==='script'){held++;await pending}await route.continue()});
