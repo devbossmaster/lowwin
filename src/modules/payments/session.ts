@@ -4,7 +4,8 @@ import {contactBotId} from '../auth/own-contact';
 import {runAtomicCashWalletCommand} from '../auctions/wallet-cash-command';
 import {limitUserMutation,mutationRateError,PrivateApiError} from '../auth/private-api';
 import {measureChapa} from './chapa-timing';
-import {authorizeCurrentDirectCreation,authorizeWalletBatch,type PaymentSessionAuthorizer} from './creation-eligibility';
+import {prepareAtomicDirectBid} from './chapa-direct-bid-prepare';
+import {authorizeBidBatchQuote,authorizeCurrentDirectCreation,authorizeWalletBatch,type PaymentSessionAuthorizer} from './creation-eligibility';
 export type {PaymentSessionAuthorizer} from './creation-eligibility';
 
 type PaymentIdentity=NonNullable<Awaited<ReturnType<typeof getMiniSession>>>;
@@ -32,7 +33,9 @@ function paymentSession(request:Request,current:PaymentIdentity){
  if(!preview){
   const binding={sessionId:current.session.id,sessionToken:current.session.token,userId:current.user.id,telegramId:telegramId!,telegramAuthSource:current.session.telegramAuthSource,botId:botId!};
   reauthorize.forCurrentDirectCreate=(tx,userId,key)=>authorizeCurrentDirectCreation(tx,binding,userId,key);
+  reauthorize.forCurrentDirectBid=(client,userId,input)=>binding.botId===contactBotId()?prepareAtomicDirectBid(client,binding,userId,input):Promise.resolve(null);
   reauthorize.forWalletBatch=(tx,userId,key)=>authorizeWalletBatch(tx,binding,userId,key);
+  reauthorize.forBidBatchQuote=(tx,userId,key)=>authorizeBidBatchQuote(tx,binding,userId,key);
   reauthorize.forWalletCashCommand=(client,userId,input)=>binding.botId===contactBotId()?runAtomicCashWalletCommand(client,binding,userId,input):Promise.resolve(null);
  }
  return {userId:current.user.id,reauthorize};

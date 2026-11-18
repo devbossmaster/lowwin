@@ -8,7 +8,7 @@ import {requirePaymentSession} from '../src/modules/payments/session';
 import {eligible} from '../src/modules/payments/chapa';
 import {createCurrentDirectCheckout} from '../src/modules/payments/chapa-inline';
 import type {ChapaTransport} from '../src/modules/payments/chapa-provider';
-import {createAndPayBidBatchWallet} from '../src/modules/auctions/batch';
+import {createAndPayBidBatchWallet,quoteBidBatch} from '../src/modules/auctions/batch';
 import {bidAuction} from './bid-fixtures';
 import {creditDevelopmentPoints} from '../src/modules/wallet/ledger';
 
@@ -99,9 +99,41 @@ describe.skipIf(!database)('creation-only fresh payment authorization on isolate
   try{await db.$transaction(async tx=>{const result=await f.walletAuthorize(tx);expect(result.replayExists).toBe(false);expect(()=>result.assertEligible()).not.toThrow();expect(()=>result.assertEligible()).not.toThrow()})}finally{capture=null}
   expect(queries.filter(sql=>/^\s*SELECT\b/i.test(sql))).toHaveLength(1);expect(queries.join('\n')).toContain('"BidBatchOrder"');
  });
+ it('reads fresh quote availability after a maintenance writer releases the barrier',async()=>{
+  const f=await fixture();
+  const auction=await bidAuction(db,{ruleVersion:'lowest-unique-v5',isDemo:false,fee:10});
+  await db.product.update({where:{id:auction.productId!},data:{isDemo:false}});
+  const original={key:f.key,auctionSlug:auction.slug!,numbers:['2','9'],feeVersion:1};
+  const quote=await quoteBidBatch(db,f.userId,original,f.auth.reauthorize);
+  const record=(action:string)=>({actorId:'isolated-quote-test',action,target:'quote-barrier-test',details:{}});
+  let acquired!:()=>void,release!:()=>void;
+  const held=new Promise<void>(resolve=>{acquired=resolve}),gate=new Promise<void>(resolve=>{release=resolve});
+  const maintenance=db.$transaction(async tx=>{
+   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('lowwin:auction-maintenance',0))`;
+   await tx.adminAudit.create({data:record('AUCTIONS_MAINTENANCE_HALTED')});
+   acquired();await gate;
+  });
+  await held;
+  const fresh={...original,key:randomUUID()};
+  const attempt=quoteBidBatch(db,f.userId,fresh,f.auth.reauthorize);
+  const checked=expect(attempt).rejects.toMatchObject({code:'AUCTIONS_PAUSED'});
+  try{
+   try{await vi.waitFor(async()=>{
+    const [{waiting}]=await db.$queryRaw<{waiting:boolean}[]>`
+     SELECT EXISTS(SELECT 1 FROM pg_locks WHERE locktype='advisory' AND mode='ShareLock'
+      AND NOT granted AND database=(SELECT oid FROM pg_database WHERE datname=current_database())) AS waiting`;
+    expect(waiting).toBe(true);
+   },{timeout:3000})}finally{release();await maintenance}
+   await checked;
+   await expect(quoteBidBatch(db,f.userId,original,f.auth.reauthorize)).resolves.toEqual(quote);
+   expect(await db.bidBatchOrder.count({where:{userId:f.userId}})).toBe(1);
+  }finally{await db.adminAudit.create({data:record('AUCTIONS_MAINTENANCE_RESUMED')})}
+ });
  it.each(['suspended','member-role'] as const)('preserves committed wallet facts and existing replay authorization after %s changes',async change=>{
   const f=await fixture(),other=await fixture(),prior={DEV_POINTS_ENABLED:process.env.DEV_POINTS_ENABLED,WALLET_BIDS_ENABLED:process.env.WALLET_BIDS_ENABLED,REFERRAL_REWARDS_SCHEMA_READY:process.env.REFERRAL_REWARDS_SCHEMA_READY};Object.assign(process.env,{DEV_POINTS_ENABLED:'true',WALLET_BIDS_ENABLED:'true',REFERRAL_REWARDS_SCHEMA_READY:'false'});
-  const fused=vi.fn(f.auth.reauthorize.forWalletBatch!);const authorizer=Object.assign(f.auth.reauthorize,{forWalletBatch:fused});
+  // Exercise the transaction fallback covered by this spy. The separate cash
+  // command suite covers the fast routine and its replay behavior.
+  const fused=vi.fn(f.auth.reauthorize.forWalletBatch!);const authorizer=Object.assign(f.auth.reauthorize,{forWalletBatch:fused,forWalletCashCommand:undefined});
   const fetch=vi.spyOn(globalThis,'fetch').mockRejectedValue(Error('No provider HTTP in internal-wallet fixture'));
   try{
    const auction=await bidAuction(db,{ruleVersion:'lowest-unique-v5',isDemo:false,fee:10});await db.product.update({where:{id:auction.productId!},data:{isDemo:false}});await creditDevelopmentPoints(db,f.userId,'25',randomUUID());

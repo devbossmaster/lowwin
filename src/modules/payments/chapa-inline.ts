@@ -129,6 +129,19 @@ async function createParsedCheckout(client:PrismaClient,userId:string,{body,phon
   const amount=etbToCents(body.amount);
   if(amount<BigInt(selectedMethod.minimumCents)||amount>BigInt(selectedMethod.maximumCents))throw new ChapaError(422,'METHOD_UNAVAILABLE','This method does not support the quoted amount.');
  }
+ const assertCurrentConfig=()=>{
+  const current=protocol==='DIRECT'?requireCurrentDirect():requireChapaInline();
+  if(current.mode!==health.mode||current.credentialFingerprint!==health.credentialFingerprint||current.publicKeyFingerprint!==health.publicKeyFingerprint)throw new ChapaError(503,'CONFIGURATION_CHANGED','Reload payment options before paying.');
+ };
+ const buildInitialization=()=>{
+  const id=randomUUID(),merchantReference=`LW${randomBytes(9).toString('hex')}`,idempotencyKey=`lowwin-${protocol==='DIRECT'?'direct-v5':'inline'}:${id}`,returnUrl=new URL(`/payments/chapa/return?checkout=${id}`,process.env.MINI_APP_URL).href,flowVersion=protocol==='DIRECT'?5:4;
+  return {id,merchantReference,flowVersion,initialization:{apiVersion:'v2',flowVersion,flow:body.flow,merchantReference,idempotencyKey,...(protocol==='DIRECT'?{metadata:{checkout_id:id}}:{publicKeyFingerprint:health.publicKeyFingerprint!}),webhookSignatureProfile:chapaWebhookSignatureProfile()!,paymentMethod:body.paymentMethod,payerPhoneHash:phoneHash(`+${phone}`),returnUrl,returnUrlVersion:1}};
+ };
+ if(protocol==='DIRECT'&&body.purpose==='BID'&&reauthorize?.forCurrentDirectBid){
+  assertCurrentConfig();const {id,initialization}=buildInitialization();
+  const order=await measureChapa('prepare',()=>reauthorize.forCurrentDirectBid!(client,userId,{checkoutId:id,key:body.key,batchId:body.batchId,quoteHash:body.quoteHash,requestHash:hash,phone,mode:health.mode,credentialFingerprint:health.credentialFingerprint!,initialization,minimumCents:selectedMethod.minimumCents,maximumCents:selectedMethod.maximumCents}));
+  if(order){assertCurrentConfig();return {order:await dispatchInlineCheckout(client,order,userId,transport,'create')}}
+ }
  const transactionQueuedAt=performance.now();
  const prepared=await measureChapa('prepare',()=>client.$transaction(async tx=>{
   markChapaTransactionStarted(transactionQueuedAt);
@@ -164,12 +177,10 @@ async function createParsedCheckout(client:PrismaClient,userId:string,{body,phon
   const amountCents=batch?.totalCents??etbToCents(body.purpose==='TOP_UP'?body.amount:'0'),method=selectedMethod;
   if(amountCents<(body.purpose==='TOP_UP'?CHAPA_TOPUP_MIN_CENTS:100n)||amountCents>CHAPA_TOPUP_MAX_CENTS)throw new ChapaError(422,'INVALID_AMOUNT',body.purpose==='TOP_UP'?'Top up between 5.00 and 43,200.00 ETB.':'Pay between 1.00 and 43,200.00 ETB.');
   if(!method||amountCents<BigInt(method.minimumCents)||amountCents>BigInt(method.maximumCents))throw new ChapaError(422,'METHOD_UNAVAILABLE','This method does not support the quoted amount.');
-  const current=protocol==='DIRECT'?requireCurrentDirect():requireChapaInline();if(current.mode!==health.mode||current.credentialFingerprint!==health.credentialFingerprint||current.publicKeyFingerprint!==health.publicKeyFingerprint)throw new ChapaError(503,'CONFIGURATION_CHANGED','Reload payment options before paying.');
-  const id=randomUUID(),merchantReference=`LW${randomBytes(9).toString('hex')}`,idempotencyKey=`lowwin-${protocol==='DIRECT'?'direct-v5':'inline'}:${id}`,returnUrl=new URL(`/payments/chapa/return?checkout=${id}`,process.env.MINI_APP_URL).href;
+  assertCurrentConfig();const {id,merchantReference,flowVersion,initialization:base}=buildInitialization();
   const depositBonus=body.purpose==='TOP_UP'?await quoteDepositBonusInTransaction(tx,amountCents,bonusReady):null;
   if(body.purpose==='TOP_UP'&&(depositBonus&&(body.approvedDepositBonusVersion!==depositBonus.policyVersion||body.approvedDepositBonusAmount===undefined)||body.approvedDepositBonusAmount!==undefined&&etbToCents(body.approvedDepositBonusAmount)!==BigInt(depositBonus?.amountCents??'0')))throw new ChapaError(409,'DEPOSIT_BONUS_CHANGED','The deposit bonus changed. Review the updated offer before paying.');
-  const flowVersion=protocol==='DIRECT'?5:4;
-  const initialization={apiVersion:'v2',flowVersion,flow:body.flow,amountCents:String(amountCents),merchantReference,idempotencyKey,...(protocol==='DIRECT'?{metadata:{checkout_id:id}}:{publicKeyFingerprint:health.publicKeyFingerprint!}),webhookSignatureProfile:chapaWebhookSignatureProfile()!,paymentMethod:body.paymentMethod,payerPhoneHash:phoneHash(`+${phone}`),returnUrl,returnUrlVersion:1,...(depositBonus?{depositBonus}:{}),...(batch?{batch:ownBatch(batch)}:{})};
+  const initialization={...base,amountCents:String(amountCents),...(depositBonus?{depositBonus}:{}),...(batch?{batch:ownBatch(batch)}:{})};
   if(protocol==='DIRECT'){
    if(!await allowIdentityRequests(tx,[{scope:'chapa-inline-create',identity:userId,maximum:24,windowMs:3600000},{scope:'chapa-inline-initialize',identity:id,maximum:5,windowMs:86400000}]))throw new ChapaError(429,'RATE_LIMITED','Check Transactions before trying another payment.');
   }else if(!await allowIdentityRequest(tx,'chapa-inline-initialize',id,5,86400000))throw new ChapaError(429,'RATE_LIMITED','Check the original payment before trying again.');

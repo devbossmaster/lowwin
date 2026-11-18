@@ -1,31 +1,36 @@
-import {Prisma,type PrismaClient} from '@prisma/client';
+import {Prisma,type ChapaCheckout,type PrismaClient} from '@prisma/client';
+import type {DirectBidPreparation} from './chapa-direct-bid-prepare';
 import type {WalletCashCommandInput,WalletCashCommandResult} from '../auctions/wallet-cash-command';
 import {contactBotId} from '../auth/own-contact';
 import {PrivateApiError} from '../auth/private-api';
+import {auctionMaintenanceHalted} from '../auctions/maintenance';
 import {ChapaError} from './chapa-provider';
 
 export type PaymentCreationBinding={sessionId:string;sessionToken:string;userId:string;telegramId:string;telegramAuthSource:string;botId:string};
 export type PaymentCreationContact={phoneCipher:string;botId:string;replayExists:boolean};
 export type WalletBatchAuthorization={replayExists:boolean;assertEligible:()=>void};
+type BidBatchQuoteAuthorization=WalletBatchAuthorization&{maintenanceHalted:boolean};
 export type PaymentSessionAuthorizer=((tx:Prisma.TransactionClient)=>Promise<void>)&{
  forCurrentDirectCreate?:(tx:Prisma.TransactionClient,userId:string,key:string)=>Promise<PaymentCreationContact>;
+ forCurrentDirectBid?:(client:PrismaClient,userId:string,input:DirectBidPreparation)=>Promise<ChapaCheckout|null>;
  forWalletBatch?:(tx:Prisma.TransactionClient,userId:string,key:string)=>Promise<WalletBatchAuthorization>;
+ forBidBatchQuote?:(tx:Prisma.TransactionClient,userId:string,key:string)=>Promise<BidBatchQuoteAuthorization>;
  forWalletCashCommand?:(client:PrismaClient,userId:string,input:WalletCashCommandInput)=>Promise<WalletCashCommandResult|null>;
 };
-type CreationRow={telegramLaunchId:string|null;telegramAuthSource:string;telegramId:string|null;role:string;contactTelegramId:string|null;botId:string|null;phoneCipher:string|null;revokedAt:Date|null;staffId:string|null;suspended:boolean;replayExists:boolean};
+type CreationRow={telegramLaunchId:string|null;telegramAuthSource:string;telegramId:string|null;role:string;contactTelegramId:string|null;botId:string|null;phoneCipher:string|null;revokedAt:Date|null;staffId:string|null;suspended:boolean;replayExists:boolean;maintenanceHalted:boolean};
 const unauthorized=()=>new PrivateApiError(401,'Sign in through Telegram.');
 
 /** Creation only, after the caller's existing financial locks. Every call reads
  * the current transaction snapshot; neither authorization nor contact is cached.
  * Recovery continues to use the original narrower session authorizer. */
-async function readBoundCreation(tx:Prisma.TransactionClient,binding:PaymentCreationBinding,userId:string,key:string,replayTable:'direct'|'wallet'){
+async function readBoundCreation(tx:Prisma.TransactionClient,binding:PaymentCreationBinding,userId:string,key:string,replayTable:'direct'|'wallet',checkMaintenance=false){
  if(userId!==binding.userId||!binding.telegramId||!['MINI_APP','TELEGRAM_OIDC'].includes(binding.telegramAuthSource))throw unauthorized();
  const replay=replayTable==='direct'?Prisma.sql`EXISTS(SELECT 1 FROM "ChapaCheckout" checkout WHERE checkout."userId"=u.id AND checkout.key=${key})`:Prisma.sql`EXISTS(SELECT 1 FROM "BidBatchOrder" batch WHERE batch."userId"=u.id AND batch.key=${key})`;
  const [row]=await tx.$queryRaw<CreationRow[]>`
   SELECT s."telegramLaunchId",s."telegramAuthSource",u."telegramId",u.role,
    c."telegramId" AS "contactTelegramId",c."botId",c."phoneCipher",c."revokedAt",
    staff."userId" AS "staffId",COALESCE(restriction.suspended,false) AS suspended,
-   ${replay} AS "replayExists"
+   ${replay} AS "replayExists", ${checkMaintenance?auctionMaintenanceHalted:Prisma.sql`false`} AS "maintenanceHalted"
   FROM "session" s JOIN "user" u ON u.id=s."userId"
   LEFT JOIN "TelegramOwnContact" c ON c."userId"=u.id
   LEFT JOIN "StaffMember" staff ON staff."userId"=u.id
@@ -50,7 +55,16 @@ export async function authorizeCurrentDirectCreation(tx:Prisma.TransactionClient
  * Only new/quoted submissions call assertEligible. Its facts are private to
  * this fresh transaction read; no wallet funds, fee, coupon or cap is cached. */
 export async function authorizeWalletBatch(tx:Prisma.TransactionClient,binding:PaymentCreationBinding,userId:string,key:string):Promise<WalletBatchAuthorization>{
- const row=await readBoundCreation(tx,binding,userId,key,'wallet');
+ return batchAuthorization(await readBoundCreation(tx,binding,userId,key,'wallet'));
+}
+
+/** Called after the shared maintenance barrier, so a quote waits for an in-progress halt. */
+export async function authorizeBidBatchQuote(tx:Prisma.TransactionClient,binding:PaymentCreationBinding,userId:string,key:string):Promise<BidBatchQuoteAuthorization>{
+ const row=await readBoundCreation(tx,binding,userId,key,'wallet',true);
+ return {...batchAuthorization(row),maintenanceHalted:row.maintenanceHalted};
+}
+
+function batchAuthorization(row:CreationRow):WalletBatchAuthorization{
  return {replayExists:row.replayExists,assertEligible:()=>{
   if(!row.contactTelegramId||row.revokedAt||row.contactTelegramId!==row.telegramId||row.botId!==contactBotId())throw Error('CONTACT_REQUIRED');
   if(row.role!=='member'||row.staffId||row.suspended)throw new ChapaError(403,'BIDDING_RESTRICTED','Bidding is unavailable for this account.');
