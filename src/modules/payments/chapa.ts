@@ -211,9 +211,27 @@ async function recordChapaVerificationSignal(client:PrismaClient,snapshot:ChapaC
  }
 }
 export async function verifyChapaCheckout(client:PrismaClient,id:string,userId?:string,reauthorize?:Authorize,transport:ChapaTransport=chapaTransport,eventCheck:boolean|'webhook'=false,providedAuthorizationFeedback?:ChapaAuthorizationFeedback,completionSignal?:ChapaCompletionStatus){
+ return runChapaVerification(client,id,userId,reauthorize,transport,eventCheck,providedAuthorizationFeedback,completionSignal);
+}
+
+async function readVerificationCheckout(client:PrismaClient,id:string,userId?:string){
+ z.string().uuid().parse(id);
+ const snapshot=await measureChapa('database',()=>client.chapaCheckout.findFirst({where:{id,...(userId?{userId}:{})}}));
+ if(!snapshot)throw new ChapaError(404,'NOT_FOUND','Payment not found.');
+ return snapshot;
+}
+
+/** The route can read the owned order alongside the request limit. Only the
+ * continuation can claim a fresh verification lease or call Chapa. */
+export async function prepareOwnedChapaVerification(client:PrismaClient,id:string,userId:string,transport:ChapaTransport=chapaTransport){
+ const snapshot=await readVerificationCheckout(client,id,userId);
+ return (reauthorize:Authorize)=>runChapaVerification(client,id,userId,reauthorize,transport,false,undefined,undefined,snapshot);
+}
+
+async function runChapaVerification(client:PrismaClient,id:string,userId:string|undefined,reauthorize:Authorize|undefined,transport:ChapaTransport,eventCheck:boolean|'webhook',providedAuthorizationFeedback:ChapaAuthorizationFeedback|undefined,completionSignal:ChapaCompletionStatus|undefined,snapshot?:ChapaCheckout){
  const work={changed:false,deferred:false};
  try{
-  let result=await verifyChapaCheckoutOnce(client,id,userId,reauthorize,transport,eventCheck,providedAuthorizationFeedback,work,completionSignal);
+  let result=await verifyChapaCheckoutOnce(client,id,userId,reauthorize,transport,eventCheck,providedAuthorizationFeedback,work,completionSignal,snapshot);
   if(work.changed){void publishChapaCommitted(id).catch(()=>{});work.changed=false}
   // One retained signal gets a prompt private recheck, without another public
   // validation. Any further signal remains durably due for another caller or
@@ -226,9 +244,8 @@ export async function verifyChapaCheckout(client:PrismaClient,id:string,userId?:
   if(work.changed)void publishChapaCommitted(id).catch(()=>{});
  }
 }
-async function verifyChapaCheckoutOnce(client:PrismaClient,id:string,userId:string|undefined,reauthorize:Authorize|undefined,transport:ChapaTransport,eventCheck:boolean|'webhook'|'deferred',providedAuthorizationFeedback:ChapaAuthorizationFeedback|undefined,work:{changed:boolean;deferred:boolean},completionSignal?:ChapaCompletionStatus){
- z.string().uuid().parse(id);
- const snapshot=await measureChapa('database',()=>client.chapaCheckout.findFirst({where:{id,...(userId?{userId}:{})}}));if(!snapshot)throw new ChapaError(404,'NOT_FOUND','Payment not found.');
+async function verifyChapaCheckoutOnce(client:PrismaClient,id:string,userId:string|undefined,reauthorize:Authorize|undefined,transport:ChapaTransport,eventCheck:boolean|'webhook'|'deferred',providedAuthorizationFeedback:ChapaAuthorizationFeedback|undefined,work:{changed:boolean;deferred:boolean},completionSignal?:ChapaCompletionStatus,ownedSnapshot?:ChapaCheckout){
+ const snapshot=ownedSnapshot??await readVerificationCheckout(client,id,userId);
  if(unsupportedLegacyChapaCheckout(snapshot))return ownChapaCheckout(snapshot);
  const legacy=isLegacyChapaCheckout(snapshot),inlineV2=isV2InlineCheckout(snapshot),currentV2=isCurrentV2Checkout(snapshot);
  if(!legacy)requireChapa('recover');

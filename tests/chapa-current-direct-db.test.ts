@@ -5,8 +5,10 @@ import {execFileSync} from 'node:child_process';
 import {createRequire} from 'node:module';
 import {verifiedReferralUser,realReferralAuction} from './referral-fixtures';
 import {quoteBidBatch} from '../src/modules/auctions/batch';
-import {createCurrentDirectCheckout,findCurrentDirectCheckoutByKey,findInlineCheckoutByKey} from '../src/modules/payments/chapa-inline';
-import {verifyChapaCheckout} from '../src/modules/payments/chapa';
+import {createCurrentDirectCheckout,findCurrentDirectCheckoutByKey,findInlineCheckoutByKey,prepareCurrentDirectCreation} from '../src/modules/payments/chapa-inline';
+import {prepareOwnedChapaVerification,verifyChapaCheckout} from '../src/modules/payments/chapa';
+import {authorizeCurrentDirectCreation,type PaymentSessionAuthorizer} from '../src/modules/payments/creation-eligibility';
+import {contactBotId} from '../src/modules/auth/own-contact';
 import {authorizeDirectCheckout} from '../src/modules/payments/chapa-direct';
 import {ChapaProviderError,chapaHash,type ChapaDirectCreate,type ChapaTransport} from '../src/modules/payments/chapa-provider';
 import {allowIdentityRequest} from '../src/lib/rate-limit';
@@ -36,6 +38,46 @@ describe.skipIf(!database)('current Direct5 owned creation and private committed
   const due=()=>db.chapaCheckout.update({where:{id},data:{nextCheckAt:new Date(0),verificationRetryAfter:null}});
   return {user,auction,command,transport,direct,lookup,validate,id:()=>id,proof,start:(change:Record<string,unknown>={})=>createCurrentDirectCheckout(db,user,{...command,...change},undefined,transport),due,verify:async()=>{await due();return verifyChapaCheckout(db,id,user,undefined,transport)},setStatus:(value:string)=>{status=value},setValidation:(value:string)=>{validationStatus=value},setAuth:(value:string)=>{authType=value},setInitializationStatus:(value:string)=>{initializationStatus=value},setInitializationDates:(value:Record<string,string>)=>{initializationDates=value},setCapable:(value:boolean)=>{capable=value},alter:(value:Record<string,unknown>)=>{patch=value}};
  }
+ async function creationBinding(userId:string){
+  const {telegramId}=await db.user.findUniqueOrThrow({where:{id:userId},select:{telegramId:true}});
+  const session=await db.session.create({data:{id:randomUUID(),token:randomUUID(),userId,expiresAt:new Date(Date.now()+60000),telegramLaunchId:telegramId,telegramAuthSource:'MINI_APP'}});
+  const binding={sessionId:session.id,sessionToken:session.token,userId,telegramId:telegramId!,telegramAuthSource:session.telegramAuthSource,botId:contactBotId()};
+  const authorize:PaymentSessionAuthorizer=vi.fn(async()=>{});
+  authorize.forCurrentDirectCreate=(tx,owner,key)=>authorizeCurrentDirectCreation(tx,binding,owner,key);
+  return {session,authorize};
+ }
+ it.each(['TOP_UP','BID'] as const)('checks two prepared %s requests again under the existing locks and dispatches the original key once',async purpose=>{
+  const f=await fixture(purpose),{authorize}=await creationBinding(f.user);
+  const prepare=()=>prepareCurrentDirectCreation(db,f.user,f.command,f.transport);
+  const [first,second]=await Promise.all([prepare(),prepare()]);
+  expect(await db.chapaCheckout.count({where:{userId:f.user}})).toBe(0);
+  expect(f.direct).not.toHaveBeenCalled();
+  const [a,b]=await Promise.all([first(authorize),second(authorize)]);
+  expect(a.order.id).toBe(b.order.id);
+  expect(f.direct).toHaveBeenCalledOnce();
+  await expect((await prepareCurrentDirectCreation(db,f.user,{...f.command,phone:'0912345678'},f.transport))(authorize)).rejects.toMatchObject({code:'KEY_REUSED'});
+  expect(await balance(f.user)).toBe('0');
+ });
+ it('rejects a deleted session after the early read without dispatching or creating an intent',async()=>{
+  const f=await fixture(),{session,authorize}=await creationBinding(f.user);
+  const start=await prepareCurrentDirectCreation(db,f.user,f.command,f.transport);
+  await db.session.delete({where:{id:session.id}});
+  await expect(start(authorize)).rejects.toMatchObject({status:401});
+  expect(f.direct).not.toHaveBeenCalled();
+  expect(await db.chapaCheckout.count({where:{userId:f.user}})).toBe(0);
+ });
+ it('preloads only an owned status and still requires private proof after the fresh verification lease',async()=>{
+  const f=await fixture(),{order}=await f.start(),other=await verifiedReferralUser(db);
+  await f.due();f.setStatus('SUCCESS');f.setValidation('SUCCESS');
+  await expect(prepareOwnedChapaVerification(db,order.id,other.id,f.transport)).rejects.toMatchObject({code:'NOT_FOUND'});
+  const verify=await prepareOwnedChapaVerification(db,order.id,f.user,f.transport);
+  expect(f.lookup).not.toHaveBeenCalled();
+  const reauthorize=vi.fn(async()=>{});
+  expect(await verify(reauthorize)).toMatchObject({status:'CREDITED',providerStatus:'SUCCESS',verificationState:'VERIFIED'});
+  expect(reauthorize).toHaveBeenCalled();
+  expect(await balance(f.user)).toBe('40');
+  expect(await db.journal.count({where:{kind:'CHAPA_RECEIPT',operation:{userId:f.user}}})).toBe(1);
+ });
  it('commits a distinct immutable Direct5 intent before dispatch without any public key or hosted call',async()=>{
   const f=await fixture(),{order}=await f.start();expect(order).toMatchObject({flowVersion:5,chargeType:'DIRECT',apiVersion:'v2',status:'AUTH_NEEDED',authType:'USSD',amount:'40.00'});
   const row=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});expect(row.initialization).toMatchObject({apiVersion:'v2',flowVersion:5,flow:'DIRECT',metadata:{checkout_id:row.id},idempotencyKey:`lowwin-direct-v5:${row.id}`,webhookSignatureProfile:'raw_body'});expect(row.initialization).not.toHaveProperty('publicKeyFingerprint');expect(await balance(f.user)).toBe('0');expect(f.lookup).not.toHaveBeenCalled();

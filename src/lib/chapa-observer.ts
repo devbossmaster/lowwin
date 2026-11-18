@@ -5,6 +5,7 @@ type Visibility=Events&Pick<Document,'visibilityState'>;
 type Source=Pick<EventTarget,'addEventListener'>&{close:()=>void};
 type Telegram={onEvent?:(event:string,listener:()=>void)=>void;offEvent?:(event:string,listener:()=>void)=>void};
 type Options={
+ initialOrder?:ChapaCheckoutView|null;
  readSnapshot:()=>Promise<ChapaCheckoutView|null>;
  verify:()=>Promise<ChapaCheckoutView|null>;
  onSnapshot:(order:ChapaCheckoutView)=>void;
@@ -50,14 +51,14 @@ export function retainChapaObserver(identity:string,id:string,options:Options){
    finally{if(ownedRequests.get(key)===flight)ownedRequests.delete(key)}
   };
   owned.stop=startChapaObserver(id,{
-   ...primary,readSnapshot:()=>request('readSnapshot'),verify:()=>request('verify'),onSnapshot:receive,
+   ...primary,initialOrder:owned.latest??primary.initialOrder,readSnapshot:()=>request('readSnapshot'),verify:()=>request('verify'),onSnapshot:receive,
    isCurrent:()=>current()&&[...owned.owners].some(valid),
    onPause:()=>fanout(owned,owner=>owner.onPause()),onResume:()=>fanout(owned,owner=>owner.onResume?.()),
    onError:error=>fanout(owned,owner=>owner.onError?.(error)),
   });
  };
  if(!entry){
-  entry={identity,id,owners:new Set([options]),primary:options,generation:0,stop:()=>{},latest:null};observers.set(key,entry);start(entry);
+  entry={identity,id,owners:new Set([options]),primary:options,generation:0,stop:()=>{},latest:options.initialOrder?.id===id?options.initialOrder:null};observers.set(key,entry);start(entry);
  }else{
   entry.owners.add(options);if(entry.latest&&valid(options))options.onSnapshot(entry.latest);
  }
@@ -86,6 +87,10 @@ export function startChapaObserver(id:string,options:Options){
  const fixedDeadline=typeof options.deadlineAt==='number'&&Number.isFinite(options.deadlineAt)?options.deadlineAt:null;
  let deadline=options.observeDirect?fixedDeadline??Infinity:Math.min(Date.now()+300000,fixedDeadline??Infinity);
  let active=true,paused=false,inFlight=false,snapshotWanted=false,verifyWanted=false,healthy=false,delay=5000,failures=0;
+ let latest=options.initialOrder?.id===id?options.initialOrder:null;
+ const currentDirect=(order:ChapaCheckoutView|null)=>!!order&&order.apiVersion==='v2'&&order.flowVersion===5&&order.chargeType==='DIRECT'&&!order.unsupportedLegacy;
+ let verificationFirst=currentDirect(latest);
+ if(latest)delay=Number.isFinite(latest.pollAfterMs)?Math.min(60000,Math.max(2000,latest.pollAfterMs)):5000;
  let wasHidden=visibility.visibilityState!=='visible',lastWakeAt=-Infinity,fastUntil=Date.now()+30000;
  let source:Source|null=null,timer:ReturnType<typeof setTimeout>|undefined,reconnect:ReturnType<typeof setTimeout>|undefined;
  const live=()=>active&&(options.isCurrent?.()??true);
@@ -93,7 +98,8 @@ export function startChapaObserver(id:string,options:Options){
  const pause=()=>{if(!paused){paused=true;options.onPause()}};
  const disconnect=()=>{healthy=false;source?.close();source=null;clearTimeout(reconnect)};
  const accept=(order:ChapaCheckoutView|null,pushed=false)=>{
-  if(!live()||!order||order.id!==id)return;
+  if(!live()||!order||order.id!==id||!acceptChapaSnapshot(latest,order))return;
+  latest=order;verificationFirst||=currentDirect(order);
   if(pushed)options.onSnapshot(order);
   if(chapaConfirmed(order)||!chapaRecoverable(order)){stop();return}
   delay=Number.isFinite(order.pollAfterMs)?Math.min(60000,Math.max(2000,order.pollAfterMs)):5000;
@@ -112,6 +118,9 @@ export function startChapaObserver(id:string,options:Options){
   inFlight=true;clearTimeout(timer);
   try{
    while(foreground()&&(snapshotWanted||verifyWanted)){
+    // Once an owned current Direct response exists, verification itself returns
+    // the fresh owned snapshot. Do not serialize another GET ahead of it.
+    if(verificationFirst){snapshotWanted=false;if(!verifyWanted)break}
     const snapshot=snapshotWanted;
     if(snapshot)snapshotWanted=false;else verifyWanted=false;
     try{accept(await(snapshot?options.readSnapshot():options.verify()))}
@@ -138,8 +147,10 @@ export function startChapaObserver(id:string,options:Options){
     if(!live()){stop();return}
     if(!foreground()||source!==owned)return;
     healthy=true;clearTimeout(reconnect);
-    // A fresh owned GET also recovers through proxies that delay SSE frames.
-    snapshotWanted=true;void drain();
+    // Older/unknown attempts retain snapshot-first recovery. Current Direct's
+    // startup/wake POST and bounded fallback already recover delayed frames;
+    // opening the stream must not queue an extra GET or verification request.
+    if(!verificationFirst){snapshotWanted=true;void drain()}
    });
    owned.addEventListener('checkout',event=>{
     if(!live()){stop();return}
@@ -171,7 +182,7 @@ export function startChapaObserver(id:string,options:Options){
   if(!live()){stop();return}
   if(visibility.visibilityState!=='visible'){wasHidden=true;clearTimeout(timer);disconnect();return}
   const now=Date.now();if(!wasHidden&&now-lastWakeAt<750)return;wasHidden=false;lastWakeAt=now;
-  fastUntil=now+30000;failures=0;snapshotWanted=true;verifyWanted=true;
+  fastUntil=now+30000;failures=0;snapshotWanted=!verificationFirst;verifyWanted=true;
   if(!options.observeDirect&&fixedDeadline!==null&&now>=deadline){pause();void drain();return}
   if(paused){paused=false;deadline=now+300000;options.onResume?.()}
   connect();void drain();
@@ -183,6 +194,6 @@ export function startChapaObserver(id:string,options:Options){
  }
  visibility.addEventListener('visibilitychange',onWake);wake?.addEventListener('focus',onWake);wake?.addEventListener('online',onWake);
  try{telegram?.onEvent?.('activated',onWake)}catch{/* Older Telegram clients use visibility/focus. */}
- snapshotWanted=true;verifyWanted=true;connect();void drain();
+ snapshotWanted=!verificationFirst;verifyWanted=true;connect();void drain();
  return stop;
 }

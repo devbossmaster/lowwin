@@ -32,6 +32,9 @@ export async function proxy(request:NextRequest) {
   // webhook authenticates exact bytes itself. Owned checkout APIs authorize in
   // their handlers, avoiding duplicate session reads here.
   if(path==='/payments/chapa/return'||path==='/api/payments/chapa/callback'||path==='/api/payments/chapa/webhook'||path==='/api/payments/chapa'||path==='/api/payments/chapa/checkouts'||/^\/api\/payments\/chapa\/checkouts\/[0-9a-f-]{36}$/i.test(path))return NextResponse.next();
+  // The stream checks the signed session, ownership and expiry before sending
+  // its first snapshot. A second session read here delays confirmation.
+  if(request.method==='GET'&&/^\/api\/payments\/chapa\/checkouts\/[0-9a-f-]{36}\/events$/i.test(path))return NextResponse.next();
   // Direct/batch handlers require the owned payment session themselves. Keep
   // the same boundary without paying for another session lookup in Proxy.
   // Current Direct creation/configuration and the single-command bid/wallet

@@ -63,6 +63,7 @@ for(const am of [false,true])test(`v2 method selection preserves bid rules and e
 
 test('v2 USSD uses one server attempt and succeeds only after accepted bids',async({page},info)=>{
  test.skip(info.project.name!=='360','One full same-attempt lifecycle.');const f=await inlineFixture(page);
+ const ownedSnapshotReads:string[]=[];page.on('request',request=>{if(request.method()==='GET'&&/^\/api\/payments\/chapa\/checkouts\/[0-9a-f-]+$/.test(new URL(request.url()).pathname))ownedSnapshotReads.push(request.url())});
  try{
   // Install before application request timers exist. Fast-forward only settled
   // requests, so browser time cannot outrun the Node-side simulated provider.
@@ -73,13 +74,13 @@ test('v2 USSD uses one server attempt and succeeds only after accepted bids',asy
   const reply=(method:string,status=200)=>page.waitForResponse(response=>new URL(response.url()).pathname===path&&response.request().method()===method&&response.status()===status);
   const pendingCheck=reply('POST');await page.clock.fastForward(95000);await pendingCheck;await expect(dialog.locator('[data-payment-progress="authorization"]')).toBeVisible();expect(f.commands).toHaveLength(1);
   await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});Object.defineProperty(document,'visibilityState',{configurable:true,value:'hidden'});document.dispatchEvent(new Event('visibilitychange'))});const count=f.checks.length;await page.clock.fastForward(60000);expect(f.checks).toHaveLength(count);
-  // Foreground first reads the owned snapshot. A failed read backs off instead
-  // of immediately following it with another verification request.
-  f.setUnavailable(true);const unavailable=reply('GET',503);await wakePayment(page);await unavailable;expect(f.checks).toHaveLength(count);await expect(dialog.getByRole('button',{name:'Try again',exact:true})).toHaveCount(0);await expect(dialog.locator('[data-payment-progress="authorization"]')).toBeVisible();
+  // A known current Direct attempt goes straight to its owned verification.
+  // A failed check backs off without a redundant GET or another charge.
+  f.setUnavailable(true);const unavailable=reply('POST',503);await wakePayment(page);await unavailable;expect(f.checks).toHaveLength(count+1);await expect(dialog.getByRole('button',{name:'Try again',exact:true})).toHaveCount(0);await expect(dialog.locator('[data-payment-progress="authorization"]')).toBeVisible();
   const wakeAndCheck=async()=>{await page.clock.fastForward(1000);const checked=reply('POST');await wakePayment(page);await checked};
   f.setUnavailable(false);f.setOrder({status:'PENDING',providerStatus:'PENDING',verificationState:'VERIFIED',authorizationReasonCode:'INSUFFICIENT_FUNDS'});await wakeAndCheck();await expect(dialog.locator('[data-payment-authorization-error="INSUFFICIENT_FUNDS"]')).toBeVisible();await expectSharedAuthorization(dialog);await expect(dialog).not.toContainText('insufficient funds');await expect(dialog.locator('[data-payment-inline-error]')).toHaveCount(0);await expect(dialog.locator('[data-payment-progress] .lucide-loader-circle')).toHaveCount(1);expect(f.commands).toHaveLength(1);
   f.setOrder({status:'PENDING',providerStatus:'SUCCESS',verificationState:'VERIFIED',authorizationReasonCode:null});await wakeAndCheck();await expect(dialog.locator('[data-payment-progress="confirming"]')).toBeVisible();await expectSharedAuthorization(dialog);await expect(resultClose(dialog)).toHaveCount(0);
-  f.acceptBids();await page.clock.fastForward(1000);const accepted=reply('GET');await wakePayment(page);await accepted;await expect(resultClose(dialog)).toBeVisible();await expect(dialog).toContainText('2 bids accepted');expect(new Set(f.checks)).toEqual(new Set([original]));expect(f.maxActiveChecks()).toBeLessThanOrEqual(1);expect(f.commands).toHaveLength(1);expect(f.unexpected).toHaveLength(0);
+  f.acceptBids();await page.clock.fastForward(1000);const accepted=reply('POST');await wakePayment(page);await accepted;await expect(resultClose(dialog)).toBeVisible();await expect(dialog).toContainText('2 bids accepted');expect(new Set(f.checks)).toEqual(new Set([original]));expect(f.maxActiveChecks()).toBeLessThanOrEqual(1);expect(f.commands).toHaveLength(1);expect(ownedSnapshotReads).toEqual([]);expect(f.unexpected).toHaveLength(0);
  }finally{await f.cleanup()}
 });
 
