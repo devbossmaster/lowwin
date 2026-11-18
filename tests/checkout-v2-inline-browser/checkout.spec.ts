@@ -84,6 +84,39 @@ test('v2 USSD uses one server attempt and succeeds only after accepted bids',asy
  }finally{await f.cleanup()}
 });
 
+test('stalled Direct initialization observes the original after five seconds and confirms before the reply arrives',async({page})=>{
+ const f=await inlineFixture(page),release=f.holdNextInitializationReply();let replied=false;
+ page.on('response',response=>{if(new URL(response.url()).pathname==='/api/payments/chapa/direct/current'&&response.request().method()==='POST')replied=true});
+ try{
+  await page.clock.install();await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await selectBids(page,f.title,['4.25','5.50']);await dialog.getByRole('radio',{name:'telebirr',exact:true}).check();
+  await dialog.locator('[data-payment-action]').click();await expect.poll(()=>f.commands.length).toBe(1);await expectSharedAuthorization(dialog);
+  await page.clock.fastForward(5000);await expect.poll(()=>f.resolutions.length).toBe(1);await expect.poll(()=>f.checks.length).toBeGreaterThan(0);
+  expect(replied).toBe(false);expect(new Set(f.resolutions)).toEqual(new Set([f.commands[0].key]));
+  f.setOrder({status:'PENDING',providerStatus:'SUCCESS',verificationState:'VERIFIED'});await wakePayment(page);await expectSharedAuthorization(dialog);await expect(resultClose(dialog)).toHaveCount(0);
+  f.acceptBids();await page.clock.fastForward(1000);await wakePayment(page);await expect(resultClose(dialog)).toBeVisible();await expect(dialog).toContainText('2 bids accepted');expect(replied).toBe(false);
+  // The eventual initialization reply contains its older AUTH_NEEDED snapshot.
+  release();await expect.poll(()=>replied).toBe(true);await expect(resultClose(dialog)).toBeVisible();await expect(dialog).toContainText('2 bids accepted');
+  expect(f.commands).toHaveLength(1);expect(new Set(f.checks)).toEqual(new Set([f.order().id]));expect(f.maxActiveChecks()).toBeLessThanOrEqual(1);expect(f.unexpected).toHaveLength(0);expect(await f.db.chapaCheckout.count({where:{userId:f.user.id}})).toBe(0);
+ }finally{release();await f.cleanup()}
+});
+
+test('wallet-app return discovers a stalled Direct top-up immediately and keeps newer OTP authorization locked',async({page})=>{
+ const f=await inlineFixture(page);f.setAuthType('OTP');const release=f.holdNextInitializationReply();let releaseAuthorization!:()=>void,authorizing=false,replied=false;
+ const authorizationGate=new Promise<void>(resolve=>{releaseAuthorization=resolve});
+ page.on('response',response=>{if(new URL(response.url()).pathname==='/api/payments/chapa/direct/current'&&response.request().method()==='POST')replied=true});
+ await page.route(/\/api\/payments\/chapa\/checkouts\/[^/]+\/authorize$/,async route=>{authorizing=true;await authorizationGate;return route.fallback()});
+ try{
+  await page.clock.install();await page.goto('/payments');await page.getByRole('button',{name:'Top up',exact:true}).click();const dialog=page.getByRole('dialog');await dialog.locator('[data-wallet-top-up] input[inputmode="decimal"]').fill('35');await dialog.locator('[data-payment-action]').click();await expect(dialog.locator('[data-top-up-step=payment]')).toBeVisible();await dialog.getByRole('radio',{name:'CBE Birr',exact:true}).check();await dialog.locator('[data-payment-action]').click();await expect.poll(()=>f.commands.length).toBe(1);
+  await expectSharedAuthorization(dialog);expect(f.resolutions).toHaveLength(0);await wakePayment(page);const code=dialog.getByLabel('One-time code',{exact:true});await expect(code).toBeEnabled();expect(f.resolutions).toHaveLength(1);expect(replied).toBe(false);
+  await code.fill('654321');await dialog.getByRole('button',{name:'Confirm code',exact:true}).click();await expect.poll(()=>authorizing).toBe(true);await expect(code).toBeDisabled();
+  release();await expect.poll(()=>replied).toBe(true);await expect(code).toBeDisabled();expect(f.commands).toHaveLength(1);
+  releaseAuthorization();await expect(code).toBeEnabled();expect(f.authorizations).toEqual([{otp:'654321'}]);
+  f.setOrder({status:'PENDING',providerStatus:'SUCCESS',verificationState:'VERIFIED'});await page.clock.fastForward(1000);await wakePayment(page);await expect(resultClose(dialog)).toHaveCount(0);
+  f.setBalance('60.00');f.setOrder({status:'CREDITED',providerStatus:'SUCCESS',verificationState:'VERIFIED'});await page.clock.fastForward(1000);await wakePayment(page);await expect(resultClose(dialog)).toBeVisible();
+  expect(f.commands).toHaveLength(1);expect(new Set(f.resolutions)).toEqual(new Set([f.commands[0].key]));expect(f.maxActiveChecks()).toBeLessThanOrEqual(1);expect(f.unexpected).toHaveLength(0);expect(await f.db.chapaCheckout.count({where:{userId:f.user.id}})).toBe(0);
+ }finally{release();releaseAuthorization();await f.cleanup()}
+});
+
 test('lost v2 initialization reply restores the original key without another initialization',async({page},info)=>{
  test.skip(info.project.name!=='360','One interrupted initialization check.');const f=await inlineFixture(page);f.interruptNextInitialization();f.delayOriginalDiscovery(1);
  try{

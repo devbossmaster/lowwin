@@ -2,7 +2,7 @@ import {beforeEach,afterEach,describe,it,expect,vi} from 'vitest';
 import {randomUUID} from 'node:crypto';
 const f=vi.hoisted(()=>({pay:vi.fn(),read:vi.fn(),auth:vi.fn(),reauthorize:vi.fn(),db:{}}));
 vi.mock('../src/lib/db',()=>({db:f.db}));
-vi.mock('../src/modules/payments/session',()=>({requirePaymentSession:f.auth}));
+vi.mock('../src/modules/payments/session',()=>({requirePaymentSession:f.auth,requireCountedPaymentSession:f.auth}));
 vi.mock('../src/modules/auctions/batch',()=>({createAndPayBidBatchWallet:f.pay,getOwnWalletBidBatch:f.read,payBidBatchWallet:f.pay}));
 import {POST,GET} from '../src/app/api/payments/chapa/batches/wallet/route';
 import {GET as getById} from '../src/app/api/payments/chapa/batches/[id]/wallet/route';

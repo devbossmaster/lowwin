@@ -1,5 +1,5 @@
 import {randomBytes,randomUUID} from 'node:crypto';
-import {Prisma,type PrismaClient,type ChapaCheckout} from '@prisma/client';
+import {Prisma,type PrismaClient,type ChapaCheckout,type BidBatchOrder} from '@prisma/client';
 import {z} from 'zod';
 import {centsToEtb,etbToCents} from '@/lib/money';
 import {CHAPA_TOPUP_MIN_CENTS,CHAPA_TOPUP_MIN_ETB,CHAPA_TOPUP_MAX_CENTS,CHAPA_TOPUP_MAX_ETB} from '@/lib/chapa-topup-policy';
@@ -7,7 +7,7 @@ import {allowIdentityRequest,allowIdentityRequests} from '@/lib/rate-limit';
 import {normalizePaymentPhone,paymentPhoneProblem,paymentPhoneProblemMessage} from '@/lib/payment-phone';
 import {classifyChapaApiError} from '@/lib/chapa-api-error';
 import {decryptPhone,encryptPhone,phoneHash} from '../auth/own-contact';
-import {batchLines,ownBatch,validateBatchInTransaction} from '../auctions/batch';
+import {batchLines,ownBatch,priceBatchInTransaction,validateBatchInTransaction} from '../auctions/batch';
 import {auctionMaintenance} from '../auctions/maintenance';
 import {eligible,getChapaCheckout,ownChapaCheckout,verifyChapaCheckout} from './chapa';
 import {ChapaError,ChapaProviderError,chapaAvailability,chapaHash,chapaWebhookSignatureProfile,chapaTransport,createdChapaDirect,createdCurrentChapaDirect,createdChapaSession,type ChapaCreate,type ChapaTransport} from './chapa-provider';
@@ -30,16 +30,21 @@ export function safeInlineCbeGuideUrl(raw=process.env.CHAPA_INLINE_CBE_GUIDE_URL
 const capabilitiesFor=(transport:ChapaInlineTransport,protocol:'INLINE'|'DIRECT'='INLINE')=>measureChapa('capabilities',()=>(protocol==='DIRECT'?currentDirectMethods(transport===currentDirectTransport?chapaTransport:transport):transport===chapaInlineTransport?inlineMethodCatalog:createInlineMethodCatalog(transport)).get());
 const currentBinding=(order:ChapaCheckout)=>isCurrentDirectCheckout(order)?currentDirectBinding(order):inlineTransportBinding(order);
 
-async function lockCurrentTopUpPreparation(tx:Prisma.TransactionClient,userId:string){
+async function lockCurrentDirectPreparation(tx:Prisma.TransactionClient,userId:string,batchId?:string){
  // This statement must finish before the maintenance read starts: a SELECT
  // snapshot taken before waiting for an exclusive maintenance writer is stale.
  await tx.$executeRaw`SELECT pg_advisory_xact_lock_shared(hashtextextended('lowwin:auction-maintenance',0))`;
+ const auctionLock=batchId?Prisma.sql`, locked_auction AS MATERIALIZED (
+  SELECT a.id FROM maintenance CROSS JOIN "BidBatchOrder" b JOIN "Auction" a ON a.id=b."auctionId"
+  WHERE b.id=${batchId} AND b."userId"=${userId} FOR UPDATE OF a
+ )`:Prisma.empty;
+ const afterAuction=batchId?Prisma.sql`CROSS JOIN (SELECT count(*) AS locked FROM locked_auction) acquired WHERE acquired.locked>=0`:Prisma.empty;
  const [state]=await tx.$queryRaw<{halted:boolean}[]>`
   WITH maintenance AS MATERIALIZED (
    SELECT COALESCE((SELECT action='AUCTIONS_MAINTENANCE_HALTED' FROM "AdminAudit"
     WHERE action IN ('AUCTIONS_MAINTENANCE_HALTED','AUCTIONS_MAINTENANCE_RESUMED') ORDER BY "createdAt" DESC,id DESC LIMIT 1),false) AS halted
-  ), locked AS MATERIALIZED (
-   SELECT halted,pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`},0)) FROM maintenance
+  ) ${auctionLock}, locked AS MATERIALIZED (
+   SELECT halted,pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`},0)) FROM maintenance ${afterAuction}
   ) SELECT halted FROM locked`;
  if(!state)throw new Error('Payment maintenance state is unavailable');
  return state.halted;
@@ -65,11 +70,11 @@ export function createCurrentDirectCheckout(client:PrismaClient,userId:string,ra
  return createInlineCheckout(client,userId,raw,reauthorize,transport===chapaTransport?currentDirectTransport:currentDirectEngineTransport(transport),'DIRECT');
 }
 
-/** This owned lookup can run alongside the mutation limit after authentication.
- * The route awaits the limit before invoking the request-bound continuation. */
-export async function prepareCurrentDirectCreation(client:PrismaClient,userId:string,raw:unknown,transport:ChapaTransport=chapaTransport){
+/** The owned existence hint avoids a redundant lookup for fresh intent. The
+ * writer still checks the key again after locking against concurrent creation. */
+export async function prepareCurrentDirectCreation(client:PrismaClient,userId:string,raw:unknown,transport:ChapaTransport=chapaTransport,originalExists?:boolean){
  const intent=parsePaymentIntent(raw);
- const previous=await lookupOriginal(client,userId,intent.body.key);
+ const previous=originalExists===false?null:await lookupOriginal(client,userId,intent.body.key);
  return (reauthorize?:Authorize)=>createParsedCheckout(client,userId,intent,reauthorize,transport===chapaTransport?currentDirectTransport:currentDirectEngineTransport(transport),'DIRECT',previous);
 }
 /** A lost response may discover the existing owned attempt, never initialize it. */
@@ -130,7 +135,7 @@ async function createParsedCheckout(client:PrismaClient,userId:string,{body,phon
   // Match every financial writer's barrier order once. Keep the maintenance
   // result until after replay detection so an existing attempt remains readable.
   const halted=await measureChapa('locks',async()=>{
-   if(protocol==='DIRECT'&&body.purpose==='TOP_UP')return lockCurrentTopUpPreparation(tx,userId);
+   if(protocol==='DIRECT')return lockCurrentDirectPreparation(tx,userId,body.purpose==='BID'?body.batchId:undefined);
    const halted=await auctionMaintenance(tx);
    if(body.purpose==='BID')await tx.$queryRaw`SELECT a.id FROM "Auction" a JOIN "BidBatchOrder" b ON b."auctionId"=a.id WHERE b.id=${body.batchId} AND b."userId"=${userId} FOR UPDATE OF a`;
    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${userId}`},0))`;
@@ -146,12 +151,15 @@ async function createParsedCheckout(client:PrismaClient,userId:string,{body,phon
   }
   if(halted)throw new ChapaError(503,'AUCTIONS_PAUSED','New payments are paused. Existing payments can still be checked.');
   if(protocol!=='DIRECT'&&!await allowIdentityRequest(tx,'chapa-inline-create',userId,24,3600000))throw new ChapaError(429,'RATE_LIMITED','Check Transactions before trying another payment.');
-  const batch=body.purpose==='BID'?await tx.bidBatchOrder.findFirst({where:{id:body.batchId,userId}}):null;
+  const [batch]=body.purpose==='BID'?await tx.$queryRaw<Array<BidBatchOrder&{paymentStarted:boolean}>>`
+   SELECT b.*,EXISTS(SELECT 1 FROM "ChapaCheckout" c WHERE c."batchId"=b.id) AS "paymentStarted"
+   FROM "BidBatchOrder" b WHERE b.id=${body.batchId} AND b."userId"=${userId}`:[];
   if(body.purpose==='BID'){
    if(!batch||batch.quoteHash!==body.quoteHash||batch.status!=='QUOTED')throw new ChapaError(409,'TERMS_CHANGED','Review your bid quote again.');
-   if(await tx.chapaCheckout.findUnique({where:{batchId:batch.id}}))throw new ChapaError(409,'PAYMENT_STARTED','Check the existing payment for this selection.');
-   const priced=await measureChapa('pricing',()=>validateBatchInTransaction(tx,userId,batch.auctionSlug,batchLines(batch).map(line=>line.number),batch.feeVersion,batch.couponId??undefined,true));
-   if(priced.totalCents!==batch.totalCents||JSON.stringify(priced.lines)!==JSON.stringify(batchLines(batch)))throw new ChapaError(409,'TERMS_CHANGED','The quote changed. Review before paying.');
+   if(batch.paymentStarted)throw new ChapaError(409,'PAYMENT_STARTED','Check the existing payment for this selection.');
+   const lines=batchLines(batch),numbers=lines.map(line=>line.number),coupon=batch.couponId??undefined;
+   const priced=await measureChapa('pricing',()=>fresh?priceBatchInTransaction(tx,userId,batch.auctionSlug,numbers,batch.feeVersion,coupon):validateBatchInTransaction(tx,userId,batch.auctionSlug,numbers,batch.feeVersion,coupon,true));
+   if(priced.totalCents!==batch.totalCents||JSON.stringify(priced.lines)!==JSON.stringify(lines))throw new ChapaError(409,'TERMS_CHANGED','The quote changed. Review before paying.');
   }
   const amountCents=batch?.totalCents??etbToCents(body.purpose==='TOP_UP'?body.amount:'0'),method=selectedMethod;
   if(amountCents<(body.purpose==='TOP_UP'?CHAPA_TOPUP_MIN_CENTS:100n)||amountCents>CHAPA_TOPUP_MAX_CENTS)throw new ChapaError(422,'INVALID_AMOUNT',body.purpose==='TOP_UP'?'Top up between 5.00 and 43,200.00 ETB.':'Pay between 1.00 and 43,200.00 ETB.');

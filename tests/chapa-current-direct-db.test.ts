@@ -48,7 +48,7 @@ describe.skipIf(!database)('current Direct5 owned creation and private committed
  }
  it.each(['TOP_UP','BID'] as const)('checks two prepared %s requests again under the existing locks and dispatches the original key once',async purpose=>{
   const f=await fixture(purpose),{authorize}=await creationBinding(f.user);
-  const prepare=()=>prepareCurrentDirectCreation(db,f.user,f.command,f.transport);
+  const prepare=()=>prepareCurrentDirectCreation(db,f.user,f.command,f.transport,false);
   const [first,second]=await Promise.all([prepare(),prepare()]);
   expect(await db.chapaCheckout.count({where:{userId:f.user}})).toBe(0);
   expect(f.direct).not.toHaveBeenCalled();
