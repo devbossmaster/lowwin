@@ -6,7 +6,7 @@ import {requireAdmin} from '@/modules/admin/boundary';
 import {AdminShell} from '@/components/admin-shell';
 import {createHash} from 'node:crypto';
 export default async function SecureAdmin({children}:{children:React.ReactNode}){
-  let actor;try{actor=await requireAdmin(db,new Headers(await headers()))}catch{redirect('/admin/login')}
+  let actor;try{actor=await requireAdmin(db,new Headers(await headers()))}catch{redirect('/')}
   const cacheIdentity=createHash('sha256').update(JSON.stringify([actor.id,actor.sessionId,actor.role,permissions(actor.role)])).digest('hex');
   return <AdminShell access={{role:actor.role,permissions:permissions(actor.role),cacheIdentity,expiresAt:actor.expiresAt.toISOString()}}>{children}</AdminShell>;
 }

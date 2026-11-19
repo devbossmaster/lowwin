@@ -1,5 +1,6 @@
 import {NextRequest,NextResponse} from 'next/server';
 import {getMiniSession,localMiniPreview} from '@/modules/auth/mini-access';
+import {signedSessionToken} from '@/modules/auth/signed-session';
 import {miniReturnPath} from '@/lib/mini-return';
 import {customerLoginPath} from '@/lib/customer-login-entry';
 import {resolveLearnMoreMedia} from '@/lib/learn-more-media';
@@ -35,20 +36,12 @@ export async function proxy(request:NextRequest) {
       return response;
     }
   }
-  // Stop before the loading boundary streams a 200 response. This retired URL
-  // serves no catalogue, customer session or product/database lookup.
-  if(path==='/auctions/all'){
-    const am=request.cookies.get('lowwin-language')?.value!=='en';
-    return new NextResponse(`<!doctype html><html lang="${am?'am':'en'}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>404 · LowWin</title><style>@font-face{font-family:Inter;src:url('/fonts/inter-latin-variable.woff2')}@font-face{font-family:Ethiopic;src:url('/fonts/noto-sans-ethiopic-variable.woff2')}body{margin:0;min-height:100dvh;display:grid;place-items:center;background:#f2f2f7;color:#16202c;font:15px/1.6 Inter,Ethiopic,sans-serif}main{max-width:400px;padding:32px;text-align:center}strong{color:#1e40af}h1{font-size:26px;line-height:1.4}a{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:0 24px;margin-top:12px;border-radius:24px;background:#2563eb;color:#fff;text-decoration:none;font-weight:600}a:focus-visible{outline:2px solid #1e40af;outline-offset:4px}</style><main><strong>LowWin</strong><h1>${am?'ይህ ገጽ አልተገኘም':'Page not found'}</h1><p>${am?'ያሉትን ጨረታዎች ከመነሻ ገጽ ይመልከቱ።':'Browse current auctions from Home.'}</p><a href="/">${am?'ወደ መነሻ ገጽ':'Return Home'}</a></main></html>`,{status:404,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'private, no-store','X-Robots-Tag':'noindex'}});
-  }
   if((request.method==='GET'||request.method==='HEAD')&&isPublicMiniPage(path)||isPublicMiniRead(path,request.method))return NextResponse.next();
   if(path==='/api/health/live')return NextResponse.next();
   if((request.method==='GET'||request.method==='HEAD')&&path==='/video/cbe-bank-payment.mp4')return NextResponse.next();
   if(path==='/payments/ebirr.svg'||path==='/payments/cbe-bank.webp')return NextResponse.next();
-  // Hosted returns are public guidance; callback never mutates money and the
-  // webhook authenticates exact bytes itself. Owned checkout APIs authorize in
-  // their handlers, avoiding duplicate session reads here.
-  if(path==='/payments/chapa/return'||path==='/api/payments/chapa/callback'||path==='/api/payments/chapa/webhook'||path==='/api/payments/chapa'||path==='/api/payments/chapa/checkouts'||/^\/api\/payments\/chapa\/checkouts\/[0-9a-f-]{36}$/i.test(path))return NextResponse.next();
+  // Provider callbacks and owned checkout APIs enforce their own boundaries.
+  if(path==='/api/payments/chapa/callback'||path==='/api/payments/chapa/webhook'||path==='/api/payments/chapa'||path==='/api/payments/chapa/checkouts'||/^\/api\/payments\/chapa\/checkouts\/[0-9a-f-]{36}$/i.test(path))return NextResponse.next();
   // The stream checks the signed session, ownership and expiry before sending
   // its first snapshot. A second session read here delays confirmation.
   if(request.method==='GET'&&/^\/api\/payments\/chapa\/checkouts\/[0-9a-f-]{36}\/events$/i.test(path))return NextResponse.next();
@@ -74,13 +67,22 @@ export async function proxy(request:NextRequest) {
   if(/^\/api\/results\/[A-Za-z0-9-]{1,120}(?:\/breakdown)?$/.test(path)||/^\/api\/catalog\/auctions\/[A-Za-z0-9-]{1,120}$/.test(path)||guardedApis.has(path)||/^\/api\/payments\/arifpay\/checkouts\/[0-9a-f-]{36}$/i.test(path)||/^\/api\/favorites\/[a-z0-9-]{1,120}$/.test(path)||/^\/api\/auctions\/[a-z0-9-]{1,120}\/(bids|discount-quote)$/.test(path))return NextResponse.next();
   // Verify.et calls these exact endpoints without a Telegram session. The route
   // validates its signed raw body before accepting a test or payment event.
-  if(path==='/api/payments/verify-et/webhook'||path==='/api/payments/arifpay/webhook'||path==='/telegram'||path==='/api/onboarding/contact'||path.startsWith('/admin')||path.startsWith('/api/admin/')||path.startsWith('/api/auth/')||path.startsWith('/api/bot/'))return NextResponse.next();
+  if(path==='/api/payments/verify-et/webhook'||path==='/api/payments/arifpay/webhook'||path==='/telegram'||path==='/api/onboarding/contact'||path==='/admin/login'||path.startsWith('/api/admin/')||path.startsWith('/api/auth/')||path==='/api/bot/webhook')return NextResponse.next();
+  const staffPage=path==='/admin'||path.startsWith('/admin/');
   let allowed=false,unavailable=false;
-  try { allowed=localMiniPreview(request.headers)||!!await getMiniSession(request.headers); } catch { unavailable=true; }
-  const destination=miniReturnPath(path+request.nextUrl.search),entryUrl=new URL(customerLoginPath(destination),request.url);
+  try {
+    // The staff layout verifies the current role and staff grant.
+    allowed=staffPage?request.headers.has('cookie')&&!!await signedSessionToken(request.headers):localMiniPreview(request.headers)||!!await getMiniSession(request.headers);
+  } catch { unavailable=true; }
+  // The retired catalogue still returns a real 404 for signed-in players.
+  if(allowed&&path==='/auctions/all'){
+    const am=request.cookies.get('lowwin-language')?.value!=='en';
+    return new NextResponse(`<!doctype html><html lang="${am?'am':'en'}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>404 · LowWin</title><style>@font-face{font-family:Inter;src:url('/fonts/inter-latin-variable.woff2')}@font-face{font-family:Ethiopic;src:url('/fonts/noto-sans-ethiopic-variable.woff2')}body{margin:0;min-height:100dvh;display:grid;place-items:center;background:#f2f2f7;color:#16202c;font:15px/1.6 Inter,Ethiopic,sans-serif}main{max-width:400px;padding:32px;text-align:center}strong{color:#1e40af}h1{font-size:26px;line-height:1.4}a{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:0 24px;margin-top:12px;border-radius:24px;background:#2563eb;color:#fff;text-decoration:none;font-weight:600}a:focus-visible{outline:2px solid #1e40af;outline-offset:4px}</style><main><strong>LowWin</strong><h1>${am?'ይህ ገጽ አልተገኘም':'Page not found'}</h1><p>${am?'ያሉትን ጨረታዎች ከመነሻ ገጽ ይመልከቱ።':'Browse current auctions from Home.'}</p><a href="/">${am?'ወደ መነሻ ገጽ':'Return Home'}</a></main></html>`,{status:404,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'private, no-store','Vary':'Cookie','X-Robots-Tag':'noindex'}});
+  }
+  const destination=miniReturnPath(path+request.nextUrl.search),entryUrl=new URL(staffPage?'/':customerLoginPath(destination),request.url);
   // An unavailable database is not an invalid login. Keep access closed, but
   // let API clients offer Retry instead of treating a live session as signed out.
-  const response=allowed?NextResponse.next():path.startsWith('/api/')?NextResponse.json({error:unavailable?'Connection interrupted. Please retry.':'Log in with Telegram to continue.'},{status:unavailable?503:401}):unavailable?new NextResponse('<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Try again | Lowwin</title><body style="margin:0;min-height:100dvh;display:grid;place-items:center;background:#f2f2f7;color:#16202c;font-family:system-ui,sans-serif"><main style="padding:32px;text-align:center"><h1 style="font-size:28px">Connection busy</h1><p>Please try again.</p><a href="" style="display:inline-flex;align-items:center;justify-content:center;min-height:48px;min-width:130px;border-radius:12px;background:#2563eb;color:#fff;text-decoration:none;font-weight:600">Retry</a></main></body></html>',{status:503,headers:{'Content-Type':'text/html; charset=utf-8'}}):NextResponse.redirect(entryUrl);
+  const response=allowed?NextResponse.next():path.startsWith('/api/')?NextResponse.json({error:unavailable?'Connection interrupted. Please retry.':'Log in with Telegram to continue.'},{status:unavailable?503:401}):unavailable?new NextResponse('<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Try again | Lowwin</title><body style="margin:0;min-height:100dvh;display:grid;place-items:center;background:#f2f2f7;color:#16202c;font-family:system-ui,sans-serif"><main style="padding:32px;text-align:center"><h1 style="font-size:28px">Connection busy</h1><p>Please try again.</p><a href="" style="display:inline-flex;align-items:center;justify-content:center;min-height:48px;min-width:130px;border-radius:12px;background:#2563eb;color:#fff;text-decoration:none;font-weight:600">Retry</a></main></body></html>',{status:503,headers:{'Content-Type':'text/html; charset=utf-8'}}):NextResponse.redirect(entryUrl,{status:request.method==='GET'||request.method==='HEAD'?307:303});
   if(unavailable)response.headers.set('Retry-After','5');
   response.headers.set('Cache-Control','private, no-store, max-age=0');
   response.headers.set('Vary','Cookie');

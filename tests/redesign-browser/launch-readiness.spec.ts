@@ -3,6 +3,7 @@ import {PrismaClient} from '@prisma/client';
 import {randomInt} from 'node:crypto';
 import {signedLaunch} from '../helpers';
 import {verifyFixtureContact} from '../contact-fixtures';
+import {bidAuction} from '../bid-fixtures';
 const sdk='https://telegram.org/js/telegram-web-app.js';
 async function launchFixture(){
  const database=process.env.TEST_DATABASE_URL!,url=new URL(database);if(url.hostname!=='127.0.0.1'||!url.pathname.endsWith('_test'))throw Error('Disposable loopback database required');
@@ -43,4 +44,45 @@ test('a failed Mini sign-in blocks Home until an explicit reconnect succeeds',as
 });
 test('staff sign-in does not download the Telegram SDK',async({page})=>{
  let sdkRequests=0;page.on('request',request=>{if(request.url()===sdk)sdkRequests++});await page.goto('/admin/login',{waitUntil:'domcontentloaded'});await expect(page.getByRole('button',{name:'Sign in',exact:true})).toBeVisible();expect(sdkRequests).toBe(0);await expect(page.locator(`script[src="${sdk}"]`)).toHaveCount(0);
+});
+
+test('guests reach Home before protected page content or auction details',async({page})=>{
+ const origin=process.env.BETTER_AUTH_URL!;
+ for(const path of ['/auctions','/auctions/42','/categories/watches','/profile','/payments/chapa/return?checkout=11111111-1111-4111-a111-111111111111']){
+  const response=await page.request.get(path,{maxRedirects:0});
+  expect(response.status(),path).toBe(307);
+  const destination=new URL(response.headers().location,origin);
+  expect(destination.origin).toBe(new URL(origin).origin);
+  expect(destination.pathname).toBe('/');
+  expect(destination.searchParams.get('next')).toBe(path);
+  expect(response.headers()['cache-control']).toContain('no-store');
+ }
+ const retired=await page.request.get('/auctions/all',{maxRedirects:0});
+ expect(retired.status()).toBe(307);
+ expect(new URL(retired.headers().location,origin).pathname).toBe('/');
+ for(const path of ['/api/catalog/auctions/42','/api/auctions/fixture-auction/bids','/api/results/42/breakdown','/api/my-bids']){
+  const response=await page.request.get(path,{maxRedirects:0});
+  expect(response.status(),path).toBe(401);
+  expect(response.headers()['cache-control']).toContain('no-store');
+ }
+ const staff=await page.request.get('/admin/users',{maxRedirects:0});
+ expect(staff.status()).toBe(307);
+ expect(new URL(staff.headers().location,origin).pathname).toBe('/');
+ expect(staff.headers()['cache-control']).toContain('no-store');
+
+ const initData=await launchFixture();
+ const db=new PrismaClient({datasourceUrl:process.env.TEST_DATABASE_URL});
+ try{
+  const auction=await bidAuction(db,{fee:10,ruleVersion:'lowest-unique-v4',isDemo:false,endDelayMs:3600000});
+  const signIn=await page.request.post('/api/auth/telegram/miniapp/signin',{headers:{origin},data:{initData}});
+  expect(signIn.status()).toBe(200);
+  expect(await signIn.json()).toMatchObject({status:'authenticated'});
+  const detail=await page.request.get(`/api/catalog/auctions/${auction.publicCode}`,{maxRedirects:0});
+  expect(detail.status()).toBe(200);
+  expect(detail.headers()['cache-control']).toContain('no-store');
+  expect(await detail.json()).toMatchObject({code:String(auction.publicCode),result:null});
+  const pageResponse=await page.request.get(`/auctions/${auction.publicCode}`,{maxRedirects:0,timeout:120000});
+  expect(pageResponse.status()).toBe(200);
+  expect(pageResponse.headers()['cache-control']).toContain('no-store');
+ }finally{await db.$disconnect()}
 });

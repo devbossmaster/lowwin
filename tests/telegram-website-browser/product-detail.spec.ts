@@ -3,9 +3,14 @@ import {fixture} from '../chapa-browser/fixtures';
 import {randomBytes,randomUUID} from 'node:crypto';
 import {makeSignature} from 'better-auth/crypto';
 
-for(const am of [false,true])test(`public product detail, sharing and explicit bid action ${am?'AM':'EN'}`,async({page},info)=>{
+for(const am of [false,true])test(`signed-in product detail, sharing and explicit bid action ${am?'AM':'EN'}`,async({page},info)=>{
  const f=await fixture(page,am),code=f.auction.publicCode.toString(),financial:string[]=[],errors:string[]=[];
  try{
+  const guest=await page.request.get('/auctions/'+code,{maxRedirects:0});
+  expect(guest.status()).toBe(307);
+  const destination=new URL(guest.headers().location,process.env.BETTER_AUTH_URL);
+  expect(destination.pathname).toBe('/');
+  expect(destination.searchParams.get('next')).toBe('/auctions/'+code);
   const token=randomBytes(32).toString('hex');await f.db.session.create({data:{id:randomUUID(),token,userId:f.user.id,expiresAt:new Date(Date.now()+86400000),telegramLaunchId:f.user.telegramId,telegramAuthSource:'TELEGRAM_OIDC'}});
   await page.context().addCookies([{name:'__Secure-better-auth.session_token',value:encodeURIComponent(token+'.'+await makeSignature(token,process.env.BETTER_AUTH_SECRET!)),domain:'localhost',path:'/',secure:true,httpOnly:true,sameSite:'Lax'}]);
   page.on('pageerror',error=>errors.push(error.message));

@@ -1,10 +1,15 @@
 import {expect,test,type Page} from '@playwright/test';
+import {randomBytes,randomUUID} from 'node:crypto';
+import {makeSignature} from 'better-auth/crypto';
 import {fixture} from '../chapa-browser/fixtures';
 import {defaultHomeCopy} from '../../src/components/home-copy';
 
 async function prepare(page:Page,am:boolean,durationMs:number){
  const f=await fixture(page,am,undefined,'lowest-unique-v5'),end=new Date(Date.now()+durationMs).toISOString();
  if(!f.auction.startsAt)throw Error('The isolated countdown fixture requires a start time.');
+ const token=randomBytes(32).toString('hex');
+ await f.db.session.create({data:{id:randomUUID(),token,userId:f.user.id,expiresAt:new Date(Date.now()+86400000),telegramLaunchId:f.user.telegramId,telegramAuthSource:'TELEGRAM_OIDC'}});
+ await page.context().addCookies([{name:'__Secure-better-auth.session_token',value:encodeURIComponent(token+'.'+await makeSignature(token,process.env.BETTER_AUTH_SECRET!)),domain:'localhost',path:'/',secure:true,httpOnly:true,sameSite:'Lax'}]);
  const startsAt=f.auction.startsAt.toISOString();
  await page.addInitScript(()=>localStorage.setItem('lowwin:mini-introduction:v2','dismissed'));
  // This suite inspects layout and clocks. Its Home visit must not increment

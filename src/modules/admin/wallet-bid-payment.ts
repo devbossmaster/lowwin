@@ -4,12 +4,13 @@ import {etbToCents} from '@/lib/money';
 import {allowIdentityRequest} from '@/lib/rate-limit';
 import {requireAdmin} from './boundary';
 import {AdminError} from './errors';
+import {bidNumbersPublished,bidPublicationSelect} from './bid-publication';
 
 export const walletBidPaymentSelection={
  id:true,userId:true,auctionId:true,amount:true,feePoints:true,acceptedAt:true,
  operation:{select:{result:true,journal:{select:{id:true,kind:true}}}},
  user:{select:{name:true}},
- auction:{select:{code:true,slug:true,presentation:true,product:{select:{title:true}},terms:{select:{ruleVersion:true}}}},
+ auction:{select:{...bidPublicationSelect,code:true,slug:true,presentation:true,product:{select:{title:true}},terms:{select:{ruleVersion:true}}}},
 } satisfies Prisma.BidSelect;
 
 /** The immutable bid receipt includes the net fee when a coupon was redeemed.
@@ -32,7 +33,7 @@ export async function readWalletBidPayment(client:PrismaClient,headers:Headers,i
  const row=await client.bid.findFirst({where:{id:z.uuid().parse(id),auction:{isDemo:false,testRunId:null},operation:{scope:'BID',journal:{is:{kind:'BID_FEE'}}},...(process.env.CHAPA_SCHEMA_READY==='true'?{chapaCheckout:{is:null}}:{})},select:walletBidPaymentSelection});
  if(!row)throw new AdminError(404,'Wallet bid payment not found.');
  const net=walletBidNetFee(row.feePoints,row.operation.result),presentation=row.auction.presentation as {title?:string}|null;
- const item={id:row.id,source:'wallet' as const,provider:'Wallet' as const,userId:row.userId,playerName:row.user.name,purpose:'BID' as const,auctionId:row.auctionId,auctionSlug:row.auction.slug,auctionCode:row.auction.code,title:presentation?.title??row.auction.product?.title??'Auction',ruleVersion:row.auction.terms?.ruleVersion??null,bidNumber:row.amount.toString(),grossFee:row.feePoints.toString(),discountPoints:row.feePoints.sub(net).toString(),amountCents:etbToCents(net).toString(),currency:'ETB' as const,status:'BID_ACCEPTED' as const,paymentMethod:'Wallet' as const,paid:true,bidAccepted:true,canCheck:false,createdAt:row.acceptedAt.toISOString(),...(actor.role==='SUPPORT'?{}:{references:{journalId:row.operation.journal!.id,bidId:row.id}})};
+ const item={id:row.id,source:'wallet' as const,provider:'Wallet' as const,userId:row.userId,playerName:row.user.name,purpose:'BID' as const,auctionId:row.auctionId,auctionSlug:row.auction.slug,auctionCode:row.auction.code,title:presentation?.title??row.auction.product?.title??'Auction',ruleVersion:row.auction.terms?.ruleVersion??null,bidNumber:bidNumbersPublished(row.auction,actor.now)?row.amount.toString():null,grossFee:row.feePoints.toString(),discountPoints:row.feePoints.sub(net).toString(),amountCents:etbToCents(net).toString(),currency:'ETB' as const,status:'BID_ACCEPTED' as const,paymentMethod:'Wallet' as const,paid:true,bidAccepted:true,canCheck:false,createdAt:row.acceptedAt.toISOString(),...(actor.role==='SUPPORT'?{}:{references:{journalId:row.operation.journal!.id,bidId:row.id}})};
  await client.adminAudit.create({data:{actorId:actor.id,action:'WALLET_BID_PAYMENT_READ',target:row.id,details:{}}});
  return {item};
 }

@@ -6,6 +6,7 @@ import type {StaffRole} from './permissions';
 import {arifPayAvailability,arifPayHash} from '../payments/arifpay-provider';
 import {verifyArifPayCheckout} from '../payments/arifpay';
 import {allowIdentityRequest} from '@/lib/rate-limit';
+import {bidNumbersPublished,bidPublicationSelect} from './bid-publication';
 
 export const arifPayAdminRoles:readonly StaffRole[]=['OWNER','PAYMENTS_OPERATOR','AUDITOR','SUPPORT'];
 function allow(role:StaffRole,write=false){if(!(write?['OWNER','PAYMENTS_OPERATOR']:arifPayAdminRoles).includes(role))throw new AdminError(403,'Your staff role cannot perform this payment task.');}
@@ -13,12 +14,13 @@ const states=['SUBMITTING','PENDING','BID_ACCEPTED','NEEDS_REVIEW','FAILED','CAN
 const filters=z.object({page:z.coerce.number().int().min(1).max(100000).default(1),q:z.string().trim().max(128).default(''),status:z.enum(['','attention','waiting',...states]).default(''),channel:z.enum(['','TELEBIRR','MPESA']).default('')});
 // An explicit projection keeps payer encryption, nonce, hashes, keys and raw
 // provider/receipt payloads out of every staff response.
-const selection={id:true,userId:true,auctionId:true,auctionSlug:true,bidNumber:true,fee:true,feeVersion:true,currency:true,channel:true,status:true,reason:true,bidId:true,creditJournalId:true,sessionId:true,transactionId:true,attempts:true,nextCheckAt:true,expiresAt:true,createdAt:true,updatedAt:true,user:{select:{name:true}},auction:{select:{code:true,presentation:true,product:{select:{title:true}},terms:{select:{ruleVersion:true}}}}} satisfies Prisma.ArifPayCheckoutSelect;
+const selection={id:true,userId:true,auctionId:true,auctionSlug:true,fee:true,feeVersion:true,currency:true,channel:true,status:true,reason:true,bidId:true,creditJournalId:true,sessionId:true,transactionId:true,attempts:true,nextCheckAt:true,expiresAt:true,createdAt:true,updatedAt:true,user:{select:{name:true}},auction:{select:{code:true,presentation:true,product:{select:{title:true}},terms:{select:{ruleVersion:true}}}}} satisfies Prisma.ArifPayCheckoutSelect;
+const detailSelection={...selection,bidNumber:true,auction:{select:{...selection.auction.select,...bidPublicationSelect}}} satisfies Prisma.ArifPayCheckoutSelect;
 type Row=Prisma.ArifPayCheckoutGetPayload<{select:typeof selection}>;
-function view(row:Row,role:StaffRole){
+function view(row:Row,role:StaffRole,bidNumber:string|null=null){
  const p=row.auction.presentation as {title?:string}|null;
  const canCheck=['SUBMITTING','PENDING'].includes(row.status)||row.status==='NEEDS_REVIEW'&&!row.creditJournalId&&row.reason==='PROVIDER_CONFIRMATION_REQUIRED';
- return {id:row.id,userId:row.userId,playerName:row.user.name,auctionId:row.auctionId,auctionSlug:row.auctionSlug,auctionCode:row.auction.code,title:p?.title??row.auction.product?.title??'Auction',ruleVersion:row.auction.terms?.ruleVersion??null,bidNumber:row.bidNumber.toString(),fee:row.fee.toString(),feeVersion:row.feeVersion,currency:row.currency,channel:row.channel,status:row.status,reason:row.reason&&/^[A-Z0-9_]{1,64}$/.test(row.reason)?row.reason:null,bidId:row.bidId,verified:!!row.creditJournalId,providerSession:role==='SUPPORT'?null:row.sessionId,providerReference:role==='SUPPORT'?null:row.transactionId,attempts:row.attempts,nextCheckAt:row.nextCheckAt.toISOString(),expiresAt:row.expiresAt.toISOString(),createdAt:row.createdAt.toISOString(),updatedAt:row.updatedAt.toISOString(),canCheck};
+ return {id:row.id,userId:row.userId,playerName:row.user.name,auctionId:row.auctionId,auctionSlug:row.auctionSlug,auctionCode:row.auction.code,title:p?.title??row.auction.product?.title??'Auction',ruleVersion:row.auction.terms?.ruleVersion??null,bidNumber,fee:row.fee.toString(),feeVersion:row.feeVersion,currency:row.currency,channel:row.channel,status:row.status,reason:row.reason&&/^[A-Z0-9_]{1,64}$/.test(row.reason)?row.reason:null,bidId:row.bidId,verified:!!row.creditJournalId,providerSession:role==='SUPPORT'?null:row.sessionId,providerReference:role==='SUPPORT'?null:row.transactionId,attempts:row.attempts,nextCheckAt:row.nextCheckAt.toISOString(),expiresAt:row.expiresAt.toISOString(),createdAt:row.createdAt.toISOString(),updatedAt:row.updatedAt.toISOString(),canCheck};
 }
 export async function arifPayAdminTotals(client:PrismaClient,now:Date){
  if(process.env.ARIFPAY_SCHEMA_READY!=='true')throw new AdminError(503,'Direct-payment storage is not ready.');
@@ -39,9 +41,9 @@ export async function readArifPayAdmin(client:PrismaClient,headers:Headers,id:st
  const health={...arifPayAvailability(),schemaReady:process.env.ARIFPAY_SCHEMA_READY==='true'};
  if(id){
   if(!health.schemaReady)throw new AdminError(503,'Direct-payment storage is not ready.');
-  const row=await client.arifPayCheckout.findUnique({where:{id:z.uuid().parse(id)},select:selection});if(!row)throw new AdminError(404,'Bid payment not found.');
+  const row=await client.arifPayCheckout.findUnique({where:{id:z.uuid().parse(id)},select:detailSelection});if(!row)throw new AdminError(404,'Bid payment not found.');
   await client.adminAudit.create({data:{actorId:actor.id,action:'ARIFPAY_DETAILS_READ',target:row.id,details:{}}});
-  return {item:view(row,actor.role),health};
+  return {item:view(row,actor.role,bidNumbersPublished(row.auction,actor.now)?row.bidNumber.toString():null),health};
  }
  const f=filters.parse(Object.fromEntries(params));
  if(!health.schemaReady)return {health,items:[],total:0,page:f.page,totalPages:0,summary:null};

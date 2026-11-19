@@ -1,6 +1,6 @@
 import {describe,expect,it,vi} from 'vitest';
 import {Prisma} from '@prisma/client';
-import {publishResult} from '../src/modules/admin/result-publication';
+import {publishResult,readResultReview} from '../src/modules/admin/result-publication';
 import {publishSettledResultInTransaction,reviewResult,type ReviewSettlement} from '../src/modules/auctions/result-publication';
 import {maskResultPhone,safeResultIdentity} from '../src/modules/auctions/result-identity';
 
@@ -13,6 +13,11 @@ function fixture(options:{rule?:string;fallback?:boolean;cancelled?:boolean}={})
  return {s,tx,row};
 }
 describe('automatic immutable result publication',()=>{
+ it('keeps privileged bid review closed until finished results are published',async()=>{
+  const {tx}=fixture(),client={$transaction:(read:(value:typeof tx)=>unknown)=>read(tx)};
+  await expect(readResultReview(client as never,'11111111-1111-4111-a111-111111111111',1,new Date('2026-01-02'))).rejects.toMatchObject({status:409});
+  expect(tx.bid.groupBy).not.toHaveBeenCalled();
+ });
  it('checks exact lowest unique proof and earliest immutable fallback order',async()=>{
   for(const fallback of [false,true]){const {s,tx}=fixture({fallback});expect((await reviewResult(tx as never,s)).winningFrequency).toBe(fallback?2:1);expect(tx.bid.findFirst.mock.calls[0][0]).toMatchObject({orderBy:[{acceptanceOrder:'asc'},{id:'asc'}],where:{acceptedAt:{lt:s.cutoff},acceptanceOrder:{lte:s.acceptanceCutoff}}})}
  });

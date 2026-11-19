@@ -25,11 +25,10 @@ import styles from './auction-detail.module.css';
 import {useAuctionActivity,useAuctionRefresh} from './auction-activity';
 import {auctionDetailUrl} from './auction-query';
 import {usePrivateQuery} from './private-query';
-import {usePublicQuery} from './public-query';
 import {auctionPresentationRefreshVersion} from '@/lib/auction-presentation-refresh';
 
 export function AuctionDetail({auction:initialAuction,serverNow}:{auction:CatalogAuction;serverNow:string}){
- const detail=usePublicQuery<CatalogAuction>(auctionDetailUrl(initialAuction.slug),{initialData:initialAuction});
+ const detail=usePrivateQuery<CatalogAuction>(auctionDetailUrl(initialAuction.slug),{initialData:initialAuction});
  const known=detail.data??initialAuction;
  const params=useSearchParams(),candidate=params.get('chapa'),chapaId=params.getAll('chapa').length===1&&candidate&&chapaUuid.test(candidate)?candidate:undefined;
  const [bidding,setBidding]=useState(!!chapaId),[returnId,setReturnId]=useState(chapaId);
