@@ -136,20 +136,32 @@ test('split-flap countdown rolls over only changed units and clears both animate
  await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await page.waitForTimeout(100);
  const values=()=>timer.locator('[data-countdown-unit]').evaluateAll(nodes=>nodes.map(node=>(node as HTMLElement).dataset.countdownValue!));
  const arm=()=>timer.evaluate(node=>{
-  type Frame={values:string[];animated:{unit:number;phase:string;value:string}[]};
+  type Frame={values:string[];animated:{unit:number;phase:string;value:string}[];held:{unit:number;value:string}[]};
   const state=node as HTMLElement&{__countdownObserver?:MutationObserver;__countdownFrames?:Frame[]};state.__countdownObserver?.disconnect();state.__countdownFrames=[];
-  state.__countdownObserver=new MutationObserver(()=>{const units=Array.from(node.querySelectorAll<HTMLElement>('[data-countdown-unit]'));state.__countdownFrames!.push({values:units.map(unit=>unit.dataset.countdownValue!),animated:units.flatMap((unit,index)=>Array.from(unit.querySelectorAll<HTMLElement>('[data-countdown-flip]')).map(layer=>({unit:index,phase:layer.dataset.countdownFlip!,value:layer.textContent!.trim()})))});});state.__countdownObserver.observe(node,{subtree:true,childList:true,attributes:true,attributeFilter:['data-countdown-value']});
+  state.__countdownObserver=new MutationObserver(()=>{
+   const units=Array.from(node.querySelectorAll<HTMLElement>('[data-countdown-unit]'));
+   state.__countdownFrames!.push({
+    values:units.map(unit=>unit.dataset.countdownValue!),
+    animated:units.flatMap((unit,index)=>Array.from(unit.querySelectorAll<HTMLElement>('[data-countdown-flip]')).map(layer=>({unit:index,phase:layer.dataset.countdownFlip!,value:layer.textContent!.trim()}))),
+    held:units.flatMap((unit,index)=>{const layer=unit.querySelector('[data-countdown-holding]');return layer?[{unit:index,value:layer.textContent!.trim()}]:[]}),
+   });
+  });
+  state.__countdownObserver.observe(node,{subtree:true,childList:true,attributes:true,attributeFilter:['data-countdown-value']});
  });
- const frames=()=>timer.evaluate(node=>(node as HTMLElement&{__countdownFrames:{values:string[];animated:{unit:number;phase:string;value:string}[]}[]}).__countdownFrames);
+ const frames=()=>timer.evaluate(node=>(node as HTMLElement&{__countdownFrames:{values:string[];animated:{unit:number;phase:string;value:string}[];held:{unit:number;value:string}[]}[]}).__countdownFrames);
  const initial=await values(),total=initial.reduce((sum,value,index)=>sum+Number(value)*[86400,3600,60,1][index],0);expect(total).toBeGreaterThan(60);
  await page.clock.fastForward((total-60)*1000);await expect.poll(values).toEqual(['00','00','01','00']);await page.waitForTimeout(350);await expect(timer.locator('[data-countdown-flip]')).toHaveCount(0,{timeout:100});
  // Each virtual second is explicit; animation cleanup is checked without
  // advancing the clock into another tick or replaying any skipped values.
  await arm();await page.clock.runFor(1000);mkdirSync(destination,{recursive:true});await timer.screenshot({path:`${destination}/split-flap-mid-${info.project.name}.png`,animations:'allow'});await expect.poll(values).toEqual(['00','00','00','59']);
  const rollover=(await frames()).find(frame=>frame.values.join(':')==='00:00:00:59'&&frame.animated.length===4);expect(rollover?.animated).toEqual(expect.arrayContaining([{unit:2,phase:'outgoing',value:'01'},{unit:2,phase:'incoming',value:'00'},{unit:3,phase:'outgoing',value:'00'},{unit:3,phase:'incoming',value:'59'}]));expect(rollover?.animated.every(layer=>layer.unit>=2)).toBe(true);
+ expect(rollover?.held).toEqual([{unit:2,value:'01'},{unit:3,value:'00'}]);
  await page.waitForTimeout(350);await expect(timer.locator('[data-countdown-flip]')).toHaveCount(0,{timeout:100});
  await arm();await page.clock.runFor(1000);await expect.poll(values).toEqual(['00','00','00','58']);const seconds=(await frames()).find(frame=>frame.animated.length===2);expect(seconds?.animated).toEqual([{unit:3,phase:'outgoing',value:'59'},{unit:3,phase:'incoming',value:'58'}]);
- await page.clock.fastForward(48000);await expect.poll(values).toEqual(['00','00','00','10']);await page.waitForTimeout(350);await expect(timer.locator('[data-countdown-flip]')).toHaveCount(0,{timeout:100});
+ await arm();await page.clock.fastForward(48000);await expect.poll(values).toEqual(['00','00','00','10']);
+ const skipped=(await frames()).find(frame=>frame.values.join(':')==='00:00:00:10');
+ expect(skipped).toMatchObject({animated:[],held:[]});
+ await expect(timer.locator('[data-countdown-flip],[data-countdown-holding]')).toHaveCount(0,{timeout:100});
  await arm();await page.clock.runFor(1000);await expect.poll(values).toEqual(['00','00','00','09']);const tenToNine=(await frames()).find(frame=>frame.animated.length===2);expect(tenToNine?.animated).toEqual([{unit:3,phase:'outgoing',value:'10'},{unit:3,phase:'incoming',value:'09'}]);
  await page.waitForTimeout(350);await expect(timer.locator('[data-countdown-flip]')).toHaveCount(0,{timeout:100});await arm();await page.clock.runFor(1000);await expect.poll(values).toEqual(['00','00','00','08']);const nineToEight=(await frames()).find(frame=>frame.animated.length===2);expect(nineToEight?.animated).toEqual([{unit:3,phase:'outgoing',value:'09'},{unit:3,phase:'incoming',value:'08'}]);
  await page.emulateMedia({reducedMotion:'reduce'});await expect(timer.locator('[data-countdown-flip]')).toHaveCount(0);await page.clock.runFor(1000);await expect.poll(values).toEqual(['00','00','00','07']);await expect(timer.locator('[data-countdown-flip]')).toHaveCount(0);
