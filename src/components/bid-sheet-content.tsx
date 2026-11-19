@@ -11,7 +11,7 @@ import {centsToEtb,etbToCents,formatEtb} from '@/lib/money';
 import {normalizeBidDraft,normalizePaymentPhone,previewBidFees,validateBidDraft,type BidBatchQuote,type BidBatchReceipt,type BidDraftError} from '@/lib/bid-batch-client';
 import {ChapaClientError,requestChapaJson,type ChapaCheckoutConfig,type WalletPaymentShortfall} from '@/lib/chapa-client';
 import {usableBidDiscount} from '@/lib/bid-discount-preview';
-import {loadBidQuote,walletBidAttemptKey,type BidQuoteAttempt} from '@/lib/bid-quote-readiness';
+import {bidQuoteAttemptFor,loadBidQuote,walletBidAttemptKey,type BidQuoteAttempt} from '@/lib/bid-quote-readiness';
 import {paymentPhoneProblem,paymentPhoneProblemMessage} from '@/lib/payment-phone';
 import {defaultBidRangeStep,previewBidRange,type BidRangeError} from '@/lib/bid-range';
 import {clearBidWalletRecovery,readBidWalletRecovery,retainBidWalletRecovery} from '@/lib/bid-wallet-recovery';
@@ -136,14 +136,16 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
  useEffect(()=>{
   if(!quotePhase||!discountReady||zero||!queryIdentity||!state||!active||!current||draft.error||!draft.numbers.length||payment.started)return;
   if(quoteAttempt.current?.fingerprint===fingerprint&&quoteAttempt.current.quote){setQuote(quoteAttempt.current.quote);return}
-  const attempt:BidQuoteAttempt=quoteAttempt.current?.fingerprint===fingerprint?quoteAttempt.current:{fingerprint,key:crypto.randomUUID(),paymentKey:crypto.randomUUID()};quoteAttempt.current=attempt;
+  const attempt=quoteAttempt.current=bidQuoteAttemptFor(quoteAttempt.current,fingerprint);
   const version=generation.current;let mounted=true;setQuote(null);reportError('');
   void loadQuote(attempt).then(next=>{
    if(!mounted||version!==generation.current||!isPrivateQueryIdentity(queryIdentity)||quoteAttempt.current!==attempt)return;
    attempt.quote=next;setQuote(next);
    if(etbToCents(next.total)!==etbToCents(preview.total))reportError(text('The total changed. Review the amount before paying.','ጠቅላላ ክፍያው ተቀይሯል። ከመክፈልዎ በፊት መጠኑን ይመልከቱ።'));
   }).catch(cause=>{if(mounted&&version===generation.current&&quoteAttempt.current===attempt)reportError(cause instanceof ChapaClientError?cause.message:text('Could not confirm the total. Please retry.','ጠቅላላ ክፍያውን ማረጋገጥ አልተቻለም። እንደገና ይሞክሩ።'))});
-  return()=>{mounted=false;attempt.controller?.abort()};
+  // The request belongs to the unchanged draft across steps. Draft changes
+  // and account or sheet teardown own cancellation.
+  return()=>{mounted=false};
  },[quotePhase,discountReady,zero,fingerprint,queryIdentity,!!state,active,current,payment.started,quoteRetry,loadQuote]);
  // These codes are definitive pre-creation rejections, not uncertain charges.
  // The hook preserves all transport/server ambiguities on their original key.
@@ -247,7 +249,7 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
     setNumbers(checked.numbers);setInput('');setEditing(null);
     if(!zero&&(!applyCoupon||coupon)){
      const readyFingerprint=JSON.stringify({...body,numbers:checked.numbers,feeVersion:currentState.terms.version});
-     const attempt:BidQuoteAttempt=quoteAttempt.current?.fingerprint===readyFingerprint?quoteAttempt.current:{fingerprint:readyFingerprint,key:crypto.randomUUID(),paymentKey:crypto.randomUUID()};quoteAttempt.current=attempt;
+     const attempt=quoteAttempt.current=bidQuoteAttemptFor(quoteAttempt.current,readyFingerprint);
      void loadQuote(attempt).catch(()=>{/* The visible payment stage owns recovery. */});
     }
     // Pricing does not use the payment-method catalogue. Prepare the quote
@@ -269,8 +271,8 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
   if(!zero&&method==='wallet'&&walletAvailable===null){reportError(text('Your wallet balance could not be confirmed. Refresh it before paying.','ከመክፈልዎ በፊት የዋሌት ቀሪ ሂሳብዎን ያድሱ።'));wallet.reload();return}
   if(!zero&&method==='wallet'&&insufficient){reportError(text(`Your LowWin Wallet has ${walletAvailable} ETB. You need ${total} ETB; top up ${centsToEtb(totalCents-etbToCents(walletAvailable!))} ETB or choose another method.`,`በዋሌትዎ ${walletAvailable} ብር አለ። ${total} ብር ያስፈልጋል። ዋሌትዎን ይሙሉ ወይም ሌላ መንገድ ይምረጡ።`));return}
   if(!zero&&method!=='wallet'&&!normalizedPhone){reportError(paymentPhoneProblemMessage(phoneProblem??'invalid',am));return}
-  if(quoteAttempt.current?.fingerprint!==fingerprint)quoteAttempt.current={fingerprint,key:crypto.randomUUID(),paymentKey:crypto.randomUUID()};
-  const attempt=quoteAttempt.current;setReceipt(null);payment.beginTiming(true);
+  const attempt=quoteAttempt.current=bidQuoteAttemptFor(quoteAttempt.current,fingerprint);
+  setReceipt(null);payment.beginTiming(true);
   if(zero||method==='wallet'){
    if(attempt.quote&&attempt.walletQuote){retainBidWalletRecovery(getMiniQueryClient(),queryIdentity,attempt.quote);setWalletCommand(null);setWalletRetry(false);await executeWallet({quote:attempt.quote});return}
    const command:WalletBidCommand={...body,key:walletBidAttemptKey(attempt),approvedTotal:total};
@@ -279,7 +281,7 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
   const version=generation.current,controller=new AbortController();controllers.current.add(controller);lock.current=true;setBusy(true);reportError('');presentPayment();
   try{
    const confirmedQuote=await loadQuote(attempt);
-   if(generation.current!==version||!isPrivateQueryIdentity(queryIdentity))return;
+   if(generation.current!==version||!isPrivateQueryIdentity(queryIdentity)||quoteAttempt.current!==attempt)return;
    attempt.quote=confirmedQuote;setQuote(confirmedQuote);
    if(etbToCents(confirmedQuote.total)!==totalCents){reportError(text('The total was updated. Review the amount before paying.','ጠቅላላ ክፍያው ተቀይሯል። ከመክፈልዎ በፊት መጠኑን ይመልከቱ።'));return}
    setNumbers(confirmedQuote.lines.map(line=>line.number));setInput('');setEditing(null);

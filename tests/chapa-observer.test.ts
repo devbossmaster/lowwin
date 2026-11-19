@@ -103,6 +103,42 @@ describe('one owned SSE and verification observer',()=>{
   const stop=startChapaObserver(id,{...f.options,initialOrder:currentDirect});await vi.advanceTimersByTimeAsync(0);f.sources[0].dispatchEvent(new Event('open'));f.wake.dispatchEvent(new Event('focus'));f.wake.dispatchEvent(new Event('online'));expect(f.verify).toHaveBeenCalledOnce();
   finish(currentDirect);await vi.advanceTimersByTimeAsync(0);expect(f.verify).toHaveBeenCalledTimes(2);expect(f.readSnapshot).not.toHaveBeenCalled();stop();
  });
+ it('resumes a known Direct wallet return when data comes back shortly after focus',async()=>{
+  vi.useFakeTimers();const f=fixture(),wallet={...currentDirect,status:'AUTH_NEEDED',paymentMethod:'telebirr',authType:'USSD' as const,authorizationReference:'owned-reference'};
+  f.verify.mockResolvedValue(wallet);
+  const stop=startChapaObserver(id,{...f.options,initialOrder:wallet});await vi.advanceTimersByTimeAsync(0);
+  f.wake.dispatchEvent(new Event('offline'));f.wake.dispatchEvent(new Event('blur'));
+  await vi.advanceTimersByTimeAsync(5000);
+  f.wake.dispatchEvent(new Event('focus'));await vi.advanceTimersByTimeAsync(100);
+  expect(f.verify).toHaveBeenCalledOnce();expect(f.sources[0].close).toHaveBeenCalledOnce();
+  f.wake.dispatchEvent(new Event('online'));f.wake.dispatchEvent(new Event('online'));await vi.advanceTimersByTimeAsync(0);
+  expect(f.verify.mock.calls).toEqual([[],['wallet-return']]);expect(f.readSnapshot).not.toHaveBeenCalled();expect(f.createSource).toHaveBeenCalledTimes(2);stop();
+ });
+ it('verifies normally on reconnect when the wallet return hint expired while offline',async()=>{
+  vi.useFakeTimers();const f=fixture(),wallet={...currentDirect,status:'AUTH_NEEDED',authType:'USSD' as const,authorizationReference:'owned-reference'};
+  f.verify.mockResolvedValue(wallet);
+  const stop=startChapaObserver(id,{...f.options,initialOrder:wallet});await vi.advanceTimersByTimeAsync(0);
+  f.wake.dispatchEvent(new Event('offline'));f.wake.dispatchEvent(new Event('blur'));f.wake.dispatchEvent(new Event('focus'));
+  await vi.advanceTimersByTimeAsync(11000);expect(f.verify).toHaveBeenCalledOnce();
+  f.wake.dispatchEvent(new Event('online'));await vi.advanceTimersByTimeAsync(0);
+  expect(f.verify.mock.calls).toEqual([[],[]]);expect(f.readSnapshot).not.toHaveBeenCalled();stop();
+ });
+ it('keeps one reconnect check queued behind a failed in-flight Direct check',async()=>{
+  vi.useFakeTimers();const f=fixture();let rejectFirst!:(error:Error)=>void;
+  f.verify.mockImplementationOnce(()=>new Promise((_resolve,reject)=>{rejectFirst=reject})).mockResolvedValue(currentDirect);
+  const stop=startChapaObserver(id,{...f.options,initialOrder:currentDirect});await vi.advanceTimersByTimeAsync(0);
+  f.wake.dispatchEvent(new Event('offline'));f.wake.dispatchEvent(new Event('online'));f.wake.dispatchEvent(new Event('online'));
+  expect(f.verify).toHaveBeenCalledOnce();rejectFirst(new TypeError('Connection was lost'));
+  await vi.advanceTimersByTimeAsync(0);
+  expect(f.verify.mock.calls).toEqual([[],[]]);expect(f.readSnapshot).not.toHaveBeenCalled();stop();
+ });
+ it('keeps historical verification scheduling independent of Direct reconnect recovery',async()=>{
+  vi.useFakeTimers();const f=fixture(),historical={...currentDirect,flowVersion:4,chargeType:'INLINE'} as ChapaCheckoutView;
+  f.readSnapshot.mockResolvedValue(historical);f.verify.mockResolvedValue(historical);
+  const stop=startChapaObserver(id,{...f.options,initialOrder:historical});await vi.advanceTimersByTimeAsync(0);
+  f.wake.dispatchEvent(new Event('offline'));await vi.advanceTimersByTimeAsync(2000);
+  expect(f.readSnapshot).toHaveBeenCalledOnce();expect(f.verify).toHaveBeenCalledTimes(2);stop();
+ });
  it('checks immediately once on Telebirr after a slow pending reply without a wallet event',async()=>{
   vi.useFakeTimers();const f=fixture(),wallet={...currentDirect,status:'AUTH_NEEDED',paymentMethod:'telebirr',authType:'USSD' as const,authorizationReference:'owned-reference'};
   let finish!:(order:ChapaCheckoutView)=>void,finishSecond!:(order:ChapaCheckoutView)=>void;

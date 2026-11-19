@@ -36,6 +36,30 @@ describe('direct method capability cache',()=>{
   renewal.resolve(response(method('mpesa',500)));
   expect((await payment).map(value=>value.slug)).toEqual(['mpesa']);
  });
+ it('retries a failed background refresh after a cooldown and shares the recovered read',async()=>{
+  setup();
+  const renewal=deferred();
+  const methods=vi.fn().mockResolvedValueOnce(response(method('telebirr')))
+   .mockRejectedValueOnce(Error('temporary provider failure')).mockReturnValueOnce(renewal.promise);
+  const catalog=createDirectMethodCatalog({create:vi.fn(),lookup:vi.fn(),methods});
+  const configuration=()=>catalog.get(undefined,{refreshSoon:true});
+  await catalog.get();
+  vi.advanceTimersByTime(240001);
+
+  await configuration();
+  await vi.advanceTimersByTimeAsync(0);
+  vi.advanceTimersByTime(9999);
+  await configuration();
+  expect(methods).toHaveBeenCalledTimes(2);
+
+  vi.advanceTimersByTime(1);
+  expect((await Promise.all([configuration(),configuration()])).map(value=>value[0].slug)).toEqual(['telebirr','telebirr']);
+  expect(methods).toHaveBeenCalledTimes(3);
+  renewal.resolve(response(method('mpesa',500)));
+  await vi.advanceTimersByTimeAsync(0);
+  expect(catalog.peek('mpesa')?.minimumCents).toBe('500');
+  expect(catalog.peek('telebirr')).toBeUndefined();
+ });
  it('never caches malformed method responses or silently authorizes while disabled',async()=>{
   setup();const methods=vi.fn().mockResolvedValueOnce({status:'success',data:[{slug:'telebirr'}]}).mockResolvedValueOnce(response(method('telebirr'))),catalog=createDirectMethodCatalog({create:vi.fn(),lookup:vi.fn(),methods});
   await expect(catalog.get()).rejects.toMatchObject({code:'METHODS_UNAVAILABLE'});await catalog.get();vi.stubEnv('CHAPA_ENABLED','false');await expect(catalog.get()).rejects.toMatchObject({code:'PAYMENT_UNAVAILABLE'});expect(methods).toHaveBeenCalledTimes(2);

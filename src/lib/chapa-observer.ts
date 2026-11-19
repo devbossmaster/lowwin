@@ -92,6 +92,7 @@ export function startChapaObserver(id:string,options:Options){
  const fixedDeadline=typeof options.deadlineAt==='number'&&Number.isFinite(options.deadlineAt)?options.deadlineAt:null;
  let deadline=options.observeDirect?fixedDeadline??Infinity:Math.min(Date.now()+300000,fixedDeadline??Infinity);
  let active=true,paused=false,inFlight=false,snapshotWanted=false,verifyWanted=false,walletReturnWanted=false,healthy=false,delay=5000,failures=0;
+ let offline=false,reconnectWanted=false;
  let latest=options.initialOrder?.id===id?options.initialOrder:null;
  const currentDirect=(order:ChapaCheckoutView|null)=>!!order&&order.apiVersion==='v2'&&order.flowVersion===5&&order.chargeType==='DIRECT'&&!order.unsupportedLegacy;
  let verificationFirst=currentDirect(latest);
@@ -101,7 +102,7 @@ export function startChapaObserver(id:string,options:Options){
  let usedSlowVerificationRetry=false;
  let source:Source|null=null,timer:ReturnType<typeof setTimeout>|undefined,reconnect:ReturnType<typeof setTimeout>|undefined;
  const live=()=>active&&(options.isCurrent?.()??true);
- const foreground=()=>live()&&visibility.visibilityState==='visible';
+ const foreground=()=>live()&&!offline&&visibility.visibilityState==='visible';
  const pause=()=>{if(!paused){paused=true;options.onPause()}};
  const disconnect=()=>{healthy=false;source?.close();source=null;clearTimeout(reconnect)};
  const queueWalletReturn=(now:number)=>{
@@ -153,6 +154,7 @@ export function startChapaObserver(id:string,options:Options){
     if(verificationFirst){snapshotWanted=false;if(!verifyWanted)break}
     const snapshot=snapshotWanted,trigger=!snapshot&&walletReturnWanted?'wallet-return':undefined;
     if(snapshot)snapshotWanted=false;else{verifyWanted=false;walletReturnWanted=false}
+    reconnectWanted=false;
     const startedAt=Date.now();
     try{
      const order=await(snapshot?options.readSnapshot():trigger?options.verify(trigger):options.verify());
@@ -171,8 +173,8 @@ export function startChapaObserver(id:string,options:Options){
      options.onError?.(error);
      if(error instanceof ChapaClientError&&[401,403,404].includes(error.status)){stop();return}
      delay=Math.min(30000,delay*2);
-     // Back off unless a separate wallet return arrived during this request.
-     if(!walletReturnWanted){verifyWanted=false;break}
+     // A reconnect or wallet return during this request gets one fresh check.
+     if(!walletReturnWanted&&!reconnectWanted){verifyWanted=false;break}
     }
    }
   }finally{
@@ -222,14 +224,14 @@ export function startChapaObserver(id:string,options:Options){
    if(foreground()&&failures<6)reconnect=setTimeout(connect,Math.min(30000,1000*2**(failures-1)));
   }
  };
- const onWake=(resuming:boolean,telegramActivated=false)=>{
+ const onWake=(resuming:boolean,telegramActivated=false,reconnected=false)=>{
   if(!live()){stop();return}
   if(visibility.visibilityState!=='visible'){wasHidden=true;away=true;clearTimeout(timer);disconnect();return}
   const now=Date.now();
   const returned=resuming&&(away||telegramActivated);
   const walletReturn=returned&&rememberWalletReturn(now);
   if(resuming)away=false;
-  if(!wasHidden&&!walletReturn&&now-lastWakeAt<750)return;
+  if(!wasHidden&&!walletReturn&&!reconnected&&now-lastWakeAt<750)return;
   wasHidden=false;lastWakeAt=now;
   fastUntil=now+30000;failures=0;snapshotWanted=!verificationFirst;verifyWanted=true;
   if(!options.observeDirect&&fixedDeadline!==null&&now>=deadline){pause();void drain();return}
@@ -237,17 +239,30 @@ export function startChapaObserver(id:string,options:Options){
   connect();void drain();
  };
  const onReturn=()=>onWake(true);
- const onReconnect=()=>onWake(false);
+ const onOffline=()=>{
+  if(!live()){stop();return}
+  if(!verificationFirst)return;
+  offline=true;clearTimeout(timer);disconnect();
+ };
+ const onReconnect=()=>{
+  const restored=offline;
+  offline=false;
+  if(restored){
+   reconnectWanted=true;
+   if(Date.now()-lastWalletReturnAt>=walletReturnLifetimeMs)walletReturnWanted=false;
+  }
+  onWake(false,false,restored);
+ };
  const onActivated=()=>onWake(true,true);
  // Android's native phone window can cover the Mini App without changing
  // document visibility. Still only send the stronger hint on a real return.
  const onAway=()=>{away=true};
  function stop(){
   if(!active)return;active=false;clearTimeout(timer);disconnect();
-  visibility.removeEventListener('visibilitychange',onReturn);wake?.removeEventListener('focus',onReturn);wake?.removeEventListener('blur',onAway);wake?.removeEventListener('online',onReconnect);
+  visibility.removeEventListener('visibilitychange',onReturn);wake?.removeEventListener('focus',onReturn);wake?.removeEventListener('blur',onAway);wake?.removeEventListener('offline',onOffline);wake?.removeEventListener('online',onReconnect);
   try{telegram?.offEvent?.('activated',onActivated);telegram?.offEvent?.('deactivated',onAway)}catch{/* Older Telegram clients use visibility/focus. */}
  }
- visibility.addEventListener('visibilitychange',onReturn);wake?.addEventListener('focus',onReturn);wake?.addEventListener('blur',onAway);wake?.addEventListener('online',onReconnect);
+ visibility.addEventListener('visibilitychange',onReturn);wake?.addEventListener('focus',onReturn);wake?.addEventListener('blur',onAway);wake?.addEventListener('offline',onOffline);wake?.addEventListener('online',onReconnect);
  try{telegram?.onEvent?.('activated',onActivated);telegram?.onEvent?.('deactivated',onAway)}catch{/* Older Telegram clients use visibility/focus. */}
  if(options.initialWalletReturnAt!==undefined)rememberWalletReturn(options.initialWalletReturnAt);
  snapshotWanted=!verificationFirst;verifyWanted=true;connect();void drain();
