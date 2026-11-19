@@ -7,7 +7,7 @@ for(const am of [false,true])test(`coupons render independently of slow bid deta
  const gate=new Promise<void>(resolve=>{release=resolve});
  try{
   await page.route('**/api/referrals/coupon-count',route=>{countReads++;return route.fulfill({json:{configured:true,available:3}})});
-  await page.route(/\/api\/auctions\/[^/]+\/bids$/,async route=>{const response=await route.fetch();await gate;return route.fulfill({response})});
+  await page.route(/\/api\/auctions\/[^/]+\/bids$/,async route=>{await gate;return route.fallback()});
   await page.goto('/telegram?next='+encodeURIComponent(f.home));
   let dialog=await openBid(page,f.title);
   await expect(dialog.locator('[data-bid-coupons] b')).toHaveText('3');
