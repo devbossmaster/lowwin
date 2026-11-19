@@ -14,7 +14,7 @@ export function WinnerResultCard({auction}:{auction:CatalogAuction}){
   const {language}=useMiniLocale(),am=language==='am',ref=useRef<HTMLElement>(null),title=am?(auction.product.titleAm?.trim()||auction.product.title):auction.product.title;
   const {activity,views}=useAuctionActivity(auction.code,{element:ref,record:true});
   const result=auction.result;
-  const ended=new Date(result?.closedAt??auction.endsAt).toLocaleDateString('en',{dateStyle:'medium',timeZone:'Africa/Addis_Ababa'});
+  const ended=new Date(result?.closedAt??auction.endsAt).toLocaleDateString('en-GB',{dateStyle:'medium',timeZone:'Africa/Addis_Ababa'});
   return <article className={styles.card} ref={ref}>
     <div className={styles.image}>
       <Link href={`/auctions/${auction.code}`} aria-label={`${am?'ውጤቱን ይመልከቱ':'View result for'} ${title}`}><CatalogImage src={auction.product.images[0]?.path} alt={title}/></Link>

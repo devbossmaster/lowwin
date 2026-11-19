@@ -1,3 +1,23 @@
+.scheduleField {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.scheduleControls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(100px, 0.65fr);
+  gap: 10px;
+}
+
+.scheduleControls input {
+  min-width: 0;
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+
 .preview {
   display: flex;
   align-items: flex-start;

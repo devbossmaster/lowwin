@@ -28,7 +28,7 @@ function ParticipantSheet({code,amount,onClose,returnFocusRef}:{code:string;amou
    <ul className={styles.people}>{data.participants.map((person,index)=><li key={person.submittedAt+':'+index}>
     <strong>{person.displayName||person.username||<MiniPhrase en="Participant" am="ተሳታፊ"/>}</strong>
     {person.username&&person.displayName&&<span>{person.username}</span>}{person.phoneMasked&&<span>{person.phoneMasked}</span>}
-    <time dateTime={person.submittedAt}>{formatAddisTimestamp(person.submittedAt,am?'am-ET':'en-ET','withSeconds')}</time>
+    <time dateTime={person.submittedAt}>{formatAddisTimestamp(person.submittedAt,am?'am-ET':'en-GB','withSeconds')}</time>
    </li>)}</ul>
    <Pager page={data.page} totalPages={data.totalPages} change={setPage} disabled={query.isPlaceholderData}/>
   </>}

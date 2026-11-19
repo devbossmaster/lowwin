@@ -1,7 +1,7 @@
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {afterEach, describe, expect, it, vi} from 'vitest';
-import {AdminAuctionDeadlineField, AdminAuctionSchedulePreview} from '../src/components/admin-auction-schedule-preview';
+import {AdminAuctionDeadlineField, AdminAuctionSchedulePreview, parseAuctionScheduleTime} from '../src/components/admin-auction-schedule-preview';
 
 afterEach(() => {
   vi.useRealTimers();
@@ -16,6 +16,9 @@ describe('Admin auction countdown preview', () => {
     const html = renderToStaticMarkup(createElement(AdminAuctionDeadlineField, {endsAt: '2026-11-19T20:13:00.000Z', showPreview: true}));
 
     expect(html).toContain('value="2026-11-19T23:13"');
+    expect(html).toMatch(/<input type="date"[^>]*value="2026-11-19"/);
+    expect(html).toMatch(/<input type="text"[^>]*value="23:13"/);
+    expect(html).toContain('Time (24-hour)');
     expect(html).toContain('<dt>Ends in</dt><dd>5h 13m</dd>');
     expect(html).toContain('Ends 19 Nov 2026, 23:13 GMT+3');
     expect(html).not.toContain('Shortens');
@@ -45,6 +48,14 @@ describe('Admin auction countdown preview', () => {
     const render = (end: string) => renderToStaticMarkup(createElement(AdminAuctionSchedulePreview, {start: '2026-11-20T01:00', end}));
 
     expect(render('')).toContain('Set both times to preview the countdown.');
+    expect(render('2026-11-20T24:00')).toContain('Set both times to preview the countdown.');
     expect(render('2026-11-20T00:00')).toContain('The end time must be after the start time.');
+  });
+
+  it('accepts only valid minute-precision Addis Ababa times', () => {
+    expect(parseAuctionScheduleTime('2026-11-20T03:22')?.toISOString()).toBe('2026-11-20T00:22:00.000Z');
+    expect(parseAuctionScheduleTime('2026-11-19T00:00')?.toISOString()).toBe('2026-11-18T21:00:00.000Z');
+    expect(parseAuctionScheduleTime('2026-02-30T03:22')).toBeNull();
+    expect(parseAuctionScheduleTime('2026-11-20T12:22 PM')).toBeNull();
   });
 });

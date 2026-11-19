@@ -35,7 +35,7 @@ const schemas={
   draft:z.object({key,auctionId:id.optional(),version,body:draftBodySchema}).strict(),
   publish:z.object({key,auctionId:id,version}).strict(),
   fee:z.object({key,auctionId:id,version,feePoints:points,reason:text(1000)}).strict(),
-  deadline:z.object({key,auctionId:id,version,endsAt:z.iso.datetime(),reason:text(1000)}).strict(),
+  deadline:z.object({key,auctionId:id,version,endsAt:z.iso.datetime(),reason:text(1000),overrideConfirmation:z.string().min(1).max(100).optional()}).strict(),
   presentation:z.object({key,auctionId:id,version,title:text(120),titleAm:localized(120),description:text(1500),descriptionAm:localized(1500),condition:text(100),conditionAm:localized(100),imageIds:z.array(id).min(1).max(8),reason:text(1000)}).strict(),
   deleteDraft:z.object({key,auctionId:id,confirmation:text(100),reason:text(1000)}).strict(),
   deleteProduct:z.object({key,id,version,confirmation:text(120),reason:text(1000)}).strict(),
@@ -60,7 +60,7 @@ async function lockDeadlineAuction(tx:Prisma.TransactionClient,auctionId:string)
 }
 
 type DeadlineSnapshot = {
-  id:string; status:string; publishedAt:Date|null; startsAt:Date|null; endsAt:Date|null;
+  id:string; code:string; status:string; publishedAt:Date|null; startsAt:Date|null; endsAt:Date|null;
   controlVersion:number; acceptedBidCount:number; publishedEndsAt:Date|null;
   maxExtensionMinutes:number|null; allowPaidShortening:boolean|null; shortenNoticeMinutes:number|null;
   finalized:boolean; now:Date;
@@ -70,7 +70,7 @@ async function changeDeadline(tx:Prisma.TransactionClient, data:z.infer<typeof s
   // The caller holds the auction row lock. Take a fresh snapshot after waiting
   // for the locks, using the same database clock as the published-auction guard.
   const [auction]=await measureAdmin('deadline_read',()=>tx.$queryRaw<DeadlineSnapshot[]>`
-    SELECT a.id,a.status,a."publishedAt",a."startsAt",a."endsAt",a."controlVersion",a."acceptedBidCount",
+    SELECT a.id,a.code,a.status,a."publishedAt",a."startsAt",a."endsAt",a."controlVersion",a."acceptedBidCount",
       terms."publishedEndsAt",terms."maxExtensionMinutes",terms."allowPaidShortening",terms."shortenNoticeMinutes",
       (settlement.id IS NOT NULL OR result.id IS NOT NULL) AS finalized,clock_timestamp() AS now
     FROM "Auction" a
@@ -89,18 +89,25 @@ async function changeDeadline(tx:Prisma.TransactionClient, data:z.infer<typeof s
   if(next<=startsAt)throw new AdminError(422,'The new deadline must be after the auction starts.');
   const publishedEnd=auction.publishedEndsAt??previous,maxEnd=new Date(publishedEnd.getTime()+maxExtensionMinutes*60000);
   if(next>maxEnd)throw new AdminError(422,`The published policy permits extension only until ${formatAddisTimestamp(maxEnd)}.`);
-  if(next<previous&&auction.acceptedBidCount>0){
-    if(!auction.allowPaidShortening)throw new AdminError(422,'The published policy does not permit shortening after bids.');
+  const paidShortening=next<previous&&auction.acceptedBidCount>0;
+  const paidShorteningOverride=paidShortening&&!auction.allowPaidShortening;
+  if(paidShorteningOverride){
+    if(data.overrideConfirmation===undefined)throw new AdminError(422,'The published policy does not permit shortening after bids. Use the one-time override to confirm.','DEADLINE_OVERRIDE_REQUIRED');
+    if(data.overrideConfirmation!==auction.code)throw new AdminError(422,'Type the exact auction code to confirm this deadline override.','DEADLINE_OVERRIDE_CONFIRMATION');
+  }else if(data.overrideConfirmation!==undefined){
+    throw new AdminError(422,'A deadline override is only available for shortening that the published policy blocks.');
+  }else if(paidShortening){
     if(next.getTime()<now.getTime()+shortenNoticeMinutes*60000)throw new AdminError(422,`Bidders must retain at least ${shortenNoticeMinutes} minutes of notice.`);
   }
 
   const controlVersion=auction.controlVersion+1,endsAt=next.toISOString();
+  const override=paidShorteningOverride?{paidShorteningOverride:true}:{};
   await measureAdmin('deadline_write',async()=>{
-    await tx.auctionControlRevision.create({data:{auctionId:auction.id,version:controlVersion,kind:'DEADLINE',before:{endsAt:previous.toISOString()},after:{endsAt},actorId,reason:data.reason,operationKey}});
+    await tx.auctionControlRevision.create({data:{auctionId:auction.id,version:controlVersion,kind:'DEADLINE',before:{endsAt:previous.toISOString()},after:{endsAt,...(paidShorteningOverride?{...override,overrideConfirmation:auction.code}:{})},actorId,reason:data.reason,operationKey}});
     await tx.auction.update({where:{id:auction.id},data:{endsAt:next,controlVersion,nextCloseAttemptAt:null,closeErrorCode:null}});
   });
   const retired=await measureAdmin('deadline_alerts',()=>retireAuctionEndingAlerts(tx,auction.id,now));
-  return {auctionId:auction.id,controlVersion,endsAt,...retired};
+  return {auctionId:auction.id,controlVersion,endsAt,...override,...retired};
 }
 
 export async function cancellationImpact(tx:Prisma.TransactionClient,auctionId:string) {
