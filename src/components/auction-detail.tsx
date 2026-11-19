@@ -50,7 +50,7 @@ export function AuctionDetail({auction:initialAuction,serverNow}:{auction:Catalo
  const auction={...known,...(resultQuery.data?{result:resultQuery.data.result}:{}),status:activity?.status??known.status,viewCount:views??known.viewCount,bidCount:activity?.bids??known.bidCount,startsAt:activity?.startsAt??known.startsAt,endsAt:activity?.endsAt??known.endsAt};
  const {language}=useMiniLocale(),am=language==='am',live=auction.status==='live',upcoming=auction.status==='upcoming';
  const title=am?(auction.product.titleAm?.trim()||auction.product.title):auction.product.title;
- const date=(value:string)=>formatAddisTimestamp(value,am?'am-ET':'en-ET');
+ const date=(value:string)=>formatAddisTimestamp(value,am?'am-ET':'en-GB');
  const paymentSheet=bidding?<BidSheet auction={auction} serverNow={serverNow} onClose={closeBidding} initialChapaId={returnId}/>:null;
  if(['closed','cancelled','closing'].includes(auction.status))return <><ArifPayReturn auctionSlug={auction.slug}/>{auction.result?.outcome==='WINNER'&&<WinnerCelebration id={`winner:${auction.code}`}/>}<AuctionResultDetail auction={auction}/>{returnId&&paymentSheet}</>;
  return <article className={styles.page} data-auction-detail>

@@ -1,11 +1,13 @@
 'use client';
 import {useMiniPage} from './mini-query-state';
 import {paymentChannelName} from '@/lib/payment-channels';
+import {formatAddisTimestamp} from '@/lib/addis-time';
 import {useEffect,useId,useRef,useState} from 'react';
 import Link from 'next/link';
 import {TelegramLink} from './telegram-link';
 import {ArrowDownLeft,RefreshCw} from 'lucide-react';
 import {useWalletCopy} from './wallet-copy';
+import {useMiniLocale} from './mini-locale';
 import {LoadingSpinner} from './loading-spinner';
 import {WalletFundingSkeleton} from './wallet-funding-skeleton';
 import {useTelegram} from './telegram-provider';
@@ -31,6 +33,7 @@ const labels:Record<string,string>={PENDING:'Pending verification',VERIFYING:'Ve
 type FundingView='deposit'|'deposits'|'hidden';
 export function WalletFunding({view='deposit',onContinue}:{view?:FundingView;onContinue?:()=>void}){const {me,queryIdentity}=useTelegram();return <Funding key={queryIdentity??'guest'} view={view} onContinue={onContinue}/>}
 function Funding({view,onContinue}:{view:FundingView;onContinue?:()=>void}){
+ const {language}=useMiniLocale(),locale=language==='am'?'am-ET':'en-GB';
  const w=useWalletCopy(),{refreshMe,me,queryIdentity}=useTelegram(),notify=useMiniNotice(),noticeId=useId();
  const [page,setPage]=useMiniPage('depositsPage'),query=usePrivateQuery<Data>(`/api/wallet/top-ups?page=${page}`);
  const [selected,setSelected]=useState(''),[intent,setIntent]=useState<Intent|null>(null),[input,setInput]=useState(''),[busy,setBusy]=useState(''),[message,setMessage]=useState(''),[receipt,setReceipt]=useState<SelectedReceipt|null>(null);
@@ -122,7 +125,7 @@ function Funding({view,onContinue}:{view:FundingView;onContinue?:()=>void}){
     <ReceiptImageUpload receipt={receipt} disabled={!scannerAvailable||!!busy||credited||underReview||bound} onSelect={chooseReceipt} onRemove={clearReceipt}/>
     <button type="button" className={styles.submit} disabled={!account||(!input.trim()&&!receipt)||!!busy||credited||underReview||waiting} onClick={()=>void submit()}>{busy?<LoadingSpinner/>:credited?w('Deposit credited'):underReview?w(intent?.status==='REJECTED'?'Deposit rejected':'Under admin review'):w(intent?.attempts?'Check payment again':'Submit deposit')}</button>
     <p className={styles.footnote}>{options.ocr?w('Confirmed transfers to our account are credited automatically in ETB, once.'):w('Paste your receipt message. Image scanning is unavailable.')}</p>
-    {intent&&!credited&&<p className={styles.hint}>{correctable?w('Use Correct a mistaken reference to enter another transaction ID.'):intent.canRetry===false?w('Contact support with this deposit ID:'):waiting?w('Retry after:'):w('You can check this payment again.')} {!correctable&&intent.canRetry===false?intent.id:waiting&&intent.nextAttemptAt?new Date(intent.nextAttemptAt).toLocaleString(undefined,{timeZone:'Africa/Addis_Ababa'}):''}</p>}
+    {intent&&!credited&&<p className={styles.hint}>{correctable?w('Use Correct a mistaken reference to enter another transaction ID.'):intent.canRetry===false?w('Contact support with this deposit ID:'):waiting?w('Retry after:'):w('You can check this payment again.')} {!correctable&&intent.canRetry===false?intent.id:waiting&&intent.nextAttemptAt?formatAddisTimestamp(intent.nextAttemptAt,locale,'withSeconds'):''}</p>}
     {busy&&<LoadingSpinner label={busy}/>}{message&&<p className={styles.hint} role="status">{message}</p>}
    </div>}
    <PaymentHelp/>
@@ -130,7 +133,7 @@ function Funding({view,onContinue}:{view:FundingView;onContinue?:()=>void}){
   <section hidden={view!=='deposits'} className={styles.transactionSection} aria-label={w('Deposits')}>
    <div className={styles.sectionHeading}><h2>{w('Deposits')}</h2><button type="button" className={styles.refresh} disabled={!!busy} onClick={query.reload}><RefreshCw size={15}/>{w('Refresh')}</button></div>
    <p className={styles.sectionDescription}>{w('Track your submitted payments and their status.')}</p>
-   {!query.data?.items.length?<div className={styles.empty}><ArrowDownLeft size={28}/><h3>{w('No deposits yet')}</h3><p>{w('Your submitted payments will appear here.')}</p><button type="button" className={styles.inlineAction} onClick={onContinue}>{w('Add money')}</button></div>:<div className={styles.transactionList}>{query.data.items.map(t=><article className={styles.depositRow} key={t.id}><div className={styles.depositSummary}><PaymentLogo channel={t.channel}/><div><strong>{w(paymentChannelName(t.channel))}{t.demo?' · DEMO':''}</strong><small>{new Date(t.createdAt).toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short',timeZone:'Africa/Addis_Ababa'})}</small></div><span className={styles.depositAmount}>{t.amountCents?`${money(t.amountCents)} ETB`:w('Awaiting amount')}</span></div><div className={styles.depositStatus}><span className={styles.statusBadge} data-state={t.status}>{w(t.reason==='ADMIN_CREDIT_REPLACEMENT'?'Resolved by admin':labels[t.status]??t.status)}</span><div>{options?.enabled&&['PENDING','VERIFYING','PROVIDER_OUTAGE','NEEDS_REVIEW'].includes(t.status)&&<button type="button" className={styles.inlineAction} disabled={!!busy} onClick={()=>{clearReceipt();setIntent(t);setSelected(t.channel);setInput(t.reference??'');const feedback=depositFeedback(t,w);inform(feedback.message,feedback.kind);createKey.current='';verifyKey.current='';onContinue?.()}}>{w(t.canRetry?'Check payment again':'Continue')}</button>}<TelegramLink>{w('Help')}</TelegramLink></div></div></article>)}</div>}
+   {!query.data?.items.length?<div className={styles.empty}><ArrowDownLeft size={28}/><h3>{w('No deposits yet')}</h3><p>{w('Your submitted payments will appear here.')}</p><button type="button" className={styles.inlineAction} onClick={onContinue}>{w('Add money')}</button></div>:<div className={styles.transactionList}>{query.data.items.map(t=><article className={styles.depositRow} key={t.id}><div className={styles.depositSummary}><PaymentLogo channel={t.channel}/><div><strong>{w(paymentChannelName(t.channel))}{t.demo?' · DEMO':''}</strong><small>{formatAddisTimestamp(t.createdAt,locale)}</small></div><span className={styles.depositAmount}>{t.amountCents?`${money(t.amountCents)} ETB`:w('Awaiting amount')}</span></div><div className={styles.depositStatus}><span className={styles.statusBadge} data-state={t.status}>{w(t.reason==='ADMIN_CREDIT_REPLACEMENT'?'Resolved by admin':labels[t.status]??t.status)}</span><div>{options?.enabled&&['PENDING','VERIFYING','PROVIDER_OUTAGE','NEEDS_REVIEW'].includes(t.status)&&<button type="button" className={styles.inlineAction} disabled={!!busy} onClick={()=>{clearReceipt();setIntent(t);setSelected(t.channel);setInput(t.reference??'');const feedback=depositFeedback(t,w);inform(feedback.message,feedback.kind);createKey.current='';verifyKey.current='';onContinue?.()}}>{w(t.canRetry?'Check payment again':'Continue')}</button>}<TelegramLink>{w('Help')}</TelegramLink></div></div></article>)}</div>}
    <PersonalPagination page={page} totalPages={query.data?.totalPages??0} setPage={setPage}/>
   </section>
  </>;

@@ -8,6 +8,7 @@ import {useTelegram} from './telegram-provider';
 import {paymentSummaryLabel,paymentSummaryState} from '@/lib/payment-summary';
 import {chapaConfirmed,type ChapaCheckoutView} from '@/lib/chapa-client';
 import {formatEtb} from '@/lib/money';
+import {formatAddisTimestamp} from '@/lib/addis-time';
 import {useMiniPage} from './mini-query-state';
 import styles from './chapa-payment-history.module.css';
 import {TransactionsPage} from './transactions-page';
@@ -22,7 +23,7 @@ function OwnedHistory({purpose,unaccepted,fullPage}:{purpose?:'TOP_UP'|'BID';una
  const [routePage,setRoutePage]=useMiniPage(),[localPage,setLocalPage]=useState(1),page=fullPage?routePage:localPage,setPage=fullPage?setRoutePage:setLocalPage;
  const [selected,setSelected]=useState<ChapaCheckoutView|null>(null),trigger=useRef<HTMLElement|null>(null);
  const url=`/api/payments/chapa/checkouts?${purpose?'purpose='+purpose+'&':''}page=${page}${unaccepted?'&view=unaccepted':''}`;
- const query=usePrivateQuery<Page>(url,{keepPreviousData:true}),date=new Intl.DateTimeFormat(am?'am-ET':'en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'Africa/Addis_Ababa'});
+ const query=usePrivateQuery<Page>(url,{keepPreviousData:true});
  return <section id={fullPage?'transactions':'wallet-payments'} className={`${styles.history} ${fullPage?styles.fullPage:''}`} aria-labelledby={unaccepted?'bid-payments-title':'transactions-title'} data-payment-history>
   <div className={styles.heading}><h2 className={fullPage?'sr-only':undefined} id={unaccepted?'bid-payments-title':'transactions-title'}>{text(unaccepted?'Bid payment attempts':'Transactions',unaccepted?'የጨረታ ክፍያ ሙከራዎች':'ግብይቶች')}</h2><button type="button" onClick={query.reload} disabled={query.fetching} aria-label={text('Refresh transactions','ግብይቶችን ያድሱ')}><RefreshCw size={16} aria-hidden="true"/></button></div>
   <PrivateState query={query}/>
@@ -35,7 +36,7 @@ function OwnedHistory({purpose,unaccepted,fullPage}:{purpose?:'TOP_UP'|'BID';una
     const summary=paymentSummaryState({completed:confirmed,providerStatus:order.providerStatus,verificationState:order.verificationState,completionSignalPending:order.completionSignalPending}),tone=summary==='done'?'confirmed':summary==='failed'?'failed':'pending';
     return <li key={order.id}><button type="button" className={styles.row} data-payment-id={order.id} data-direction={direction} disabled={query.isPlaceholderData} onClick={event=>{trigger.current=event.currentTarget;setSelected(order)}}>
      <span className={styles.movement} aria-hidden="true"><Icon size={20} strokeWidth={1.8}/></span>
-     <span className={styles.details}><strong>{text(order.fundsPreserved?'Payment saved to wallet':order.purpose==='TOP_UP'?'Wallet top-up':'Bid submission fee',order.fundsPreserved?'ክፍያው በዋሌትዎ ገብቷል':order.purpose==='TOP_UP'?'የዋሌት ገቢ':'የጨረታ ማቅረቢያ ክፍያ')}</strong>{order.purpose==='BID'&&<span className={styles.product}>{am?order.auctionTitleAm||order.auctionTitle||order.auctionSlug:order.auctionTitle||order.auctionSlug}{order.batchNumbers?.length?<> · {order.batchNumbers.length} {text('bids','ጨረታዎች')} · {order.batchNumbers.join(' / ')}</>:order.bidNumber&&<> · #{order.bidNumber}</>}</span>}<time dateTime={order.createdAt}>{date.format(new Date(order.createdAt))}</time>{order.mode==='test'&&<span className={styles.test}>{text('Test payment','የሙከራ ክፍያ')}</span>}</span>
+     <span className={styles.details}><strong>{text(order.fundsPreserved?'Payment saved to wallet':order.purpose==='TOP_UP'?'Wallet top-up':'Bid submission fee',order.fundsPreserved?'ክፍያው በዋሌትዎ ገብቷል':order.purpose==='TOP_UP'?'የዋሌት ገቢ':'የጨረታ ማቅረቢያ ክፍያ')}</strong>{order.purpose==='BID'&&<span className={styles.product}>{am?order.auctionTitleAm||order.auctionTitle||order.auctionSlug:order.auctionTitle||order.auctionSlug}{order.batchNumbers?.length?<> · {order.batchNumbers.length} {text('bids','ጨረታዎች')} · {order.batchNumbers.join(' / ')}</>:order.bidNumber&&<> · #{order.bidNumber}</>}</span>}<time dateTime={order.createdAt}>{formatAddisTimestamp(order.createdAt,am?'am-ET':'en-GB','compact')}</time>{order.mode==='test'&&<span className={styles.test}>{text('Test payment','የሙከራ ክፍያ')}</span>}</span>
      <span className={styles.actions}><strong className={styles.amount}><span className="sr-only">{direction==='incoming'?text('Money in: ','የገባ ገንዘብ፦ '):direction==='outgoing'?text('Money out: ','የወጣ ገንዘብ፦ '):text('Payment amount: ','የክፍያ መጠን፦ ')}</span><span aria-hidden="true">{direction==='incoming'?'+':direction==='outgoing'?'−':''}</span>{formatEtb(order.amount)}</strong><span className={styles.status} data-tone={tone} data-payment-summary={summary}>{paymentSummaryLabel(summary,am)}</span></span>
     </button></li>;
    })}</ul>

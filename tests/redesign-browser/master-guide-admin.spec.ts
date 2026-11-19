@@ -175,3 +175,61 @@ test('verified members cannot sign in as admin and signup/reset forms stay simpl
   expect(authRequests).toEqual(['/api/auth/sign-in/email']);
  }finally{await db.$disconnect()}
 });
+
+test.describe('Addis Ababa auction deadline in a US browser',()=>{
+ test.use({locale:'en-US',timezoneId:'America/Los_Angeles'});
+
+ test('uses 24-hour deadline input and confirms restricted shortening',async({page},info)=>{
+  const db=fixtureDatabase();
+  const admin=await credential(db,'admin',`deadline-${info.project.name}`);
+  const id=randomUUID(),code='LW-DEADLINE-FIXTURE';
+  const day=new Date(Date.now()+2*86_400_000).toISOString().slice(0,10);
+  const endsAt=`${day}T12:22:00.000Z`,shorterEnd=`${day}T10:22:00.000Z`;
+  const startedAt=new Date(Date.now()-86_400_000).toISOString();
+  const terms={ruleVersion:'lowest-unique-v5',minPoints:'1.00',stepPoints:'0.01',entryFeePoints:'50.00',maxExtensionMinutes:10080,allowPaidShortening:false,shortenNoticeMinutes:1440};
+  const auction={id,code,status:'LIVE',publishedAt:startedAt,startsAt:startedAt,endsAt,product:{title:'Deadline fixture power bank'},acceptedBidCount:3,acceptedBids:3,controlVersion:1,terms};
+  const attempts:{action:string;input:Record<string,unknown>}[]=[];
+  const reason='Approved earlier close for the auction fixture.';
+  await blockExternalServices(page);
+  await page.route(`**/api/admin/auctions/${id}*`,route=>route.fulfill({json:auction}));
+  await page.route('**/api/admin/command',route=>{
+   const command=route.request().postDataJSON();
+   attempts.push(command);
+   if(command.input.overrideConfirmation!==code)return route.fulfill({status:422,json:{error:'Confirm the owner override with the auction code.'}});
+   auction.endsAt=shorterEnd;
+   auction.controlVersion++;
+   return route.fulfill({json:{auctionId:id,endsAt:auction.endsAt,controlVersion:auction.controlVersion,paidShorteningOverride:true}});
+  });
+  try{
+   await signIn(page,admin.email);
+   await expect(page).toHaveURL(/\/admin$/);
+   await page.goto(`/admin/auctions/${id}`);
+   await page.getByRole('button',{name:'Manage',exact:true}).click();
+
+   const fields=page.getByRole('group',{name:'New end time · Addis Ababa (GMT+3)',exact:true});
+   const time=fields.getByRole('textbox',{name:'Time (24-hour)',exact:true});
+   const preview=page.getByRole('region',{name:'Countdown preview',exact:true});
+   await expect(fields.getByLabel('Date',{exact:true})).toHaveValue(day);
+   await expect(time).toHaveValue('15:22');
+   await time.fill('13:22');
+   await expect(preview).toContainText('13:22 GMT+3');
+   await expect(preview).toContainText('Shortens by 2h');
+
+   await page.getByRole('textbox',{name:'Reason',exact:true}).fill(reason);
+   const save=page.getByRole('button',{name:'Change deadline',exact:true});
+   await save.click();
+   await expect(page.getByRole('alert')).toContainText('Confirm the owner override');
+   expect(attempts).toHaveLength(1);
+   expect(attempts[0]).toMatchObject({action:'deadline',input:{auctionId:id,endsAt:shorterEnd,version:1,reason}});
+   expect(attempts[0].input).not.toHaveProperty('overrideConfirmation');
+
+   await page.getByText('Override shortening restriction',{exact:true}).click();
+   await page.getByLabel(`Type ${code} to authorize this override`,{exact:true}).fill(code);
+   await save.click();
+   await expect(page.getByRole('status')).toContainText('Shorter deadline saved and recorded as an owner override.');
+   await expect(time).toHaveValue('13:22');
+   expect(attempts).toHaveLength(2);
+   expect(attempts[1]).toMatchObject({action:'deadline',input:{auctionId:id,endsAt:shorterEnd,version:1,reason,overrideConfirmation:code}});
+  }finally{await db.$disconnect()}
+ });
+});

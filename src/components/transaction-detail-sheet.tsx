@@ -17,6 +17,7 @@ import {bidPaymentCanRetry,maskedBidPaymentPhone} from '@/lib/bid-payment-progre
 import {chapaPaymentReasonMessage} from '@/lib/chapa-payment-reason';
 import {paymentSummaryLabel,paymentSummaryState} from '@/lib/payment-summary';
 import {formatEtb} from '@/lib/money';
+import {formatAddisTimestamp} from '@/lib/addis-time';
 import type {TransactionRow,WalletTransactionDetail} from '@/lib/transactions';
 import styles from './transactions-page.module.css';
 const DirectCheckout=dynamic(()=>import('./direct-checkout'),{ssr:false});
@@ -76,4 +77,4 @@ function WalletDetails({row,trigger,onClose}:Props){
  </div></AccountSheet>;
 }
 function Info({label,value}:{label:string;value:React.ReactNode}){return <div><dt>{label}</dt><dd>{value}</dd></div>}
-function formatDate(value:string,am:boolean){return new Intl.DateTimeFormat(am?'am-ET':'en-GB',{timeZone:'Africa/Addis_Ababa',day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(value))}
+function formatDate(value:string,am:boolean){return formatAddisTimestamp(value,am?'am-ET':'en-GB')}

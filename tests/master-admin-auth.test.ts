@@ -18,6 +18,10 @@ describe.skipIf(!database)('Master Guide Admin on disposable PostgreSQL',()=>{
  const post=(path:string,body:unknown,session='')=>auth(request(path,body,session));
  const latestLink=()=>messages.at(-1)!.text.match(/https?:[^\s]+/)![0];
  const credentials=()=>({email,password});
+ async function fundedBidUser(){
+  process.env.DEV_POINTS_ENABLED='true';
+  try{return await bidUser(db)}finally{process.env.DEV_POINTS_ENABLED='false'}
+ }
  beforeAll(async()=>{
   const url=new URL(database!);if(!['127.0.0.1','localhost'].includes(url.hostname)||!url.pathname.endsWith('_test'))throw Error('Disposable loopback database required');
   sink=createServer(async(req,res)=>{let body='';for await(const chunk of req)body+=chunk;messages.push(JSON.parse(body));res.writeHead(204);res.end()});await new Promise<void>(resolve=>sink.listen(0,'127.0.0.1',resolve));
@@ -67,13 +71,13 @@ describe.skipIf(!database)('Master Guide Admin on disposable PostgreSQL',()=>{
    expect(queries[1]).toContain('"StaffSession"');
   }finally {await traced.$disconnect()}
  });
- it('moves the deadline in both directions, retires old reminders and protects the paid-bid terms',async()=>{
+ it('moves a deadline in both directions and requires an audited override after accepted bids',async()=>{
   const {POST,GET}=await import('../src/app/api/admin/[...path]/route');
-  const auction=await bidAuction(db,{ruleVersion:'lowest-unique-v5',endDelayMs:3600000});
+  const auction=await bidAuction(db,{ruleVersion:'lowest-unique-v5',fee:1,endDelayMs:3600000});
   const reminder=await db.outbox.create({data:{key:`test-ending:${auction.id}`,kind:'AUCTION_ENDING_1_HOUR',payload:{auctionId:auction.id}}});
   const next=new Date((Math.floor(auction.endsAt!.getTime()/60000)+30)*60000);
   const input={key:randomUUID(),auctionId:auction.id,version:auction.controlVersion,endsAt:parseAddisDateTimeLocal(formatAddisDateTimeLocal(next)).toISOString(),reason:'Extend fixture auction'};
-  const submit=(fields=input)=>POST(new Request(origin+'/api/admin/command',{method:'POST',headers:{cookie,origin,'content-type':'application/json'},body:JSON.stringify({action:'deadline',input:fields})}),{params:Promise.resolve({path:['command']})});
+  const submit=(fields:typeof input&{overrideConfirmation?:string}=input,session=cookie)=>POST(new Request(origin+'/api/admin/command',{method:'POST',headers:{cookie:session,origin,'content-type':'application/json'},body:JSON.stringify({action:'deadline',input:fields})}),{params:Promise.resolve({path:['command']})});
   const response=await submit();
   expect(response.status,await response.clone().text()).toBe(200);
   expect(response.headers.get('Server-Timing')).toContain('admin_transaction;dur=');
@@ -93,11 +97,60 @@ describe.skipIf(!database)('Master Guide Admin on disposable PostgreSQL',()=>{
   expect(await shortened.json()).toMatchObject({endsAt:shorter.toISOString(),controlVersion:receipt.controlVersion+1});
 
   const {submitBid}=await import('../src/modules/auctions/bids');
-  await submitBid(db,{userId:await bidUser(db,'0'),auctionSlug:auction.slug!,amount:'1.02',key:randomUUID(),feeVersion:1});
-  const denied=await submit({...input,key:randomUUID(),version:receipt.controlVersion+1,endsAt:new Date(shorter.getTime()-60000).toISOString()});
+  const bidder=await fundedBidUser();
+  await submitBid(db,{userId:bidder,auctionSlug:auction.slug!,amount:'1.02',key:randomUUID(),feeVersion:1});
+  const endsAt=new Date(shorter.getTime()-60000).toISOString();
+  const requested={...input,key:randomUUID(),version:receipt.controlVersion+1,endsAt,reason:'Owner confirmed one deadline change'};
+  const denied=await submit(requested);
   expect(denied.status).toBe(422);
-  expect(await denied.json()).toMatchObject({error:'The published policy does not permit shortening after bids.'});
+  expect(await denied.json()).toMatchObject({code:'DEADLINE_OVERRIDE_REQUIRED'});
+  const incorrect=await submit({...requested,overrideConfirmation:'wrong-code'});
+  expect(incorrect.status).toBe(422);
+  expect(await incorrect.json()).toMatchObject({code:'DEADLINE_OVERRIDE_CONFIRMATION'});
   expect(await db.auctionControlRevision.count({where:{auctionId:auction.id,kind:'DEADLINE'}})).toBe(2);
+
+  const confirmed={...requested,overrideConfirmation:auction.code};
+  expect((await submit(confirmed,'')).status).toBe(401);
+  const tooSoon=await submit({...confirmed,endsAt:new Date(Date.now()+3*60000).toISOString()});
+  expect(tooSoon.status).toBe(422);
+  expect(await tooSoon.json()).toMatchObject({error:'The new deadline must be at least five minutes in the future.'});
+  // A matching timestamp alone still cannot authorize a paid shortening.
+  for(const [actorId,after] of [
+   [userId,{endsAt}],
+   [userId,{endsAt,paidShorteningOverride:true,overrideConfirmation:'wrong-code'}],
+   [bidder,{endsAt,paidShorteningOverride:true,overrideConfirmation:auction.code}],
+  ] as const){
+   await expect(db.$transaction(async tx=>{
+    await tx.auctionControlRevision.create({data:{auctionId:auction.id,version:requested.version+1,kind:'DEADLINE',before:{endsAt:shorter.toISOString()},after,actorId,reason:requested.reason,operationKey:randomUUID()}});
+    await tx.auction.update({where:{id:auction.id},data:{endsAt,controlVersion:requested.version+1}});
+   })).rejects.toThrow('Published auction deadline requires a matching control revision');
+  }
+
+  const saved=await submit(confirmed);
+  expect(saved.status,await saved.clone().text()).toBe(200);
+  const overrideReceipt=await saved.json();
+  expect(overrideReceipt).toMatchObject({endsAt,controlVersion:requested.version+1,paidShorteningOverride:true});
+  expect(await (await submit(confirmed)).json()).toEqual(overrideReceipt);
+  expect((await submit({...confirmed,endsAt:new Date(shorter.getTime()-120000).toISOString()})).status).toBe(409);
+  const committed=await db.auction.findUniqueOrThrow({where:{id:auction.id},include:{terms:true,controlRevisions:{orderBy:{version:'desc'},take:1}}});
+  expect(committed).toMatchObject({endsAt:new Date(endsAt),terms:{allowPaidShortening:false,shortenNoticeMinutes:1440,publishedEndsAt:auction.endsAt},controlRevisions:[{kind:'DEADLINE',before:{endsAt:shorter.toISOString()},after:{endsAt,paidShorteningOverride:true,overrideConfirmation:auction.code},actorId:userId,reason:requested.reason}]});
+  const audit=await db.adminAudit.findUniqueOrThrow({where:{operationKey:`${userId}:${requested.key}`}});
+  expect(audit.details).toMatchObject({receipt:overrideReceipt});
+ });
+ it('preserves the required notice on an auction published with shortening allowed',async()=>{
+  const {POST}=await import('../src/app/api/admin/[...path]/route');
+  const {submitBid}=await import('../src/modules/auctions/bids');
+  const auction=await bidAuction(db,{ruleVersion:'lowest-unique-v5',fee:1,endDelayMs:2*3600000,allowPaidShortening:true,shortenNoticeMinutes:30});
+  await submitBid(db,{userId:await fundedBidUser(),auctionSlug:auction.slug!,amount:'1.02',key:randomUUID(),feeVersion:1});
+  const input={key:randomUUID(),auctionId:auction.id,version:auction.controlVersion,endsAt:new Date(Date.now()+15*60000).toISOString(),reason:'Retain published bidder notice'};
+  const submit=(fields:typeof input&{overrideConfirmation?:string})=>POST(new Request(origin+'/api/admin/command',{method:'POST',headers:{cookie,origin,'content-type':'application/json'},body:JSON.stringify({action:'deadline',input:fields})}),{params:Promise.resolve({path:['command']})});
+  const early=await submit(input);
+  expect(early.status).toBe(422);
+  expect(await early.json()).toMatchObject({error:'Bidders must retain at least 30 minutes of notice.'});
+  expect((await submit({...input,overrideConfirmation:auction.code})).status).toBe(422);
+  const withinPolicy=await submit({...input,endsAt:new Date(Date.now()+3600000).toISOString()});
+  expect(withinPolicy.status,await withinPolicy.clone().text()).toBe(200);
+  expect(await withinPolicy.json()).not.toHaveProperty('paidShorteningOverride');
  });
  it('fails a contested deadline promptly and saves the same operation after its lock clears',async()=>{
   const {POST}=await import('../src/app/api/admin/[...path]/route');
