@@ -74,9 +74,9 @@ export function AdminWorkspace({path}:{path:string[]}){
         });
       }}>
         <h3>Deadline</h3>
-        <AdminAuctionDeadlineField key={item.endsAt} endsAt={item.endsAt} showPreview={manageTab==='deadline'}/>
+        <AdminAuctionDeadlineField key={`deadline-editor:${item.endsAt}`} endsAt={item.endsAt} showPreview={manageTab==='deadline'}/>
         <p className="admin-group-note">Maximum extension: {item.terms?.maxExtensionMinutes} minutes after the published deadline. Shortening after bids: {item.terms?.allowPaidShortening?`allowed with ${item.terms.shortenNoticeMinutes} minutes notice`:'restricted by the published rules'}.</p>
-        {item.terms?.allowPaidShortening===false&&Number(item.acceptedBidCount??item.acceptedBids)>0&&<details key={item.endsAt} className="admin-evidence">
+        {item.terms?.allowPaidShortening===false&&Number(item.acceptedBidCount??item.acceptedBids)>0&&<details key={`deadline-override:${item.endsAt}`} className="admin-evidence">
           <summary>Override shortening restriction</summary>
           <p>This owner action closes the auction earlier than its published rules permit. Choose an earlier end time at least five minutes from now and give a reason for the audit record.</p>
           <label>Type {item.code} to authorize this override<input name="overrideConfirmation" autoComplete="off" maxLength={100}/></label>
