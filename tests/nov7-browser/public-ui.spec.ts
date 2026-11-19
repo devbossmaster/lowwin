@@ -107,7 +107,7 @@ test('Mini App contact registration unlocks the optional guide and native shortc
 });
 test('countdown pauses while hidden and resumes without replaying missed flips',async({page})=>{
  test.skip(!isAfter,'This timer comparison runs in the historical after stage');
- await page.clock.install();await identity(page,true);await page.goto('/?q='+encodeURIComponent(marker));const card=fixtureCard(page);await card.scrollIntoViewIfNeeded();const timer=card.getByRole('timer');await expect(timer.locator('[data-countdown-unit]')).toHaveCount(4);
+ await identity(page,true);await page.goto('/telegram?next='+encodeURIComponent('/?q='+encodeURIComponent(marker)));const card=fixtureCard(page);await expect(card).toBeVisible();await page.clock.install();await card.scrollIntoViewIfNeeded();const timer=card.getByRole('timer');await expect(timer.locator('[data-countdown-unit]')).toHaveCount(4);
  const before=await timer.getAttribute('aria-label');await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,get:()=>true});document.dispatchEvent(new Event('visibilitychange'))});await page.clock.fastForward(65000);expect(await timer.getAttribute('aria-label')).toBe(before);
  await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,get:()=>false});document.dispatchEvent(new Event('visibilitychange'))});await expect.poll(()=>timer.getAttribute('aria-label')).not.toBe(before);await expect(timer.locator('[data-countdown-flip]')).toHaveCount(0);
  await page.evaluate(()=>{const spacer=document.createElement('div');spacer.dataset.countdownSpacer='true';spacer.style.height='2000px';document.querySelector('main')!.prepend(spacer);window.scrollTo(0,0)});await expect(timer).not.toBeInViewport();await page.clock.runFor(50);const offscreen=await timer.getAttribute('aria-label');await page.clock.fastForward(5000);expect(await timer.getAttribute('aria-label')).toBe(offscreen);
@@ -118,10 +118,10 @@ test('countdown pauses while hidden and resumes without replaying missed flips',
 test('split-flap countdown rolls over only changed units and clears both animated halves',async({page},info)=>{
  test.skip(!isAfter,'This timer comparison runs in the historical after stage');
  const db=new PrismaClient();
- let title:string,auctionSlug:string;
+ let title:string,auctionCode:string;
  try{
   const auction=await bidAuction(db,{fee:10,ruleVersion:'lowest-unique-v4',isDemo:false,endDelayMs:125000});
-  title=`NOV7 countdown ${auction.code}`;auctionSlug=auction.slug!;
+  title=`NOV7 countdown ${auction.code}`;auctionCode=String(auction.publicCode);
   await db.product.update({where:{id:auction.productId!},data:{title,images:{create:{path:'/images/lowwin-demo-headphones.webp',alt:'Isolated countdown test headphones',sourceType:'ORIGINAL'}}}});
  }finally{await db.$disconnect()}
  await page.clock.install();await identity(page,true);
@@ -166,7 +166,7 @@ test('split-flap countdown rolls over only changed units and clears both animate
  await page.waitForTimeout(350);await expect(timer.locator('[data-countdown-flip]')).toHaveCount(0,{timeout:100});await arm();await page.clock.runFor(1000);await expect.poll(values).toEqual(['00','00','00','08']);const nineToEight=(await frames()).find(frame=>frame.animated.length===2);expect(nineToEight?.animated).toEqual([{unit:3,phase:'outgoing',value:'09'},{unit:3,phase:'incoming',value:'08'}]);
  await page.emulateMedia({reducedMotion:'reduce'});await expect(timer.locator('[data-countdown-flip]')).toHaveCount(0);await page.clock.runFor(1000);await expect.poll(values).toEqual(['00','00','00','07']);await expect(timer.locator('[data-countdown-flip]')).toHaveCount(0);
  expect(await timer.evaluate(node=>node.scrollWidth<=node.clientWidth)).toBe(true);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);mkdirSync(destination,{recursive:true});await card.screenshot({path:`${destination}/split-flap-${info.project.name}.png`,animations:'disabled'});
- await timer.evaluate(node=>(node as HTMLElement&{__countdownObserver?:MutationObserver}).__countdownObserver?.disconnect());await page.goto('/auctions/'+auctionSlug);const detailTimer=page.getByRole('region',{name:'Auction activity',exact:true}).getByRole('timer');await expect(detailTimer).toBeVisible();await expect(detailTimer.locator('[data-countdown-tile]')).toHaveCount(4);await detailTimer.screenshot({path:`${destination}/split-flap-large-${info.project.name}.png`,animations:'disabled'});mkdirSync('.local/countdown-reference',{recursive:true});await page.screenshot({path:'.local/countdown-reference/detail-first.png',fullPage:true,animations:'disabled'});
+ await timer.evaluate(node=>(node as HTMLElement&{__countdownObserver?:MutationObserver}).__countdownObserver?.disconnect());await page.clock.resume();await page.goto('/auctions/'+auctionCode);const detailTimer=page.getByRole('region',{name:'Auction activity',exact:true}).getByRole('timer');await expect(detailTimer).toBeVisible();await expect(detailTimer.locator('[data-countdown-tile]')).toHaveCount(4);await detailTimer.screenshot({path:`${destination}/split-flap-large-${info.project.name}.png`,animations:'disabled'});mkdirSync('.local/countdown-reference',{recursive:true});await page.screenshot({path:'.local/countdown-reference/detail-first.png',fullPage:true,animations:'disabled'});
 });
 test('owned notification surfaces share the unread summary without adding a bottom destination',async({page})=>{
  test.skip(!isAfter,'This account-surface comparison runs in the historical after stage');

@@ -53,13 +53,13 @@ describe('safe Telegram authentication diagnostics',()=>{
   it('forwards only server-verified photo metadata and the fresh contact snapshot on a resumed Telegram session',async()=>{
     const photo='https://t.me/i/userpic/320/verified.jpg',user={id:'private-player',name:'Private player',image:null};
     const contactStatus={verified:true,masked:'•••• 1234'};
-    mocks.launchSession.mockResolvedValue({telegramId:'778899',user,session:{id:'private-session'},contactStatus});
+    mocks.launchSession.mockResolvedValue({telegramId:'778899',user,session:{id:'private-session',telegramAuthSource:'MINI_APP'},contactStatus});
     expect((await launch(signedLaunch({user:JSON.stringify({id:778899,first_name:'Private player',photo_url:photo})}),'private-cookie')).status).toBe(200);
     expect(mocks.bootstrap).toHaveBeenCalledWith(expect.anything(),user,'778899','private-session',photo,contactStatus);
     expect(mocks.transaction).not.toHaveBeenCalled();
   });
   it('does not reuse a contact snapshot from a different signed Telegram identity',async()=>{
-    mocks.launchSession.mockResolvedValue({telegramId:'991122',user:{id:'other-player',name:'Other player'},session:{id:'other-session'},contactStatus:{verified:true,masked:'•••• 1234'}});
+    mocks.launchSession.mockResolvedValue({telegramId:'991122',user:{id:'other-player',name:'Other player'},session:{id:'other-session',telegramAuthSource:'MINI_APP'},contactStatus:{verified:true,masked:'•••• 1234'}});
     expect((await launch(signedLaunch({user:JSON.stringify({id:778899,first_name:'Private player'})}),'private-cookie')).status).toBe(200);
     expect(mocks.transaction).toHaveBeenCalledOnce();
     expect(mocks.contactStatus).toHaveBeenCalledWith(mocks.tx,'private-player','778899');

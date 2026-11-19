@@ -3,7 +3,9 @@ import {requestTelegramBrowserLogin,telegramBrowserLoginDestination,telegramBrow
 
 describe('browser Telegram login presentation and handoff',()=>{
  it('keeps SDK presence separate from a Mini App launch',()=>{
-  expect(telegramEnvironment(undefined)).toBe('browser');expect(telegramEnvironment({})).toBe('browser');expect(telegramEnvironment({initData:''})).toBe('browser');expect(telegramEnvironment({initData:'signed-launch-data'})).toBe('mini');
+ expect(telegramEnvironment(undefined)).toBe('browser');expect(telegramEnvironment({})).toBe('browser');expect(telegramEnvironment({initData:''})).toBe('browser');expect(telegramEnvironment({initData:'signed-launch-data'})).toBe('mini');
+ expect(telegramEnvironment({initData:'',platform:'unknown'})).toBe('browser');
+ expect(telegramEnvironment({initData:'',platform:'android'})).toBe('mini');
  });
  it('recognizes delayed SDK URL hints for presentation without converting them into identity proof',()=>{
   expect(telegramMiniLaunchHint({search:'',hash:'#tgWebAppData=user%3Dfixture%26hash%3Duntrusted'})).toBe(true);

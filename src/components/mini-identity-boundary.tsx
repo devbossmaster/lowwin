@@ -15,6 +15,7 @@ import {ContactGate} from './contact-gate';
 import {LaunchSplash} from './launch-splash';
 import styles from './browser-telegram-login.module.css';
 const BrowserLogin=lazy(()=>import('./browser-telegram-login'));
+const TelegramEntryRecovery=lazy(()=>import('./telegram-entry-recovery'));
 export function RegistrationHost({browserLogin}:{browserLogin:TelegramBrowserLoginConfiguration}){
  const {registrationOpen,environment,openRegistration,status,me,queryIdentity}=useTelegram(),checkedCallback=useRef(false),path=usePathname(),params=useSearchParams(),router=useRouter();
  const requested=path==='/'?customerLoginRequest(new URLSearchParams(params.toString())):null;
@@ -41,7 +42,11 @@ export function RegistrationHost({browserLogin}:{browserLogin:TelegramBrowserLog
 function CustomerApplication({children,browserLogin}:{children:React.ReactNode;browserLogin:TelegramBrowserLoginConfiguration}){
  const {environment,status}=useTelegram(),path=usePathname();
  if(environment==='detecting'&&path==='/telegram')return <LaunchSplash/>;
- if(environment==='mini'&&status!=='authenticated')return <ContactGate/>;
+ if(environment==='mini'){
+  if(status==='loading')return <LaunchSplash/>;
+  if(status==='contact-required')return <ContactGate/>;
+  if(status!=='authenticated')return <Suspense fallback={<LaunchSplash/>}><TelegramEntryRecovery/></Suspense>;
+ }
  return <><AuctionLaunchRouter/><ChapaLaunchRouter>{children}</ChapaLaunchRouter><Suspense fallback={null}><RegistrationHost browserLogin={browserLogin}/></Suspense></>;
 }
 
