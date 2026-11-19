@@ -27,17 +27,19 @@ function requireCurrentSession(session:AdminSession){
 }
 async function transport<T>(path:string,body:unknown,signal:AbortSignal|undefined,session:AdminSession):Promise<T>{
  const response=await fetch('/api/admin/'+path,{cache:'no-store',signal,...(body!==undefined?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{})});
- const result=await response.json();
+ const result=await response.json().catch(()=>null);
  requireCurrentSession(session);
  signal?.throwIfAborted();
  if(!response.ok){
-  if(response.status===401||response.status===403||result.code==='ADMIN_LOGIN_REQUIRED'){
+  if(response.status===401||result?.code==='ADMIN_LOGIN_REQUIRED'){
    clearAdminCache();
-   if(typeof window!=='undefined')window.location.replace(response.status===403?'/admin':'/admin/login');
+   if(typeof window!=='undefined')window.location.replace('/admin');
   }
-  const reference=typeof result.traceId==='string'&&/^[0-9a-f-]{36}$/i.test(result.traceId)?` Reference: ${result.traceId}`:'';
-  throw Error((result.error??'This request could not be completed.')+reference);
+  const reference=typeof result?.traceId==='string'&&/^[0-9a-f-]{36}$/i.test(result.traceId)?` Reference: ${result.traceId}`:'';
+  const message=typeof result?.error==='string'?result.error:response.status===403?'Your staff account does not have access to this action.':'This request could not be completed. Try again.';
+  throw Error(message+reference);
  }
+ if(result===null)throw Error('The server response could not be read. Try again.');
  return result;
 }
 export function refreshAdminPath(path:string){void active?.client.invalidateQueries({predicate:q=>String(q.queryKey[2]??'').split('?')[0]===path,refetchType:'none'})}

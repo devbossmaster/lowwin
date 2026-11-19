@@ -32,11 +32,11 @@ describe('Home and registered customer website boundary',()=>{
   expect(response.status).toBe(307);expect(destination.pathname).toBe('/');
   expect(customerLoginRequest(destination.searchParams)).toEqual({destination:path});
  });
- it('redirects an unverified staff page visit to Home and leaves role checks to the staff layout',async()=>{
+ it('redirects an unverified staff subpage visit to the staff entry and leaves role checks to the staff layout',async()=>{
   const url='https://lowwin.test/admin/users';
   const request=new NextRequest(url,{headers:{cookie:'forged-session=1'}});
   const guest=await proxy(request);
-  expect(guest.status).toBe(307);expect(guest.headers.get('location')).toBe('https://lowwin.test/');
+  expect(guest.status).toBe(307);expect(guest.headers.get('location')).toBe('https://lowwin.test/admin');
   access.signedSessionToken.mockResolvedValue('signed-session-token');
   const candidate=await proxy(request);
   expect(candidate.headers.get('x-middleware-next')).toBe('1');expect(candidate.headers.get('cache-control')).toContain('no-store');
@@ -47,7 +47,7 @@ describe('Home and registered customer website boundary',()=>{
  });
  it('leaves Home, login/onboarding, staff authentication and signed delivery infrastructure independent',async()=>{
   access.getMiniSession.mockRejectedValue(Error('Customer lookup must not run'));
-  for(const path of ['/','/telegram','/admin/login','/api/admin/auctions','/api/auth/telegram/config','/api/auth/sign-in/social','/api/auth/callback/telegram-oidc','/api/onboarding/contact','/api/bot/webhook','/api/payments/chapa/webhook','/api/payments/chapa/callback','/api/health/live','/api/catalog/auctions','/api/catalog/categories','/api/catalog/activity','/api/results/winners'])expect((await proxy(new NextRequest('https://lowwin.test'+path))).headers.get('x-middleware-next')).toBe('1');
+  for(const path of ['/','/telegram','/admin','/admin/login','/api/admin/auctions','/api/auth/telegram/config','/api/auth/sign-in/social','/api/auth/callback/telegram-oidc','/api/onboarding/contact','/api/bot/webhook','/api/payments/chapa/webhook','/api/payments/chapa/callback','/api/health/live','/api/catalog/auctions','/api/catalog/categories','/api/catalog/activity','/api/results/winners'])expect((await proxy(new NextRequest('https://lowwin.test'+path))).headers.get('x-middleware-next')).toBe('1');
   expect(access.getMiniSession).not.toHaveBeenCalled();
  });
  it('keeps the registration destination strictly within customer routes',()=>{

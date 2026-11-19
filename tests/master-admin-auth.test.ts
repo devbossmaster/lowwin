@@ -5,7 +5,7 @@ import {execFileSync} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {makeSignature} from 'better-auth/crypto';
 import {TEST_TOKEN} from './helpers';
-import {bidAuction} from './bid-fixtures';
+import {bidAuction,bidUser} from './bid-fixtures';
 import {formatAddisDateTimeLocal,parseAddisDateTimeLocal} from '../src/lib/addis-time';
 const database=process.env.MASTER_ADMIN_TEST_DATABASE_URL;
 describe.skipIf(!database)('Master Guide Admin on disposable PostgreSQL',()=>{
@@ -67,16 +67,17 @@ describe.skipIf(!database)('Master Guide Admin on disposable PostgreSQL',()=>{
    expect(queries[1]).toContain('"StaffSession"');
   }finally {await traced.$disconnect()}
  });
- it('extends the deadline from the Addis Ababa form, retires old reminders and reloads the saved revision',async()=>{
+ it('moves the deadline in both directions, retires old reminders and protects the paid-bid terms',async()=>{
   const {POST,GET}=await import('../src/app/api/admin/[...path]/route');
   const auction=await bidAuction(db,{ruleVersion:'lowest-unique-v5',endDelayMs:3600000});
   const reminder=await db.outbox.create({data:{key:`test-ending:${auction.id}`,kind:'AUCTION_ENDING_1_HOUR',payload:{auctionId:auction.id}}});
   const next=new Date((Math.floor(auction.endsAt!.getTime()/60000)+30)*60000);
   const input={key:randomUUID(),auctionId:auction.id,version:auction.controlVersion,endsAt:parseAddisDateTimeLocal(formatAddisDateTimeLocal(next)).toISOString(),reason:'Extend fixture auction'};
-  const submit=()=>POST(new Request(origin+'/api/admin/command',{method:'POST',headers:{cookie,origin,'content-type':'application/json'},body:JSON.stringify({action:'deadline',input})}),{params:Promise.resolve({path:['command']})});
+  const submit=(fields=input)=>POST(new Request(origin+'/api/admin/command',{method:'POST',headers:{cookie,origin,'content-type':'application/json'},body:JSON.stringify({action:'deadline',input:fields})}),{params:Promise.resolve({path:['command']})});
   const response=await submit();
   expect(response.status,await response.clone().text()).toBe(200);
   expect(response.headers.get('Server-Timing')).toContain('admin_transaction;dur=');
+  expect(response.headers.get('Server-Timing')).toContain('admin_deadline_write;dur=');
   const receipt=await response.json();
   expect(receipt).toMatchObject({auctionId:auction.id,endsAt:next.toISOString(),controlVersion:auction.controlVersion+1,endingAlertsRetired:1});
   expect(await (await submit()).json()).toEqual(receipt);
@@ -85,6 +86,50 @@ describe.skipIf(!database)('Master Guide Admin on disposable PostgreSQL',()=>{
   expect(refreshed.status).toBe(200);
   expect(await refreshed.json()).toMatchObject({endsAt:next.toISOString(),controlVersion:auction.controlVersion+1,terms:{publishedEndsAt:auction.endsAt!.toISOString()},controlRevisions:[{kind:'DEADLINE',reason:input.reason}]});
   expect(await db.outbox.findUnique({where:{id:reminder.id}})).toMatchObject({state:'SKIPPED',lastError:'SUPERSEDED_BY_DEADLINE_CHANGE'});
+
+  const shorter=new Date(next.getTime()-45*60000);
+  const shortened=await submit({...input,key:randomUUID(),version:receipt.controlVersion,endsAt:parseAddisDateTimeLocal(formatAddisDateTimeLocal(shorter)).toISOString(),reason:'Shorten fixture auction'});
+  expect(shortened.status,await shortened.clone().text()).toBe(200);
+  expect(await shortened.json()).toMatchObject({endsAt:shorter.toISOString(),controlVersion:receipt.controlVersion+1});
+
+  const {submitBid}=await import('../src/modules/auctions/bids');
+  await submitBid(db,{userId:await bidUser(db,'0'),auctionSlug:auction.slug!,amount:'1.02',key:randomUUID(),feeVersion:1});
+  const denied=await submit({...input,key:randomUUID(),version:receipt.controlVersion+1,endsAt:new Date(shorter.getTime()-60000).toISOString()});
+  expect(denied.status).toBe(422);
+  expect(await denied.json()).toMatchObject({error:'The published policy does not permit shortening after bids.'});
+  expect(await db.auctionControlRevision.count({where:{auctionId:auction.id,kind:'DEADLINE'}})).toBe(2);
+ });
+ it('fails a contested deadline promptly and saves the same operation after its lock clears',async()=>{
+  const {POST}=await import('../src/app/api/admin/[...path]/route');
+  const auction=await bidAuction(db,{ruleVersion:'lowest-unique-v5',endDelayMs:3600000});
+  const endsAt=new Date(auction.endsAt!.getTime()+600000).toISOString();
+  const input={key:randomUUID(),auctionId:auction.id,version:auction.controlVersion,endsAt,reason:'Contested fixture deadline'};
+  const submit=()=>POST(new Request(origin+'/api/admin/command',{method:'POST',headers:{cookie,origin,'content-type':'application/json'},body:JSON.stringify({action:'deadline',input})}),{params:Promise.resolve({path:['command']})});
+
+  let release!:()=>void,locked!:()=>void;
+  const released=new Promise<void>(resolve=>{release=resolve});
+  const ready=new Promise<void>(resolve=>{locked=resolve});
+  const hold=db.$transaction(async tx=>{
+   await tx.$queryRaw`SELECT id FROM "Auction" WHERE id=${auction.id} FOR UPDATE`;
+   locked();
+   await released;
+  },{timeout:10000});
+  try {
+   await Promise.race([ready,hold]);
+   const started=performance.now();
+   const blocked=await submit();
+   expect(blocked.status,await blocked.clone().text()).toBe(409);
+   expect(await blocked.json()).toMatchObject({code:'DEADLINE_BUSY'});
+   expect(performance.now()-started).toBeLessThan(5000);
+  } finally {
+   release();
+   await hold;
+  }
+
+  const saved=await submit();
+  expect(saved.status,await saved.clone().text()).toBe(200);
+  expect(await saved.json()).toMatchObject({endsAt,controlVersion:auction.controlVersion+1});
+  expect(await db.auctionControlRevision.count({where:{auctionId:auction.id,kind:'DEADLINE'}})).toBe(1);
  });
  it('rejects unsigned and altered cookies without consulting the database',async()=>{
   const [name,encoded]=cookie.split(/=(.*)/s),value=decodeURIComponent(encoded);

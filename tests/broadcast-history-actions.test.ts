@@ -23,6 +23,13 @@ describe('direct original-content broadcast actions',()=>{
   const f=fixture();for(const key of ['broadcast:owner:one','broadcast:owner:one','broadcast:owner:two'])await resendBroadcast(f.tx as never,f.original.id,key);
   expect(f.tx.outbox.upsert.mock.calls.map(([call])=>(call as unknown as {where:{key:string}}).where.key)).toEqual(['broadcast:owner:one','broadcast:owner:one','broadcast:owner:two']);
  });
+ it('keeps the countdown metadata when a generated auction promotion is resent',async()=>{
+  const f=fixture(),promotionTitle='ተንቀሳቃሽ ቻርጀር';
+  Object.assign(f.original.payload,{href:'/auctions/42',auctionId:'auction',promotionTitle});
+  f.tx.auction.findUnique.mockResolvedValue({id:'auction',publicCode:42,slug:'fixture',status:'LIVE',startsAt:new Date(now.getTime()-1000),endsAt:new Date(now.getTime()+1000),publishedAt:now,isDemo:false,testRunId:null,settlement:null,result:null,product:{visible:true}});
+  await resendBroadcast(f.tx as never,f.original.id,'broadcast:owner:promotion-resend');
+  expect(f.tx.outbox.upsert.mock.calls[0][0].create.payload).toMatchObject({auctionId:'auction',promotionTitle});
+ });
  it('rechecks a linked auction using database time and permits started SCHEDULED, rejecting deadline or hidden changes',async()=>{
   const f=fixture(),auction={id:'auction',publicCode:42,slug:'fixture',status:'SCHEDULED',startsAt:new Date(now.getTime()-1000),endsAt:new Date(now.getTime()+1000),publishedAt:new Date(now.getTime()-2000),isDemo:false,testRunId:null,settlement:null,result:null,product:{visible:true}};
   f.tx.auction.findUnique.mockImplementation(async()=>auction as never);

@@ -39,12 +39,12 @@ export async function resendBroadcast(tx:Prisma.TransactionClient,id:string,camp
   if(media&&!await tx.managedMedia.findFirst({where:{id:media,purpose:'CATALOG'},select:{id:true}}))throw new AdminError(422,'The original broadcast image is no longer available.');
   if(!media){const local=resolve('public','.'+p.imagePath);if(!existsSync(local)||!statSync(local).isFile())throw new AdminError(422,'The original broadcast image is no longer available.')}
  }
- const content={...target,body:p.body,buttonLabel,telegramOnly:true,parentCampaignId:row.id,...(p.imageId?{imageId:p.imageId}:{}),...(p.imagePath?{imagePath:p.imagePath}:{})};
+ const content={...target,body:p.body,buttonLabel,telegramOnly:true,parentCampaignId:row.id,...(p.promotionTitle?{promotionTitle:p.promotionTitle}:{}),...(p.imageId?{imageId:p.imageId}:{}),...(p.imagePath?{imagePath:p.imagePath}:{})};
  // Two separate HTTP/audit keys may still confirm the same resend identity.
  // Serialize it before Prisma's read-then-insert upsert, which can race.
  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`broadcast:${campaignKey}`},0))`;
  const job=await queueGlobal(tx,campaignKey,'BROADCAST',content),saved=job.payload as CampaignPayload;
- if(Object.entries(content).some(([field,value])=>saved[field as keyof CampaignPayload]!==value)||saved.imageId!==content.imageId||saved.imagePath!==content.imagePath||saved.auctionId!==content.auctionId)throw new AdminError(409,'This resend confirmation belongs to different broadcast content.');
+ if(Object.entries(content).some(([field,value])=>saved[field as keyof CampaignPayload]!==value)||saved.imageId!==content.imageId||saved.imagePath!==content.imagePath||saved.auctionId!==content.auctionId||saved.promotionTitle!==content.promotionTitle)throw new AdminError(409,'This resend confirmation belongs to different broadcast content.');
  return {id:job.id,parentCampaignId:row.id,state:'PENDING'};
 }
 export async function deleteBroadcastMessages(tx:Prisma.TransactionClient,id:string){

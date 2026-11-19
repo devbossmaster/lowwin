@@ -26,11 +26,11 @@ function fixture(item=auction()){
 }
 
 describe('concise auction Telegram messages',()=>{
- it('delivers the actual displayed product image, concise title, EAT start time and one Mini App button',async()=>{
+ it('delivers the actual displayed product image, current countdown, Addis start time and one Mini App button',async()=>{
   const f=fixture();await dispatchOne(f.client,f.bot);
   expect(f.row.state).toBe('SENT');expect(f.sendMessage).not.toHaveBeenCalled();expect(f.tx.managedMedia.findUnique).toHaveBeenCalledWith({where:{id:imageId},select:{bytes:true}});
   expect(f.sendPhoto).toHaveBeenCalledWith('900000001',expect.any(InputFile),{
-   caption:expect.stringContaining('ጨረታው በ24 ሰዓታት ውስጥ ይጀምራል'),
+   caption:expect.stringMatching(/ጨረታው ሊጀምር 9 ሰዓታት ቀርቷል[\s\S]*21:00 \(አዲስ አበባ · GMT\+3\)/),
    reply_markup:{inline_keyboard:[[{text:'ጨረታውን ይመልከቱ',web_app:{url:'https://lowwin.test/auctions/rugass-power-bank'}}]]},
   });
  });

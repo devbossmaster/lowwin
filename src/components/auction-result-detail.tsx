@@ -3,7 +3,7 @@ import Link from 'next/link';
 import {ArrowLeft,CalendarDays,CheckCircle2,Clock3,Eye,Gavel,Trophy} from 'lucide-react';
 import type {CatalogAuction} from '@/modules/auctions/catalog';
 import {formatEtb,formatAuctionBid} from '@/lib/money';
-import {ADDIS_ABABA_TIME_OFFSET,ADDIS_ABABA_TIME_ZONE} from '@/lib/addis-time';
+import {ADDIS_ABABA_TIME_ZONE,formatAddisTimestamp} from '@/lib/addis-time';
 import {AuctionGallery} from './auction-gallery';
 import {MiniCategoryName,MiniPhrase,useMiniLocale} from './mini-locale';
 import {ProductDescription} from './product-description';
@@ -31,7 +31,7 @@ export function AuctionResultDetail({auction}:{auction:CatalogAuction}){
     </section>
     <section className={styles.activity} aria-label={am?'የጨረታ መረጃ':'Auction activity'}>
       <h2>{result?<CheckCircle2 size={20}/>:<Clock3 size={20}/>}<MiniPhrase en="Auction ended at" am="ጨረታው ያበቃበት"/></h2>
-      <div className={styles.date}><CalendarDays size={19}/><time dateTime={end.toISOString()}>{end.toLocaleDateString('en',{dateStyle:'medium',timeZone:ADDIS_ABABA_TIME_ZONE})}</time><span>{end.toLocaleTimeString('en',{hour:'numeric',minute:'2-digit',timeZone:ADDIS_ABABA_TIME_ZONE})} {ADDIS_ABABA_TIME_OFFSET}</span></div>
+      <div className={styles.date}><CalendarDays size={19}/><time dateTime={end.toISOString()}>{end.toLocaleDateString('en',{dateStyle:'medium',timeZone:ADDIS_ABABA_TIME_ZONE})}</time><span>{formatAddisTimestamp(end,'en-ET','time')}</span></div>
       <div className={styles.date}><CalendarDays size={19}/><span lang="am">{end.toLocaleDateString('am-ET-u-ca-ethiopic',{year:'numeric',month:'long',day:'numeric',timeZone:ADDIS_ABABA_TIME_ZONE})}</span></div>
       <Link className={styles.action} href="/my-bids?view=history"><Eye size={18}/><MiniPhrase en="View my bid history" am="የእኔን የጨረታ ታሪክ ይመልከቱ"/></Link>
       <div className={styles.numbers}><div><Eye size={27}/><span><strong>{BigInt(auction.viewCount).toLocaleString()}</strong><small><MiniPhrase en="Views" am="እይታዎች"/></small></span></div><div><Gavel size={27}/><span><strong>{result?.source==='ILLUSTRATIVE'?'—':auction.bidCount.toLocaleString()}</strong><small><MiniPhrase en="Total bids" am="ጠቅላላ ጨረታዎች"/></small></span></div></div>

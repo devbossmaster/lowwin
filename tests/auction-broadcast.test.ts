@@ -1,5 +1,6 @@
 import {describe,expect,it,vi} from 'vitest';
 import {auctionBroadcastDraft} from '../src/modules/admin/auction-broadcast';
+import {campaignContent} from '../src/modules/notifications/campaigns';
 const now=new Date('2026-11-14T10:00:00Z'),id='75a96ae3-fbf0-4b20-8e56-083e7f235bc2',image='/api/media/11111111-2222-4333-8444-555555555555';
 const auction=(change:Record<string,unknown>={})=>({id,publicCode:42,status:'LIVE',startsAt:new Date(now.getTime()-1000),endsAt:new Date(now.getTime()+1000),publishedAt:new Date(now.getTime()-2000),isDemo:false,testRunId:null,presentation:{title:'Live power bank',titleAm:'ተንቀሳቃሽ ቻርጀር',images:[{path:image}]},settlement:null,result:null,product:{title:'Previous title',visible:true,images:[]},...change});
 const tx=(item:ReturnType<typeof auction>|null)=>({auction:{findUnique:vi.fn(async()=>item)},outbox:{create:vi.fn(),upsert:vi.fn()},$queryRaw:vi.fn()});
@@ -9,9 +10,17 @@ describe('live auction broadcast review',()=>{
   expect(draft).toMatchObject({auctionId:id,title:'ተንቀሳቃሽ ቻርጀር',text:'ተንቀሳቃሽ ቻርጀር\n\nጨረታው ሊያበቃ ከ1 ሰዓት ያነሰ ጊዜ ቀርቷል።',imagePath:image,miniAppPath:'/auctions/42',buttonLabel:'እናሸንፍ!'});
   expect(draft.draftHash).toMatch(/^[a-f0-9]{64}$/);expect(db.outbox.create).not.toHaveBeenCalled();expect(db.outbox.upsert).not.toHaveBeenCalled();
  });
- it.each([[49,'2 ቀናት ቀርተዋል'],[24,'1 ቀን ቀርቷል'],[23.5,'23 ሰዓታት ቀርተዋል'],[1,'1 ሰዓት ቀርቷል']])('shows one remaining-time unit for %d hours',async(hours,remaining)=>{
+ it.each([[49,'በግምት 2 ቀናት ቀርተዋል'],[24,'1 ቀን ቀርቷል'],[23.5,'በግምት 23 ሰዓታት ቀርተዋል'],[1,'1 ሰዓት ቀርቷል']])('shows one remaining-time unit for %d hours',async(hours,remaining)=>{
   const draft=await auctionBroadcastDraft(tx(auction({endsAt:new Date(now.getTime()+hours*3600000)})) as never,id,now);
   expect(draft.text).toBe(`ተንቀሳቃሽ ቻርጀር\n\nጨረታው ሊያበቃ ${remaining}።`);
+ });
+ it('refreshes an auction promotion countdown after a queue delay and preserves a custom broadcast',async()=>{
+  const item=auction({endsAt:new Date(now.getTime()+5*3600000)}),db=tx(item);
+  const draft=await auctionBroadcastDraft(db as never,id,now);
+  db.$queryRaw.mockResolvedValue([{now:new Date(now.getTime()+2*3600000)}] as never);
+  const payload={auctionId:id,recipientUserId:'player',body:draft.text,href:draft.miniAppPath,buttonLabel:draft.buttonLabel};
+  expect(await campaignContent(db as never,{kind:'BROADCAST',payload:{...payload,promotionTitle:draft.title}})).toMatchObject({body:expect.stringContaining('3 ሰዓታት ቀርተዋል')});
+  expect(await campaignContent(db as never,{kind:'BROADCAST',payload:{...payload,body:'Custom auction message'}})).toMatchObject({body:'Custom auction message'});
  });
  it('uses an Amharic heading even for a product without an Amharic title',async()=>{
   const presentation={title:'Live power bank',titleAm:'Untranslated',images:[{path:image}]};
