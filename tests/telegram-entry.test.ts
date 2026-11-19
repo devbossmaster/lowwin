@@ -71,6 +71,31 @@ describe.skipIf(!url)('Telegram-only entry boundary',()=>{
   expect((await launch('forged',cookie)).status).toBe(401);
   expect((await launch(signedLaunch({auth_date:'1'}),cookie)).status).toBe(401);
  });
+ it('restores an older WebView only with the same live Mini App session',async()=>{
+  const id=randomInt(6100000000,6200000000),user=JSON.stringify({id,first_name:'Returning player'});
+  const first=await sign(signedLaunch({user})),cookie=cookies(first);
+  expect(first.status).toBe(200);
+  const initial=await first.json(),session=(await access.getMiniSession(new Headers({cookie}),db))!;
+  const auth_date=String(Math.floor(Date.now()/1000)-600);
+  const older=signedLaunch({user,auth_date});
+  const resumed=await launch(older,cookie);
+  expect(resumed.status).toBe(200);
+  expect(await resumed.json()).toEqual(initial);
+  expect(cookies(resumed)).toBe('');
+  expect(await db.session.count({where:{userId:session.user.id}})).toBe(1);
+  expect((await launch(older)).status).toBe(401);
+  expect((await launch(signedLaunch({auth_date}),cookie)).status).toBe(401);
+  const forged=new URLSearchParams(older);forged.set('start_param','tampered');
+  expect((await launch(forged.toString(),cookie)).status).toBe(401);
+  await db.session.update({where:{id:session.session.id},data:{telegramAuthSource:'TELEGRAM_OIDC'}});
+  expect((await launch(older,cookie)).status).toBe(401);
+  const fresh=await launch(signedLaunch({user}),cookie);
+  expect(fresh.status).toBe(200);
+  expect(cookies(fresh)).not.toBe(cookie);
+  expect((await access.getMiniSession(new Headers({cookie:cookies(fresh)}),db))?.session.telegramAuthSource).toBe('MINI_APP');
+  await db.telegramOwnContact.update({where:{userId:session.user.id},data:{revokedAt:new Date()}});
+  expect((await launch(older,cookies(fresh))).status).toBe(401);
+ });
  it('does not return the previous player when a different signed Telegram identity opens',async()=>{
   const first=await sign(signedLaunch({user:JSON.stringify({id:randomInt(6200000000,6300000000),first_name:'First'})}));
   const firstBody=await first.json();

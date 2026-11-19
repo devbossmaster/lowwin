@@ -55,7 +55,7 @@ export function AuctionDetail({auction:initialAuction,serverNow}:{auction:Catalo
  if(['closed','cancelled','closing'].includes(auction.status))return <><ArifPayReturn auctionSlug={auction.slug}/>{auction.result?.outcome==='WINNER'&&<WinnerCelebration id={`winner:${auction.code}`}/>}<AuctionResultDetail auction={auction}/>{returnId&&paymentSheet}</>;
  return <article className={styles.page} data-auction-detail>
   <ArifPayReturn auctionSlug={auction.slug}/>
-  <div className={styles.hero} data-auction-hero><AuctionGallery images={auction.product.images} title={title} isDemo={auction.isDemo} priority sizes="(max-width: 430px) 100vw, 430px" status={<span className={styles.status}><i aria-hidden="true"/><MiniPhrase en={live?'Live':'Upcoming'} am={live?'ክፍት':'የሚመጣ'}/></span>}/></div>
+  <div className={styles.hero} data-auction-hero><AuctionGallery images={auction.product.images} title={title} isDemo={auction.isDemo} priority sizes="(max-width: 460px) 100vw, 460px" status={<span className={styles.status}><i aria-hidden="true"/><MiniPhrase en={live?'Live':'Upcoming'} am={live?'ክፍት':'የሚመጣ'}/></span>}/></div>
   <div className={styles.content}>
   <header className={styles.intro}>
    <h1>{title}</h1>

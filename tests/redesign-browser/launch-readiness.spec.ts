@@ -39,8 +39,39 @@ test('a failed Mini sign-in blocks Home until an explicit reconnect succeeds',as
  await page.goto('/');await expect.poll(()=>signins).toBe(1);
  const retry=page.getByRole('button',{name:/^(Reconnect|Retry connection|Try again)$/});
  await expect(retry).toBeEnabled();await expect(page.locator('#home-headline')).toHaveCount(0);
+ await expect(page.getByRole('heading',{name:'Share your Telegram contact',exact:true})).toHaveCount(0);
  await expect(page.getByRole('button',{name:/^(Log in|Continue with Telegram)$/})).toHaveCount(0);
  expect(signins).toBe(1);await retry.click();await expect(page.locator('[data-header-balance]')).toBeVisible();expect(signins).toBe(2);
+});
+test('an unverified Mini launch offers a reopen action without treating it as registration',async({page})=>{
+ await page.route(sdk,route=>route.fulfill({contentType:'application/javascript',body:sdkBody('unverified-fixture-launch')}));
+ const signIn=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/auth/telegram/miniapp/signin');
+ await page.goto('/telegram?tgWebAppPlatform=android');
+ expect((await signIn).status()).toBe(401);
+ await expect(page.getByRole('heading',{name:'Reopen Lowwin',exact:true})).toBeVisible();
+ await expect(page.getByRole('link',{name:'Reopen from the bot',exact:true})).toHaveAttribute('href',/https:\/\/t\.me\//);
+ await expect(page.getByRole('heading',{name:'Share your Telegram contact',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:/^(Retry connection|Log in|Continue with Telegram)$/})).toHaveCount(0);
+ await expect(page.locator('#home-headline')).toHaveCount(0);
+});
+test('a registered Mini App restores its session with an older signed launch',async({page})=>{
+ const fresh=await launchFixture();
+ const user=new URLSearchParams(fresh).get('user')!;
+ let launch=fresh;
+ await dismissIntro(page);
+ await page.route(sdk,route=>route.fulfill({contentType:'application/javascript',body:sdkBody(launch)}));
+ const open=async()=>{
+  const signIn=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/auth/telegram/miniapp/signin');
+  await page.goto('/telegram?tgWebAppPlatform=android');
+  const response=await signIn;
+  expect(response.status()).toBe(200);
+  await expect(page.locator('[data-header-balance]')).toBeVisible();
+  await expect(page.locator('#contact-heading,#telegram-recovery-heading,[data-browser-telegram-login]')).toHaveCount(0);
+  return (await response.json()).me;
+ };
+ const first=await open();
+ launch=signedLaunch({user,auth_date:String(Math.floor(Date.now()/1000)-600)},process.env.TELEGRAM_BOT_TOKEN);
+ expect(await open()).toEqual(first);
 });
 test('staff sign-in stays on the admin entry without downloading the Telegram SDK',async({page})=>{
  let sdkRequests=0;page.on('request',request=>{if(request.url()===sdk)sdkRequests++});

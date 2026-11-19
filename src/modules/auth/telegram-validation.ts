@@ -9,7 +9,7 @@ export function telegramPhotoUrl(value:unknown):string|null {
   if(typeof value!=='string'||value.length>2048)return null;
   try{const url=new URL(value);return url.protocol==='https:'&&!url.username&&!url.password?url.href:null}catch{return null}
 }
-export function validateTelegramInitData(raw: string, botToken: string, now = Math.floor(Date.now() / 1000)) {
+export function verifyTelegramLaunch(raw: string, botToken: string, now = Math.floor(Date.now() / 1000)) {
   if (!raw || raw.length > 16384) throw new Error('Missing launch data');
   const params = new URLSearchParams(raw);
   if (new Set(params.keys()).size !== [...params.keys()].length) throw new Error('Duplicate launch fields');
@@ -17,12 +17,21 @@ export function validateTelegramInitData(raw: string, botToken: string, now = Ma
   const date = params.get('auth_date');
   if (!hash || !/^[a-f0-9]{64}$/.test(hash) || !date || !/^\d+$/.test(date)) throw new Error('Invalid launch data');
   const timestamp = Number(date);
-  if (!Number.isSafeInteger(timestamp) || timestamp > now + 30 || now - timestamp > 300) throw new Error('Launch expired');
+  if (!Number.isSafeInteger(timestamp) || timestamp <= 0 || timestamp > now + 30) throw new Error('Invalid launch time');
   params.delete('hash');
   const check = [...params.entries()].sort(([a],[b]) => a < b ? -1 : a > b ? 1 : 0).map(([k,v]) => `${k}=${v}`).join('\n');
   const key = createHmac('sha256', 'WebAppData').update(botToken).digest();
   const expected = createHmac('sha256', key).update(check).digest();
   if (!timingSafeEqual(expected, Buffer.from(hash, 'hex'))) throw new Error('Invalid launch signature');
   const user=userSchema.parse(JSON.parse(params.get('user') ?? 'null'));
-  return {...user,photo_url:telegramPhotoUrl(user.photo_url),...(params.has('start_param')?{start_param:params.get('start_param')!}:{})};
+  return {
+    expired:now-timestamp>300,
+    launch:{...user,photo_url:telegramPhotoUrl(user.photo_url),...(params.has('start_param')?{start_param:params.get('start_param')!}:{})},
+  };
+}
+
+export function validateTelegramInitData(raw: string, botToken: string, now = Math.floor(Date.now() / 1000)) {
+  const {expired,launch}=verifyTelegramLaunch(raw,botToken,now);
+  if(expired)throw new Error('Launch expired');
+  return launch;
 }

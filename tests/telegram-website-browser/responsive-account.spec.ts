@@ -53,7 +53,7 @@ async function noOverflow(page:Page){expect(await page.evaluate(()=>document.doc
 async function width(node:Locator){return node.evaluate(element=>element.getBoundingClientRect().width)}
 async function pageWidth(page:Page,node:Locator){
  const header=page.locator('[data-customer-page-header]');await expect(header).toBeVisible();
- const maxWidth=Math.min(page.viewportSize()!.width,430);
+ const maxWidth=Math.min(page.viewportSize()!.width,460);
  expect(await width(header)).toBeCloseTo(maxWidth,0);
  expect(await width(node)).toBeLessThanOrEqual(maxWidth+1);
  await noOverflow(page);
@@ -65,7 +65,7 @@ for(const am of [false,true])test(`responsive account pages and loading placehol
   await page.goto(path);await expect(page.locator('.app-frame')).toHaveAttribute('data-app-environment','browser');
   const navigation=page.getByRole('navigation',{name:'Your navigation',exact:true});
   await expect(navigation).toBeVisible();
-  expect(await width(navigation)).toBeCloseTo(Math.min(page.viewportSize()!.width,430),0);
+  expect(await width(navigation)).toBeCloseTo(Math.min(page.viewportSize()!.width,460),0);
   await expect(page.locator('[data-customer-navigation], [data-browser-navigation]')).toHaveCount(0);
   await expect.poll(()=>f.reads.some(read=>read.startsWith(api))).toBe(true);
   const skeleton=variant==='bids'?page.locator('section:has([data-my-bids-tabs])'):page.locator(`[data-route-skeleton=${variant}]`).last();

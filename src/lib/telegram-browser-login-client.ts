@@ -16,8 +16,9 @@ function readResponseJson(response:Response,signal:AbortSignal):Promise<unknown>
 }
 
 /** Presentation only. Server authentication never trusts SDK globals or URL hints. */
-export function telegramEnvironment(app:{initData?:string}|undefined):Exclude<TelegramEnvironment,'detecting'>{
- return app?.initData?'mini':'browser';
+export function telegramEnvironment(app:{initData?:string;platform?:string}|undefined):Exclude<TelegramEnvironment,'detecting'>{
+ const platform=app?.platform?.trim();
+ return app?.initData?.trim()||platform&&platform!=='unknown'?'mini':'browser';
 }
 /** A launch URL may arrive before Telegram's SDK. This controls presentation
  * only; neither a hint nor SDK presence authenticates a customer. */

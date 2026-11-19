@@ -107,7 +107,7 @@ test('Mini App contact registration unlocks the optional guide and native shortc
 });
 test('countdown pauses while hidden and resumes without replaying missed flips',async({page})=>{
  test.skip(!isAfter,'This timer comparison runs in the historical after stage');
- await page.clock.install();await identity(page,true);await page.goto('/?q='+encodeURIComponent(marker));const card=fixtureCard(page);await card.scrollIntoViewIfNeeded();const timer=card.getByRole('timer');await expect(timer.locator('[data-countdown-unit]')).toHaveCount(4);
+ await identity(page,true);await page.goto('/telegram?next='+encodeURIComponent('/?q='+encodeURIComponent(marker)));const card=fixtureCard(page);await expect(card).toBeVisible();await page.clock.install();await card.scrollIntoViewIfNeeded();const timer=card.getByRole('timer');await expect(timer.locator('[data-countdown-unit]')).toHaveCount(4);
  const before=await timer.getAttribute('aria-label');await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,get:()=>true});document.dispatchEvent(new Event('visibilitychange'))});await page.clock.fastForward(65000);expect(await timer.getAttribute('aria-label')).toBe(before);
  await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,get:()=>false});document.dispatchEvent(new Event('visibilitychange'))});await expect.poll(()=>timer.getAttribute('aria-label')).not.toBe(before);await expect(timer.locator('[data-countdown-flip]')).toHaveCount(0);
  await page.evaluate(()=>{const spacer=document.createElement('div');spacer.dataset.countdownSpacer='true';spacer.style.height='2000px';document.querySelector('main')!.prepend(spacer);window.scrollTo(0,0)});await expect(timer).not.toBeInViewport();await page.clock.runFor(50);const offscreen=await timer.getAttribute('aria-label');await page.clock.fastForward(5000);expect(await timer.getAttribute('aria-label')).toBe(offscreen);
@@ -118,10 +118,10 @@ test('countdown pauses while hidden and resumes without replaying missed flips',
 test('split-flap countdown rolls over only changed units and clears both animated halves',async({page},info)=>{
  test.skip(!isAfter,'This timer comparison runs in the historical after stage');
  const db=new PrismaClient();
- let title:string,auctionSlug:string;
+ let title:string,auctionCode:string;
  try{
   const auction=await bidAuction(db,{fee:10,ruleVersion:'lowest-unique-v4',isDemo:false,endDelayMs:125000});
-  title=`NOV7 countdown ${auction.code}`;auctionSlug=auction.slug!;
+  title=`NOV7 countdown ${auction.code}`;auctionCode=String(auction.publicCode);
   await db.product.update({where:{id:auction.productId!},data:{title,images:{create:{path:'/images/lowwin-demo-headphones.webp',alt:'Isolated countdown test headphones',sourceType:'ORIGINAL'}}}});
  }finally{await db.$disconnect()}
  await page.clock.install();await identity(page,true);
@@ -136,25 +136,37 @@ test('split-flap countdown rolls over only changed units and clears both animate
  await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await page.waitForTimeout(100);
  const values=()=>timer.locator('[data-countdown-unit]').evaluateAll(nodes=>nodes.map(node=>(node as HTMLElement).dataset.countdownValue!));
  const arm=()=>timer.evaluate(node=>{
-  type Frame={values:string[];animated:{unit:number;phase:string;value:string}[]};
+  type Frame={values:string[];animated:{unit:number;phase:string;value:string}[];held:{unit:number;value:string}[]};
   const state=node as HTMLElement&{__countdownObserver?:MutationObserver;__countdownFrames?:Frame[]};state.__countdownObserver?.disconnect();state.__countdownFrames=[];
-  state.__countdownObserver=new MutationObserver(()=>{const units=Array.from(node.querySelectorAll<HTMLElement>('[data-countdown-unit]'));state.__countdownFrames!.push({values:units.map(unit=>unit.dataset.countdownValue!),animated:units.flatMap((unit,index)=>Array.from(unit.querySelectorAll<HTMLElement>('[data-countdown-flip]')).map(layer=>({unit:index,phase:layer.dataset.countdownFlip!,value:layer.textContent!.trim()})))});});state.__countdownObserver.observe(node,{subtree:true,childList:true,attributes:true,attributeFilter:['data-countdown-value']});
+  state.__countdownObserver=new MutationObserver(()=>{
+   const units=Array.from(node.querySelectorAll<HTMLElement>('[data-countdown-unit]'));
+   state.__countdownFrames!.push({
+    values:units.map(unit=>unit.dataset.countdownValue!),
+    animated:units.flatMap((unit,index)=>Array.from(unit.querySelectorAll<HTMLElement>('[data-countdown-flip]')).map(layer=>({unit:index,phase:layer.dataset.countdownFlip!,value:layer.textContent!.trim()}))),
+    held:units.flatMap((unit,index)=>{const layer=unit.querySelector('[data-countdown-holding]');return layer?[{unit:index,value:layer.textContent!.trim()}]:[]}),
+   });
+  });
+  state.__countdownObserver.observe(node,{subtree:true,childList:true,attributes:true,attributeFilter:['data-countdown-value']});
  });
- const frames=()=>timer.evaluate(node=>(node as HTMLElement&{__countdownFrames:{values:string[];animated:{unit:number;phase:string;value:string}[]}[]}).__countdownFrames);
+ const frames=()=>timer.evaluate(node=>(node as HTMLElement&{__countdownFrames:{values:string[];animated:{unit:number;phase:string;value:string}[];held:{unit:number;value:string}[]}[]}).__countdownFrames);
  const initial=await values(),total=initial.reduce((sum,value,index)=>sum+Number(value)*[86400,3600,60,1][index],0);expect(total).toBeGreaterThan(60);
  await page.clock.fastForward((total-60)*1000);await expect.poll(values).toEqual(['00','00','01','00']);await page.waitForTimeout(350);await expect(timer.locator('[data-countdown-flip]')).toHaveCount(0,{timeout:100});
  // Each virtual second is explicit; animation cleanup is checked without
  // advancing the clock into another tick or replaying any skipped values.
  await arm();await page.clock.runFor(1000);mkdirSync(destination,{recursive:true});await timer.screenshot({path:`${destination}/split-flap-mid-${info.project.name}.png`,animations:'allow'});await expect.poll(values).toEqual(['00','00','00','59']);
  const rollover=(await frames()).find(frame=>frame.values.join(':')==='00:00:00:59'&&frame.animated.length===4);expect(rollover?.animated).toEqual(expect.arrayContaining([{unit:2,phase:'outgoing',value:'01'},{unit:2,phase:'incoming',value:'00'},{unit:3,phase:'outgoing',value:'00'},{unit:3,phase:'incoming',value:'59'}]));expect(rollover?.animated.every(layer=>layer.unit>=2)).toBe(true);
+ expect(rollover?.held).toEqual([{unit:2,value:'01'},{unit:3,value:'00'}]);
  await page.waitForTimeout(350);await expect(timer.locator('[data-countdown-flip]')).toHaveCount(0,{timeout:100});
  await arm();await page.clock.runFor(1000);await expect.poll(values).toEqual(['00','00','00','58']);const seconds=(await frames()).find(frame=>frame.animated.length===2);expect(seconds?.animated).toEqual([{unit:3,phase:'outgoing',value:'59'},{unit:3,phase:'incoming',value:'58'}]);
- await page.clock.fastForward(48000);await expect.poll(values).toEqual(['00','00','00','10']);await page.waitForTimeout(350);await expect(timer.locator('[data-countdown-flip]')).toHaveCount(0,{timeout:100});
+ await arm();await page.clock.fastForward(48000);await expect.poll(values).toEqual(['00','00','00','10']);
+ const skipped=(await frames()).find(frame=>frame.values.join(':')==='00:00:00:10');
+ expect(skipped).toMatchObject({animated:[],held:[]});
+ await expect(timer.locator('[data-countdown-flip],[data-countdown-holding]')).toHaveCount(0,{timeout:100});
  await arm();await page.clock.runFor(1000);await expect.poll(values).toEqual(['00','00','00','09']);const tenToNine=(await frames()).find(frame=>frame.animated.length===2);expect(tenToNine?.animated).toEqual([{unit:3,phase:'outgoing',value:'10'},{unit:3,phase:'incoming',value:'09'}]);
  await page.waitForTimeout(350);await expect(timer.locator('[data-countdown-flip]')).toHaveCount(0,{timeout:100});await arm();await page.clock.runFor(1000);await expect.poll(values).toEqual(['00','00','00','08']);const nineToEight=(await frames()).find(frame=>frame.animated.length===2);expect(nineToEight?.animated).toEqual([{unit:3,phase:'outgoing',value:'09'},{unit:3,phase:'incoming',value:'08'}]);
  await page.emulateMedia({reducedMotion:'reduce'});await expect(timer.locator('[data-countdown-flip]')).toHaveCount(0);await page.clock.runFor(1000);await expect.poll(values).toEqual(['00','00','00','07']);await expect(timer.locator('[data-countdown-flip]')).toHaveCount(0);
  expect(await timer.evaluate(node=>node.scrollWidth<=node.clientWidth)).toBe(true);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);mkdirSync(destination,{recursive:true});await card.screenshot({path:`${destination}/split-flap-${info.project.name}.png`,animations:'disabled'});
- await timer.evaluate(node=>(node as HTMLElement&{__countdownObserver?:MutationObserver}).__countdownObserver?.disconnect());await page.goto('/auctions/'+auctionSlug);const detailTimer=page.getByRole('region',{name:'Auction activity',exact:true}).getByRole('timer');await expect(detailTimer).toBeVisible();await expect(detailTimer.locator('[data-countdown-tile]')).toHaveCount(4);await detailTimer.screenshot({path:`${destination}/split-flap-large-${info.project.name}.png`,animations:'disabled'});mkdirSync('.local/countdown-reference',{recursive:true});await page.screenshot({path:'.local/countdown-reference/detail-first.png',fullPage:true,animations:'disabled'});
+ await timer.evaluate(node=>(node as HTMLElement&{__countdownObserver?:MutationObserver}).__countdownObserver?.disconnect());await page.clock.resume();await page.goto('/auctions/'+auctionCode);const detailTimer=page.getByRole('region',{name:'Auction activity',exact:true}).getByRole('timer');await expect(detailTimer).toBeVisible();await expect(detailTimer.locator('[data-countdown-tile]')).toHaveCount(4);await detailTimer.screenshot({path:`${destination}/split-flap-large-${info.project.name}.png`,animations:'disabled'});mkdirSync('.local/countdown-reference',{recursive:true});await page.screenshot({path:'.local/countdown-reference/detail-first.png',fullPage:true,animations:'disabled'});
 });
 test('owned notification surfaces share the unread summary without adding a bottom destination',async({page})=>{
  test.skip(!isAfter,'This account-surface comparison runs in the historical after stage');

@@ -6,10 +6,10 @@ import { getEnv } from '@/lib/env';
 import {databaseErrorSummary} from '@/lib/database-error';
 import { assertLocalIdentityAccess } from './local-identity';
 import { createAuth } from './server';
-import { miniAppBody, validateTelegramInitData } from './telegram-validation';
+import { miniAppBody, verifyTelegramLaunch } from './telegram-validation';
 import {contactStatus} from './own-contact';
 import {getLaunchSession} from './mini-access';
-import {telegramBootstrap} from './mini-account';
+import {miniAccountFromSession,telegramBootstrap} from './mini-account';
 import {recordSignedMiniReferralStartInTransaction} from '../referrals/service';
 import {handleTelegramOIDC} from './telegram-oidc-handler';
 
@@ -50,11 +50,14 @@ export async function handleAuth(request: Request) {
   if (path === '/telegram/miniapp/signin' || path === '/lowin/dev-identity') {
     const started=performance.now();
     const responseHeaders={'Cache-Control':'private, no-store, max-age=0','Vary':'Cookie'};
+    const authHeaders=()=>({...responseHeaders,'Server-Timing':`auth;dur=${Math.round(performance.now()-started)}`});
     const sharedContactRequired=new Error('Verified Telegram contact required.');
-    const contactRequired=()=>Response.json({ok:true,status:'contact-required',me:null},{headers:{...responseHeaders,'Server-Timing':`auth;dur=${Math.round(performance.now()-started)}`}});
+    const contactRequired=()=>Response.json({ok:true,status:'contact-required',me:null},{headers:authHeaders()});
+    const invalidLaunch=()=>Response.json({error:'Launch could not be verified. Reopen Lowwin from Telegram.'},{status:401,headers:authHeaders()});
     let identity: string;
     let telegramPhoto:string|null|undefined;
     let telegramStartParam:string|undefined;
+    let expiredLaunch=false;
     try {
       if (path === '/lowin/dev-identity') {
         assertLocalIdentityAccess(request.headers, await request.clone().json(), process.env, request.url);
@@ -62,25 +65,29 @@ export async function handleAuth(request: Request) {
       }
       else {
         const body = miniAppBody.parse(await request.clone().json());
-        const launch=validateTelegramInitData(body.initData, env.TELEGRAM_BOT_TOKEN);
+        const {launch,expired}=verifyTelegramLaunch(body.initData,env.TELEGRAM_BOT_TOKEN);
+        expiredLaunch=expired;
         identity = String(launch.id);telegramPhoto=launch.photo_url;telegramStartParam=launch.start_param;
       }
-    } catch { return Response.json({ error: 'Launch could not be verified. Reopen Lowwin from Telegram.' }, { status: 401,headers:responseHeaders }); }
+    } catch { return invalidLaunch(); }
     let stage:'launch-rate-limit'|'session-read'|'account-bootstrap'|'transaction-start'|'identity-lock'|'plugin-sign-in'|'session-bind'|'contact-bind'='launch-rate-limit';
     try {
-      // A fresh signed launch may reuse only a live, Telegram-bound session for
-      if(!await allowIdentityRequest(db,'launch',identity,20))return Response.json({error:'Too many sign-in attempts. Wait a minute and reopen Lowwin.'},{status:429,headers:{...responseHeaders,'Retry-After':'60'}});
-      // that exact identity. Website, staff, revoked and other-user cookies fail.
+      // Only fresh launches can start registration or issue a new session. A
+      // resumed WebView may retain its signed launch after Telegram's freshness
+      // window, but it still needs an active Mini App session for that identity.
+      if(!expiredLaunch&&!await allowIdentityRequest(db,'launch',identity,20))return Response.json({error:'Too many sign-in attempts. Wait a minute and reopen Lowwin.'},{status:429,headers:{...responseHeaders,'Retry-After':'60'}});
       if(path==='/telegram/miniapp/signin'&&request.headers.has('cookie')) {
         stage='session-read';
         const current=await getLaunchSession(request.headers);
-        if(current?.telegramId===identity) {
-          if(!current.contactStatus.verified)return contactRequired();
+        if(current?.telegramId===identity&&current.session.telegramAuthSource==='MINI_APP') {
+          if(!current.contactStatus.verified)return expiredLaunch?invalidLaunch():contactRequired();
+          if(expiredLaunch)return Response.json({ok:true,status:'authenticated',me:miniAccountFromSession(current)},{headers:authHeaders()});
           stage='account-bootstrap';
           const result=await telegramBootstrap(db,current.user,identity,current.session.id,telegramPhoto,current.contactStatus);
-          return Response.json(result,{headers:{...responseHeaders,'Server-Timing':`auth;dur=${Math.round(performance.now()-started)}`}});
+          return Response.json(result,{headers:authHeaders()});
         }
       }
+      if(expiredLaunch)return invalidLaunch();
       // Transaction-scoped locks work with Supavisor transaction pooling. Plugin creation
       // and cookie/session issuance share the transaction, preventing orphan identities.
       stage='transaction-start';

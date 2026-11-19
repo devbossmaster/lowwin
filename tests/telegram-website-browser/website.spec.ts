@@ -28,7 +28,7 @@ for(const am of [false,true])test(`ordinary website browsing and explicit offici
   await page.goto(f.home);const frame=page.locator('.app-frame');await expect(frame).toHaveAttribute('data-app-environment','browser');await expect(page.locator('.auction-card')).toHaveCount(3);
   const websiteOrigin=new URL(page.url()).origin;
   const geometry=await frame.evaluate(node=>{const box=node.getBoundingClientRect();return {width:box.width,left:box.left,viewport:document.documentElement.clientWidth}});
-  expect(geometry.width).toBeCloseTo(Math.min(geometry.viewport,430),0);
+  expect(geometry.width).toBeCloseTo(Math.min(geometry.viewport,460),0);
   expect(geometry.left).toBeCloseTo((geometry.viewport-geometry.width)/2,0);
   expect(await page.locator('.auction-card').first().evaluate(node=>getComputedStyle(node.parentElement!).gridTemplateColumns.split(' ').length)).toBe(1);
   // Guest browsing keeps the verified-customer navigation hidden at every width.

@@ -51,10 +51,11 @@ test('expired Telegram launch offers reopening, never fake authentication',async
   await page.addInitScript(()=>{window.Telegram={WebApp:{initData:'tampered',ready(){},expand(){}}};});
   await page.route('https://telegram.org/**',route=>route.fulfill({body:''}));
   await page.route('**/api/auth/telegram/miniapp/signin',route=>route.fulfill({status:401,json:{error:'Invalid launch'}}));
-  await page.goto('/profile');
-  await expect(page.getByRole('heading',{name:'Let’s reconnect'})).toBeVisible();
+  await page.goto('/telegram?next=%2Fprofile&tgWebAppPlatform=android');
+  await expect(page.getByRole('heading',{name:'Reopen Lowwin',exact:true})).toBeVisible();
   await expect(page.getByRole('button',{name:'Retry connection'})).toHaveCount(0);
-  await expect(page.getByRole('link',{name:'Open in Telegram'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Share your Telegram contact',exact:true})).toHaveCount(0);
+  await expect(page.getByRole('link',{name:'Reopen from the bot'})).toBeVisible();
 });
 test('featured carousel supports manual control and reduced motion',async({page},testInfo)=>{
   test.skip(testInfo.project.name!=='mobile-430');

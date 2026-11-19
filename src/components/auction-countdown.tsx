@@ -1,5 +1,5 @@
 'use client';
-import {memo,useEffect,useRef,useState,type CSSProperties} from 'react';
+import {memo,useCallback,useEffect,useRef,useState,type CSSProperties} from 'react';
 import {useMiniLocale} from './mini-locale';
 import {AuctionClockAnchors} from '@/lib/auction-clock';
 import {countdownUnits,inlineCountdown} from '@/lib/countdown-units';
@@ -11,12 +11,13 @@ const Flap=memo(function Flap({value,label,animate}:{value:string;label:string;a
  if(frame.value!==value)setFrame({value,previous:animate?frame.value:null});
  else if(!animate&&frame.previous!==null)setFrame({value,previous:null});
  const previous=animate&&frame.value===value?frame.previous:null;
- const finish=()=>setFrame(current=>current.value===value&&current.previous!==null?{value,previous:null}:current);
- useEffect(()=>{if(previous===null)return;const timeout=setTimeout(finish,350);return()=>clearTimeout(timeout)},[value,previous]);
+ const finish=useCallback(()=>setFrame(current=>current===frame&&current.previous!==null?{value:current.value,previous:null}:current),[frame]);
+ useEffect(()=>{if(previous===null)return;const timeout=setTimeout(finish,320);return()=>clearTimeout(timeout)},[finish,previous]);
  return <span className={styles.unit} data-countdown-unit data-countdown-value={value}>
   <strong className={styles.tile} data-countdown-tile aria-hidden="true" style={{'--flap-digits':value.length} as CSSProperties}>
    <span className={styles.digit}>{value}</span>
    {previous!==null&&<span key={value} className={styles.leaves}>
+    <span className={`${styles.half} ${styles.lower}`} data-countdown-holding><span>{previous}</span></span>
     <span className={`${styles.half} ${styles.upper} ${styles.outgoing}`} data-countdown-flip="outgoing"><span>{previous}</span></span>
     <span className={`${styles.half} ${styles.lower} ${styles.incoming}`} data-countdown-flip="incoming" onAnimationEnd={finish}><span>{value}</span></span>
    </span>}
@@ -29,19 +30,34 @@ const Flap=memo(function Flap({value,label,animate}:{value:string;label:string;a
  * server receipt anchors recompute the current value immediately on resume. */
 export function AuctionCountdown({target,serverNow,observedAt,label,showLabel=true,onElapsed,tiles=false,variant}:{target:string;serverNow:string;observedAt?:number;label:string;showLabel?:boolean;onElapsed?:()=>void;tiles?:boolean;variant?:'inline'}){
  const {language}=useMiniLocale(),am=language==='am',element=useRef<HTMLSpanElement>(null),elapsed=useRef<string|null>(null),callback=useRef(onElapsed);callback.current=onElapsed;
- const [remaining,setRemaining]=useState(()=>clocks.initial(target,serverNow,observedAt,Date.now())),[animate,setAnimate]=useState(false);
+ const [{remaining,animate},setClock]=useState(()=>({remaining:clocks.initial(target,serverNow,observedAt,Date.now()),animate:false}));
  useEffect(()=>{
   const wallAt=Date.now(),monotonicAt=performance.now(),anchor=clocks.observe(serverNow,observedAt,wallAt);let visible=true,id:ReturnType<typeof setInterval>|undefined;
   const reduced=variant==='inline'?null:window.matchMedia('(prefers-reduced-motion: reduce)');
   // Keep the server receipt anchor even if the device's wall clock changes.
-  const tick=()=>{const next=clocks.remaining(target,serverNow,anchor,wallAt+performance.now()-monotonicAt);setRemaining(next);if(next===0&&elapsed.current!==target){elapsed.current=target;callback.current?.()}};
-  const schedule=(resume=false)=>{clearInterval(id);if(reduced)setAnimate(!resume&&!reduced.matches);if(!document.hidden&&visible){tick();id=setInterval(()=>{if(reduced)setAnimate(!reduced.matches);tick()},1000)}};
-  const resume=()=>schedule(true),motion=()=>{if(reduced)setAnimate(!reduced.matches)};
-  tick();schedule(true);
-  const observer=typeof IntersectionObserver==='undefined'?null:new IntersectionObserver(([entry])=>{visible=entry.isIntersecting;schedule(true)});
+  const tick=(live=false)=>{
+   const next=clocks.remaining(target,serverNow,anchor,wallAt+performance.now()-monotonicAt);
+   const motion=live&&!!reduced&&!reduced.matches;
+   setClock(current=>{
+    const animate=motion&&Math.floor(current.remaining/1000)-Math.floor(next/1000)===1;
+    return current.remaining===next&&current.animate===animate?current:{remaining:next,animate};
+   });
+   if(next===0){
+    clearInterval(id);
+    if(elapsed.current!==target){elapsed.current=target;callback.current?.()}
+   }
+   return next>0;
+  };
+  const schedule=()=>{
+   clearInterval(id);
+   if(document.hidden||!visible){setClock(current=>current.animate?{...current,animate:false}:current);return}
+   if(tick())id=setInterval(()=>tick(true),1000);
+  };
+  schedule();
+  const observer=typeof IntersectionObserver==='undefined'?null:new IntersectionObserver(([entry])=>{visible=entry.isIntersecting;schedule()});
   if(element.current)observer?.observe(element.current);
-  document.addEventListener('visibilitychange',resume);window.addEventListener('pageshow',resume);window.addEventListener('focus',resume);reduced?.addEventListener('change',motion);
-  return()=>{clearInterval(id);observer?.disconnect();document.removeEventListener('visibilitychange',resume);window.removeEventListener('pageshow',resume);window.removeEventListener('focus',resume);reduced?.removeEventListener('change',motion)};
+  document.addEventListener('visibilitychange',schedule);window.addEventListener('pageshow',schedule);window.addEventListener('focus',schedule);reduced?.addEventListener('change',schedule);
+  return()=>{clearInterval(id);observer?.disconnect();document.removeEventListener('visibilitychange',schedule);window.removeEventListener('pageshow',schedule);window.removeEventListener('focus',schedule);reduced?.removeEventListener('change',schedule)};
  },[target,serverNow,observedAt,variant]);
  const units=countdownUnits(remaining);
  if(variant==='inline')return <span ref={element} className={`countdown ${styles.inline}`} data-countdown-inline role="timer" aria-live="off" aria-label={remaining===0?undefined:am?`${units[0]} ቀናት ${units[1]} ሰዓታት ${units[2]} ደቂቃዎች ${units[3]} ሰከንዶች`:`${label} in ${units[0]} days ${units[1]} hours ${units[2]} minutes ${units[3]} seconds`}>{remaining===0?(label==='Starts'?(am?'አሁን ይጀምራል':'Starting now'):(am?'ጨረታው አብቅቷል':'Auction ended')):inlineCountdown(remaining,am)}</span>;
