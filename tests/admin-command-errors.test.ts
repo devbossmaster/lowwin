@@ -16,7 +16,7 @@ describe('safe admin command failure diagnostics',()=>{
  it.each(['P2021','P2022'])('identifies a runtime schema mismatch (%s) without exposing database details',async code=>{
   f.ops.mockRejectedValue(failure(code));const response=await POST(request(),{params:Promise.resolve({path:['command']})}),body=await response.json();
   expect(response.status).toBe(503);expect(body.code).toBe('ADMIN_SCHEMA_NOT_READY');expect(body.traceId).toMatch(/^[0-9a-f-]{36}$/);expect(response.headers.get('cache-control')).toContain('no-store');
-  expect(JSON.parse(String(vi.mocked(console.error).mock.calls[0][0]))).toEqual({event:'admin_request_error',traceId:body.traceId,method:'POST',action:'broadcast',code,kind:'PrismaClientKnownRequestError'});
+  expect(JSON.parse(String(vi.mocked(console.error).mock.calls[0][0]))).toEqual({event:'admin_request_error',traceId:body.traceId,method:'POST',action:'broadcast',code,kind:'PrismaClientKnownRequestError',elapsedMs:expect.any(Number),phasesMs:{request_body:expect.any(Number)}});
   expect(JSON.stringify(body)+JSON.stringify(vi.mocked(console.error).mock.calls)).not.toContain('private-');expect(f.origin).toHaveBeenCalledOnce();expect(f.ops).toHaveBeenCalledOnce();
  });
  it.each(['P2028','P2024'])('distinguishes a transaction/pool timeout (%s) without retrying the broadcast',async code=>{

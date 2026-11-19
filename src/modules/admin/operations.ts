@@ -20,6 +20,7 @@ import {workspaceRead} from './workspace';
 import {experienceSchema,legalSchema} from './content-schema';
 import {lockAuctionMaintenance,readAuctionMaintenance} from '../auctions/maintenance';
 import {defaultHomeCopy} from '@/components/home-copy';
+import {formatAddisTimestamp} from '@/lib/addis-time';
 import {measureAdmin} from './timing';
 
 const id=z.string().uuid(),key=z.string().uuid(),version=z.number().int().min(0),text=(n:number)=>z.string().trim().min(1).max(n);
@@ -189,7 +190,7 @@ export async function adminMutation(client:PrismaClient,headers:Headers,action:A
       if(next.getTime()<actor.now.getTime()+5*60000)throw new AdminError(422,'The new deadline must be at least five minutes in the future.');
       if(auction.startsAt&&next<=auction.startsAt)throw new AdminError(422,'The new deadline must be after the auction starts.');
       const publishedEnd=auction.terms.publishedEndsAt??previous,maxEnd=new Date(publishedEnd.getTime()+auction.terms.maxExtensionMinutes*60000);
-      if(next>maxEnd)throw new AdminError(422,`The published policy permits extension only until ${maxEnd.toISOString()}.`);
+      if(next>maxEnd)throw new AdminError(422,`The published policy permits extension only until ${formatAddisTimestamp(maxEnd)}.`);
       if(next<previous&&auction.acceptedBidCount>0){if(!auction.terms.allowPaidShortening)throw new AdminError(422,'The published policy does not permit shortening after bids.');const notice=auction.terms.shortenNoticeMinutes*60000;if(next.getTime()<actor.now.getTime()+notice)throw new AdminError(422,`Bidders must retain at least ${auction.terms.shortenNoticeMinutes} minutes of notice.`)}
       const controlVersion=auction.controlVersion+1;
       const retired=await retireAuctionEndingAlerts(tx,auction.id,actor.now);

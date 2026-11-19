@@ -56,11 +56,13 @@ export async function chapaInlineConfig(client:PrismaClient,userId:string){
  let phone:string|null=null;try{if(contact&&!contact.revokedAt)phone=decryptPhone(contact.phoneCipher,contact.botId)}catch{}
  return {apiVersion:'v2' as const,configured:health.configured,enabled:health.enabled,recoveryEnabled:health.recoveryEnabled,mode:health.mode,minTopup:CHAPA_TOPUP_MIN_ETB,maxTopup:CHAPA_TOPUP_MAX_ETB,methods,phone,depositBonus,cbeBankEnabled:false,cbeGuideUrl:safeInlineCbeGuideUrl()};
 }
-export async function chapaCurrentDirectConfig(client:PrismaClient,userId:string){
+export async function chapaCurrentDirectConfig(client:PrismaClient){
  const health=currentDirectAvailability();
- const [contact,methods,depositBonus]=await Promise.all([measureChapa('database',()=>client.telegramOwnContact.findUnique({where:{userId},select:{phoneCipher:true,botId:true,revokedAt:true}})),health.enabled?capabilitiesFor(currentDirectTransport,'DIRECT'):Promise.resolve([]),measureChapa('pricing',()=>getDepositBonusPolicy(client))]);
- let phone:string|null=null;try{if(contact&&!contact.revokedAt)phone=decryptPhone(contact.phoneCipher,contact.botId)}catch{}
- return {apiVersion:'v2' as const,flow:'DIRECT' as const,flowVersion:5,configured:health.configured,enabled:health.enabled,recoveryEnabled:health.recoveryEnabled,mode:health.mode,minTopup:CHAPA_TOPUP_MIN_ETB,maxTopup:CHAPA_TOPUP_MAX_ETB,methods:methods.filter(m=>['telebirr','cbebirr','mpesa'].includes(m.slug)),phone,depositBonus,cbeBankEnabled:false,cbeGuideUrl:safeInlineCbeGuideUrl()};
+ const [methods,depositBonus]=await Promise.all([
+  health.enabled?measureChapa('capabilities',()=>currentDirectMethods().get(undefined,{refreshSoon:true})):Promise.resolve([]),
+  measureChapa('pricing',()=>getDepositBonusPolicy(client)),
+ ]);
+ return {apiVersion:'v2' as const,flow:'DIRECT' as const,flowVersion:5,configured:health.configured,enabled:health.enabled,recoveryEnabled:health.recoveryEnabled,mode:health.mode,minTopup:CHAPA_TOPUP_MIN_ETB,maxTopup:CHAPA_TOPUP_MAX_ETB,methods:methods.filter(m=>['telebirr','cbebirr','mpesa'].includes(m.slug)),phone:null,depositBonus,cbeBankEnabled:false,cbeGuideUrl:safeInlineCbeGuideUrl()};
 }
 export async function findCurrentDirectCheckoutByKey(client:PrismaClient,userId:string,key:string){
  const order=await client.chapaCheckout.findUnique({where:{userId_key:{userId,key:z.string().uuid().parse(key)}}});

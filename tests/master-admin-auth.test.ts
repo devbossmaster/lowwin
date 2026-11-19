@@ -5,6 +5,8 @@ import {execFileSync} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {makeSignature} from 'better-auth/crypto';
 import {TEST_TOKEN} from './helpers';
+import {bidAuction} from './bid-fixtures';
+import {formatAddisDateTimeLocal,parseAddisDateTimeLocal} from '../src/lib/addis-time';
 const database=process.env.MASTER_ADMIN_TEST_DATABASE_URL;
 describe.skipIf(!database)('Master Guide Admin on disposable PostgreSQL',()=>{
  let db:PrismaClient,sink:Server,auth:typeof import('../src/modules/auth/handler').handleAuth,requireAdmin:typeof import('../src/modules/admin/boundary').requireAdmin,cookie='',userId='';
@@ -64,6 +66,25 @@ describe.skipIf(!database)('Master Guide Admin on disposable PostgreSQL',()=>{
    expect(queries[0]).toContain('FOR UPDATE OF u,m');
    expect(queries[1]).toContain('"StaffSession"');
   }finally {await traced.$disconnect()}
+ });
+ it('extends the deadline from the Addis Ababa form, retires old reminders and reloads the saved revision',async()=>{
+  const {POST,GET}=await import('../src/app/api/admin/[...path]/route');
+  const auction=await bidAuction(db,{ruleVersion:'lowest-unique-v5',endDelayMs:3600000});
+  const reminder=await db.outbox.create({data:{key:`test-ending:${auction.id}`,kind:'AUCTION_ENDING_1_HOUR',payload:{auctionId:auction.id}}});
+  const next=new Date((Math.floor(auction.endsAt!.getTime()/60000)+30)*60000);
+  const input={key:randomUUID(),auctionId:auction.id,version:auction.controlVersion,endsAt:parseAddisDateTimeLocal(formatAddisDateTimeLocal(next)).toISOString(),reason:'Extend fixture auction'};
+  const submit=()=>POST(new Request(origin+'/api/admin/command',{method:'POST',headers:{cookie,origin,'content-type':'application/json'},body:JSON.stringify({action:'deadline',input})}),{params:Promise.resolve({path:['command']})});
+  const response=await submit();
+  expect(response.status,await response.clone().text()).toBe(200);
+  expect(response.headers.get('Server-Timing')).toContain('admin_transaction;dur=');
+  const receipt=await response.json();
+  expect(receipt).toMatchObject({auctionId:auction.id,endsAt:next.toISOString(),controlVersion:auction.controlVersion+1,endingAlertsRetired:1});
+  expect(await (await submit()).json()).toEqual(receipt);
+
+  const refreshed=await GET(new Request(origin+`/api/admin/auctions/${auction.id}`,{headers:{cookie}}),{params:Promise.resolve({path:['auctions',auction.id]})});
+  expect(refreshed.status).toBe(200);
+  expect(await refreshed.json()).toMatchObject({endsAt:next.toISOString(),controlVersion:auction.controlVersion+1,terms:{publishedEndsAt:auction.endsAt!.toISOString()},controlRevisions:[{kind:'DEADLINE',reason:input.reason}]});
+  expect(await db.outbox.findUnique({where:{id:reminder.id}})).toMatchObject({state:'SKIPPED',lastError:'SUPERSEDED_BY_DEADLINE_CHANGE'});
  });
  it('rejects unsigned and altered cookies without consulting the database',async()=>{
   const [name,encoded]=cookie.split(/=(.*)/s),value=decodeURIComponent(encoded);

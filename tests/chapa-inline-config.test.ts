@@ -7,8 +7,10 @@ vi.mock('../src/lib/db',()=>({db:{telegramOwnContact:{findUnique:f.contact}}}));
 vi.mock('../src/modules/auth/private-api',async original=>({...await original<typeof import('../src/modules/auth/private-api')>(),requireUser:f.auth}));
 vi.mock('../src/modules/wallet/deposit-bonus',async original=>({...await original<typeof import('../src/modules/wallet/deposit-bonus')>(),getDepositBonusPolicy:f.bonus}));
 import {chapaInlineTransport} from '../src/modules/payments/chapa-inline-provider';
+import {chapaTransport} from '../src/modules/payments/chapa-provider';
 import {chapaInlineConfig} from '../src/modules/payments/chapa-inline';
 import {GET} from '../src/app/api/payments/chapa/inline/config/route';
+import {GET as getDirectConfig} from '../src/app/api/payments/chapa/direct/current/config/route';
 import {PrivateApiError} from '../src/modules/auth/private-api';
 
 const methods={status:'success',data:[{slug:'telebirr',name:'telebirr',can_process_payments:true,supported_currencies:{ETB:{countries:{ET:{is_enabled:true,min_amount:100,max_amount:1000000}}}}}]};
@@ -19,6 +21,23 @@ beforeEach(()=>{
  vi.clearAllMocks();f.contact.mockResolvedValue(null);f.bonus.mockResolvedValue(bonus);f.auth.mockResolvedValue('owned-user');
  const key='a'.repeat(32)+String(++serial);
  for(const [name,value] of Object.entries({APP_ENV:'local',NODE_ENV:'test',DATABASE_URL:'postgresql://local@127.0.0.1:55608/chapa_inline_test',CHAPA_MODE:'test',CHAPA_SCHEMA_READY:'true',MINI_APP_URL:'https://lowwin.test',BETTER_AUTH_URL:'https://lowwin.test',PAYMENT_GATEWAY:'CHAPA',CHAPA_ENABLED:'true',CHAPA_INLINE_ENABLED:'true',CHAPA_PRIVATE_KEY:'CHAPA_TEST_'+key,CHAPA_PUBLIC_KEY:'CHAPA_TEST_PUB_'+key,CHAPA_WEBHOOK_SECRET:'local-inline-webhook-secret-at-least-thirty-two-characters'}))vi.stubEnv(name,value);
+});
+
+it('keeps current Direct configuration private and avoids looking up the saved phone',async()=>{
+ const method={...methods.data[0],can_process_direct_charge:true};
+ const provider=vi.spyOn(chapaTransport,'methods').mockResolvedValue({...methods,data:[method]});
+ const url='https://lowwin.test/api/payments/chapa/direct/current/config';
+ const response=await getDirectConfig(new Request(url));
+ expect(response.status).toBe(200);
+ expect(response.headers.get('cache-control')).toContain('private, no-store');
+ expect(await response.json()).toMatchObject({flow:'DIRECT',phone:null,methods:[{slug:'telebirr'}],depositBonus:bonus});
+ expect(f.contact).not.toHaveBeenCalled();
+ expect(provider).toHaveBeenCalledOnce();
+
+ f.auth.mockRejectedValue(new PrivateApiError(401,'Sign in through Telegram.'));
+ expect((await getDirectConfig(new Request(url))).status).toBe(401);
+ expect(provider).toHaveBeenCalledOnce();
+ expect(f.bonus).toHaveBeenCalledOnce();
 });
 afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs()});
 describe('owned Inline checkout configuration',()=>{
