@@ -1,10 +1,20 @@
 import {describe,expect,it,vi} from 'vitest';
-import {loadBidQuote,walletBidAttemptKey,type BidQuoteAttempt} from '../src/lib/bid-quote-readiness';
+import {bidQuoteAttemptFor,loadBidQuote,walletBidAttemptKey,type BidQuoteAttempt} from '../src/lib/bid-quote-readiness';
 import type {BidBatchQuote} from '../src/lib/bid-batch-client';
 
 const attempt=():BidQuoteAttempt=>({fingerprint:'validated-selection',key:'quote-key',paymentKey:'provider-key'});
 const quote=(id='owned-quote')=>({id,total:'10.00'} as BidBatchQuote);
 describe('draft-owned bid quote readiness',()=>{
+ it('keeps the same draft request through step changes and cancels it when the draft changes',()=>{
+  const controller=new AbortController(),original={...attempt(),controller};
+  expect(bidQuoteAttemptFor(original,original.fingerprint)).toBe(original);
+  expect(controller.signal.aborted).toBe(false);
+  const next=bidQuoteAttemptFor(original,'changed-selection');
+  expect(controller.signal.aborted).toBe(true);
+  expect(next).toMatchObject({fingerprint:'changed-selection'});
+  expect(next.key).not.toBe(original.key);
+  expect(next.paymentKey).not.toBe(original.paymentKey);
+ });
  it('joins background readiness and explicit Pay into one request and reuses the completed quote',async()=>{
   const owned=attempt();let resolve!:(value:BidBatchQuote)=>void;
   const load=vi.fn(()=>new Promise<BidBatchQuote>(done=>{resolve=done}));
