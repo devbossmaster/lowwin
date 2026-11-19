@@ -7,14 +7,15 @@ import {readFileSync} from 'node:fs';
 import {makeSignature} from 'better-auth/crypto';
 import {earnedReferralCoupon,verifiedReferralUser,realReferralAuction} from './referral-fixtures';
 import {quoteBidBatch} from '../src/modules/auctions/batch';
-import {createCurrentDirectCheckout,findCurrentDirectCheckoutByKey,findInlineCheckoutByKey,prepareCurrentDirectCreation} from '../src/modules/payments/chapa-inline';
+import {createCurrentDirectCheckout,findCurrentDirectCheckoutByKey,findInlineCheckoutByKey,prepareCurrentDirectCreation,tryCreateCurrentDirectCheckout} from '../src/modules/payments/chapa-inline';
 import {prepareAtomicDirectBid} from '../src/modules/payments/chapa-direct-bid-prepare';
 import {prepareAtomicDirectTopUp} from '../src/modules/payments/chapa-direct-topup-prepare';
 import {prepareOwnedChapaVerification,verifyChapaCheckout} from '../src/modules/payments/chapa';
 import {authorizeCurrentDirectCreation,type PaymentSessionAuthorizer} from '../src/modules/payments/creation-eligibility';
 import {contactBotId} from '../src/modules/auth/own-contact';
 import {authorizeDirectCheckout} from '../src/modules/payments/chapa-direct';
-import {ChapaProviderError,chapaHash,type ChapaDirectCreate,type ChapaTransport} from '../src/modules/payments/chapa-provider';
+import {ChapaProviderError,chapaHash,chapaTransport,type ChapaDirectCreate,type ChapaTransport} from '../src/modules/payments/chapa-provider';
+import {directMethodCatalog} from '../src/modules/payments/chapa-direct-methods';
 import {allowIdentityRequest} from '../src/lib/rate-limit';
 import {reconcile} from '../src/modules/wallet/ledger';
 import {type ChapaCompletionStatus} from '../src/modules/payments/chapa-verification-policy';
@@ -53,18 +54,70 @@ describe.skipIf(!database)('current Direct5 owned creation and private committed
   authorize.forCurrentDirectTopUp=vi.fn((client,owner,input)=>prepareAtomicDirectTopUp(client,binding,owner,input));
   return {session,authorize,binding};
  }
- async function ownedVerification(f:Awaited<ReturnType<typeof fixture>>,id:string){
+ async function signedHeaders(token:string){
   process.env.BETTER_AUTH_SECRET=sessionSecret;
+  const cookie='__Secure-better-auth.session_token='+encodeURIComponent(`${token}.${await makeSignature(token,sessionSecret)}`);
+  return new Headers({cookie});
+ }
+ async function ownedVerification(f:Awaited<ReturnType<typeof fixture>>,id:string){
   const {session}=await creationBinding(f.user);
-  const cookie='__Secure-better-auth.session_token='+encodeURIComponent(`${session.token}.${await makeSignature(session.token,sessionSecret)}`);
   const {requirePaymentSessionWithRead}=await import('../src/modules/payments/session');
   const {prepared,reauthorize}=await requirePaymentSessionWithRead(
-   new Request(`https://lowwin.test/api/payments/chapa/checkouts/${id}`,{method:'POST',headers:{cookie}}),
+   new Request(`https://lowwin.test/api/payments/chapa/checkouts/${id}`,{method:'POST',headers:await signedHeaders(session.token)}),
    userId=>prepareOwnedChapaVerification(db,id,userId,f.transport),
   );
   const transactionAuthorization=Object.assign(vi.fn(reauthorize),reauthorize);
   return {session,transactionAuthorization,verify:()=>prepared(transactionAuthorization)};
  }
+ it.each(['TOP_UP','BID'] as const)('authorizes and commits a fresh Direct %s in one statement before dispatch',async purpose=>{
+  const f=await fixture(purpose),{session}=await creationBinding(f.user),headers=await signedHeaders(session.token);
+  const operations:string[]=[];
+  const client=db.$extends({query:{
+   $queryRaw:async({args,query})=>{operations.push('$queryRaw');return query(args)},
+   $allModels:{$allOperations:async({operation,args,query})=>{operations.push(operation);return query(args)}},
+  }}) as unknown as PrismaClient;
+  let operationsAtDispatch:string[]=[];
+  let savedState:string|undefined;
+  const methods=vi.spyOn(chapaTransport,'methods').mockImplementation(f.transport.methods);
+  const direct=vi.spyOn(chapaTransport,'direct').mockImplementation(async input=>{
+   operationsAtDispatch=[...operations];
+   savedState=(await db.chapaCheckout.findUniqueOrThrow({where:{merchantReference:input.merchantReference}})).status;
+   return f.direct(input);
+  });
+  try{
+   await directMethodCatalog.get();
+   await expect(tryCreateCurrentDirectCheckout(client,new Headers({cookie:'__Secure-better-auth.session_token=unsigned'}),f.command)).resolves.toBeNull();
+   expect(direct).not.toHaveBeenCalled();
+   expect(await db.chapaCheckout.count({where:{userId:f.user}})).toBe(0);
+   operations.length=0;
+
+   const created=await tryCreateCurrentDirectCheckout(client,headers,f.command);
+   expect(created?.order).toMatchObject({purpose,flowVersion:5,status:'AUTH_NEEDED',amount:'40.00'});
+   expect(operationsAtDispatch).toEqual(['$queryRaw']);
+   expect(savedState).toBe('SUBMITTING');
+   expect(direct).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({amountCents:'4000',idempotencyKey:`lowwin-direct-v5:${created!.order.id}`}), 'create');
+   const limit=`app:mutation:${chapaHash(f.user)}`;
+   expect((await db.rateLimit.findUniqueOrThrow({where:{key:limit}})).count).toBe(1);
+
+   await expect(tryCreateCurrentDirectCheckout(client,headers,f.command)).resolves.toBeNull();
+   expect(direct).toHaveBeenCalledOnce();
+   expect(await db.chapaCheckout.count({where:{userId:f.user}})).toBe(1);
+   expect(await balance(f.user)).toBe('0');
+  }finally{methods.mockRestore();direct.mockRestore()}
+ });
+ it('keeps an uncertain one-statement preparation on its original key without starting Chapa',async()=>{
+  const f=await fixture(),{session}=await creationBinding(f.user),headers=await signedHeaders(session.token);
+  const interrupted=db.$extends({query:{$queryRaw:async({args,query})=>{await query(args);throw Error('Committed checkout reply lost')}}}) as unknown as PrismaClient;
+  const methods=vi.spyOn(chapaTransport,'methods').mockImplementation(f.transport.methods);
+  const direct=vi.spyOn(chapaTransport,'direct').mockImplementation(f.direct);
+  try{
+   await directMethodCatalog.get();
+   await expect(tryCreateCurrentDirectCheckout(interrupted,headers,f.command)).rejects.toThrow('Committed checkout reply lost');
+   expect(direct).not.toHaveBeenCalled();
+   expect(await findCurrentDirectCheckoutByKey(db,f.user,f.command.key)).toMatchObject({status:'SUBMITTING'});
+   expect(await db.chapaCheckout.count({where:{userId:f.user}})).toBe(1);
+  }finally{methods.mockRestore();direct.mockRestore()}
+ });
  it.each(['TOP_UP','BID'] as const)('checks two prepared %s requests again under the existing locks and dispatches the original key once',async purpose=>{
   const f=await fixture(purpose),{authorize}=await creationBinding(f.user);
   const prepare=()=>prepareCurrentDirectCreation(db,f.user,f.command,f.transport,false);

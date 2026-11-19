@@ -25,7 +25,10 @@ export function createDirectMethodCatalog(transport:ChapaTransport=chapaTranspor
   pending=request;
   return promise;
  }
- return {async get(amountCents?:bigint,{refreshSoon=false}:{refreshSoon?:boolean}={}){
+ return {peek(slug:string){
+  const config=configuration();
+  if(config.enabled&&cached?.key===config.key&&cached.until>Date.now())return cached.methods.find(method=>method.slug===slug);
+ },async get(amountCents?:bigint,{refreshSoon=false}:{refreshSoon?:boolean}={}){
   const config=configuration();if(!config.enabled)throw new ChapaError(503,'PAYMENT_UNAVAILABLE','Online payments are unavailable.');
   const now=Date.now();
   let methods:DirectMethod[];

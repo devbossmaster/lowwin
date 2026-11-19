@@ -6,7 +6,8 @@ import {CHAPA_TOPUP_MIN_CENTS,CHAPA_TOPUP_MIN_ETB,CHAPA_TOPUP_MAX_CENTS,CHAPA_TO
 import {allowIdentityRequest,allowIdentityRequests} from '@/lib/rate-limit';
 import {normalizePaymentPhone,paymentPhoneProblem,paymentPhoneProblemMessage} from '@/lib/payment-phone';
 import {classifyChapaApiError} from '@/lib/chapa-api-error';
-import {decryptPhone,encryptPhone,phoneHash} from '../auth/own-contact';
+import {contactBotId,decryptPhone,encryptPhone,phoneHash} from '../auth/own-contact';
+import {signedSessionToken} from '../auth/signed-session';
 import {batchLines,ownBatch,priceBatchInTransaction,validateBatchInTransaction} from '../auctions/batch';
 import {auctionMaintenance} from '../auctions/maintenance';
 import {eligible,getChapaCheckout,ownChapaCheckout,verifyChapaCheckout} from './chapa';
@@ -17,6 +18,7 @@ import {markChapaDispatch,markChapaTransactionStarted,measureChapa} from './chap
 import {publishChapaCommitted} from './chapa-committed';
 import {depositBonusStorageReady,getDepositBonusPolicy,quoteDepositBonusInTransaction} from '../wallet/deposit-bonus';
 import {currentDirectAvailability,currentDirectBinding,currentDirectEngineTransport,currentDirectTransport,currentDirectMethods,requireCurrentDirect} from './chapa-current-direct-provider';
+import {directMethodOrder} from './chapa-direct-methods';
 import {isCurrentDirectCheckout,isCurrentV2Checkout} from './chapa-current-protocol';
 import type {PaymentSessionAuthorizer as Authorize} from './session';
 
@@ -29,6 +31,59 @@ const localGuide='/video/cbe-bank-payment.mp4';
 export function safeInlineCbeGuideUrl(raw=process.env.CHAPA_INLINE_CBE_GUIDE_URL){try{if(!raw||raw===localGuide)return localGuide;const url=new URL(raw);return url.protocol==='https:'&&!url.username&&!url.password?url.href:null}catch{return null}}
 const capabilitiesFor=(transport:ChapaInlineTransport,protocol:'INLINE'|'DIRECT'='INLINE')=>measureChapa('capabilities',()=>(protocol==='DIRECT'?currentDirectMethods(transport===currentDirectTransport?chapaTransport:transport):transport===chapaInlineTransport?inlineMethodCatalog:createInlineMethodCatalog(transport)).get());
 const currentBinding=(order:ChapaCheckout)=>isCurrentDirectCheckout(order)?currentDirectBinding(order):inlineTransportBinding(order);
+const supportedDirectMethod=(slug:string)=>directMethodOrder.some(method=>method===slug);
+
+function paymentInitialization(body:InlineInput,phone:string,protocol:'INLINE'|'DIRECT',publicKeyFingerprint:string|null){
+ const id=randomUUID(),merchantReference=`LW${randomBytes(9).toString('hex')}`,idempotencyKey=`lowwin-${protocol==='DIRECT'?'direct-v5':'inline'}:${id}`,returnUrl=new URL(`/payments/chapa/return?checkout=${id}`,process.env.MINI_APP_URL).href,flowVersion=protocol==='DIRECT'?5:4;
+ return {id,merchantReference,flowVersion,initialization:{apiVersion:'v2',flowVersion,flow:body.flow,merchantReference,idempotencyKey,...(protocol==='DIRECT'?{metadata:{checkout_id:id}}:{publicKeyFingerprint:publicKeyFingerprint!}),webhookSignatureProfile:chapaWebhookSignatureProfile()!,paymentMethod:body.paymentMethod,payerPhoneHash:phoneHash(`+${phone}`),returnUrl,returnUrlVersion:1}};
+}
+
+const directPreparationUnavailableUntil=new WeakMap<PrismaClient,number>();
+
+/** Common checkout: use fresh Chapa capabilities already loaded by the sheet.
+ * One database statement checks the signed session and commits the leased intent. */
+export async function tryCreateCurrentDirectCheckout(client:PrismaClient,headers:Headers,raw:unknown){
+ if((directPreparationUnavailableUntil.get(client)??0)>Date.now())return null;
+ const parsed=input.safeParse(raw);
+ if(!parsed.success||parsed.data.flow!=='DIRECT'||!supportedDirectMethod(parsed.data.paymentMethod))return null;
+ const body=parsed.data,health=currentDirectAvailability();
+ if(!health.enabled)return null;
+ const method=currentDirectMethods().peek(body.paymentMethod);
+ if(!method)return null;
+ const phone=normalizePaymentPhone(body.phone);
+ if(!phone||paymentPhoneProblem(body.phone,body.paymentMethod))return null;
+ const amount=body.purpose==='TOP_UP'?etbToCents(body.amount):null;
+ if(amount!==null&&(amount<CHAPA_TOPUP_MIN_CENTS||amount>CHAPA_TOPUP_MAX_CENTS||amount<BigInt(method.minimumCents)||amount>BigInt(method.maximumCents)))return null;
+ const approvedBonus=body.purpose==='TOP_UP'&&body.approvedDepositBonusAmount!==undefined?etbToCents(body.approvedDepositBonusAmount):null;
+ if(approvedBonus!==null&&approvedBonus>0n)return null;
+ const token=await signedSessionToken(headers);
+ if(!token)return null;
+ const botId=contactBotId(),{id,initialization}=paymentInitialization(body,phone,'DIRECT',null);
+ const hash=requestHash(body,phone);
+ const command={checkoutId:id,key:body.key,requestHash:hash,mode:health.mode,credentialFingerprint:health.credentialFingerprint,initialization,minimumCents:method.minimumCents,maximumCents:method.maximumCents,payerPhoneCipher:encryptPhone(phone,botId),...(body.purpose==='BID'?{batchId:body.batchId,quoteHash:body.quoteHash}:{amountCents:String(amount),approvedBonusCents:approvedBonus?.toString()??null})};
+ let rows:ChapaCheckout[];
+ try{
+  rows=await measureChapa('prepare',()=>client.$queryRaw<ChapaCheckout[]>`SELECT * FROM public.lowwin_prepare_direct_for_session(${token},${botId},${body.purpose},${JSON.stringify(command)}::jsonb)`);
+ }catch(error){
+  if(error instanceof Prisma.PrismaClientKnownRequestError&&error.code==='P2010'){
+   const message=typeof error.meta?.message==='string'?error.meta.message:'';
+   const missing=error.meta?.code==='42883'&&/^(?:ERROR: )?function (?:public\.)?lowwin_prepare_direct_for_session\(/.test(message);
+   const denied=error.meta?.code==='42501'&&/^(?:ERROR: )?permission denied for function lowwin_prepare_direct_for_session$/.test(message);
+   if(missing||denied){
+    directPreparationUnavailableUntil.set(client,Date.now()+30000);
+    return null;
+   }
+  }
+  throw error;
+ }
+ if(!rows.length)return null;
+ const [order]=rows;
+ const batchId=body.purpose==='BID'?body.batchId:null;
+ if(rows.length!==1||order.id!==id||!order.userId||order.key!==body.key||order.requestHash!==hash||order.purpose!==body.purpose||order.batchId!==batchId||order.merchantReference!==initialization.merchantReference||order.paymentMethod!==body.paymentMethod||order.mode!==health.mode||order.credentialFingerprint!==health.credentialFingerprint||amount!==null&&order.amountCents!==amount||order.status!=='SUBMITTING'||order.attempts!==1||!order.leaseUntil||!isCurrentDirectCheckout(order))throw new Error('Direct preparation returned an unexpected intent.');
+ const current=requireCurrentDirect();
+ if(current.mode!==health.mode||current.credentialFingerprint!==health.credentialFingerprint||contactBotId()!==botId)throw new ChapaError(503,'CONFIGURATION_CHANGED','Reload payment options before paying.');
+ return {order:await dispatchInlineCheckout(client,order,order.userId,currentDirectTransport,'create')};
+}
 
 async function lockCurrentDirectPreparation(tx:Prisma.TransactionClient,userId:string,batchId?:string){
  // This statement must finish before the maintenance read starts: a SELECT
@@ -62,7 +117,7 @@ export async function chapaCurrentDirectConfig(client:PrismaClient){
   health.enabled?measureChapa('capabilities',()=>currentDirectMethods().get(undefined,{refreshSoon:true})):Promise.resolve([]),
   measureChapa('pricing',()=>getDepositBonusPolicy(client)),
  ]);
- return {apiVersion:'v2' as const,flow:'DIRECT' as const,flowVersion:5,configured:health.configured,enabled:health.enabled,recoveryEnabled:health.recoveryEnabled,mode:health.mode,minTopup:CHAPA_TOPUP_MIN_ETB,maxTopup:CHAPA_TOPUP_MAX_ETB,methods:methods.filter(m=>['telebirr','cbebirr','mpesa'].includes(m.slug)),phone:null,depositBonus,cbeBankEnabled:false,cbeGuideUrl:safeInlineCbeGuideUrl()};
+ return {apiVersion:'v2' as const,flow:'DIRECT' as const,flowVersion:5,configured:health.configured,enabled:health.enabled,recoveryEnabled:health.recoveryEnabled,mode:health.mode,minTopup:CHAPA_TOPUP_MIN_ETB,maxTopup:CHAPA_TOPUP_MAX_ETB,methods:methods.filter(m=>supportedDirectMethod(m.slug)),phone:null,depositBonus,cbeBankEnabled:false,cbeGuideUrl:safeInlineCbeGuideUrl()};
 }
 export async function findCurrentDirectCheckoutByKey(client:PrismaClient,userId:string,key:string){
  const order=await client.chapaCheckout.findUnique({where:{userId_key:{userId,key:z.string().uuid().parse(key)}}});
@@ -105,7 +160,7 @@ async function createParsedCheckout(client:PrismaClient,userId:string,{body,phon
  // A safe new Direct top-up can overlap its read-only schema probe with owned
  // key discovery. Capture rejection immediately: an existing original must
  // recover even when rollout readiness is unavailable or creation is paused.
- const probeBonus=!atomicTopUp&&protocol==='DIRECT'&&body.purpose==='TOP_UP'&&body.flow==='DIRECT'&&['telebirr','cbebirr','mpesa'].includes(body.paymentMethod)&&currentDirectAvailability().enabled&&etbToCents(body.amount)>=CHAPA_TOPUP_MIN_CENTS&&etbToCents(body.amount)<=CHAPA_TOPUP_MAX_CENTS;
+ const probeBonus=!atomicTopUp&&protocol==='DIRECT'&&body.purpose==='TOP_UP'&&body.flow==='DIRECT'&&supportedDirectMethod(body.paymentMethod)&&currentDirectAvailability().enabled&&etbToCents(body.amount)>=CHAPA_TOPUP_MIN_CENTS&&etbToCents(body.amount)<=CHAPA_TOPUP_MAX_CENTS;
  const bonusProbe=probeBonus?measureChapa('schema',()=>depositBonusStorageReady(client)).then(ready=>({ok:true as const,ready}),error=>({ok:false as const,error})):null;
  const previous=await previousLookup;
  const assertReplay=(order:ChapaCheckout)=>{if(!(protocol==='DIRECT'?isCurrentDirectCheckout(order):isV2InlineCheckout(order))||order.requestHash!==hash)throw new ChapaError(409,'KEY_REUSED','Keep the original payment details.')};
@@ -120,7 +175,7 @@ async function createParsedCheckout(client:PrismaClient,userId:string,{body,phon
  const health=protocol==='DIRECT'?requireCurrentDirect():requireChapaInline();
  // Retain the input variants above for immutable original-attempt recovery,
  // but never create another hosted/retired-method payment from this checkout.
- if(body.flow!==protocol||!['telebirr','cbebirr','mpesa'].includes(body.paymentMethod))throw new ChapaError(422,'METHOD_UNAVAILABLE','Choose an enabled payment method.');
+ if(body.flow!==protocol||!supportedDirectMethod(body.paymentMethod))throw new ChapaError(422,'METHOD_UNAVAILABLE','Choose an enabled payment method.');
  // Schema readiness and capabilities do not depend on one another. Keep both
  // outside financial locks and overlap their cold reads before preparation.
  let [bonusReady,capabilities]=await Promise.all([
@@ -137,10 +192,7 @@ async function createParsedCheckout(client:PrismaClient,userId:string,{body,phon
   const current=protocol==='DIRECT'?requireCurrentDirect():requireChapaInline();
   if(current.mode!==health.mode||current.credentialFingerprint!==health.credentialFingerprint||current.publicKeyFingerprint!==health.publicKeyFingerprint)throw new ChapaError(503,'CONFIGURATION_CHANGED','Reload payment options before paying.');
  };
- const buildInitialization=()=>{
-  const id=randomUUID(),merchantReference=`LW${randomBytes(9).toString('hex')}`,idempotencyKey=`lowwin-${protocol==='DIRECT'?'direct-v5':'inline'}:${id}`,returnUrl=new URL(`/payments/chapa/return?checkout=${id}`,process.env.MINI_APP_URL).href,flowVersion=protocol==='DIRECT'?5:4;
-  return {id,merchantReference,flowVersion,initialization:{apiVersion:'v2',flowVersion,flow:body.flow,merchantReference,idempotencyKey,...(protocol==='DIRECT'?{metadata:{checkout_id:id}}:{publicKeyFingerprint:health.publicKeyFingerprint!}),webhookSignatureProfile:chapaWebhookSignatureProfile()!,paymentMethod:body.paymentMethod,payerPhoneHash:phoneHash(`+${phone}`),returnUrl,returnUrlVersion:1}};
- };
+ const buildInitialization=()=>paymentInitialization(body,phone,protocol,health.publicKeyFingerprint);
  if(protocol==='DIRECT'&&body.purpose==='BID'&&reauthorize?.forCurrentDirectBid){
   assertCurrentConfig();const {id,initialization}=buildInitialization();
   const order=await measureChapa('prepare',()=>reauthorize.forCurrentDirectBid!(client,userId,{checkoutId:id,key:body.key,batchId:body.batchId,quoteHash:body.quoteHash,requestHash:hash,phone,mode:health.mode,credentialFingerprint:health.credentialFingerprint!,initialization,minimumCents:selectedMethod.minimumCents,maximumCents:selectedMethod.maximumCents}));

@@ -2,7 +2,7 @@ import {db} from '@/lib/db';
 import {z} from 'zod';
 import {requireUser,requireMutationOrigin,privateHeaders,smallJson} from '@/modules/auth/private-api';
 import {requireCountedPaymentSession} from '@/modules/payments/session';
-import {prepareCurrentDirectCreation,findCurrentDirectCheckoutByKey} from '@/modules/payments/chapa-inline';
+import {prepareCurrentDirectCreation,findCurrentDirectCheckoutByKey,tryCreateCurrentDirectCheckout} from '@/modules/payments/chapa-inline';
 import {ChapaError} from '@/modules/payments/chapa-provider';
 import {chapaHttpError} from '@/modules/payments/chapa-http';
 import {measureChapa,timedChapaResponse} from '@/modules/payments/chapa-timing';
@@ -11,6 +11,10 @@ export async function GET(request:Request){try{const userId=await requireUser(re
 export async function POST(request:Request){return timedChapaResponse(async()=>{try{
  requireMutationOrigin(request);
  const body=await smallJson(request).then(value=>({ok:true as const,value}),error=>({ok:false as const,error}));
+ if(body.ok){
+  const prepared=await tryCreateCurrentDirectCheckout(db,request.headers,body.value);
+  if(prepared)return Response.json(prepared,{status:202,headers:privateHeaders});
+ }
  const key=z.object({key:z.string().uuid()}).safeParse(body.ok?body.value:null);
  const auth=await measureChapa('auth',()=>requireCountedPaymentSession(request,{directKey:key.success?key.data.key:undefined}));
  if(!body.ok)throw body.error;
