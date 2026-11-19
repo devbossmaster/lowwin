@@ -42,7 +42,7 @@ for(const am of [false,true])test(`signed-in product detail, sharing and explici
   const bid=detail.locator('[data-auction-bid]');await expect(bid).toHaveCount(1);await expect(bid).toBeVisible();await expect(bid.locator('..')).toHaveCSS('position','fixed');
   const navigation=page.getByRole('navigation',{name:'Your navigation',exact:true});await expect(navigation).toBeVisible();
   const frameBox=(await frame.boundingBox())!,bidBox=(await bid.locator('..').boundingBox())!,navBox=(await navigation.boundingBox())!;
-  expect(frameBox.width).toBeCloseTo(Math.min(page.viewportSize()!.width,430),0);
+  expect(frameBox.width).toBeCloseTo(Math.min(page.viewportSize()!.width,460),0);
   expect(bidBox.x).toBeCloseTo(frameBox.x,0);expect(bidBox.width).toBeCloseTo(frameBox.width,0);
   expect(navBox.x).toBeCloseTo(frameBox.x,0);expect(navBox.width).toBeCloseTo(frameBox.width,0);
   expect(await bid.evaluate(element=>{const rgb=getComputedStyle(element).backgroundColor.match(/\d+/g)!.map(Number);return rgb[2]>rgb[0]&&rgb[2]>rgb[1]})).toBe(true);
