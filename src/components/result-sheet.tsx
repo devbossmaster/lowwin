@@ -4,6 +4,7 @@ import {useEffect,useRef,useState,type RefObject} from 'react';
 import {CalendarDays,Phone,Trophy} from 'lucide-react';
 import type {CatalogAuction} from '@/modules/auctions/catalog';
 import {formatAuctionBid} from '@/lib/money';
+import {formatAddisTimestamp} from '@/lib/addis-time';
 import {winnerResultExplanation} from '@/lib/winner-result-copy';
 import {AccountSheet} from './account-sheet';
 import {CatalogImage} from './catalog-image';
@@ -32,7 +33,7 @@ export function ResultSheetContent({auction:initial}:{auction:CatalogAuction}){
  return <div className={styles.resultSurface}>
    <div className={winnerBannerData(auction)?styles.detailBanner:styles.detailPhoto}>{winnerBannerData(auction)?<WinnerBanner auction={auction}/>:<CatalogImage src={auction.product.images[0]?.path} alt={title}/>}</div>
    <h3 className={styles.title}>{title}</h3>
-   {result?.publishedAt&&<p className={styles.date}><CalendarDays size={13} aria-hidden="true"/><MiniPhrase en="Announced" am="የታወጀው"/> <time dateTime={result.publishedAt}>{new Date(result.publishedAt).toLocaleString(am?'am-ET':'en-ET',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',timeZone:'Africa/Addis_Ababa'})}</time></p>}
+   {result?.publishedAt&&<p className={styles.date}><CalendarDays size={13} aria-hidden="true"/><MiniPhrase en="Announced" am="የታወጀው"/> <time dateTime={result.publishedAt}>{formatAddisTimestamp(result.publishedAt,am?'am-ET':'en-ET')}</time></p>}
    {result?<section className={styles.winnerSummary} aria-label={am?'የተረጋገጠ ውጤት':'Confirmed result'}>
     {winner&&result?.winningPoints&&<strong className={styles.winningNumber}>{formatAuctionBid(result.winningPoints,auction.terms.ruleVersion)}</strong>}
     <div className={styles.winnerIdentity}><small><MiniPhrase en={winner?'Winner':'Auction completed'} am={winner?'አሸናፊ':'ጨረታው ተጠናቋል'}/></small>{winner&&<strong>{identity||<MiniPhrase en="Confirmed winner" am="የተረጋገጠ አሸናፊ"/>}</strong>}{result?.winnerUsername&&result.winnerDisplay&&<span>{result.winnerUsername}</span>}{result?.winnerPhoneMasked&&<span><Phone size={11} aria-hidden="true"/>{result.winnerPhoneMasked}</span>}</div>

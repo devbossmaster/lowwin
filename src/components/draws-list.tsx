@@ -7,11 +7,12 @@ import {AuctionCountdown} from './auction-countdown';
 import {MiniPhrase,useMiniLocale} from './mini-locale';
 import type {CatalogAuction} from '@/modules/auctions/catalog';
 import {formatAuctionBid,formatEtb} from '@/lib/money';
+import {formatAddisTimestamp} from '@/lib/addis-time';
 import styles from './account-pages.module.css';
 
 export function DrawsList({items,tab,serverNow}:{items:CatalogAuction[];tab:'past'|'upcoming';serverNow?:string}){
   const {language}=useMiniLocale(),am=language==='am',text=(en:string,translated:string)=>am?translated:en;
-  const date=(value:string)=>new Date(value).toLocaleString(am?'am-ET':'en',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',timeZone:'Africa/Addis_Ababa'});
+  const date=(value:string)=>formatAddisTimestamp(value,am?'am-ET':'en');
   if(!items.length)return <div className={styles.empty}><Trophy size={28} aria-hidden="true"/><h2>{tab==='past'?text('The results will be here','ውጤቶች እዚህ ይታያሉ'):text('No upcoming draws yet','ቀጣይ ጨረታዎች ገና የሉም')}</h2><p>{tab==='past'?text('Finalized results are published after each auction.','ከእያንዳንዱ ጨረታ በኋላ የመጨረሻ ውጤቶች ይታተማሉ።'):text('New schedules will appear here when published.','አዲስ የጊዜ ሰሌዳዎች ሲታተሙ እዚህ ይታያሉ።')}</p><Link className={styles.action} href="/#discover-auctions">{text('Explore auctions','ጨረታዎችን ይመልከቱ')}</Link></div>;
   return <div className={`${styles.list} ${tab==='past'?styles.results:''}`}>{items.map(auction=>{
     const title=am?auction.product.titleAm||auction.product.title:auction.product.title,result=auction.result;

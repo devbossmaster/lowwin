@@ -27,9 +27,18 @@ describe('two upcoming reminders and five closing windows',()=>{
  });
  it.each(endingReminders)('accepts only the live $kind window',async reminder=>{
   const content=await campaignContent(transaction(auction({status:'LIVE',startsAt:new Date(now.getTime()-hour),endsAt:new Date(now.getTime()+reminder.maxMs)})),{...row,kind:reminder.kind});
-  expect(content?.title).toContain(reminder.am);expect(content?.body).toContain('Fixture phone');
-  expect(notificationCopy(content!,'am').title).toContain(reminder.am);
+  expect(content?.title).toContain('ጨረታው ሊያበቃ');expect(content?.body).toContain('Fixture phone');
+  expect(notificationCopy(content!,'am').title).toBe(content?.title);
   for(const offset of [reminder.minMs,reminder.maxMs+1,-1])expect(endingReminderCurrent(reminder.kind,new Date(now.getTime()+offset),now)).toBe(false);
+ });
+ it('reports the actual 5 hours and 13 minutes remaining and the 24-hour Addis deadline',async()=>{
+  const db=transaction(auction({status:'LIVE',startsAt:new Date(now.getTime()-hour),endsAt:new Date(now.getTime()+5*hour+13*60_000)}));
+  const content=await campaignContent(db,{...row,kind:'AUCTION_ENDING_12_HOURS'});
+  expect(content).toMatchObject({title:'ጨረታው ሊያበቃ 5 ሰዓታት ከ13 ደቂቃዎች ቀርቷል',body:expect.stringContaining('17:13 (አዲስ አበባ · GMT+3)'),telegramCaption:expect.stringContaining('5 ሰዓታት ከ13 ደቂቃዎች')});
+ });
+ it('describes a reminder delivered in the final minute without rounding up',async()=>{
+  const db=transaction(auction({status:'LIVE',startsAt:new Date(now.getTime()-hour),endsAt:new Date(now.getTime()+15_000)}));
+  expect(await campaignContent(db,{...row,kind:'AUCTION_ENDING_1_HOUR'})).toMatchObject({title:'ጨረታው ሊያበቃ ከ1 ደቂቃ ያነሰ ጊዜ ቀርቷል'});
  });
  it.each([0,1,hour,hour+1,12*hour,12*hour+1,24*hour,24*hour+1,48*hour,48*hour+1,72*hour,72*hour+1])('never catches up multiple closing notices at %i ms',offset=>{
   const matches=endingReminders.filter(r=>endingReminderCurrent(r.kind,new Date(now.getTime()+offset),now));
@@ -37,7 +46,7 @@ describe('two upcoming reminders and five closing windows',()=>{
  });
  it.each(upcomingReminders)('accepts only its own upcoming $kind window',async reminder=>{
   const content=await campaignContent(transaction(auction({startsAt:new Date(now.getTime()+reminder.maxMs)})),{...row,kind:reminder.kind});
-  expect(content?.title).toContain(reminder.am);expect(content?.body).toContain('የሚጀምርበት');
+  expect(content?.title).toContain('ጨረታው ሊጀምር');expect(content?.body).toContain('የሚጀምርበት');
   for(const offset of [reminder.minMs,reminder.maxMs+1,-1])expect(upcomingReminderCurrent(reminder.kind,new Date(now.getTime()+offset),now)).toBe(false);
  });
  it.each([-1,0,hour,24*hour+1])('suppresses a day reminder outside its window (%i ms)',async offset=>{

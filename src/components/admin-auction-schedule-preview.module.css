@@ -1,0 +1,40 @@
+.preview {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--admin-line);
+  border-radius: 10px;
+  background: var(--admin-bg, #f5f5f8);
+  font-size: 13px;
+}
+
+.icon {
+  flex: none;
+  margin-top: 2px;
+  color: var(--admin-accent);
+}
+
+.preview dl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 4px 0;
+}
+
+.preview dl > div {
+  display: flex;
+  gap: 5px;
+  align-items: baseline;
+}
+
+.preview dd {
+  margin: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.preview p {
+  margin: 0;
+  font-size: 12px;
+}

@@ -39,7 +39,8 @@ async function getContent(client:PrismaClient,row:ClaimedNotification,context:Ba
   else{
    promise=notificationContent(client,row);
    if(cache.size>=64)cache.delete(cache.keys().next().value!);
-   const entry={until:performance.now()+(row.kind==='BROADCAST'?60_000:1000),value:promise};cache.set(key,entry);
+   const staticBroadcast=row.kind==='BROADCAST'&&!p.promotionTitle;
+   const entry={until:performance.now()+(staticBroadcast?60_000:1000),value:promise};cache.set(key,entry);
    // Never retain failed/missing preparation. Every actual send still reads
    // ownership, recipient and auction eligibility at the durable gate.
    promise.then(value=>{if(!value&&cache.get(key)===entry)cache.delete(key)},()=>{if(cache.get(key)===entry)cache.delete(key)});

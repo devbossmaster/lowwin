@@ -1,7 +1,6 @@
 'use client';
 import {LOWWIN_LOGO_SRC} from '@/lib/brand';
 import {useEffect,useState} from 'react';
-import {useRouter} from 'next/navigation';
 import {ArrowLeft} from 'lucide-react';
 import {StaffPasswordField} from './staff-password-field';
 
@@ -16,8 +15,8 @@ export async function staffRequest(action:string,body:unknown){
 
 type Mode='login'|'signup'|'forgot'|'reset'|'verify';
 const titles:Record<Mode,string>={login:'Sign in to Lowwin',signup:'Create your account',forgot:'Reset your password',reset:'Choose a new password',verify:'Check your email'};
-export function StaffLogin(){
- const router=useRouter(),[mode,setMode]=useState<Mode>('login'),[token,setToken]=useState(''),[email,setEmail]=useState(''),[message,setMessage]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[ready,setReady]=useState(false);
+export function StaffLogin({accessError}:{accessError?:string}={}){
+ const [mode,setMode]=useState<Mode>('login'),[token,setToken]=useState(''),[email,setEmail]=useState(''),[message,setMessage]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[ready,setReady]=useState(false);
  useEffect(()=>{
   setReady(true);const params=new URLSearchParams(location.search),reset=params.get('token');
   if(reset){setToken(reset);setMode('reset');history.replaceState(null,'',location.pathname)}
@@ -31,7 +30,7 @@ export function StaffLogin(){
   const loginUrl=new URL('/admin/login',location.origin);
   try{
    if(mode==='login'){
-    await staffRequest('login',{email:address,password:form.get('password'),rememberMe:false});router.replace('/admin');router.refresh();return;
+    await staffRequest('login',{email:address,password:form.get('password'),rememberMe:false});window.location.replace('/admin');return;
    }
    if(mode==='signup'){
     loginUrl.searchParams.set('verified','1');await staffRequest('signup',{name:String(form.get('name')??'').trim(),email:address,password:form.get('password'),callbackURL:loginUrl.href});
@@ -47,10 +46,10 @@ export function StaffLogin(){
   }catch(cause){setError(cause instanceof Error?cause.message:'Authentication could not complete. Please retry.')}finally{setBusy(false)}
  }
  return <main id="main" className="admin-access master-admin-auth"><section className="admin-access-form">
-  <a className="admin-brand-name" href="/admin/login"><img src={LOWWIN_LOGO_SRC} data-lowwin-logo alt="" width={36} height={36}/>Lowwin</a>
+  <a className="admin-brand-name" href="/admin"><img src={LOWWIN_LOGO_SRC} data-lowwin-logo alt="" width={36} height={36}/>Lowwin</a>
   <h1>{titles[mode]}</h1>
   <p>{mode==='login'?'Use your verified email and password.':mode==='signup'?'Register as a member, verify your email, then wait for administrator approval.':mode==='forgot'?'We will email a link to reset your password.':mode==='reset'?'Set a new password for your account.':'Verify your email before requesting administrator access.'}</p>
-  {message&&<p role="status" className="admin-notice">{message}</p>}{error&&<p role="alert" className="admin-error">{error}</p>}
+  {message&&<p role="status" className="admin-notice">{message}</p>}{(error||(mode==='login'&&accessError))&&<p role="alert" className="admin-error">{error||accessError}</p>}
   <form onSubmit={submit} key={mode}>
    {mode==='signup'&&<label>Name<input name="name" autoComplete="name" required minLength={2} maxLength={100}/></label>}
    {mode!=='reset'&&<label>Email<input name="email" type="email" autoComplete="username" defaultValue={email} required maxLength={254} autoFocus/></label>}

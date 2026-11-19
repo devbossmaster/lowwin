@@ -21,11 +21,11 @@ export const notificationRetired=(kind:string)=>!permitted.has(kind);
 const hour=3_600_000;
 /** Disjoint windows avoid sending catch-up reminders after a late start. */
 export const endingReminders=[
- {kind:'AUCTION_ENDING_3_DAYS',key:'ending-3-days',minMs:48*hour,maxMs:72*hour,en:'3 days left',am:'3 ቀናት ቀርተዋል'},
- {kind:'AUCTION_ENDING_2_DAYS',key:'ending-2-days',minMs:24*hour,maxMs:48*hour,en:'2 days left',am:'2 ቀናት ቀርተዋል'},
- {kind:'AUCTION_ENDING',key:'ending',minMs:12*hour,maxMs:24*hour,en:'24 hours left',am:'24 ሰዓታት ቀርተዋል'},
- {kind:'AUCTION_ENDING_12_HOURS',key:'ending-12-hours',minMs:hour,maxMs:12*hour,en:'12 hours left',am:'12 ሰዓታት ቀርተዋል'},
- {kind:'AUCTION_ENDING_1_HOUR',key:'ending-1-hour',minMs:0,maxMs:hour,en:'1 hour left',am:'1 ሰዓት ቀርቷል'},
+ {kind:'AUCTION_ENDING_3_DAYS',key:'ending-3-days',minMs:48*hour,maxMs:72*hour},
+ {kind:'AUCTION_ENDING_2_DAYS',key:'ending-2-days',minMs:24*hour,maxMs:48*hour},
+ {kind:'AUCTION_ENDING',key:'ending',minMs:12*hour,maxMs:24*hour},
+ {kind:'AUCTION_ENDING_12_HOURS',key:'ending-12-hours',minMs:hour,maxMs:12*hour},
+ {kind:'AUCTION_ENDING_1_HOUR',key:'ending-1-hour',minMs:0,maxMs:hour},
 ] as const;
 export const endingReminder=(kind:string)=>endingReminders.find(item=>item.kind===kind);
 export function endingReminderCurrent(kind:string,endsAt:Date,now:Date){
@@ -34,8 +34,8 @@ export function endingReminderCurrent(kind:string,endsAt:Date,now:Date){
 }
 /** Same disjoint rule for pre-start reminders; never send both on late resume. */
 export const upcomingReminders=[
- {kind:'AUCTION_UPCOMING',key:'upcoming',minMs:hour,maxMs:24*hour,am:'ጨረታው በ24 ሰዓታት ውስጥ ይጀምራል'},
- {kind:'AUCTION_UPCOMING_1_HOUR',key:'upcoming-1-hour',minMs:0,maxMs:hour,am:'ጨረታው በ1 ሰዓት ውስጥ ይጀምራል'},
+ {kind:'AUCTION_UPCOMING',key:'upcoming',minMs:hour,maxMs:24*hour},
+ {kind:'AUCTION_UPCOMING_1_HOUR',key:'upcoming-1-hour',minMs:0,maxMs:hour},
 ] as const;
 export const upcomingReminder=(kind:string)=>upcomingReminders.find(item=>item.kind===kind);
 export function upcomingReminderCurrent(kind:string,startsAt:Date,now:Date){

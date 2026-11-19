@@ -1,4 +1,5 @@
 import {centsToEtb,etbToCents} from '@/lib/money';
+import {countdownUnits} from '@/lib/countdown-units';
 import {isSubmissionFeeOnly} from '../auctions/rules';
 
 export type AmharicNotificationCopy={title:string;body:string;buttonLabel:string};
@@ -16,6 +17,26 @@ function money(value:string):bigint|null{
  try{const cents=etbToCents(value);return cents>=0n?cents:null}catch{return null}
 }
 const birr=(cents:bigint)=>`${centsToEtb(cents)} ብር`;
+
+const daysAm=(days:number)=>`${days} ${days===1?'ቀን':'ቀናት'}`;
+const hoursAm=(hours:number)=>`${hours} ${hours===1?'ሰዓት':'ሰዓታት'}`;
+const minutesAm=(minutes:number)=>`${minutes} ${minutes===1?'ደቂቃ':'ደቂቃዎች'}`;
+
+export function auctionCountdownAm(target:Date,now:Date){
+ const [days,hours,minutes]=countdownUnits(target.getTime()-now.getTime()).map(Number);
+ return [days&&daysAm(days),hours&&hoursAm(hours),minutes&&minutesAm(minutes)].filter(Boolean).join(' ከ')||'ከ1 ደቂቃ ያነሰ ጊዜ';
+}
+
+/** The manual promotion uses just one unit in its short, reviewed caption. */
+export function auctionPromotionText(title:string,endsAt:Date,now:Date){
+ const remaining=endsAt.getTime()-now.getTime();
+ const [days,hours]=countdownUnits(remaining).map(Number);
+ const opening=`${title}\n\nጨረታው ሊያበቃ`;
+ if(!days&&!hours)return `${opening} ከ1 ሰዓት ያነሰ ጊዜ ቀርቷል።`;
+ const approximate=remaining%(days?86_400_000:3_600_000)?'በግምት ':'';
+ const duration=days?daysAm(days):hoursAm(hours);
+ return `${opening} ${approximate}${duration} ${(days||hours)===1?'ቀርቷል':'ቀርተዋል'}።`;
+}
 
 /** Inputs are committed server amounts; this does not infer payment success. */
 export function depositNotificationCopy(facts:{creditedAmount:string;depositAmount?:string;bonusAmount?:string;name?:string}):AmharicNotificationCopy|null{
@@ -47,18 +68,20 @@ export function winnerNotificationCopy(facts:{productTitle:string;chosenNumber:s
  return {title:'🎉 እንኳን ደስ አለዎት፣ አሸንፈዋል!',body:`${greeting(facts.name)}የ${product} ጨረታን አሸንፈዋል።\nያሸነፈው ቁጥር: ${chosen}\n\nሽልማቱንና የርክክብ መረጃውን ከታች ይመልከቱ።`,buttonLabel:'ሽልማቴን ልይ'};
 }
 
+const closingReminder={title:'የጨረታ መዝጊያ ማስታወሻ',body:'የጨረታውን ዝርዝር ይመልከቱ።'};
+const upcomingReminder={title:'መጪ ጨረታ',body:'የጨረታውን ዝርዝር ይመልከቱ።'};
 const fallback:Record<string,{title:string;body:string}>={
  DEPOSIT_CREDITED:{title:'ገንዘብ ገብቷል',body:'የተረጋገጠውን ገቢ በዋሌትዎ ውስጥ ይመልከቱ።'},
- AUCTION_ENDING_3_DAYS:{title:'ጨረታው ሊያበቃ 3 ቀናት ቀርተዋል',body:'የጨረታውን ዝርዝር ይመልከቱ።'},
- AUCTION_ENDING_2_DAYS:{title:'ጨረታው ሊያበቃ 2 ቀናት ቀርተዋል',body:'የጨረታውን ዝርዝር ይመልከቱ።'},
- AUCTION_ENDING:{title:'ጨረታው ሊያበቃ 24 ሰዓታት ቀርተዋል',body:'የጨረታውን ዝርዝር ይመልከቱ።'},
- AUCTION_ENDING_12_HOURS:{title:'ጨረታው ሊያበቃ 12 ሰዓታት ቀርተዋል',body:'የጨረታውን ዝርዝር ይመልከቱ።'},
- AUCTION_ENDING_1_HOUR:{title:'ጨረታው ሊያበቃ 1 ሰዓት ቀርቷል',body:'የጨረታውን ዝርዝር ይመልከቱ።'},
+ AUCTION_ENDING_3_DAYS:closingReminder,
+ AUCTION_ENDING_2_DAYS:closingReminder,
+ AUCTION_ENDING:closingReminder,
+ AUCTION_ENDING_12_HOURS:closingReminder,
+ AUCTION_ENDING_1_HOUR:closingReminder,
  AUCTION_ENDED:{title:'ጨረታው ተጠናቋል',body:'ውጤቱን ለማየት ከታች ይጫኑ።'},
  AUCTION_PUBLISHED:{title:'🔥 አዲስ ጨረታ ተከፍቷል',body:'ዕቃውንና የጨረታውን ውሎች ይመልከቱ።'},
  AUCTION_UPCOMING_ADDED:{title:'አዲስ መጪ ጨረታ ተጨምሯል',body:'ዕቃውንና የሚጀምርበትን ጊዜ ይመልከቱ።'},
- AUCTION_UPCOMING:{title:'መጪው ጨረታ ሊጀምር 1 ቀን ቀርቷል',body:'የጨረታውን ዝርዝር ይመልከቱ።'},
- AUCTION_UPCOMING_1_HOUR:{title:'🔥 መጪው ጨረታ ሊጀምር 1 ሰዓት ቀርቷል',body:'የጨረታውን ዝርዝር ይመልከቱ።'},
+ AUCTION_UPCOMING:upcomingReminder,
+ AUCTION_UPCOMING_1_HOUR:upcomingReminder,
  BID_ACCEPTED:{title:'ጨረታዎ ተመዝግቧል',body:'የተመዘገቡትን ቁጥሮች በጨረታዎቼ ውስጥ ይመልከቱ።'},
  WINNER_CONGRATULATIONS:{title:'🎉 እንኳን ደስ አለዎት፣ አሸንፈዋል!',body:'ሽልማትዎንና የርክክብ መረጃውን ይመልከቱ።'},
 };

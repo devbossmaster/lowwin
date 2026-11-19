@@ -42,8 +42,17 @@ test('a failed Mini sign-in blocks Home until an explicit reconnect succeeds',as
  await expect(page.getByRole('button',{name:/^(Log in|Continue with Telegram)$/})).toHaveCount(0);
  expect(signins).toBe(1);await retry.click();await expect(page.locator('[data-header-balance]')).toBeVisible();expect(signins).toBe(2);
 });
-test('staff sign-in does not download the Telegram SDK',async({page})=>{
- let sdkRequests=0;page.on('request',request=>{if(request.url()===sdk)sdkRequests++});await page.goto('/admin/login',{waitUntil:'domcontentloaded'});await expect(page.getByRole('button',{name:'Sign in',exact:true})).toBeVisible();expect(sdkRequests).toBe(0);await expect(page.locator(`script[src="${sdk}"]`)).toHaveCount(0);
+test('staff sign-in stays on the admin entry without downloading the Telegram SDK',async({page})=>{
+ let sdkRequests=0;page.on('request',request=>{if(request.url()===sdk)sdkRequests++});
+ for(const path of ['/admin','/admin/login']){
+  const response=await page.goto(path,{waitUntil:'domcontentloaded'});
+  expect(response?.status()).toBe(200);expect(response?.headers()['cache-control']).toContain('no-store');
+  expect(new URL(page.url()).pathname).toBe(path);
+  await expect(page.getByRole('button',{name:'Sign in',exact:true})).toBeVisible();
+  await expect(page.getByRole('navigation',{name:'Workspace navigation'})).toHaveCount(0);
+  await expect(page.locator(`script[src="${sdk}"]`)).toHaveCount(0);
+ }
+ expect(sdkRequests).toBe(0);
 });
 
 test('guests reach Home before protected page content or auction details',async({page})=>{
@@ -67,7 +76,7 @@ test('guests reach Home before protected page content or auction details',async(
  }
  const staff=await page.request.get('/admin/users',{maxRedirects:0});
  expect(staff.status()).toBe(307);
- expect(new URL(staff.headers().location,origin).pathname).toBe('/');
+ expect(new URL(staff.headers().location,origin).pathname).toBe('/admin');
  expect(staff.headers()['cache-control']).toContain('no-store');
 
  const initData=await launchFixture();

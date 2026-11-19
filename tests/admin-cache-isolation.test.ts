@@ -16,7 +16,21 @@ describe('admin late-response isolation',()=>{
  afterEach(()=>{clearAdminCache();vi.unstubAllGlobals()});
  it('rejects old mutation receipts after account or permission identity changes',async()=>{let release!:(response:Response)=>void;vi.stubGlobal('fetch',vi.fn(()=>new Promise<Response>(resolve=>release=resolve)));mount('first-session');const request=adminRequest('command',{action:'suspend',input:{userId:'player',suspended:true}});mount('new-session');release(Response.json({userId:'player',suspended:true}));await expect(request).rejects.toThrow('session changed');expect(replace).not.toHaveBeenCalled()});
  it.each(['old-session','new-session'])('rejects a forbidden response from an old provider when the current provider has identity %s',async identity=>{let release!:(response:Response)=>void;const fetch=vi.fn(()=>new Promise<Response>(resolve=>release=resolve));vi.stubGlobal('fetch',fetch);mount('old-session');const old=adminRequest('command',{action:'suspend'});mount(identity);release(Response.json({error:'Forbidden'},{status:403}));await expect(old).rejects.toThrow('session changed');expect(replace).not.toHaveBeenCalled();fetch.mockImplementation(async()=>Response.json({items:[{id:'new-private-row'}]}));expect(await adminRequest('workspace/players')).toEqual({items:[{id:'new-private-row'}]})});
- it('clears current private data on a real permission rejection',async()=>{vi.stubGlobal('fetch',vi.fn(async()=>Response.json({error:'Forbidden'},{status:403})));mount('current');await expect(adminRequest('workspace/players')).rejects.toThrow();expect(replace).toHaveBeenCalledWith('/admin');await expect(adminRequest('workspace/players')).rejects.toThrow('not initialized')});
+ it('clears current private data when the staff session loses access',async()=>{vi.stubGlobal('fetch',vi.fn(async()=>Response.json({error:'Sign in with an approved administrator account.',code:'ADMIN_LOGIN_REQUIRED'},{status:403})));mount('current');await expect(adminRequest('workspace/players')).rejects.toThrow();expect(replace).toHaveBeenCalledWith('/admin');await expect(adminRequest('workspace/players')).rejects.toThrow('not initialized')});
+ it('reports an action rejection inline and keeps the verified staff session',async()=>{
+  vi.stubGlobal('fetch',vi.fn(async()=>Response.json({error:'Your staff role does not grant this permission.'},{status:403})));
+  mount('current');
+  await expect(adminRequest('command',{action:'deadline'})).rejects.toThrow('does not grant this permission');
+  expect(replace).not.toHaveBeenCalled();
+  vi.stubGlobal('fetch',vi.fn(async()=>Response.json({items:[]})));
+  await expect(adminRequest('workspace/players')).resolves.toEqual({items:[]});
+ });
+ it('shows a retry message when the gateway returns a non-JSON error',async()=>{
+  vi.stubGlobal('fetch',vi.fn(async()=>new Response('<html>Gateway timeout</html>',{status:504})));
+  mount('current');
+  await expect(adminRequest('command',{action:'deadline'})).rejects.toThrow('This request could not be completed. Try again.');
+  expect(replace).not.toHaveBeenCalled();
+ });
  it('discards a pre-mutation snapshot even when its prefetched resource is still inactive',async()=>{
   const client=mountClient('current'),path='auctions/auction-id',queryKey=['admin','current',path];
   let delayed!:(response:Response)=>void;

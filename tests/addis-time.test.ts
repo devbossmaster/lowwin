@@ -19,4 +19,14 @@ describe('Addis Ababa timestamps', () => {
     expect(formatAddisDateTimeLocal(null)).toBe('');
     expect(formatAddisTimestamp(undefined)).toBe('Not scheduled');
   });
+
+  it.each(['en-ET', 'am-ET'])('shows Addis midnight as 00:30 in %s regardless of device timezone', (locale) => {
+    vi.stubEnv('TZ', 'America/Los_Angeles');
+    const instant = '2026-12-31T21:30:54Z';
+
+    expect(formatAddisTimestamp(instant, locale)).toMatch(/00:30 GMT\+3$/);
+    expect(formatAddisTimestamp(instant, locale, 'compact')).toMatch(/00:30 GMT\+3$/);
+    expect(formatAddisTimestamp(instant, locale, 'time')).toBe('00:30 GMT+3');
+    expect(formatAddisTimestamp(instant, locale, 'withSeconds')).toMatch(/00:30:54 GMT\+3$/);
+  });
 });

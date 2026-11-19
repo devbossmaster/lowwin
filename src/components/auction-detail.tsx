@@ -8,7 +8,7 @@ import {chapaUuid} from '@/lib/chapa-client';
 import {Clock3,Eye,Gavel,Hash,LockKeyhole,ShieldCheck,Ticket} from 'lucide-react';
 import type {CatalogAuction} from '@/modules/auctions/catalog';
 import {formatEtb} from '@/lib/money';
-import {ADDIS_ABABA_TIME_OFFSET,ADDIS_ABABA_TIME_ZONE} from '@/lib/addis-time';
+import {formatAddisTimestamp} from '@/lib/addis-time';
 import {AuctionGallery} from './auction-gallery';
 import {AuctionResultDetail} from './auction-result-detail';
 import {WinnerCelebration} from './celebration';
@@ -50,7 +50,7 @@ export function AuctionDetail({auction:initialAuction,serverNow}:{auction:Catalo
  const auction={...known,...(resultQuery.data?{result:resultQuery.data.result}:{}),status:activity?.status??known.status,viewCount:views??known.viewCount,bidCount:activity?.bids??known.bidCount,startsAt:activity?.startsAt??known.startsAt,endsAt:activity?.endsAt??known.endsAt};
  const {language}=useMiniLocale(),am=language==='am',live=auction.status==='live',upcoming=auction.status==='upcoming';
  const title=am?(auction.product.titleAm?.trim()||auction.product.title):auction.product.title;
- const date=(value:string)=>new Date(value).toLocaleString('en',{dateStyle:'medium',timeStyle:'short',timeZone:ADDIS_ABABA_TIME_ZONE});
+ const date=(value:string)=>formatAddisTimestamp(value,am?'am-ET':'en-ET');
  const paymentSheet=bidding?<BidSheet auction={auction} serverNow={serverNow} onClose={closeBidding} initialChapaId={returnId}/>:null;
  if(['closed','cancelled','closing'].includes(auction.status))return <><ArifPayReturn auctionSlug={auction.slug}/>{auction.result?.outcome==='WINNER'&&<WinnerCelebration id={`winner:${auction.code}`}/>}<AuctionResultDetail auction={auction}/>{returnId&&paymentSheet}</>;
  return <article className={styles.page} data-auction-detail>
@@ -73,7 +73,7 @@ export function AuctionDetail({auction:initialAuction,serverNow}:{auction:Catalo
    <div className={styles.countdownPanel}>
     <p className={styles.timerLabel}><Clock3 size={14} aria-hidden="true"/><MiniPhrase en={live?'Time remaining':upcoming?'Starts in':'Bidding ended'} am={live?'ቀሪ ጊዜ':upcoming?'የሚጀምረው በ':'ጨረታው ተጠናቋል'}/></p>
     <div className={styles.clock}>{live||upcoming?<AuctionCountdown target={upcoming?auction.startsAt:auction.endsAt} serverNow={serverNow} label={upcoming?'Starts':'Ends'} showLabel={false} tiles onElapsed={refreshActivity}/>:<strong>{date(auction.endsAt)}</strong>}</div>
-    <p className={styles.schedule}><MiniPhrase en={upcoming?'Starts':'Closes'} am={upcoming?'ይጀምራል':'ይዘጋል'}/> <time dateTime={upcoming?auction.startsAt:auction.endsAt}>{date(upcoming?auction.startsAt:auction.endsAt)} {ADDIS_ABABA_TIME_OFFSET}</time></p>
+    <p className={styles.schedule}><MiniPhrase en={upcoming?'Starts':'Closes'} am={upcoming?'ይጀምራል':'ይዘጋል'}/> <time dateTime={upcoming?auction.startsAt:auction.endsAt}>{date(upcoming?auction.startsAt:auction.endsAt)}</time></p>
    </div>
    <div className={styles.numbers}><div><Gavel size={14} aria-hidden="true"/><span><strong>{auction.bidCount.toLocaleString()}</strong><small><MiniPhrase en="Total bids" am="ጠቅላላ ጨረታዎች"/></small></span></div><div><Eye size={14} aria-hidden="true"/><span><strong>{BigInt(auction.viewCount).toLocaleString()}</strong><small><MiniPhrase en="Views" am="እይታዎች"/></small></span></div></div>
   </section>

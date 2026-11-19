@@ -32,8 +32,8 @@ export function AdminMessages(){
  const view=queue.params.get('view')==='active'?'active':queue.params.get('view')==='history'?'history':'compose',auctionId=queue.params.get('auction')??'';
  const query=useAdminRead<History>(`notifications?${new URLSearchParams({page:String(queue.page),q:queue.params.get('q')??'',view:view==='active'?'active':'history'})}`,{enabled:view!=='compose'}),reload=useRef(query.reload);reload.current=query.reload;
  const auctionDraft=useAdminQuery<BroadcastDraft>(`notifications/auction/${auctionId}`,{enabled:owner&&view==='compose'&&!!auctionId});
- const active=view==='active'||query.data?.items.some(item=>item.canStop||item.deletion?.pending||item.deletion?.preparing)===true;
- useEffect(()=>{if(!active||view==='compose')return;const timer=setInterval(()=>{if(document.visibilityState==='visible')reload.current()},5000);return()=>clearInterval(timer)},[active,view]);
+ const active=query.data?.items.some(item=>item.canStop||item.deletion?.pending||item.deletion?.preparing)===true;
+ useEffect(()=>{if(!active||view==='compose')return;const timer=setInterval(()=>{if(document.visibilityState==='visible')reload.current()},3000);return()=>clearInterval(timer)},[active,view]);
  const open=(campaign:Campaign,action:Confirmation['action'])=>{mutation.clear();setNotice('');setConfirmation({campaign,action,resendId:crypto.randomUUID()})};
  const confirm=async()=>{
   if(!confirmation)return;const {campaign:c,action,resendId}=confirmation;
@@ -44,7 +44,9 @@ export function AdminMessages(){
   <AdminHeading title="Broadcast" description="Compose an update, follow the queue, or manage delivered messages." refresh={view==='compose'?undefined:query.reload}>{owner&&<AdminLink className="admin-button secondary" href="/admin/auctions"><Plus size={16}/>Promote an auction</AdminLink>}</AdminHeading>
   <nav className={styles.areas} aria-label="Broadcast areas">{(['compose','active','history'] as const).map(area=><button type="button" key={area} className={view===area?'':'secondary'} aria-pressed={view===area} onClick={()=>{setNotice('');queue.set({view:area,page:'1',q:''})}}>{area==='compose'?'Compose / Review':area==='active'?'Active Queue':'Delivery History'}</button>)}</nav>
   {notice&&<p role="status" className="admin-notice">{notice}</p>}
-  {view==='compose'?(owner?<section aria-label="Compose and review"><ErrorNotice error={auctionDraft.error} retry={auctionDraft.reload}/>{auctionId&&<button className="secondary" onClick={()=>queue.set({auction:''})}>New message</button>}{auctionId&&!auctionDraft.data&&!auctionDraft.error?<p role="status">Loading auction preview…</p>:<AdminBroadcast key={`${auctionDraft.data?.draftHash??'new'}:${draftVersion}`} initial={auctionDraft.data??undefined} onQueued={()=>{setDraftVersion(v=>v+1);queue.set({view:'active',page:'1',q:''})}}/>}</section>:<Empty title="Broadcast composition requires Owner access"/>):
+  {view==='compose'?(owner?<section aria-label="Compose and review">{auctionId&&<><ErrorNotice error={auctionDraft.error} retry={auctionDraft.reload}/><button className="secondary" onClick={()=>{setNotice('');queue.set({auction:''})}}>New message</button></>}
+   {auctionId&&!auctionDraft.data?(!auctionDraft.error&&<p role="status">Loading auction preview…</p>):<AdminBroadcast key={`${auctionDraft.data?.draftHash??'new'}:${draftVersion}`} initial={auctionId?auctionDraft.data??undefined:undefined} onQueued={()=>{setNotice('Broadcast queued for Telegram.');setDraftVersion(v=>v+1);queue.set({view:'active',page:'1',q:''})}}/>}
+  </section>:<Empty title="Broadcast composition requires Owner access"/>):
   <section className="master-broadcast-history" aria-label={view==='active'?'Active Queue':'Delivery History'}>
    <h2>{view==='active'?'Active Queue':'Delivery History'}</h2><form className="admin-queue-filter" onSubmit={e=>{e.preventDefault();queue.set({q:String(new FormData(e.currentTarget).get('q')??''),page:'1'})}}><label>Search<input name="q" key={queue.params.get('q')??''} type="search" defaultValue={queue.params.get('q')??''} placeholder="Message text"/></label><button>Search</button></form>
    <ErrorNotice error={query.error||(!confirmation?mutation.error:'')} retry={query.reload}/>{!query.data&&query.loading&&<div className="admin-loading"><LoadingSpinner label="Loading broadcasts…"/></div>}

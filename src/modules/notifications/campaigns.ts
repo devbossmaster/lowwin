@@ -2,13 +2,17 @@ import {Prisma,type PrismaClient,type Outbox} from '@prisma/client';
 import {demoBidAllowed} from '../auctions/bids';
 import {stagingDemoEnabled} from '../auctions/staging-demo';
 import {formatEtb} from '@/lib/money';
+import {ADDIS_ABABA_TIME_OFFSET,ADDIS_ABABA_TIME_ZONE} from '@/lib/addis-time';
 import {auctionMaintenance} from '../auctions/maintenance';
 import {broadcastMiniAppPath,broadcastButtonLabel} from '@/lib/broadcast-link';
 import {resultRecipientIds} from './result-audience';
-import {readAuctionPromotion} from './auction-promotion';
+import {promotionNow,readAuctionPromotion} from './auction-promotion';
 import {endingReminders,endingReminder,endingReminderCurrent,notificationRetired,upcomingReminders,upcomingReminder,upcomingReminderCurrent} from './policy';
+import {auctionCountdownAm,auctionPromotionText} from './amharic-copy';
 
 type Tx=Prisma.TransactionClient;
+const notificationTime=new Intl.DateTimeFormat('am-ET',{dateStyle:'medium',timeStyle:'short',timeZone:ADDIS_ABABA_TIME_ZONE,hourCycle:'h23'});
+const when=(date:Date)=>`${notificationTime.format(date)} (አዲስ አበባ · ${ADDIS_ABABA_TIME_OFFSET})`;
 export const telegramKinds=['AUCTION_PUBLISHED','AUCTION_UPCOMING_ADDED',...upcomingReminders.map(r=>r.kind),...endingReminders.map(r=>r.kind),'AUCTION_ENDED','DEPOSIT_CREDITED','BROADCAST'];
 /** Only a published product's own local image may accompany its auction alert. */
 export function auctionNotificationImagePath(presentation:unknown,productPath?:string){
@@ -20,7 +24,7 @@ export function auctionNotificationImagePath(presentation:unknown,productPath?:s
 export function auctionNotificationImageId(presentation:unknown,productPath?:string){
  return /^\/api\/media\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/i.exec(auctionNotificationImagePath(presentation,productPath)??'')?.[1];
 }
-export type CampaignPayload={auctionId?:string;settlementId?:string;recipientUserId?:string;intentId?:string;body?:string;imageId?:string;imagePath?:string;href?:string;buttonLabel?:string;telegramOnly?:boolean;parentCampaignId?:string;cursor?:string;audienceBefore?:string;rootKey?:string;deliveryKind?:string};
+export type CampaignPayload={auctionId?:string;settlementId?:string;recipientUserId?:string;intentId?:string;body?:string;promotionTitle?:string;imageId?:string;imagePath?:string;href?:string;buttonLabel?:string;telegramOnly?:boolean;parentCampaignId?:string;cursor?:string;audienceBefore?:string;rootKey?:string;deliveryKind?:string};
 export function broadcastRoot(row:Pick<Outbox,'kind'|'key'|'payload'>){
  const p=row.payload as CampaignPayload;
  if(row.kind==='GLOBAL_CAMPAIGN'&&p.deliveryKind==='BROADCAST')return p.rootKey??row.key;
@@ -29,7 +33,7 @@ export function broadcastRoot(row:Pick<Outbox,'kind'|'key'|'payload'>){
 }
 export async function broadcastStopped(tx:Tx,rootKey:string){return (await tx.outbox.findUnique({where:{key:rootKey},select:{lastError:true}}))?.lastError==='CAMPAIGN_STOPPED'}
 export async function queueGlobal(tx:Tx,key:string,kind:string,payload:CampaignPayload){
- const [{now}]=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`;
+ const now=await promotionNow(tx);
  const auction=payload.auctionId?await tx.auction.findUnique({where:{id:payload.auctionId},select:{testRunId:true}}):null;
  return tx.outbox.upsert({where:{key},create:{key,kind:'GLOBAL_CAMPAIGN',payload:{...payload,deliveryKind:kind,audienceBefore:now.toISOString(),rootKey:key},testRunId:auction?.testRunId},update:{}});
 }
@@ -69,7 +73,7 @@ export async function scheduleGlobalAlerts(client:PrismaClient){
  },{maxWait:5000,timeout:30000});
 }
 async function scheduleGlobalAlertsInTransaction(client:Tx){
- const [{now}]=await client.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`;
+ const now=await promotionNow(client);
  let cursor:string|undefined,created=0;
  for(const reminder of endingReminders){
   cursor=undefined;
@@ -96,10 +100,15 @@ export async function campaignContent(tx:Tx,row:Pick<Outbox,'kind'|'payload'>){
  const base={userId:p.recipientUserId,kind:row.kind,imageId:undefined as string|undefined,imagePath:undefined as string|undefined,fallbackImagePath:undefined as string|undefined};
  if(row.kind==='BROADCAST'){
   if(!p.body||!p.href)return null;
+  let body=p.body;
   // A product promotion must still refer to a visible, accepting auction.
-  if(p.auctionId&&(await readAuctionPromotion(tx,p.auctionId)).issue)return null;
+  if(p.auctionId){
+   const promotion=await readAuctionPromotion(tx,p.auctionId);
+   if(promotion.issue||!promotion.auction?.endsAt)return null;
+   if(p.promotionTitle)body=auctionPromotionText(p.promotionTitle,promotion.auction.endsAt,promotion.now);
+  }
   let href:string,buttonLabel:string;try{href=broadcastMiniAppPath(p.href);buttonLabel=broadcastButtonLabel(p.buttonLabel)}catch{return null}
-  return {...base,title:'የLowWin መረጃ',body:p.body,href,imageId:p.imageId,imagePath:p.imagePath,buttonLabel};
+  return {...base,title:'የLowWin መረጃ',body,href,imageId:p.imageId,imagePath:p.imagePath,buttonLabel};
  }
  if(row.kind==='DEPOSIT_CREDITED'){
   if(!p.intentId)return null;
@@ -111,14 +120,13 @@ export async function campaignContent(tx:Tx,row:Pick<Outbox,'kind'|'payload'>){
  if(!p.auctionId)return null;
  const a=await tx.auction.findUnique({where:{id:p.auctionId},select:{slug:true,publicCode:true,publishedAt:true,startsAt:true,endsAt:true,status:true,isDemo:true,isSettlementFixture:true,testRunId:true,presentation:true,product:{select:{title:true,titleAm:true,visible:true,images:{orderBy:{sortOrder:'asc'},take:1,select:{path:true}}}},result:{select:{id:true}},settlement:{select:{id:true,outcome:true,completedAt:true,publication:{select:{publishedAt:true}}}}}});
  if(!a?.publishedAt||!a.slug||a.result||a.testRunId||a.isDemo&&(!a.isSettlementFixture||!(demoBidAllowed()||stagingDemoEnabled())))return null;
- const [{now}]=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`;
+ const now=await promotionNow(tx);
  if(a.publishedAt>now)return null;
  const presentation=a.presentation as {title?:unknown;titleAm?:unknown;images?:{path?:unknown}[]}|null;
  const title=typeof presentation?.titleAm==='string'&&presentation.titleAm.trim()?presentation.titleAm:a.product?.titleAm|| (typeof presentation?.title==='string'?presentation.title:a.product?.title);
  base.imagePath=auctionNotificationImagePath(presentation,a.product?.images?.[0]?.path);
  base.imageId=auctionNotificationImageId(presentation,a.product?.images?.[0]?.path);
  const prefix=a.isDemo?'ማሳያ · ':'',shortItem=(title??'ጨረታ').replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim().slice(0,120);
- const when=(date:Date)=>new Intl.DateTimeFormat('am-ET',{dateStyle:'medium',timeStyle:'short',timeZone:'Africa/Addis_Ababa'}).format(date)+' (ኢትዮጵያ ሰዓት)';
  const action={buttonLabel:'ጨረታውን ይመልከቱ',href:`/auctions/${a.slug}`};
  if(row.kind==='AUCTION_ENDED'){
   const settlement=a.settlement;
@@ -138,12 +146,16 @@ export async function campaignContent(tx:Tx,row:Pick<Outbox,'kind'|'payload'>){
  if(starting){
   if(a.settlement||!a.startsAt)return null;
   if(!upcomingReminderCurrent(row.kind,a.startsAt,now))return null;
-  return {...base,...action,title:prefix+starting.am,body:`${shortItem}\nየሚጀምርበት፦ ${when(a.startsAt)}`,telegramCaption:`⏰ ${prefix}${starting.am}\n\n${shortItem}\nየሚጀምርበት፦ ${when(a.startsAt)}`};
+  const title=`${prefix}ጨረታው ሊጀምር ${auctionCountdownAm(a.startsAt,now)} ቀርቷል`;
+  const body=`${shortItem}\nየሚጀምርበት፦ ${when(a.startsAt)}`;
+  return {...base,...action,title,body,telegramCaption:`⏰ ${title}\n\n${body}`};
  }
  const reminder=endingReminder(row.kind);
  if(reminder){
   if(a.settlement||!a.startsAt||a.startsAt>now||!endingReminderCurrent(row.kind,a.endsAt,now))return null;
-  return {...base,...action,title:`${prefix}${reminder.am}`,body:`${shortItem}\nየመዝጊያ ሰዓት፦ ${when(a.endsAt)}`,telegramCaption:`⌛ ${prefix}${reminder.am}\n\n${shortItem}\nየመዝጊያ ሰዓት፦ ${when(a.endsAt)}`};
+  const title=`${prefix}ጨረታው ሊያበቃ ${auctionCountdownAm(a.endsAt,now)} ቀርቷል`;
+  const body=`${shortItem}\nየመዝጊያ ሰዓት፦ ${when(a.endsAt)}`;
+  return {...base,...action,title,body,telegramCaption:`⌛ ${title}\n\n${body}`};
  }
  if(row.kind==='AUCTION_UPCOMING_ADDED'){
   if(a.settlement||!a.startsAt||a.startsAt<=now)return null;

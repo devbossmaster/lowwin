@@ -3,6 +3,7 @@ import {AdminLink as Link} from './admin-query';
 import {useEffect,useId,useRef,useState} from 'react';
 import {ArrowLeft,ArrowRight,Check,Plus} from 'lucide-react';
 import {AdminPhoto} from './admin-catalog';
+import {AdminAuctionSchedulePreview} from './admin-auction-schedule-preview';
 import {eat} from './admin-ui';
 import {ADDIS_ABABA_TIME_LABEL,formatAddisDateTimeLocal,parseAddisDateTimeLocal} from '@/lib/addis-time';
 
@@ -54,6 +55,7 @@ export function AdminAuctionDraft({item,products,auctionId,busy,owner,dirty,pref
      <legend>Set the schedule</legend><p>Enter times in {ADDIS_ABABA_TIME_LABEL}.</p>
      <div className="admin-two"><label>Starts<input name="startsAt" type="datetime-local" value={start} onChange={event=>setStart(event.target.value)} required/></label><label>Ends<input name="endsAt" type="datetime-local" value={end} min={start||undefined} onChange={event=>setEnd(event.target.value)} required/></label></div>
      <div className="auction-duration" role="group" aria-label="Auction duration"><span>Run for</span>{[7,14,21].map(days=><button type="button" className="secondary" key={days} disabled={!start} aria-pressed={duration===days} onClick={()=>preset(days)}>{days} days</button>)}</div>
+     {step===1&&<AdminAuctionSchedulePreview start={start} end={end}/>}
      <label>Submission fee (ETB)<input name="entryFeePoints" inputMode="decimal" pattern="(0|[1-9][0-9]{0,8})([.][0-9]{1,2})?" value={fee} onChange={event=>setFee(event.target.value)} placeholder="Set the fee for this auction" required/><small>Charged per accepted bid. On cancellation, actual paid cash fees return to wallet cash; bonus returns as bonus, never cash. Coupon discounts are not refundable value.</small></label><div className="auction-fixed-rules"><Check size={18}/><p><strong>Numbers from 1.00 · 0.01 steps</strong><span>No maximum. Players pay only the submission fee.</span></p></div>
      <details className="auction-deadline-options"><summary>Deadline change settings</summary><p>These limits apply after publication.</p><div className="admin-two"><label>Maximum extension (minutes)<input type="number" name="maxExtensionMinutes" min="0" max="43200" step="1" defaultValue={body.maxExtensionMinutes??10080} required/><small>10,080 minutes = 7 days</small></label><label>Shortening notice (minutes)<input type="number" name="shortenNoticeMinutes" min="5" max="10080" step="1" defaultValue={body.shortenNoticeMinutes??1440} required/><small>1,440 minutes = 24 hours</small></label></div><label className="admin-check"><input name="allowPaidShortening" type="checkbox" defaultChecked={body.allowPaidShortening??false}/>Allow shortening after bids with this notice</label></details>
     </fieldset>

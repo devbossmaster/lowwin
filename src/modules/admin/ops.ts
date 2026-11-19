@@ -67,7 +67,7 @@ export async function opsMutation(client:PrismaClient,headers:Headers,action:Ops
    const d=schemas.auctionBroadcast.parse(input);if(owner.role!=='OWNER')throw new AdminError(403,'Only the Owner can broadcast.');
    const preview=await auctionBroadcastDraft(tx,d.auctionId);
    if(preview.draftHash!==d.draftHash)throw new AdminError(409,'The auction changed. Reload its preview before sending.');
-   const job=await queueGlobal(tx,`broadcast:${owner.id}:${d.key}`,'BROADCAST',{auctionId:d.auctionId,body:preview.text,href:preview.miniAppPath,imagePath:preview.imagePath,buttonLabel:preview.buttonLabel,telegramOnly:true});
+   const job=await queueGlobal(tx,`broadcast:${owner.id}:${d.key}`,'BROADCAST',{auctionId:d.auctionId,body:preview.text,promotionTitle:preview.title,href:preview.miniAppPath,imagePath:preview.imagePath,buttonLabel:preview.buttonLabel,telegramOnly:true});
    receipt={id:job.id,state:'PENDING'};target=job.id;
   }else if(action==='broadcast'){
    const d=schemas.broadcast.parse(input);if(owner.role!=='OWNER')throw new AdminError(403,'Only the Owner can broadcast.');
