@@ -25,7 +25,7 @@ describe('live auction broadcast review',()=>{
   const later=await auctionBroadcastDraft(tx(item) as never,id,new Date(now.getTime()+1000));
   expect(later.text).not.toBe(one.text);
   expect(later.draftHash).toBe(one.draftHash);
-  for(const change of [{endsAt:new Date(now.getTime()+3601000)},{presentation:{titleAm:'አዲስ ዕቃ',images:[{path:image}]}},{presentation:{titleAm:'ተንቀሳቃሽ ቻርጀር',images:[{path:'/images/changed.webp'}]}}]){
+  for(const change of [{endsAt:new Date(now.getTime()+3601000)},{presentation:{...item.presentation,titleAm:'አዲስ ዕቃ'}},{presentation:{...item.presentation,images:[{path:'/images/changed.webp'}]}}]){
    const changed=await auctionBroadcastDraft(tx({...item,...change}) as never,id,now);
    expect(changed.draftHash).not.toBe(one.draftHash);
   }
