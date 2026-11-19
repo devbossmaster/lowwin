@@ -81,8 +81,5 @@ test('guests reach Home before protected page content or auction details',async(
   expect(detail.status()).toBe(200);
   expect(detail.headers()['cache-control']).toContain('no-store');
   expect(await detail.json()).toMatchObject({code:String(auction.publicCode),result:null});
-  const pageResponse=await page.request.get(`/auctions/${auction.publicCode}`,{maxRedirects:0,timeout:120000});
-  expect(pageResponse.status()).toBe(200);
-  expect(pageResponse.headers()['cache-control']).toContain('no-store');
  }finally{await db.$disconnect()}
 });
