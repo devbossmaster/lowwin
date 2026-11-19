@@ -3,8 +3,10 @@ import {AuctionDetail} from '@/components/auction-detail';
 import {OfflineRetry} from '@/components/offline-retry';
 import {getAuction,serverNow} from '@/modules/auctions/catalog';
 import {catalogProductPreview} from '@/lib/catalog-preview';
+import {requireCustomerPage} from '@/modules/auth/customer-page';
 export default async function AuctionPage({params,searchParams}:{params:Promise<{slug:string}>;searchParams:Promise<{checkout?:string|string[];chapa?:string|string[]}>}){
  const {slug}=await params;
+ await requireCustomerPage(`/auctions/${encodeURIComponent(slug)}`);
  if(slug==='all')notFound();
  const now=await serverNow(),auction=await getAuction(slug,now);
  if(!auction)notFound();

@@ -22,6 +22,7 @@ import {lockAuctionMaintenance,readAuctionMaintenance} from '../auctions/mainten
 import {defaultHomeCopy} from '@/components/home-copy';
 import {formatAddisTimestamp} from '@/lib/addis-time';
 import {measureAdmin} from './timing';
+import {bidNumbersPublished} from './bid-publication';
 
 const id=z.string().uuid(),key=z.string().uuid(),version=z.number().int().min(0),text=(n:number)=>z.string().trim().min(1).max(n);
 const points=z.string().regex(/^(0|[1-9]\d{0,8})(?:\.\d{1,2})?$/),localized=(n:number)=>z.string().trim().max(n).optional().default('');
@@ -265,15 +266,18 @@ export async function adminRead(client:PrismaClient,headers:Headers,path:string[
     if(path[2]==='impact')return client.$transaction(async tx=>{await lockAuction(tx,auctionId);await requireAdmin(tx,headers);return cancellationImpact(tx,auctionId)});
     if(path[2]==='preflight')return client.$transaction(async tx=>{const {auction,body,product,errors,now}=await publicationPreflight(tx,auctionId);return {auctionId,code:auction.code,version:auction.draft!.version,body,product,errors,serverNow:now.toISOString(),ready:errors.length===0}});
     if(path[2]==='proof'){
-      const settlement=await client.auctionSettlement.findUnique({where:{auctionId},include:{movements:true,winner:{select:{id:true,name:true}},auction:{select:{status:true,code:true,slug:true,presentation:true,product:{select:{title:true,images:{select:{path:true,alt:true},take:1}}}}}}});
-      if(!settlement||!['CLOSED','CANCELLED'].includes(settlement.auction.status))throw new AdminError(409,'Proof and participant journals are available only after close or cancellation.');
+      const settlement=await client.auctionSettlement.findUnique({where:{auctionId},include:{publication:{select:{publishedAt:true}},movements:true,winner:{select:{id:true,name:true}},auction:{select:{status:true,code:true,slug:true,presentation:true,product:{select:{title:true,images:{select:{path:true,alt:true},take:1}}}}}}});
+      if(!settlement||!bidNumbersPublished({status:settlement.auction.status,settlement},actor.now))throw new AdminError(409,'Proof and participant journals are available after the result is published.');
       const operationIds=settlement.movements.flatMap(m=>[m.chargeOperationId,m.releaseOperationId,m.refundOperationId].filter((value):value is string=>!!value));
       const [journals,holds,wallets]=await Promise.all([client.journal.findMany({where:{operationId:{in:operationIds}},include:{postings:{include:{account:{select:{name:true,kind:true}}}}}}),client.auctionHold.findMany({where:{auctionId}}),client.wallet.findMany({where:{id:{in:settlement.movements.map(m=>m.walletId)}},select:{id:true,accounts:{select:{kind:true,balance:true}}}})]);
       const participants=await client.user.findMany({where:{id:{in:settlement.movements.map(m=>m.userId)}},select:{id:true,name:true}});
       return asJson({settlement,journals,holds,wallets,participants});
     }
     if(path[2])throw new AdminError(404,'Admin resource not found.');
-    const auction=await client.auction.findUniqueOrThrow({where:{id:auctionId},select:{id:true,code:true,slug:true,status:true,isDemo:true,startsAt:true,endsAt:true,publishedAt:true,featured:true,controlVersion:true,presentation:true,fulfillmentSummary:true,fulfillmentSummaryAm:true,fulfillmentRegion:true,fulfillmentRegionAm:true,closeErrorCode:true,closeAttempts:true,nextCloseAttemptAt:true,product:{include:{images:true,category:true}},terms:true,feeRevisions:{orderBy:[{effectiveAt:'desc'},{version:'desc'}]},controlRevisions:{orderBy:[{createdAt:'desc'},{version:'desc'}]},draft:true,settlement:{select:{ruleVersion:true,outcome:true,completedAt:true,winningPoints:true,decision:true,winner:{select:{id:true,name:true}}}},result:{select:{outcome:true,isDemo:true}}}});const counts=await client.$queryRaw<{participants:bigint;bids:bigint}[]>`SELECT COUNT(DISTINCT "userId") AS participants, COUNT(*) AS bids FROM "Bid" WHERE "auctionId"=${auctionId}`;return asJson({...auction,displayStatus:displayAuctionStatus(auction,actor.now),participants:Number(counts[0].participants),acceptedBids:Number(counts[0].bids),serverNow:actor.now.toISOString()});
+    const auction=await client.auction.findUniqueOrThrow({where:{id:auctionId},select:{id:true,code:true,slug:true,status:true,isDemo:true,startsAt:true,endsAt:true,publishedAt:true,featured:true,controlVersion:true,presentation:true,fulfillmentSummary:true,fulfillmentSummaryAm:true,fulfillmentRegion:true,fulfillmentRegionAm:true,closeErrorCode:true,closeAttempts:true,nextCloseAttemptAt:true,product:{include:{images:true,category:true}},terms:true,feeRevisions:{orderBy:[{effectiveAt:'desc'},{version:'desc'}]},controlRevisions:{orderBy:[{createdAt:'desc'},{version:'desc'}]},draft:true,settlement:{select:{ruleVersion:true,outcome:true,completedAt:true,publication:{select:{publishedAt:true}},winningPoints:true,decision:true,winner:{select:{id:true,name:true}}}},result:{select:{outcome:true,isDemo:true}}}});
+    const counts=await client.$queryRaw<{participants:bigint;bids:bigint}[]>`SELECT COUNT(DISTINCT "userId") AS participants, COUNT(*) AS bids FROM "Bid" WHERE "auctionId"=${auctionId}`;
+    const settlement=auction.settlement?{...auction.settlement,winningPoints:bidNumbersPublished(auction,actor.now)?auction.settlement.winningPoints:null}:null;
+    return asJson({...auction,settlement,displayStatus:displayAuctionStatus(auction,actor.now),participants:Number(counts[0].participants),acceptedBids:Number(counts[0].bids),serverNow:actor.now.toISOString()});
   }
   throw new AdminError(404,'Admin resource not found.');
 }

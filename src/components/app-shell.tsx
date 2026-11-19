@@ -1,9 +1,10 @@
 'use client';
-import {Suspense} from 'react';
-import {usePathname} from 'next/navigation';
+import {Suspense,useEffect} from 'react';
+import {usePathname,useRouter} from 'next/navigation';
 import {BottomNavigation} from './bottom-navigation';
 import Link from 'next/link';
 import {isPublicMiniPage} from '@/lib/mini-public-routes';
+import {customerLoginPath} from '@/lib/customer-login-entry';
 import {MiniPhrase} from './mini-locale';
 import {CustomerPageHeader} from './customer-page-header';
 import {useTelegram} from './telegram-provider';
@@ -16,10 +17,14 @@ import styles from './app-shell.module.css';
 import {MiniAccountAction} from './mini-account-action';
 
 export function AppShell({children,requireLaunch=false,demoProductImage=false}:{children:React.ReactNode;requireLaunch?:boolean;demoProductImage?:boolean}){
- const {status,me,queryIdentity,openRegistration,environment,retry}=useTelegram(),path=usePathname();
+ const {status,me,queryIdentity,openRegistration,environment,retry}=useTelegram(),path=usePathname(),router=useRouter();
  const registered=status==='authenticated'&&!!me?.user?.id&&!!queryIdentity;
  const protectedPage=requireLaunch&&!isPublicMiniPage(path)&&!registered;
  const restoreFailed=environment==='browser'&&status==='error';
+ // The router may restore a page from memory after its session was revoked.
+ useEffect(()=>{
+  if(protectedPage&&environment==='browser'&&status==='guest')router.replace(customerLoginPath(path+window.location.search+window.location.hash));
+ },[environment,path,protectedPage,router,status]);
  return <CatalogImagePreview enabled={demoProductImage}><div className="app-frame" data-app-environment={environment} data-customer-registered={registered?'true':'false'}>
   <Suspense fallback={null}><MiniNavigationMemory/></Suspense>
   <Suspense fallback={null}><LegacyAccountActions/></Suspense>
