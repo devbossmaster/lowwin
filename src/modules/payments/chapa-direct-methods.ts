@@ -40,7 +40,7 @@ export function createDirectMethodCatalog(transport:ChapaTransport=chapaTranspor
    if(refreshSoon&&now>=cached.refreshAfter&&cached.until-now<=60000){
     const entry=cached;
     entry.refreshAfter=Infinity;
-    void refresh(config).catch(()=>undefined).finally(()=>{
+    void refresh(config).catch(()=>{
      if(cached===entry)entry.refreshAfter=Date.now()+backgroundRefreshCooldownMs;
     });
    }
