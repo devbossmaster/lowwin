@@ -19,7 +19,7 @@ export function AdminDepositBonus(){
     <form key={policy.version} className="admin-form" onChange={()=>{setDirty(true);setSaved(null);mutation.clear()}} onSubmit={async event=>{
      event.preventDefault();const form=new FormData(event.currentTarget),end=String(form.get('endsAt')??''),max=String(form.get('maxBonus')??'').trim();
      const receipt=await mutation.run<DepositBonusPolicyReceipt>('save-policy',{version:policy.version,enabled:form.get('enabled')==='on',percent:Number(form.get('percent')),minAmount:String(form.get('minAmount')??''),maxBonus:max||null,validityDays:Number(form.get('validityDays')),endsAt:end?parseAddisDateTimeLocal(end).toISOString():null,reason:String(form.get('reason')??'')});
-     if(receipt){setDirty(false);setSaved(receipt);query.reload()}
+     if(receipt){setDirty(false);setSaved(receipt)}
     }}>
      <fieldset className={styles.fields} disabled={!data.schemaReady||mutation.busy}>
       <label className={`admin-check ${styles.toggle}`}><input type="checkbox" name="enabled" defaultChecked={policy.enabled}/><span>Enable deposit bonus<small>Qualifying new deposits receive the offer confirmed at checkout.</small></span></label>

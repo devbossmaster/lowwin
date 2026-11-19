@@ -1,12 +1,10 @@
 ﻿'use client';
 import {useEffect,useRef,useState} from 'react';
 import {Send,Check,Megaphone,AlertCircle} from 'lucide-react';
+import {adminRequest} from './admin-query';
 import styles from './admin-broadcast.module.css';
 
-async function command(action:string,input:unknown){
- const response=await fetch('/api/admin/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,input}),cache:'no-store'});
- const body=await response.json();if(!response.ok){const reference=typeof body.traceId==='string'&&/^[0-9a-f-]{36}$/i.test(body.traceId)?` Reference: ${body.traceId}`:'';throw Error((body.error??'Broadcast could not be queued.')+reference)}return body;
-}
+const command=<T,>(action:string,input:unknown)=>adminRequest<T>('command',{action,input});
 export type BroadcastDraft={id:string;text:string;auctionCode:string;imageId:string|null;buttonLabel?:string;miniAppPath?:string;auctionId?:string;draftHash?:string;imagePath?:string|null;title?:string};
 const destinations=[['/','Home'],['/my-bids','My bids'],['/winners','Winners'],['/profile','Profile']];
 export function AdminBroadcast({initial,onQueued}:{initial?:BroadcastDraft;onQueued?:()=>void}){
@@ -21,7 +19,7 @@ export function AdminBroadcast({initial,onQueued}:{initial?:BroadcastDraft;onQue
    if(file&&!media){
     if(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>2097152)throw Error('Choose a JPEG, PNG or WebP image up to 2 MiB.');
     const data=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(Error('Image could not be read.'));reader.readAsDataURL(file)});
-    const uploaded=await command('media',{key:crypto.randomUUID(),mime:file.type,data,sourceType:'SUPPLIED',sourceCredit:'Administrator supplied broadcast image',rightsConfirmed:true});media=uploaded.id;setImageId(media);
+    const uploaded=await command<{id:string}>('media',{key:crypto.randomUUID(),mime:file.type,data,sourceType:'SUPPLIED',sourceCredit:'Administrator supplied broadcast image',rightsConfirmed:true});media=uploaded.id;setImageId(media);
    }
    await command(initial?.auctionId?'auctionBroadcast':'broadcast',initial?.auctionId?{key:requestKey,auctionId:initial.auctionId,draftHash:initial.draftHash,reason:'Administrator reviewed auction promotion',confirmation:'SEND'}:{key:requestKey,text,buttonLabel,miniAppPath,...(media?{imageId:media}:{}),reason:'Administrator reviewed Telegram broadcast',confirmation:'SEND'});
    setResult('Queued. Delivery progress appears below.');setReview(false);onQueued?.();

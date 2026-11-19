@@ -1,5 +1,5 @@
 'use client';
-import {QueryClient,QueryClientProvider,useQuery} from '@tanstack/react-query';
+import {QueryClient,QueryClientProvider,useQuery,useQueryClient,type Query} from '@tanstack/react-query';
 import {createContext,useContext,useState} from 'react';
 import NextLink from 'next/link';
 import {useRouter} from 'next/navigation';
@@ -7,7 +7,8 @@ import type {ComponentProps} from 'react';
 import {AdminPrefetchBudget,adminMutationResources,adminResourceMatches,adminResourcePath,adminRouteResources} from '@/lib/admin-query-policy';
 const Identity=createContext('');
 const AllowedRoutes=createContext<readonly string[]>([]),prefetchBudget=new AdminPrefetchBudget();
-let active:{identity:string;client:QueryClient}|null=null;
+type AdminSession={identity:string;client:QueryClient};
+let active:AdminSession|null=null;
 export const navigation=new Map<string,string>(),positions=new Map<string,number>();
 export function AdminLink({href,onPointerEnter,onFocus,onTouchStart,scroll,...props}:ComponentProps<typeof NextLink>){
  const allowed=useContext(AllowedRoutes),identity=useContext(Identity),router=useRouter();
@@ -21,14 +22,76 @@ export function AdminQueryProvider({identity,allowedRoutes=[],children}:{identit
  if(typeof window!=='undefined'){if(active?.identity!==identity){active?.client.clear();navigation.clear();positions.clear();prefetchBudget.reset()}active={identity,client}}
  return <Identity.Provider value={identity}><AllowedRoutes.Provider value={allowedRoutes}><QueryClientProvider client={client}>{children}</QueryClientProvider></AllowedRoutes.Provider></Identity.Provider>;
 }
-async function transport<T>(path:string,body:unknown,signal:AbortSignal|undefined,identity:string):Promise<T>{const r=await fetch('/api/admin/'+path,{cache:'no-store',signal,...(body!==undefined?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{})});const d=await r.json();if(active?.identity!==identity)throw Error('Your staff session changed. Reload this workspace.');if(!r.ok){if(r.status===401||r.status===403||d.code==='ADMIN_LOGIN_REQUIRED'){clearAdminCache();if(typeof window!=='undefined')window.location.replace(r.status===403?'/admin':'/admin/login')}throw Error(d.error??'This request could not be completed.')}return d}
-export function refreshAdminPath(path:string){void active?.client.invalidateQueries({predicate:q=>String(q.queryKey[2]??'').split('?')[0]===path,refetchType:'none'})}
-export function invalidateAdmin(action:string,endpoint='command'){if(!active)return;const {client,identity}=active,groups=adminMutationResources(action,endpoint);void client.invalidateQueries({predicate:q=>q.queryKey[0]==='admin'&&q.queryKey[1]===identity&&groups.some(scope=>adminResourceMatches(String(q.queryKey[2]??''),scope))})}
-function applyReceipt(action:string,input:Record<string,unknown>|undefined,result:unknown){
- if(!active||!result||typeof result!=='object')return;const receipt=result as Record<string,unknown>,identity=active.identity;
- if(action==='suspend'&&receipt.userId===input?.userId&&typeof receipt.suspended==='boolean')active.client.setQueriesData({predicate:q=>q.queryKey[0]==='admin'&&q.queryKey[1]===identity&&['workspace/players','users'].some(scope=>adminResourceMatches(String(q.queryKey[2]??''),scope))},(old:any)=>!old?old:Array.isArray(old.items)?{...old,items:old.items.map((row:any)=>row.id===receipt.userId?{...row,suspended:receipt.suspended}:row)}:old.id===receipt.userId?{...old,suspended:receipt.suspended}:old);
- if(action==='deliveryDone'&&receipt.auctionId===input?.auctionId&&typeof receipt.state==='string')active.client.setQueriesData({predicate:q=>q.queryKey[0]==='admin'&&q.queryKey[1]===identity&&adminResourceMatches(String(q.queryKey[2]??''),'workspace/winners')},(old:any)=>old&&Array.isArray(old.items)?{...old,items:old.items.map((row:any)=>row.auctionId===receipt.auctionId?{...row,state:receipt.state,version:receipt.version}:row)}:old);
+function requireCurrentSession(session:AdminSession){
+ if(active?.identity!==session.identity||active.client!==session.client)throw Error('Your staff session changed. Reload this workspace.');
 }
-export async function prefetchAdminResource(path:string){if(!active)return;const {client,identity}=active,resource=adminResourcePath(path);try{await client.prefetchQuery({queryKey:['admin',identity,resource],queryFn:({signal})=>transport(resource,undefined,signal,identity)})}catch{/* Intent warming must never obstruct navigation. */}}
-export async function adminRequest<T>(path:string,body?:unknown,signal?:AbortSignal):Promise<T>{if(!active)throw Error('Staff workspace is not initialized. Sign in again.');const {client,identity}=active,resource=adminResourcePath(path);if(body!==undefined){const result=await transport<T>(resource,body,signal,identity);if(active?.identity!==identity)throw Error('Your staff session changed. Reload this workspace.');const request=body as {action?:string;input?:Record<string,unknown>};applyReceipt(request.action??'',request.input,result);invalidateAdmin(request.action??'mutation',resource);return result}const result=await client.fetchQuery({queryKey:['admin',identity,resource],queryFn:({signal})=>transport<T>(resource,undefined,signal,identity)});if(active?.identity!==identity)throw Error('Your staff session changed. Reload this workspace.');return result}
-export function useAdminQuery<T>(path:string,options:{enabled?:boolean}={}){const identity=useContext(Identity),resource=adminResourcePath(path);if(!identity)throw Error('Staff workspace is not initialized.');const q=useQuery({queryKey:['admin',identity,resource],enabled:options.enabled,queryFn:({signal})=>transport<T>(resource,undefined,signal,identity)});return {data:q.data??null,error:q.error?.message??'',loading:q.isPending&&q.isFetching,fetching:q.isFetching,refreshing:q.isFetching&&q.data!==undefined,updated:q.dataUpdatedAt?new Date(q.dataUpdatedAt).toISOString():null,reload:()=>{void q.refetch({cancelRefetch:false})}}}
+async function transport<T>(path:string,body:unknown,signal:AbortSignal|undefined,session:AdminSession):Promise<T>{
+ const response=await fetch('/api/admin/'+path,{cache:'no-store',signal,...(body!==undefined?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{})});
+ const result=await response.json();
+ requireCurrentSession(session);
+ signal?.throwIfAborted();
+ if(!response.ok){
+  if(response.status===401||response.status===403||result.code==='ADMIN_LOGIN_REQUIRED'){
+   clearAdminCache();
+   if(typeof window!=='undefined')window.location.replace(response.status===403?'/admin':'/admin/login');
+  }
+  const reference=typeof result.traceId==='string'&&/^[0-9a-f-]{36}$/i.test(result.traceId)?` Reference: ${result.traceId}`:'';
+  throw Error((result.error??'This request could not be completed.')+reference);
+ }
+ return result;
+}
+export function refreshAdminPath(path:string){void active?.client.invalidateQueries({predicate:q=>String(q.queryKey[2]??'').split('?')[0]===path,refetchType:'none'})}
+function sessionResources(identity:string,matches:(path:string)=>boolean){
+ return (query:Query)=>query.queryKey[0]==='admin'&&query.queryKey[1]===identity&&matches(String(query.queryKey[2]??''));
+}
+type AuctionReceiptData={id:string;controlVersion:number;feeRevisions?:{version:number;feePoints:string;effectiveAt:string}[]};
+function applyReceipt({client,identity}:AdminSession,action:string,input:Record<string,unknown>|undefined,result:unknown){
+ if(!result||typeof result!=='object')return;
+ const receipt=result as Record<string,unknown>;
+ if(action==='suspend'&&receipt.userId===input?.userId&&typeof receipt.suspended==='boolean')client.setQueriesData({predicate:sessionResources(identity,path=>['workspace/players','users'].some(scope=>adminResourceMatches(path,scope)))},(old:any)=>!old?old:Array.isArray(old.items)?{...old,items:old.items.map((row:any)=>row.id===receipt.userId?{...row,suspended:receipt.suspended}:row)}:old.id===receipt.userId?{...old,suspended:receipt.suspended}:old);
+ if(action==='deliveryDone'&&receipt.auctionId===input?.auctionId&&typeof receipt.state==='string')client.setQueriesData({predicate:sessionResources(identity,path=>adminResourceMatches(path,'workspace/winners'))},(old:any)=>old&&Array.isArray(old.items)?{...old,items:old.items.map((row:any)=>row.auctionId===receipt.auctionId?{...row,state:receipt.state,version:receipt.version}:row)}:old);
+ const {auctionId,controlVersion,endsAt,presentation,feeVersion,feePoints,effectiveAt}=receipt;
+ if(typeof auctionId!=='string'||auctionId!==input?.auctionId||typeof controlVersion!=='number')return;
+ const changes=action==='deadline'&&typeof endsAt==='string'?{endsAt,nextCloseAttemptAt:null,closeErrorCode:null}
+  :action==='presentation'&&presentation&&typeof presentation==='object'?{presentation}:null;
+ const fee=action==='fee'&&typeof feeVersion==='number'&&typeof feePoints==='string'&&typeof effectiveAt==='string'
+  ?{version:feeVersion,feePoints,effectiveAt}:null;
+ if(!changes&&!fee)return;
+ const resource='auctions/'+encodeURIComponent(auctionId);
+ const submittedVersion=input?.version;
+ client.setQueriesData<AuctionReceiptData>({predicate:sessionResources(identity,path=>path.split('?')[0]===resource)},old=>{
+  // Applying an action to an older projection with a gap would hide changes
+  // made by another staff session. The background refresh handles that case.
+  if(old?.id!==auctionId||old.controlVersion!==submittedVersion||controlVersion!==old.controlVersion+1)return old;
+  if(fee)return {...old,controlVersion,feeRevisions:[fee,...(old.feeRevisions??[])]};
+  return {...old,...changes,controlVersion};
+ });
+}
+export async function prefetchAdminResource(path:string){if(!active)return;const session=active,{client,identity}=session,resource=adminResourcePath(path);try{await client.prefetchQuery({queryKey:['admin',identity,resource],queryFn:({signal})=>transport(resource,undefined,signal,session)})}catch{/* Intent warming must never obstruct navigation. */}}
+export async function adminRequest<T>(path:string,body?:unknown,signal?:AbortSignal):Promise<T>{
+ if(!active)throw Error('Staff workspace is not initialized. Sign in again.');
+ const session=active,{client,identity}=session,resource=adminResourcePath(path);
+ if(body===undefined){
+  const result=await client.fetchQuery({queryKey:['admin',identity,resource],queryFn:({signal})=>transport<T>(resource,undefined,signal,session)});
+  requireCurrentSession(session);
+  return result;
+ }
+ const result=await transport<T>(resource,body,signal,session);
+ const {action='',input}=body as {action?:string;input?:Record<string,unknown>};
+ const groups=adminMutationResources(action,resource);
+ if(groups.length){
+  const predicate=sessionResources(identity,path=>groups.some(scope=>adminResourceMatches(path,scope)));
+  // Even inactive prefetched reads can return a snapshot captured before the mutation.
+  await client.cancelQueries({predicate});
+  requireCurrentSession(session);
+  applyReceipt(session,action,input,result);
+  void client.invalidateQueries({predicate},{cancelRefetch:false});
+ }
+ return result;
+}
+export function useAdminQuery<T>(path:string,options:{enabled?:boolean}={}){
+ const identity=useContext(Identity),client=useQueryClient(),resource=adminResourcePath(path);
+ if(!identity)throw Error('Staff workspace is not initialized.');
+ const q=useQuery({queryKey:['admin',identity,resource],enabled:options.enabled,queryFn:({signal})=>transport<T>(resource,undefined,signal,{identity,client})});
+ return {data:q.data??null,error:q.error?.message??'',loading:q.isPending&&q.isFetching,fetching:q.isFetching,refreshing:q.isFetching&&q.data!==undefined,updated:q.dataUpdatedAt?new Date(q.dataUpdatedAt).toISOString():null,reload:()=>{void q.refetch({cancelRefetch:false})}};
+}

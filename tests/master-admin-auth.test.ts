@@ -3,7 +3,10 @@ import {PrismaClient} from '@prisma/client';
 import {createServer,type Server} from 'node:http';
 import {execFileSync} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
+import {makeSignature} from 'better-auth/crypto';
 import {TEST_TOKEN} from './helpers';
+import {bidAuction} from './bid-fixtures';
+import {formatAddisDateTimeLocal,parseAddisDateTimeLocal} from '../src/lib/addis-time';
 const database=process.env.MASTER_ADMIN_TEST_DATABASE_URL;
 describe.skipIf(!database)('Master Guide Admin on disposable PostgreSQL',()=>{
  let db:PrismaClient,sink:Server,auth:typeof import('../src/modules/auth/handler').handleAuth,requireAdmin:typeof import('../src/modules/admin/boundary').requireAdmin,cookie='',userId='';
@@ -48,6 +51,81 @@ describe.skipIf(!database)('Master Guide Admin on disposable PostgreSQL',()=>{
  });
  it('refuses legacy assurance records even when an account has admin role',async()=>{
   const actor=await requireAdmin(db,new Headers({cookie}));await db.staffSession.update({where:{sessionId:actor.sessionId},data:{authMethod:'legacy',mfaAt:new Date()}});await expect(requireAdmin(db,new Headers({cookie}))).rejects.toMatchObject({status:403});await db.staffSession.update({where:{sessionId:actor.sessionId},data:{authMethod:'email-password',mfaAt:null}});
+ });
+ it('looks up the fresh admin grant in one query and keeps the staff lock before mutation authorization',async()=>{
+  const traced=new PrismaClient({datasourceUrl:database,log:[{level:'query',emit:'event'}]});
+  const queries:string[]=[];
+  traced.$on('query',event=>{if(event.query.trimStart().startsWith('SELECT'))queries.push(event.query)});
+  try{
+   const headers=new Headers({cookie});
+   await expect(requireAdmin(traced,headers,{permission:'catalog'})).resolves.toMatchObject({id:userId,role:'OWNER'});
+   expect(queries).toHaveLength(1);
+   queries.length=0;
+   await expect(traced.$transaction(tx=>requireAdmin(tx,headers,{lock:true,permission:'cancel'}))).resolves.toMatchObject({id:userId,role:'OWNER'});
+   expect(queries).toHaveLength(2);
+   expect(queries[0]).toContain('FOR UPDATE OF u,m');
+   expect(queries[1]).toContain('"StaffSession"');
+  }finally {await traced.$disconnect()}
+ });
+ it('extends the deadline from the Addis Ababa form, retires old reminders and reloads the saved revision',async()=>{
+  const {POST,GET}=await import('../src/app/api/admin/[...path]/route');
+  const auction=await bidAuction(db,{ruleVersion:'lowest-unique-v5',endDelayMs:3600000});
+  const reminder=await db.outbox.create({data:{key:`test-ending:${auction.id}`,kind:'AUCTION_ENDING_1_HOUR',payload:{auctionId:auction.id}}});
+  const next=new Date((Math.floor(auction.endsAt!.getTime()/60000)+30)*60000);
+  const input={key:randomUUID(),auctionId:auction.id,version:auction.controlVersion,endsAt:parseAddisDateTimeLocal(formatAddisDateTimeLocal(next)).toISOString(),reason:'Extend fixture auction'};
+  const submit=()=>POST(new Request(origin+'/api/admin/command',{method:'POST',headers:{cookie,origin,'content-type':'application/json'},body:JSON.stringify({action:'deadline',input})}),{params:Promise.resolve({path:['command']})});
+  const response=await submit();
+  expect(response.status,await response.clone().text()).toBe(200);
+  expect(response.headers.get('Server-Timing')).toContain('admin_transaction;dur=');
+  const receipt=await response.json();
+  expect(receipt).toMatchObject({auctionId:auction.id,endsAt:next.toISOString(),controlVersion:auction.controlVersion+1,endingAlertsRetired:1});
+  expect(await (await submit()).json()).toEqual(receipt);
+
+  const refreshed=await GET(new Request(origin+`/api/admin/auctions/${auction.id}`,{headers:{cookie}}),{params:Promise.resolve({path:['auctions',auction.id]})});
+  expect(refreshed.status).toBe(200);
+  expect(await refreshed.json()).toMatchObject({endsAt:next.toISOString(),controlVersion:auction.controlVersion+1,terms:{publishedEndsAt:auction.endsAt!.toISOString()},controlRevisions:[{kind:'DEADLINE',reason:input.reason}]});
+  expect(await db.outbox.findUnique({where:{id:reminder.id}})).toMatchObject({state:'SKIPPED',lastError:'SUPERSEDED_BY_DEADLINE_CHANGE'});
+ });
+ it('rejects unsigned and altered cookies without consulting the database',async()=>{
+  const [name,encoded]=cookie.split(/=(.*)/s),value=decodeURIComponent(encoded);
+  const separator=value.lastIndexOf('.'),token=value.slice(0,separator);
+  const altered=value.slice(0,separator+1)+(value[separator+1]==='A'?'B':'A')+value.slice(separator+2);
+  for(const candidate of [token,altered]){
+   await expect(requireAdmin({} as PrismaClient,new Headers({cookie:`${name}=${encodeURIComponent(candidate)}`}),{lock:true})).rejects.toMatchObject({status:401,code:'ADMIN_LOGIN_REQUIRED'});
+  }
+ });
+ it('checks staff status and both expirations on the locked path',async()=>{
+  const headers=new Headers({cookie}),actor=await requireAdmin(db,headers);
+  await db.$transaction(async tx=>{
+   await tx.staffMember.update({where:{userId},data:{active:false}});
+   await expect(requireAdmin(tx,headers,{lock:true})).rejects.toMatchObject({status:403});
+   await tx.staffMember.update({where:{userId},data:{active:true}});
+   const grant=await tx.staffSession.findUniqueOrThrow({where:{sessionId:actor.sessionId}});
+   await tx.staffSession.update({where:{sessionId:actor.sessionId},data:{credentialAt:new Date(Date.now()-60_000),expiresAt:new Date(Date.now()-1_000)}});
+   await expect(requireAdmin(tx,headers,{lock:true})).rejects.toMatchObject({status:403});
+   await tx.staffSession.update({where:{sessionId:actor.sessionId},data:{credentialAt:grant.credentialAt,expiresAt:grant.expiresAt}});
+   const session=await tx.session.findUniqueOrThrow({where:{id:actor.sessionId}});
+   await tx.$executeRaw`SET LOCAL TIME ZONE 'Africa/Addis_Ababa'`;
+   await tx.session.update({where:{id:actor.sessionId},data:{expiresAt:new Date(Date.now()+60_000)}});
+   await expect(requireAdmin(tx,headers,{lock:true})).resolves.toMatchObject({id:userId});
+   await tx.session.update({where:{id:actor.sessionId},data:{expiresAt:new Date(Date.now()-1_000)}});
+   await expect(requireAdmin(tx,headers,{lock:true})).rejects.toMatchObject({status:401});
+   await tx.session.update({where:{id:actor.sessionId},data:{expiresAt:session.expiresAt}});
+  });
+ });
+ it('rejects a signed Telegram session even on an approved account with a grant',async()=>{
+  const token=randomUUID(),sessionId=randomUUID(),telegramId='1234567',expiresAt=new Date(Date.now()+60_000);
+  await db.$transaction(async tx=>{
+   await tx.session.create({data:{id:sessionId,token,userId,expiresAt,telegramAuthSource:'TELEGRAM_OIDC',telegramLaunchId:telegramId}});
+   await tx.staffSession.create({data:{sessionId,credentialAt:new Date(),expiresAt,authMethod:'email-password'}});
+   const signed=encodeURIComponent(token+'.'+await makeSignature(token,process.env.BETTER_AUTH_SECRET!));
+   const headers=new Headers({cookie:cookie.split('=',1)[0]+'='+signed});
+   // Verify the fixture reaches the session checks with a valid signature.
+   const {signedSessionToken}=await import('../src/modules/auth/signed-session');
+   expect(await signedSessionToken(headers)===token).toBe(true);
+   await expect(requireAdmin(tx,headers,{lock:true,permission:'cancel'})).rejects.toMatchObject({status:403});
+   await tx.session.delete({where:{id:sessionId}});
+  });
  });
  it('revokes sessions immediately on role demotion, including direct API authorization',async()=>{
   await db.user.update({where:{id:userId},data:{role:'member'}});expect(await db.session.count({where:{userId}})).toBe(0);await expect(requireAdmin(db,new Headers({cookie}))).rejects.toMatchObject({status:401});await db.user.update({where:{id:userId},data:{role:'admin'}});

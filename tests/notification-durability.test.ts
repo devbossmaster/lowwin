@@ -1,5 +1,5 @@
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
-import {PrismaClient,type Outbox} from '@prisma/client';
+import {PrismaClient,type Prisma,type Outbox} from '@prisma/client';
 import {execFileSync} from 'node:child_process';
 import {createRequire} from 'node:module';
 import {Bot,InputFile} from 'grammy';
@@ -13,6 +13,8 @@ import {sendBroadcastPhoto,TelegramMediaDeferredError} from '../src/modules/noti
 import {TEST_TOKEN} from './helpers';
 import {installTelegramRateLimit} from '../src/modules/notifications/telegram-rate';
 import {notificationDatabaseSnapshot,notificationTimingSnapshot} from '../src/modules/notifications/diagnostics';
+import {retireAuctionEndingAlerts,retireAuctionPromotions} from '../src/modules/notifications/service';
+import {endingReminders} from '../src/modules/notifications/policy';
 
 const url=process.env.NOTIFICATION_DURABILITY_TEST_DATABASE_URL??process.env.TEST_DATABASE_URL;
 describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated transport only',()=>{
@@ -37,6 +39,48 @@ describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated t
   await db.botChat.updateMany({where:{telegramId:{in:users.map(u=>u.telegramId)}},data:{blocked:false}});
  });
  afterAll(async()=>{await db?.$disconnect()});
+ it('retires deadline reminders in two database statements without stopping an active send lease',async()=>{
+  const now=new Date(),auctionId=randomUUID(),ending=endingReminders[0].kind;
+  const jobs=Array.from({length:150},(_,index)=>({
+   id:randomUUID(),key:`deadline-retirement:${auctionId}:${index}`,
+   kind:index%2===0?ending:'GLOBAL_CAMPAIGN',state:'SENT',
+   payload:{auctionId,deliveryKind:ending},
+  }));
+  const active={id:randomUUID(),key:`deadline-active:${auctionId}`,kind:ending,payload:{auctionId},leaseToken:randomUUID(),leaseUntil:new Date(now.getTime()+60000)};
+  const expired={id:randomUUID(),key:`deadline-expired:${auctionId}`,kind:ending,payload:{auctionId},leaseToken:randomUUID(),leaseUntil:now};
+  const other={id:randomUUID(),key:`deadline-other:${auctionId}`,kind:'GLOBAL_CAMPAIGN',payload:{auctionId,deliveryKind:'AUCTION_UPCOMING_ADDED'}};
+  await db.outbox.createMany({data:[...jobs,active,expired,other]});
+  const messages=jobs.map((job,index)=>({id:randomUUID(),outboxId:job.id,auctionId,chatId:users[0].telegramId,messageId:BigInt(index+1),sentAt:index<140?now:new Date(now.getTime()-47*3600000)}));
+  await db.telegramMessage.createMany({data:messages});
+  await db.notificationInbox.createMany({data:[...jobs,other].map(job=>({key:job.key,userId:users[0].id,kind:job.kind,title:'Fixture',body:'Fixture',href:'/'}))});
+  let statements=0;
+  const result=await db.$transaction(tx=>retireAuctionEndingAlerts({
+   $queryRaw:<T,>(query:Prisma.Sql)=>{statements++;return tx.$queryRaw<T>(query)},
+  } as Prisma.TransactionClient,auctionId,now));
+  expect(result).toEqual({endingAlertsRetired:152,telegramDeletesQueued:140,telegramDeletesUnavailable:10});
+  expect(statements).toBe(2);
+  expect(await db.outbox.findUnique({where:{id:active.id}})).toMatchObject({state:'PENDING',leaseToken:active.leaseToken});
+  expect(await db.outbox.findUnique({where:{id:expired.id}})).toMatchObject({state:'SKIPPED',lastError:'SUPERSEDED_BY_DEADLINE_CHANGE',leaseToken:null});
+  expect(await db.outbox.findUnique({where:{id:other.id}})).toMatchObject({state:'PENDING'});
+  expect(await db.notificationInbox.count({where:{key:{in:jobs.map(job=>job.key)}}})).toBe(0);
+  expect(await db.notificationInbox.count({where:{key:other.key}})).toBe(1);
+  expect(await db.telegramMessage.findUnique({where:{id:messages[149].id}})).toMatchObject({deletionState:'UNAVAILABLE',deletionRequestedAt:now,deletionError:'TELEGRAM_DELETE_WINDOW_EXPIRED'});
+  expect(await db.outbox.findUnique({where:{key:`telegram-delete:${messages[0].id}`}})).toMatchObject({state:'PENDING',nextAttemptAt:now});
+  expect(await db.outbox.count({where:{key:{in:messages.map(message=>`telegram-delete:${message.id}`)}}})).toBe(140);
+  expect(await db.$transaction(tx=>retireAuctionEndingAlerts(tx,auctionId,now))).toMatchObject({telegramDeletesQueued:0,telegramDeletesUnavailable:0});
+ });
+ it('keeps cancellation retirement atomic and scoped to the requested auction',async()=>{
+  const auctionId=randomUUID(),now=new Date();
+  const jobs=await Promise.all([auctionId,randomUUID()].map(id=>db.outbox.create({data:{key:`cancel-retirement:${id}`,kind:'AUCTION_PUBLISHED',payload:{auctionId:id}}})));
+  const messages=await Promise.all(jobs.map((job,index)=>db.telegramMessage.create({data:{outboxId:job.id,auctionId:(job.payload as {auctionId:string}).auctionId,chatId:users[index].telegramId,messageId:BigInt(index+1),sentAt:now}})));
+  await expect(db.$transaction(async tx=>{await retireAuctionPromotions(tx,auctionId,now);throw Error('Simulated rollback')})).rejects.toThrow('Simulated rollback');
+  expect(await db.outbox.findUnique({where:{id:jobs[0].id}})).toMatchObject({state:'PENDING',lastError:null});
+  expect(await db.telegramMessage.findUnique({where:{id:messages[0].id}})).toMatchObject({deletionState:'DELIVERED'});
+  expect(await db.outbox.findUnique({where:{key:`telegram-delete:${messages[0].id}`}})).toBeNull();
+  expect(await db.$transaction(tx=>retireAuctionPromotions(tx,auctionId,now))).toMatchObject({pendingSkipped:1,telegramDeletesQueued:1,telegramDeletesUnavailable:0});
+  expect(await db.outbox.findUnique({where:{id:jobs[1].id}})).toMatchObject({state:'PENDING'});
+  expect(await db.telegramMessage.findUnique({where:{id:messages[1].id}})).toMatchObject({deletionState:'DELIVERED'});
+ });
  it('claims disjoint bounded batches concurrently and leaves urgent capacity plus bulk progress',async()=>{
   for(let i=0;i<12;i++)await job(i<8?'BID_ACCEPTED':'BROADCAST',i);
   const [one,two]=await Promise.all([claimNotifications(db,{limit:4}),claimNotifications(db,{limit:4})]);

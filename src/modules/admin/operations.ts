@@ -7,7 +7,7 @@ import sharp from 'sharp';
 import {WINNER_IMAGE_HEIGHT,WINNER_IMAGE_WIDTH} from '@/lib/winner-image';
 import { z } from 'zod';
 import {opsRead,sectionPermission,pageInput} from './ops';
-import {assertPermission,permissions} from './permissions';
+import {assertPermission,permissions,type StaffRole} from './permissions';
 import { requireAdmin } from './boundary';
 import { AdminError } from './errors';
 import { digest } from './crypto';
@@ -18,8 +18,10 @@ import {clearPublicDataCache} from '../cache/public-data';
 import {retireAuctionEndingAlerts,retireAuctionPromotions} from '../notifications/service';
 import {workspaceRead} from './workspace';
 import {experienceSchema,legalSchema} from './content-schema';
-import {auctionMaintenance} from '../auctions/maintenance';
+import {lockAuctionMaintenance,readAuctionMaintenance} from '../auctions/maintenance';
 import {defaultHomeCopy} from '@/components/home-copy';
+import {formatAddisTimestamp} from '@/lib/addis-time';
+import {measureAdmin} from './timing';
 
 const id=z.string().uuid(),key=z.string().uuid(),version=z.number().int().min(0),text=(n:number)=>z.string().trim().min(1).max(n);
 const points=z.string().regex(/^(0|[1-9]\d{0,8})(?:\.\d{1,2})?$/),localized=(n:number)=>z.string().trim().max(n).optional().default('');
@@ -77,15 +79,47 @@ export async function publicationPreflight(tx:Prisma.TransactionClient,auctionId
   if(!min.eq(1)||!step.eq('0.01'))errors.push('Minimum bid number must be 1.00 with 0.01 steps.');
   return {auction,body,product,errors,now};
 }
+function authorizeMedia(data:z.infer<typeof schemas.media>,role:StaffRole){
+ if(data.purpose!=='WINNER_PHOTO'&&data.purpose!=='WINNER_BANNER')return;
+ assertPermission(role,'fulfillment');
+ if(role!=='OWNER'||data.rightsConfirmed!==true)throw new AdminError(403,'Only an administrator may upload an authorized winner photograph.');
+}
+async function prepareMedia(data:z.infer<typeof schemas.media>,role:StaffRole){
+ authorizeMedia(data,role);
+ const bytes=Buffer.from(data.data,'base64');
+ if(bytes.length>2097152)throw new AdminError(422,'Images must be at most 2 MiB.');
+ const actual=bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))?'image/png':bytes[0]===255&&bytes[1]===216&&bytes[2]===255?'image/jpeg':bytes.toString('ascii',0,4)==='RIFF'&&bytes.toString('ascii',8,12)==='WEBP'?'image/webp':null;
+ if(actual!==data.mime)throw new AdminError(422,'Image content and declared type do not match. SVG and scripts are not accepted.');
+ let clean:Buffer;
+ try{
+  const decoded=sharp(bytes,{limitInputPixels:16000000,animated:false}).rotate();
+  if(data.purpose==='WINNER_BANNER'){
+   const metadata=await sharp(bytes,{limitInputPixels:16000000}).metadata();
+   if((metadata.pages??1)!==1)throw Error('Animated media is not supported');
+   clean=await decoded.resize(WINNER_IMAGE_WIDTH,WINNER_IMAGE_HEIGHT,{fit:'cover',position:'centre'}).webp({quality:86,effort:5}).toBuffer();
+  }else if(data.purpose==='WINNER_PHOTO'){
+   clean=await decoded.resize(WINNER_IMAGE_WIDTH,WINNER_IMAGE_HEIGHT,{fit:'cover',position:'centre'}).png({compressionLevel:9}).toBuffer();
+   if(clean.length>2097152)clean=await sharp(clean).png({palette:true,quality:90,compressionLevel:9,effort:7}).toBuffer();
+  }else{
+   clean=await decoded.resize({width:2400,height:2400,fit:'inside',withoutEnlargement:true}).png().toBuffer();
+  }
+ }catch{throw new AdminError(422,'Image could not be decoded safely.')}
+ if(clean.length>2097152)throw new AdminError(422,'Re-encoded image exceeds 2 MiB.');
+ return clean;
+}
 export async function adminMutation(client:PrismaClient,headers:Headers,action:AdminAction,raw:unknown) {
   if(!Object.hasOwn(schemas,action))throw new AdminError(404,'Unknown admin command.');
   const highRisk=['cancel','publish','fee','deadline','presentation','removeCancelled'].includes(action);
   const input=schemas[action].parse(raw),permission=action==='content'&&['terms','privacy'].includes(schemas.content.parse(input).id)?'settings':highRisk?'cancel':'catalog',owner=await requireAdmin(client,headers,{permission}),hash=digest(JSON.stringify({action,input}));
+  // Image decoding can take seconds. Start it before opening the transaction and
+  // keep its result behind the fresh authorization and idempotency checks.
+  const mediaPreparation=action==='media'?
+   await measureAdmin('media',()=>prepareMedia(schemas.media.parse(input),owner.role)).then(bytes=>({ok:true as const,bytes}),error=>({ok:false as const,error})):null;
   // All auction writes acquire the auction row BEFORE staff/idempotency and wallet
   // locks. The unchanged cancellation command then locks wallet keys in stable order.
-  const receipt=await client.$transaction(async tx=>{
-    const paused=await auctionMaintenance(tx);
-    if(action==='publish'&&paused)throw new AdminError(503,'Publication is paused for auction maintenance.');
+  const receipt=await measureAdmin('transaction',()=>client.$transaction(async tx=>{
+    await lockAuctionMaintenance(tx);
+    if(action==='publish'&&(await readAuctionMaintenance(tx)).halted)throw new AdminError(503,'Publication is paused for auction maintenance.');
     if('auctionId' in input&&input.auctionId)await lockAuction(tx,input.auctionId);
     const operationKey=`${owner.id}:${input.key}`;await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`admin:${operationKey}`},0))`;
     const actor=await requireAdmin(tx,headers,{lock:true,permission});
@@ -98,23 +132,19 @@ export async function adminMutation(client:PrismaClient,headers:Headers,action:A
       else {if(expected!==0)throw new AdminError(409,'New category must use version zero.');receipt=await tx.category.create({data:fields})}target=(receipt as {id:string}).id;
     }else if(action==='media'){
       const data=schemas.media.parse(input);
-      if(data.purpose==='WINNER_PHOTO'||data.purpose==='WINNER_BANNER'){
-        assertPermission(actor.role,'fulfillment');
-        if(actor.role!=='OWNER'||data.rightsConfirmed!==true)throw new AdminError(403,'Only an administrator may upload an authorized winner photograph.');
-      }
-      const bytes=Buffer.from(data.data,'base64');if(bytes.length>2097152)throw new AdminError(422,'Images must be at most 2 MiB.');
-      const actual=bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))?'image/png':bytes[0]===255&&bytes[1]===216&&bytes[2]===255?'image/jpeg':bytes.toString('ascii',0,4)==='RIFF'&&bytes.toString('ascii',8,12)==='WEBP'?'image/webp':null;
-      if(actual!==data.mime)throw new AdminError(422,'Image content and declared type do not match. SVG and scripts are not accepted.');
-      let clean:Buffer;try{const decoded=sharp(bytes,{limitInputPixels:16000000,animated:false}).rotate();if(data.purpose==='WINNER_BANNER'){const metadata=await sharp(bytes,{limitInputPixels:16000000}).metadata();if((metadata.pages??1)!==1)throw Error('Animated media is not supported');clean=await decoded.resize(WINNER_IMAGE_WIDTH,WINNER_IMAGE_HEIGHT,{fit:'cover',position:'centre'}).webp({quality:86,effort:5}).toBuffer()}else{clean=await (data.purpose==='WINNER_PHOTO'?decoded.resize(WINNER_IMAGE_WIDTH,WINNER_IMAGE_HEIGHT,{fit:'cover',position:'centre'}).png({compressionLevel:9}):decoded.resize({width:2400,height:2400,fit:'inside',withoutEnlargement:true}).png()).toBuffer();if(data.purpose==='WINNER_PHOTO'&&clean.length>2097152)clean=await sharp(clean).png({palette:true,quality:90,compressionLevel:9,effort:7}).toBuffer()}}catch{throw new AdminError(422,'Image could not be decoded safely.')}
-      if(clean.length>2097152)throw new AdminError(422,'Re-encoded image exceeds 2 MiB.');
-      const media=await tx.managedMedia.create({data:{bytes:Uint8Array.from(clean),mime:data.purpose==='WINNER_BANNER'?'image/webp':'image/png',sourceType:data.sourceType,sourceCredit:data.sourceCredit,purpose:data.purpose},select:{id:true,mime:true,sourceType:true,sourceCredit:true,purpose:true}});target=media.id;receipt={...media,path:`/api/media/${media.id}`};
+      authorizeMedia(data,actor.role);
+      if(!mediaPreparation?.ok)throw mediaPreparation?.error??new Error('Missing prepared image.');
+      const media=await tx.managedMedia.create({data:{bytes:Uint8Array.from(mediaPreparation.bytes),mime:data.purpose==='WINNER_BANNER'?'image/webp':'image/png',sourceType:data.sourceType,sourceCredit:data.sourceCredit,purpose:data.purpose},select:{id:true,mime:true,sourceType:true,sourceCredit:true,purpose:true}});target=media.id;receipt={...media,path:`/api/media/${media.id}`};
     }else if(action==='product'){
       const data=schemas.product.parse(input),{key:_,id:productId,version:expected,imageIds,...fields}=data;
       if(new Set(imageIds).size!==imageIds.length)throw new AdminError(422,'Duplicate images are not allowed.');
       const media=await tx.managedMedia.findMany({where:{id:{in:imageIds},purpose:'CATALOG'},select:{id:true,sourceType:true,sourceCredit:true}});if(media.length!==imageIds.length)throw new AdminError(422,'Use uploaded catalog images; winner photographs cannot be reused.');
       if(productId){await tx.$queryRaw`SELECT id FROM "Product" WHERE id=${productId} FOR UPDATE`;const current=await tx.product.findUniqueOrThrow({where:{id:productId}});if(current.version!==expected)throw new AdminError(409,'Product changed. Reload before saving.');if(current.isDemo&&!fields.isDemo)throw new AdminError(409,'DEMO inventory cannot become real inventory.');if(await tx.auction.count({where:{productId,publishedAt:{not:null}}}))throw new AdminError(409,'Published inventory is frozen. Create a replacement product.');await tx.product.update({where:{id:productId},data:{...fields,version:{increment:1}}});await tx.productImage.deleteMany({where:{productId}});target=productId}
       else {if(expected!==0)throw new AdminError(409,'New product must use version zero.');target=(await tx.product.create({data:fields})).id}
-      for(const [sortOrder,mediaId] of imageIds.entries()){const image=media.find(item=>item.id===mediaId)!;await tx.productImage.create({data:{productId:target,path:`/api/media/${image.id}`,alt:fields.title,sourceType:image.sourceType,sourceCredit:image.sourceCredit,sortOrder}})}
+      if(imageIds.length)await tx.productImage.createMany({data:imageIds.map((mediaId,sortOrder)=>{
+       const image=media.find(item=>item.id===mediaId)!;
+       return {productId:target,path:`/api/media/${image.id}`,alt:fields.title,sourceType:image.sourceType,sourceCredit:image.sourceCredit,sortOrder};
+      })});
       receipt=await tx.product.findUniqueOrThrow({where:{id:target},include:{images:true}});
     }else if(action==='content'){
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('admin:content',0))`;
@@ -160,7 +190,7 @@ export async function adminMutation(client:PrismaClient,headers:Headers,action:A
       if(next.getTime()<actor.now.getTime()+5*60000)throw new AdminError(422,'The new deadline must be at least five minutes in the future.');
       if(auction.startsAt&&next<=auction.startsAt)throw new AdminError(422,'The new deadline must be after the auction starts.');
       const publishedEnd=auction.terms.publishedEndsAt??previous,maxEnd=new Date(publishedEnd.getTime()+auction.terms.maxExtensionMinutes*60000);
-      if(next>maxEnd)throw new AdminError(422,`The published policy permits extension only until ${maxEnd.toISOString()}.`);
+      if(next>maxEnd)throw new AdminError(422,`The published policy permits extension only until ${formatAddisTimestamp(maxEnd)}.`);
       if(next<previous&&auction.acceptedBidCount>0){if(!auction.terms.allowPaidShortening)throw new AdminError(422,'The published policy does not permit shortening after bids.');const notice=auction.terms.shortenNoticeMinutes*60000;if(next.getTime()<actor.now.getTime()+notice)throw new AdminError(422,`Bidders must retain at least ${auction.terms.shortenNoticeMinutes} minutes of notice.`)}
       const controlVersion=auction.controlVersion+1;
       const retired=await retireAuctionEndingAlerts(tx,auction.id,actor.now);
@@ -210,8 +240,8 @@ export async function adminMutation(client:PrismaClient,headers:Headers,action:A
       const replacement=await tx.auction.create({data:{code:`LW-${suffix.toUpperCase()}`,slug:`lowin-${suffix}`,isDemo:original.isDemo,draft:{create:{body}}}});target=replacement.id;receipt={auctionId:target,replaces:original.id};
     }
     await tx.adminAudit.create({data:{actorId:actor.id,action:action.toUpperCase(),target,operationKey,requestHash:hash,details:{receipt:asJson(receipt),...(contentBefore!==undefined?{before:asJson(contentBefore)}:{})}}});return receipt;
-  },{timeout:120000,maxWait:15000,isolationLevel:Prisma.TransactionIsolationLevel.ReadCommitted});
-  if(['category','product','deleteProduct','content','publish','fee','deadline','presentation','removeCancelled','cancel'].includes(action))await clearPublicDataCache();
+  },{timeout:120000,maxWait:15000,isolationLevel:Prisma.TransactionIsolationLevel.ReadCommitted}));
+  if(['category','product','deleteProduct','content','publish','fee','deadline','presentation','removeCancelled','cancel'].includes(action))await measureAdmin('public_cache',clearPublicDataCache);
   return receipt;
 }
 export async function adminRead(client:PrismaClient,headers:Headers,path:string[],params=new URLSearchParams()) {

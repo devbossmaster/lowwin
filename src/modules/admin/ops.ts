@@ -22,6 +22,7 @@ import {RULE_V3,V2_MIN_PARTICIPANTS,V2_FALLBACK_TERMS,V2_CANCELLATION_TERMS,V3_A
 import {winnerPhotoSchema} from './winner-photo';
 import {winnerBannerSchema,saveWinnerBanner} from './winner-banner';
 import {clearPublicDataCache} from '../cache/public-data';
+import {measureAdmin} from './timing';
 import {resultPublishSchema,readResultReview} from './result-publication';
 import {auctionBroadcastDraft} from './auction-broadcast';
 
@@ -54,7 +55,7 @@ export async function opsMutation(client:PrismaClient,headers:Headers,action:Ops
  if(action==='resultPublish'||action==='winnerPhoto')throw new AdminError(410,'Results publish automatically. Only Winners banners can be edited.');
  const input=schemas[action].parse(raw),hash=digest(JSON.stringify({action,input}));
  if(action==='suspend'&&actor.role!=='OWNER')throw new AdminError(403,'Only the Owner can change bidding access.');
- const result=await client.$transaction(async tx=>{
+ const result=await measureAdmin('transaction',()=>client.$transaction(async tx=>{
   // Auction -> wallet (for bidding policy) -> staff. Team lock serializes grants.
   if(action==='auctionBroadcast'||action==='fulfillment'||action==='deliveryDone'||action==='winnerBanner')await tx.$queryRaw`SELECT id FROM "Auction" WHERE id=${(input as {auctionId:string}).auctionId} FOR UPDATE`;
   if('userId' in input)await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${input.userId}`},0))`;
@@ -133,8 +134,8 @@ export async function opsMutation(client:PrismaClient,headers:Headers,action:Ops
    await tx.outbox.update({where:{id:d.id},data:{state:'PENDING',attempts:0,nextAttemptAt:owner.now,lastError:null}});receipt={id:d.id,state:'PENDING'};target=d.id;
   }
   await tx.adminAudit.create({data:{actorId:owner.id,action:`OPS_${action.toUpperCase()}`,target,operationKey,requestHash:hash,details:{sessionId:owner.sessionId,reason:input.reason,receipt:serialize(receipt)}}});return receipt;
- },{timeout:30000,maxWait:10000});
- if(action==='winnerBanner')await clearPublicDataCache();
+ },{timeout:30000,maxWait:10000}));
+ if(action==='winnerBanner')await measureAdmin('public_cache',clearPublicDataCache);
  return result;
 }
 export async function opsRead(client:PrismaClient,headers:Headers,path:string[],params:URLSearchParams){
