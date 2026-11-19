@@ -4,15 +4,33 @@ import {digest} from './crypto';
 import {auctionNotificationImagePath} from '../notifications/campaigns';
 import {readAuctionPromotion} from '../notifications/auction-promotion';
 
+function amharicTitle(value:unknown){
+ if(typeof value!=='string')return '';
+ const title=value.replace(/[\u0000-\u001f\u007f]/g,' ').trim().slice(0,120);
+ return /\p{Script=Ethiopic}/u.test(title)?title:'';
+}
+
+function remainingTimeAm(endsAt:Date,now:Date){
+ const hours=Math.floor((endsAt.getTime()-now.getTime())/3600000);
+ const days=Math.floor(hours/24);
+ if(days>1)return `${days} ቀናት ቀርተዋል`;
+ if(days===1)return '1 ቀን ቀርቷል';
+ if(hours>1)return `${hours} ሰዓታት ቀርተዋል`;
+ if(hours===1)return '1 ሰዓት ቀርቷል';
+ return 'ከ1 ሰዓት ያነሰ ጊዜ ቀርቷል';
+}
+
 /** Read and command share the same public-only preview. No recipient/contact data. */
 export async function auctionBroadcastDraft(tx:Prisma.TransactionClient,auctionId:string,now?:Date){
- const {auction:a,issue}=await readAuctionPromotion(tx,auctionId,now);
- if(issue||!a?.product)throw new AdminError(422,issue??'Auction not found.');
- const snapshot=a.presentation as {title?:string;titleAm?:string}|null;
- const title=(snapshot?.title??a.product.title).replace(/[\u0000-\u001f\u007f]/g,' ').trim().slice(0,120),titleAm=(snapshot?.titleAm??a.product.titleAm??'').replace(/[\u0000-\u001f\u007f]/g,' ').trim().slice(0,120);
+ const {auction:a,issue,now:at}=await readAuctionPromotion(tx,auctionId,now);
+ if(issue||!a?.product||!a.endsAt)throw new AdminError(422,issue??'Auction not found.');
+ const snapshot=a.presentation as {titleAm?:unknown}|null;
+ const title=amharicTitle(snapshot?.titleAm)||amharicTitle(a.product.titleAm)||'የሎውዊን ጨረታ';
  const imagePath=auctionNotificationImagePath(a.presentation,a.product.images[0]?.path);
  if(!imagePath)throw new AdminError(422,'Add a published product image before broadcasting this auction.');
- const text=`${title}${titleAm&&titleAm!==title?'\n'+titleAm:''}\n\nCome and join the auction. Choose your number and place your bid.\nጨረታውን ይቀላቀሉ። ቁጥርዎን መርጠው ጨረታዎን ያቅርቡ።`;
- const miniAppPath=`/auctions/${a.publicCode}`,buttonLabel='Bid now · አሁን ይጫረቱ';
- return {id:a.id,auctionId:a.id,auctionCode:String(a.publicCode),title,text,imageId:null,imagePath,miniAppPath,buttonLabel,draftHash:digest(JSON.stringify({title,text,imagePath,miniAppPath}))};
+ const text=`${title}\n\nጨረታው ሊያበቃ ${remainingTimeAm(a.endsAt,at)}።`;
+ const miniAppPath=`/auctions/${a.publicCode}`,buttonLabel='እናሸንፍ!';
+ // Approve the real deadline, so clock ticks can refresh the count at send time.
+ const draftHash=digest(JSON.stringify({title,endsAt:a.endsAt.toISOString(),imagePath,miniAppPath,buttonLabel}));
+ return {id:a.id,auctionId:a.id,auctionCode:String(a.publicCode),title,text,imageId:null,imagePath,miniAppPath,buttonLabel,draftHash};
 }
