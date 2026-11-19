@@ -11,6 +11,11 @@ for(const am of [false,true])test(`coupons render independently of slow bid deta
   await page.goto('/telegram?next='+encodeURIComponent(f.home));
   let dialog=await openBid(page,f.title);
   await expect(dialog.locator('[data-bid-coupons] b')).toHaveText('3');
+  const coupon=dialog.locator('[data-bid-coupons]');
+  await expect(coupon).toHaveAttribute('data-coupon-available','true');
+  await expect(coupon).toHaveCSS('border-top-color','rgb(37, 99, 235)');
+  await expect(coupon).toHaveCSS('box-shadow',/0px 2px 8px/);
+  await expect(coupon.getByRole('button',{name:am?'ተጠቀም':'Apply',exact:true})).toHaveAccessibleDescription(am?'በአንድ የጨረታ ክፍያ ቅናሽ ያግኙ':'Save on one bid fee');
   expect(countReads).toBe(1);expect(f.commands).toHaveLength(0);
   release();await expect(dialog.locator('[data-bid-step=entry]')).toBeVisible();await expect(dialog.getByRole('radio')).toHaveCount(0);
   await dialog.getByRole('button',{name:am?'ዝጋ':'Close',exact:true}).click();

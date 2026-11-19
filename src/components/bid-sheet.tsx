@@ -24,7 +24,10 @@ function BidSheetFrame(props:Props){
  const [phase,setPhase]=useState<BidSheetPhase>(props.initialChapaId?'payment':'entry');
  const [back,setBack]=useState<(()=>void)|null>(null),onDismissChange=useCallback((handler:(()=>void)|null)=>{setBack(()=>handler)},[]);
  const title=phase==='receipt'||phase==='payment'?<MiniPhrase en="Payment" am="ክፍያ"/>:phase==='topup'?<span><Wallet size={18} aria-hidden="true"/><MiniPhrase en="Top up wallet" am="ገንዘብ ያስገቡ"/></span>:phase==='checkout'?<MiniPhrase en="Pay securely" am="ይክፈሉ"/>:phase==='review'?<MiniPhrase en="Review bids" am="ጨረታዎችን ይመልከቱ"/>:<MiniPhrase en="Place your bid" am="ጨረታዎን ያቅርቡ"/>;
- return <AccountSheet size="payment" layout={phase==='entry'?'bid-reference':phase==='topup'?'topup-reference':'bid-entry'} presentation={phase==='payment'||phase==='receipt'?'centered':undefined} title={phase==='entry'?<><span className="sr-only">{title}</span><span className={styles.headerStatus}><MiniPhrase en={props.auction.status==='live'?'Live':props.auction.status==='upcoming'?'Upcoming':'Completed'} am={props.auction.status==='live'?'ቀጥታ':props.auction.status==='upcoming'?'በቅርብ':'ተጠናቋል'}/></span></>:title} headerActions={phase==='entry'?<AuctionShare title={props.auction.product.title} code={props.auction.code} iconOnly/>:undefined} onClose={props.onClose} onBack={back??undefined} footerPortal>
+ return <AccountSheet size="payment" layout={phase==='entry'?'bid-reference':phase==='topup'?'topup-reference':'bid-entry'} presentation={phase==='payment'||phase==='receipt'?'centered':undefined} title={title} headerActions={phase==='entry'?<>
+  <span className={styles.headerStatus} data-status={props.auction.status}><MiniPhrase en={props.auction.status==='live'?'Live':props.auction.status==='upcoming'?'Upcoming':'Completed'} am={props.auction.status==='live'?'ቀጥታ':props.auction.status==='upcoming'?'በቅርብ':'ተጠናቋል'}/></span>
+  <AuctionShare title={props.auction.product.title} code={props.auction.code} iconOnly/>
+ </>:undefined} onClose={props.onClose} onBack={back??undefined} footerPortal>
   <BidSheetContents {...props} onPhaseChange={setPhase} onDismissChange={onDismissChange}/>
  </AccountSheet>;
 }

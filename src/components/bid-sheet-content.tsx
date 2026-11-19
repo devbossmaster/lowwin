@@ -370,9 +370,15 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
    <button type="button" className={reference.pay} data-payment-action data-bid-pay disabled={payDisabled} aria-busy={busy} onClick={()=>void pay()}>{busy&&<LoaderCircle size={16} className={reference.spin} aria-hidden="true"/>}{pendingOriginal?text('View payment status','የክፍያ ሁኔታ ይመልከቱ'):!authenticated?text(environment==='mini'?'Share contact to bid':'Log in to bid',environment==='mini'?'ለመጫረት ስልክ ቁጥርዎን ያጋሩ':'ለመጫረት ይግቡ'):text('Continue to payment','ወደ ክፍያ ይቀጥሉ')}</button>
   </div></AccountSheetFooter>
   <div className={reference.checkout} data-bid-entry data-bid-step="entry" data-payment-method-form={undefined}>
-   <div className={reference.productHeader}><CatalogImage src={known.product.images[0]?.path} alt="" variant="thumbnail" sizes="56px"/><h3 className={reference.productTitle}>{am?known.product.titleAm||known.product.title:known.product.title}</h3></div>
+   <div className={reference.productHeader}><CatalogImage src={known.product.images[0]?.path} alt="" sizes="76px"/><h3 className={reference.productTitle}>{am?known.product.titleAm||known.product.title:known.product.title}</h3></div>
    {description&&<details className={reference.description}><summary><span className={reference.excerpt}>{description}</span><b><span className={reference.more}>{text('Show more','ተጨማሪ ያሳዩ')}</span><span className={reference.less}>{text('Show less','ያሳንሱ')}</span><ChevronDown size={12} aria-hidden="true"/></b></summary><p>{description}</p></details>}
-   <div className={reference.feeStrip}><div className={reference.fee}><small>{text('Bid fee','የጨረታ ክፍያ')}</small><strong>{formatEtb(terms.entryFeePoints)}</strong></div><span className={reference.bidCount}><Ticket size={12} aria-hidden="true"/>{known.bidCount.toLocaleString('en-US')} {text('bids','ጨረታዎች')}</span><span className={reference.timer}><Clock3 size={15} aria-hidden="true"/><AuctionCountdown target={known.endsAt} serverNow={serverNow} label="Ends" showLabel={false} variant="inline" onElapsed={()=>{detail.reload();if(authenticated)own.reload()}}/></span></div>
+   <div className={reference.feeStrip}>
+    <div className={reference.fee}><small>{text('Bid fee','የጨረታ ክፍያ')}</small><strong>{formatEtb(terms.entryFeePoints)}</strong></div>
+    <div className={reference.feeMeta}>
+     <span className={reference.timer}><Clock3 size={14} aria-hidden="true"/><AuctionCountdown target={known.endsAt} serverNow={serverNow} label="Ends" showLabel={false} variant="inline" onElapsed={()=>{detail.reload();if(authenticated)own.reload()}}/></span>
+     <span className={reference.bidCount}><Ticket size={12} aria-hidden="true"/>{known.bidCount.toLocaleString('en-US')} {text('bids','ጨረታዎች')}</span>
+    </div>
+   </div>
    {active&&current&&<div className={reference.couponArea}>
     <BidCouponControl applyCoupon={applyCoupon} disabled={frozen} onChange={setApplyCoupon}/>
     {applyCoupon&&<p className={reference.couponHint}>{coupon?text(`${coupon.coupon!.percent}% off one bid fee.`,`${coupon.coupon!.percent}% ቅናሽ በአንድ ጨረታ ክፍያ።`):text(discount.fetching?'Checking coupon…':'No eligible coupon. Remove it or retry.',discount.fetching?'ኩፖን በመፈተሽ ላይ…':'ተስማሚ ኩፖን የለም። ያስወግዱ ወይም ይድገሙ።')}</p>}
