@@ -46,17 +46,17 @@ export function refreshAdminPath(path:string){void active?.client.invalidateQuer
 function sessionResources(identity:string,matches:(path:string)=>boolean){
  return (query:Query)=>query.queryKey[0]==='admin'&&query.queryKey[1]===identity&&matches(String(query.queryKey[2]??''));
 }
-type AuctionReceiptData={id:string;controlVersion:number;homeOrder?:number|null;feeRevisions?:{version:number;feePoints:string;effectiveAt:string}[]};
+type AuctionReceiptData={id:string;controlVersion:number;homeOrder?:number|null;featured?:boolean;feeRevisions?:{version:number;feePoints:string;effectiveAt:string}[]};
 function applyReceipt({client,identity}:AdminSession,action:string,input:Record<string,unknown>|undefined,result:unknown){
  if(!result||typeof result!=='object')return;
  const receipt=result as Record<string,unknown>;
  if(action==='suspend'&&receipt.userId===input?.userId&&typeof receipt.suspended==='boolean')client.setQueriesData({predicate:sessionResources(identity,path=>['workspace/players','users'].some(scope=>adminResourceMatches(path,scope)))},(old:any)=>!old?old:Array.isArray(old.items)?{...old,items:old.items.map((row:any)=>row.id===receipt.userId?{...row,suspended:receipt.suspended}:row)}:old.id===receipt.userId?{...old,suspended:receipt.suspended}:old);
  if(action==='deliveryDone'&&receipt.auctionId===input?.auctionId&&typeof receipt.state==='string')client.setQueriesData({predicate:sessionResources(identity,path=>adminResourceMatches(path,'workspace/winners'))},(old:any)=>old&&Array.isArray(old.items)?{...old,items:old.items.map((row:any)=>row.auctionId===receipt.auctionId?{...row,state:receipt.state,version:receipt.version}:row)}:old);
- const {auctionId,controlVersion,endsAt,presentation,homeOrder,feeVersion,feePoints,effectiveAt}=receipt;
+ const {auctionId,controlVersion,endsAt,presentation,homeOrder,featured,feeVersion,feePoints,effectiveAt}=receipt;
  if(typeof auctionId!=='string'||auctionId!==input?.auctionId||typeof controlVersion!=='number')return;
  const changes=action==='deadline'&&typeof endsAt==='string'?{endsAt,nextCloseAttemptAt:null,closeErrorCode:null}
   :action==='presentation'&&presentation&&typeof presentation==='object'?{presentation}
-  :action==='homeOrder'&&(typeof homeOrder==='number'||homeOrder===null)?{homeOrder}:null;
+  :action==='homeOrder'&&(typeof homeOrder==='number'||homeOrder===null)?{homeOrder,...(typeof featured==='boolean'?{featured}:{})}:null;
  const fee=action==='fee'&&typeof feeVersion==='number'&&typeof feePoints==='string'&&typeof effectiveAt==='string'
   ?{version:feeVersion,feePoints,effectiveAt}:null;
  if(!changes&&!fee)return;

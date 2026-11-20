@@ -66,15 +66,16 @@ export function AdminWorkspace({path}:{path:string[]}){
       <div className="auction-manage-form" hidden={manageTab!=='homeOrder'}>
         <form className="admin-form" onChange={()=>setKey(crypto.randomUUID())} onSubmit={event=>{
           event.preventDefault();
-          const homeOrder=readAuctionHomeOrder(new FormData(event.currentTarget));
+          const fields=new FormData(event.currentTarget);
           run('homeOrder',async()=>{
-            await save('homeOrder',{auctionId,version:item.controlVersion,homeOrder});
-            setMessage(homeOrder===null?'Home order cleared. This auction uses closing time.':'Home order saved.');
+            await save('homeOrder',{auctionId,version:item.controlVersion,homeOrder:readAuctionHomeOrder(fields),featured:fields.has('featured')});
+            setMessage('Home settings saved.');
           });
         }}>
+          <label className="admin-check"><input key={String(item.featured)} type="checkbox" name="featured" defaultChecked={item.featured} disabled={busy||!homeOrderEditable}/>Feature on Home</label>
           <AdminAuctionHomeOrderField key={item.homeOrder??'automatic'} value={item.homeOrder} disabled={busy||!homeOrderEditable}/>
-          {!homeOrderEditable&&<p className="admin-group-note">Home order applies to live and upcoming auctions.</p>}
-          <button disabled={busy||!homeOrderEditable} aria-busy={pendingAction==='homeOrder'}>{pendingAction==='homeOrder'?'Saving…':'Save Home order'}</button>
+          {!homeOrderEditable&&<p className="admin-group-note">Home settings apply to live and upcoming auctions.</p>}
+          <button disabled={busy||!homeOrderEditable} aria-busy={pendingAction==='homeOrder'}>{pendingAction==='homeOrder'?'Saving…':'Save Home settings'}</button>
         </form>
       </div>
       <div className="auction-manage-form"><form hidden={manageTab!=='fee'} className="admin-form" onChange={()=>setKey(crypto.randomUUID())} onSubmit={event=>{event.preventDefault();const f=new FormData(event.currentTarget);run('fee',async()=>{await save('fee',{auctionId,version:item.controlVersion,feePoints:f.get('feePoints'),reason:f.get('reason')})})}}><h3>Submission fee</h3>{isSubmissionFeeOnly(item.terms?.ruleVersion)?<label>Fee per accepted bid (ETB)<input name="feePoints" inputMode="decimal" pattern="(0|[1-9][0-9]{0,8})([.][0-9]{1,2})?" defaultValue={item.feeRevisions?.[0]?.feePoints??item.terms?.entryFeePoints} required/></label>:<><p>This auction uses its original bid-hold rules. Only removal of its extra fee is supported.</p><input type="hidden" name="feePoints" value="0"/></>}<label>Reason<textarea name="reason" required maxLength={1000}/></label><button disabled={busy} aria-busy={pendingAction==='fee'}>{pendingAction==='fee'?'Updating fee…':'Apply to future bids'}</button></form><form hidden={manageTab!=='deadline'} className="admin-form" onChange={()=>setKey(crypto.randomUUID())} onSubmit={event=>{

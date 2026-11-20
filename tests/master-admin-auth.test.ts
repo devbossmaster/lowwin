@@ -71,7 +71,7 @@ describe.skipIf(!database)('Master Guide Admin on disposable PostgreSQL',()=>{
    expect(queries[1]).toContain('"StaffSession"');
   }finally {await traced.$disconnect()}
  });
- it('saves, publishes and clears Home order through the authenticated admin API',async()=>{
+ it('edits Home order and featured placement for published auctions',async()=>{
   const {POST,GET}=await import('../src/app/api/admin/[...path]/route');
   const {GET:catalog}=await import('../src/app/api/catalog/auctions/route');
   const marker=`home-order-${randomUUID().slice(0,8)}`;
@@ -98,18 +98,34 @@ describe.skipIf(!database)('Master Guide Admin on disposable PostgreSQL',()=>{
   expect(await home('ending')).toEqual([soon.publicCode,later.publicCode]);
   const refreshed=await GET(new Request(origin+`/api/admin/auctions/${later.id}`,{headers:{cookie}}),{params:Promise.resolve({path:['auctions',later.id]})});
   expect(await refreshed.json()).toMatchObject({homeOrder:1,controlRevisions:[{before:{homeOrder:null},after:{homeOrder:1},actorId:userId}]});
-  expect((await submit('homeOrder',{...input,key:randomUUID(),version:receipt.controlVersion,homeOrder:null})).status).toBe(200);
+  const cleared=await submit('homeOrder',{...input,key:randomUUID(),version:receipt.controlVersion,homeOrder:null});
+  expect(cleared.status).toBe(200);
+  expect(await home()).toEqual([soon.publicCode,later.publicCode]);
+  const feature=await submit('homeOrder',{...input,key:randomUUID(),version:(await cleared.json()).controlVersion,homeOrder:null,featured:true});
+  expect(feature.status).toBe(200);
+  expect(await home()).toEqual([later.publicCode,soon.publicCode]);
+  expect(await home('ending')).toEqual([soon.publicCode,later.publicCode]);
+  const featured=await feature.json();
+  expect(featured).toMatchObject({featured:true,homeOrder:null});
+  const unfeature=await submit('homeOrder',{...input,key:randomUUID(),version:featured.controlVersion,homeOrder:null,featured:false});
+  expect(unfeature.status).toBe(200);
+  expect(await unfeature.json()).toMatchObject({featured:false,homeOrder:null});
   expect(await home()).toEqual([soon.publicCode,later.publicCode]);
 
   const product=await db.product.create({data:{slug:marker,title:marker,description:'Fixture product',condition:'New',categoryId:soon.categoryId!,images:{create:{path:'/catalog/accessory.svg',alt:'Fixture product photo',sourceType:'ORIGINAL'}}}});
   const now=Date.now();
-  const draft=await submit('draft',{key:randomUUID(),version:0,body:{productId:product.id,startsAt:new Date(now+3600000).toISOString(),endsAt:new Date(now+7200000).toISOString(),minPoints:'1.00',stepPoints:'0.01',entryFeePoints:'1',fulfillmentSummary:'Fixture delivery',fulfillmentRegion:'Addis Ababa',homeOrder:10}});
+  const draft=await submit('draft',{key:randomUUID(),version:0,body:{productId:product.id,startsAt:new Date(now+3600000).toISOString(),endsAt:new Date(now+7200000).toISOString(),minPoints:'1.00',stepPoints:'0.01',entryFeePoints:'1',fulfillmentSummary:'Fixture delivery',fulfillmentRegion:'Addis Ababa',homeOrder:10,featured:true}});
   expect(draft.status,await draft.clone().text()).toBe(200);
   const stored=await draft.json();
   expect(stored.draft.body.homeOrder).toBe(10);
   const published=await submit('publish',{key:randomUUID(),auctionId:stored.auctionId,version:stored.draft.version});
   expect(published.status,await published.clone().text()).toBe(200);
-  expect(await db.auction.findUnique({where:{id:stored.auctionId}})).toMatchObject({status:'SCHEDULED',homeOrder:10});
+  const scheduled=await db.auction.findUniqueOrThrow({where:{id:stored.auctionId}});
+  expect(scheduled).toMatchObject({status:'SCHEDULED',homeOrder:10,featured:true});
+  const unfeaturedDraft=await submit('homeOrder',{key:randomUUID(),auctionId:scheduled.id,version:scheduled.controlVersion,homeOrder:10,featured:false});
+  expect(unfeaturedDraft.status).toBe(200);
+  expect(await unfeaturedDraft.json()).toMatchObject({homeOrder:10,featured:false});
+  expect(await db.auction.findUnique({where:{id:scheduled.id}})).toMatchObject({homeOrder:10,featured:false});
  });
  it('moves a deadline in both directions and requires an audited override after accepted bids',async()=>{
   const {POST,GET}=await import('../src/app/api/admin/[...path]/route');

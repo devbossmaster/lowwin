@@ -37,7 +37,7 @@ const schemas={
   publish:z.object({key,auctionId:id,version}).strict(),
   fee:z.object({key,auctionId:id,version,feePoints:points,reason:text(1000)}).strict(),
   deadline:z.object({key,auctionId:id,version,endsAt:z.iso.datetime(),reason:text(1000),overrideConfirmation:z.string().min(1).max(100).optional()}).strict(),
-  homeOrder:z.object({key,auctionId:id,version,homeOrder}).strict(),
+  homeOrder:z.object({key,auctionId:id,version,homeOrder,featured:z.boolean().optional()}).strict(),
   presentation:z.object({key,auctionId:id,version,title:text(120),titleAm:localized(120),description:text(1500),descriptionAm:localized(1500),condition:text(100),conditionAm:localized(100),imageIds:z.array(id).min(1).max(8),reason:text(1000)}).strict(),
   deleteDraft:z.object({key,auctionId:id,confirmation:text(100),reason:text(1000)}).strict(),
   deleteProduct:z.object({key,id,version,confirmation:text(120),reason:text(1000)}).strict(),
@@ -257,14 +257,15 @@ export async function adminMutation(client:PrismaClient,headers:Headers,action:A
     }else if(action==='homeOrder'){
       const data=schemas.homeOrder.parse(input);
       const auction=await tx.auction.findUniqueOrThrow({where:{id:data.auctionId},select:{
-        id:true,homeOrder:true,controlVersion:true,status:true,publishedAt:true,endsAt:true,settlement:{select:{id:true}},result:{select:{id:true}},
+        id:true,homeOrder:true,featured:true,controlVersion:true,status:true,publishedAt:true,endsAt:true,settlement:{select:{id:true}},result:{select:{id:true}},
       }});
       if(auction.controlVersion!==data.version)throw new AdminError(409,'Auction controls changed. Reload before saving.');
-      if(!auction.publishedAt||!auction.endsAt||auction.endsAt<=actor.now||!['LIVE','SCHEDULED'].includes(auction.status)||auction.settlement||auction.result)throw new AdminError(409,'Home order can change only for live or upcoming auctions.');
+      if(!auction.publishedAt||!auction.endsAt||auction.endsAt<=actor.now||!['LIVE','SCHEDULED'].includes(auction.status)||auction.settlement||auction.result)throw new AdminError(409,'Home settings can change only for live or upcoming auctions.');
+      const placement={homeOrder:data.homeOrder,featured:data.featured??auction.featured};
       const controlVersion=auction.controlVersion+1;
-      await tx.auctionControlRevision.create({data:{auctionId:auction.id,version:controlVersion,kind:'PRESENTATION',before:{homeOrder:auction.homeOrder},after:{homeOrder:data.homeOrder},actorId:actor.id,reason:'Home order updated',operationKey}});
-      await tx.auction.update({where:{id:auction.id},data:{homeOrder:data.homeOrder,controlVersion}});
-      target=auction.id;receipt={auctionId:auction.id,homeOrder:data.homeOrder,controlVersion};
+      await tx.auctionControlRevision.create({data:{auctionId:auction.id,version:controlVersion,kind:'PRESENTATION',before:{homeOrder:auction.homeOrder,featured:auction.featured},after:placement,actorId:actor.id,reason:'Home settings updated',operationKey}});
+      await tx.auction.update({where:{id:auction.id},data:{...placement,controlVersion}});
+      target=auction.id;receipt={auctionId:auction.id,...placement,controlVersion};
     }else if(action==='presentation'){
       const data=schemas.presentation.parse(input),auction=await tx.auction.findUniqueOrThrow({where:{id:data.auctionId},include:{product:{include:{images:{orderBy:{sortOrder:'asc'}}}},settlement:{select:{id:true}},result:{select:{id:true}}}});
       if(auction.controlVersion!==data.version)throw new AdminError(409,'Auction controls changed. Reload before saving.');
