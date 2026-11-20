@@ -1,5 +1,6 @@
 import type {Prisma,PrismaClient} from '@prisma/client';
-import {contactBotId,decryptPhone,normalizePhone} from '../auth/own-contact';
+import {contactBotId,decryptPhone} from '../auth/own-contact';
+import {maskPhoneDisplay,maskPhoneSuffix} from '@/lib/phone-mask';
 
 export const ownProfileContactSelect={telegramId:true,botId:true,revokedAt:true,lastFour:true,phoneCipher:true} satisfies Prisma.TelegramOwnContactSelect;
 type ContactRow=Prisma.TelegramOwnContactGetPayload<{select:typeof ownProfileContactSelect}>&{user:{telegramId:string|null}|null};
@@ -13,7 +14,7 @@ export async function ownProfileContact(client:PrismaClient|Prisma.TransactionCl
 export function profileContactDisplay(row:ContactRow|null){
   let currentBot:string;try{currentBot=contactBotId()}catch{return {contactVerified:false,phoneDisplay:null}}
   if(!row||row.revokedAt||row.telegramId!==row.user?.telegramId||row.botId!==currentBot)return {contactVerified:false,phoneDisplay:null};
-  let phoneDisplay:string|null=/^\d{4}$/.test(row.lastFour)?`•••• ${row.lastFour}`:null;
-  try{phoneDisplay=normalizePhone(decryptPhone(row.phoneCipher,row.botId))}catch{/* Preserve the verified masked display when its protected key is unavailable. */}
+  let phoneDisplay=maskPhoneSuffix(row.lastFour);
+  try{phoneDisplay=maskPhoneDisplay(decryptPhone(row.phoneCipher,row.botId))??phoneDisplay}catch{/* Preserve the known suffix when the protected key is unavailable. */}
   return {contactVerified:true,phoneDisplay};
 }

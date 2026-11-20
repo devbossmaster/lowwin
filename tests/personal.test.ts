@@ -32,7 +32,7 @@ describe.skipIf(!url)('Phase 4B public outcomes and private pages on PostgreSQL'
   const bid=(userId:string,auction:typeof winner,amount:number)=>submitBid(client,{userId,auctionSlug:auction.slug!,amount:String(amount),key:randomUUID()});
   const publicCode=(auction:typeof winner)=>auction.publicCode.toString();
   // Contact fixtures use +999 plus an 11-digit synthetic subscriber number.
-  const fixtureMask=(telegramId:number)=>{const subscriber=String(telegramId).padStart(11,'0');return `+999${subscriber.slice(0,2)}***${subscriber.slice(5)}`};
+  const fixtureMask=(telegramId:number)=>{const subscriber=String(telegramId).padStart(11,'0');return `999${subscriber.slice(0,4)}***${subscriber.slice(-2)}`};
   beforeAll(async()=>{
     const target=new URL(url!);if(!['127.0.0.1','localhost'].includes(target.hostname)||!target.pathname.endsWith('_test'))throw new Error('Disposable loopback _test database required');
     Object.assign(process.env,{DATABASE_URL:url,DIRECT_URL:url,NODE_ENV:'test',APP_ENV:'local',DEV_POINTS_ENABLED:'true',DEV_IDENTITY_ENABLED:'false',BETTER_AUTH_URL:'http://localhost:3000',MINI_APP_URL:'http://localhost:3000',BETTER_AUTH_SECRET:'fixture-only-secret-at-least-thirty-two-characters',TELEGRAM_BOT_TOKEN:TEST_TOKEN,TELEGRAM_BOT_USERNAME:'lowin_fixture_bot',TELEGRAM_WEBHOOK_SECRET:'fixture-only-webhook-secret-thirty-two'});

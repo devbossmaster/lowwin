@@ -42,7 +42,7 @@ describe.skipIf(!url)('required own-contact boundary',()=>{
   const result=await sign(),headers=new Headers({cookie:result.headers.getSetCookie().map(v=>v.split(';')[0]).join('; ')});
   const session=await getMiniSession(headers,db);expect(session).not.toBeNull();
   expect((await me(new Request(origin+'/api/me',{headers}))).status).toBe(200);
-  expect((await contactStatus(db,session!.user.id)).masked).toMatch(/^•••• \d{4}$/);
+ expect((await contactStatus(db,session!.user.id)).masked).toMatch(/^\*{3}\d{2}$/);
   await db.telegramOwnContact.update({where:{userId:session!.user.id},data:{revokedAt:new Date()}});
   expect(await getMiniSession(headers,db)).toBeNull();
   expect(await (await verify()).json()).toEqual({verified:false,masked:null});

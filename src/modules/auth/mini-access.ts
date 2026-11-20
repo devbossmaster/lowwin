@@ -1,6 +1,7 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import {createHash} from 'node:crypto';
 import {db} from '@/lib/db';
+import {maskPhoneSuffix} from '@/lib/phone-mask';
 import {countIdentityRequest,userMutationLimit} from '@/lib/rate-limit';
 import {createAuth} from './server';
 import {assertLocalIdentitySurface} from './local-identity';
@@ -46,7 +47,7 @@ async function readBoundSession(headers:Headers,client:PrismaClient|Prisma.Trans
   // fast path. Re-read bindings after renewal so a concurrent revoke fails.
   if(row.needsRenewal){if(!await createAuth(client).api.getSession({headers}))return null;return readBoundSession(headers,client,requireContact,mutation,true)}
   const bound=row.preview?{...current,telegramId:null,contactStatus:{verified:true,masked:null}}:
-    {...current,telegramId:row.telegramId,contactStatus:{verified:row.contactVerified,masked:row.contactVerified?`•••• ${row.lastFour}`:null}};
+    {...current,telegramId:row.telegramId,contactStatus:{verified:row.contactVerified,masked:row.contactVerified?maskPhoneSuffix(row.lastFour):null}};
   return {identity:bound,rateAllowed:!mutation||row.mutationCount!==null&&row.mutationCount<=quota.maximum,directOriginal:row.directOriginal,directBidReady:row.directBidReady,directTopUpReady:row.directTopUpReady};
 }
 // Cards load their private state together. Share only an unfinished lookup for

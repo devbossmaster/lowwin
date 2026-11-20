@@ -7,6 +7,7 @@ import {usePublicQuery} from './public-query';
 import {PrivateState,usePrivateQuery} from './private-query';
 import type {listCompletedWinners} from '@/modules/auctions/results';
 import {winnersQueryUrl,recentWinnersQueryUrl} from '@/lib/catalog-query';
+import {maskPhoneDisplay} from '@/lib/phone-mask';
 import {MiniRouteSkeleton} from './mini-route-skeleton';
 import {miniQueryPolicy} from './mini-query-policy';
 import {readPublicQuery,seedPublicQuery} from './public-query-cache';
@@ -31,7 +32,7 @@ export function WinnersClientList({initial,carousel=false}:{initial?:WinnersData
   const result=item.result,identity=authenticatedWinners.find(winner=>winner.code===item.code)?.result;
   if(result?.source!=='SETTLED'||result.outcome!=='WINNER'||identity?.source!=='SETTLED'||identity.outcome!=='WINNER'||identity.publishedAt!==result.publishedAt)return item;
   const phone=identity.winnerPhoneMasked;
-  return {...item,result:{...result,winnerDisplay:identity.winnerDisplay,winnerPhoneMasked:phone&&/^\+[1-9]\d{0,6}\*{3}\d{1,7}$/.test(phone)?phone:null}};
+  return {...item,result:{...result,winnerDisplay:identity.winnerDisplay,winnerPhoneMasked:phone?.includes('*')?maskPhoneDisplay(phone):null}};
  }):data?.items;
  useEffect(()=>{
   if(!carousel||!seed)return;const saved=readPublicQuery<WinnersData>(url);

@@ -12,7 +12,7 @@ vi.mock('../src/modules/auth/mini-access',()=>({getMiniSession:auth}));
 import {GET} from '../src/app/api/results/[auctionCode]/breakdown/route';
 
 describe('result privacy and media validation',()=>{
- it('masks exactly three middle national digits and rejects non-phone values',()=>{expect(maskResultPhone('+251911652904')).toBe('+251911***904');expect(maskResultPhone('0911652904')).toBeNull();expect(maskResultPhone('unsafe')).toBeNull()});
+ it('masks three middle digits on Ethiopian phones and keeps only the last two',()=>{expect(maskResultPhone('+251954100048')).toBe('2519541***48');expect(maskResultPhone('0911652904')).toBeNull();expect(maskResultPhone('unsafe')).toBeNull()});
  it('bounds pages and accepts only supported sorts and exact amounts',()=>{for(const input of [{page:0},{page:10001},{pageSize:1000},{sort:'random'},{amount:'1e3'},{amount:'1.234'}])expect(breakdownQuery.safeParse(input).success).toBe(false)});
  it('allows only configured YouTube or local video sources',()=>{
   expect(resolveLearnMoreMedia({})).toBeNull();expect(resolveLearnMoreMedia({youtube:'https://youtu.be/abcdefghijk'})).toMatchObject({kind:'youtube',id:'abcdefghijk'});
@@ -46,6 +46,7 @@ describe.skipIf(!database)('final result API on disposable PostgreSQL',()=>{
   const first=await read({amount:'50'}),second=await read({amount:'50',page:2});
   if(first?.kind!=='participants'||second?.kind!=='participants')throw Error('No participant page');
   expect(first).toMatchObject({bidCount:21,playerCount:21,unique:false,totalBids:64,totalPlayers:21});expect(first.participants).toHaveLength(20);expect(second.participants).toHaveLength(1);
+  for(const participant of [...first.participants,...second.participants])expect(Object.keys(participant).sort()).toEqual(['phoneMasked','submittedAt']);
   expect(await read({amount:'2'})).toMatchObject({bidCount:2,playerCount:2,totalBids:64,totalPlayers:21});
   const serialized=JSON.stringify([first,second]);for(const phone of fixture.phones)expect(serialized).not.toContain(phone);expect(serialized).not.toMatch(/phoneCipher|phoneHash|telegramId|userId|winnerUserId|proof|requestHash/);expect(serialized).toContain(maskResultPhone(fixture.phone)!);
   const result=await read();expect(result?.auction.result?.winnerPhoneMasked).toBe(maskResultPhone(fixture.phone));

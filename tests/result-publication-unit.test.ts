@@ -62,7 +62,7 @@ describe('automatic immutable result publication',()=>{
  it('rejects the removed administrator publish mutation',async()=>{await expect(publishResult()).rejects.toMatchObject({status:410})});
 });
 describe('public result identity',()=>{
- it('returns actual safe display identity and the existing masked contact',()=>{expect(safeResultIdentity({name:' Abebe  M. ',telegramUsername:'abebe_user'})).toEqual({displayName:'Abebe M.',username:'@abebe_user'});expect(maskResultPhone('+251911652904')).toBe('+251911***904')});
+ it('returns actual safe display identity and the masked contact',()=>{expect(safeResultIdentity({name:' Abebe  M. ',telegramUsername:'abebe_user'})).toEqual({displayName:'Abebe M.',username:'@abebe_user'});expect(maskResultPhone('+251911652904')).toBe('2519116***04')});
  it('rejects phone and email names, hidden controls and invalid handles',()=>{
   for(const name of ['+251 911 652 904','Call 0911652904','a@example.com','０９１１６５２９０４','091\u200b1652904'])expect(safeResultIdentity({name,telegramUsername:'invalid handle'})).toEqual({displayName:null,username:null});
  });

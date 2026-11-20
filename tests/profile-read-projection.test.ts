@@ -17,7 +17,7 @@ afterEach(()=>vi.unstubAllEnvs());
 describe('private Profile read projection',()=>{
  it('preserves counts and editable details while excluding stored phone secrets and Telegram bindings',async()=>{
   const result=await getPlayerProfile(client,'owner');
-  expect(result).toEqual({displayName:'My nickname',bio:'My bio',contactEmail:'owner@example.test',city:'Addis Ababa',contactDetailsEditable:true,contactVerified:true,phoneDisplay:'+251911000123',counts:{bids:7,liveBids:3,historyBids:4,wins:1,favorites:2},referral:{configured:false,enabled:false,shareUrl:null}});
+ expect(result).toEqual({displayName:'My nickname',bio:'My bio',contactEmail:'owner@example.test',city:'Addis Ababa',contactDetailsEditable:true,contactVerified:true,phoneDisplay:'2519110***23',counts:{bids:7,liveBids:3,historyBids:4,wins:1,favorites:2},referral:{configured:false,enabled:false,shareUrl:null}});
   const serialized=JSON.stringify(result);expect(serialized).not.toContain('private-ciphertext');expect(serialized).not.toContain('telegramId');
   expect(f.user.mock.calls[0][0].where).toEqual({id:'owner'});expect(f.referral).toHaveBeenCalledWith(client,'owner');
  });

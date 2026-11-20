@@ -1,0 +1,75 @@
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+  margin: 18px 0 14px;
+  padding: 17px 16px;
+  border: 1px solid var(--action-disabled);
+  border-radius: 20px;
+  background: color-mix(in srgb,var(--action-primary) 7%,var(--brand-surface));
+  color: var(--brand-ink);
+}
+
+.summary[data-compact] { margin: 8px 0 0; padding: 14px; border-radius: 16px; }
+
+.summary[data-winner] {
+  --winner-blue: #0731c6;
+  --winner-blue-deep: #0629b3;
+  --surface-ink: var(--action-ink);
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-color: var(--winner-blue);
+  background: var(--winner-blue);
+  color: var(--action-ink);
+}
+
+.summary[data-winner]::before {
+  content: '';
+  position: absolute;
+  inset: 0 -25%;
+  z-index: -1;
+  background: linear-gradient(112deg,var(--winner-blue-deep) 16%,var(--winner-blue) 52%,var(--winner-blue-deep) 86%);
+  animation: winner-blue-shift 7s ease-in-out infinite alternate;
+}
+
+@keyframes winner-blue-shift {
+  from { transform: translateX(-14%); }
+  to { transform: translateX(14%); }
+}
+
+.winningNumber {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-width: 52px;
+  min-height: 52px;
+  max-width: 100%;
+  padding: 7px 10px;
+  border: 1px solid color-mix(in srgb,var(--action-ink) 42%,transparent);
+  border-radius: 999px;
+  background: var(--winner-blue-deep);
+  color: var(--action-ink);
+  font-size: 22px;
+  line-height: 1.1;
+  font-weight: 800;
+  letter-spacing: -.03em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.identity { flex: 1; display: grid; gap: 3px; min-width: min(120px,100%); }
+.identity small { font-size: 10px; font-weight: 650; text-transform: uppercase; }
+.summary[data-winner] .identity small { color: var(--brand-bonus); }
+.identity h2,.identity strong { margin: 0; font-size: 15px; font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; }
+.identity span { font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
+.phone { display: flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
+.phone svg { flex: none; }
+.selection { flex-basis: 100%; margin: 2px 0 0; font-size: 12px; line-height: 1.6; }
+.summaryReference { flex-basis: 100%; margin: 0; font-size: 10px; line-height: 1.5; }
+
+@media (prefers-reduced-motion: reduce) {
+  .summary[data-winner]::before { animation: none; }
+}

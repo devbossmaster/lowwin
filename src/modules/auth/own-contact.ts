@@ -1,5 +1,6 @@
 import {createCipheriv,createDecipheriv,createHmac,randomBytes,randomUUID} from 'node:crypto';
 import type {Prisma,PrismaClient} from '@prisma/client';
+import {maskPhoneSuffix} from '@/lib/phone-mask';
 import {stagingDemoUser} from '../auctions/staging-demo';
 import {attributeNewReferralInTransaction} from '../referrals/service';
 type DB=Prisma.TransactionClient|PrismaClient;
@@ -47,5 +48,5 @@ export async function isRegisteredTelegramUser(tx:DB,telegramId:string,botId=con
  const contact=await tx.telegramOwnContact.findUnique({where:{botId_telegramId:{botId,telegramId}},select:{revokedAt:true,user:{select:{telegramId:true}}}});
  return !!contact&&!contact.revokedAt&&contact.user?.telegramId===telegramId;
 }
-export async function contactStatus(tx:DB,userId:string,telegramId?:string|null){const row=await tx.telegramOwnContact.findUnique({where:{userId},select:{telegramId:true,botId:true,revokedAt:true,lastFour:true,user:{select:{telegramId:true}}}});return row&&row.telegramId===row.user?.telegramId&&!row.revokedAt&&row.botId===contactBotId()&&(!telegramId||row.telegramId===telegramId)?{verified:true,masked:`•••• ${row.lastFour}`}:{verified:false,masked:null}}
+export async function contactStatus(tx:DB,userId:string,telegramId?:string|null){const row=await tx.telegramOwnContact.findUnique({where:{userId},select:{telegramId:true,botId:true,revokedAt:true,lastFour:true,user:{select:{telegramId:true}}}});return row&&row.telegramId===row.user?.telegramId&&!row.revokedAt&&row.botId===contactBotId()&&(!telegramId||row.telegramId===telegramId)?{verified:true,masked:maskPhoneSuffix(row.lastFour)}:{verified:false,masked:null}}
 export async function assertPlayerContact(tx:DB,userId:string){const user=await tx.user.findUnique({where:{id:userId},select:{telegramId:true}});if(!user)throw Error('CONTACT_REQUIRED');if(!user.telegramId&&(localFixture()||userId.startsWith('demo-showcase-')&&stagingDemoUser(userId)))return; if(!(await contactStatus(tx,userId,user.telegramId)).verified)throw Error('CONTACT_REQUIRED')}

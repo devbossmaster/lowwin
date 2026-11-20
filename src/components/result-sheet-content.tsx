@@ -1,6 +1,6 @@
 'use client';
 import {useEffect,useRef,useState,type CSSProperties,type RefObject} from 'react';
-import {ChevronRight,Trophy} from 'lucide-react';
+import {ChevronRight,Phone,Trophy} from 'lucide-react';
 import {AccountSheet} from './account-sheet';
 import {useMiniLocale,MiniPhrase} from './mini-locale';
 import {PrivateState,usePrivateQuery} from './private-query';
@@ -15,21 +15,27 @@ function Pager({page,totalPages,change,disabled=false}:{page:number;totalPages:n
  const {language}=useMiniLocale();
  return totalPages>1?<nav className={styles.pager} aria-label={language==='am'?'የውጤት ገጾች':'Result pages'}><button disabled={disabled||page<=1} onClick={()=>change(page-1)}><MiniPhrase en="Previous" am="ወደ ኋላ"/></button><span>{page} / {totalPages}</span><button disabled={disabled||page>=totalPages} onClick={()=>change(page+1)}><MiniPhrase en="Next" am="ቀጣይ"/></button></nav>:null;
 }
-function ParticipantSheet({code,amount,onClose,returnFocusRef}:{code:string;amount:string;onClose:()=>void;returnFocusRef:RefObject<HTMLElement|null>}){
+function ParticipantSheet({code,amount,displayAmount,onClose,returnFocusRef}:{code:string;amount:string;displayAmount:string;onClose:()=>void;returnFocusRef:RefObject<HTMLElement|null>}){
  const {queryIdentity}=useTelegram(),{language}=useMiniLocale(),am=language==='am',pageKey='result:'+code+':'+amount,[page,setPage]=useState(()=>miniNavigationState.page(queryIdentity,pageKey));
  useEffect(()=>miniNavigationState.rememberPage(queryIdentity,pageKey,page),[queryIdentity,pageKey,page]);
  const query=usePrivateQuery<ResultBreakdown>('/api/results/'+encodeURIComponent(code)+'/breakdown?amount='+encodeURIComponent(amount)+'&page='+page,{keepPreviousData:true,cancelOnUnmount:true}),data=query.data?.kind==='participants'?query.data:null;
- return <AccountSheet title={<MiniPhrase en="Bid details" am="የጨረታ ዝርዝር"/>} onClose={onClose} returnFocusRef={returnFocusRef}>
+ const first=data?(data.page-1)*data.pageSize+1:1;
+ return <AccountSheet title={<><span className="sr-only"><MiniPhrase en="Bid details" am="የጨረታ ዝርዝር"/></span><span className={styles.participantNumber} aria-hidden="true">{displayAmount}</span></>} presentation="centered" onClose={onClose} returnFocusRef={returnFocusRef}>
   {!data&&query.status==='authenticated'&&!query.error?<p className={styles.loading} role="status"><MiniPhrase en="Loading participants…" am="ተሳታፊዎችን በመጫን ላይ…"/></p>:<PrivateState query={query}/>}
-  <h3 className={styles.amountTitle}>{data?formatAuctionBid(data.amount,data.auction.terms.ruleVersion):amount}</h3>
   {data&&<>
-   <div className={styles.stats}><span><strong>{data.bidCount}</strong><MiniPhrase en="Bids" am="ጨረታዎች"/></span><span><strong>{data.playerCount}</strong><MiniPhrase en="Players" am="ተጫራቾች"/></span><span><strong>{data.unique?<MiniPhrase en="Picked once" am="አንድ ጊዜ የተመረጠ"/>:<MiniPhrase en="Repeated" am="የተደገመ"/>}</strong>{data.winner&&<MiniPhrase en="Winning entry" am="ያሸነፈው ጨረታ"/>}</span></div>
-   <h3 className={styles.subheading}><MiniPhrase en="Participants" am="ተሳታፊዎች"/></h3>
-   <ul className={styles.people}>{data.participants.map((person,index)=><li key={person.submittedAt+':'+index}>
-    <strong>{person.displayName||person.username||<MiniPhrase en="Participant" am="ተሳታፊ"/>}</strong>
-    {person.username&&person.displayName&&<span>{person.username}</span>}{person.phoneMasked&&<span>{person.phoneMasked}</span>}
-    <time dateTime={person.submittedAt}>{formatAddisTimestamp(person.submittedAt,am?'am-ET':'en-GB','withSeconds')}</time>
-   </li>)}</ul>
+   <div className={styles.participantFacts}>
+    <span><strong>{data.bidCount}</strong> <MiniPhrase en="Bids" am="ጨረታዎች"/></span>
+    <span><strong>{data.playerCount}</strong> <MiniPhrase en="Players" am="ተጫራቾች"/></span>
+    {data.winner?<span data-winning><Trophy size={12} aria-hidden="true"/><MiniPhrase en="Winning entry" am="ያሸነፈው ጨረታ"/></span>:
+      <span>{data.unique?<MiniPhrase en="Picked once" am="አንድ ጊዜ የተመረጠ"/>:<MiniPhrase en="Repeated" am="የተደገመ"/>}</span>}
+   </div>
+   <ol className={styles.people} start={first} role="list" aria-busy={query.fetching} aria-label={am?`የጨረታ ቁጥር ${displayAmount}`:`Bids for ${displayAmount}`}>
+    {data.participants.map((person,index)=><li key={first+index}>
+     <span className={styles.rowNumber} aria-hidden="true">#{first+index}</span>
+     <span className={styles.rowPhone}><Phone size={12} aria-hidden="true"/><span dir="ltr">{person.phoneMasked??<MiniPhrase en="Unavailable" am="አልተገኘም"/>}</span></span>
+     <time dateTime={person.submittedAt}>{formatAddisTimestamp(person.submittedAt,am?'am-ET':'en-GB')}</time>
+    </li>)}
+   </ol>
    <Pager page={data.page} totalPages={data.totalPages} change={setPage} disabled={query.isPlaceholderData}/>
   </>}
  </AccountSheet>;
@@ -53,6 +59,6 @@ export default function ResultBreakdownContent({code}:{code:string}){
    </button></li>)}</ul>
    <Pager page={data.page} totalPages={data.totalPages} change={value=>setView(previous=>({...previous,page:value,jump:false}))} disabled={busy}/>
   </>}</div>
-  {amount!==null&&<ParticipantSheet key={code+':'+amount} code={code} amount={amount} onClose={()=>setAmount(null)} returnFocusRef={amountTrigger}/>}
+ {amount!==null&&data&&<ParticipantSheet key={code+':'+amount} code={code} amount={amount} displayAmount={formatAuctionBid(amount,data.auction.terms.ruleVersion)} onClose={()=>setAmount(null)} returnFocusRef={amountTrigger}/>}
  </>;
 }

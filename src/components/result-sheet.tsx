@@ -1,12 +1,11 @@
 'use client';
 import dynamic from 'next/dynamic';
 import {useEffect,useRef,useState,type RefObject} from 'react';
-import {CalendarDays,Phone,Trophy} from 'lucide-react';
+import {CalendarDays,Trophy} from 'lucide-react';
 import type {CatalogAuction} from '@/modules/auctions/catalog';
-import {formatAuctionBid} from '@/lib/money';
 import {formatAddisTimestamp} from '@/lib/addis-time';
-import {winnerResultExplanation} from '@/lib/winner-result-copy';
 import {AccountSheet} from './account-sheet';
+import {AuctionResultSummary} from './auction-result-summary';
 import {CatalogImage} from './catalog-image';
 import {MiniPhrase,useMiniLocale} from './mini-locale';
 import {WinnerBanner,winnerBannerData} from './winner-banner';
@@ -27,18 +26,13 @@ export function ResultSheetContent({auction:initial}:{auction:CatalogAuction}){
  const query=usePrivateQuery<CatalogAuction>('/api/results/'+encodeURIComponent(initial.code),{initialData:initial.result?.explanation?initial:undefined,freshnessMs:initial.result?.explanation?300000:15000});
  const auction=query.data?.result?query.data:initial,result=auction.result;
  const title=am?auction.product.titleAm?.trim()||auction.product.title:auction.product.title;
- const winner=result?.outcome==='WINNER',identity=result?.winnerDisplay||result?.winnerUsername;
  useEffect(()=>{const node=section.current;if(!node)return;const observer=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting)){setVisible(true);observer.disconnect()}},{rootMargin:'80px'});observer.observe(node);return()=>observer.disconnect()},[!!result]);
  if(query.status!=='authenticated')return <PrivateState query={query}/>;
  return <div className={styles.resultSurface}>
    <div className={winnerBannerData(auction)?styles.detailBanner:styles.detailPhoto}>{winnerBannerData(auction)?<WinnerBanner auction={auction}/>:<CatalogImage src={auction.product.images[0]?.path} alt={title}/>}</div>
    <h3 className={styles.title}>{title}</h3>
    {result?.publishedAt&&<p className={styles.date}><CalendarDays size={13} aria-hidden="true"/><MiniPhrase en="Announced" am="የታወጀው"/> <time dateTime={result.publishedAt}>{formatAddisTimestamp(result.publishedAt,am?'am-ET':'en-GB')}</time></p>}
-   {result?<section className={styles.winnerSummary} data-winner={winner||undefined} aria-label={am?'የተረጋገጠ ውጤት':'Confirmed result'}>
-    {winner&&result?.winningPoints&&<strong className={styles.winningNumber}>{formatAuctionBid(result.winningPoints,auction.terms.ruleVersion)}</strong>}
-    <div className={styles.winnerIdentity}><small><MiniPhrase en={winner?'Winner':'Auction completed'} am={winner?'አሸናፊ':'ጨረታው ተጠናቋል'}/></small>{winner&&<strong>{identity||<MiniPhrase en="Confirmed winner" am="የተረጋገጠ አሸናፊ"/>}</strong>}{result?.winnerUsername&&result.winnerDisplay&&<span>{result.winnerUsername}</span>}{result?.winnerPhoneMasked&&<span><Phone size={11} aria-hidden="true"/>{result.winnerPhoneMasked}</span>}</div>
-    <p className={styles.selection}>{result&&winnerResultExplanation(result,am)}</p><p className={styles.summaryReference}><MiniPhrase en="Auction" am="ጨረታ"/> #{auction.code}</p>
-   </section>:<p className={styles.loading} role="status"><MiniPhrase en={auction.status==='cancelled'?'This auction was cancelled.':'Finalizing result'} am={auction.status==='cancelled'?'ይህ ጨረታ ተሰርዟል።':'ውጤቱ እየተጠናቀቀ ነው'}/></p>}
+   {result?<AuctionResultSummary auction={auction}/>:<p className={styles.loading} role="status"><MiniPhrase en={auction.status==='cancelled'?'This auction was cancelled.':'Finalizing result'} am={auction.status==='cancelled'?'ይህ ጨረታ ተሰርዟል።':'ውጤቱ እየተጠናቀቀ ነው'}/></p>}
    {result&&<div ref={section} data-result-breakdown tabIndex={-1}>{visible?<Breakdown key={auction.code} code={auction.code}/>:<p className={styles.loading}><MiniPhrase en="Number breakdown" am="የቁጥሮች ዝርዝር"/></p>}</div>}
   </div>;
 }

@@ -32,7 +32,7 @@ describe('one-read, signed Mini App sessions',()=>{
   f.read.mockResolvedValueOnce([{...bound(),contactVerified:false}]).mockResolvedValueOnce([]);const launch=await getLaunchSession(headers()),mini=await getMiniSession(headers());expect(launch?.contactStatus).toEqual({verified:false,masked:null});expect(mini).toBeNull();expect(f.read).toHaveBeenCalledTimes(2);
  });
  it('returns only the masked contact and fresh session identity',async()=>{
-  const session=await getLaunchSession(headers());expect(session?.contactStatus).toEqual({verified:true,masked:'•••• 1234'});expect(session).not.toHaveProperty('phoneCipher');expect(session).not.toHaveProperty('phoneHash');expect(f.read).toHaveBeenCalledOnce();
+  const session=await getLaunchSession(headers());expect(session?.contactStatus).toEqual({verified:true,masked:'***34'});expect(session).not.toHaveProperty('phoneCipher');expect(session).not.toHaveProperty('phoneHash');expect(f.read).toHaveBeenCalledOnce();
  });
  it('preserves the verified browser proof source in the session binding',async()=>{f.read.mockResolvedValue([{...bound(),telegramAuthSource:'TELEGRAM_OIDC'}]);expect((await getMiniSession(headers()))?.session.telegramAuthSource).toBe('TELEGRAM_OIDC')});
  it('rejects unsigned, forged and wrong-secret cookies without a database read',async()=>{

@@ -1,5 +1,6 @@
 import {chapaApiCharge,chapaAwaitingAuthorization,chapaVerifiedTerminal,chapaConfirmed,chapaDirectRequestRejected,chapaPollingPaused,type ChapaCheckoutView} from './chapa-client';
 import {normalizePaymentPhone} from './payment-phone';
+import {maskPhoneDisplay} from './phone-mask';
 import {safeChapaPaymentReason} from './chapa-payment-reason';
 
 export type BidPaymentProgressPhase='preparing'|'connecting'|'authorization'|'confirming'|'success'|'preserved'|'terminal'|'uncertain';
@@ -70,8 +71,5 @@ export function bidPaymentProgressPhase(state:ProgressState):BidPaymentProgressP
 export function maskedBidPaymentPhone(phone:string|null|undefined){
  if(!phone)return null;
  const normalized=normalizePaymentPhone(phone);
- if(normalized)return `+251 ••• •• ${normalized.slice(-4)}`;
- if(!/[•*xX]/.test(phone))return null;
- const trailing=phone.match(/\d{2,4}$/)?.[0];
- return trailing?`+251 ••• •• ${trailing}`:null;
+ return maskPhoneDisplay(normalized??(/[•*xX]/.test(phone)?phone:null));
 }

@@ -1,7 +1,7 @@
 import {Prisma,type PrismaClient} from '@prisma/client';
 import {z} from 'zod';
 import {publicAuctionSelect,publicWhere,toPublicAuction} from './catalog';
-import {maskedResultContact,safeResultIdentity} from './result-identity';
+import {maskedResultContact} from './result-identity';
 export {maskResultPhone} from './result-identity';
 import {finalizedDemoFilter} from './staging-demo';
 
@@ -29,8 +29,8 @@ export async function getResultBreakdown(client:PrismaClient,code:string,input:Q
    const amount=new Prisma.Decimal(query.amount);
    const [count]=await tx.$queryRaw<{bids:number;players:number}[]>(Prisma.sql`SELECT count(*)::int AS bids,count(DISTINCT "userId")::int AS players FROM "Bid" WHERE ${filter} AND amount=${amount}`);
    if(!count.bids)return null;
-   const people=await tx.bid.findMany({where:{auctionId:row.id,acceptedAt:{lt:settlement.cutoff},...(settlement.acceptanceCutoff===null?{}:{acceptanceOrder:{lte:settlement.acceptanceCutoff}}),amount},orderBy:[{acceptanceOrder:'asc'},{id:'asc'}],skip:(query.page-1)*20,take:20,select:{acceptedAt:true,user:{select:{name:true,telegramUsername:true,ownContact:{select:{botId:true,phoneCipher:true,revokedAt:true}}}}}});
-   return {...metadata,kind:'participants' as const,amount:amount.toString(),bidCount:count.bids,playerCount:count.players,unique:count.bids===1,winner:settlement.winningPoints?.eq(amount)??false,page:query.page,totalPages:Math.ceil(count.bids/20),participants:people.map(person=>({...safeResultIdentity(person.user),phoneMasked:maskedResultContact(person.user.ownContact),submittedAt:person.acceptedAt.toISOString()}))};
+   const people=await tx.bid.findMany({where:{auctionId:row.id,acceptedAt:{lt:settlement.cutoff},...(settlement.acceptanceCutoff===null?{}:{acceptanceOrder:{lte:settlement.acceptanceCutoff}}),amount},orderBy:[{acceptanceOrder:'asc'},{id:'asc'}],skip:(query.page-1)*20,take:20,select:{acceptedAt:true,user:{select:{ownContact:{select:{botId:true,phoneCipher:true,revokedAt:true}}}}}});
+   return {...metadata,kind:'participants' as const,amount:amount.toString(),bidCount:count.bids,playerCount:count.players,unique:count.bids===1,winner:settlement.winningPoints?.eq(amount)??false,page:query.page,totalPages:Math.ceil(count.bids/20),participants:people.map(person=>({phoneMasked:maskedResultContact(person.user.ownContact),submittedAt:person.acceptedAt.toISOString()}))};
   }
   const order=query.sort==='picked'?Prisma.sql`bid_count DESC,grouped.amount ASC`:Prisma.sql`grouped.amount ASC`;
   const groups=Prisma.sql`SELECT amount,count(*)::int AS bid_count,count(DISTINCT "userId")::int AS players FROM "Bid" WHERE ${filter} GROUP BY amount`;

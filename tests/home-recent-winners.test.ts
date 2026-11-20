@@ -40,10 +40,10 @@ describe('Home recent winners retain public cards and refresh quietly',()=>{
   const item={code:'winner-1',result};
   f.query.data={...saved,items:[item] as unknown as WinnersData['items']};
   const identity=(phone:string)=>({...item,result:{...result,winnerDisplay:'Verified winner',winnerPhoneMasked:phone,winnerUsername:'protected-handle',winningPoints:'protected-number'}});
-  f.identityData={...saved,items:[identity('+251911***123')] as unknown as WinnersData['items']};
+  f.identityData={...saved,items:[identity('2519110***23')] as unknown as WinnersData['items']};
   render();expect(f.rendered[0].result).toEqual(result);
   f.identityStatus='authenticated';
-  render();expect(f.rendered[0].result).toEqual({...result,winnerDisplay:'Verified winner',winnerPhoneMasked:'+251911***123'});
+  render();expect(f.rendered[0].result).toEqual({...result,winnerDisplay:'Verified winner',winnerPhoneMasked:'2519110***23'});
   f.identityData={...saved,items:[identity('+251911222123')] as unknown as WinnersData['items']};
   render();expect(f.rendered[0].result).toEqual({...result,winnerDisplay:'Verified winner'});
  });

@@ -1,7 +1,9 @@
-/** Public navigation only. A launch parameter never authorizes a bid or payment. */
+/** Launch parameters select a route. The destination still enforces access. */
 export function auctionStartPath(payload:string|null|undefined){
- const match=/^auction_([1-9]\d{0,9})$/.exec(payload??'');
- return match&&Number(match[1])<=2147483647?`/auctions/${match[1]}`:null;
+ const match=/^(auction|winner)_([1-9]\d{0,9})$/.exec(payload??'');
+ if(!match||Number(match[2])>2147483647)return null;
+ const [,kind,code]=match;
+ return kind==='winner'?`/winners/${code}`:`/auctions/${code}`;
 }
 export function auctionMiniAppLink(botUrl:string|null|undefined,code:string){
  if(!auctionStartPath('auction_'+code)||!botUrl)return null;

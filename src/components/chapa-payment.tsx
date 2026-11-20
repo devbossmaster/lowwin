@@ -14,7 +14,7 @@ import {retainChapaObserver,stopChapaObservers,type ChapaVerificationTrigger} fr
 import {startChapaOriginalPolling} from '@/lib/chapa-original-polling';
 import {chapaStatusLabel} from '@/lib/chapa-status-label';
 import {chapaDirectCreationRejected} from '@/lib/chapa-direct-request';
-import {bidPaymentCanRetry} from '@/lib/bid-payment-progress';
+import {bidPaymentCanRetry,maskedBidPaymentPhone} from '@/lib/bid-payment-progress';
 import {clearChapaOriginalAttempt,clearSettledChapaOriginalAttempt,readChapaOriginalAttempt,retainChapaOriginalAttempt} from '@/lib/chapa-original-attempt';
 import {chapaRecoveryStorage,readChapaRecoveryPointer,retainChapaRecoveryPointer,clearChapaRecoveryPointer} from '@/lib/chapa-recovery-pointer';
 import {retainPaymentRetryDraft} from '@/lib/payment-retry-draft';
@@ -264,6 +264,7 @@ export function useChapaPaymentClock(order:ChapaCheckoutView|null){
 }
 export function ChapaPaymentStatus({payment,onNavigate,onStartAgain,readOnly=false}:{payment:ReturnType<typeof useChapaPayment>;onNavigate?:()=>void;onStartAgain?:()=>void;readOnly?:boolean}){
  const {language}=useMiniLocale(),am=language==='am',text=(en:string,translated:string)=>am?translated:en,order=payment.order;
+ const phone=maskedBidPaymentPhone(order?.payerPhoneMasked);
  const now=useChapaPaymentClock(order);
  const phase=chapaPaymentPhase({...payment,now}),finished=phase==='confirmed'||phase==='preserved',checkingPaused=!!order&&chapaPollingPaused(order,now);
  const providerReason=order?chapaPaymentReasonMessage(order,am):null;
@@ -325,7 +326,7 @@ export function ChapaPaymentStatus({payment,onNavigate,onStartAgain,readOnly=fal
    {!readOnly&&payment.canStartAgain&&(finished||!order?.completionSignalPending)&&(!longWait||checkingPaused)&&<button type="button" className={styles.checkPayment} onClick={onStartAgain??payment.startAgain}>{text(finished?'Top up again':'Start new checkout',finished?'እንደገና ገንዘብ ያስገቡ':'አዲስ ክፍያ ይጀምሩ')}</button>}
   </div>
   {!finished&&order&&phase!=='failed'&&(!longWait||checkingPaused)&&<small className={styles.savedPaymentNote}>{text('Starting another checkout does not cancel this payment.','ሌላ ክፍያ መጀመር ይህን ክፍያ አይሰርዝም።')}</small>}
-  {order&&<details className={styles.paymentDetails}><summary>{text('Payment details','የክፍያ ዝርዝሮች')}</summary><small className={styles.paymentReference}>{order.merchantReference??order.id}</small><p>{text('Payment status','የክፍያ ሁኔታ')}: {chapaStatusLabel(order,am)}</p>{order.paymentMethod&&<p>{text('Method','መንገድ')}: {order.paymentMethod}</p>}{order.payerPhoneMasked&&<p>{text('Payment phone','የክፍያ ስልክ')}: {order.payerPhoneMasked}</p>}{!!order.batchNumbers?.length&&<p>{text('Bid amounts','የጨረታ መጠኖች')}: {order.batchNumbers.join(' · ')}</p>}{order.purpose==='BID'&&<p>{text('Fulfillment','የጨረታ ሁኔታ')}: {order.status==='BID_ACCEPTED'&&order.receipt?text('All selected bids accepted','ሁሉም የተመረጡ ጨረታዎች ተቀብለዋል'):order.fundsPreserved?text('Funds in wallet; bids not accepted','ገንዘቡ በዋሌት ገብቷል፤ ጨረታዎች አልተቀበሉም'):text('Bids not accepted yet','ጨረታዎች ገና አልተቀበሉም')}</p>}</details>}
+  {order&&<details className={styles.paymentDetails}><summary>{text('Payment details','የክፍያ ዝርዝሮች')}</summary><small className={styles.paymentReference}>{order.merchantReference??order.id}</small><p>{text('Payment status','የክፍያ ሁኔታ')}: {chapaStatusLabel(order,am)}</p>{order.paymentMethod&&<p>{text('Method','መንገድ')}: {order.paymentMethod}</p>}{phone&&<p>{text('Payment phone','የክፍያ ስልክ')}: {phone}</p>}{!!order.batchNumbers?.length&&<p>{text('Bid amounts','የጨረታ መጠኖች')}: {order.batchNumbers.join(' · ')}</p>}{order.purpose==='BID'&&<p>{text('Fulfillment','የጨረታ ሁኔታ')}: {order.status==='BID_ACCEPTED'&&order.receipt?text('All selected bids accepted','ሁሉም የተመረጡ ጨረታዎች ተቀብለዋል'):order.fundsPreserved?text('Funds in wallet; bids not accepted','ገንዘቡ በዋሌት ገብቷል፤ ጨረታዎች አልተቀበሉም'):text('Bids not accepted yet','ጨረታዎች ገና አልተቀበሉም')}</p>}</details>}
   <div className={styles.links}><Link href="/payments" prefetch={false} onClick={onNavigate}>{text('View Transactions','ግብይቶችን ይመልከቱ')}</Link>{order?.status==='BID_ACCEPTED'&&<Link href="/my-bids" onClick={onNavigate}>{text('My Bids','የእኔ ጨረታዎች')}</Link>}</div>
  </section>;
 }

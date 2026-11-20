@@ -71,8 +71,8 @@ describe('bid-only progress follows the owned payment outcome',()=>{
   expect(bidPaymentCanRetryOriginal({...pending,chargeType:'HOSTED'})).toBe(false);
  });
  it('masks full and already masked phones without relaying arbitrary strings',()=>{
-  for(const phone of ['0912345678','+251912345678','912345678'])expect(maskedBidPaymentPhone(phone)).toBe('+251 ••• •• 5678');
-  expect(maskedBidPaymentPhone('+2519*****678')).toBe('+251 ••• •• 678');
+  for(const phone of ['0912345678','+251912345678','912345678','2519123***78'])expect(maskedBidPaymentPhone(phone)).toBe('2519123***78');
+  expect(maskedBidPaymentPhone('+2519*****678')).toBe('2519***78');
   expect(maskedBidPaymentPhone('<script>provider error</script>')).toBeNull();
   expect(maskedBidPaymentPhone(null)).toBeNull();
  });
