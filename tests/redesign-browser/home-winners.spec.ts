@@ -7,6 +7,7 @@ import {bidAuction} from '../bid-fixtures';
 import {verifyFixtureContact} from '../contact-fixtures';
 import {signedLaunch} from '../helpers';
 import {reconcile} from '../../src/modules/wallet/ledger';
+import {maskResultPhone} from '../../src/modules/auctions/result-identity';
 
 test('homepage, final results, nested Back, live batches and Winners navigation',async({page},info)=>{
  page.setDefaultTimeout(30000);const db=new PrismaClient({datasourceUrl:process.env.TEST_DATABASE_URL});
@@ -52,8 +53,13 @@ test('homepage, final results, nested Back, live batches and Winners navigation'
    await learnButton.click();await expect(page.getByRole('dialog')).toBeVisible();await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);await expect(learnButton).toBeFocused();
    await learnButton.click();await expect(page.getByRole('dialog')).toBeVisible();await page.goBack();await expect(page.getByRole('dialog')).toHaveCount(0);await expect(learnButton).toBeFocused();
   };await checkGuide('en');
-  await page.locator('#recent-winners').scrollIntoViewIfNeeded();await page.screenshot({path:`${root}/recent-winners-${info.project.name}-en.png`});
-  const winner=page.locator('#recent-winners').getByRole('button',{name:`Result: ${fixture.title}`,exact:true});await winner.click();
+  const winner=page.locator('#recent-winners').getByRole('button',{name:`Result: ${fixture.title}`,exact:true});
+  await winner.scrollIntoViewIfNeeded();
+  await expect(winner.getByText('Bid fixture',{exact:true})).toHaveCSS('color','rgb(29, 78, 216)');
+  await expect(winner.getByText(maskResultPhone(fixture.phone)!,{exact:true})).toBeVisible();
+  await expect(winner.getByText(fixture.phone,{exact:true})).toHaveCount(0);
+  await page.screenshot({path:`${root}/recent-winners-${info.project.name}-en.png`});
+  await winner.click();
   const result=page.getByRole('dialog',{name:'Auction result',exact:true});await expect(result.locator('[data-result-amount]')).toHaveCount(20);
   expect(JSON.stringify(await page.evaluate(async code=>{const r=await fetch(`/api/results/${code}/breakdown`);return r.json()},fixture.code))).not.toContain(fixture.phone);
   await result.getByRole('button',{name:'Most picked',exact:true}).click();await expect(result.locator('[data-result-amount]').first()).toHaveAttribute('data-result-amount','50');

@@ -5,7 +5,7 @@ import {scheduleAlerts,dispatchBatch,expandPendingCampaigns} from '../src/module
 import {processOneVerifyRequest} from '../src/modules/payments/service';
 import {notificationSettings} from '../src/modules/notifications/settings';
 import {installTelegramRateLimit} from '../src/modules/notifications/telegram-rate';
-import {runNotificationLanes} from '../src/modules/notifications/worker-lanes';
+import {REMINDER_SCAN_INTERVAL_MS,runNotificationLanes} from '../src/modules/notifications/worker-lanes';
 import {notificationDatabaseSnapshot,notificationTimingSnapshot} from '../src/modules/notifications/diagnostics';
 
 const settings=notificationSettings();
@@ -21,7 +21,7 @@ process.on('SIGINT',()=>shutdown.abort());process.on('SIGTERM',()=>shutdown.abor
 const shouldContinue=()=>!shutdown.signal.aborted;
 
 const sourceRevision=process.env.SOURCE_COMMIT??process.env.COOLIFY_BUILD_COMMIT??process.env.GIT_COMMIT;
-console.info('notification_worker_configuration',{revision:sourceRevision&&/^[0-9a-f]{7,40}$/i.test(sourceRevision)?sourceRevision:'unreported',processId:process.pid,concurrency:settings.NOTIFICATION_SEND_CONCURRENCY,personalLanes:1,botRate:settings.TELEGRAM_SENDS_PER_SECOND,bulkRate:settings.TELEGRAM_BULK_SENDS_PER_SECOND,privateChatIntervalMs:settings.TELEGRAM_PRIVATE_CHAT_INTERVAL_MS,groupChatIntervalMs:settings.TELEGRAM_GROUP_CHAT_INTERVAL_MS,rateMaxWaitMs:settings.TELEGRAM_RATE_MAX_WAIT_MS,maximumDatabaseConnections:settings.NOTIFICATION_SEND_CONCURRENCY+3,paidBroadcasts:false});
+console.info('notification_worker_configuration',{revision:sourceRevision&&/^[0-9a-f]{7,40}$/i.test(sourceRevision)?sourceRevision:'unreported',processId:process.pid,concurrency:settings.NOTIFICATION_SEND_CONCURRENCY,personalLanes:1,reminderScanMs:REMINDER_SCAN_INTERVAL_MS,botRate:settings.TELEGRAM_SENDS_PER_SECOND,bulkRate:settings.TELEGRAM_BULK_SENDS_PER_SECOND,privateChatIntervalMs:settings.TELEGRAM_PRIVATE_CHAT_INTERVAL_MS,groupChatIntervalMs:settings.TELEGRAM_GROUP_CHAT_INTERVAL_MS,rateMaxWaitMs:settings.TELEGRAM_RATE_MAX_WAIT_MS,maximumDatabaseConnections:settings.NOTIFICATION_SEND_CONCURRENCY+3,paidBroadcasts:false});
 let reporting=false;
 const metrics=setInterval(async()=>{
  if(reporting||shutdown.signal.aborted)return;reporting=true;
@@ -33,7 +33,8 @@ const metrics=setInterval(async()=>{
 },60_000);metrics.unref();
 try{
  await runNotificationLanes({
-  schedule:async()=>{await scheduleAlerts(jobsDb);if(shouldContinue())await jobsDb.fulfillmentCase.updateMany({where:{contactDeleteAt:{lte:new Date()},contactCipher:{not:null}},data:{contactCipher:null}});return true},
+  schedule:()=>scheduleAlerts(jobsDb),
+  cleanupContacts:()=>jobsDb.fulfillmentCase.updateMany({where:{contactDeleteAt:{lte:new Date()},contactCipher:{not:null}},data:{contactCipher:null}}),
   expand:()=>shouldContinue()?expandPendingCampaigns(jobsDb,{limit:settings.NOTIFICATION_EXPANSION_BATCHES}):Promise.resolve(0),
   verify:()=>shouldContinue()?processOneVerifyRequest(verificationDb):Promise.resolve(false),
   // Independent lanes immediately refill after completion. A slow bulk HTTP

@@ -18,9 +18,18 @@ export function WinnerCards({items,carousel=false,allowDemo=false}:{items:Catalo
  if(!winners.length)return <p className={styles.empty}><MiniPhrase en="Confirmed winners will appear here after settlement is final." am="ውጤቱ ከተጠናቀቀ በኋላ የተረጋገጡ አሸናፊዎች እዚህ ይታያሉ።"/></p>;
  const cards=winners.map(item=>{
   const title=am?item.product.titleAm||item.product.title:item.product.title,result=item.result!;
-  return <button className={styles.card} type="button" key={item.code} data-winner-code={item.code} onClick={event=>{if(status!=='authenticated'||!me?.user?.id||!queryIdentity){openRegistration();return}trigger.current=event.currentTarget.hasAttribute('data-winner-copy')?event.currentTarget.parentElement?.querySelector<HTMLButtonElement>(`button[data-winner-code="${CSS.escape(item.code)}"]:not([data-winner-copy])`)??null:event.currentTarget;setSelected(item)}} aria-label={`${am?'ውጤት':'Result'}: ${title}`}>
+  const name=result.winnerDisplay||(!carousel?result.winnerUsername:null),phone=result.winnerPhoneMasked;
+  const identity=carousel?[name,phone].filter(Boolean).join(' · ')||undefined:undefined;
+  return <button className={styles.card} type="button" key={item.code} data-winner-code={item.code} onClick={event=>{if(status!=='authenticated'||!me?.user?.id||!queryIdentity){openRegistration();return}trigger.current=event.currentTarget.hasAttribute('data-winner-copy')?event.currentTarget.parentElement?.querySelector<HTMLButtonElement>(`button[data-winner-code="${CSS.escape(item.code)}"]:not([data-winner-copy])`)??null:event.currentTarget;setSelected(item)}} aria-label={`${am?'ውጤት':'Result'}: ${title}`} aria-description={identity}>
    {winnerBannerData(item)?<WinnerBanner auction={item} compact={carousel}/>:<div className={styles.photo}><CatalogImage src={item.product.images[0]?.path} alt={title}/><span className={styles.badge}><MiniPhrase en={item.isDemo?'Demo winner':'Winner'} am={item.isDemo?'የሙከራ አሸናፊ':'አሸናፊ'}/></span></div>}
-   <div className={styles.cardBody}><h3>{title}</h3>{!carousel&&<><p className={styles.cardIdentity}>{result.winnerDisplay||result.winnerUsername||<MiniPhrase en="Confirmed winner" am="የተረጋገጠ አሸናፊ"/>}{result.winnerPhoneMasked&&<span>{result.winnerPhoneMasked}</span>}</p><p><span className={styles.reference}>#{item.code}</span><MiniPhrase en="Auction result" am="የጨረታ ውጤት"/></p></>}<p className={styles.cardDate}>{!carousel&&<CalendarDays size={12} aria-hidden="true"/>}<MiniPhrase en="Announced" am="የታወጀው"/> <time dateTime={result.publishedAt}>{formatAddisTimestamp(result.publishedAt,am?'am-ET':'en-GB')}</time></p></div>
+   <div className={styles.cardBody}><h3>{title}</h3>
+    {(!carousel||name||phone)&&<p className={styles.cardIdentity}>
+     {name?<strong className={styles.cardWinnerName}>{name}</strong>:!carousel&&<MiniPhrase en="Confirmed winner" am="የተረጋገጠ አሸናፊ"/>}
+     {phone&&<span dir="ltr">{phone}</span>}
+    </p>}
+    {!carousel&&<p><span className={styles.reference}>#{item.code}</span><MiniPhrase en="Auction result" am="የጨረታ ውጤት"/></p>}
+    <p className={styles.cardDate}>{!carousel&&<CalendarDays size={12} aria-hidden="true"/>}<MiniPhrase en="Announced" am="የታወጀው"/> <time dateTime={result.publishedAt}>{formatAddisTimestamp(result.publishedAt,am?'am-ET':'en-GB')}</time></p>
+   </div>
   </button>;
  });
  return <>{carousel?<WinnerCarousel dialogOpen={!!selected}>{cards}</WinnerCarousel>:<div className={styles.cards}>{cards}</div>}{selected&&status==='authenticated'&&!!me?.user?.id&&queryIdentity&&<ResultSheet key={`${queryIdentity}:${selected.code}`} auction={selected} onClose={()=>setSelected(null)} returnFocusRef={trigger}/>}</>;

@@ -3,7 +3,7 @@ import {demoBidAllowed} from '../auctions/bids';
 import {stagingDemoEnabled} from '../auctions/staging-demo';
 import {formatEtb} from '@/lib/money';
 import {ADDIS_ABABA_TIME_OFFSET,ADDIS_ABABA_TIME_ZONE} from '@/lib/addis-time';
-import {auctionMaintenance} from '../auctions/maintenance';
+import {auctionMaintenanceHalted,lockAuctionMaintenance} from '../auctions/maintenance';
 import {broadcastMiniAppPath,broadcastButtonLabel} from '@/lib/broadcast-link';
 import {resultRecipientIds} from './result-audience';
 import {promotionNow,readAuctionPromotion} from './auction-promotion';
@@ -66,34 +66,47 @@ export async function expandCampaign(tx:Tx,row:Outbox){
  await tx.outbox.update({where:{id:row.id},data:{state:'SENT',sentAt:new Date()}});
  return users.length;
 }
+const reminderWindows=(reminders:readonly {kind:string;key:string;minMs:number;maxMs:number}[])=>Prisma.join(reminders.map(reminder=>
+ Prisma.sql`(${reminder.kind}::text,${reminder.key}::text,${reminder.minMs}::bigint,${reminder.maxMs}::bigint)`));
+const endingWindows=reminderWindows(endingReminders),startingWindows=reminderWindows(upcomingReminders);
+
 export async function scheduleGlobalAlerts(client:PrismaClient){
  return client.$transaction(async tx=>{
-  if(await auctionMaintenance(tx))return 0;
-  return scheduleGlobalAlertsInTransaction(tx);
+  // Take the shared maintenance barrier first so the scan observes any halt
+  // that committed while the worker waited for the lock.
+  await lockAuctionMaintenance(tx);
+  return tx.$executeRaw`
+   WITH stamp AS MATERIALIZED (
+    SELECT date_trunc('milliseconds',clock_timestamp() AT TIME ZONE 'UTC') AS now
+    WHERE NOT ${auctionMaintenanceHalted}
+   ), available AS NOT MATERIALIZED (
+    SELECT a.id,a."startsAt",a."endsAt",a."controlVersion",stamp.now
+    FROM stamp JOIN "Auction" a ON a."publishedAt"<=stamp.now
+    JOIN "Product" p ON p.id=a."productId" AND p.visible
+    WHERE a.status IN ('LIVE','SCHEDULED') AND a."testRunId" IS NULL
+     AND (NOT a."isDemo" OR (a."isSettlementFixture" AND ${demoBidAllowed()||stagingDemoEnabled()}))
+     AND NOT EXISTS(SELECT 1 FROM "AuctionSettlement" s WHERE s."auctionId"=a.id)
+     AND NOT EXISTS(SELECT 1 FROM "PublicAuctionResult" r WHERE r."auctionId"=a.id)
+   ), due AS (
+    SELECT a.id,a.now,r.kind,'global:'||r.prefix||':'||a.id||':v'||a."controlVersion" AS key
+    FROM available a JOIN (VALUES ${endingWindows}) r(kind,prefix,minimum,maximum)
+      ON a."endsAt">a.now+r.minimum*INTERVAL '1 millisecond' AND a."endsAt"<=a.now+r.maximum*INTERVAL '1 millisecond'
+    WHERE a."startsAt"<=a.now
+    UNION ALL
+    SELECT a.id,a.now,r.kind,'global:'||r.prefix||':'||a.id AS key
+    FROM available a JOIN (VALUES ${startingWindows}) r(kind,prefix,minimum,maximum)
+      ON a."startsAt">a.now+r.minimum*INTERVAL '1 millisecond' AND a."startsAt"<=a.now+r.maximum*INTERVAL '1 millisecond'
+    WHERE a."endsAt">a.now
+   )
+   INSERT INTO "Outbox" (id,key,kind,payload,"createdAt","nextAttemptAt")
+   SELECT gen_random_uuid()::text,due.key,'GLOBAL_CAMPAIGN',jsonb_build_object(
+    'auctionId',due.id,'deliveryKind',due.kind,'rootKey',due.key,
+    'audienceBefore',to_char(due.now,'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+   ),due.now,due.now
+   FROM due WHERE NOT EXISTS(SELECT 1 FROM "Outbox" existing WHERE existing.key=due.key)
+   ORDER BY due.key ON CONFLICT (key) DO NOTHING
+  `;
  },{maxWait:5000,timeout:30000});
-}
-async function scheduleGlobalAlertsInTransaction(client:Tx){
- const now=await promotionNow(client);
- let cursor:string|undefined,created=0;
- for(const reminder of endingReminders){
-  cursor=undefined;
-  for(;;){
-   const auctions:{id:string;isDemo:boolean;isSettlementFixture:boolean;controlVersion:number}[]=await client.auction.findMany({where:{testRunId:null,publishedAt:{lte:now},status:{in:['LIVE','SCHEDULED']},startsAt:{lte:now},endsAt:{gt:new Date(now.getTime()+reminder.minMs),lte:new Date(now.getTime()+reminder.maxMs)},product:{visible:true},settlement:{is:null},result:{is:null},...(cursor?{id:{gt:cursor}}:{})},select:{id:true,isDemo:true,isSettlementFixture:true,controlVersion:true},orderBy:{id:'asc'},take:100});
-   const allowed=auctions.filter(a=>!a.isDemo||a.isSettlementFixture&&(demoBidAllowed()||stagingDemoEnabled()));
-   if(allowed.length)created+=(await client.outbox.createMany({data:allowed.map(a=>{const key=`global:${reminder.key}:${a.id}:v${a.controlVersion}`;return {key,kind:'GLOBAL_CAMPAIGN',payload:{auctionId:a.id,deliveryKind:reminder.kind,rootKey:key,audienceBefore:now.toISOString()}}}),skipDuplicates:true})).count;
-   if(auctions.length<100)break;cursor=auctions.at(-1)!.id;
-  }
- }
- for(const reminder of upcomingReminders){
-  cursor=undefined;
-  for(;;){
-   const auctions:{id:string;isDemo:boolean;isSettlementFixture:boolean}[]=await client.auction.findMany({where:{testRunId:null,publishedAt:{lte:now},status:{in:['LIVE','SCHEDULED']},startsAt:{gt:new Date(now.getTime()+reminder.minMs),lte:new Date(now.getTime()+reminder.maxMs)},endsAt:{gt:now},product:{visible:true},settlement:{is:null},result:{is:null},...(cursor?{id:{gt:cursor}}:{})},select:{id:true,isDemo:true,isSettlementFixture:true},orderBy:{id:'asc'},take:100});
-   const allowed=auctions.filter(a=>!a.isDemo||a.isSettlementFixture&&(demoBidAllowed()||stagingDemoEnabled()));
-   if(allowed.length)created+=(await client.outbox.createMany({data:allowed.map(a=>{const key=`global:${reminder.key}:${a.id}`;return {key,kind:'GLOBAL_CAMPAIGN',payload:{auctionId:a.id,deliveryKind:reminder.kind,rootKey:key,audienceBefore:now.toISOString()}}}),skipDuplicates:true})).count;
-   if(auctions.length<100)break;cursor=auctions.at(-1)!.id;
-  }
- }
- return created;
 }
 export async function campaignContent(tx:Tx,row:Pick<Outbox,'kind'|'payload'>){
  const p=row.payload as CampaignPayload;if(!p.recipientUserId||!telegramKinds.includes(row.kind))return null;

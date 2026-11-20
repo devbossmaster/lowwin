@@ -2,20 +2,24 @@ import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {WinnersData} from '../src/components/winners-client-list';
-const f=vi.hoisted(()=>({query:{data:null as WinnersData|null,error:'',status:'authenticated',fetching:false,isPlaceholderData:false,reload:vi.fn()},options:null as {pollMs:number;freshnessMs:number;initialData?:WinnersData}|null,page:1}));
+const f=vi.hoisted(()=>({query:{data:null as WinnersData|null,error:'',status:'authenticated',fetching:false,isPlaceholderData:false,reload:vi.fn()},options:null as {pollMs:number;freshnessMs:number;initialData?:WinnersData}|null,page:1,carousel:true,identityData:null as WinnersData|null,identityStatus:'guest',rendered:[] as WinnersData['items']}));
 vi.mock('../src/components/public-query',()=>({usePublicQuery:(_url:string,options:NonNullable<typeof f.options>)=>{f.options=options;return f.query}}));
-vi.mock('../src/components/private-query',async original=>({...await original<typeof import('../src/components/private-query')>(),usePrivateQuery:(_url:string,options:NonNullable<typeof f.options>&{enabled?:boolean})=>{if(options.enabled!==false)f.options=options;return f.query}}));
+vi.mock('../src/components/private-query',async original=>({...await original<typeof import('../src/components/private-query')>(),usePrivateQuery:(_url:string,options:NonNullable<typeof f.options>&{enabled?:boolean})=>{
+ if(f.carousel)return {...f.query,data:f.identityData,status:f.identityStatus};
+ if(options.enabled!==false)f.options=options;
+ return f.query;
+}}));
 vi.mock('../src/components/mini-query-state',()=>({useMiniPage:()=>[f.page,vi.fn()]}));
 vi.mock('../src/components/mini-locale',()=>({MiniPhrase:({en}:{en:string})=>createElement('span',null,en)}));
-vi.mock('../src/components/winner-cards',()=>({WinnerCards:({items}:{items:unknown[]})=>createElement('div',{'data-saved-winner-count':items.length},'Saved winner cards')}));
+vi.mock('../src/components/winner-cards',()=>({WinnerCards:({items}:{items:WinnersData['items']})=>{f.rendered=items;return createElement('div',{'data-saved-winner-count':items.length},'Saved winner cards')}}));
 vi.mock('../src/components/mini-route-skeleton',()=>({MiniRouteSkeleton:()=>createElement('div',{'data-winner-skeleton':true},'Loading winners')}));
 import {WinnersClientList} from '../src/components/winners-client-list';
 import {miniQueryPolicy} from '../src/components/mini-query-policy';
 import {getMiniQueryClient} from '../src/components/private-query-cache';
 import {loadPublicJson,publicQueryKey} from '../src/components/public-query-cache';
 const saved={items:[{code:'winner-1'}],total:1,page:1,totalPages:1,allowDemo:false,serverNow:'2026-11-12T10:00:00.000Z'} as WinnersData;
-const render=(carousel=true,initial?:WinnersData)=>renderToStaticMarkup(createElement<{carousel?:boolean;initial?:WinnersData}>(WinnersClientList,{carousel,initial}));
-beforeEach(()=>{f.query={data:saved,error:'',status:'authenticated',fetching:false,isPlaceholderData:false,reload:vi.fn()};f.options=null;f.page=1;getMiniQueryClient().clear()});
+const render=(carousel=true,initial?:WinnersData)=>{f.carousel=carousel;return renderToStaticMarkup(createElement<{carousel?:boolean;initial?:WinnersData}>(WinnersClientList,{carousel,initial}))};
+beforeEach(()=>{f.query={data:saved,error:'',status:'authenticated',fetching:false,isPlaceholderData:false,reload:vi.fn()};f.options=null;f.page=1;f.identityData=null;f.identityStatus='guest';f.rendered=[];getMiniQueryClient().clear()});
 afterEach(()=>{getMiniQueryClient().clear();vi.useRealTimers();vi.unstubAllGlobals()});
 
 describe('Home recent winners retain public cards and refresh quietly',()=>{
@@ -30,6 +34,18 @@ describe('Home recent winners retain public cards and refresh quietly',()=>{
  });
  it('preserves full Winners-page refresh behavior and avoids seeding a different page',()=>{
   f.query.fetching=true;expect(render(false)).toContain('Updating');expect(f.options).toMatchObject({pollMs:30000,freshnessMs:10000});f.page=2;render(false,saved);expect(f.options?.initialData).toBeUndefined();
+ });
+ it('shows only the matching name and masked phone from the authenticated results',()=>{
+  const result={source:'SETTLED',outcome:'WINNER',publishedAt:saved.serverNow,winnerDisplay:null,winnerPhoneMasked:null};
+  const item={code:'winner-1',result};
+  f.query.data={...saved,items:[item] as unknown as WinnersData['items']};
+  const identity=(phone:string)=>({...item,result:{...result,winnerDisplay:'Verified winner',winnerPhoneMasked:phone,winnerUsername:'protected-handle',winningPoints:'protected-number'}});
+  f.identityData={...saved,items:[identity('+251911***123')] as unknown as WinnersData['items']};
+  render();expect(f.rendered[0].result).toEqual(result);
+  f.identityStatus='authenticated';
+  render();expect(f.rendered[0].result).toEqual({...result,winnerDisplay:'Verified winner',winnerPhoneMasked:'+251911***123'});
+  f.identityData={...saved,items:[identity('+251911222123')] as unknown as WinnersData['items']};
+  render();expect(f.rendered[0].result).toEqual({...result,winnerDisplay:'Verified winner'});
  });
  it('uses the existing historical freshness for Home and reuses repeated cached navigation',async()=>{
   vi.useFakeTimers();vi.stubGlobal('window',{});render();const options=f.options!;expect(options.pollMs).toBe(miniQueryPolicy('/api/results/recent-winners').staleMs);expect(options.freshnessMs).toBe(300000);

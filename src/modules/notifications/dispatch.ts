@@ -13,7 +13,7 @@ import {chapaReceiptKind} from './chapa-receipt';
 import {hasResultSubscription} from './result-audience';
 import {auctionPhoto} from './auction-photo';
 import {sendBroadcastPhoto,TelegramMediaDeferredError} from './broadcast-photo';
-import {claimNotifications,claimExpansion,claimLogicalDelivery,finishClaim,highPriorityKinds,type ClaimedNotification} from './leases';
+import {acknowledgeDelivery,claimNotifications,claimExpansion,claimLogicalDelivery,finishClaim,highPriorityKinds,type ClaimedNotification} from './leases';
 import {withTelegramSendPolicy,telegramPolicyApi,TelegramRateDeferredError} from './telegram-rate';
 import {beforeNotificationSend,DeliveryGate,type RecipientGate} from './send-gate';
 import {recordNotificationTiming,recordNotificationAccepted,recordNotificationUncertain,timeNotification} from './diagnostics';
@@ -142,7 +142,7 @@ async function dispatchClaim(client:PrismaClient,bot:BotApi,row:ClaimedNotificat
    return photo??bot.api.sendMessage(chat.chatId,text,options);
   });
   acceptedByTelegram=true;recordNotificationAccepted();
-  await timeNotification('acknowledgement',()=>finishClaim(client,row,{state:'SENT',sentAt:new Date(),attempts:{increment:1},lastError:null},{chatId:chat.chatId,messageId:sent.message_id,auctionId:payload.auctionId,logicalKey}));
+  await timeNotification('acknowledgement',()=>acknowledgeDelivery(client,row,{chatId:chat.chatId,messageId:sent.message_id,auctionId:payload.auctionId,logicalKey}));
  }catch(error){
   if(acceptedByTelegram){
    recordNotificationUncertain();

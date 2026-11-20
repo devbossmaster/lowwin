@@ -21,7 +21,21 @@ export function notificationDispatchFixture(jobs:Outbox[],now=new Date()){
    if(sql.includes('SELECT u.id'))return [{id:'player'}];
    if(sql.includes('INSERT INTO "TelegramDeliveryLease"')){const key=String(values[0]);if(logical.has(key))return [];logical.set(key,{key,leaseToken:String(values[3]),sentAt:null});return [{key}]}
    if(sql.includes('INSERT INTO "TelegramMediaCache"'))return [{botId:'123456789'}];
-   if(sql.includes('UPDATE "Outbox"')){const selected=jobs.filter(job=>values.includes(job.id));for(const job of selected)Object.assign(job,{leaseToken:String(values[0]),leaseUntil:new Date(Date.now()+120000),claimedAt:new Date()});return selected}
+   if(sql.includes('WITH acknowledged AS')){
+    const [sentAt,id,leaseToken,,auctionId,chatId,messageId]=values;
+    const [job]=apply({id,state:'PENDING',leaseToken},{state:'SENT',sentAt,attempts:{increment:1},lastError:null,leaseToken:null,leaseUntil:null});
+    if(!job)return [];
+    await tx.telegramMessage.upsert({where:{outboxId:id},create:{outboxId:id,auctionId,testRunId:job.testRunId,chatId,messageId},update:{}});
+    return [{id}];
+   }
+   if(sql.includes('WITH picked AS MATERIALIZED')){
+    const expansion=sql.includes('kind IN')&&!sql.includes('kind NOT IN');
+    const selected=jobs.filter(job=>job.state==='PENDING'&&job.nextAttemptAt<=new Date()&&!job.leaseToken&&
+     (expansion===['GLOBAL_CAMPAIGN','AUCTION_FINALIZED','AUCTION_PARTICIPANTS','BROADCAST_DELETE'].includes(job.kind))&&
+     (!sql.includes('AND kind=')||values.includes(job.kind))).slice(0,1);
+    for(const job of selected)Object.assign(job,{leaseToken:String(values.at(-1)),leaseUntil:new Date(Date.now()+120000),claimedAt:new Date()});
+    return selected;
+   }
    if(sql.includes('FROM "Outbox"')){
     const expansion=sql.includes('kind IN')&&!sql.includes('kind NOT IN');
     return jobs.filter(job=>job.state==='PENDING'&&job.nextAttemptAt<=new Date()&&!job.leaseToken&&(expansion?['GLOBAL_CAMPAIGN','AUCTION_FINALIZED','AUCTION_PARTICIPANTS'].includes(job.kind):!['GLOBAL_CAMPAIGN','AUCTION_FINALIZED','AUCTION_PARTICIPANTS'].includes(job.kind))&&(!sql.includes('AND kind=')||values.includes(job.kind))).slice(0,1);
@@ -30,7 +44,7 @@ export function notificationDispatchFixture(jobs:Outbox[],now=new Date()){
   }),
   user:{findUnique:vi.fn(async()=>user)},botChat:{findUnique:vi.fn(async()=>chat),updateMany:vi.fn()},
   outbox:{update:vi.fn(async({where,data}:{where:Record<string,unknown>;data:Record<string,unknown>})=>apply(where,data)[0]),updateMany:vi.fn(async({where,data}:{where:Record<string,unknown>;data:Record<string,unknown>})=>({count:apply(where,data).length})),findFirst:vi.fn(async({where}:{where:Record<string,unknown>})=>jobs.find(job=>job.id===where.id&&job.state===where.state&&job.leaseToken===where.leaseToken)??null),findUnique:vi.fn(async()=>null)},
-  telegramMessage:{upsert:vi.fn(async()=>({id:randomUUID()})),findFirst:vi.fn(async()=>null)},
+  telegramMessage:{upsert:vi.fn(async(_args:unknown)=>({id:randomUUID()})),findFirst:vi.fn(async()=>null)},
   telegramDeliveryLease:{findFirst:vi.fn(async()=>({key:'owned'})),findUnique:vi.fn(async({where}:{where:{key:string}})=>logical.get(where.key)),updateMany:vi.fn(async({where,data}:{where:{key:string};data:object})=>{Object.assign(logical.get(where.key)!,data);return {count:1}}),deleteMany:vi.fn(async()=>({count:0}))},
   telegramMediaCache:{findUnique:vi.fn(async()=>null),updateMany:vi.fn(async()=>({count:1}))},
   notificationInbox:{upsert:vi.fn()},notificationPreference:{findUnique:vi.fn(async()=>({inApp:true}))},

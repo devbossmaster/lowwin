@@ -18,8 +18,21 @@ export function WinnersClientList({initial,carousel=false}:{initial?:WinnersData
  // Published results are historical display data. Home keeps its cards visible
  // and checks quietly on that existing policy, without recurring loading feedback.
  const publicQuery=usePublicQuery<WinnersData>(recentWinnersQueryUrl(),{enabled:carousel,keepPreviousData:true,initialData:carousel?seed:undefined,pollMs:carousel?policy.staleMs:0,freshnessMs:policy.staleMs});
- const privateQuery=usePrivateQuery<WinnersData>(winnersQueryUrl(page),{enabled:!carousel,keepPreviousData:true,initialData:!carousel?seed:undefined,pollMs:!carousel?30000:0,freshnessMs:10000});
+ // Signed-in Home visitors reuse the private page-one winners cache. The
+ // public cards render while this optional identity lookup is in flight.
+ const privateQuery=usePrivateQuery<WinnersData>(winnersQueryUrl(page),{
+  enabled:!carousel||!!publicQuery.data?.items.length,keepPreviousData:!carousel,
+  initialData:!carousel?seed:undefined,pollMs:carousel?policy.staleMs:30000,
+  freshnessMs:carousel?policy.staleMs:10000,
+ });
  const query=carousel?publicQuery:privateQuery,data=query.data,busy=query.isPlaceholderData;
+ const authenticatedWinners=carousel&&privateQuery.status==='authenticated'&&privateQuery.data?.page===1?privateQuery.data.items:[];
+ const items=carousel?data?.items.slice(0,6).map(item=>{
+  const result=item.result,identity=authenticatedWinners.find(winner=>winner.code===item.code)?.result;
+  if(result?.source!=='SETTLED'||result.outcome!=='WINNER'||identity?.source!=='SETTLED'||identity.outcome!=='WINNER'||identity.publishedAt!==result.publishedAt)return item;
+  const phone=identity.winnerPhoneMasked;
+  return {...item,result:{...result,winnerDisplay:identity.winnerDisplay,winnerPhoneMasked:phone&&/^\+[1-9]\d{0,6}\*{3}\d{1,7}$/.test(phone)?phone:null}};
+ }):data?.items;
  useEffect(()=>{
   if(!carousel||!seed)return;const saved=readPublicQuery<WinnersData>(url);
   if(!saved||Date.parse(seed.serverNow)>Date.parse(saved.value.serverNow))seedPublicQuery(url,seed);
@@ -27,6 +40,6 @@ export function WinnersClientList({initial,carousel=false}:{initial?:WinnersData
  return <div data-winners-ready={!!data&&!busy||undefined} data-winners-refreshing={query.fetching||undefined}>
   {(data||query.error||!['loading','authenticated'].includes(query.status))&&(!carousel||!data||!!query.error)&&<PrivateState query={query}/>}
   {!data&&!query.error&&['loading','authenticated'].includes(query.status)&&<WinnersListLoading/>}
-  {query.status==='authenticated'&&data&&<><WinnerCards items={carousel?data.items.slice(0,6):data.items} carousel={carousel} allowDemo={data.allowDemo}/>{!carousel&&data.totalPages>1&&<nav className="pagination" aria-label="Winner pages"><button disabled={busy||data.page<=1} onClick={()=>setPage(data.page-1)}><MiniPhrase en="Previous" am="ወደ ኋላ"/></button><span>{data.page} / {data.totalPages}</span><button disabled={busy||data.page>=data.totalPages} onClick={()=>setPage(data.page+1)}><MiniPhrase en="Next" am="ቀጣይ"/></button></nav>}</>}
+  {query.status==='authenticated'&&data&&items&&<><WinnerCards items={items} carousel={carousel} allowDemo={data.allowDemo}/>{!carousel&&data.totalPages>1&&<nav className="pagination" aria-label="Winner pages"><button disabled={busy||data.page<=1} onClick={()=>setPage(data.page-1)}><MiniPhrase en="Previous" am="ወደ ኋላ"/></button><span>{data.page} / {data.totalPages}</span><button disabled={busy||data.page>=data.totalPages} onClick={()=>setPage(data.page+1)}><MiniPhrase en="Next" am="ቀጣይ"/></button></nav>}</>}
  </div>;
 }

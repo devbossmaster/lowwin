@@ -1,43 +1,62 @@
 import {Prisma,type PrismaClient,type Outbox} from '@prisma/client';
 import {randomUUID,createHash} from 'node:crypto';
-import {auctionMaintenance} from '../auctions/maintenance';
+import {auctionMaintenanceHalted,lockAuctionMaintenance} from '../auctions/maintenance';
 
 // Prisma DateTime columns store UTC timestamp values without a timezone.
 // Normalize database wall-clock expressions, independently of display time (EAT).
-export const notificationLeaseMs=120_000;
 export const expansionKinds=['GLOBAL_CAMPAIGN','AUCTION_FINALIZED','AUCTION_PARTICIPANTS','BROADCAST_DELETE'];
 export const highPriorityKinds=['DEPOSIT_CREDITED','BID_ACCEPTED','WINNER_CONGRATULATIONS','AUCTION_FEE_REFUNDED'];
 export type ClaimedNotification=Outbox&{leaseToken:string;leaseUntil:Date};
 export type ClaimOptions={limit?:number;priority?:'high'|'bulk';kind?:string};
 const bounded=(value:number|undefined,fallback:number,max:number)=>Math.max(1,Math.min(max,Math.floor(Number.isFinite(value)?value!:fallback)));
+const claimable=Prisma.sql`state='PENDING' AND "nextAttemptAt"<=(clock_timestamp() AT TIME ZONE 'UTC') AND ("leaseUntil" IS NULL OR "leaseUntil"<=(clock_timestamp() AT TIME ZONE 'UTC')) AND NOT ${auctionMaintenanceHalted}`;
 
-/** Bounded row locks end at claim commit, before preparation, rate waits or HTTP. */
-export async function claimNotifications(client:PrismaClient,options:ClaimOptions={}){
- const limit=bounded(options.limit,12,32),token=randomUUID();
+async function claimRows(client:PrismaClient,picked:Prisma.Sql){
+ const token=randomUUID();
  return client.$transaction(async tx=>{
-  if(await auctionMaintenance(tx))return [];
-  const base=Prisma.sql`state='PENDING' AND "nextAttemptAt"<=(clock_timestamp() AT TIME ZONE 'UTC') AND ("leaseUntil" IS NULL OR "leaseUntil"<=(clock_timestamp() AT TIME ZONE 'UTC')) AND kind NOT IN (${Prisma.join(expansionKinds)}) ${options.kind?Prisma.sql`AND kind=${options.kind}`:Prisma.empty}`;
-  const select=async(priority:'high'|'bulk'|undefined,take:number,excluded:string[]=[])=>take?tx.$queryRaw<Outbox[]>(Prisma.sql`SELECT * FROM "Outbox" WHERE ${base} ${priority==='high'?Prisma.sql`AND kind IN (${Prisma.join(highPriorityKinds)})`:priority==='bulk'?Prisma.sql`AND kind NOT IN (${Prisma.join(highPriorityKinds)})`:Prisma.empty} ${excluded.length?Prisma.sql`AND id NOT IN (${Prisma.join(excluded)})`:Prisma.empty} ORDER BY "nextAttemptAt",id FOR UPDATE SKIP LOCKED LIMIT ${take}`):[];
-  let rows:Outbox[]=[];
-  if(options.priority||options.kind||limit===1)rows=await select(options.priority,limit);
-  else{
-   const bulk=Math.max(1,Math.floor(limit/4));
-   rows=[...await select('high',limit-bulk),...await select('bulk',bulk)];
-   if(rows.length<limit)rows.push(...await select(undefined,limit-rows.length,rows.map(row=>row.id)));
-  }
-  if(!rows.length)return [];
-  return tx.$queryRaw<ClaimedNotification[]>(Prisma.sql`UPDATE "Outbox" SET "leaseToken"=${token},"leaseUntil"=(clock_timestamp() AT TIME ZONE 'UTC')+interval '120 seconds',"claimedAt"=(clock_timestamp() AT TIME ZONE 'UTC') WHERE id IN (${Prisma.join(rows.map(row=>row.id))}) RETURNING *`);
+  // Acquire the maintenance barrier before taking the statement snapshot.
+  await lockAuctionMaintenance(tx);
+  return tx.$queryRaw<ClaimedNotification[]>(Prisma.sql`
+   WITH picked AS MATERIALIZED (${picked})
+   UPDATE "Outbox" o
+   SET "leaseToken"=${token},"leaseUntil"=(clock_timestamp() AT TIME ZONE 'UTC')+interval '120 seconds',"claimedAt"=(clock_timestamp() AT TIME ZONE 'UTC')
+   FROM picked WHERE o.id=picked.id RETURNING o.*
+  `);
  },{timeout:5000,maxWait:5000});
 }
 
+/** Bounded row locks end at claim commit, before preparation, rate waits or HTTP. */
+export async function claimNotifications(client:PrismaClient,options:ClaimOptions={}){
+ const limit=bounded(options.limit,12,32);
+ const base=Prisma.sql`${claimable} AND kind NOT IN (${Prisma.join(expansionKinds)}) ${options.kind?Prisma.sql`AND kind=${options.kind}`:Prisma.empty}`;
+ const high=Prisma.sql`AND kind IN (${Prisma.join(highPriorityKinds)})`;
+ const bulk=Prisma.sql`AND kind NOT IN (${Prisma.join(highPriorityKinds)})`;
+ const select=(filter:Prisma.Sql,take:Prisma.Sql)=>Prisma.sql`
+  SELECT id FROM "Outbox" WHERE ${base} ${filter} ORDER BY "nextAttemptAt",id FOR UPDATE SKIP LOCKED LIMIT (${take})
+ `;
+ if(options.priority||options.kind||limit===1)return claimRows(client,select(options.priority==='high'?high:options.priority==='bulk'?bulk:Prisma.empty,Prisma.sql`${limit}`));
+
+ const bulkSlots=Math.max(1,Math.floor(limit/4));
+ return claimRows(client,Prisma.sql`
+  WITH picked_high AS MATERIALIZED (
+   ${select(high,Prisma.sql`${limit-bulkSlots}`)}
+  ), picked_bulk AS MATERIALIZED (
+   ${select(bulk,Prisma.sql`${bulkSlots}`)}
+  ), preferred AS MATERIALIZED (
+   SELECT id FROM picked_high UNION ALL SELECT id FROM picked_bulk
+  ), additional AS MATERIALIZED (
+   ${select(Prisma.sql`AND id NOT IN (SELECT id FROM preferred)`,Prisma.sql`${limit}-(SELECT count(*) FROM preferred)`)}
+  )
+  SELECT id FROM preferred UNION ALL SELECT id FROM additional
+ `);
+}
+
 export async function claimExpansion(client:PrismaClient){
- const token=randomUUID();
- return client.$transaction(async tx=>{
-  if(await auctionMaintenance(tx))return null;
-  const rows=await tx.$queryRaw<Outbox[]>(Prisma.sql`SELECT * FROM "Outbox" WHERE state='PENDING' AND kind IN (${Prisma.join(expansionKinds)}) AND "nextAttemptAt"<=(clock_timestamp() AT TIME ZONE 'UTC') AND ("leaseUntil" IS NULL OR "leaseUntil"<=(clock_timestamp() AT TIME ZONE 'UTC')) ORDER BY "nextAttemptAt",id FOR UPDATE SKIP LOCKED LIMIT 1`);
-  if(!rows.length)return null;
-  return tx.outbox.update({where:{id:rows[0].id},data:{leaseToken:token,leaseUntil:new Date(Date.now()+notificationLeaseMs),claimedAt:new Date()}}) as Promise<ClaimedNotification>;
- },{timeout:5000,maxWait:5000});
+ const [row]=await claimRows(client,Prisma.sql`
+  SELECT id FROM "Outbox" WHERE ${claimable} AND kind IN (${Prisma.join(expansionKinds)})
+  ORDER BY "nextAttemptAt",id FOR UPDATE SKIP LOCKED LIMIT 1
+ `);
+ return row??null;
 }
 
 export const logicalDeliveryKey=(botId:string,auctionId:string,userId:string)=>`${botId}:${createHash('sha256').update(`public-result:${auctionId}:${userId}`).digest('hex')}`;
@@ -49,8 +68,32 @@ export async function claimLogicalDelivery(client:PrismaClient,row:ClaimedNotifi
  return {key,acquired:saved?.leaseToken===row.leaseToken,sent:!!saved?.sentAt};
 }
 
+type DeliveredMessage={chatId:string;messageId:number;auctionId?:string;logicalKey?:string};
+
+/** Commit the ordinary acknowledgement and its Telegram message ID together
+ * with one database round trip. Public-result aliases keep their logical lease. */
+export async function acknowledgeDelivery(client:PrismaClient,row:ClaimedNotification,delivered:DeliveredMessage){
+ const {chatId,messageId,auctionId,logicalKey}=delivered;
+ const sentAt=new Date();
+ if(logicalKey)return finishClaim(client,row,{state:'SENT',sentAt,attempts:{increment:1},lastError:null},delivered);
+ const [completed]=await client.$queryRaw<{id:string}[]>`
+  WITH acknowledged AS (
+   UPDATE "Outbox" SET state='SENT',"sentAt"=${sentAt},attempts=attempts+1,
+    "lastError"=NULL,"leaseToken"=NULL,"leaseUntil"=NULL
+   WHERE id=${row.id} AND state='PENDING' AND "leaseToken"=${row.leaseToken}
+   RETURNING id,"testRunId"
+  ), recorded AS (
+   INSERT INTO "TelegramMessage" (id,"outboxId","auctionId","testRunId","chatId","messageId")
+   SELECT ${randomUUID()},id,${auctionId??null},"testRunId",${chatId},${BigInt(messageId)} FROM acknowledged
+   ON CONFLICT ("outboxId") DO NOTHING
+  )
+  SELECT id FROM acknowledged
+ `;
+ return !!completed;
+}
+
 /** A stale worker can never mutate another claim or record its acknowledgement. */
-export async function finishClaim(client:PrismaClient,row:ClaimedNotification,data:Prisma.OutboxUpdateManyMutationInput,delivered?:{chatId:string;messageId:number;auctionId?:string;logicalKey?:string}){
+export async function finishClaim(client:PrismaClient,row:ClaimedNotification,data:Prisma.OutboxUpdateManyMutationInput,delivered?:DeliveredMessage){
  return client.$transaction(async tx=>{
   const changed=await tx.outbox.updateMany({where:{id:row.id,state:'PENDING',leaseToken:row.leaseToken},data:{...data,leaseToken:null,leaseUntil:null}});
   if(!changed.count)return false;

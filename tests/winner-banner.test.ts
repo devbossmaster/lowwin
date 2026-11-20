@@ -17,7 +17,7 @@ const render=(item:CatalogAuction,language:'en'|'am'='en')=>renderToStaticMarkup
 
 describe('authoritative winner announcement banner',()=>{
  it('announces a real settled V4 winning number without presenting it as a currency charge',()=>{
-  const html=render(auction());expect(html).toContain('Winning number');expect(html).toContain('0.54');expect(html).not.toContain('ETB');expect(html).toContain('Rugass');expect(html).toContain('***5294');expect(html).toContain('data-photo="product"');
+  const html=render(auction());expect(html).toContain('Winning number');expect(html).toContain('0.54');expect(html).not.toContain('ETB');expect(html).toContain('alt="Rugass 20,000 mAh power bank"');expect(html).not.toContain('>Rugass 20,000 mAh power bank<');expect(html).not.toContain('***5294');expect(html).toContain('data-photo="product"');
  });
  it('retains monetary labels for the auction’s frozen legacy rule',()=>{
   const item=auction({terms:{ruleVersion:'lowest-unique-v3'}}),html=render(item);
@@ -50,6 +50,6 @@ describe('authoritative winner announcement banner',()=>{
  });
  it('does not infer or expose a personal name or identifier from additional result fields',()=>{
   const html=render(auction({result:{...auction().result,winnerDisplay:'Private legal name',winnerUserId:'private-user-id',winnerPhoneMasked:null}}));
-  expect(html).not.toContain('Private legal name');expect(html).not.toContain('private-user-id');expect(html).toContain('#42');
+  expect(html).not.toContain('Private legal name');expect(html).not.toContain('private-user-id');expect(html).not.toContain('#42');
  });
 });

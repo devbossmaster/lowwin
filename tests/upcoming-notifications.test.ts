@@ -1,6 +1,6 @@
 import {describe,it,expect,vi} from 'vitest';
-import type {Prisma,PrismaClient,Outbox} from '@prisma/client';
-import {auctionNotificationImageId,campaignContent,expandCampaign,scheduleGlobalAlerts,telegramKinds} from '../src/modules/notifications/campaigns';
+import type {Prisma,Outbox} from '@prisma/client';
+import {auctionNotificationImageId,campaignContent,expandCampaign,telegramKinds} from '../src/modules/notifications/campaigns';
 import {endingReminders,endingReminderCurrent,retiredNotificationKinds,upcomingReminders,upcomingReminderCurrent} from '../src/modules/notifications/policy';
 import {notificationContent} from '../src/modules/notifications/service';
 import {notificationCopy} from '../src/components/notification-copy';
@@ -9,10 +9,6 @@ const now=new Date('2026-11-14T09:00:00Z'),hour=3_600_000;
 const row={kind:'AUCTION_UPCOMING',payload:{auctionId:'auction-1',recipientUserId:'player-1'}};
 const auction=(change:Record<string,unknown>={})=>({id:'auction-1',slug:'fixture-phone',publicCode:42,publishedAt:new Date(now.getTime()-60000),startsAt:new Date(now.getTime()+9*hour),endsAt:new Date(now.getTime()+3*24*hour),status:'SCHEDULED',isDemo:false,isSettlementFixture:false,testRunId:null,presentation:{title:'Fixture phone'},product:{title:'Old title',visible:true},result:null,settlement:null,...change});
 const transaction=(a=auction())=>({auction:{findUnique:vi.fn(async()=>a)},$queryRaw:vi.fn(async()=>[{now}])}) as unknown as Prisma.TransactionClient;
-function schedulerClient(data:Record<string,unknown>,halted=false):PrismaClient{
- const client={...data,$executeRaw:vi.fn(async()=>0),adminAudit:{findFirst:vi.fn(async()=>halted?{action:'AUCTIONS_MAINTENANCE_HALTED',details:{},createdAt:now}:null)}};
- return Object.assign(client,{$transaction:async(callback:(tx:unknown)=>unknown)=>callback(client)}) as unknown as PrismaClient;
-}
 const root=(kind:string):Outbox=>({id:'root-1',key:'global:upcoming:auction-1',kind:'GLOBAL_CAMPAIGN',createdAt:now,payload:{auctionId:'auction-1',deliveryKind:kind,audienceBefore:now.toISOString()},testRunId:null,state:'PENDING',attempts:0,nextAttemptAt:now,sentAt:null,lastError:null,leaseToken:null,leaseUntil:null,claimedAt:null,settlementId:null});
 
 describe('two upcoming reminders and five closing windows',()=>{
@@ -60,22 +56,6 @@ describe('two upcoming reminders and five closing windows',()=>{
   const content=await campaignContent(transaction(auction({presentation:{title:'Fixture phone',images:[{path:`/api/media/${current}`}]}})),row);
   expect(content?.imageId).toBe(current);expect(auctionNotificationImageId(null,`/api/media/${original}`)).toBe(original);
   expect(auctionNotificationImageId({images:[{path:'https://elsewhere.example/image.png'}]},`/api/media/${original}`)).toBeUndefined();
- });
- it('schedules durable distinct windows and upcoming day keys only once across repeated ticks',async()=>{
-  const saved=new Map<string,unknown>();
-  const createMany=vi.fn(async({data}:{data:Array<{key:string}>})=>{let count=0;for(const job of data)if(!saved.has(job.key)){saved.set(job.key,job);count++}return {count}});
-  const findMany=vi.fn(async({where}:{where:{status:unknown;endsAt:{gt:Date;lte?:Date};startsAt:{gt?:Date}}})=>where.startsAt.gt?[{id:'upcoming',isDemo:false,isSettlementFixture:false}]:[{id:`closing-${where.endsAt.lte!.getTime()}`,isDemo:false,isSettlementFixture:false,controlVersion:7}]);
-  const client=schedulerClient({$queryRaw:vi.fn(async()=>[{now}]),auction:{findMany},outbox:{createMany}});
-  expect(await scheduleGlobalAlerts(client)).toBe(7);expect(await scheduleGlobalAlerts(client)).toBe(0);
-  expect(saved.size).toBe(7);expect(saved.get('global:upcoming:upcoming')).toMatchObject({payload:{deliveryKind:'AUCTION_UPCOMING',audienceBefore:now.toISOString()}});
-  expect(saved.get('global:upcoming-1-hour:upcoming')).toMatchObject({payload:{deliveryKind:'AUCTION_UPCOMING_1_HOUR'}});
-  expect([...saved.keys()].some(k=>k.includes('starting-soon'))).toBe(false);
-  expect(findMany.mock.calls[5][0].where.startsAt).toEqual({gt:new Date(now.getTime()+hour),lte:new Date(now.getTime()+24*hour)});
-  expect(findMany.mock.calls[6][0].where.startsAt).toEqual({gt:now,lte:new Date(now.getTime()+hour)});
-  for(const reminder of endingReminders)expect([...saved.entries()].some(([key,value])=>key.startsWith(`global:${reminder.key}:`)&&key.endsWith(':v7')&&(value as {payload:{deliveryKind:string}}).payload.deliveryKind===reminder.kind)).toBe(true);
- });
- it('does not inspect auctions or create jobs during maintenance',async()=>{
-  const findMany=vi.fn(),createMany=vi.fn();expect(await scheduleGlobalAlerts(schedulerClient({auction:{findMany},outbox:{createMany}},true))).toBe(0);expect(findMany).not.toHaveBeenCalled();expect(createMany).not.toHaveBeenCalled();
  });
  it.each(retiredNotificationKinds)('retires queued %s before fanout or private content reads',async kind=>{
   const update=vi.fn(),query=vi.fn(),tx={outbox:{update},$queryRaw:query} as unknown as Prisma.TransactionClient;
