@@ -11,6 +11,19 @@ type Row=Record<string,any>;
 type Props={item:Row;products:Row[];auctionId:string|null;busy:boolean;owner:boolean;dirty:boolean;preflight:Row|null;onChange:()=>void;onFind:(query:string)=>Promise<Row[]>;onSave:(body:Row)=>void;onReview:()=>void;onPublish:()=>void};
 const dateLabel=(value:Date|null)=>value?eat(value):'Choose a time';
 
+export function AdminAuctionHomeOrderField({value,disabled=false}:{value?:number|null;disabled?:boolean}){
+ const hint=useId();
+ return <div>
+  <label>Home order<input name="homeOrder" type="number" min={1} max={2147483647} step={1} defaultValue={value??''} placeholder="Automatic" aria-describedby={hint} disabled={disabled}/></label>
+  <p id={hint} className="admin-group-note">Lower numbers appear first within featured or regular auctions. Leave blank to use closing time.</p>
+ </div>;
+}
+
+export function readAuctionHomeOrder(form:FormData){
+ const value=form.get('homeOrder');
+ return value===null||value===''?null:Number(value);
+}
+
 export function AdminAuctionDraft({item,products,auctionId,busy,owner,dirty,preflight,onChange,onFind,onSave,onReview,onPublish}:Props){
  const body=item.draft?.body??{},form=useRef<HTMLFormElement>(null),[step,setStep]=useState(auctionId?2:0),[language,setLanguage]=useState('en'),[query,setQuery]=useState(''),[remoteMatches,setRemoteMatches]=useState<Row[]>([]),[searching,setSearching]=useState(false),[searchError,setSearchError]=useState('');
  const [productId,setProductId]=useState<string>(body.productId??''),[fee,setFee]=useState(body.entryFeePoints??''),[start,setStart]=useState(formatAddisDateTimeLocal(body.startsAt)),[end,setEnd]=useState(formatAddisDateTimeLocal(body.endsAt));
@@ -39,7 +52,7 @@ export function AdminAuctionDraft({item,products,auctionId,busy,owner,dirty,pref
   requestAnimationFrame(()=>{invalid.focus();invalid.reportValidity()});return true;
  }
  function preset(days:number){if(!startTime)return;setEnd(formatAddisDateTimeLocal(new Date(startTime.getTime()+days*86400000)));onChange()}
- function submit(){if(revealInvalid(true)||!startTime||!endTime)return;const f=new FormData(form.current!);onSave({productId,startsAt:startTime.toISOString(),endsAt:endTime.toISOString(),minPoints:'1.00',stepPoints:'0.01',entryFeePoints:fee,fulfillmentSummary:f.get('fulfillmentSummary'),fulfillmentSummaryAm:f.get('fulfillmentSummaryAm'),fulfillmentRegion:f.get('fulfillmentRegion'),fulfillmentRegionAm:f.get('fulfillmentRegionAm'),featured:f.get('featured')==='on',maxExtensionMinutes:Number(f.get('maxExtensionMinutes')),allowPaidShortening:f.get('allowPaidShortening')==='on',shortenNoticeMinutes:Number(f.get('shortenNoticeMinutes'))})}
+ function submit(){if(revealInvalid(true)||!startTime||!endTime)return;const f=new FormData(form.current!);onSave({productId,startsAt:startTime.toISOString(),endsAt:endTime.toISOString(),minPoints:'1.00',stepPoints:'0.01',entryFeePoints:fee,fulfillmentSummary:f.get('fulfillmentSummary'),fulfillmentSummaryAm:f.get('fulfillmentSummaryAm'),fulfillmentRegion:f.get('fulfillmentRegion'),fulfillmentRegionAm:f.get('fulfillmentRegionAm'),featured:f.get('featured')==='on',homeOrder:readAuctionHomeOrder(f),maxExtensionMinutes:Number(f.get('maxExtensionMinutes')),allowPaidShortening:f.get('allowPaidShortening')==='on',shortenNoticeMinutes:Number(f.get('shortenNoticeMinutes'))})}
  return <div className="auction-draft-layout">
   <section className="admin-panel auction-draft-main">
    <nav className="auction-draft-steps" aria-label="Auction setup steps">{steps.map((label,index)=><button type="button" key={label} aria-current={step===index?'step':undefined} disabled={busy} onClick={()=>setStep(index)}><span>{index+1}</span>{label}</button>)}</nav>
@@ -51,6 +64,7 @@ export function AdminAuctionDraft({item,products,auctionId,busy,owner,dirty,pref
      {product&&<div className="auction-selected-product"><AdminPhoto src={product.images?.[0]?.path} alt={product.title}/><div><strong>{product.title}</strong><small>{product.category?.name} · {product.condition}{product.isDemo?' · DEMO':''}</small></div></div>}
      <Link href="/admin/products" target="_blank" rel="noopener noreferrer" className="auction-add-product"><Plus size={16}/>Add a product</Link>
      <label className="admin-check"><input type="checkbox" name="featured" defaultChecked={body.featured??false}/>Feature on Home</label>
+     <AdminAuctionHomeOrderField value={body.homeOrder}/>
     </fieldset>
     <fieldset data-step="1" hidden={step!==1} disabled={busy}>
      <legend>Set the schedule</legend><p>Enter times in {ADDIS_ABABA_TIME_LABEL}.</p>

@@ -348,6 +348,7 @@ model Auction {
   endsAt              DateTime?
   publishedAt         DateTime?
   featured            Boolean                  @default(false)
+  homeOrder           Int?
   isDemo              Boolean                  @default(false)
   testRunId           String?
   testRun             TestRun?                 @relation(fields: [testRunId], references: [id], onDelete: Restrict)

@@ -125,7 +125,16 @@ export async function listAuctions(input: CatalogQuery, now?: Date, pageSize = 6
   // Prisma timestamps are UTC without a zone. Bind ISO text explicitly so
   // a non-UTC database session cannot shift raw SQL deadlines by hours.
   const sqlAt=at.toISOString();
-  const orderBy: Prisma.AuctionOrderByWithRelationInput[] = query.sort==='featured' ? [{featured:'desc'},{publishedAt:'desc'},{publicCode:'desc'},{id:'asc'}] : query.sort==='code' ? [{publicCode:'asc'}] : query.sort==='newest' ? [{publishedAt:'desc'},{id:'asc'}] : query.sort==='title' ? [{product:{title:'asc'}},{id:'asc'}] : query.status==='closed' ? [{endsAt:'desc'},{id:'asc'}] : query.status==='upcoming' ? [{startsAt:'asc'},{id:'asc'}] : [{endsAt:'asc'},{id:'asc'}];
+  const orderBy: Prisma.AuctionOrderByWithRelationInput[] = query.sort==='featured' ? [
+    {featured:'desc'},
+    ...(query.status==='live' ? [{homeOrder:{sort:'asc',nulls:'last'}},{endsAt:'asc'}] as const : []),
+    {publishedAt:'desc'},{publicCode:'desc'},{id:'asc'},
+  ] : query.sort==='code' ? [{publicCode:'asc'}]
+    : query.sort==='newest' ? [{publishedAt:'desc'},{id:'asc'}]
+    : query.sort==='title' ? [{product:{title:'asc'}},{id:'asc'}]
+    : query.status==='closed' ? [{endsAt:'desc'},{id:'asc'}]
+    : query.status==='upcoming' ? [{startsAt:'asc'},{id:'asc'}]
+    : [{endsAt:'asc'},{id:'asc'}];
   let rows: AuctionRow[];
   let total: number;
   if(query.sort==='fee-low'||query.sort==='fee-high'){

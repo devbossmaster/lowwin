@@ -71,6 +71,46 @@ describe.skipIf(!database)('Master Guide Admin on disposable PostgreSQL',()=>{
    expect(queries[1]).toContain('"StaffSession"');
   }finally {await traced.$disconnect()}
  });
+ it('saves, publishes and clears Home order through the authenticated admin API',async()=>{
+  const {POST,GET}=await import('../src/app/api/admin/[...path]/route');
+  const {GET:catalog}=await import('../src/app/api/catalog/auctions/route');
+  const marker=`home-order-${randomUUID().slice(0,8)}`;
+  const soon=await bidAuction(db,{ruleVersion:'lowest-unique-v5',fee:1,isDemo:false,endDelayMs:3600000});
+  const later=await bidAuction(db,{ruleVersion:'lowest-unique-v5',fee:1,isDemo:false,endDelayMs:7200000});
+  await db.product.updateMany({where:{id:{in:[soon.productId!,later.productId!]}},data:{title:marker}});
+  const submit=(action:string,input:Record<string,unknown>,session=cookie)=>POST(new Request(origin+'/api/admin/command',{method:'POST',headers:{cookie:session,origin,'content-type':'application/json'},body:JSON.stringify({action,input})}),{params:Promise.resolve({path:['command']})});
+  const home=async(sort?:string)=>{
+   const query=new URLSearchParams({view:'home',q:marker,...(sort?{sort}:{})});
+   const response=await catalog(new Request(origin+'/api/catalog/auctions?'+query));
+   expect(response.status).toBe(200);
+   return (await response.json()).items.map((item:{code:string})=>Number(item.code));
+  };
+  const input={key:randomUUID(),auctionId:later.id,version:later.controlVersion,homeOrder:1};
+  expect((await submit('homeOrder',input,'')).status).toBe(401);
+  expect((await submit('homeOrder',{...input,homeOrder:0})).status).toBe(422);
+  const saved=await submit('homeOrder',input);
+  expect(saved.status,await saved.clone().text()).toBe(200);
+  const receipt=await saved.json();
+  expect(receipt).toMatchObject({homeOrder:1,controlVersion:later.controlVersion+1});
+  expect(await (await submit('homeOrder',input)).json()).toEqual(receipt);
+  expect((await submit('homeOrder',{...input,key:randomUUID(),homeOrder:2})).status).toBe(409);
+  expect(await home()).toEqual([later.publicCode,soon.publicCode]);
+  expect(await home('ending')).toEqual([soon.publicCode,later.publicCode]);
+  const refreshed=await GET(new Request(origin+`/api/admin/auctions/${later.id}`,{headers:{cookie}}),{params:Promise.resolve({path:['auctions',later.id]})});
+  expect(await refreshed.json()).toMatchObject({homeOrder:1,controlRevisions:[{before:{homeOrder:null},after:{homeOrder:1},actorId:userId}]});
+  expect((await submit('homeOrder',{...input,key:randomUUID(),version:receipt.controlVersion,homeOrder:null})).status).toBe(200);
+  expect(await home()).toEqual([soon.publicCode,later.publicCode]);
+
+  const product=await db.product.create({data:{slug:marker,title:marker,description:'Fixture product',condition:'New',categoryId:soon.categoryId!,images:{create:{path:'/catalog/accessory.svg',alt:'Fixture product photo',sourceType:'ORIGINAL'}}}});
+  const now=Date.now();
+  const draft=await submit('draft',{key:randomUUID(),version:0,body:{productId:product.id,startsAt:new Date(now+3600000).toISOString(),endsAt:new Date(now+7200000).toISOString(),minPoints:'1.00',stepPoints:'0.01',entryFeePoints:'1',fulfillmentSummary:'Fixture delivery',fulfillmentRegion:'Addis Ababa',homeOrder:10}});
+  expect(draft.status,await draft.clone().text()).toBe(200);
+  const stored=await draft.json();
+  expect(stored.draft.body.homeOrder).toBe(10);
+  const published=await submit('publish',{key:randomUUID(),auctionId:stored.auctionId,version:stored.draft.version});
+  expect(published.status,await published.clone().text()).toBe(200);
+  expect(await db.auction.findUnique({where:{id:stored.auctionId}})).toMatchObject({status:'SCHEDULED',homeOrder:10});
+ });
  it('moves a deadline in both directions and requires an audited override after accepted bids',async()=>{
   const {POST,GET}=await import('../src/app/api/admin/[...path]/route');
   const auction=await bidAuction(db,{ruleVersion:'lowest-unique-v5',fee:1,endDelayMs:3600000});

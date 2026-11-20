@@ -7,7 +7,7 @@ export function adminResourcePath(path:string){
 export const adminResourceMatches=(path:string,scope:string)=>{const base=path.split('?')[0];return base===scope||base.startsWith(scope+'/')};
 const affected:Record<string,readonly string[]>={
  category:['categories','products','auctions'],product:['products','auctions','dashboard/auctions'],media:['workspace/media','media'],
- draft:['auctions','dashboard'],publish:['auctions','products','dashboard'],fee:['auctions','dashboard/auctions'],deadline:['auctions','dashboard'],presentation:['auctions','dashboard/auctions'],
+ draft:['auctions','dashboard'],publish:['auctions','products','dashboard'],fee:['auctions','dashboard/auctions'],deadline:['auctions','dashboard'],presentation:['auctions','dashboard/auctions'],homeOrder:['auctions'],
  deleteDraft:['auctions','dashboard'],deleteProduct:['products'],removeCancelled:['auctions','dashboard'],replace:['auctions','dashboard'],
  cancel:['auctions','dashboard','workspace/players','users','workspace/transactions','workspace/winners','fulfillment','results'],
  suspend:['workspace/players','users'],deliveryDone:['workspace/winners','fulfillment','dashboard/summary'],fulfillment:['workspace/winners','fulfillment','dashboard/summary'],

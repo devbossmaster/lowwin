@@ -2,7 +2,7 @@
 import {adminRequest,useAdminQuery} from './admin-query';
 import {isSubmissionFeeOnly} from '@/modules/auctions/rules';
 import {AdminAuctionSummary} from './admin-results';
-import {AdminAuctionDraft} from './admin-auction-draft';
+import {AdminAuctionDraft,AdminAuctionHomeOrderField,readAuctionHomeOrder} from './admin-auction-draft';
 import {AdminAuctionDeadlineField,parseAuctionScheduleTime} from './admin-auction-schedule-preview';
 import {AdminImageUpload} from './admin-catalog';
 import {AdminProductDescription} from './admin-product-description';
@@ -50,6 +50,9 @@ export function AdminWorkspace({path}:{path:string[]}){
   },[]);
   async function save(action:string,input:Row){const result=await command(action,{...input,key});setDraftDirty(false);setKey(crypto.randomUUID());setMessage('Saved. The database confirmed this change.');return result}
   const list:Row[]=Array.isArray(data)?data:((data as Row)?.items??[]),item=(!Array.isArray(data)?data:null)??{};
+  const showFeeTab=isSubmissionFeeOnly(item.terms?.ruleVersion)||Number(item.feeRevisions?.[0]?.feePoints??item.terms?.entryFeePoints)>0;
+  const managementTools=[...(showFeeTab?[['fee','Submission fee']]:[]),['deadline','Deadline'],['presentation','Photos & description'],['homeOrder','Home order']];
+  const homeOrderEditable=['LIVE','UPCOMING'].includes(item.displayStatus);
   const titles:Row={dashboard:['Overview','Your auction operations, at a glance.'],auctions:['Auction work queue','Choose an item, set the schedule, then publish.'],products:['Products','Describe inventory and attach validated, credited images.'],categories:['Categories','Organize the public catalog. Published inventory is protected.'],content:['Home & FAQ','Plain text content. Auction rules remain visible and unchanged.'],reconciliation:['Ledger reconciliation','Read-only account, journal and hold integrity checks.']};
   const title=auctionId?item.presentation?.title??item.product?.title??products.find(p=>p.id===item.draft?.body.productId)?.title??item.code??'Auction':path[1]==='new'?'Create auction':titles[section]?.[0]??'Admin resource';
   return <><header className="admin-page-head"><div><h1>{title}</h1><p>{titles[section]?.[1]}</p></div><div className="admin-actions"><button className="secondary" disabled={draftDirty||presentationDirty||busy||uploading} onClick={()=>{if(!isNew)primary.reload()}} aria-label="Refresh admin data"><RefreshCw size={17}/>Refresh</button>{section==='auctions'&&!path[1]&&<Link className="admin-button" href="/admin/auctions/new"><Plus size={17}/>New draft</Link>}</div></header>
@@ -59,7 +62,22 @@ export function AdminWorkspace({path}:{path:string[]}){
     {data&&section==='auctions'&&!path[1]&&<DataTable rows={list} columns={[["Auction",r=><Link href={`/admin/auctions/${r.id}`}>{r.code}<small>{r.product?.title??'Untitled draft'}{r.isDemo?' · DEMO':''}</small></Link>],['Status',r=>r.publishedAt&&!r.settlement&&r.status!=='CANCELLED'&&new Date(r.endsAt)<new Date()?'Closing / result pending':r.status],['Start',r=>date(r.startsAt)],['End',r=>date(r.endsAt)]]}/>}
     {data&&section==='auctions'&&(path[1]==='new'||auctionId)&&<>
       {item.publishedAt?<><nav className="admin-local-tabs" aria-label="Auction workspace">{['details',...(!item.settlement||item.status==='CANCELLED'?['manage']:[]),'history'].map(tab=><button key={tab} aria-current={auctionTab===tab?'page':undefined} onClick={()=>setAuctionTab(tab)}>{tab==='details'?(item.settlement?'Result':'Details'):tab==='manage'?'Manage':'History'}</button>)}</nav>{auctionTab==='details'&&<AdminAuctionSummary item={item}/>}
-      {auctionTab==='manage'&&!item.settlement&&access.role==='OWNER'&&<section id="auction-manage" className="admin-panel"><h2>Manage live auction</h2><p>Changes require your current staff permissions and the latest control version. Previous bid receipts remain unchanged.</p><nav className="admin-local-tabs" aria-label="Management tools">{[...((isSubmissionFeeOnly(item.terms?.ruleVersion)||Number(item.feeRevisions?.[0]?.feePoints??item.terms?.entryFeePoints)>0)?['fee']:[]),'deadline','presentation'].map(tab=><button key={tab} aria-current={manageTab===tab?'page':undefined} onClick={()=>setManageTab(tab)}>{tab==='fee'?'Submission fee':tab==='deadline'?'Deadline':'Photos & description'}</button>)}</nav><div className="auction-manage-form"><form hidden={manageTab!=='fee'} className="admin-form" onChange={()=>setKey(crypto.randomUUID())} onSubmit={event=>{event.preventDefault();const f=new FormData(event.currentTarget);run('fee',async()=>{await save('fee',{auctionId,version:item.controlVersion,feePoints:f.get('feePoints'),reason:f.get('reason')})})}}><h3>Submission fee</h3>{isSubmissionFeeOnly(item.terms?.ruleVersion)?<label>Fee per accepted bid (ETB)<input name="feePoints" inputMode="decimal" pattern="(0|[1-9][0-9]{0,8})([.][0-9]{1,2})?" defaultValue={item.feeRevisions?.[0]?.feePoints??item.terms?.entryFeePoints} required/></label>:<><p>This auction uses its original bid-hold rules. Only removal of its extra fee is supported.</p><input type="hidden" name="feePoints" value="0"/></>}<label>Reason<textarea name="reason" required maxLength={1000}/></label><button disabled={busy} aria-busy={pendingAction==='fee'}>{pendingAction==='fee'?'Updating fee…':'Apply to future bids'}</button></form><form hidden={manageTab!=='deadline'} className="admin-form" onChange={()=>setKey(crypto.randomUUID())} onSubmit={event=>{
+      {auctionTab==='manage'&&!item.settlement&&access.role==='OWNER'&&<section id="auction-manage" className="admin-panel"><h2>Manage live auction</h2><p>Changes require your current staff permissions and the latest control version. Previous bid receipts remain unchanged.</p><nav className="admin-local-tabs" aria-label="Management tools">{managementTools.map(([tab,label])=><button key={tab} aria-current={manageTab===tab?'page':undefined} onClick={()=>setManageTab(tab)}>{label}</button>)}</nav>
+      <div className="auction-manage-form" hidden={manageTab!=='homeOrder'}>
+        <form className="admin-form" onChange={()=>setKey(crypto.randomUUID())} onSubmit={event=>{
+          event.preventDefault();
+          const homeOrder=readAuctionHomeOrder(new FormData(event.currentTarget));
+          run('homeOrder',async()=>{
+            await save('homeOrder',{auctionId,version:item.controlVersion,homeOrder});
+            setMessage(homeOrder===null?'Home order cleared. This auction uses closing time.':'Home order saved.');
+          });
+        }}>
+          <AdminAuctionHomeOrderField key={item.homeOrder??'automatic'} value={item.homeOrder} disabled={busy||!homeOrderEditable}/>
+          {!homeOrderEditable&&<p className="admin-group-note">Home order applies to live and upcoming auctions.</p>}
+          <button disabled={busy||!homeOrderEditable} aria-busy={pendingAction==='homeOrder'}>{pendingAction==='homeOrder'?'Saving…':'Save Home order'}</button>
+        </form>
+      </div>
+      <div className="auction-manage-form"><form hidden={manageTab!=='fee'} className="admin-form" onChange={()=>setKey(crypto.randomUUID())} onSubmit={event=>{event.preventDefault();const f=new FormData(event.currentTarget);run('fee',async()=>{await save('fee',{auctionId,version:item.controlVersion,feePoints:f.get('feePoints'),reason:f.get('reason')})})}}><h3>Submission fee</h3>{isSubmissionFeeOnly(item.terms?.ruleVersion)?<label>Fee per accepted bid (ETB)<input name="feePoints" inputMode="decimal" pattern="(0|[1-9][0-9]{0,8})([.][0-9]{1,2})?" defaultValue={item.feeRevisions?.[0]?.feePoints??item.terms?.entryFeePoints} required/></label>:<><p>This auction uses its original bid-hold rules. Only removal of its extra fee is supported.</p><input type="hidden" name="feePoints" value="0"/></>}<label>Reason<textarea name="reason" required maxLength={1000}/></label><button disabled={busy} aria-busy={pendingAction==='fee'}>{pendingAction==='fee'?'Updating fee…':'Apply to future bids'}</button></form><form hidden={manageTab!=='deadline'} className="admin-form" onChange={()=>setKey(crypto.randomUUID())} onSubmit={event=>{
         event.preventDefault();
         const fields=new FormData(event.currentTarget);
         const next=parseAuctionScheduleTime(String(fields.get('endsAt')??''));

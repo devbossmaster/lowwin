@@ -15,8 +15,7 @@ export function parseBrowseQuery(values:SearchParams):CatalogQuery{
   });
 }
 
-/** Home's former code-order Default now pins featured items, then newest.
- * The Home catalogue is the single browsing destination. */
+/** Home's Default pins featured auctions, then uses manual order and closing time. */
 export function parseHomeQuery(values:SearchParams):CatalogQuery{
   const sort=Array.isArray(values.sort)?values.sort[0]:values.sort;
   return parseBrowseQuery({...values,status:'live',sort:!sort||sort==='code'?'featured':sort,page:'1'});
