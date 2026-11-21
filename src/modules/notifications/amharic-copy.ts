@@ -33,7 +33,7 @@ export function auctionPromotionText(title:string,endsAt:Date,now:Date){
  const [days,hours]=countdownUnits(remaining).map(Number);
  const opening=`${title}\n\nጨረታው ሊያበቃ`;
  if(!days&&!hours)return `${opening} ከ1 ሰዓት ያነሰ ጊዜ ቀርቷል።`;
- const approximate=remaining%(days?86_400_000:3_600_000)?'በግምት ':'';
+ const approximate=remaining%(days?86_400_000:3_600_000)?' ':'';
  const duration=days?daysAm(days):hoursAm(hours);
  return `${opening} ${approximate}${duration} ${(days||hours)===1?'ቀርቷል':'ቀርተዋል'}።`;
 }

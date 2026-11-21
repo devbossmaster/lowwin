@@ -10,7 +10,7 @@ describe('live auction broadcast review',()=>{
   expect(draft).toMatchObject({auctionId:id,title:'ተንቀሳቃሽ ቻርጀር',text:'ተንቀሳቃሽ ቻርጀር\n\nጨረታው ሊያበቃ ከ1 ሰዓት ያነሰ ጊዜ ቀርቷል።',imagePath:image,miniAppPath:'/auctions/42',buttonLabel:'እናሸንፍ!'});
   expect(draft.draftHash).toMatch(/^[a-f0-9]{64}$/);expect(db.outbox.create).not.toHaveBeenCalled();expect(db.outbox.upsert).not.toHaveBeenCalled();
  });
- it.each([[49,'በግምት 2 ቀናት ቀርተዋል'],[24,'1 ቀን ቀርቷል'],[23.5,'በግምት 23 ሰዓታት ቀርተዋል'],[1,'1 ሰዓት ቀርቷል']])('shows one remaining-time unit for %d hours',async(hours,remaining)=>{
+ it.each([[49,' 2 ቀናት ቀርተዋል'],[24,'1 ቀን ቀርቷል'],[23.5,' 23 ሰዓታት ቀርተዋል'],[1,'1 ሰዓት ቀርቷል']])('shows one remaining-time unit for %d hours',async(hours,remaining)=>{
   const draft=await auctionBroadcastDraft(tx(auction({endsAt:new Date(now.getTime()+hours*3600000)})) as never,id,now);
   expect(draft.text).toBe(`ተንቀሳቃሽ ቻርጀር\n\nጨረታው ሊያበቃ ${remaining}።`);
  });
