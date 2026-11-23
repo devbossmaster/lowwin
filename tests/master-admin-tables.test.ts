@@ -64,13 +64,14 @@ describe('Master Guide Admin bounded tables',()=>{
    await readChapaTable(db as unknown as PrismaClient,actor,{...f,view,purpose:'BID',q:'Player'});
    const page=db.$queryRaw.mock.calls.at(-2)![0],count=db.$queryRaw.mock.calls.at(-1)![0];
    expect(page.text).toContain(condition);expect(count.text).toContain(condition);expect(page.values).toContain('BID');expect(page.values).toContain('%Player%');expect(page.values).toContain(25);
+   if(view==='failed')expect(page.text).toContain('AND NOT (c."verificationCompletionStatus" IS NOT NULL AND c."verificationSignalVersion">c."verificationHandledSignalVersion")');
    expect(page.text.includes("'wallet'::text")).toBe(view==='all');
    expect(count.values).toEqual(page.values.slice(0,-1));
   }
  });
  it('keeps aged unconfirmed attempts pending without inventing expired sessions or changing committed review funds',async()=>{
   const row={id:'payment',userId:'player',purpose:'TOP_UP',mode:'live',amountCents:1000n,currency:'ETB',status:'PENDING',providerStatus:'PENDING',reason:null,creditJournalId:null,bidId:null,auctionId:null,paymentMethod:'telebirr',createdAt:new Date(now.getTime()-300000),expiresAt:new Date(now.getTime()+3600000),user:identity()};
-  const rows=[row,{...row,id:'newer',createdAt:new Date(now.getTime()-299999)},{...row,id:'applying',providerStatus:'SUCCESS'},{...row,id:'review',purpose:'BID',status:'NEEDS_REVIEW',providerStatus:'SUCCESS',creditJournalId:'preserved-journal'},{...row,id:'paid',status:'CREDITED',creditJournalId:'journal'},{...row,id:'failed',purpose:'BID',status:'FAILED'}];
+  const rows=[row,{...row,id:'newer',createdAt:new Date(now.getTime()-299999)},{...row,id:'applying',providerStatus:'SUCCESS'},{...row,id:'review',purpose:'BID',status:'NEEDS_REVIEW',providerStatus:'SUCCESS',creditJournalId:'preserved-journal'},{...row,id:'paid',status:'CREDITED',creditJournalId:'journal'},{...row,id:'failed',purpose:'BID',status:'FAILED'},{...row,id:'rechecking',status:'CANCELLED',providerStatus:'CANCELLED',providerCancelledBy:'USER',verificationState:'VERIFIED',verificationCompletionStatus:'SUCCESS',verificationSignalVersion:2,verificationHandledSignalVersion:1}];
   const db=paymentDb(rows);
   const result=await readChapaTable(db as unknown as PrismaClient,{...actor,role:'SUPPORT'},{...f,view:'all'});
   expect(result.items[0]).toMatchObject({typeLabel:'Deposit attempt',status:'PENDING',providerStatus:'PENDING',creditApplied:false});
@@ -79,6 +80,7 @@ describe('Master Guide Admin bounded tables',()=>{
   expect(result.items[3]).toMatchObject({typeLabel:'Bid payment',status:'NEEDS_REVIEW',review:'OPEN',creditApplied:true,journalId:null});
   expect(result.items[4]).toMatchObject({typeLabel:'Wallet deposit',creditApplied:true});
   expect(result.items[5]).toMatchObject({typeLabel:'Bid payment attempt',status:'FAILED'});
+  expect(result.items[6]).toMatchObject({completionSignalPending:true,cancelledBy:'USER',creditApplied:false});
   expect(JSON.stringify(result)).not.toMatch(/preserved-journal|private-cipher|phoneCipher|initialization|checkoutUrl/);
   expect(db.chapaCheckout).not.toHaveProperty('update');
  });

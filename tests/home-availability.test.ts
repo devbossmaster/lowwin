@@ -12,13 +12,18 @@ vi.mock('../src/components/home-categories',()=>({HomeCategories:({categories}:{
 vi.mock('../src/components/home-auctions',()=>({homeAuctionHref:()=>'/','HomeAuctions':({initial}:{initial?:{items:{code:string}[]}})=>createElement('div',{'data-auction-feed':true},initial?.items.map(item=>createElement('span',{key:item.code},item.code)))}));
 vi.mock('../src/components/winners-client-list',()=>({WinnersClientList:({initial}:{initial?:{items:{code:string}[]}})=>createElement('div',{'data-winners-feed':true},initial?.items.map(item=>createElement('span',{key:item.code},item.code)))}));
 import {HomePageSections,type HomeData} from '../src/components/home-page-content';
+import type {WinnersData} from '../src/components/winners-client-list';
 import {MiniLocaleProvider,type MiniLanguage} from '../src/components/mini-locale';
 import {defaultHomeCopy} from '../src/components/home-copy';
 const query={status:'live' as const,sort:'featured' as const,q:'',page:1};
-const cached={managed:null,experience:null,media:null,serverNow:'2026-11-13T10:00:00Z',categories:[],auctions:{items:[{code:'SAVED-AUCTION'}]},winners:{items:[{code:'SAVED-WINNER'}]}} as unknown as HomeData;
+const cached={managed:null,experience:null,media:null,serverNow:'2026-11-13T10:00:00Z',categories:[],auctions:{items:[{code:'SAVED-AUCTION'}]},winners:{items:[{code:'SAVED-WINNER'}]}} as unknown as HomeData & {winners:WinnersData};
 const render=(props:Partial<React.ComponentProps<typeof HomePageSections>>={},language:MiniLanguage='en')=>renderToStaticMarkup(createElement(MiniLocaleProvider,{initialLanguage:language,children:createElement(HomePageSections,{query,error:false,onRetry(){},...props})}));
 describe('Home availability during a failed server refresh',()=>{
  it('retains the cold-loading layout until a result or error arrives',()=>{const html=render();expect(html).toContain('data-route-skeleton="home"');expect(html).not.toContain('data-home-unavailable');expect(html).not.toContain('data-home-hero')});
+ it('renders the auction feed while the recent winners query loads separately',()=>{
+  const html=render({view:cached,categories:cached.categories,auctions:cached.auctions});
+  expect(html).toContain('SAVED-AUCTION');expect(html).toContain('data-winners-feed');expect(html).not.toContain('data-route-skeleton="home"');
+ });
  it.each(['en','am'] as const)('keeps public guidance visible with truthful unavailable resources in %s',language=>{
   const html=render({error:true},language);expect(html).toContain('data-home-hero');expect(html).toContain(defaultHomeCopy.headline);expect(html).toContain('data-how-it-works');expect(html).toContain('<footer>');
   expect(html).toContain('id="discover-auctions" tabindex="-1"');expect(html).toContain('data-home-unavailable="auctions"');expect(html).toContain('data-home-unavailable="winners"');expect(html).not.toMatch(/data-route-skeleton|data-auction-feed|data-winners-feed|No live auctions|Confirmed winners will appear/);

@@ -8,7 +8,9 @@ import {miniNavigationState} from './mini-navigation-state';
 import {useTelegram} from './telegram-provider';
 import {formatAuctionBid,formatEtb} from '@/lib/money';
 import {formatAddisTimestamp} from '@/lib/addis-time';
+import {maskPhoneDisplay} from '@/lib/phone-mask';
 import type {ResultBreakdown} from '@/modules/auctions/result-breakdown';
+import {ResultRowsSkeleton} from './mini-route-skeleton';
 import styles from './winner-results.module.css';
 
 function Pager({page,totalPages,change,disabled=false}:{page:number;totalPages:number;change:(value:number)=>void;disabled?:boolean}){
@@ -21,7 +23,7 @@ function ParticipantSheet({code,amount,displayAmount,onClose,returnFocusRef}:{co
  const query=usePrivateQuery<ResultBreakdown>('/api/results/'+encodeURIComponent(code)+'/breakdown?amount='+encodeURIComponent(amount)+'&page='+page,{keepPreviousData:true,cancelOnUnmount:true}),data=query.data?.kind==='participants'?query.data:null;
  const first=data?(data.page-1)*data.pageSize+1:1;
  return <AccountSheet title={<><span className="sr-only"><MiniPhrase en="Bid details" am="የጨረታ ዝርዝር"/></span><span className={styles.participantNumber} aria-hidden="true">{displayAmount}</span></>} presentation="centered" onClose={onClose} returnFocusRef={returnFocusRef}>
-  {!data&&query.status==='authenticated'&&!query.error?<p className={styles.loading} role="status"><MiniPhrase en="Loading participants…" am="ተሳታፊዎችን በመጫን ላይ…"/></p>:<PrivateState query={query}/>}
+  {!data&&query.status==='authenticated'&&!query.error?<ResultRowsSkeleton participants/>:<PrivateState query={query}/>}
   {data&&<>
    <div className={styles.participantFacts}>
     <span><strong>{data.bidCount}</strong> <MiniPhrase en="Bids" am="ጨረታዎች"/></span>
@@ -32,7 +34,7 @@ function ParticipantSheet({code,amount,displayAmount,onClose,returnFocusRef}:{co
    <ol className={styles.people} start={first} role="list" aria-busy={query.fetching} aria-label={am?`የጨረታ ቁጥር ${displayAmount}`:`Bids for ${displayAmount}`}>
     {data.participants.map((person,index)=><li key={first+index}>
      <span className={styles.rowNumber} aria-hidden="true">#{first+index}</span>
-     <span className={styles.rowPhone}><Phone size={12} aria-hidden="true"/><span dir="ltr">{person.phoneMasked??<MiniPhrase en="Unavailable" am="አልተገኘም"/>}</span></span>
+     <span className={styles.rowPhone}><Phone size={12} aria-hidden="true"/><span dir="ltr">{maskPhoneDisplay(person.phoneMasked)??<MiniPhrase en="Unavailable" am="አልተገኘም"/>}</span></span>
      <time dateTime={person.submittedAt}>{formatAddisTimestamp(person.submittedAt,am?'am-ET':'en-GB')}</time>
     </li>)}
    </ol>
@@ -47,7 +49,7 @@ export default function ResultBreakdownContent({code}:{code:string}){
  useEffect(()=>{if(jump&&data&&!busy)winningRow.current?.scrollIntoView({block:'nearest',behavior:'instant'})},[jump,data,busy]);
  const largest=data?Math.max(1,...data.amounts.map(row=>row.bidCount)):1;
  return <>
-  {!data&&query.status==='authenticated'&&!query.error?<p className={styles.loading} role="status"><MiniPhrase en="Loading bid numbers…" am="የጨረታ ቁጥሮችን በመጫን ላይ…"/></p>:<PrivateState query={query}/>}
+  {!data&&query.status==='authenticated'&&!query.error?<ResultRowsSkeleton/>:<PrivateState query={query}/>}
   <div data-result-breakdown-ready={!!data&&!busy||undefined}>{data&&<>
    <dl className={styles.resultFacts}><div><dt><MiniPhrase en="Winning entry fee" am="የአሸናፊው ጨረታ ክፍያ"/></dt><dd>{formatEtb(data.entryFee)}</dd></div><div><dt><MiniPhrase en="Total bids" am="ጠቅላላ ጨረታዎች"/></dt><dd>{data.totalBids}</dd></div><div><dt><MiniPhrase en="Auction" am="ጨረታ"/></dt><dd>#{data.auction.code}</dd></div></dl>
    {data.variableFees&&<p className={styles.note}><MiniPhrase en="Fees varied. The fee shown belongs to the winning entry." am="ክፍያዎች ይለያዩ ነበር። የሚታየው የአሸናፊው ጨረታ ክፍያ ነው።"/></p>}

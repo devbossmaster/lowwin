@@ -29,7 +29,7 @@ import {useMiniNotice} from './mini-notice';
 import {usePrivateQuery} from './private-query';
 import {useTelegram} from './telegram-provider';
 import {confirmedBidQueryScopes,getMiniQueryClient,invalidatePrivateQueries,isPrivateQueryIdentity,loadPrivateJson,readPrivateQuery} from './private-query-cache';
-import {loadTopUpConfiguration,TOP_UP_CONFIG_URL,topUpConfigFreshness} from './top-up-prefetch';
+import {TOP_UP_CONFIG_URL,topUpConfigFreshness} from './top-up-prefetch';
 import {useChapaPayment} from './chapa-payment';
 import BidPaymentProgress from './bid-payment-progress';
 import {usePaymentCheckoutFlow} from './payment-checkout-flow';
@@ -232,8 +232,7 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
    const version=generation.current;lock.current=true;setBusy(true);reportError('');
    try{
     // Join the existing owned read if the customer continues before it arrives.
-    // This validates the draft only; no wallet command or provider initialization.
-    const methodsReady=methods.data?Promise.resolve(methods.data):loadTopUpConfiguration(queryIdentity).catch(()=>null);
+    // The method catalog already loads independently when the sheet opens.
     const currentState=state??await loadPrivateJson<BidState>(queryIdentity,`/api/auctions/${auction.slug}/bids`);
     if(version!==generation.current||!isPrivateQueryIdentity(queryIdentity))return;
     if(!currentState.open){reportError(text('This auction is not accepting bids.','ይህ ጨረታ አዲስ ጨረታ አይቀበልም።'));return}
@@ -252,10 +251,6 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
      const attempt=quoteAttempt.current=bidQuoteAttemptFor(quoteAttempt.current,readyFingerprint);
      void loadQuote(attempt).catch(()=>{/* The visible payment stage owns recovery. */});
     }
-    // Pricing does not use the payment-method catalogue. Prepare the quote
-    // while the catalogue is still loading, then reveal the payment options.
-    await methodsReady;
-    if(version!==generation.current||!isPrivateQueryIdentity(queryIdentity))return;
     flow.continueToPayment(checked.numbers.length>1);
    }catch(cause){if(version===generation.current)reportError(cause instanceof ChapaClientError?cause.message:text('Could not load your bid details. Check your connection and try again.','የጨረታ ዝርዝሮችዎን መጫን አልቻልንም። ግንኙነትዎን ያረጋግጡና እንደገና ይሞክሩ።'))}
    finally{if(version===generation.current){lock.current=false;setBusy(false)}}

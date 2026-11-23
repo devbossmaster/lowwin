@@ -1,5 +1,6 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
+import {preconnect} from 'react-dom';
 import {AlertCircle,LoaderCircle,ShieldCheck} from 'lucide-react';
 import {LOWWIN_LOGO_SRC} from '@/lib/brand';
 import {botRegistrationReferralUrl,referralCodeFromParams,REFERRAL_BOT_RECOVERY_PARAMETER} from '@/lib/referral-invite';
@@ -34,6 +35,7 @@ export default function BrowserTelegramLogin({configuration}:{configuration:Tele
  const navigation=useRef<AbortController|null>(null);
  const ready=configuration.enabled&&configuration.configured,restoring=status==='loading',sessionUnavailable=status==='error';
  const canChooseSignIn=!restoring&&!sessionUnavailable;
+ if(ready&&canChooseSignIn)preconnect('https://oauth.telegram.org');
  useEffect(()=>{
   const resumed=(event:PageTransitionEvent)=>{if(event.persisted){navigation.current?.abort();navigation.current=null;setPending(false)}};
   window.addEventListener('pageshow',resumed);

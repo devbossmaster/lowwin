@@ -1,5 +1,6 @@
 import {Prisma,type PrismaClient} from '@prisma/client';
 import {centsToEtb} from '@/lib/money';
+import {publicChapaCancelledBy} from '@/lib/chapa-payment-reason';
 import {contactBotId,decryptPhone,normalizePhone,phoneHash} from '../auth/own-contact';
 import {AdminError} from './errors';
 import type {StaffRole} from './permissions';
@@ -57,7 +58,7 @@ export async function readChapaTable(client:PrismaClient,actor:Actor,f:Filters){
  let lookup:string|null=null;try{lookup=phoneHash(normalizePhone(f.q))}catch{}
  const selected:Prisma.Sql[]=[];
  if(chapaConfigured){
-  const group=view==='completed'?Prisma.sql`AND c."creditJournalId" IS NOT NULL`:view==='unfinished'?Prisma.sql`AND c.status IN ('SUBMITTING','PENDING','VERIFYING','AUTH_NEEDED')`:view==='review'?Prisma.sql`AND c.status='NEEDS_REVIEW'`:view==='failed'?Prisma.sql`AND c."creditJournalId" IS NULL AND c."verificationState"='VERIFIED' AND c."providerStatus" IN ('FAILED','CANCELLED','EXPIRED','INCOMPLETE','BLOCKED','FAILED_OR_CANCELLED')`:Prisma.empty;
+  const group=view==='completed'?Prisma.sql`AND c."creditJournalId" IS NOT NULL`:view==='unfinished'?Prisma.sql`AND c.status IN ('SUBMITTING','PENDING','VERIFYING','AUTH_NEEDED')`:view==='review'?Prisma.sql`AND c.status='NEEDS_REVIEW'`:view==='failed'?Prisma.sql`AND c."creditJournalId" IS NULL AND c."verificationState"='VERIFIED' AND c."providerStatus" IN ('FAILED','CANCELLED','EXPIRED','INCOMPLETE','BLOCKED','FAILED_OR_CANCELLED') AND NOT (c."verificationCompletionStatus" IS NOT NULL AND c."verificationSignalVersion">c."verificationHandledSignalVersion")`:Prisma.empty;
   // Resolve a matching record ID as well as player search without exposing
   // sensitive provider references or scanning customer evidence/receipts.
   const chapaSearch=f.q?Prisma.sql`AND (c.id ILIKE ${'%'+f.q+'%'} OR u.id ILIKE ${'%'+f.q+'%'} OR u.name ILIKE ${'%'+f.q+'%'} OR u."telegramId" ILIKE ${'%'+f.q+'%'} OR u."telegramUsername" ILIKE ${'%'+f.q.replace(/^@/,'')+'%'} ${lookup?Prisma.sql`OR EXISTS(SELECT 1 FROM "TelegramOwnContact" t WHERE t."userId"=u.id AND t."phoneHash"=${lookup} AND t."revokedAt" IS NULL)`:Prisma.empty})`:Prisma.empty;
@@ -76,14 +77,14 @@ export async function readChapaTable(client:PrismaClient,actor:Actor,f:Filters){
  ]);
  const chapaIds=pageRows.filter(row=>row.source==='chapa').map(row=>row.id),walletIds=pageRows.filter(row=>row.source==='wallet').map(row=>row.id);
  const [rows,walletRows]=await Promise.all([
-  chapaIds.length?client.chapaCheckout.findMany({where:{id:{in:chapaIds}},select:{id:true,userId:true,purpose:true,mode:true,amountCents:true,currency:true,status:true,providerStatus:true,verificationState:true,reason:true,creditJournalId:true,bidId:true,auctionId:true,paymentMethod:true,createdAt:true,user:{select:identity}},take:25}):[],
+  chapaIds.length?client.chapaCheckout.findMany({where:{id:{in:chapaIds}},select:{id:true,userId:true,purpose:true,mode:true,amountCents:true,currency:true,status:true,providerStatus:true,providerCancelledBy:true,verificationState:true,verificationCompletionStatus:true,verificationSignalVersion:true,verificationHandledSignalVersion:true,reason:true,creditJournalId:true,bidId:true,auctionId:true,paymentMethod:true,createdAt:true,user:{select:identity}},take:25}):[],
   walletIds.length?client.bid.findMany({where:{id:{in:walletIds}},select:{id:true,userId:true,auctionId:true,feePoints:true,acceptedAt:true,operation:{select:{result:true,journal:{select:{id:true}}}},user:{select:identity}},take:25}):[],
  ]);
  const chapaItems=rows.map(row=>{
   const creditApplied=!!row.creditJournalId;
-  // A browser checking timeout is not a provider payment outcome. Keep the
-  // last server-verified state visible in the admin table too.
-  return {id:row.id,source:'chapa' as const,userId:row.userId,provider:'Chapa',channel:row.paymentMethod??'Hosted checkout',status:row.status,providerStatus:row.providerStatus,verificationState:row.verificationState,creditApplied,fundsPreserved:creditApplied&&row.purpose==='BID'&&row.status!=='BID_ACCEPTED',typeLabel:row.purpose==='BID'?creditApplied?'Bid payment':'Bid payment attempt':creditApplied?'Wallet deposit':'Deposit attempt',amount:centsToEtb(row.amountCents),currency:row.currency,createdAt:row.createdAt,journalId:actor.role==='SUPPORT'?null:row.creditJournalId,reason:row.reason&&/^[A-Z0-9_]{1,64}$/.test(row.reason)?row.reason:null,review:row.status==='NEEDS_REVIEW'?'OPEN':'NONE',reference:'',bidId:row.bidId,auctionId:row.auctionId,purpose:row.purpose,mode:row.mode,user:contact(row.user)};
+  const completionSignalPending=!creditApplied&&!!row.verificationCompletionStatus&&row.verificationSignalVersion>row.verificationHandledSignalVersion;
+  const cancelledBy=publicChapaCancelledBy(row);
+  return {id:row.id,source:'chapa' as const,userId:row.userId,provider:'Chapa',channel:row.paymentMethod??'Hosted checkout',status:row.status,providerStatus:row.providerStatus,verificationState:row.verificationState,completionSignalPending,cancelledBy,creditApplied,fundsPreserved:creditApplied&&row.purpose==='BID'&&row.status!=='BID_ACCEPTED',typeLabel:row.purpose==='BID'?creditApplied?'Bid payment':'Bid payment attempt':creditApplied?'Wallet deposit':'Deposit attempt',amount:centsToEtb(row.amountCents),currency:row.currency,createdAt:row.createdAt,journalId:actor.role==='SUPPORT'?null:row.creditJournalId,reason:row.reason&&/^[A-Z0-9_]{1,64}$/.test(row.reason)?row.reason:null,review:row.status==='NEEDS_REVIEW'?'OPEN':'NONE',reference:'',bidId:row.bidId,auctionId:row.auctionId,purpose:row.purpose,mode:row.mode,user:contact(row.user)};
  });
  const walletItems=walletRows.map(row=>({id:row.id,source:'wallet' as const,userId:row.userId,provider:'Wallet',channel:'Wallet',status:'BID_ACCEPTED',providerStatus:null,creditApplied:true,typeLabel:'Bid payment',amount:walletBidNetFee(row.feePoints,row.operation.result),currency:'ETB',createdAt:row.acceptedAt,journalId:actor.role==='SUPPORT'?null:row.operation.journal!.id,reason:null,review:'NONE',reference:'',bidId:row.id,auctionId:row.auctionId,purpose:'BID',mode:'live',user:contact(row.user)}));
  const byId=new Map([...chapaItems,...walletItems].map(row=>[`${row.source}:${row.id}`,row]));

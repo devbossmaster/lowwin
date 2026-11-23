@@ -4,6 +4,7 @@ import {requireAdmin} from './boundary';
 import {AdminError} from './errors';
 import type {StaffRole} from './permissions';
 import {allowIdentityRequest} from '@/lib/rate-limit';
+import {publicChapaCancelledBy} from '@/lib/chapa-payment-reason';
 import {chapaAvailability,chapaHash} from '../payments/chapa-provider';
 import {verifyChapaCheckout} from '../payments/chapa';
 import {PAYMENT_TRANSACTION_OPTIONS} from '../payments/timing';
@@ -16,7 +17,7 @@ function allow(role:StaffRole,write=false){if(!(write?writers:chapaAdminRoles).i
 const checkSchema=z.object({id:z.uuid(),key:z.uuid(),reason:z.string().trim().min(12).max(300)}).strict();
 // Never select a checkout URL, ciphertext, raw evidence, initialization or receipt.
 // The fingerprint is used only for server-side eligibility and is never returned.
-const selection={id:true,userId:true,purpose:true,mode:true,credentialFingerprint:true,chargeType:true,batchId:true,authType:true,auctionId:true,auctionSlug:true,bidNumber:true,grossFee:true,discountPoints:true,feeVersion:true,amountCents:true,currency:true,status:true,reason:true,bidId:true,creditJournalId:true,merchantReference:true,chapaReference:true,processorReference:true,paymentMethod:true,attempts:true,nextCheckAt:true,expiresAt:true,createdAt:true,updatedAt:true,user:{select:{name:true}},auction:{select:{...bidPublicationSelect,code:true,presentation:true,product:{select:{title:true}},terms:{select:{ruleVersion:true}}}}} satisfies Prisma.ChapaCheckoutSelect;
+const selection={id:true,userId:true,purpose:true,mode:true,credentialFingerprint:true,chargeType:true,batchId:true,authType:true,auctionId:true,auctionSlug:true,bidNumber:true,grossFee:true,discountPoints:true,feeVersion:true,amountCents:true,currency:true,status:true,providerStatus:true,providerCancelledBy:true,verificationState:true,verificationCompletionStatus:true,verificationSignalVersion:true,verificationHandledSignalVersion:true,reason:true,bidId:true,creditJournalId:true,merchantReference:true,chapaReference:true,processorReference:true,paymentMethod:true,attempts:true,nextCheckAt:true,expiresAt:true,createdAt:true,updatedAt:true,user:{select:{name:true}},auction:{select:{...bidPublicationSelect,code:true,presentation:true,product:{select:{title:true}},terms:{select:{ruleVersion:true}}}}} satisfies Prisma.ChapaCheckoutSelect;
 type Row=Prisma.ChapaCheckoutGetPayload<{select:typeof selection}>;
 function safeReason(value:string|null){return value&&/^[A-Z0-9_]{1,64}$/.test(value)?value:null;}
 function health(){const value=chapaAvailability();return {schemaReady:process.env.CHAPA_SCHEMA_READY==='true',configured:value.configured,recoveryEnabled:value.recoveryEnabled,mode:value.mode,reason:value.reason};}
@@ -34,7 +35,8 @@ export async function readChapaAdmin(client:PrismaClient,headers:Headers,id:stri
  await client.adminAudit.create({data:{actorId:actor.id,action:'CHAPA_DETAILS_READ',target:row.id,details:{}}});
  const published=bidNumbersPublished(row.auction,actor.now);
  const batch=published&&row.batchId?await client.bidBatchOrder.findFirst({where:{id:row.batchId,userId:row.userId},select:{id:true,lines:true,status:true,totalCents:true}}):null;
- return {item:{...view(row,actor.role,published?row.bidNumber?.toString()??null:null),chargeType:row.chargeType,batch:batch?{id:batch.id,lines:batchLines(batch),status:batch.status,totalCents:String(batch.totalCents)}:null},health:health()};
+ const completionSignalPending=!row.creditJournalId&&!!row.verificationCompletionStatus&&row.verificationSignalVersion>row.verificationHandledSignalVersion;
+ return {item:{...view(row,actor.role,published?row.bidNumber?.toString()??null:null),providerStatus:row.providerStatus,verificationState:row.verificationState,cancelledBy:publicChapaCancelledBy(row),completionSignalPending,chargeType:row.chargeType,batch:batch?{id:batch.id,lines:batchLines(batch),status:batch.status,totalCents:String(batch.totalCents)}:null},health:health()};
 }
 export type ChapaAdminDetail=Awaited<ReturnType<typeof readChapaAdmin>>;
 

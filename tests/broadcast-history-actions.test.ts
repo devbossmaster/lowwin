@@ -19,6 +19,15 @@ describe('direct original-content broadcast actions',()=>{
   expect(f.tx.outbox.upsert).toHaveBeenCalledWith(expect.objectContaining({where:{key:'broadcast:owner:intentional-resend'},create:expect.objectContaining({payload:expect.objectContaining({imagePath,body:before.payload.body,href:'/',buttonLabel:'Open Lowwin',parentCampaignId:before.id,audienceBefore:now.toISOString(),rootKey:'broadcast:owner:intentional-resend'})}),update:{}}));
   expect(f.original).toEqual(before);expect(f.tx.outbox.update).not.toHaveBeenCalled();
  });
+ it('keeps the authorized custom cover ID when resending a broadcast',async()=>{
+  const f=fixture(),imageId='11111111-2222-4333-8444-555555555555';
+  const {imagePath:_,...message}=f.original.payload;
+  Object.assign(f.original,{payload:{...message,imageId}});
+  f.tx.managedMedia.findFirst.mockResolvedValue({id:imageId});
+  await resendBroadcast(f.tx as never,f.original.id,'broadcast:owner:media-resend');
+  expect(f.tx.managedMedia.findFirst).toHaveBeenCalledWith({where:{id:imageId,purpose:'CATALOG'},select:{id:true}});
+  expect(f.tx.outbox.upsert.mock.calls[0][0].create.payload).toMatchObject({imageId});
+ });
  it('uses idempotent queue identity for duplicate confirmations while intentional later resends get a fresh identity',async()=>{
   const f=fixture();for(const key of ['broadcast:owner:one','broadcast:owner:one','broadcast:owner:two'])await resendBroadcast(f.tx as never,f.original.id,key);
   expect(f.tx.outbox.upsert.mock.calls.map(([call])=>(call as unknown as {where:{key:string}}).where.key)).toEqual(['broadcast:owner:one','broadcast:owner:one','broadcast:owner:two']);

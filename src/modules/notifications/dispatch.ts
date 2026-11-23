@@ -130,7 +130,7 @@ async function dispatchClaim(client:PrismaClient,bot:BotApi,row:ClaimedNotificat
   const photoKey=auctionImage?`auction:${auctionImage}:${version}`:`notification:${imageId??'default'}:${version}`;
   const preparePhoto=async()=>{
    if(paymentReceipt||row.kind==='DEPOSIT_CREDITED')return null;
-   let photo=(row.kind.startsWith('AUCTION_')||auctionImage)?(auctionImage?await auctionPhoto(client,auctionImage):null):await notificationPhoto(client,imageId,link.origin);
+   let photo=(row.kind.startsWith('AUCTION_')||auctionImage)?(auctionImage?await auctionPhoto(client,auctionImage):null):await notificationPhoto(client,imageId);
    if(!photo&&row.kind==='AUCTION_ENDED'&&'fallbackImagePath' in content&&typeof content.fallbackImagePath==='string')photo=await auctionPhoto(client,content.fallbackImagePath);
    if(!photo&&row.kind==='BROADCAST'&&(auctionImage||imageId))throw Error('Original broadcast media is unavailable');
    return photo;

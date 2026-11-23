@@ -4,6 +4,7 @@ import {existsSync,statSync} from 'node:fs';
 import {resolve} from 'node:path';
 import sharp from 'sharp';
 import {auctionNotificationImagePath} from './campaigns';
+import {telegramPhotoFrame} from './telegram-photo-frame';
 
 const photos=new Map<string,Promise<Buffer|null>>();
 /** Upload the displayed product image directly: Telegram need not fetch a
@@ -19,7 +20,7 @@ export async function auctionPhoto(tx:Prisma.TransactionClient,path:string){
   pending=(async()=>{
    const media=mediaId?await tx.managedMedia.findUnique({where:{id:mediaId},select:{bytes:true}}):null;
    if(mediaId&&!media)return null;
-   try{return await sharp(media?Buffer.from(media.bytes):localPath!,{limitInputPixels:32_000_000}).rotate().resize({width:1840,height:1840,fit:'inside',withoutEnlargement:true}).jpeg({quality:88}).toBuffer()}
+   try{return (await telegramPhotoFrame(sharp(media?Buffer.from(media.bytes):localPath!,{limitInputPixels:32_000_000}).rotate().resize({width:1840,height:1840,fit:'inside',withoutEnlargement:true}).jpeg({quality:88}))).data}
    catch{return null}
   })();
   if(photos.size>=10)photos.delete(photos.keys().next().value!);

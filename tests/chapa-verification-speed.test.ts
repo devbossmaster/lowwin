@@ -157,6 +157,17 @@ describe('bounded Chapa authorization refresh and private verification',()=>{
   await f.verify();await verifyChapaCheckout(f.db,id,'owner',undefined,f.transport,'webhook');expect(f.lookup).toHaveBeenCalledOnce();expect(f.row().verificationSignalVersion).toBe(1);expect(f.row().verificationHandledSignalVersion).toBe(0);expect(f.row().verificationRetryAfter!.getTime()-Date.now()).toBe(60000);
   vi.advanceTimersByTime(60000);await f.verify();expect(f.lookup).toHaveBeenCalledTimes(2);expect(f.row().verificationHandledSignalVersion).toBe(1);expect(f.row().verificationRetryAfter).toBeNull();
  });
+ it('exposes the Direct retry deadline during an outage and restores fast polling after a good check',async()=>{
+  const f=fixture({flowVersion:5,initialization:{apiVersion:'v2',flowVersion:5,flow:'DIRECT'}});
+  f.lookup.mockRejectedValueOnce(new ChapaProviderError(429,'RATE_LIMITED'));
+  await expect(f.verify()).resolves.toMatchObject({status:'AUTH_NEEDED',verificationUnavailable:true,pollAfterMs:60000});
+  vi.advanceTimersByTime(5000);
+  await expect(f.verify()).resolves.toMatchObject({status:'AUTH_NEEDED',pollAfterMs:55000});
+  expect(f.lookup).toHaveBeenCalledOnce();
+  vi.advanceTimersByTime(55000);
+  await expect(f.verify()).resolves.toMatchObject({status:'PENDING',pollAfterMs:2000});
+  expect(f.lookup).toHaveBeenCalledTimes(2);
+ });
  it('keeps provider requests outside transactions and publishes only after the transaction commits without waiting for Redis',async()=>{
   const f=fixture(inlinePatch());let inTransaction=false;
   const original=vi.mocked(f.db.$transaction).getMockImplementation()! as any;vi.mocked(f.db.$transaction).mockImplementation(async(operation:any)=>{inTransaction=true;try{return await original(operation)}finally{inTransaction=false}});

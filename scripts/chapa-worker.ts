@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import {setTimeout as delay} from 'node:timers/promises';
 import {chapaWorkerConfiguration} from '../src/modules/payments/chapa-readiness';
 import {installTelegramRateLimit} from '../src/modules/notifications/telegram-rate';
 const configuration=chapaWorkerConfiguration(process.env);
@@ -15,14 +16,53 @@ const {expireDepositBonusLots}=await import('../src/modules/wallet/deposit-bonus
 let receiptBot:InstanceType<typeof Bot>|null=null;
 try{if(process.env.TELEGRAM_BOT_TOKEN){const candidate=new Bot(process.env.TELEGRAM_BOT_TOKEN,{client:{timeoutSeconds:15}});installTelegramRateLimit(candidate.api,db,process.env.TELEGRAM_BOT_TOKEN);receiptBot=candidate}}catch{console.error('chapa_receipt_rate_configuration_invalid')}
 console.info('chapa_receipt_delivery_configuration',{enabled:!!receiptBot});
-let stopped=false;process.on('SIGTERM',()=>{stopped=true});process.on('SIGINT',()=>{stopped=true});
-let nextBonusExpiry=0;
-try{
- while(!stopped){
-  try{const result=await processChapaEvents(db);if(result.checked)console.info('chapa_events',result);if(configuration.v2RecoveryEnabled){const inline=await reconcileInlineCheckouts(db);if(inline.checked)console.info('chapa_inline_reconciliation',inline);const direct=await reconcileDirectCheckouts(db);if(direct.checked)console.info('chapa_direct_reconciliation',direct)}if(configuration.v1RecoveryEnabled||configuration.v2RecoveryEnabled&&configuration.legacySweepEnabled){const legacy=await recoverChapaCheckouts(db);if(legacy.checked)console.info('chapa_legacy_recovery',legacy)}}catch{console.error('chapa_event_processing_unavailable')}
-  let dispatched=false;
-  if(!stopped&&receiptBot)try{dispatched=await dispatchOne(db,receiptBot,{kind:chapaReceiptKind});if(dispatched)console.info('chapa_receipt_dispatched')}catch{console.error('chapa_receipt_delivery_unavailable')}
-  if(!stopped&&Date.now()>=nextBonusExpiry){nextBonusExpiry=Date.now()+30000;try{const expired=await expireDepositBonusLots(db,20);if(expired.expired)console.info('deposit_bonus_expiry',expired)}catch{console.error('deposit_bonus_expiry_unavailable')}}
-  await new Promise(resolve=>setTimeout(resolve,dispatched?100:2000));
+const shutdown=new AbortController();
+process.on('SIGTERM',()=>shutdown.abort());
+process.on('SIGINT',()=>shutdown.abort());
+const running=()=>!shutdown.signal.aborted;
+
+async function runLoop(work:()=>Promise<void|boolean>,errorEvent:string,idleMs:number,activeMs=idleMs){
+ while(running()){
+  let worked:void|boolean=undefined;
+  try{worked=await work()}catch{console.error(errorEvent)}
+  if(running()){
+   try{await delay(worked?activeMs:idleMs,undefined,{signal:shutdown.signal})}
+   catch(error){if(running())throw error}
+  }
  }
+}
+
+async function reconcilePayments(){
+ const events=await processChapaEvents(db);
+ if(events.checked)console.info('chapa_events',events);
+ if(running()&&configuration.v2RecoveryEnabled){
+  const direct=await reconcileDirectCheckouts(db);
+  if(direct.checked)console.info('chapa_direct_reconciliation',direct);
+ }
+ if(running()&&configuration.v2RecoveryEnabled){
+  const inline=await reconcileInlineCheckouts(db);
+  if(inline.checked)console.info('chapa_inline_reconciliation',inline);
+ }
+ if(running()&&(configuration.v1RecoveryEnabled||configuration.v2RecoveryEnabled&&configuration.legacySweepEnabled)){
+  const legacy=await recoverChapaCheckouts(db);
+  if(legacy.checked)console.info('chapa_legacy_recovery',legacy);
+ }
+}
+
+try{
+ // Receipt delivery may wait for Telegram or its rate limiter. Keep provider
+ // checks running on their own cadence with one provider reconciliation loop.
+ const bot=receiptBot;
+ await Promise.all([
+  runLoop(reconcilePayments,'chapa_event_processing_unavailable',2000),
+  ...(bot?[runLoop(async()=>{
+   const dispatched=await dispatchOne(db,bot,{kind:chapaReceiptKind});
+   if(dispatched)console.info('chapa_receipt_dispatched');
+   return dispatched;
+  },'chapa_receipt_delivery_unavailable',2000,100)]:[]),
+  runLoop(async()=>{
+   const expired=await expireDepositBonusLots(db,20);
+   if(expired.expired)console.info('deposit_bonus_expiry',expired);
+  },'deposit_bonus_expiry_unavailable',30000),
+ ]);
 }finally{await db.$disconnect()}

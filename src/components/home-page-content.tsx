@@ -25,7 +25,7 @@ import {MiniRouteSkeleton} from './mini-route-skeleton';
 import styles from './home-banner.module.css';
 
 type Shell={managed:Awaited<ReturnType<typeof publicHomeContent>>;experience:Awaited<ReturnType<typeof publicHomeExperience>>;media:ReturnType<typeof resolveLearnMoreMedia>;serverNow:string};
-export type HomeData=Shell&{categories:Awaited<ReturnType<typeof listCategories>>;auctions:Awaited<ReturnType<typeof listAuctions>>;winners:WinnersData};
+export type HomeData=Shell&{categories:Awaited<ReturnType<typeof listCategories>>;auctions:Awaited<ReturnType<typeof listAuctions>>};
 type StreamedHome={initial?:HomeData;error?:boolean;auctionHref?:string};
 const HomeDataContext=createContext<((data:StreamedHome)=>void)|null>(null);
 /** Server data updates the mounted Home, keeping open header sheets and focus. */
@@ -41,17 +41,17 @@ export function HomePageContent({query:seedQuery,children}:{query:CatalogQuery;c
  useEffect(()=>{if(!initial)return;const saved=client.getQueryData<Shell>(key);if(!saved||Date.parse(saved.serverNow)<Date.parse(initial.serverNow))client.setQueryData<Shell>(key,{managed:initial.managed,experience:initial.experience,media:initial.media,serverNow:initial.serverNow})},[initial,client,key.join('|')]);
  const categories=initial?.categories??readPublicQuery<HomeData['categories']>('/api/catalog/categories')?.value;
  const auctions=(homeAuctionHref(query)===(auctionHref??homeAuctionHref(seedQuery))?initial?.auctions:undefined)??readPublicQuery<HomeData['auctions']>(catalogBatchUrl(query,1))?.value;
- const winners=initial?.winners??readPublicQuery<WinnersData>(recentWinnersQueryUrl())?.value;
+ const winners=readPublicQuery<WinnersData>(recentWinnersQueryUrl())?.value;
  const view=initial??shell.data;
  useEffect(()=>{if(initial)seedPublicQuery('/api/catalog/categories',initial.categories)},[initial]);
  const content=<HomePageSections view={view} categories={categories} auctions={auctions} winners={winners} query={query} error={!!error} onRetry={()=>router.refresh()}/>;
- return <><div className="home-header-slot" hidden={(!view||!categories||!winners)&&!error}><MiniHeader/></div>{content}<HomeDataContext.Provider value={setStreamed}>{children}</HomeDataContext.Provider></>;
+ return <><div className="home-header-slot" hidden={(!view||!categories)&&!error}><MiniHeader/></div>{content}<HomeDataContext.Provider value={setStreamed}>{children}</HomeDataContext.Provider></>;
 }
 
 /** The public shell remains useful during an outage. Missing resources are
  * unavailable, never empty results; only successful server data enters caches. */
 export function HomePageSections({view,categories,auctions,winners,query,error,onRetry}:{view?:Shell;categories?:HomeData['categories'];auctions?:HomeData['auctions'];winners?:WinnersData;query:CatalogQuery;error:boolean;onRetry:()=>void}){
- if((!view||!categories||!winners)&&!error)return <MiniRouteSkeleton path="/"/>;
+ if((!view||!categories)&&!error)return <MiniRouteSkeleton path="/"/>;
  return <><OfflineRetry/>{error&&<div role="status" className={styles.homeNotice}><p><MiniPhrase en="Home could not refresh. Please try again." am="መነሻውን ማደስ አልተቻለም። እንደገና ይሞክሩ።"/></p><HomeRetry onRetry={onRetry}/></div>}
   <HomeHero copy={resolveHomeCopy(view?.managed??null)} media={view?.media??null} experience={view?.experience??null}/>
   {categories&&<HomeCategories categories={categories} query={query} home/>}

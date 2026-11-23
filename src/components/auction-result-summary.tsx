@@ -2,6 +2,7 @@
 import {Phone} from 'lucide-react';
 import type {CatalogAuction} from '@/modules/auctions/catalog';
 import {formatAuctionBid} from '@/lib/money';
+import {maskPhoneDisplay} from '@/lib/phone-mask';
 import {winnerResultExplanation} from '@/lib/winner-result-copy';
 import {MiniPhrase,useMiniLocale} from './mini-locale';
 import styles from './auction-result-summary.module.css';
@@ -11,6 +12,7 @@ export function AuctionResultSummary({auction,compact=false}:{auction:CatalogAuc
  const {result}=auction;
  if(!result)return null;
  const winner=result.outcome==='WINNER';
+ const phone=maskPhoneDisplay(result.winnerPhoneMasked);
  const identity=result.winnerDisplay||result.winnerUsername;
  const winnerName=identity||(result.source==='ILLUSTRATIVE'?<MiniPhrase en="Illustrative winner" am="የሙከራ አሸናፊ"/>:<MiniPhrase en="Confirmed winner" am="የተረጋገጠ አሸናፊ"/>);
  const Name=compact?'h2':'strong';
@@ -21,7 +23,7 @@ export function AuctionResultSummary({auction,compact=false}:{auction:CatalogAuc
     <small><MiniPhrase en="Winner" am="አሸናፊ"/></small>
     <Name>{winnerName}</Name>
     {result.winnerUsername&&result.winnerDisplay&&<span>{result.winnerUsername}</span>}
-    {result.winnerPhoneMasked&&<span className={styles.phone}><Phone size={12} aria-hidden="true"/>{result.winnerPhoneMasked}</span>}
+    {phone&&<span className={styles.phone}><Phone size={12} aria-hidden="true"/><span dir="ltr">{phone}</span></span>}
    </>:compact?<Name>{result.outcome==='NO_WINNER'?<MiniPhrase en="No winner" am="አሸናፊ የለም"/>:<MiniPhrase en="Auction cancelled" am="ጨረታው ተሰርዟል"/>}</Name>:<small><MiniPhrase en="Auction completed" am="ጨረታው ተጠናቋል"/></small>}
   </div>
   {(!compact||!winner)&&<p className={styles.selection}>{winnerResultExplanation(result,am)}</p>}

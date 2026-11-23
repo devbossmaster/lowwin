@@ -112,7 +112,7 @@ test.describe('winner Mini App deep links',()=>{
  test('shows compact closed details, more chances and private participant rows',async({page},info)=>{
   const tail='Includes a USB-C charging cable.';
   const amTail='የዩኤስቢ ገመድ ተካቷል።';
-  const more=await bidAuction(db,{fee:50,isDemo:false,ruleVersion:'lowest-unique-v5',endDelayMs:3600000});
+  const more=await bidAuction(db,{fee:50,isDemo:false,ruleVersion:'lowest-unique-v5',endDelayMs:300000});
   const relatedTitle=`Related live auction ${more.publicCode}`,relatedTitleAm=`ተጨማሪ ክፍት ጨረታ ${more.publicCode}`;
   try{
    await db.product.update({where:{id:result.auction.productId!},data:{description:'A portable power bank that charges everyday devices. '.repeat(4)+tail,descriptionAm:'የዕለት ተዕለት መሣሪያዎችን የሚሞላ ተንቀሳቃሽ የኃይል ባንክ። '.repeat(4)+amTail}});

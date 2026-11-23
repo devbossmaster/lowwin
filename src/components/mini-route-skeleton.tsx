@@ -76,6 +76,13 @@ export function MiniRouteSkeleton({path,variant,compact=false}:{path?:string;var
 }
 export function CatalogSkeleton(){return <MiniRouteSkeleton variant="catalog" compact/>}
 export function MiniInlineSkeleton(){return <MiniRouteSkeleton compact/>}
+export function ResultRowsSkeleton({participants=false}:{participants?:boolean}={}){
+ const {language}=useMiniLocale();
+ return <div className={`${styles.root} ${styles.compact}`} data-result-skeleton={participants?'participants':'numbers'} role="status" aria-busy="true">
+  <span className="sr-only">{participants?(language==='am'?'ተሳታፊዎችን በመጫን ላይ…':'Loading participants…'):(language==='am'?'የጨረታ ቁጥሮችን በመጫን ላይ…':'Loading bid numbers…')}</span>
+  <div aria-hidden="true"><Rows count={4}/></div>
+ </div>;
+}
 /** The bids page already keeps its summary and filters mounted while reading. */
 export function MiniBidRowsSkeleton(){const {language}=useMiniLocale();return <div className={`${styles.root} ${styles.compact}`} data-route-skeleton="bids" role="status" aria-busy="true"><span className="sr-only">{language==='am'?'ጨረታዎችዎን በመጫን ላይ…':'Loading your bids…'}</span><div aria-hidden="true"><Rows kind="bid"/></div></div>}
 /** Modal sections retain a compact spinner rather than a full route skeleton. */

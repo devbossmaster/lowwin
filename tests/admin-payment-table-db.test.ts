@@ -12,7 +12,7 @@ import {readChapaTable} from '../src/modules/admin/master-table-read';
 
 const database=process.env.ADMIN_PAYMENT_TABLE_TEST_DATABASE_URL??process.env.TEST_DATABASE_URL;
 describe.skipIf(!database)('combined admin payments on isolated PostgreSQL',()=>{
- let db:PrismaClient,userId:string,queryName:string,walletBidId:string,chapaBidId:string,couponBidId:string;
+ let db:PrismaClient,userId:string,queryName:string,walletBidId:string,chapaBidId:string,couponBidId:string,failedPaymentId:string;
  const actor={id:'isolated-payment-auditor',role:'OWNER' as const,now:new Date()},base={page:1,q:'',status:'',sort:'newest' as const};
  beforeAll(async()=>{
   const target=new URL(database!);if(!['localhost','127.0.0.1'].includes(target.hostname)||!target.pathname.endsWith('_test'))throw Error('Disposable loopback admin payment database required');
@@ -39,7 +39,7 @@ describe.skipIf(!database)('combined admin payments on isolated PostgreSQL',()=>
    return verifyChapaCheckout(db,order.id,userId,undefined,transport);
   }
   const paidBid=await chapa('BID');chapaBidId=(await db.chapaCheckout.findUniqueOrThrow({where:{id:paidBid.id},select:{bidId:true}})).bidId!;
-  await chapa('TOP_UP');await chapa('TOP_UP','PENDING');await chapa('TOP_UP','FAILED');
+  await chapa('TOP_UP');await chapa('TOP_UP','PENDING');failedPaymentId=(await chapa('TOP_UP','FAILED')).id;
  },60000);
  afterAll(async()=>{await db?.$disconnect();const shared=await import('../src/lib/db');await shared.db.$disconnect()});
  it('globally paginates wallet fees and Chapa payments without duplicating a Chapa-funded bid',async()=>{
@@ -67,5 +67,11 @@ describe.skipIf(!database)('combined admin payments on isolated PostgreSQL',()=>
   const scoped=await readChapaTable(db,actor,{...base,q:walletBidId});
   vi.stubEnv('CHAPA_SCHEMA_READY','false');
   try{const result=await readChapaTable(db,actor,{...base,q:walletBidId});expect(result.chapaConfigured).toBe(false);expect(result.items[0]).toMatchObject({id:scoped.items[0].id,provider:'Wallet',amount:'50'})}finally{vi.unstubAllEnvs()}
+ });
+ it('keeps a previously failed payment under review when it gets a new completion signal',async()=>{
+  await db.chapaCheckout.update({where:{id:failedPaymentId},data:{verificationCompletionStatus:'SUCCESS',verificationSignalVersion:{increment:1}}});
+  expect((await readChapaTable(db,actor,{...base,view:'failed'})).items).toEqual([]);
+  const all=await readChapaTable(db,actor,{...base,view:'all',q:failedPaymentId});
+  expect(all.items).toEqual([expect.objectContaining({id:failedPaymentId,creditApplied:false,completionSignalPending:true})]);
  });
 });

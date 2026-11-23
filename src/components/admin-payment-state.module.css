@@ -1,0 +1,5 @@
+.line{min-width:48px;height:14px;border-radius:5px}
+.details{padding:14px 0}
+.details .line{height:18px;margin-bottom:20px}
+.details .line:nth-child(even){width:75%}
+@media(prefers-reduced-motion:reduce){.line{animation:none}}

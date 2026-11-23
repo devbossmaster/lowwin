@@ -15,16 +15,15 @@ import {readPublicQuery,seedPublicQuery} from './public-query-cache';
 export type WinnersData=Awaited<ReturnType<typeof listCompletedWinners>>&{allowDemo:boolean};
 export function WinnersListLoading(){return <MiniRouteSkeleton variant="winners" compact/>}
 export function WinnersClientList({initial,carousel=false}:{initial?:WinnersData;carousel?:boolean}={}){
- const [savedPage,setPage]=useMiniPage(),page=carousel?1:savedPage,url=carousel?recentWinnersQueryUrl():winnersQueryUrl(page),policy=miniQueryPolicy(url),seed=initial?.page===page?initial:undefined;
+ const [savedPage,setPage]=useMiniPage(),page=carousel?1:savedPage,winnersUrl=winnersQueryUrl(page),url=carousel?recentWinnersQueryUrl():winnersUrl,policy=miniQueryPolicy(url),seed=initial?.page===page?initial:undefined;
  // Published results are historical display data. Home keeps its cards visible
  // and checks quietly on that existing policy, without recurring loading feedback.
  const publicQuery=usePublicQuery<WinnersData>(recentWinnersQueryUrl(),{enabled:carousel,keepPreviousData:true,initialData:carousel?seed:undefined,pollMs:carousel?policy.staleMs:0,freshnessMs:policy.staleMs});
  // Signed-in Home visitors reuse the private page-one winners cache. The
  // public cards render while this optional identity lookup is in flight.
- const privateQuery=usePrivateQuery<WinnersData>(winnersQueryUrl(page),{
+ const privateQuery=usePrivateQuery<WinnersData>(winnersUrl,{
   enabled:!carousel||!!publicQuery.data?.items.length,keepPreviousData:!carousel,
-  initialData:!carousel?seed:undefined,pollMs:carousel?policy.staleMs:30000,
-  freshnessMs:carousel?policy.staleMs:10000,
+  initialData:!carousel?seed:undefined,pollMs:policy.staleMs,
  });
  const query=carousel?publicQuery:privateQuery,data=query.data,busy=query.isPlaceholderData;
  const authenticatedWinners=carousel&&privateQuery.status==='authenticated'&&privateQuery.data?.page===1?privateQuery.data.items:[];

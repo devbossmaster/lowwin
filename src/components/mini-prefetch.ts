@@ -4,6 +4,7 @@ import {prefetchPublicQuery} from './public-query-cache';
 import {isPublicMiniPage,isPublicMiniRead} from '@/lib/mini-public-routes';
 import {myBidListView,myBidsQueryUrl} from './my-bids-list-copy';
 import {warmTopUpConfiguration} from './top-up-prefetch';
+import {winnersQueryUrl} from '@/lib/catalog-query';
 
 /** Shared metadata budget; no response payloads and no eager detail/participant reads. */
 export class IntentPrefetchBudget{
@@ -34,7 +35,7 @@ export function privateIntentDestination(target:string){
  }
  if(url.pathname==='/winners'){
   const raw=Number(url.searchParams.get('page')??1),page=Number.isSafeInteger(raw)&&raw>0?Math.min(raw,10000):1;
-  return `/api/results/winners?page=${page}`;
+  return winnersQueryUrl(page);
  }
  if(url.pathname==='/my-bids'){
   const raw=Number(url.searchParams.get('page')??1),page=Number.isSafeInteger(raw)&&raw>0?Math.min(raw,1000):1;

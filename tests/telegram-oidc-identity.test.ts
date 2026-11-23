@@ -107,7 +107,7 @@ describe.skipIf(!database)('LowWin identity policy for upstream verified Telegra
   await expect(prepare(claims)).rejects.toMatchObject({body:{code:'conflict'}});expect(await db.telegramOwnContact.count({where:{telegramId:String(claims.id)}})).toBe(0);expect(await db.account.count({where:{accountId:claims.sub}})).toBe(0);
  });
  it('rolls back every prepared identity write when the final account write fails',async()=>{
-  const claims=profile(),wrapped={$transaction:(task:(tx:Prisma.TransactionClient)=>Promise<unknown>,options:{maxWait:number;timeout:number})=>db.$transaction(async tx=>{
+  const claims=profile(),wrapped={$queryRaw:db.$queryRaw.bind(db),$transaction:(task:(tx:Prisma.TransactionClient)=>Promise<unknown>,options:{maxWait:number;timeout:number})=>db.$transaction(async tx=>{
    const account={...tx.account,createMany:async()=>{throw Error('synthetic-commit-failure')}};
    return task(new Proxy(tx,{get(target,key,receiver){return key==='account'?account:Reflect.get(target,key,receiver)}}));
   },options)} as unknown as PrismaClient;

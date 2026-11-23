@@ -1,6 +1,8 @@
 import {describe,expect,it,vi} from 'vitest';
 import {InputFile} from 'grammy';
+import sharp from 'sharp';
 import {sendBroadcastPhoto} from '../src/modules/notifications/broadcast-photo';
+import {notificationPhoto} from '../src/modules/notifications/service';
 import type {PrismaClient} from '@prisma/client';
 
 const result=(fileId='largest-file')=>({message_id:42,photo:[{file_id:'small-file'},{file_id:fileId}]});
@@ -28,6 +30,24 @@ describe('broadcast photo transport reuse',()=>{
   await sendBroadcastPhoto(api,'chat',photo,options('Second'),'image');
   await sendBroadcastPhoto(api,'chat',photo,options('Third'),'image');
   expect(sendPhoto.mock.calls.map(call=>call[1])).toEqual([photo,'old-file',photo,'new-file']);
+ });
+ it('retains portrait dimensions when a cached Telegram file is rejected and reuploaded',async()=>{
+  const bytes=await sharp({create:{width:540,height:900,channels:3,background:'#00179e'}}).png().toBuffer();
+  const findUnique=vi.fn(async()=>({bytes})),client={managedMedia:{findUnique}} as never;
+  const prepare=()=>notificationPhoto(client,'portrait-fixture');
+  const sendPhoto=vi.fn().mockResolvedValueOnce(result('old-portrait')).mockRejectedValueOnce({error_code:400}).mockResolvedValue(result('new-portrait'));
+  const api={sendPhoto} as never;
+  await sendBroadcastPhoto(api,'one',prepare,options('First'),'portrait-fixture');
+  await sendBroadcastPhoto(api,'two',prepare,options('Retry'),'portrait-fixture');
+  const [original,cached,retry]=sendPhoto.mock.calls.map(call=>call[1]);
+  expect(cached).toBe('old-portrait');
+  for(const file of [original,retry]){
+   expect(file).toBeInstanceOf(InputFile);
+   const raw=await (file as InputFile).toRaw();
+   if(!(raw instanceof Uint8Array))throw Error('Expected an uploaded portrait buffer.');
+   expect(await sharp(raw).metadata()).toMatchObject({width:540,height:900});
+  }
+  expect(findUnique).toHaveBeenCalledTimes(1);
  });
  it.each([429,403,undefined])('preserves dispatcher backoff and terminal handling for %s without an immediate retry',async code=>{
   const error=code?{error_code:code,parameters:{retry_after:9}}:new Error('Network unavailable');

@@ -7,6 +7,7 @@ export const MINI_QUERY_POLICIES={
  paymentConfiguration:{staleMs:60000,retainMs:300000,refreshOnResume:false},
  wallet:{staleMs:5000,retainMs:60000,refreshOnResume:true},
  transactions:{staleMs:30000,retainMs:600000,refreshOnResume:false},
+ winners:{staleMs:30000,retainMs:1800000,refreshOnResume:false},
  bids:{staleMs:15000,retainMs:300000,refreshOnResume:true},
  private:{staleMs:30000,retainMs:600000,refreshOnResume:false},
 } as const;
@@ -16,6 +17,7 @@ export function miniQueryPolicy(url:string){
  if(path==='/api/transactions'||path==='/api/payments/chapa/checkouts')return MINI_QUERY_POLICIES.transactions;
  if(path==='/api/my-bids'&&['finished','history'].includes(new URL(url,'https://lowwin.invalid').searchParams.get('view')??''))return MINI_QUERY_POLICIES.historical;
  if(path.startsWith('/api/wallet')||path.startsWith('/api/payments/'))return MINI_QUERY_POLICIES.wallet;
+ if(path==='/api/results/winners')return MINI_QUERY_POLICIES.winners;
  if(path.startsWith('/api/results/'))return MINI_QUERY_POLICIES.historical;
  if(path.startsWith('/api/auctions/')||path==='/api/my-bids')return MINI_QUERY_POLICIES.bids;
  if(path.startsWith('/api/catalog/auctions/'))return MINI_QUERY_POLICIES.detail;

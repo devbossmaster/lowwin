@@ -2,13 +2,13 @@
 import type {readWalletBidPayment} from '@/modules/admin/wallet-bid-payment';
 import {formatEtb} from '@/lib/money';
 import {centsToEtb,eat,ErrorNotice,Status,useAdminRead} from './admin-ui';
-import {LoadingSpinner} from './loading-spinner';
+import {AdminPaymentSkeleton} from './admin-payment-state';
 
 export function AdminWalletBidPayment({id}:{id:string}){
  const query=useAdminRead<Awaited<ReturnType<typeof readWalletBidPayment>>>('payments/wallet-bids/'+encodeURIComponent(id)),item=query.data?.item;
  return <div className="admin-direct-payments">
   <ErrorNotice error={query.error} retry={query.reload}/>
-  {!item&&query.loading&&<LoadingSpinner label="Loading wallet payment details…"/>}
+  {!item&&query.loading&&<AdminPaymentSkeleton/>}
   {item&&<>
    <div className="master-payment-heading"><strong>{formatEtb(centsToEtb(item.amountCents))}</strong><Status value={item.status}/></div>
    <dl className="admin-facts">

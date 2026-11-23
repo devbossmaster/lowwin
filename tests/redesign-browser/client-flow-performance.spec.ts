@@ -7,6 +7,7 @@ import {verifyFixtureContact} from '../contact-fixtures';
 import {contactBotId,decryptPhone} from '../../src/modules/auth/own-contact';
 import {signedLaunch,ENGLISH_UI_STATE} from '../helpers';
 import {richFinalResult} from '../result-fixtures';
+import {miniQueryPolicy} from '../../src/components/mini-query-policy';
 
 test('focused first/repeat sheet and navigation request measurements',async({browser,extraHTTPHeaders},info)=>{
  test.setTimeout(480000);
@@ -69,7 +70,10 @@ test('focused first/repeat sheet and navigation request measurements',async({bro
     const link=nav.getByRole('link',{name:destination==='Profile'?'Me':destination,exact:true}),intentStart=requests.length;await link.hover();await page.waitForTimeout(120);const intent=counts(requests.slice(intentStart)),index=requests.length,began=performance.now();await link.click();
     if(destination==='Home')await page.locator('#home-headline').waitFor({state:'attached'});else await expect(page.getByRole('heading',{name:destination,exact:true}).first()).toBeVisible();const visibleMs=Math.round(performance.now()-began);await expect(page.locator('.customer-loading')).toHaveCount(0);if(phase!=='before'&&destination==='Winners')await expect(page.locator('[data-winners-ready="true"]')).toBeVisible();await page.waitForTimeout(150);const completeDataMs=Math.round(performance.now()-began);const navigationReads=counts(requests.slice(index));routes.push({round,destination,visibleMs,completeDataMs,intent,...navigationReads});
     if(phase!=='before'&&destination==='Winners'){
-     const dedicated=requests.slice(intentStart).filter(row=>row.path.startsWith('/api/results/winners')&&row.method==='GET');expect(dedicated).toHaveLength(round===1?1:0);for(const row of dedicated){expect(row.status).toBe(200);expect(row.cacheControl).toContain('private');expect(row.cacheControl).toContain('no-store')}
+     const dedicated=requests.slice(intentStart).filter(row=>row.path.startsWith('/api/results/winners')&&row.method==='GET');
+     const previous=requests.slice(0,intentStart).reverse().find(row=>row.path==='/api/results/winners?page=1'&&row.method==='GET'&&row.status===200&&row.durationMs!==undefined);
+     const stillFresh=previous&&performance.now()-started-previous.startedMs-previous.durationMs!<miniQueryPolicy(previous.path).staleMs;
+     expect(dedicated.length).toBeLessThanOrEqual(stillFresh?0:1);for(const row of dedicated){expect(row.status).toBe(200);expect(row.cacheControl).toContain('private');expect(row.cacheControl).toContain('no-store')}
      expect(await page.locator('[data-winners-ready="true"]').textContent()).not.toContain(marker);if(!slow&&round===1)await page.screenshot({path:`${root}/after-winners-${info.project.name}-en.png`});
     }
     if(destination==='My Bids'){const groups=page.locator('[data-bid-auction]');if(await groups.count()){const detailIndex=requests.length,detailBegan=performance.now();await groups.first().getByRole('button',{name:/^Open auction:/}).click();const detail=page.getByRole('dialog',{name:'Place your bid',exact:true});await expect(detail).toBeVisible();routes.push({round,destination:'My Bids detail',visibleMs:Math.round(performance.now()-detailBegan),...counts(requests.slice(detailIndex))});await page.keyboard.press('Escape');await expect(detail).toHaveCount(0)}}

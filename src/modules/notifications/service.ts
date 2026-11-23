@@ -6,6 +6,7 @@ import {resolve} from 'node:path';
 import sharp from 'sharp';
 import {notificationRetired,endingReminders,upcomingReminders} from './policy';
 import {privateNotificationContent} from './private-content';
+import {telegramPhotoFrame} from './telegram-photo-frame';
 type DB=Prisma.TransactionClient;
 const notificationImage=resolve('public/notification.png');
 const composedPhotos=new Map<string,Promise<Buffer|null>>();
@@ -16,27 +17,26 @@ export function telegramCampaignText(kind:string,title:string,body:string,name?:
  return `${greeting}${title}\n\n${body}`;
 }
 
-export async function notificationPhoto(tx:DB,imageId:string|undefined,origin:string,imagePath=notificationImage){
- const custom=imageId?new URL(`/api/media/${imageId}`,origin).href:null;
- if(!existsSync(imagePath))return custom;
- if(!imageId)return new InputFile(imagePath);
- const cacheKey=`${imagePath}:${imageId}:${statSync(imagePath).mtimeMs}`;
+export async function notificationPhoto(tx:DB,imageId:string|undefined,imagePath=notificationImage){
+ const hasBadge=existsSync(imagePath);
+ if(!imageId)return hasBadge?new InputFile(imagePath):null;
+ const cacheKey=`${imagePath}:${imageId}:${hasBadge?statSync(imagePath).mtimeMs:'no-badge'}`;
  let pending=composedPhotos.get(cacheKey);
  if(!pending){
   pending=(async()=>{
   const media=await tx.managedMedia.findUnique({where:{id:imageId},select:{bytes:true}});
   if(!media)return null;
-  const base=await sharp(Buffer.from(media.bytes)).resize(900,900,{fit:'inside',withoutEnlargement:true}).png().toBuffer();
-  const {width=900,height=900}=await sharp(base).metadata();
-  const badge=await sharp(imagePath).resize({width:Math.max(72,Math.round(width*0.2)),height:Math.max(72,Math.round(height*0.2)),fit:'inside'}).png().toBuffer();
-  const size=await sharp(badge).metadata();
-  return sharp(base).composite([{input:badge,left:Math.max(0,width-(size.width??0)-12),top:Math.max(0,height-(size.height??0)-12)}]).png().toBuffer();
+  const frame=await telegramPhotoFrame(sharp(Buffer.from(media.bytes),{limitInputPixels:16_000_000}).rotate().resize(900,900,{fit:'inside',withoutEnlargement:true}).png());
+  if(!hasBadge)return frame.data;
+  const {width,height}=frame.info;
+  const badge=await sharp(imagePath).resize({width:Math.min(width,Math.max(72,Math.round(width*0.2))),height:Math.min(height,Math.max(72,Math.round(height*0.2))),fit:'inside'}).png().toBuffer({resolveWithObject:true});
+  return sharp(frame.data).composite([{input:badge.data,left:Math.max(0,width-badge.info.width-12),top:Math.max(0,height-badge.info.height-12)}]).png().toBuffer();
   })();
   if(composedPhotos.size>=10)composedPhotos.clear();
   composedPhotos.set(cacheKey,pending);
  }
  let photo:Buffer|null;try{photo=await pending}catch(error){composedPhotos.delete(cacheKey);throw error}
- if(!photo){composedPhotos.delete(cacheKey);return new InputFile(imagePath)}
+ if(!photo){composedPhotos.delete(cacheKey);return null}
  return new InputFile(photo,'notification.png');
 }
 export async function notificationContent(tx:DB,row:Pick<Outbox,'kind'|'payload'>&Partial<Pick<Outbox,'key'>>){

@@ -73,6 +73,20 @@ describe.skipIf(!database)('shared Better Auth Telegram browser and Mini App int
   const contact=await db.telegramOwnContact.findUniqueOrThrow({where:{userId:current!.user.id}});expect(contact.verificationSource).toBe('TELEGRAM_OIDC');expect(contact.oidcSubject).toBe(f.claims.sub);expect(contact.phoneCipher).not.toContain(f.claims.phone_number);
   const account=await db.account.findUniqueOrThrow({where:{providerId_accountId:{providerId:'telegram-oidc',accountId:f.claims.sub}}});expect(account.userId).toBe(current!.user.id);expect(account.accessToken).toBeNull();expect(account.idToken).toBeNull();expect((await db.user.findUniqueOrThrow({where:{id:current!.user.id}})).telegramPhoneNumber).toBeNull();
  });
+ it('reuses a fully bound account with one identity lookup on a returning callback',async()=>{
+  const first=await flow(),initialResponse=await first.finish();
+  const account=await getMiniSession(cookie(initialResponse),db);
+  const returning=await flow({id:first.claims.id,sub:first.claims.sub,phone_number_verified:false});
+  const response=await returning.finish(),restored=await getMiniSession(cookie(response),db);
+  expect(account?.user.id).toBeTruthy();
+  expect(restored?.user.id).toBe(account?.user.id);
+  expect(restored?.session.id).not.toBe(account?.session.id);
+  expect(initialResponse.headers.get('server-timing')).toContain('oidc_transaction;dur=');
+  const timing=response.headers.get('server-timing');
+  expect(timing).toContain('oidc_bound_lookup;dur=');
+  expect(timing).toContain('oidc_session;dur=');
+  expect(timing).not.toMatch(/oidc_transaction;|oidc_locks;|oidc_bindings;/);
+ });
  it('inserts a fully bound Telegram session before any cookie can be issued',async()=>{
   await db.$executeRaw`CREATE FUNCTION require_bound_telegram_test_session() RETURNS trigger LANGUAGE plpgsql AS $$
    BEGIN
@@ -82,7 +96,11 @@ describe.skipIf(!database)('shared Better Auth Telegram browser and Mini App int
   await db.$executeRaw`CREATE TRIGGER require_bound_telegram_test_session BEFORE INSERT ON "session" FOR EACH ROW EXECUTE FUNCTION require_bound_telegram_test_session()`;
   try{
    const f=await flow(),response=await f.finish();
-   expect((await getMiniSession(cookie(response),db))?.telegramId).toBe(String(f.claims.id));
+   const account=await getMiniSession(cookie(response),db);
+   expect(account?.telegramId).toBe(String(f.claims.id));
+   const returning=await flow({id:f.claims.id,sub:f.claims.sub,phone_number_verified:false}),resumed=await returning.finish();
+   expect(resumed.headers.get('server-timing')).not.toContain('oidc_transaction;');
+   expect((await getMiniSession(cookie(resumed),db))?.user.id).toBe(account?.user.id);
   }finally{
    await db.$executeRaw`DROP TRIGGER require_bound_telegram_test_session ON "session"`;
    await db.$executeRaw`DROP FUNCTION require_bound_telegram_test_session()`;

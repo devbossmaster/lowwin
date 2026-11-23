@@ -34,6 +34,38 @@ function profileName(claims:VerifiedTelegramOIDCProfile){
  return supplied.replace(/[\u0000-\u001f\u007f]/g,'').trim().slice(0,200)||'LowWin player';
 }
 
+async function readOIDCIdentity(client:Prisma.TransactionClient,telegramId:string,botId:string,subject:string){
+ const [row]=await client.$queryRaw<Array<{
+  userId:string|null;role:string|null;staffId:string|null;userContactId:string|null;
+  canonicalId:string|null;canonicalUserId:string|null;canonicalTelegramId:string|null;
+  oidcId:string|null;oidcUserId:string|null;oidcTelegramId:string|null;
+  legacyId:string|null;legacyUserId:string|null;legacyTelegramId:string|null;
+  contactId:string|null;contactUserId:string|null;revokedAt:Date|null;
+ }>>`SELECT u.id AS "userId",u.role,m."userId" AS "staffId",uc.id AS "userContactId",
+  a.id AS "canonicalId",a."userId" AS "canonicalUserId",a."telegramId" AS "canonicalTelegramId",
+  o.id AS "oidcId",o."userId" AS "oidcUserId",o."telegramId" AS "oidcTelegramId",
+  l.id AS "legacyId",l."userId" AS "legacyUserId",l."telegramId" AS "legacyTelegramId",
+  c.id AS "contactId",c."userId" AS "contactUserId",c."revokedAt"
+  FROM (SELECT 1) seed LEFT JOIN "user" u ON u."telegramId"=${telegramId}
+  LEFT JOIN "StaffMember" m ON m."userId"=u.id
+  LEFT JOIN "TelegramOwnContact" uc ON uc."userId"=u.id
+  LEFT JOIN "account" a ON a."providerId"='telegram' AND a."accountId"=${telegramId}
+  LEFT JOIN "account" o ON o."providerId"='telegram-oidc' AND o."accountId"=${subject}
+  LEFT JOIN "account" l ON l."providerId"='telegram-oidc' AND l."accountId"=${`${botId}:${subject}`}
+  LEFT JOIN "TelegramOwnContact" c ON c."botId"=${botId} AND c."telegramId"=${telegramId}`;
+ if(!row)reject('invalid');
+ const existing=row.userId?{id:row.userId}:null;
+ const canonical=row.canonicalId?{userId:row.canonicalUserId,telegramId:row.canonicalTelegramId}:null;
+ const oidc=row.oidcId?{userId:row.oidcUserId,telegramId:row.oidcTelegramId}:null;
+ const legacy=row.legacyId?{userId:row.legacyUserId,telegramId:row.legacyTelegramId}:null;
+ const contact=row.contactId?{id:row.contactId,userId:row.contactUserId,revokedAt:row.revokedAt}:null;
+ const accountConflict=[canonical,oidc,legacy].some(account=>account&&(account.userId!==existing?.id||account.telegramId!==null&&account.telegramId!==telegramId));
+ const conflicting=Boolean(accountConflict
+  ||existing&&(row.role!=='member'||row.staffId||row.userContactId&&row.userContactId!==contact?.id)
+  ||contact&&(contact.revokedAt||contact.userId&&contact.userId!==existing?.id));
+ return {existing,canonical,oidc,contact,conflicting};
+}
+
 /** Prepare LowWin's canonical identity before upstream Better Auth looks up the
  * OIDC account. Its original `sub` is the upstream account key. An older
  * bot-prefixed binding is checked and retained without moving accounts.
@@ -43,6 +75,12 @@ function profileName(claims:VerifiedTelegramOIDCProfile){
 export async function prepareTelegramOIDCIdentity(claims:VerifiedTelegramOIDCProfile,settings:{clientId:string;websiteReferralCode?:string|null},client:PrismaClient=db):Promise<{name:string;image?:string}>{
  const telegramId=telegramIdentity(claims,settings.clientId),botId=settings.clientId;
  const name=profileName(claims),image=telegramPhotoUrl(claims.picture),username=typeof claims.preferred_username==='string'&&/^[A-Za-z0-9_]{1,64}$/.test(claims.preferred_username)?claims.preferred_username:null;
+ const profile={name,...(image?{image}:{})};
+ const current=await measureTelegramAuth('oidc_bound_lookup',()=>readOIDCIdentity(client,telegramId,botId,claims.sub));
+ // A fully bound identity needs no writes. Session creation independently
+ // rechecks the verified OIDC binding, contact and role before issuing a cookie.
+ if(!current.conflicting&&current.existing&&current.canonical&&current.oidc?.telegramId===telegramId&&current.contact?.userId===current.existing.id)return profile;
+
  let consentedPhone:string|null=null;
  if(claims.phone_number_verified===true&&typeof claims.phone_number==='string'){
   try{consentedPhone=normalizePhone(claims.phone_number)}catch{}
@@ -55,35 +93,8 @@ export async function prepareTelegramOIDCIdentity(claims:VerifiedTelegramOIDCPro
    WITH identity_lock AS MATERIALIZED (SELECT pg_advisory_xact_lock(hashtextextended(${`telegram:${telegramId}`},0))),
    contact_lock AS MATERIALIZED (SELECT pg_advisory_xact_lock(hashtextextended(${`own-contact:${botId}:${telegramId}`},0)) FROM identity_lock)
    SELECT pg_advisory_xact_lock(hashtextextended(${`telegram-oidc:${botId}:${claims.sub}`},0)) FROM contact_lock`);
-  const rows=await measureTelegramAuth('oidc_lookup',()=>tx.$queryRaw<Array<{
-   userId:string|null;role:string|null;staffId:string|null;userContactId:string|null;
-   canonicalId:string|null;canonicalUserId:string|null;canonicalTelegramId:string|null;
-   oidcId:string|null;oidcUserId:string|null;oidcTelegramId:string|null;
-   legacyId:string|null;legacyUserId:string|null;legacyTelegramId:string|null;
-   contactId:string|null;contactUserId:string|null;revokedAt:Date|null;
-  }>>`SELECT u.id AS "userId",u.role,m."userId" AS "staffId",uc.id AS "userContactId",
-   a.id AS "canonicalId",a."userId" AS "canonicalUserId",a."telegramId" AS "canonicalTelegramId",
-   o.id AS "oidcId",o."userId" AS "oidcUserId",o."telegramId" AS "oidcTelegramId",
-   l.id AS "legacyId",l."userId" AS "legacyUserId",l."telegramId" AS "legacyTelegramId",
-   c.id AS "contactId",c."userId" AS "contactUserId",c."revokedAt"
-   FROM (SELECT 1) seed LEFT JOIN "user" u ON u."telegramId"=${telegramId}
-   LEFT JOIN "StaffMember" m ON m."userId"=u.id
-   LEFT JOIN "TelegramOwnContact" uc ON uc."userId"=u.id
-   LEFT JOIN "account" a ON a."providerId"='telegram' AND a."accountId"=${telegramId}
-   LEFT JOIN "account" o ON o."providerId"='telegram-oidc' AND o."accountId"=${claims.sub}
-   LEFT JOIN "account" l ON l."providerId"='telegram-oidc' AND l."accountId"=${`${botId}:${claims.sub}`}
-   LEFT JOIN "TelegramOwnContact" c ON c."botId"=${botId} AND c."telegramId"=${telegramId}`);
-  const row=rows[0];if(!row)reject('invalid');
-  const existing=row.userId?{id:row.userId,role:row.role,staffMember:row.staffId,ownContact:row.userContactId?{id:row.userContactId}:null}:null;
-  const canonical=row.canonicalId?{id:row.canonicalId,userId:row.canonicalUserId,telegramId:row.canonicalTelegramId}:null;
-  const oidc=row.oidcId?{id:row.oidcId,userId:row.oidcUserId,telegramId:row.oidcTelegramId}:null;
-  const legacy=row.legacyId?{id:row.legacyId,userId:row.legacyUserId,telegramId:row.legacyTelegramId}:null;
-  const contact=row.contactId?{id:row.contactId,userId:row.contactUserId,revokedAt:row.revokedAt}:null;
-  if(existing&&(existing.role!=='member'||existing.staffMember)||existing?.ownContact&&existing.ownContact.id!==contact?.id)reject('conflict');
-  for(const account of [canonical,oidc,legacy]){
-   if(account&&(account.userId!==existing?.id||account.telegramId!==null&&account.telegramId!==telegramId))reject('conflict');
-  }
-  if(contact&&(contact.revokedAt||contact.userId&&contact.userId!==existing?.id))reject('conflict');
+  const {existing,canonical,oidc,contact,conflicting}=await measureTelegramAuth('oidc_lookup',()=>readOIDCIdentity(tx,telegramId,botId,claims.sub));
+  if(conflicting)reject('conflict');
   let protectedPhone:{phoneHash:string;phoneCipher:string;lastFour:string}|null=null;
   if(!contact){
    if(!consentedPhone){
@@ -107,5 +118,5 @@ export async function prepareTelegramOIDCIdentity(claims:VerifiedTelegramOIDCPro
   if(newAccounts.length)await measureTelegramAuth('oidc_bindings',()=>tx.account.createMany({data:newAccounts}));
   await attributeNewReferralInTransaction(tx,user.id,telegramId,{newAccount:!existing,websiteReferralCode:settings.websiteReferralCode});
  },{maxWait:10000,timeout:20000}));
- return {name,...(image?{image}:{})};
+ return profile;
 }
