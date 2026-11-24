@@ -6,6 +6,7 @@ import {AdminBroadcast,type BroadcastDraft} from './admin-broadcast';
 import {useAdminAccess} from './admin-shell';
 import {AdminHeading,Empty,ErrorNotice,Pagination,Status,eat,useAdminMutation,useAdminRead,useQueueParams} from './admin-ui';
 import {LoadingSpinner} from './loading-spinner';
+import {TELEGRAM_CHANNEL_BUTTON} from '@/lib/telegram-community';
 import styles from './admin-broadcast.module.css';
 
 type Campaign=BroadcastDraft&{createdAt:string;state:string;sent:number;pending:number;failed:number;skipped:number;canStop:boolean;canDelete?:boolean;parentCampaignId?:string|null;pendingBatches:number;failedBatches:number;recipientCount:number;eligibleRecipients?:number;audienceComplete?:boolean;queued?:number;retrying?:number;inFlight?:number;deletion?:{deleted:number;pending:number;failed:number;unavailable:number;preparing:boolean};failureReasons:{blocked:number;invalid:number;exhausted:number;other:number}};
@@ -23,6 +24,7 @@ function ConfirmBroadcast({value,busy,error,onNo,onYes}:{value:Confirmation;busy
  return <dialog ref={dialog} className={styles.confirmDialog} aria-labelledby={titleId} aria-describedby={descriptionId} onCancel={e=>{e.preventDefault();if(!busy)onNo()}}>
   <h2 id={titleId}>{title}</h2><p id={descriptionId}>{action==='resend'?'Yes queues a new campaign with this original image, message and button. Eligible recipients and linked auction availability are checked again.':action==='delete'?'Yes stops remaining sends and queues deletion of this campaign’s recorded messages. Telegram permits deletion within 48 hours; delivery history remains available.':'Yes stops remaining unsent messages. Messages already accepted by Telegram stay in delivery history.'}</p>
   {source&&<img src={source} alt="Original broadcast image"/>}<p className={styles.originalCaption}>{c.text}</p><p className={styles.help}>{c.buttonLabel??'Open Lowwin'} opens {c.miniAppPath??'/'}</p>
+  {action==='resend'&&<p className={styles.help} lang="am">{TELEGRAM_CHANNEL_BUTTON.text}</p>}
   <ErrorNotice error={error}/><div className="admin-actions"><button className={action==='delete'?'danger':undefined} disabled={busy} onClick={onYes}>{busy?'Queuing…':'Yes'}</button><button ref={cancel} className="secondary" disabled={busy} onClick={onNo}>No</button></div>
  </dialog>;
 }

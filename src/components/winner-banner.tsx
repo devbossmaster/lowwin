@@ -8,6 +8,10 @@ import {MiniPhrase,useMiniLocale} from './mini-locale';
 import styles from './winner-banner.module.css';
 
 type BannerAuction=Pick<CatalogAuction,'status'|'isDemo'|'product'|'result'|'terms'>;
+export function publishedWinnerBannerPath({status,isDemo,result}:Pick<BannerAuction,'status'|'isDemo'|'result'>){
+ const path=result?.winnerBannerPath;
+ return status==='closed'&&!isDemo&&result?.source==='SETTLED'&&result.outcome==='WINNER'&&typeof path==='string'&&/^\/api\/media\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(path)?path:null;
+}
 /** Display only finalized facts. Photo publication is separately authorized by
  * the server; the client never infers a winner from an elapsed auction timer. */
 export function winnerBannerData(auction:BannerAuction,am=false){
@@ -15,7 +19,7 @@ export function winnerBannerData(auction:BannerAuction,am=false){
  if(auction.status!=='closed'||auction.isDemo||result?.source!=='SETTLED'||result.outcome!=='WINNER'||result.winningPoints==null)return null;
  let value:string;try{if(etbToCents(result.winningPoints)<=0n)return null;value=formatAuctionBid(result.winningPoints,auction.terms.ruleVersion)}catch{return null}
  const photo='winnerPhotoPath' in result&&typeof result.winnerPhotoPath==='string'&&/^\/api\/media\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(result.winnerPhotoPath)?result.winnerPhotoPath:null;
- const banner='winnerBannerPath' in result&&typeof result.winnerBannerPath==='string'&&/^\/api\/media\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(result.winnerBannerPath)?result.winnerBannerPath:null;
+ const banner=publishedWinnerBannerPath(auction);
  return {title:am?auction.product.titleAm?.trim()||auction.product.title:auction.product.title,value,photo,banner,image:banner??photo??auction.product.images[0]?.path,number:isSubmissionFeeOnly(auction.terms.ruleVersion)};
 }
 

@@ -6,6 +6,7 @@ import {InputFile} from 'grammy';
 import sharp from 'sharp';
 import {randomUUID} from 'node:crypto';
 import {notificationDispatchFixture} from './notification-dispatch-fixture';
+import {TELEGRAM_CHANNEL_BUTTON} from '../src/lib/telegram-community';
 
 const now=new Date('2026-10-30T09:00:00Z'),imageId='11111111-2222-4333-8444-555555555555';
 const auction=(change:Record<string,unknown>={})=>({slug:'rugass-power-bank',publicCode:42,publishedAt:new Date(now.getTime()-60000),startsAt:new Date(now.getTime()+9*3600000),endsAt:new Date(now.getTime()+86400000),status:'SCHEDULED',isDemo:false,isSettlementFixture:false,testRunId:null,presentation:{title:'Rugass 20,000 mAh power bank',images:[{path:`/api/media/${imageId}`}]},product:{title:'Original product title',visible:true,images:[]},result:null,settlement:null,...change});
@@ -26,18 +27,19 @@ function fixture(item=auction()){
 }
 
 describe('concise auction Telegram messages',()=>{
- it('delivers the actual displayed product image, current countdown, Addis start time and one Mini App button',async()=>{
+ it('delivers the product image, Addis start time and both the auction and channel buttons',async()=>{
   const f=fixture();await dispatchOne(f.client,f.bot);
   expect(f.row.state).toBe('SENT');expect(f.sendMessage).not.toHaveBeenCalled();expect(f.tx.managedMedia.findUnique).toHaveBeenCalledWith({where:{id:imageId},select:{bytes:true}});
   expect(f.sendPhoto).toHaveBeenCalledWith('900000001',expect.any(InputFile),{
    caption:expect.stringMatching(/ጨረታው ሊጀምር 9 ሰዓታት ቀርቷል[\s\S]*21:00 \(አዲስ አበባ · GMT\+3\)/),
-   reply_markup:{inline_keyboard:[[{text:'ጨረታውን ይመልከቱ',web_app:{url:'https://lowwin.test/auctions/rugass-power-bank'}}]]},
+   reply_markup:{inline_keyboard:[[{text:'ጨረታውን ይመልከቱ',web_app:{url:'https://lowwin.test/auctions/rugass-power-bank'}}],[TELEGRAM_CHANNEL_BUTTON]]},
   });
  });
  it('sends text when no actual product image exists instead of the generic notification banner',async()=>{
   const f=fixture(auction({presentation:{title:'Rugass power bank'}}));await dispatchOne(f.client,f.bot);
   expect(f.sendPhoto).not.toHaveBeenCalled();expect(f.sendMessage).toHaveBeenCalledTimes(1);
   expect(f.sendMessage.mock.calls[0][1]).toContain('Rugass power bank');expect(f.sendMessage.mock.calls[0][1]).not.toContain('@LowWinChat');
+  expect(f.sendMessage.mock.calls[0][2]).toEqual({reply_markup:{inline_keyboard:[[{text:'ጨረታውን ይመልከቱ',web_app:{url:'https://lowwin.test/auctions/rugass-power-bank'}}],[TELEGRAM_CHANNEL_BUTTON]]}});
  });
  it('still delivers the auction text and button when the selected media was removed',async()=>{
   const f=fixture(auction({presentation:{title:'Missing image fixture',images:[{path:'/api/media/'+randomUUID()}]}}));f.tx.managedMedia.findUnique.mockResolvedValueOnce(null as never);
@@ -55,10 +57,11 @@ describe('concise auction Telegram messages',()=>{
   expect(sent[2].caption).not.toMatch(/0\.54|winner_user/);
   expect(await dispatchOne(f.client,f.bot)).toBe(false);expect(f.sendPhoto).toHaveBeenCalledOnce();
  });
- it('keeps the result text and exact button when its frozen product image cannot be decoded',async()=>{
+ it('preserves the result CTA and the channel button when the image cannot be decoded',async()=>{
   const productImage=randomUUID(),f=fixture(auction({presentation:{title:'Missing result image',images:[{path:'/api/media/'+productImage}]},status:'CLOSED',endsAt:new Date(now.getTime()-1000),settlement:{id:'settlement',outcome:'WINNER',decision:'LOWEST_UNIQUE',winningPoints:'0.54',winner:{name:'Player',ownContact:null},completedAt:new Date(now.getTime()-1000),publication:{publishedAt:now}}}));f.row.kind='AUCTION_ENDED';
   f.tx.managedMedia.findUnique.mockResolvedValueOnce({bytes:Buffer.from('corrupt-photo')});
-  await dispatchOne(f.client,f.bot);expect(f.row.state).toBe('SENT');expect(f.sendPhoto).not.toHaveBeenCalled();expect(f.sendMessage).toHaveBeenCalledOnce();expect(JSON.stringify(f.sendMessage.mock.calls[0][2])).toContain('/winners/42');
+  await dispatchOne(f.client,f.bot);expect(f.row.state).toBe('SENT');expect(f.sendPhoto).not.toHaveBeenCalled();expect(f.sendMessage).toHaveBeenCalledOnce();
+  expect(f.sendMessage.mock.calls[0][2]).toEqual({reply_markup:{inline_keyboard:[[{text:'ውጤቱን ይመልከቱ',web_app:{url:'https://lowwin.test/winners/42'}}],[TELEGRAM_CHANNEL_BUTTON]]}});
  });
  it.each([{publishedAt:null},{publishedAt:new Date(now.getTime()+1)},{testRunId:'private'},{product:{visible:false}},{isDemo:true}])('never delivers unavailable or nonpublic product content %j',async change=>{
   const f=fixture(auction(change));await dispatchOne(f.client,f.bot);

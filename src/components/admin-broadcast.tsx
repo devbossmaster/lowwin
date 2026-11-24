@@ -2,6 +2,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {Send,Check,Megaphone,AlertCircle} from 'lucide-react';
 import {adminRequest} from './admin-query';
+import {TELEGRAM_CHANNEL_BUTTON} from '@/lib/telegram-community';
 import styles from './admin-broadcast.module.css';
 
 const command=<T,>(action:string,input:unknown)=>adminRequest<T>('command',{action,input});
@@ -40,6 +41,6 @@ export function AdminBroadcast({initial,onQueued}:{initial?:BroadcastDraft;onQue
    {review?<div className={styles.confirm}><p>Send this message to all eligible Telegram recipients?</p><div className="admin-actions"><button disabled={busy||!!result} onClick={()=>void send()}><Send size={16}/>{busy?'Queuing…':'Send to players'}</button><button className="secondary" disabled={busy} onClick={()=>setReview(false)}>Back</button></div></div>:<button disabled={busy||invalidImage||!text.trim()||!buttonLabel.trim()||!!result} onClick={()=>{setReview(true);setResult('')}}><Send size={16}/>Review &amp; send</button>}
    {(invalidImage||error)&&<p role="alert" className={styles.error}><AlertCircle size={16} aria-hidden="true"/>{invalidImage?imageInputError:error}</p>}{result&&<p role="status" className={styles.queued}><Check size={16}/>{result}</p>}
   </section>
-  <aside className={styles.preview} aria-label="Broadcast preview"><h2>Telegram preview</h2><div className={styles.message}>{preview&&<img src={preview} alt="Broadcast product preview"/>}<p>{text?text.replaceAll('{name}','Abebe'):'Your message will appear here.'}</p><span>{buttonLabel||'Open LowWin'}</span></div></aside>
+  <aside className={styles.preview} aria-label="Broadcast preview"><h2>Telegram preview</h2><div className={styles.message}>{preview&&<img src={preview} alt="Broadcast product preview"/>}<p>{text?text.replaceAll('{name}','Abebe'):'Your message will appear here.'}</p><span>{buttonLabel||'Open LowWin'}</span><span lang="am">{TELEGRAM_CHANNEL_BUTTON.text}</span></div></aside>
  </div>;
 }

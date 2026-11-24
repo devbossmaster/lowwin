@@ -2,6 +2,7 @@ import {Prisma,type PrismaClient,type Outbox} from '@prisma/client';
 import type {Bot} from 'grammy';
 import {existsSync,statSync} from 'node:fs';
 import {resolve} from 'node:path';
+import {withTelegramChannelButton} from '@/lib/telegram-community';
 import {safeResultIdentity} from '../auctions/result-identity';
 import {auctionMaintenance} from '../auctions/maintenance';
 import {notificationContent,materializeAlert,notificationPhoto,telegramCampaignText} from './service';
@@ -122,7 +123,7 @@ async function dispatchClaim(client:PrismaClient,bot:BotApi,row:ClaimedNotificat
   const body=content.body.includes('{name}')?content.body.replaceAll('{name}',name):`${name},\n${content.body}`;
   const text=paymentReceipt?content.body:row.kind==='BROADCAST'?content.body.replaceAll('{name}',name):'telegramCaption' in content&&typeof content.telegramCaption==='string'?content.telegramCaption.replaceAll('{name}',name):telegramCampaignText(row.kind,content.title,startReminder?content.body:body,startReminder?name:undefined);
   const button='buttonLabel' in content?String(content.buttonLabel):row.kind==='DEPOSIT_CREDITED'?'ዋሌቴን ልይ':row.kind==='BID_ACCEPTED'?'ጨረታዎቼን ልይ':row.kind==='WINNER_CONGRATULATIONS'?'ሽልማቴን ልይ':row.kind==='AUCTION_ENDED'?'ውጤቱን ልይ':'ጨረታውን ልይ';
-  const options={reply_markup:{inline_keyboard:[[merchantAlert?{text:button,url:link.href}:{text:button,web_app:{url:link.href}}]]}};
+  const options={reply_markup:withTelegramChannelButton([[merchantAlert?{text:button,url:link.href}:{text:button,web_app:{url:link.href}}]])};
   const auctionImage=(row.kind.startsWith('AUCTION_')||row.kind==='BROADCAST'||row.kind==='BID_ACCEPTED'||row.kind==='WINNER_CONGRATULATIONS')&&'imagePath' in content&&typeof content.imagePath==='string'?content.imagePath:null;
   const imageId='imageId' in content&&typeof content.imageId==='string'?content.imageId:undefined;
   const local=auctionImage&&!auctionImage.startsWith('/api/')?resolve('public','.'+auctionImage):notificationImage;

@@ -19,11 +19,11 @@ export function WinnersClientList({initial,carousel=false}:{initial?:WinnersData
  // Published results are historical display data. Home keeps its cards visible
  // and checks quietly on that existing policy, without recurring loading feedback.
  const publicQuery=usePublicQuery<WinnersData>(recentWinnersQueryUrl(),{enabled:carousel,keepPreviousData:true,initialData:carousel?seed:undefined,pollMs:carousel?policy.staleMs:0,freshnessMs:policy.staleMs});
- // Signed-in Home visitors reuse the private page-one winners cache. The
- // public cards render while this optional identity lookup is in flight.
+ // Signed-in Home visitors reuse the private page-one winners cache for the
+ // approved artwork and identity. The public product cards render immediately.
  const privateQuery=usePrivateQuery<WinnersData>(winnersUrl,{
   enabled:!carousel||!!publicQuery.data?.items.length,keepPreviousData:!carousel,
-  initialData:!carousel?seed:undefined,pollMs:policy.staleMs,
+  initialData:!carousel?seed:undefined,pollMs:miniQueryPolicy(winnersUrl).staleMs,
  });
  const query=carousel?publicQuery:privateQuery,data=query.data,busy=query.isPlaceholderData;
  const authenticatedWinners=carousel&&privateQuery.status==='authenticated'&&privateQuery.data?.page===1?privateQuery.data.items:[];
@@ -31,7 +31,7 @@ export function WinnersClientList({initial,carousel=false}:{initial?:WinnersData
   const result=item.result,identity=authenticatedWinners.find(winner=>winner.code===item.code)?.result;
   if(result?.source!=='SETTLED'||result.outcome!=='WINNER'||identity?.source!=='SETTLED'||identity.outcome!=='WINNER'||identity.publishedAt!==result.publishedAt)return item;
   const phone=identity.winnerPhoneMasked;
-  return {...item,result:{...result,winnerDisplay:identity.winnerDisplay,winnerPhoneMasked:phone?.includes('*')?maskPhoneDisplay(phone):null}};
+  return {...item,result:{...result,winnerDisplay:identity.winnerDisplay,winnerPhoneMasked:phone?.includes('*')?maskPhoneDisplay(phone):null,winnerBannerPath:identity.winnerBannerPath,winnerBannerVersion:identity.winnerBannerVersion}};
  }):data?.items;
  useEffect(()=>{
   if(!carousel||!seed)return;const saved=readPublicQuery<WinnersData>(url);

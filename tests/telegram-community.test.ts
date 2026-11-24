@@ -1,7 +1,15 @@
 import {describe,it,expect} from 'vitest';
-import {withTelegramCommunity,TELEGRAM_COMMUNITY_FOOTER,TELEGRAM_SUPPORT_URL} from '../src/lib/telegram-community';
+import {withTelegramChannelButton,withTelegramCommunity,TELEGRAM_COMMUNITY_FOOTER,TELEGRAM_SUPPORT_URL} from '../src/lib/telegram-community';
 import {telegramCampaignText} from '../src/modules/notifications/service';
 describe('Telegram community links and campaign copy',()=>{
+ it('keeps the existing action first and adds the welcome channel button below it',()=>{
+  const action={text:'Open Lowwin',web_app:{url:'https://lowwin.test/winners/5'}};
+  expect(withTelegramChannelButton([[action]])).toEqual({inline_keyboard:[[action],[{text:'ቻናላችንን ይቀላቀሉ',url:'https://t.me/lowwinet'}]]});
+ });
+ it('does not append a second button for the same channel',()=>{
+  const rows=[[{text:'Support',url:'https://t.me/lowwinsupport'},{text:'Join',url:'https://t.me/LowwinET/'}]];
+  expect(withTelegramChannelButton(rows)).toEqual({inline_keyboard:rows});
+ });
  it('keeps both handles below the content and within the photo caption budget',()=>{
   const message=withTelegramCommunity('🎉'.repeat(1500));
   expect(Array.from(message).length).toBe(1000);

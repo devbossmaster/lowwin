@@ -8,6 +8,8 @@ import {verifyFixtureContact} from '../contact-fixtures';
 import {signedLaunch} from '../helpers';
 import {reconcile} from '../../src/modules/wallet/ledger';
 import {maskResultPhone} from '../../src/modules/auctions/result-identity';
+import {saveWinnerBanner} from '../../src/modules/admin/winner-banner';
+import sharp from 'sharp';
 
 test('homepage, final results, nested Back, live batches and Winners navigation',async({page},info)=>{
  page.setDefaultTimeout(30000);const db=new PrismaClient({datasourceUrl:process.env.TEST_DATABASE_URL});
@@ -79,6 +81,47 @@ test('homepage, final results, nested Back, live batches and Winners navigation'
   await page.locator('#home-headline').scrollIntoViewIfNeeded();await page.screenshot({path:`${root}/home-${info.project.name}-am.png`});
   await page.locator('section[aria-labelledby="home-headline"]').getByRole('button',{name:'እንዴት ይሠራል?',exact:true}).click();const learn=page.getByRole('dialog');await expect(learn.locator('[data-tutorial-video-empty]')).toHaveAttribute('aria-label','የመመሪያ ቪዲዮ በቅርቡ ይቀርባል');await expect(learn.locator('ol>li')).toHaveCount(0);await expect(learn.locator('iframe,video')).toHaveCount(0);await page.screenshot({path:`${root}/learn-more-${info.project.name}-am.png`});await page.goBack();await expect(learn).toHaveCount(0);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);expect(errors).toEqual([]);expect(await reconcile(db)).toEqual([]);
+ }finally{await db.$disconnect()}
+});
+
+test('recent winners displays the approved replacement banner and restores the product after removal',async({page})=>{
+ const db=new PrismaClient({datasourceUrl:process.env.TEST_DATABASE_URL});
+ try{
+  const fixture=await richFinalResult(db),id=randomInt(8000000000,8900000000),operator=randomUUID();
+  await db.user.create({data:{id:operator,name:'Banner fixture operator',role:'admin',emailVerified:true}});
+  await verifyFixtureContact(db,id);await page.route('https://telegram.org/**',route=>route.fulfill({body:''}));
+  await page.addInitScript(({launch})=>{window.Telegram={WebApp:{initData:launch,ready(){},expand(){},setHeaderColor(){},setBackgroundColor(){}}};},{launch:signedLaunch({user:JSON.stringify({id,first_name:'Banner QA'})},process.env.TELEGRAM_BOT_TOKEN)});
+  const upload=async(background:string)=>(await db.managedMedia.create({data:{purpose:'WINNER_BANNER',mime:'image/webp',sourceType:'SUPPLIED',sourceCredit:'Consented synthetic QA banner',bytes:Uint8Array.from(await sharp({create:{width:1840,height:800,channels:3,background}}).webp().toBuffer())}})).id;
+  const save=async(version:number,imageId:string|null)=>db.$transaction(async tx=>{
+   await tx.$queryRaw`SELECT id FROM "Auction" WHERE id=${fixture.auction.id} FOR UPDATE`;
+   return saveWinnerBanner(tx,{id:operator,role:'OWNER',now:new Date()},{key:randomUUID(),auctionId:fixture.auction.id,version,imageId,consentConfirmed:true,reason:'Consented synthetic QA banner'});
+  });
+  const first=await save(0,await upload('#153e8e'));
+  await page.goto('/telegram');
+  const card=page.locator(`#recent-winners button[data-winner-code="${fixture.code}"]:not([data-winner-copy])`);
+  async function showsBanner(path:string){
+   const artwork=card.locator('[data-photo="banner"] img');
+   await artwork.scrollIntoViewIfNeeded();
+   await expect.poll(()=>artwork.evaluate(image=>(image as HTMLImageElement).naturalWidth?new URL((image as HTMLImageElement).currentSrc).pathname:null)).toBe(path);
+  }
+  await showsBanner(first.path!);
+  await card.click();
+  const sheet=page.getByRole('dialog',{name:'Auction result',exact:true});
+  await expect(sheet.locator('[data-photo="banner"] img')).toHaveAttribute('src',new RegExp(first.imageId!));
+  await page.keyboard.press('Escape');await expect(sheet).toHaveCount(0);
+  const replacement=await save(first.version,await upload('#57439b'));
+  // The product preview endpoint must not publish an identifiable new banner.
+  const preview=await page.request.get('/api/results/recent-winners');
+  expect(preview.ok()).toBe(true);expect(await preview.text()).not.toContain(replacement.path);
+  await expect.poll(()=>page.request.get(first.path!).then(r=>r.status())).toBe(404);
+  // Keep the tab open while the signed-in winners query picks up the new art.
+  await showsBanner(replacement.path!);
+  await card.click();
+  await expect(sheet.locator('[data-photo="banner"] img')).toHaveAttribute('src',new RegExp(replacement.imageId!));
+  await page.keyboard.press('Escape');
+  await save(replacement.version,null);await page.reload();
+  await expect(card.locator('img')).toHaveAttribute('src',/lowwin-demo-headphones|catalog/);
+  await expect(card.locator('[data-photo="banner"]')).toHaveCount(0);
  }finally{await db.$disconnect()}
 });
 

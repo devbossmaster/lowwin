@@ -33,19 +33,22 @@ describe('Home recent winners retain public cards and refresh quietly',()=>{
   f.query.error='Synthetic refresh failure';const html=render();expect(html).toContain('Saved winner cards');expect(html).toContain('Showing saved details. Refresh failed.');expect(html).toContain('Retry');expect(html).not.toContain('Loading winners');
  });
  it('preserves full Winners-page refresh behavior and avoids seeding a different page',()=>{
-  f.query.fetching=true;expect(render(false)).toContain('Updating');expect(f.options).toMatchObject({pollMs:30000,freshnessMs:10000});f.page=2;render(false,saved);expect(f.options?.initialData).toBeUndefined();
+  f.query.fetching=true;expect(render(false)).toContain('Updating');expect(f.options?.pollMs).toBe(miniQueryPolicy('/api/results/winners').staleMs);f.page=2;render(false,saved);expect(f.options?.initialData).toBeUndefined();
  });
- it('shows only the matching name and masked phone from the authenticated results',()=>{
-  const result={source:'SETTLED',outcome:'WINNER',publishedAt:saved.serverNow,winnerDisplay:null,winnerPhoneMasked:null};
+ it('shows only matching approved artwork, name and masked phone from the authenticated results',()=>{
+  const result={source:'SETTLED',outcome:'WINNER',publishedAt:saved.serverNow,winnerDisplay:null,winnerPhoneMasked:null,winnerBannerPath:null,winnerBannerVersion:0};
   const item={code:'winner-1',result};
+  const banner='/api/media/155a36cf-cf33-4415-b45d-809e06b5c96b';
   f.query.data={...saved,items:[item] as unknown as WinnersData['items']};
-  const identity=(phone:string)=>({...item,result:{...result,winnerDisplay:'Verified winner',winnerPhoneMasked:phone,winnerUsername:'protected-handle',winningPoints:'protected-number'}});
+  const identity=(phone:string,bannerPath:string|null=banner,version=1)=>({...item,result:{...result,winnerDisplay:'Verified winner',winnerPhoneMasked:phone,winnerBannerPath:bannerPath,winnerBannerVersion:version,winnerUsername:'protected-handle',winningPoints:'protected-number'}});
   f.identityData={...saved,items:[identity('2519110***23')] as unknown as WinnersData['items']};
   render();expect(f.rendered[0].result).toEqual(result);
   f.identityStatus='authenticated';
-  render();expect(f.rendered[0].result).toEqual({...result,winnerDisplay:'Verified winner',winnerPhoneMasked:'2519110***23'});
-  f.identityData={...saved,items:[identity('+251911222123')] as unknown as WinnersData['items']};
-  render();expect(f.rendered[0].result).toEqual({...result,winnerDisplay:'Verified winner'});
+  render();expect(f.rendered[0].result).toEqual({...result,winnerDisplay:'Verified winner',winnerPhoneMasked:'2519110***23',winnerBannerPath:banner,winnerBannerVersion:1});
+  f.identityData={...saved,items:[identity('+251911222123',null,2)] as unknown as WinnersData['items']};
+  render();expect(f.rendered[0].result).toEqual({...result,winnerDisplay:'Verified winner',winnerBannerVersion:2});
+  f.identityData={...saved,items:[{...identity('2519110***23'),code:'other-auction'}] as unknown as WinnersData['items']};
+  render();expect(f.rendered[0].result).toEqual(result);
  });
  it('uses the existing historical freshness for Home and reuses repeated cached navigation',async()=>{
   vi.useFakeTimers();vi.stubGlobal('window',{});render();const options=f.options!;expect(options.pollMs).toBe(miniQueryPolicy('/api/results/recent-winners').staleMs);expect(options.freshnessMs).toBe(300000);

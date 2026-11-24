@@ -2,6 +2,7 @@ import {afterEach,describe,expect,it,vi} from 'vitest';
 import type {Outbox} from '@prisma/client';
 import {dispatchBatch} from '../src/modules/notifications/dispatch';
 import {notificationDispatchFixture} from './notification-dispatch-fixture';
+import {TELEGRAM_CHANNEL_BUTTON} from '../src/lib/telegram-community';
 
 afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs()});
 describe('immutable broadcast preparation across worker batches',()=>{
@@ -10,11 +11,12 @@ describe('immutable broadcast preparation across worker batches',()=>{
   const now=new Date(),jobs:Outbox[]=[],f=notificationDispatchFixture(jobs,now);
   const read=vi.fn(async()=>({status:'SCHEDULED',publicCode:42,slug:'fixture',publishedAt:new Date(now.getTime()-1000),startsAt:new Date(now.getTime()-1000),endsAt:new Date(now.getTime()+86400000),isDemo:false,testRunId:null,settlement:null,result:null,product:{visible:true}}));
   Object.assign(f.tx,{auction:{findUnique:read}});
-  const send=vi.fn(async()=>({message_id:1})),bot={api:{sendMessage:send,sendPhoto:send}};
+  const send=vi.fn(async(_chat:string,_content:unknown,_options:unknown)=>({message_id:1})),bot={api:{sendMessage:send,sendPhoto:send}};
   let elapsed=0;vi.spyOn(performance,'now').mockImplementation(()=>elapsed);
-  const make=(index:number)=>({id:'cache-'+index,key:'broadcast:cache:user:'+index,kind:'BROADCAST',payload:{auctionId:'auction',rootKey:'broadcast:cache',recipientUserId:'player-'+index,body:'Reviewed public promotion',href:'/auctions/42'},createdAt:now,nextAttemptAt:new Date(0),state:'PENDING',attempts:0,sentAt:null,lastError:null,leaseToken:null,leaseUntil:null,claimedAt:null,settlementId:null,testRunId:null}) as Outbox;
+  const make=(index:number)=>({id:'cache-'+index,key:'broadcast:cache:user:'+index,kind:'BROADCAST',payload:{auctionId:'auction',rootKey:'broadcast:cache',recipientUserId:'player-'+index,body:'Reviewed public promotion',href:'/auctions/42',buttonLabel:'View auction'},createdAt:now,nextAttemptAt:new Date(0),state:'PENDING',attempts:0,sentAt:null,lastError:null,leaseToken:null,leaseUntil:null,claimedAt:null,settlementId:null,testRunId:null}) as Outbox;
   for(let i=0;i<720;i++){elapsed=i*(60_000/720);jobs.push(make(i));expect(await dispatchBatch(f.client,bot as never,{limit:1,concurrency:1})).toBe(1)}
   expect(send).toHaveBeenCalledTimes(720);expect(read).toHaveBeenCalledTimes(1);
+  expect(send.mock.calls[0][2]).toMatchObject({reply_markup:{inline_keyboard:[[{text:'View auction',web_app:{url:'https://lowwin.test/auctions/42'}}],[TELEGRAM_CHANNEL_BUTTON]]}});
   const gates=()=>f.tx.$queryRaw.mock.calls.filter(([sql])=>('strings'in sql?sql.strings:sql).join('').includes('ELSE NULL END AS reason')).length;
   expect(gates()).toBe(720);
   elapsed=60_001;jobs.push(make(720));await dispatchBatch(f.client,bot as never,{limit:1,concurrency:1});

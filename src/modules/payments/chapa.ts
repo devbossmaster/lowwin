@@ -345,11 +345,15 @@ async function verifyChapaCheckoutOnce(client:PrismaClient,id:string,userId:stri
    OR:[{leaseUntil:null},{leaseUntil:{lte:due}}],AND:[{OR:[{verificationRetryAfter:null},{verificationRetryAfter:{lte:due}}]}]};
  };
  const claimData=()=>({leaseUntil:verificationLease,attempts:{increment:1}});
- // A normally due Direct check can revalidate the signed session's binding
- // and claim the exact owned row in one statement. Early returns still need
- // the transaction that reserves their extra quota. A conflict uses that
- // regular path to preserve fresh status and authorization errors.
- const verificationFilter=currentDirect&&!eventCheck&&!earlyReturn&&!recoveryBinding?reauthorize?.directVerificationFilter:undefined;
+ // A normally due Direct check can claim the exact owned row in one statement.
+ // Interactive checks revalidate the signed session in that statement. The
+ // background sweep already has the server-owned checkout and its user ID.
+ // Early returns still need the transaction that reserves their extra quota.
+ // A conflict falls back to the existing locked path.
+ const backgroundFilter=userId===undefined&&!reauthorize?()=>({userId:snapshot.userId}):undefined;
+ const verificationFilter=currentDirect&&!eventCheck&&!earlyReturn&&!recoveryBinding
+  ?reauthorize?.directVerificationFilter??backgroundFilter
+  :undefined;
  const measureClaim=<T>(operation:()=>Promise<T>)=>measureChapa('verify_claim',()=>measureChapa('database',operation));
  const [claimed]=verificationFilter?await measureClaim(()=>client.chapaCheckout.updateManyAndReturn({
   where:{AND:[claimWhere(),verificationFilter(),{updatedAt:snapshot.updatedAt}]},data:claimData(),

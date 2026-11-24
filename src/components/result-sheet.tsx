@@ -24,7 +24,12 @@ export default function ResultSheet({auction:initial,onClose,returnFocusRef}:{au
 export function ResultSheetContent({auction:initial}:{auction:CatalogAuction}){
  const {language}=useMiniLocale(),am=language==='am';
  const query=usePrivateQuery<CatalogAuction>('/api/results/'+encodeURIComponent(initial.code),{initialData:initial.result?.explanation?initial:undefined,freshnessMs:initial.result?.explanation?300000:15000});
- const auction=query.data?.result?query.data:initial,result=auction.result;
+ const stored=query.data?.result?query.data:initial,saved=stored.result,selected=initial.result;
+ // The list may have refreshed its artwork since a previous sheet was opened.
+ const result=saved?.source==='SETTLED'&&selected?.source==='SETTLED'&&saved.publishedAt===selected.publishedAt&&selected.winnerBannerVersion>saved.winnerBannerVersion
+  ?{...saved,winnerBannerPath:selected.winnerBannerPath,winnerBannerVersion:selected.winnerBannerVersion,winnerPhotoPath:selected.winnerPhotoPath}
+  :saved;
+ const auction=result===saved?stored:{...stored,result};
  const title=am?auction.product.titleAm?.trim()||auction.product.title:auction.product.title;
  if(query.status!=='authenticated')return <PrivateState query={query}/>;
  return <div className={styles.resultSurface}>

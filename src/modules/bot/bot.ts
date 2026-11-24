@@ -6,7 +6,7 @@ import {recordBotReferralStart} from '../referrals/service';
 import {chapaReturnStartPath} from '@/lib/chapa-return-link';
 import {sendWelcomeBanner} from './welcome-banner';
 import {installTelegramRateLimit} from '../notifications/telegram-rate';
-import {TELEGRAM_CHANNEL_URL} from '@/lib/telegram-community';
+import {TELEGRAM_CHANNEL_BUTTON} from '@/lib/telegram-community';
 export function createBot(_options:{contactVerified?:(telegramId:string)=>Promise<boolean>}={}) {
   const env = getEnv();
   const bot = new Bot(env.TELEGRAM_BOT_TOKEN, { client: { timeoutSeconds: 20 } });
@@ -24,7 +24,7 @@ export function createBot(_options:{contactVerified?:(telegramId:string)=>Promis
     // The public bot welcome is Amharic by default; account identity and referral
     // attribution remain independent of Telegram's interface language.
     const caption='እንኳን ወደ LowWin በደህና መጡ!\n\nሚኒ አፑን ይክፈቱ። አዲስ ከሆኑ ጨረታዎችን ከመመልከትዎ በፊት በTelegram የራስዎን ስልክ ቁጥር በማጋራት ምዝገባዎን ያጠናቅቁ።';
-    await sendWelcomeBanner(ctx.api,ctx.chat.id,caption,new InlineKeyboard().webApp('LowWinን ይክፈቱ',destination).url('ቻናላችንን ይቀላቀሉ',TELEGRAM_CHANNEL_URL),'am');
+    await sendWelcomeBanner(ctx.api,ctx.chat.id,caption,new InlineKeyboard().webApp('LowWinን ይክፈቱ',destination).add(TELEGRAM_CHANNEL_BUTTON),'am');
   });
   bot.command('help', async ctx => { await ctx.reply(botHelp[ctx.from?.language_code?.startsWith('am')?'am':'en']); });
   return bot;

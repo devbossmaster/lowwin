@@ -256,6 +256,38 @@ describe.skipIf(!database)('current Direct5 owned creation and private committed
   expect(await balance(f.user)).toBe('0');
   expect(await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}})).toMatchObject({leaseUntil:null,creditJournalId:null});
  });
+ it('uses fenced statements for a routine background Direct check and preserves atomic credit on success',async()=>{
+  const f=await fixture(),{order}=await f.start(),operations:string[]=[];
+  const client=db.$extends({query:{
+   $queryRaw:async({args,query})=>{operations.push('$queryRaw');return query(args)},
+   $allModels:{$allOperations:async({operation,args,query})=>{operations.push(operation);return query(args)}},
+  }}) as unknown as PrismaClient;
+  const check=()=>verifyChapaCheckout(client,order.id,undefined,undefined,f.transport);
+  await expect(check()).resolves.toMatchObject({status:'PENDING',verificationState:'VERIFIED'});
+  expect(operations).toEqual(['findFirst','updateManyAndReturn','updateManyAndReturn']);
+  expect(await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}})).toMatchObject({leaseUntil:null,creditJournalId:null});
+  expect(await balance(f.user)).toBe('0');
+
+  f.setStatus('SUCCESS');f.setValidation('SUCCESS');await f.due();
+  await expect(check()).resolves.toMatchObject({status:'CREDITED',verificationState:'VERIFIED'});
+  await expect(check()).resolves.toMatchObject({status:'CREDITED'});
+  expect(await balance(f.user)).toBe('40');
+  expect(await db.journal.count({where:{kind:'CHAPA_RECEIPT',operation:{userId:f.user}}})).toBe(1);
+ });
+ it('preserves a completion webhook racing a background Direct check',async()=>{
+  const f=await fixture(),{order}=await f.start();
+  f.lookup.mockImplementationOnce(async()=>{
+   const pendingProof=f.proof();
+   await verifyChapaCheckout(db,order.id,undefined,undefined,f.transport,'webhook',undefined,'SUCCESS');
+   expect(await balance(f.user)).toBe('0');
+   f.setStatus('SUCCESS');
+   return pendingProof;
+  });
+  await expect(verifyChapaCheckout(db,order.id,undefined,undefined,f.transport)).resolves.toMatchObject({status:'CREDITED',completionSignalPending:false});
+  expect(f.lookup).toHaveBeenCalledTimes(2);
+  expect(await balance(f.user)).toBe('40');
+  expect(await db.journal.count({where:{kind:'CHAPA_RECEIPT',operation:{userId:f.user}}})).toBe(1);
+ });
  it.each(['before claim','before commit'] as const)('rejects a signed session revoked %s',async when=>{
   const f=await fixture(),{order}=await f.start(),check=await ownedVerification(f,order.id);
   f.setStatus('CANCELLED');

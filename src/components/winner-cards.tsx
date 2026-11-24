@@ -2,7 +2,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {CatalogImage} from './catalog-image';
 import {useMiniLocale,MiniPhrase} from './mini-locale';
-import {WinnerBanner,winnerBannerData} from './winner-banner';
+import {WinnerBanner,publishedWinnerBannerPath,winnerBannerData} from './winner-banner';
 import type {CatalogAuction} from '@/modules/auctions/catalog';
 import styles from './winner-results.module.css';
 import ResultSheet from './result-sheet';
@@ -21,6 +21,7 @@ export function WinnerCards({items,carousel=false,allowDemo=false}:{items:Catalo
  if(!winners.length)return <p className={styles.empty}><MiniPhrase en="Confirmed winners will appear here after settlement is final." am="ውጤቱ ከተጠናቀቀ በኋላ የተረጋገጡ አሸናፊዎች እዚህ ይታያሉ።"/></p>;
  const cards=winners.map(item=>{
   const title=am?item.product.titleAm||item.product.title:item.product.title,result=item.result!;
+  const homeBanner=carousel?publishedWinnerBannerPath(item):null;
   const name=result.winnerDisplay||(!carousel?result.winnerUsername:null),phone=maskPhoneDisplay(result.winnerPhoneMasked);
   const identity=carousel?[name,phone].filter(Boolean).join(' · ')||undefined:undefined;
   return <button className={styles.card} type="button" key={item.code} data-winner-code={item.code} onClick={event=>{
@@ -30,7 +31,10 @@ export function WinnerCards({items,carousel=false,allowDemo=false}:{items:Catalo
    const confirmed=snapshot?.fresh?snapshot.value.items.find(candidate=>candidate.code===item.code&&candidate.result?.source==='SETTLED'&&candidate.result.publishedAt===result.publishedAt):undefined;
    setSelected(confirmed??item);
   }} aria-label={`${am?'ውጤት':'Result'}: ${title}`} aria-description={identity}>
-   {winnerBannerData(item)?<WinnerBanner auction={item} compact={carousel}/>:<div className={styles.photo}><CatalogImage src={item.product.images[0]?.path} alt={title}/><span className={styles.badge}><MiniPhrase en={item.isDemo?'Demo winner':'Winner'} am={item.isDemo?'የሙከራ አሸናፊ':'አሸናፊ'}/></span></div>}
+   {!homeBanner&&winnerBannerData(item)?<WinnerBanner auction={item} compact={carousel}/>:<div className={styles.photo} data-photo={homeBanner?'banner':undefined}>
+    <CatalogImage src={homeBanner??item.product.images[0]?.path} alt={title} sizes={carousel?'(max-width:371px) 208px, (max-width:500px) 56vw, 280px':undefined}/>
+    {!homeBanner&&<span className={styles.badge}><MiniPhrase en={item.isDemo?'Demo winner':'Winner'} am={item.isDemo?'የሙከራ አሸናፊ':'አሸናፊ'}/></span>}
+   </div>}
    <div className={styles.cardBody}><h3>{title}</h3>
     {(!carousel||name||phone)&&<p className={styles.cardIdentity}>
      {name?<strong className={styles.cardWinnerName}>{name}</strong>:!carousel&&<MiniPhrase en="Confirmed winner" am="የተረጋገጠ አሸናፊ"/>}

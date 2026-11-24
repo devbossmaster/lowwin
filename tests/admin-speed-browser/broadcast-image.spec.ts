@@ -12,6 +12,10 @@ test('broadcast previews a portrait and requires removal or replacement of rejec
  const writes:string[]=[];
  await page.route(/^https:\/\/(?:api\.telegram\.org|api\.chapa\.global|api\.resend\.com)\//,route=>route.abort());
  await page.route('**/api/admin/command',route=>{writes.push(route.request().method());return route.abort()});
+ await page.route('**/api/admin/notifications?**',route=>route.fulfill({json:{
+  page:1,total:1,totalPages:1,items:[{id:randomUUID(),text:'Previous broadcast',imageId:null,createdAt:new Date().toISOString(),
+   state:'COMPLETED',sent:1,pending:0,failed:0,skipped:0,canStop:false,canDelete:true,pendingBatches:0,failedBatches:0,recipientCount:1}],
+ }}));
  try{
   await db.user.create({data:{id,email,name:'Synthetic broadcast editor',emailVerified:true,role:'admin'}});
   await db.account.create({data:{id:randomUUID(),userId:id,accountId:id,providerId:'credential',password:await hashPassword(password)}});
@@ -21,6 +25,7 @@ test('broadcast previews a portrait and requires removal or replacement of rejec
   await page.getByRole('button',{name:'Sign in',exact:true}).click();
   await page.getByRole('navigation',{name:'Business areas'}).getByRole('link',{name:'Broadcast',exact:true}).click();
   const composer=page.getByRole('region',{name:'Compose broadcast'});
+  await expect(page.getByRole('complementary',{name:'Broadcast preview'}).getByText('ቻናላችንን ይቀላቀሉ',{exact:true})).toBeVisible();
   const review=composer.getByRole('button',{name:'Review & send'});
   await composer.getByRole('textbox',{name:/^Message/}).fill('Synthetic broadcast');
   await composer.getByText('Image & button',{exact:true}).click();
@@ -40,6 +45,11 @@ test('broadcast previews a portrait and requires removal or replacement of rejec
   await expect(review).toBeEnabled();
   await review.click();
   await expect(composer.getByRole('button',{name:'Send to players'})).toBeVisible();
+  await page.getByRole('button',{name:'Delivery History',exact:true}).click();
+  await page.getByRole('button',{name:'Resend',exact:true}).click();
+  const resend=page.getByRole('dialog',{name:'Resend this broadcast?'});
+  await expect(resend.getByText('ቻናላችንን ይቀላቀሉ',{exact:true})).toBeVisible();
+  await resend.getByRole('button',{name:'No',exact:true}).click();
   expect(writes).toEqual([]);
  }finally{await db.$disconnect()}
 });

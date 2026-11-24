@@ -2,6 +2,7 @@ import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {Outbox} from '@prisma/client';
 import {notificationDispatchFixture} from './notification-dispatch-fixture';
 import {highPriorityKinds} from '../src/modules/notifications/leases';
+import {TELEGRAM_CHANNEL_BUTTON} from '../src/lib/telegram-community';
 
 const content=vi.hoisted(()=>vi.fn());
 const photo=vi.hoisted(()=>vi.fn(async(_db:unknown,_path:string)=> 'https://lowwin.test/product.webp'));
@@ -24,7 +25,7 @@ describe('private notification speed and recipient isolation',()=>{
   jobs.push(job('one','BID_ACCEPTED','one'));await dispatchBatch(f.client,{api:{sendPhoto:send,sendMessage:send}} as never,{limit:1});
   jobs.push(job('two','BID_ACCEPTED','two'));await dispatchBatch(f.client,{api:{sendPhoto:send,sendMessage:send}} as never,{limit:1});
   expect(content).toHaveBeenCalledTimes(2);expect(photo.mock.calls.map(args=>args[1])).toEqual(['/products/one.webp','/products/two.webp']);
-  expect(send.mock.calls[0]?.[2]).toMatchObject({caption:'Player name: one',reply_markup:{inline_keyboard:[[{text:'ጨረታዎቼን ልይ',web_app:{url:'https://lowwin.test/my-bids'}}]]}});
+  expect(send.mock.calls[0]?.[2]).toMatchObject({caption:'Player name: one',reply_markup:{inline_keyboard:[[{text:'ጨረታዎቼን ልይ',web_app:{url:'https://lowwin.test/my-bids'}}],[TELEGRAM_CHANNEL_BUTTON]]}});
   expect(send.mock.calls[1]?.[2]).toMatchObject({caption:'Player name: two'});
  });
  it('rejects a non-private destination for a private winner message before transport',async()=>{
@@ -39,6 +40,7 @@ describe('private notification speed and recipient isolation',()=>{
   content.mockResolvedValue({userId:'player',kind:row.kind,title:'Deposit',body:'Credited',href:'/wallet'});
   await dispatchBatch(f.client,{api:{sendMessage:send,sendPhoto:vi.fn()}} as never,{limit:1});
   expect(row.state).toBe('SENT');expect(send).toHaveBeenCalledTimes(1);expect(photo).not.toHaveBeenCalled();expect(f.tx.telegramMediaCache.findUnique).not.toHaveBeenCalled();
+  expect(send).toHaveBeenCalledWith('900000001',expect.any(String),{reply_markup:{inline_keyboard:[[{text:kind==='DEPOSIT_CREDITED'?'ዋሌቴን ልይ':'ጨረታውን ልይ',web_app:{url:'https://lowwin.test/wallet'}}],[TELEGRAM_CHANNEL_BUTTON]]}});
   const statements=f.tx.$queryRaw.mock.calls.map(([query])=>('strings'in query?query.strings:query).join(''));
   expect(statements.some(sql=>sql.includes('TelegramMediaCache'))).toBe(false);
   expect(statements.filter(sql=>sql.includes('ELSE NULL END AS reason'))).toHaveLength(1);

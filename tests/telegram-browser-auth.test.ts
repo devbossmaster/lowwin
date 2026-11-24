@@ -51,7 +51,7 @@ describe.skipIf(!database)('shared Better Auth Telegram browser and Mini App int
   const claims={iss:'https://oauth.telegram.org',aud:'123456789',sub:'fixture-sub-'+randomUUID(),id:tid,name:'Synthetic browser player',iat:now,exp:now+3600,nonce:url.searchParams.get('nonce'),phone_number:'2519'+String(tid).slice(-8),phone_number_verified:true,...overrides};
   const header=Buffer.from(JSON.stringify({alg:'RS256',typ:'JWT',kid:jwk.kid})).toString('base64url'),payload=Buffer.from(JSON.stringify(claims)).toString('base64url'),code='fixture-'+randomUUID();
   issued.set(code,{token:header+'.'+payload+'.'+sign('RSA-SHA256',Buffer.from(header+'.'+payload),pair.privateKey).toString('base64url'),verifier:saved.codeVerifier});
-  const request=(query=`state=${encodeURIComponent(state)}&code=${code}`,binding=[cookie,browserCookie].filter(Boolean).join('; '))=>new Request(origin+'/api/auth/callback/telegram-oidc?'+query,{headers:{cookie:binding}});
+  const request=(query=`state=${encodeURIComponent(state)}&code=${code}`,binding=[cookie,browserCookie].filter(Boolean).join('; '))=>new Request(origin+'/api/auth/callback/telegram-oidc?'+query,{headers:{cookie:binding,'x-forwarded-for':headers.get('x-forwarded-for')!}});
   return {state,cookie,claims,row,saved,code,request,finish:()=>handleAuth(request())};
  }
  function cookie(response:Response){const session=response.headers.getSetCookie().find(c=>c.startsWith('better-auth.session_token='));expect(session, response.headers.get('location')??'').toBeTruthy();return new Headers({cookie:session!.split(';')[0]})}
@@ -128,8 +128,9 @@ describe.skipIf(!database)('shared Better Auth Telegram browser and Mini App int
   const f=await flow();await f.finish();const before=provider.mock.calls.length,count=await db.session.count();const replay=await f.finish();expect(replay.headers.get('location')).toContain('telegramLoginError=invalid');expect(provider.mock.calls.length).toBe(before);expect(await db.session.count()).toBe(count);
  });
  it('creates only one owned session when concurrent callbacks use one provider code',async()=>{
-  const f=await flow(),results=await Promise.all([f.finish(),f.finish()]);
+  const f=await flow(),before=provider.mock.calls.length,results=await Promise.all([f.finish(),f.finish()]);
   expect(results.filter(r=>r.headers.get('location')===origin+'/my-bids?tab=live')).toHaveLength(1);
+  expect(provider.mock.calls.length-before).toBe(1);
   const user=await db.user.findUniqueOrThrow({where:{telegramId:String(f.claims.id)}});expect(await db.session.count({where:{userId:user.id}})).toBe(1);
  });
  it('isolates verified identity and session binding across different concurrent callbacks on the reused provider',async()=>{
@@ -149,6 +150,15 @@ describe.skipIf(!database)('shared Better Auth Telegram browser and Mini App int
   const f=await flow(),before=provider.mock.calls.length;expect((await handleAuth(f.request(undefined,''))).headers.get('location')).toContain('telegramLoginError=invalid');
   await db.verification.update({where:{id:f.row.id},data:{value:JSON.stringify({...f.saved,expiresAt:Date.now()-1000})}});
   expect((await f.finish()).headers.get('location')).toContain('telegramLoginError=invalid');expect(provider.mock.calls.length).toBe(before);expect(await db.user.count({where:{telegramId:String(f.claims.id)}})).toBe(0);
+ });
+ it('keeps the valid state usable after a callback with the wrong signed browser cookie',async()=>{
+  const [f,other]=await Promise.all([flow(),flow()]),before=provider.mock.calls.length;
+  const invalid=await handleAuth(f.request(undefined,other.cookie));
+  expect(invalid.headers.get('location')).toContain('telegramLoginError=invalid');
+  expect(provider.mock.calls.length).toBe(before);
+  const verified=await f.finish();
+  expect((await getMiniSession(cookie(verified),db))?.telegramId).toBe(String(f.claims.id));
+  expect(verified.headers.get('server-timing')).toContain('oidc_state;dur=');
  });
  it('rejects missing verified phone consent without manufacturing a session',async()=>{
   const f=await flow({phone_number_verified:false}),response=await f.finish();expect(response.headers.get('location')).toContain('telegramLoginError=');expect(await db.user.count({where:{telegramId:String(f.claims.id)}})).toBe(0);expect(response.headers.getSetCookie().some(c=>c.startsWith('better-auth.session_token='))).toBe(false);

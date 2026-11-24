@@ -14,6 +14,7 @@ import {TELEGRAM_LOGIN_PROVIDER,telegramLoginSettings,type TelegramLoginSettings
 import {prepareTelegramOIDCIdentity} from './telegram-oidc-identity';
 import {authLogSummary} from './safe-logger';
 import {telegramOIDCTokenRequest} from './telegram-oidc-token-request';
+import {telegramOIDCState} from './telegram-oidc-state';
 import {oidcProof,telegramOIDCCallback,telegramSessionClient,telegramSessionConflict} from './telegram-oidc-session';
 import {measureTelegramAuth} from './telegram-timing';
 import {websiteReferralFromCookie} from '../referrals/website-cookie';
@@ -87,7 +88,7 @@ function buildAuth(client:PrismaClient|Prisma.TransactionClient,env:ReturnType<t
           return profile;
         },
       }:undefined,
-    }), telegramOIDCTokenRequest(login), {
+    }), telegramOIDCTokenRequest(login), ...(login ? [telegramOIDCState(client)] : []), {
       id: 'lowin-local-development', endpoints: {
         localIdentity: createAuthEndpoint('/lowin/dev-identity', { method: 'POST' }, async ctx => {
           // Repeat the full gate for direct internal Better Auth API invocation.
