@@ -17,7 +17,7 @@ export function miniQueryPolicy(url:string){
  if(path==='/api/transactions'||path==='/api/payments/chapa/checkouts')return MINI_QUERY_POLICIES.transactions;
  if(path==='/api/my-bids'&&['finished','history'].includes(new URL(url,'https://lowwin.invalid').searchParams.get('view')??''))return MINI_QUERY_POLICIES.historical;
  if(path.startsWith('/api/wallet')||path.startsWith('/api/payments/'))return MINI_QUERY_POLICIES.wallet;
- if(path==='/api/results/winners')return MINI_QUERY_POLICIES.winners;
+ if(path==='/api/results/winners'||path==='/api/results/recent-winners')return MINI_QUERY_POLICIES.winners;
  if(path.startsWith('/api/results/'))return MINI_QUERY_POLICIES.historical;
  if(path.startsWith('/api/auctions/')||path==='/api/my-bids')return MINI_QUERY_POLICIES.bids;
  if(path.startsWith('/api/catalog/auctions/'))return MINI_QUERY_POLICIES.detail;

@@ -1,4 +1,5 @@
 import {Prisma,type PrismaClient} from '@prisma/client';
+import {centsToEtb} from '@/lib/admin-money';
 import {permissions,type StaffRole} from './permissions';
 import {AdminError} from './errors';
 
@@ -54,31 +55,91 @@ const realPlayer=Prisma.sql`u."telegramId" IS NOT NULL AND u.id NOT LIKE 'demo-s
  AND NOT EXISTS (SELECT 1 FROM "StaffMember" s WHERE s."userId"=u.id)
  AND NOT EXISTS (SELECT 1 FROM "TestRunActor" t WHERE t."userId"=u.id)`;
 type OverviewCount={state:'ready';count:number}|{state:'error'};
-export type OverviewSummary={serverNow:string;auctions?:OverviewCount;players?:OverviewCount;payments?:OverviewCount;deliveries?:OverviewCount};
+type DailyMoney={depositEtb:string;successfulPayments:number;paymentEtb:string};
+export type OverviewSummary={
+ serverNow:string;
+ auctions?:OverviewCount;
+ players?:OverviewCount;
+ payments?:OverviewCount;
+ deliveries?:OverviewCount;
+ daily?:{newMembers?:OverviewCount;money?:({state:'ready'}&DailyMoney)|{state:'error'}};
+};
 export type OverviewAuctions={serverNow:string;items:{id:string;code:string;title:string;image:string|null;displayStatus:string;participants:number;acceptedBids:number;endsAt:Date|null}[]};
-/** Landing counts need no ledger reports, full products, or per-row statistics. */
+
+const creditedProviderDeposit=Prisma.sql`t.provider IN ('CHECK_ET','VERIFY_ET') AND t.status='CREDITED' AND t."caseState"<>'REVERSED'`;
+const utcTimestamp=(value:Date)=>Prisma.sql`(${value.toISOString()}::timestamptz AT TIME ZONE 'UTC')`;
+
+async function overviewDailyMoney(client:PrismaClient,today:Prisma.Sql,now:Prisma.Sql):Promise<DailyMoney>{
+ // Use the posting date of each confirmed receipt. Wallet spending and bonuses
+ // would otherwise count the same incoming funds again.
+ const [row]=await client.$queryRaw<{depositCents:string;successfulPayments:number;paymentCents:string}[]>(Prisma.sql`
+  WITH received AS (
+   SELECT c."amountCents" AS cents,c.purpose='TOP_UP' AS deposit
+   FROM "ChapaCheckout" c
+   JOIN "Journal" j ON j.id=c."creditJournalId" AND j.kind='CHAPA_RECEIPT'
+   JOIN "Operation" o ON o.id=j."operationId" AND o.scope='CHAPA_RECEIPT' AND o."userId"=c."userId" AND o.key=c.id
+   JOIN "user" u ON u.id=c."userId"
+   LEFT JOIN "Auction" a ON a.id=c."auctionId"
+   WHERE c.mode='live' AND c.currency='ETB'
+     AND (c.purpose='TOP_UP' AND c.status='CREDITED'
+       OR c.purpose='BID' AND NOT a."isDemo" AND NOT a."isSettlementFixture" AND a."testRunId" IS NULL)
+     AND j."createdAt">=${today} AND j."createdAt"<=${now}
+     AND o.result->>'checkoutId'=c.id AND o.result->>'mode'='live'
+     AND o.result->>'currency'='ETB' AND o.result->>'amountCents'=c."amountCents"::text
+     AND ${realPlayer}
+   UNION ALL
+   SELECT c."amountCents",true
+   FROM "PaymentClaim" c
+   JOIN "TopUpIntent" t ON t.id=c."intentId" AND t."journalId"=c."journalId" AND t."userId"=c."userId"
+   JOIN "user" u ON u.id=c."userId"
+   WHERE c."createdAt">=${today} AND c."createdAt"<=${now} AND ${creditedProviderDeposit} AND ${realPlayer}
+  )
+  SELECT COALESCE(SUM(cents) FILTER (WHERE deposit),0)::text AS "depositCents",
+    COUNT(*)::int AS "successfulPayments",COALESCE(SUM(cents),0)::text AS "paymentCents"
+  FROM received`);
+ return {depositEtb:centsToEtb(row.depositCents),successfulPayments:row.successfulPayments,paymentEtb:centsToEtb(row.paymentCents)};
+}
+
+/** Use one count snapshot and a separate bounded receipt read for allowed staff. */
 export async function readOverviewSummary(client:PrismaClient,actor:{id:string;role:StaffRole;now:Date}):Promise<OverviewSummary>{
  const grants=permissions(actor.role),catalog=grants.includes('catalog'),players=['OWNER','SUPPORT','PAYMENTS_OPERATOR','AUDITOR'].includes(actor.role),payments=players,deliveries=['OWNER','FULFILLMENT','AUDITOR'].includes(actor.role),ready=process.env.CHAPA_SCHEMA_READY==='true';
  const data:OverviewSummary={serverNow:actor.now.toISOString()};
- const columns:Prisma.Sql[]=[];
- if(catalog)columns.push(Prisma.sql`(SELECT COUNT(*)::int FROM "Auction" a WHERE a."testRunId" IS NULL AND a."publishedAt" IS NOT NULL AND a.status IN ('SCHEDULED','LIVE') AND a."startsAt"<=${actor.now} AND a."endsAt">${actor.now} AND NOT EXISTS(SELECT 1 FROM "AuctionSettlement" s WHERE s."auctionId"=a.id)) AS auctions`);
- if(players)columns.push(Prisma.sql`(SELECT COUNT(*)::int FROM "user" u WHERE u."createdAt"<=${actor.now} AND ${realPlayer}) AS players`);
- if(payments&&ready)columns.push(Prisma.sql`(SELECT COUNT(*)::int FROM "ChapaCheckout" WHERE status='NEEDS_REVIEW') AS payments`);
- if(deliveries)columns.push(Prisma.sql`(SELECT COUNT(*)::int FROM "AuctionSettlement" s JOIN "Auction" a ON a.id=s."auctionId" LEFT JOIN "FulfillmentCase" f ON f."auctionId"=a.id WHERE s.outcome='WINNER' AND NOT a."isDemo" AND a."testRunId" IS NULL AND COALESCE(f.state,'PENDING')<>'DELIVERED' ${actor.role==='FULFILLMENT'?Prisma.sql`AND f."assignedTo"=${actor.id}`:Prisma.empty}) AS deliveries`);
- const keys=[...(catalog?['auctions']:[]),...(players?['players']:[]),...(payments&&ready?['payments']:[]),...(deliveries?['deliveries']:[])] as (keyof Omit<OverviewSummary,'serverNow'>)[];
- try{if(columns.length){const [row]=await client.$queryRaw<Record<string,number>[]>(Prisma.sql`SELECT ${Prisma.join(columns)}`);for(const key of keys)data[key]={state:'ready',count:row[key]}}}catch{for(const key of keys)data[key]={state:'error'}}
- if(payments&&!ready)data.payments={state:'error'};return data;
+ const today=utcTimestamp(eatDayStart(actor.now)),now=utcTimestamp(actor.now);
+ const money=grants.includes('wallets');
+ const columns:Partial<Record<'auctions'|'players'|'payments'|'deliveries',Prisma.Sql>>={};
+ if(catalog)columns.auctions=Prisma.sql`(SELECT COUNT(*)::int FROM "Auction" a WHERE a."testRunId" IS NULL AND a."publishedAt" IS NOT NULL AND a.status IN ('SCHEDULED','LIVE') AND a."startsAt"<=${now} AND a."endsAt">${now} AND NOT EXISTS(SELECT 1 FROM "AuctionSettlement" s WHERE s."auctionId"=a.id)) AS auctions`;
+ if(players)columns.players=Prisma.sql`player_counts.total AS players,player_counts.today AS "newMembers"`;
+ if(payments&&ready)columns.payments=Prisma.sql`(SELECT COUNT(*)::int FROM "ChapaCheckout" WHERE status='NEEDS_REVIEW') AS payments`;
+ if(deliveries)columns.deliveries=Prisma.sql`(SELECT COUNT(*)::int FROM "AuctionSettlement" s JOIN "Auction" a ON a.id=s."auctionId" LEFT JOIN "FulfillmentCase" f ON f."auctionId"=a.id WHERE s.outcome='WINNER' AND NOT a."isDemo" AND a."testRunId" IS NULL AND COALESCE(f.state,'PENDING')<>'DELIVERED' ${actor.role==='FULFILLMENT'?Prisma.sql`AND f."assignedTo"=${actor.id}`:Prisma.empty}) AS deliveries`;
+ const keys=Object.keys(columns) as (keyof typeof columns)[];
+ const playerCounts=players?Prisma.sql`FROM (
+  SELECT COUNT(*)::int AS total,COUNT(*) FILTER (WHERE u."createdAt">=${today})::int AS today
+  FROM "user" u WHERE u."createdAt"<=${now} AND ${realPlayer}
+ ) player_counts`:Prisma.empty;
+ const [counts,dailyMoney]=await Promise.all([
+  keys.length?client.$queryRaw<Record<string,number>[]>(Prisma.sql`SELECT ${Prisma.join(Object.values(columns))} ${playerCounts}`).then(([row])=>row).catch(()=>null):null,
+  money&&ready?overviewDailyMoney(client,today,now).catch(()=>null):null,
+ ]);
+ const count=(key:string):OverviewCount=>counts?{state:'ready',count:counts[key]}:{state:'error'};
+ for(const key of keys)data[key]=count(key);
+ if(payments&&!ready)data.payments={state:'error'};
+ if(players||money)data.daily={
+  ...(players?{newMembers:count('newMembers')}:{}),
+  ...(money?{money:dailyMoney?{state:'ready',...dailyMoney}:{state:'error'}}:{}),
+ };
+ return data;
 }
 /** One bounded query; private snapshots and financial evidence stay off this read model. */
 export async function readOverviewAuctions(client:PrismaClient,actor:{role:StaffRole;now:Date}):Promise<OverviewAuctions>{
  if(!permissions(actor.role).includes('catalog'))throw new AdminError(403,'Your staff role does not grant this permission.');
+ const now=utcTimestamp(actor.now);
  const items=await client.$queryRaw<OverviewAuctions['items']>(Prisma.sql`WITH selected AS (
  SELECT a.id,a.code,a."productId",a."endsAt",a."startsAt",a.presentation FROM "Auction" a
  WHERE a."testRunId" IS NULL AND a."publishedAt" IS NOT NULL AND a.status IN ('SCHEDULED','LIVE') AND NOT EXISTS(SELECT 1 FROM "AuctionSettlement" s WHERE s."auctionId"=a.id)
  ORDER BY a."endsAt" ASC NULLS LAST,a.id ASC LIMIT 5)
  SELECT a.id,a.code,COALESCE(a.presentation->>'title',p.title,'Auction') AS title,
  COALESCE(a.presentation->'images'->0->>'path',(SELECT i.path FROM "ProductImage" i WHERE i."productId"=a."productId" ORDER BY i."sortOrder",i.id LIMIT 1)) AS image,
- CASE WHEN a."endsAt"<=${actor.now} THEN 'CLOSING' WHEN a."startsAt">${actor.now} THEN 'UPCOMING' ELSE 'LIVE' END AS "displayStatus",
+ CASE WHEN a."endsAt"<=${now} THEN 'CLOSING' WHEN a."startsAt">${now} THEN 'UPCOMING' ELSE 'LIVE' END AS "displayStatus",
  (SELECT COUNT(DISTINCT b."userId")::int FROM "Bid" b WHERE b."auctionId"=a.id) AS participants,
  (SELECT COUNT(*)::int FROM "Bid" b WHERE b."auctionId"=a.id) AS "acceptedBids",a."endsAt"
  FROM selected a LEFT JOIN "Product" p ON p.id=a."productId" ORDER BY a."endsAt" ASC NULLS LAST,a.id ASC`);
@@ -90,7 +151,7 @@ export async function overviewDeposits(client:PrismaClient,now:Date){
  trunc(COALESCE(SUM(c."amountCents") FILTER (WHERE c."createdAt">=${eatDayStart(now)}),0)/100,2)::text AS "todayEtb",
  COUNT(*)::int AS count FROM "PaymentClaim" c
  JOIN "TopUpIntent" t ON t.id=c."intentId" JOIN "user" u ON u.id=c."userId"
- WHERE t.provider IN ('CHECK_ET','VERIFY_ET') AND t.status='CREDITED' AND t."caseState"<>'REVERSED'
+ WHERE ${creditedProviderDeposit}
  AND c."createdAt"<=${now} AND ${realPlayer}`);
  return {state:'ready' as const,...row};
 }

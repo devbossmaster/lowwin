@@ -5,6 +5,7 @@ import {AdminError} from './errors';
 import {arifPayAvailability} from '../payments/arifpay-provider';
 import {chapaAvailability} from '../payments/chapa-provider';
 import {readPlayerTable,readChapaTable,readWinnerTable} from './master-table-read';
+import {readLiveWinners} from './live-winners';
 function eatDayStart(now:Date){const d=new Date(now.getTime()+3*3600000);return new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate())-3*3600000)}
 const filters=z.object({page:z.coerce.number().int().min(1).max(100000).default(1),q:z.string().trim().max(100).default(''),status:z.string().regex(/^[A-Z_]*$/).max(40).default(''),sort:z.enum(['newest','oldest','amount']).default('newest'),view:z.enum(['completed','unfinished','review','failed','all']).optional(),purpose:z.enum(['','TOP_UP','BID']).default('')});
 export async function tableExists(client:PrismaClient,name:string){const [r]=await client.$queryRaw<{ready:boolean}[]>`SELECT to_regclass(${`public."${name}"`}) IS NOT NULL AS ready`;return r.ready}
@@ -26,8 +27,9 @@ export async function financialSummary(client:PrismaClient,now:Date){
  return r;
 }
 export async function workspaceRead(client:PrismaClient,headers:Headers,section:string,params:URLSearchParams){
- if(!['players','transactions','winners','media'].includes(section))throw new AdminError(404,'Workspace resource not found.');
+ if(!['players','transactions','winners','live-winners','media'].includes(section))throw new AdminError(404,'Workspace resource not found.');
  const actor=await requireAdmin(client,headers),f=filters.parse(Object.fromEntries(params));
+ if(section==='live-winners')return readLiveWinners(client,actor,f);
  const allowed=section==='media'?['OWNER','CATALOG_MANAGER']:section==='players'?['OWNER','SUPPORT','AUDITOR','PAYMENTS_OPERATOR']:section==='winners'?['OWNER','FULFILLMENT','AUDITOR']:['OWNER','PAYMENTS_OPERATOR','AUDITOR','SUPPORT'];
  if(!allowed.includes(actor.role))throw new AdminError(403,'Your staff role cannot access this workspace.');
  if(section==='players')return readPlayerTable(client,actor,f);

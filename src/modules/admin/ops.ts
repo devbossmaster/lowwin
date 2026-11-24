@@ -97,7 +97,7 @@ export async function opsMutation(client:PrismaClient,headers:Headers,action:Ops
    if(previous?.state==='DELIVERED')throw new AdminError(409,'This item is already delivered.');
    const data={state:'DELIVERED',note:d.reason,deliveredAt:owner.now,contactDeleteAt:new Date(owner.now.getTime()+30*86400000)};
    const row=await tx.fulfillmentCase.upsert({where:{auctionId:d.auctionId},create:{auctionId:d.auctionId,userId:settled.winnerUserId,...data},update:{...data,version:{increment:1}}});
-   receipt={auctionId:row.auctionId,state:row.state,version:row.version};target=row.auctionId;
+   receipt={auctionId:row.auctionId,state:row.state,version:row.version,deliveredAt:row.deliveredAt?.toISOString()??null};target=row.auctionId;
   }else if(action==='fulfillment'){
    const d=schemas.fulfillment.parse(input),settled=await tx.auctionSettlement.findUnique({where:{auctionId:d.auctionId}});
    if(settled?.outcome!=='WINNER'||!settled.winnerUserId)throw new AdminError(409,'A settled winner is required.');

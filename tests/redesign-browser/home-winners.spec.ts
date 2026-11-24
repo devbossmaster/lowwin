@@ -1,4 +1,4 @@
-import {test,expect} from '../isolated-browser';
+import {test,expect,type Page,type Route} from '../isolated-browser';
 import {PrismaClient} from '@prisma/client';
 import {randomInt,randomUUID} from 'node:crypto';
 import {mkdirSync} from 'node:fs';
@@ -84,41 +84,89 @@ test('homepage, final results, nested Back, live batches and Winners navigation'
  }finally{await db.$disconnect()}
 });
 
-test('recent winners displays the approved replacement banner and restores the product after removal',async({page})=>{
+test('recent winners waits for approved artwork and reflects replacement and removal',async({page,browser})=>{
  const db=new PrismaClient({datasourceUrl:process.env.TEST_DATABASE_URL});
  try{
   const fixture=await richFinalResult(db),id=randomInt(8000000000,8900000000),operator=randomUUID();
   await db.user.create({data:{id:operator,name:'Banner fixture operator',role:'admin',emailVerified:true}});
   await verifyFixtureContact(db,id);await page.route('https://telegram.org/**',route=>route.fulfill({body:''}));
-  await page.addInitScript(({launch})=>{window.Telegram={WebApp:{initData:launch,ready(){},expand(){},setHeaderColor(){},setBackgroundColor(){}}};},{launch:signedLaunch({user:JSON.stringify({id,first_name:'Banner QA'})},process.env.TELEGRAM_BOT_TOKEN)});
+  await page.addInitScript(({launch,code})=>{
+   window.Telegram={WebApp:{initData:launch,ready(){},expand(){},setHeaderColor(){},setBackgroundColor(){}}};
+   const artworks=new Set<string>();
+   (window as Window&{winnerArtworkPaths?:Set<string>}).winnerArtworkPaths=artworks;
+   const observeArtwork=()=>document.querySelectorAll<HTMLImageElement>(`#recent-winners [data-winner-code="${code}"] img`).forEach(image=>{
+    if(image.src)artworks.add(new URL(image.src).pathname);
+   });
+   new MutationObserver(observeArtwork).observe(document,{subtree:true,childList:true,attributes:true,attributeFilter:['src']});
+  },{launch:signedLaunch({user:JSON.stringify({id,first_name:'Banner QA'})},process.env.TELEGRAM_BOT_TOKEN),code:fixture.code});
   const upload=async(background:string)=>(await db.managedMedia.create({data:{purpose:'WINNER_BANNER',mime:'image/webp',sourceType:'SUPPLIED',sourceCredit:'Consented synthetic QA banner',bytes:Uint8Array.from(await sharp({create:{width:1840,height:800,channels:3,background}}).webp().toBuffer())}})).id;
   const save=async(version:number,imageId:string|null)=>db.$transaction(async tx=>{
    await tx.$queryRaw`SELECT id FROM "Auction" WHERE id=${fixture.auction.id} FOR UPDATE`;
    return saveWinnerBanner(tx,{id:operator,role:'OWNER',now:new Date()},{key:randomUUID(),auctionId:fixture.auction.id,version,imageId,consentConfirmed:true,reason:'Consented synthetic QA banner'});
   });
-  const first=await save(0,await upload('#153e8e'));
-  await page.goto('/telegram');
-  const card=page.locator(`#recent-winners button[data-winner-code="${fixture.code}"]:not([data-winner-copy])`);
-  async function showsBanner(path:string){
-   const artwork=card.locator('[data-photo="banner"] img');
+  const oldPreview=await page.request.get('/api/results/recent-winners');
+  expect(oldPreview.ok()).toBe(true);
+  const staleProductPreview=await oldPreview.json();
+  expect(staleProductPreview.items.find((item:{code:string})=>item.code===fixture.code)?.result.winnerBannerPath).toBeNull();
+  // Reproduce an older public response if signed-in Home asks for one.
+  let previewReads=0;
+  await page.route('**/api/results/recent-winners',route=>{
+   previewReads++;
+   return route.fulfill({json:staleProductPreview});
+  });
+  const winnerCard=(view:Page)=>view.locator(`#recent-winners button[data-winner-code="${fixture.code}"]:not([data-winner-copy])`);
+  const card=winnerCard(page);
+  const artworkPaths=()=>page.evaluate(()=>Array.from((window as Window&{winnerArtworkPaths?:Set<string>}).winnerArtworkPaths??[]));
+  async function showsBanner(path:string,view=page){
+   const artwork=winnerCard(view).locator('[data-photo="banner"] img');
    await artwork.scrollIntoViewIfNeeded();
    await expect.poll(()=>artwork.evaluate(image=>(image as HTMLImageElement).naturalWidth?new URL((image as HTMLImageElement).currentSrc).pathname:null)).toBe(path);
   }
-  await showsBanner(first.path!);
+  async function showsApprovedArtwork(navigate:()=>Promise<unknown>,path:string){
+   const winnersPageOne=(url:URL)=>url.pathname==='/api/results/winners'&&url.searchParams.get('page')==='1';
+   let release!:()=>void,requested=false;
+   const held=new Promise<void>(resolve=>{release=resolve});
+   const hold=async(route:Route)=>{requested=true;await held;await route.continue()};
+   await page.route(winnersPageOne,hold);
+   try{
+    await navigate();
+    await expect.poll(()=>requested).toBe(true);
+    await expect(page.locator('.app-frame[data-customer-registered="true"]')).toBeVisible();
+    await expect(page.locator('#recent-winners [data-route-skeleton="winners"]')).toBeVisible();
+    await expect(card.locator('img')).toHaveCount(0);
+    expect(await artworkPaths()).toEqual([]);
+    expect(previewReads).toBe(0);
+   }finally{release();await page.unroute(winnersPageOne,hold)}
+   await showsBanner(path);
+   expect(await artworkPaths()).toEqual([path]);
+  }
+  const first=await save(0,await upload('#153e8e'));
+  await showsApprovedArtwork(()=>page.goto('/telegram'),first.path!);
   await card.click();
   const sheet=page.getByRole('dialog',{name:'Auction result',exact:true});
   await expect(sheet.locator('[data-photo="banner"] img')).toHaveAttribute('src',new RegExp(first.imageId!));
   await page.keyboard.press('Escape');await expect(sheet).toHaveCount(0);
   const replacement=await save(first.version,await upload('#57439b'));
-  // The product preview endpoint must not publish an identifiable new banner.
+  // The approved artwork is public, while the result details stay private.
   const preview=await page.request.get('/api/results/recent-winners');
-  expect(preview.ok()).toBe(true);expect(await preview.text()).not.toContain(replacement.path);
+  expect(preview.ok()).toBe(true);
+  const publicItem=(await preview.json()).items.find((item:{code:string})=>item.code===fixture.code);
+  expect(publicItem?.result).toMatchObject({winnerBannerPath:replacement.path,winnerDisplay:null,winnerUsername:null,winnerPhoneMasked:null,winnerPhotoPath:null,winningPoints:null});
   await expect.poll(()=>page.request.get(first.path!).then(r=>r.status())).toBe(404);
   // Keep the tab open while the signed-in winners query picks up the new art.
   await showsBanner(replacement.path!);
   await card.click();
   await expect(sheet.locator('[data-photo="banner"] img')).toHaveAttribute('src',new RegExp(replacement.imageId!));
   await page.keyboard.press('Escape');
+  await showsApprovedArtwork(()=>page.reload(),replacement.path!);
+  const guest=await browser.newContext({baseURL:new URL(page.url()).origin,ignoreHTTPSErrors:true});
+  try{
+   const guestPage=await guest.newPage();
+   await guestPage.route('https://telegram.org/**',route=>route.fulfill({body:''}));
+   await guestPage.goto('/');
+   await expect(guestPage.locator('.app-frame[data-customer-registered="false"]')).toBeVisible();
+   await showsBanner(replacement.path!,guestPage);
+  }finally{await guest.close()}
   await save(replacement.version,null);await page.reload();
   await expect(card.locator('img')).toHaveAttribute('src',/lowwin-demo-headphones|catalog/);
   await expect(card.locator('[data-photo="banner"]')).toHaveCount(0);

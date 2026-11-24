@@ -4,6 +4,7 @@ import {MiniPhrase,useMiniLocale} from './mini-locale';
 import {useMiniNotice} from './mini-notice';
 import {useTelegram} from './telegram-provider';
 import {auctionShareLinks} from '@/lib/auction-share-link';
+import {LOWWIN_TIKTOK_URL} from '@/lib/brand';
 import styles from './auction-share.module.css';
 
 function useAuctionShare(title:string,code:string){
@@ -24,5 +25,5 @@ function TikTokIcon(){
 }
 export function AuctionShareOptions({title,code}:{title:string;code:string}){
  const share=useAuctionShare(title,code);
- return <section className={styles.options} data-auction-share-options><p><MiniPhrase en="Share & follow" am="ያጋሩና ይከተሉ"/></p><div><button type="button" onClick={share.telegram}><span><Send size={18} aria-hidden="true"/></span>Telegram</button><a href="https://www.tiktok.com/@lowwinet" target="_blank" rel="noopener noreferrer"><span><TikTokIcon/></span>TikTok</a></div></section>;
+ return <section className={styles.options} data-auction-share-options><p><MiniPhrase en="Share & follow" am="ያጋሩና ይከተሉ"/></p><div><button type="button" onClick={share.telegram}><span><Send size={18} aria-hidden="true"/></span>Telegram</button><a href={LOWWIN_TIKTOK_URL} target="_blank" rel="noopener noreferrer"><span><TikTokIcon/></span>TikTok</a></div></section>;
 }

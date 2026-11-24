@@ -2,7 +2,7 @@ import type {InlineKeyboardButton,InlineKeyboardMarkup} from 'grammy/types';
 
 export const TELEGRAM_SUPPORT_URL='https://t.me/lowwinsupport';
 export const TELEGRAM_CHANNEL_URL='https://t.me/lowwinet';
-export const TELEGRAM_CHANNEL_BUTTON={text:'ቻናላችንን ይቀላቀሉ',url:TELEGRAM_CHANNEL_URL} as const;
+export const TELEGRAM_CHANNEL_BUTTON={text:'ቴለግራም ቻናላችንን ይቀላቀሉ',url:TELEGRAM_CHANNEL_URL} as const;
 export const TELEGRAM_GROUP_URL='https://t.me/LowWinChat';
 export const TELEGRAM_COMMUNITY_FOOTER='📢 ቻናላችን፦ @lowwinet\n👥 ግሩፓችን፦ @LowWinChat';
 export function withTelegramChannelButton(rows:InlineKeyboardButton[][]):InlineKeyboardMarkup{

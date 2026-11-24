@@ -20,7 +20,7 @@ export async function auctionBroadcastDraft(tx:Prisma.TransactionClient,auctionI
  const imagePath=auctionNotificationImagePath(a.presentation,a.product.images[0]?.path);
  if(!imagePath)throw new AdminError(422,'Add a published product image before broadcasting this auction.');
  const text=auctionPromotionText(title,a.endsAt,at);
- const miniAppPath=`/auctions/${a.publicCode}`,buttonLabel='እናሸንፍ!';
+ const miniAppPath=`/auctions/${a.publicCode}`,buttonLabel='LowWin ክፈት';
  // Approve the real deadline, so clock ticks can refresh the count at send time.
  const draftHash=digest(JSON.stringify({title,endsAt:a.endsAt.toISOString(),imagePath,miniAppPath,buttonLabel}));
  return {id:a.id,auctionId:a.id,auctionCode:String(a.publicCode),title,text,imageId:null,imagePath,miniAppPath,buttonLabel,draftHash};

@@ -22,4 +22,10 @@
 .terms{display:flex;align-items:center;justify-content:center;gap:5px;min-width:0;min-height:44px;padding:5px 8px;border-radius:12px;background:#e7f6ee;color:#176144;font-size:10px;font-weight:600;line-height:1.45;text-align:center;text-decoration:none}.terms svg{flex:none}
 .utilities .share{min-height:44px;padding:6px 11px;border-radius:12px;font-size:11px;background:var(--action-disabled,#dbe7fb);color:var(--action-pressed,#1e40af);border:0}.utilities .share svg{width:14px;height:14px}
 .terms:focus-visible{outline:2px solid var(--action-primary,#2563eb);outline-offset:2px}
+.homeCard:global(.auction-card)>:global(.auction-card-body)>.placeBid{min-height:48px;padding-inline:14px;font-size:.875rem}
+.homeCard .utilities{align-items:center;margin-top:4px}
+.homeCard .terms{min-height:32px;padding:6px 10px;border-radius:10px}
+.homeCard .utilities .share{position:relative;isolation:isolate;padding-inline:12px;border-radius:12px;background:transparent;font-size:.75rem}
+.homeCard .utilities .share::before{content:'';position:absolute;inset:6px 0;z-index:-1;border-radius:10px;background:var(--action-disabled);pointer-events:none}
+@media(hover:hover){.homeCard .utilities .share:hover::before{background:color-mix(in srgb,var(--action-disabled) 88%,var(--action-primary))}}
 @media(prefers-reduced-motion:no-preference){.card:global(.auction-card)>:global(.auction-card-body)>.placeBid:active{transform:translateY(2px);border-bottom-color:transparent}}

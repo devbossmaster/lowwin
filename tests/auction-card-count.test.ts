@@ -15,7 +15,7 @@ import {AuctionCard} from '../src/components/auction-card';
 import {MiniLocaleProvider} from '../src/components/mini-locale';
 
 const auction={slug:'fixture',code:'123',status:'live',bidCount:31,viewCount:'17',startsAt:'2026-11-12T00:00:00Z',endsAt:'2026-11-20T00:00:00Z',product:{title:'Power bank',titleAm:'ፓወር ባንክ',images:[]},terms:{entryFeePoints:'50',ruleVersion:'lowest-unique-v4'},isDemo:false} as unknown as CatalogAuction;
-function render(bidCount=31,language:'en'|'am'='en'){return renderToStaticMarkup(createElement(MiniLocaleProvider,{initialLanguage:language,children:createElement(AuctionCard,{auction:{...auction,bidCount},serverNow:'2026-11-13T00:00:00Z'})}))}
+function render(bidCount=31,language:'en'|'am'='en',homeCard=false){return renderToStaticMarkup(createElement(MiniLocaleProvider,{initialLanguage:language,children:createElement(AuctionCard,{auction:{...auction,bidCount},serverNow:'2026-11-13T00:00:00Z',homeCard})}))}
 afterEach(()=>{state.activity=null});
 describe('auction-card accepted-bid count',()=>{
  it('shows the server catalog count beside the submission fee and retains the timer',()=>{const html=render();expect(html).toContain('data-card-bid-count="31"');expect(html).toContain('31 total bids');expect(html).toContain('ETB 50.00');expect(html).toContain('role="timer"')});
@@ -23,4 +23,10 @@ describe('auction-card accepted-bid count',()=>{
  it('preserves confirmed zero from live activity instead of a stale catalog count',()=>{state.activity={bids:0};expect(render()).toContain('data-card-bid-count="0"');expect(render()).toContain('0 total bids')});
  it.each([Number.NaN,-1,1.2])('does not invent zero for unavailable/malformed count %s',value=>{const html=render(value);expect(html).toContain('data-card-bid-count="unavailable"');expect(html).toContain('Bid count unavailable');expect(html).not.toContain('0 total bids')});
  it('labels the count naturally in Amharic',()=>{const html=render(40,'am');expect(html).toContain('40 ጠቅላላ ጨረታዎች');expect(html).toContain('ጨረታ')});
+ it('shows the Terms notice on Home without adding a navigation target',()=>{
+  const html=render(31,'en',true);
+  expect(html).toContain('Terms &amp; conditions apply');expect(html).not.toContain('href="/terms"');
+  expect(html).toContain('Place a bid');expect(html).toContain('data-auction-share');
+  expect(render()).toContain('href="/terms"');
+ });
 });

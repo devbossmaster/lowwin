@@ -3,15 +3,12 @@ import {isSubmissionFeeOnly} from '@/modules/auctions/rules';
 import {Trophy} from 'lucide-react';
 import type {CatalogAuction} from '@/modules/auctions/catalog';
 import {etbToCents,formatAuctionBid} from '@/lib/money';
+import {publishedWinnerBannerPath} from '@/lib/catalog-preview';
 import {CatalogImage} from './catalog-image';
 import {MiniPhrase,useMiniLocale} from './mini-locale';
 import styles from './winner-banner.module.css';
 
 type BannerAuction=Pick<CatalogAuction,'status'|'isDemo'|'product'|'result'|'terms'>;
-export function publishedWinnerBannerPath({status,isDemo,result}:Pick<BannerAuction,'status'|'isDemo'|'result'>){
- const path=result?.winnerBannerPath;
- return status==='closed'&&!isDemo&&result?.source==='SETTLED'&&result.outcome==='WINNER'&&typeof path==='string'&&/^\/api\/media\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(path)?path:null;
-}
 /** Display only finalized facts. Photo publication is separately authorized by
  * the server; the client never infers a winner from an elapsed auction timer. */
 export function winnerBannerData(auction:BannerAuction,am=false){

@@ -16,6 +16,17 @@ function assertNoProtectedResult(value:unknown){const text=JSON.stringify(value)
 describe('read-only public product and Home announcement projections',()=>{
  it('keeps published product, fee, terms, revision and counts while removing the result record',()=>{const preview=catalogProductPreview({...source,presentationVersion:7});expect(preview).toMatchObject({code:'42',product:source.product,terms:source.terms,bidCount:10,presentationVersion:7,result:null});assertNoProtectedResult(preview);expect(source.result?.winnerDisplay).toBe('private-winner-name')});
  it('allows only prize announcement metadata on Home, without protected winner facts',()=>{const preview=recentWinnerPreview(source);expect(preview.result).toMatchObject({outcome:'WINNER',source:'SETTLED',publishedAt:source.result!.publishedAt,winningPoints:null,winnerDisplay:null,winnerPhoneMasked:null,winnerPhotoPath:null,winnerBannerPath:null});assertNoProtectedResult(preview)});
+ it('publishes approved banner artwork for every visitor without serializing private winner details',async()=>{
+  const path='/api/media/155a36cf-cf33-4415-b45d-809e06b5c96b',result=source.result;
+  if(result?.source!=='SETTLED')throw Error('Expected a settled winner fixture');
+  const winner={...source,result:{...result,winnerBannerPath:path,winnerBannerVersion:3}};
+  f.winners.mockResolvedValue({items:[winner],page:1,total:1,totalPages:1});
+  const response=await recent(),body=await response.json();
+  expect(response.headers.get('cache-control')).toBe('no-store');expect(f.session).not.toHaveBeenCalled();
+  expect(body.items[0].result).toMatchObject({winnerBannerPath:path,winnerBannerVersion:3,winnerDisplay:null,winnerPhoneMasked:null,winnerPhotoPath:null,winningPoints:null});assertNoProtectedResult(body);
+  expect(recentWinnerPreview({...winner,isDemo:true}).result?.winnerBannerPath).toBeNull();
+  expect(recentWinnerPreview({...winner,status:'live'}).result?.winnerBannerPath).toBeNull();
+ });
  it('denies a guest detail read before loading the auction',async()=>{f.session.mockResolvedValue(null);const response=await detail(new Request('https://lowwin.test/api/catalog/auctions/42'),{params:Promise.resolve({slug:'42'})});expect(response.status).toBe(401);expect(response.headers.get('cache-control')).toContain('private, no-store');expect(f.auction).not.toHaveBeenCalled()});
  it('serves authenticated product details and strips results from the actual handler',async()=>{const response=await detail(new Request('https://lowwin.test/api/catalog/auctions/42'),{params:Promise.resolve({slug:'42'})});expect(response.status).toBe(200);expect(response.headers.get('cache-control')).toContain('private, no-store');const body=await response.json();expect(body.result).toBeNull();assertNoProtectedResult(body)});
  it('strips results from every catalog-list item even when closed auctions are requested',async()=>{const response=await list(new Request('https://lowwin.test/api/catalog/auctions?status=closed'));expect(response.status).toBe(200);const body=await response.json();expect(body.items[0].result).toBeNull();assertNoProtectedResult(body)});

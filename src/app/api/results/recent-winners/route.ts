@@ -3,7 +3,7 @@ import {listCompletedWinners} from '@/modules/auctions/results';
 import {stagingDemoEnabled} from '@/modules/auctions/staging-demo';
 import {recentWinnerPreview} from '@/lib/catalog-preview';
 export const runtime='nodejs';
-/** One bounded Home announcement projection, never winner identities or breakdowns. */
+/** One bounded Home announcement projection with consented artwork. */
 export async function GET(){
  try{
   const data=await listCompletedWinners(db,1,12);

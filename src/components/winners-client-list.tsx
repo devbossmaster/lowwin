@@ -1,5 +1,4 @@
 'use client';
-import {useEffect} from 'react';
 import {WinnerCards} from './winner-cards';
 import {MiniPhrase} from './mini-locale';
 import {useMiniPage} from './mini-query-state';
@@ -7,36 +6,32 @@ import {usePublicQuery} from './public-query';
 import {PrivateState,usePrivateQuery} from './private-query';
 import type {listCompletedWinners} from '@/modules/auctions/results';
 import {winnersQueryUrl,recentWinnersQueryUrl} from '@/lib/catalog-query';
+import {recentWinnerPreview} from '@/lib/catalog-preview';
 import {maskPhoneDisplay} from '@/lib/phone-mask';
 import {MiniRouteSkeleton} from './mini-route-skeleton';
 import {miniQueryPolicy} from './mini-query-policy';
-import {readPublicQuery,seedPublicQuery} from './public-query-cache';
 
 export type WinnersData=Awaited<ReturnType<typeof listCompletedWinners>>&{allowDemo:boolean};
 export function WinnersListLoading(){return <MiniRouteSkeleton variant="winners" compact/>}
 export function WinnersClientList({initial,carousel=false}:{initial?:WinnersData;carousel?:boolean}={}){
- const [savedPage,setPage]=useMiniPage(),page=carousel?1:savedPage,winnersUrl=winnersQueryUrl(page),url=carousel?recentWinnersQueryUrl():winnersUrl,policy=miniQueryPolicy(url),seed=initial?.page===page?initial:undefined;
- // Published results are historical display data. Home keeps its cards visible
- // and checks quietly on that existing policy, without recurring loading feedback.
- const publicQuery=usePublicQuery<WinnersData>(recentWinnersQueryUrl(),{enabled:carousel,keepPreviousData:true,initialData:carousel?seed:undefined,pollMs:carousel?policy.staleMs:0,freshnessMs:policy.staleMs});
- // Signed-in Home visitors reuse the private page-one winners cache for the
- // approved artwork and identity. The public product cards render immediately.
+ const [savedPage,setPage]=useMiniPage(),page=carousel?1:savedPage,winnersUrl=winnersQueryUrl(page),seed=initial?.page===page?initial:undefined;
  const privateQuery=usePrivateQuery<WinnersData>(winnersUrl,{
-  enabled:!carousel||!!publicQuery.data?.items.length,keepPreviousData:!carousel,
+  keepPreviousData:!carousel,
   initialData:!carousel?seed:undefined,pollMs:miniQueryPolicy(winnersUrl).staleMs,
  });
- const query=carousel?publicQuery:privateQuery,data=query.data,busy=query.isPlaceholderData;
- const authenticatedWinners=carousel&&privateQuery.status==='authenticated'&&privateQuery.data?.page===1?privateQuery.data.items:[];
+ // Choose one source after session restoration. Rendering a public snapshot
+ // before the signed-in result arrives can paint a superseded image.
+ const publicPreview=carousel&&['guest','contact-required','error'].includes(privateQuery.status);
+ const publicUrl=recentWinnersQueryUrl(),publicPolicy=miniQueryPolicy(publicUrl);
+ const publicQuery=usePublicQuery<WinnersData>(publicUrl,{enabled:publicPreview,initialData:publicPreview?seed:undefined,pollMs:publicPolicy.staleMs});
+ const query=publicPreview?publicQuery:privateQuery,data=query.data,busy=query.isPlaceholderData;
  const items=carousel?data?.items.slice(0,6).map(item=>{
-  const result=item.result,identity=authenticatedWinners.find(winner=>winner.code===item.code)?.result;
-  if(result?.source!=='SETTLED'||result.outcome!=='WINNER'||identity?.source!=='SETTLED'||identity.outcome!=='WINNER'||identity.publishedAt!==result.publishedAt)return item;
-  const phone=identity.winnerPhoneMasked;
-  return {...item,result:{...result,winnerDisplay:identity.winnerDisplay,winnerPhoneMasked:phone?.includes('*')?maskPhoneDisplay(phone):null,winnerBannerPath:identity.winnerBannerPath,winnerBannerVersion:identity.winnerBannerVersion}};
+  if(publicPreview)return item;
+  const preview=recentWinnerPreview(item),result=item.result;
+  if(preview.result?.source!=='SETTLED'||result?.source!=='SETTLED')return preview;
+  const phone=result.winnerPhoneMasked;
+  return {...preview,result:{...preview.result,winnerDisplay:result.winnerDisplay,winnerPhoneMasked:phone?.includes('*')?maskPhoneDisplay(phone):null}};
  }):data?.items;
- useEffect(()=>{
-  if(!carousel||!seed)return;const saved=readPublicQuery<WinnersData>(url);
-  if(!saved||Date.parse(seed.serverNow)>Date.parse(saved.value.serverNow))seedPublicQuery(url,seed);
- },[seed,url,carousel]);
  return <div data-winners-ready={!!data&&!busy||undefined} data-winners-refreshing={query.fetching||undefined}>
   {(data||query.error||!['loading','authenticated'].includes(query.status))&&(!carousel||!data||!!query.error)&&<PrivateState query={query}/>}
   {!data&&!query.error&&['loading','authenticated'].includes(query.status)&&<WinnersListLoading/>}

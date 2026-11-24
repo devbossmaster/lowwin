@@ -172,6 +172,8 @@ describe.skipIf(!url)('Master Guide Admin operations and private alerts',()=>{
   const input={key:randomUUID(),auctionId:winner.id,version:row.version,reason:'Winner called and item delivered'};
   expect((await cmd('deliveryDone',input,outsider)).status).toBe(403);expect((await cmd('deliveryDone',{...input,version:0},colleague.cookie)).status).toBe(409);
   const receipt=await okay(await cmd('deliveryDone',input,colleague.cookie));expect(receipt.state).toBe('DELIVERED');expect(await okay(await cmd('deliveryDone',input,colleague.cookie))).toEqual(receipt);
+  const delivered=await db.fulfillmentCase.findUniqueOrThrow({where:{auctionId:winner.id}});
+  expect(receipt.deliveredAt).toBe(delivered.deliveredAt?.toISOString());expect(receipt.deliveredAt).toEqual(expect.any(String));
   expect(await db.outbox.count()).toBe(outbox);expect(await db.notificationInbox.count()).toBe(inbox);expect(JSON.stringify(await db.auctionSettlement.findUnique({where:{auctionId:winner.id}}),(_,v)=>typeof v==='bigint'?v.toString():v)).toBe(before);
   const queue=await okay(await get('workspace/winners?status=DELIVERED',colleague.cookie));expect(queue.items.find((r:any)=>r.auctionId===winner.id)).toMatchObject({state:'DELIVERED',winner:{phone:'+99900910000001'}});
   const a=await bidAuction(db,{endDelayMs:2000}),u=await bidUser(db),v=await bidUser(db);await submitBid(db,{userId:u,auctionSlug:a.slug!,amount:'1',key:randomUUID()});await submitBid(db,{userId:v,auctionSlug:a.slug!,amount:'2',key:randomUUID()});await new Promise(resolve=>setTimeout(resolve,2100));await closeAuction(db,a.id);
