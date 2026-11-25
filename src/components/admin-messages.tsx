@@ -40,10 +40,10 @@ function DeliveryIssues({campaign:c}:{campaign:Campaign}){
 }
 function ConfirmBroadcast({value,busy,error,onNo,onYes}:{value:Confirmation;busy:boolean;error:string;onNo:()=>void;onYes:()=>void}){
  const dialog=useRef<HTMLDialogElement>(null),cancel=useRef<HTMLButtonElement>(null),titleId=useId(),descriptionId=useId();
- const {campaign:c,action}=value,source=image(c),title=action==='resend'?'Resend this broadcast?':action==='delete'?'Delete sent Telegram messages?':'Stop this broadcast?';
+ const {campaign:c,action}=value,source=image(c),title=action==='resend'?'Resend this broadcast?':action==='delete'?'Delete sent Telegram messages?':'Stop this campaign?';
  useEffect(()=>{const previous=document.activeElement as HTMLElement|null,node=dialog.current;node?.showModal();cancel.current?.focus();return()=>{node?.close();if(previous?.isConnected)previous.focus({preventScroll:true})}},[]);
  return <dialog ref={dialog} className={styles.confirmDialog} aria-labelledby={titleId} aria-describedby={descriptionId} onCancel={e=>{e.preventDefault();if(!busy)onNo()}}>
-  <h2 id={titleId}>{title}</h2><p id={descriptionId}>{action==='resend'?'Yes queues a new campaign with this original image, message and button. Eligible recipients and linked auction availability are checked again.':action==='delete'?(managed(c)?'Yes stops remaining sends and queues deletion of recorded Telegram messages sent within 48 hours.':'Yes queues deletion of the recorded Telegram messages sent within 48 hours.'): 'Yes stops remaining unsent messages. Messages already accepted by Telegram stay in delivery history.'}</p>
+  <h2 id={titleId}>{title}</h2><p id={descriptionId}>{action==='resend'?'Yes queues a new campaign with this original image, message and button. Eligible recipients and linked auction availability are checked again.':action==='delete'?(managed(c)?'Yes stops remaining sends and queues deletion of recorded Telegram messages sent within 48 hours.':'Yes queues deletion of the recorded Telegram messages sent within 48 hours.'): 'Yes stops queued messages. Any send already in progress can still finish.'}</p>
   {c.kind&&<strong>{notificationHistoryLabel(c.kind)}</strong>}{source&&<img src={source} alt="Original broadcast image"/>}
   {c.text&&<p className={styles.originalCaption}>{c.text}</p>}
   {managed(c)&&<p className={styles.help}>{c.buttonLabel??'Open Lowwin'} opens {c.miniAppPath??'/'}</p>}
@@ -63,8 +63,8 @@ export function AdminMessages(){
  const open=(campaign:Campaign,action:Confirmation['action'])=>{mutation.clear();setNotice('');setConfirmation({campaign,action,resendId:crypto.randomUUID()})};
  const confirm=async()=>{
   if(!confirmation)return;const {campaign:c,action,resendId}=confirmation;
-  const result=await mutation.run(action==='resend'?'broadcastResend':action==='delete'?(managed(c)?'broadcastDelete':'notificationDelete'):'broadcastStop',{id:c.id,reason:action==='resend'?'Administrator confirmed resend of original broadcast':action==='delete'?'Administrator requested deletion of sent Telegram messages':'Administrator stopped remaining Telegram broadcast',...(action==='resend'?{resendId,confirmation:'RESEND'}:action==='delete'?{confirmation:'DELETE'}:{})});
-  if(result){setConfirmation(null);setNotice(action==='resend'?'New campaign queued. The original campaign is unchanged.':action==='delete'?'Deletion queued. Follow the pending, deleted and unavailable counts below.':'Remaining sends stopped.')}
+  const result=await mutation.run(action==='resend'?'broadcastResend':action==='delete'?(managed(c)?'broadcastDelete':'notificationDelete'):'broadcastStop',{id:c.id,reason:action==='resend'?'Administrator confirmed resend of original broadcast':action==='delete'?'Administrator requested deletion of sent Telegram messages':'Administrator stopped queued Telegram campaign messages',...(action==='resend'?{resendId,confirmation:'RESEND'}:action==='delete'?{confirmation:'DELETE'}:{})});
+  if(result){setConfirmation(null);setNotice(action==='resend'?'New campaign queued. The original campaign is unchanged.':action==='delete'?'Deletion queued. Follow the pending, deleted and unavailable counts below.':'Campaign stopped. Sends already in progress may finish.')}
  };
  return <div className="admin-people">
   <AdminHeading title="Broadcast" description="Compose an update, follow the queue, or manage delivered messages." refresh={view==='compose'?undefined:query.reload}>{owner&&<AdminLink className="admin-button secondary" href="/admin/auctions"><Plus size={16}/>Promote an auction</AdminLink>}</AdminHeading>
@@ -78,7 +78,7 @@ export function AdminMessages(){
    <form className="admin-queue-filter" onSubmit={e=>{e.preventDefault();queue.set({q:String(new FormData(e.currentTarget).get('q')??''),page:'1'})}}>
     <label>Search<input name="q" key={queue.params.get('q')??''} type="search" defaultValue={queue.params.get('q')??''} placeholder={view==='active'?'Message text':'Message, notification type or auction'}/></label>
     {view==='history'&&<label>Source<select value={scope} onChange={e=>queue.set({source:e.target.value,page:'1'})}>
-     <option value="all">All notifications</option><option value="automatic">Automatic</option><option value="manual">Manual broadcasts</option>
+     <option value="all">All public campaigns</option><option value="automatic">Automatic auction notices</option><option value="manual">Manual broadcasts</option>
     </select></label>}
     <button>Search</button>
    </form>

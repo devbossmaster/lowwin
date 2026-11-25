@@ -84,12 +84,14 @@ describe.skipIf(!url)('Master Guide Admin operations and private alerts',()=>{
   const dash=await okay(await get('dashboard'));expect(dash.deliveries.state).toBe('ready');expect(dash.deliveries.count).toBe(queue.total);
  });
  it('protects delivery contacts by player ownership and administrator authorization without changing immutable proof',async()=>{const before=JSON.stringify(await db.auctionSettlement.findUnique({where:{auctionId:winner.id}}),(_,v)=>typeof v==='bigint'?v.toString():v);expect((await fulfillment.POST(req('fulfillment',{auctionId:winner.id,action:'claim',name:'Test receiver',phone:'TEST ONLY',address:'Test address'},player2))).status).toBe(404);await okay(await fulfillment.POST(req('fulfillment',{auctionId:winner.id,action:'claim',name:'Test receiver',phone:'TEST ONLY',address:'Test address'},player)));expect((await get(`fulfillment/${winner.id}`,colleague.cookie)).status).toBe(200);expect((await get(`fulfillment/${winner.id}`,outsider)).status).toBe(403);await okay(await cmd('fulfillment',{key:randomUUID(),auctionId:winner.id,version:1,state:'CLAIMED',tracking:'',assignedTo:colleague.id,reason:'Assign approved administrator'}));const contact=await okay(await get(`fulfillment/${winner.id}`,colleague.cookie));expect(contact.contact.phone).toBe('TEST ONLY');expect(contact.contactCipher).toBeUndefined();await okay(await cmd('fulfillment',{key:randomUUID(),auctionId:winner.id,version:2,state:'PACKING',tracking:'',reason:'Test packing confirmed'},colleague.cookie));expect(JSON.stringify(await db.auctionSettlement.findUnique({where:{auctionId:winner.id}}),(_,v)=>typeof v==='bigint'?v.toString():v)).toBe(before);expect((await db.user.findUniqueOrThrow({where:{id:playerId}})).telegramPhoneNumber).toBeNull();expect(JSON.stringify(await okay(await fulfillment.GET(req('fulfillment',undefined,player2))))).not.toContain(winner.id)});
- it('schedules an upcoming reminder once and deduplicates recipient jobs in the database',async()=>{
+ it('schedules a day-before reminder once and skips late pre-start reminders',async()=>{
   await subscribePlayers();
-  const a=await bidAuction(db,{startOffsetMs:6*3600000,endDelayMs:7*3600000});
+  const hour=3_600_000,soon=await bidAuction(db,{startOffsetMs:6*hour,endDelayMs:7*hour});
+  const a=await bidAuction(db,{startOffsetMs:24*hour-1_000,endDelayMs:25*hour}),key=`global:starts-24-hours:${a.id}`;
   await scheduleAlerts(db);await scheduleAlerts(db);
-  const key=`global:upcoming:${a.id}`,root=await db.outbox.findUniqueOrThrow({where:{key}});
-  expect(root.payload).toMatchObject({deliveryKind:'AUCTION_UPCOMING',auctionId:a.id});
+  expect(await db.outbox.count({where:{key:{in:[`global:starts-24-hours:${soon.id}`,`global:upcoming:${soon.id}`,`global:upcoming-1-hour:${soon.id}`]}}})).toBe(0);
+  const root=await db.outbox.findUniqueOrThrow({where:{key}});
+  expect(root.payload).toMatchObject({deliveryKind:'AUCTION_UPCOMING',scheduledStartAt:a.startsAt!.toISOString()});
   await db.$transaction(tx=>expandCampaign(tx,root));await db.$transaction(tx=>expandCampaign(tx,root));
   expect(await db.outbox.count({where:{key:`${key}:user:${playerId}`}})).toBe(1);
   expect(await db.outbox.count({where:{key:`${key}:user:${player2Id}`}})).toBe(1);

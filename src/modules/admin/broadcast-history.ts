@@ -6,13 +6,13 @@ import {auctionNotificationImagePath,queueGlobal} from '../notifications/campaig
 import {promotionNow,readAuctionPromotion} from '../notifications/auction-promotion';
 import {queueBroadcastDeletion,telegramDeleteWindowMs} from '../notifications/broadcast-delete';
 import {historyDeliveryKinds,historyKind,isManagedBroadcast,isNotificationHistoryRow,relatedNotifications} from '../notifications/history-scope';
+import {CAMPAIGN_STOPPED,campaignLockKey} from '../notifications/campaign-control';
 import {notificationHistoryLabel} from '@/lib/notification-history-labels';
 import {existsSync,statSync} from 'node:fs';
 import {resolve} from 'node:path';
 
 type DeliveryProgress={id:string;sent:bigint;pending:bigint;skipped:bigint;failed:bigint;batches:bigint;failedBatches:bigint;blocked:bigint;invalid:bigint;exhausted:bigint;retrying:bigint;inFlight:bigint;lastSentAt:Date|null;deletable:bigint;expired:bigint;deleted:bigint;deletionPending:bigint;deletionFailed:bigint;unavailable:bigint;preparing:boolean};
 
-export const STOPPED='CAMPAIGN_STOPPED';
 async function campaignRoot(tx:Prisma.TransactionClient,id:string){
  const row=await tx.outbox.findUnique({where:{id}}),p=row?.payload as CampaignPayload|undefined;
  if(!row||row.kind!=='GLOBAL_CAMPAIGN'||p?.deliveryKind!=='BROADCAST'||p.rootKey!==row.key||!row.key.startsWith('broadcast:'))throw new AdminError(404,'Broadcast not found.');
@@ -51,20 +51,35 @@ export async function resendBroadcast(tx:Prisma.TransactionClient,id:string,camp
 }
 export async function deleteBroadcastMessages(tx:Prisma.TransactionClient,id:string){
  const {row}=await campaignRoot(tx,id);
- const stopped=await stopBroadcast(tx,id),deletion=await queueBroadcastDeletion(tx,row);
+ const stopped=await stopCampaign(tx,row),deletion=await queueBroadcastDeletion(tx,row);
  return {...stopped,deletionJobId:deletion.id,deletionState:deletion.state};
 }
 export async function stopBroadcast(tx:Prisma.TransactionClient,id:string){
- const {row}=await campaignRoot(tx,id);
- await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`broadcast:${row.key}`},0))`;
- const now=await promotionNow(tx);
+ const [row]=await tx.$queryRaw<{id:string;key:string}[]>(Prisma.sql`
+  SELECT r.id,r.key FROM "Outbox" r WHERE r.id=${id} AND ${isNotificationHistoryRow}`);
+ if(!row)throw new AdminError(404,'Public campaign not found.');
+ return stopCampaign(tx,row);
+}
+
+async function stopCampaign(tx:Prisma.TransactionClient,{id,key}:{id:string;key:string}){
+ await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${campaignLockKey(key)},0))`;
  // Content stays immutable. The root marker also blocks future expansion/retries.
- await tx.outbox.update({where:{id},data:{state:'SKIPPED',lastError:STOPPED,leaseToken:null,leaseUntil:null}});
+ await tx.outbox.update({where:{id},data:{state:'SKIPPED',lastError:CAMPAIGN_STOPPED,leaseToken:null,leaseUntil:null}});
  // Do not revoke active send ownership: a request already accepted by Telegram
  // must still record its message ID. Claimed-but-not-sent rows recheck Stop.
- const remaining=await tx.outbox.updateMany({where:{key:{startsWith:row.key+':'},state:'PENDING',OR:[{leaseUntil:null},{leaseUntil:{lte:now}}]},data:{state:'SKIPPED',lastError:STOPPED,leaseToken:null,leaseUntil:null}});
- const leased=await tx.outbox.count({where:{key:{startsWith:row.key+':'},state:'PENDING',leaseUntil:{gt:now}}});
- return {id,stopped:true,remainingStopped:remaining.count,leasedAtStop:leased};
+ const [counts]=await tx.$queryRaw<{remainingStopped:number;leasedAtStop:number}[]>(Prisma.sql`
+  WITH stamp AS MATERIALIZED (SELECT clock_timestamp() AT TIME ZONE 'UTC' AS now),
+  children AS MATERIALIZED (
+    SELECT o.id,o."leaseUntil" FROM "Outbox" r CROSS JOIN LATERAL (${relatedNotifications}) o
+    WHERE r.id=${id} AND o.id<>r.id AND o.state='PENDING'
+  ), stopped AS (
+    UPDATE "Outbox" o SET state='SKIPPED',"lastError"=${CAMPAIGN_STOPPED},"leaseToken"=NULL,"leaseUntil"=NULL
+    FROM children c,stamp WHERE o.id=c.id AND o.state='PENDING' AND (o."leaseUntil" IS NULL OR o."leaseUntil"<=stamp.now)
+    RETURNING o.id
+  )
+  SELECT (SELECT COUNT(*)::int FROM stopped) AS "remainingStopped",
+    (SELECT COUNT(*)::int FROM children c,stamp WHERE c."leaseUntil">stamp.now) AS "leasedAtStop"`);
+ return {id,stopped:true,...counts};
 }
 export type NotificationHistorySource='all'|'manual'|'automatic';
 
@@ -76,7 +91,7 @@ export async function broadcastHistory(client:PrismaClient,{
  const auctionTitle=Prisma.sql`COALESCE(r.payload->>'promotionTitle',a.presentation->>'title',product.title)`;
  const keyword='%'+q+'%';
  const matchingKinds=historyDeliveryKinds.filter(kind=>notificationHistoryLabel(kind).toLowerCase().includes(q.toLowerCase()));
- const sourceFilter=view==='active'?isManagedBroadcast:source==='manual'?Prisma.sql`${historyKind}='BROADCAST'`
+ const sourceFilter=source==='manual'?Prisma.sql`${historyKind}='BROADCAST'`
   :source==='automatic'?Prisma.sql`${historyKind}<>'BROADCAST'`:Prisma.sql`true`;
  const where=Prisma.sql`${isNotificationHistoryRow} AND ${sourceFilter}
   ${q?Prisma.sql`AND (r.payload->>'body' ILIKE ${keyword} OR r.key ILIKE ${keyword}
@@ -84,12 +99,12 @@ export async function broadcastHistory(client:PrismaClient,{
    OR a."publicCode"::text ILIKE ${keyword} OR ${historyKind} ILIKE ${keyword}
    ${matchingKinds.length?Prisma.sql`OR ${historyKind} IN (${Prisma.join(matchingKinds)})`:Prisma.empty})`:Prisma.empty}
   ${view==='active'?Prisma.sql`AND (
-    EXISTS(SELECT 1 FROM "Outbox" prep WHERE prep.key='broadcast-delete:'||r.id AND prep.state='PENDING')
+    EXISTS(SELECT 1 FROM "Outbox" prep WHERE prep.key=(CASE WHEN ${isManagedBroadcast} THEN 'broadcast-delete:' ELSE 'notification-delete:' END)||r.id AND prep.state='PENDING')
     OR EXISTS(
       SELECT 1 FROM (${relatedNotifications}) child
       LEFT JOIN "TelegramMessage" m ON m."outboxId"=child.id
       LEFT JOIN "Outbox" d ON d.key='telegram-delete:'||m.id
-      WHERE (r."lastError" IS DISTINCT FROM ${STOPPED} AND child.state='PENDING') OR d.state='PENDING'
+      WHERE (r."lastError" IS DISTINCT FROM ${CAMPAIGN_STOPPED} AND child.state='PENDING') OR d.state='PENDING'
     )
   )`:Prisma.empty}`;
  type Root={id:string;payload:CampaignPayload;createdAt:Date;state:string;lastError:string|null;notificationKind:string;managed:boolean;auctionTitle:string|null;publicCode:number|null};
@@ -145,8 +160,8 @@ export async function broadcastHistory(client:PrismaClient,{
   try{buttonLabel=broadcastButtonLabel(r.payload.buttonLabel);miniAppPath=broadcastMiniAppPath(r.payload.href??'/')}catch{/* Historical unsupported links are not copied into a new draft. */}
   const retrying=Number(counts.retrying??0),inFlight=Number(counts.inFlight??0),recipientCount=sent+pending+skipped+failed;
   const deletion={deleted:Number(counts.deleted??0),pending:Number(counts.deletionPending??0),failed:Number(counts.deletionFailed??0),unavailable:Number(counts.unavailable??0),expired:Number(counts.expired??0),deletable:Number(counts.deletable??0),preparing:counts.preparing??false};
-  const canStop=!!r.managed&&r.lastError!==STOPPED&&!!(pending||batches);
-  const state=r.lastError===STOPPED?'STOPPED':pending||batches?sent?'SENDING':'QUEUED'
+  const canStop=r.lastError!==CAMPAIGN_STOPPED&&!!(pending||batches);
+  const state=r.lastError===CAMPAIGN_STOPPED?'STOPPED':pending||batches?sent?'SENDING':'QUEUED'
     :failed||failedBatches?'NEEDS_ATTENTION':!sent&&(skipped||r.state==='SKIPPED')?'SKIPPED':'COMPLETED';
   return {
    id:r.id,kind:r.notificationKind,source:manual?'manual' as const:'automatic' as const,
@@ -156,7 +171,7 @@ export async function broadcastHistory(client:PrismaClient,{
    createdAt:r.createdAt,lastSentAt:counts.lastSentAt??null,sent,pending,queued:Math.max(0,pending-retrying-inFlight),
    retrying,inFlight,skipped,failed,pendingBatches:batches,failedBatches,recipientCount,eligibleRecipients:recipientCount,
    audienceComplete:batches===0&&failedBatches===0,failureReasons:{blocked,invalid,exhausted,other:Math.max(0,failed-blocked-invalid-exhausted)},
-   deletion,state,canStop,canResend:!!r.managed,canDelete:!deletion.preparing&&(deletion.deletable>0||canStop),
+   deletion,state,canStop,canResend:!!r.managed,canDelete:!deletion.preparing&&(deletion.deletable>0||!!r.managed&&canStop),
   };
  });
  return {items,total:Number(count[0].count),page,totalPages:Math.ceil(Number(count[0].count)/25)};

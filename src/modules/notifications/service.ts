@@ -4,7 +4,7 @@ import {InputFile} from 'grammy';
 import {existsSync,statSync} from 'node:fs';
 import {resolve} from 'node:path';
 import sharp from 'sharp';
-import {notificationRetired,endingReminders,upcomingReminders} from './policy';
+import {notificationRetired,endingReminders,retiredPreStartReminderKinds,upcomingReminder} from './policy';
 import {privateNotificationContent} from './private-content';
 import {telegramPhotoFrame} from './telegram-photo-frame';
 type DB=Prisma.TransactionClient;
@@ -62,7 +62,7 @@ export const scheduleAlerts=scheduleGlobalAlerts;
 export {dispatchOne,dispatchBatch,expandPendingCampaigns} from './dispatch';
 
 const endingKinds=endingReminders.map(reminder=>reminder.kind);
-const promotionKinds=['AUCTION_PUBLISHED','AUCTION_UPCOMING_ADDED',...upcomingReminders.map(reminder=>reminder.kind),...endingKinds,'GLOBAL_CAMPAIGN'];
+const promotionKinds=['AUCTION_PUBLISHED',upcomingReminder.kind,...retiredPreStartReminderKinds,...endingKinds,'GLOBAL_CAMPAIGN'];
 const safeDeleteWindowMs=47*60*60*1000;
 
 async function retireAuctionNotifications(tx:DB,auctionId:string,now:Date,endingOnly:boolean){

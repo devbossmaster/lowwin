@@ -9,8 +9,9 @@ import {notificationDispatchFixture} from './notification-dispatch-fixture';
 import {TELEGRAM_CHANNEL_BUTTON} from '../src/lib/telegram-community';
 
 const now=new Date('2026-10-30T09:00:00Z'),imageId='11111111-2222-4333-8444-555555555555';
-const auction=(change:Record<string,unknown>={})=>({slug:'rugass-power-bank',publicCode:42,publishedAt:new Date(now.getTime()-60000),startsAt:new Date(now.getTime()+9*3600000),endsAt:new Date(now.getTime()+86400000),status:'SCHEDULED',isDemo:false,isSettlementFixture:false,testRunId:null,presentation:{title:'Rugass 20,000 mAh power bank',images:[{path:`/api/media/${imageId}`}]},product:{title:'Original product title',visible:true,images:[]},result:null,settlement:null,...change});
-const job=()=>({id:'auction-message',key:'global:upcoming:auction:user:player',kind:'AUCTION_UPCOMING',payload:{auctionId:'auction',recipientUserId:'player'},state:'PENDING',attempts:0,nextAttemptAt:new Date(0),createdAt:new Date(0),sentAt:null,lastError:null,leaseToken:null,leaseUntil:null,claimedAt:null,settlementId:null,testRunId:null}) as Outbox;
+const startsAt=new Date(now.getTime()+86400000),rootKey='global:starts-24-hours:auction';
+const auction=(change:Record<string,unknown>={})=>({slug:'rugass-power-bank',publicCode:42,publishedAt:new Date(now.getTime()-60000),startsAt,endsAt:new Date(now.getTime()+2*86400000),status:'SCHEDULED',isDemo:false,isSettlementFixture:false,testRunId:null,presentation:{title:'Rugass 20,000 mAh power bank',images:[{path:`/api/media/${imageId}`}]},product:{title:'Original product title',visible:true,images:[]},result:null,settlement:null,...change});
+const job=()=>({id:'auction-message',key:`${rootKey}:user:player`,kind:'AUCTION_UPCOMING',payload:{auctionId:'auction',recipientUserId:'player',rootKey,scheduledStartAt:startsAt.toISOString()},state:'PENDING',attempts:0,nextAttemptAt:new Date(0),createdAt:new Date(0),sentAt:null,lastError:null,leaseToken:null,leaseUntil:null,claimedAt:null,settlementId:null,testRunId:null}) as Outbox;
 let photoBytes:Buffer;
 beforeEach(async()=>{vi.stubEnv('MINI_APP_URL','https://lowwin.test');vi.stubEnv('TELEGRAM_BOT_TOKEN','123456789:fixture-token');photoBytes=await sharp({create:{width:184,height:80,channels:3,background:'#c9a227'}}).png().toBuffer()});
 afterEach(()=>vi.unstubAllEnvs());
@@ -31,9 +32,14 @@ describe('concise auction Telegram messages',()=>{
   const f=fixture();await dispatchOne(f.client,f.bot);
   expect(f.row.state).toBe('SENT');expect(f.sendMessage).not.toHaveBeenCalled();expect(f.tx.managedMedia.findUnique).toHaveBeenCalledWith({where:{id:imageId},select:{bytes:true}});
   expect(f.sendPhoto).toHaveBeenCalledWith('900000001',expect.any(InputFile),{
-   caption:expect.stringMatching(/ጨረታው ሊጀምር 9 ሰዓታት ቀርቷል[\s\S]*21:00 \(አዲስ አበባ\)/),
+   caption:expect.stringMatching(/ጨረታው ሊጀምር 1 ቀን[\s\S]*12:00 \(አዲስ አበባ\)/),
    reply_markup:{inline_keyboard:[[{text:'ጨረታውን ይመልከቱ',web_app:{url:'https://lowwin.test/auctions/rugass-power-bank'}}],[TELEGRAM_CHANNEL_BUTTON]]},
   });
+ });
+ it('skips queued reminders from the previous scheduling rule',async()=>{
+  const f=fixture();f.row.payload={auctionId:'auction',recipientUserId:'player',rootKey:'global:upcoming:auction'};await dispatchOne(f.client,f.bot);
+  expect(f.row.state).toBe('SKIPPED');expect(f.sendPhoto).not.toHaveBeenCalled();expect(f.sendMessage).not.toHaveBeenCalled();
+  expect(f.tx.notificationInbox.upsert).not.toHaveBeenCalled();
  });
  it('sends text when no actual product image exists instead of the generic notification banner',async()=>{
   const f=fixture(auction({presentation:{title:'Rugass power bank'}}));await dispatchOne(f.client,f.bot);

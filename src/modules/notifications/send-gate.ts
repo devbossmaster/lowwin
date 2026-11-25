@@ -1,7 +1,7 @@
 import {Prisma,type PrismaClient} from '@prisma/client';
-import {broadcastRoot} from './campaigns';
+import {CAMPAIGN_STOPPED,campaignRootKey} from './campaign-control';
 import type {ClaimedNotification} from './leases';
-import {endingReminder,upcomingReminder,notificationRetired} from './policy';
+import {endingReminder,notificationRetired,upcomingReminder} from './policy';
 
 export type RecipientGate={telegramId:string;chatId:string;userId?:string;excludeStaff?:boolean};
 export class DeliveryGate extends Error{constructor(readonly reason:string,readonly retry:boolean){super(reason)}}
@@ -12,8 +12,8 @@ export class DeliveryGate extends Error{constructor(readonly reason:string,reado
 export async function beforeNotificationSend(client:PrismaClient,row:ClaimedNotification,shouldContinue:()=>boolean,logicalKey?:string,recipient?:RecipientGate){
  if(!shouldContinue())throw new DeliveryGate('WORKER_STOPPING',true);
  if(notificationRetired(row.kind))throw new DeliveryGate('NOTIFICATION_RETIRED',false);
- const p=row.payload as {recipientUserId?:string;auctionId?:string;botId?:string;telegramId?:string;bidId?:string;batchId?:string;checkoutId?:string;intentId?:string;settlementId?:string;refundId?:string};
- const reminder=endingReminder(row.kind),starting=upcomingReminder(row.kind);
+ const p=row.payload as {recipientUserId?:string;auctionId?:string;botId?:string;telegramId?:string;bidId?:string;batchId?:string;checkoutId?:string;intentId?:string;settlementId?:string;refundId?:string;scheduledStartAt?:string};
+ const reminder=endingReminder(row.kind);
  const privateKind=['DEPOSIT_CREDITED','BID_ACCEPTED','WINNER_CONGRATULATIONS','AUCTION_FEE_REFUNDED'].includes(row.kind);
  const bidId=p.bidId??/^bid:([0-9a-f-]{36}):accepted$/i.exec(row.key)?.[1];
  const botId=process.env.TELEGRAM_BOT_TOKEN?.split(':')[0]??'';
@@ -23,7 +23,7 @@ export async function beforeNotificationSend(client:PrismaClient,row:ClaimedNoti
    SELECT stamp.now,o."leaseUntil",CASE
     WHEN (SELECT action FROM "AdminAudit" WHERE action IN ('AUCTIONS_MAINTENANCE_HALTED','AUCTIONS_MAINTENANCE_RESUMED') ORDER BY "createdAt" DESC,id DESC LIMIT 1)='AUCTIONS_MAINTENANCE_HALTED' THEN 'MAINTENANCE_PAUSED'
     WHEN o.id IS NULL OR o.state<>'PENDING' OR o."leaseToken" IS DISTINCT FROM ${row.leaseToken} OR o."leaseUntil" IS NULL OR o."leaseUntil"<=stamp.now THEN 'CLAIM_REPLACED'
-    WHEN EXISTS(SELECT 1 FROM "Outbox" root WHERE root.key=${broadcastRoot(row)} AND root."lastError"='CAMPAIGN_STOPPED') THEN 'CAMPAIGN_STOPPED'
+    WHEN EXISTS(SELECT 1 FROM "Outbox" root WHERE root.key=${campaignRootKey(row)} AND root."lastError"=${CAMPAIGN_STOPPED}) THEN ${CAMPAIGN_STOPPED}
     WHEN ${logicalKey??null}::text IS NOT NULL AND NOT EXISTS(SELECT 1 FROM "TelegramDeliveryLease" l WHERE l.key=${logicalKey??null} AND l."leaseToken"=${row.leaseToken} AND l."sentAt" IS NULL AND l."leaseUntil">stamp.now) THEN 'CLAIM_REPLACED'
     WHEN ${!!recipient} AND EXISTS(SELECT 1 FROM "BotChat" c WHERE c."telegramId"=${recipient?.telegramId??null} AND c.blocked) THEN 'CHAT_BLOCKED'
     WHEN ${!!recipient} AND NOT EXISTS(SELECT 1 FROM "BotChat" c WHERE c."telegramId"=${recipient?.telegramId??null} AND c."chatId"=${recipient?.chatId??null} AND NOT c.blocked) THEN 'CHAT_NOT_STARTED'
@@ -57,10 +57,13 @@ export async function beforeNotificationSend(client:PrismaClient,row:ClaimedNoti
       AND NOT EXISTS(SELECT 1 FROM "AuctionSettlement" s WHERE s."auctionId"=a.id) AND NOT EXISTS(SELECT 1 FROM "PublicAuctionResult" r WHERE r."auctionId"=a.id)
     ) THEN 'AUCTION_RETIRED'
     WHEN ${row.kind==='AUCTION_PUBLISHED'&&!!p.auctionId} AND NOT EXISTS(SELECT 1 FROM "Auction" a WHERE a.id=${p.auctionId??null} AND a.status IN ('LIVE','SCHEDULED') AND a."startsAt"<=stamp.now) THEN 'AUCTION_RETIRED'
-    WHEN ${row.kind==='AUCTION_UPCOMING_ADDED'} AND NOT EXISTS(SELECT 1 FROM "Auction" a WHERE a.id=${p.auctionId??null} AND a."startsAt">stamp.now) THEN 'AUCTION_RETIRED'
-    WHEN ${(!!reminder||!!starting)&&!!p.auctionId} AND NOT EXISTS(SELECT 1 FROM "Auction" a WHERE a.id=${p.auctionId??null} AND CASE
-     WHEN ${!!reminder} THEN a.status IN ('LIVE','SCHEDULED') AND a."startsAt"<=stamp.now AND a."endsAt">stamp.now+${reminder?.minMs??0}*interval '1 millisecond' AND a."endsAt"<=stamp.now+${reminder?.maxMs??0}*interval '1 millisecond'
-     ELSE a."startsAt">stamp.now+${starting?.minMs??0}*interval '1 millisecond' AND a."startsAt"<=stamp.now+${starting?.maxMs??0}*interval '1 millisecond' END) THEN 'AUCTION_RETIRED'
+    WHEN ${row.kind===upcomingReminder.kind} AND NOT EXISTS(SELECT 1 FROM "Auction" a WHERE a.id=${p.auctionId??null}
+     AND to_char(a."startsAt",'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')=${p.scheduledStartAt??null}
+     AND a."publishedAt"<=a."startsAt"-${upcomingReminder.leadMs}*interval '1 millisecond'
+     AND a."startsAt"<=stamp.now+${upcomingReminder.leadMs}*interval '1 millisecond'
+     AND a."startsAt">stamp.now+${upcomingReminder.leadMs-upcomingReminder.deliveryGraceMs}*interval '1 millisecond') THEN 'AUCTION_RETIRED'
+    WHEN ${!!reminder&&!!p.auctionId} AND NOT EXISTS(SELECT 1 FROM "Auction" a WHERE a.id=${p.auctionId??null}
+     AND a.status IN ('LIVE','SCHEDULED') AND a."startsAt"<=stamp.now AND a."endsAt">stamp.now+${reminder?.minMs??0}*interval '1 millisecond' AND a."endsAt"<=stamp.now+${reminder?.maxMs??0}*interval '1 millisecond') THEN 'AUCTION_RETIRED'
     ELSE NULL END AS reason
    FROM (SELECT (clock_timestamp() AT TIME ZONE 'UTC') AS now) stamp LEFT JOIN "Outbox" o ON o.id=${row.id}`);
   if(!gate||gate.reason)throw new DeliveryGate(gate?.reason??'CLAIM_REPLACED',['MAINTENANCE_PAUSED','CLAIM_REPLACED'].includes(gate?.reason??'CLAIM_REPLACED'));

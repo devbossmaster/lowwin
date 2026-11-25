@@ -22,10 +22,10 @@ export function notificationDispatchFixture(jobs:Outbox[],now=new Date()){
    if(sql.includes('INSERT INTO "TelegramDeliveryLease"')){const key=String(values[0]);if(logical.has(key))return [];logical.set(key,{key,leaseToken:String(values[3]),sentAt:null});return [{key}]}
    if(sql.includes('INSERT INTO "TelegramMediaCache"'))return [{botId:'123456789'}];
    if(sql.includes('WITH acknowledged AS')){
-    const [sentAt,id,leaseToken,,auctionId,chatId,messageId]=values;
-    const [job]=apply({id,state:'PENDING',leaseToken},{state:'SENT',sentAt,attempts:{increment:1},lastError:null,leaseToken:null,leaseUntil:null});
+    const [id,leaseToken,,auctionId,chatId,messageId]=values;
+    const [job]=apply({id,state:'PENDING',leaseToken},{state:'SENT',sentAt:now,attempts:{increment:1},lastError:null,leaseToken:null,leaseUntil:null});
     if(!job)return [];
-    await tx.telegramMessage.upsert({where:{outboxId:id},create:{outboxId:id,auctionId,testRunId:job.testRunId,chatId,messageId},update:{}});
+    await tx.telegramMessage.upsert({where:{outboxId:id},create:{outboxId:id,auctionId,testRunId:job.testRunId,chatId,messageId,sentAt:now},update:{}});
     return [{id}];
    }
    if(sql.includes('WITH picked AS MATERIALIZED')){

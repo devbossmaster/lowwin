@@ -7,12 +7,13 @@ import {auctionMaintenanceHalted,lockAuctionMaintenance} from '../auctions/maint
 import {broadcastMiniAppPath,broadcastButtonLabel} from '@/lib/broadcast-link';
 import {resultRecipientIds} from './result-audience';
 import {promotionNow,readAuctionPromotion} from './auction-promotion';
-import {endingReminders,endingReminder,endingReminderCurrent,notificationRetired,upcomingReminders,upcomingReminder,upcomingReminderCurrent} from './policy';
+import {endingReminders,endingReminder,endingReminderCurrent,notificationRetired,upcomingReminder,upcomingReminderCurrent} from './policy';
 import {auctionCountdownAm,auctionPromotionText} from './amharic-copy';
+import {CAMPAIGN_STOPPED,campaignLockKey,campaignRootKey,campaignStopped} from './campaign-control';
 
 type Tx=Prisma.TransactionClient;
 const when=(date:Date)=>`${formatAddisTimestamp(date,'am-ET')} (አዲስ አበባ)`;
-export const telegramKinds=['AUCTION_PUBLISHED','AUCTION_UPCOMING_ADDED',...upcomingReminders.map(r=>r.kind),...endingReminders.map(r=>r.kind),'AUCTION_ENDED','DEPOSIT_CREDITED','BROADCAST'];
+export const telegramKinds=['AUCTION_PUBLISHED',upcomingReminder.kind,...endingReminders.map(r=>r.kind),'AUCTION_ENDED','DEPOSIT_CREDITED','BROADCAST'];
 /** Only a published product's own local image may accompany its auction alert. */
 export function auctionNotificationImagePath(presentation:unknown,productPath?:string){
  const image=typeof presentation==='object'&&presentation!==null&&'images' in presentation&&Array.isArray(presentation.images)?presentation.images[0]:null;
@@ -23,14 +24,7 @@ export function auctionNotificationImagePath(presentation:unknown,productPath?:s
 export function auctionNotificationImageId(presentation:unknown,productPath?:string){
  return /^\/api\/media\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/i.exec(auctionNotificationImagePath(presentation,productPath)??'')?.[1];
 }
-export type CampaignPayload={auctionId?:string;settlementId?:string;recipientUserId?:string;intentId?:string;body?:string;promotionTitle?:string;imageId?:string;imagePath?:string;href?:string;buttonLabel?:string;telegramOnly?:boolean;parentCampaignId?:string;cursor?:string;audienceBefore?:string;rootKey?:string;deliveryKind?:string};
-export function broadcastRoot(row:Pick<Outbox,'kind'|'key'|'payload'>){
- const p=row.payload as CampaignPayload;
- if(row.kind==='GLOBAL_CAMPAIGN'&&p.deliveryKind==='BROADCAST')return p.rootKey??row.key;
- if(row.kind==='BROADCAST')return p.rootKey??(row.key.includes(':user:')?row.key.slice(0,row.key.lastIndexOf(':user:')):null);
- return null;
-}
-export async function broadcastStopped(tx:Tx,rootKey:string){return (await tx.outbox.findUnique({where:{key:rootKey},select:{lastError:true}}))?.lastError==='CAMPAIGN_STOPPED'}
+export type CampaignPayload={auctionId?:string;settlementId?:string;recipientUserId?:string;intentId?:string;body?:string;promotionTitle?:string;imageId?:string;imagePath?:string;href?:string;buttonLabel?:string;telegramOnly?:boolean;parentCampaignId?:string;cursor?:string;audienceBefore?:string;rootKey?:string;deliveryKind?:string;scheduledStartAt?:string};
 export async function queueGlobal(tx:Tx,key:string,kind:string,payload:CampaignPayload){
  const now=await promotionNow(tx);
  const auction=payload.auctionId?await tx.auction.findUnique({where:{id:payload.auctionId},select:{testRunId:true}}):null;
@@ -38,14 +32,23 @@ export async function queueGlobal(tx:Tx,key:string,kind:string,payload:CampaignP
 }
 /** Each immutable batch records its cursor in a NEW intent. Recipients are
  * bounded by the event time; retrying a page cannot add duplicate deliveries. */
-export async function expandCampaign(tx:Tx,row:Outbox){
+export async function expandCampaign(tx:Tx,row:Outbox,campaignLockHeld=false){
  const p=row.payload as CampaignPayload;
  if(notificationRetired(p.deliveryKind??row.kind)){await tx.outbox.update({where:{id:row.id},data:{state:'SKIPPED',lastError:'NOTIFICATION_RETIRED'}});return 0}
  let rootKey=p.rootKey??row.key,before=new Date(p.audienceBefore??row.createdAt.toISOString()),resultSettlementId:string|undefined;
- if(broadcastRoot(row)){
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`broadcast:${rootKey}`},0))`;
-  if(await broadcastStopped(tx,rootKey)){await tx.outbox.update({where:{id:row.id},data:{state:'SKIPPED',lastError:'CAMPAIGN_STOPPED'}});return 0}
-  if(p.auctionId&&(await readAuctionPromotion(tx,p.auctionId)).issue){await tx.outbox.update({where:{id:row.id},data:{state:'SKIPPED',lastError:'AUCTION_RETIRED'}});return 0}
+ const campaignKey=campaignRootKey(row);
+ if(campaignKey){
+  if(!campaignLockHeld)await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${campaignLockKey(campaignKey)},0))`;
+  if(await campaignStopped(tx,campaignKey)){await tx.outbox.update({where:{id:row.id},data:{state:'SKIPPED',lastError:CAMPAIGN_STOPPED}});return 0}
+ }
+ if(p.deliveryKind==='BROADCAST'&&p.auctionId&&(await readAuctionPromotion(tx,p.auctionId)).issue){await tx.outbox.update({where:{id:row.id},data:{state:'SKIPPED',lastError:'AUCTION_RETIRED'}});return 0}
+ if(p.deliveryKind===upcomingReminder.kind){
+  const [timing]=p.scheduledStartAt?await tx.$queryRaw<{startsAt:Date|null;publishedAt:Date|null;now:Date}[]>`
+   SELECT "startsAt","publishedAt",clock_timestamp() AT TIME ZONE 'UTC' AS now
+   FROM "Auction" WHERE id=${p.auctionId??null}`:[];
+  if(!timing||!upcomingReminderCurrent(timing.startsAt,timing.publishedAt,p.scheduledStartAt,timing.now)){
+   await tx.outbox.update({where:{id:row.id},data:{state:'SKIPPED',lastError:'AUCTION_RETIRED'}});return 0;
+  }
  }
  // Publication is the authority for every outcome. Canonical settlement keys
  // prevent duplicate logical announcements from legacy/retried root intents.
@@ -67,7 +70,7 @@ export async function expandCampaign(tx:Tx,row:Outbox){
 }
 const reminderWindows=(reminders:readonly {kind:string;key:string;minMs:number;maxMs:number}[])=>Prisma.join(reminders.map(reminder=>
  Prisma.sql`(${reminder.kind}::text,${reminder.key}::text,${reminder.minMs}::bigint,${reminder.maxMs}::bigint)`));
-const endingWindows=reminderWindows(endingReminders),startingWindows=reminderWindows(upcomingReminders);
+const endingWindows=reminderWindows(endingReminders);
 
 export async function scheduleGlobalAlerts(client:PrismaClient){
  return client.$transaction(async tx=>{
@@ -79,7 +82,7 @@ export async function scheduleGlobalAlerts(client:PrismaClient){
     SELECT date_trunc('milliseconds',clock_timestamp() AT TIME ZONE 'UTC') AS now
     WHERE NOT ${auctionMaintenanceHalted}
    ), available AS NOT MATERIALIZED (
-    SELECT a.id,a."startsAt",a."endsAt",a."controlVersion",stamp.now
+    SELECT a.id,a."startsAt",a."endsAt",a."publishedAt",a."controlVersion",stamp.now
     FROM stamp JOIN "Auction" a ON a."publishedAt"<=stamp.now
     JOIN "Product" p ON p.id=a."productId" AND p.visible
     WHERE a.status IN ('LIVE','SCHEDULED') AND a."testRunId" IS NULL
@@ -87,21 +90,24 @@ export async function scheduleGlobalAlerts(client:PrismaClient){
      AND NOT EXISTS(SELECT 1 FROM "AuctionSettlement" s WHERE s."auctionId"=a.id)
      AND NOT EXISTS(SELECT 1 FROM "PublicAuctionResult" r WHERE r."auctionId"=a.id)
    ), due AS (
-    SELECT a.id,a.now,r.kind,'global:'||r.prefix||':'||a.id||':v'||a."controlVersion" AS key
+    SELECT a.id,a.now,r.kind,'global:'||r.prefix||':'||a.id||':v'||a."controlVersion" AS key,NULL::timestamp AS "scheduledStartAt"
     FROM available a JOIN (VALUES ${endingWindows}) r(kind,prefix,minimum,maximum)
       ON a."endsAt">a.now+r.minimum*INTERVAL '1 millisecond' AND a."endsAt"<=a.now+r.maximum*INTERVAL '1 millisecond'
     WHERE a."startsAt"<=a.now
     UNION ALL
-    SELECT a.id,a.now,r.kind,'global:'||r.prefix||':'||a.id AS key
-    FROM available a JOIN (VALUES ${startingWindows}) r(kind,prefix,minimum,maximum)
-      ON a."startsAt">a.now+r.minimum*INTERVAL '1 millisecond' AND a."startsAt"<=a.now+r.maximum*INTERVAL '1 millisecond'
-    WHERE a."endsAt">a.now
+    SELECT a.id,a.now,${upcomingReminder.kind}::text,${upcomingReminder.keyPrefix}||a.id,a."startsAt"
+    FROM available a
+    WHERE a."startsAt"<=a.now+${upcomingReminder.leadMs}*INTERVAL '1 millisecond'
+      AND a."startsAt">a.now+${upcomingReminder.leadMs-upcomingReminder.scanGraceMs}*INTERVAL '1 millisecond'
+      AND a."publishedAt"<=a."startsAt"-${upcomingReminder.leadMs}*INTERVAL '1 millisecond'
+      AND a."endsAt">a."startsAt"
    )
    INSERT INTO "Outbox" (id,key,kind,payload,"createdAt","nextAttemptAt")
-   SELECT gen_random_uuid()::text,due.key,'GLOBAL_CAMPAIGN',jsonb_build_object(
+   SELECT gen_random_uuid()::text,due.key,'GLOBAL_CAMPAIGN',jsonb_strip_nulls(jsonb_build_object(
     'auctionId',due.id,'deliveryKind',due.kind,'rootKey',due.key,
-    'audienceBefore',to_char(due.now,'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
-   ),due.now,due.now
+    'audienceBefore',to_char(due.now,'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+    'scheduledStartAt',to_char(due."scheduledStartAt",'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+   )),due.now,due.now
    FROM due WHERE NOT EXISTS(SELECT 1 FROM "Outbox" existing WHERE existing.key=due.key)
    ORDER BY due.key ON CONFLICT (key) DO NOTHING
   `;
@@ -129,7 +135,7 @@ export async function campaignContent(tx:Tx,row:Pick<Outbox,'kind'|'payload'>){
   if(t.provider==='ADMIN_CREDIT')return {...base,title:'ገንዘብ ተጨምሯል',body:`የLowWin አስተዳዳሪ ${formatEtb(t.points)} ወደ ዋሌትዎ ጨምሯል።`,href:'/wallet',buttonLabel:'ዋሌቴን ይመልከቱ'};
   return {...base,title:'ገንዘቡ ገብቷል',body:`${formatEtb(t.points)} ወደ ዋሌትዎ ገብቷል።`,href:'/wallet',buttonLabel:'ዋሌቴን ይመልከቱ'};
  }
- if(!p.auctionId)return null;
+ if(!p.auctionId||row.kind===upcomingReminder.kind&&!p.scheduledStartAt)return null;
  const a=await tx.auction.findUnique({where:{id:p.auctionId},select:{slug:true,publicCode:true,publishedAt:true,startsAt:true,endsAt:true,status:true,isDemo:true,isSettlementFixture:true,testRunId:true,presentation:true,product:{select:{title:true,titleAm:true,visible:true,images:{orderBy:{sortOrder:'asc'},take:1,select:{path:true}}}},result:{select:{id:true}},settlement:{select:{id:true,outcome:true,completedAt:true,publication:{select:{publishedAt:true}}}}}});
  if(!a?.publishedAt||!a.slug||a.result||a.testRunId||a.isDemo&&(!a.isSettlementFixture||!(demoBidAllowed()||stagingDemoEnabled())))return null;
  const now=await promotionNow(tx);
@@ -154,14 +160,6 @@ export async function campaignContent(tx:Tx,row:Pick<Outbox,'kind'|'payload'>){
   return {...base,title:heading,body,telegramCaption:`${heading}\n\n${body}`,buttonLabel:'ውጤቱን ይመልከቱ',href:`/winners/${a.publicCode}`};
  }
  if(!['LIVE','SCHEDULED'].includes(a.status)||!a.product?.visible||!a.endsAt||a.endsAt<=now)return null;
- const starting=upcomingReminder(row.kind);
- if(starting){
-  if(a.settlement||!a.startsAt)return null;
-  if(!upcomingReminderCurrent(row.kind,a.startsAt,now))return null;
-  const title=`${prefix}ጨረታው ሊጀምር ${auctionCountdownAm(a.startsAt,now)} ቀርቷል`;
-  const body=`${shortItem}\nየሚጀምርበት፦ ${when(a.startsAt)}`;
-  return {...base,...action,title,body,telegramCaption:`⏰ ${title}\n\n${body}`};
- }
  const reminder=endingReminder(row.kind);
  if(reminder){
   if(a.settlement||!a.startsAt||a.startsAt>now||!endingReminderCurrent(row.kind,a.endsAt,now))return null;
@@ -169,9 +167,11 @@ export async function campaignContent(tx:Tx,row:Pick<Outbox,'kind'|'payload'>){
   const body=`${shortItem}\nየመዝጊያ ሰዓት፦ ${when(a.endsAt)}`;
   return {...base,...action,title,body,telegramCaption:`⌛ ${title}\n\n${body}`};
  }
- if(row.kind==='AUCTION_UPCOMING_ADDED'){
-  if(a.settlement||!a.startsAt||a.startsAt<=now)return null;
-  return {...base,...action,title:prefix+'🔥 አዲስ መጪ ጨረታ',body:`${shortItem}\nየሚጀምርበት፦ ${when(a.startsAt)}`,telegramCaption:`🔥 ${prefix}አዲስ መጪ ጨረታ\n\nሰላም {name}፣\n${shortItem}\nየሚጀምርበት፦ ${when(a.startsAt)}`};
+ if(row.kind===upcomingReminder.kind){
+  if(a.settlement||!a.startsAt||!upcomingReminderCurrent(a.startsAt,a.publishedAt,p.scheduledStartAt,now))return null;
+  const title=`${prefix}ጨረታው ሊጀምር ${auctionCountdownAm(a.startsAt,now)} ቀርቷል`;
+  const body=`${shortItem}\nየሚጀምርበት፦ ${when(a.startsAt)}`;
+  return {...base,...action,title,body,telegramCaption:`⏰ ${title}\n\n${body}`};
  }
  if(row.kind==='AUCTION_PUBLISHED'){
   if(a.settlement||!a.startsAt||a.startsAt>now)return null;

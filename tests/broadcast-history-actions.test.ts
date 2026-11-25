@@ -53,7 +53,8 @@ describe('direct original-content broadcast actions',()=>{
   expect(f.tx.outbox.upsert).not.toHaveBeenCalled();
  });
  it('deletion marks Stop and queues an idempotent control intent without deleting shared media or history',async()=>{
-  const f=fixture();expect(await deleteBroadcastMessages(f.tx as never,f.original.id)).toMatchObject({stopped:true,remainingStopped:2,leasedAtStop:1,deletionJobId:'new-campaign'});
+  const f=fixture();Object.assign(f.tx,{$queryRaw:vi.fn(async()=>[{remainingStopped:2,leasedAtStop:1}])});
+  expect(await deleteBroadcastMessages(f.tx as never,f.original.id)).toMatchObject({stopped:true,remainingStopped:2,leasedAtStop:1,deletionJobId:'new-campaign'});
   expect(f.tx.outbox.upsert).toHaveBeenCalledWith(expect.objectContaining({where:{key:'broadcast-delete:campaign-original'},create:expect.objectContaining({kind:'BROADCAST_DELETE',payload:{campaignId:f.original.id,campaignRootKey:f.original.key}}),update:{}}));
   expect(f.tx.outbox.update).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({state:'SKIPPED',lastError:'CAMPAIGN_STOPPED'})}));
  });

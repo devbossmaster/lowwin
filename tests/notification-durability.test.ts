@@ -14,7 +14,7 @@ import {TEST_TOKEN} from './helpers';
 import {installTelegramRateLimit} from '../src/modules/notifications/telegram-rate';
 import {notificationDatabaseSnapshot,notificationTimingSnapshot} from '../src/modules/notifications/diagnostics';
 import {retireAuctionEndingAlerts,retireAuctionPromotions} from '../src/modules/notifications/service';
-import {endingReminders,upcomingReminders} from '../src/modules/notifications/policy';
+import {endingReminders} from '../src/modules/notifications/policy';
 import {bidAuction} from './bid-fixtures';
 
 const url=process.env.NOTIFICATION_DURABILITY_TEST_DATABASE_URL??process.env.TEST_DATABASE_URL;
@@ -23,7 +23,7 @@ describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated t
  const maintenance=async(action:string)=>{const latest=await db.adminAudit.findFirst({orderBy:{createdAt:'desc'},select:{createdAt:true}});return db.adminAudit.create({data:{actorId:'isolated',action,target:'all',details:{},createdAt:new Date(Math.max(Date.now(),(latest?.createdAt.getTime()??0)+1))}})};
  const deferred=()=>{let resolve!:()=>void;const promise=new Promise<void>(r=>{resolve=r});return {promise,resolve}};
  const fake=(send:ReturnType<typeof vi.fn>)=>({api:{sendMessage:send,sendPhoto:send,deleteMessage:send}} as unknown as Pick<Bot,'api'>);
- const job=(kind='BROADCAST',index=0,rootKey?:string)=>db.outbox.create({data:{key:rootKey?`${rootKey}:user:${users[index].id}`:`notification-durable:${randomUUID()}`,kind,payload:{recipientUserId:users[index].id,body:'Fixture update',href:'/',...(rootKey?{rootKey}:{})}}});
+ const job=(kind='BROADCAST',index=0,rootKey?:string,extra:Prisma.InputJsonObject={})=>db.outbox.create({data:{key:rootKey?`${rootKey}:user:${users[index].id}`:`notification-durable:${randomUUID()}`,kind,payload:{recipientUserId:users[index].id,body:'Fixture update',href:'/',...(rootKey?{rootKey}:{}),...extra}}});
  beforeAll(async()=>{
   const target=new URL(url!);if(!['127.0.0.1','localhost'].includes(target.hostname)||!target.pathname.endsWith('_test'))throw Error('Isolated loopback _test database required');
   Object.assign(process.env,{DATABASE_URL:url,DIRECT_URL:url,TELEGRAM_BOT_TOKEN:TEST_TOKEN,MINI_APP_URL:'https://lowwin.test/telegram'});
@@ -40,7 +40,7 @@ describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated t
   await db.botChat.updateMany({where:{telegramId:{in:users.map(u=>u.telegramId)}},data:{blocked:false}});
  });
  afterAll(async()=>{await db?.$disconnect()});
- it('groups automatic notification history and deletes only the recorded messages eligible at confirmation',async()=>{
+ it('limits history and deletion to public notifications with recorded eligible deliveries',async()=>{
   const auction=await bidAuction(db,{isDemo:false}),marker=randomUUID(),rootKey=`global:ending-1-hour:${marker}`;
   const root=await db.$transaction(tx=>queueGlobal(tx,rootKey,'AUCTION_ENDING_1_HOUR',{auctionId:auction.id}));
   await db.outbox.update({where:{id:root.id},data:{state:'SENT',sentAt:new Date()}});
@@ -51,16 +51,33 @@ describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated t
    return db.telegramMessage.create({data:{outboxId:delivery.id,chatId:users[index].telegramId,messageId:BigInt(index+1),sentAt}});
   }));
   const pending=await job('AUCTION_ENDING_1_HOUR',2,rootKey);
-  const deposit=await db.outbox.create({data:{key:`deposit:${marker}`,kind:'DEPOSIT_CREDITED',state:'SKIPPED',payload:{recipientUserId:users[0].id}}});
+  const privateDeliveries=await Promise.all([
+   {kind:'DEPOSIT_CREDITED',payload:{recipientUserId:users[0].id}},
+   {kind:'CONTACT_CONFIRMED',payload:{}},
+   {kind:'AUCTION_ENDING_1_HOUR',payload:{recipientUserId:users[0].id,auctionId:auction.id}},
+  ].map(async({kind,payload},index)=>{
+   const sentAt=records[0];
+   const delivery=await db.outbox.create({data:{key:`private:${kind}:${marker}`,kind,state:'SENT',sentAt,payload}});
+   const message=await db.telegramMessage.create({data:{outboxId:delivery.id,chatId:users[0].telegramId,messageId:BigInt(index+10),sentAt}});
+   return {delivery,message};
+  }));
   const old=await broadcastHistory(db,{page:1,q:marker});
-  expect(old.items).toHaveLength(2);
-  expect(old.items.find(item=>item.id===root.id)).toMatchObject({
-   kind:'AUCTION_ENDING_1_HOUR',source:'automatic',sent:2,pending:1,canResend:false,canStop:false,
+  expect(old.total).toBe(1);
+  expect(old.items).toHaveLength(1);
+  expect(old.items[0]).toMatchObject({
+   id:root.id,
+   kind:'AUCTION_ENDING_1_HOUR',source:'automatic',sent:2,pending:1,canResend:false,canStop:true,
    canDelete:true,deletion:{expired:1,deletable:1},
   });
-  expect(old.items.find(item=>item.id===deposit.id)).toMatchObject({kind:'DEPOSIT_CREDITED',canDelete:false});
+  expect((await broadcastHistory(db,{page:1,q:'DEPOSIT_CREDITED',source:'automatic'})).total).toBe(0);
   expect((await broadcastHistory(db,{page:1,q:marker,source:'manual'})).items).toHaveLength(0);
   expect(JSON.stringify(old)).not.toMatch(/chatId|recipientUserId/);
+  for(const {delivery,message} of privateDeliveries){
+   await expect(db.$transaction(tx=>stopBroadcast(tx,delivery.id))).rejects.toMatchObject({status:404});
+   await expect(db.$transaction(tx=>queueNotificationDeletion(tx,delivery.id))).rejects.toMatchObject({status:409});
+   expect(await db.outbox.findUnique({where:{id:delivery.id}})).toMatchObject({state:'SENT',lastError:null});
+   expect(await db.telegramMessage.findUnique({where:{id:message.id}})).toMatchObject({deletionState:'DELIVERED'});
+  }
 
   const intent=await db.$transaction(tx=>queueNotificationDeletion(tx,root.id));
   expect(await db.$transaction(tx=>queueNotificationDeletion(tx,root.id))).toEqual(intent);
@@ -76,15 +93,27 @@ describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated t
   expect((await broadcastHistory(db,{page:1,q:marker,source:'automatic'})).items.find(item=>item.id===root.id))
    .toMatchObject({sent:2,pending:1,canDelete:false,deletion:{deleted:1,expired:1}});
  });
- it('queues every current reminder window once across overlapping scans with UTC audience cutoffs',async()=>{
+ it('queues closing and one 24-hour start reminder across overlapping scans with UTC audience cutoffs',async()=>{
   const ending=await Promise.all(endingReminders.map(async reminder=>{
    const auction=await bidAuction(db,{isDemo:false,endDelayMs:(reminder.minMs+reminder.maxMs)/2});
    await db.auction.update({where:{id:auction.id},data:{controlVersion:7}});
    return {id:auction.id,productId:auction.productId,categoryId:auction.categoryId,kind:reminder.kind,key:`global:${reminder.key}:${auction.id}:v7`};
   }));
-  const upcoming=await Promise.all(upcomingReminders.map(async reminder=>{
-   const auction=await bidAuction(db,{isDemo:false,startOffsetMs:(reminder.minMs+reminder.maxMs)/2,endDelayMs:3*86400000});
-   return {id:auction.id,kind:reminder.kind,key:`global:${reminder.key}:${auction.id}`};
+  const day=86_400_000,minute=60_000,fixtureNow=Date.now();
+  const [due,...notDue]=await Promise.all([
+   {minutes:-2,publishedLate:false},
+   {minutes:2,publishedLate:false},
+   {minutes:-6,publishedLate:false},
+   {minutes:-12*60,publishedLate:false},
+   {minutes:-2,publishedLate:true},
+  ].map(async({minutes,publishedLate})=>{
+   const startsAt=new Date(fixtureNow+day+minutes*minute);
+   const publishedAt=new Date(startsAt.getTime()-day+(publishedLate?minute:-30*minute));
+   const tag=randomUUID();
+   return db.auction.create({data:{code:`PRESTART-${tag}`,slug:`prestart-${tag}`,status:'SCHEDULED',isDemo:false,
+    productId:ending[0].productId,categoryId:ending[0].categoryId,fulfillmentSummary:'Fixture',fulfillmentRegion:'Fixture',
+    startsAt,publishedAt,endsAt:new Date(fixtureNow+3*day),
+   }});
   }));
   const hidden=await bidAuction(db,{isDemo:false});
   await db.product.update({where:{id:hidden.productId!},data:{visible:false}});
@@ -94,7 +123,6 @@ describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated t
    productId:ending[0].productId,categoryId:ending[0].categoryId,fulfillmentSummary:'Fixture',fulfillmentRegion:'Fixture',
    startsAt,publishedAt:startsAt,endsAt:new Date(Date.now()+600_000),
   }});
-  const expected=[...ending,...upcoming];
   await maintenance('AUCTIONS_MAINTENANCE_HALTED');
   expect(await scheduleGlobalAlerts(db)).toBe(0);
   await maintenance('AUCTIONS_MAINTENANCE_RESUMED');
@@ -102,6 +130,8 @@ describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated t
   await Promise.all([scheduleGlobalAlerts(db),scheduleGlobalAlerts(db)]);
   const rows=await db.outbox.findMany({where:{kind:'GLOBAL_CAMPAIGN'}});
   const registered=new Map(rows.map(row=>[row.key,row]));
+  const startsKey=`global:starts-24-hours:${due.id}`;
+  const expected=[...ending,{id:due.id,key:startsKey,kind:'AUCTION_UPCOMING'}];
   for(const entry of expected){
    const row=registered.get(entry.key)!;
    expect(row?.payload).toMatchObject({auctionId:entry.id,deliveryKind:entry.kind,rootKey:entry.key});
@@ -110,8 +140,27 @@ describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated t
    expect(row.nextAttemptAt).toEqual(row.createdAt);
   }
   expect(rows.filter(row=>expected.some(entry=>(row.payload as {auctionId:string}).auctionId===entry.id))).toHaveLength(expected.length);
-  expect(rows.some(row=>[hidden.id,demo.id].includes((row.payload as {auctionId:string}).auctionId))).toBe(false);
+  const excludedIds=new Set([hidden.id,demo.id,...notDue.map(auction=>auction.id)]);
+  expect(rows.some(row=>excludedIds.has((row.payload as {auctionId:string}).auctionId))).toBe(false);
   expect(await scheduleGlobalAlerts(db)).toBe(0);
+  const startsRoot=registered.get(startsKey)!;
+  expect(startsRoot.payload).toMatchObject({scheduledStartAt:due.startsAt!.toISOString()});
+  const deliveries=await db.$transaction(tx=>expandCampaign(tx,startsRoot));
+  expect(deliveries).toBeGreaterThan(0);
+  const audience={kind:'AUCTION_UPCOMING',key:{startsWith:`${startsKey}:user:`}};
+  expect(await db.outbox.count({where:audience})).toBe(deliveries);
+  const send=vi.fn(async()=>({message_id:411}));
+  expect(await dispatchBatch(db,fake(send),{kind:'AUCTION_UPCOMING',limit:1})).toBe(1);
+  expect(send).toHaveBeenCalledOnce();
+  expect(await db.outbox.count({where:{...audience,state:'SENT'}})).toBe(1);
+ });
+ it.each(['AUCTION_UPCOMING_ADDED','AUCTION_UPCOMING_1_HOUR'])('retires a pending %s campaign without sending',async(kind)=>{
+  const auction=await bidAuction(db,{isDemo:false,startOffsetMs:36*3_600_000,endDelayMs:3*86_400_000});
+  const key=`global:legacy-upcoming:${auction.id}`;
+  const root=await db.$transaction(tx=>queueGlobal(tx,key,kind,{auctionId:auction.id}));
+  expect(await db.$transaction(tx=>expandCampaign(tx,root))).toBe(0);
+  expect(await db.outbox.findUnique({where:{id:root.id}})).toMatchObject({state:'SKIPPED',lastError:'NOTIFICATION_RETIRED'});
+  expect(await db.outbox.count({where:{key:{startsWith:`${key}:user:`}}})).toBe(0);
  });
  it('retires deadline reminders in two database statements without stopping an active send lease',async()=>{
   const now=new Date(),auctionId=randomUUID(),ending=endingReminders[0].kind;
@@ -183,9 +232,13 @@ describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated t
   expect(aliasClaim.id).toBe(alias.id);expect(await claimLogicalDelivery(db,aliasClaim,'123456789','synthetic-auction',users[0].id)).toMatchObject({acquired:false,sent:true});
   expect(await db.telegramMessage.count()).toBe(messagesBefore+1);
  });
- it('does not hold a database transaction during HTTP; Stop returns promptly and the in-flight acknowledgement persists',async()=>{
-  const rootKey=`broadcast:${randomUUID()}`,root=await db.outbox.create({data:{key:rootKey,kind:'GLOBAL_CAMPAIGN',state:'SENT',payload:{deliveryKind:'BROADCAST',rootKey}}});
-  const row=await job('BROADCAST',0,root.key),later=await job('BROADCAST',1,root.key),began=deferred(),release=deferred();
+ it.each(['BROADCAST','AUCTION_PUBLISHED'])('stops queued %s sends promptly while preserving an in-flight acknowledgement',async(kind)=>{
+  const rootKey=`${kind==='BROADCAST'?'broadcast':'global:published'}:${randomUUID()}`;
+  const extra=kind==='BROADCAST'?{}:{auctionId:(await bidAuction(db,{isDemo:false})).id};
+  const root=await db.outbox.create({data:{key:rootKey,kind:'GLOBAL_CAMPAIGN',state:'SENT',payload:{deliveryKind:kind,rootKey,...extra}}});
+  const row=await job(kind,0,root.key,extra),later=await job(kind,1,root.key,extra),began=deferred(),release=deferred();
+  const active=await broadcastHistory(db,{page:1,q:rootKey,view:'active'});
+  expect(active.items[0]).toMatchObject({id:root.id,canStop:true,canResend:kind==='BROADCAST'});
   // Claim order is nextAttemptAt then UUID, not insertion order. Both jobs are
   // due, with a deliberate first recipient for this in-flight Stop barrier.
   await db.outbox.update({where:{id:row.id},data:{nextAttemptAt:new Date(0)}});await db.outbox.update({where:{id:later.id},data:{nextAttemptAt:new Date(1)}});
@@ -204,6 +257,8 @@ describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated t
   expect(send).toHaveBeenCalledTimes(1);
   expect((await db.outbox.findUniqueOrThrow({where:{id:row.id}})).state).toBe('SENT');expect((await db.outbox.findUniqueOrThrow({where:{id:later.id}})).state).toBe('SKIPPED');expect(await db.telegramMessage.count()).toBe(messagesBefore+1);
   expect(await db.telegramMessage.findUniqueOrThrow({where:{outboxId:row.id}})).toMatchObject({chatId:users[0].telegramId,messageId:101n});
+  const history=await broadcastHistory(db,{page:1,q:rootKey});
+  expect(history.items[0]).toMatchObject({id:root.id,state:'STOPPED',sent:1,skipped:1,canStop:false,canDelete:true});
  });
  it('stops claimed-but-unsent work and pauses claims during maintenance without losing ownership',async()=>{
   const one=await job('BROADCAST'),two=await job('BROADCAST',1),began=deferred(),release=deferred();let running=true;

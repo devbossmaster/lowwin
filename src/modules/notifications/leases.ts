@@ -74,17 +74,16 @@ type DeliveredMessage={chatId:string;messageId:number;auctionId?:string;logicalK
  * with one database round trip. Public-result aliases keep their logical lease. */
 export async function acknowledgeDelivery(client:PrismaClient,row:ClaimedNotification,delivered:DeliveredMessage){
  const {chatId,messageId,auctionId,logicalKey}=delivered;
- const sentAt=new Date();
- if(logicalKey)return finishClaim(client,row,{state:'SENT',sentAt,attempts:{increment:1},lastError:null},delivered);
+ if(logicalKey)return finishClaim(client,row,{state:'SENT',sentAt:new Date(),attempts:{increment:1},lastError:null},delivered);
  const [completed]=await client.$queryRaw<{id:string}[]>`
   WITH acknowledged AS (
-   UPDATE "Outbox" SET state='SENT',"sentAt"=${sentAt},attempts=attempts+1,
+   UPDATE "Outbox" SET state='SENT',"sentAt"=clock_timestamp() AT TIME ZONE 'UTC',attempts=attempts+1,
     "lastError"=NULL,"leaseToken"=NULL,"leaseUntil"=NULL
    WHERE id=${row.id} AND state='PENDING' AND "leaseToken"=${row.leaseToken}
-   RETURNING id,"testRunId"
+   RETURNING id,"testRunId","sentAt"
   ), recorded AS (
-   INSERT INTO "TelegramMessage" (id,"outboxId","auctionId","testRunId","chatId","messageId")
-   SELECT ${randomUUID()},id,${auctionId??null},"testRunId",${chatId},${BigInt(messageId)} FROM acknowledged
+   INSERT INTO "TelegramMessage" (id,"outboxId","auctionId","testRunId","chatId","messageId","sentAt")
+   SELECT ${randomUUID()},id,${auctionId??null},"testRunId",${chatId},${BigInt(messageId)},"sentAt" FROM acknowledged
    ON CONFLICT ("outboxId") DO NOTHING
   )
   SELECT id FROM acknowledged
@@ -98,11 +97,12 @@ export async function finishClaim(client:PrismaClient,row:ClaimedNotification,da
   const changed=await tx.outbox.updateMany({where:{id:row.id,state:'PENDING',leaseToken:row.leaseToken},data:{...data,leaseToken:null,leaseUntil:null}});
   if(!changed.count)return false;
   if(delivered){
+   const sentAt=new Date();
    if(delivered.logicalKey){
-    const logical=await tx.telegramDeliveryLease.updateMany({where:{key:delivered.logicalKey,leaseToken:row.leaseToken,sentAt:null},data:{sentAt:new Date(),messageId:BigInt(delivered.messageId)}});
+    const logical=await tx.telegramDeliveryLease.updateMany({where:{key:delivered.logicalKey,leaseToken:row.leaseToken,sentAt:null},data:{sentAt,messageId:BigInt(delivered.messageId)}});
     if(!logical.count)throw Error('Notification logical delivery ownership changed');
    }
-   await tx.telegramMessage.upsert({where:{outboxId:row.id},create:{outboxId:row.id,auctionId:delivered.auctionId,testRunId:row.testRunId,chatId:delivered.chatId,messageId:BigInt(delivered.messageId)},update:{}});
+   await tx.telegramMessage.upsert({where:{outboxId:row.id},create:{outboxId:row.id,auctionId:delivered.auctionId,testRunId:row.testRunId,chatId:delivered.chatId,messageId:BigInt(delivered.messageId),sentAt},update:{}});
   }else await tx.telegramDeliveryLease.deleteMany({where:{outboxId:row.id,leaseToken:row.leaseToken,sentAt:null}});
   return true;
  },{timeout:5000,maxWait:5000});

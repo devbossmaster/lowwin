@@ -1,29 +1,23 @@
 import {Prisma} from '@prisma/client';
-import {deliveryNotificationKinds, retiredNotificationKinds} from './policy';
+import {endingReminders,retiredPreStartReminderKinds} from './policy';
 
-export const historyDeliveryKinds = [...deliveryNotificationKinds, ...retiredNotificationKinds];
+export const historyDeliveryKinds = [
+  'BROADCAST','AUCTION_PUBLISHED','AUCTION_UPCOMING','AUCTION_ENDED',
+  ...retiredPreStartReminderKinds,
+  ...endingReminders.map(reminder=>reminder.kind),
+  'AUCTION_STARTING_SOON','AUCTION_RESULT',
+];
 export const historyKind = Prisma.sql`CASE
   WHEN r.kind='GLOBAL_CAMPAIGN' THEN r.payload->>'deliveryKind'
   WHEN r.kind='AUCTION_FINALIZED' THEN 'AUCTION_ENDED'
   ELSE r.kind END`;
 
-// A history row represents either a campaign root or an individual notification.
-// Fan-out rows are counted under their root. Older standalone Telegram deliveries
-// can still appear even when their kind is no longer in the active policy.
+// Show public campaigns and aggregate their Telegram deliveries under the root.
 export const isNotificationHistoryRow = Prisma.sql`
   r."testRunId" IS NULL AND COALESCE(r.payload->>'rootKey',r.key)=r.key
-  AND CASE
-    WHEN r.kind='GLOBAL_CAMPAIGN' THEN r.payload->>'cursor' IS NULL
-      AND r.payload->>'deliveryKind' IN (${Prisma.join(historyDeliveryKinds)})
-    WHEN r.kind='AUCTION_FINALIZED' THEN true
-    WHEN r.kind IN ('AUCTION_PARTICIPANTS','BROADCAST_DELETE','TELEGRAM_DELETE') THEN false
-    WHEN r.kind='BROADCAST' AND r.key LIKE '%:user:%' THEN NOT EXISTS (
-      SELECT 1 FROM "Outbox" parent
-      WHERE parent.key=regexp_replace(r.key, ':user:[^:]+$', '') AND parent.kind='GLOBAL_CAMPAIGN'
-    )
-    ELSE r.kind IN (${Prisma.join(historyDeliveryKinds)})
-      OR EXISTS (SELECT 1 FROM "TelegramMessage" recorded WHERE recorded."outboxId"=r.id)
-  END`;
+  AND r.payload->>'recipientUserId' IS NULL AND r.key NOT LIKE '%:user:%'
+  AND (r.kind<>'GLOBAL_CAMPAIGN' OR r.payload->>'cursor' IS NULL)
+  AND ${historyKind} IN (${Prisma.join(historyDeliveryKinds)})`;
 
 export const isManagedBroadcast = Prisma.sql`
   (r.kind='GLOBAL_CAMPAIGN' AND r.payload->>'deliveryKind'='BROADCAST'
@@ -37,7 +31,7 @@ export const relatedNotifications = Prisma.sql`
   SELECT o.* FROM "Outbox" o
   WHERE r.kind IN ('GLOBAL_CAMPAIGN','AUCTION_FINALIZED')
     AND o.payload->>'rootKey'=r.key AND o.id<>r.id AND o."testRunId" IS NULL
-    AND o.kind IN ('GLOBAL_CAMPAIGN',${historyKind})
+    AND (o.kind IN ('GLOBAL_CAMPAIGN',${historyKind}) OR (r.kind='AUCTION_FINALIZED' AND o.kind='AUCTION_RESULT'))
   UNION ALL
   SELECT o.* FROM "Outbox" o
   WHERE r.kind='GLOBAL_CAMPAIGN' AND r.payload->>'deliveryKind'='BROADCAST'

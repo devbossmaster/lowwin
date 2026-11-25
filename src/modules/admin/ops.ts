@@ -80,7 +80,7 @@ export async function opsMutation(client:PrismaClient,headers:Headers,action:Ops
    const job=await queueGlobal(tx,`broadcast:${owner.id}:${d.key}`,'BROADCAST',{body:d.text,...destination,buttonLabel:broadcastButtonLabel(d.buttonLabel),telegramOnly:true,...(d.imageId?{imageId:d.imageId}:{})});
    receipt={id:job.id,state:'PENDING'};target=job.id;
   }else if(action==='broadcastStop'){
-   const d=schemas.broadcastStop.parse(input);if(owner.role!=='OWNER')throw new AdminError(403,'Only the Owner can stop a broadcast.');receipt=await stopBroadcast(tx,d.id);target=d.id;
+   const d=schemas.broadcastStop.parse(input);if(owner.role!=='OWNER')throw new AdminError(403,'Only the Owner can stop a public campaign.');receipt=await stopBroadcast(tx,d.id);target=d.id;
   }else if(action==='broadcastResend'){
    const d=schemas.broadcastResend.parse(input);if(owner.role!=='OWNER')throw new AdminError(403,'Only the Owner can resend a broadcast.');receipt=await resendBroadcast(tx,d.id,`broadcast:${owner.id}:${d.resendId}`);target=d.id;
   }else if(action==='broadcastDelete'){

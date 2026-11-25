@@ -6,7 +6,8 @@ import {withTelegramChannelButton} from '@/lib/telegram-community';
 import {safeResultIdentity} from '../auctions/result-identity';
 import {auctionMaintenance} from '../auctions/maintenance';
 import {notificationContent,materializeAlert,notificationPhoto,telegramCampaignText} from './service';
-import {broadcastRoot,expandCampaign,telegramKinds} from './campaigns';
+import {expandCampaign,telegramKinds} from './campaigns';
+import {campaignLockKey,campaignRootKey} from './campaign-control';
 import {expandParticipantResults} from './participant-results';
 import {expandBroadcastDeletion,telegramMessageDeletable} from './broadcast-delete';
 import {promotionNow} from './auction-promotion';
@@ -119,9 +120,9 @@ async function dispatchClaim(client:PrismaClient,bot:BotApi,row:ClaimedNotificat
   }
   const link=new URL(content.href,process.env.MINI_APP_URL);
   if(link.protocol!=='https:'){await skip();return}
-  const name=safeResultIdentity(user).displayName??'ተጫዋች',startReminder=['AUCTION_UPCOMING','AUCTION_UPCOMING_1_HOUR'].includes(row.kind),paymentReceipt=row.kind===chapaReceiptKind||row.kind==='AUCTION_FEE_REFUNDED';
+  const name=safeResultIdentity(user).displayName??'ተጫዋች',paymentReceipt=row.kind===chapaReceiptKind||row.kind==='AUCTION_FEE_REFUNDED';
   const body=content.body.includes('{name}')?content.body.replaceAll('{name}',name):`${name},\n${content.body}`;
-  const text=paymentReceipt?content.body:row.kind==='BROADCAST'?content.body.replaceAll('{name}',name):'telegramCaption' in content&&typeof content.telegramCaption==='string'?content.telegramCaption.replaceAll('{name}',name):telegramCampaignText(row.kind,content.title,startReminder?content.body:body,startReminder?name:undefined);
+  const text=paymentReceipt?content.body:row.kind==='BROADCAST'?content.body.replaceAll('{name}',name):'telegramCaption' in content&&typeof content.telegramCaption==='string'?content.telegramCaption.replaceAll('{name}',name):telegramCampaignText(row.kind,content.title,body);
   const button='buttonLabel' in content?String(content.buttonLabel):row.kind==='DEPOSIT_CREDITED'?'ዋሌቴን ልይ':row.kind==='BID_ACCEPTED'?'ጨረታዎቼን ልይ':row.kind==='WINNER_CONGRATULATIONS'?'ሽልማቴን ልይ':row.kind==='AUCTION_ENDED'?'ውጤቱን ልይ':'ጨረታውን ልይ';
   const options={reply_markup:withTelegramChannelButton([[merchantAlert?{text:button,url:link.href}:{text:button,web_app:{url:link.href}}]])};
   const auctionImage=(row.kind.startsWith('AUCTION_')||row.kind==='BROADCAST'||row.kind==='BID_ACCEPTED'||row.kind==='WINNER_CONGRATULATIONS')&&'imagePath' in content&&typeof content.imagePath==='string'?content.imagePath:null;
@@ -172,11 +173,11 @@ export async function expandPendingCampaigns(client:PrismaClient,{limit=4}:{limi
   try{
    await client.$transaction(async tx=>{
     if(await auctionMaintenance(tx))throw new DeliveryGate('MAINTENANCE_PAUSED',true);
-    const root=broadcastRoot(row);
-    if(root){const [{locked}]=await tx.$queryRaw<{locked:boolean}[]>`SELECT pg_try_advisory_xact_lock(hashtextextended(${`broadcast:${root}`},0)) AS locked`;if(!locked)throw new DeliveryGate('CAMPAIGN_LOCK_WAIT',true)}
+    const root=campaignRootKey(row);
+    if(root){const [{locked}]=await tx.$queryRaw<{locked:boolean}[]>`SELECT pg_try_advisory_xact_lock(hashtextextended(${campaignLockKey(root)},0)) AS locked`;if(!locked)throw new DeliveryGate('CAMPAIGN_LOCK_WAIT',true)}
     const rows=await tx.$queryRaw<Outbox[]>`SELECT * FROM "Outbox" WHERE id=${row.id} AND state='PENDING' AND "leaseToken"=${row.leaseToken} FOR UPDATE`;
     if(!rows.length)return;
-    if(row.kind==='BROADCAST_DELETE')await expandBroadcastDeletion(tx,row);else if(row.kind==='AUCTION_PARTICIPANTS')await expandParticipantResults(tx,row);else await expandCampaign(tx,row);
+    if(row.kind==='BROADCAST_DELETE')await expandBroadcastDeletion(tx,row);else if(row.kind==='AUCTION_PARTICIPANTS')await expandParticipantResults(tx,row);else await expandCampaign(tx,row,!!root);
     await tx.outbox.updateMany({where:{id:row.id,leaseToken:row.leaseToken},data:{leaseToken:null,leaseUntil:null}});
    },{timeout:10000,maxWait:5000});
   }catch(error){await fail(client,row,error)}
