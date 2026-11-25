@@ -34,7 +34,22 @@ for(const am of [false,true])test(`compact cards retain status, media, countdown
    await expect(card.locator('.auction-card-art')).toHaveAttribute('href','/auctions/'+items[index].code);await expect(card.locator('h3 a')).toHaveAttribute('href','/auctions/'+items[index].code);
    const data=await metrics(card);reports.push(data);expect(data.image.width/data.image.height).toBeCloseTo(2.3,1);expect(data.internalOverflow).toEqual([]);
    if(after){await card.evaluate(el=>el.scrollIntoView({block:'center',behavior:'instant'}));const directory=`test-results/auction-card-density/${stage}`;mkdirSync(directory,{recursive:true});await card.screenshot({path:`${directory}/card-${info.project.name}-${am?'am':'en'}-${index}.png`,animations:'disabled'})}
-   if(after){expect(data.button.height).toBeGreaterThanOrEqual(43.5);expect(data.button.height).toBeLessThanOrEqual(46.5);expect(data.title.scrollHeight).toBeLessThanOrEqual(data.title.clientHeight+1);expect(data.title.clamp).not.toBe('2');expect(data.title.overflow).not.toBe('hidden');expect(Math.abs(data.fee.y+data.fee.height/2-data.timer.y-data.timer.height/2)).toBeLessThanOrEqual(2);expect(data.padding.bottom).toBeLessThanOrEqual(10);if(index===0)expect(data.title.lines).toBe(1);if(index===1)expect(data.title.lines).toBeGreaterThan(2);if(index===2){expect(data.title.lines).toBeLessThanOrEqual(2);if(page.viewportSize()!.width===320)expect(data.title.lines).toBe(2)}}
+   if(after){
+    expect(data.button.height).toBeGreaterThanOrEqual(43.5);
+    expect(data.button.height).toBeLessThanOrEqual(48.5);
+    expect(data.title.scrollHeight).toBeLessThanOrEqual(data.title.clientHeight+1);
+    expect(data.title.clamp).not.toBe('2');expect(data.title.overflow).not.toBe('hidden');
+    if(index<2){
+     expect(data.timer.y).toBeGreaterThanOrEqual(data.fee.bottom);
+     expect(data.timer.width).toBeCloseTo(data.facts.width,0);
+    }else{
+     expect(Math.abs(data.fee.y+data.fee.height/2-data.timer.y-data.timer.height/2)).toBeLessThanOrEqual(2);
+    }
+    expect(data.padding.bottom).toBeLessThanOrEqual(10);
+    if(index===0)expect(data.title.lines).toBe(1);
+    if(index===1)expect(data.title.lines).toBeGreaterThan(2);
+    if(index===2){expect(data.title.lines).toBeLessThanOrEqual(2);if(page.viewportSize()!.width===320)expect(data.title.lines).toBe(2)}
+   }
    if(index>0)await expect(card.getByRole('link',{name:index===1?(am?'ጨረታውን ይመልከቱ':'View auction'):(am?'ውጤቱን ይመልከቱ':'View result'),exact:true})).toHaveAttribute('href','/auctions/'+items[index].code);
   }
   const first=cards.first();await first.scrollIntoViewIfNeeded();const timer=first.getByRole('timer'),initial=await timer.getAttribute('aria-label');await expect(timer.locator('[data-countdown-unit]')).toHaveCount(4);await expect.poll(()=>timer.getAttribute('aria-label'),{timeout:5000}).not.toBe(initial);

@@ -33,10 +33,25 @@ export function AuctionCard({auction:initialAuction,serverNow,serverObservedAt,p
  const bidLabel=bidCount===null?'—':bidCount.toLocaleString(am?'am-ET':'en-ET');
  const recordedViews=views??initialAuction.viewCount;
  let viewLabel='—';try{if(/^\d+$/.test(recordedViews))viewLabel=BigInt(recordedViews).toLocaleString(am?'am-ET':'en-ET')}catch{}
+ const countdown=(live||upcoming)&&serverNow?<AuctionCountdown target={upcoming?auction.startsAt:auction.endsAt} serverNow={serverNow} observedAt={serverObservedAt} label={upcoming?'Starts':'Ends'} showLabel={false} onElapsed={refreshActivity}/>:null;
+ const homeClock=homeCard&&countdown!==null;
  const termsNote=<><ShieldCheck size={13} aria-hidden="true"/><MiniPhrase en="Terms & conditions apply" am="ውሎችና ሁኔታዎች ይተገበራሉ"/></>;
  return <article className={`auction-card ${badges.card}${homeCard?' '+badges.homeCard:''}`} ref={ref}>
   <IntentPrefetchLink className="auction-card-art" href={detail} aria-label={title}><CatalogImage src={auction.product.images[0]?.path} alt={title} priority={priority}/><span className={`status-tag status-${auction.status}`}>{statusText}</span><span className={badges.views} aria-label={am?`${viewLabel} የተመዘገቡ እይታዎች`:`${viewLabel} recorded views`}><Eye size={13} aria-hidden="true"/><span className={badges.count}>{viewLabel}</span></span>{auction.isDemo&&<span className="demo-ribbon">DEMO</span>}{(live||upcoming)&&<span className="auction-card-win"><MiniPhrase en="Win" am="ያሸንፉ"/></span>}</IntentPrefetchLink>
-  <div className="auction-card-body"><h3><IntentPrefetchLink href={detail}>{title}</IntentPrefetchLink></h3><div className="card-facts"><span className="card-fee"><MiniPhrase en="Fee" am="ክፍያ"/> <strong>{fee}</strong></span><span className={badges.bids} data-card-bid-count={bidCount??'unavailable'} aria-label={bidCount===null?(am?'የጨረታ ብዛት አልተገኘም':'Bid count unavailable'):(am?`${bidLabel} ጠቅላላ ጨረታዎች`:`${bidLabel} total bids`)}><Ticket size={12} aria-hidden="true"/><strong>{bidLabel}</strong><span><MiniPhrase en="bids" am="ጨረታ"/></span></span><span className="card-clock"><Clock3 size={13} aria-hidden="true"/>{(live||upcoming)&&serverNow?<AuctionCountdown target={upcoming?auction.startsAt:auction.endsAt} serverNow={serverNow} observedAt={serverObservedAt} label={upcoming?'Starts':'Ends'} showLabel={false} onElapsed={refreshActivity}/>:statusText}</span></div>
+  <div className="auction-card-body">
+   <h3><IntentPrefetchLink href={detail}>{title}</IntentPrefetchLink></h3>
+   <div className={homeClock?`card-facts ${badges.homeFacts}`:'card-facts'}>
+    <span className="card-fee"><MiniPhrase en="Fee" am="ክፍያ"/> <strong>{fee}</strong></span>
+    <span className={badges.bids} data-card-bid-count={bidCount??'unavailable'} aria-label={bidCount===null?(am?'የጨረታ ብዛት አልተገኘም':'Bid count unavailable'):(am?`${bidLabel} ጠቅላላ ጨረታዎች`:`${bidLabel} total bids`)}>
+     <Ticket size={12} aria-hidden="true"/><strong>{bidLabel}</strong><span><MiniPhrase en="bids" am="ጨረታ"/></span>
+    </span>
+    <span className={homeClock?`card-clock ${badges.homeClock}`:'card-clock'}>
+     {homeClock?<span className={badges.clockTitle}>
+      <Clock3 size={14} aria-hidden="true"/><MiniPhrase en={upcoming?'Starts in':'Ends in'} am={upcoming?'የሚጀምረው በ':'ቀሪ ጊዜ'}/>
+     </span>:<Clock3 size={13} aria-hidden="true"/>}
+     {countdown??statusText}
+    </span>
+   </div>
    {live?<button type="button" className={`primary-button card-action ${badges.placeBid}`} onPointerEnter={warmBid} onFocus={warmBid} onTouchStart={warmBid} onClick={()=>setBidding(true)}><MiniPhrase en="Place a bid" am="ይጫረቱ"/><ArrowRight size={17} aria-hidden="true"/></button>:<IntentPrefetchLink className="secondary-button card-action" href={detail}><MiniPhrase en={upcoming?'View auction':'View result'} am={upcoming?'ጨረታውን ይመልከቱ':'ውጤቱን ይመልከቱ'}/><ArrowUpRight size={16} aria-hidden="true"/></IntentPrefetchLink>}
    <div className={badges.utilities}>
     {homeCard?<span className={badges.terms}>{termsNote}</span>:<IntentPrefetchLink href="/terms" className={badges.terms}>{termsNote}</IntentPrefetchLink>}

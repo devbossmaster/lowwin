@@ -10,8 +10,8 @@
 .card:global(.auction-card)>:global(.auction-card-body)>:global(.card-facts)>:global(.card-fee){display:flex;flex-direction:column;min-width:0;min-height:44px;justify-content:center;gap:2px;padding:5px 6px;border-radius:12px;line-height:1.35;text-align:center}
 .card:global(.auction-card)>:global(.auction-card-body)>:global(.card-facts)>:global(.card-fee)>strong{min-width:0;max-width:100%;overflow-wrap:anywhere}
 .card:global(.auction-card)>:global(.auction-card-body)>:global(.card-facts)>:global(.card-clock){min-width:0;min-height:44px;justify-content:center;padding:4px 1px;border-radius:12px;text-align:center;overflow-wrap:anywhere}
-.card:global(.auction-card)>:global(.auction-card-body)>:global(.card-facts)>:global(.card-clock) :global(.countdown){gap:2px}
-.card:global(.auction-card)>:global(.auction-card-body)>:global(.card-facts)>:global(.card-clock) [data-countdown-tile]{--flap-width:24px;--flap-height:26px;font-size:12px}
+.card:global(.auction-card)>:global(.auction-card-body)>:global(.card-facts)>:global(.card-clock):not(.homeClock) :global(.countdown){gap:2px}
+.card:global(.auction-card)>:global(.auction-card-body)>:global(.card-facts)>:global(.card-clock):not(.homeClock) [data-countdown-tile]{--flap-width:24px;--flap-height:26px;font-size:12px}
 .card:global(.auction-card)>:global(.auction-card-body)>:global(.card-facts)>:global(.card-clock)>svg{display:none}
 .card:global(.auction-card)>:global(.auction-card-body)>:global(.card-action){min-height:44px;height:auto;margin:0;padding:8px 12px}
 .card:global(.auction-card)>:global(.auction-card-body)>:global(.card-disclosure){margin:4px 0 0;font-size:10px;line-height:1.4}
@@ -23,6 +23,33 @@
 .utilities .share{min-height:44px;padding:6px 11px;border-radius:12px;font-size:11px;background:var(--action-disabled,#dbe7fb);color:var(--action-pressed,#1e40af);border:0}.utilities .share svg{width:14px;height:14px}
 .terms:focus-visible{outline:2px solid var(--action-primary,#2563eb);outline-offset:2px}
 .homeCard:global(.auction-card)>:global(.auction-card-body)>.placeBid{min-height:48px;padding-inline:14px;font-size:.875rem}
+.homeCard:global(.auction-card)>:global(.auction-card-body)>.homeFacts:global(.card-facts){
+ grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;
+}
+.homeCard:global(.auction-card)>:global(.auction-card-body)>.homeFacts>.homeClock:global(.card-clock){
+ grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr);gap:6px;
+ padding:8px 10px;border:1px solid var(--brand-line);background:#f7f9ff;
+}
+.clockTitle{
+ display:flex;align-items:center;gap:6px;
+ color:var(--brand-ink);font-size:.75rem;font-weight:650;line-height:1.45;
+}
+.clockTitle svg{flex:none;color:var(--action-pressed)}
+.homeCard:global(.auction-card) .homeFacts .homeClock [data-countdown-group]{
+ display:grid;grid-template-columns:repeat(4,minmax(0,1fr));width:100%;min-width:0;gap:6px;
+}
+.homeClock [data-countdown-unit]{align-items:stretch;text-align:center}
+.homeClock [data-countdown-unit]>small{
+ color:var(--brand-muted-on-soft);font-size:.6875rem;font-weight:650;line-height:1.4;
+}
+.homeCard:global(.auction-card) .homeFacts .homeClock [data-countdown-tile]{
+ --flap-height:38px;--flap-radius:8px;
+ --flap-face-top:#eff4ff;--flap-face-bottom:#e4edfc;--flap-join:#cbd9ef;
+ width:100%;min-width:0;color:#19345f;font-size:min(1.3125rem,calc(4.5rem / var(--flap-digits,2)));
+ font-weight:750;
+}
+.homeClock [data-countdown-ended]{font-size:.8125rem}
+.homeClock:has([data-countdown-ended]) .clockTitle{display:none}
 .homeCard .utilities{align-items:center;margin-top:4px}
 .homeCard .terms{min-height:32px;padding:6px 10px;border-radius:10px}
 .homeCard .utilities .share{position:relative;isolation:isolate;padding-inline:12px;border-radius:12px;background:transparent;font-size:.75rem}
