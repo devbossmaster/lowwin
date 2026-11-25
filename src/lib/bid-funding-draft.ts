@@ -1,5 +1,5 @@
 import type {QueryClient} from '@tanstack/react-query';
-export type BidFundingDraft={numbers:string[];method:string;phone:string;applyCoupon:boolean};
+export type BidFundingDraft={numbers:string[];method:string;phone:string};
 const key=(identity:string,slug:string)=>['lowin-private',identity,'bid-funding-draft',slug] as const;
 /** Editable account-scoped draft only. Never a quote, debit or payment outcome. */
 export function readBidFundingDraft(client:QueryClient,identity:string,slug:string){return client.getQueryData<BidFundingDraft>(key(identity,slug))??null}

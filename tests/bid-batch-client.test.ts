@@ -15,18 +15,17 @@ describe('batch entry feedback',()=>{
 });
 describe('submission fee preview',()=>{
  it('updates the total for the selected entry count with exact cents',()=>{
-  expect(previewBidFees(1,'50')).toMatchObject({entryCount:1,grossTotal:'50.00',discountTotal:'0.00',total:'50.00',totalCents:'5000'});
+  expect(previewBidFees(1,'50')).toMatchObject({entryCount:1,grossTotal:'50.00',total:'50.00',totalCents:'5000'});
   expect(previewBidFees(3,'50.25')).toMatchObject({grossTotal:'150.75',total:'150.75',totalCents:'15075'});
   expect(previewBidFees(100,'9999999999999999.99').totalCents).toBe('99999999999999999900');
  });
- it('applies a coupon once and does not apply it to an empty selection',()=>{
-  expect(previewBidFees(3,'50','5')).toMatchObject({grossTotal:'150.00',discountTotal:'5.00',total:'145.00'});
-  expect(previewBidFees(1,'50','50').total).toBe('0.00');
-  expect(previewBidFees(0,'50','5')).toMatchObject({entryCount:0,grossTotal:'0.00',discountTotal:'0.00',total:'0.00',totalCents:'0'});
+ it('shows zero for an empty selection or free bids',()=>{
+  expect(previewBidFees(1,'0').total).toBe('0.00');
+  expect(previewBidFees(0,'50')).toMatchObject({entryCount:0,grossTotal:'0.00',total:'0.00',totalCents:'0'});
  });
  it('rejects impossible counts and unvalidated amounts rather than displaying invented totals',()=>{
   for(const count of [-1,1.5,101,NaN,Infinity])expect(()=>previewBidFees(count,'50')).toThrow();
-  for(const [fee,discount] of [['-1','0'],['50','-1'],['50','50.01'],['50.001','0'],['50','5.001'],['NaN','0']])expect(()=>previewBidFees(2,fee,discount)).toThrow();
+  for(const fee of ['-1','50.001','NaN'])expect(()=>previewBidFees(2,fee)).toThrow();
  });
 });
 describe('payment phone normalization',()=>{

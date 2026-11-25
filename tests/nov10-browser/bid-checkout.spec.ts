@@ -4,11 +4,9 @@ import type {BidBatchQuote,BidBatchReceipt,ChapaDirectIntent} from '../../src/li
 import type {ChapaCheckoutView} from '../../src/lib/chapa-client';
 import {accepted,add,amount,directOrder,edit,expectInViewport,mockBidCommand,openBid,pay,phone,quoteFor,remove,retryOriginal,setup,supportedMethods,tryAgain} from './fixtures';
 
-test('the blank multi-bid form edits chips and prices submission fees with one coupon',async({page},info)=>{
- const am=info.project.name==='430',f=await setup(page,am),couponId=randomUUID();let quotes=0,charges=0;
+test('the blank multi-bid form edits chips and prices each submission fee',async({page},info)=>{
+ const am=info.project.name==='430',f=await setup(page,am);let quotes=0,charges=0;
  try{
-  await page.route('**/api/auctions/*/bids',async route=>{const response=await route.fetch();return route.fulfill({json:{...await response.json(),referralDiscountsAvailable:true,couponAvailableCount:1}})});
-  await page.route('**/api/auctions/*/discount-quote?**',route=>route.fulfill({json:{serverNow:new Date().toISOString(),auctionSlug:f.auction.slug,feeVersion:1,ruleVersion:'lowest-unique-v4',grossFeePoints:'10',discountPoints:'1',netFeePoints:'9',coupon:{id:couponId,percent:10,expiresAt:new Date(Date.now()+3600000).toISOString()},eligible:true}}));
   await page.route('**/api/payments/chapa/batches/quote',route=>{quotes++;return route.abort()});
   await page.route('**/api/payments/chapa/direct',route=>{charges++;return route.abort()});
   await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await openBid(page,f.title),input=amount(dialog,am),funding=dialog.locator('[data-funding-selector]');
@@ -20,10 +18,10 @@ test('the blank multi-bid form edits chips and prices submission fees with one c
   await input.fill('2.34');await expect(add(dialog,am)).toBeDisabled();await expect(input).toHaveAttribute('aria-invalid','true');await expect(pay(dialog)).toBeDisabled();
   await input.fill('600.25');await add(dialog,am).click();await expect(dialog.locator('[data-bid-total]')).toContainText('20.00');
   await edit(dialog,am,'2.34').click();await input.fill('6.25');await dialog.getByRole('button',{name:am?'የጨረታ መጠን ያስቀምጡ':'Save bid amount',exact:true}).click();await expect(edit(dialog,am,'6.25')).toBeVisible();
-  await dialog.locator('[data-bid-coupons]').getByRole('button',{name:am?'ተግብር':'Apply',exact:true}).click();await expect(dialog.locator('[data-bid-total]')).toContainText('19.00');
+  await expect(dialog.locator('[data-bid-coupons]')).toHaveCount(0);
   await expect(edit(dialog,am,'6.25')).toBeVisible();await expect(edit(dialog,am,'600.25')).toBeVisible();await expect(pay(dialog)).toBeDisabled();
   await funding.getByRole('radio',{name:am?'ዋሌት':'Wallet',exact:true}).check();await expect(pay(dialog)).toBeEnabled();await expect(phone(dialog,am)).toHaveCount(0);expect(quotes).toBe(0);expect(charges).toBe(0);
-  await remove(dialog,am,'600.25').click();await expect(dialog.locator('[data-bid-total]')).toContainText('9.00');await dialog.locator('[data-bid-coupons]').getByRole('button',{name:am?'አስወግድ':'Remove',exact:true}).click();await expect(dialog.locator('[data-bid-total]')).toContainText('10.00');
+  await remove(dialog,am,'600.25').click();await expect(dialog.locator('[data-bid-total]')).toContainText('10.00');
   await page.screenshot({path:info.outputPath('multi-bid-editor.png'),animations:'disabled'});
  
   expect(f.network).toMatchObject({combined:0,quotes:0,direct:0});
@@ -185,16 +183,12 @@ test('uncertain wallet transport retains the original quote even after the balan
 });
 
 for(const code of ['COUPON_UNAVAILABLE','TERMS_CHANGED'] as const)test(`a known ${code} rejection preserves the draft and prepares a new quote only on the next Pay`,async({page},info)=>{
- const am=info.project.name==='430',f=await setup(page,am),couponId=randomUUID(),quotes:BidBatchQuote[]=[],quoteKeys:string[]=[],commands:ChapaDirectIntent[]=[];let order:ChapaCheckoutView|null=null;
+ const am=info.project.name==='430',f=await setup(page,am),quotes:BidBatchQuote[]=[],quoteKeys:string[]=[],commands:ChapaDirectIntent[]=[];let order:ChapaCheckoutView|null=null;
  try{
-  if(code==='COUPON_UNAVAILABLE'){
-   await page.route('**/api/auctions/*/bids',async route=>{const response=await route.fetch();return route.fulfill({json:{...await response.json(),referralDiscountsAvailable:true,couponAvailableCount:1}})});
-   await page.route('**/api/auctions/*/discount-quote?**',route=>route.fulfill({json:{serverNow:new Date().toISOString(),auctionSlug:f.auction.slug,feeVersion:1,ruleVersion:'lowest-unique-v4',grossFeePoints:'10',discountPoints:'1',netFeePoints:'9',coupon:{id:couponId,percent:10,expiresAt:new Date(Date.now()+3600000).toISOString()},eligible:true}}));
-  }
-  await mockBidCommand(page,{quote:route=>{const body=route.request().postDataJSON(),quote=quoteFor(f.auction.slug!,body.numbers);if(code==='COUPON_UNAVAILABLE'){quote.discountTotal='1.00';quote.total='9.00';quote.totalCents='900';quote.lines[0].discount='1.00';quote.lines[0].netFee='9.00'}quotes.push(quote);quoteKeys.push(body.key);return route.fulfill({json:quote})},direct:route=>{const command=route.request().postDataJSON() as ChapaDirectIntent;commands.push(command);if(commands.length===1)return route.fulfill({status:409,json:{code,error:`Synthetic ${code} rejection before provider creation`}});order=directOrder(command,quotes.at(-1)!);return route.fulfill({json:order})}});
+  await mockBidCommand(page,{quote:route=>{const body=route.request().postDataJSON(),quote=quoteFor(f.auction.slug!,body.numbers);quotes.push(quote);quoteKeys.push(body.key);return route.fulfill({json:quote})},direct:route=>{const command=route.request().postDataJSON() as ChapaDirectIntent;commands.push(command);if(commands.length===1)return route.fulfill({status:409,json:{code,error:`Synthetic ${code} rejection before provider creation`}});order=directOrder(command,quotes.at(-1)!);return route.fulfill({json:order})}});
   
   await page.route('**/api/payments/chapa/checkouts/**',route=>route.fulfill({json:order}));
-  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await openBid(page,f.title);await amount(dialog,am).fill('6.25');await dialog.getByRole('radio',{name:'telebirr',exact:true}).check();await phone(dialog,am).fill('0911652904');if(code==='COUPON_UNAVAILABLE'){await dialog.locator('[data-bid-coupons]').getByRole('button',{name:am?'ተግብር':'Apply',exact:true}).click();await expect(dialog.locator('[data-bid-total]')).toContainText('9.00')}
+  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await openBid(page,f.title);await amount(dialog,am).fill('6.25');await dialog.getByRole('radio',{name:'telebirr',exact:true}).check();await phone(dialog,am).fill('0911652904');
   await pay(dialog).click();await expect(dialog.locator('[data-bid-entry]')).toBeVisible();await expect(dialog.getByRole('alert')).toContainText(code);await expect(edit(dialog,am,'6.25')).toBeVisible();await expect(dialog.getByRole('radio',{name:'telebirr',exact:true})).toBeChecked();await expect(phone(dialog,am)).toHaveValue('911652904');await expect(pay(dialog)).toBeEnabled();expect(quotes).toHaveLength(1);expect(commands).toHaveLength(1);await expect(tryAgain(dialog,am)).toHaveCount(0);await expect(retryOriginal(dialog,am)).toHaveCount(0);
   await pay(dialog).click();await expect(dialog.locator('[data-direct-approval="phone"]')).toBeVisible();expect(quotes).toHaveLength(2);expect(commands).toHaveLength(2);expect(quoteKeys[1]).not.toBe(quoteKeys[0]);expect(commands[1].key).not.toBe(commands[0].key);expect(commands[1]).toMatchObject({purpose:'BID',batchId:quotes[1].id,paymentMethod:'telebirr',phone:'251911652904'});
  

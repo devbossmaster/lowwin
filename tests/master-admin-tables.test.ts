@@ -28,7 +28,7 @@ describe('Master Guide Admin bounded tables',()=>{
  it('merges current player activity and exact balances without loading journals or optional referral tables',async()=>{
   const mock={$queryRaw:vi.fn(async(query:Prisma.Sql)=>query.text.includes('COUNT(*)')?[{count:26}]:[{id:'player',suspended:false}]),user:{findMany:vi.fn(async()=>[{...identity(),wallet:{accounts:[{kind:'AVAILABLE',balance:new Prisma.Decimal('9007199254740993.97')},{kind:'HELD',balance:new Prisma.Decimal('1.23')}]},_count:{bids:4,wonSettlements:1}}]),count:vi.fn(async()=>26)},adminAudit:{create:vi.fn()},referralSignup:{groupBy:vi.fn()},referralCoupon:{groupBy:vi.fn()}};
   const result=await readPlayerTable(mock as unknown as PrismaClient,actor,f);
-  expect(result).toMatchObject({total:26,page:2,totalPages:2,referralsReady:false,items:[{available:'9007199254740993.97',held:'1.23',phone:'+251911000001',bidCount:4,winCount:1,referralCount:null,couponCount:null}]});
+  expect(result).toMatchObject({total:26,page:2,totalPages:2,referralsReady:false,items:[{available:'9007199254740993.97',held:'1.23',phone:'+251911000001',bidCount:4,winCount:1,referralCount:null,rewardCount:null}]});
   expect(mock.user.findMany).toHaveBeenCalledWith(expect.objectContaining({where:{id:{in:['player']}}}));
   const sql=mock.$queryRaw.mock.calls[0][0];expect(sql.text).toContain('LIMIT 25 OFFSET');expect(sql.values).toContain(25);expect(sql.text).toContain('"StaffMember"');expect(sql.text).toContain('"TestRunActor"');
   expect(mock.referralSignup.groupBy).not.toHaveBeenCalled();expect(mock.referralCoupon.groupBy).not.toHaveBeenCalled();

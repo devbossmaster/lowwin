@@ -5,6 +5,7 @@ import {randomUUID} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {bidAuction,bidUser} from './bid-fixtures';
 import {verifiedReferralUser,earnedReferralCoupon} from './referral-fixtures';
+import {recordLegacyCouponBid} from './legacy-coupon-fixtures';
 import {submitBid} from '../src/modules/auctions/bids';
 import {closeAuction,cancelAuction,closeAuctionInTransaction} from '../src/modules/auctions/settlement';
 import {publishSettledResult} from '../src/modules/auctions/result-publication';
@@ -26,7 +27,7 @@ describe.skipIf(!url)('V5 unique-only cancellation and original-funding refunds'
  beforeAll(async()=>{const u=new URL(url!);if(u.hostname!=='127.0.0.1'||!u.pathname.endsWith('_test'))throw Error('Isolated test DB only');execFileSync(process.execPath,['node_modules/prisma/build/index.js','migrate','deploy'],{env:{...process.env,DATABASE_URL:url!,DIRECT_URL:url!},stdio:'pipe'});db=new PrismaClient({datasourceUrl:url!});await db.referralPolicy.upsert({where:{id:'default'},create:{enabled:true,discountPercent:10,expiryDays:30,updatedBy:'fixture'},update:{enabled:true}})},60000);
  afterAll(async()=>{await db?.$disconnect();await(await import('../src/lib/db')).db.$disconnect()});
  const auction=(fee=10,ms=1500)=>bidAuction(db,{ruleVersion:RULE_V5,fee,endDelayMs:ms});
- const bid=(uid:string,slug:string,amount:string,feeVersion=1,couponId?:string)=>submitBid(db,{userId:uid,auctionSlug:slug,amount,feeVersion,couponId,key:randomUUID()});
+ const bid=(uid:string,slug:string,amount:string,feeVersion=1)=>submitBid(db,{userId:uid,auctionSlug:slug,amount,feeVersion,key:randomUUID()});
  const cash=async(uid:string)=>(await db.ledgerAccount.findUniqueOrThrow({where:{name:`user:${uid}:available`}})).balance.toString();
  const due=async(a:{endsAt:Date|null})=>new Promise(resolve=>setTimeout(resolve,Math.max(0,a.endsAt!.getTime()-Date.now()+20)));
  async function drain(id:string){for(let n=0;n<150;n++)if((await processAuctionRefund(db,id)).status==='idle')return;throw Error('Refund queue did not drain')}
@@ -74,7 +75,7 @@ describe.skipIf(!url)('V5 unique-only cancellation and original-funding refunds'
  async function real(fee:number){const a=await bidAuction(db,{ruleVersion:RULE_V5,fee,endDelayMs:60000,isDemo:false});await db.product.update({where:{id:a.productId!},data:{isDemo:false}});return a}
  it('refunds mixed cash and coupon-discounted bonus to their original funds with unchanged expiry',async()=>{
   const f=await topup(),coupon=await earnedReferralCoupon(db,f.uid),a=await real(100);const beforeLot=await db.depositBonusLot.findUniqueOrThrow({where:{checkoutId:f.order.id}});
-  const receipt=await bid(f.uid,a.slug!,'2.50',1,coupon.coupon.id);expect(receipt.charge).toMatchObject({netFeePoints:'90',bonusUsed:'50.00'});expect(await cash(f.uid)).toBe('60');
+  const receipt=await recordLegacyCouponBid(db,{userId:f.uid,auctionSlug:a.slug!,amount:'2.50',feeVersion:1,couponId:coupon.coupon.id,key:randomUUID()});expect(receipt.charge).toMatchObject({netFeePoints:'90',bonusUsed:'50.00'});expect(await cash(f.uid)).toBe('60');
   await cancelAuction(db,{auctionId:a.id,actor:{id:'fixture-operator',permission:'auction:cancel'},reason:'Fixture cancellation',key:randomUUID()});await drain(a.id);
   expect(await cash(f.uid)).toBe('100');expect(await readDepositBonusFunds(db,f.uid)).toMatchObject({bonusAvailable:'50'});expect((await db.depositBonusLot.findUniqueOrThrow({where:{checkoutId:f.order.id}})).expiresAt).toEqual(beforeLot.expiresAt);
   expect(await readWalletProjection(db,f.uid)).toMatchObject({available:'150',cashAvailable:'100',bonusAvailable:'50',bonusExpiresAt:beforeLot.expiresAt.toISOString()});

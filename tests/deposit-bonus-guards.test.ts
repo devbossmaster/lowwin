@@ -5,7 +5,7 @@ import {randomUUID} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {createRequire} from 'node:module';
 import {readFileSync} from 'node:fs';
-import {verifiedReferralUser,realReferralAuction,earnedReferralCoupon} from './referral-fixtures';
+import {verifiedReferralUser,realReferralAuction} from './referral-fixtures';
 import {bidAuction} from './bid-fixtures';
 import {TEST_TOKEN} from './helpers';
 import {createInlineCheckout} from '../src/modules/payments/chapa-inline';
@@ -135,9 +135,11 @@ describe.skipIf(!base)('deposit bonus migration and financial guards on isolated
   const f=await topup();await f.verify();const auction=await realReferralAuction(db,10);
   const paid=await createAndPayBidBatchWallet(db,f.user,{key:randomUUID(),auctionSlug:auction.slug!,numbers:['2','4','6'],feeVersion:1,approvedTotal:'30.00'});expect(paid.kind).toBe('receipt');expect(await balance(f.user)).toBe('100');expect(await balance(f.user,'bonus')).toBe('20');expect(await db.depositBonusUse.count({where:{userId:f.user}})).toBe(3);
  });
- it('combines one referral coupon with a complete bonus-funded batch and caps bonus usage at the net fee',async()=>{
-  const f=await topup();await f.verify();await db.referralPolicy.update({where:{id:'default'},data:{enabled:true,discountPercent:10}});const {coupon}=await earnedReferralCoupon(db,f.user),auction=await realReferralAuction(db,10);
-  const paid=await createAndPayBidBatchWallet(db,f.user,{key:randomUUID(),auctionSlug:auction.slug!,numbers:['2','4','6'],feeVersion:1,couponId:coupon.id,approvedTotal:'29.00'});expect(paid.kind).toBe('receipt');expect(await balance(f.user)).toBe('100');expect(await balance(f.user,'bonus')).toBe('21');expect((await db.depositBonusUse.aggregate({where:{userId:f.user},_sum:{amountCents:true}}))._sum.amountCents).toBe(2900n);expect(await db.referralRedemption.count({where:{userId:f.user}})).toBe(1);
+ it('caps deposit bonus usage at the complete batch fee',async()=>{
+  const f=await topup();await f.verify();const auction=await realReferralAuction(db,10);
+  const paid=await createAndPayBidBatchWallet(db,f.user,{key:randomUUID(),auctionSlug:auction.slug!,numbers:['2','4','6'],feeVersion:1,approvedTotal:'30.00'});
+  expect(paid.kind).toBe('receipt');expect(await balance(f.user)).toBe('100');expect(await balance(f.user,'bonus')).toBe('20');
+  expect((await db.depositBonusUse.aggregate({where:{userId:f.user},_sum:{amountCents:true}}))._sum.amountCents).toBe(3000n);
  });
  it('records exhausted-lot expiry without a zero journal and rejects another owner claiming that expiry',async()=>{
   const f=await topup();await f.verify();const auction=await realReferralAuction(db,50);await submitBid(db,{userId:f.user,auctionSlug:auction.slug!,amount:'2',feeVersion:1,key:randomUUID()});await ageLot(f.order.id);

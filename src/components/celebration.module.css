@@ -1,2 +1,2 @@
-.canvas{position:fixed;z-index:150;inset:0 auto 0 50%;width:min(100%,var(--customer-surface-width));height:100dvh;transform:translateX(-50%);pointer-events:none}
+.canvas{position:absolute;z-index:1;inset:0;width:100%;height:100%;pointer-events:none}
 @media(prefers-reduced-motion:reduce){.canvas{display:none}}

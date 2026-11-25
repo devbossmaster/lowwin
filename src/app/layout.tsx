@@ -21,5 +21,6 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // still requires actual Telegram init data.
   const initialAccount=!devEnabled&&requestHeaders.get('sec-fetch-dest')==='document'&&requestCookies.get(TELEGRAM_BROWSER_RESTORE_COOKIE)?.value==='1'?browserAccountBootstrap():undefined;
   const name=process.env.TELEGRAM_BOT_USERNAME,botUrl=name&&/^[A-Za-z0-9_]+bot$/i.test(name)?`https://t.me/${name}?start=lowin`:null;
-  return <html lang={language} suppressHydrationWarning><body><MiniLocaleProvider initialLanguage={language}><a className="skip-link" href="#main"><MiniPhrase en="Skip to content" am="ወደ ዋናው ይዘት ይሂዱ"/></a><MiniIdentityBoundary devEnabled={devEnabled} botUrl={botUrl} browserLogin={browserLoginConfig()} initialAccount={initialAccount}>{children}</MiniIdentityBoundary></MiniLocaleProvider></body></html>;
+  const font=language==='am'?'/fonts/noto-sans-ethiopic-variable.woff2':'/fonts/inter-latin-variable.woff2';
+  return <html lang={language} suppressHydrationWarning><head><link rel="preload" as="font" href={font} type="font/woff2" crossOrigin="anonymous"/></head><body><MiniLocaleProvider initialLanguage={language}><a className="skip-link" href="#main"><MiniPhrase en="Skip to content" am="ወደ ዋናው ይዘት ይሂዱ"/></a><MiniIdentityBoundary devEnabled={devEnabled} botUrl={botUrl} browserLogin={browserLoginConfig()} initialAccount={initialAccount}>{children}</MiniIdentityBoundary></MiniLocaleProvider></body></html>;
 }

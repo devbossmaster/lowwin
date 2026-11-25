@@ -56,18 +56,6 @@
 .chips button{min-height:36px;padding:5px 9px;border:0;border-radius:20px;background:transparent;color:inherit;font-size:12px;font-weight:600;cursor:pointer;font-variant-numeric:tabular-nums}
 .chips button+button{display:grid;place-items:center;min-width:32px;padding:5px}
 .selectionSummary{display:flex;align-items:center;justify-content:space-between;gap:7px;margin:0 0 5px;color:var(--brand-muted);font-size:10px;font-variant-numeric:tabular-nums}.selectionSummary button{min-height:32px;padding:4px 0 4px 9px;border:0;background:none;color:var(--brand-primary);font:inherit;font-weight:650;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
-.couponArea{margin:0 0 10px}.couponArea:empty{display:none}
-.coupons{display:inline-flex;align-items:center;gap:8px;max-width:100%;box-sizing:border-box;padding:0 3px 0 10px;border:1px solid var(--brand-line);border-radius:14px;background:var(--brand-canvas);color:var(--brand-primary);font-size:11px}
-.coupons>svg{flex:none}
-.couponCopy{display:grid;min-width:0;gap:1px}
-.couponCount{display:flex;align-items:center;gap:6px}
-.coupons b{min-width:20px;box-sizing:border-box;padding:2px 5px;border-radius:9px;background:var(--brand-soft);text-align:center;font-weight:650;font-variant-numeric:tabular-nums}
-.coupons button{flex:none;min-height:44px;min-width:60px;padding:6px 10px;border:0;border-radius:11px;background:transparent;color:var(--brand-primary);font:inherit;font-weight:650;cursor:pointer}.coupons button:hover:not(:disabled),.coupons button[aria-pressed=true]{background:var(--brand-soft)}.coupons button:disabled{color:#8d8677;cursor:not-allowed}
-.coupons button:focus-visible{outline:2px solid var(--action-primary);outline-offset:2px}
-.coupons[data-coupon-available]{border-color:var(--action-primary);background:color-mix(in srgb,var(--action-primary) 5%,var(--brand-surface));box-shadow:0 2px 8px color-mix(in srgb,var(--action-primary) 22%,transparent);color:var(--action-pressed)}
-.coupons[data-coupon-available] button{color:var(--action-pressed)}
-.couponPrompt{color:var(--action-pressed);font-size:10px;line-height:1.4;overflow-wrap:anywhere}
-.couponHint{margin:4px 2px 0;color:var(--brand-muted);font-size:10px;line-height:1.5}
 .balanceNote{display:flex;align-items:center;gap:7px;min-width:0;margin:4px 2px 8px;color:var(--brand-muted)}
 .balanceNote>svg{flex:none}.balanceNote p{flex:1;min-width:0;margin:0;font-size:11px;line-height:1.5;overflow-wrap:anywhere}.balanceNote strong{color:var(--brand-ink);font-weight:600;font-variant-numeric:tabular-nums}
 .balanceNote button{flex:none;min-height:44px;padding:5px 8px;border:0;border-radius:10px;background:none;color:var(--brand-primary);font:inherit;font-size:11px;font-weight:650;text-decoration:underline;text-underline-offset:3px;cursor:pointer}

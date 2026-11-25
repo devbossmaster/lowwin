@@ -22,6 +22,9 @@ type Tx=Prisma.TransactionClient;
 const command=z.object({key:z.string().uuid(),auctionSlug:z.string().regex(/^[a-z0-9-]{1,120}$/),numbers:z.array(z.string().regex(/^(0|[1-9]\d{0,15})(?:\.\d{1,2})?$/)).min(1).max(100),feeVersion:z.number().int().min(1),couponId:z.string().uuid().optional()}).strict();
 const lineSchema=z.object({position:z.number().int().nonnegative(),number:z.string(),grossFee:z.string(),discount:z.string(),netFee:z.string(),couponId:z.string().uuid().optional()}).strict();
 export type BatchLine=z.infer<typeof lineSchema>;
+export function rejectRetiredCoupon(couponId?:string|null){
+ if(couponId)throw new ChapaError(409,'COUPON_UNAVAILABLE','Coupons have ended. Review a new quote before paying.');
+}
 export function normalizeBatchNumbers(numbers:string[]){
  const normalized=numbers.map(number=>centsToEtb(parseBidCents(number)));
  if(new Set(normalized).size!==normalized.length)throw new ChapaError(422,'OWN_DUPLICATE','Each bid amount must be different.');
@@ -114,23 +117,19 @@ export async function priceBatchInTransaction(tx:Tx,userId:string,slug:string,nu
 }
 export async function quoteBidBatch(client:PrismaClient,userId:string,raw:unknown,reauthorize?:Authorize){
  const input=command.parse(raw),numbers=normalizeBatchNumbers(input.numbers),requestHash=chapaHash(JSON.stringify({...input,numbers}));
+ rejectRetiredCoupon(input.couponId);
  return client.$transaction(async tx=>{
-  const check=input.couponId?undefined:reauthorize?.forBidBatchQuote;
+  const check=reauthorize?.forBidBatchQuote;
   if(check)await measureChapa('locks',()=>lockAuctionMaintenance(tx));
   const fresh=check?await measureChapa('eligibility',()=>check(tx,userId,input.key)):null;
   const previous=fresh?.replayExists===false?null:await tx.bidBatchOrder.findUnique({where:{userId_key:{userId,key:input.key}}});
   if(previous){if(previous.requestHash!==requestHash)throw new ChapaError(409,'KEY_REUSED','Changed selections require a new quote.');return ownBatch(previous)}
   if(!fresh&&reauthorize)await reauthorize(tx);
-  let priced:Awaited<ReturnType<typeof priceBatchInTransaction>>;
-  if(input.couponId)priced=await validateBatchInTransaction(tx,userId,input.auctionSlug,numbers,input.feeVersion,input.couponId);
-  else{
-   // A coupon-free quote only describes a price. Keep the maintenance
-   // barrier, but let a simultaneous Pay acquire the financial writer locks.
-   // Both payment paths validate the price and bids again under those locks.
-   if(fresh?fresh.maintenanceHalted:await auctionMaintenance(tx))throw new ChapaError(503,'AUCTIONS_PAUSED','Auctions are paused. Existing funds remain safe.');
-   if(fresh)fresh.assertEligible();else await measureChapa('eligibility',()=>assertBatchEligibilityInTransaction(tx,userId));
-   priced=await measureChapa('pricing',()=>priceBatchInTransaction(tx,userId,input.auctionSlug,numbers,input.feeVersion));
-  }
+  // Keep the maintenance barrier while a simultaneous Pay acquires the
+  // financial writer locks. Payment revalidates the price and bids there.
+  if(fresh?fresh.maintenanceHalted:await auctionMaintenance(tx))throw new ChapaError(503,'AUCTIONS_PAUSED','Auctions are paused. Existing funds remain safe.');
+  if(fresh)fresh.assertEligible();else await measureChapa('eligibility',()=>assertBatchEligibilityInTransaction(tx,userId));
+  const priced=await measureChapa('pricing',()=>priceBatchInTransaction(tx,userId,input.auctionSlug,numbers,input.feeVersion));
   return ownBatch(await persistBidBatchQuoteInTransaction(tx,userId,input,priced,requestHash));
  },PAYMENT_TRANSACTION_OPTIONS);
 }
@@ -140,8 +139,8 @@ export async function persistBidBatchQuoteInTransaction(tx:Tx,userId:string,inpu
  const id=randomUUID(),quoteHash=chapaHash(JSON.stringify({id,userId,ruleVersion:priced.auction.terms!.ruleVersion,feeVersion:input.feeVersion,lines:priced.lines,totalCents:String(priced.totalCents)}));
  return tx.bidBatchOrder.create({data:{id,userId,key:input.key,requestHash,quoteHash,auctionId:priced.auction.id,auctionSlug:input.auctionSlug,ruleVersion:priced.auction.terms!.ruleVersion,feeVersion:input.feeVersion,lines:priced.lines,totalCents:priced.totalCents,grossCents:priced.grossCents,discountCents:priced.discountCents,couponId:input.couponId}});
 }
-type FulfillBatchOptions={validated?:Awaited<ReturnType<typeof validateBatchInTransaction>>;allowDepositBonus?:boolean;locksHeld?:boolean};
-export async function fulfillBatchInTransaction(tx:Tx,batch:BidBatchOrder,{validated,allowDepositBonus=false,locksHeld=false}:FulfillBatchOptions={}){
+type FulfillBatchOptions={validated?:Awaited<ReturnType<typeof validateBatchInTransaction>>;allowDepositBonus?:boolean;locksHeld?:boolean;qualifyReferral?:boolean};
+export async function fulfillBatchInTransaction(tx:Tx,batch:BidBatchOrder,{validated,allowDepositBonus=false,locksHeld=false,qualifyReferral=true}:FulfillBatchOptions={}){
  const prior=validated||locksHeld?batch:await tx.bidBatchOrder.findUniqueOrThrow({where:{id:batch.id}});
  if(prior.status==='ACCEPTED'&&prior.receipt)return prior.receipt as unknown as BidReceipt&{bids:BidReceipt['bid'][];receipts:BidReceipt[]};
  if(locksHeld&&!validated&&(await readAuctionMaintenance(tx)).halted)throw new ChapaError(503,'AUCTIONS_PAUSED','Auctions are paused. Existing funds remain safe.');
@@ -149,7 +148,6 @@ export async function fulfillBatchInTransaction(tx:Tx,batch:BidBatchOrder,{valid
  if(current.auction.terms!.ruleVersion!==batch.ruleVersion||current.totalCents!==batch.totalCents||JSON.stringify(current.lines)!==JSON.stringify(lines))throw new ChapaError(409,'TERMS_CHANGED','The quote or coupon changed. No bids were accepted.');
  // validateBatchInTransaction holds the shared wallet writer lock. Reject an
  // unaffordable complete order before creating even the first entry/outbox row.
- // Zero-fee coupon orders remain valid without creating a gateway payment.
  let useDepositBonus=allowDepositBonus;
  if(batch.totalCents>0n){
   const account=await tx.ledgerAccount.findUnique({where:{name:`user:${batch.userId}:available`},select:{balance:true}}),bonus=allowDepositBonus?await readDepositBonusFunds(tx,batch.userId):{bonusAvailable:'0'},available=etbToCents(account?.balance.toFixed(2)??'0')+etbToCents(bonus.bonusAvailable);
@@ -163,7 +161,7 @@ export async function fulfillBatchInTransaction(tx:Tx,batch:BidBatchOrder,{valid
  // entries share the same locked, fully validated batch and use bulk writes.
  // The database Bid triggers still stamp/check every acceptance individually;
  // any late/invalid line aborts the entire outer transaction/savepoint.
- const first=lines[0],initial=await recordValidatedSubmissionFeeBidInTransaction(tx,{userId:batch.userId,auctionSlug:batch.auctionSlug,amount:first.number,feeVersion:batch.feeVersion,key:batchChildKey(batch.id,0),...(first.couponId?{couponId:first.couponId}:{})},current,process.env,useDepositBonus,true),receipts:BidReceipt[]=[initial];
+ const first=lines[0],initial=await recordValidatedSubmissionFeeBidInTransaction(tx,{userId:batch.userId,auctionSlug:batch.auctionSlug,amount:first.number,feeVersion:batch.feeVersion,key:batchChildKey(batch.id,0),...(first.couponId?{couponId:first.couponId}:{})},current,process.env,{allowDepositBonus:useDepositBonus,deferNotification:true,qualifyReferral}),receipts:BidReceipt[]=[initial];
  if(etbToCents(initial.charge.netFeePoints??initial.charge.feePoints)!==etbToCents(first.netFee))throw new ChapaError(409,'TERMS_CHANGED','The charged fee no longer matches this quote.');
  const rest=lines.slice(1),remainingCost=batch.totalCents-etbToCents(first.netFee);
  if(etbToCents(initial.wallet.available)<remainingCost)throw new BidError('INSUFFICIENT_POINTS',409,'Your Lowwin wallet does not have enough funds for the entire order.');
@@ -213,8 +211,9 @@ export async function payBidBatchWallet(client:PrismaClient,userId:string,id:str
 }
 
 async function acceptWalletBatch(tx:Tx,batch:BidBatchOrder,validated?:Awaited<ReturnType<typeof validateBatchInTransaction>>){
+ rejectRetiredCoupon(batch.couponId);
  if(batch.totalCents>0n&&!walletBidsEnabled())throw new ChapaError(503,'WALLET_UNAVAILABLE','Wallet payments are currently unavailable.');
- const current=validated??await measureChapa('pricing',()=>validateBatchInTransaction(tx,batch.userId,batch.auctionSlug,batchLines(batch).map(line=>line.number),batch.feeVersion,batch.couponId??undefined,true));
+ const current=validated??await measureChapa('pricing',()=>validateBatchInTransaction(tx,batch.userId,batch.auctionSlug,batchLines(batch).map(line=>line.number),batch.feeVersion,undefined,true));
  const receipt=await measureChapa('fulfill',()=>fulfillBatchInTransaction(tx,batch,{validated:current,allowDepositBonus:true}));
  return walletBatchReceipt({...batch,status:'ACCEPTED'},receipt,await readWalletProjection(tx,batch.userId));
 }
@@ -238,11 +237,12 @@ export async function createAndPayBidBatchWallet(client:PrismaClient,userId:stri
   if(batch&&batch.requestHash!==requestHash)throw new ChapaError(409,'KEY_REUSED','Changed selections require a new order.');
   if(batch&&await tx.chapaCheckout.findUnique({where:{batchId:batch.id}}))throw new ChapaError(409,'PAYMENT_STARTED','This order already has an online payment. Check that original payment.');
   if(batch?.status==='ACCEPTED')return {kind:'receipt' as const,receipt:walletBatchReceipt(batch,batch.receipt as unknown as BidReceipt&{receipts:BidReceipt[]},await readWalletProjection(tx,userId))};
+  rejectRetiredCoupon(input.couponId??batch?.couponId);
   if(halted)throw new ChapaError(503,'AUCTIONS_PAUSED','Auctions are paused. Existing funds remain safe.');
   if(fresh)fresh.assertEligible();
-  const priced=await measureChapa('pricing',()=>fresh?priceBatchInTransaction(tx,userId,input.auctionSlug,numbers,input.feeVersion,input.couponId):validateBatchInTransaction(tx,userId,input.auctionSlug,numbers,input.feeVersion,input.couponId,true));
+  const priced=await measureChapa('pricing',()=>fresh?priceBatchInTransaction(tx,userId,input.auctionSlug,numbers,input.feeVersion):validateBatchInTransaction(tx,userId,input.auctionSlug,numbers,input.feeVersion,undefined,true));
   if(!batch)batch=await persistBidBatchQuoteInTransaction(tx,userId,input,priced,requestHash);
-  if(batch.totalCents!==priced.totalCents||JSON.stringify(batchLines(batch))!==JSON.stringify(priced.lines))throw new ChapaError(409,'TERMS_CHANGED','The quote or coupon changed. Review the updated fee before paying.');
+  if(batch.totalCents!==priced.totalCents||JSON.stringify(batchLines(batch))!==JSON.stringify(priced.lines))throw new ChapaError(409,'TERMS_CHANGED','The quote changed. Review the updated fee before paying.');
   if(batch.totalCents!==etbToCents(approvedTotal))return {kind:'quote' as const,quote:ownBatch(batch)};
   return {kind:'receipt' as const,receipt:await acceptWalletBatch(tx,batch,priced)};
  },PAYMENT_TRANSACTION_OPTIONS);

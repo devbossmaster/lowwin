@@ -3,7 +3,7 @@ import {adminRequest,useAdminQuery} from './admin-query';
 import {isSubmissionFeeOnly} from '@/modules/auctions/rules';
 import {AdminAuctionSummary} from './admin-results';
 import {AdminAuctionDraft,AdminAuctionHomeOrderField,readAuctionHomeOrder} from './admin-auction-draft';
-import {AdminAuctionDeadlineField,parseAuctionScheduleTime} from './admin-auction-schedule-preview';
+import {AdminAuctionDeadlineField,AdminAuctionStartField,parseAuctionScheduleTime} from './admin-auction-schedule-preview';
 import {AdminImageUpload} from './admin-catalog';
 import {AdminProductDescription} from './admin-product-description';
 import {ResultExplanation} from './auction-rule';
@@ -25,7 +25,7 @@ function Field({label,name,value='',type='text',required=true}:{label:string;nam
 function DataTable({rows,columns}:{rows:Row[];columns:[string,(row:Row)=>React.ReactNode][]}){return <div className="admin-table-wrap"><table><thead><tr>{columns.map(([title])=><th key={title}>{title}</th>)}</tr></thead><tbody>{rows.map((row,index)=><tr key={row.id??row.auctionId??index}>{columns.map(([title,render])=><td key={title}>{render(row)}</td>)}</tr>)}</tbody></table>{!rows.length&&<p className="admin-empty">Nothing here yet.</p>}</div>}
 export function AdminWorkspace({path}:{path:string[]}){
   const access=useAdminAccess(),router=useRouter(),section=path[0]??'dashboard',auctionId=section==='auctions'&&path[1]&&path[1]!=='new'?path[1]:null;
-  const [page,setPage]=useState(1),[q,setQ]=useState(''),[filter,setFilter]=useState(''),[products,setProducts]=useState<Row[]>([]),[error,setError]=useState(''),[message,setMessage]=useState(''),[pendingAction,setPendingAction]=useState(''),[uploading,setUploading]=useState(false),[edit,setEdit]=useState<Row|null>(null),[impact,setImpact]=useState<Row|null>(null),[preflight,setPreflight]=useState<Row|null>(null),[auctionTab,setAuctionTab]=useState('details'),[manageTab,setManageTab]=useState('deadline'),[media,setMedia]=useState<string[]>([]),[key,setKey]=useState(''),[draftDirty,setDraftDirty]=useState(false),[presentationDirty,setPresentationDirty]=useState(false);
+  const [page,setPage]=useState(1),[q,setQ]=useState(''),[filter,setFilter]=useState(''),[products,setProducts]=useState<Row[]>([]),[error,setError]=useState(''),[message,setMessage]=useState(''),[pendingAction,setPendingAction]=useState(''),[uploading,setUploading]=useState(false),[edit,setEdit]=useState<Row|null>(null),[impact,setImpact]=useState<Row|null>(null),[preflight,setPreflight]=useState<Row|null>(null),[auctionTab,setAuctionTab]=useState('details'),[selectedManageTab,setManageTab]=useState('deadline'),[media,setMedia]=useState<string[]>([]),[key,setKey]=useState(''),[draftDirty,setDraftDirty]=useState(false),[presentationDirty,setPresentationDirty]=useState(false);
   const pending=useRef(false),presentationEdited=useRef(false),busy=!!pendingAction;
   const changePresentation=()=>{presentationEdited.current=true;setPresentationDirty(true);setKey(crypto.randomUUID())};
   const location=path.join('/');
@@ -51,7 +51,9 @@ export function AdminWorkspace({path}:{path:string[]}){
   async function save(action:string,input:Row){const result=await command(action,{...input,key});setDraftDirty(false);setKey(crypto.randomUUID());setMessage('Saved. The database confirmed this change.');return result}
   const list:Row[]=Array.isArray(data)?data:((data as Row)?.items??[]),item=(!Array.isArray(data)?data:null)??{};
   const showFeeTab=isSubmissionFeeOnly(item.terms?.ruleVersion)||Number(item.feeRevisions?.[0]?.feePoints??item.terms?.entryFeePoints)>0;
-  const managementTools=[...(showFeeTab?[['fee','Submission fee']]:[]),['deadline','Deadline'],['presentation','Photos & description'],['homeOrder','Home order']];
+  const canAdvanceStart=['SCHEDULED','LIVE'].includes(item.status)&&item.displayStatus==='UPCOMING'&&!!item.startsAt&&!!item.endsAt&&!item.result&&item.acceptedBids===0;
+  const manageTab=selectedManageTab==='startTime'&&!canAdvanceStart?'deadline':selectedManageTab;
+  const managementTools=[...(showFeeTab?[['fee','Submission fee']]:[]),...(canAdvanceStart?[['startTime','Start time']]:[]),['deadline','Deadline'],['presentation','Photos & description'],['homeOrder','Home order']];
   const homeOrderEditable=['LIVE','UPCOMING'].includes(item.displayStatus);
   const titles:Row={dashboard:['Overview','Your auction operations, at a glance.'],auctions:['Auction work queue','Choose an item, set the schedule, then publish.'],products:['Products','Describe inventory and attach validated, credited images.'],categories:['Categories','Organize the public catalog. Published inventory is protected.'],content:['Home & FAQ','Plain text content. Auction rules remain visible and unchanged.'],reconciliation:['Ledger reconciliation','Read-only account, journal and hold integrity checks.']};
   const title=auctionId?item.presentation?.title??item.product?.title??products.find(p=>p.id===item.draft?.body.productId)?.title??item.code??'Auction':path[1]==='new'?'Create auction':titles[section]?.[0]??'Admin resource';
@@ -62,7 +64,25 @@ export function AdminWorkspace({path}:{path:string[]}){
     {data&&section==='auctions'&&!path[1]&&<DataTable rows={list} columns={[["Auction",r=><Link href={`/admin/auctions/${r.id}`}>{r.code}<small>{r.product?.title??'Untitled draft'}{r.isDemo?' · DEMO':''}</small></Link>],['Status',r=>r.publishedAt&&!r.settlement&&r.status!=='CANCELLED'&&new Date(r.endsAt)<new Date()?'Closing / result pending':r.status],['Start',r=>date(r.startsAt)],['End',r=>date(r.endsAt)]]}/>}
     {data&&section==='auctions'&&(path[1]==='new'||auctionId)&&<>
       {item.publishedAt?<><nav className="admin-local-tabs" aria-label="Auction workspace">{['details',...(!item.settlement||item.status==='CANCELLED'?['manage']:[]),'history'].map(tab=><button key={tab} aria-current={auctionTab===tab?'page':undefined} onClick={()=>setAuctionTab(tab)}>{tab==='details'?(item.settlement?'Result':'Details'):tab==='manage'?'Manage':'History'}</button>)}</nav>{auctionTab==='details'&&<AdminAuctionSummary item={item}/>}
-      {auctionTab==='manage'&&!item.settlement&&access.role==='OWNER'&&<section id="auction-manage" className="admin-panel"><h2>Manage live auction</h2><p>Changes require your current staff permissions and the latest control version. Previous bid receipts remain unchanged.</p><nav className="admin-local-tabs" aria-label="Management tools">{managementTools.map(([tab,label])=><button key={tab} aria-current={manageTab===tab?'page':undefined} onClick={()=>setManageTab(tab)}>{label}</button>)}</nav>
+      {auctionTab==='manage'&&!item.settlement&&access.role==='OWNER'&&<section id="auction-manage" className="admin-panel"><h2>Manage auction</h2><p>Changes require your current staff permissions and the latest control version. Previous bid receipts remain unchanged.</p><nav className="admin-local-tabs" aria-label="Management tools">{managementTools.map(([tab,label])=><button key={tab} aria-current={manageTab===tab?'page':undefined} onClick={()=>setManageTab(tab)}>{label}</button>)}</nav>
+      {canAdvanceStart&&<div className="auction-manage-form" hidden={manageTab!=='startTime'}>
+        <form key={item.startsAt} className="admin-form" onChange={()=>setKey(crypto.randomUUID())} onSubmit={event=>{
+          event.preventDefault();
+          const fields=new FormData(event.currentTarget);
+          const next=parseAuctionScheduleTime(String(fields.get('startsAt')??''));
+          run('startTime',async()=>{
+            if(!next)throw Error('Enter a valid date and a 24-hour time.');
+            await save('startTime',{auctionId,version:item.controlVersion,startsAt:next.toISOString(),reason:fields.get('reason')});
+            setMessage('Earlier start time saved.');
+          });
+        }}>
+          <h3>Open the auction earlier</h3>
+          <p className="admin-group-note">Starts {date(item.startsAt)}. Choose an earlier opening time in Addis Ababa.</p>
+          {manageTab==='startTime'&&<AdminAuctionStartField startsAt={item.startsAt} endsAt={item.endsAt}/>}
+          <label>Reason<textarea name="reason" required maxLength={1000}/></label>
+          <button disabled={busy} aria-busy={pendingAction==='startTime'}>{pendingAction==='startTime'?'Saving start time…':'Save earlier start time'}</button>
+        </form>
+      </div>}
       <div className="auction-manage-form" hidden={manageTab!=='homeOrder'}>
         <form className="admin-form" onChange={()=>setKey(crypto.randomUUID())} onSubmit={event=>{
           event.preventDefault();

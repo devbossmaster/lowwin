@@ -8,6 +8,7 @@ import {AuctionResultSummary} from './auction-result-summary';
 import {CatalogImage} from './catalog-image';
 import {MiniPhrase,useMiniLocale} from './mini-locale';
 import {WinnerBanner,winnerBannerData} from './winner-banner';
+import {WinnerCelebration} from './celebration';
 import {PrivateState,usePrivateQuery} from './private-query';
 import {useTelegram} from './telegram-provider';
 import ResultBreakdownContent from './result-sheet-content';
@@ -31,11 +32,15 @@ export function ResultSheetContent({auction:initial}:{auction:CatalogAuction}){
   :saved;
  const auction=result===saved?stored:{...stored,result};
  const title=am?auction.product.titleAm?.trim()||auction.product.title:auction.product.title;
+ const banner=winnerBannerData(auction);
  if(query.status!=='authenticated')return <PrivateState query={query}/>;
  return <div className={styles.resultSurface}>
-   <div className={winnerBannerData(auction)?styles.detailBanner:styles.detailPhoto}>{winnerBannerData(auction)?<WinnerBanner auction={auction}/>:<CatalogImage src={auction.product.images[0]?.path} alt={title}/>}</div>
-   <h3 className={styles.title}>{title}</h3>
-   {result?.publishedAt&&<p className={styles.date}><CalendarDays size={13} aria-hidden="true"/><MiniPhrase en="Announced" am="የታወጀው"/> <time dateTime={result.publishedAt}>{formatAddisTimestamp(result.publishedAt,am?'am-ET':'en-GB')}</time></p>}
+   <div className={styles.resultHero}>
+    <div className={banner?styles.detailBanner:styles.detailPhoto}>{banner?<WinnerBanner auction={auction}/>:<CatalogImage src={auction.product.images[0]?.path} alt={title}/>}</div>
+    <h3 className={styles.title}>{title}</h3>
+    {result?.publishedAt&&<p className={styles.date}><CalendarDays size={13} aria-hidden="true"/><MiniPhrase en="Announced" am="የታወጀው"/> <time dateTime={result.publishedAt}>{formatAddisTimestamp(result.publishedAt,am?'am-ET':'en-GB')}</time></p>}
+    {result?.source==='SETTLED'&&result.outcome==='WINNER'&&<WinnerCelebration id={`${auction.code}:${result.publishedAt}`}/>}
+   </div>
    {result?<AuctionResultSummary auction={auction}/>:query.error?<PrivateState query={query}/>:!query.data?<ResultRowsSkeleton/>:<p className={styles.loading} role="status"><MiniPhrase en={auction.status==='cancelled'?'This auction was cancelled.':'Finalizing result'} am={auction.status==='cancelled'?'ይህ ጨረታ ተሰርዟል።':'ውጤቱ እየተጠናቀቀ ነው'}/></p>}
    {result?.source==='SETTLED'&&<div data-result-breakdown tabIndex={-1}><ResultBreakdownContent key={auction.code} code={auction.code}/></div>}
   </div>;

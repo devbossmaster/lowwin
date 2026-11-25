@@ -4,6 +4,7 @@ import {PrismaClient} from '@prisma/client';
 import {execFileSync} from 'node:child_process';
 import {createRequire} from 'node:module';
 import {verifiedReferralUser,realReferralAuction,earnedReferralCoupon} from './referral-fixtures';
+import {recordLegacyCouponBid} from './legacy-coupon-fixtures';
 import {creditDevelopmentPoints} from '../src/modules/wallet/ledger';
 import {submitBid} from '../src/modules/auctions/bids';
 import {createChapaCheckout,verifyChapaCheckout} from '../src/modules/payments/chapa';
@@ -28,7 +29,7 @@ describe.skipIf(!database)('combined admin payments on isolated PostgreSQL',()=>
    walletBidId=receipt.bid.id;
   }
   const {coupon}=await earnedReferralCoupon(db,userId);
-  couponBidId=(await submitBid(db,{userId,auctionSlug:auction.slug!,feeVersion:1,amount:'20.01',couponId:coupon.id,key:randomUUID()})).bid.id;
+  couponBidId=(await recordLegacyCouponBid(db,{userId,auctionSlug:auction.slug!,feeVersion:1,amount:'20.01',couponId:coupon.id,key:randomUUID()})).bid.id;
   async function chapa(purpose:'BID'|'TOP_UP',status='SUCCESS'){
    let initialized:ChapaCreate|undefined;const reference='CH'+randomUUID().replaceAll('-','');
    const transport:ChapaTransport={create:vi.fn(async input=>{initialized=input;return {status:'success',data:{checkout_url:'https://checkout.chapa.global/'+reference}}}),lookup:vi.fn(async()=>({status:'success',data:{status,merchant_reference:initialized!.merchantReference,chapa_reference:reference,amount:Number(initialized!.amountCents),currency:'ETB',mode:'test',payment_method:'telebirr',processor_reference:'SYNTHETIC-'+reference}})),methods:vi.fn()};

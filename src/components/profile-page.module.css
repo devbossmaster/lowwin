@@ -29,7 +29,6 @@
 .summary>div>span{display:flex;align-items:center;gap:6px;color:var(--brand-muted, #72697e);font-size:12px;line-height:1.5}
 .summary svg{flex:none}
 .summary strong{max-width:100%;font-size:23px;font-weight:750;line-height:1.25;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
-.goldNumber{color:#806017}
 .panel{padding:20px;margin:0 0 16px;border-radius:16px;background:#fff}
 .panelHeading{display:flex;align-items:center;justify-content:space-between;gap:9px;margin:0 0 7px}
 .panelHeading h2{display:flex;align-items:center;gap:8px;min-width:0;margin:0;font-size:17px;font-weight:750;line-height:1.45;letter-spacing:-.02em}
@@ -44,6 +43,7 @@
 .referralPanel .referralLink button{color:var(--action-hover);background:#eff5ff}
 .referralPanel .referralStats>div{background:#f3f6fc}
 .referralPanel .referralState[data-active]{background:var(--action-disabled);color:var(--action-pressed)}
+.summary .referralAmount{color:var(--action-pressed);font-size:clamp(16px,4vw,21px);overflow-wrap:anywhere}
 .referralLink{display:flex;align-items:center;gap:4px;min-height:48px;margin:16px 0 10px;padding:2px 3px 2px 13px;border:1px solid var(--brand-line, #e4dcf0);border-radius:26px;background:#fff}
 .referralLink input{min-width:0;width:100%;height:42px;padding:0;border:0;outline:none;background:transparent;color:var(--brand-ink, #211a30);font:inherit;font-size:11px;font-weight:600;text-overflow:ellipsis}
 .referralLink button{display:grid;place-items:center;width:44px;height:44px;flex:none;padding:0;border:0;border-radius:50%;background:var(--brand-soft, #eee8fa);color:var(--brand-muted, #72697e);cursor:pointer}
@@ -54,16 +54,7 @@
 .referralStats strong{max-width:100%;font-size:19px;line-height:1.25;font-weight:650;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 .referralStats span{color:var(--brand-muted, #72697e);font-size:11px;line-height:1.5;overflow-wrap:anywhere}
 .inlineNotice{margin:9px 0 0;color:var(--brand-primary-strong, #5533be);font-size:11px;line-height:1.65}
-.count{flex:none;max-width:45%;padding:4px 8px;border-radius:14px;background:var(--brand-soft, #eee8fa);color:#514d43;font-size:10px;line-height:1.45;font-variant-numeric:tabular-nums;text-align:center}
 .referralState{flex:none;padding:4px 8px;border-radius:14px;background:var(--brand-soft, #eee8fa);color:#514d43;font-size:10px;font-weight:600;line-height:1.45}.referralState[data-active]{background:#f4ecd3;color:#705416}
-.useDiscount{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:44px;margin-top:10px;color:#705416;font-size:12px;font-weight:650;text-decoration:none}.useDiscount:hover{text-decoration:underline;text-underline-offset:3px}
-.emptyRewards{margin:13px 0 0;color:var(--brand-muted, #72697e);font-size:12px;line-height:1.8}
-.discounts{display:grid;gap:10px;margin:14px 0 0;padding:0;list-style:none}
-.discounts li{display:flex;align-items:center;gap:11px;padding:14px 12px;border-radius:12px;background:#f6f2e7}
-.discountIcon{display:grid;place-items:center;flex:none;width:37px;height:37px;border-radius:50%;background:#fff;color:var(--brand-primary, #6d4cfd)}
-.discounts li>div{min-width:0}
-.discounts strong{display:block;color:#51401e;font-size:12px;font-weight:700;line-height:1.55;overflow-wrap:anywhere}
-.discounts small{display:block;margin-top:3px;color:#706a5e;font-size:10px;line-height:1.5}
 .editButton{display:inline-flex;align-items:center;justify-content:center;gap:6px;flex:none;min-height:44px;padding:0 11px;border:1px solid var(--brand-line, #e4dcf0);border-radius:24px;background:#fff;color:var(--brand-ink, #211a30);font:inherit;font-size:11px;font-weight:600;line-height:1.4;cursor:pointer}
 .basicInfo{margin:0}
 .basicInfo>div{display:flex;align-items:baseline;justify-content:space-between;gap:14px;padding:14px 0;border-bottom:1px solid var(--brand-soft, #eee8fa);font-size:13px;line-height:1.6}

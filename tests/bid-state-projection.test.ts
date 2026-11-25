@@ -1,7 +1,5 @@
 import {Prisma} from '@prisma/client';
-import {beforeEach,describe,expect,it,vi} from 'vitest';
-const count=vi.hoisted(()=>vi.fn());
-vi.mock('../src/modules/referrals/service',async original=>({...await original<typeof import('../src/modules/referrals/service')>(),availableReferralCouponCount:count}));
+import {describe,expect,it,vi} from 'vitest';
 import {getOwnBidState} from '../src/modules/auctions/bids';
 
 const now=new Date('2026-11-12T10:00:00Z');
@@ -11,14 +9,10 @@ function fixture(){
  const client={$transaction:vi.fn(async(fn:(value:typeof tx)=>unknown)=>fn(tx))};
  return {client,tx};
 }
-beforeEach(()=>{count.mockReset();count.mockResolvedValue(3)});
 describe('checkout bid-state projection',()=>{
- it('omits the coupon SQL and wallet reads when independent checkout projections are requested',async()=>{
-  const {client,tx}=fixture(),state=await getOwnBidState(client as never,'owned-player','owned-auction',{REFERRAL_REWARDS_SCHEMA_READY:'true'},false,false);
-  expect(count).not.toHaveBeenCalled();expect(tx.wallet.findUnique).not.toHaveBeenCalled();expect(state.couponAvailableCount).toBeNull();expect(state.referralDiscountsAvailable).toBe(true);expect(state.open).toBe(true);expect(state.terms.entryFeePoints).toBe('35');expect(state.remainingSubmissions).toBe(100);
- });
- it('preserves the exact coupon count for existing service callers by default',async()=>{
+ it('returns bid terms without legacy discounts or the independent wallet read',async()=>{
   const {client,tx}=fixture(),state=await getOwnBidState(client as never,'owned-player','owned-auction',{REFERRAL_REWARDS_SCHEMA_READY:'true'},false);
-  expect(count).toHaveBeenCalledOnce();expect(count).toHaveBeenCalledWith(tx,'owned-player',now,{REFERRAL_REWARDS_SCHEMA_READY:'true'});expect(state.couponAvailableCount).toBe(3);expect(tx.wallet.findUnique).not.toHaveBeenCalled();
+  expect(tx.wallet.findUnique).not.toHaveBeenCalled();expect(state).not.toHaveProperty('couponAvailableCount');expect(state).not.toHaveProperty('referralDiscountsAvailable');
+  expect(state.open).toBe(true);expect(state.terms.entryFeePoints).toBe('35');expect(state.remainingSubmissions).toBe(100);
  });
 });

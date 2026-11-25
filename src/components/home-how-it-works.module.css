@@ -1,11 +1,160 @@
-.guide{margin:32px 16px 8px;padding:24px 20px;border-radius:16px;background:#fff;color:var(--brand-ink,#16202c)}
-.heading{margin-bottom:20px;text-align:center}.heading h2{margin:0;font-size:28px;font-weight:700;line-height:1.3;letter-spacing:-.03em;text-wrap:balance}
-.steps{display:grid;gap:12px;padding:0;margin:0;list-style:none}.steps li{display:grid;grid-template-columns:88px minmax(0,1fr);align-items:center;column-gap:14px;min-width:0;padding:16px;border-radius:16px;background:var(--brand-soft,#f2f2f7)}
-.stepCopy{grid-column:2;grid-row:1;min-width:0}.steps h3{display:flex;align-items:baseline;gap:7px;margin:0 0 6px;font-size:15px;font-weight:650;line-height:1.45;letter-spacing:-.015em}.stepNumber{flex:none;color:var(--action-primary,#2563eb);font-size:12px;font-weight:700;font-variant-numeric:tabular-nums}.steps p{margin:0;color:var(--brand-muted-on-soft,#5f6b7a);font-size:13px;line-height:1.65}
-.illustration{grid-column:1;grid-row:1;display:block;width:88px;height:104px;object-fit:contain;transform-origin:center;pointer-events:none}
-.rules{margin:16px 0 0;color:var(--brand-muted,#657181);font-size:12px;line-height:1.7}.actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;margin-top:14px}.actions button{display:flex;align-items:center;justify-content:center;gap:8px;width:auto;min-height:48px;padding:12px 24px;border:0;border-radius:24px;background:var(--action-primary,#2563eb);color:var(--action-ink,#fff);font:inherit;font-size:15px;font-weight:600;line-height:1.5;cursor:pointer;touch-action:manipulation}.actions button svg{flex:none}.actions a{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:8px 0;color:var(--brand-muted,#657181);font-size:12px;line-height:1.6;text-decoration:underline;text-underline-offset:3px}.actions button:focus-visible,.actions a:focus-visible{outline:2px solid var(--action-primary,#2563eb);outline-offset:3px}.actions button:active{background:var(--action-pressed,#1e40af)}
-.guide:lang(am) .heading h2{letter-spacing:0;line-height:1.6}.guide:lang(am) .steps h3{letter-spacing:0;line-height:1.65}.guide:lang(am) .steps p{line-height:1.8}
-.guide[data-animate=true] .illustration{animation:illustration-arrive 900ms cubic-bezier(.16,1,.3,1) both}.guide[data-animate=true] li:nth-child(2) .illustration{animation-delay:100ms}.guide[data-animate=true] li:nth-child(3) .illustration{animation-delay:200ms}@keyframes illustration-arrive{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
-@media(hover:hover){.actions button:hover{background:var(--action-hover,#1d4ed8)}.actions a:hover{color:var(--brand-ink,#16202c)}}
-@media(max-width:359px){.guide{margin-inline:12px;padding:20px 12px}.heading h2{font-size:24px}.steps li{grid-template-columns:72px minmax(0,1fr);gap:10px;padding:12px}.illustration{width:72px;height:100px}.steps h3{font-size:14px}.steps p{font-size:13px}}
-@media(prefers-reduced-motion:reduce){.guide[data-animate=true] .illustration{animation:none}}
+.guide {
+  margin: 32px 16px 12px;
+  padding: clamp(16px, 4.5vw, 22px);
+  border: 1px solid var(--brand-line);
+  border-radius: 16px;
+  background: var(--brand-surface);
+  color: var(--brand-ink);
+}
+
+.heading h2 {
+  margin: 0;
+  font-size: clamp(22px, 6vw, 27px);
+  font-weight: 730;
+  line-height: 1.24;
+  letter-spacing: -.028em;
+  text-wrap: balance;
+}
+
+.steps {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 16px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 10px 12px 14px;
+  border-radius: 12px;
+  background: #f3f6fc;
+}
+
+.stepNumber {
+  position: absolute;
+  inset-block-start: 10px;
+  inset-inline-start: 10px;
+  display: grid;
+  width: 23px;
+  height: 23px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--brand-surface);
+  color: var(--action-pressed);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.illustration {
+  width: min(88%, 112px);
+  height: auto;
+  aspect-ratio: 1;
+  margin: 0 auto 8px;
+  object-fit: contain;
+}
+
+.stepCopy {min-width: 0}
+
+.step h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 690;
+  line-height: 1.4;
+  letter-spacing: -.012em;
+  text-wrap: balance;
+}
+
+.step p,.rules {
+  margin: 0;
+  color: var(--brand-muted-on-soft);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.step:last-child {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr) minmax(72px, 110px);
+  align-items: center;
+  gap: 8px 16px;
+  padding: 13px 14px;
+  background: #eaf2ff;
+}
+
+.step:last-child .stepNumber {
+  position: static;
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.step:last-child .stepCopy {
+  grid-column: 1;
+  grid-row: 2;
+  align-self: start;
+}
+
+.step:last-child .illustration {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  width: 100%;
+  margin: 0;
+}
+
+.rules {
+  padding-top: 13px;
+  border-top: 1px solid var(--brand-line);
+  font-size: 12px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+  margin-top: 12px;
+}
+
+.actions button,.actions a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 24px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.4;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.actions button {
+  min-height: 48px;
+  padding-inline: 18px;
+  background: var(--action-primary);
+  color: var(--action-ink);
+}
+
+.actions button svg {flex: none}
+.actions a {padding-inline: 8px;color: var(--action-pressed);text-underline-offset: 3px}
+.actions button:active {background: var(--action-pressed)}
+.actions :is(button,a):focus-visible {outline: 2px solid var(--action-primary);outline-offset: 3px}
+.guide:lang(am) :is(h2,h3) {letter-spacing: 0;line-height: 1.48}
+.guide:lang(am) :is(.step p,.rules) {line-height: 1.7}
+
+@media (max-width: 359px) {
+  .guide {margin-inline: 12px}
+  .step {padding-inline: 9px}
+  .step:last-child {grid-template-columns: minmax(0, 1fr) minmax(72px, 34%);gap: 7px 10px}
+}

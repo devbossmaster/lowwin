@@ -9,7 +9,7 @@ vi.mock('../src/components/admin-ui',()=>({
  AdminHeading:({title,children}:{title:string;children:ReactNode})=>createElement('header',null,createElement('h1',null,title),children),
  ErrorNotice:()=>null,Empty:()=>null,Pagination:()=>null,Status:()=>null,eat:()=>'',
  useQueueParams:()=>({params:new URLSearchParams(),page:1,set:()=>{}}),
- useAdminRead:(path:string)=>({loading:false,error:null,reload:()=>{},data:path==='referrals'?{schemaReady:f.schemaReady,policy:{configured:false,enabled:false,version:0,discountPercent:10,expiryDays:30,updatedAt:null}}:null}),
+ useAdminRead:(path:string)=>({loading:false,error:null,reload:()=>{},data:path==='referrals'?{schemaReady:f.schemaReady,policy:{configured:false,enabled:false,version:0,rewardEtb:'0.00',updatedAt:null}}:null}),
  useAdminMutation:()=>({busy:false,error:null,message:null,clear:()=>{},run:async()=>null}),
 }));
 import {AdminPeople} from '../src/components/admin-people';
@@ -24,7 +24,7 @@ describe('discoverable guarded referral setup',()=>{
  });
  it('shows the activation checkbox for a ready schema before any policy is saved',()=>{
   const html=renderToStaticMarkup(createElement(AdminReferralPolicy));
-  expect(html).toContain('Allow new referral rewards');expect(html).toContain('type="checkbox" name="enabled"');expect(html).not.toContain('<fieldset disabled=');
+  expect(html).toContain('Reward amount (ETB)');expect(html).toContain('Allow new referral rewards');expect(html).toContain('type="checkbox" name="enabled"');expect(html).not.toContain('<fieldset disabled=');
  });
  it('keeps the same checkbox visible but disabled until referral storage is configured',()=>{
   f.schemaReady=false;const html=renderToStaticMarkup(createElement(AdminReferralPolicy));

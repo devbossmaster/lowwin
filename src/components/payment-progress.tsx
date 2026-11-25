@@ -38,8 +38,8 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
  const numbers=receipt?.batch.lines.map(line=>line.number)??(order?.batchNumbers?.length?order.batchNumbers:order?.batch?.lines.map(line=>line.number))??(order?.bidNumber?[order.bidNumber]:summary.numbers);
  const total=receipt?.batch.total??order?.amount??summary.total;
  const provider=order?.paymentMethod??summary.provider;
- const internalWallet=!deposit&&(provider==='wallet'||provider==='coupon'||!!receipt||walletRetry);
- const providerName=provider==='coupon'?text('Coupon','ኩፖን'):provider==='wallet'?text('LowWin Wallet','LowWin ዋሌት'):provider?providerNames[provider]??text('Payment provider','የክፍያ አቅራቢ'):text('Payment provider','የክፍያ አቅራቢ');
+ const internalWallet=!deposit&&(provider==='wallet'||!!receipt||walletRetry);
+ const providerName=provider==='wallet'?text('LowWin Wallet','LowWin ዋሌት'):provider?providerNames[provider]??text('Payment provider','የክፍያ አቅራቢ'):text('Payment provider','የክፍያ አቅራቢ');
  const phone=maskedBidPaymentPhone(order?.payerPhoneMasked??summary.phone);
  const title=am?order?.auctionTitleAm||summary.auctionTitleAm||order?.auctionTitle||summary.auctionTitle:order?.auctionTitle||summary.auctionTitle;
  const safeReason=order&&!completionPending?chapaPaymentReasonMessage(order,am)??chapaRequestReasonMessage(order.initializationReasonCode,am):null;

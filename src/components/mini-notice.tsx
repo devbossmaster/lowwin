@@ -2,7 +2,6 @@
 import {createContext,useCallback,useContext,useEffect,useRef,useState} from 'react';
 import {Toaster,toast} from 'sonner';
 import {useMiniLocale} from './mini-locale';
-import {CelebrationProvider} from './celebration';
 import styles from './mini-notice.module.css';
 
 type NoticeKind='success'|'error'|'info';
@@ -70,5 +69,5 @@ export function MiniNoticeProvider({children}:{children:React.ReactNode}){
   if(!routing.current)routing.current=createMiniNoticeRouting({show:(message,kind,options)=>toast[kind](message,options),dismiss:id=>{toast.dismiss(id)}},setActiveTarget);
   useEffect(()=>()=>{toast.dismiss()},[]);
   const top='calc(16px + env(safe-area-inset-top, 0px) + var(--tg-content-safe-area-inset-top, 0px))';
-  return <NoticeContext.Provider value={routing.current.notify}><NoticeTargetContext.Provider value={routing.current.activate}><CelebrationProvider>{children}</CelebrationProvider></NoticeTargetContext.Provider><Toaster className={styles.pageToaster} position="top-right" hotkey={activeTarget?[]:undefined} closeButton richColors visibleToasts={2} duration={5000} offset={{top}} mobileOffset={{top}} containerAriaLabel={am?'ማሳወቂያዎች':'Notifications'} toastOptions={{style:{fontFamily:"'Inter', 'Lowwin Ethiopic', sans-serif",fontSize:13},closeButtonAriaLabel:am?'ማሳወቂያውን ዝጋ':'Dismiss notification'}}/></NoticeContext.Provider>;
+  return <NoticeContext.Provider value={routing.current.notify}><NoticeTargetContext.Provider value={routing.current.activate}>{children}</NoticeTargetContext.Provider><Toaster className={styles.pageToaster} position="top-right" hotkey={activeTarget?[]:undefined} closeButton richColors visibleToasts={2} duration={5000} offset={{top}} mobileOffset={{top}} containerAriaLabel={am?'ማሳወቂያዎች':'Notifications'} toastOptions={{style:{fontFamily:"'Inter', 'Lowwin Ethiopic', sans-serif",fontSize:13},closeButtonAriaLabel:am?'ማሳወቂያውን ዝጋ':'Dismiss notification'}}/></NoticeContext.Provider>;
 }

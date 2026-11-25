@@ -9,7 +9,7 @@ import { Prisma, type PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { adjustAuctionHoldInTransaction } from '@/modules/wallet/holds';
 import { ensureWallet, pointsSchema, seedPlatformAccounts } from '@/modules/wallet/ledger';
-import {availableReferralCouponCount,lockReferralDiscountInTransaction,qualifyReferralInTransaction,redeemReferralInTransaction,referralSchemaReady,ReferralError} from '../referrals/service';
+import {lockReferralDiscountInTransaction,qualifyReferralInTransaction,redeemReferralInTransaction,ReferralError} from '../referrals/service';
 import {consumeDepositBonusInTransaction,readDepositBonusFunds} from '../wallet/deposit-bonus';
 import {readWalletProjection} from '../wallet/balance';
 import {etbToCents,centsToEtb} from '@/lib/money';
@@ -54,7 +54,7 @@ export function demoBidAllowed(raw:Record<string,string|undefined>=process.env) 
       && ['127.0.0.1','localhost','[::1]'].includes(url.hostname) && url.pathname.endsWith('_test');
   } catch {return false;}
 }
-export async function submitBidInTransaction(tx:Prisma.TransactionClient,input:BidInput,raw:Record<string,string|undefined>=process.env,options:{submissionFeeOnly?:boolean;allowDepositBonus?:boolean}={}):Promise<BidReceipt> {
+export async function submitBidInTransaction(tx:Prisma.TransactionClient,input:BidInput,raw:Record<string,string|undefined>=process.env,options:{submissionFeeOnly?:boolean;allowDepositBonus?:boolean;recoverExistingCouponPayment?:boolean;qualifyReferral?:boolean}={}):Promise<BidReceipt> {
   const command=bidInputSchema.parse(input);
   if(await auctionMaintenance(tx))fail('AUCTIONS_PAUSED',503,'Auctions are temporarily paused for maintenance. Your existing funds and bids are preserved.');
   const {userId,auctionSlug,amount,key,feeVersion,couponId}=command;
@@ -73,6 +73,7 @@ export async function submitBidInTransaction(tx:Prisma.TransactionClient,input:B
     if(previous.requestHash!==requestHash)fail('KEY_REUSED',409,'This request key was already used with a different bid.');
     return receiptSchema.parse(previous.result);
   }
+  if(couponId&&!options.recoverExistingCouponPayment)fail('COUPON_UNAVAILABLE',409,'Coupons have ended. Review the current submission fee before bidding.');
   if(await tx.staffMember.findUnique({where:{userId}})|| (await tx.userRestriction.findUnique({where:{userId}}))?.suspended)fail('BIDDING_RESTRICTED',403,'Bidding is unavailable for staff or suspended accounts. Existing bids remain valid.');
   const clock=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AT TIME ZONE 'UTC' AS now`;
   const now=clock[0].now;
@@ -93,17 +94,17 @@ export async function submitBidInTransaction(tx:Prisma.TransactionClient,input:B
   if(own.some(bid=>bid.amount.eq(amount)))fail('OWN_DUPLICATE',409,'You already submitted this bid number for this auction.');
   if(own.length>=terms.maxDistinctBids)fail('CAP_REACHED',409,'You have reached the 100 distinct-bid limit for this auction.');
 
-  return recordBidInTransaction(tx,command,auction,own,raw,undefined,options.allowDepositBonus!==false);
+  return recordBidInTransaction(tx,command,auction,own,raw,options);
 }
 
 /** Batch validation already owns the auction and wallet locks, checks every
  * number, contact, restrictions, price and coupon in this same transaction.
  * Reuse that snapshot for its first entry instead of repeating those queries.
  * The database still validates/stamps acceptance at the actual INSERT. */
-export async function recordValidatedSubmissionFeeBidInTransaction(tx:Prisma.TransactionClient,input:BidInput,prepared:ValidatedSubmissionFeeBid,raw:Record<string,string|undefined>=process.env,allowDepositBonus=true,deferNotification=false):Promise<BidReceipt>{
+export async function recordValidatedSubmissionFeeBidInTransaction(tx:Prisma.TransactionClient,input:BidInput,prepared:ValidatedSubmissionFeeBid,raw:Record<string,string|undefined>=process.env,options:RecordBidOptions={}):Promise<BidReceipt>{
   const command=bidInputSchema.parse(input),terms=prepared.auction.terms,fee=prepared.auction.feeRevisions[0];
   if(prepared.auction.slug!==command.auctionSlug||!terms||!isSubmissionFeeOnly(terms.ruleVersion)||!fee||fee.version!==command.feeVersion||command.couponId!==(prepared.discount?.couponId))fail('RETRYABLE_CONFLICT',409,'Review the current bid order before paying.');
-  return recordBidInTransaction(tx,command,prepared.auction,prepared.own,raw,prepared.discount,allowDepositBonus,deferNotification,true);
+  return recordBidInTransaction(tx,command,prepared.auction,prepared.own,raw,{...options,lockedDiscount:prepared.discount,batchValidated:true});
 }
 
 type WalletBidAccount={id:string;kind:string;balance:Prisma.Decimal};
@@ -128,7 +129,8 @@ async function completeBatchWallet(tx:Prisma.TransactionClient,userId:string,auc
   return {wallet,accounts:rows as WalletBidAccount[],hold:first.holdPoints===null?null:{points:first.holdPoints},feeAccount:first.feeAccountId?{id:first.feeAccountId}:null};
 }
 
-async function recordBidInTransaction(tx:Prisma.TransactionClient,command:z.output<typeof bidInputSchema>,auction:ValidatedAuction,own:ValidatedSubmissionFeeBid['own'],raw:Record<string,string|undefined>,lockedDiscount?:ValidatedSubmissionFeeBid['discount'],allowDepositBonus=true,deferNotification=false,batchValidated=false):Promise<BidReceipt>{
+type RecordBidOptions={lockedDiscount?:ValidatedSubmissionFeeBid['discount'];allowDepositBonus?:boolean;deferNotification?:boolean;batchValidated?:boolean;qualifyReferral?:boolean};
+async function recordBidInTransaction(tx:Prisma.TransactionClient,command:z.output<typeof bidInputSchema>,auction:ValidatedAuction,own:ValidatedSubmissionFeeBid['own'],raw:Record<string,string|undefined>,{lockedDiscount,allowDepositBonus=true,deferNotification=false,batchValidated=false,qualifyReferral=true}:RecordBidOptions):Promise<BidReceipt>{
   const {userId,auctionSlug,amount,key,feeVersion,couponId}=command,terms=auction.terms!,fee=auction.feeRevisions[0];
   const requestHash=createHash('sha256').update(JSON.stringify({auctionSlug,amount:amount.toString(),feeVersion,couponId})).digest('hex');
 
@@ -188,7 +190,7 @@ async function recordBidInTransaction(tx:Prisma.TransactionClient,command:z.outp
     ]}}});
   }
   if(!deferNotification)await enqueueAlert(tx,{key:`bid:${bid.id}:accepted`,kind:'BID_ACCEPTED',auctionId:auction.id,userId,bidId:bid.id});
-  await qualifyReferralInTransaction(tx,userId,bid.id,raw);
+  if(qualifyReferral)await qualifyReferralInTransaction(tx,userId,bid.id,raw);
   return receipt;
 }
 
@@ -211,21 +213,20 @@ export async function submitBid(client:PrismaClient,input:BidInput,raw:Record<st
   }
 }
 
-export async function getOwnBidState(client:PrismaClient,userId:string,auctionSlug:string,raw:Record<string,string|undefined>=process.env,includeWallet=true,includeCouponCount=true) {
+export async function getOwnBidState(client:PrismaClient,userId:string,auctionSlug:string,raw:Record<string,string|undefined>=process.env,includeWallet=true) {
   return client.$transaction(async tx=>{
     const auction=await tx.auction.findUnique({where:{slug:auctionSlug},include:{terms:true,feeRevisions:{orderBy:[{effectiveAt:'desc'},{version:'desc'}],take:1}}});
     if(!auction||!auction.publishedAt||!auction.terms)fail('AUCTION_NOT_FOUND',404,'Auction not found.');
     const clock=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AT TIME ZONE 'UTC' AS now`;
     const now=clock[0].now;
-    const [wallet,bids,couponAvailableCount]=await Promise.all([
+    const [wallet,bids]=await Promise.all([
       includeWallet?tx.wallet.findUnique({where:{userId},include:{accounts:true,holds:{where:{auctionId:auction.id}}}}):Promise.resolve(null),
       tx.bid.findMany({where:{userId,auctionId:auction.id},orderBy:[{acceptedAt:'asc'},{id:'asc'}],select:{id:true,amount:true,acceptedAt:true}}),
-      includeCouponCount?availableReferralCouponCount(tx,userId,now,raw):Promise.resolve(null),
     ]);
     const terms=auction.terms,fee=auction.feeRevisions[0],previousMax=wallet?.holds[0]?.points??0n;
     if(!fee)fail('AUCTION_CLOSED',409,'Published auction fee is unavailable.');
     const restricted=!!await tx.staffMember.findUnique({where:{userId}})||(await tx.userRestriction.findUnique({where:{userId}}))?.suspended;
-    return {auctionCode:auction.code,referralDiscountsAvailable:referralSchemaReady(raw),couponAvailableCount,open:!restricted&&['SCHEDULED','LIVE'].includes(auction.status)&&auction.publishedAt<=now&&!!auction.startsAt&&!!auction.endsAt&&auction.startsAt<=now&&now<auction.endsAt&&(!auction.isDemo||demoBidAllowed(raw)||auction.isSettlementFixture&&stagingDemoUser(userId,raw)),
+    return {auctionCode:auction.code,open:!restricted&&['SCHEDULED','LIVE'].includes(auction.status)&&auction.publishedAt<=now&&!!auction.startsAt&&!!auction.endsAt&&auction.startsAt<=now&&now<auction.endsAt&&(!auction.isDemo||demoBidAllowed(raw)||auction.isSettlementFixture&&stagingDemoUser(userId,raw)),
       serverNow:now.toISOString(),isDemo:auction.isDemo,
       terms:{version:fee.version,ruleVersion:terms.ruleVersion,minParticipants:terms.minParticipants,minPoints:terms.minPoints.toString(),maxPoints:terms.maxPoints?.toString()??null,stepPoints:terms.stepPoints.toString(),entryFeePoints:fee.feePoints.toString(),maxDistinctBids:terms.maxDistinctBids},
       wallet:includeWallet&&isSubmissionFeeOnly(terms.ruleVersion)?await readWalletProjection(tx,userId):{available:(wallet?.accounts.find(account=>account.kind==='AVAILABLE')?.balance??0n).toString(),held:(wallet?.accounts.find(account=>account.kind==='HELD')?.balance??0n).toString()},

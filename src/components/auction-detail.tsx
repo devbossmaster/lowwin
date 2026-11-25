@@ -3,16 +3,14 @@ import Link from 'next/link';
 import BidSheet from './bid-sheet';
 import dynamic from 'next/dynamic';
 import {useEffect,useRef,useState} from 'react';
-import {useSearchParams} from 'next/navigation';
+import {useRouter,useSearchParams} from 'next/navigation';
 import {chapaUuid} from '@/lib/chapa-client';
-import {ArrowRight,Clock3,Eye,Gavel,Hash,LockKeyhole,ShieldCheck,Ticket} from 'lucide-react';
+import {ArrowRight,Clock3,Eye,Gavel,Hash,LockKeyhole,Ticket} from 'lucide-react';
 import type {CatalogAuction} from '@/modules/auctions/catalog';
 import {formatEtb} from '@/lib/money';
 import {formatAddisTimestamp} from '@/lib/addis-time';
 import {AuctionGallery} from './auction-gallery';
 import {AuctionResultDetail} from './auction-result-detail';
-import {WinnerBanner,winnerBannerData} from './winner-banner';
-import {WinnerCelebration} from './celebration';
 import {AuctionMoreChances} from './auction-more-chances';
 import {ProductDescription} from './product-description';
 import {AuctionCountdown} from './auction-countdown';
@@ -28,17 +26,24 @@ import {auctionDetailUrl} from './auction-query';
 import {usePrivateQuery} from './private-query';
 import {auctionPresentationRefreshVersion} from '@/lib/auction-presentation-refresh';
 
-export function AuctionDetail({auction:initialAuction,serverNow}:{auction:CatalogAuction;serverNow:string}){
+export function AuctionDetail({auction:initialAuction,serverNow,publishedResult=false}:{auction:CatalogAuction;serverNow:string;publishedResult?:boolean}){
  const detail=usePrivateQuery<CatalogAuction>(auctionDetailUrl(initialAuction.slug),{initialData:initialAuction});
  const known=detail.data??initialAuction;
  const params=useSearchParams(),candidate=params.get('chapa'),chapaId=params.getAll('chapa').length===1&&candidate&&chapaUuid.test(candidate)?candidate:undefined;
+ const checkout=params.get('checkout'),legacyReturn=params.getAll('checkout').length===1&&checkout&&chapaUuid.test(checkout);
  const [bidding,setBidding]=useState(!!chapaId),[returnId,setReturnId]=useState(chapaId);
- const {queryIdentity,status,me}=useTelegram();
- const resultQuery=usePrivateQuery<CatalogAuction>('/api/results/'+encodeURIComponent(initialAuction.code),{enabled:['closed','cancelled','closing'].includes(known.status)&&status==='authenticated'&&!!me?.user?.id&&!!queryIdentity});
+ const router=useRouter(),{queryIdentity}=useTelegram();
  const warmBid=()=>prefetchAuctionIntent(queryIdentity,initialAuction.slug);
- useEffect(()=>{if(window.location.hash==='#bid-review')setBidding(true)},[]);
+ useEffect(()=>{if(initialAuction.status==='live'&&window.location.hash==='#bid-review')setBidding(true)},[initialAuction.status]);
  useEffect(()=>{if(chapaId){setReturnId(chapaId);setBidding(true)}},[chapaId]);
- const closeBidding=()=>{setBidding(false);setReturnId(undefined);const url=new URL(window.location.href);url.searchParams.delete('chapa');if(url.hash==='#bid-review')url.hash='';window.history.replaceState(window.history.state,'',url.pathname+url.search+url.hash)};
+ const closeBidding=()=>{
+  setBidding(false);setReturnId(undefined);
+  const url=new URL(window.location.href);
+  url.searchParams.delete('chapa');
+  if(url.hash==='#bid-review')url.hash='';
+  window.history.replaceState(window.history.state,'',url.pathname+url.search+url.hash);
+  if(publishedResult)router.replace(`/winners/${initialAuction.code}`);
+ };
  const {activity,views,refreshActivity}=useAuctionActivity(initialAuction.code,{record:true});
  const presentationRequest=useRef({code:initialAuction.code,version:0});
  useEffect(()=>{
@@ -47,21 +52,19 @@ export function AuctionDetail({auction:initialAuction,serverNow}:{auction:Catalo
   if(revision===null)return;
   presentationRequest.current.version=revision;detail.reload();
  },[initialAuction.code,known.presentationVersion,activity?.presentationVersion,detail.reload]);
- useAuctionRefresh(activity,initialAuction.status,Boolean(initialAuction.result));
- const auction={...known,...(resultQuery.data?{result:resultQuery.data.result}:{}),status:activity?.status??known.status,viewCount:views??known.viewCount,bidCount:activity?.bids??known.bidCount,startsAt:activity?.startsAt??known.startsAt,endsAt:activity?.endsAt??known.endsAt};
+ useAuctionRefresh(bidding?null:activity,initialAuction.status,publishedResult);
+ const auction={...known,status:activity?.status??initialAuction.status,viewCount:views??known.viewCount,bidCount:activity?.bids??known.bidCount,startsAt:activity?.startsAt??known.startsAt,endsAt:activity?.endsAt??known.endsAt};
  const {language}=useMiniLocale(),am=language==='am',live=auction.status==='live',upcoming=auction.status==='upcoming';
  const ended=['closed','cancelled','closing'].includes(auction.status);
- const winnerArtwork=ended?winnerBannerData(auction):null;
  const title=am?(auction.product.titleAm?.trim()||auction.product.title):auction.product.title;
  const date=(value:string)=>formatAddisTimestamp(value,am?'am-ET':'en-GB');
- const showPaymentSheet=bidding&&(!ended||!!returnId);
- const statusLabel=live?<MiniPhrase en="Live" am="ክፍት"/>:upcoming?<MiniPhrase en="Upcoming" am="የሚመጣ"/>:auction.status==='cancelled'?<MiniPhrase en="Cancelled" am="ተሰርዟል"/>:<MiniPhrase en="Closed" am="ተዘግቷል"/>;
- return <article className={ended?`${styles.page} ${styles.ended}`:styles.page} data-auction-detail>
-  <ArifPayReturn auctionSlug={auction.slug}/>
-  {ended&&auction.result?.outcome==='WINNER'&&<WinnerCelebration id={`winner:${auction.code}`}/>}
+ const statusLabels={live:['Live','ክፍት'],upcoming:['Upcoming','የሚመጣ'],closing:['Result pending','ውጤት በመጠባበቅ'],cancelled:['Cancelled','ተሰርዟል'],closed:['Closed','ተዘግቷል']} as const;
+ const [statusEn,statusAm]=statusLabels[auction.status];
+ const target=upcoming?auction.startsAt:auction.endsAt;
+ return <article className={styles.page} data-auction-detail data-auction-live={live||undefined}>
+  {legacyReturn&&<ArifPayReturn auctionSlug={auction.slug}/>}
   <div className={styles.hero} data-auction-hero>
-   {winnerArtwork?.banner||winnerArtwork?.photo?<WinnerBanner auction={auction} priority/>:
-    <AuctionGallery images={auction.product.images} title={title} isDemo={auction.isDemo} priority sizes="(max-width: 460px) 100vw, 460px" status={<span className={styles.status}><i aria-hidden="true"/>{statusLabel}</span>}/>}
+   <AuctionGallery images={auction.product.images} title={title} isDemo={auction.isDemo} priority sizes="(max-width: 460px) 100vw, 460px" status={<span className={styles.status}><i aria-hidden="true"/><MiniPhrase en={statusEn} am={statusAm}/></span>}/>
   </div>
   <div className={styles.content}>
   <header className={styles.intro}>
@@ -74,27 +77,32 @@ export function AuctionDetail({auction:initialAuction,serverNow}:{auction:Catalo
     <Link className={styles.category} href={`/?category=${encodeURIComponent(auction.category.slug)}#discover-auctions`}><MiniCategoryName slug={auction.category.slug} name={auction.category.name} nameAm={auction.category.nameAm}/></Link>
    </div>
   </header>
-  {live&&<div className={styles.bidding} id="bid-review"><button data-auction-bid className="primary-button card-action" onPointerEnter={warmBid} onFocus={warmBid} onTouchStart={warmBid} onClick={()=>setBidding(true)}><Gavel size={18} aria-hidden="true"/><MiniPhrase en="Place a bid" am="ይጫረቱ"/></button><Link className={styles.termsLink} href="/terms"><ShieldCheck size={13} aria-hidden="true"/><MiniPhrase en={auction.terms.ruleVersion==='lowest-unique-v5'?'Paid fees return on cancellation':isSubmissionFeeOnly(auction.terms.ruleVersion)?'Submission fee only · Non-refundable':'Terms and conditions apply'} am={auction.terms.ruleVersion==='lowest-unique-v5'?'ጨረታ ሲሰረዝ የተከፈለው ክፍያ ይመለሳል':isSubmissionFeeOnly(auction.terms.ruleVersion)?'የማቅረቢያ ክፍያ ብቻ · አይመለስም':'ውሎች እና ሁኔታዎች ተፈጻሚ ይሆናሉ'}/></Link></div>}
+  {live&&<div className={styles.bidding} id="bid-review"><button type="button" data-auction-bid className="primary-button card-action" onPointerEnter={warmBid} onFocus={warmBid} onTouchStart={warmBid} onClick={()=>setBidding(true)}><Gavel size={18} aria-hidden="true"/><MiniPhrase en="Place a bid" am="ይጫረቱ"/></button></div>}
   {upcoming&&<p className={styles.upcoming}><MiniPhrase en="Bidding opens at the scheduled start time." am="ጨረታው በተወሰነው የመጀመሪያ ጊዜ ይከፈታል።"/></p>}
-  {showPaymentSheet&&<BidSheet auction={auction} serverNow={serverNow} onClose={closeBidding} initialChapaId={returnId}/>}
+  {bidding&&<BidSheet auction={auction} serverNow={serverNow} onClose={closeBidding} initialChapaId={returnId}/>}
   {ended&&<AuctionResultDetail auction={auction}/>}
   <section className={styles.stats} aria-label={am?'የጨረታው እንቅስቃሴ':'Auction activity'}>
    {!ended&&<div className={styles.countdownPanel}>
-    <p className={styles.timerLabel}><Clock3 size={14} aria-hidden="true"/><MiniPhrase en={upcoming?'Starts in':'Time remaining'} am={upcoming?'የሚጀምረው በ':'ቀሪ ጊዜ'}/></p>
-    <div className={styles.clock}><AuctionCountdown target={upcoming?auction.startsAt:auction.endsAt} serverNow={serverNow} label={upcoming?'Starts':'Ends'} showLabel={false} tiles onElapsed={refreshActivity}/></div>
-    <p className={styles.schedule}><MiniPhrase en={upcoming?'Starts':'Closes'} am={upcoming?'ይጀምራል':'ይዘጋል'}/> <time dateTime={upcoming?auction.startsAt:auction.endsAt}>{date(upcoming?auction.startsAt:auction.endsAt)}</time></p>
+    <div className={styles.timerHeading}>
+     <p className={styles.timerLabel}><Clock3 size={14} aria-hidden="true"/><MiniPhrase en={upcoming?'Starts in':'Ends in'} am={upcoming?'የሚጀምረው በ':'ቀሪ ጊዜ'}/></p>
+     <time className={styles.schedule} dateTime={target}>{date(target)}</time>
+    </div>
+    <div className={styles.clock}><AuctionCountdown target={target} serverNow={serverNow} label={upcoming?'Starts':'Ends'} showLabel={false} tiles onElapsed={refreshActivity}/></div>
    </div>}
    <div className={styles.numbers}><div><Gavel size={14} aria-hidden="true"/><span><strong>{auction.result?.source==='ILLUSTRATIVE'?'—':auction.bidCount.toLocaleString()}</strong><small><MiniPhrase en="Total bids" am="ጠቅላላ ጨረታዎች"/></small></span></div><div><Eye size={14} aria-hidden="true"/><span><strong>{BigInt(auction.viewCount).toLocaleString()}</strong><small><MiniPhrase en="Views" am="እይታዎች"/></small></span></div></div>
   </section>
   {ended?<div className={styles.resultActions}>
-   {auction.result&&<Link className="primary-button" href={`/winners/${encodeURIComponent(auction.code)}`}><MiniPhrase en="View full result" am="ሙሉ ውጤቱን ይመልከቱ"/><ArrowRight size={16} aria-hidden="true"/></Link>}
+   {publishedResult&&<Link className="primary-button" href={`/winners/${encodeURIComponent(auction.code)}`}><MiniPhrase en="View full result" am="ሙሉ ውጤቱን ይመልከቱ"/><ArrowRight size={16} aria-hidden="true"/></Link>}
    <div className={styles.resultLinks}>
     <Link href="/my-bids?view=history"><MiniPhrase en="View my bid history" am="የእኔን የጨረታ ታሪክ ይመልከቱ"/></Link>
     <Link href="/winners/all"><MiniPhrase en="All results" am="ሁሉም ውጤቶች"/></Link>
    </div>
-  </div>:<p className={styles.privacy}><LockKeyhole size={14} aria-hidden="true"/><MiniPhrase en="Chosen numbers stay private until the result is published." am="የተመረጡ ቁጥሮች ውጤቱ እስኪታተም ድረስ በሚስጥር ይቆያሉ።"/></p>}
+  </div>:<div className={styles.disclosure}>
+   <p className={styles.privacy}><LockKeyhole size={14} aria-hidden="true"/><MiniPhrase en="Chosen numbers stay private until the result is published." am="የተመረጡ ቁጥሮች ውጤቱ እስኪታተም ድረስ በሚስጥር ይቆያሉ።"/></p>
+   {live&&<Link className={styles.termsLink} href="/terms"><MiniPhrase en={auction.terms.ruleVersion==='lowest-unique-v5'?'Paid fees return on cancellation':isSubmissionFeeOnly(auction.terms.ruleVersion)?'Submission fee only · Non-refundable':'Terms and conditions apply'} am={auction.terms.ruleVersion==='lowest-unique-v5'?'ጨረታ ሲሰረዝ የተከፈለው ክፍያ ይመለሳል':isSubmissionFeeOnly(auction.terms.ruleVersion)?'የማቅረቢያ ክፍያ ብቻ · አይመለስም':'ውሎች እና ሁኔታዎች ተፈጻሚ ይሆናሉ'}/></Link>}
+  </div>}
   <ProductDescription description={auction.product.description} descriptionAm={auction.product.descriptionAm} compact/>
-  <AuctionMoreChances currentCode={auction.code} dialogOpen={showPaymentSheet}/>
+  <AuctionMoreChances currentCode={auction.code} dialogOpen={bidding}/>
   {!ended&&<section className={styles.actions} aria-label={am?'ጨረታውን ያጋሩ':'Share this auction'}><AuctionShareOptions title={title} code={auction.code}/></section>}
   </div>
  </article>;

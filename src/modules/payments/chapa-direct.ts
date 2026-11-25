@@ -4,7 +4,7 @@ import {z} from 'zod';
 import {etbToCents,centsToEtb} from '@/lib/money';
 import {allowIdentityRequest} from '@/lib/rate-limit';
 import {decryptPhone,encryptPhone,normalizePhone,phoneHash,contactBotId} from '../auth/own-contact';
-import {batchLines,ownBatch,normalizeBatchNumbers,persistBidBatchQuoteInTransaction,validateBatchInTransaction} from '../auctions/batch';
+import {batchLines,ownBatch,normalizeBatchNumbers,persistBidBatchQuoteInTransaction,rejectRetiredCoupon,validateBatchInTransaction} from '../auctions/batch';
 import {auctionMaintenance} from '../auctions/maintenance';
 import {ChapaError,ChapaProviderError,chapaHash,chapaTransport,createdChapaDirect,requireChapa,type ChapaTransport} from './chapa-provider';
 import {createDirectMethodCatalog,directMethodCatalog} from './chapa-direct-methods';
@@ -53,6 +53,7 @@ export async function createBidDirectCheckout(client:PrismaClient,userId:string,
  };
  const previous=await measureChapa('lookup',()=>client.chapaCheckout.findUnique({where:{userId_key:{userId,key:body.key}}}));
  if(previous){assertReplay(previous);return {kind:'payment' as const,order:await initializeDirectCheckout(client,previous,userId,reauthorize,transport)}}
+ rejectRetiredCoupon(body.couponId);
  if(transport===chapaTransport)throw new ChapaError(410,'PAYMENT_VERSION_RETIRED','Start a new payment through the current secure checkout.');
  assertDirectPhone(phone,body.paymentMethod);const capabilities=await capabilitiesFor(transport);
  const prepared=await measureChapa('prepare',()=>client.$transaction(async tx=>{
@@ -65,7 +66,8 @@ export async function createBidDirectCheckout(client:PrismaClient,userId:string,
   if(existing&&existing.requestHash!==quoteRequestHash)throw new ChapaError(409,'KEY_REUSED','Changed selections require a new quote.');
   if(existing&&existing.status!=='QUOTED')throw new ChapaError(409,'PAYMENT_STARTED','Check the original payment.');
   if(existing&&await tx.chapaCheckout.findUnique({where:{batchId:existing.id}}))throw new ChapaError(409,'PAYMENT_STARTED','This order already has a payment. Check the original payment.');
-  const priced=await validateBatchInTransaction(tx,userId,body.auctionSlug,numbers,body.feeVersion,body.couponId);
+  rejectRetiredCoupon(existing?.couponId);
+  const priced=await validateBatchInTransaction(tx,userId,body.auctionSlug,numbers,body.feeVersion);
   if(existing&&(existing.totalCents!==priced.totalCents||JSON.stringify(batchLines(existing))!==JSON.stringify(priced.lines)))throw new ChapaError(409,'TERMS_CHANGED','The quote changed. Review a new quote before paying.');
   const batch=existing??await persistBidBatchQuoteInTransaction(tx,userId,quoteInput,priced,quoteRequestHash);
   if(batch.totalCents!==etbToCents(body.approvedTotal))return {kind:'quote' as const,quote:ownBatch(batch)};
@@ -95,7 +97,8 @@ export async function createDirectCheckout(client:PrismaClient,userId:string,raw
    if(!batch)throw new ChapaError(404,'NOT_FOUND','Order not found.');
    if(!batch||batch.quoteHash!==body.quoteHash||batch.status!=='QUOTED')throw new ChapaError(409,'TERMS_CHANGED','Review a new quote before paying.');
    if(await tx.chapaCheckout.findUnique({where:{batchId:batch.id}}))throw new ChapaError(409,'PAYMENT_STARTED','This order already has a payment. Check the original payment.');
-   const priced=await validateBatchInTransaction(tx,userId,batch.auctionSlug,batchLines(batch).map(line=>line.number),batch.feeVersion,batch.couponId??undefined);
+   rejectRetiredCoupon(batch.couponId);
+   const priced=await validateBatchInTransaction(tx,userId,batch.auctionSlug,batchLines(batch).map(line=>line.number),batch.feeVersion);
    if(priced.totalCents!==batch.totalCents||JSON.stringify(priced.lines)!==JSON.stringify(batchLines(batch)))throw new ChapaError(409,'TERMS_CHANGED','The quote changed. Review a new quote before paying.');
   }
   return {order:await persistDirectIntent(tx,userId,body,phone,contact,batch,capabilities,health),created:true};

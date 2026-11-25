@@ -30,7 +30,7 @@ describe.skipIf(!base)('one-call cash wallet command with real PostgreSQL guards
   Object.assign(process.env,{DATABASE_URL:database,DIRECT_URL:database,APP_ENV:'local',NODE_ENV:'test',DEV_POINTS_ENABLED:'true',DEV_IDENTITY_ENABLED:'false',STAGING_DEMO_ENABLED:'false',WALLET_BIDS_ENABLED:'true',PAYMENTS_LIVE_ENABLED:'false',CHAPA_MODE:'test',CHAPA_SCHEMA_READY:'true',CHAPA_ENABLED:'true',CHAPA_INLINE_ENABLED:'true',CHAPA_RECOVERY_ENABLED:'true',CHAPA_PRIVATE_KEY:'CHAPA_TEST_'+'a'.repeat(40),CHAPA_PUBLIC_KEY:'CHAPA_TEST_PUB_'+'c'.repeat(40),CHAPA_WEBHOOK_SECRET:'b'.repeat(64),CHAPA_INLINE_METHODS:'telebirr',PAYMENT_GATEWAY:'CHAPA',BETTER_AUTH_URL:'https://lowwin.test',MINI_APP_URL:'https://lowwin.test',TELEGRAM_BOT_TOKEN:TEST_TOKEN,TELEGRAM_BOT_USERNAME:'lowin_test_bot',TELEGRAM_WEBHOOK_SECRET:'fixture-cash-wallet-webhook-thirty-two',PHONE_CONTACT_KEY_ID:'cash-command',PHONE_CONTACT_KEYS:JSON.stringify({'cash-command':'e'.repeat(64)}),PHONE_CONTACT_HASH_KEY:'f'.repeat(64),REFERRAL_REWARDS_SCHEMA_READY:'true',REDIS_URL:''});
   execFileSync(process.execPath,[createRequire(import.meta.url).resolve('prisma/build/index.js'),'migrate','deploy'],{env:process.env,stdio:'pipe'});
   db=new PrismaClient({datasourceUrl:database});sql=new Client({connectionString:database});await sql.connect();
-  await db.referralPolicy.create({data:{enabled:true,discountPercent:10,expiryDays:30,updatedBy:'cash-command-fixture'}});
+  await db.referralPolicy.create({data:{enabled:true,rewardCents:1250n,updatedBy:'cash-command-fixture'}});
   outbound=vi.spyOn(globalThis,'fetch').mockRejectedValue(Error('Real network prohibited in cash wallet tests'));
  },60000);
  afterAll(async()=>{
@@ -95,10 +95,11 @@ describe.skipIf(!base)('one-call cash wallet command with real PostgreSQL guards
  it('retains first-paid referral qualification and rejects the accelerated path without writes',async()=>{
   const sponsor=await verifiedReferralUser(db),referred=await referredRegistration(db,sponsor.id),f=await fixture({userId:referred.id,numbers:['2']}),before=await effects(f.user.id);
   expect(await f.fast()).toBeNull();expect(await effects(f.user.id)).toEqual(before);expect((await f.pay()).kind).toBe('receipt');
-  expect((await db.referralSignup.findUniqueOrThrow({where:{referredUserId:f.user.id}})).firstBidId).not.toBeNull();expect(await db.referralCoupon.count({where:{ownerUserId:sponsor.id,referredUserId:f.user.id}})).toBe(1);expect(await reconcile(db)).toEqual([]);
-  const coupon=await db.referralCoupon.findUniqueOrThrow({where:{referredUserId:f.user.id}}),owner=await fixture({userId:sponsor.id,numbers:['7']});
-  expect(await createAndPayBidBatchWallet(db,owner.user.id,{...owner.command,couponId:coupon.id,approvedTotal:'9.00'},owner.authorize)).toMatchObject({kind:'receipt',receipt:{payment:{total:'9.00'}}});
-  expect(owner.authorize.forWalletCashCommand).not.toHaveBeenCalled();expect(await db.referralRedemption.count({where:{couponId:coupon.id}})).toBe(1);expect(await reconcile(db)).toEqual([]);
+  expect((await db.referralSignup.findUniqueOrThrow({where:{referredUserId:f.user.id}})).firstBidId).not.toBeNull();
+  expect(await db.referralWalletReward.findUnique({where:{referredUserId:f.user.id}})).toMatchObject({
+   referrerUserId:sponsor.id,amountCents:1250n,creditedAt:expect.any(Date),
+  });
+  expect(await reconcile(db)).toEqual([]);
  });
  it('keeps notification preference and the shared authored product/number/actual-fee copy',async()=>{
   const f=await fixture({numbers:['4.25','5.50']}),paid=await f.pay();if(paid.kind!=='receipt')throw Error('Receipt required');

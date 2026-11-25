@@ -119,18 +119,19 @@ describe.skipIf(!database)('internal wallet batch command on isolated PostgreSQL
   await expect(createAndPayBidBatchWallet(db,f.userId,command)).rejects.toMatchObject({code:'INSUFFICIENT_POINTS',wallet:{available:'25.00',required:'30.00',shortfall:'5.00'}});
   expect(await balance(f.userId)).toBe('25.00');expect(await db.bidBatchOrder.count({where:{userId:f.userId}})).toBe(0);expect(await db.bid.count({where:{userId:f.userId}})).toBe(0);
  });
- it('preserves first-bid referral qualification and a single coupon redemption in the consolidated path',async()=>{
+ it('credits the inviter once for the first batch and lets them spend it as wallet funds',async()=>{
   process.env.REFERRAL_REWARDS_SCHEMA_READY='true';
   try{
-   await db.referralPolicy.create({data:{enabled:true,discountPercent:10,expiryDays:30,updatedBy:'isolated-wallet-fixture'}});
+   await db.referralPolicy.create({data:{enabled:true,rewardCents:1250n,updatedBy:'isolated-wallet-fixture'}});
    const sponsor=await verifiedReferralUser(db),referred=await referredRegistration(db,sponsor.id),auction=await realReferralAuction(db,10);
    await creditDevelopmentPoints(db,referred.id,'25',randomUUID());
    const first=await createAndPayBidBatchWallet(db,referred.id,{key:randomUUID(),auctionSlug:auction.slug!,numbers:['2','9'],feeVersion:1,approvedTotal:'20.00'});
-   expect(first.kind).toBe('receipt');const coupon=await db.referralCoupon.findUniqueOrThrow({where:{referredUserId:referred.id}});expect(coupon.ownerUserId).toBe(sponsor.id);expect(await db.referralCoupon.count({where:{referredUserId:referred.id}})).toBe(1);
+   expect(first.kind).toBe('receipt');
+   expect(await db.referralWalletReward.findUnique({where:{referredUserId:referred.id}})).toMatchObject({referrerUserId:sponsor.id,amountCents:1250n,creditedAt:expect.any(Date)});
    await creditDevelopmentPoints(db,sponsor.id,'25',randomUUID());
-   const input={key:randomUUID(),auctionSlug:auction.slug!,numbers:['4','11'],feeVersion:1,couponId:coupon.id,approvedTotal:'19.00'},paid=await createAndPayBidBatchWallet(db,sponsor.id,input);
-   expect(paid).toMatchObject({kind:'receipt',receipt:{batch:{total:'19.00',grossTotal:'20.00',discountTotal:'1.00'},wallet:{available:'6.00'}}});
-   expect(await createAndPayBidBatchWallet(db,sponsor.id,input)).toEqual(paid);expect(await db.referralRedemption.count({where:{couponId:coupon.id}})).toBe(1);expect(await reconcile(db)).toEqual([]);
+   const input={key:randomUUID(),auctionSlug:auction.slug!,numbers:['4','11'],feeVersion:1,approvedTotal:'20.00'},paid=await createAndPayBidBatchWallet(db,sponsor.id,input);
+   expect(paid).toMatchObject({kind:'receipt',receipt:{batch:{total:'20.00',grossTotal:'20.00',discountTotal:'0.00'},wallet:{available:'17.50'}}});
+   expect(await createAndPayBidBatchWallet(db,sponsor.id,input)).toEqual(paid);expect(await db.operation.count({where:{scope:'REFERRAL_REWARD',key:referred.id}})).toBe(1);expect(await reconcile(db)).toEqual([]);
   }finally{process.env.REFERRAL_REWARDS_SCHEMA_READY='false'}
  });
  it('charges only fees, returns committed balance and internal metadata without external configuration or HTTP',async()=>{

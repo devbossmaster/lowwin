@@ -43,6 +43,7 @@ model User {
   consumedReferral    ReferralPendingSignup? @relation("PendingReferralUser")
   referralCoupons     ReferralCoupon[]
   referralRedemptions ReferralRedemption[]
+  referralWalletRewards ReferralWalletReward[]
   referralRegistrationProof ReferralRegistrationProof?
   winnerPhotoConsents WinnerPresentation[] @relation("WinnerPhotoConsent")
   winnerBannerConsents WinnerPresentation[] @relation("WinnerBannerConsent")
@@ -273,6 +274,7 @@ model Operation {
   settlementReleases SettlementMovement[] @relation("SettlementRelease")
   settlementRefunds  SettlementMovement[] @relation("SettlementRefund")
   referralRedemption ReferralRedemption?
+  referralWalletReward ReferralWalletReward?
 
   @@unique([userId, scope, key])
   @@index([scope, requestHash, createdAt])
@@ -485,6 +487,7 @@ model Bid {
   auction           Auction             @relation(fields: [auctionId], references: [id], onDelete: Restrict)
   amount            Decimal             @db.Decimal
   acceptedAt        DateTime            @default(dbgenerated("(clock_timestamp() AT TIME ZONE 'UTC')")) @db.Timestamp(6)
+  transactionId     BigInt?             @default(dbgenerated("txid_current()"))
   acceptanceOrder   BigInt?
   termsVersion      Int
   feePoints         Decimal             @db.Decimal
@@ -495,6 +498,7 @@ model Bid {
   winningSettlement AuctionSettlement?
   referralSignup    ReferralSignup?       @relation("ReferralFirstBid")
   referralRedemption ReferralRedemption?
+  referralWalletReward ReferralWalletReward?
   chapaCheckout     ChapaCheckout?
 
   @@unique([userId, auctionId, amount])
@@ -989,13 +993,14 @@ model PlayerProfile {
   updatedAt   DateTime @updatedAt
 }
 
-// Referral policy changes affect future grants only. Earned rewards snapshot
-// their percentage and expiry and never become transferable voucher codes.
+// Wallet rewards snapshot the fixed amount in effect at qualification.
+// Legacy percentage and expiry fields are retained for historical orders.
 model ReferralPolicy {
   id              String   @id @default("default")
   enabled         Boolean  @default(false)
   discountPercent Int      @default(10)
   expiryDays      Int      @default(30)
+  rewardCents     BigInt?
   version         Int      @default(1)
   updatedBy       String?
   updatedAt       DateTime @updatedAt
@@ -1047,8 +1052,26 @@ model ReferralSignup {
   firstBid       Bid?   @relation("ReferralFirstBid", fields: [firstBidId], references: [id], onDelete: Restrict)
   qualifiedAt   DateTime?
   coupon        ReferralCoupon?
+  walletReward  ReferralWalletReward?
 
   @@index([referrerUserId, registeredAt])
+}
+
+model ReferralWalletReward {
+  referredUserId String         @id
+  signup         ReferralSignup @relation(fields: [referredUserId], references: [referredUserId], onDelete: Restrict)
+  referrerUserId String
+  referrer       User           @relation(fields: [referrerUserId], references: [id], onDelete: Restrict)
+  bidId          String         @unique
+  bid            Bid            @relation(fields: [bidId], references: [id], onDelete: Restrict)
+  amountCents    BigInt
+  policyVersion  Int
+  createdAt      DateTime
+  operationId    String?        @unique
+  operation      Operation?     @relation(fields: [operationId], references: [id], onDelete: Restrict)
+  creditedAt     DateTime?
+
+  @@index([referrerUserId, createdAt])
 }
 
 model ReferralCoupon {

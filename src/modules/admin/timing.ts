@@ -1,7 +1,7 @@
 import {AsyncLocalStorage} from 'node:async_hooks';
 
 type Phase='authorization'|'request_body'|'transaction'|'public_cache'|'read'|'media'
- |'deadline_read'|'deadline_write'|'deadline_alerts';
+ |'deadline_read'|'deadline_write'|'deadline_alerts'|'start_time_read'|'start_time_write';
 const requestTiming=new AsyncLocalStorage<{started:number;phases:Map<Phase,number>}>();
 
 export async function measureAdmin<T>(phase:Phase,run:()=>Promise<T>):Promise<T>{

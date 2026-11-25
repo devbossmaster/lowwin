@@ -1,13 +1,16 @@
 'use client';
 import {useCallback,useState} from 'react';
+import dynamic from 'next/dynamic';
 import {Wallet} from 'lucide-react';
 import {AccountSheet} from './account-sheet';
 import type {BidSheetAuction} from './bid-sheet-preview';
-import BidSheetContents from './bid-sheet-content';
+import {BidPanelSkeleton} from './mini-route-skeleton';
 import {MiniPhrase} from './mini-locale';
 import {useTelegram} from './telegram-provider';
 import {AuctionShare} from './auction-share';
 import styles from './bid-payment-sheet.module.css';
+
+const BidSheetContents=dynamic(()=>import('./bid-sheet-content'),{loading:BidPanelSkeleton});
 
 export type {BidSheetAuction} from './bid-sheet-preview';
 export type BidSheetPhase='entry'|'review'|'checkout'|'topup'|'receipt'|'payment';

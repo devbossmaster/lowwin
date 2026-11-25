@@ -3,7 +3,7 @@ import {z} from 'zod';
 
 export const walletHistoryQuerySchema=z.object({page:z.coerce.number().int().min(1).max(1000).default(1),type:z.enum(['all','topup','bid','refund']).default('all')}).strict();
 export type WalletHistoryType='topup'|'bid'|'refund'|'hold'|'adjustment';
-export type WalletHistoryKind='TOP_UP'|'DEPOSIT_BONUS'|'DEPOSIT_BONUS_EXPIRY'|'PAYMENT_CREDIT'|'BID_FEE'|'FEE_REFUND'|'COMPENSATION'|'HOLD_RESERVE'|'HOLD_RELEASE'|'ADJUSTMENT';
+export type WalletHistoryKind='TOP_UP'|'DEPOSIT_BONUS'|'DEPOSIT_BONUS_EXPIRY'|'REFERRAL_REWARD'|'PAYMENT_CREDIT'|'BID_FEE'|'FEE_REFUND'|'COMPENSATION'|'HOLD_RESERVE'|'HOLD_RELEASE'|'ADJUSTMENT';
 type HistoryRow={id:string;at:Date;type:WalletHistoryType;kind:WalletHistoryKind;delta:string};
 
 /** Confirmed, owner-only changes to available funds. Provider attempts are not
@@ -34,7 +34,7 @@ export async function getWalletHistory(client:PrismaClient,userId:string,input:u
       WHEN j.kind='BID_FEE' THEN 'bid'
       WHEN j.kind IN ('AUCTION_FEE_REFUND','AUCTION_RESET_COMPENSATION') THEN 'refund'
       WHEN j.kind IN ('HOLD_RESERVE','HOLD_RELEASE') THEN 'hold' ELSE 'adjustment' END AS type,
-    CASE WHEN j.kind IN ('DEPOSIT_BONUS','DEPOSIT_BONUS_EXPIRY') THEN j.kind
+    CASE WHEN j.kind IN ('DEPOSIT_BONUS','DEPOSIT_BONUS_EXPIRY','REFERRAL_REWARD') THEN j.kind
       WHEN j.kind='CHAPA_RECEIPT' AND received.purpose='BID' THEN 'PAYMENT_CREDIT'
       WHEN j.kind IN ('CHAPA_RECEIPT','TOPUP_CREDIT','ADMIN_CREDIT','ARIFPAY_RECEIPT') THEN 'TOP_UP'
       WHEN j.kind='BID_FEE' THEN 'BID_FEE'

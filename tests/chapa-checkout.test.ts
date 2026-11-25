@@ -4,6 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {createRequire} from 'node:module';
 import {verifiedReferralUser,realReferralAuction,earnedReferralCoupon} from './referral-fixtures';
+import {recordLegacyCouponBid,seedLegacyHostedCouponIntent} from './legacy-coupon-fixtures';
 import {creditDevelopmentPoints,ensureWallet,reconcile,seedPlatformAccounts} from '../src/modules/wallet/ledger';
 import {reconcileChapaReceipts} from '../src/modules/payments/chapa-reconcile';
 import {submitBid,submitBidInTransaction} from '../src/modules/auctions/bids';
@@ -55,6 +56,7 @@ describe.skipIf(!database)('Chapa v2 hosted payments on disposable PostgreSQL',(
   const lookup=vi.fn(async(paymentReference:string)=>({status:'success',data:mutate({chapa_reference:reference,merchant_reference:created!.merchantReference,amount:Number(created!.amountCents),currency:'ETB',status,payment_method:'telebirr',processor_reference:'SYNTHETIC-'+reference,service_fee:30,mode:options.liveSession?'live':'test',meta:created!.meta,created_at:new Date().toISOString(),updated_at:new Date().toISOString()})}));
   const methods=vi.fn(async()=>({status:'success',data:[]})),transport:ChapaTransport={create,lookup,methods};
   const input=auction?{key,purpose:'BID' as const,auctionSlug:auction.slug!,amount:options.amount??'3.60',feeVersion:1,...(options.couponId?{couponId:options.couponId}:{})}:{key,purpose:'TOP_UP' as const,amount:options.amount??'10.00'};
+  if(input.purpose==='BID'&&input.couponId)await seedLegacyHostedCouponIntent(db,userId,{...input,couponId:input.couponId});
   const start=()=>createChapaCheckout(db,userId,input,undefined,transport),verify=async(id:string)=>{await due(id);return verifyChapaCheckout(db,id,userId,undefined,transport)};
   return {userId,auction,key,input,start,verify,transport,create,lookup,methods,inputs,reference,setStatus:(value:string)=>{status=value},setMutation:(fn:typeof mutate)=>{mutate=fn},failNextInitialization:()=>{failInitialization=true}};
  }
@@ -347,7 +349,7 @@ describe.skipIf(!database)('Chapa v2 hosted payments on disposable PostgreSQL',(
   await expectBidAlert(order.id,sponsor.id,f.auction!.id,'3.60','18.00');
  });
  it('preserves a paid net fee when its earned discount was redeemed during checkout',async()=>{
-  const sponsor=await verifiedReferralUser(db);await creditDevelopmentPoints(db,sponsor.id,'100',`chapa-test-${randomUUID()}`);const grant=await earnedReferralCoupon(db,sponsor.id),f=await payment({purpose:'BID',userId:sponsor.id,fee:20,couponId:grant.coupon.id}),order=await f.start(),other=await realReferralAuction(db,10);await submitBid(db,{userId:sponsor.id,auctionSlug:other.slug!,amount:'8.80',feeVersion:1,couponId:grant.coupon.id,key:randomUUID()});const before=await balance(sponsor.id),result=await f.verify(order.id);expect(result).toMatchObject({status:'NEEDS_REVIEW',reason:'COUPON_UNAVAILABLE',fundsPreserved:true});expect(new Prisma.Decimal(await balance(sponsor.id)).sub(before).toString()).toBe('18');expect(await db.bid.count({where:{auctionId:f.auction!.id}})).toBe(0);expect(await db.referralRedemption.count({where:{couponId:grant.coupon.id}})).toBe(1);expect(await reconcile(db)).toEqual([]);
+  const sponsor=await verifiedReferralUser(db);await creditDevelopmentPoints(db,sponsor.id,'100',`chapa-test-${randomUUID()}`);const grant=await earnedReferralCoupon(db,sponsor.id),f=await payment({purpose:'BID',userId:sponsor.id,fee:20,couponId:grant.coupon.id}),order=await f.start(),other=await realReferralAuction(db,10);await recordLegacyCouponBid(db,{userId:sponsor.id,auctionSlug:other.slug!,amount:'8.80',feeVersion:1,couponId:grant.coupon.id,key:randomUUID()});const before=await balance(sponsor.id),result=await f.verify(order.id);expect(result).toMatchObject({status:'NEEDS_REVIEW',reason:'COUPON_UNAVAILABLE',fundsPreserved:true});expect(new Prisma.Decimal(await balance(sponsor.id)).sub(before).toString()).toBe('18');expect(await db.bid.count({where:{auctionId:f.auction!.id}})).toBe(0);expect(await db.referralRedemption.count({where:{couponId:grant.coupon.id}})).toBe(1);expect(await reconcile(db)).toEqual([]);
   await expectDepositAlert(order.id,sponsor.id,'18.00',true);
  });
  it('retains a late verified payment without accepting a bid after the real frozen deadline',async()=>{

@@ -34,8 +34,6 @@ export function useCarouselAutoScroll(track:RefObject<HTMLDivElement|null>,count
   const tick=(now:number)=>{
    frame=0;
    if(!allowed())return;
-   // Keep subpixel movement between frames because a browser can round scrollLeft.
-   if(Math.abs(element.scrollLeft-painted)>1)position=element.scrollLeft;
    if(last&&now>=resumeAt){
     position+=direction*Math.min(now-last,50)*.018;
     if(behavior==='loop'&&position>=distance)position%=distance;
@@ -43,10 +41,8 @@ export function useCarouselAutoScroll(track:RefObject<HTMLDivElement|null>,count
      if(position>=distance){position=distance;direction=-1;resumeAt=now+900}
      else if(position<=0){position=0;direction=1;resumeAt=now+900}
     }
-    element.scrollLeft=position;
-    painted=element.scrollLeft;
-   }else{
-    position=painted=element.scrollLeft;
+    const pixel=Math.round(position);
+    if(pixel!==painted){painted=pixel;element.scrollLeft=pixel}
    }
    last=now;
    frame=requestAnimationFrame(tick);
@@ -63,6 +59,9 @@ export function useCarouselAutoScroll(track:RefObject<HTMLDivElement|null>,count
   const down=()=>{pressed=true;update()};
   const up=()=>{if(pressed){pressed=false;resumeAt=performance.now()+4000;update()}};
   const wheel=()=>{resumeAt=performance.now()+4000};
+  // Read layout after actual user or programmatic scrolling, not on every
+  // animation frame. Retain fractional travel between painted pixels.
+  const scrolled=()=>{const actual=element.scrollLeft;if(Math.abs(actual-painted)>1)position=painted=actual};
   const focus=()=>{focused=true;update()};
   const blur=(event:FocusEvent)=>{focused=element.contains(event.relatedTarget as Node|null);update()};
   const resize=typeof ResizeObserver==='undefined'?null:new ResizeObserver(()=>{measure();update()});
@@ -74,6 +73,7 @@ export function useCarouselAutoScroll(track:RefObject<HTMLDivElement|null>,count
   element.addEventListener('pointerleave',leave);
   element.addEventListener('pointerdown',down);
   element.addEventListener('wheel',wheel,{passive:true});
+  element.addEventListener('scroll',scrolled,{passive:true});
   element.addEventListener('focusin',focus);
   element.addEventListener('focusout',blur);
   window.addEventListener('pointerup',up);
@@ -88,6 +88,7 @@ export function useCarouselAutoScroll(track:RefObject<HTMLDivElement|null>,count
    element.removeEventListener('pointerleave',leave);
    element.removeEventListener('pointerdown',down);
    element.removeEventListener('wheel',wheel);
+   element.removeEventListener('scroll',scrolled);
    element.removeEventListener('focusin',focus);
    element.removeEventListener('focusout',blur);
    window.removeEventListener('pointerup',up);

@@ -1,59 +1,53 @@
 import {createHash,randomBytes,randomUUID} from 'node:crypto';
-import {Prisma,type PrismaClient} from '@prisma/client';
+import {Prisma,type PrismaClient,type ReferralWalletReward} from '@prisma/client';
 import {z} from 'zod';
 import {botReferralShareUrl,referralInviteCode,websiteReferralShareUrl} from '@/lib/referral-invite';
+import {centsToEtb,etbToCents} from '@/lib/money';
 import {assertPlayerContact,contactBotId} from '../auth/own-contact';
 import {ensureWallet,seedPlatformAccounts} from '../wallet/ledger';
 import {isSubmissionFeeOnly} from '../auctions/rules';
 
 type DB=PrismaClient|Prisma.TransactionClient;
 type Tx=Prisma.TransactionClient;
-export const referralPolicySchema=z.object({enabled:z.boolean(),discountPercent:z.number().int().min(5).max(15),expiryDays:z.number().int().min(15).max(30)}).strict();
+const rewardAmount=z.string().trim().regex(/^(0|[1-9]\d{0,5})(?:\.\d{1,2})?$/,'Enter an ETB amount with up to two decimal places.')
+ .refine(value=>{try{const cents=etbToCents(value);return cents>=1n&&cents<=10000000n}catch{return false}},'Enter a reward from ETB 0.01 to 100,000.');
+export const referralPolicySchema=z.object({enabled:z.boolean(),rewardEtb:rewardAmount}).strict();
 const DAY=86400000;
 export class ReferralError extends Error{constructor(public readonly status:number,public readonly code:string,message:string){super(message);this.name='ReferralError'}}
 export function referralSchemaReady(raw:Record<string,string|undefined>=process.env){return raw.REFERRAL_REWARDS_SCHEMA_READY==='true'}
-const draftPolicy={configured:false,enabled:false,discountPercent:10,expiryDays:30,version:0,updatedAt:null as string|null};
+const draftPolicy={configured:false,enabled:false,rewardEtb:'0.00',version:0,updatedAt:null as string|null};
 export async function getReferralPolicy(client:DB,raw:Record<string,string|undefined>=process.env){
  if(!referralSchemaReady(raw))return {...draftPolicy};
- const policy=await client.referralPolicy.findUnique({where:{id:'default'}});
- return policy?{configured:true,enabled:policy.enabled,discountPercent:policy.discountPercent,expiryDays:policy.expiryDays,version:policy.version,updatedAt:policy.updatedAt.toISOString()}:{...draftPolicy};
+ const policy=await client.referralPolicy.findUnique({where:{id:'default'},select:{enabled:true,rewardCents:true,version:true,updatedAt:true}});
+ return policy?{
+  configured:policy.rewardCents!==null,enabled:policy.enabled&&policy.rewardCents!==null,
+  rewardEtb:policy.rewardCents===null?draftPolicy.rewardEtb:centsToEtb(policy.rewardCents),version:policy.version,updatedAt:policy.updatedAt.toISOString(),
+ }:{...draftPolicy};
 }
 async function databaseNow(tx:DB){return (await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AT TIME ZONE 'UTC' AS now`)[0].now}
-/** Exact private count, independent of the bounded coupon-picker page. Pausing
- * new rewards does not invalidate an already earned, unused coupon. */
-export async function availableReferralCouponCount(client:DB,userId:string,now:Date,raw:Record<string,string|undefined>=process.env):Promise<number|null>{
- if(!referralSchemaReady(raw))return null;
- const rows=await client.$queryRaw<Array<{count:number}>>`
-  SELECT count(c.id)::int AS count FROM "ReferralPolicy" p
-  LEFT JOIN "ReferralCoupon" c ON c."ownerUserId"=${userId} AND c."expiresAt">${now}
-   AND NOT EXISTS(SELECT 1 FROM "ReferralRedemption" r WHERE r."couponId"=c.id)
-  WHERE p.id='default' GROUP BY p.id`;
- return rows[0]?.count??null;
-}
 function referralToken(payload:string|undefined|null){return typeof payload==='string'?/^ref_([A-Za-z0-9_-]{12})$/.exec(payload)?.[1]??null:null}
-async function eligibleSponsor(tx:DB,userId:string){const user=await tx.user.findUnique({where:{id:userId},select:{telegramId:true}});return !!user?.telegramId&&!userId.startsWith('demo-showcase-')&&!await tx.testRunActor.findFirst({where:{userId}})&&!await tx.staffMember.findUnique({where:{userId}})&&!await tx.userRestriction.findFirst({where:{userId,suspended:true}})}
-function emptyOverview(){return {configured:false,enabled:false,shareUrl:null as string|null,webShareUrl:null as string|null,discountPercent:null as number|null,expiryDays:null as number|null,counts:{signedUp:0,qualified:0,earned:0,available:0},coupons:[] as Array<{id:string;percent:number;expiresAt:string;status:'AVAILABLE'|'USED'|'EXPIRED'}>}}
+async function eligibleSponsor(tx:DB,userId:string){const user=await tx.user.findUnique({where:{id:userId},select:{telegramId:true,role:true}});return !!user?.telegramId&&user.role==='member'&&!userId.startsWith('demo-showcase-')&&!await tx.testRunActor.findFirst({where:{userId}})&&!await tx.staffMember.findUnique({where:{userId}})&&!await tx.userRestriction.findFirst({where:{userId,suspended:true}})}
+function emptyOverview(){return {configured:false,enabled:false,shareUrl:null as string|null,webShareUrl:null as string|null,rewardEtb:null as string|null,counts:{signedUp:0,qualified:0,earned:0},totalEarnedEtb:'0.00'}}
 
 /** Private account overview. Only coordinates/DTOs are cached by the client. */
 export async function getReferralOverview(client:PrismaClient,userId:string,raw:Record<string,string|undefined>=process.env){
  if(!referralSchemaReady(raw))return emptyOverview();
  return client.$transaction(async tx=>{
-  const policy=await getReferralPolicy(tx,raw),now=await databaseNow(tx);
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`referral-invite:${userId}`},0))`;
+  const policy=await getReferralPolicy(tx,raw);
   let invite=await tx.referralInvite.findUnique({where:{userId}});
   if(!invite&&policy.enabled&&await eligibleSponsor(tx,userId)){
    await assertPlayerContact(tx,userId);
-   invite=await tx.referralInvite.create({data:{userId,token:randomBytes(9).toString('base64url')}});
+   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`referral-invite:${userId}`},0))`;
+   invite=await tx.referralInvite.findUnique({where:{userId}})??await tx.referralInvite.create({data:{userId,token:randomBytes(9).toString('base64url')}});
   }
-  const [signedUp,qualified,earned,available,usable,recent]=await Promise.all([
-   tx.referralSignup.count({where:{referrerUserId:userId}}),tx.referralSignup.count({where:{referrerUserId:userId,firstBidId:{not:null}}}),tx.referralCoupon.count({where:{ownerUserId:userId}}),
-   tx.referralCoupon.count({where:{ownerUserId:userId,redemption:null,expiresAt:{gt:now}}}),
-   tx.referralCoupon.findMany({where:{ownerUserId:userId,redemption:null,expiresAt:{gt:now}},orderBy:[{expiresAt:'asc'},{id:'asc'}],take:20,include:{redemption:{select:{id:true}}}}),
-   tx.referralCoupon.findMany({where:{ownerUserId:userId,OR:[{redemption:{isNot:null}},{expiresAt:{lte:now}}]},orderBy:[{createdAt:'desc'},{id:'asc'}],take:5,include:{redemption:{select:{id:true}}}}),
-  ]);
+  const [{signedUp,qualified,earned,totalCents}]=await tx.$queryRaw<{signedUp:number;qualified:number;earned:number;totalCents:string}[]>`
+   SELECT COUNT(*)::int AS "signedUp",COUNT(s."firstBidId")::int AS qualified,COUNT(r."operationId")::int AS earned,
+     COALESCE(SUM(r."amountCents") FILTER (WHERE r."operationId" IS NOT NULL),0)::text AS "totalCents"
+   FROM "ReferralSignup" s LEFT JOIN "ReferralWalletReward" r ON r."referredUserId"=s."referredUserId"
+   WHERE s."referrerUserId"=${userId}`;
   const shareUrl=invite&&policy.enabled?botReferralShareUrl(invite.token,raw.TELEGRAM_BOT_USERNAME):null;
   const webShareUrl=invite&&policy.enabled?websiteReferralShareUrl(invite.token,raw.BETTER_AUTH_URL):null;
-  return {configured:policy.configured,enabled:policy.enabled,shareUrl,webShareUrl,discountPercent:policy.configured?policy.discountPercent:null,expiryDays:policy.configured?policy.expiryDays:null,counts:{signedUp,qualified,earned,available},coupons:[...usable,...recent].map(c=>({id:c.id,percent:c.percent,expiresAt:c.expiresAt.toISOString(),status:c.redemption?'USED' as const:c.expiresAt<=now?'EXPIRED' as const:'AVAILABLE' as const}))};
+  return {configured:policy.configured,enabled:policy.enabled,shareUrl,webShareUrl,rewardEtb:policy.configured?policy.rewardEtb:null,counts:{signedUp,qualified,earned},totalEarnedEtb:centsToEtb(BigInt(totalCents))};
  },{isolationLevel:Prisma.TransactionIsolationLevel.ReadCommitted});
 }
 
@@ -107,15 +101,65 @@ export async function attributeNewReferralInTransaction(tx:Tx,userId:string,tele
 /** Runs only after an accepted bid is recorded, inside the same transaction. */
 export async function qualifyReferralInTransaction(tx:Tx,userId:string,bidId:string,raw:Record<string,string|undefined>=process.env){
  if(!referralSchemaReady(raw))return;
- const locked=await tx.$queryRaw<{referredUserId:string}[]>`SELECT "referredUserId" FROM "ReferralSignup" WHERE "referredUserId"=${userId} FOR UPDATE`;if(!locked.length)return;
- const signup=await tx.referralSignup.findUniqueOrThrow({where:{referredUserId:userId}});if(signup.firstBidId)return;
- const bid=await tx.bid.findUnique({where:{id:bidId},select:{userId:true,auction:{select:{isDemo:true,testRunId:true,product:{select:{isDemo:true}}}}}});
- if(!bid||bid.userId!==userId||bid.auction.isDemo||bid.auction.testRunId||bid.auction.product?.isDemo||await tx.bid.count({where:{userId}})!==1)return;
- await tx.$queryRaw`SELECT id FROM "ReferralPolicy" WHERE id='default' FOR SHARE`;
- const policy=await getReferralPolicy(tx,raw),now=await databaseNow(tx);
- await tx.referralSignup.update({where:{referredUserId:userId},data:{firstBidId:bidId,qualifiedAt:now}});
- if(!policy.enabled||!await eligibleSponsor(tx,signup.referrerUserId))return;
- await tx.referralCoupon.create({data:{ownerUserId:signup.referrerUserId,referredUserId:userId,percent:policy.discountPercent,policyVersion:policy.version,createdAt:now,expiresAt:new Date(now.getTime()+policy.expiryDays*DAY)}});
+ const [signup]=await tx.$queryRaw<{referrerUserId:string;eligible:boolean}[]>`
+  SELECT "referrerUserId",lowwin_referral_bid_eligible(${bidId},${userId}) AS eligible
+  FROM "ReferralSignup" WHERE "referredUserId"=${userId} AND "firstBidId" IS NULL FOR UPDATE`;
+ if(!signup?.eligible)return;
+ const [policy]=await tx.$queryRaw<{enabled:boolean;rewardCents:bigint|null;version:number}[]>`
+  SELECT enabled,"rewardCents",version FROM "ReferralPolicy" WHERE id='default' FOR SHARE`;
+ const [{qualifiedAt}]=await tx.$queryRaw<{qualifiedAt:Date}[]>`
+  UPDATE "ReferralSignup" SET "firstBidId"=${bidId},"qualifiedAt"=clock_timestamp() AT TIME ZONE 'UTC'
+  WHERE "referredUserId"=${userId} RETURNING "qualifiedAt"`;
+ if(!policy?.enabled||policy.rewardCents===null||!await eligibleSponsor(tx,signup.referrerUserId))return;
+ const reward=await tx.referralWalletReward.create({data:{
+  referredUserId:userId,referrerUserId:signup.referrerUserId,bidId,amountCents:policy.rewardCents,policyVersion:policy.version,createdAt:qualifiedAt,
+ }});
+ await creditReferralWalletReward(tx,reward);
+}
+
+type WalletReward=Pick<ReferralWalletReward,'referredUserId'|'referrerUserId'|'bidId'|'amountCents'|'policyVersion'>;
+async function creditReferralWalletReward(tx:Tx,reward:WalletReward){
+ // The bid already owns a different player's wallet. Do not wait on another
+ // wallet while holding bid or settlement ledger locks. Persisted awards are
+ // picked up by the worker if a referrer's wallet is in use.
+ const [{locked}]=await tx.$queryRaw<{locked:boolean}[]>`
+  SELECT pg_try_advisory_xact_lock(hashtextextended(${`wallet:${reward.referrerUserId}`},0)) AS locked`;
+ if(!locked)return false;
+ const availableName=`user:${reward.referrerUserId}:available`;
+ let available=await tx.ledgerAccount.findUnique({where:{name:availableName},select:{id:true}});
+ if(!available){
+  await ensureWallet(tx,reward.referrerUserId);
+  available=await tx.ledgerAccount.findUniqueOrThrow({where:{name:availableName},select:{id:true}});
+ }
+ const funding=await tx.ledgerAccount.findUniqueOrThrow({where:{name:'platform:referral-wallet-rewards'},select:{id:true}});
+ const scope='REFERRAL_REWARD',amount=new Prisma.Decimal(centsToEtb(reward.amountCents));
+ const result={bidId:reward.bidId,amountCents:reward.amountCents.toString(),amountEtb:centsToEtb(reward.amountCents),policyVersion:reward.policyVersion};
+ const operation=await tx.operation.create({data:{
+  userId:reward.referrerUserId,scope,key:reward.referredUserId,requestHash:createHash('sha256').update(JSON.stringify(result)).digest('hex'),result,
+ }});
+ await tx.journal.create({data:{operationId:operation.id,kind:scope,reference:`referral:${reward.referredUserId}`,postings:{create:[
+  {accountId:available.id,delta:amount},{accountId:funding.id,delta:amount.negated()},
+ ]}}});
+ await tx.$executeRaw`
+  UPDATE "ReferralWalletReward" SET "operationId"=${operation.id},"creditedAt"=clock_timestamp() AT TIME ZONE 'UTC'
+  WHERE "referredUserId"=${reward.referredUserId}`;
+ return true;
+}
+
+export async function settlePendingReferralWalletRewards(client:PrismaClient,raw:Record<string,string|undefined>=process.env){
+ if(!referralSchemaReady(raw))return false;
+ const pending=await client.referralWalletReward.findMany({where:{operationId:null},orderBy:[{createdAt:'asc'},{referredUserId:'asc'}],take:10,select:{referredUserId:true}});
+ let credited=false;
+ for(const row of pending){
+  const settled=await client.$transaction(async tx=>{
+   const [reward]=await tx.$queryRaw<WalletReward[]>`
+    SELECT "referredUserId","referrerUserId","bidId","amountCents","policyVersion" FROM "ReferralWalletReward"
+    WHERE "referredUserId"=${row.referredUserId} AND "operationId" IS NULL FOR UPDATE SKIP LOCKED`;
+   return reward?creditReferralWalletReward(tx,reward):false;
+  });
+  credited=credited||settled;
+ }
+ return credited;
 }
 
 export type LockedReferralDiscount={couponId:string;percent:number;expiresAt:Date;grossFeePoints:Prisma.Decimal;discountPoints:Prisma.Decimal;netFeePoints:Prisma.Decimal};
@@ -139,24 +183,4 @@ export async function redeemReferralInTransaction(tx:Tx,userId:string,bidId:stri
  await tx.operation.create({data:{id:operationId,userId,scope:'REFERRAL_DISCOUNT',key:bidId,requestHash:createHash('sha256').update(JSON.stringify(result)).digest('hex'),result}});
  await tx.journal.create({data:{operationId,kind:'REFERRAL_DISCOUNT',reference:`bid:${bidId}`,postings:{create:[{accountId:fees.id,delta:discount.discountPoints.negated()},{accountId:available.id,delta:discount.discountPoints}]}}});
  await tx.referralRedemption.create({data:{couponId:discount.couponId,userId,bidId,operationId,grossFeePoints:discount.grossFeePoints,discountPoints:discount.discountPoints,createdAt:await databaseNow(tx)}});
-}
-
-/** Quotes use server fees, eligibility and owned unspent rewards, never client money. */
-export async function getBidDiscountQuote(client:PrismaClient,userId:string,auctionSlug:string,couponId?:string,raw:Record<string,string|undefined>=process.env){
- if(!referralSchemaReady(raw))throw new ReferralError(503,'REFERRAL_UNAVAILABLE','Referral discounts are not configured yet.');
- if(!/^[a-z0-9-]{1,120}$/.test(auctionSlug)||couponId&&!z.string().uuid().safeParse(couponId).success)throw new ReferralError(422,'INVALID_DISCOUNT','Choose an earned discount.');
- return client.$transaction(async tx=>{
-  await assertPlayerContact(tx,userId);if(!await eligibleSponsor(tx,userId))throw new ReferralError(403,'BIDDING_RESTRICTED','Bidding is unavailable for this account.');
-  const a=await tx.auction.findUnique({where:{slug:auctionSlug},include:{terms:true,feeRevisions:{orderBy:[{effectiveAt:'desc'},{version:'desc'}],take:1},product:{include:{category:true}},category:true}}),now=await databaseNow(tx);
-  if(!a?.terms||!a.publishedAt||a.publishedAt>now||!a.startsAt||a.startsAt>now||!a.endsAt||a.endsAt<=now||!['LIVE','SCHEDULED'].includes(a.status)||!a.product?.visible||!a.product.category.visible||!a.category?.visible)throw new ReferralError(409,'AUCTION_CLOSED','This auction is not open for bids.');
-  const fee=a.feeRevisions[0];if(!fee)throw new ReferralError(409,'TERMS_CHANGED','Review the current submission fee.');
-  const supported=isSubmissionFeeOnly(a.terms.ruleVersion)&&!a.isDemo&&!a.testRunId&&!a.product.isDemo;
-  if(couponId&&!supported)throw new ReferralError(409,'COUPON_UNAVAILABLE','This auction keeps its original payment terms.');
-  const coupons=supported?await tx.referralCoupon.findMany({where:{ownerUserId:userId,expiresAt:{gt:now},redemption:null},orderBy:[{expiresAt:'asc'},{id:'asc'}],take:20}):[];
-  const selected=couponId?await tx.referralCoupon.findFirst({where:{id:couponId,ownerUserId:userId,expiresAt:{gt:now},redemption:null}}):coupons[0];
-  if(couponId&&!selected)throw new ReferralError(409,'COUPON_UNAVAILABLE','This earned discount is unavailable or expired.');
-  const discountPoints=selected?calculateReferralDiscount(fee.feePoints,selected.percent):new Prisma.Decimal(0);
-  if(selected&&discountPoints.lte(0))throw new ReferralError(409,'COUPON_UNAVAILABLE','Keep this discount for a paid submission fee.');
-  return {serverNow:now.toISOString(),auctionSlug,feeVersion:fee.version,ruleVersion:a.terms.ruleVersion,grossFeePoints:fee.feePoints.toString(),discountPoints:discountPoints.toString(),netFeePoints:fee.feePoints.sub(discountPoints).toString(),coupon:selected?{id:selected.id,percent:selected.percent,expiresAt:selected.expiresAt.toISOString()}:null,eligible:supported&&fee.feePoints.gt(0),availableCoupons:coupons.map(c=>({id:c.id,percent:c.percent,expiresAt:c.expiresAt.toISOString()}))};
- },{isolationLevel:Prisma.TransactionIsolationLevel.RepeatableRead});
 }

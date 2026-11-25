@@ -4,15 +4,13 @@ import type {BidReceipt} from '@/modules/auctions/bids';
 export type BidBatchLine={position:number;number:string;grossFee:string;discount:string;netFee:string};
 export type BidBatchQuote={id:string;quoteHash:string;auctionSlug:string;feeVersion:number;ruleVersion:string;lines:BidBatchLine[];entryCount:number;total:string;totalCents:string;grossTotal:string;discountTotal:string;status:string};
 export type BidBatchReceipt={batch:BidBatchQuote;receipts:Array<Pick<BidReceipt,'bid'|'charge'>>;wallet?:{available:string;held:string;revision?:string};payment?:{method:'wallet';gateway:'INTERNAL_WALLET';total:string;acceptedBidIds:string[]}};
-export type BidFeePreview={entryCount:number;grossTotal:string;discountTotal:string;total:string;totalCents:string};
-/** Display only. A validated coupon discounts one entry, never the entire batch.
- * The server quote remains authoritative before any payment is submitted. */
-export function previewBidFees(entryCount:number,entryFeePoints:string,discountPoints='0'):BidFeePreview{
+/** Display only. The server quote is authoritative before payment. */
+export function previewBidFees(entryCount:number,entryFeePoints:string){
  if(!Number.isSafeInteger(entryCount)||entryCount<0||entryCount>100)throw new RangeError('Choose between zero and 100 entries.');
- const fee=etbToCents(entryFeePoints),coupon=etbToCents(discountPoints);
- if(fee<0n||coupon<0n||coupon>fee)throw new RangeError('The discount must fit one submission fee.');
- const gross=fee*BigInt(entryCount),discount=entryCount?coupon:0n,total=gross-discount;
- return {entryCount,grossTotal:centsToEtb(gross),discountTotal:centsToEtb(discount),total:centsToEtb(total),totalCents:String(total)};
+ const fee=etbToCents(entryFeePoints);
+ if(fee<0n)throw new RangeError('The submission fee must be nonnegative.');
+ const total=fee*BigInt(entryCount),amount=centsToEtb(total);
+ return {entryCount,grossTotal:amount,total:amount,totalCents:String(total)};
 }
 export type BidDraftRules={minPoints:string;maxPoints:string|null;stepPoints:string;remainingSubmissions:number;ownBids:readonly {amount:string}[]};
 export type BidDraftError='precision'|'range'|'duplicate'|'limit';
@@ -37,6 +35,7 @@ export function validateBidDraft(values:readonly string[],rules:BidDraftRules):{
 
 export type DirectPaymentMethod={slug:string;name:string;minAmountCents?:string;maxAmountCents?:string};
 export type DirectPaymentMethods={methods:DirectPaymentMethod[];paymentPhone?:string|null};
+// Legacy persisted attempts keep their original request fields for replay only.
 export type ChapaDirectBidIntent={key:string;paymentMethod:string;phone:string;purpose:'BID';auctionSlug:string;numbers:string[];feeVersion:number;couponId?:string;approvedTotal:string};
 export type ChapaDirectIntent=({key:string;paymentMethod:string;phone:string;purpose:'TOP_UP';amount:string;approvedDepositBonusVersion?:number;approvedDepositBonusAmount?:string}|{key:string;paymentMethod:string;phone:string;purpose:'BID';batchId:string;quoteHash:string}|ChapaDirectBidIntent)&{apiVersion?:'v2';kind?:'inline'|'direct';flow?:'INLINE'|'HOSTED'|'DIRECT'};
 export {normalizePaymentPhone} from './payment-phone';

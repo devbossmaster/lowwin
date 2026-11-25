@@ -29,24 +29,30 @@ function restoredFeed(identity:string|null,initial:Batch|undefined,query:Catalog
  }
  return {items,page,totalPages,serverNow,serverObservedAt};
 }
-export function HomeAuctions(props:{initial?:Batch;query:CatalogQuery}){
+export function HomeAuctions(props:{initial?:Batch;awaitingInitial?:boolean;query:CatalogQuery}){
  return <HomeAuctionFeed key={homeAuctionHref(props.query)} {...props} identity="public"/>;
 }
-function HomeAuctionFeed({initial,query,identity}:{initial?:Batch;query:CatalogQuery;identity:string|null}){
+function HomeAuctionFeed({initial,awaitingInitial,query,identity}:{initial?:Batch;awaitingInitial?:boolean;query:CatalogQuery;identity:string|null}){
  const {language}=useMiniLocale(),sortRow=useRef<HTMLElement>(null);
  const [restored]=useState(()=>restoredFeed(identity,initial,query));
+ const [waitingForSeed,setWaitingForSeed]=useState(!!awaitingInitial);
  const [items,setItems]=useState(restored.items),[serverNow,setServerNow]=useState(restored.serverNow),[serverObservedAt,setServerObservedAt]=useState(restored.serverObservedAt),[page,setPage]=useState(restored.page),[totalPages,setTotalPages]=useState(restored.totalPages),[busy,setBusy]=useState(false),pending=useRef(false);
- const firstBatch=usePublicQuery<Batch>(batchHref(query,1),{initialData:initial});
+ const firstBatch=usePublicQuery<Batch>(batchHref(query,1),{initialData:initial,enabled:!waitingForSeed});
  const batch=usePublicQuery<Batch>(batchHref(query,page),{enabled:page>1});
  const lastInitial=useRef(initial);
  useEffect(()=>{const data=firstBatch.data;if(!data)return;const codes=new Set(data.items.map(item=>item.code));setItems(previous=>[...data.items,...previous.slice(10).filter(item=>!codes.has(item.code))]);setServerNow(data.serverNow);setServerObservedAt(firstBatch.updatedAt);setTotalPages(data.totalPages)},[firstBatch.data,firstBatch.updatedAt]);
  useEffect(()=>{if(!initial||lastInitial.current===initial)return;lastInitial.current=initial;const codes=new Set(initial.items.map(item=>item.code));setItems(previous=>[...initial.items,...previous.slice(10).filter(item=>!codes.has(item.code))]);setServerNow(initial.serverNow);setServerObservedAt(Date.now());setTotalPages(initial.totalPages)},[initial]);
- useEffect(()=>{if(!initial)return;const key=batchHref(query,1),saved=readPublicQuery<Batch>(key);if(!saved||Date.parse(initial.serverNow)>Date.parse(saved.value.serverNow))seedPublicQuery(key,initial)},[identity,initial,query]);
+ useEffect(()=>{
+  if(!initial)return;
+  const key=batchHref(query,1),saved=readPublicQuery<Batch>(key);
+  if(!saved||Date.parse(initial.serverNow)>Date.parse(saved.value.serverNow))seedPublicQuery(key,initial);
+  setWaitingForSeed(false);
+ },[initial,query]);
  useEffect(()=>{miniNavigationState.rememberPage(identity,homeAuctionHref(query),page)},[identity,query,page]);
  useEffect(()=>{const row=sortRow.current,selected=row?.querySelector<HTMLElement>('[aria-current="page"]');if(!row||!selected)return;const left=selected.getBoundingClientRect().left-row.getBoundingClientRect().left;if(left<16)row.scrollLeft+=left-16;else if(left+selected.offsetWidth>row.clientWidth-16)row.scrollLeft+=left+selected.offsetWidth-row.clientWidth+16},[query.sort,language]);
  useEffect(()=>{if(page<=1||!batch.data)return;const data=batch.data;setItems(previous=>{const codes=new Set(previous.map(item=>item.code)),updates=new Map(data.items.map(item=>[item.code,item]));return [...previous.map(item=>updates.get(item.code)??item),...data.items.filter(item=>!codes.has(item.code))]});setServerNow(data.serverNow);setServerObservedAt(batch.updatedAt);setTotalPages(data.totalPages);pending.current=false;setBusy(false)},[batch.data,batch.updatedAt,page]);
  useEffect(()=>{if(batch.error){pending.current=false;setBusy(false)}},[batch.error]);
- const initialLoading=!initial&&!firstBatch.data&&!firstBatch.error;
+ const initialLoading=waitingForSeed||!initial&&!firstBatch.data&&!firstBatch.error;
  const sorts=[['featured','Default','መደበኛ'],['ending','Ends soon','በቅርቡ የሚዘጋ'],['newest','New','አዲስ'],['fee-low','Lowest fee','ዝቅተኛ ክፍያ'],['fee-high','Highest fee','ከፍተኛ ክፍያ']] as const;
  return <section id="discover-auctions" tabIndex={-1} className={`${styles.section} ${styles.homeFeed}`}><h2 className={styles.feedTitle}><MiniPhrase en="Live auctions" am="ክፍት ጨረታዎች"/></h2><nav ref={sortRow} className={styles.sortChips} aria-label="Auction sorting">{sorts.map(([value,en,am])=><Link key={value} aria-current={query.sort===value?'page':undefined} href={homeAuctionHref(query,{sort:value})}>{value==='featured'&&<ArrowDownUp size={11} aria-hidden="true"/>}<span><MiniPhrase en={en} am={am}/></span></Link>)}</nav><div className={styles.list} aria-busy={initialLoading||firstBatch.fetching}>{initialLoading&&<CatalogSkeleton/>}{items.map((item,index)=><AuctionCard key={item.code} auction={item} homeCard priority={index===0} serverNow={serverNow} serverObservedAt={serverObservedAt}/>)}</div>{!initialLoading&&!firstBatch.error&&!items.length&&<p className={styles.empty}><MiniPhrase en="No live auctions in this category yet. Choose another category or check back soon." am="በዚህ ምድብ ክፍት ጨረታ ገና የለም። ሌላ ምድብ ይምረጡ ወይም በቅርቡ ይመለሱ።"/></p>}{(firstBatch.error||batch.error)?<div role="alert" className={styles.loadMore}><p><MiniPhrase en="Could not load more auctions." am="ተጨማሪ ጨረታዎችን ማምጣት አልተቻለም።"/></p><button onClick={()=>firstBatch.error?firstBatch.reload():batch.reload()}><MiniPhrase en="Retry" am="እንደገና ይሞክሩ"/></button></div>:(page<totalPages||busy)&&<div className={styles.loadMore}><button disabled={busy} onClick={()=>{if(pending.current)return;pending.current=true;setBusy(true);setPage(value=>value+1)}}><MiniPhrase en={busy?'Loading…':'Load more'} am={busy?'በመጫን ላይ…':'ተጨማሪ አሳይ'}/></button></div>}</section>;
 }

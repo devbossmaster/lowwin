@@ -4,7 +4,7 @@ import {beforeEach,describe,expect,it,vi} from 'vitest';
 import type {CatalogAuction} from '../src/modules/auctions/catalog';
 
 const state=vi.hoisted(()=>({activity:null as null|{bids:number;bidders:number;status:'live';startsAt:string;endsAt:string},catalog:null as null|{items:CatalogAuction[];serverNow:string}}));
-vi.mock('next/navigation',()=>({useSearchParams:()=>new URLSearchParams()}));
+vi.mock('next/navigation',()=>({useSearchParams:()=>new URLSearchParams(),useRouter:()=>({replace:()=>{}})}));
 vi.mock('next/dynamic',()=>({default:()=>()=>null}));
 vi.mock('../src/components/auction-activity',()=>({useAuctionActivity:()=>({activity:state.activity,views:null,refreshActivity:()=>{}}),useAuctionRefresh:()=>{}}));
 vi.mock('../src/components/telegram-provider',()=>({useTelegram:()=>({queryIdentity:null})}));
@@ -40,6 +40,7 @@ describe('public auction total accepted bids',()=>{
   expect(html).toContain('<h1>Power bank</h1>');expect(html).toContain('data-share-options');
   expect(html).toContain('Fee per bid');expect(html).toContain('ETB 50.00');expect(html).toContain('Auction code');
   expect(html).toContain('data-auction-bid');expect(html).toContain('Place a bid');expect(html).not.toContain('Pay ETB 50.00 &amp; bid');
+  expect(html.slice(html.indexOf('id="bid-review"'),html.indexOf('</div>',html.indexOf('id="bid-review"')))).not.toContain('href="/terms"');
   expect(html).toContain('Chosen numbers stay private until the result is published.');
   expect(html).not.toContain('Frozen terms');expect(html).not.toContain('Collect the prize');
   expect(html).toContain('href="/terms"');

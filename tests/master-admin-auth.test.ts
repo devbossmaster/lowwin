@@ -127,6 +127,35 @@ describe.skipIf(!database)('Master Guide Admin on disposable PostgreSQL',()=>{
   expect(await unfeaturedDraft.json()).toMatchObject({homeOrder:10,featured:false});
   expect(await db.auction.findUnique({where:{id:scheduled.id}})).toMatchObject({homeOrder:10,featured:false});
  });
+ it('opens an upcoming auction sooner through an audited, versioned start-time change',async()=>{
+  const {POST,GET}=await import('../src/app/api/admin/[...path]/route');
+  const options={ruleVersion:'lowest-unique-v5',fee:1,startOffsetMs:7200000,endDelayMs:86400000};
+  const auction=await bidAuction(db,options);
+  const previousStart=auction.startsAt!;
+  const earlier=new Date(previousStart.getTime()-3600000);
+  const input={key:randomUUID(),auctionId:auction.id,version:auction.controlVersion,startsAt:earlier.toISOString(),reason:'Reduce the upcoming wait'};
+  const submit=(fields=input,session=cookie)=>POST(new Request(origin+'/api/admin/command',{method:'POST',headers:{cookie:session,origin,'content-type':'application/json'},body:JSON.stringify({action:'startTime',input:fields})}),{params:Promise.resolve({path:['command']})});
+
+  expect((await submit(input,'')).status).toBe(401);
+  expect((await submit({...input,startsAt:new Date(previousStart.getTime()+3600000).toISOString()})).status).toBe(422);
+  expect((await submit({...input,startsAt:new Date(Date.now()-60000).toISOString()})).status).toBe(422);
+  await expect(db.auction.update({where:{id:auction.id},data:{startsAt:earlier,controlVersion:{increment:1}}})).rejects.toThrow(/matching control revision/);
+
+  const saved=await submit();
+  expect(saved.status,await saved.clone().text()).toBe(200);
+  const receipt=await saved.json();
+  expect(receipt).toMatchObject({startsAt:input.startsAt,controlVersion:input.version+1});
+  expect(await (await submit()).json()).toEqual(receipt);
+  expect((await submit({...input,key:randomUUID()})).status).toBe(409);
+  const refreshed=await GET(new Request(origin+`/api/admin/auctions/${auction.id}`,{headers:{cookie}}),{params:Promise.resolve({path:['auctions',auction.id]})});
+  expect(await refreshed.json()).toMatchObject({
+   displayStatus:'UPCOMING',startsAt:input.startsAt,endsAt:auction.endsAt!.toISOString(),
+   controlRevisions:[{kind:'START_TIME',actorId:userId,before:{startsAt:previousStart.toISOString()},after:{startsAt:input.startsAt},reason:input.reason}],
+  });
+  const running=await bidAuction(db,{...options,startOffsetMs:-60000});
+  await db.auction.update({where:{id:running.id},data:{status:'SCHEDULED'}});
+  expect((await submit({...input,key:randomUUID(),auctionId:running.id,version:running.controlVersion})).status).toBe(409);
+ });
  it('moves a deadline in both directions and requires an audited override after accepted bids',async()=>{
   const {POST,GET}=await import('../src/app/api/admin/[...path]/route');
   const auction=await bidAuction(db,{ruleVersion:'lowest-unique-v5',fee:1,endDelayMs:3600000});

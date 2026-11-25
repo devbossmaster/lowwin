@@ -44,6 +44,18 @@ describe('Admin auction countdown preview', () => {
     expect(render('2026-11-19T22:43')).toContain('Shortens by 30m');
   });
 
+  it('shows an earlier Addis start and the current closing time', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-19T15:00:00.000Z'));
+    const html = renderToStaticMarkup(createElement(AdminAuctionSchedulePreview, {
+      start: '2026-11-19T19:00', end: '2026-11-20T01:00', previousStart: '2026-11-19T17:00:00.000Z',
+    }));
+
+    expect(html).toContain('<dt>Starts in</dt><dd>1h</dd>');
+    expect(html).toContain('Starts 19 Nov 2026, 19:00 GMT+3<span> · 1h earlier</span>');
+    expect(html).toContain('Ends 20 Nov 2026, 01:00 GMT+3');
+  });
+
   it('provides useful feedback before both draft times are valid', () => {
     const render = (end: string) => renderToStaticMarkup(createElement(AdminAuctionSchedulePreview, {start: '2026-11-20T01:00', end}));
 

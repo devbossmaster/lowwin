@@ -62,6 +62,7 @@ export function prefetchAuctionIntent(identity:string|null,slug:string,{details=
  const connection=typeof navigator==='undefined'?null:(navigator as Navigator&{connection?:{saveData?:boolean;effectiveType?:string}}).connection;
  if(connection?.saveData||connection?.effectiveType==='2g'||connection?.effectiveType==='slow-2g')return;
  if(!budget.allow(identity,`bid:${slug}`))return;
+ void import('./bid-sheet-content').catch(()=>{});
  // Reserve the already-authorized private read first. Starting a public fetch
  // first would make the private cache's low-priority busy guard skip it.
  if(identity){

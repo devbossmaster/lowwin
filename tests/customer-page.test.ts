@@ -31,6 +31,26 @@ describe('server-rendered customer data authorization',()=>{
   await expect(AuctionPage({params:Promise.resolve({slug:'all'}),searchParams:Promise.resolve({})})).rejects.toThrow('NOT_FOUND');
   expect(f.now).not.toHaveBeenCalled();expect(f.auction).not.toHaveBeenCalled();
  });
+ it.each([
+  ['42','closed','WINNER'],
+  ['ledger-prize','closed','NO_WINNER'],
+  ['42','cancelled','CANCELLED'],
+ ])('redirects the published %s auction (%s, %s) straight to its result',async(slug,status,outcome)=>{
+  f.session.mockResolvedValue({user:{id:'registered'}});
+  f.auction.mockResolvedValue({code:'42',status,result:{source:'SETTLED',outcome}});
+  await expect(AuctionPage({params:Promise.resolve({slug}),searchParams:Promise.resolve({})})).rejects.toThrow('REDIRECT /winners/42');
+  expect(f.result).not.toHaveBeenCalled();
+ });
+ it('keeps an unpublished cancellation on the auction route while preserving an owned payment return link',async()=>{
+  f.session.mockResolvedValue({user:{id:'registered'}});
+  f.auction.mockResolvedValue({code:'42',status:'cancelled',result:null});
+  await expect(AuctionPage({params:Promise.resolve({slug:'42'}),searchParams:Promise.resolve({})})).resolves.toBeTruthy();
+  f.auction.mockResolvedValue({code:'42',status:'closed',result:{source:'SETTLED',outcome:'WINNER'}});
+  const chapa='11111111-1111-4111-a111-111111111111';
+  await expect(AuctionPage({params:Promise.resolve({slug:'ledger-prize'}),searchParams:Promise.resolve({chapa})})).rejects.toThrow('REDIRECT /auctions/42?chapa='+chapa);
+  await expect(AuctionPage({params:Promise.resolve({slug:'42'}),searchParams:Promise.resolve({chapa})})).resolves.toBeTruthy();
+  await expect(AuctionPage({params:Promise.resolve({slug:'42'}),searchParams:Promise.resolve({chapa:[chapa,chapa]})})).rejects.toThrow('REDIRECT /winners/42');
+ });
  it.each(pages)('authorizes %s before reading or rendering protected content',async(path,render)=>{
   await expect(render()).rejects.toThrow('REDIRECT /?login=1&next='+encodeURIComponent(path));
   for(const read of [f.auction,f.result,f.category,f.now,f.legal,f.list,f.experience])expect(read).not.toHaveBeenCalled();

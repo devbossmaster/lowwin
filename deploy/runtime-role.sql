@@ -43,7 +43,7 @@ DO $$ DECLARE t text; BEGIN
    END IF;
   END IF;
  END LOOP;
- FOREACH t IN ARRAY ARRAY['VerifyRequest','VerifyWebhookEvent','ArifPayCheckout','ReferralPolicy','ReferralPendingSignup','ReferralSignup','WinnerPresentation','BidBatchOrder'] LOOP
+ FOREACH t IN ARRAY ARRAY['VerifyRequest','VerifyWebhookEvent','ArifPayCheckout','ReferralPolicy','ReferralPendingSignup','ReferralSignup','ReferralWalletReward','WinnerPresentation','BidBatchOrder'] LOOP
   IF EXISTS(SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename=t) THEN
    IF EXISTS(SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename=t AND tableowner='lowwin_runtime') THEN RAISE EXCEPTION 'Runtime must not own tables'; END IF;
    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',t);
@@ -102,6 +102,9 @@ GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA public TO lowwin_runtime;
 DO $$ BEGIN
  IF to_regprocedure('public.lowwin_cash_wallet_batch(jsonb,jsonb)') IS NOT NULL THEN
   GRANT EXECUTE ON FUNCTION public.lowwin_cash_wallet_batch(jsonb,jsonb) TO lowwin_runtime;
+ END IF;
+ IF to_regprocedure('public.lowwin_referral_bid_eligible(text,text)') IS NOT NULL THEN
+  GRANT EXECUTE ON FUNCTION public.lowwin_referral_bid_eligible(text,text) TO lowwin_runtime;
  END IF;
  IF to_regprocedure('public.lowwin_prepare_direct_bid(jsonb,jsonb)') IS NOT NULL THEN
   GRANT EXECUTE ON FUNCTION public.lowwin_prepare_direct_bid(jsonb,jsonb) TO lowwin_runtime;

@@ -12,7 +12,7 @@ const Flap=memo(function Flap({value,label,animate}:{value:string;label:string;a
  else if(!animate&&frame.previous!==null)setFrame({value,previous:null});
  const previous=animate&&frame.value===value?frame.previous:null;
  const finish=useCallback(()=>setFrame(current=>current===frame&&current.previous!==null?{value:current.value,previous:null}:current),[frame]);
- useEffect(()=>{if(previous===null)return;const timeout=setTimeout(finish,320);return()=>clearTimeout(timeout)},[finish,previous]);
+ useEffect(()=>{if(previous===null)return;const timeout=setTimeout(finish,240);return()=>clearTimeout(timeout)},[finish,previous]);
  return <span className={styles.unit} data-countdown-unit data-countdown-value={value}>
   <strong className={styles.tile} data-countdown-tile aria-hidden="true" style={{'--flap-digits':value.length} as CSSProperties}>
    <span className={styles.digit}>{value}</span>
@@ -26,38 +26,42 @@ const Flap=memo(function Flap({value,label,animate}:{value:string;label:string;a
  </span>;
 });
 
-/** Visual updates stay inside this timer. Hidden/offscreen intervals pause;
- * server receipt anchors recompute the current value immediately on resume. */
+/** Update on visible digit changes and resume from the server receipt anchor. */
 export function AuctionCountdown({target,serverNow,observedAt,label,showLabel=true,onElapsed,tiles=false,variant}:{target:string;serverNow:string;observedAt?:number;label:string;showLabel?:boolean;onElapsed?:()=>void;tiles?:boolean;variant?:'inline'}){
  const {language}=useMiniLocale(),am=language==='am',element=useRef<HTMLSpanElement>(null),elapsed=useRef<string|null>(null),callback=useRef(onElapsed);callback.current=onElapsed;
  const [{remaining,animate},setClock]=useState(()=>({remaining:clocks.initial(target,serverNow,observedAt,Date.now()),animate:false}));
  useEffect(()=>{
-  const wallAt=Date.now(),monotonicAt=performance.now(),anchor=clocks.observe(serverNow,observedAt,wallAt);let visible=true,id:ReturnType<typeof setInterval>|undefined;
+  const wallAt=Date.now(),monotonicAt=performance.now(),anchor=clocks.observe(serverNow,observedAt,wallAt);
+  let visible=true,id:ReturnType<typeof setTimeout>|undefined;
   const reduced=variant==='inline'?null:window.matchMedia('(prefers-reduced-motion: reduce)');
   // Keep the server receipt anchor even if the device's wall clock changes.
   const tick=(live=false)=>{
    const next=clocks.remaining(target,serverNow,anchor,wallAt+performance.now()-monotonicAt);
-   const motion=live&&!!reduced&&!reduced.matches;
+   const nextSeconds=Math.floor(next/1000);
    setClock(current=>{
-    const animate=motion&&Math.floor(current.remaining/1000)-Math.floor(next/1000)===1;
-    return current.remaining===next&&current.animate===animate?current:{remaining:next,animate};
+    const previousSeconds=Math.floor(current.remaining/1000);
+    if(previousSeconds===nextSeconds&&Boolean(current.remaining)===Boolean(next)&&(live||!current.animate))return current;
+    return {remaining:next,animate:live&&!!reduced&&!reduced.matches&&previousSeconds-nextSeconds===1};
    });
    if(next===0){
-    clearInterval(id);
     if(elapsed.current!==target){elapsed.current=target;callback.current?.()}
+   }else{
+    // Aim just beyond the next whole-second boundary; avoid drifting a full
+    // interval when the tab or the main thread was delayed.
+    const delay=Math.max(1,Math.ceil(Math.min(next,next%1000+12)));
+    id=setTimeout(()=>tick(true),delay);
    }
-   return next>0;
   };
   const schedule=()=>{
-   clearInterval(id);
+   clearTimeout(id);
    if(document.hidden||!visible){setClock(current=>current.animate?{...current,animate:false}:current);return}
-   if(tick())id=setInterval(()=>tick(true),1000);
+   tick();
   };
   schedule();
   const observer=typeof IntersectionObserver==='undefined'?null:new IntersectionObserver(([entry])=>{visible=entry.isIntersecting;schedule()});
   if(element.current)observer?.observe(element.current);
   document.addEventListener('visibilitychange',schedule);window.addEventListener('pageshow',schedule);window.addEventListener('focus',schedule);reduced?.addEventListener('change',schedule);
-  return()=>{clearInterval(id);observer?.disconnect();document.removeEventListener('visibilitychange',schedule);window.removeEventListener('pageshow',schedule);window.removeEventListener('focus',schedule);reduced?.removeEventListener('change',schedule)};
+  return()=>{clearTimeout(id);observer?.disconnect();document.removeEventListener('visibilitychange',schedule);window.removeEventListener('pageshow',schedule);window.removeEventListener('focus',schedule);reduced?.removeEventListener('change',schedule)};
  },[target,serverNow,observedAt,variant]);
  const units=countdownUnits(remaining);
  if(variant==='inline')return <span ref={element} className={`countdown ${styles.inline}`} data-countdown-inline role="timer" aria-live="off" aria-label={remaining===0?undefined:am?`${units[0]} ቀናት ${units[1]} ሰዓታት ${units[2]} ደቂቃዎች ${units[3]} ሰከንዶች`:`${label} in ${units[0]} days ${units[1]} hours ${units[2]} minutes ${units[3]} seconds`}>{remaining===0?(label==='Starts'?(am?'አሁን ይጀምራል':'Starting now'):(am?'ጨረታው አብቅቷል':'Auction ended')):inlineCountdown(remaining,am)}</span>;

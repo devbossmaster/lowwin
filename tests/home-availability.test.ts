@@ -24,6 +24,16 @@ describe('Home availability during a failed server refresh',()=>{
   const html=render({view:cached,categories:cached.categories,auctions:cached.auctions});
   expect(html).toContain('SAVED-AUCTION');expect(html).toContain('data-winners-feed');expect(html).not.toContain('data-route-skeleton="home"');
  });
+ it('renders the Home shell while the auction batch streams and isolates a failed batch',()=>{
+  const pending=render({view:cached,categories:cached.categories,awaitingAuctions:true});
+  expect(pending).toContain('data-home-hero');
+  expect(pending).toContain('data-auction-feed');
+  expect(pending).toContain('data-winners-feed');
+  expect(pending).not.toContain('data-route-skeleton');
+  const unavailable=render({view:cached,categories:cached.categories,auctionError:true});
+  expect(unavailable).toContain('data-home-unavailable="auctions"');
+  expect(unavailable).toContain('data-winners-feed');
+ });
  it.each(['en','am'] as const)('keeps public guidance visible with truthful unavailable resources in %s',language=>{
   const html=render({error:true},language);expect(html).toContain('data-home-hero');expect(html).toContain(defaultHomeCopy.headline);expect(html).toContain('data-how-it-works');expect(html).toContain('<footer>');
   expect(html).toContain('id="discover-auctions" tabindex="-1"');expect(html).toContain('data-home-unavailable="auctions"');expect(html).toContain('data-home-unavailable="winners"');expect(html).not.toMatch(/data-route-skeleton|data-auction-feed|data-winners-feed|No live auctions|Confirmed winners will appear/);

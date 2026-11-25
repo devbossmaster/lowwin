@@ -52,10 +52,11 @@ function formatDuration(milliseconds: number) {
 type SchedulePreviewProps = {
   start?: string;
   end: string;
+  previousStart?: string;
   previousEnd?: string;
 };
 
-export function AdminAuctionSchedulePreview({start, end, previousEnd}: SchedulePreviewProps) {
+export function AdminAuctionSchedulePreview({start, end, previousStart, previousEnd}: SchedulePreviewProps) {
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     const refresh = () => setNow(Date.now());
@@ -72,6 +73,8 @@ export function AdminAuctionSchedulePreview({start, end, previousEnd}: ScheduleP
   const startsAt = startTime?.getTime() ?? null;
   const endsAt = endTime?.getTime() ?? NaN;
   const hasSchedule = !!endTime && (start === undefined || !!startTime);
+  const advance = startTime && previousStart && start !== formatAddisDateTimeLocal(previousStart)
+    ? Date.parse(previousStart) - startTime.getTime() : 0;
   const previousEndsAt = previousEnd && end !== formatAddisDateTimeLocal(previousEnd) ? Date.parse(previousEnd) : endsAt;
   const change = endsAt - previousEndsAt;
 
@@ -86,6 +89,7 @@ export function AdminAuctionSchedulePreview({start, end, previousEnd}: ScheduleP
             {endsAt > now ? <div><dt>Ends in</dt><dd>{formatDuration(endsAt - now)}</dd></div> : <div><dt>Ended</dt><dd>{formatDuration(now - endsAt)} ago</dd></div>}
             {startsAt !== null && <div><dt>Runs for</dt><dd>{formatDuration(endsAt - startsAt)}</dd></div>}
           </dl>
+          {startTime && previousStart && <p>Starts {formatAddisTimestamp(startTime)}{advance > 0 && <span> · {formatDuration(advance).toLowerCase()} earlier</span>}</p>}
           <p>Ends {formatAddisTimestamp(new Date(endsAt))}{change !== 0 && <span> · {change > 0 ? 'Extends' : 'Shortens'} by {formatDuration(Math.abs(change)).toLowerCase()}</span>}</p>
         </>}
     </div>
@@ -97,5 +101,13 @@ export function AdminAuctionDeadlineField({endsAt, showPreview}: {endsAt: string
   return <>
     <AdminAuctionDateTimeField label={`New end time · ${ADDIS_ABABA_TIME_LABEL}`} name="endsAt" value={end} onChange={setEnd}/>
     {showPreview && <AdminAuctionSchedulePreview end={end} previousEnd={endsAt}/>}
+  </>;
+}
+
+export function AdminAuctionStartField({startsAt, endsAt}: {startsAt: string; endsAt: string}) {
+  const [start, setStart] = useState(() => formatAddisDateTimeLocal(startsAt));
+  return <>
+    <AdminAuctionDateTimeField label={`New start time · ${ADDIS_ABABA_TIME_LABEL}`} name="startsAt" value={start} onChange={setStart}/>
+    <AdminAuctionSchedulePreview start={start} end={formatAddisDateTimeLocal(endsAt)} previousStart={startsAt}/>
   </>;
 }

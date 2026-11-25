@@ -139,19 +139,6 @@ test('an uncertain wallet debit retries the original quote after its balance and
  }finally{await f.cleanup()}
 });
 
-test('an applied coupon can be removed after refreshed availability becomes zero',async({page},info)=>{
- const am=info.project.name==='430',f=await setup(page,am),couponId=randomUUID();let unavailable=false,quotes=0;
- let ownSnapshot:Promise<Record<string,unknown>>|null=null;
- try{
-  await page.route('**/api/auctions/*/bids',async route=>{const body=await(ownSnapshot??=route.fetch().then(response=>response.json()));return route.fulfill({json:{...body,referralDiscountsAvailable:true,couponAvailableCount:unavailable?0:1}})});
-  await page.route('**/api/auctions/*/discount-quote?**',route=>route.fulfill({json:{serverNow:new Date().toISOString(),auctionSlug:f.auction.slug,feeVersion:1,ruleVersion:'lowest-unique-v4',grossFeePoints:'10',discountPoints:'1',netFeePoints:'9',coupon:unavailable?null:{id:couponId,percent:10,expiresAt:new Date(Date.now()+3600000).toISOString()},eligible:!unavailable}}));
-  await page.route('**/api/payments/chapa/batches/quote',route=>{quotes++;unavailable=true;return route.fulfill({status:409,json:{code:'COUPON_UNAVAILABLE',error:'Synthetic coupon was already used'}})});
-  await page.route('**/api/payments/chapa/direct',()=>{throw Error('An unavailable coupon must not initialize a payment')});
-  await page.goto('/telegram?next='+encodeURIComponent(f.home));const dialog=await openBid(page,f.title);await dialog.getByRole('textbox',{name:am?'የጨረታ መጠንዎ':'Your bid amount',exact:true}).fill('6.25');await paymentPhone(dialog,am).fill('0911652904');const coupon=dialog.locator('[data-bid-coupons]');await coupon.getByRole('button',{name:am?'ተግብር':'Apply',exact:true}).click();await expect(dialog.locator('[data-bid-total]')).toContainText('9.00');await dialog.locator('[data-payment-action]').click();
-  await expect.poll(()=>quotes).toBe(1);await expect(coupon).toContainText('0');const remove=coupon.getByRole('button',{name:am?'አስወግድ':'Remove',exact:true});await expect(remove).toBeEnabled();await remove.click();await expect(coupon.getByRole('button',{name:am?'ተግብር':'Apply',exact:true})).toBeDisabled();await expect(dialog.locator('[data-bid-total]')).toContainText('10.00');expect(quotes).toBe(1);
- }finally{await f.cleanup()}
-});
-
 test('OTP appears only on the provider OTP state; explicit authorization sends it once and cancellation remains unpaid',async({page},info)=>{
  const am=info.project.name==='430',f=await setup(page,am),authorizations:unknown[]=[],commands:ChapaDirectIntent[]=[];let order:ChapaCheckoutView|null=null;
  try{

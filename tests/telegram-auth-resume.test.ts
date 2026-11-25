@@ -1,7 +1,7 @@
 import {describe,expect,it} from 'vitest';
 import {clearTelegramAuthResume,consumeTelegramResumeDraft,projectTelegramResumeDraft,readTelegramAuthResume,registerTelegramResumeDraft,rememberTelegramAuthResume,telegramAuthResumeDestination,TELEGRAM_AUTH_RESUME_TTL_MS,type TelegramBidResumeDraft} from '../src/lib/telegram-auth-resume';
 function storage(){const entries=new Map<string,string>();return {getItem:(key:string)=>entries.get(key)??null,setItem:(key:string,value:string)=>{entries.set(key,value)},removeItem:(key:string)=>{entries.delete(key)},entries}}
-const bid:TelegramBidResumeDraft={kind:'bid',auctionSlug:'power-bank',auctionCode:'LW-PB',numbers:['4.25','8.50'],input:'9.2',multiple:true,numberMode:'range',rangeFrom:'11',rangeTo:'13',rangeStep:'1',method:'telebirr',applyCoupon:false};
+const bid:TelegramBidResumeDraft={kind:'bid',auctionSlug:'power-bank',auctionCode:'LW-PB',numbers:['4.25','8.50'],input:'9.2',multiple:true,numberMode:'range',rangeFrom:'11',rangeTo:'13',rangeStep:'1',method:'telebirr'};
 describe('bounded Telegram authentication resume',()=>{
  it('stores only safe internal screen coordinates, never callback or payment credentials',()=>{
   expect(telegramAuthResumeDestination('/my-bids?view=finished&code=oauth-code&access_token=secret&state=nonce#results')).toBe('/my-bids?view=finished#results');

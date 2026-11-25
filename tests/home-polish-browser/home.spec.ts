@@ -8,7 +8,7 @@ test.describe('Home motion, footer and account prompt',()=>{
  let db:PrismaClient,results:Awaited<ReturnType<typeof richFinalResult>>[]=[];
  test.beforeAll(async()=>{db=new PrismaClient({datasourceUrl:process.env.TEST_DATABASE_URL})});
  test.afterAll(async()=>{for(const result of results)await db.product.update({where:{id:result.auction.productId!},data:{visible:false}});await db?.$disconnect()});
- test('recent Winners move slowly, pause, loop, respect reduced motion and open one result',async({page})=>{
+ test('recent Winners loop without a toggle, respect reduced motion and open one result',async({page})=>{
   const f=await fixture(page,false);
   try{
    results=await Promise.all([richFinalResult(db),richFinalResult(db)]);
@@ -17,8 +17,10 @@ test.describe('Home motion, footer and account prompt',()=>{
    const start=await carousel.evaluate(el=>el.scrollLeft);await expect.poll(()=>carousel.evaluate(el=>el.scrollLeft),{timeout:5000}).toBeGreaterThan(start+10);
    const originals=carousel.locator('button:not([data-winner-copy])'),copies=carousel.locator('[data-winner-copy]');expect(await originals.count()).toBeGreaterThanOrEqual(2);expect(await copies.count()).toBe(await originals.count());
    for(const copy of await copies.all()){await expect(copy).toHaveAttribute('aria-hidden','true');await expect(copy).toHaveAttribute('tabindex','-1')}
-   await page.getByRole('button',{name:'Pause winner scrolling',exact:true}).click();const paused=await carousel.evaluate(el=>el.scrollLeft);await page.waitForTimeout(350);expect(Math.abs(await carousel.evaluate(el=>el.scrollLeft)-paused)).toBeLessThan(1);
-   await page.getByRole('button',{name:'Resume winner scrolling',exact:true}).click();await page.mouse.move(0,0);
+   await expect(page.getByRole('button',{name:/winner scrolling/i})).toHaveCount(0);
+   await originals.first().focus();const focused=await carousel.evaluate(el=>el.scrollLeft);
+   await page.waitForTimeout(350);expect(Math.abs(await carousel.evaluate(el=>el.scrollLeft)-focused)).toBeLessThan(1);
+   await originals.first().evaluate(el=>el.blur());
    const distance=await carousel.evaluate(el=>{const count=el.querySelectorAll('button:not([data-winner-copy])').length;return (el.children[count] as HTMLElement).offsetLeft-(el.children[0] as HTMLElement).offsetLeft});
    await carousel.evaluate((el,d)=>{el.scrollLeft=d-1},distance);await expect.poll(()=>carousel.evaluate(el=>el.scrollLeft)).toBeLessThan(distance/2);
    await page.emulateMedia({reducedMotion:'reduce'});await expect(carousel).not.toHaveAttribute('data-automatic');await expect(copies).toHaveCount(0);await expect(page.getByRole('button',{name:/winner scrolling/})).toHaveCount(0);

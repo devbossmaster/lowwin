@@ -10,11 +10,10 @@ import {publicChapaAuthorizationReason,publicChapaCancelledBy,publicChapaPayment
 import {classifyChapaApiError} from '@/lib/chapa-api-error';
 import {allowIdentityRequest} from '@/lib/rate-limit';
 import {assertPlayerContact,contactBotId,decryptPhone,normalizePhone} from '../auth/own-contact';
-import {fulfillBatchInTransaction} from '../auctions/batch';
+import {fulfillBatchInTransaction,rejectRetiredCoupon} from '../auctions/batch';
 import {BidError,submitBidInTransaction,type BidReceipt} from '../auctions/bids';
 import {auctionMaintenance,lockAuctionMaintenance} from '../auctions/maintenance';
 import {isSubmissionFeeOnly} from '../auctions/rules';
-import {lockReferralDiscountInTransaction} from '../referrals/service';
 import {ensureWallet,pointsSchema,seedPlatformAccounts} from '../wallet/ledger';
 import {PAYMENT_TRANSACTION_OPTIONS} from './timing';
 import {measureChapa} from './chapa-timing';
@@ -167,12 +166,13 @@ export async function createChapaCheckout(client:PrismaClient,userId:string,raw:
   }
   const previous=await tx.chapaCheckout.findUnique({where:{userId_key:{userId,key:body.key}}});
   if(previous){if(previous.requestHash!==requestHash)throw new ChapaError(409,'KEY_REUSED','Retry the original payment details with this request key.');return previous}
+  if(body.purpose==='BID')rejectRetiredCoupon(body.couponId);
   if(transport===chapaTransport)throw new ChapaError(410,'PAYMENT_VERSION_RETIRED','Start a new payment through the current secure checkout.');
   // A new command key deliberately creates a fresh attempt. Historical aliases
   // stay permanently bound, and transport replay keeps the original key.
   if(halted)throw new ChapaError(503,'AUCTIONS_PAUSED','New checkouts are paused for auction maintenance. Existing payments can still be checked.');
   if(await tx.chapaCheckout.count({where:{userId,createdAt:{gte:new Date(Date.now()-3600000)}}})>=24)throw new ChapaError(429,'RATE_LIMITED','Too many new payment attempts. Check your existing payment or retry later.');
-  let amountCents:bigint,auctionId:string|null=null,bidNumber:Prisma.Decimal|null=null,grossFee:Prisma.Decimal|null=null,discountPoints=new Prisma.Decimal(0);
+  let amountCents:bigint,auctionId:string|null=null,bidNumber:Prisma.Decimal|null=null,grossFee:Prisma.Decimal|null=null;
   if(body.purpose==='TOP_UP'){
    amountCents=etbToCents(body.amount);if(amountCents<100n||amountCents>4320000n)throw new ChapaError(422,'INVALID_AMOUNT','Top up between 1.00 and 43,200.00 ETB.');
   }else{
@@ -186,15 +186,14 @@ export async function createChapaCheckout(client:PrismaClient,userId:string,raw:
    if(own.some(b=>b.amount.eq(body.amount)))throw new ChapaError(409,'OWN_DUPLICATE','You already submitted this number.');
    if(own.length>=terms.maxDistinctBids)throw new ChapaError(409,'CAP_REACHED','You reached this auction’s submission limit.');
    grossFee=fee.feePoints;
-   if(body.couponId)discountPoints=(await lockReferralDiscountInTransaction(tx,userId,body.couponId,grossFee,terms.ruleVersion)).discountPoints;
-   amountCents=etbToCents(grossFee.sub(discountPoints).toString());
+   amountCents=etbToCents(grossFee.toString());
    if(amountCents<100n||amountCents>4320000n)throw new ChapaError(422,'CHAPA_MINIMUM','This fee is below Chapa’s 1.00 ETB minimum or above its configured limit. Use your wallet for this submission fee.');
    auctionId=a.id;bidNumber=body.amount;
   }
   const id=randomUUID(),merchantReference=`LW${randomBytes(9).toString('hex')}`;
   const returnUrl=new URL(`/payments/chapa/return?checkout=${id}`,process.env.MINI_APP_URL).toString();
   const initialization:ChapaCreate={amountCents:amountCents.toString(),merchantReference,idempotencyKey:`lowwin:${id}`,returnUrl,returnUrlVersion:1,...chapaMethodCatalog.preferences(amountCents)};
-  return tx.chapaCheckout.create({data:{id,userId,purpose:body.purpose,mode:health.mode,credentialFingerprint:health.credentialFingerprint!,key:body.key,requestHash,merchantReference,amountCents,initialization:json(initialization),phoneCipher:contact.phoneCipher,phoneBotId:contact.botId,auctionId,auctionSlug:body.purpose==='BID'?body.auctionSlug:null,bidNumber,grossFee,discountPoints,feeVersion:body.purpose==='BID'?body.feeVersion:null,couponId:body.purpose==='BID'?body.couponId:null,expiresAt:after(86400000)}});
+  return tx.chapaCheckout.create({data:{id,userId,purpose:body.purpose,mode:health.mode,credentialFingerprint:health.credentialFingerprint!,key:body.key,requestHash,merchantReference,amountCents,initialization:json(initialization),phoneCipher:contact.phoneCipher,phoneBotId:contact.botId,auctionId,auctionSlug:body.purpose==='BID'?body.auctionSlug:null,bidNumber,grossFee,feeVersion:body.purpose==='BID'?body.feeVersion:null,expiresAt:after(86400000)}});
  },PAYMENT_TRANSACTION_OPTIONS));
  if(!paid(order)&&!order.checkoutUrl&&sameConfiguration(order)){const initialized=await initializeChapaCheckout(client,order.id,transport,order);if(initialized)return ownChapaCheckout(initialized);return getChapaCheckout(client,userId,order.id)}
  return ownChapaCheckout(order);
@@ -528,10 +527,13 @@ async function verifyChapaCheckoutOnce(client:PrismaClient,id:string,userId:stri
     if(await tx.operation.findUnique({where:{userId_scope_key:{userId:order.userId,scope:'BID',key:order.key}}}))throw new ChapaError(409,'BID_ALREADY_ACCEPTED','The bid was already accepted.');
     if(order.batchId){
      const batch=await tx.bidBatchOrder.findUniqueOrThrow({where:{id:order.batchId}});
-     const locksHeld=batch.auctionId===snapshot.auctionId&&batch.auctionSlug===order.auctionSlug&&batch.userId===snapshot.userId;
-     receipt=await measureChapa('fulfill',()=>fulfillBatchInTransaction(tx,batch,{locksHeld}));
-    }else receipt=await submitBidInTransaction(tx,{userId:order.userId,auctionSlug:order.auctionSlug!,amount:order.bidNumber!.toString(),feeVersion:order.feeVersion!,key:order.key,...(order.couponId?{couponId:order.couponId}:{})},process.env,{allowDepositBonus:false});
-    if(new Prisma.Decimal(receipt.charge.netFeePoints??receipt.charge.feePoints).mul(100).toString()!==order.amountCents.toString())throw new ChapaError(409,'FEE_CHANGED','The discount or fee changed.');
+     if(batch.userId!==order.userId||batch.auctionId!==order.auctionId||batch.auctionSlug!==order.auctionSlug||batch.totalCents!==order.amountCents||batch.couponId!==order.couponId)throw new ChapaError(409,'FEE_CHANGED','The order no longer matches the paid fee.');
+     const locksHeld=batch.auctionId===snapshot.auctionId&&batch.userId===snapshot.userId;
+     receipt=await measureChapa('fulfill',()=>fulfillBatchInTransaction(tx,batch,{locksHeld,qualifyReferral:order.mode==='live'}));
+    }else{
+     receipt=await submitBidInTransaction(tx,{userId:order.userId,auctionSlug:order.auctionSlug!,amount:order.bidNumber!.toString(),feeVersion:order.feeVersion!,key:order.key,...(order.couponId?{couponId:order.couponId}:{})},process.env,{allowDepositBonus:false,recoverExistingCouponPayment:true,qualifyReferral:order.mode==='live'});
+     if(etbToCents(receipt.charge.netFeePoints??receipt.charge.feePoints)!==order.amountCents)throw new ChapaError(409,'FEE_CHANGED','The order no longer matches the paid fee.');
+    }
     await tx.$executeRawUnsafe('RELEASE SAVEPOINT chapa_bid');
    }catch(error){await tx.$executeRawUnsafe('ROLLBACK TO SAVEPOINT chapa_bid');await tx.$executeRawUnsafe('RELEASE SAVEPOINT chapa_bid');receipt=null;reason=error instanceof BidError||error instanceof ChapaError?error.code:'PAID_BID_NOT_ACCEPTED'}
   }

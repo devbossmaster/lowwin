@@ -3,7 +3,7 @@ import type {PrismaClient} from '@prisma/client';
 import {randomUUID} from 'node:crypto';
 const f=vi.hoisted(()=>({role:'OWNER',authenticated:true,revoked:false,limited:false,read:vi.fn(),routeDb:{} as Record<string,unknown>}));
 vi.mock('../src/lib/db',()=>({db:f.routeDb}));
-vi.mock('../src/modules/referrals/service',()=>({getReferralPolicy:f.read}));
+vi.mock('../src/modules/referrals/service',async original=>({...await original<typeof import('../src/modules/referrals/service')>(),getReferralPolicy:f.read}));
 vi.mock('../src/lib/rate-limit',()=>({allowIdentityRequest:vi.fn(async()=>!f.limited)}));
 vi.mock('../src/modules/admin/boundary',async original=>({...await original<typeof import('../src/modules/admin/boundary')>(),requireAdmin:vi.fn(async(_db,_headers,options:{lock?:boolean;permission?:import('../src/modules/admin/permissions').Permission}={})=>{
  const {AdminError}=await import('../src/modules/admin/errors');
@@ -18,10 +18,10 @@ import {requireAdmin} from '../src/modules/admin/boundary';
 import {GET,POST} from '../src/app/api/admin/referrals/route';
 import {activeTask,allowedTasks} from '../src/modules/admin/navigation';
 
-type Policy={id:string;enabled:boolean;discountPercent:number;expiryDays:number;version:number;updatedAt:Date;updatedBy:string|null};
+type Policy={id:string;enabled:boolean;rewardCents:bigint|null;version:number;updatedAt:Date;updatedBy:string|null};
 const headers=new Headers(),now=new Date('2026-10-26T00:00:00Z');
-const input=(patch:Record<string,unknown>={})=>({key:randomUUID(),version:1,discountPercent:10,expiryDays:30,enabled:false,reason:'Review referral reward policy',...patch});
-function fixture(initial:Policy|null={id:'default',enabled:false,discountPercent:10,expiryDays:30,version:1,updatedAt:now,updatedBy:null}){
+const input=(patch:Record<string,unknown>={})=>({key:randomUUID(),version:1,rewardEtb:'10.00',enabled:false,reason:'Review referral reward policy',...patch});
+function fixture(initial:Policy|null={id:'default',enabled:false,rewardCents:1000n,version:1,updatedAt:now,updatedBy:null}){
  let row=initial;const audits=new Map<string,unknown>();
  const mock={
   referralPolicy:{findUnique:vi.fn(async()=>row),create:vi.fn(async({data}:{data:Policy})=>{row=data;return row}),update:vi.fn(async({data}:{data:Omit<Policy,'id'|'version'>&{version:{increment:number}}})=>{row={...row!,...data,version:row!.version+data.version.increment};return row})},
@@ -33,7 +33,7 @@ function fixture(initial:Policy|null={id:'default',enabled:false,discountPercent
 beforeEach(()=>{
  vi.clearAllMocks();Object.assign(f,{role:'OWNER',authenticated:true,revoked:false,limited:false});
  vi.stubEnv('REFERRAL_REWARDS_SCHEMA_READY','true');vi.stubEnv('BETTER_AUTH_URL','https://lowwin.example');
- f.read.mockResolvedValue({configured:false,enabled:false,discountPercent:10,expiryDays:30,version:0,updatedAt:null});
+ f.read.mockResolvedValue({configured:false,enabled:false,rewardEtb:'0.00',version:0,updatedAt:null});
 });
 
 describe('referral reward administration boundary',()=>{
@@ -51,7 +51,7 @@ describe('referral reward administration boundary',()=>{
   f.authenticated=true;f.role='AUDITOR';await expect(readReferralAdmin(db,headers)).rejects.toMatchObject({status:403});expect(f.read).not.toHaveBeenCalled();
  });
  it('returns an explicit unconfigured schema and draft policy without writing it',async()=>{
-  const {db,mock}=fixture();vi.stubEnv('REFERRAL_REWARDS_SCHEMA_READY','false');expect(await readReferralAdmin(db,headers)).toMatchObject({schemaReady:false,policy:{configured:false,enabled:false,discountPercent:10,expiryDays:30,version:0}});expect(mock.referralPolicy.create).not.toHaveBeenCalled();
+  const {db,mock}=fixture();vi.stubEnv('REFERRAL_REWARDS_SCHEMA_READY','false');expect(await readReferralAdmin(db,headers)).toMatchObject({schemaReady:false,policy:{configured:false,enabled:false,rewardEtb:'0.00',version:0}});expect(mock.referralPolicy.create).not.toHaveBeenCalled();
   await expect(saveReferralAdmin(db,headers,input())).rejects.toMatchObject({status:503});expect(mock.$transaction).not.toHaveBeenCalled();
  });
  it.each(['CATALOG_MANAGER','SUPPORT','FULFILLMENT','PAYMENTS_OPERATOR','AUDITOR'])('denies %s a policy write',async role=>{const {db,mock}=fixture();f.role=role;await expect(saveReferralAdmin(db,headers,input())).rejects.toMatchObject({status:403});expect(mock.$transaction).not.toHaveBeenCalled()});
@@ -61,21 +61,21 @@ describe('referral reward administration boundary',()=>{
  it('reauthorizes the login session with a staff lock inside the transaction before changing the policy',async()=>{
   const {db,mock}=fixture();f.revoked=true;await expect(saveReferralAdmin(db,headers,input())).rejects.toMatchObject({status:403});expect(requireAdmin).toHaveBeenCalledWith(db,headers,{permission:'settings',lock:true});expect(mock.referralPolicy.update).not.toHaveBeenCalled();expect(mock.adminAudit.create).not.toHaveBeenCalled();
  });
- it.each([{discountPercent:4},{discountPercent:16},{discountPercent:5.5},{expiryDays:14},{expiryDays:31},{expiryDays:20.5},{enabled:'true'},{reason:'x'},{providerEnabled:true}])('rejects unsupported policy values %j',async patch=>{
+ it.each([{rewardEtb:'0'},{rewardEtb:'-1'},{rewardEtb:'0.001'},{rewardEtb:'100001'},{rewardEtb:'1e3'},{rewardEtb:5},{enabled:'true'},{reason:'x'},{discountPercent:5}])('rejects unsupported policy values %j',async patch=>{
   const {db,mock}=fixture();expect(referralPolicyInput.safeParse(input(patch)).success).toBe(false);await expect(saveReferralAdmin(db,headers,input(patch))).rejects.toThrow();expect(mock.$transaction).not.toHaveBeenCalled();
  });
  it('accepts boundary values, audits prior/next settings and changes no payment flag',async()=>{
   const {db,mock,current}=fixture();vi.stubEnv('PAYMENTS_LIVE_ENABLED','false');vi.stubEnv('CHAPA_ENABLED','false');
-  const saved=await saveReferralAdmin(db,headers,input({discountPercent:5,expiryDays:15,enabled:true}));expect(saved).toMatchObject({configured:true,version:2,discountPercent:5,expiryDays:15,enabled:true,updatedAt:now.toISOString()});
-  expect(current()?.updatedBy).toBe('owner-fixture');expect(mock.adminAudit.create).toHaveBeenCalledWith({data:expect.objectContaining({action:'REFERRAL_POLICY_UPDATED',target:'default',details:expect.objectContaining({reason:'Review referral reward policy',previous:{enabled:false,discountPercent:10,expiryDays:30,version:1},receipt:saved})})});expect(process.env.PAYMENTS_LIVE_ENABLED).toBe('false');expect(process.env.CHAPA_ENABLED).toBe('false');
-  expect(await saveReferralAdmin(db,headers,input({version:2,discountPercent:15,expiryDays:30,enabled:false}))).toMatchObject({version:3,discountPercent:15,expiryDays:30,enabled:false});
+  const saved=await saveReferralAdmin(db,headers,input({rewardEtb:'0.01',enabled:true}));expect(saved).toMatchObject({configured:true,version:2,rewardEtb:'0.01',enabled:true,updatedAt:now.toISOString()});
+  expect(current()?.updatedBy).toBe('owner-fixture');expect(mock.adminAudit.create).toHaveBeenCalledWith({data:expect.objectContaining({action:'REFERRAL_POLICY_UPDATED',target:'default',details:expect.objectContaining({reason:'Review referral reward policy',previous:{enabled:false,rewardEtb:'10.00',version:1},receipt:saved})})});expect(process.env.PAYMENTS_LIVE_ENABLED).toBe('false');expect(process.env.CHAPA_ENABLED).toBe('false');
+  expect(await saveReferralAdmin(db,headers,input({version:2,rewardEtb:'100000',enabled:false}))).toMatchObject({version:3,rewardEtb:'100000.00',enabled:false});
  });
  it('creates a draft only from expected version zero and never enables rewards implicitly',async()=>{
   const {db,mock}=fixture(null);await expect(saveReferralAdmin(db,headers,input())).rejects.toMatchObject({status:409});expect(mock.referralPolicy.create).not.toHaveBeenCalled();expect(await saveReferralAdmin(db,headers,input({version:0}))).toMatchObject({version:1,enabled:false});
  });
  it('replays the same audited receipt without a second write and rejects changed-input key reuse',async()=>{
   const {db,mock}=fixture(),command=input();const first=await saveReferralAdmin(db,headers,command);expect(await saveReferralAdmin(db,headers,command)).toEqual(first);expect(mock.referralPolicy.update).toHaveBeenCalledTimes(1);expect(mock.adminAudit.create).toHaveBeenCalledTimes(1);
-  await expect(saveReferralAdmin(db,headers,{...command,discountPercent:15})).rejects.toMatchObject({status:409});expect(mock.referralPolicy.update).toHaveBeenCalledTimes(1);
+  await expect(saveReferralAdmin(db,headers,{...command,rewardEtb:'15'})).rejects.toMatchObject({status:409});expect(mock.referralPolicy.update).toHaveBeenCalledTimes(1);
  });
  it('rejects a stale expected version without changing any setting',async()=>{
   const {db,mock}=fixture();await expect(saveReferralAdmin(db,headers,input({version:0}))).rejects.toMatchObject({status:409});expect(mock.referralPolicy.update).not.toHaveBeenCalled();expect(mock.adminAudit.create).not.toHaveBeenCalled();
@@ -91,7 +91,7 @@ describe('referral policy HTTP transport',()=>{
   const response=await POST(new Request('https://lowwin.example/api/admin/referrals',{method:'POST',headers:{origin:'https://outside.example','content-type':'application/json'},body:JSON.stringify({action:'save-policy',input:input()})}));expect(response.status).toBe(403);expect(requireAdmin).not.toHaveBeenCalled();
  });
  it('rejects unsupported commands and bounds inputs on same-origin requests',async()=>{
-  for(const body of [{action:'enable-provider',input:input()},{action:'save-policy',input:input({discountPercent:100})}]){
+  for(const body of [{action:'enable-provider',input:input()},{action:'save-policy',input:input({rewardEtb:'1000000'})}]){
    const response=await POST(new Request('https://lowwin.example/api/admin/referrals',{method:'POST',headers:{origin:'https://lowwin.example','content-type':'application/json'},body:JSON.stringify(body)}));expect(response.status).toBe(422);expect(response.headers.get('cache-control')).toContain('private, no-store');
   }
  });

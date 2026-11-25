@@ -3,6 +3,7 @@ import {PrismaClient} from '@prisma/client';
 import {Bot} from 'grammy';
 import {scheduleAlerts,dispatchBatch,expandPendingCampaigns} from '../src/modules/notifications/service';
 import {processOneVerifyRequest} from '../src/modules/payments/service';
+import {settlePendingReferralWalletRewards} from '../src/modules/referrals/service';
 import {notificationSettings} from '../src/modules/notifications/settings';
 import {installTelegramRateLimit} from '../src/modules/notifications/telegram-rate';
 import {REMINDER_SCAN_INTERVAL_MS,runNotificationLanes} from '../src/modules/notifications/worker-lanes';
@@ -37,6 +38,7 @@ try{
   cleanupContacts:()=>jobsDb.fulfillmentCase.updateMany({where:{contactDeleteAt:{lte:new Date()},contactCipher:{not:null}},data:{contactCipher:null}}),
   expand:()=>shouldContinue()?expandPendingCampaigns(jobsDb,{limit:settings.NOTIFICATION_EXPANSION_BATCHES}):Promise.resolve(0),
   verify:()=>shouldContinue()?processOneVerifyRequest(verificationDb):Promise.resolve(false),
+  settleReferrals:()=>shouldContinue()?settlePendingReferralWalletRewards(verificationDb):Promise.resolve(false),
   // Independent lanes immediately refill after completion. A slow bulk HTTP
   // call cannot impose a barrier on every other lane or the personal lane.
   send:priority=>shouldContinue()?dispatchBatch(deliveryDb,bot,{limit:priority?1:2,concurrency:1,priority,shouldContinue}):Promise.resolve(0),

@@ -2,8 +2,8 @@ import {setTimeout as delay} from 'node:timers/promises';
 import type {NotificationSettings} from './settings';
 
 export const REMINDER_SCAN_INTERVAL_MS=5_000;
-type LaneTasks={schedule:()=>Promise<unknown>;cleanupContacts:()=>Promise<unknown>;expand:()=>Promise<number>;verify:()=>Promise<boolean>;send:(priority:'high'|undefined)=>Promise<number>};
-type Lane='schedule'|'contact-cleanup'|'expansion'|'verification'|'personal-delivery'|'delivery';
+type LaneTasks={schedule:()=>Promise<unknown>;cleanupContacts:()=>Promise<unknown>;expand:()=>Promise<number>;verify:()=>Promise<boolean>;settleReferrals?:()=>Promise<boolean>;send:(priority:'high'|undefined)=>Promise<number>};
+type Lane='schedule'|'contact-cleanup'|'expansion'|'verification'|'referral-rewards'|'personal-delivery'|'delivery';
 
 /** A bounded set of independent loops, not one serial schedule→verify→send
  * chain. One lane remains available for personal messages during a broadcast.
@@ -25,6 +25,7 @@ export async function runNotificationLanes(tasks:LaneTasks,settings:Notification
   lane('verification',tasks.verify,1000,50),
   lane('personal-delivery',()=>tasks.send('high'),200,0),
  ];
+ if(tasks.settleReferrals)loops.push(lane('referral-rewards',tasks.settleReferrals,1500,100));
  for(let index=1;index<settings.NOTIFICATION_SEND_CONCURRENCY;index++)loops.push(lane('delivery',()=>tasks.send(undefined),200,0));
  await Promise.all(loops);
 }

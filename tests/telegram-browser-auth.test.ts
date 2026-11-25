@@ -184,7 +184,7 @@ describe.skipIf(!database)('shared Better Auth Telegram browser and Mini App int
  describe('website referral attribution',()=>{
   beforeAll(async()=>{
    process.env.REFERRAL_REWARDS_SCHEMA_READY='true';
-   await db.referralPolicy.upsert({where:{id:'default'},create:{enabled:true,discountPercent:10,expiryDays:30,updatedBy:'local-fixture-owner'},update:{enabled:true}});
+   await db.referralPolicy.upsert({where:{id:'default'},create:{enabled:true,rewardCents:1250n,updatedBy:'local-fixture-owner'},update:{enabled:true,rewardCents:1250n}});
   });
   afterAll(()=>{process.env.REFERRAL_REWARDS_SCHEMA_READY='false'});
   async function invite(){

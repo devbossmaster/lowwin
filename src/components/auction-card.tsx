@@ -25,7 +25,8 @@ export function AuctionCard({auction:initialAuction,serverNow,serverObservedAt,p
  useAuctionRefresh(activity,initialAuction.status,Boolean(initialAuction.result));
  const auction={...initialAuction,status:activity?.status??initialAuction.status,startsAt:activity?.startsAt??initialAuction.startsAt,endsAt:activity?.endsAt??initialAuction.endsAt,bidCount:activity?.bids??initialAuction.bidCount};
  const {language}=useMiniLocale(),am=language==='am',live=auction.status==='live',upcoming=auction.status==='upcoming';
- const detail=`/auctions/${auction.code}`,title=am?(auction.product.titleAm?.trim()||auction.product.title):auction.product.title;
+ const publishedResult=(auction.status==='closed'||auction.status==='cancelled')&&(activity?.resultReady||initialAuction.result);
+ const detail=publishedResult?`/winners/${auction.code}`:`/auctions/${auction.code}`,title=am?(auction.product.titleAm?.trim()||auction.product.title):auction.product.title;
  const statusText={live:am?'ክፍት':'Live',upcoming:am?'የሚመጣ':'Upcoming',closing:am?'ውጤት በመጠባበቅ':'Result pending',closed:am?'ተጠናቋል':'Completed',cancelled:am?'ተሰርዟል':'Cancelled'}[auction.status];
  const fee=formatEtb(auction.terms.entryFeePoints),hasFee=etbToCents(auction.terms.entryFeePoints)>0n;
  const bidCount=Number.isSafeInteger(auction.bidCount)&&auction.bidCount>=0?auction.bidCount:null;

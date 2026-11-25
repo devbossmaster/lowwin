@@ -9,14 +9,26 @@ import {databaseErrorSummary} from '@/lib/database-error';
 import {catalogProductPreview} from '@/lib/catalog-preview';
 export default async function Home({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}){
  const params=await searchParams,query=parseHomeQuery(params);
- return <HomePageContent query={query}><Suspense fallback={null}><HomeServerData query={query}/></Suspense></HomePageContent>;
-}
-async function HomeServerData({query}:{query:CatalogQuery}){
- try{
  const clock=serverNow();
- // Recent winners use their own cache and loading boundary in the Home feed.
- const [categories,auctions,managed,experience,now]=await Promise.all([clock.then(at=>listCategories(at)),clock.then(at=>listAuctions(query,at,10)),publicHomeContent(),publicHomeExperience(),clock]);
+ return <HomePageContent query={query}>
+  <Suspense fallback={null}><HomeShellData clock={clock}/></Suspense>
+  <Suspense fallback={null}><HomeAuctionData query={query} clock={clock}/></Suspense>
+ </HomePageContent>;
+}
+async function HomeShellData({clock}:{clock:Promise<Date>}){
+ try{
+ const [categories,managed,experience,now]=await Promise.all([clock.then(at=>listCategories(at)),publicHomeContent(),publicHomeExperience(),clock]);
  const media=resolveLearnMoreMedia(experience?.video??{youtube:process.env.LOWIN_YOUTUBE_URL,local:process.env.LOWIN_HOW_TO_VIDEO_PATH,poster:process.env.LOWIN_HOW_TO_POSTER_PATH});
- return <HomeDataSeed auctionHref={homeAuctionHref(query)} initial={{categories,auctions:{...auctions,items:auctions.items.map(catalogProductPreview)},managed,experience,media,serverNow:now.toISOString()}}/>;
- }catch(error){console.warn('home_data_unavailable',databaseErrorSummary(error));return <HomeDataSeed error/>}
+ return <HomeDataSeed data={{initial:{categories,managed,experience,media,serverNow:now.toISOString()},error:false}}/>;
+ }catch(error){console.warn('home_data_unavailable',databaseErrorSummary(error));return <HomeDataSeed data={{error:true}}/>}
+}
+async function HomeAuctionData({clock,query}:{clock:Promise<Date>;query:CatalogQuery}){
+ const href=homeAuctionHref(query);
+ try{
+  const auctions=await listAuctions(query,await clock,10);
+  return <HomeDataSeed data={{batch:{href,auctions:{...auctions,items:auctions.items.map(catalogProductPreview)}}}}/>;
+ }catch(error){
+  console.warn('home_auctions_unavailable',databaseErrorSummary(error));
+  return <HomeDataSeed data={{batch:{href,failed:true}}}/>;
+ }
 }

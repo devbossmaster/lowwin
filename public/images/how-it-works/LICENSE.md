@@ -1,9 +1,7 @@
-# unDraw illustrations used by Lowwin
+# ManyPixels illustrations used by Lowwin
 
-Copyright 2026 Katerina Limpitsouni. Retrieved November 13, 2026.
+Copyright 2020 ManyPixels Pte Ltd.
 
-Official license: https://undraw.co/license
+See the licence in the [ManyPixels illustration gallery](https://www.manypixels.co/gallery).
 
-unDraw permits downloading, copying, modifying, distributing and using its assets in commercial and noncommercial projects without permission or attribution. It does not permit compiling or redistributing the assets as packs, replicating a competing illustration service, or using assets for AI/ML training, fine-tuning, datasets or model development. Included brand logos, if any, remain the trademarks of their owners and imply no endorsement.
-
-Lowwin uses these illustrations as decorative website artwork. They are not evidence of customers, payments or winners, and are not used to train or develop AI models. Only the editable accent color was changed to Lowwin blue. Original page/download URLs and content hashes are recorded in sources.json.
+Lowwin uses three gallery illustrations as artwork in its bidding guide. ManyPixels permits this use in commercial and personal projects without required attribution. The licence restricts repackaging the illustrations and using them to replicate the gallery or build a competing service. Download URLs and content hashes are recorded in sources.json.

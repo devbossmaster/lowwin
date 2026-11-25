@@ -37,6 +37,7 @@ const schemas={
   publish:z.object({key,auctionId:id,version}).strict(),
   fee:z.object({key,auctionId:id,version,feePoints:points,reason:text(1000)}).strict(),
   deadline:z.object({key,auctionId:id,version,endsAt:z.iso.datetime(),reason:text(1000),overrideConfirmation:z.string().min(1).max(100).optional()}).strict(),
+  startTime:z.object({key,auctionId:id,version,startsAt:z.iso.datetime(),reason:text(1000)}).strict(),
   homeOrder:z.object({key,auctionId:id,version,homeOrder,featured:z.boolean().optional()}).strict(),
   presentation:z.object({key,auctionId:id,version,title:text(120),titleAm:localized(120),description:text(1500),descriptionAm:localized(1500),condition:text(100),conditionAm:localized(100),imageIds:z.array(id).min(1).max(8),reason:text(1000)}).strict(),
   deleteDraft:z.object({key,auctionId:id,confirmation:text(100),reason:text(1000)}).strict(),
@@ -50,9 +51,9 @@ export const homeContentSchema=z.object({headline:text(90),lead:text(350),headli
 export const faqContentSchema=z.object({items:z.array(z.object({question:text(160),answer:text(1500),questionAm:text(160).optional(),answerAm:text(1500).optional()}).strict()).max(30)}).strict();
 const asJson=(value:unknown)=>JSON.parse(JSON.stringify(value,(_key,item)=>typeof item==='bigint'?item.toString():item)) as Prisma.InputJsonValue;
 async function lockAuction(tx:Prisma.TransactionClient,auctionId:string){const rows=await tx.$queryRaw<{id:string}[]>`SELECT id FROM "Auction" WHERE id=${auctionId} FOR UPDATE`;if(!rows.length)throw new AdminError(404,'Auction not found.')}
-async function lockDeadlineAuction(tx:Prisma.TransactionClient,auctionId:string){
+async function lockScheduleAuction(tx:Prisma.TransactionClient,auctionId:string){
   // The row-locking SELECT only gets a row after the shared barrier returns.
-  // Take both locks with a deadline-specific, transaction-local wait limit.
+  // Bound the wait for both locks when editing a published schedule.
   const rows=await tx.$queryRaw<{id:string}[]>`
     WITH config AS MATERIALIZED (SELECT set_config('lock_timeout','2s',true)),
     barrier AS MATERIALIZED (SELECT ${sharedAuctionMaintenanceLock} FROM config)
@@ -61,17 +62,17 @@ async function lockDeadlineAuction(tx:Prisma.TransactionClient,auctionId:string)
   if(!rows.length)throw new AdminError(404,'Auction not found.');
 }
 
-type DeadlineSnapshot = {
+type ScheduleSnapshot = {
   id:string; code:string; status:string; publishedAt:Date|null; startsAt:Date|null; endsAt:Date|null;
   controlVersion:number; acceptedBidCount:number; publishedEndsAt:Date|null;
   maxExtensionMinutes:number|null; allowPaidShortening:boolean|null; shortenNoticeMinutes:number|null;
   finalized:boolean; now:Date;
 };
 
-async function changeDeadline(tx:Prisma.TransactionClient, data:z.infer<typeof schemas.deadline>, actorId:string, operationKey:string) {
+async function readScheduleForUpdate(tx:Prisma.TransactionClient,auctionId:string,expectedVersion:number) {
   // The caller holds the auction row lock. Take a fresh snapshot after waiting
   // for the locks, using the same database clock as the published-auction guard.
-  const [auction]=await measureAdmin('deadline_read',()=>tx.$queryRaw<DeadlineSnapshot[]>`
+  const [auction]=await tx.$queryRaw<ScheduleSnapshot[]>`
     SELECT a.id,a.code,a.status,a."publishedAt",a."startsAt",a."endsAt",a."controlVersion",a."acceptedBidCount",
       terms."publishedEndsAt",terms."maxExtensionMinutes",terms."allowPaidShortening",terms."shortenNoticeMinutes",
       (settlement.id IS NOT NULL OR result.id IS NOT NULL) AS finalized,clock_timestamp() AS now
@@ -79,9 +80,35 @@ async function changeDeadline(tx:Prisma.TransactionClient, data:z.infer<typeof s
     LEFT JOIN "AuctionTerms" terms ON terms."auctionId"=a.id
     LEFT JOIN "AuctionSettlement" settlement ON settlement."auctionId"=a.id
     LEFT JOIN "PublicAuctionResult" result ON result."auctionId"=a.id
-    WHERE a.id=${data.auctionId}
-  `);
-  if(auction.controlVersion!==data.version)throw new AdminError(409,'Auction controls changed. Reload before saving.');
+    WHERE a.id=${auctionId}
+  `;
+  if(auction.controlVersion!==expectedVersion)throw new AdminError(409,'Auction controls changed. Reload before saving.');
+  return auction;
+}
+
+async function advanceAuctionStart(tx:Prisma.TransactionClient,data:z.infer<typeof schemas.startTime>,actorId:string,operationKey:string) {
+  const auction=await measureAdmin('start_time_read',()=>readScheduleForUpdate(tx,data.auctionId,data.version));
+  const {startsAt,endsAt,now,publishedAt}=auction;
+  if(!publishedAt||publishedAt>now||!['SCHEDULED','LIVE'].includes(auction.status)||!startsAt||startsAt<=now||
+    !endsAt||endsAt<=startsAt||auction.acceptedBidCount!==0||auction.finalized) {
+    throw new AdminError(409,'Start time can only change while the published auction is still upcoming.');
+  }
+  const next=new Date(data.startsAt);
+  if(next<=now||next>=startsAt)throw new AdminError(422,'Choose a start time in the future that is earlier than the current start.');
+
+  const controlVersion=auction.controlVersion+1;
+  await measureAdmin('start_time_write',async()=>{
+    await tx.auctionControlRevision.create({data:{
+      auctionId:auction.id,version:controlVersion,kind:'START_TIME',actorId,operationKey,reason:data.reason,
+      before:{startsAt:startsAt.toISOString()},after:{startsAt:next.toISOString()},
+    }});
+    await tx.auction.update({where:{id:auction.id},data:{startsAt:next,controlVersion}});
+  });
+  return {auctionId:auction.id,controlVersion,startsAt:next.toISOString()};
+}
+
+async function changeDeadline(tx:Prisma.TransactionClient, data:z.infer<typeof schemas.deadline>, actorId:string, operationKey:string) {
+  const auction=await measureAdmin('deadline_read',()=>readScheduleForUpdate(tx,data.auctionId,data.version));
   const {endsAt:previous,startsAt,now,maxExtensionMinutes,shortenNoticeMinutes}=auction;
   if(maxExtensionMinutes===null||shortenNoticeMinutes===null||!auction.publishedAt||!startsAt||!previous||previous<=now||!['LIVE','SCHEDULED'].includes(auction.status)||auction.finalized)throw new AdminError(409,'The deadline can change only for an open, unsettled published auction.');
 
@@ -174,7 +201,8 @@ async function prepareMedia(data:z.infer<typeof schemas.media>,role:StaffRole){
 }
 export async function adminMutation(client:PrismaClient,headers:Headers,action:AdminAction,raw:unknown) {
   if(!Object.hasOwn(schemas,action))throw new AdminError(404,'Unknown admin command.');
-  const highRisk=['cancel','publish','fee','deadline','homeOrder','presentation','removeCancelled'].includes(action);
+  const scheduleChange=action==='deadline'||action==='startTime';
+  const highRisk=scheduleChange||['cancel','publish','fee','homeOrder','presentation','removeCancelled'].includes(action);
   const input=schemas[action].parse(raw),permission=action==='content'&&['terms','privacy'].includes(schemas.content.parse(input).id)?'settings':highRisk?'cancel':'catalog',owner=await requireAdmin(client,headers,{permission}),hash=digest(JSON.stringify({action,input}));
   // Image decoding can take seconds. Start it before opening the transaction and
   // keep its result behind the fresh authorization and idempotency checks.
@@ -183,8 +211,8 @@ export async function adminMutation(client:PrismaClient,headers:Headers,action:A
   // All auction writes acquire the auction row BEFORE staff/idempotency and wallet
   // locks. The unchanged cancellation command then locks wallet keys in stable order.
   const receipt=await measureAdmin('transaction',()=>client.$transaction(async tx=>{
-    if(action==='deadline'){
-      await lockDeadlineAuction(tx,schemas.deadline.parse(input).auctionId);
+    if(scheduleChange){
+      await lockScheduleAuction(tx,schemas[action].parse(input).auctionId);
     }else{
       await lockAuctionMaintenance(tx);
       if(action==='publish'&&(await readAuctionMaintenance(tx)).halted)throw new AdminError(503,'Publication is paused for auction maintenance.');
@@ -254,6 +282,9 @@ export async function adminMutation(client:PrismaClient,headers:Headers,action:A
     }else if(action==='deadline'){
       const changed=await changeDeadline(tx,schemas.deadline.parse(input),actor.id,operationKey);
       target=changed.auctionId;receipt=changed;
+    }else if(action==='startTime'){
+      const changed=await advanceAuctionStart(tx,schemas.startTime.parse(input),actor.id,operationKey);
+      target=changed.auctionId;receipt=changed;
     }else if(action==='homeOrder'){
       const data=schemas.homeOrder.parse(input);
       const auction=await tx.auction.findUniqueOrThrow({where:{id:data.auctionId},select:{
@@ -310,13 +341,14 @@ export async function adminMutation(client:PrismaClient,headers:Headers,action:A
       const replacement=await tx.auction.create({data:{code:`LW-${suffix.toUpperCase()}`,slug:`lowin-${suffix}`,isDemo:original.isDemo,draft:{create:{body}}}});target=replacement.id;receipt={auctionId:target,replaces:original.id};
     }
     await tx.adminAudit.create({data:{actorId:actor.id,action:action.toUpperCase(),target,operationKey,requestHash:hash,details:{receipt:asJson(receipt),...(contentBefore!==undefined?{before:asJson(contentBefore)}:{})}}});return receipt;
-  },{timeout:action==='deadline'?12000:120000,maxWait:action==='deadline'?3000:15000,isolationLevel:Prisma.TransactionIsolationLevel.ReadCommitted})).catch(error=>{
-    if(action==='deadline'&&error instanceof Prisma.PrismaClientKnownRequestError&&error.code==='P2010'&&error.meta?.code==='55P03'){
+  },{timeout:scheduleChange?12000:120000,maxWait:scheduleChange?3000:15000,isolationLevel:Prisma.TransactionIsolationLevel.ReadCommitted})).catch(error=>{
+    if(scheduleChange&&error instanceof Prisma.PrismaClientKnownRequestError&&error.code==='P2010'&&error.meta?.code==='55P03'){
+      if(action==='startTime')throw new AdminError(409,'The auction is busy. Try saving the start time again.','START_TIME_BUSY');
       throw new AdminError(409,'The auction is busy. Try saving the deadline again.','DEADLINE_BUSY');
     }
     throw error;
   });
-  if(['category','product','deleteProduct','content','publish','fee','deadline','homeOrder','presentation','removeCancelled','cancel'].includes(action))await measureAdmin('public_cache',clearPublicDataCache);
+  if(scheduleChange||['category','product','deleteProduct','content','publish','fee','homeOrder','presentation','removeCancelled','cancel'].includes(action))await measureAdmin('public_cache',clearPublicDataCache);
   return receipt;
 }
 export async function adminRead(client:PrismaClient,headers:Headers,path:string[],params=new URLSearchParams()) {

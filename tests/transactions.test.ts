@@ -5,6 +5,7 @@ import {execFileSync} from 'node:child_process';
 import {createRequire} from 'node:module';
 import {getTransactions,getWalletTransaction,transactionsQuerySchema} from '../src/modules/wallet/transactions';
 import {verifiedReferralUser,realReferralAuction,earnedReferralCoupon} from './referral-fixtures';
+import {recordLegacyCouponBid} from './legacy-coupon-fixtures';
 import {submitBid} from '../src/modules/auctions/bids';
 import {quoteBidBatch} from '../src/modules/auctions/batch';
 import {creditDevelopmentPoints,reconcile} from '../src/modules/wallet/ledger';
@@ -42,7 +43,7 @@ describe.skipIf(!database)('owner-only unified transactions on isolated PostgreS
  }
  it('nets wallet coupons using committed receipts and exposes separate owned details without mutating money',async()=>{
   const user=(await verifiedReferralUser(db)).id;await creditDevelopmentPoints(db,user,'200',randomUUID());const coupon=(await earnedReferralCoupon(db,user)).coupon,auction=await realReferralAuction(db,20);
-  await submitBid(db,{userId:user,auctionSlug:auction.slug!,amount:'2',feeVersion:1,couponId:coupon.id,key:randomUUID()});const journals=await db.journal.count(),page=await getTransactions(db,user);
+  await recordLegacyCouponBid(db,{userId:user,auctionSlug:auction.slug!,amount:'2',feeVersion:1,couponId:coupon.id,key:randomUUID()});const journals=await db.journal.count(),page=await getTransactions(db,user);
   expect(page.items).toHaveLength(1);expect(page.items[0]).toMatchObject({source:'wallet',type:'BID',amount:'18',direction:'outgoing',summary:'done',paymentMethod:'Wallet'});expect(page.items[0]).not.toHaveProperty('references');expect(page.items[0]).not.toHaveProperty('userId');
   expect((await getWalletTransaction(db,user,page.items[0].id)).item).toMatchObject({grossFee:'20',discountPoints:'2',amount:'18',bidNumber:'2',currency:'ETB'});expect(await db.journal.count()).toBe(journals);expect(await reconcile(db)).toEqual([]);
  });

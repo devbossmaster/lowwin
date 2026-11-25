@@ -3,71 +3,136 @@ import {PrismaClient} from '@prisma/client';
 import {Client} from 'pg';
 import {execFileSync} from 'node:child_process';
 import {randomInt,randomUUID} from 'node:crypto';
-import {mkdirSync,readFileSync,writeFileSync} from 'node:fs';
+import {readFileSync} from 'node:fs';
 import {contactBotId} from '../src/modules/auth/own-contact';
-import {attributeNewReferralInTransaction,availableReferralCouponCount,getBidDiscountQuote,getReferralOverview,getReferralPolicy,recordBotReferralStart,referralPolicySchema} from '../src/modules/referrals/service';
-import {getOwnBidState,submitBid,submitBidInTransaction} from '../src/modules/auctions/bids';
+import {attributeNewReferralInTransaction,getReferralOverview,getReferralPolicy,recordBotReferralStart,referralPolicySchema,settlePendingReferralWalletRewards} from '../src/modules/referrals/service';
+import {submitBid,submitBidInTransaction} from '../src/modules/auctions/bids';
 import {creditDevelopmentPoints,reconcile} from '../src/modules/wallet/ledger';
 import {verifyFixtureContact} from './contact-fixtures';
 import {signedLaunch} from './helpers';
-import {earnedReferralCoupon,guardedReferralFixture,realReferralAuction,referredRegistration,verifiedReferralUser} from './referral-fixtures';
+import {guardedReferralFixture,realReferralAuction,referredRegistration,verifiedReferralUser} from './referral-fixtures';
+import {bidAuction} from './bid-fixtures';
 
 const url=process.env.REFERRAL_TEST_DATABASE_URL??process.env.TEST_DATABASE_URL;
 describe.skipIf(!url)('referral rewards on isolated PostgreSQL',()=>{
- let db:PrismaClient,sponsor:Awaited<ReturnType<typeof verifiedReferralUser>>,other:typeof sponsor,registered:Awaited<ReturnType<typeof referredRegistration>>,firstCouponId:string;
+ let db:PrismaClient,sponsor:Awaited<ReturnType<typeof verifiedReferralUser>>,other:typeof sponsor,registered:Awaited<ReturnType<typeof referredRegistration>>;
  const balance=async(userId:string)=>(await db.ledgerAccount.findUniqueOrThrow({where:{name:`user:${userId}:available`}})).balance.toString();
  beforeAll(async()=>{
   guardedReferralFixture();
   execFileSync(process.execPath,['node_modules/prisma/build/index.js','migrate','deploy'],{env:process.env,stdio:'pipe'});
-  db=new PrismaClient();await db.referralPolicy.create({data:{enabled:true,discountPercent:10,expiryDays:30,updatedBy:'local-fixture-owner'}});
+  db=new PrismaClient();await db.referralPolicy.create({data:{enabled:true,rewardCents:1250n,updatedBy:'local-fixture-owner'}});
   sponsor=await verifiedReferralUser(db);other=await verifiedReferralUser(db);await creditDevelopmentPoints(db,sponsor.id,'100',`referral-fixture-${randomUUID()}`);await creditDevelopmentPoints(db,other.id,'100',`referral-fixture-${randomUUID()}`);
  },60000);
  afterAll(async()=>{await db?.$disconnect();const {db:shared}=await import('../src/lib/db');await shared.$disconnect()});
  it('validates the configured range and leaves disabled old schemas untouched',async()=>{
-  for(const [discountPercent,expiryDays] of [[4,30],[16,30],[10,14],[10,31],[5.5,20]])expect(referralPolicySchema.safeParse({enabled:true,discountPercent,expiryDays}).success).toBe(false);
-  expect((await getReferralPolicy(db,{REFERRAL_REWARDS_SCHEMA_READY:'false'})).configured).toBe(false);expect(await getReferralOverview(db,sponsor.id,{REFERRAL_REWARDS_SCHEMA_READY:'false'})).toMatchObject({configured:false,shareUrl:null,coupons:[]});
-  await expect(getBidDiscountQuote(db,sponsor.id,'unused',undefined,{REFERRAL_REWARDS_SCHEMA_READY:'false'})).rejects.toMatchObject({status:503});
+  for(const rewardEtb of ['0','-1','1.001','NaN','100001','1e3',5])expect(referralPolicySchema.safeParse({enabled:true,rewardEtb}).success).toBe(false);
+  expect((await getReferralPolicy(db,{REFERRAL_REWARDS_SCHEMA_READY:'false'})).configured).toBe(false);expect(await getReferralOverview(db,sponsor.id,{REFERRAL_REWARDS_SCHEMA_READY:'false'})).toMatchObject({configured:false,shareUrl:null,totalEarnedEtb:'0.00'});
  });
  it('binds a trusted first bot start to contact registration and never retroclaims a customer',async()=>{
   registered=await referredRegistration(db,sponsor.id);const signup=await db.referralSignup.findUniqueOrThrow({where:{referredUserId:registered.id}});expect(signup.referrerUserId).toBe(sponsor.id);expect(signup.firstBidId).toBeNull();
   const pending=await db.referralPendingSignup.findUniqueOrThrow({where:{botId_telegramId:{botId:contactBotId(),telegramId:String(registered.telegramId)}}});expect(pending.consumedUserId).toBe(registered.id);expect(pending.expiresAt.getTime()-pending.createdAt.getTime()).toBe(30*86400000);
   expect(await recordBotReferralStart(db,String(other.telegramId),contactBotId(),registered.payload)).toBe(false);expect(await db.referralSignup.findUnique({where:{referredUserId:other.id}})).toBeNull();
-  expect((await getReferralOverview(db,sponsor.id)).counts).toEqual({signedUp:1,qualified:0,earned:0,available:0});
+  expect((await getReferralOverview(db,sponsor.id)).counts).toEqual({signedUp:1,qualified:0,earned:0});
  });
- it('awards nothing for a failed attempt, then exactly once for the first accepted bid and replay',async()=>{
-  const auction=await realReferralAuction(db,10),key=randomUUID(),input={userId:registered.id,auctionSlug:auction.slug!,amount:'7',feeVersion:1,key};await expect(submitBid(db,input)).rejects.toMatchObject({code:'INSUFFICIENT_POINTS'});expect(await db.referralCoupon.count()).toBe(0);
-  await creditDevelopmentPoints(db,registered.id,'100',`referral-fixture-${randomUUID()}`);const first=await submitBid(db,input);expect(await submitBid(db,input)).toEqual(first);await submitBid(db,{...input,amount:'9',key:randomUUID()});
-  const coupon=await db.referralCoupon.findUniqueOrThrow({where:{referredUserId:registered.id}});firstCouponId=coupon.id;expect(coupon.ownerUserId).toBe(sponsor.id);expect(coupon.percent).toBe(10);expect(coupon.expiresAt.getTime()-coupon.createdAt.getTime()).toBe(30*86400000);expect(await db.referralCoupon.count()).toBe(1);expect(first.hold.extraReserved).toBe('0');
-  expect((await getReferralOverview(db,sponsor.id)).counts).toEqual({signedUp:1,qualified:1,earned:1,available:1});expect(await reconcile(db)).toEqual([]);
+ it('credits once after the first accepted bid and leaves failed or later bids without rewards',async()=>{
+  const auction=await realReferralAuction(db,10),key=randomUUID(),before=await balance(sponsor.id);
+  const input={userId:registered.id,auctionSlug:auction.slug!,amount:'7',feeVersion:1,key};
+  await expect(submitBid(db,input)).rejects.toMatchObject({code:'INSUFFICIENT_POINTS'});
+  expect(await db.referralWalletReward.count()).toBe(0);
+  await creditDevelopmentPoints(db,registered.id,'100',randomUUID());
+  const first=await submitBid(db,input);
+  expect(await submitBid(db,input)).toEqual(first);
+  await submitBid(db,{...input,amount:'9',key:randomUUID()});
+  const reward=await db.referralWalletReward.findUniqueOrThrow({where:{referredUserId:registered.id}});
+  expect(reward).toMatchObject({referrerUserId:sponsor.id,bidId:first.bid.id,amountCents:1250n,creditedAt:expect.any(Date)});
+  expect(await balance(sponsor.id)).toBe(String(Number(before)+12.5));
+  expect(await db.referralCoupon.count()).toBe(0);
+  expect(await getReferralOverview(db,sponsor.id)).toMatchObject({rewardEtb:'12.50',counts:{signedUp:1,qualified:1,earned:1},totalEarnedEtb:'12.50'});
+  expect(await reconcile(db)).toEqual([]);
  });
- it('quotes owned rewards without consuming them, and rejects another account',async()=>{
-  const auction=await realReferralAuction(db,20),before=await balance(sponsor.id),quote=await getBidDiscountQuote(db,sponsor.id,auction.slug!);expect(quote).toMatchObject({grossFeePoints:'20',discountPoints:'2',netFeePoints:'18',feeVersion:1,coupon:{id:firstCouponId,percent:10}});expect(await balance(sponsor.id)).toBe(before);expect(await db.referralRedemption.count()).toBe(0);
-  await expect(getBidDiscountQuote(db,other.id,auction.slug!,firstCouponId)).rejects.toMatchObject({status:409});
+ it('serializes concurrent first bids in different auctions and emits one wallet credit',async()=>{
+  const referred=await referredRegistration(db,sponsor.id);
+  await creditDevelopmentPoints(db,referred.id,'100',randomUUID());
+  const auctions=[await realReferralAuction(db,10),await realReferralAuction(db,10)];
+  const receipts=await Promise.all(auctions.map(auction=>submitBid(db,{userId:referred.id,auctionSlug:auction.slug!,amount:'7',feeVersion:1,key:randomUUID()})));
+  const reward=await db.referralWalletReward.findUniqueOrThrow({where:{referredUserId:referred.id}});
+  expect(receipts.map(receipt=>receipt.bid.id)).toContain(reward.bidId);
+  expect(await db.operation.count({where:{scope:'REFERRAL_REWARD',key:referred.id}})).toBe(1);
  });
- it('redeems atomically as contra-fees while keeping frozen gross fee and idempotency',async()=>{
-  const auction=await realReferralAuction(db,20),before=await balance(sponsor.id),feesBefore=(await db.ledgerAccount.findUniqueOrThrow({where:{name:'platform:fees'}})).balance,key=randomUUID(),input={userId:sponsor.id,auctionSlug:auction.slug!,amount:'12',feeVersion:1,key,couponId:firstCouponId};
-  const receipt=await submitBid(db,input);expect(receipt.charge).toMatchObject({feePoints:'20',discountPoints:'2',netFeePoints:'18',newlyUnavailable:'18',couponId:firstCouponId});expect(receipt.bid.feePoints).toBe('20');expect(await balance(sponsor.id)).toBe(String(Number(before)-18));expect((await db.ledgerAccount.findUniqueOrThrow({where:{name:'platform:fees'}})).balance.sub(feesBefore).toString()).toBe('18');
-  expect(await submitBid(db,input)).toEqual(receipt);expect(await db.referralRedemption.count({where:{couponId:firstCouponId}})).toBe(1);expect(await db.journal.count({where:{kind:'REFERRAL_DISCOUNT'}})).toBe(1);await expect(submitBid(db,{...input,couponId:randomUUID()})).rejects.toMatchObject({code:'KEY_REUSED'});expect(await reconcile(db)).toEqual([]);
+ it('ignores a demo bid and still credits the next first genuine accepted bid',async()=>{
+  const referred=await referredRegistration(db,sponsor.id);
+  await creditDevelopmentPoints(db,referred.id,'100',randomUUID());
+  const demo=await bidAuction(db,{isDemo:true}),real=await realReferralAuction(db,10);
+  const input={userId:referred.id,auctionSlug:demo.slug!,feeVersion:1,key:randomUUID(),amount:'7'};
+  await submitBid(db,input);
+  expect(await db.referralSignup.findUnique({where:{referredUserId:referred.id}})).toMatchObject({firstBidId:null});
+  const firstReal=await submitBid(db,{...input,auctionSlug:real.slug!,key:randomUUID()});
+  expect(await db.referralWalletReward.findUnique({where:{referredUserId:referred.id}})).toMatchObject({bidId:firstReal.bid.id,creditedAt:expect.any(Date)});
  });
- it('allows only one of two concurrent submissions to spend the same reward',async()=>{
-  const {coupon}=await earnedReferralCoupon(db,sponsor.id),a=await realReferralAuction(db,10),b=await realReferralAuction(db,10),before=Number(await balance(sponsor.id));
-  const attempts=await Promise.allSettled([a,b].map(auction=>submitBid(db,{userId:sponsor.id,auctionSlug:auction.slug!,amount:'21',feeVersion:1,key:randomUUID(),couponId:coupon.id})));
-  expect(attempts.filter(result=>result.status==='fulfilled')).toHaveLength(1);expect(await db.referralRedemption.count({where:{couponId:coupon.id}})).toBe(1);expect(Number(await balance(sponsor.id))).toBe(before-9);expect(await reconcile(db)).toEqual([]);
+ it('uses the current settings on qualification and never retroactively credits a first bid that arrived while paused',async()=>{
+  const referred=await referredRegistration(db,sponsor.id);
+  await creditDevelopmentPoints(db,referred.id,'100',randomUUID());
+  const auction=await realReferralAuction(db,10);
+  const input={userId:referred.id,auctionSlug:auction.slug!,feeVersion:1,key:randomUUID(),amount:'7'};
+  await db.referralPolicy.update({where:{id:'default'},data:{enabled:false,version:{increment:1}}});
+  await submitBid(db,input);
+  expect((await getReferralOverview(db,sponsor.id)).shareUrl).toBeNull();
+  await db.referralPolicy.update({where:{id:'default'},data:{enabled:true,rewardCents:2301n,version:{increment:1}}});
+  await submitBid(db,{...input,key:randomUUID(),amount:'8'});
+  expect(await db.referralWalletReward.findUnique({where:{referredUserId:referred.id}})).toBeNull();
+  const next=await referredRegistration(db,sponsor.id);
+  await creditDevelopmentPoints(db,next.id,'100',randomUUID());
+  await submitBid(db,{...input,userId:next.id,key:randomUUID()});
+  expect(await db.referralWalletReward.findUnique({where:{referredUserId:next.id}})).toMatchObject({amountCents:2301n});
+  const original=await db.referralWalletReward.findUniqueOrThrow({where:{referredUserId:registered.id}});
+  expect(original.amountCents).toBe(1250n);
+  await expect(db.referralWalletReward.update({where:{referredUserId:registered.id},data:{amountCents:15n}})).rejects.toThrow();
  });
- it('keeps earned snapshots when policy changes or pauses, and snapshots the next grant',async()=>{
-  const {coupon}=await earnedReferralCoupon(db,sponsor.id);await db.referralPolicy.update({where:{id:'default'},data:{discountPercent:15,expiryDays:15,version:{increment:1}}});expect((await db.referralCoupon.findUniqueOrThrow({where:{id:coupon.id}})).percent).toBe(10);
-  const newer=await earnedReferralCoupon(db,sponsor.id);expect(newer.coupon.percent).toBe(15);expect(newer.coupon.expiresAt.getTime()-newer.coupon.createdAt.getTime()).toBe(15*86400000);
-  await db.referralPolicy.update({where:{id:'default'},data:{enabled:false,version:{increment:1}}});const auction=await realReferralAuction(db,10);expect((await getBidDiscountQuote(db,sponsor.id,auction.slug!,coupon.id)).discountPoints).toBe('1');expect((await getReferralOverview(db,sponsor.id)).shareUrl).toBeNull();await expect(db.referralCoupon.update({where:{id:coupon.id},data:{percent:15}})).rejects.toThrow();await db.referralPolicy.update({where:{id:'default'},data:{enabled:true,discountPercent:10,expiryDays:30,version:{increment:1}}});
+ it('keeps an accepted bid when the sponsor wallet is busy and credits the recorded amount once after release',async()=>{
+  const referred=await referredRegistration(db,sponsor.id),auction=await realReferralAuction(db,10),before=Number(await balance(sponsor.id));
+  await creditDevelopmentPoints(db,referred.id,'100',randomUUID());
+  let release!:()=>void,locked!:()=>void;
+  const waiting=new Promise<void>(resolve=>{locked=resolve}),held=new Promise<void>(resolve=>{release=resolve});
+  const lockTx=db.$transaction(async tx=>{
+   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${'wallet:'+sponsor.id},0))`;
+   locked();
+   await held;
+  });
+  await waiting;
+  try{
+   const receipt=await submitBid(db,{userId:referred.id,auctionSlug:auction.slug!,feeVersion:1,key:randomUUID(),amount:'11'});
+   expect(await db.referralWalletReward.findUnique({where:{referredUserId:referred.id}})).toMatchObject({bidId:receipt.bid.id,creditedAt:null});
+   expect(Number(await balance(sponsor.id))).toBe(before);
+   expect(await settlePendingReferralWalletRewards(db)).toBe(false);
+  }finally{release();await lockTx}
+  await db.referralPolicy.update({where:{id:'default'},data:{enabled:false}});
+  try{
+   expect((await Promise.all([settlePendingReferralWalletRewards(db),settlePendingReferralWalletRewards(db)])).filter(Boolean)).toHaveLength(1);
+   expect(Number(await balance(sponsor.id))).toBeCloseTo(before+23.01,2);
+   expect(await db.operation.count({where:{scope:'REFERRAL_REWARD',key:referred.id}})).toBe(1);
+  }finally{await db.referralPolicy.update({where:{id:'default'},data:{enabled:true}})}
  });
- it('rolls back a rejected deadline bid without consuming or crediting a reward',async()=>{
-  const {coupon}=await earnedReferralCoupon(db,sponsor.id),auction=await realReferralAuction(db,20,600);await new Promise(resolve=>setTimeout(resolve,Math.max(0,auction.endsAt!.getTime()-Date.now()+20)));const before=await balance(sponsor.id);
-  await expect(submitBid(db,{userId:sponsor.id,auctionSlug:auction.slug!,amount:'31',feeVersion:1,key:randomUUID(),couponId:coupon.id})).rejects.toMatchObject({code:'AUCTION_CLOSED'});expect(await db.referralRedemption.findUnique({where:{couponId:coupon.id}})).toBeNull();expect(await balance(sponsor.id)).toBe(before);expect(await reconcile(db)).toEqual([]);
+ it('maintains same-transaction proof for a bid created inside the payment savepoint',async()=>{
+  const referred=await referredRegistration(db,sponsor.id),auction=await realReferralAuction(db,10);
+  await creditDevelopmentPoints(db,referred.id,'100',randomUUID());
+  const receipt=await db.$transaction(async tx=>{
+   await tx.$executeRawUnsafe('SAVEPOINT referral_payment_fixture');
+   const bid=await submitBidInTransaction(tx,{userId:referred.id,auctionSlug:auction.slug!,feeVersion:1,key:randomUUID(),amount:'13'});
+   await tx.$executeRawUnsafe('RELEASE SAVEPOINT referral_payment_fixture');
+   return bid;
+  });
+  expect(await db.referralWalletReward.findUnique({where:{referredUserId:referred.id}})).toMatchObject({bidId:receipt.bid.id,creditedAt:expect.any(Date)});
  });
- it('rejects a standalone balanced reward credit and a forged redemption at commit',async()=>{
-  const before=await balance(sponsor.id),key=randomUUID(),available=await db.ledgerAccount.findUniqueOrThrow({where:{name:`user:${sponsor.id}:available`}}),fees=await db.ledgerAccount.findUniqueOrThrow({where:{name:'platform:fees'}});
-  await expect(db.$transaction(async tx=>{const op=await tx.operation.create({data:{userId:sponsor.id,scope:'REFERRAL_DISCOUNT',key,requestHash:'forged',result:{}}});await tx.journal.create({data:{operationId:op.id,kind:'REFERRAL_DISCOUNT',reference:'forged',postings:{create:[{accountId:fees.id,delta:-1},{accountId:available.id,delta:1}]}}})})).rejects.toThrow();expect(await balance(sponsor.id)).toBe(before);expect(await db.operation.findUnique({where:{userId_scope_key:{userId:sponsor.id,scope:'REFERRAL_DISCOUNT',key}}})).toBeNull();
-  const {coupon}=await earnedReferralCoupon(db,sponsor.id),auction=await realReferralAuction(db,10),count=await db.bid.count({where:{userId:sponsor.id}});
-  await expect(db.$transaction(async tx=>{const bid=await submitBidInTransaction(tx,{userId:sponsor.id,auctionSlug:auction.slug!,amount:'44',feeVersion:1,key:randomUUID()}),op=await tx.operation.create({data:{userId:sponsor.id,scope:'REFERRAL_DISCOUNT',key:bid.bid.id,requestHash:'forged',result:{bidId:bid.bid.id,couponId:coupon.id,discountPoints:'3'}}});await tx.journal.create({data:{operationId:op.id,kind:'REFERRAL_DISCOUNT',reference:`bid:${bid.bid.id}`,postings:{create:[{accountId:fees.id,delta:-3},{accountId:available.id,delta:3}]}}});await tx.referralRedemption.create({data:{couponId:coupon.id,bidId:bid.bid.id,userId:sponsor.id,operationId:op.id,grossFeePoints:10,discountPoints:3}})})).rejects.toThrow();expect(await db.bid.count({where:{userId:sponsor.id}})).toBe(count);expect(await db.referralRedemption.findUnique({where:{couponId:coupon.id}})).toBeNull();expect(await reconcile(db)).toEqual([]);
+ it('rejects a standalone balanced wallet credit without its accepted referral proof',async()=>{
+  const before=await balance(sponsor.id),key=randomUUID();
+  const available=await db.ledgerAccount.findUniqueOrThrow({where:{name:`user:${sponsor.id}:available`}}),funding=await db.ledgerAccount.findUniqueOrThrow({where:{name:'platform:referral-wallet-rewards'}});
+  await expect(db.$transaction(async tx=>{
+   const op=await tx.operation.create({data:{userId:sponsor.id,scope:'REFERRAL_REWARD',key,requestHash:'fixture',result:{}}});
+   await tx.journal.create({data:{operationId:op.id,kind:'REFERRAL_REWARD',reference:'fixture',postings:{create:[{accountId:funding.id,delta:-1},{accountId:available.id,delta:1}]}}});
+  })).rejects.toThrow();
+  expect(await balance(sponsor.id)).toBe(before);
+  expect(await db.operation.count({where:{scope:'REFERRAL_REWARD',key}})).toBe(0);
+  expect(await reconcile(db)).toEqual([]);
  });
  it('uses signed first-launch attribution only and ignores existing/unsigned/tampered sources',async()=>{
   const {handleAuth}=await import('../src/modules/auth/handler'),overview=await getReferralOverview(db,sponsor.id),payload=new URL(overview.shareUrl!).searchParams.get('start')!,origin=process.env.BETTER_AUTH_URL!,make=(telegramId:number,fields:Record<string,string>={})=>new Request(origin+'/api/auth/telegram/miniapp/signin?ref='+payload,{method:'POST',headers:{origin:new URL(origin).origin,'content-type':'application/json'},body:JSON.stringify({initData:signedLaunch({user:JSON.stringify({id:telegramId,first_name:'Signed referral fixture'}),...fields},process.env.TELEGRAM_BOT_TOKEN)})});
@@ -94,31 +159,17 @@ describe.skipIf(!url)('referral rewards on isolated PostgreSQL',()=>{
  });
  it('supports the restricted runtime role and keeps proof and immutable tables protected',async()=>{
   const admin=new Client({connectionString:url});await admin.connect();try{await admin.query(readFileSync('deploy/runtime-role.sql','utf8'))}finally{await admin.end()}
-  await db.$transaction(async tx=>{await tx.$executeRawUnsafe('SET LOCAL ROLE lowwin_runtime');const tid=String(randomInt(8000000000,8900000000)),user=await tx.user.create({data:{id:randomUUID(),name:'Restricted runtime fixture',telegramId:tid}});expect(await tx.referralRegistrationProof.findUnique({where:{userId:user.id}})).not.toBeNull();expect(await tx.referralPolicy.findUnique({where:{id:'default'}})).not.toBeNull();expect(await tx.referralCoupon.count()).toBeGreaterThan(0)});
+  await db.$transaction(async tx=>{await tx.$executeRawUnsafe('SET LOCAL ROLE lowwin_runtime');const tid=String(randomInt(8000000000,8900000000)),user=await tx.user.create({data:{id:randomUUID(),name:'Restricted runtime fixture',telegramId:tid}});expect(await tx.referralRegistrationProof.findUnique({where:{userId:user.id}})).not.toBeNull();expect(await tx.referralPolicy.findUnique({where:{id:'default'}})).not.toBeNull();expect(await tx.referralWalletReward.count()).toBeGreaterThan(0)});
+  const referred=await referredRegistration(db,sponsor.id),auction=await realReferralAuction(db,10);
+  await creditDevelopmentPoints(db,referred.id,'100',randomUUID());
+  const accepted=await db.$transaction(async tx=>{
+   await tx.$executeRawUnsafe('SET LOCAL ROLE lowwin_runtime');
+   return submitBidInTransaction(tx,{userId:referred.id,auctionSlug:auction.slug!,feeVersion:1,key:randomUUID(),amount:'8'});
+  });
+  expect(await db.referralWalletReward.findUnique({where:{referredUserId:referred.id}})).toMatchObject({bidId:accepted.bid.id,creditedAt:expect.any(Date)});
   await expect(db.referralRegistrationProof.create({data:{userId:other.id}})).rejects.toThrow();
-  const permissions=await db.$queryRaw<Array<{table_name:string;delete_allowed:boolean}>>`SELECT t AS table_name,has_table_privilege('lowwin_runtime',format('%I',t),'DELETE') AS delete_allowed FROM unnest(ARRAY['ReferralPolicy','ReferralInvite','ReferralPendingSignup','ReferralSignup','ReferralCoupon','ReferralRedemption','ReferralRegistrationProof']) t`;
+  const permissions=await db.$queryRaw<Array<{table_name:string;delete_allowed:boolean}>>`SELECT t AS table_name,has_table_privilege('lowwin_runtime',format('%I',t),'DELETE') AS delete_allowed FROM unnest(ARRAY['ReferralPolicy','ReferralInvite','ReferralPendingSignup','ReferralSignup','ReferralCoupon','ReferralRedemption','ReferralRegistrationProof','ReferralWalletReward']) t`;
   expect(permissions.every(row=>!row.delete_allowed)).toBe(true);expect(await reconcile(db)).toEqual([]);
- });
- it('can quote an owned unspent reward beyond the bounded twenty-item selection list',async()=>{
-  const owner=await verifiedReferralUser(db,'Large referral collection fixture');let last='';for(let index=0;index<21;index++)last=(await earnedReferralCoupon(db,owner.id)).coupon.id;
-  const auction=await realReferralAuction(db,20),quote=await getBidDiscountQuote(db,owner.id,auction.slug!,last);expect(quote.availableCoupons).toHaveLength(20);expect(quote.availableCoupons.some(c=>c.id===last)).toBe(false);expect(quote.coupon?.id).toBe(last);expect(quote.discountPoints).toBe('2');expect((await getReferralOverview(db,owner.id)).counts.available).toBe(21);expect(await reconcile(db)).toEqual([]);
-  expect((await getOwnBidState(db,owner.id,auction.slug!)).couponAvailableCount).toBe(21);
- },20000);
- it('counts owned available coupons exactly and consumes one only after a committed bid',async()=>{
-  const owner=await verifiedReferralUser(db),first=await earnedReferralCoupon(db,owner.id);await earnedReferralCoupon(db,owner.id);
-  const auction=await realReferralAuction(db,20),state=()=>getOwnBidState(db,owner.id,auction.slug!,process.env,false);
-  expect((await state()).couponAvailableCount).toBe(2);
-  expect((await getOwnBidState(db,other.id,auction.slug!,process.env,false)).couponAvailableCount).toBe((await getReferralOverview(db,other.id)).counts.available);
-  await getBidDiscountQuote(db,owner.id,auction.slug!,first.coupon.id);expect((await state()).couponAvailableCount).toBe(2);
-  const input={userId:owner.id,auctionSlug:auction.slug!,amount:'61',feeVersion:1,key:randomUUID(),couponId:first.coupon.id};
-  await expect(submitBid(db,input)).rejects.toMatchObject({code:'INSUFFICIENT_POINTS'});expect((await state()).couponAvailableCount).toBe(2);
-  await creditDevelopmentPoints(db,owner.id,'100',`referral-count-${randomUUID()}`);const receipt=await submitBid(db,input);expect((await state()).couponAvailableCount).toBe(1);
-  expect(await submitBid(db,input)).toEqual(receipt);expect((await state()).couponAvailableCount).toBe(1);expect(await db.referralRedemption.count({where:{couponId:first.coupon.id}})).toBe(1);
-  expect((await getOwnBidState(db,owner.id,auction.slug!,{REFERRAL_REWARDS_SCHEMA_READY:'false'},false)).couponAvailableCount).toBeNull();
-  expect(await availableReferralCouponCount(db,owner.id,new Date(Date.now()+31*86400000))).toBe(0);
-  await db.referralPolicy.update({where:{id:'default'},data:{enabled:false,version:{increment:1}}});
-  try{expect((await state()).couponAvailableCount).toBe(1)}finally{await db.referralPolicy.update({where:{id:'default'},data:{enabled:true,version:{increment:1}}})}
-  expect(await reconcile(db)).toEqual([]);
  });
  it('keeps the first trusted invitation during duplicate starts and later competing invitations',async()=>{
   const first=await getReferralOverview(db,sponsor.id),second=await getReferralOverview(db,other.id),payload=new URL(first.shareUrl!).searchParams.get('start')!,otherPayload=new URL(second.shareUrl!).searchParams.get('start')!,tid=String(randomInt(8000000000,8900000000));
@@ -133,9 +184,5 @@ describe.skipIf(!url)('referral rewards on isolated PostgreSQL',()=>{
  it('returns a complete valid invitation URL and no link for an invalid bot configuration',async()=>{
   const overview=await getReferralOverview(db,sponsor.id),url=new URL(overview.shareUrl!);expect(url.origin).toBe('https://t.me');expect(url.pathname).toBe('/'+process.env.TELEGRAM_BOT_USERNAME);expect(url.searchParams.get('start')).toMatch(/^ref_[A-Za-z0-9_-]{12}$/);
   expect((await getReferralOverview(db,sponsor.id,{...process.env,TELEGRAM_BOT_USERNAME:'wrong/bot'})).shareUrl).toBeNull();
- });
- it('leaves a real unused preview reward for mobile UI checks and reconciles cleanly',async()=>{
-  const preview=await verifiedReferralUser(db,'Referral UI fixture');await creditDevelopmentPoints(db,preview.id,'100',`referral-fixture-${randomUUID()}`);const grant=await earnedReferralCoupon(db,preview.id),auction=await realReferralAuction(db,20);
-  mkdirSync('.local',{recursive:true});writeFileSync('.local/referral-preview-fixture.json',JSON.stringify({userId:preview.id,telegramId:preview.telegramId,couponId:grant.coupon.id,auctionSlug:auction.slug,auctionCode:auction.publicCode},null,2)+'\n');expect(await reconcile(db)).toEqual([]);
  });
 });

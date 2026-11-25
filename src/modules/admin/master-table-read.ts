@@ -34,15 +34,15 @@ export async function readPlayerTable(client:PrismaClient,actor:Actor,f:Filters)
   client.$queryRaw<{count:number}[]>(Prisma.sql`SELECT COUNT(*)::int AS count ${from} WHERE ${where}`),
  ]);
  const ids=pageRows.map(row=>row.id),referralsReady=process.env.REFERRAL_REWARDS_SCHEMA_READY==='true',balancesVisible=['OWNER','AUDITOR','PAYMENTS_OPERATOR'].includes(actor.role);
- const [users,referrals,coupons]=await Promise.all([
+ const [users,referrals,rewards]=await Promise.all([
   ids.length?client.user.findMany({where:{id:{in:ids}},select:{...identity,wallet:{select:{accounts:{where:{kind:{in:['AVAILABLE','HELD']}},select:{kind:true,balance:true}}}},_count:{select:{bids:true,wonSettlements:true}}}}):[],
   ids.length&&referralsReady?client.referralSignup.groupBy({by:['referrerUserId'],where:{referrerUserId:{in:ids}},_count:{referredUserId:true}}):[],
-  ids.length&&referralsReady?client.referralCoupon.groupBy({by:['ownerUserId'],where:{ownerUserId:{in:ids},expiresAt:{gt:actor.now},redemption:{is:null}},_count:{id:true}}):[],
+  ids.length&&referralsReady?client.referralWalletReward.groupBy({by:['referrerUserId'],where:{referrerUserId:{in:ids},creditedAt:{not:null}},_count:{referredUserId:true}}):[],
  ]);
  const items=pageRows.flatMap(row=>{const user=users.find(value=>value.id===row.id);return user?[{...contact(user),bidCount:user._count.bids,winCount:user._count.wonSettlements,suspended:row.suspended,
   available:balancesVisible?user.wallet?.accounts.find(account=>account.kind==='AVAILABLE')?.balance.toString()??'0':null,held:balancesVisible?user.wallet?.accounts.find(account=>account.kind==='HELD')?.balance.toString()??'0':null,
   referralCount:referralsReady?referrals.find(value=>value.referrerUserId===user.id)?._count.referredUserId??0:null,
-  couponCount:referralsReady?coupons.find(value=>value.ownerUserId===user.id)?._count.id??0:null}]:[]});
+  rewardCount:referralsReady?rewards.find(value=>value.referrerUserId===user.id)?._count.referredUserId??0:null}]:[]});
  await audit(client,actor,'MASTER_PLAYER_TABLE_READ',items.length);
  return {...pageResult(items,counts[0].count,f.page,actor.now),referralsReady};
 }

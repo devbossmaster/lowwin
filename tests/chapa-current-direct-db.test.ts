@@ -6,6 +6,7 @@ import {createRequire} from 'node:module';
 import {readFileSync} from 'node:fs';
 import {makeSignature} from 'better-auth/crypto';
 import {earnedReferralCoupon,verifiedReferralUser,realReferralAuction} from './referral-fixtures';
+import {seedLegacyCouponQuote} from './legacy-coupon-fixtures';
 import {quoteBidBatch} from '../src/modules/auctions/batch';
 import {createCurrentDirectCheckout,findCurrentDirectCheckoutByKey,findInlineCheckoutByKey,prepareCurrentDirectCreation,tryCreateCurrentDirectCheckout} from '../src/modules/payments/chapa-inline';
 import {prepareAtomicDirectBid} from '../src/modules/payments/chapa-direct-bid-prepare';
@@ -199,13 +200,13 @@ describe.skipIf(!database)('current Direct5 owned creation and private committed
    else await db.depositBonusPolicy.update({where:{id:'default'},data:{enabled:false,version:1}});
   }
  });
- it('uses the established locked coupon checks and dispatches the exact discounted amount',async()=>{
+ it('rejects a historical coupon quote before creating or dispatching a new payment',async()=>{
   const f=await fixture('BID'),{authorize}=await creationBinding(f.user),{coupon}=await earnedReferralCoupon(db,f.user);
-  const quote=await quoteBidBatch(db,f.user,{key:randomUUID(),auctionSlug:f.auction!.slug!,numbers:['2','4'],feeVersion:1,couponId:coupon.id});
-  const prepare=await prepareCurrentDirectCreation(db,f.user,{...f.command,batchId:quote.id,quoteHash:quote.quoteHash},f.transport,false),{order}=await prepare(authorize);
-  expect(authorize.forCurrentDirectCreate).toHaveBeenCalledOnce();expect(f.direct).toHaveBeenCalledOnce();
-  expect(order).toMatchObject({status:'AUTH_NEEDED',amount:'38.00'});
-  expect(f.direct).toHaveBeenCalledWith(expect.objectContaining({amountCents:'3800'}),'create');
+  const quote=await seedLegacyCouponQuote(db,f.user,{key:randomUUID(),auctionSlug:f.auction!.slug!,numbers:['2','4'],feeVersion:1,couponId:coupon.id});
+  const prepare=await prepareCurrentDirectCreation(db,f.user,{...f.command,batchId:quote.id,quoteHash:quote.quoteHash},f.transport,false);
+  await expect(prepare(authorize)).rejects.toMatchObject({code:'COUPON_UNAVAILABLE'});
+  expect(authorize.forCurrentDirectCreate).toHaveBeenCalledOnce();expect(f.direct).not.toHaveBeenCalled();
+  expect(await db.chapaCheckout.count({where:{batchId:quote.id}})).toBe(0);
   expect(await db.referralRedemption.count({where:{couponId:coupon.id}})).toBe(0);
  });
  it('cannot use a foreign quote and retains authoritative fee and method limits',async()=>{

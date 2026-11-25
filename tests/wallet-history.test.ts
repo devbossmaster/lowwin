@@ -5,6 +5,7 @@ import {execFileSync} from 'node:child_process';
 import {createRequire} from 'node:module';
 import {getWalletHistory,walletHistoryQuerySchema} from '../src/modules/wallet/history';
 import {verifiedReferralUser,realReferralAuction,earnedReferralCoupon} from './referral-fixtures';
+import {recordLegacyCouponBid,seedLegacyCouponQuote,seedLegacyDirectCouponIntent} from './legacy-coupon-fixtures';
 import {bidAuction} from './bid-fixtures';
 import {submitBid} from '../src/modules/auctions/bids';
 import {cancelAuction} from '../src/modules/auctions/settlement';
@@ -36,8 +37,12 @@ describe.skipIf(!database)('private confirmed wallet history on isolated Postgre
   };
   let order;
   if(options.batch){
-   const auction=await realReferralAuction(db,10,options.late?1400:3600000),coupon=options.coupon?(await earnedReferralCoupon(db,user)).coupon:null,quote=await quoteBidBatch(db,user,{key:randomUUID(),auctionSlug:auction.slug,numbers:['2','3','4'],feeVersion:1,...(coupon?{couponId:coupon.id}:{})});
-   order=await createDirectCheckout(db,user,{key:randomUUID(),purpose:'BID',batchId:quote.id,quoteHash:quote.quoteHash,paymentMethod:'telebirr',phone:'0911652904'},undefined,transport);
+   const auction=await realReferralAuction(db,10,options.late?1400:3600000),coupon=options.coupon?(await earnedReferralCoupon(db,user)).coupon:null;
+   const selection={key:randomUUID(),auctionSlug:auction.slug!,numbers:['2','3','4'],feeVersion:1},paymentKey=randomUUID();
+   const legacy=coupon?await seedLegacyCouponQuote(db,user,{...selection,couponId:coupon.id}):null;
+   if(legacy)await seedLegacyDirectCouponIntent(db,legacy,paymentKey);
+   const quote=legacy??await quoteBidBatch(db,user,selection);
+   order=await createDirectCheckout(db,user,{key:paymentKey,purpose:'BID',batchId:quote.id,quoteHash:quote.quoteHash,paymentMethod:'telebirr',phone:'0911652904'},undefined,transport);
    if(options.late)await new Promise(resolve=>setTimeout(resolve,Math.max(0,auction.endsAt!.getTime()-Date.now()+30)));
   }else order=await createChapaCheckout(db,user,{key:randomUUID(),purpose:'TOP_UP',amount:'20'},undefined,transport);
   return {order,verify:async()=>{await db.chapaCheckout.update({where:{id:order.id},data:{nextCheckAt:new Date(0),leaseUntil:null}});return verifyChapaCheckout(db,order.id,user,undefined,transport)},status:(value:string)=>{status=value}};
@@ -48,7 +53,7 @@ describe.skipIf(!database)('private confirmed wallet history on isolated Postgre
  });
  it('nets an earned coupon into the wallet fee and preserves exact refunds and holds',async()=>{
   const user=(await verifiedReferralUser(db)).id;await creditDevelopmentPoints(db,user,'200',randomUUID());const coupon=(await earnedReferralCoupon(db,user)).coupon,auction=await realReferralAuction(db,20);
-  await submitBid(db,{userId:user,auctionSlug:auction.slug!,amount:'2',feeVersion:1,couponId:coupon.id,key:randomUUID()});
+  await recordLegacyCouponBid(db,{userId:user,auctionSlug:auction.slug!,amount:'2',feeVersion:1,couponId:coupon.id,key:randomUUID()});
   expect((await getWalletHistory(db,user,{type:'bid'})).items.map(row=>row.delta)).toEqual(['-18']);
   const legacy=await bidAuction(db,{fee:3,isDemo:false});await submitBid(db,{userId:user,auctionSlug:legacy.slug!,amount:'5',key:randomUUID()});await cancelAuction(db,{auctionId:legacy.id,actor:{id:'fixture-owner',permission:'auction:cancel'},reason:'Wallet history refund fixture',key:randomUUID()});
   expect((await getWalletHistory(db,user,{type:'refund'})).items).toEqual([expect.objectContaining({kind:'FEE_REFUND',delta:'3'})]);

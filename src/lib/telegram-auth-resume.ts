@@ -4,7 +4,7 @@ export const TELEGRAM_AUTH_RESUME_TTL_MS=15*60_000;
 const storageKey='lowwin:telegram-auth-resume:v1';
 type ResumeStorage=Pick<Storage,'getItem'|'setItem'|'removeItem'>;
 type PaymentMethod='wallet'|'telebirr'|'cbebirr'|'mpesa'|null;
-export type TelegramBidResumeDraft={kind:'bid';auctionSlug:string;auctionCode:string;numbers:string[];input:string;multiple:boolean;numberMode:'individual'|'range';rangeFrom:string;rangeTo:string;rangeStep:string|null;method:PaymentMethod;applyCoupon:boolean};
+export type TelegramBidResumeDraft={kind:'bid';auctionSlug:string;auctionCode:string;numbers:string[];input:string;multiple:boolean;numberMode:'individual'|'range';rangeFrom:string;rangeTo:string;rangeStep:string|null;method:PaymentMethod};
 export type TelegramTopupResumeDraft={kind:'topup';amount:string;method:Exclude<PaymentMethod,'wallet'>;stage:'amount'|'bonus'|'payment'};
 export type TelegramResumeDraft=TelegramBidResumeDraft|TelegramTopupResumeDraft;
 export type TelegramAuthResume={version:1;createdAt:number;destination:string;owner:string|null;scrollY:number;draft:TelegramResumeDraft|null};
@@ -28,7 +28,7 @@ export function telegramAuthResumeDestination(value:string){
 export function projectTelegramResumeDraft(value:unknown):TelegramResumeDraft|null{
  if(!value||typeof value!=='object')return null;
  const item=value as Record<string,unknown>;
- if(item.kind==='bid'&&typeof item.auctionSlug==='string'&&identifiers.test(item.auctionSlug)&&typeof item.auctionCode==='string'&&identifiers.test(item.auctionCode)&&Array.isArray(item.numbers)&&item.numbers.length<=50&&item.numbers.every(numberInput)&&numberInput(item.input)&&typeof item.multiple==='boolean'&&['individual','range'].includes(item.numberMode as string)&&numberInput(item.rangeFrom)&&numberInput(item.rangeTo)&&(item.rangeStep===null||numberInput(item.rangeStep))&&method(item.method)&&typeof item.applyCoupon==='boolean')return {kind:'bid',auctionSlug:item.auctionSlug,auctionCode:item.auctionCode,numbers:[...item.numbers] as string[],input:item.input,multiple:item.multiple,numberMode:item.numberMode as 'individual'|'range',rangeFrom:item.rangeFrom,rangeTo:item.rangeTo,rangeStep:item.rangeStep as string|null,method:item.method,applyCoupon:item.applyCoupon};
+ if(item.kind==='bid'&&typeof item.auctionSlug==='string'&&identifiers.test(item.auctionSlug)&&typeof item.auctionCode==='string'&&identifiers.test(item.auctionCode)&&Array.isArray(item.numbers)&&item.numbers.length<=50&&item.numbers.every(numberInput)&&numberInput(item.input)&&typeof item.multiple==='boolean'&&['individual','range'].includes(item.numberMode as string)&&numberInput(item.rangeFrom)&&numberInput(item.rangeTo)&&(item.rangeStep===null||numberInput(item.rangeStep))&&method(item.method))return {kind:'bid',auctionSlug:item.auctionSlug,auctionCode:item.auctionCode,numbers:[...item.numbers] as string[],input:item.input,multiple:item.multiple,numberMode:item.numberMode as 'individual'|'range',rangeFrom:item.rangeFrom,rangeTo:item.rangeTo,rangeStep:item.rangeStep as string|null,method:item.method};
  if(item.kind==='topup'&&numberInput(item.amount)&&method(item.method)&&item.method!=='wallet'&&['amount','bonus','payment'].includes(item.stage as string))return {kind:'topup',amount:item.amount,method:item.method,stage:item.stage as TelegramTopupResumeDraft['stage']};
  return null;
 }

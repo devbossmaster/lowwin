@@ -5,12 +5,10 @@ import {ArrowLeft,ChevronDown,Clock3,LoaderCircle,Plus,Ticket,Wallet,X} from 'lu
 import type {CatalogAuction} from '@/modules/auctions/catalog';
 import type {getOwnBidState} from '@/modules/auctions/bids';
 import type {WalletBalance} from '@/modules/wallet/balance';
-import type {getBidDiscountQuote} from '@/modules/referrals/service';
 import {isSubmissionFeeOnly} from '@/modules/auctions/rules';
 import {centsToEtb,etbToCents,formatEtb} from '@/lib/money';
 import {normalizeBidDraft,normalizePaymentPhone,previewBidFees,validateBidDraft,type BidBatchQuote,type BidBatchReceipt,type BidDraftError} from '@/lib/bid-batch-client';
 import {ChapaClientError,requestChapaJson,type ChapaCheckoutConfig,type WalletPaymentShortfall} from '@/lib/chapa-client';
-import {usableBidDiscount} from '@/lib/bid-discount-preview';
 import {bidQuoteAttemptFor,loadBidQuote,walletBidAttemptKey,type BidQuoteAttempt} from '@/lib/bid-quote-readiness';
 import {paymentPhoneProblem,paymentPhoneProblemMessage} from '@/lib/payment-phone';
 import {defaultBidRangeStep,previewBidRange,type BidRangeError} from '@/lib/bid-range';
@@ -39,13 +37,11 @@ import {auctionDetailUrl} from './auction-query';
 import styles from './bid-payment-sheet.module.css';
 import reference from './reference-bid-checkout.module.css';
 import {ReferencePaymentMethods,referencePaymentProviders as providers} from './reference-payment-methods';
-import {BidCouponControl} from './bid-coupon-control';
 import {CatalogImage} from './catalog-image';
 const WalletTopUp=dynamic(()=>import('./wallet-top-up'),{ssr:false});
 type Method='wallet'|typeof providers[number]['slug'];
 export type BidCheckoutDraft={numbers:string[];method?:string|null};
-type BidState=Omit<Awaited<ReturnType<typeof getOwnBidState>>,'wallet'|'previousMax'>&{referralDiscountsAvailable?:boolean;couponAvailableCount?:number|null};
-type DiscountQuote=Awaited<ReturnType<typeof getBidDiscountQuote>>;
+type BidState=Omit<Awaited<ReturnType<typeof getOwnBidState>>,'wallet'|'previousMax'>;
 type Props={auction:BidSheetAuction;serverNow:string;onClose:()=>void;onPhaseChange:(phase:BidSheetPhase)=>void;initialChapaId?:string;initialDraft?:BidCheckoutDraft;onDismissChange?:(handler:(()=>void)|null)=>void};
 
 export default function BidSheetContents({auction,serverNow,onClose,onPhaseChange,initialChapaId,initialDraft,onDismissChange}:Props){
@@ -71,7 +67,7 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
  const [numberMode,setNumberMode]=useState<'individual'|'range'>('individual'),[rangeFrom,setRangeFrom]=useState(''),[rangeTo,setRangeTo]=useState(''),[rangeStep,setRangeStep]=useState<string|null>(null);
  const [method,setMethod]=useState<Method|null>(restoredMethod&&['wallet','telebirr','mpesa','cbebirr'].includes(restoredMethod)?restoredMethod as Method:null),[phone,setPhone]=useState(normalizePaymentPhone(restoredPhone)?.slice(3)??'');
  const [quote,setQuote]=useState<BidBatchQuote|null>(initialChapaId?walletRecovery??originalQuote:null),[busy,setBusy]=useState(false),[error,setError]=useState('');
- const [receipt,setReceipt]=useState<BidBatchReceipt|null>(null),[applyCoupon,setApplyCoupon]=useState(fundingDraft?.applyCoupon??false),[walletRetry,setWalletRetry]=useState(!!walletRecovery||!!savedWalletCommand),[quoteRetry,setQuoteRetry]=useState(0);
+ const [receipt,setReceipt]=useState<BidBatchReceipt|null>(null),[walletRetry,setWalletRetry]=useState(!!walletRecovery||!!savedWalletCommand),[quoteRetry,setQuoteRetry]=useState(0);
  const [walletCommand,setWalletCommand]=useState<WalletBidCommand|null>(savedWalletCommand),[walletObserving,setWalletObserving]=useState(false),[showProgress,setShowProgress]=useState(!!initialChapaId),showProgressRef=useRef(showProgress);showProgressRef.current=showProgress;
  const initialWalletRecovery=useRef<WalletBidTarget|null>(savedWalletCommand?{command:savedWalletCommand}:walletRecovery?{quote:walletRecovery}:null);
  const [toppingUp,setToppingUp]=useState(false),[fundingNotice,setFundingNotice]=useState(''),[walletFailure,setWalletFailure]=useState<WalletPaymentShortfall|null>(null),fundingRetained=useRef(!!fundingDraft),fundingOpen=useRef(false);fundingOpen.current=toppingUp;
@@ -87,30 +83,28 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
  useEffect(()=>()=>{if(queryIdentity)clearBidFundingDraft(getMiniQueryClient(),queryIdentity,auction.slug)},[queryIdentity,auction.slug]);
  const authenticated=status==='authenticated'&&!!me?.user?.id&&!!queryIdentity,active=known.status==='live'&&(!state||state.open),current=isSubmissionFeeOnly(terms.ruleVersion);
  const authResumeRestored=useRef(false),authResumeDraft=useRef<TelegramBidResumeDraft|null>(null);
- authResumeDraft.current=busy||payment.started||receipt||walletRetry?null:{kind:'bid',auctionSlug:auction.slug,auctionCode:auction.code,numbers,input,multiple:true,numberMode,rangeFrom,rangeTo,rangeStep,method:method&&['wallet','telebirr','cbebirr','mpesa'].includes(method)?method as TelegramBidResumeDraft['method']:null,applyCoupon};
+ authResumeDraft.current=busy||payment.started||receipt||walletRetry?null:{kind:'bid',auctionSlug:auction.slug,auctionCode:auction.code,numbers,input,multiple:true,numberMode,rangeFrom,rangeTo,rangeStep,method:method&&['wallet','telebirr','cbebirr','mpesa'].includes(method)?method as TelegramBidResumeDraft['method']:null};
  useEffect(()=>registerTelegramResumeDraft(me?.user?.id??null,()=>authResumeDraft.current),[me?.user?.id,auction.slug]);
  useEffect(()=>{
   if(!authenticated||!me?.user?.id||authResumeRestored.current||payment.started||receipt||walletRetry)return;
   authResumeRestored.current=true;
   const saved=consumeTelegramResumeDraft(me.user.id,'bid',auction.slug);if(!saved)return;
-  setNumbers(saved.numbers);setInput(saved.input);setNumberMode(saved.numberMode);setRangeFrom(saved.rangeFrom);setRangeTo(saved.rangeTo);setRangeStep(saved.rangeStep);setMethod(saved.method);setApplyCoupon(saved.applyCoupon);
+  setNumbers(saved.numbers);setInput(saved.input);setNumberMode(saved.numberMode);setRangeFrom(saved.rangeFrom);setRangeTo(saved.rangeTo);setRangeStep(saved.rangeStep);setMethod(saved.method);
   // Only editable selection is restored. Existing validation/quote preparation
   // runs normally; the customer must still explicitly choose Continue/Pay.
  },[authenticated,me?.user?.id,auction.slug,payment.started,receipt,walletRetry]);
  const savedSettings=queryIdentity?readPrivateQuery<ChapaCheckoutConfig>(queryIdentity,TOP_UP_CONFIG_URL,{freshnessMs:60000})?.value:null;
  const methods=usePrivateQuery<ChapaCheckoutConfig>(TOP_UP_CONFIG_URL,{enabled:authenticated&&active,freshnessMs:topUpConfigFreshness(savedSettings)});
  const enabledMethods=methods.data?.enabled?methods.data.methods.filter(item=>providers.some(provider=>provider.slug===item.slug)):[];
- const discount=usePrivateQuery<DiscountQuote>(`/api/auctions/${auction.slug}/discount-quote?feeVersion=${terms.version}`,{enabled:authenticated&&!!state?.referralDiscountsAvailable&&applyCoupon});
- const coupon=applyCoupon?usableBidDiscount(discount.data,terms.version,terms.entryFeePoints,discount.updatedAt):null;
  const bounds=state?.terms??full?.terms,rules=bounds?{...bounds,remainingSubmissions:state?.remainingSubmissions??bounds.maxDistinctBids,ownBids:state?.ownBids??[]}:null;
  const selectedRangeStep=rangeStep??defaultBidRangeStep(bounds?.stepPoints??'0.01'),rangeDraft=rules?previewBidRange(rangeFrom,rangeTo,selectedRangeStep,numbers,rules):null;
  const values=editing===null?[...numbers,...(input?[input]:[])]:numbers.map((value,index)=>index===editing?input:value);
  const recoveryQuote=walletRetry&&showProgress?quoteAttempt.current?.quote:null;
  const draft=recoveryQuote?{numbers:recoveryQuote.lines.map(line=>line.number),error:null}:rules?validateBidDraft(values,rules):{numbers:values.map(normalizeBidDraft).filter((value):value is string=>value!==null),error:null};
- const body={auctionSlug:auction.slug,numbers:draft.numbers,feeVersion:terms.version,...(coupon?.coupon?.id?{couponId:coupon.coupon.id}:{})};
+ const body={auctionSlug:auction.slug,numbers:draft.numbers,feeVersion:terms.version};
  const fingerprint=JSON.stringify(body),priced=recoveryQuote??(quoteAttempt.current?.fingerprint===fingerprint?quote:null);
  const selectedNumbers=draft.error?(rules?validateBidDraft(numbers,rules).numbers:numbers):draft.numbers;
- const preview=previewBidFees(selectedNumbers.length,terms.entryFeePoints,coupon?.discountPoints??'0');
+ const preview=previewBidFees(selectedNumbers.length,terms.entryFeePoints);
  const total=priced?.total??preview.total,totalCents=etbToCents(total),zero=totalCents===0n;
  const external=method!==null&&method!=='wallet';
  const phoneProblem=paymentPhoneProblem(phone,method??''),normalizedPhone=phoneProblem?null:normalizePaymentPhone(phone),frozen=busy;
@@ -128,13 +122,13 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
  useEffect(()=>{const version=++generation.current;return()=>{if(generation.current===version)generation.current++;controllers.current.forEach(c=>c.abort());controllers.current.clear()}},[queryIdentity]);
  useEffect(()=>{if(!toppingUp)onPhaseChange(showProgress?'payment':step==='payment'?'checkout':step==='review'?'review':'entry')},[toppingUp,showProgress,step,onPhaseChange]);
  useEffect(()=>{setWalletFailure(null)},[wallet.updatedAt,fingerprint]);
- useEffect(()=>{if(fundingRetained.current&&queryIdentity&&!receipt&&!payment.started)retainBidFundingDraft(getMiniQueryClient(),queryIdentity,auction.slug,{numbers:draft.error?numbers:draft.numbers,method:method??'wallet',phone,applyCoupon})},[queryIdentity,auction.slug,fingerprint,numbers,method,phone,applyCoupon,receipt,payment.started]);
+ useEffect(()=>{if(fundingRetained.current&&queryIdentity&&!receipt&&!payment.started)retainBidFundingDraft(getMiniQueryClient(),queryIdentity,auction.slug,{numbers:draft.error?numbers:draft.numbers,method:method??'wallet',phone})},[queryIdentity,auction.slug,fingerprint,numbers,method,phone,receipt,payment.started]);
  useEffect(()=>{if(queryIdentity&&payment.order?.purpose==='BID'&&payment.order.status==='BID_ACCEPTED'&&payment.order.receipt){clearBidFundingDraft(getMiniQueryClient(),queryIdentity,auction.slug);fundingRetained.current=false}},[queryIdentity,auction.slug,payment.order?.purpose,payment.order?.status,payment.order?.receipt]);
- const quotePhase=step==='review'||step==='payment',discountReady=!applyCoupon||!!coupon&&!discount.fetching;
+ const quotePhase=step==='review'||step==='payment';
  // Prepare the immutable quote before a method is selected. Review, method
  // changes and final Pay share one draft-owned request; only Pay can charge.
  useEffect(()=>{
-  if(!quotePhase||!discountReady||zero||!queryIdentity||!state||!active||!current||draft.error||!draft.numbers.length||payment.started)return;
+  if(!quotePhase||zero||!queryIdentity||!state||!active||!current||draft.error||!draft.numbers.length||payment.started)return;
   if(quoteAttempt.current?.fingerprint===fingerprint&&quoteAttempt.current.quote){setQuote(quoteAttempt.current.quote);return}
   const attempt=quoteAttempt.current=bidQuoteAttemptFor(quoteAttempt.current,fingerprint);
   const version=generation.current;let mounted=true;setQuote(null);reportError('');
@@ -146,13 +140,13 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
   // The request belongs to the unchanged draft across steps. Draft changes
   // and account or sheet teardown own cancellation.
   return()=>{mounted=false};
- },[quotePhase,discountReady,zero,fingerprint,queryIdentity,!!state,active,current,payment.started,quoteRetry,loadQuote]);
+ },[quotePhase,zero,fingerprint,queryIdentity,!!state,active,current,payment.started,quoteRetry,loadQuote]);
  // These codes are definitive pre-creation rejections, not uncertain charges.
  // The hook preserves all transport/server ambiguities on their original key.
  useEffect(()=>{
   if(payment.started||!['TERMS_CHANGED','COUPON_UNAVAILABLE'].includes(payment.errorCode??''))return;
-  setQuote(null);quoteAttempt.current=null;own.reload();if(applyCoupon)discount.reload();
- },[payment.errorCode,payment.started,own.reload,discount.reload,applyCoupon]);
+  setQuote(null);quoteAttempt.current=null;own.reload();
+ },[payment.errorCode,payment.started,own.reload]);
  const add=()=>{if(frozen)return;if(draft.error){reportError(text(...copy[draft.error]));return}if(!input)return;setNumbers(draft.numbers);setInput('');setEditing(null);reportError('')};
  const addRange=()=>{
   if(frozen)return;if(!rangeDraft?.complete){reportError(text('Enter both ends of the bid range.','የጨረታ ክልሉን መጀመሪያና መጨረሻ ያስገቡ።'));return}
@@ -184,7 +178,7 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
    if('command'in target)clearWalletBidCommand(getMiniQueryClient(),queryIdentity,target.command);
    if(result.kind==='quote'){
     const next=result.quote,command='command'in target?target.command:null;
-    if(command)quoteAttempt.current={fingerprint:JSON.stringify({auctionSlug:command.auctionSlug,numbers:command.numbers,feeVersion:command.feeVersion,...(command.couponId?{couponId:command.couponId}:{})}),key:command.key,paymentKey:crypto.randomUUID(),walletKey:command.key,walletQuote:true,quote:next};
+    if(command)quoteAttempt.current={fingerprint:JSON.stringify({auctionSlug:command.auctionSlug,numbers:command.numbers,feeVersion:command.feeVersion}),key:command.key,paymentKey:crypto.randomUUID(),walletKey:command.key,walletQuote:true,quote:next};
     setQuote(next);setNumbers(next.lines.map(line=>line.number));setInput('');setEditing(null);setWalletRetry(false);setWalletCommand(null);showProgressRef.current=false;setShowProgress(false);
     reportError(text('The total was updated. Check the amount below, then tap Pay to confirm.','ጠቅላላ ክፍያው ተቀይሯል። ከታች ያለውን መጠን ይመልከቱና ለማረጋገጥ ይክፈሉ።'));return;
    }
@@ -201,7 +195,7 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
     const funds=cause.wallet;setWalletFailure(funds);
     reportError(text(`Your LowWin Wallet has ${funds.available} ETB. You need ${funds.required} ETB; top up ${funds.shortfall} ETB or choose another method.`,`በዋሌትዎ ${funds.available} ብር አለ። ${funds.required} ብር ያስፈልጋል። ${funds.shortfall} ብር ይሙሉ ወይም ሌላ መንገድ ይምረጡ።`));
    }else reportError(cause instanceof ChapaClientError?cause.message:text('The wallet payment is not confirmed yet. The original request is preserved.','የዋሌት ክፍያው ገና አልተረጋገጠም። የመጀመሪያው ጥያቄ ተጠብቋል።'));
-   if(rejected){own.reload();wallet.reload();if(applyCoupon)discount.reload()}
+   if(rejected){own.reload();wallet.reload()}
   }finally{
    controllers.current.delete(controller);walletObservation.current=false;
    if(generation.current===version){lock.current=false;setBusy(false);setWalletObserving(false)}
@@ -238,15 +232,8 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
     if(!currentState.open){reportError(text('This auction is not accepting bids.','ይህ ጨረታ አዲስ ጨረታ አይቀበልም።'));return}
     const checked=validateBidDraft(values,{...currentState.terms,remainingSubmissions:currentState.remainingSubmissions,ownBids:currentState.ownBids});
     if(checked.error){reportError(text(...copy[checked.error]));return}
-    if(applyCoupon){
-     const discountUrl=`/api/auctions/${auction.slug}/discount-quote?feeVersion=${currentState.terms.version}`;
-     const offer=discount.data??await loadPrivateJson<DiscountQuote>(queryIdentity,discountUrl);
-     if(version!==generation.current||!isPrivateQueryIdentity(queryIdentity))return;
-     const receivedAt=readPrivateQuery<DiscountQuote>(queryIdentity,discountUrl)?.updatedAt??discount.updatedAt;
-     if(!usableBidDiscount(offer,currentState.terms.version,currentState.terms.entryFeePoints,receivedAt)){reportError(text('This coupon is unavailable. Remove it or choose another.','ይህ ኩፖን አይገኝም። ያስወግዱት ወይም ሌላ ይምረጡ።'));return}
-    }
     setNumbers(checked.numbers);setInput('');setEditing(null);
-    if(!zero&&(!applyCoupon||coupon)){
+    if(etbToCents(currentState.terms.entryFeePoints)>0n){
      const readyFingerprint=JSON.stringify({...body,numbers:checked.numbers,feeVersion:currentState.terms.version});
      const attempt=quoteAttempt.current=bidQuoteAttemptFor(quoteAttempt.current,readyFingerprint);
      void loadQuote(attempt).catch(()=>{/* The visible payment stage owns recovery. */});
@@ -262,7 +249,6 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
   if(!state)return;
   if(method===null){reportError(text('Choose a payment method.','የክፍያ መንገድ ይምረጡ።'));return}
   if(!enabled){reportError(text('This payment method is unavailable for this total. Choose another method.','ይህ የክፍያ መንገድ ለዚህ መጠን አይገኝም። ሌላ ይምረጡ።'));return}
-  if(applyCoupon&&(!coupon||discount.fetching)){reportError(text(discount.fetching?'Your coupon is still loading. Please try again in a moment.':'This coupon is unavailable. Remove it or select another coupon.','ኩፖኑን ያረጋግጡ ወይም ያስወግዱት።'));return}
   if(!zero&&method==='wallet'&&walletAvailable===null){reportError(text('Your wallet balance could not be confirmed. Refresh it before paying.','ከመክፈልዎ በፊት የዋሌት ቀሪ ሂሳብዎን ያድሱ።'));wallet.reload();return}
   if(!zero&&method==='wallet'&&insufficient){reportError(text(`Your LowWin Wallet has ${walletAvailable} ETB. You need ${total} ETB; top up ${centsToEtb(totalCents-etbToCents(walletAvailable!))} ETB or choose another method.`,`በዋሌትዎ ${walletAvailable} ብር አለ። ${total} ብር ያስፈልጋል። ዋሌትዎን ይሙሉ ወይም ሌላ መንገድ ይምረጡ።`));return}
   if(!zero&&method!=='wallet'&&!normalizedPhone){reportError(paymentPhoneProblemMessage(phoneProblem??'invalid',am));return}
@@ -283,7 +269,7 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
    const intent={key:attempt.paymentKey,purpose:'BID' as const,batchId:confirmedQuote.id,quoteHash:confirmedQuote.quoteHash,paymentMethod:method,phone:normalizedPhone!,apiVersion:'v2' as const,kind:'direct' as const,flow:'DIRECT' as const};
    retainChapaOriginalAttempt(getMiniQueryClient(),queryIdentity,'bid:'+auction.slug,intent,undefined,confirmedQuote);await payment.createInline(intent,{preserveTiming:true});
   }catch(cause){
-   if(generation.current===version){reportError(cause instanceof ChapaClientError?cause.message:text('Could not prepare your bids. Please retry.','ጨረታዎችዎን ማዘጋጀት አልተቻለም። እንደገና ይሞክሩ።'));if(cause instanceof ChapaClientError&&['QUOTE_CHANGED','STALE_QUOTE','COUPON_UNAVAILABLE','RETRYABLE_CONFLICT','TERMS_CHANGED'].includes(cause.code)){setQuote(null);quoteAttempt.current=null}own.reload();wallet.reload();if(applyCoupon)discount.reload()}
+   if(generation.current===version){reportError(cause instanceof ChapaClientError?cause.message:text('Could not prepare your bids. Please retry.','ጨረታዎችዎን ማዘጋጀት አልተቻለም። እንደገና ይሞክሩ።'));if(cause instanceof ChapaClientError&&['QUOTE_CHANGED','STALE_QUOTE','COUPON_UNAVAILABLE','RETRYABLE_CONFLICT','TERMS_CHANGED'].includes(cause.code)){setQuote(null);quoteAttempt.current=null}own.reload();wallet.reload()}
   }finally{controllers.current.delete(controller);if(generation.current===version){lock.current=false;setBusy(false)}}
  };
 
@@ -298,7 +284,7 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
    if(!payment.startAgain())return;
    setMethod(nextMethod&&providers.some(provider=>provider.slug===nextMethod)?nextMethod as Method:null);
    setQuote(null);quoteAttempt.current=null;setWalletRetry(false);setWalletCommand(null);setReceipt(null);
-   setNumbers(selection);setInput('');setEditing(null);reportError('');showProgressRef.current=false;setShowProgress(false);flow.openPayment();own.reload();if(applyCoupon)discount.reload();
+   setNumbers(selection);setInput('');setEditing(null);reportError('');showProgressRef.current=false;setShowProgress(false);flow.openPayment();own.reload();
   }catch{reportError(text('Could not check the original payment. Its status is preserved.','የመጀመሪያውን ክፍያ ማረጋገጥ አልተቻለም። ሁኔታው ተጠብቋል።'))}finally{setBusy(false)}
  };
  const returnToReview=useCallback(()=>flow.continueToPayment(true),[flow.continueToPayment]);
@@ -306,11 +292,11 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
  const returnFromTopUp=useCallback(()=>{setToppingUp(false);flow.openPayment()},[flow.openPayment]);
  const topUpProgress=useCallback((active:boolean)=>{if(fundingOpen.current)onPhaseChange(active?'payment':'topup')},[onPhaseChange]);
  const topUpBack=useCallback((handler:(()=>void)|null)=>{if(fundingOpen.current)onDismissChange?.(handler??returnFromTopUp)},[onDismissChange,returnFromTopUp]);
- const topUpCredited=useCallback(()=>{setToppingUp(false);flow.openPayment();setQuote(null);quoteAttempt.current=null;setQuoteRetry(value=>value+1);setWalletFailure(null);setFundingNotice(text('Wallet topped up. Review your bids, then confirm payment from your wallet.','ዋሌትዎ ተሞልቷል። ጨረታዎችዎን ይመልከቱና ከዋሌት ለመክፈል ያረጋግጡ።'));own.reload();wallet.reload();if(applyCoupon)discount.reload()},[flow.openPayment,own.reload,wallet.reload,discount.reload,applyCoupon,language]);
- const openTopUp=()=>{if(!queryIdentity||busy||walletRetry||payment.started)return;fundingRetained.current=true;retainBidFundingDraft(getMiniQueryClient(),queryIdentity,auction.slug,{numbers:selectedNumbers,method:'wallet',phone,applyCoupon});setNumbers(selectedNumbers);setInput('');setEditing(null);setMethod('wallet');setToppingUp(true)};
+ const topUpCredited=useCallback(()=>{setToppingUp(false);flow.openPayment();setQuote(null);quoteAttempt.current=null;setQuoteRetry(value=>value+1);setWalletFailure(null);setFundingNotice(text('Wallet topped up. Review your bids, then confirm payment from your wallet.','ዋሌትዎ ተሞልቷል። ጨረታዎችዎን ይመልከቱና ከዋሌት ለመክፈል ያረጋግጡ።'));own.reload();wallet.reload()},[flow.openPayment,own.reload,wallet.reload,language]);
+ const openTopUp=()=>{if(!queryIdentity||busy||walletRetry||payment.started)return;fundingRetained.current=true;retainBidFundingDraft(getMiniQueryClient(),queryIdentity,auction.slug,{numbers:selectedNumbers,method:'wallet',phone});setNumbers(selectedNumbers);setInput('');setEditing(null);setMethod('wallet');setToppingUp(true)};
  useEffect(()=>{if(toppingUp)return;onDismissChange?.(backInCheckout);return()=>onDismissChange?.(null)},[toppingUp,backInCheckout,onDismissChange]);
  if(toppingUp)return <WalletTopUp embedded onClose={onClose} onCredited={topUpCredited} onProgressChange={topUpProgress} onDismissChange={topUpBack}/>;
- if(showProgress)return <BidPaymentProgress walletPayment={!!receipt||walletRetry||busy&&(zero||method==='wallet')} payment={payment} preparing={busy} walletRetry={walletRetry} receipt={receipt} error={error} summary={{auctionTitle:known.product.title,auctionTitleAm:known.product.titleAm,numbers:quote?.lines.map(line=>line.number)??selectedNumbers,total:quote?.total??(directDraft&&'approvedTotal'in directDraft?directDraft.approvedTotal:payment.started?null:total),provider:directDraft?.paymentMethod??(payment.started&&!quote?null:zero?'coupon':method),phone:directDraft?.phone??(external?phone:null)}} onRetry={()=>void startNewBidPayment()} onChangePayment={()=>void startNewBidPayment()} onEditPayment={()=>{if(payment.started)return;showProgressRef.current=false;setShowProgress(false);reportError('');flow.openPayment()}} onRetryWallet={()=>void pay(true)} onRetryOriginal={()=>void retryOriginalDirect()} onClose={onClose}/>;
+ if(showProgress)return <BidPaymentProgress walletPayment={!!receipt||walletRetry||busy&&(zero||method==='wallet')} payment={payment} preparing={busy} walletRetry={walletRetry} receipt={receipt} error={error} summary={{auctionTitle:known.product.title,auctionTitleAm:known.product.titleAm,numbers:quote?.lines.map(line=>line.number)??selectedNumbers,total:quote?.total??(directDraft&&'approvedTotal'in directDraft?directDraft.approvedTotal:payment.started?null:total),provider:directDraft?.paymentMethod??(payment.started&&!quote?null:zero?'wallet':method),phone:directDraft?.phone??(external?phone:null)}} onRetry={()=>void startNewBidPayment()} onChangePayment={()=>void startNewBidPayment()} onEditPayment={()=>{if(payment.started)return;showProgressRef.current=false;setShowProgress(false);reportError('');flow.openPayment()}} onRetryWallet={()=>void pay(true)} onRetryOriginal={()=>void retryOriginalDirect()} onClose={onClose}/>;
 
  const invalidDraft=!!draft.error&&!!input;
  const pendingOriginal=!!walletTarget||payment.started;
@@ -332,7 +318,6 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
     <div><dt>{text('Bid count','የጨረታ ብዛት')}</dt><dd>{selectedNumbers.length}</dd></div>
     <div><dt>{text('Fee per bid','የአንድ ጨረታ ክፍያ')}</dt><dd>{formatEtb(terms.entryFeePoints)}</dd></div>
     <div><dt>{text('Submission fees','የማቅረቢያ ክፍያ')}</dt><dd>{formatEtb(priced?.grossTotal??preview.grossTotal)}</dd></div>
-    {etbToCents(priced?.discountTotal??preview.discountTotal)>0n&&<div><dt>{text('Coupon discount','የኩፖን ቅናሽ')}</dt><dd>−{formatEtb(priced?.discountTotal??preview.discountTotal)}</dd></div>}
    </dl>
    <p className={reference.reviewNote}>{text('Only submission fees are charged, not your chosen numbers.','የማቅረቢያ ክፍያ ብቻ ይከፈላል፤ የመረጡት ቁጥር አይከፈልም።')}</p>
   </section>
@@ -374,10 +359,6 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
      <span className={reference.bidCount}><Ticket size={12} aria-hidden="true"/>{known.bidCount.toLocaleString('en-US')} {text('bids','ጨረታዎች')}</span>
     </div>
    </div>
-   {active&&current&&<div className={reference.couponArea}>
-    <BidCouponControl applyCoupon={applyCoupon} disabled={frozen} onChange={setApplyCoupon}/>
-    {applyCoupon&&<p className={reference.couponHint}>{coupon?text(`${coupon.coupon!.percent}% off one bid fee.`,`${coupon.coupon!.percent}% ቅናሽ በአንድ ጨረታ ክፍያ።`):text(discount.fetching?'Checking coupon…':'No eligible coupon. Remove it or retry.',discount.fetching?'ኩፖን በመፈተሽ ላይ…':'ተስማሚ ኩፖን የለም። ያስወግዱ ወይም ይድገሙ።')}</p>}
-   </div>}
    {pendingOriginal&&<p className={reference.notice} role="status" data-bid-pending-payment>{text(walletObserving?'Checking your previous payment. Your draft stays editable.':'A previous payment is still open. Check its status before paying again.',walletObserving?'የቀደመውን ክፍያ በማረጋገጥ ላይ ነን። መጠኖችዎን ማስተካከል ይችላሉ።':'የቀደመ ክፍያ ገና አለ። ደግመው ከመክፈልዎ በፊት ሁኔታውን ይመልከቱ።')} <button type="button" onClick={viewPaymentStatus}>{text('View payment status','የክፍያ ሁኔታ ይመልከቱ')}</button></p>}
    {!pendingOriginal&&receipt&&<p className={reference.notice} role="status">{text('Your previous wallet payment was confirmed.','የቀደመው የዋሌት ክፍያዎ ተረጋግጧል።')} <button type="button" onClick={presentPayment}>{text('View receipt','ደረሰኝ ይመልከቱ')}</button></p>}
    {fundingNotice&&<p className={reference.notice} role="status" data-bid-funding-notice>{fundingNotice}</p>}

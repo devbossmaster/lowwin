@@ -109,41 +109,27 @@ test.describe('winner Mini App deep links',()=>{
    await expect(dialog).toHaveCount(0);
   }finally{release()}
  });
- test('shows compact closed details, more chances and private participant rows',async({page},info)=>{
-  const tail='Includes a USB-C charging cable.';
-  const amTail='የዩኤስቢ ገመድ ተካቷል።';
-  const more=await bidAuction(db,{fee:50,isDemo:false,ruleVersion:'lowest-unique-v5',endDelayMs:300000});
-  const relatedTitle=`Related live auction ${more.publicCode}`,relatedTitleAm=`ተጨማሪ ክፍት ጨረታ ${more.publicCode}`;
-  try{
-   await db.product.update({where:{id:result.auction.productId!},data:{description:'A portable power bank that charges everyday devices. '.repeat(4)+tail,descriptionAm:'የዕለት ተዕለት መሣሪያዎችን የሚሞላ ተንቀሳቃሽ የኃይል ባንክ። '.repeat(4)+amTail}});
-   await db.product.update({where:{id:more.productId!},data:{title:relatedTitle,titleAm:relatedTitleAm,images:{create:{path:'/catalog/accessory.svg',alt:'Fixture product illustration',sourceType:'ORIGINAL'}}}});
+ test('redirects completed auction links to the published result with private participant rows',async({page},info)=>{
    const launch=await launchFixture(`auction_${result.code}`),am=info.project.name==='430';
-   await page.emulateMedia({reducedMotion:'reduce'});
+   await page.emulateMedia({reducedMotion:am?'reduce':'no-preference'});
    if(am)await page.context().addCookies([{name:'lowwin-language',value:'am',url:process.env.BETTER_AUTH_URL!}]);
    await dismissIntro(page);
    await page.route(sdk,route=>route.fulfill({contentType:'application/javascript',body:sdkBody(launch)}));
    await page.goto('/telegram');
-   await expect(page).toHaveURL(`/auctions/${result.code}`);
-   const detail=page.locator('[data-auction-detail]');
-   const summary=detail.getByTestId('result-summary');
+   await expect(page).toHaveURL(`/winners/${result.code}`);
+   const sheet=page.getByRole('dialog',{name:am?'የጨረታ ውጤት':'Auction result',exact:true});
+   const summary=sheet.getByRole('region',{name:am?'የተረጋገጠ ውጤት':'Confirmed result',exact:true});
    await expect(summary).toHaveAttribute('data-winner','true');
    await expect(summary).toHaveCSS('background-color','rgb(7, 49, 198)');
    await expect(summary.getByText(maskResultPhone(result.phone)!,{exact:true})).toBeVisible();
-   await expect(detail.getByText(result.phone,{exact:true})).toHaveCount(0);
-   await expect(detail.locator('[data-auction-bid]')).toHaveCount(0);
-   await expect(detail.getByRole('region',{name:am?'የጨረታው እንቅስቃሴ':'Auction activity',exact:true}).getByRole('timer')).toHaveCount(0);
-   await expect(detail.locator('time').first()).toContainText('GMT+3');
-   await expect(detail.locator('[data-more-chances]').getByRole('heading',{name:am?relatedTitleAm:relatedTitle,exact:true})).toBeVisible();
-   const readMore=detail.getByRole('button',{name:am?'ተጨማሪ አንብብ':'Read more',exact:true});
-   await expect(detail.getByText(am?amTail:tail,{exact:false})).toHaveCount(0);
-   await readMore.click();await expect(detail.getByText(am?amTail:tail,{exact:false})).toBeVisible();
-   await detail.getByRole('button',{name:am?'በአጭሩ አሳይ':'Read less',exact:true}).click();
+   await expect(sheet.getByText(result.phone,{exact:true})).toHaveCount(0);
+   await expect(page.locator('[data-auction-bid]')).toHaveCount(0);
+   await expect(sheet.locator('time').first()).toContainText('GMT+3');
+   const celebration=sheet.locator('[data-winner-celebration]');
+   if(am)await expect(celebration).toBeHidden();
+   else await expect.poll(()=>celebration.evaluate((canvas:HTMLCanvasElement)=>canvas.width)).toBeGreaterThan(300);
    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-   await page.evaluate(()=>window.scrollTo(0,0));
-   await page.screenshot({path:info.outputPath('closed-auction.png')});
-   await detail.getByRole('link',{name:am?'ሙሉ ውጤቱን ይመልከቱ':'View full result',exact:true}).click();
-   await expect(page).toHaveURL(`/winners/${result.code}`);
-   const sheet=page.getByRole('dialog',{name:am?'የጨረታ ውጤት':'Auction result',exact:true});
+   await page.screenshot({path:info.outputPath('published-result.png')});
    await sheet.locator('[data-result-breakdown]').scrollIntoViewIfNeeded();
    await sheet.getByRole('button',{name:am?'በብዛት የተመረጡ':'Most picked',exact:true}).click();
    const amount=sheet.locator('[data-result-amount="50"]');await amount.click();
@@ -160,7 +146,6 @@ test.describe('winner Mini App deep links',()=>{
    await participantSheet.getByRole('button',{name:am?'ቀጣይ':'Next',exact:true}).click();
    await expect(rows).toHaveCount(1);await expect(rows.first()).toContainText('#21');
    await page.keyboard.press('Escape');await expect(participantSheet).toHaveCount(0);await expect(amount).toBeFocused();
-  }finally{await db.product.update({where:{id:more.productId!},data:{visible:false}})}
  });
 });
 test('a malformed signed winner launch falls back to Home',async({page})=>{

@@ -3,8 +3,8 @@
 @font-face{font-family:'Lowwin Ethiopic';src:url('/fonts/noto-sans-ethiopic-variable.woff2') format('woff2');font-style:normal;font-weight:100 900;font-display:swap;unicode-range:U+030E,U+1200-1399,U+2D80-2DDE,U+AB01-AB2E,U+1E7E0-1E7FE}
 @theme{--font-sans:'Inter','Lowwin Ethiopic',sans-serif;--color-primary:#6d4cfd;--color-primary-foreground:#fff;--color-forest:#382171;--color-mint:#eee8fa}
 :root { --customer-surface-width: 460px; }
-body{font-family:'Inter','Lowwin Ethiopic',sans-serif;font-weight:400}
-[lang='am']{font-family:'Lowwin Ethiopic','Inter',sans-serif}
+body{font-family:'Inter','Lowwin Ethiopic',system-ui,sans-serif;font-weight:400}
+[lang='am']{font-family:'Lowwin Ethiopic','Inter',system-ui,sans-serif}
 .telegram-entry.launch-loader {
   position: relative;
   isolation: isolate;

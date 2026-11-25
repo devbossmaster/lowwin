@@ -4,6 +4,7 @@ import {useEffect,useRef,useState} from 'react';
 import {Check,Copy,Globe2,Send,Share2,UsersRound} from 'lucide-react';
 import type {getReferralOverview} from '@/modules/referrals/service';
 import {referralShareCopy} from '@/lib/referral-share';
+import {formatEtb} from '@/lib/money';
 import {useMiniLocale} from './mini-locale';
 import {useTelegram} from './telegram-provider';
 import styles from './profile-page.module.css';
@@ -85,9 +86,9 @@ export function ReferralShareCard({overview}:{overview?:ReferralOverview}){
    <h2 id="refer-heading"><UsersRound size={19} aria-hidden="true"/>{text('Refer & earn','ይጋብዙ እና ያግኙ')}</h2>
    <span className={styles.referralState} data-active={!!shareUrl||undefined}>{shareUrl?text('Active','ንቁ'):knownRewards&&!overview.enabled?text('Paused','ቆሟል'):text('Unavailable','አይገኝም')}</span>
   </div>
-  <p className={styles.description}>{shareUrl&&typeof overview?.discountPercent==='number'?
-   text(`When a friend signs up with your link and places their first accepted bid, you earn one ${overview.discountPercent}% discount on a submission fee.`,`በሊንክዎ የተመዘገበ ጓደኛ የመጀመሪያ ጨረታው ሲቀበል፣ ለአንድ የማስገቢያ ክፍያ ${overview.discountPercent}% ቅናሽ ያገኛሉ።`):
-   knownRewards&&!overview.enabled?text('New invitations are paused. Your earned discounts keep their original expiry.','አዲስ ግብዣዎች ቆመዋል። ያገኟቸው ቅናሾች የመጀመሪያ የማብቂያ ቀናቸውን ይይዛሉ።'):
+  <p className={styles.description}>{shareUrl&&overview?.rewardEtb?
+   text(`Earn ${formatEtb(overview.rewardEtb)} in your wallet when a friend signs up with your link and places their first accepted bid. You earn once per friend.`,`በሊንክዎ የተመዘገበ ጓደኛ የመጀመሪያው ጨረታ ሲቀበል፣ ${overview.rewardEtb} ብር ወደ ዋሌትዎ ይገባል። ለእያንዳንዱ ጓደኛ አንድ ጊዜ ያገኛሉ።`):
+   knownRewards&&!overview.enabled?text('New invitations are paused. Rewards you already earned stay in your wallet.','አዲስ ግብዣዎች ቆመዋል። ያገኙት ሽልማት በዋሌትዎ ይቆያል።'):
    text('Your invitation link and reward terms will appear here when Refer & earn is ready.','የመጋበዣ ሊንክዎ እና የሽልማት ውሎች አገልግሎቱ ሲዘጋጅ እዚህ ይታያሉ።')}</p>
   {shareUrl&&<>
    <p className={styles.referralChannel}>{inTelegram?<Send size={13} aria-hidden="true"/>:<Globe2 size={13} aria-hidden="true"/>}{inTelegram?text('Telegram invite link','የቴሌግራም ግብዣ ሊንክ'):text('Website invite link','የድረ ገጽ ግብዣ ሊንክ')}</p>

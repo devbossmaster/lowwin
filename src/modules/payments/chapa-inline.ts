@@ -8,7 +8,7 @@ import {normalizePaymentPhone,paymentPhoneProblem,paymentPhoneProblemMessage} fr
 import {classifyChapaApiError} from '@/lib/chapa-api-error';
 import {contactBotId,decryptPhone,encryptPhone,phoneHash} from '../auth/own-contact';
 import {signedSessionToken} from '../auth/signed-session';
-import {batchLines,ownBatch,priceBatchInTransaction,validateBatchInTransaction} from '../auctions/batch';
+import {batchLines,ownBatch,priceBatchInTransaction,rejectRetiredCoupon,validateBatchInTransaction} from '../auctions/batch';
 import {auctionMaintenance} from '../auctions/maintenance';
 import {eligible,getChapaCheckout,ownChapaCheckout,verifyChapaCheckout} from './chapa';
 import {ChapaError,ChapaProviderError,chapaAvailability,chapaHash,chapaWebhookSignatureProfile,chapaTransport,createdChapaDirect,createdCurrentChapaDirect,createdChapaSession,type ChapaCreate,type ChapaTransport} from './chapa-provider';
@@ -232,8 +232,9 @@ async function createParsedCheckout(client:PrismaClient,userId:string,{body,phon
   if(body.purpose==='BID'){
    if(!batch||batch.quoteHash!==body.quoteHash||batch.status!=='QUOTED')throw new ChapaError(409,'TERMS_CHANGED','Review your bid quote again.');
    if(batch.paymentStarted)throw new ChapaError(409,'PAYMENT_STARTED','Check the existing payment for this selection.');
-   const lines=batchLines(batch),numbers=lines.map(line=>line.number),coupon=batch.couponId??undefined;
-   const priced=await measureChapa('pricing',()=>fresh?priceBatchInTransaction(tx,userId,batch.auctionSlug,numbers,batch.feeVersion,coupon):validateBatchInTransaction(tx,userId,batch.auctionSlug,numbers,batch.feeVersion,coupon,true));
+   rejectRetiredCoupon(batch.couponId);
+   const lines=batchLines(batch),numbers=lines.map(line=>line.number);
+   const priced=await measureChapa('pricing',()=>fresh?priceBatchInTransaction(tx,userId,batch.auctionSlug,numbers,batch.feeVersion):validateBatchInTransaction(tx,userId,batch.auctionSlug,numbers,batch.feeVersion,undefined,true));
    if(priced.totalCents!==batch.totalCents||JSON.stringify(priced.lines)!==JSON.stringify(lines))throw new ChapaError(409,'TERMS_CHANGED','The quote changed. Review before paying.');
   }
   const amountCents=batch?.totalCents??etbToCents(body.purpose==='TOP_UP'?body.amount:'0'),method=selectedMethod;
@@ -246,7 +247,7 @@ async function createParsedCheckout(client:PrismaClient,userId:string,{body,phon
   if(protocol==='DIRECT'){
    if(!await allowIdentityRequests(tx,[{scope:'chapa-inline-create',identity:userId,maximum:24,windowMs:3600000},{scope:'chapa-inline-initialize',identity:id,maximum:5,windowMs:86400000}]))throw new ChapaError(429,'RATE_LIMITED','Check Transactions before trying another payment.');
   }else if(!await allowIdentityRequest(tx,'chapa-inline-initialize',id,5,86400000))throw new ChapaError(429,'RATE_LIMITED','Check the original payment before trying again.');
-  const order=await measureChapa('intent',()=>tx.chapaCheckout.create({data:{id,userId,key:body.key,requestHash:hash,purpose:body.purpose,mode:health.mode,credentialFingerprint:health.credentialFingerprint!,initialization:JSON.parse(JSON.stringify(initialization)),chargeType:body.flow,flowVersion,batchId:batch?.id,payerPhoneCipher:encryptPhone(phone,contact.botId),phoneCipher:contact.phoneCipher,phoneBotId:contact.botId,merchantReference,amountCents,currency:'ETB',paymentMethod:body.paymentMethod,auctionId:batch?.auctionId,auctionSlug:batch?.auctionSlug,bidNumber:batch?new Prisma.Decimal(batchLines(batch)[0].number):null,feeVersion:batch?.feeVersion,grossFee:batch?new Prisma.Decimal(centsToEtb(batch.grossCents)):null,discountPoints:batch?new Prisma.Decimal(centsToEtb(batch.discountCents)):new Prisma.Decimal(0),couponId:batch?.couponId,status:'SUBMITTING',reason:'AWAITING_PROVIDER',attempts:1,leaseUntil:after(45000),expiresAt:after(body.flow==='HOSTED'?86400000:300000),nextCheckAt:after(15000),reconcileUntil:after(30*86400000)}}));
+  const order=await measureChapa('intent',()=>tx.chapaCheckout.create({data:{id,userId,key:body.key,requestHash:hash,purpose:body.purpose,mode:health.mode,credentialFingerprint:health.credentialFingerprint!,initialization:JSON.parse(JSON.stringify(initialization)),chargeType:body.flow,flowVersion,batchId:batch?.id,payerPhoneCipher:encryptPhone(phone,contact.botId),phoneCipher:contact.phoneCipher,phoneBotId:contact.botId,merchantReference,amountCents,currency:'ETB',paymentMethod:body.paymentMethod,auctionId:batch?.auctionId,auctionSlug:batch?.auctionSlug,bidNumber:batch?new Prisma.Decimal(batchLines(batch)[0].number):null,feeVersion:batch?.feeVersion,grossFee:batch?new Prisma.Decimal(centsToEtb(batch.grossCents)):null,status:'SUBMITTING',reason:'AWAITING_PROVIDER',attempts:1,leaseUntil:after(45000),expiresAt:after(body.flow==='HOSTED'?86400000:300000),nextCheckAt:after(15000),reconcileUntil:after(30*86400000)}}));
   return {created:true,order};
  },PAYMENT_TRANSACTION_OPTIONS));
  return {order:prepared.created?await dispatchInlineCheckout(client,prepared.order,userId,transport,'create'):await initializeInlineCheckout(client,prepared.order,userId,reauthorize,transport)};

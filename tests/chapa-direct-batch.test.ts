@@ -4,8 +4,9 @@ import {randomUUID} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {createRequire} from 'node:module';
 import {verifiedReferralUser,realReferralAuction,earnedReferralCoupon,referredRegistration} from './referral-fixtures';
+import {recordLegacyCouponBid,seedLegacyCouponQuote,seedLegacyDirectCouponIntent} from './legacy-coupon-fixtures';
 import {creditDevelopmentPoints,reconcile} from '../src/modules/wallet/ledger';
-import {quoteBidBatch,payBidBatchWallet} from '../src/modules/auctions/batch';
+import {ownBatch,quoteBidBatch,payBidBatchWallet} from '../src/modules/auctions/batch';
 import {createDirectCheckout,authorizeDirectCheckout,reconcileDirectCheckouts} from '../src/modules/payments/chapa-direct';
 import {getChapaCheckout,verifyChapaCheckout} from '../src/modules/payments/chapa';
 import {processChapaEvent} from '../src/modules/payments/chapa-events';
@@ -23,21 +24,24 @@ describe.skipIf(!database)('direct charges and atomic batches on isolated Postgr
  beforeAll(async()=>{
   const url=new URL(database!);if(!['127.0.0.1','localhost'].includes(url.hostname)||!url.pathname.endsWith('_test'))throw Error('Disposable loopback _test database required');
   Object.assign(process.env,{DATABASE_URL:database,DIRECT_URL:database,NODE_ENV:'test',APP_ENV:'local',CHAPA_MODE:'test',CHAPA_SCHEMA_READY:'true',CHAPA_PRIVATE_KEY:'CHAPA_TEST_'+'a'.repeat(40),CHAPA_WEBHOOK_SECRET:'a'.repeat(64),CHAPA_ENABLED:'true',CHAPA_RECOVERY_ENABLED:'true',PAYMENT_GATEWAY:'CHAPA',BETTER_AUTH_URL:'https://lowwin.test',MINI_APP_URL:'https://lowwin.test',DEV_POINTS_ENABLED:'true',DEV_IDENTITY_ENABLED:'false',STAGING_DEMO_ENABLED:'false',WALLET_BIDS_ENABLED:'true',TELEGRAM_BOT_TOKEN:TEST_TOKEN,TELEGRAM_BOT_USERNAME:'lowin_test_bot',TELEGRAM_WEBHOOK_SECRET:'local-chapa-contact-webhook-secret-thirty-two',PHONE_CONTACT_KEY_ID:'direct-test',PHONE_CONTACT_KEYS:JSON.stringify({'direct-test':'e'.repeat(64)}),PHONE_CONTACT_HASH_KEY:'f'.repeat(64),REFERRAL_REWARDS_SCHEMA_READY:'true'});
-  execFileSync(process.execPath,[createRequire(import.meta.url).resolve('prisma/build/index.js'),'migrate','deploy'],{env:process.env,stdio:'pipe'});db=new PrismaClient({datasourceUrl:database});await db.referralPolicy.create({data:{enabled:true,discountPercent:10,expiryDays:30,updatedBy:'isolated-direct-owner'}});
+  execFileSync(process.execPath,[createRequire(import.meta.url).resolve('prisma/build/index.js'),'migrate','deploy'],{env:process.env,stdio:'pipe'});db=new PrismaClient({datasourceUrl:database});await db.referralPolicy.create({data:{enabled:true,discountPercent:10,expiryDays:30,rewardCents:1250n,updatedBy:'isolated-direct-owner'}});
  },60000);
  afterAll(async()=>{await db?.$disconnect();const shared=await import('../src/lib/db');await shared.db.$disconnect()});
  const balance=async(id:string)=>(await db.ledgerAccount.findUnique({where:{name:`user:${id}:available`}}))?.balance.toString()??'0';
  // Force the next synthetic check due, including its provider-error backoff.
  const due=async(id:string)=>{await db.chapaCheckout.update({where:{id},data:{leaseUntil:null,nextCheckAt:new Date(0),verificationRetryAfter:null}})};
- async function fixture(options:{numbers?:string[];fee?:number;initialBalance?:string;coupon?:boolean;endDelayMs?:number}={}){
-  const user=(await verifiedReferralUser(db)).id,auction=await realReferralAuction(db,options.fee??50,options.endDelayMs),coupon=options.coupon?(await earnedReferralCoupon(db,user)).coupon:null;
+ async function fixture(options:{numbers?:string[];fee?:number;initialBalance?:string;coupon?:boolean;legacyStarted?:boolean;userId?:string;endDelayMs?:number}={}){
+  const user=options.userId??(await verifiedReferralUser(db)).id,auction=await realReferralAuction(db,options.fee??50,options.endDelayMs),coupon=options.coupon?(await earnedReferralCoupon(db,user)).coupon:null;
   if(options.initialBalance)await creditDevelopmentPoints(db,user,options.initialBalance,randomUUID());
-  const quote=await quoteBidBatch(db,user,{key:randomUUID(),auctionSlug:auction.slug,numbers:options.numbers??['2','3','4'],feeVersion:1,...(coupon?{couponId:coupon.id}:{})});
+  const selection={key:randomUUID(),auctionSlug:auction.slug!,numbers:options.numbers??['2','3','4'],feeVersion:1},paymentKey=randomUUID();
+  const legacy=coupon?await seedLegacyCouponQuote(db,user,{...selection,couponId:coupon.id}):null;
+  if(legacy&&options.legacyStarted)await seedLegacyDirectCouponIntent(db,legacy,paymentKey);
+  const quote=legacy?ownBatch(legacy):await quoteBidBatch(db,user,selection);
   let created:ChapaDirectCreate|null=null,status='SUCCESS',fail=false,auth='USSD',alter:(d:Record<string,unknown>)=>Record<string,unknown>=d=>d;const ref='CH'+randomUUID().replaceAll('-','');
   const direct=vi.fn(async(value:ChapaDirectCreate)=>{created=value;if(fail){fail=false;throw Error('response lost')}return {status:'success',data:{auth_type:auth,chapa_reference:ref,payment_status:'PENDING',request_id:'req-'+ref,created_at:new Date().toISOString(),expires_at:new Date(Date.now()+300000).toISOString()}}});
   const validate=vi.fn(async()=>({status:'success',data:{status:'SUCCESS'}})),lookup=vi.fn(async()=>({status:'success',data:alter({merchant_reference:created!.merchantReference,chapa_reference:ref,amount:Number(created!.amountCents),currency:'ETB',mode:'test',status,payment_method:'telebirr',customer:{phone_number:'251911652904'}})}));
   const transport:ChapaTransport={create:vi.fn(),lookup,direct,validate,methods:vi.fn(async()=>({status:'success',data:[{name:'Telebirr',slug:'telebirr',can_process_payments:true,can_process_direct_charge:true,supported_currencies:{ETB:{default_min:100,default_max:10000000,countries:{ET:{is_enabled:true}}}}}]}))};
-  const command={key:randomUUID(),purpose:'BID',batchId:quote.id,quoteHash:quote.quoteHash,paymentMethod:'telebirr',phone:'0911652904'},start=()=>createDirectCheckout(db,user,command,undefined,transport),verify=async(id:string)=>{await due(id);return verifyChapaCheckout(db,id,user,undefined,transport)};
+  const command={key:paymentKey,purpose:'BID',batchId:quote.id,quoteHash:quote.quoteHash,paymentMethod:'telebirr',phone:'0911652904'},start=()=>createDirectCheckout(db,user,command,undefined,transport),verify=async(id:string)=>{await due(id);return verifyChapaCheckout(db,id,user,undefined,transport)};
   return {user,auction,coupon,quote,command,start,verify,transport,direct,validate,lookup,setStatus:(value:string)=>{status=value},fail:()=>{fail=true},auth:(value:string)=>{auth=value},alter:(fn:typeof alter)=>{alter=fn}};
  }
  it('prices fees rather than numbers and accepts the entire wallet order exactly once',async()=>{
@@ -58,7 +62,22 @@ describe.skipIf(!database)('direct charges and atomic batches on isolated Postgr
   expect(await db.bid.count({where:{userId:f.user,auctionId:f.auction.id}})).toBe(2);expect(await balance(f.user)).toBe('0');
  });
  it('accepts the full100-entry order through bounded bulk writes with exact receipts and notifications',async()=>{const f=await fixture({fee:1,numbers:Array.from({length:100},(_,i)=>String(i+2)),initialBalance:'100'});const paid=await payBidBatchWallet(db,f.user,f.quote.id,{quoteHash:f.quote.quoteHash});expect(paid.receipts).toHaveLength(100);expect(await db.bid.count({where:{userId:f.user,auctionId:f.auction.id}})).toBe(100);expect(await balance(f.user)).toBe('0');expect(await db.outbox.count({where:{kind:'BID_ACCEPTED',payload:{path:['recipientUserId'],equals:f.user}}})).toBe(1);expect(await db.notificationInbox.count({where:{kind:'BID_ACCEPTED',userId:f.user}})).toBe(1);expect(Buffer.byteLength(JSON.stringify(paid))).toBeLessThan(60000);expect(paid.batch).not.toHaveProperty('receipt');expect(paid).not.toHaveProperty('receipt');expect(paid.receipts[0]).not.toHaveProperty('ownBids');expect(await reconcile(db)).toEqual([])});
- it('awards one referral coupon when the genuine first accepted action is a multi-entry batch',async()=>{const sponsor=(await verifiedReferralUser(db)).id,user=(await referredRegistration(db,sponsor)).id,auction=await realReferralAuction(db,10);await creditDevelopmentPoints(db,user,'30',randomUUID());const quote=await quoteBidBatch(db,user,{key:randomUUID(),auctionSlug:auction.slug,numbers:['2','3','4'],feeVersion:1}),paid=await payBidBatchWallet(db,user,quote.id,{quoteHash:quote.quoteHash});expect(await db.referralCoupon.count({where:{ownerUserId:sponsor,referredUserId:user}})).toBe(1);expect(await db.referralSignup.findUnique({where:{referredUserId:user}})).toMatchObject({firstBidId:paid.receipts[0].bid.id});expect(await db.bid.count({where:{userId:user}})).toBe(3)});
+ it('credits the inviter once for the first paid wallet batch',async()=>{
+  const sponsor=(await verifiedReferralUser(db)).id,user=(await referredRegistration(db,sponsor)).id,auction=await realReferralAuction(db,10);
+  await creditDevelopmentPoints(db,user,'30',randomUUID());
+  const quote=await quoteBidBatch(db,user,{key:randomUUID(),auctionSlug:auction.slug,numbers:['2','3','4'],feeVersion:1});
+  const paid=await payBidBatchWallet(db,user,quote.id,{quoteHash:quote.quoteHash});
+  expect(await db.referralWalletReward.findUnique({where:{referredUserId:user}})).toMatchObject({referrerUserId:sponsor,bidId:paid.receipts[0].bid.id,amountCents:1250n,creditedAt:expect.any(Date)});
+  expect(await balance(sponsor)).toBe('12.5');expect(await db.bid.count({where:{userId:user}})).toBe(3);
+ });
+ it('does not qualify a test-provider payment for wallet rewards',async()=>{
+  const sponsor=(await verifiedReferralUser(db)).id,user=(await referredRegistration(db,sponsor)).id,f=await fixture({userId:user});
+  const order=await f.start();
+  expect(await f.verify(order.id)).toMatchObject({status:'BID_ACCEPTED'});
+  expect(await db.referralWalletReward.findUnique({where:{referredUserId:user}})).toBeNull();
+  expect(await db.referralSignup.findUnique({where:{referredUserId:user}})).toMatchObject({firstBidId:null});
+  expect(await balance(sponsor)).toBe('0');
+ });
  it('rejects the whole wallet order on insufficient funds without partial bids or charges',async()=>{const f=await fixture({initialBalance:'99'});await expect(payBidBatchWallet(db,f.user,f.quote.id,{quoteHash:f.quote.quoteHash})).rejects.toMatchObject({code:'INSUFFICIENT_POINTS'});expect(await balance(f.user)).toBe('99');expect(await db.bid.count({where:{userId:f.user,auctionId:f.auction.id}})).toBe(0)});
  it('fulfills a zero-fee order atomically without a provider or an enabled wallet gate',async()=>{const f=await fixture({fee:0});process.env.WALLET_BIDS_ENABLED='false';try{expect(f.quote.totalCents).toBe('0');const result=await payBidBatchWallet(db,f.user,f.quote.id,{quoteHash:f.quote.quoteHash});expect(result.receipts).toHaveLength(3);expect(f.direct).not.toHaveBeenCalled();expect(await balance(f.user)).toBe('0')}finally{process.env.WALLET_BIDS_ENABLED='true'}});
  it('rejects a provider subminimum amount instead of silently increasing it',async()=>{const f=await fixture({numbers:['2'],fee:0.5});await expect(f.start()).rejects.toMatchObject({code:'METHOD_UNAVAILABLE'});expect(f.direct).not.toHaveBeenCalled();expect(await db.chapaCheckout.count({where:{userId:f.user}})).toBe(0)});
@@ -66,7 +85,24 @@ describe.skipIf(!database)('direct charges and atomic batches on isolated Postgr
   const f=await fixture();await expect(createDirectCheckout(db,f.user,{...f.command,paymentMethod,phone},undefined,f.transport)).rejects.toMatchObject({status:422,code:'INVALID_PHONE'});
   expect(f.transport.methods).not.toHaveBeenCalled();expect(f.direct).not.toHaveBeenCalled();expect(await db.chapaCheckout.count({where:{userId:f.user}})).toBe(0);expect(await balance(f.user)).toBe('0');
  });
- it('applies one coupon to only one line and consumes it once across the batch',async()=>{const f=await fixture({initialBalance:'145',coupon:true});expect(f.quote.lines.map(line=>line.discount)).toEqual(['5.00','0.00','0.00']);expect(f.quote.total).toBe('145.00');await payBidBatchWallet(db,f.user,f.quote.id,{quoteHash:f.quote.quoteHash});expect(await balance(f.user)).toBe('0');expect(await db.referralRedemption.count({where:{couponId:f.coupon!.id}})).toBe(1)});
+ it('rejects new coupon requests and unpaid legacy quotes without writing a debit or an intent',async()=>{
+  const f=await fixture({initialBalance:'145',coupon:true});
+  const selection={key:randomUUID(),auctionSlug:f.auction.slug!,numbers:['2','3','4'],feeVersion:1,couponId:f.coupon!.id};
+  await expect(quoteBidBatch(db,f.user,selection)).rejects.toMatchObject({code:'COUPON_UNAVAILABLE'});
+  await expect(submitBid(db,{userId:f.user,auctionSlug:f.auction.slug!,amount:'2',feeVersion:1,key:randomUUID(),couponId:f.coupon!.id})).rejects.toMatchObject({code:'COUPON_UNAVAILABLE'});
+  await expect(payBidBatchWallet(db,f.user,f.quote.id,{quoteHash:f.quote.quoteHash})).rejects.toMatchObject({code:'COUPON_UNAVAILABLE'});
+  await expect(f.start()).rejects.toMatchObject({code:'COUPON_UNAVAILABLE'});
+  expect(f.direct).not.toHaveBeenCalled();expect(await balance(f.user)).toBe('145');
+  expect(await db.chapaCheckout.count({where:{batchId:f.quote.id}})).toBe(0);
+  expect(await db.referralRedemption.count({where:{couponId:f.coupon!.id}})).toBe(0);
+ });
+ it('reconciles an already started historical batch at its exact discounted total',async()=>{
+  const f=await fixture({coupon:true,legacyStarted:true}),order=await f.start();
+  expect(order.amountCents).toBe('14500');expect(f.direct).toHaveBeenCalledOnce();
+  expect(await f.verify(order.id)).toMatchObject({status:'BID_ACCEPTED'});
+  expect(await db.bid.count({where:{userId:f.user,auctionId:f.auction.id}})).toBe(3);
+  expect(await db.referralRedemption.count({where:{couponId:f.coupon!.id}})).toBe(1);expect(await balance(f.user)).toBe('0');
+ });
  it('accepts contiguous amounts in any order while retaining duplicate and fee-version validation',async()=>{const f=await fixture({numbers:['2']});const contiguous=await quoteBidBatch(db,f.user,{key:randomUUID(),auctionSlug:f.auction.slug,numbers:['1.04','1.01','1.03','1.02'],feeVersion:1});expect(contiguous.entryCount).toBe(4);expect(contiguous.lines.map(line=>line.number)).toEqual(['1.04','1.01','1.03','1.02']);await expect(quoteBidBatch(db,f.user,{key:randomUUID(),auctionSlug:f.auction.slug,numbers:['2','2.00'],feeVersion:1})).rejects.toMatchObject({code:'OWN_DUPLICATE'});await expect(quoteBidBatch(db,f.user,{key:randomUUID(),auctionSlug:f.auction.slug,numbers:['3'],feeVersion:99})).rejects.toMatchObject({code:'TERMS_CHANGED'})});
  it('uses one external charge for three entries and settles duplicate concurrent verification once',async()=>{
   const f=await fixture(),order=await f.start();expect(order.chargeType).toBe('DIRECT');expect(f.direct).toHaveBeenCalledOnce();expect(f.direct.mock.calls[0][0].amountCents).toBe('15000');expect(await balance(f.user)).toBe('0');await due(order.id);const result=await Promise.all([verifyChapaCheckout(db,order.id,f.user,undefined,f.transport),verifyChapaCheckout(db,order.id,f.user,undefined,f.transport)]);expect(result.some(row=>row.status==='BID_ACCEPTED')).toBe(true);expect(await db.bid.count({where:{userId:f.user,auctionId:f.auction.id}})).toBe(3);expect(await db.operation.count({where:{userId:f.user,scope:'CHAPA_RECEIPT'}})).toBe(1);expect(await balance(f.user)).toBe('0');expect(await reconcileChapaReceipts(db)).toEqual([]);
@@ -74,7 +110,7 @@ describe.skipIf(!database)('direct charges and atomic batches on isolated Postgr
  it('keeps all paid funds in the wallet when any batch entry cannot be accepted',async()=>{
   const f=await fixture({initialBalance:'50'}),order=await f.start();await submitBid(db,{userId:f.user,auctionSlug:f.auction.slug!,amount:'3',feeVersion:1,key:randomUUID()});const result=await f.verify(order.id);expect(result).toMatchObject({status:'NEEDS_REVIEW',fundsPreserved:true});expect(await balance(f.user)).toBe('150');expect(await db.bid.count({where:{userId:f.user,auctionId:f.auction.id}})).toBe(1);expect(await db.bidBatchOrder.findUnique({where:{id:f.quote.id}})).toMatchObject({status:'QUOTED'});
  });
- it('does not consume a coupon twice when an already initiated batch loses it to another accepted bid',async()=>{const f=await fixture({coupon:true,initialBalance:'50'}),order=await f.start();await submitBid(db,{userId:f.user,auctionSlug:f.auction.slug!,amount:'8',feeVersion:1,key:randomUUID(),couponId:f.coupon!.id});expect(await f.verify(order.id)).toMatchObject({status:'NEEDS_REVIEW',fundsPreserved:true});expect(await db.bid.count({where:{userId:f.user,auctionId:f.auction.id}})).toBe(1);expect(await db.referralRedemption.count({where:{couponId:f.coupon!.id}})).toBe(1);expect(await balance(f.user)).toBe('150')});
+ it('does not consume a coupon twice when an already initiated batch loses it to another accepted bid',async()=>{const f=await fixture({coupon:true,legacyStarted:true,initialBalance:'50'}),order=await f.start();await recordLegacyCouponBid(db,{userId:f.user,auctionSlug:f.auction.slug!,amount:'8',feeVersion:1,key:randomUUID(),couponId:f.coupon!.id});expect(await f.verify(order.id)).toMatchObject({status:'NEEDS_REVIEW',fundsPreserved:true});expect(await db.bid.count({where:{userId:f.user,auctionId:f.auction.id}})).toBe(1);expect(await db.referralRedemption.count({where:{couponId:f.coupon!.id}})).toBe(1);expect(await balance(f.user)).toBe('150')});
  it('preserves an entire late successful batch as wallet funds without backdated entries',async()=>{const f=await fixture({endDelayMs:1500}),order=await f.start();await new Promise(resolve=>setTimeout(resolve,1600));expect(await f.verify(order.id)).toMatchObject({status:'NEEDS_REVIEW',reason:'AUCTION_CLOSED',fundsPreserved:true});expect(await balance(f.user)).toBe('150');expect(await db.bid.count({where:{userId:f.user,auctionId:f.auction.id}})).toBe(0);expect(await f.verify(order.id)).toMatchObject({fundsPreserved:true});expect(await balance(f.user)).toBe('150')});
  it('rejects edits to the server quote and direct method, phone and authorization reference',async()=>{const f=await fixture(),order=await f.start();await expect(db.bidBatchOrder.update({where:{id:f.quote.id},data:{totalCents:1n}})).rejects.toThrow('immutable');await expect(db.bidBatchOrder.delete({where:{id:f.quote.id}})).rejects.toThrow('cannot be deleted');await expect(db.chapaCheckout.update({where:{id:order.id},data:{paymentMethod:'mpesa'}})).rejects.toThrow('immutable');await expect(db.chapaCheckout.update({where:{id:order.id},data:{authorizationReference:'CHother'}})).rejects.toThrow('immutable');await expect(db.chapaCheckout.update({where:{id:order.id},data:{payerPhoneCipher:'replacement'}})).rejects.toThrow('immutable')});
  it.each(['amount','method','reference'])('rejects verified %s evidence conflicting with the original intent',async field=>{const f=await fixture(),order=await f.start();f.alter(data=>({...data,...(field==='amount'?{amount:14999}:field==='method'?{payment_method:'mpesa'}:{chapa_reference:'CHother'})}));expect(await f.verify(order.id)).toMatchObject({status:'NEEDS_REVIEW',reason:'EVIDENCE_MISMATCH'});expect(await balance(f.user)).toBe('0');expect(await db.bid.count({where:{userId:f.user,auctionId:f.auction.id}})).toBe(0)});
