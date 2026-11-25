@@ -11,7 +11,7 @@ describe('Addis Ababa timestamps', () => {
 
     expect(formatAddisDateTimeLocal(instant)).toBe(input);
     expect(parseAddisDateTimeLocal(input).toISOString()).toBe(instant);
-    expect(formatAddisTimestamp(instant)).toMatch(/1 Jan 2027, 00:30 GMT\+3$/);
+    expect(formatAddisTimestamp(instant)).toBe('1 Jan 2027, 00:30');
   });
 
   it('keeps second precision for manually entered transfer times and leaves empty schedules blank', () => {
@@ -24,9 +24,9 @@ describe('Addis Ababa timestamps', () => {
     vi.stubEnv('TZ', 'America/Los_Angeles');
     const instant = '2026-12-31T21:30:54Z';
 
-    expect(formatAddisTimestamp(instant, locale)).toMatch(/00:30 GMT\+3$/);
-    expect(formatAddisTimestamp(instant, locale, 'compact')).toMatch(/00:30 GMT\+3$/);
-    expect(formatAddisTimestamp(instant, locale, 'time')).toBe('00:30 GMT+3');
-    expect(formatAddisTimestamp(instant, locale, 'withSeconds')).toMatch(/00:30:54 GMT\+3$/);
+    expect(formatAddisTimestamp(instant, locale)).toMatch(/00:30$/);
+    expect(formatAddisTimestamp(instant, locale, 'compact')).toMatch(/00:30$/);
+    expect(formatAddisTimestamp(instant, locale, 'time')).toBe('00:30');
+    expect(formatAddisTimestamp(instant, locale, 'withSeconds')).toMatch(/00:30:54$/);
   });
 });

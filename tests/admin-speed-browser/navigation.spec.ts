@@ -33,7 +33,7 @@ test('admin cached navigation, progressive Overview and contained cards',async({
    await expect(page.locator('[data-overview-card="deposits-today"]')).toHaveAttribute('href','/admin/payments?view=completed&purpose=TOP_UP');
    await expect(page.locator('[data-overview-card="successful-payments"]')).toContainText('42');
    await expect(page.locator('[data-overview-card="payments-today"]')).toContainText('ETB 6,321,099.95');
-   await expect(page.getByText('Daily totals use Addis Ababa (GMT+3).')).toBeVisible();
+   await expect(page.getByText('Daily totals use Addis Ababa.',{exact:true})).toBeVisible();
    await expect(page.getByText('Loading active auctions…')).toBeVisible();holding=false;release();
   }
   const coldOverviewMs=performance.now()-start,firstReads=[...reads];const tableStart=performance.now();await navigate('Players');await expect(page.getByRole('region',{name:'Players and wallets'})).toContainText(player.name);const coldTableMs=performance.now()-tableStart;

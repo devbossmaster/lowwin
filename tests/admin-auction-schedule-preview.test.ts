@@ -20,7 +20,7 @@ describe('Admin auction countdown preview', () => {
     expect(html).toMatch(/<input type="text"[^>]*value="23:13"/);
     expect(html).toContain('Time (24-hour)');
     expect(html).toContain('<dt>Ends in</dt><dd>5h 13m</dd>');
-    expect(html).toContain('Ends 19 Nov 2026, 23:13 GMT+3');
+    expect(html).toContain('Ends 19 Nov 2026, 23:13</p>');
     expect(html).not.toContain('Shortens');
   });
 
@@ -52,8 +52,8 @@ describe('Admin auction countdown preview', () => {
     }));
 
     expect(html).toContain('<dt>Starts in</dt><dd>1h</dd>');
-    expect(html).toContain('Starts 19 Nov 2026, 19:00 GMT+3<span> · 1h earlier</span>');
-    expect(html).toContain('Ends 20 Nov 2026, 01:00 GMT+3');
+    expect(html).toContain('Starts 19 Nov 2026, 19:00<span> · 1h earlier</span>');
+    expect(html).toContain('Ends 20 Nov 2026, 01:00</p>');
   });
 
   it('provides useful feedback before both draft times are valid', () => {

@@ -206,14 +206,13 @@ test.describe('Addis Ababa auction deadline in a US browser',()=>{
    await page.goto(`/admin/auctions/${id}`);
    await page.getByRole('button',{name:'Manage',exact:true}).click();
 
-   const fields=page.getByRole('group',{name:'New end time · Addis Ababa (GMT+3)',exact:true});
+   const fields=page.getByRole('group',{name:'New end time · Addis Ababa',exact:true});
    const time=fields.getByRole('textbox',{name:'Time (24-hour)',exact:true});
    const preview=page.getByRole('region',{name:'Countdown preview',exact:true});
    await expect(fields.getByLabel('Date',{exact:true})).toHaveValue(day);
    await expect(time).toHaveValue('15:22');
    await time.fill('13:22');
-   await expect(preview).toContainText('13:22 GMT+3');
-   await expect(preview).toContainText('Shortens by 2h');
+   await expect(preview).toContainText('13:22 · Shortens by 2h');
 
    await page.getByRole('textbox',{name:'Reason',exact:true}).fill(reason);
    const save=page.getByRole('button',{name:'Change deadline',exact:true});

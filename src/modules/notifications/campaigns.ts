@@ -2,7 +2,7 @@ import {Prisma,type PrismaClient,type Outbox} from '@prisma/client';
 import {demoBidAllowed} from '../auctions/bids';
 import {stagingDemoEnabled} from '../auctions/staging-demo';
 import {formatEtb} from '@/lib/money';
-import {ADDIS_ABABA_TIME_OFFSET,ADDIS_ABABA_TIME_ZONE} from '@/lib/addis-time';
+import {formatAddisTimestamp} from '@/lib/addis-time';
 import {auctionMaintenanceHalted,lockAuctionMaintenance} from '../auctions/maintenance';
 import {broadcastMiniAppPath,broadcastButtonLabel} from '@/lib/broadcast-link';
 import {resultRecipientIds} from './result-audience';
@@ -11,8 +11,7 @@ import {endingReminders,endingReminder,endingReminderCurrent,notificationRetired
 import {auctionCountdownAm,auctionPromotionText} from './amharic-copy';
 
 type Tx=Prisma.TransactionClient;
-const notificationTime=new Intl.DateTimeFormat('am-ET',{dateStyle:'medium',timeStyle:'short',timeZone:ADDIS_ABABA_TIME_ZONE,hourCycle:'h23'});
-const when=(date:Date)=>`${notificationTime.format(date)} (አዲስ አበባ · ${ADDIS_ABABA_TIME_OFFSET})`;
+const when=(date:Date)=>`${formatAddisTimestamp(date,'am-ET')} (አዲስ አበባ)`;
 export const telegramKinds=['AUCTION_PUBLISHED','AUCTION_UPCOMING_ADDED',...upcomingReminders.map(r=>r.kind),...endingReminders.map(r=>r.kind),'AUCTION_ENDED','DEPOSIT_CREDITED','BROADCAST'];
 /** Only a published product's own local image may accompany its auction alert. */
 export function auctionNotificationImagePath(presentation:unknown,productPath?:string){

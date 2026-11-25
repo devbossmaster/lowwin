@@ -25,7 +25,14 @@ export async function GET(request:Request){
     ]);
     // Authored bilingual notices contain committed outcome/refund facts. Keep
     // those facts for the client language selector; fallback only legacy rows.
-    return Response.json({items:items.map(item=>({...item,...(!/[\u1200-\u137f]/.test(item.title)?fallbackAmharicNotificationCopy(item.kind):{}),href:item.href})),total,page,totalPages:Math.ceil(total/pageSize),unread,categories:['all','draws','payments']},{headers:privateHeaders});
+    const notices=items.map(item=>({
+      ...item,
+      // Older auction alerts store the timezone suffix as part of their body.
+      body:item.kind.startsWith('AUCTION_')?item.body.replace(/(\d{2}:\d{2} \(አዲስ አበባ) · GMT\+3\)(?=\r?$)/gm,'$1)'):item.body,
+      ...(!/[\u1200-\u137f]/.test(item.title)?fallbackAmharicNotificationCopy(item.kind):{}),
+      href:item.href,
+    }));
+    return Response.json({items:notices,total,page,totalPages:Math.ceil(total/pageSize),unread,categories:['all','draws','payments']},{headers:privateHeaders});
   }catch(error){return privateError(error)}
 }
 export async function POST(request:Request){try{requireMutationOrigin(request);const userId=await requireUser(request),body=z.object({action:z.literal('read'),id:z.string().uuid().optional()}).strict().parse(await smallJson(request));await db.notificationInbox.updateMany({where:{userId,readAt:null,...(body.id?{id:body.id}:{})},data:{readAt:new Date()}});return Response.json({saved:true},{headers:privateHeaders})}catch(error){return privateError(error)}}

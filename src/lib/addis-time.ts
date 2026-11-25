@@ -1,6 +1,5 @@
 export const ADDIS_ABABA_TIME_ZONE = 'Africa/Addis_Ababa';
-export const ADDIS_ABABA_TIME_OFFSET = 'GMT+3';
-export const ADDIS_ABABA_TIME_LABEL = `Addis Ababa (${ADDIS_ABABA_TIME_OFFSET})`;
+export const ADDIS_ABABA_TIME_LABEL = 'Addis Ababa';
 
 const addisOffsetMs = 3 * 60 * 60 * 1000;
 const timestampStyles = {
@@ -19,7 +18,7 @@ export function formatAddisTimestamp(value: string | Date | null | undefined, lo
     formatter = new Intl.DateTimeFormat(locale, {...timestampStyles[style], timeZone: ADDIS_ABABA_TIME_ZONE, hourCycle: 'h23'});
     formatters.set(key, formatter);
   }
-  return `${formatter.format(new Date(value))} ${ADDIS_ABABA_TIME_OFFSET}`;
+  return formatter.format(new Date(value));
 }
 
 /** Convert a UTC instant into a minute-precision Addis Ababa datetime-local value. */

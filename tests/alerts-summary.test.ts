@@ -36,4 +36,10 @@ describe('lightweight alert count',()=>{
     const filter=mocks.findMany.mock.calls[0][0].where.AND[1].kind.in;
     expect(filter).not.toContain('BROADCAST');expect(filter).not.toContain('AUCTION_RESULT');expect(filter).not.toContain('CONTACT_CONFIRMED');
   });
+  it('removes the legacy offset label from stored auction alerts and keeps the Addis time',async()=>{
+    const item={id:'auction-1',kind:'AUCTION_UPCOMING_ADDED',title:'አዲስ መጪ ጨረታ',body:'የሚጀምርበት፦ 25 ኖቬም 2026 22:00 (አዲስ አበባ · GMT+3)',href:'/auctions/8',readAt:null,createdAt:new Date().toISOString()};
+    mocks.findMany.mockResolvedValue([item]);
+    const response=await GET(new Request('http://localhost/api/alerts'));
+    expect(await response.json()).toMatchObject({items:[{...item,body:'የሚጀምርበት፦ 25 ኖቬም 2026 22:00 (አዲስ አበባ)'}]});
+  });
 });

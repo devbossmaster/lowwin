@@ -30,7 +30,7 @@ describe('two upcoming reminders and five closing windows',()=>{
  it('reports the actual 5 hours and 13 minutes remaining and the 24-hour Addis deadline',async()=>{
   const db=transaction(auction({status:'LIVE',startsAt:new Date(now.getTime()-hour),endsAt:new Date(now.getTime()+5*hour+13*60_000)}));
   const content=await campaignContent(db,{...row,kind:'AUCTION_ENDING_12_HOURS'});
-  expect(content).toMatchObject({title:'ጨረታው ሊያበቃ 5 ሰዓታት ከ13 ደቂቃዎች ቀርቷል',body:expect.stringContaining('17:13 (አዲስ አበባ · GMT+3)'),telegramCaption:expect.stringContaining('5 ሰዓታት ከ13 ደቂቃዎች')});
+  expect(content).toMatchObject({title:'ጨረታው ሊያበቃ 5 ሰዓታት ከ13 ደቂቃዎች ቀርቷል',body:expect.stringContaining('17:13 (አዲስ አበባ)'),telegramCaption:expect.stringContaining('5 ሰዓታት ከ13 ደቂቃዎች')});
  });
  it('describes a reminder delivered in the final minute without rounding up',async()=>{
   const db=transaction(auction({status:'LIVE',startsAt:new Date(now.getTime()-hour),endsAt:new Date(now.getTime()+15_000)}));

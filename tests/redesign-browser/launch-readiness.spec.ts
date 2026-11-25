@@ -1,3 +1,4 @@
+import type {Locator} from '@playwright/test';
 import {test,expect} from '../isolated-browser';
 import {PrismaClient} from '@prisma/client';
 import {randomInt} from 'node:crypto';
@@ -13,6 +14,14 @@ async function launchFixture(startParam?:string){
 }
 function sdkBody(launch:string){return `window.Telegram={WebApp:{initData:${JSON.stringify(launch)},ready(){},expand(){},setHeaderColor(){},setBackgroundColor(){}}};`}
 async function dismissIntro(page:import('@playwright/test').Page){await page.addInitScript(()=>localStorage.setItem('lowwin:mini-introduction:v2','dismissed'))}
+async function expectAddisTime(time:Locator,am:boolean){
+ await expect(time).toHaveAttribute('datetime',/^\d{4}-\d{2}-\d{2}T/);
+ const instant=await time.getAttribute('datetime');
+ const date=new Intl.DateTimeFormat(am?'am-ET':'en-GB',{
+  dateStyle:'medium',timeStyle:'short',timeZone:'Africa/Addis_Ababa',hourCycle:'h23',
+ }).format(new Date(instant!));
+ await expect(time).toHaveText(date);
+}
 
 test('a delayed SDK keeps the launch splash and preserves the destination until verification',async({page})=>{
  const launch=await launchFixture();let release!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve});const errors:string[]=[],documents:string[]=[];let signins=0,sdkRequests=0;
@@ -124,7 +133,7 @@ test.describe('winner Mini App deep links',()=>{
    await expect(summary.getByText(maskResultPhone(result.phone)!,{exact:true})).toBeVisible();
    await expect(sheet.getByText(result.phone,{exact:true})).toHaveCount(0);
    await expect(page.locator('[data-auction-bid]')).toHaveCount(0);
-   await expect(sheet.locator('time').first()).toContainText('GMT+3');
+   await expectAddisTime(sheet.locator('time').first(),am);
    const celebration=sheet.locator('[data-winner-celebration]');
    if(am)await expect(celebration).toBeHidden();
    else await expect.poll(()=>celebration.evaluate((canvas:HTMLCanvasElement)=>canvas.width)).toBeGreaterThan(300);
@@ -138,7 +147,7 @@ test.describe('winner Mini App deep links',()=>{
    await expect(rows).toHaveCount(20);
    await expect(rows.first()).toContainText('#1');
    await expect(rows.first()).toContainText(maskResultPhone(result.phone)!);
-   await expect(rows.first().locator('time')).toContainText('GMT+3');
+   await expectAddisTime(rows.first().locator('time'),am);
    await expect(participantSheet).not.toContainText('Bid fixture');
    await expect(participantSheet).toHaveAttribute('data-presentation','centered');
    expect(await participantSheet.evaluate(node=>node.scrollWidth<=node.clientWidth)).toBe(true);
