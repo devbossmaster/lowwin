@@ -91,7 +91,7 @@ export async function broadcastHistory(client:PrismaClient,{
  const auctionTitle=Prisma.sql`COALESCE(r.payload->>'promotionTitle',a.presentation->>'title',product.title)`;
  const keyword='%'+q+'%';
  const matchingKinds=historyDeliveryKinds.filter(kind=>notificationHistoryLabel(kind).toLowerCase().includes(q.toLowerCase()));
- const sourceFilter=source==='manual'?Prisma.sql`${historyKind}='BROADCAST'`
+ const sourceFilter=view==='active'?Prisma.sql`true`:source==='manual'?Prisma.sql`${historyKind}='BROADCAST'`
   :source==='automatic'?Prisma.sql`${historyKind}<>'BROADCAST'`:Prisma.sql`true`;
  const where=Prisma.sql`${isNotificationHistoryRow} AND ${sourceFilter}
   ${q?Prisma.sql`AND (r.payload->>'body' ILIKE ${keyword} OR r.key ILIKE ${keyword}

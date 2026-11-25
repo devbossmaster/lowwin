@@ -237,7 +237,7 @@ describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated t
   const extra=kind==='BROADCAST'?{}:{auctionId:(await bidAuction(db,{isDemo:false})).id};
   const root=await db.outbox.create({data:{key:rootKey,kind:'GLOBAL_CAMPAIGN',state:'SENT',payload:{deliveryKind:kind,rootKey,...extra}}});
   const row=await job(kind,0,root.key,extra),later=await job(kind,1,root.key,extra),began=deferred(),release=deferred();
-  const active=await broadcastHistory(db,{page:1,q:rootKey,view:'active'});
+  const active=await broadcastHistory(db,{page:1,q:rootKey,view:'active',source:kind==='BROADCAST'?'automatic':'manual'});
   expect(active.items[0]).toMatchObject({id:root.id,canStop:true,canResend:kind==='BROADCAST'});
   // Claim order is nextAttemptAt then UUID, not insertion order. Both jobs are
   // due, with a deliberate first recipient for this in-flight Stop barrier.
