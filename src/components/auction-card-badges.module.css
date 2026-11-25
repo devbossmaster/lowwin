@@ -27,26 +27,27 @@
  grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;
 }
 .homeCard:global(.auction-card)>:global(.auction-card-body)>.homeFacts>.homeClock:global(.card-clock){
- grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr);gap:6px;
- padding:8px 10px;border:1px solid var(--brand-line);background:#f7f9ff;
+ --home-timer-width:260px;
+ grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr);justify-items:center;gap:6px;
+ padding:2px 8px 4px;background:transparent;
 }
 .clockTitle{
- display:flex;align-items:center;gap:6px;
- color:var(--brand-ink);font-size:.75rem;font-weight:650;line-height:1.45;
+ width:min(100%,var(--home-timer-width));text-align:end;
+ color:var(--brand-muted);font-size:.75rem;font-weight:600;line-height:1.45;
 }
-.clockTitle svg{flex:none;color:var(--action-pressed)}
 .homeCard:global(.auction-card) .homeFacts .homeClock [data-countdown-group]{
- display:grid;grid-template-columns:repeat(4,minmax(0,1fr));width:100%;min-width:0;gap:6px;
+ display:grid;grid-template-columns:repeat(4,minmax(0,1fr));width:min(100%,var(--home-timer-width));min-width:0;gap:8px;
 }
-.homeClock [data-countdown-unit]{align-items:stretch;text-align:center}
+.homeClock [data-countdown-unit]{align-items:stretch;gap:5px;text-align:center}
 .homeClock [data-countdown-unit]>small{
- color:var(--brand-muted-on-soft);font-size:.6875rem;font-weight:650;line-height:1.4;
+ color:#5142a5;font-size:.6875rem;font-weight:700;line-height:1.4;text-transform:uppercase;
 }
 .homeCard:global(.auction-card) .homeFacts .homeClock [data-countdown-tile]{
- --flap-height:38px;--flap-radius:8px;
- --flap-face-top:#eff4ff;--flap-face-bottom:#e4edfc;--flap-join:#cbd9ef;
- width:100%;min-width:0;color:#19345f;font-size:min(1.3125rem,calc(4.5rem / var(--flap-digits,2)));
- font-weight:750;
+ --flap-height:42px;--flap-radius:8px;--flap-fold-time:48ms;--flap-open-time:72ms;
+ --flap-face-top:#eae9f1;--flap-face-bottom:#d5d5d7;--flap-join:#a09ea7;
+ width:100%;min-width:0;border-color:#c9c4d9;color:#1d192a;
+ font-size:min(1.375rem,calc(4.5rem / var(--flap-digits,2)));font-weight:800;
+ box-shadow:0 3px 5px rgb(31 23 53 / .14);
 }
 .homeClock [data-countdown-ended]{font-size:.8125rem}
 .homeClock:has([data-countdown-ended]) .clockTitle{display:none}

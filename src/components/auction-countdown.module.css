@@ -10,13 +10,13 @@
 .upper{top:0;background:var(--tile-top);transform-origin:center bottom}
 .lower{bottom:0;background:var(--tile-bottom);transform-origin:center top}
 .lower>span{transform:translateY(-50%)}
-.leaves{position:absolute;inset:0;z-index:2;overflow:hidden;border-radius:calc(var(--flap-radius) - 1px);perspective:160px;pointer-events:none}
+.leaves{--fold-time:var(--flap-fold-time,58ms);--open-time:var(--flap-open-time,84ms);position:absolute;inset:0;z-index:2;overflow:hidden;border-radius:calc(var(--flap-radius) - 1px);perspective:160px;pointer-events:none}
 .outgoing,.incoming{backface-visibility:hidden;-webkit-backface-visibility:hidden}
-.outgoing{z-index:1;animation:fold-down 58ms cubic-bezier(.55,.05,.82,.48) both}
-.incoming{z-index:2;animation:unfold-down 84ms cubic-bezier(.16,.64,.3,1) 58ms both}
+.outgoing{z-index:1;animation:fold-down var(--fold-time) cubic-bezier(.55,.05,.82,.48) both}
+.incoming{z-index:2;animation:unfold-down var(--open-time) cubic-bezier(.16,.64,.3,1) var(--fold-time) both}
 .outgoing::after,.incoming::after{content:'';position:absolute;inset:0;background:#16202c;pointer-events:none}
-.outgoing::after{animation:flap-shadow 58ms ease-in both}
-.incoming::after{animation:flap-shadow 84ms ease-out 58ms reverse both}
+.outgoing::after{animation:flap-shadow var(--fold-time) ease-in both}
+.incoming::after{animation:flap-shadow var(--open-time) ease-out var(--fold-time) reverse both}
 .unit small{font-size:9px;line-height:1.6;color:#536171;font-weight:600;white-space:nowrap}
 .compact .label{display:none}
 .large{gap:7px}.large .tile{--flap-width:52px;--flap-height:44px;--flap-radius:9px;font-size:23px}.large .unit small{font-size:10px}

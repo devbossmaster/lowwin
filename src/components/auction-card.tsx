@@ -33,7 +33,7 @@ export function AuctionCard({auction:initialAuction,serverNow,serverObservedAt,p
  const bidLabel=bidCount===null?'—':bidCount.toLocaleString(am?'am-ET':'en-ET');
  const recordedViews=views??initialAuction.viewCount;
  let viewLabel='—';try{if(/^\d+$/.test(recordedViews))viewLabel=BigInt(recordedViews).toLocaleString(am?'am-ET':'en-ET')}catch{}
- const countdown=(live||upcoming)&&serverNow?<AuctionCountdown target={upcoming?auction.startsAt:auction.endsAt} serverNow={serverNow} observedAt={serverObservedAt} label={upcoming?'Starts':'Ends'} showLabel={false} onElapsed={refreshActivity}/>:null;
+ const countdown=(live||upcoming)&&serverNow?<AuctionCountdown target={upcoming?auction.startsAt:auction.endsAt} serverNow={serverNow} observedAt={serverObservedAt} label={upcoming?'Starts':'Ends'} variant={homeCard?'home':undefined} showLabel={false} onElapsed={refreshActivity}/>:null;
  const homeClock=homeCard&&countdown!==null;
  const termsNote=<><ShieldCheck size={13} aria-hidden="true"/><MiniPhrase en="Terms & conditions apply" am="ውሎችና ሁኔታዎች ይተገበራሉ"/></>;
  return <article className={`auction-card ${badges.card}${homeCard?' '+badges.homeCard:''}`} ref={ref}>
@@ -47,7 +47,7 @@ export function AuctionCard({auction:initialAuction,serverNow,serverObservedAt,p
     </span>
     <span className={homeClock?`card-clock ${badges.homeClock}`:'card-clock'}>
      {homeClock?<span className={badges.clockTitle}>
-      <Clock3 size={14} aria-hidden="true"/><MiniPhrase en={upcoming?'Starts in':'Ends in'} am={upcoming?'የሚጀምረው በ':'ቀሪ ጊዜ'}/>
+      <MiniPhrase en={upcoming?'Starts in':'Ends in'} am={upcoming?'የሚጀምረው በ':'ቀሪ ጊዜ'}/>
      </span>:<Clock3 size={13} aria-hidden="true"/>}
      {countdown??statusText}
     </span>
