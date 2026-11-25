@@ -44,7 +44,7 @@
 }
 .homeCard:global(.auction-card) .homeFacts .homeClock [data-countdown-tile]{
  --flap-height:42px;--flap-radius:8px;--flap-fold-time:48ms;--flap-open-time:72ms;
- --flap-face-top:#eae9f1;--flap-face-bottom:#d5d5d7;--flap-join:#a09ea7;
+ --flap-face-top:#eae9f1;--flap-face-bottom:#e3e1eb;--flap-join:transparent;
  width:100%;min-width:0;border-color:#c9c4d9;color:#1d192a;
  font-size:min(1.375rem,calc(4.5rem / var(--flap-digits,2)));font-weight:800;
  box-shadow:0 3px 5px rgb(31 23 53 / .14);
