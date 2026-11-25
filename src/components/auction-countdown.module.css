@@ -12,12 +12,16 @@
 .lower>span{transform:translateY(-50%)}
 .leaves{position:absolute;inset:0;z-index:2;overflow:hidden;border-radius:calc(var(--flap-radius) - 1px);perspective:160px;pointer-events:none}
 .outgoing,.incoming{backface-visibility:hidden;-webkit-backface-visibility:hidden}
-.outgoing{z-index:1;animation:fold-down 72ms cubic-bezier(.55,.05,.85,.45) both}
-.incoming{z-index:2;animation:unfold-down 102ms cubic-bezier(.16,.72,.3,1) 72ms both}
+.outgoing{z-index:1;animation:fold-down 58ms cubic-bezier(.55,.05,.82,.48) both}
+.incoming{z-index:2;animation:unfold-down 84ms cubic-bezier(.16,.64,.3,1) 58ms both}
+.outgoing::after,.incoming::after{content:'';position:absolute;inset:0;background:#16202c;pointer-events:none}
+.outgoing::after{animation:flap-shadow 58ms ease-in both}
+.incoming::after{animation:flap-shadow 84ms ease-out 58ms reverse both}
 .unit small{font-size:9px;line-height:1.6;color:#536171;font-weight:600;white-space:nowrap}
 .compact .label{display:none}
 .large{gap:7px}.large .tile{--flap-width:52px;--flap-height:44px;--flap-radius:9px;font-size:23px}.large .unit small{font-size:10px}
 .countdown[data-countdown-large-values]{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;min-width:220px;max-width:100%}.countdown[data-countdown-large-values] .tile{width:100%}.countdown[data-countdown-large-values] .unit{align-items:stretch;text-align:center}.countdown[data-countdown-large-values] .label{grid-column:1/-1}
 @keyframes fold-down{from{transform:rotateX(0)}to{transform:rotateX(-90deg)}}
 @keyframes unfold-down{from{transform:rotateX(90deg)}to{transform:rotateX(0)}}
+@keyframes flap-shadow{from{opacity:0}to{opacity:.18}}
 @media(prefers-reduced-motion:reduce){.leaves{display:none}.outgoing,.incoming{animation:none}}

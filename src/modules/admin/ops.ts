@@ -4,6 +4,7 @@ import {broadcastHistory,stopBroadcast,resendBroadcast,deleteBroadcastMessages,b
 import {deliveryQueue} from './workspace-read';
 import {paymentHealth} from '../payments/service';
 import {queueGlobal} from '../notifications/campaigns';
+import {queueNotificationDeletion} from '../notifications/broadcast-delete';
 import {Prisma,type PrismaClient} from '@prisma/client';
 import {z} from 'zod';
 import {requireAdmin} from './boundary';
@@ -38,6 +39,7 @@ const schemas={
  broadcastStop:z.object({key,id:z.string().uuid(),reason}).strict(),
  broadcastResend:z.object({key,id:z.string().uuid(),resendId:key,reason,confirmation:z.literal('RESEND')}).strict(),
  broadcastDelete:z.object({key,id:z.string().uuid(),reason,confirmation:z.literal('DELETE')}).strict(),
+ notificationDelete:z.object({key,id:z.string().uuid(),reason,confirmation:z.literal('DELETE')}).strict(),
  fulfillment:z.object({key,auctionId:z.string().uuid(),version:z.number().int().min(0),state:z.enum(['PENDING','CLAIMED','PACKING','SHIPPED','DELIVERED','DISPUTED']),tracking:z.string().trim().max(160),reason,assignedTo:uid.nullable().optional()}).strict(),
  retry:z.object({key,id:z.string().uuid(),reason}).strict(),
  testStart:z.object({key,label:z.string().trim().min(3).max(80),reason}).strict(),
@@ -45,7 +47,7 @@ const schemas={
  testClean:z.object({key,id:z.string().uuid(),confirmation:z.literal('CLEAN TEST RUN'),reason}).strict(),
 };
 export type OpsAction=keyof typeof schemas;
-const commandPermission:Record<OpsAction,Permission>={auctionBroadcast:'jobs',resultPublish:'audit',deliveryDone:'fulfillment',winnerPhoto:'fulfillment',winnerBanner:'fulfillment',broadcastStop:'jobs',broadcastResend:'jobs',broadcastDelete:'jobs',broadcast:'jobs',suspend:'support',fulfillment:'fulfillment',retry:'jobs',testStart:'settings',testFinish:'settings',testClean:'settings'};
+const commandPermission:Record<OpsAction,Permission>={auctionBroadcast:'jobs',resultPublish:'audit',deliveryDone:'fulfillment',winnerPhoto:'fulfillment',winnerBanner:'fulfillment',broadcastStop:'jobs',broadcastResend:'jobs',broadcastDelete:'jobs',notificationDelete:'jobs',broadcast:'jobs',suspend:'support',fulfillment:'fulfillment',retry:'jobs',testStart:'settings',testFinish:'settings',testClean:'settings'};
 export const sectionPermission:Record<string,Permission>={users:'support',results:'audit',fulfillment:'fulfillment',wallets:'wallets',notifications:'jobs',jobs:'jobs',analytics:'audit',audit:'audit',team:'team',settings:'settings'};
 export const serialize=(v:unknown)=>JSON.parse(JSON.stringify(v,(_,x)=>typeof x==='bigint'?x.toString():x));
 export function pageInput(params:URLSearchParams){return z.object({page:z.coerce.number().int().min(1).max(100000).default(1),q:z.string().trim().max(100).default(''),status:z.string().max(40).default(''),category:z.union([z.literal(''),z.string().uuid()]).default('')}).parse(Object.fromEntries(params))}
@@ -83,6 +85,10 @@ export async function opsMutation(client:PrismaClient,headers:Headers,action:Ops
    const d=schemas.broadcastResend.parse(input);if(owner.role!=='OWNER')throw new AdminError(403,'Only the Owner can resend a broadcast.');receipt=await resendBroadcast(tx,d.id,`broadcast:${owner.id}:${d.resendId}`);target=d.id;
   }else if(action==='broadcastDelete'){
    const d=schemas.broadcastDelete.parse(input);if(owner.role!=='OWNER')throw new AdminError(403,'Only the Owner can delete broadcast messages.');receipt=await deleteBroadcastMessages(tx,d.id);target=d.id;
+  }else if(action==='notificationDelete'){
+   const d=schemas.notificationDelete.parse(input);if(owner.role!=='OWNER')throw new AdminError(403,'Only the Owner can delete Telegram notifications.');
+   const deletion=await queueNotificationDeletion(tx,d.id);
+   receipt={id:d.id,deletionJobId:deletion.id,deletionState:deletion.state};target=d.id;
   }else if(action==='suspend'){
    const d=schemas.suspend.parse(input);if(await tx.staffMember.findUnique({where:{userId:d.userId}}))throw new AdminError(409,'Manage staff access through Team.');
    if(owner.role!=='OWNER')throw new AdminError(403,'Only the Owner can change bidding access.');
@@ -157,7 +163,13 @@ export async function opsRead(client:PrismaClient,headers:Headers,path:string[],
   const where:Prisma.WalletWhereInput=q?{OR:[{userId:{contains:q}},{user:{name:{contains:q,mode:'insensitive'}}}]}:{};return result(await client.wallet.findMany({where,select:{id:true,userId:true,user:{select:{name:true}},accounts:{select:{kind:true,balance:true}},holds:{select:{points:true}}},orderBy:{id:'asc'},skip,take}),await client.wallet.count({where}));
  }
  if(section==='notifications'&&path[1]==='auction'&&path[2]){if(actor.role!=='OWNER')throw new AdminError(403,'Only the Owner can broadcast.');return serialize(await auctionBroadcastDraft(client,z.string().uuid().parse(path[2])))}
- if(section==='notifications')return serialize(await broadcastHistory(client,{page,q,view:params.get('view')==='active'?'active':'history'}));
+ if(section==='notifications'){
+  const source=params.get('source');
+  return serialize(await broadcastHistory(client,{
+   page,q,view:params.get('view')==='active'?'active':'history',
+   source:source==='automatic'||source==='manual'?source:'all',
+  }));
+ }
  if(section==='jobs'){const where:Prisma.OutboxWhereInput={...(status?{state:status}:{}),...(q?{kind:{contains:q,mode:'insensitive'}}:{})};return result(await client.outbox.findMany({where,select:{id:true,kind:true,state:true,attempts:true,nextAttemptAt:true,lastError:true,createdAt:true,sentAt:true},orderBy:[{createdAt:'desc'},{id:'asc'}],skip,take}),await client.outbox.count({where}))}
  if(section==='audit'&&path[1]){const row=await client.adminAudit.findUniqueOrThrow({where:{id:path[1]},select:{id:true,actorId:true,action:true,target:true,createdAt:true,details:true}});const staff=await client.user.findUnique({where:{id:row.actorId},select:{name:true,email:true}});const detail=row.details as Record<string,unknown>;return serialize({...row,actorLabel:staff?.email??staff?.name??'Former staff member',details:{reason:typeof detail.reason==='string'?detail.reason:'No reason recorded'}})}
  if(section==='audit'){const where:Prisma.AdminAuditWhereInput={...(q?{action:{contains:q,mode:'insensitive'}}:{})};const rows=await client.adminAudit.findMany({where,select:{id:true,actorId:true,action:true,target:true,createdAt:true},orderBy:[{createdAt:'desc'},{id:'asc'}],skip,take});const actors=await client.user.findMany({where:{id:{in:rows.map(r=>r.actorId)}},select:{id:true,name:true,email:true}});return result(rows.map(r=>({...r,actorLabel:actors.find(a=>a.id===r.actorId)?.email??'Former staff member'})),await client.adminAudit.count({where}))}

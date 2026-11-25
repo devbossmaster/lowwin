@@ -4,11 +4,13 @@ import type {CampaignPayload} from '../notifications/campaigns';
 import {broadcastButtonLabel,broadcastMiniAppPath} from '../../lib/broadcast-link';
 import {auctionNotificationImagePath,queueGlobal} from '../notifications/campaigns';
 import {promotionNow,readAuctionPromotion} from '../notifications/auction-promotion';
-import {queueBroadcastDeletion} from '../notifications/broadcast-delete';
+import {queueBroadcastDeletion,telegramDeleteWindowMs} from '../notifications/broadcast-delete';
+import {historyDeliveryKinds,historyKind,isManagedBroadcast,isNotificationHistoryRow,relatedNotifications} from '../notifications/history-scope';
+import {notificationHistoryLabel} from '@/lib/notification-history-labels';
 import {existsSync,statSync} from 'node:fs';
 import {resolve} from 'node:path';
 
-type DeliveryProgress={id:string;sent:bigint;pending:bigint;skipped:bigint;failed:bigint;batches:bigint;failedBatches:bigint;blocked:bigint;invalid:bigint;exhausted:bigint;retrying?:bigint;inFlight?:bigint};
+type DeliveryProgress={id:string;sent:bigint;pending:bigint;skipped:bigint;failed:bigint;batches:bigint;failedBatches:bigint;blocked:bigint;invalid:bigint;exhausted:bigint;retrying:bigint;inFlight:bigint;lastSentAt:Date|null;deletable:bigint;expired:bigint;deleted:bigint;deletionPending:bigint;deletionFailed:bigint;unavailable:bigint;preparing:boolean};
 
 export const STOPPED='CAMPAIGN_STOPPED';
 async function campaignRoot(tx:Prisma.TransactionClient,id:string){
@@ -64,39 +66,98 @@ export async function stopBroadcast(tx:Prisma.TransactionClient,id:string){
  const leased=await tx.outbox.count({where:{key:{startsWith:row.key+':'},state:'PENDING',leaseUntil:{gt:now}}});
  return {id,stopped:true,remainingStopped:remaining.count,leasedAtStop:leased};
 }
-export async function broadcastHistory(client:PrismaClient,{page,q,view='history'}:{page:number;q:string;view?:'active'|'history'}){
- const where=Prisma.sql`kind='GLOBAL_CAMPAIGN' AND payload->>'deliveryKind'='BROADCAST' AND payload->>'rootKey'=key AND starts_with(key,'broadcast:') ${q?Prisma.sql`AND (payload->>'body' ILIKE ${'%'+q+'%'} OR key ILIKE ${'%'+q+'%'})`:Prisma.empty} ${view==='active'?Prisma.sql`AND (("lastError" IS DISTINCT FROM ${STOPPED} AND EXISTS(SELECT 1 FROM "Outbox" child WHERE (child.id="Outbox".id OR child.payload->>'rootKey'="Outbox".key) AND child.state='PENDING')) OR EXISTS(SELECT 1 FROM "Outbox" deletion WHERE deletion.key='broadcast-delete:'||"Outbox".id AND deletion.state='PENDING') OR EXISTS(SELECT 1 FROM "TelegramMessage" m JOIN "Outbox" sent ON sent.id=m."outboxId" JOIN "Outbox" d ON d.key='telegram-delete:'||m.id WHERE sent.payload->>'rootKey'="Outbox".key AND d.state='PENDING'))`:Prisma.empty}`;
- const [roots,count]=await Promise.all([client.$queryRaw<{id:string;key:string;payload:CampaignPayload;createdAt:Date;lastError:string|null}[]>(Prisma.sql`SELECT id,key,payload,"createdAt","lastError" FROM "Outbox" WHERE ${where} ORDER BY "createdAt" DESC,id LIMIT 25 OFFSET ${(page-1)*25}`),client.$queryRaw<{count:bigint}[]>(Prisma.sql`SELECT COUNT(*) AS count FROM "Outbox" WHERE ${where}`)]);
- const progress=roots.length?await client.$queryRaw<DeliveryProgress[]>(Prisma.sql`SELECT r.id,
- COUNT(*) FILTER(WHERE o.kind='BROADCAST' AND o.state='SENT') AS sent,
- COUNT(*) FILTER(WHERE o.kind='BROADCAST' AND o.state='PENDING') AS pending,
- COUNT(*) FILTER(WHERE o.kind='BROADCAST' AND o.state='PENDING' AND o.attempts>0 AND (o."leaseUntil" IS NULL OR o."leaseUntil"<=(clock_timestamp() AT TIME ZONE 'UTC'))) AS retrying,
- COUNT(*) FILTER(WHERE o.kind='BROADCAST' AND o.state='PENDING' AND o."leaseUntil">(clock_timestamp() AT TIME ZONE 'UTC')) AS "inFlight",
- COUNT(*) FILTER(WHERE o.kind='BROADCAST' AND o.state='SKIPPED') AS skipped,
- COUNT(*) FILTER(WHERE o.kind='BROADCAST' AND o.state='FAILED') AS failed,
- COUNT(*) FILTER(WHERE o.kind='GLOBAL_CAMPAIGN' AND o.state='PENDING') AS batches,
- COUNT(*) FILTER(WHERE o.kind='GLOBAL_CAMPAIGN' AND o.state='FAILED') AS "failedBatches",
- COUNT(*) FILTER(WHERE o.kind='BROADCAST' AND o.state='FAILED' AND o."lastError"='CHAT_BLOCKED') AS blocked,
- COUNT(*) FILTER(WHERE o.kind='BROADCAST' AND o.state='FAILED' AND o."lastError"='BAD_REQUEST') AS invalid,
- COUNT(*) FILTER(WHERE o.kind='BROADCAST' AND o.state='FAILED' AND o."lastError"='DELIVERY_RETRY') AS exhausted
- FROM "Outbox" r LEFT JOIN "Outbox" o ON o.id=r.id OR starts_with(o.key,r.key||':') WHERE r.id IN (${Prisma.join(roots.map(r=>r.id))}) GROUP BY r.id`):[];
+export type NotificationHistorySource='all'|'manual'|'automatic';
+
+export async function broadcastHistory(client:PrismaClient,{
+ page,q,view='history',source='all',
+}:{page:number;q:string;view?:'active'|'history';source?:NotificationHistorySource}){
+ const auctionJoin=Prisma.sql`LEFT JOIN "Auction" a ON a.id=r.payload->>'auctionId'
+   LEFT JOIN "Product" product ON product.id=a."productId"`;
+ const auctionTitle=Prisma.sql`COALESCE(r.payload->>'promotionTitle',a.presentation->>'title',product.title)`;
+ const keyword='%'+q+'%';
+ const matchingKinds=historyDeliveryKinds.filter(kind=>notificationHistoryLabel(kind).toLowerCase().includes(q.toLowerCase()));
+ const sourceFilter=view==='active'?isManagedBroadcast:source==='manual'?Prisma.sql`${historyKind}='BROADCAST'`
+  :source==='automatic'?Prisma.sql`${historyKind}<>'BROADCAST'`:Prisma.sql`true`;
+ const where=Prisma.sql`${isNotificationHistoryRow} AND ${sourceFilter}
+  ${q?Prisma.sql`AND (r.payload->>'body' ILIKE ${keyword} OR r.key ILIKE ${keyword}
+   OR ${auctionTitle} ILIKE ${keyword} OR product."titleAm" ILIKE ${keyword}
+   OR a."publicCode"::text ILIKE ${keyword} OR ${historyKind} ILIKE ${keyword}
+   ${matchingKinds.length?Prisma.sql`OR ${historyKind} IN (${Prisma.join(matchingKinds)})`:Prisma.empty})`:Prisma.empty}
+  ${view==='active'?Prisma.sql`AND (
+    EXISTS(SELECT 1 FROM "Outbox" prep WHERE prep.key='broadcast-delete:'||r.id AND prep.state='PENDING')
+    OR EXISTS(
+      SELECT 1 FROM (${relatedNotifications}) child
+      LEFT JOIN "TelegramMessage" m ON m."outboxId"=child.id
+      LEFT JOIN "Outbox" d ON d.key='telegram-delete:'||m.id
+      WHERE (r."lastError" IS DISTINCT FROM ${STOPPED} AND child.state='PENDING') OR d.state='PENDING'
+    )
+  )`:Prisma.empty}`;
+ type Root={id:string;payload:CampaignPayload;createdAt:Date;state:string;lastError:string|null;notificationKind:string;managed:boolean;auctionTitle:string|null;publicCode:number|null};
+ const [roots,count]=await Promise.all([
+  client.$queryRaw<Root[]>(Prisma.sql`SELECT r.id,r.payload,r."createdAt",r.state,r."lastError",
+   ${historyKind} AS "notificationKind",${isManagedBroadcast} AS managed,
+   ${auctionTitle} AS "auctionTitle",a."publicCode"
+   FROM "Outbox" r ${auctionJoin} WHERE ${where} ORDER BY r."createdAt" DESC,r.id LIMIT 25 OFFSET ${(page-1)*25}`),
+  client.$queryRaw<{count:bigint}[]>(Prisma.sql`SELECT COUNT(*) AS count FROM "Outbox" r ${q?auctionJoin:Prisma.empty} WHERE ${where}`),
+ ]);
+ const deliverable=Prisma.sql`o.kind NOT IN ('GLOBAL_CAMPAIGN','AUCTION_FINALIZED')`;
+ const acknowledged=Prisma.sql`${deliverable} AND o.state='SENT' AND o."lastError" IS DISTINCT FROM 'RESULT_ALREADY_DELIVERED'`;
+ const pendingSend=Prisma.sql`${deliverable} AND o.state='PENDING'`;
+ const preparingAudience=Prisma.sql`o.kind IN ('GLOBAL_CAMPAIGN','AUCTION_FINALIZED')`;
+ const progress=roots.length?await client.$queryRaw<DeliveryProgress[]>(Prisma.sql`
+  WITH stamp AS MATERIALIZED (SELECT clock_timestamp() AT TIME ZONE 'UTC' AS now)
+  SELECT r.id,
+    COUNT(*) FILTER(WHERE ${acknowledged}) AS sent,
+    MAX(o."sentAt") FILTER(WHERE ${acknowledged}) AS "lastSentAt",
+    COUNT(*) FILTER(WHERE ${pendingSend}) AS pending,
+    COUNT(*) FILTER(WHERE ${pendingSend} AND o.attempts>0 AND (o."leaseUntil" IS NULL OR o."leaseUntil"<=stamp.now)) AS retrying,
+    COUNT(*) FILTER(WHERE ${pendingSend} AND o."leaseUntil">stamp.now) AS "inFlight",
+    COUNT(*) FILTER(WHERE ${deliverable} AND (o.state='SKIPPED' OR o."lastError"='RESULT_ALREADY_DELIVERED')) AS skipped,
+    COUNT(*) FILTER(WHERE ${deliverable} AND o.state='FAILED') AS failed,
+    COUNT(*) FILTER(WHERE ${preparingAudience} AND o.state='PENDING') AS batches,
+    COUNT(*) FILTER(WHERE ${preparingAudience} AND o.state='FAILED') AS "failedBatches",
+    COUNT(*) FILTER(WHERE ${deliverable} AND o.state='FAILED' AND o."lastError"='CHAT_BLOCKED') AS blocked,
+    COUNT(*) FILTER(WHERE ${deliverable} AND o.state='FAILED' AND o."lastError"='BAD_REQUEST') AS invalid,
+    COUNT(*) FILTER(WHERE ${deliverable} AND o.state='FAILED' AND o."lastError"='DELIVERY_RETRY') AS exhausted,
+    COUNT(*) FILTER(WHERE m."deletionState"='DELIVERED' AND m."sentAt">stamp.now-${telegramDeleteWindowMs}*INTERVAL '1 millisecond' AND m."sentAt"<=stamp.now) AS deletable,
+    COUNT(*) FILTER(WHERE m."deletionState"='DELIVERED' AND m."sentAt"<=stamp.now-${telegramDeleteWindowMs}*INTERVAL '1 millisecond') AS expired,
+    COUNT(*) FILTER(WHERE m."deletionState"='DELETED') AS deleted,
+    COUNT(*) FILTER(WHERE m."deletionState"='QUEUED' OR m."deletionState"='FAILED' AND d.state='PENDING') AS "deletionPending",
+    COUNT(*) FILTER(WHERE m."deletionState"='FAILED' AND d.state='FAILED') AS "deletionFailed",
+    COUNT(*) FILTER(WHERE m."deletionState"='UNAVAILABLE') AS unavailable,
+    COALESCE(bool_or(prep.state='PENDING'),false) AS preparing
+  FROM "Outbox" r CROSS JOIN stamp
+  CROSS JOIN LATERAL (${relatedNotifications}) o
+  LEFT JOIN "TelegramMessage" m ON m."outboxId"=o.id
+  LEFT JOIN "Outbox" d ON d.key='telegram-delete:'||m.id
+  LEFT JOIN "Outbox" prep ON prep.key=(CASE WHEN ${isManagedBroadcast} THEN 'broadcast-delete:' ELSE 'notification-delete:' END)||r.id
+  WHERE r.id IN (${Prisma.join(roots.map(r=>r.id))}) GROUP BY r.id
+ `):[];
+ const statsById=new Map(progress.map(row=>[row.id,row]));
  const slugs=roots.map(r=>r.payload.href?.split('/')[2]).filter((s):s is string=>!!s&&s!=='all'&&!/^\d+$/.test(s));
  const auctions=slugs.length?await client.auction.findMany({where:{slug:{in:slugs}},select:{slug:true,publicCode:true}}):[];
- const deletions=roots.length?await client.$queryRaw<{id:string;deleted:bigint;pending:bigint;failed:bigint;unavailable:bigint;preparing:boolean}[]>(Prisma.sql`
-  SELECT r.id,COUNT(m.id) FILTER(WHERE m."deletionState"='DELETED') AS deleted,
-  COUNT(m.id) FILTER(WHERE m."deletionState"='QUEUED' OR m."deletionState"='FAILED' AND d.state='PENDING') AS pending,
-  COUNT(m.id) FILTER(WHERE m."deletionState"='FAILED' AND d.state='FAILED') AS failed,
-  COUNT(m.id) FILTER(WHERE m."deletionState"='UNAVAILABLE') AS unavailable,
-  COALESCE(bool_or(prep.state='PENDING'),false) AS preparing
-  FROM "Outbox" r LEFT JOIN "Outbox" o ON o.kind='BROADCAST' AND (o.payload->>'rootKey'=r.key OR starts_with(o.key,r.key||':'))
-  LEFT JOIN "TelegramMessage" m ON m."outboxId"=o.id LEFT JOIN "Outbox" d ON d.key='telegram-delete:'||m.id
-  LEFT JOIN "Outbox" prep ON prep.key='broadcast-delete:'||r.id WHERE r.id IN (${Prisma.join(roots.map(r=>r.id))}) GROUP BY r.id`):[];
  const items=roots.map(r=>{
-  const counts=progress.find(c=>c.id===r.id)!,sent=Number(counts.sent),pending=Number(counts.pending),skipped=Number(counts.skipped),failed=Number(counts.failed),batches=Number(counts.batches),failedBatches=Number(counts.failedBatches??0),blocked=Number(counts.blocked??0),invalid=Number(counts.invalid??0),exhausted=Number(counts.exhausted??0),code=r.payload.href?.split('/')[2];
-  let buttonLabel='Open Lowwin',miniAppPath='/';try{buttonLabel=broadcastButtonLabel(r.payload.buttonLabel);miniAppPath=broadcastMiniAppPath(r.payload.href??'/')}catch{/* Historical unsupported links are not copied into a new draft. */}
+  const counts=statsById.get(r.id)!;
+  const sent=Number(counts.sent),pending=Number(counts.pending),skipped=Number(counts.skipped),failed=Number(counts.failed);
+  const batches=Number(counts.batches),failedBatches=Number(counts.failedBatches??0),blocked=Number(counts.blocked??0),invalid=Number(counts.invalid??0),exhausted=Number(counts.exhausted??0);
+  const code=r.payload.href?.split('/')[2],manual=r.notificationKind==='BROADCAST';
+  let buttonLabel='Open Lowwin',miniAppPath='/';
+  try{buttonLabel=broadcastButtonLabel(r.payload.buttonLabel);miniAppPath=broadcastMiniAppPath(r.payload.href??'/')}catch{/* Historical unsupported links are not copied into a new draft. */}
   const retrying=Number(counts.retrying??0),inFlight=Number(counts.inFlight??0),recipientCount=sent+pending+skipped+failed;
-  const deletion=deletions.find(d=>d.id===r.id),deletionProgress={deleted:Number(deletion?.deleted??0),pending:Number(deletion?.pending??0),failed:Number(deletion?.failed??0),unavailable:Number(deletion?.unavailable??0),preparing:deletion?.preparing??false};
-  return {id:r.id,text:r.payload.body??'',imageId:r.payload.imageId??null,imagePath:r.payload.imagePath??null,parentCampaignId:r.payload.parentCampaignId??null,buttonLabel,miniAppPath,auctionCode:code&&/^\d+$/.test(code)?code:String(auctions.find(a=>a.slug===code)?.publicCode??''),createdAt:r.createdAt,sent,pending,queued:Math.max(0,pending-retrying-inFlight),retrying,inFlight,skipped,failed,pendingBatches:batches,failedBatches,recipientCount,eligibleRecipients:recipientCount,audienceComplete:batches===0&&failedBatches===0,failureReasons:{blocked,invalid,exhausted,other:Math.max(0,failed-blocked-invalid-exhausted)},deletion:deletionProgress,state:r.lastError===STOPPED?'STOPPED':pending||batches?sent?'SENDING':'QUEUED':failed||failedBatches?'NEEDS_ATTENTION':'COMPLETED',canStop:r.lastError!==STOPPED&&!!(pending||batches),canDelete:sent>0||pending>0||batches>0};
+  const deletion={deleted:Number(counts.deleted??0),pending:Number(counts.deletionPending??0),failed:Number(counts.deletionFailed??0),unavailable:Number(counts.unavailable??0),expired:Number(counts.expired??0),deletable:Number(counts.deletable??0),preparing:counts.preparing??false};
+  const canStop=!!r.managed&&r.lastError!==STOPPED&&!!(pending||batches);
+  const state=r.lastError===STOPPED?'STOPPED':pending||batches?sent?'SENDING':'QUEUED'
+    :failed||failedBatches?'NEEDS_ATTENTION':!sent&&(skipped||r.state==='SKIPPED')?'SKIPPED':'COMPLETED';
+  return {
+   id:r.id,kind:r.notificationKind,source:manual?'manual' as const:'automatic' as const,
+   text:manual?r.payload.body??'':r.auctionTitle??'',imageId:manual?r.payload.imageId??null:null,
+   imagePath:manual?r.payload.imagePath??null:null,parentCampaignId:manual?r.payload.parentCampaignId??null:null,
+   buttonLabel,miniAppPath,auctionCode:r.publicCode?String(r.publicCode):code&&/^\d+$/.test(code)?code:String(auctions.find(a=>a.slug===code)?.publicCode??''),
+   createdAt:r.createdAt,lastSentAt:counts.lastSentAt??null,sent,pending,queued:Math.max(0,pending-retrying-inFlight),
+   retrying,inFlight,skipped,failed,pendingBatches:batches,failedBatches,recipientCount,eligibleRecipients:recipientCount,
+   audienceComplete:batches===0&&failedBatches===0,failureReasons:{blocked,invalid,exhausted,other:Math.max(0,failed-blocked-invalid-exhausted)},
+   deletion,state,canStop,canResend:!!r.managed,canDelete:!deletion.preparing&&(deletion.deletable>0||canStop),
+  };
  });
  return {items,total:Number(count[0].count),page,totalPages:Math.ceil(Number(count[0].count)/25)};
 }

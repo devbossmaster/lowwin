@@ -7,8 +7,8 @@ import {randomUUID} from 'node:crypto';
 import {acknowledgeDelivery,claimNotifications,claimLogicalDelivery,finishClaim} from '../src/modules/notifications/leases';
 import {dispatchBatch,expandPendingCampaigns} from '../src/modules/notifications/dispatch';
 import {stopBroadcast,broadcastHistory,resendBroadcast,deleteBroadcastMessages} from '../src/modules/admin/broadcast-history';
-import {expandBroadcastDeletion} from '../src/modules/notifications/broadcast-delete';
-import {expandCampaign,scheduleGlobalAlerts} from '../src/modules/notifications/campaigns';
+import {expandBroadcastDeletion,queueNotificationDeletion} from '../src/modules/notifications/broadcast-delete';
+import {expandCampaign,queueGlobal,scheduleGlobalAlerts} from '../src/modules/notifications/campaigns';
 import {sendBroadcastPhoto,TelegramMediaDeferredError} from '../src/modules/notifications/broadcast-photo';
 import {TEST_TOKEN} from './helpers';
 import {installTelegramRateLimit} from '../src/modules/notifications/telegram-rate';
@@ -40,6 +40,42 @@ describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated t
   await db.botChat.updateMany({where:{telegramId:{in:users.map(u=>u.telegramId)}},data:{blocked:false}});
  });
  afterAll(async()=>{await db?.$disconnect()});
+ it('groups automatic notification history and deletes only the recorded messages eligible at confirmation',async()=>{
+  const auction=await bidAuction(db,{isDemo:false}),marker=randomUUID(),rootKey=`global:ending-1-hour:${marker}`;
+  const root=await db.$transaction(tx=>queueGlobal(tx,rootKey,'AUCTION_ENDING_1_HOUR',{auctionId:auction.id}));
+  await db.outbox.update({where:{id:root.id},data:{state:'SENT',sentAt:new Date()}});
+  const now=Date.now(),records=[new Date(now-60_000),new Date(now-49*3_600_000)];
+  const [recent,expired]=await Promise.all(records.map(async(sentAt,index)=>{
+   const delivery=await job('AUCTION_ENDING_1_HOUR',index,rootKey);
+   await db.outbox.update({where:{id:delivery.id},data:{state:'SENT',sentAt}});
+   return db.telegramMessage.create({data:{outboxId:delivery.id,chatId:users[index].telegramId,messageId:BigInt(index+1),sentAt}});
+  }));
+  const pending=await job('AUCTION_ENDING_1_HOUR',2,rootKey);
+  const deposit=await db.outbox.create({data:{key:`deposit:${marker}`,kind:'DEPOSIT_CREDITED',state:'SKIPPED',payload:{recipientUserId:users[0].id}}});
+  const old=await broadcastHistory(db,{page:1,q:marker});
+  expect(old.items).toHaveLength(2);
+  expect(old.items.find(item=>item.id===root.id)).toMatchObject({
+   kind:'AUCTION_ENDING_1_HOUR',source:'automatic',sent:2,pending:1,canResend:false,canStop:false,
+   canDelete:true,deletion:{expired:1,deletable:1},
+  });
+  expect(old.items.find(item=>item.id===deposit.id)).toMatchObject({kind:'DEPOSIT_CREDITED',canDelete:false});
+  expect((await broadcastHistory(db,{page:1,q:marker,source:'manual'})).items).toHaveLength(0);
+  expect(JSON.stringify(old)).not.toMatch(/chatId|recipientUserId/);
+
+  const intent=await db.$transaction(tx=>queueNotificationDeletion(tx,root.id));
+  expect(await db.$transaction(tx=>queueNotificationDeletion(tx,root.id))).toEqual(intent);
+  expect(await expandPendingCampaigns(db,{limit:1})).toBe(1);
+  expect(await db.outbox.findUnique({where:{id:pending.id}})).toMatchObject({state:'PENDING'});
+  expect(await db.outbox.findUnique({where:{id:root.id}})).toMatchObject({state:'SENT',lastError:null});
+  expect(await db.telegramMessage.findUnique({where:{id:expired.id}})).toMatchObject({deletionState:'DELIVERED'});
+  expect(await db.telegramMessage.findUnique({where:{id:recent.id}})).toMatchObject({deletionState:'QUEUED'});
+  await expect(db.$transaction(tx=>queueNotificationDeletion(tx,root.id))).rejects.toMatchObject({status:409});
+  const remove=vi.fn(async()=>true);
+  await dispatchBatch(db,fake(remove),{kind:'TELEGRAM_DELETE',limit:1});
+  expect(remove).toHaveBeenCalledExactlyOnceWith(recent.chatId,Number(recent.messageId));
+  expect((await broadcastHistory(db,{page:1,q:marker,source:'automatic'})).items.find(item=>item.id===root.id))
+   .toMatchObject({sent:2,pending:1,canDelete:false,deletion:{deleted:1,expired:1}});
+ });
  it('queues every current reminder window once across overlapping scans with UTC audience cutoffs',async()=>{
   const ending=await Promise.all(endingReminders.map(async reminder=>{
    const auction=await bidAuction(db,{isDemo:false,endDelayMs:(reminder.minMs+reminder.maxMs)/2});

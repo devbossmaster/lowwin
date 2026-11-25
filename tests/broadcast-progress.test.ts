@@ -3,9 +3,9 @@ import type {PrismaClient} from '@prisma/client';
 import {broadcastHistory} from '../src/modules/admin/broadcast-history';
 
 function fixture(changes:Record<string,unknown>={},lastError:string|null=null){
- const root={id:'root',key:'broadcast:fixture',payload:{body:'A fixture update',href:'/auctions/42',buttonLabel:'See the power bank',imageId:'image',imagePath:'/images/power-bank.webp',parentCampaignId:'original'},createdAt:new Date('2026-10-30T10:00:00Z'),lastError};
+ const root={id:'root',notificationKind:'BROADCAST',managed:true,payload:{body:'A fixture update',href:'/auctions/42',buttonLabel:'See the power bank',imageId:'image',imagePath:'/images/power-bank.webp',parentCampaignId:'original'},createdAt:new Date('2026-10-30T10:00:00Z'),lastError};
  const progress={id:'root',sent:1155n,pending:0n,skipped:265n,failed:1n,batches:0n,failedBatches:0n,blocked:1n,invalid:0n,exhausted:0n,...changes};
- const query=vi.fn().mockResolvedValueOnce([root]).mockResolvedValueOnce([{count:1n}]).mockResolvedValueOnce([progress]).mockResolvedValueOnce([]);
+ const query=vi.fn().mockResolvedValueOnce([root]).mockResolvedValueOnce([{count:1n}]).mockResolvedValueOnce([progress]);
  return {client:{$queryRaw:query,auction:{findMany:vi.fn()}} as unknown as PrismaClient,query};
 }
 

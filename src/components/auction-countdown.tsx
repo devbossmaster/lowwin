@@ -12,9 +12,9 @@ const Flap=memo(function Flap({value,label,animate}:{value:string;label:string;a
  else if(!animate&&frame.previous!==null)setFrame({value,previous:null});
  const previous=animate&&frame.value===value?frame.previous:null;
  const finish=useCallback(()=>setFrame(current=>current===frame&&current.previous!==null?{value:current.value,previous:null}:current),[frame]);
- useEffect(()=>{if(previous===null)return;const timeout=setTimeout(finish,240);return()=>clearTimeout(timeout)},[finish,previous]);
- return <span className={styles.unit} data-countdown-unit data-countdown-value={value}>
-  <strong className={styles.tile} data-countdown-tile aria-hidden="true" style={{'--flap-digits':value.length} as CSSProperties}>
+ useEffect(()=>{if(previous===null)return;const timeout=setTimeout(finish,200);return()=>clearTimeout(timeout)},[finish,previous]);
+ return <span className={styles.unit} data-countdown-unit data-countdown-value={value} aria-hidden="true">
+  <strong className={styles.tile} data-countdown-tile style={{'--flap-digits':value.length} as CSSProperties}>
    <span className={styles.digit}>{value}</span>
    {previous!==null&&<span key={value} className={styles.leaves}>
     <span className={`${styles.half} ${styles.lower}`} data-countdown-holding><span>{previous}</span></span>
@@ -22,7 +22,7 @@ const Flap=memo(function Flap({value,label,animate}:{value:string;label:string;a
     <span className={`${styles.half} ${styles.lower} ${styles.incoming}`} data-countdown-flip="incoming" onAnimationEnd={finish}><span>{value}</span></span>
    </span>}
   </strong>
-  <span className="sr-only">{value}</span><small>{label}</small>
+  <small>{label}</small>
  </span>;
 });
 

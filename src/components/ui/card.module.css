@@ -1,0 +1,24 @@
+@layer components {
+  .card {
+    --card-spacing: var(--space-4, 16px);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3, 12px);
+    min-width: 0;
+    padding-block: var(--card-spacing);
+    border: 1px solid var(--brand-line, #e4e7ec);
+    border-radius: 16px;
+    background: var(--brand-surface, #fff);
+    color: var(--brand-ink, #16202c);
+  }
+
+  .header, .content {
+    min-width: 0;
+    padding-inline: var(--card-spacing, 16px);
+  }
+
+  .header {
+    display: grid;
+    gap: 6px;
+  }
+}
