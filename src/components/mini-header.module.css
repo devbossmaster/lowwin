@@ -37,3 +37,76 @@
 .header .balance{flex:1;min-width:0}.header .balance>span{flex:1;max-width:100%}.header .balanceAmount{min-width:0;overflow-x:auto;scrollbar-width:none}.header .balance small{flex:none}
 @media(max-width:389px){.header .brand{gap:5px;--brand-mark-size:28px}}
 @media(max-width:339px){.header .brand{gap:4px;--brand-mark-size:22px}.header .brandName{font-size:11px}}
+
+.header[data-has-affiliate]{grid-template-columns:max-content minmax(0,1fr) max-content}
+.actions{position:relative}
+.affiliate{
+ display:flex;
+ align-items:center;
+ justify-content:center;
+ flex:0 0 44px;
+ flex-direction:column;
+ gap:2px;
+ min-height:44px;
+ border-radius:10px;
+ color:var(--action-hover);
+ text-decoration:none;
+ font-size:9px;
+ font-weight:700;
+ line-height:1.15;
+ touch-action:manipulation;
+}
+.affiliatePromo{
+ position:absolute;
+ z-index:2;
+ inset-block-start:calc(100% + 7px);
+ inset-inline-end:0;
+ display:grid;
+ grid-template-columns:minmax(0,1fr) 44px;
+ inline-size:min(264px,calc(100vw - 24px));
+ padding:13px 3px 13px 14px;
+ border-radius:14px;
+ background:var(--action-hover);
+ color:var(--action-ink);
+ box-shadow:0 8px 22px #1736823d;
+}
+.affiliatePromo::before{
+ content:'';
+ position:absolute;
+ inset-block-start:-5px;
+ inset-inline-end:61px;
+ width:10px;
+ height:10px;
+ border-radius:2px;
+ background:var(--action-hover);
+ transform:rotate(45deg);
+}
+.affiliatePromoCopy strong{display:block;font-size:13px;line-height:1.35}
+.affiliatePromoCopy p{margin:4px 0 0;font-size:12px;line-height:1.45;color:inherit}
+.affiliatePromoClose{
+ display:grid;
+ place-items:center;
+ width:44px;
+ height:44px;
+ margin-top:-9px;
+ padding:0;
+ border:0;
+ border-radius:50%;
+ background:transparent;
+ color:inherit;
+ cursor:pointer;
+ touch-action:manipulation;
+}
+.header .affiliatePromoClose:focus-visible{outline:2px solid currentColor;outline-offset:-6px}
+@media(hover:hover){.affiliate:hover{background:#eaf1ff}.affiliatePromoClose:hover{background:#ffffff26}}
+@media(max-width:445px){
+ .header[data-has-affiliate] .balance{padding-left:8px;gap:0}
+ .header[data-has-affiliate] .balance>svg{display:none}
+}
+@media(max-width:419px){
+ .header[data-has-affiliate] .brand{--brand-mark-size:26px;gap:4px}
+ .header[data-has-affiliate] .brandName{font-size:12px}
+ .header[data-has-affiliate] .balance{padding-left:5px}
+ .header[data-has-affiliate] .balanceAmount{font-size:12px}
+}
+@media(max-width:389px){.header[data-has-affiliate] .brandName{display:none}}

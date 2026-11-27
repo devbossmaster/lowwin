@@ -1,7 +1,7 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
 import dynamic from 'next/dynamic';
-import {Bell,ChevronRight,Gavel,Gift,Heart,Mail,MapPin,Pencil,Plus,ReceiptText,ShieldCheck,Ticket,Trophy,Wallet} from 'lucide-react';
+import {Bell,ChevronRight,Gavel,Heart,Mail,MapPin,Pencil,Plus,ReceiptText,ShieldCheck,Ticket,Trophy,Wallet} from 'lucide-react';
 import {IntentPrefetchLink as Link} from '@/components/intent-prefetch-link';
 import {invalidatePrivateQueries} from '@/components/private-query-cache';
 import {usePrivateQuery,PrivateState} from '@/components/private-query';
@@ -11,15 +11,14 @@ import {OfflineRetry} from '@/components/offline-retry';
 import {WalletTopUpTrigger} from '@/components/wallet-top-up-trigger';
 import {WalletOverviewTrigger} from '@/components/wallet-overview-trigger';
 import {useMiniLocale} from '@/components/mini-locale';
-import {ReferralShareCard,type ReferralOverview} from '@/components/referral-share-card';
-import {centsToEtb,etbToCents,formatEtb} from '@/lib/money';
+import {centsToEtb,etbToCents} from '@/lib/money';
 import type {getPlayerProfile} from '@/modules/profile/personal';
 import type {WalletBalance} from '@/modules/wallet/balance';
 import styles from '@/components/profile-page.module.css';
 
 const AccountSheet=dynamic(()=>import('@/components/account-sheet').then(module=>module.AccountSheet),{loading:()=>null});
 type ProfileData=Awaited<ReturnType<typeof getPlayerProfile>>&{
-  contactEmail?:string;city?:string;contactDetailsEditable?:boolean;phoneDisplay?:string|null;contactVerified?:boolean;referral?:ReferralOverview;
+  contactEmail?:string;city?:string;contactDetailsEditable?:boolean;phoneDisplay?:string|null;contactVerified?:boolean;
 };
 
 export default function Profile(){
@@ -38,8 +37,6 @@ function PlayerProfile(){
   useEffect(()=>{setMessage('');setLogoutMessage('')},[language]);
   const [failedPhoto,setFailedPhoto]=useState<string|null>(null),editTrigger=useRef<HTMLButtonElement>(null);
   const photo=me?.user.image?.startsWith('https://')&&failedPhoto!==me.user.image?me.user.image:null;
-  const referral=data?.referral;
-  const referralEarnings=referral?.configured&&typeof referral.totalEarnedEtb==='string'?formatEtb(referral.totalEarnedEtb):'—';
   const initials=(data?.displayName??me?.user.name??'').trim().split(/\s+/).filter(Boolean).slice(0,2).map(part=>Array.from(part)[0]).join('').toLocaleUpperCase(language)||'L';
   let balance:string|null=null;
   try{if(wallet.data)balance=centsToEtb(etbToCents(wallet.data.available))}catch{/* Keep an unavailable balance distinct from zero. */}
@@ -79,8 +76,7 @@ function PlayerProfile(){
         {wallet.error&&<p className={styles.walletError} role="status">{text(wallet.data?'Showing your saved balance.':'Balance unavailable.',wallet.data?'የተቀመጠው ቀሪ ሂሳብ ይታያል።':'ቀሪ ሂሳቡ አይገኝም።')} <button type="button" onClick={wallet.reload}>{text('Retry','እንደገና')}</button></p>}
       </section>
       <div className={styles.summary} aria-label={text('Your activity','የእርስዎ እንቅስቃሴ')}>
-        <div><span><Gift size={13} aria-hidden="true"/>{text('Referral earnings','የግብዣ ገቢ')}</span><strong className={styles.referralAmount}>{referralEarnings}</strong></div>
-        <div><span><Ticket size={13} aria-hidden="true"/>{text('Total bids','ጠቅላላ ጨረታዎች')}</span><strong>{data.counts.bids}</strong></div>
+        <span><Ticket size={15} aria-hidden="true"/>{text('Total bids','ጠቅላላ ጨረታዎች')}</span><strong>{data.counts.bids}</strong>
       </div>
       <Link href="/profile/alerts" className={styles.notifications}><Bell size={19} aria-hidden="true"/><span>{text('Notifications','ማሳወቂያዎች')}</span>{alerts.data&&alerts.data.unread>0&&<strong data-unread-indicator aria-label={text(`${alerts.data.unread} unread`,`${alerts.data.unread} ያልተነበቡ`)}>{alerts.data.unread>99?'99+':alerts.data.unread}</strong>}<ChevronRight size={18} aria-hidden="true"/></Link>
       <nav className={styles.shortcuts} aria-label={text('Your auctions','የእርስዎ ጨረታዎች')}>
@@ -88,7 +84,6 @@ function PlayerProfile(){
         <Link href="/winning-bids"><span className={styles.shortcutIcon}><Trophy size={20} aria-hidden="true"/></span><span><strong>{text('My wins','ያሸነፍኳቸው')}</strong><small>{text('Prizes and delivery updates','ሽልማቶች እና የርክክብ ዝማኔዎች')}</small></span><ChevronRight size={17} aria-hidden="true"/></Link>
         <Link href="/profile/favorites"><span className={styles.shortcutIcon}><Heart size={20} aria-hidden="true"/></span><span><strong>{text('Saved prizes','የተቀመጡ ሽልማቶች')}</strong><small>{text('Auctions you saved','ያስቀመጧቸው ጨረታዎች')}</small></span><ChevronRight size={17} aria-hidden="true"/></Link>
       </nav>
-      <ReferralShareCard overview={referral}/>
       <section className={styles.panel} aria-labelledby="basic-heading">
         <div className={styles.panelHeading}><h2 id="basic-heading">{text('Basic info','መሠረታዊ መረጃ')}</h2><button ref={editTrigger} className={styles.editButton} type="button" onClick={()=>{setMessage('');setEditing(true)}}><Pencil size={13} aria-hidden="true"/>{text('Edit','አስተካክል')}</button></div>
         <dl className={styles.basicInfo}><div><dt>{text('Nickname','የማሳያ ስም')}</dt><dd>{data.displayName}</dd></div><div><dt>{text('Phone number','ስልክ ቁጥር')}</dt><dd>{data.phoneDisplay??'—'}</dd></div><div><dt>{text('Contact email','የእውቂያ ኢሜይል')}</dt><dd>{data.contactEmail||'—'}</dd></div><div><dt>{text('City','ከተማ')}</dt><dd>{data.city||'—'}</dd></div></dl>

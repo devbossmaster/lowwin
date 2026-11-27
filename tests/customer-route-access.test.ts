@@ -14,7 +14,7 @@ describe('Home and registered customer website boundary',()=>{
   access.getMiniSession.mockResolvedValue({user:{id:'verified-user'}});
   const signedIn=await proxy(request);expect(signedIn.status).toBe(404);expect(signedIn.headers.get('x-robots-tag')).toBe('noindex');
  });
- it.each(['/auctions','/auctions/item-42','/categories/accessories','/winners','/winners/42','/draws','/my-bids','/winning-bids','/profile','/profile/alerts','/profile/support','/wallet','/wallet/deposit','/payments','/faq','/terms','/privacy','/how-it-works'])('requires verified registration for %s',async path=>{
+ it.each(['/auctions','/auctions/item-42','/categories/accessories','/winners','/winners/42','/draws','/my-bids','/winning-bids','/profile','/profile/alerts','/profile/support','/affiliate','/wallet','/wallet/deposit','/payments','/faq','/terms','/privacy','/how-it-works'])('requires verified registration for %s',async path=>{
   const response=await proxy(new NextRequest('https://lowwin.test'+path+'?view=saved',{headers:{cookie:'forged-session=1','x-telegram-id':'123',RSC:'1','next-router-prefetch':'1'}})),url=new URL(response.headers.get('location')!);
   expect(response.status).toBe(307);expect(url.origin).toBe('https://lowwin.test');expect(url.pathname).toBe('/');expect(url.searchParams.get('login')).toBe('1');expect(url.searchParams.get('next')).toBe(path+'?view=saved');expect(response.headers.get('cache-control')).toContain('private, no-store');expect(access.getMiniSession).toHaveBeenCalledTimes(1);
  });
@@ -31,6 +31,10 @@ describe('Home and registered customer website boundary',()=>{
   const destination=new URL(response.headers.get('location')!);
   expect(response.status).toBe(307);expect(destination.pathname).toBe('/');
   expect(customerLoginRequest(destination.searchParams)).toEqual({destination:path});
+ });
+ it('defers Affiliate API authorization to the route handler',async()=>{
+  const response=await proxy(new NextRequest('https://lowwin.test/api/referrals?view=policy'));
+  expect(response.headers.get('x-middleware-next')).toBe('1');expect(access.getMiniSession).not.toHaveBeenCalled();
  });
  it('redirects an unverified staff subpage visit to the staff entry and leaves role checks to the staff layout',async()=>{
   const url='https://lowwin.test/admin/users';

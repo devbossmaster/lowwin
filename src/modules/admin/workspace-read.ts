@@ -60,7 +60,7 @@ export type OverviewSummary={
  serverNow:string;
  auctions?:OverviewCount;
  players?:OverviewCount;
- payments?:OverviewCount;
+ walletPaidBids?:OverviewCount;
  deliveries?:OverviewCount;
  daily?:{newMembers?:OverviewCount;money?:({state:'ready'}&DailyMoney)|{state:'error'}};
 };
@@ -68,6 +68,37 @@ export type OverviewAuctions={serverNow:string;items:{id:string;code:string;titl
 
 const creditedProviderDeposit=Prisma.sql`t.provider IN ('CHECK_ET','VERIFY_ET') AND t.status='CREDITED' AND t."caseState"<>'REVERSED'`;
 const utcTimestamp=(value:Date)=>Prisma.sql`(${value.toISOString()}::timestamptz AT TIME ZONE 'UTC')`;
+
+async function overviewWalletPaidBids(client:PrismaClient,today:Prisma.Sql,now:Prisma.Sql):Promise<OverviewCount>{
+ // A direct checkout can post a wallet debit and accept several bids atomically.
+ // Its receipt links each accepted child, while bidId only links the first one.
+ const [row]=await client.$queryRaw<{count:number}[]>(Prisma.sql`
+  SELECT COUNT(*)::int AS count
+  FROM "Bid" b
+  JOIN "Auction" a ON a.id=b."auctionId"
+  JOIN "user" u ON u.id=b."userId"
+  JOIN "Operation" o ON o.id=b."operationId" AND o.scope='BID' AND o."userId"=b."userId"
+  JOIN "Journal" j ON j."operationId"=o.id AND j.kind='BID_FEE'
+  WHERE b."acceptedAt">=${today} AND b."acceptedAt"<=${now} AND b."feePoints">0
+    AND NOT a."isDemo" AND NOT a."isSettlementFixture" AND a."testRunId" IS NULL AND ${realPlayer}
+    AND COALESCE(o.result#>>'{charge,netFeePoints}' !~ '^0([.]0+)?$',true)
+    AND EXISTS (
+     SELECT 1 FROM "Posting" p JOIN "LedgerAccount" l ON l.id=p."accountId" AND l.kind IN ('AVAILABLE','BONUS')
+     JOIN "Wallet" w ON w.id=l."walletId" AND w."userId"=b."userId"
+     WHERE p."journalId"=j.id AND p.delta<0
+    )
+    AND NOT EXISTS (
+     SELECT 1 FROM "ChapaCheckout" c
+     WHERE c."userId"=b."userId" AND c."auctionId"=a.id AND c.purpose='BID'
+       AND c.status='BID_ACCEPTED' AND c."creditJournalId" IS NOT NULL
+       AND (c."bidId"=b.id OR c.receipt->'bids' @> jsonb_build_array(jsonb_build_object('id',b.id)))
+    )
+    AND NOT EXISTS (
+     SELECT 1 FROM "ArifPayCheckout" c WHERE c."bidId"=b.id AND c."userId"=b."userId"
+       AND c.status='BID_ACCEPTED' AND c."creditJournalId" IS NOT NULL
+    )`);
+ return {state:'ready',count:row.count};
+}
 
 async function overviewDailyMoney(client:PrismaClient,today:Prisma.Sql,now:Prisma.Sql):Promise<DailyMoney>{
  // Use the posting date of each confirmed receipt. Wallet spending and bonuses
@@ -102,27 +133,27 @@ async function overviewDailyMoney(client:PrismaClient,today:Prisma.Sql,now:Prism
 
 /** Use one count snapshot and a separate bounded receipt read for allowed staff. */
 export async function readOverviewSummary(client:PrismaClient,actor:{id:string;role:StaffRole;now:Date}):Promise<OverviewSummary>{
- const grants=permissions(actor.role),catalog=grants.includes('catalog'),players=['OWNER','SUPPORT','PAYMENTS_OPERATOR','AUDITOR'].includes(actor.role),payments=players,deliveries=['OWNER','FULFILLMENT','AUDITOR'].includes(actor.role),ready=process.env.CHAPA_SCHEMA_READY==='true';
+ const grants=permissions(actor.role),catalog=grants.includes('catalog'),players=['OWNER','SUPPORT','PAYMENTS_OPERATOR','AUDITOR'].includes(actor.role),deliveries=['OWNER','FULFILLMENT','AUDITOR'].includes(actor.role),chapaReady=process.env.CHAPA_SCHEMA_READY==='true';
  const data:OverviewSummary={serverNow:actor.now.toISOString()};
  const today=utcTimestamp(eatDayStart(actor.now)),now=utcTimestamp(actor.now);
  const money=grants.includes('wallets');
- const columns:Partial<Record<'auctions'|'players'|'payments'|'deliveries',Prisma.Sql>>={};
+ const columns:Partial<Record<'auctions'|'players'|'deliveries',Prisma.Sql>>={};
  if(catalog)columns.auctions=Prisma.sql`(SELECT COUNT(*)::int FROM "Auction" a WHERE a."testRunId" IS NULL AND a."publishedAt" IS NOT NULL AND a.status IN ('SCHEDULED','LIVE') AND a."startsAt"<=${now} AND a."endsAt">${now} AND NOT EXISTS(SELECT 1 FROM "AuctionSettlement" s WHERE s."auctionId"=a.id)) AS auctions`;
  if(players)columns.players=Prisma.sql`player_counts.total AS players,player_counts.today AS "newMembers"`;
- if(payments&&ready)columns.payments=Prisma.sql`(SELECT COUNT(*)::int FROM "ChapaCheckout" WHERE status='NEEDS_REVIEW') AS payments`;
  if(deliveries)columns.deliveries=Prisma.sql`(SELECT COUNT(*)::int FROM "AuctionSettlement" s JOIN "Auction" a ON a.id=s."auctionId" LEFT JOIN "FulfillmentCase" f ON f."auctionId"=a.id WHERE s.outcome='WINNER' AND NOT a."isDemo" AND a."testRunId" IS NULL AND COALESCE(f.state,'PENDING')<>'DELIVERED' ${actor.role==='FULFILLMENT'?Prisma.sql`AND f."assignedTo"=${actor.id}`:Prisma.empty}) AS deliveries`;
  const keys=Object.keys(columns) as (keyof typeof columns)[];
  const playerCounts=players?Prisma.sql`FROM (
   SELECT COUNT(*)::int AS total,COUNT(*) FILTER (WHERE u."createdAt">=${today})::int AS today
   FROM "user" u WHERE u."createdAt"<=${now} AND ${realPlayer}
  ) player_counts`:Prisma.empty;
- const [counts,dailyMoney]=await Promise.all([
+ const [counts,dailyMoney,walletPaidBids]=await Promise.all([
   keys.length?client.$queryRaw<Record<string,number>[]>(Prisma.sql`SELECT ${Prisma.join(Object.values(columns))} ${playerCounts}`).then(([row])=>row).catch(()=>null):null,
-  money&&ready?overviewDailyMoney(client,today,now).catch(()=>null):null,
+  money&&chapaReady?overviewDailyMoney(client,today,now).catch(()=>null):null,
+  players&&chapaReady?overviewWalletPaidBids(client,today,now).catch(()=>null):null,
  ]);
  const count=(key:string):OverviewCount=>counts?{state:'ready',count:counts[key]}:{state:'error'};
  for(const key of keys)data[key]=count(key);
- if(payments&&!ready)data.payments={state:'error'};
+ if(players)data.walletPaidBids=walletPaidBids??{state:'error'};
  if(players||money)data.daily={
   ...(players?{newMembers:count('newMembers')}:{}),
   ...(money?{money:dailyMoney?{state:'ready',...dailyMoney}:{state:'error'}}:{}),

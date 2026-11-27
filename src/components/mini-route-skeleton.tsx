@@ -3,7 +3,7 @@ import {usePathname} from 'next/navigation';
 import {useMiniLocale} from './mini-locale';
 import styles from './mini-route-skeleton.module.css';
 
-export type MiniSkeletonVariant='home'|'catalog'|'category'|'auction'|'winners'|'winner'|'bids'|'payments'|'profile'|'wallet'|'alerts'|'favorites'|'support'|'faq'|'legal';
+export type MiniSkeletonVariant='home'|'catalog'|'category'|'auction'|'winners'|'winner'|'bids'|'payments'|'profile'|'affiliate'|'wallet'|'alerts'|'favorites'|'support'|'faq'|'legal';
 
 /** Match the destination's content geometry; never replace a retained query snapshot. */
 export function miniSkeletonVariant(path:string):MiniSkeletonVariant{
@@ -11,6 +11,7 @@ export function miniSkeletonVariant(path:string):MiniSkeletonVariant{
  if(route==='/')return 'home';
  if(route==='/profile/favorites')return 'catalog';
  if(route==='/profile/alerts')return 'home';
+ if(route==='/affiliate')return 'affiliate';
  if(route.startsWith('/categories/'))return 'category';
  if(route==='/auctions')return 'catalog';
  if(route.startsWith('/auctions/'))return 'auction';
@@ -44,6 +45,11 @@ function Rows({kind='payment',count=4}:{kind?:'payment'|'bid'|'alert';count?:num
 function Bids(){return <div className={styles.stack}><div className={styles.bidTabs}><Bone/><Bone/></div><div className={styles.bidRows} data-skeleton-part="bid-rows">{[0,1,2].map(index=><div key={index}><Bone className={styles.bidThumb}/><div><Bone/><Bone/></div></div>)}</div></div>}
 function Payments(){return <div className={styles.stack}><div className={styles.transactionHead}><Bone className={styles.subtitle}/><Bone className={styles.refresh}/></div><Rows/><Bone className={styles.pagination}/></div>}
 function Profile({wallet=false}:{wallet?:boolean}){return <div className={wallet?styles.stack:styles.profileGrid}><div className={styles.identity} data-skeleton-part="profile-identity"><Bone className={styles.avatar}/><div className={styles.rowText}><Bone/><Bone/><Bone/></div></div><div className={styles.balance} data-skeleton-part="wallet"><Bone className={styles.balanceLabel}/><Bone className={styles.balanceAmount}/><div className={styles.facts}><Bone/><Bone/></div></div>{!wallet&&<><div className={styles.panel}><Bone className={styles.sectionTitle}/><Bone className={styles.subtitle}/><Bone className={styles.button}/></div><div className={styles.panel}><Bone className={styles.sectionTitle}/><div className={styles.summary}><Bone/><Bone/><Bone/></div><Bone className={styles.subtitle}/></div></>}<Rows count={wallet?4:2}/></div>}
+function Affiliate(){return <div className={styles.stack}>
+ <div className={styles.panel}><Bone className={styles.title}/><Bone className={styles.subtitle}/><Bone className={styles.balanceAmount}/></div>
+ <div className={styles.panel}><Bone className={styles.sectionTitle}/><Bone className={styles.button}/><Bone className={styles.button}/></div>
+ <div className={styles.panel}><Bone className={styles.sectionTitle}/><div className={styles.summary}><Bone/><Bone/><Bone/></div></div>
+</div>}
 function Support(){return <div className={styles.stack}><Heading/><div className={styles.prose}><Bone/><Bone/><Bone/></div><Bone className={styles.button}/><div className={styles.supportRows}><Bone/><Bone/><Bone/></div></div>}
 function Faq(){return <div className={styles.stack}><Heading/><Search/><div className={styles.accordions}>{Array.from({length:5},(_,i)=><div key={i}><Bone/><Bone/></div>)}</div></div>}
 function Legal(){return <div className={styles.stack}><Heading/>{Array.from({length:3},(_,index)=><div className={styles.legalSection} key={index}><Bone className={styles.sectionTitle}/><div className={styles.prose}><Bone/><Bone/><Bone/><Bone/></div></div>)}</div>}
@@ -58,6 +64,7 @@ function Body({variant}:{variant:MiniSkeletonVariant}){
   case 'bids':return <Bids/>;
   case 'payments':return <Payments/>;
   case 'profile':return <Profile/>;
+  case 'affiliate':return <Affiliate/>;
   case 'wallet':return <Profile wallet/>;
   case 'alerts':return <Rows kind="alert"/>;
   case 'support':return <Support/>;

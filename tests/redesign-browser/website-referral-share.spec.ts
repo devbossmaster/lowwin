@@ -5,7 +5,7 @@ import {expect,test} from '../isolated-browser';
 import {verifyFixtureContact} from '../contact-fixtures';
 import {referralBrowserPolicy} from '../referral-browser-fixtures';
 
-test('browser profile copies and shares the website link for the same invite',async({page,browser},info)=>{
+test('Home Affiliate opens the website invite and copies and shares the same link',async({page,browser},info)=>{
  const database=new URL(process.env.TEST_DATABASE_URL??'');
  if(!['127.0.0.1','localhost'].includes(database.hostname)||!database.pathname.endsWith('_test'))throw Error('A disposable referral test database is required');
  const origin=new URL(info.project.use.baseURL!);
@@ -27,10 +27,19 @@ test('browser profile copies and shares the website link for the same invite',as
    Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async(value:string)=>{copied.push(value)}}});
    Object.defineProperty(navigator,'share',{configurable:true,value:async(data:ShareData)=>{shared.push(data.url??'')}});
   });
-  await page.goto('/profile');
-  const referral=page.locator('[data-referral-channel=website]');
-  await expect(referral).toBeVisible();
-  const {referral:links}=await (await page.request.get('/api/profile')).json();
+  await page.goto('/');
+  const affiliateLink=page.getByRole('banner',{name:'Mini App header'}).getByRole('link',{name:'Affiliate',exact:true});
+  await expect(affiliateLink).toHaveAttribute('href','/affiliate');
+  await affiliateLink.click();
+  await expect(page).toHaveURL(/\/affiliate$/);
+  const referral=page.locator('[data-affiliate-page] [data-referral-channel=website]');
+  await expect(referral.getByRole('heading',{name:'Invite & earn',exact:true})).toBeVisible();
+  const referralResponse=await page.request.get('/api/referrals');
+  expect(referralResponse.ok()).toBe(true);
+  expect(referralResponse.headers()['cache-control']).toContain('private, no-store');
+  const links=await referralResponse.json();
+  expect(links).toMatchObject({configured:true,enabled:true});
+  expect(links.rewardEtb).toBeTruthy();
   const website=new URL(links.webShareUrl),bot=new URL(links.shareUrl);
   const code=website.searchParams.get('ref');
   expect(website.origin).toBe(origin.origin);
@@ -44,6 +53,10 @@ test('browser profile copies and shares the website link for the same invite',as
 
   const guest=await browser.newContext({baseURL:origin.origin,ignoreHTTPSErrors:true});
   try{
+   const privatePage=await guest.request.get('/affiliate',{maxRedirects:0});
+   expect(privatePage.status()).toBe(307);
+   expect(new URL(privatePage.headers().location,origin).pathname).toBe('/');
+   expect((await guest.request.get('/api/referrals')).status()).toBe(401);
    const landing=await guest.request.get(website.href);
    expect(landing.ok()).toBe(true);
    expect(landing.headers()['cache-control']).toContain('no-store');

@@ -62,6 +62,7 @@ describe('bounded user-intent warming',()=>{
   expect(privateIntentDestination('/my-bids?view=history&page=2')).toBe('/api/my-bids?view=finished&page=2&language=en&grouped=1');
   expect(privateIntentDestination('/my-bids?view=finished&page=1001')).toBe('/api/my-bids?view=finished&page=1000&language=en&grouped=1');
   expect(privateIntentDestination('/profile')).toBe('/api/profile');
+  expect(privateIntentDestination('/affiliate')).toBe('/api/referrals');
   expect(privateIntentDestination('/payments')).toBe('/api/transactions?page=1&type=ALL');
   expect(privateIntentDestination('/payments?page=3')).toBe('/api/transactions?page=3&type=ALL');
   expect(privateIntentDestination('/payments?page=-2')).toBe('/api/transactions?page=1&type=ALL');
@@ -70,7 +71,7 @@ describe('bounded user-intent warming',()=>{
   expect(privateIntentDestination('https://other.example/profile')).toBeNull();
  });
  it.each([
-  ['/profile','/api/profile'],['/payments?page=2','/api/transactions?page=2&type=ALL'],
+  ['/profile','/api/profile'],['/affiliate','/api/referrals'],['/payments?page=2','/api/transactions?page=2&type=ALL'],
  ])('coalesces intent and opening %s into one private no-store request',async(target,url)=>{
   setPrivateQueryIdentity('intent');let finish!:(response:Response)=>void;
   const request=vi.fn((_url:string,_options?:RequestInit)=>new Promise<Response>(resolve=>{finish=resolve}));vi.stubGlobal('fetch',request);

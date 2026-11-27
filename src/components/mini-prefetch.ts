@@ -28,6 +28,7 @@ subscribePrivateQueries(event=>{if(event.kind==='session'||event.kind==='authori
 export function privateIntentDestination(target:string){
  let url:URL;try{url=new URL(target,'https://lowwin.invalid')}catch{return null}if(url.origin!=='https://lowwin.invalid')return null;
  if(url.pathname==='/profile')return '/api/profile';
+ if(url.pathname==='/affiliate')return '/api/referrals';
  if(url.pathname==='/payments'){
   const raw=Number(url.searchParams.get('page')??1),page=Number.isSafeInteger(raw)&&raw>0?Math.min(raw,10000):1;
   const type=['TOP_UP','BID'].includes(url.searchParams.get('type')??'')?url.searchParams.get('type')!:'ALL',q=(url.searchParams.get('q')??'').slice(0,100);

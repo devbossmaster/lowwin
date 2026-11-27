@@ -11,6 +11,7 @@ import {createDirectCheckout,authorizeDirectCheckout,reconcileDirectCheckouts} f
 import {getChapaCheckout,verifyChapaCheckout} from '../src/modules/payments/chapa';
 import {processChapaEvent} from '../src/modules/payments/chapa-events';
 import {submitBid} from '../src/modules/auctions/bids';
+import {readOverviewSummary} from '../src/modules/admin/workspace-read';
 import {reconcileChapaReceipts} from '../src/modules/payments/chapa-reconcile';
 import {ChapaProviderError,type ChapaDirectCreate,type ChapaTransport} from '../src/modules/payments/chapa-provider';
 import {TEST_TOKEN} from './helpers';
@@ -46,6 +47,22 @@ describe.skipIf(!database)('direct charges and atomic batches on isolated Postgr
  }
  it('prices fees rather than numbers and accepts the entire wallet order exactly once',async()=>{
   const f=await fixture({numbers:['2','9.99','50'],initialBalance:'150'});expect(f.quote.total).toBe('150.00');const paid=await payBidBatchWallet(db,f.user,f.quote.id,{quoteHash:f.quote.quoteHash});expect(paid.receipts).toHaveLength(3);expect(await balance(f.user)).toBe('0');expect(await db.bid.count({where:{userId:f.user,auctionId:f.auction.id}})).toBe(3);await payBidBatchWallet(db,f.user,f.quote.id,{quoteHash:f.quote.quoteHash});expect(await db.bid.count({where:{userId:f.user,auctionId:f.auction.id}})).toBe(3);
+ });
+ it('counts only accepted wallet-paid bids in the Addis day overview',async()=>{
+  const summary=async(now=new Date())=>(await readOverviewSummary(db,{id:'owner',role:'SUPPORT',now})).walletPaidBids;
+  const before=await summary();
+  expect(before?.state).toBe('ready');
+  const wallet=await fixture({initialBalance:'150'});
+  await payBidBatchWallet(db,wallet.user,wallet.quote.id,{quoteHash:wallet.quote.quoteHash});
+  const direct=await fixture(),order=await direct.start();
+  expect(await direct.verify(order.id)).toMatchObject({status:'BID_ACCEPTED'});
+  expect(await db.bid.count({where:{auctionId:direct.auction.id}})).toBe(3);
+  const free=await fixture({fee:0});
+  await payBidBatchWallet(db,free.user,free.quote.id,{quoteHash:free.quote.quoteHash});
+  const unpaid=await fixture({initialBalance:'1'});
+  await expect(payBidBatchWallet(db,unpaid.user,unpaid.quote.id,{quoteHash:unpaid.quote.quoteHash})).rejects.toMatchObject({code:'INSUFFICIENT_POINTS'});
+  expect(await summary()).toEqual({state:'ready',count:(before?.state==='ready'?before.count:0)+3});
+  expect(await summary(new Date(Date.now()+86400000))).toEqual({state:'ready',count:0});
  });
  it('sends one private batch receipt from committed proof and rejects a mismatched recipient at the final gate',async()=>{
   const f=await fixture({numbers:['2','9.99'],initialBalance:'100'});

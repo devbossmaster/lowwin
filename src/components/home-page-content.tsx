@@ -47,7 +47,7 @@ export function HomePageContent({query:seedQuery,children}:{query:CatalogQuery;c
  const view=initial??shell.data;
  useEffect(()=>{if(initial)seedPublicQuery('/api/catalog/categories',initial.categories)},[initial]);
  const content=<HomePageSections view={view} categories={categories} auctions={auctions} winners={winners} query={query} error={!!error} auctionError={currentBatch?.failed} awaitingAuctions={!currentBatch&&!auctions&&href===homeAuctionHref(seedQuery)} onRetry={()=>router.refresh()}/>;
- return <><div className="home-header-slot" hidden={(!view||!categories)&&!error}><MiniHeader/></div>{content}<HomeDataContext.Provider value={receive}>{children}</HomeDataContext.Provider></>;
+ return <><div className="home-header-slot" hidden={(!view||!categories)&&!error}><MiniHeader showReferralPromo={!!view&&!!categories}/></div>{content}<HomeDataContext.Provider value={receive}>{children}</HomeDataContext.Provider></>;
 }
 
 /** The public shell remains useful during an outage. Missing resources are

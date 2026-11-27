@@ -7,7 +7,7 @@ import {formatEtb} from '../../src/lib/money';
 import {verifyFixtureContact} from '../contact-fixtures';
 import {referralBrowserFixture,referralBrowserPolicy} from '../referral-browser-fixtures';
 
-test('reference Profile uses real referral rewards, private edits, top-up sheet and confirmed logout',async({page,browser},info)=>{
+test('Affiliate shows earned rewards while Profile handles private edits, top-up and logout',async({page,browser},info)=>{
  const database=process.env.TEST_DATABASE_URL??'',target=new URL(database);
  if(!['127.0.0.1','localhost'].includes(target.hostname)||!target.pathname.endsWith('_test')||process.env.REFERRAL_REWARDS_SCHEMA_READY!=='true')throw Error('Fresh migrated loopback referral _test database required');
  const db=new PrismaClient({datasourceUrl:database}),root=process.env.PROFILE_FLOW_REPORT_DIR??'test-results/profile-referrals';mkdirSync(root,{recursive:true});
@@ -23,25 +23,45 @@ test('reference Profile uses real referral rewards, private edits, top-up sheet 
   await page.route(photo,route=>route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" rx="32" fill="#252319"/><text x="32" y="42" fill="#ffffff" font-size="30" text-anchor="middle" font-family="sans-serif">P</text></svg>'}));
   const cdp=await page.context().newCDPSession(page);await cdp.send('Network.enable');await cdp.send('Network.setBlockedURLs',{urls:['https://telegram.org/*']});
   await page.addInitScript(({launch})=>{
-   localStorage.setItem('lowwin:introduction:v1','dismissed');const state=window as Window&{__profileShares?:string[];__profileCopies?:string[]};state.__profileShares=[];state.__profileCopies=[];
+   localStorage.setItem('lowwin:introduction:v1','dismissed');if(!localStorage.getItem('lowwin-language'))localStorage.setItem('lowwin-language','en');const state=window as Window&{__profileShares?:string[];__profileCopies?:string[]};state.__profileShares=[];state.__profileCopies=[];
    Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async(value:string)=>{state.__profileCopies!.push(value)}}});
    window.Telegram={WebApp:{initData:launch,ready(){},expand(){},setHeaderColor(){},setBackgroundColor(){},openTelegramLink(url:string){state.__profileShares!.push(url)}}};
   },{launch:signedLaunch({user:JSON.stringify({id:Number(user.telegramId),first_name:'Profile referral QA',photo_url:photo})},process.env.TELEGRAM_BOT_TOKEN)});
   await page.goto('/telegram?next='+encodeURIComponent('/profile'));const profile=page.locator('[data-profile-ready=true]');await expect(profile).toBeVisible();await expect(page.getByRole('banner',{name:'Mini App header',exact:true})).toHaveCount(0);await expect(page.locator('[data-customer-page-header]').getByRole('button',{name:'Language: English',exact:true})).toHaveCount(1);
   const initialResponse=await page.request.get('/api/profile');expect(initialResponse.status()).toBe(200);expect(initialResponse.headers()['cache-control']).toContain('private, no-store');const initial=await initialResponse.json();
-  expect(initial.contactVerified).toBe(true);expect(initial.contactDetailsEditable).toBe(true);expect(initial.referral.enabled).toBe(true);expect(initial.referral.counts.earned).toBe(1);expect(initial.referral.totalEarnedEtb).toBe(initial.referral.rewardEtb);
+  expect(initial.contactVerified).toBe(true);expect(initial.contactDetailsEditable).toBe(true);expect(initial).not.toHaveProperty('referral');
+  const referralResponse=await page.request.get('/api/referrals');
+  expect(referralResponse.status()).toBe(200);expect(referralResponse.headers()['cache-control']).toContain('private, no-store');
+  const referral=await referralResponse.json();
+  expect(referral).toMatchObject({configured:true,enabled:true,counts:{earned:1}});
+  expect(referral.rewardEtb).toBeTruthy();expect(referral.totalEarnedEtb).toBe(referral.rewardEtb);
   const balanceResponse=await page.request.get('/api/wallet');expect(balanceResponse.status()).toBe(200);const balance=await balanceResponse.json();
   await profile.getByRole('button',{name:'Edit',exact:true}).click();const edit=page.getByRole('dialog',{name:'Edit profile',exact:true});await expect(edit).toBeVisible();
   await edit.getByRole('textbox',{name:'Nickname',exact:true}).fill('Lowwin Profile QA');await edit.getByRole('textbox',{name:'Contact email',exact:true}).fill('profile-qa@example.invalid');await edit.getByRole('textbox',{name:'City',exact:true}).fill('Addis Ababa');await expect(edit.locator('input[name="phone"]')).toHaveCount(0);await edit.getByRole('button',{name:'Save profile',exact:true}).click();await expect(edit).toHaveCount(0);
   await expect(profile).toContainText('profile-qa@example.invalid');await expect(profile).toContainText('Addis Ababa');const saved=await (await page.request.get('/api/profile')).json();expect(saved.bio).toBe(initial.bio);expect(saved.phoneDisplay).toBe(initial.phoneDisplay);
-  const report:Record<string,unknown>={width:info.project.name,fixture:'synthetic isolated referrer with server-earned reward',earned:initial.referral.counts.earned,totalEarnedEtb:initial.referral.totalEarnedEtb,totalBids:initial.counts.bids,languages:[],financialPosts:0};
+  const report:Record<string,unknown>={width:info.project.name,fixture:'synthetic isolated referrer with server-earned reward',earned:referral.counts.earned,totalEarnedEtb:referral.totalEarnedEtb,totalBids:initial.counts.bids,languages:[],financialPosts:0};
+  const affiliate=page.locator('[data-affiliate-page] [data-referral-channel=telegram]');
   for(const language of ['en','am'] as const){
    const am=language==='am';if(am){await page.getByRole('button',{name:'Language: English',exact:true}).click();await page.getByRole('menuitemradio',{name:'አማርኛ',exact:true}).click()}
-   await expect(profile.getByRole('heading',{name:am?'ይጋብዙ እና ያግኙ':'Refer & earn',exact:true})).toBeVisible();await expect(profile.getByText(am?'የግብዣ ገቢ':'Referral earnings',{exact:true})).toBeVisible();await expect(profile.getByRole('heading',{name:am?'መሠረታዊ መረጃ':'Basic info',exact:true})).toBeVisible();
-   await expect(profile).toContainText(formatEtb(initial.referral.totalEarnedEtb));
+   await page.goto('/affiliate');
+   await expect(affiliate.getByRole('heading',{name:am?'ይጋብዙ እና ያግኙ':'Invite & earn',exact:true})).toBeVisible();
+   await expect(affiliate.getByRole('heading',{name:am?'የግብዣ ገቢ':'Referral earnings',exact:true})).toBeVisible();
+   await expect(affiliate).toContainText(formatEtb(referral.totalEarnedEtb));
+   const input=affiliate.getByRole('textbox',{name:am?'የመጋበዣ ሊንክዎ':'Your referral link',exact:true});
+   await expect(input).toHaveValue(referral.shareUrl);
+   await affiliate.getByRole('button',{name:am?'የመጋበዣ ሊንክ ይቅዱ':'Copy referral link',exact:true}).click();
+   await expect.poll(()=>page.evaluate(()=>(window as unknown as {__profileCopies:string[]}).__profileCopies.at(-1))).toBe(referral.shareUrl);
+   await affiliate.getByRole('button',{name:am?'በቴሌግራም ያጋሩ':'Share in Telegram',exact:true}).click();
+   await expect.poll(()=>page.evaluate(()=>{
+    const shared=(window as unknown as {__profileShares:string[]}).__profileShares.at(-1);
+    return shared?new URL(shared).searchParams.get('url'):null;
+   })).toBe(referral.shareUrl);
+   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+   await page.screenshot({path:`${root}/affiliate-${info.project.name}-${language}.png`});
+   await page.goto('/profile');
+   await expect(profile.getByRole('heading',{name:am?'መሠረታዊ መረጃ':'Basic info',exact:true})).toBeVisible();
+   await expect(profile.locator('[data-referral-channel]')).toHaveCount(0);
    await expect(profile.locator('img').first()).toHaveAttribute('src',photo);await expect(profile.locator('a[href="/winning-bids"]')).toHaveCount(1);await expect(profile.locator('a[href="/profile/favorites"]')).toHaveCount(1);await expect(profile.locator('a[href="/profile/alerts"]')).toHaveCount(1);
-   const input=profile.getByRole('textbox',{name:am?'የመጋበዣ ሊንክዎ':'Your referral link',exact:true});await expect(input).toHaveValue(initial.referral.shareUrl);await profile.getByRole('button',{name:am?'የመጋበዣ ሊንክ ይቅዱ':'Copy referral link',exact:true}).click();expect(await page.evaluate(()=>(window as unknown as {__profileCopies:string[]}).__profileCopies.at(-1))).toBe(initial.referral.shareUrl);
-   await profile.getByRole('button',{name:am?'በቴሌግራም ያጋሩ':'Share in Telegram',exact:true}).click();const shared=await page.evaluate(()=>(window as unknown as {__profileShares:string[]}).__profileShares.at(-1));expect(new URL(shared!).searchParams.get('url')).toBe(initial.referral.shareUrl);
    await page.evaluate(async()=>{await document.fonts.ready;scrollTo({top:0,behavior:'instant'})});await page.screenshot({path:`${root}/profile-${info.project.name}-${language}-top.png`});
    await profile.getByRole('heading',{name:am?'መሠረታዊ መረጃ':'Basic info',exact:true}).scrollIntoViewIfNeeded();await page.screenshot({path:`${root}/profile-${info.project.name}-${language}-lower.png`});
    const wallet=profile.getByRole('link',{name:am?'ዋሌት ይክፈቱ':'Open Wallet',exact:true});await wallet.click();const overview=page.getByRole('dialog');await expect(overview.locator('[data-wallet-overview]')).toBeVisible();await expect(overview.locator('[data-wallet-overview-balance]')).toContainText(Number(balance.available).toFixed(2));await overview.getByRole('button',{name:am?'ገንዘብ ያስገቡ':'Add funds',exact:true}).click();const sheet=page.getByRole('dialog');await expect(sheet.locator('[data-top-up-step=amount]')).toBeVisible();await expect(sheet.locator('[data-wallet-top-up-balance]')).toContainText(Number(balance.available).toFixed(2));await sheet.getByRole('button',{name:'200.00 ETB',exact:true}).click();await expect(sheet.getByRole('textbox',{name:am?'የሚያስገቡት መጠን':'Amount to add',exact:true})).toHaveValue('200');await expect(sheet.locator('[data-payment-action]')).toContainText(am?'ወደ ክፍያ ይቀጥሉ':'Continue to payment');await page.screenshot({path:`${root}/profile-top-up-${info.project.name}-${language}.png`});await page.keyboard.press('Escape');await expect(sheet).toHaveCount(0);await expect(wallet).toBeFocused();
@@ -50,21 +70,29 @@ test('reference Profile uses real referral rewards, private edits, top-up sheet 
    await page.goto(`/auctions/${auction.publicCode}`);await page.locator('#bid-review').getByRole('button').click();const bid=page.getByRole('dialog');await expect(bid.locator('[data-bid-step=entry]')).toBeVisible();await bid.locator('[data-bid-step=entry] input[inputmode=decimal]').first().fill('3.60');expect(quoteReads).toBe(0);
    await expect(bid.locator('[data-bid-coupons]')).toHaveCount(0);await expect(bid.locator('[data-payment-action]')).toBeEnabled();
    await page.screenshot({path:`${root}/bid-payment-${info.project.name}-${language}.png`});await page.keyboard.press('Escape');page.off('request',countQuotes);expect(quoteReads).toBe(0);
-   await page.goto('/profile');await expect(profile).toBeVisible();const unchanged=await (await page.request.get('/api/profile')).json();expect(unchanged.referral.totalEarnedEtb).toBe(initial.referral.totalEarnedEtb);expect(await db.referralWalletReward.count({where:{referrerUserId:user.id,creditedAt:{not:null}}})).toBe(rewardsBefore);expect((await (await page.request.get('/api/wallet')).json()).available).toBe(balance.available);
+   await page.goto('/profile');await expect(profile).toBeVisible();const unchanged=await (await page.request.get('/api/referrals')).json();expect(unchanged.totalEarnedEtb).toBe(referral.totalEarnedEtb);expect(await db.referralWalletReward.count({where:{referrerUserId:user.id,creditedAt:{not:null}}})).toBe(rewardsBefore);expect((await (await page.request.get('/api/wallet')).json()).available).toBe(balance.available);
    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);(report.languages as unknown[]).push({language,layoutNoOverflow:true,serverRewardVisible:true,couponControls:false,topUpSheet:true,shareIntercepted:true});
   }
-  await profile.getByRole('button',{name:'ውጣ',exact:true}).click();await expect(profile).toHaveCount(0);const count=signins.length;await page.waitForTimeout(900);expect(signins.length).toBe(count);expect((await page.request.get('/api/profile')).status()).toBe(401);expect((await page.request.get('/api/wallet')).status()).toBe(401);report.confirmedLogout=true;
+  await profile.getByRole('button',{name:'ውጣ',exact:true}).click();await expect(profile).toHaveCount(0);const count=signins.length;await page.waitForTimeout(900);expect(signins.length).toBe(count);expect((await page.request.get('/api/profile')).status()).toBe(401);expect((await page.request.get('/api/wallet')).status()).toBe(401);expect((await page.request.get('/api/referrals')).status()).toBe(401);report.confirmedLogout=true;
   const anonymous=await browser.newContext({baseURL:process.env.BETTER_AUTH_URL,ignoreHTTPSErrors:true});expect((await anonymous.request.get('/api/profile')).status()).toBe(401);await anonymous.close();
   expect(financialPosts).toEqual([]);expect(errors).toEqual([]);writeFileSync(`${root}/profile-ui-${info.project.name}.json`,JSON.stringify(report,null,2)+'\n');
  }finally{await db.$disconnect()}
 });
 
-test('new Profile has real zero rewards and initials without a Telegram photo',async({page},info)=>{
+test('new account has Profile initials and starts with zero Affiliate rewards',async({page},info)=>{
  const database=process.env.TEST_DATABASE_URL??'',target=new URL(database);if(!['127.0.0.1','localhost'].includes(target.hostname)||!target.pathname.endsWith('_test')||process.env.REFERRAL_REWARDS_SCHEMA_READY!=='true')throw Error('Fresh migrated loopback referral _test database required');
  const db=new PrismaClient({datasourceUrl:database}),root=process.env.PROFILE_FLOW_REPORT_DIR??'test-results/profile-referrals';mkdirSync(root,{recursive:true});
  try{
   await referralBrowserPolicy(db);
   const telegramId=randomInt(8000000000,8900000000);await verifyFixtureContact(db,telegramId);const cdp=await page.context().newCDPSession(page);await cdp.send('Network.enable');await cdp.send('Network.setBlockedURLs',{urls:['https://telegram.org/*']});await page.addInitScript(({launch})=>{window.Telegram={WebApp:{initData:launch,ready(){},expand(){},setHeaderColor(){},setBackgroundColor(){}}};},{launch:signedLaunch({user:JSON.stringify({id:telegramId,first_name:'New Profile QA'})},process.env.TELEGRAM_BOT_TOKEN)});
-  await page.goto('/telegram?next='+encodeURIComponent('/profile'));const profile=page.locator('[data-profile-ready=true]');await expect(profile).toBeVisible();const data=await (await page.request.get('/api/profile')).json(),initials=data.displayName.trim().split(/\s+/).filter(Boolean).slice(0,2).map((part:string)=>Array.from(part)[0]).join('').toUpperCase();await expect(profile.getByText(initials,{exact:true})).toBeVisible();await expect(profile.locator('img')).toHaveCount(0);await expect(profile.getByRole('heading',{name:'Refer & earn',exact:true})).toBeVisible();await expect(profile.getByText('ETB 0.00',{exact:true})).toBeVisible();expect(data.counts.bids).toBe(0);expect(data.referral.counts).toEqual({signedUp:0,qualified:0,earned:0});expect(data.referral.totalEarnedEtb).toBe('0.00');expect(data.phoneDisplay).toBeTruthy();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:`${root}/profile-empty-${info.project.name}.png`});
+  await page.goto('/telegram?next='+encodeURIComponent('/profile'));const profile=page.locator('[data-profile-ready=true]');await expect(profile).toBeVisible();const data=await (await page.request.get('/api/profile')).json(),initials=data.displayName.trim().split(/\s+/).filter(Boolean).slice(0,2).map((part:string)=>Array.from(part)[0]).join('').toUpperCase();await expect(profile.getByText(initials,{exact:true})).toBeVisible();await expect(profile.locator('img')).toHaveCount(0);expect(data.counts.bids).toBe(0);expect(data.phoneDisplay).toBeTruthy();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:`${root}/profile-empty-${info.project.name}.png`});
+  await page.goto('/affiliate');
+  const affiliate=page.locator('[data-affiliate-page]');
+  await expect(affiliate.getByRole('heading',{name:'Invite & earn',exact:true})).toBeVisible();
+  await expect(affiliate.getByText('ETB 0.00',{exact:true})).toBeVisible();
+  const referralResponse=await page.request.get('/api/referrals');
+  expect(referralResponse.status()).toBe(200);
+  expect(await referralResponse.json()).toMatchObject({configured:true,enabled:true,counts:{signedUp:0,qualified:0,earned:0},totalEarnedEtb:'0.00',recentInvites:[]});
+  await page.screenshot({path:`${root}/affiliate-empty-${info.project.name}.png`});
  }finally{await db.$disconnect()}
 });

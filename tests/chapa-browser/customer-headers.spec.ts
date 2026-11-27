@@ -6,6 +6,7 @@ import {bidAuction} from '../bid-fixtures';
 import {verifyFixtureContact} from '../contact-fixtures';
 import {signedLaunch} from '../helpers';
 import {creditDevelopmentPoints,reconcile} from '../../src/modules/wallet/ledger';
+import {fixture} from './fixtures';
 
 test('Home-only toolbar, compact headers, owned balance and in-app Back',async({page},info)=>{
  const db=new PrismaClient({datasourceUrl:process.env.TEST_DATABASE_URL}),dir='test-results/customer-headers/screenshots';mkdirSync(dir,{recursive:true});
@@ -33,4 +34,44 @@ test('Home-only toolbar, compact headers, owned balance and in-app Back',async({
   }
   expect(errors).toEqual([]);expect(payments).toEqual([]);expect(signins).toBe(initialSignins);expect(await reconcile(db)).toEqual([]);writeFileSync(`${dir}/evidence-${info.project.name}.json`,JSON.stringify({languages:['en','am'],directEntryFallback:true,oneHeaderPerPage:true,centeredTitles:true,inAppBack:true,homePollingStops:true,warmBalanceRetained:true,oneWalletRefreshOnReturn:true,providersPreserved:true,initialSignins,signinsAfterNavigation:signins,liveBidModal:true,generatedImageAspect:2.3,financialMutations:payments.length,errors},null,2));
  }finally{if(releaseWallet)(releaseWallet as ()=>void)();await db.$disconnect()}
+});
+
+test('Home Affiliate callout uses the configured reward and remembers dismissal',async({page})=>{
+ const f=await fixture(page,false);
+ let policyReads=0,overviewReads=0,enabled=false;
+ try{
+  await page.route('**/api/referrals**',route=>{
+   if(new URL(route.request().url()).searchParams.get('view')==='policy'){
+    policyReads++;
+    return route.fulfill({json:{configured:true,enabled,rewardEtb:'25.00'}});
+   }
+   overviewReads++;
+   return route.fulfill({json:{configured:true,enabled:true,rewardEtb:'25.00',shareUrl:'https://t.me/LowWinBot?start=ref_sample',webShareUrl:'https://lowwin.shop/?ref=sample',counts:{signedUp:0,qualified:0,earned:0},totalEarnedEtb:'0.00',recentInvites:[]}});
+  });
+  const header=page.getByRole('banner',{name:'Mini App header'});
+  const affiliate=header.getByRole('link',{name:'Affiliate',exact:true});
+  const promo=header.getByRole('complementary',{name:'Referral reward'});
+  const policyResponse=page.waitForResponse(response=>new URL(response.url()).searchParams.get('view')==='policy');
+  await page.goto('/telegram?next='+encodeURIComponent(f.home));
+  await expect(affiliate).toHaveAttribute('href','/affiliate');
+  await policyResponse;
+  await expect(promo).toHaveCount(0);
+  enabled=true;
+  await page.reload();
+  await expect(promo).toContainText('ETB 25.00 in your wallet');
+  await expect(promo).toContainText('first accepted bid');
+  expect(policyReads).toBe(2);
+  expect(overviewReads).toBe(0);
+  const [headerBox,promoBox]=await Promise.all([header.boundingBox(),promo.boundingBox()]);
+  expect(promoBox!.x).toBeGreaterThanOrEqual(headerBox!.x);
+  expect(promoBox!.x+promoBox!.width).toBeLessThanOrEqual(headerBox!.x+headerBox!.width);
+  await promo.getByRole('button',{name:'Dismiss referral message'}).click();
+  await expect(promo).toHaveCount(0);
+  await page.reload();
+  await expect(affiliate).toBeVisible();
+  await expect(promo).toHaveCount(0);
+  expect(policyReads).toBe(2);
+  await affiliate.click();
+  await expect(page).toHaveURL(/\/affiliate$/);
+ }finally{await f.db.$disconnect()}
 });

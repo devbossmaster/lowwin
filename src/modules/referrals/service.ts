@@ -9,6 +9,7 @@ import {isSubmissionFeeOnly} from '../auctions/rules';
 
 type DB=PrismaClient|Prisma.TransactionClient;
 type Tx=Prisma.TransactionClient;
+type ReferralInviteSummary={registeredAt:string;firstBidAccepted:boolean};
 const rewardAmount=z.string().trim().regex(/^(0|[1-9]\d{0,5})(?:\.\d{1,2})?$/,'Enter an ETB amount with up to two decimal places.')
  .refine(value=>{try{const cents=etbToCents(value);return cents>=1n&&cents<=10000000n}catch{return false}},'Enter a reward from ETB 0.01 to 100,000.');
 export const referralPolicySchema=z.object({enabled:z.boolean(),rewardEtb:rewardAmount}).strict();
@@ -27,7 +28,7 @@ export async function getReferralPolicy(client:DB,raw:Record<string,string|undef
 async function databaseNow(tx:DB){return (await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AT TIME ZONE 'UTC' AS now`)[0].now}
 function referralToken(payload:string|undefined|null){return typeof payload==='string'?/^ref_([A-Za-z0-9_-]{12})$/.exec(payload)?.[1]??null:null}
 async function eligibleSponsor(tx:DB,userId:string){const user=await tx.user.findUnique({where:{id:userId},select:{telegramId:true,role:true}});return !!user?.telegramId&&user.role==='member'&&!userId.startsWith('demo-showcase-')&&!await tx.testRunActor.findFirst({where:{userId}})&&!await tx.staffMember.findUnique({where:{userId}})&&!await tx.userRestriction.findFirst({where:{userId,suspended:true}})}
-function emptyOverview(){return {configured:false,enabled:false,shareUrl:null as string|null,webShareUrl:null as string|null,rewardEtb:null as string|null,counts:{signedUp:0,qualified:0,earned:0},totalEarnedEtb:'0.00'}}
+function emptyOverview(){return {configured:false,enabled:false,shareUrl:null as string|null,webShareUrl:null as string|null,rewardEtb:null as string|null,counts:{signedUp:0,qualified:0,earned:0},totalEarnedEtb:'0.00',recentInvites:[] as ReferralInviteSummary[]}}
 
 /** Private account overview. Only coordinates/DTOs are cached by the client. */
 export async function getReferralOverview(client:PrismaClient,userId:string,raw:Record<string,string|undefined>=process.env){
@@ -40,14 +41,26 @@ export async function getReferralOverview(client:PrismaClient,userId:string,raw:
    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`referral-invite:${userId}`},0))`;
    invite=await tx.referralInvite.findUnique({where:{userId}})??await tx.referralInvite.create({data:{userId,token:randomBytes(9).toString('base64url')}});
   }
-  const [{signedUp,qualified,earned,totalCents}]=await tx.$queryRaw<{signedUp:number;qualified:number;earned:number;totalCents:string}[]>`
+  const [{signedUp,qualified,earned,totalCents,recentInvites}]=await tx.$queryRaw<{signedUp:number;qualified:number;earned:number;totalCents:string;recentInvites:ReferralInviteSummary[]}[]>`
    SELECT COUNT(*)::int AS "signedUp",COUNT(s."firstBidId")::int AS qualified,COUNT(r."operationId")::int AS earned,
-     COALESCE(SUM(r."amountCents") FILTER (WHERE r."operationId" IS NOT NULL),0)::text AS "totalCents"
+     COALESCE(SUM(r."amountCents") FILTER (WHERE r."operationId" IS NOT NULL),0)::text AS "totalCents",
+     COALESCE((
+       SELECT jsonb_agg(jsonb_build_object(
+         'registeredAt',to_char(recent."registeredAt",'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+         'firstBidAccepted',recent."firstBidId" IS NOT NULL
+       ) ORDER BY recent."registeredAt" DESC)
+       FROM (
+         SELECT "registeredAt","firstBidId" FROM "ReferralSignup"
+         WHERE "referrerUserId"=${userId}
+         ORDER BY "registeredAt" DESC
+         LIMIT 10
+       ) recent
+     ),'[]'::jsonb) AS "recentInvites"
    FROM "ReferralSignup" s LEFT JOIN "ReferralWalletReward" r ON r."referredUserId"=s."referredUserId"
    WHERE s."referrerUserId"=${userId}`;
   const shareUrl=invite&&policy.enabled?botReferralShareUrl(invite.token,raw.TELEGRAM_BOT_USERNAME):null;
   const webShareUrl=invite&&policy.enabled?websiteReferralShareUrl(invite.token,raw.BETTER_AUTH_URL):null;
-  return {configured:policy.configured,enabled:policy.enabled,shareUrl,webShareUrl,rewardEtb:policy.configured?policy.rewardEtb:null,counts:{signedUp,qualified,earned},totalEarnedEtb:centsToEtb(BigInt(totalCents))};
+  return {configured:policy.configured,enabled:policy.enabled,shareUrl,webShareUrl,rewardEtb:policy.configured?policy.rewardEtb:null,counts:{signedUp,qualified,earned},totalEarnedEtb:centsToEtb(BigInt(totalCents)),recentInvites};
  },{isolationLevel:Prisma.TransactionIsolationLevel.ReadCommitted});
 }
 

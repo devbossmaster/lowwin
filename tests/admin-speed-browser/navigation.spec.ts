@@ -9,7 +9,7 @@ test('admin cached navigation, progressive Overview and contained cards',async({
  const database=process.env.TEST_DATABASE_URL??'',target=new URL(database);if(target.hostname!=='127.0.0.1'||!target.pathname.endsWith('_test'))throw Error('Disposable loopback database required');
  const db=new PrismaClient({datasourceUrl:database}),id=randomUUID(),password='Admin-speed-fixture-password-12345',email=`admin-speed-${id}@lowwin.test`,reads:string[]=[],errors:string[]=[];
  const now=new Date().toISOString(),player={id:randomUUID(),name:'Synthetic admin player',telegramId:'888888888',telegramUsername:'admin_speed_fixture',phone:'+251911000000',phoneUnavailable:false,createdAt:now,bidCount:31,winCount:0,suspended:false,available:'250.00',held:'0',referralCount:1,rewardCount:0};
- const summary={serverNow:now,auctions:{state:'ready',count:2,live:2,items:[]},players:{state:'ready',count:1683,total:1683},payments:{state:'ready',count:11},deliveries:{state:'ready',count:0},daily:{newMembers:{state:'ready',count:12},money:{state:'ready',depositEtb:'0.00',successfulPayments:42,paymentEtb:'6321099.95'}}};
+ const summary={serverNow:now,auctions:{state:'ready',count:2,live:2,items:[]},players:{state:'ready',count:1683,total:1683},walletPaidBids:{state:'ready',count:11},deliveries:{state:'ready',count:0},daily:{newMembers:{state:'ready',count:12},money:{state:'ready',depositEtb:'0.00',successfulPayments:42,paymentEtb:'6321099.95'}}};
  let release!:()=>void,holding=stage==='after';const held=new Promise<void>(resolve=>release=resolve);
  await db.user.create({data:{id,email,name:'Synthetic admin speed',emailVerified:true,role:'admin'}});await db.account.create({data:{id:randomUUID(),userId:id,accountId:id,providerId:'credential',password:await hashPassword(password)}});
  page.on('pageerror',error=>errors.push(error.message));
@@ -28,6 +28,10 @@ test('admin cached navigation, progressive Overview and contained cards',async({
   if(stage==='before')await expect(page.getByRole('region',{name:'Workspace summary'})).toBeVisible();else{
    await expect(page.locator('[data-overview-card]')).toHaveCount(8);
    await expect(page.locator('[data-overview-card="players"]')).toContainText('1,683');
+   const walletPaidBids=page.locator('[data-overview-card="wallet-paid-bids"]');
+   await expect(walletPaidBids).toContainText('Wallet-paid bids today');
+   await expect(walletPaidBids).toContainText('11');
+   await expect(walletPaidBids).not.toHaveAttribute('href');
    await expect(page.locator('[data-overview-card="new-members"]')).toContainText('12');
    await expect(page.locator('[data-overview-card="deposits-today"]')).toContainText('ETB 0.00');
    await expect(page.locator('[data-overview-card="deposits-today"]')).toHaveAttribute('href','/admin/payments?view=completed&purpose=TOP_UP');

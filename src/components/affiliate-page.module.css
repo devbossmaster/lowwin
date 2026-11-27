@@ -1,0 +1,49 @@
+.page{min-width:0;padding:var(--space-4) clamp(12px,4vw,20px) var(--space-6);color:var(--brand-ink)}
+.content{display:grid;gap:var(--space-3);min-width:0}
+.content:lang(am){font-family:'Lowwin Ethiopic','Inter',Ebrima,Nyala,Kefa,system-ui,sans-serif}
+.hero{display:grid;gap:var(--space-2);min-width:0;padding:var(--space-4);border:1px solid var(--brand-line);border-radius:16px;background:var(--brand-surface)}
+.hero[data-active]{
+  padding:var(--space-5,20px);
+  border-color:transparent;
+  background:linear-gradient(145deg,#153779,var(--action-pressed) 65%,#1d49b2);
+  color:#fff;
+  --surface-ink:#fff;
+}
+.hero h2{margin:0;font-size:1.25rem;font-weight:750;line-height:1.35;letter-spacing:-.02em}
+.hero h2:lang(am){line-height:1.5;letter-spacing:0}
+.hero p{max-width:44ch;margin:0;color:var(--brand-muted);font-size:.875rem;line-height:1.6;overflow-wrap:anywhere}
+.hero[data-active] p{color:#edf3ff}
+.reward{display:flex;align-items:center;gap:var(--space-3);min-width:0}
+.reward svg{box-sizing:content-box;flex:none;padding:10px;border-radius:12px;background:#ffffff1f;color:#fff}
+.reward strong{min-width:0;font-size:clamp(1.625rem,7vw,2.125rem);font-weight:800;line-height:1.25;letter-spacing:-.03em;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.invite,.earnings,.history{padding:var(--space-4);gap:var(--space-3)}
+.invite h2,.earnings h2{display:flex;align-items:center;gap:var(--space-2);min-width:0;margin:0;font-size:.9375rem;font-weight:700;line-height:1.45}
+.invite h2 svg,.earnings h2 svg{flex:none;color:var(--action-hover)}
+.link{width:100%;min-width:0;height:44px;padding:0 var(--space-3);border:1px solid var(--brand-line);border-radius:10px;background:var(--brand-canvas);color:var(--brand-ink);font:inherit;font-size:.8125rem;text-overflow:ellipsis}
+.actions{display:grid;grid-template-columns:minmax(0,1fr) 48px;gap:var(--space-2)}
+.shareButton,.copyButton{display:flex;align-items:center;justify-content:center;min-width:0;min-height:48px;cursor:pointer}
+.shareButton{gap:var(--space-2);padding:8px var(--space-3);border:0;border-radius:24px;background:var(--action-primary);color:var(--action-ink);font:inherit;font-size:.875rem;font-weight:700;text-align:center}
+.shareButton svg{flex:none}
+.shareButton:hover{background:var(--action-hover)}
+.shareButton:disabled{background:var(--action-disabled);color:var(--action-disabled-ink);cursor:default}
+.copyButton{width:48px;padding:0;border:1px solid var(--action-disabled);border-radius:12px;background:#eef4ff;color:var(--action-pressed)}
+.copyButton:hover{background:var(--action-disabled)}
+.notice{margin:0;color:var(--action-pressed);font-size:.8125rem;line-height:1.5}
+.activity{display:grid;gap:var(--space-2);min-width:0}
+.earnings{gap:var(--space-2)}
+.earnings strong{color:var(--brand-ink);font-size:1.5rem;line-height:1.25;font-weight:750;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--space-2);margin:0}
+.stats>div{display:grid;grid-template-rows:auto 1fr;align-items:start;gap:4px;min-width:0;padding:var(--space-3) 4px;border:1px solid var(--brand-line);border-radius:12px;background:var(--brand-surface);text-align:center}
+.stats dt{grid-row:2;color:var(--brand-muted-on-soft);font-size:.75rem;line-height:1.4;overflow-wrap:anywhere}
+.stats dd{grid-row:1;margin:0;font-size:1.125rem;font-weight:750;line-height:1.25;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.history h2{margin:0;font-size:1rem;line-height:1.5;font-weight:700}
+.history table{width:100%;border-collapse:collapse;font-size:.8125rem;line-height:1.5}
+.history th,.history td{padding:var(--space-2);border-bottom:1px solid var(--brand-line);text-align:start;overflow-wrap:anywhere}
+.history th{background:var(--brand-canvas);color:var(--brand-muted-on-soft);font-weight:600}
+.history tbody tr:last-child td{border-bottom:0}
+.history time{font-variant-numeric:tabular-nums}
+.inviteStatus{display:inline-block;padding:3px 7px;border-radius:6px;background:var(--brand-canvas);color:var(--brand-muted-on-soft);font-size:.75rem;font-weight:600}
+.inviteStatus[data-complete]{background:#e8f5ee;color:#165334}
+.empty{display:grid;justify-items:center;gap:var(--space-2);margin:0;padding:var(--space-3) 0;text-align:center;color:var(--brand-muted);font-size:.875rem;line-height:1.5}
+.empty svg{color:var(--action-hover)}
+.page :focus-visible{outline:2px solid var(--action-primary);outline-offset:3px}

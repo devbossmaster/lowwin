@@ -35,15 +35,14 @@ describe('public auction total accepted bids',()=>{
   state.activity={bids:0,bidders:0,status:'live',startsAt:now,endsAt};
   expect(render('am')).toContain('<strong>0</strong><small>ጠቅላላ ጨረታዎች</small>');
  });
- it('shows the published fee and code before the explicit bidding action',()=>{
+ it('shows the published fee, code and bid action without the standalone disclosure',()=>{
   const html=render();
   expect(html).toContain('<h1>Power bank</h1>');expect(html).toContain('data-share-options');
   expect(html).toContain('Fee per bid');expect(html).toContain('ETB 50.00');expect(html).toContain('Auction code');
   expect(html).toContain('data-auction-bid');expect(html).toContain('Place a bid');expect(html).not.toContain('Pay ETB 50.00 &amp; bid');
-  expect(html.slice(html.indexOf('id="bid-review"'),html.indexOf('</div>',html.indexOf('id="bid-review"')))).not.toContain('href="/terms"');
-  expect(html).toContain('Chosen numbers stay private until the result is published.');
+  expect(html).not.toContain('Chosen numbers stay private until the result is published.');
   expect(html).not.toContain('Frozen terms');expect(html).not.toContain('Collect the prize');
-  expect(html).toContain('href="/terms"');
+  expect(html).not.toContain('href="/terms"');
   expect(html.indexOf('Fee per bid')).toBeLessThan(html.indexOf('More chances'));
   expect(html.indexOf('Total bids')).toBeLessThan(html.indexOf('More chances'));
   expect(html.indexOf('More chances')).toBeLessThan(html.indexOf('data-share-options'));

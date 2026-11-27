@@ -5,6 +5,7 @@ export function customerPageTitle(path:string):readonly [string,string]{
  if(path==='/winners'||path==='/winners/all'||path==='/draws')return ['Winners','አሸናፊዎች'];
  if(path.startsWith('/winners/'))return ['Auction result','የጨረታ ውጤት'];
  if(path==='/my-bids')return ['My Bids','የእኔ ጨረታዎች'];
+ if(path==='/affiliate')return ['Affiliate','ግብዣና ሽልማት'];
  if(path==='/profile')return ['Profile','መገለጫ'];
  if(path==='/wallet/deposit')return ['Top up wallet','ወደ ዋሌት ገንዘብ ያስገቡ'];
  if(path.startsWith('/wallet'))return ['Wallet','ዋሌት'];

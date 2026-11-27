@@ -26,13 +26,13 @@ describe.skipIf(!url)('referral rewards on isolated PostgreSQL',()=>{
  afterAll(async()=>{await db?.$disconnect();const {db:shared}=await import('../src/lib/db');await shared.$disconnect()});
  it('validates the configured range and leaves disabled old schemas untouched',async()=>{
   for(const rewardEtb of ['0','-1','1.001','NaN','100001','1e3',5])expect(referralPolicySchema.safeParse({enabled:true,rewardEtb}).success).toBe(false);
-  expect((await getReferralPolicy(db,{REFERRAL_REWARDS_SCHEMA_READY:'false'})).configured).toBe(false);expect(await getReferralOverview(db,sponsor.id,{REFERRAL_REWARDS_SCHEMA_READY:'false'})).toMatchObject({configured:false,shareUrl:null,totalEarnedEtb:'0.00'});
+  expect((await getReferralPolicy(db,{REFERRAL_REWARDS_SCHEMA_READY:'false'})).configured).toBe(false);expect(await getReferralOverview(db,sponsor.id,{REFERRAL_REWARDS_SCHEMA_READY:'false'})).toMatchObject({configured:false,shareUrl:null,totalEarnedEtb:'0.00',recentInvites:[]});
  });
  it('binds a trusted first bot start to contact registration and never retroclaims a customer',async()=>{
   registered=await referredRegistration(db,sponsor.id);const signup=await db.referralSignup.findUniqueOrThrow({where:{referredUserId:registered.id}});expect(signup.referrerUserId).toBe(sponsor.id);expect(signup.firstBidId).toBeNull();
   const pending=await db.referralPendingSignup.findUniqueOrThrow({where:{botId_telegramId:{botId:contactBotId(),telegramId:String(registered.telegramId)}}});expect(pending.consumedUserId).toBe(registered.id);expect(pending.expiresAt.getTime()-pending.createdAt.getTime()).toBe(30*86400000);
   expect(await recordBotReferralStart(db,String(other.telegramId),contactBotId(),registered.payload)).toBe(false);expect(await db.referralSignup.findUnique({where:{referredUserId:other.id}})).toBeNull();
-  expect((await getReferralOverview(db,sponsor.id)).counts).toEqual({signedUp:1,qualified:0,earned:0});
+  expect(await getReferralOverview(db,sponsor.id)).toMatchObject({counts:{signedUp:1,qualified:0,earned:0},recentInvites:[{registeredAt:signup.registeredAt.toISOString(),firstBidAccepted:false}]});
  });
  it('credits once after the first accepted bid and leaves failed or later bids without rewards',async()=>{
   const auction=await realReferralAuction(db,10),key=randomUUID(),before=await balance(sponsor.id);
@@ -47,7 +47,10 @@ describe.skipIf(!url)('referral rewards on isolated PostgreSQL',()=>{
   expect(reward).toMatchObject({referrerUserId:sponsor.id,bidId:first.bid.id,amountCents:1250n,creditedAt:expect.any(Date)});
   expect(await balance(sponsor.id)).toBe(String(Number(before)+12.5));
   expect(await db.referralCoupon.count()).toBe(0);
-  expect(await getReferralOverview(db,sponsor.id)).toMatchObject({rewardEtb:'12.50',counts:{signedUp:1,qualified:1,earned:1},totalEarnedEtb:'12.50'});
+  const overview=await getReferralOverview(db,sponsor.id);
+  expect(overview).toMatchObject({rewardEtb:'12.50',counts:{signedUp:1,qualified:1,earned:1},totalEarnedEtb:'12.50'});
+  const signup=await db.referralSignup.findUniqueOrThrow({where:{referredUserId:registered.id}});
+  expect(overview.recentInvites).toEqual([{registeredAt:signup.registeredAt.toISOString(),firstBidAccepted:true}]);
   expect(await reconcile(db)).toEqual([]);
  });
  it('serializes concurrent first bids in different auctions and emits one wallet credit',async()=>{
@@ -184,5 +187,21 @@ describe.skipIf(!url)('referral rewards on isolated PostgreSQL',()=>{
  it('returns a complete valid invitation URL and no link for an invalid bot configuration',async()=>{
   const overview=await getReferralOverview(db,sponsor.id),url=new URL(overview.shareUrl!);expect(url.origin).toBe('https://t.me');expect(url.pathname).toBe('/'+process.env.TELEGRAM_BOT_USERNAME);expect(url.searchParams.get('start')).toMatch(/^ref_[A-Za-z0-9_-]{12}$/);
   expect((await getReferralOverview(db,sponsor.id,{...process.env,TELEGRAM_BOT_USERNAME:'wrong/bot'})).shareUrl).toBeNull();
+ });
+ it('returns only the latest ten invites owned by the referrer without identifying details',async()=>{
+  const owner=await verifiedReferralUser(db);
+  const customers=Array.from({length:13},(_,index)=>({
+   id:randomUUID(),name:'Private referral fixture',telegramId:String(randomInt(8000000000,8900000000)),
+   registeredAt:new Date(Date.UTC(2026,10,5,15,20,index,321)),
+  }));
+  await db.$transaction(async tx=>{
+   await tx.user.createMany({data:customers.map(({id,name,telegramId})=>({id,name,telegramId}))});
+   await tx.referralSignup.createMany({data:customers.map(({id,registeredAt},index)=>({
+    referredUserId:id,registeredAt,referrerUserId:index===12?other.id:owner.id,
+   }))});
+  });
+  const overview=await getReferralOverview(db,owner.id);
+  expect(overview.counts.signedUp).toBe(12);
+  expect(overview.recentInvites).toEqual(customers.slice(2,12).reverse().map(({registeredAt})=>({registeredAt:registeredAt.toISOString(),firstBidAccepted:false})));
  });
 });
