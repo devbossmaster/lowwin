@@ -154,6 +154,34 @@ describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated t
   expect(send).toHaveBeenCalledOnce();
   expect(await db.outbox.count({where:{...audience,state:'SENT'}})).toBe(1);
  });
+ it('queues a scheduled auction opening once after it starts, even with only three minutes of notice',async()=>{
+  const item=await bidAuction(db,{isDemo:false,endDelayMs:4*86_400_000});
+  const now=Date.now();
+  const hiddenCategory=await db.category.create({data:{slug:`private-${randomUUID()}`,name:`Hidden fixture ${randomUUID()}`,description:'Unlisted fixture category',visible:false}});
+  const listing=async(offset:number,endsAt=new Date(now+4*86_400_000),categoryId=item.categoryId)=>{
+   const tag=randomUUID(),startsAt=new Date(now+offset);
+   return db.auction.create({data:{code:`OPEN-${tag}`,slug:`open-${tag}`,status:'SCHEDULED',isDemo:false,
+    productId:item.productId,categoryId,fulfillmentSummary:'Fixture',fulfillmentRegion:'Fixture',
+    startsAt,publishedAt:new Date(startsAt.getTime()-180_000),endsAt,
+   }});
+  };
+  const [opened,future,stale,closed,alreadyQueued,hidden]=await Promise.all([
+   listing(-30_000),listing(120_000),listing(-360_000),listing(-60_000,new Date(now-30_000)),listing(-30_000),listing(-30_000,undefined,hiddenCategory.id),
+  ]);
+  const existing=await db.$transaction(tx=>queueGlobal(tx,`global:published:${alreadyQueued.id}`,'AUCTION_PUBLISHED',{auctionId:alreadyQueued.id}));
+  await Promise.all([scheduleGlobalAlerts(db),scheduleGlobalAlerts(db)]);
+  const keys=[opened,future,stale,closed,alreadyQueued,hidden].map(auction=>`global:published:${auction.id}`);
+  const roots=await db.outbox.findMany({where:{key:{in:keys}}});
+  expect(roots).toHaveLength(2);
+  expect(roots.find(root=>root.key===existing.key)?.id).toBe(existing.id);
+  const opening=roots.find(root=>root.key===keys[0])!;
+  expect(opening.payload).toMatchObject({auctionId:opened.id,rootKey:opening.key,deliveryKind:'AUCTION_PUBLISHED'});
+  expect(await db.$transaction(tx=>expandCampaign(tx,opening))).toBeGreaterThan(0);
+  const send=vi.fn(async()=>({message_id:412}));
+  expect(await dispatchBatch(db,fake(send),{kind:'AUCTION_PUBLISHED',limit:1})).toBe(1);
+  expect(send).toHaveBeenCalledOnce();
+  expect(await db.outbox.count({where:{kind:'AUCTION_PUBLISHED',key:{startsWith:`${opening.key}:user:`},state:'SENT'}})).toBe(1);
+ });
  it.each(['AUCTION_UPCOMING_ADDED','AUCTION_UPCOMING_1_HOUR'])('retires a pending %s campaign without sending',async(kind)=>{
   const auction=await bidAuction(db,{isDemo:false,startOffsetMs:36*3_600_000,endDelayMs:3*86_400_000});
   const key=`global:legacy-upcoming:${auction.id}`;
@@ -297,9 +325,16 @@ describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated t
   expect(send).not.toHaveBeenCalled();expect(notificationTimingSnapshot().stages.gate.count).toBe(1);
   expect(await db.outbox.findUniqueOrThrow({where:{id:row.id}})).toMatchObject({state:'SKIPPED',lastError:'CAMPAIGN_STOPPED'});
  });
+ it('sends a text-only manual broadcast without uploading a placeholder image',async()=>{
+  const row=await job('BROADCAST'),sendMessage=vi.fn(async()=>({message_id:110})),sendPhoto=vi.fn();
+  await dispatchBatch(db,{api:{sendMessage,sendPhoto}} as unknown as Pick<Bot,'api'>,{limit:1});
+  expect(sendMessage).toHaveBeenCalledOnce();expect(sendPhoto).not.toHaveBeenCalled();
+  expect(await db.telegramMessage.findUnique({where:{outboxId:row.id}})).toMatchObject({messageId:110n});
+ });
  it('rechecks recipient role on a rejected cached-photo fallback with one gate per HTTP attempt',async()=>{
-  await job('BROADCAST');const send=vi.fn(async()=>({message_id:106,photo:[{file_id:'cached-for-fallback'}]}));await dispatchBatch(db,fake(send),{limit:1});
-  const row=await job('BROADCAST',1);send.mockImplementationOnce(async()=>{await db.user.update({where:{id:users[1].id},data:{role:'admin'}});throw {error_code:400}});send.mockClear();notificationTimingSnapshot(true);
+  const image={imagePath:'/images/lowwin-demo-headphones.webp'};
+  await job('BROADCAST',0,undefined,image);const send=vi.fn(async()=>({message_id:106,photo:[{file_id:'cached-for-fallback'}]}));await dispatchBatch(db,fake(send),{limit:1});
+  const row=await job('BROADCAST',1,undefined,image);send.mockImplementationOnce(async()=>{await db.user.update({where:{id:users[1].id},data:{role:'admin'}});throw {error_code:400}});send.mockClear();notificationTimingSnapshot(true);
   try{
    await dispatchBatch(db,fake(send),{limit:1});
    expect(send).toHaveBeenCalledTimes(1);expect(notificationTimingSnapshot().stages.gate.count).toBe(2);expect(notificationTimingSnapshot().stages.http.count).toBe(1);

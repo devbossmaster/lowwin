@@ -7,7 +7,7 @@ const tx=(item:ReturnType<typeof auction>|null)=>({auction:{findUnique:vi.fn(asy
 describe('live auction broadcast review',()=>{
  it('previews the published photo and short Amharic caption and button without queuing',async()=>{
   const db=tx(auction()),draft=await auctionBroadcastDraft(db as never,id,now);
-  expect(draft).toMatchObject({auctionId:id,title:'ተንቀሳቃሽ ቻርጀር',text:'ተንቀሳቃሽ ቻርጀር\n\nጨረታው ሊያበቃ ከ1 ሰዓት ያነሰ ጊዜ ቀርቷል።',imagePath:image,miniAppPath:'/auctions/42',buttonLabel:'እናሸንፍ!'});
+  expect(draft).toMatchObject({auctionId:id,title:'ተንቀሳቃሽ ቻርጀር',text:'ተንቀሳቃሽ ቻርጀር\n\nጨረታው ሊያበቃ ከ1 ሰዓት ያነሰ ጊዜ ቀርቷል።',imagePath:image,miniAppPath:'/auctions/42',buttonLabel:'LowWin ክፈት'});
   expect(draft.draftHash).toMatch(/^[a-f0-9]{64}$/);expect(db.outbox.create).not.toHaveBeenCalled();expect(db.outbox.upsert).not.toHaveBeenCalled();
  });
  it.each([[49,' 2 ቀናት ቀርተዋል'],[24,'1 ቀን ቀርቷል'],[23.5,' 23 ሰዓታት ቀርተዋል'],[1,'1 ሰዓት ቀርቷል']])('shows one remaining-time unit for %d hours',async(hours,remaining)=>{

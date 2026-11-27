@@ -1,7 +1,8 @@
 import {describe,it,expect} from 'vitest';
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
-import {CatalogImage,CatalogImagePreview} from '../src/components/catalog-image';
+import {CatalogImage,CatalogImagePreview,HomeAuctionImagePreload} from '../src/components/catalog-image';
+import {homeAuctionImageSizes} from '../src/lib/media-renditions';
 import {MiniLocaleProvider} from '../src/components/mini-locale';
 const render=(enabled:boolean,src:string,language:'en'|'am'='en')=>renderToStaticMarkup(createElement(MiniLocaleProvider,{initialLanguage:language,children:createElement(CatalogImagePreview,{enabled,children:createElement(CatalogImage,{src,alt:'Original product'})})}));
 describe('read-only staging product image preview',()=>{
@@ -10,5 +11,14 @@ describe('read-only staging product image preview',()=>{
  it('keeps uploaded product photos cookie-bound even inside the preview',()=>{const html=render(true,'/api/media/real-product-photo');expect(html).toContain('src="/api/media/real-product-photo"');expect(html).not.toContain('/_next/image')});
  it('requests actual small square media candidates for a list thumbnail',()=>{const html=renderToStaticMarkup(createElement(MiniLocaleProvider,{initialLanguage:'en',children:createElement(CatalogImage,{src:'/api/media/10000000-1111-4222-8333-444444444444',alt:'',variant:'thumbnail',sizes:'72px'})}));expect(html).toContain('rendition=thumb-96');expect(html).toContain('rendition=thumb-192 192w');expect(html).toContain('sizes="72px"');expect(html).toContain('width="192" height="192"');expect(html).not.toContain('image-1840');expect(html).not.toContain('/_next/image')});
  it('prioritizes only an explicitly visible product',()=>{const html=renderToStaticMarkup(createElement(MiniLocaleProvider,{initialLanguage:'en',children:createElement(CatalogImage,{src:'/images/lowwin-demo-headphones.webp',alt:'First product',priority:true})}));expect(html).toContain('loading="eager"');expect(html).toContain('fetchPriority="high"')});
+ it('preloads the same responsive candidate set used by the first Home auction',()=>{
+  const src='/api/media/10000000-1111-4222-8333-444444444444';
+  const preload=renderToStaticMarkup(createElement(HomeAuctionImagePreload,{src}));
+  const image=renderToStaticMarkup(createElement(CatalogImage,{src,alt:'Product',sizes:homeAuctionImageSizes,priority:true}));
+  expect(preload).toContain('rel="preload" as="image"');
+  expect(preload).toContain(`imageSizes="${homeAuctionImageSizes}"`);
+  expect(preload.match(/imageSrcSet="([^"]+)"/)?.[1]).toBe(image.match(/srcSet="([^"]+)"/)?.[1]);
+  expect(image).toContain('rendition=image-736 736w');expect(image).toContain('rendition=image-1288 1288w');
+ });
  it('provides translated preview alt text',()=>{expect(render(true,'/catalog/phone.svg','am')).toContain('የማዳመጫ ምስል')});
 });

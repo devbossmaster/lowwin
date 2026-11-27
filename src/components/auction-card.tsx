@@ -3,6 +3,7 @@ import {useEffect,useRef,useState} from 'react';
 import {ArrowRight,ArrowUpRight,Clock3,Eye,ShieldCheck,Ticket} from 'lucide-react';
 import type {CatalogAuction} from '@/modules/auctions/catalog';
 import {CatalogImage} from './catalog-image';
+import {homeAuctionImageSizes} from '@/lib/media-renditions';
 import {AuctionCountdown} from './auction-countdown';
 import {etbToCents,formatEtb} from '@/lib/money';
 import {formatAddisTimestamp} from '@/lib/addis-time';
@@ -37,7 +38,7 @@ export function AuctionCard({auction:initialAuction,serverNow,serverObservedAt,p
  const homeClock=homeCard&&countdown!==null;
  const termsNote=<><ShieldCheck size={13} aria-hidden="true"/><MiniPhrase en="Terms & conditions apply" am="ውሎችና ሁኔታዎች ይተገበራሉ"/></>;
  return <article className={`auction-card ${badges.card}${homeCard?' '+badges.homeCard:''}`} ref={ref}>
-  <IntentPrefetchLink className="auction-card-art" href={detail} aria-label={title}><CatalogImage src={auction.product.images[0]?.path} alt={title} priority={priority}/><span className={`status-tag status-${auction.status}`}>{statusText}</span><span className={badges.views} aria-label={am?`${viewLabel} የተመዘገቡ እይታዎች`:`${viewLabel} recorded views`}><Eye size={13} aria-hidden="true"/><span className={badges.count}>{viewLabel}</span></span>{auction.isDemo&&<span className="demo-ribbon">DEMO</span>}{(live||upcoming)&&<span className="auction-card-win"><MiniPhrase en="Win" am="ያሸንፉ"/></span>}</IntentPrefetchLink>
+  <IntentPrefetchLink className="auction-card-art" href={detail} aria-label={title}><CatalogImage src={auction.product.images[0]?.path} alt={title} priority={priority} sizes={homeCard?homeAuctionImageSizes:undefined}/><span className={`status-tag status-${auction.status}`}>{statusText}</span><span className={badges.views} aria-label={am?`${viewLabel} የተመዘገቡ እይታዎች`:`${viewLabel} recorded views`}><Eye size={13} aria-hidden="true"/><span className={badges.count}>{viewLabel}</span></span>{auction.isDemo&&<span className="demo-ribbon">DEMO</span>}{(live||upcoming)&&<span className="auction-card-win"><MiniPhrase en="Win" am="ያሸንፉ"/></span>}</IntentPrefetchLink>
   <div className="auction-card-body">
    <h3><IntentPrefetchLink href={detail}>{title}</IntentPrefetchLink></h3>
    <div className={homeClock?`card-facts ${badges.homeFacts}`:'card-facts'}>

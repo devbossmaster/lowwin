@@ -1,8 +1,9 @@
 import {setTimeout as delay} from 'node:timers/promises';
 import type {NotificationSettings} from './settings';
+import type {TelegramSendPriority} from './telegram-rate';
 
 export const REMINDER_SCAN_INTERVAL_MS=5_000;
-type LaneTasks={schedule:()=>Promise<unknown>;cleanupContacts:()=>Promise<unknown>;expand:()=>Promise<number>;verify:()=>Promise<boolean>;settleReferrals?:()=>Promise<boolean>;send:(priority:'high'|undefined)=>Promise<number>};
+type LaneTasks={schedule:()=>Promise<unknown>;cleanupContacts:()=>Promise<unknown>;expand:()=>Promise<number>;verify:()=>Promise<boolean>;settleReferrals?:()=>Promise<boolean>;send:(priority:TelegramSendPriority|undefined)=>Promise<number>};
 type Lane='schedule'|'contact-cleanup'|'expansion'|'verification'|'referral-rewards'|'personal-delivery'|'delivery';
 
 /** A bounded set of independent loops, not one serial schedule→verify→send
@@ -26,6 +27,9 @@ export async function runNotificationLanes(tasks:LaneTasks,settings:Notification
   lane('personal-delivery',()=>tasks.send('high'),200,0),
  ];
  if(tasks.settleReferrals)loops.push(lane('referral-rewards',tasks.settleReferrals,1500,100));
- for(let index=1;index<settings.NOTIFICATION_SEND_CONCURRENCY;index++)loops.push(lane('delivery',()=>tasks.send(undefined),200,0));
+ // One mixed lane can help personal delivery. Other lanes claim directly
+ // from the bulk queue instead of scanning it for absent personal work.
+ loops.push(lane('delivery',()=>tasks.send(undefined),200,0));
+ for(let index=2;index<settings.NOTIFICATION_SEND_CONCURRENCY;index++)loops.push(lane('delivery',()=>tasks.send('bulk'),200,0));
  await Promise.all(loops);
 }

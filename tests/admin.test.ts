@@ -46,6 +46,29 @@ describe.skipIf(!url)('Master Guide Admin auction operations',()=>{
   const preview=await okay(await get(`auctions/${draftId}/preflight`));expect(preview.ready).toBe(true);const input={key:randomUUID(),auctionId:draftId,version:1};const results=await Promise.all([cmd('publish',input),cmd('publish',input)]);expect(await okay(results[0])).toEqual(await okay(results[1]));expect(await client.auctionTerms.count({where:{auctionId:draftId}})).toBe(1);expect(await client.adminAudit.count({where:{action:'PUBLISH',target:draftId}})).toBe(1);
   expect(await client.outbox.findUnique({where:{key:`global:published:${draftId}`}})).toBeNull();
  });
+ it('opens immediately when requested and queues the edited catalog broadcast',async()=>{
+  const owner=await verifiedAdminFixture(client,handleAuth,{email:'immediate@lowin.test',password,origin:'http://localhost:3000'});
+  const category=await client.category.create({data:{name:'Immediate fixtures',slug:`immediate-${randomUUID()}`,description:'Isolated test'}});
+  const image=await sharp({create:{width:48,height:48,channels:3,background:'#184d3a'}}).png().toBuffer();
+  const media=await okay(await cmd('media',{key:randomUUID(),mime:'image/png',data:image.toString('base64')},owner.cookie));
+  const product=await okay(await cmd('product',{key:randomUUID(),version:0,title:'Immediate fixture',slug:`immediate-${randomUUID()}`,description:'Isolated fixture',condition:'New',categoryId:category.id,isDemo:false,visible:true,imageIds:[media.id]},owner.cookie));
+  const draft=await okay(await cmd('draft',{key:randomUUID(),version:0,body:{productId:product.id,startsAt:'2026-01-01T00:00:00Z',startOnPublish:true,endsAt:new Date(Date.now()+86400000).toISOString(),minPoints:'1',stepPoints:'0.01',entryFeePoints:'2',fulfillmentSummary:'Collect at the store',fulfillmentRegion:'Local'}},owner.cookie));
+  expect(await okay(await get(`auctions/${draft.auctionId}/preflight`,owner.cookie))).toMatchObject({ready:true});
+  await okay(await cmd('publish',{key:randomUUID(),auctionId:draft.auctionId,version:1},owner.cookie));
+  const published=await client.auction.findUniqueOrThrow({where:{id:draft.auctionId}});
+  expect(published.startsAt).toEqual(published.publishedAt);
+  expect(await client.outbox.findUnique({where:{key:`global:published:${draft.auctionId}`}})).toMatchObject({payload:{deliveryKind:'AUCTION_PUBLISHED'}});
+  const preview=await okay(await get(`notifications/auction/${draft.auctionId}`,owner.cookie));
+  const input={key:randomUUID(),auctionId:draft.auctionId,draftHash:preview.draftHash,text:'ዛሬ ይጫረቱ።',buttonLabel:'ይጫረቱ',imageId:null,reason:'Reviewed edited auction promotion',confirmation:'SEND'};
+  const queued=await okay(await cmd('auctionBroadcast',input,owner.cookie));
+  expect(await okay(await cmd('auctionBroadcast',input,owner.cookie))).toEqual(queued);
+  const root=await client.outbox.findUniqueOrThrow({where:{id:queued.id}});
+  expect(root.payload).toMatchObject({body:input.text,buttonLabel:input.buttonLabel,href:`/auctions/${published.publicCode}`});
+  expect(root.payload).not.toHaveProperty('promotionTitle');expect(root.payload).not.toHaveProperty('imagePath');
+  expect((await cmd('auctionBroadcast',{...input,key:randomUUID(),imageId:randomUUID()},owner.cookie)).status).toBe(422);
+  const withPhoto=await okay(await cmd('auctionBroadcast',{...input,key:randomUUID(),imageId:media.id},owner.cookie));
+  expect(await client.outbox.findUnique({where:{id:withPhoto.id}})).toMatchObject({payload:{imageId:media.id,body:input.text}});
+ });
  it('preserves frozen published terms, inventory and DEMO identity',async()=>{
   await expect(client.auction.update({where:{id:draftId},data:{endsAt:new Date(Date.now()+200000)}})).rejects.toThrow();await expect(client.auctionTerms.update({where:{auctionId:draftId},data:{entryFeePoints:new MoneyPrisma.Decimal("99")}})).rejects.toThrow();await expect(client.auctionDraft.update({where:{auctionId:draftId},data:{version:99}})).rejects.toThrow();
   const p=await client.product.findUniqueOrThrow({where:{id:productId}});expect((await cmd('product',{key:randomUUID(),id:p.id,version:p.version,title:p.title,slug:p.slug,description:p.description,condition:p.condition,categoryId:p.categoryId,isDemo:false,visible:true,imageIds:[]})).status).toBe(409);

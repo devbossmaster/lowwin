@@ -127,6 +127,7 @@ async function dispatchClaim(client:PrismaClient,bot:BotApi,row:ClaimedNotificat
   const options={reply_markup:withTelegramChannelButton([[merchantAlert?{text:button,url:link.href}:{text:button,web_app:{url:link.href}}]])};
   const auctionImage=(row.kind.startsWith('AUCTION_')||row.kind==='BROADCAST'||row.kind==='BID_ACCEPTED'||row.kind==='WINNER_CONGRATULATIONS')&&'imagePath' in content&&typeof content.imagePath==='string'?content.imagePath:null;
   const imageId='imageId' in content&&typeof content.imageId==='string'?content.imageId:undefined;
+  const wantsPhoto=!paymentReceipt&&row.kind!=='DEPOSIT_CREDITED'&&(row.kind!=='BROADCAST'||!!(auctionImage||imageId));
   const local=auctionImage&&!auctionImage.startsWith('/api/')?resolve('public','.'+auctionImage):notificationImage;
   const version=existsSync(local)?`${statSync(local).mtimeMs}:${statSync(local).size}`:'immutable-media';
   const photoKey=auctionImage?`auction:${auctionImage}:${version}`:`notification:${imageId??'default'}:${version}`;
@@ -140,7 +141,7 @@ async function dispatchClaim(client:PrismaClient,bot:BotApi,row:ClaimedNotificat
   const gate:RecipientGate={telegramId:chat.telegramId,chatId:chat.chatId,userId:content.userId,excludeStaff:row.kind==='BROADCAST'||row.kind.startsWith('AUCTION_')};
   recordNotificationTiming('preparation',performance.now()-preparingAt);
   const sent=await withTelegramSendPolicy({priority:highPriorityKinds.includes(row.kind)?'high':'bulk',beforeSend:()=>beforeSend(client,row,context,logicalKey,gate)},async()=>{
-   const photo=paymentReceipt||row.kind==='DEPOSIT_CREDITED'?null:await sendBroadcastPhoto(bot.api,chat.chatId,()=>timeNotification('mediaPreparation',preparePhoto),{...options,caption:text},photoKey,{client,botId:botId()});
+   const photo=wantsPhoto?await sendBroadcastPhoto(bot.api,chat.chatId,()=>timeNotification('mediaPreparation',preparePhoto),{...options,caption:text},photoKey,{client,botId:botId()}):null;
    return photo??bot.api.sendMessage(chat.chatId,text,options);
   });
   acceptedByTelegram=true;recordNotificationAccepted();

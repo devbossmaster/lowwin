@@ -39,5 +39,21 @@ describe('versioned media delivery',()=>{
  it('rechecks winner consent on every rendition request, including after a previous successful read',async()=>{
   f.winner.mockResolvedValueOnce({bytes,mime:'image/png'});const response=await read('?v=1&rendition=image-460');expect(response.status).toBe(200);expect(response.headers.get('content-type')).toBe('image/webp');expect(response.headers.get('cache-control')).toContain('private, no-store');expect(await readPublishedMedia(id,'image-460')).toBeNull();expect((await read('?v=1&rendition=image-460')).status).toBe(404);expect(f.winner).toHaveBeenCalledTimes(2);
  });
- it.each(['?v=1&rendition=image-100000','?v=2&rendition=thumb-96','?rendition=thumb-96','?v=1','?w=100000','?v=1&rendition=thumb-96&rendition=image-920'])('rejects unsupported dimensions/version/query before reading sources: %s',async query=>{expect((await read(query)).status).toBe(400);expect(f.product).not.toHaveBeenCalled();expect(f.winner).not.toHaveBeenCalled();expect(f.admin).not.toHaveBeenCalled()});
+ it('uses a single current winner-consent lookup and reuses only encoded bytes on repeat reads',async()=>{
+  const query='?v=1&rendition=image-736&scope=winner';
+  f.winner.mockResolvedValueOnce({bytes,mime:'image/webp'}).mockResolvedValueOnce({id});
+  const first=await read(query),warm=await read(query);
+  expect(first.status).toBe(200);expect(warm.status).toBe(200);
+  expect(first.headers.get('cache-control')).toContain('private, no-store');expect(warm.headers.get('cache-control')).toContain('private, no-store');
+  const encoded=Buffer.from(await first.arrayBuffer());
+  expect(await sharp(encoded).metadata()).toMatchObject({width:736,height:320});
+  expect(Buffer.from(await warm.arrayBuffer())).toEqual(encoded);
+  expect(f.winner.mock.calls[0][0].select).toEqual({bytes:true,mime:true});
+  expect(f.winner.mock.calls[1][0].select).toEqual({id:true});
+  expect((await read(query)).status).toBe(404);
+  expect(f.winner).toHaveBeenCalledTimes(3);
+  expect(f.product).not.toHaveBeenCalled();expect(f.presentation).not.toHaveBeenCalled();expect(f.admin).not.toHaveBeenCalled();
+  expect(await readPublishedMedia(id,'image-736')).toBeNull();
+ });
+ it.each(['?v=1&rendition=image-100000','?v=2&rendition=thumb-96','?rendition=thumb-96','?v=1','?w=100000','?v=1&rendition=thumb-96&rendition=image-920','?scope=winner','?v=1&rendition=image-736&scope=catalog','?v=1&rendition=image-736&scope=winner&scope=winner'])('rejects unsupported dimensions/version/query before reading sources: %s',async query=>{expect((await read(query)).status).toBe(400);expect(f.product).not.toHaveBeenCalled();expect(f.winner).not.toHaveBeenCalled();expect(f.admin).not.toHaveBeenCalled()});
 });

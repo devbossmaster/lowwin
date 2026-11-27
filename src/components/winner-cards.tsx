@@ -20,7 +20,7 @@ export function WinnerCards({items,carousel=false,allowDemo=false}:{items:Catalo
  const winners=items.filter(item=>(!item.isDemo||allowDemo)&&item.status==='closed'&&item.result?.source==='SETTLED'&&item.result.outcome==='WINNER');
  useEffect(()=>{for(const item of items)if(item.status==='closed')seedAuctionQuery(queryIdentity,item)},[items,queryIdentity]);
  if(!winners.length)return <p className={styles.empty}><MiniPhrase en="Confirmed winners will appear here after settlement is final." am="ውጤቱ ከተጠናቀቀ በኋላ የተረጋገጡ አሸናፊዎች እዚህ ይታያሉ።"/></p>;
- const cards=winners.map(item=>{
+ const cards=winners.map((item,index)=>{
   const title=am?item.product.titleAm||item.product.title:item.product.title,result=item.result!;
   const homeBanner=carousel?publishedWinnerBannerPath(item):null;
   const cover=homeBanner??item.product.images[0]?.path;
@@ -33,8 +33,8 @@ export function WinnerCards({items,carousel=false,allowDemo=false}:{items:Catalo
    const confirmed=snapshot?.fresh?snapshot.value.items.find(candidate=>candidate.code===item.code&&candidate.result?.source==='SETTLED'&&candidate.result.publishedAt===result.publishedAt):undefined;
    setSelected(confirmed??item);
   }} aria-label={`${am?'ውጤት':'Result'}: ${title}`} aria-description={identity}>
-   {!homeBanner&&winnerBannerData(item)?<WinnerBanner auction={item} compact={carousel}/>:<div className={styles.photo} data-photo={homeBanner?'banner':undefined}>
-    <CatalogImage key={cover} src={cover} alt={title} sizes={carousel?'(max-width:371px) 208px, (max-width:500px) 56vw, 280px':undefined}/>
+   {!homeBanner&&winnerBannerData(item)?<WinnerBanner auction={item} compact={carousel} eager={index===0}/>:<div className={styles.photo} data-photo={homeBanner?'banner':undefined}>
+    <CatalogImage key={cover} src={cover} alt={title} eager={index===0} winner={!!homeBanner} sizes={carousel?'(max-width:371px) 208px, (max-width:500px) 56vw, 280px':undefined}/>
     {!homeBanner&&<span className={styles.badge}><MiniPhrase en={item.isDemo?'Demo winner':'Winner'} am={item.isDemo?'የሙከራ አሸናፊ':'አሸናፊ'}/></span>}
    </div>}
    <div className={styles.cardBody}><h3>{title}</h3>

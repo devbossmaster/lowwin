@@ -51,12 +51,11 @@ export async function beforeNotificationSend(client:PrismaClient,row:ClaimedNoti
     ) THEN 'RESULT_NOT_PUBLISHED'
     WHEN ${row.kind==='AUCTION_ENDED'} AND NOT EXISTS(SELECT 1 FROM "Auction" a JOIN "AuctionSettlement" s ON s."auctionId"=a.id JOIN "ResultPublication" pub ON pub."settlementId"=s.id WHERE a.id=${p.auctionId??null} AND (${p.settlementId??null}::text IS NULL OR s.id=${p.settlementId??null}) AND a.status IN ('CLOSED','CANCELLED') AND s.cutoff<=stamp.now AND s."completedAt"<=stamp.now AND pub."publishedAt"<=stamp.now) THEN 'RESULT_NOT_PUBLISHED'
     WHEN ${!['AUCTION_ENDED','AUCTION_FEE_REFUNDED'].includes(row.kind)&&(row.kind==='BROADCAST'||row.kind.startsWith('AUCTION_'))&&!!p.auctionId} AND NOT EXISTS(SELECT 1 FROM "Auction" a JOIN "Product" product ON product.id=a."productId" WHERE a.id=${p.auctionId??null} AND a.status IN ('LIVE','SCHEDULED') AND a."endsAt">stamp.now AND product.visible AND a."publishedAt"<=stamp.now AND NOT EXISTS(SELECT 1 FROM "AuctionSettlement" s WHERE s."auctionId"=a.id)) THEN 'AUCTION_RETIRED'
-    WHEN ${row.kind==='BROADCAST'&&!!p.auctionId} AND NOT EXISTS(
+    WHEN ${(row.kind==='BROADCAST'||row.kind==='AUCTION_PUBLISHED')&&!!p.auctionId} AND NOT EXISTS(
      SELECT 1 FROM "Auction" a JOIN "Product" product ON product.id=a."productId" JOIN "Category" pc ON pc.id=product."categoryId" LEFT JOIN "Category" ac ON ac.id=a."categoryId"
-     WHERE a.id=${p.auctionId??null} AND a.status IN ('LIVE','SCHEDULED') AND a."startsAt"<=stamp.now AND a."endsAt">stamp.now AND a."publishedAt"<=stamp.now AND a."publicCode">0 AND a.slug IS NOT NULL AND product.visible AND pc.visible AND (ac.id IS NULL OR ac.visible) AND NOT a."isDemo" AND a."testRunId" IS NULL
+     WHERE a.id=${p.auctionId??null} AND a.status IN ('LIVE','SCHEDULED') AND a."startsAt"<=stamp.now AND a."endsAt">stamp.now AND a."publishedAt"<=stamp.now AND a."publicCode">0 AND a.slug IS NOT NULL AND product.visible AND pc.visible AND (ac.id IS NULL OR ac.visible) AND (${row.kind==='AUCTION_PUBLISHED'} OR NOT a."isDemo") AND a."testRunId" IS NULL
       AND NOT EXISTS(SELECT 1 FROM "AuctionSettlement" s WHERE s."auctionId"=a.id) AND NOT EXISTS(SELECT 1 FROM "PublicAuctionResult" r WHERE r."auctionId"=a.id)
     ) THEN 'AUCTION_RETIRED'
-    WHEN ${row.kind==='AUCTION_PUBLISHED'&&!!p.auctionId} AND NOT EXISTS(SELECT 1 FROM "Auction" a WHERE a.id=${p.auctionId??null} AND a.status IN ('LIVE','SCHEDULED') AND a."startsAt"<=stamp.now) THEN 'AUCTION_RETIRED'
     WHEN ${row.kind===upcomingReminder.kind} AND NOT EXISTS(SELECT 1 FROM "Auction" a WHERE a.id=${p.auctionId??null}
      AND to_char(a."startsAt",'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')=${p.scheduledStartAt??null}
      AND a."publishedAt"<=a."startsAt"-${upcomingReminder.leadMs}*interval '1 millisecond'

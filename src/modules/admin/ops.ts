@@ -28,9 +28,11 @@ import {resultPublishSchema,readResultReview} from './result-publication';
 import {auctionBroadcastDraft} from './auction-broadcast';
 
 const key=z.string().uuid(),reason=z.string().trim().min(5).max(500),uid=z.string().min(1).max(128);
+const broadcastText=z.string().trim().min(1).max(700);
+const broadcastLabel=z.string().trim().min(1).max(40).refine(v=>!/[\u0000-\u001f\u007f]/.test(v));
 const schemas={
- auctionBroadcast:z.object({key,reason,auctionId:z.string().uuid(),draftHash:z.string().length(64),confirmation:z.literal('SEND')}).strict(),
- broadcast:z.object({key,reason,text:z.string().trim().min(1).max(700),auctionCode:z.string().regex(/^[1-9]\d{0,8}$/).optional(),imageId:z.string().uuid().optional(),buttonLabel:z.string().trim().min(1).max(40).refine(v=>!/[\u0000-\u001f\u007f]/.test(v)).optional(),miniAppPath:z.string().max(100).refine(v=>{try{broadcastMiniAppPath(v);return true}catch{return false}},'Choose a supported Mini App page.').optional(),confirmation:z.literal('SEND')}).strict(),
+ auctionBroadcast:z.object({key,reason,auctionId:z.string().uuid(),draftHash:z.string().length(64),text:broadcastText.optional(),buttonLabel:broadcastLabel.optional(),imageId:z.string().uuid().nullable().optional(),confirmation:z.literal('SEND')}).strict(),
+ broadcast:z.object({key,reason,text:broadcastText,auctionCode:z.string().regex(/^[1-9]\d{0,8}$/).optional(),imageId:z.string().uuid().optional(),buttonLabel:broadcastLabel.optional(),miniAppPath:z.string().max(100).refine(v=>{try{broadcastMiniAppPath(v);return true}catch{return false}},'Choose a supported Mini App page.').optional(),confirmation:z.literal('SEND')}).strict(),
  suspend:z.object({key,userId:uid,suspended:z.boolean(),reason}).strict(),
  deliveryDone:z.object({key,auctionId:z.string().uuid(),version:z.number().int().min(0),reason}).strict(),
  winnerPhoto:winnerPhotoSchema,
@@ -51,6 +53,9 @@ const commandPermission:Record<OpsAction,Permission>={auctionBroadcast:'jobs',re
 export const sectionPermission:Record<string,Permission>={users:'support',results:'audit',fulfillment:'fulfillment',wallets:'wallets',notifications:'jobs',jobs:'jobs',analytics:'audit',audit:'audit',team:'team',settings:'settings'};
 export const serialize=(v:unknown)=>JSON.parse(JSON.stringify(v,(_,x)=>typeof x==='bigint'?x.toString():x));
 export function pageInput(params:URLSearchParams){return z.object({page:z.coerce.number().int().min(1).max(100000).default(1),q:z.string().trim().max(100).default(''),status:z.string().max(40).default(''),category:z.union([z.literal(''),z.string().uuid()]).default('')}).parse(Object.fromEntries(params))}
+async function validateBroadcastImage(tx:Prisma.TransactionClient,imageId?:string|null){
+ if(imageId&&!await tx.managedMedia.findFirst({where:{id:imageId,purpose:'CATALOG'},select:{id:true}}))throw new AdminError(422,'Upload a validated catalog image first. Winner photographs cannot be broadcast.');
+}
 export async function opsMutation(client:PrismaClient,headers:Headers,action:OpsAction,raw:unknown){
  if(!Object.hasOwn(schemas,action))throw new AdminError(404,'Unknown staff command.');
  const actor=await requireAdmin(client,headers,{permission:commandPermission[action]});
@@ -69,14 +74,20 @@ export async function opsMutation(client:PrismaClient,headers:Headers,action:Ops
    const d=schemas.auctionBroadcast.parse(input);if(owner.role!=='OWNER')throw new AdminError(403,'Only the Owner can broadcast.');
    const preview=await auctionBroadcastDraft(tx,d.auctionId);
    if(preview.draftHash!==d.draftHash)throw new AdminError(409,'The auction changed. Reload its preview before sending.');
-   const job=await queueGlobal(tx,`broadcast:${owner.id}:${d.key}`,'BROADCAST',{auctionId:d.auctionId,body:preview.text,promotionTitle:preview.title,href:preview.miniAppPath,imagePath:preview.imagePath,buttonLabel:preview.buttonLabel,telegramOnly:true});
+   await validateBroadcastImage(tx,d.imageId);
+   const job=await queueGlobal(tx,`broadcast:${owner.id}:${d.key}`,'BROADCAST',{
+    auctionId:d.auctionId,body:d.text??preview.text,href:preview.miniAppPath,
+    buttonLabel:d.buttonLabel??preview.buttonLabel,telegramOnly:true,
+    ...(d.text===undefined?{promotionTitle:preview.title}:{}),
+    ...(d.imageId===undefined?{imagePath:preview.imagePath}:d.imageId?{imageId:d.imageId}:{}),
+   });
    receipt={id:job.id,state:'PENDING'};target=job.id;
   }else if(action==='broadcast'){
    const d=schemas.broadcast.parse(input);if(owner.role!=='OWNER')throw new AdminError(403,'Only the Owner can broadcast.');
    let href=broadcastMiniAppPath(d.miniAppPath??'/');
    if(d.auctionCode)href=`/auctions/${d.auctionCode}`;
    const destination=await broadcastTarget(tx,href);
-   if(d.imageId&&!await tx.managedMedia.findFirst({where:{id:d.imageId,purpose:'CATALOG'},select:{id:true}}))throw new AdminError(422,'Upload a validated catalog image first. Winner photographs cannot be broadcast.');
+   await validateBroadcastImage(tx,d.imageId);
    const job=await queueGlobal(tx,`broadcast:${owner.id}:${d.key}`,'BROADCAST',{body:d.text,...destination,buttonLabel:broadcastButtonLabel(d.buttonLabel),telegramOnly:true,...(d.imageId?{imageId:d.imageId}:{})});
    receipt={id:job.id,state:'PENDING'};target=job.id;
   }else if(action==='broadcastStop'){

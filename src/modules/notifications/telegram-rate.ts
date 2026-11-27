@@ -29,6 +29,8 @@ export class TelegramRateDeferredError extends Error{
  constructor(readonly retryAt:Date){super('Telegram delivery is waiting for the shared rate budget')}
 }
 type Grant={granted:boolean;waitMs:number;retryAt:Date};
+type Cooldown={retryAt:Date;waitUntil:number};
+const knownCooldowns=new WeakMap<PrismaClient,Map<string,Cooldown>>();
 
 export function canonicalTelegramChatId(chatId:string|number){
  const value=String(chatId);
@@ -55,11 +57,16 @@ export async function reserveTelegramSend(client:PrismaClient,botId:string,chat:
 /** A 429 applies to all senders for this bot, including command/payment workers. */
 export async function recordTelegramCooldown(client:PrismaClient,botId:string,retryAfter:unknown){
  const supplied=Number(retryAfter),seconds=Number.isSafeInteger(supplied)&&supplied>0?Math.min(supplied,2147483647):60;
+ const waitUntil=performance.now()+seconds*1000;
  const [row]=await client.$queryRaw<{retryAt:Date}[]>`
   INSERT INTO "TelegramRateBudget" ("botId","nextSendAt","nextBulkAt","highStreak","cooldownUntil")
    VALUES (${botId},clock_timestamp() AT TIME ZONE 'UTC',clock_timestamp() AT TIME ZONE 'UTC',0,(clock_timestamp() AT TIME ZONE 'UTC')+${seconds}*interval '1 second')
   ON CONFLICT ("botId") DO UPDATE SET "cooldownUntil"=GREATEST("TelegramRateBudget"."cooldownUntil",EXCLUDED."cooldownUntil")
   RETURNING "cooldownUntil" AS "retryAt"`;
+ let cooldowns=knownCooldowns.get(client);
+ if(!cooldowns){cooldowns=new Map();knownCooldowns.set(client,cooldowns)}
+ const previous=cooldowns.get(botId);
+ if(!previous||previous.waitUntil<waitUntil)cooldowns.set(botId,{retryAt:row.retryAt,waitUntil});
  return row.retryAt;
 }
 
@@ -82,11 +89,16 @@ export function telegramRateTransformer(client:PrismaClient,botId:string,setting
   const chatId=canonicalTelegramChatId(String(fields.chat_id)),policy=policies.getStore(),started=performance.now();
   try{while(true){
    if(signal?.aborted)throw Error('Telegram delivery aborted');
-   const grant=await reserveTelegramSend(client,botId,chatId,policy?.priority??'high',settings);
+   // A provider-imposed cooldown known to this process can deny requests.
+   // Only a fresh PostgreSQL reservation can grant one across workers.
+   const cached=knownCooldowns.get(client)?.get(botId);
+   const cooldownWait=cached?Math.ceil(cached.waitUntil-performance.now()):0;
+   const grant=cached&&cooldownWait>0?{granted:false,waitMs:cooldownWait,retryAt:cached.retryAt}
+    :await reserveTelegramSend(client,botId,chatId,policy?.priority??'high',settings);
    if(grant.granted)break;
    const remaining=settings.TELEGRAM_RATE_MAX_WAIT_MS-(performance.now()-started);
    if(grant.waitMs>remaining||remaining<=0)throw new TelegramRateDeferredError(grant.retryAt);
-   await waitForRate(Math.min(250,grant.waitMs+Math.floor(Math.random()*6)),signal);
+   await waitForRate(Math.min(remaining,grant.waitMs+Math.floor(Math.random()*6)),signal);
   }}finally{recordNotificationTiming('rate',performance.now()-started)}
   // Quota polling performs no HTTP. Recheck durable ownership/Stop once after
   // waiting, immediately before transport, rather than on every denied slot.

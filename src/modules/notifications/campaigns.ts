@@ -7,7 +7,7 @@ import {auctionMaintenanceHalted,lockAuctionMaintenance} from '../auctions/maint
 import {broadcastMiniAppPath,broadcastButtonLabel} from '@/lib/broadcast-link';
 import {resultRecipientIds} from './result-audience';
 import {promotionNow,readAuctionPromotion} from './auction-promotion';
-import {endingReminders,endingReminder,endingReminderCurrent,notificationRetired,upcomingReminder,upcomingReminderCurrent} from './policy';
+import {auctionOpeningScanGraceMs,endingReminders,endingReminder,endingReminderCurrent,notificationRetired,upcomingReminder,upcomingReminderCurrent} from './policy';
 import {auctionCountdownAm,auctionPromotionText} from './amharic-copy';
 import {CAMPAIGN_STOPPED,campaignLockKey,campaignRootKey,campaignStopped} from './campaign-control';
 
@@ -82,7 +82,7 @@ export async function scheduleGlobalAlerts(client:PrismaClient){
     SELECT date_trunc('milliseconds',clock_timestamp() AT TIME ZONE 'UTC') AS now
     WHERE NOT ${auctionMaintenanceHalted}
    ), available AS NOT MATERIALIZED (
-    SELECT a.id,a."startsAt",a."endsAt",a."publishedAt",a."controlVersion",stamp.now
+    SELECT a.id,a."startsAt",a."endsAt",a."publishedAt",a."controlVersion",a.slug,a."publicCode",a."categoryId",p."categoryId" AS "productCategoryId",stamp.now
     FROM stamp JOIN "Auction" a ON a."publishedAt"<=stamp.now
     JOIN "Product" p ON p.id=a."productId" AND p.visible
     WHERE a.status IN ('LIVE','SCHEDULED') AND a."testRunId" IS NULL
@@ -94,6 +94,14 @@ export async function scheduleGlobalAlerts(client:PrismaClient){
     FROM available a JOIN (VALUES ${endingWindows}) r(kind,prefix,minimum,maximum)
       ON a."endsAt">a.now+r.minimum*INTERVAL '1 millisecond' AND a."endsAt"<=a.now+r.maximum*INTERVAL '1 millisecond'
     WHERE a."startsAt"<=a.now
+    UNION ALL
+    SELECT a.id,a.now,'AUCTION_PUBLISHED','global:published:'||a.id,NULL::timestamp
+    FROM available a JOIN "Category" pc ON pc.id=a."productCategoryId" AND pc.visible
+    LEFT JOIN "Category" ac ON ac.id=a."categoryId"
+    WHERE a."publishedAt"<a."startsAt" AND a."startsAt"<=a.now
+      AND a."startsAt">a.now-${auctionOpeningScanGraceMs}*INTERVAL '1 millisecond'
+      AND a."endsAt">a.now AND a.slug IS NOT NULL AND a."publicCode">0
+      AND COALESCE(ac.visible,true)
     UNION ALL
     SELECT a.id,a.now,${upcomingReminder.kind}::text,${upcomingReminder.keyPrefix}||a.id,a."startsAt"
     FROM available a
@@ -136,7 +144,7 @@ export async function campaignContent(tx:Tx,row:Pick<Outbox,'kind'|'payload'>){
   return {...base,title:'ገንዘቡ ገብቷል',body:`${formatEtb(t.points)} ወደ ዋሌትዎ ገብቷል።`,href:'/wallet',buttonLabel:'ዋሌቴን ይመልከቱ'};
  }
  if(!p.auctionId||row.kind===upcomingReminder.kind&&!p.scheduledStartAt)return null;
- const a=await tx.auction.findUnique({where:{id:p.auctionId},select:{slug:true,publicCode:true,publishedAt:true,startsAt:true,endsAt:true,status:true,isDemo:true,isSettlementFixture:true,testRunId:true,presentation:true,product:{select:{title:true,titleAm:true,visible:true,images:{orderBy:{sortOrder:'asc'},take:1,select:{path:true}}}},result:{select:{id:true}},settlement:{select:{id:true,outcome:true,completedAt:true,publication:{select:{publishedAt:true}}}}}});
+ const a=await tx.auction.findUnique({where:{id:p.auctionId},select:{slug:true,publicCode:true,publishedAt:true,startsAt:true,endsAt:true,status:true,isDemo:true,isSettlementFixture:true,testRunId:true,presentation:true,category:{select:{visible:true}},product:{select:{title:true,titleAm:true,visible:true,category:{select:{visible:true}},images:{orderBy:{sortOrder:'asc'},take:1,select:{path:true}}}},result:{select:{id:true}},settlement:{select:{id:true,outcome:true,completedAt:true,publication:{select:{publishedAt:true}}}}}});
  if(!a?.publishedAt||!a.slug||a.result||a.testRunId||a.isDemo&&(!a.isSettlementFixture||!(demoBidAllowed()||stagingDemoEnabled())))return null;
  const now=await promotionNow(tx);
  if(a.publishedAt>now)return null;
@@ -174,7 +182,7 @@ export async function campaignContent(tx:Tx,row:Pick<Outbox,'kind'|'payload'>){
   return {...base,...action,title,body,telegramCaption:`⏰ ${title}\n\n${body}`};
  }
  if(row.kind==='AUCTION_PUBLISHED'){
-  if(a.settlement||!a.startsAt||a.startsAt>now)return null;
+  if(a.settlement||!a.startsAt||a.startsAt>now||a.category?.visible===false||a.product.category?.visible===false)return null;
   return {...base,...action,title:prefix+'🔥 አዲስ ጨረታ ተጀምሯል',body:`${shortItem}\nዕቃውንና የጨረታውን ውሎች ይመልከቱ።`,telegramCaption:`🔥 ${prefix}አዲስ ጨረታ ተጀምሯል\n\nሰላም {name}፣\n${shortItem}\nጨረታውን ለመቀላቀል ከታች ይጫኑ።`};
  }
  return null;

@@ -22,6 +22,7 @@ export const retiredNotificationKinds = [
 export const notificationRetired=(kind:string)=>!permitted.has(kind);
 
 const hour=3_600_000;
+export const auctionOpeningScanGraceMs=5*60_000;
 export const upcomingReminder={kind:'AUCTION_UPCOMING',keyPrefix:'global:starts-24-hours:',leadMs:24*hour,scanGraceMs:5*60_000,deliveryGraceMs:30*60_000} as const;
 export function upcomingReminderCurrent(startsAt:Date|null,publishedAt:Date|null,scheduledStartAt:string|undefined,now:Date){
  if(!startsAt||!publishedAt||!scheduledStartAt||!Number.isFinite(startsAt.getTime())||startsAt.toISOString()!==scheduledStartAt)return false;

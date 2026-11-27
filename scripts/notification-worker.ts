@@ -41,6 +41,6 @@ try{
   settleReferrals:()=>shouldContinue()?settlePendingReferralWalletRewards(verificationDb):Promise.resolve(false),
   // Independent lanes immediately refill after completion. A slow bulk HTTP
   // call cannot impose a barrier on every other lane or the personal lane.
-  send:priority=>shouldContinue()?dispatchBatch(deliveryDb,bot,{limit:priority?1:2,concurrency:1,priority,shouldContinue}):Promise.resolve(0),
+  send:priority=>shouldContinue()?dispatchBatch(deliveryDb,bot,{limit:priority==='high'?1:2,concurrency:1,priority,shouldContinue}):Promise.resolve(0),
  },settings,shutdown.signal,lane=>console.error('notification_lane_retry',{lane}));
 }finally{clearInterval(metrics);await Promise.all([deliveryDb.$disconnect(),jobsDb.$disconnect(),verificationDb.$disconnect()])}

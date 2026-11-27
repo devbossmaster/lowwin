@@ -7,6 +7,7 @@ import {resolveLearnMoreMedia} from '@/lib/learn-more-media';
 import {listAuctions,listCategories,serverNow,type CatalogQuery} from '@/modules/auctions/catalog';
 import {databaseErrorSummary} from '@/lib/database-error';
 import {catalogProductPreview} from '@/lib/catalog-preview';
+import {HomeAuctionImagePreload} from '@/components/catalog-image';
 export default async function Home({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}){
  const params=await searchParams,query=parseHomeQuery(params);
  const clock=serverNow();
@@ -26,7 +27,7 @@ async function HomeAuctionData({clock,query}:{clock:Promise<Date>;query:CatalogQ
  const href=homeAuctionHref(query);
  try{
   const auctions=await listAuctions(query,await clock,10);
-  return <HomeDataSeed data={{batch:{href,auctions:{...auctions,items:auctions.items.map(catalogProductPreview)}}}}/>;
+  return <><HomeAuctionImagePreload src={auctions.items[0]?.product.images[0]?.path}/><HomeDataSeed data={{batch:{href,auctions:{...auctions,items:auctions.items.map(catalogProductPreview)}}}}/></>;
  }catch(error){
   console.warn('home_auctions_unavailable',databaseErrorSummary(error));
   return <HomeDataSeed data={{batch:{href,failed:true}}}/>;

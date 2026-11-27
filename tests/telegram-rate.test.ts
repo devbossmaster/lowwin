@@ -33,6 +33,25 @@ describe('notification rate configuration',()=>{
   });
   expect(gate).toHaveBeenCalledTimes(2);expect(send).toHaveBeenCalledTimes(2);
  });
+ it('defers repeated local sends during a recorded 429 without rechecking PostgreSQL',async()=>{
+  const retryAt=new Date(Date.now()+3000);
+  const query=vi.fn().mockResolvedValueOnce([{granted:true,waitMs:0,retryAt}]).mockResolvedValueOnce([{retryAt}]);
+  const client={$queryRaw:query} as unknown as PrismaClient,settings=notificationSettings({TELEGRAM_RATE_MAX_WAIT_MS:'100'});
+  const send=vi.fn(async()=>({ok:false,error_code:429,description:'Flood control',parameters:{retry_after:3}}));
+  const first=telegramRateTransformer(client,'123456789',settings),second=telegramRateTransformer(client,'123456789',settings);
+  expect(await first(send as never,'sendMessage',{chat_id:123,text:'fixture'})).toMatchObject({ok:false,error_code:429});
+  await expect(second(send as never,'sendMessage',{chat_id:456,text:'fixture'})).rejects.toMatchObject({retryAt});
+  expect(query).toHaveBeenCalledTimes(2);expect(send).toHaveBeenCalledOnce();
+ });
+ it('waits for the earliest possible reservation before asking PostgreSQL again',async()=>{
+  const retryAt=new Date(Date.now()+360),started:number[]=[];
+  const query=vi.fn(async()=>{started.push(performance.now());return [{granted:started.length>1,waitMs:360,retryAt}]});
+  const client={$queryRaw:query} as unknown as PrismaClient;
+  const send=vi.fn(async()=>({ok:true,result:{message_id:1}}));
+  const transformer=telegramRateTransformer(client,'123456789');
+  await transformer(send as never,'sendMessage',{chat_id:123,text:'fixture'});
+  expect(query).toHaveBeenCalledTimes(2);expect(started[1]-started[0]).toBeGreaterThanOrEqual(355);expect(send).toHaveBeenCalledOnce();
+ });
 });
 
 const url=process.env.TEST_DATABASE_URL;
