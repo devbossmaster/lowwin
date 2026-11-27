@@ -43,6 +43,9 @@ describe('public auction total accepted bids',()=>{
   expect(html).not.toContain('Chosen numbers stay private until the result is published.');
   expect(html).not.toContain('Frozen terms');expect(html).not.toContain('Collect the prize');
   expect(html).not.toContain('href="/terms"');
+  expect(html.indexOf('<h1>Power bank</h1>')).toBeLessThan(html.indexOf('Fee per bid'));
+  expect(html.indexOf('Fee per bid')).toBeLessThan(html.indexOf('Auction code'));
+  expect(html).not.toContain('category=accessories');
   expect(html.indexOf('Fee per bid')).toBeLessThan(html.indexOf('More chances'));
   expect(html.indexOf('Total bids')).toBeLessThan(html.indexOf('More chances'));
   expect(html.indexOf('More chances')).toBeLessThan(html.indexOf('data-share-options'));

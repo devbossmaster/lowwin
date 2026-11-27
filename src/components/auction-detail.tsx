@@ -18,7 +18,7 @@ import {AuctionShareOptions} from './auction-share';
 import {useTelegram} from './telegram-provider';
 import {prefetchAuctionIntent} from './mini-prefetch';
 const ArifPayReturn=dynamic(()=>import('./arifpay-return').then(module=>module.ArifPayReturn));
-import {MiniCategoryName,MiniPhrase,useMiniLocale} from './mini-locale';
+import {MiniPhrase,useMiniLocale} from './mini-locale';
 import styles from './auction-detail.module.css';
 import {useAuctionActivity,useAuctionRefresh} from './auction-activity';
 import {auctionDetailUrl} from './auction-query';
@@ -76,13 +76,16 @@ export function AuctionDetail({auction:initialAuction,serverNow,publishedResult=
    </div>
    <header className={styles.intro}>
     <h1>{title}</h1>
-    <div className={styles.auctionMeta}>
-     <dl className={styles.purchaseFacts} data-auction-facts>
-      <div className={styles.fee}><dt><Ticket size={13} aria-hidden="true"/><MiniPhrase en="Fee per bid" am="የአንድ ጨረታ ክፍያ"/></dt><dd>{formatEtb(auction.terms.entryFeePoints)}</dd></div>
-      <div><dt><Hash size={13} aria-hidden="true"/><MiniPhrase en="Auction code" am="የጨረታ ኮድ"/></dt><dd>{auction.code}</dd></div>
-     </dl>
-     <Link className={styles.category} href={`/?category=${encodeURIComponent(auction.category.slug)}#discover-auctions`}><MiniCategoryName slug={auction.category.slug} name={auction.category.name} nameAm={auction.category.nameAm}/></Link>
-    </div>
+    <dl className={styles.purchaseFacts} data-auction-facts>
+     <div className={styles.fee}>
+      <dt><MiniPhrase en="Fee per bid" am="የአንድ ጨረታ ክፍያ"/></dt>
+      <dd><Ticket size={15} aria-hidden="true"/><span>{formatEtb(auction.terms.entryFeePoints)}</span></dd>
+     </div>
+     <div>
+      <dt><MiniPhrase en="Auction code" am="የጨረታ ኮድ"/></dt>
+      <dd><Hash size={15} aria-hidden="true"/><span>{auction.code}</span></dd>
+     </div>
+    </dl>
    </header>
    {!ended&&<section className={styles.stats} aria-label={activityLabel}>
     <div className={styles.countdownPanel}>
