@@ -244,6 +244,10 @@ describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated t
    expect(row.leaseUntil.getTime()-Date.now()).toBeGreaterThan(110_000);
    expect(row.leaseUntil.getTime()-Date.now()).toBeLessThanOrEqual(120_000);
    expect(Math.abs(row.claimedAt!.getTime()-Date.now())).toBeLessThan(10_000);
+   if(row.kind==='BROADCAST'){
+    const recipient=users.find(user=>user.id===(row.payload as {recipientUserId:string}).recipientUserId)!;
+    expect(row.broadcastRecipient).toEqual({telegramId:recipient.telegramId,name:'Fixture recipient',chatId:recipient.telegramId,blocked:false});
+   }
   }
   expect((await notificationDatabaseSnapshot(db)).queue).toMatchObject({pending:12,due:4,inFlight:8,retrying:0});
  });

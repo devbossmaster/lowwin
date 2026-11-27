@@ -15,7 +15,7 @@ import {chapaReceiptKind} from './chapa-receipt';
 import {hasResultSubscription} from './result-audience';
 import {auctionPhoto} from './auction-photo';
 import {sendBroadcastPhoto,TelegramMediaDeferredError} from './broadcast-photo';
-import {acknowledgeDelivery,claimNotifications,claimExpansion,claimLogicalDelivery,finishClaim,highPriorityKinds,type ClaimedNotification} from './leases';
+import {acknowledgeDelivery,claimNotifications,claimExpansion,claimLogicalDelivery,finishClaim,highPriorityKinds,type ClaimedNotification,type NotificationRecipient} from './leases';
 import {withTelegramSendPolicy,telegramPolicyApi,TelegramRateDeferredError} from './telegram-rate';
 import {beforeNotificationSend,DeliveryGate,type RecipientGate} from './send-gate';
 import {recordNotificationTiming,recordNotificationAccepted,recordNotificationUncertain,timeNotification} from './diagnostics';
@@ -100,8 +100,11 @@ async function dispatchClaim(client:PrismaClient,bot:BotApi,row:ClaimedNotificat
   if(row.kind!=='AUCTION_ENDED')await materializeAlert(client,row,content);
   if(row.testRunId||!telegramKinds.includes(row.kind)&&!highPriorityKinds.includes(row.kind)&&row.kind!==chapaReceiptKind){await skip();return}
   const merchantAlert='merchantAlert' in content&&content.merchantAlert===true;
-  const users=merchantAlert?[]:await client.$queryRaw<{telegramId:string;name:string;chatId:string|null;blocked:boolean|null}[]>`SELECT u."telegramId",u.name,c."chatId",c.blocked FROM "user" u LEFT JOIN "BotChat" c ON c."telegramId"=u."telegramId" WHERE u.id=${content.userId} LIMIT 1`;
-  const user=users[0],recipient=merchantAlert&&'recipientTelegramId' in content&&typeof content.recipientTelegramId==='string'?content.recipientTelegramId:user?.telegramId;
+  // The claim snapshot supplies the display name and chat for a broadcast.
+  // The send gate still checks the current account, chat, and subscription.
+  const user=merchantAlert?undefined:row.kind==='BROADCAST'?row.broadcastRecipient??undefined
+   :(await client.$queryRaw<NotificationRecipient[]>`SELECT u."telegramId",u.name,c."chatId",c.blocked FROM "user" u LEFT JOIN "BotChat" c ON c."telegramId"=u."telegramId" WHERE u.id=${content.userId} LIMIT 1`)[0];
+  const recipient=merchantAlert&&'recipientTelegramId' in content&&typeof content.recipientTelegramId==='string'?content.recipientTelegramId:user?.telegramId;
   const chat=merchantAlert&&recipient?await client.botChat.findUnique({where:{telegramId:recipient}}):user?.chatId?{telegramId:user.telegramId,chatId:user.chatId,blocked:user.blocked}:null;
   if(!chat||chat.blocked){await skip(row.kind==='BROADCAST'?(chat?'CHAT_BLOCKED':'CHAT_NOT_STARTED'):null);return}
   recipientTelegramId=chat.telegramId;

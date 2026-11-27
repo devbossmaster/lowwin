@@ -34,7 +34,9 @@ export function notificationDispatchFixture(jobs:Outbox[],now=new Date()){
      (expansion===['GLOBAL_CAMPAIGN','AUCTION_FINALIZED','AUCTION_PARTICIPANTS','BROADCAST_DELETE'].includes(job.kind))&&
      (!sql.includes('AND kind=')||values.includes(job.kind))).slice(0,1);
     for(const job of selected)Object.assign(job,{leaseToken:String(values.at(-1)),leaseUntil:new Date(Date.now()+120000),claimedAt:new Date()});
-    return selected;
+    return Promise.all(selected.map(async job=>job.kind==='BROADCAST'?{
+     ...job,broadcastRecipient:{...user,...await tx.user.findUnique(),...await tx.botChat.findUnique()},
+    }:job));
    }
    if(sql.includes('FROM "Outbox"')){
     const expansion=sql.includes('kind IN')&&!sql.includes('kind NOT IN');

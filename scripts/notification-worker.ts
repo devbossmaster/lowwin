@@ -10,6 +10,7 @@ import {REMINDER_SCAN_INTERVAL_MS,runNotificationLanes} from '../src/modules/not
 import {notificationDatabaseSnapshot,notificationTimingSnapshot} from '../src/modules/notifications/diagnostics';
 
 const settings=notificationSettings();
+const bulkSlotsPerLane=2;
 let sqlStatements=0,sqlDurationMs=0;
 const client=(connections:number)=>{const database=new URL(process.env.DATABASE_URL!);database.searchParams.set('connection_limit',String(connections));database.searchParams.set('pool_timeout','20');const db=new PrismaClient({datasourceUrl:database.href,log:[{emit:'event',level:'query'}]});db.$on('query',event=>{sqlStatements++;sqlDurationMs+=event.duration});return db};
 // Separate small pools prevent slow legacy verification from consuming the
@@ -22,7 +23,7 @@ process.on('SIGINT',()=>shutdown.abort());process.on('SIGTERM',()=>shutdown.abor
 const shouldContinue=()=>!shutdown.signal.aborted;
 
 const sourceRevision=process.env.SOURCE_COMMIT??process.env.COOLIFY_BUILD_COMMIT??process.env.GIT_COMMIT;
-console.info('notification_worker_configuration',{revision:sourceRevision&&/^[0-9a-f]{7,40}$/i.test(sourceRevision)?sourceRevision:'unreported',processId:process.pid,concurrency:settings.NOTIFICATION_SEND_CONCURRENCY,personalLanes:1,reminderScanMs:REMINDER_SCAN_INTERVAL_MS,botRate:settings.TELEGRAM_SENDS_PER_SECOND,bulkRate:settings.TELEGRAM_BULK_SENDS_PER_SECOND,privateChatIntervalMs:settings.TELEGRAM_PRIVATE_CHAT_INTERVAL_MS,groupChatIntervalMs:settings.TELEGRAM_GROUP_CHAT_INTERVAL_MS,rateMaxWaitMs:settings.TELEGRAM_RATE_MAX_WAIT_MS,maximumDatabaseConnections:settings.NOTIFICATION_SEND_CONCURRENCY+3,paidBroadcasts:false});
+console.info('notification_worker_configuration',{revision:sourceRevision&&/^[0-9a-f]{7,40}$/i.test(sourceRevision)?sourceRevision:'unreported',processId:process.pid,concurrency:settings.NOTIFICATION_SEND_CONCURRENCY,personalLanes:1,maximumInFlightDeliveries:1+(settings.NOTIFICATION_SEND_CONCURRENCY-1)*bulkSlotsPerLane,reminderScanMs:REMINDER_SCAN_INTERVAL_MS,botRate:settings.TELEGRAM_SENDS_PER_SECOND,bulkRate:settings.TELEGRAM_BULK_SENDS_PER_SECOND,privateChatIntervalMs:settings.TELEGRAM_PRIVATE_CHAT_INTERVAL_MS,groupChatIntervalMs:settings.TELEGRAM_GROUP_CHAT_INTERVAL_MS,rateMaxWaitMs:settings.TELEGRAM_RATE_MAX_WAIT_MS,maximumDatabaseConnections:settings.NOTIFICATION_SEND_CONCURRENCY+3,paidBroadcasts:false});
 let reporting=false;
 const metrics=setInterval(async()=>{
  if(reporting||shutdown.signal.aborted)return;reporting=true;
@@ -39,8 +40,12 @@ try{
   expand:()=>shouldContinue()?expandPendingCampaigns(jobsDb,{limit:settings.NOTIFICATION_EXPANSION_BATCHES}):Promise.resolve(0),
   verify:()=>shouldContinue()?processOneVerifyRequest(verificationDb):Promise.resolve(false),
   settleReferrals:()=>shouldContinue()?settlePendingReferralWalletRewards(verificationDb):Promise.resolve(false),
-  // Independent lanes immediately refill after completion. A slow bulk HTTP
-  // call cannot impose a barrier on every other lane or the personal lane.
-  send:priority=>shouldContinue()?dispatchBatch(deliveryDb,bot,{limit:priority==='high'?1:2,concurrency:1,priority,shouldContinue}):Promise.resolve(0),
+  // Overlap I/O for the two rows a bulk-capable lane already owns. All sends
+  // still reserve the shared bot and chat budget before calling Telegram.
+  send:priority=>{
+   if(!shouldContinue())return Promise.resolve(0);
+   const slots=priority==='high'?1:bulkSlotsPerLane;
+   return dispatchBatch(deliveryDb,bot,{limit:slots,concurrency:slots,priority,shouldContinue});
+  },
  },settings,shutdown.signal,lane=>console.error('notification_lane_retry',{lane}));
 }finally{clearInterval(metrics);await Promise.all([deliveryDb.$disconnect(),jobsDb.$disconnect(),verificationDb.$disconnect()])}

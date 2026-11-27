@@ -6,22 +6,32 @@ import {auctionMaintenanceHalted,lockAuctionMaintenance} from '../auctions/maint
 // Normalize database wall-clock expressions, independently of display time (EAT).
 export const expansionKinds=['GLOBAL_CAMPAIGN','AUCTION_FINALIZED','AUCTION_PARTICIPANTS','BROADCAST_DELETE'];
 export const highPriorityKinds=['DEPOSIT_CREDITED','BID_ACCEPTED','WINNER_CONGRATULATIONS','AUCTION_FEE_REFUNDED'];
-export type ClaimedNotification=Outbox&{leaseToken:string;leaseUntil:Date};
+export type NotificationRecipient={telegramId:string;name:string;chatId:string|null;blocked:boolean|null};
+export type ClaimedNotification=Outbox&{leaseToken:string;leaseUntil:Date;broadcastRecipient?:NotificationRecipient|null};
 export type ClaimOptions={limit?:number;priority?:'high'|'bulk';kind?:string};
 const bounded=(value:number|undefined,fallback:number,max:number)=>Math.max(1,Math.min(max,Math.floor(Number.isFinite(value)?value!:fallback)));
 const claimable=Prisma.sql`state='PENDING' AND "nextAttemptAt"<=(clock_timestamp() AT TIME ZONE 'UTC') AND ("leaseUntil" IS NULL OR "leaseUntil"<=(clock_timestamp() AT TIME ZONE 'UTC')) AND NOT ${auctionMaintenanceHalted}`;
 
-async function claimRows(client:PrismaClient,picked:Prisma.Sql){
+async function claimRows(client:PrismaClient,picked:Prisma.Sql,includeBroadcastRecipient=false){
  const token=randomUUID();
+ const writeLease=Prisma.sql`
+  UPDATE "Outbox" o
+  SET "leaseToken"=${token},"leaseUntil"=(clock_timestamp() AT TIME ZONE 'UTC')+interval '120 seconds',"claimedAt"=(clock_timestamp() AT TIME ZONE 'UTC')
+  FROM picked WHERE o.id=picked.id RETURNING o.*
+ `;
+ const statement=includeBroadcastRecipient?Prisma.sql`
+  WITH picked AS MATERIALIZED (${picked}), claimed AS (${writeLease})
+  SELECT o.*,CASE WHEN u.id IS NOT NULL THEN jsonb_build_object(
+   'telegramId',u."telegramId",'name',u.name,'chatId',c."chatId",'blocked',c.blocked
+  ) END AS "broadcastRecipient"
+  FROM claimed o LEFT JOIN "user" u
+   ON o.kind='BROADCAST' AND u.id=o.payload->>'recipientUserId' AND u."telegramId" IS NOT NULL
+  LEFT JOIN "BotChat" c ON c."telegramId"=u."telegramId"
+ `:Prisma.sql`WITH picked AS MATERIALIZED (${picked}) ${writeLease}`;
  return client.$transaction(async tx=>{
   // Acquire the maintenance barrier before taking the statement snapshot.
   await lockAuctionMaintenance(tx);
-  return tx.$queryRaw<ClaimedNotification[]>(Prisma.sql`
-   WITH picked AS MATERIALIZED (${picked})
-   UPDATE "Outbox" o
-   SET "leaseToken"=${token},"leaseUntil"=(clock_timestamp() AT TIME ZONE 'UTC')+interval '120 seconds',"claimedAt"=(clock_timestamp() AT TIME ZONE 'UTC')
-   FROM picked WHERE o.id=picked.id RETURNING o.*
-  `);
+  return tx.$queryRaw<ClaimedNotification[]>(statement);
  },{timeout:5000,maxWait:5000});
 }
 
@@ -31,10 +41,11 @@ export async function claimNotifications(client:PrismaClient,options:ClaimOption
  const base=Prisma.sql`${claimable} AND kind NOT IN (${Prisma.join(expansionKinds)}) ${options.kind?Prisma.sql`AND kind=${options.kind}`:Prisma.empty}`;
  const high=Prisma.sql`AND kind IN (${Prisma.join(highPriorityKinds)})`;
  const bulk=Prisma.sql`AND kind NOT IN (${Prisma.join(highPriorityKinds)})`;
+ const includeBroadcastRecipient=options.priority!=='high'&&(!options.kind||options.kind==='BROADCAST');
  const select=(filter:Prisma.Sql,take:Prisma.Sql)=>Prisma.sql`
   SELECT id FROM "Outbox" WHERE ${base} ${filter} ORDER BY "nextAttemptAt",id FOR UPDATE SKIP LOCKED LIMIT (${take})
  `;
- if(options.priority||options.kind||limit===1)return claimRows(client,select(options.priority==='high'?high:options.priority==='bulk'?bulk:Prisma.empty,Prisma.sql`${limit}`));
+ if(options.priority||options.kind||limit===1)return claimRows(client,select(options.priority==='high'?high:options.priority==='bulk'?bulk:Prisma.empty,Prisma.sql`${limit}`),includeBroadcastRecipient);
 
  const bulkSlots=Math.max(1,Math.floor(limit/4));
  return claimRows(client,Prisma.sql`
@@ -48,7 +59,7 @@ export async function claimNotifications(client:PrismaClient,options:ClaimOption
    ${select(Prisma.sql`AND id NOT IN (SELECT id FROM preferred)`,Prisma.sql`${limit}-(SELECT count(*) FROM preferred)`)}
   )
   SELECT id FROM preferred UNION ALL SELECT id FROM additional
- `);
+ `,includeBroadcastRecipient);
 }
 
 export async function claimExpansion(client:PrismaClient){
