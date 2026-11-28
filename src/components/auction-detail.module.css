@@ -17,7 +17,7 @@
 .views{max-inline-size:clamp(4.25rem,24vw,6rem);margin:var(--space-1) 0 0;color:var(--brand-muted);font-size:.75rem;font-variant-numeric:tabular-nums}
 .views dd{display:flex;align-items:center;gap:4px;margin:0;overflow-wrap:anywhere}
 .views svg{flex:none}
-.views span{min-width:0}
+.views span{min-width:0;font-weight:600}
 .metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px var(--space-2);margin:0}
 .metrics>div{display:grid;grid-template-rows:auto 1fr;justify-items:center;align-items:start;gap:2px;min-width:0;padding:var(--space-2);border-radius:12px;background:var(--brand-canvas);text-align:center}
 .metrics dt{grid-row:2;color:var(--brand-muted-on-soft);font-size:.75rem;font-weight:400;line-height:1.45;overflow-wrap:anywhere}
@@ -47,7 +47,7 @@
 .bidOverview:not(:has(.countdownPanel)){grid-template-columns:minmax(0,1fr)}
 .fee,.countdownPanel{display:grid;align-content:start;gap:var(--space-1);min-width:0;margin:0}
 .countdownPanel{justify-items:end;border-inline-start:1px solid var(--brand-line);padding-inline-start:var(--space-3)}
-.fee dt,.timerLabel{display:flex;align-items:baseline;gap:4px;margin:0;color:var(--brand-muted-on-soft);font-size:.75rem;font-weight:400;line-height:1.5}
+.fee dt,.timerLabel{display:flex;align-items:baseline;gap:4px;margin:0;color:var(--brand-muted-on-soft);font-size:.75rem;font-weight:600;line-height:1.5}
 .fee dt svg,.timerLabel svg{align-self:flex-start;margin-top:2px}
 .fee dd{display:flex;align-items:center;align-self:start;min-height:var(--detail-tile-height);margin:0;color:var(--brand-ink);font-variant-numeric:tabular-nums;font-size:1rem;font-weight:600;line-height:1.4;overflow-wrap:anywhere}
 @supports(grid-template-rows:subgrid){

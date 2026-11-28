@@ -6,6 +6,7 @@ import { db } from '@/lib/db';
 import {cachedPublicData} from '@/modules/cache/public-data';
 import {previewTestRunFilter,stagingDemoEnabled} from './staging-demo';
 import {maskedResultContact,safeResultIdentity} from './result-identity';
+import {readAuctionPresentation} from './presentation';
 
 // SQL selection and DTO mapping are independent allowlists. Never select the
 // settlement proof, participant movements, winning user/bid IDs or raw bids here.
@@ -24,7 +25,6 @@ export const publicAuctionSelect = {
   settlement:{select:{publication:{select:{publishedAt:true}},decision:true,outcome:true,winningPoints:true,completedAt:true,acceptedCount:true,winner:{select:{name:true,telegramUsername:true,ownContact:{select:{botId:true,phoneCipher:true,revokedAt:true}}}}}},
 } satisfies Prisma.AuctionSelect;
 type AuctionRow = Prisma.AuctionGetPayload<{ select: typeof publicAuctionSelect }>;
-const presentationSchema=z.object({title:z.string(),titleAm:z.string().nullable().optional(),description:z.string(),descriptionAm:z.string().nullable().optional(),condition:z.string(),conditionAm:z.string().nullable().optional(),images:z.array(z.object({path:z.string(),alt:z.string(),sourceType:z.string(),sourceCredit:z.string().nullable().optional()}))}).strict();
 export const catalogQuerySchema = z.object({
   q: z.string().trim().max(80).optional().default(''),
   status: z.enum(['all','live','upcoming','closing','closed']).optional().default('all'),
@@ -68,8 +68,7 @@ function statusWhere(status: CatalogQuery['status'], now: Date): Prisma.AuctionW
 }
 export function toPublicAuction(row: AuctionRow, now: Date) {
   const status = effectiveStatus(row,now);
-  const presentation=presentationSchema.safeParse(row.presentation);
-  const product=presentation.success?presentation.data:row.product!;
+  const product=readAuctionPresentation(row.presentation)??row.product!;
   const settled=row.settlement?.publication&&row.settlement.publication.publishedAt<=now?row.settlement:null;
   const result=settled&&['closed','cancelled'].includes(status)?{
     outcome:settled.outcome,winningPoints:settled.winningPoints?.toString()??null,
@@ -93,7 +92,7 @@ export function toPublicAuction(row: AuctionRow, now: Date) {
     slug:row.slug!,code:row.publicCode.toString(),status,publishedAt:row.publishedAt!.toISOString(),featured:row.featured,isDemo:row.isDemo,bidCount:row.acceptedBidCount,
     viewCount:row.publicViewCount.toString(),...(row.controlVersion===undefined?{}:{presentationVersion:row.controlVersion}),
     startsAt:row.startsAt!.toISOString(),endsAt:row.endsAt!.toISOString(),
-    product:{title:product.title,titleAm:product.titleAm??row.product!.titleAm,description:product.description,descriptionAm:product.descriptionAm??row.product!.descriptionAm,condition:product.condition,conditionAm:product.conditionAm??row.product!.conditionAm,
+    product:{title:product.title,titleAm:product.titleAm??null,description:product.description,descriptionAm:product.descriptionAm??null,condition:product.condition,conditionAm:product.conditionAm??null,
       images:product.images.map(image=>({path:image.path,alt:image.alt,sourceType:image.sourceType,sourceCredit:image.sourceCredit??null}))},
     category:{slug:row.category!.slug,name:row.category!.name,nameAm:row.category!.nameAm},
     fulfillment:{summary:row.fulfillmentSummary!,summaryAm:row.fulfillmentSummaryAm,region:row.fulfillmentRegion!,regionAm:row.fulfillmentRegionAm},
@@ -220,9 +219,9 @@ export async function listQuickAuctions(status:QuickAuctionStatus='live',page=1,
       }}),
     db.auction.count({where})
   ]);
-  return {items:rows.map(row=>{const override=presentationSchema.safeParse(row.presentation);return {
+  return {items:rows.map(row=>{const override=readAuctionPresentation(row.presentation);return {
     slug:row.slug!,code:String(row.publicCode),status:effectiveStatus(row,at),startsAt:row.startsAt!.toISOString(),endsAt:row.endsAt!.toISOString(),isDemo:row.isDemo,bidCount:row.acceptedBidCount,
-    product:override.success?{title:override.data.title,titleAm:override.data.titleAm??row.product!.titleAm,images:override.data.images.slice(0,1).map(image=>({path:image.path,alt:image.alt}))}:row.product!,
+    product:override?{title:override.title,titleAm:override.titleAm??null,images:override.images.slice(0,1).map(image=>({path:image.path,alt:image.alt}))}:row.product!,
     terms:{version:row.feeRevisions[0]?.version??row.terms!.version,ruleVersion:row.terms!.ruleVersion,entryFeePoints:(row.feeRevisions[0]?.feePoints??row.terms!.entryFeePoints).toString()},
   }}),total,page,pageSize,totalPages:Math.ceil(total/pageSize),serverNow:at.toISOString()};
   });

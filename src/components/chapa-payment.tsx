@@ -39,9 +39,14 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
  const markPresented=useCallback((stage:'feedback'|'authorization'|'confirmed')=>{uiTiming.current?.mark(stage);if(stage==='confirmed')uiTiming.current?.mark('code-confirmed')},[]);
  const current=useCallback((version:number)=>version===epoch.current&&isPrivateQueryIdentity(queryIdentity),[queryIdentity]);
  const update=useCallback((value:Partial<Snapshot>)=>{stateRef.current={...stateRef.current,...value};setSnapshot(s=>s.identity===queryIdentity?{...s,...value}:s)},[queryIdentity]);
- const receive=useCallback((order:ChapaCheckoutView)=>{
+ const receive=useCallback((snapshot:ChapaCheckoutView)=>{
+  const previous=stateRef.current.order;
+  // Verification can return the payment row without the auction join.
+  const order=!snapshot.auctionTitle&&previous?.id===snapshot.id&&previous.auctionTitle
+   ?{...snapshot,auctionTitle:previous.auctionTitle,auctionTitleAm:previous.auctionTitleAm}
+   :snapshot;
   if(scope==='topup'&&order.purpose!=='TOP_UP'||scope.startsWith('bid:')&&(order.purpose!=='BID'||order.auctionSlug!==scope.slice(4)))throw new ChapaClientError('Payment not found.',404,'NOT_FOUND');
-  if(!acceptChapaSnapshot(stateRef.current.order,order))return;
+  if(!acceptChapaSnapshot(previous,order))return;
   const recoveryKey=stateRef.current.recoveryKey;
   if(retainOriginal&&ownerId&&recoveryKey){
    if(chapaConfirmed(order)||bidPaymentCanRetry(order))clearChapaRecoveryPointer(chapaRecoveryStorage(),ownerId,scope,{key:recoveryKey});
@@ -54,7 +59,7 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
    if(chapaConfirmed(order))clearChapaOriginalAttempt(getMiniQueryClient(),queryIdentity,scope,intent?{intentKey:intent.key}:{orderId:order.id});
    else if(intent)retainChapaOriginalAttempt(getMiniQueryClient(),queryIdentity,scope,intent,order.id);
   }
-  const keepOtpError=chapaRetainOtpError(stateRef.current.order,order,stateRef.current.errorCode);
+  const keepOtpError=chapaRetainOtpError(previous,order,stateRef.current.errorCode);
   update({order,recoveryId:order.id,...(keepOtpError?{}:{error:'',errorCode:null}),restoring:false});const confirmedScopes=confirmedChapaQueryScopes(order),scopes=confirmedScopes??(!chapaRecoverable(order)?['/api/payments/chapa/checkouts','/api/my-bids','/api/transactions']:null),revision=`${order.id}:${confirmedScopes?'confirmed':order.status}`;
   if(queryIdentity&&scopes&&invalidated.current!==revision){invalidated.current=revision;invalidatePrivateQueries(queryIdentity,scopes);if(confirmedScopes)void refreshMe().catch(()=>{})}
   if(queryIdentity&&isPrivateQueryIdentity(queryIdentity))seedPrivateQuery(queryIdentity,`/api/payments/chapa/checkouts/${order.id}`,order);

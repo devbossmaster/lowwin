@@ -33,7 +33,7 @@ import BidPaymentProgress from './bid-payment-progress';
 import {usePaymentCheckoutFlow} from './payment-checkout-flow';
 import {bidPaymentCanRetry} from '@/lib/bid-payment-progress';
 import {publishWalletBidReceipt} from './wallet-bid-cache';
-import {auctionDetailUrl} from './auction-query';
+import {auctionDetailUrl,isNewerAuction} from './auction-query';
 import styles from './bid-payment-sheet.module.css';
 import reference from './reference-bid-checkout.module.css';
 import {ReferencePaymentMethods,referencePaymentProviders as providers} from './reference-payment-methods';
@@ -49,7 +49,9 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
  const {language}=useMiniLocale(),am=language==='am',text=(en:string,translated:string)=>am?translated:en;
  const {status,me,queryIdentity,refreshMe,openRegistration,environment}=useTelegram(),initialFull=isFullAuction(auction)?auction:undefined;
  const detail=usePrivateQuery<CatalogAuction>(auctionDetailUrl(auction.slug),{initialData:initialFull});
- const full=(detail.data?.slug===auction.slug?detail.data:undefined)??initialFull,known=full??auction;
+ const cachedFull=detail.data?.slug===auction.slug?detail.data:undefined;
+ const full=initialFull&&(!cachedFull||isNewerAuction(initialFull,cachedFull))?initialFull:cachedFull;
+ const known=full??auction;
  const description=full?(am?full.product.descriptionAm||full.product.description:full.product.description):'';
  const own=usePrivateQuery<BidState>(`/api/auctions/${auction.slug}/bids`);
  const wallet=usePrivateQuery<WalletBalance>('/api/wallet',{freshnessMs:15000});
@@ -304,6 +306,10 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
  const fieldHelp=text(`Enter an amount from ${bounds?.minPoints??'—'}${bounds?.maxPoints?` to ${bounds.maxPoints}`:''}. Step ${bounds?.stepPoints??'—'}.`,`ከ ${bounds?.minPoints??'—'}${bounds?.maxPoints?` እስከ ${bounds.maxPoints}`:''} መጠን ያስገቡ። ልዩነት ${bounds?.stepPoints??'—'}።`);
  const setDecimal=(value:string,setter:(value:string)=>void)=>{if(/^\d{0,16}(?:\.\d{0,2})?$/.test(value)){setter(value);reportError('')}else reportError(text(...copy.precision))};
  const rangePresentation=<>{rangeDraft?.complete&&!rangeDraft.error&&<p className={reference.rangePreview} data-bid-range-preview role="status">{text(`${rangeDraft.count} amounts · Step ${rangeDraft.step}`,`${rangeDraft.count} መጠኖች · ልዩነት ${rangeDraft.step}`)}</p>}{rangeDraft?.error&&<p className={reference.error} data-bid-range-error role="alert">{rangeError(rangeDraft.error)}</p>}</>;
+ const productPreview=<>
+  <CatalogImage src={known.product.images[0]?.path} alt="" sizes="76px"/>
+  <h3 className={reference.productTitle}>{am?known.product.titleAm||known.product.title:known.product.title}</h3>
+ </>;
  if(step==='review')return <>
   <AccountSheetFooter><div className={reference.footer}>
    <div className={reference.total} data-bid-total><span>{text('Total payable','ጠቅላላ ክፍያ')}</span><strong>{formatEtb(total)}</strong></div>
@@ -311,7 +317,7 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
    <button type="button" className={reference.reviewBack} onClick={flow.editDraft}><ArrowLeft size={16} aria-hidden="true"/>{text('Edit bids','ጨረታዎችን ያስተካክሉ')}</button>
   </div></AccountSheetFooter>
   <section className={`${reference.checkout} ${reference.batchReview}`} data-bid-step="review" aria-label={text('Review your bids','ጨረታዎችዎን ይመልከቱ')}>
-   <p className={reference.reviewProduct}>{am?known.product.titleAm||known.product.title:known.product.title}</p>
+   <div className={reference.productHeader} data-bid-product-header>{productPreview}</div>
    <p className={reference.reviewLead}>{text('Check your numbers before choosing how to pay.','የክፍያ መንገድ ከመምረጥዎ በፊት ቁጥሮችዎን ይመልከቱ።')}</p>
    <ul className={reference.reviewNumbers} aria-label={text('Selected bid numbers','የተመረጡ የጨረታ ቁጥሮች')}>{selectedNumbers.map(number=><li key={number}>{number}</li>)}</ul>
    <dl className={reference.batchBreakdown}>
@@ -329,7 +335,10 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
   </div></AccountSheetFooter>
   <div className={reference.checkout} data-bid-step="payment" data-payment-method-form>
    <section className={reference.paymentOverview} data-bid-payment-summary aria-label={text('Payment summary','የክፍያ ማጠቃለያ')}>
-    <div className={reference.paymentOverviewHeading}><h3>{am?known.product.titleAm||known.product.title:known.product.title}</h3><button type="button" className={reference.edit} onClick={flow.editDraft}>{text('Edit','ያስተካክሉ')}</button></div>
+    <div className={reference.productHeader} data-bid-product-header>
+     {productPreview}
+     <button type="button" className={reference.edit} onClick={flow.editDraft}>{text('Edit','ያስተካክሉ')}</button>
+    </div>
     <dl className={reference.paymentNumbers}><div><dt>{selectedNumbers.length===1?text('Bid number','የጨረታ ቁጥር'):text(`${selectedNumbers.length} bids`,`${selectedNumbers.length} ጨረታዎች`)}</dt><dd>{selectedNumbers.length<=4?selectedNumbers.join(', '):text(`${selectedNumbers.length} selected`,`${selectedNumbers.length} ተመርጠዋል`)}</dd></div></dl>
     <p className={reference.paymentFeeNote}>{text('Only submission fees are charged.','የማቅረቢያ ክፍያ ብቻ ይከፈላል።')}</p>
    </section>
@@ -350,7 +359,7 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
    <button type="button" className={reference.pay} data-payment-action data-bid-pay disabled={payDisabled} aria-busy={busy} onClick={()=>void pay()}>{busy&&<LoaderCircle size={16} className={reference.spin} aria-hidden="true"/>}{pendingOriginal?text('View payment status','የክፍያ ሁኔታ ይመልከቱ'):!authenticated?text(environment==='mini'?'Share contact to bid':'Log in to bid',environment==='mini'?'ለመጫረት ስልክ ቁጥርዎን ያጋሩ':'ለመጫረት ይግቡ'):text('Continue to payment','ወደ ክፍያ ይቀጥሉ')}</button>
   </div></AccountSheetFooter>
   <div className={reference.checkout} data-bid-entry data-bid-step="entry" data-payment-method-form={undefined}>
-   <div className={reference.productHeader}><CatalogImage src={known.product.images[0]?.path} alt="" sizes="76px"/><h3 className={reference.productTitle}>{am?known.product.titleAm||known.product.title:known.product.title}</h3></div>
+   <div className={reference.productHeader} data-bid-product-header>{productPreview}</div>
    {description&&<details className={reference.description}><summary><span className={reference.excerpt}>{description}</span><b><span className={reference.more}>{text('Show more','ተጨማሪ ያሳዩ')}</span><span className={reference.less}>{text('Show less','ያሳንሱ')}</span><ChevronDown size={12} aria-hidden="true"/></b></summary><p>{description}</p></details>}
    <section className={reference.feeStrip} aria-label={text('Auction overview','የጨረታ ማጠቃለያ')} data-bid-fee-summary>
     <div className={reference.feeDetails}>

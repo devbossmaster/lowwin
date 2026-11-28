@@ -47,7 +47,7 @@
 .header .brand{width:auto;min-width:0;gap:6px;--brand-mark-size:30px}
 .header .balance{flex:1;min-width:0}.header .balance>span{flex:1;max-width:100%}.header .balanceAmount{min-width:0;overflow-x:auto;scrollbar-width:none}.header .balance small{flex:none}
 @media(max-width:389px){.header .brand{gap:5px;--brand-mark-size:28px}}
-@media(max-width:339px){.header .brand{gap:4px;--brand-mark-size:22px}.header .brandName{font-size:11px}}
+@media(max-width:339px){.header .brand{gap:4px;--brand-mark-size:22px}.header .brandName{font-size:14px}}
 
 .actions{position:relative}
 .affiliate{
@@ -114,9 +114,16 @@
  .header[data-has-affiliate] .balance>svg{display:none}
 }
 @media(max-width:419px){
- .header[data-has-affiliate] .brand{--brand-mark-size:26px;gap:4px}
- .header[data-has-affiliate] .brandName{font-size:12px}
  .header[data-has-affiliate] .balance{padding-left:5px}
  .header[data-has-affiliate] .balanceAmount{font-size:12px}
 }
-@media(max-width:389px){.header[data-has-affiliate] .brandName{display:none}}
+@media(max-width:379px){
+ .header[data-has-affiliate]{grid-template-columns:max-content minmax(0,1fr);column-gap:8px;row-gap:2px}
+ .header[data-has-affiliate] .actions{grid-column:1/-1;justify-content:space-between;border-top:1px solid var(--brand-line)}
+ .header[data-has-affiliate] .affiliatePromo::before{display:none}
+}
+@media(min-width:380px) and (max-width:445px){
+ .header:has([data-long-balance]){grid-template-columns:max-content minmax(0,1fr);column-gap:8px;row-gap:2px}
+ .header:has([data-long-balance]) .actions{grid-column:1/-1;justify-content:space-between;border-top:1px solid var(--brand-line)}
+ .header:has([data-long-balance]) .affiliatePromo::before{display:none}
+}

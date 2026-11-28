@@ -21,7 +21,7 @@ const ArifPayReturn=dynamic(()=>import('./arifpay-return').then(module=>module.A
 import {MiniPhrase,useMiniLocale} from './mini-locale';
 import styles from './auction-detail.module.css';
 import {useAuctionActivity,useAuctionRefresh} from './auction-activity';
-import {auctionDetailUrl} from './auction-query';
+import {auctionDetailUrl,isNewerAuction} from './auction-query';
 import {usePrivateQuery} from './private-query';
 import {auctionPresentationRefreshVersion} from '@/lib/auction-presentation-refresh';
 import {Button} from './ui/button';
@@ -29,7 +29,7 @@ import {Card} from './ui/card';
 
 export function AuctionDetail({auction:initialAuction,serverNow,publishedResult=false}:{auction:CatalogAuction;serverNow:string;publishedResult?:boolean}){
  const detail=usePrivateQuery<CatalogAuction>(auctionDetailUrl(initialAuction.slug),{initialData:initialAuction});
- const known=detail.data??initialAuction;
+ const known=detail.data&&!isNewerAuction(initialAuction,detail.data)?detail.data:initialAuction;
  const params=useSearchParams(),candidate=params.get('chapa'),chapaId=params.getAll('chapa').length===1&&candidate&&chapaUuid.test(candidate)?candidate:undefined;
  const checkout=params.get('checkout'),legacyReturn=params.getAll('checkout').length===1&&checkout&&chapaUuid.test(checkout);
  const [bidding,setBidding]=useState(!!chapaId),[returnId,setReturnId]=useState(chapaId);

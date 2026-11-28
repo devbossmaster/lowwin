@@ -41,7 +41,9 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
  const internalWallet=!deposit&&(provider==='wallet'||!!receipt||walletRetry);
  const providerName=provider==='wallet'?text('LowWin Wallet','LowWin ዋሌት'):provider?providerNames[provider]??text('Payment provider','የክፍያ አቅራቢ'):text('Payment provider','የክፍያ አቅራቢ');
  const phone=maskedBidPaymentPhone(order?.payerPhoneMasked??summary.phone);
- const title=am?order?.auctionTitleAm||summary.auctionTitleAm||order?.auctionTitle||summary.auctionTitle:order?.auctionTitle||summary.auctionTitle;
+ const title=order?.auctionTitle
+  ?text(order.auctionTitle,order.auctionTitleAm||order.auctionTitle)
+  :text(summary.auctionTitle,summary.auctionTitleAm||summary.auctionTitle);
  const safeReason=order&&!completionPending?chapaPaymentReasonMessage(order,am)??chapaRequestReasonMessage(order.initializationReasonCode,am):null;
  const requestReason=completionPending?null:chapaRequestReasonMessage(payment.errorCode,am);
  const invalidOtp=otpNeeded&&(payment.errorCode==='INVALID_OTP'||order?.authorizationReasonCode==='INVALID_OTP');
@@ -133,6 +135,7 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
     <div className={styles.total}><dt>{text(finished?'Paid':'Total payable',finished?'የተከፈለ':'ጠቅላላ ክፍያ')}</dt><dd>{total===null?'—':formatEtb(total)}</dd></div>
     {deposit&&finished&&order?.depositBonus?.credited&&<><div className={styles.bonusCredit} data-deposit-bonus-credited><dt>{text('Bidding bonus credited','የጨረታ ጉርሻ ገብቷል')}</dt><dd>+{formatEtb(order.depositBonus.amount)}</dd></div><div className={styles.total}><dt>{text('Total wallet credit','ጠቅላላ የዋሌት ገቢ')}</dt><dd>{formatEtb(order.depositBonus.totalCredit)}</dd></div></>}
     <div><dt>{text('Payment method','የክፍያ መንገድ')}</dt><dd><span className={styles.provider}>{provider&&providerImages[provider]&&<img src={providerImages[provider]} width={24} height={22} alt=""/>}{providerName}</span>{phone&&<span className={styles.phone}>{phone}</span>}</dd></div>
+    {terminal&&order?.merchantReference&&<div data-payment-support-reference><dt>{text('Payment reference','የክፍያ መለያ')}</dt><dd dir="ltr">{order.merchantReference}</dd></div>}
    </dl>
    {otpNeeded&&<form className={styles.otp} id={`${id}-otp-form`} onSubmit={event=>{event.preventDefault();if(busy||!/^\d{4,10}$/.test(otp))return;const code=otp;setOtp('');void payment.authorize(code)}}>
     <label htmlFor={`${id}-otp`}>{text('One-time code','የአንድ ጊዜ ኮድ')}</label>

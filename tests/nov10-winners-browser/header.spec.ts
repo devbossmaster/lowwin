@@ -50,7 +50,7 @@ for(const width of [320,360,430]){
   await expect(header(page).locator('[data-header-balance]')).toHaveCount(0);expect(f.walletRequests).toHaveLength(0);
   await expect(header(page).getByRole('button',{name:/^Notifications/})).toHaveCount(0);expect(f.alertRequests).toHaveLength(0);
   await expect(header(page).getByRole('link',{name:/Wallet|Deposit|Profile|Play|Notifications/})).toHaveCount(0);
-  await expect(header(page).locator('[data-lowwin-logo]')).toBeVisible();await compactGeometry(page);
+  await expect(header(page).locator('[data-lowwin-logo]')).toBeVisible();await expect(header(page).getByText('LowWin',{exact:true})).toBeVisible();await compactGeometry(page);
   await header(page).getByRole('button',{name:/Browse auctions/}).click();await expect(page.getByRole('dialog',{name:'Auctions',exact:true})).toBeVisible();
   await page.keyboard.press('Escape');await expect(page.getByRole('dialog',{name:'Auctions',exact:true})).toHaveCount(0);
   await header(page).getByRole('button',{name:'Log in',exact:true}).click();await expect(page.getByRole('dialog',{name:'Log in to Lowwin',exact:true})).toBeVisible();
@@ -59,6 +59,7 @@ for(const width of [320,360,430]){
  });
  for(const am of [false,true])test(`Registered Home balance, language, top-up and Home-only header at ${width}px ${am?'AM':'EN'}`,async({page})=>{
   await page.setViewportSize({width,height:850});const f=await setup(page,{registered:true,am});await page.goto('/');
+  await expect(header(page).getByText('LowWin',{exact:true})).toBeVisible();
   await expect(header(page).getByRole('link',{name:am?'ዋሌት, 123456789.50 ETB':'Wallet, 123456789.50 ETB',exact:true})).toBeVisible();
   await expect(header(page).getByRole('button',{name:/Log in|ይግቡ/})).toHaveCount(0);expect(f.walletRequests).toHaveLength(1);
   const bell=header(page).getByRole('button',{name:am?'ማሳወቂያዎች, 3 ያልተነበቡ':'Notifications, 3 unread',exact:true});await expect(bell).toBeVisible();await bell.click();await expect(page.getByRole('dialog',{name:am?'ማሳወቂያዎች':'Notifications',exact:true})).toBeVisible();await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);await expect(bell).toBeFocused();

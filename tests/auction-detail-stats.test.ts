@@ -53,7 +53,7 @@ describe('public auction total accepted bids',()=>{
   expect(html.indexOf('data-product-gallery')).toBeLessThan(html.indexOf('<h1>'));
  });
  it('keeps the existing countdown and scheduled Ethiopian-time information',()=>{
-  const html=render();expect(html).toContain('role="timer"');expect(html).toContain(`dateTime="${endsAt}"`);expect(html).toContain('03:33</time>');
+  const html=render();expect(html).toContain('role="timer"');expect(html).toContain(`dateTime="${endsAt}"`);expect(html).toContain('3:33 AM</time>');
  });
  it('puts the short description in one section before more chances without an expand control',()=>{
   const html=render();

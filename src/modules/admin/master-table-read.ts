@@ -59,9 +59,8 @@ export async function readChapaTable(client:PrismaClient,actor:Actor,f:Filters){
  const selected:Prisma.Sql[]=[];
  if(chapaConfigured){
   const group=view==='completed'?Prisma.sql`AND c."creditJournalId" IS NOT NULL`:view==='unfinished'?Prisma.sql`AND c.status IN ('SUBMITTING','PENDING','VERIFYING','AUTH_NEEDED')`:view==='review'?Prisma.sql`AND c.status='NEEDS_REVIEW'`:view==='failed'?Prisma.sql`AND c."creditJournalId" IS NULL AND c."verificationState"='VERIFIED' AND c."providerStatus" IN ('FAILED','CANCELLED','EXPIRED','INCOMPLETE','BLOCKED','FAILED_OR_CANCELLED') AND NOT (c."verificationCompletionStatus" IS NOT NULL AND c."verificationSignalVersion">c."verificationHandledSignalVersion")`:Prisma.empty;
-  // Resolve a matching record ID as well as player search without exposing
-  // sensitive provider references or scanning customer evidence/receipts.
-  const chapaSearch=f.q?Prisma.sql`AND (c.id ILIKE ${'%'+f.q+'%'} OR u.id ILIKE ${'%'+f.q+'%'} OR u.name ILIKE ${'%'+f.q+'%'} OR u."telegramId" ILIKE ${'%'+f.q+'%'} OR u."telegramUsername" ILIKE ${'%'+f.q.replace(/^@/,'')+'%'} ${lookup?Prisma.sql`OR EXISTS(SELECT 1 FROM "TelegramOwnContact" t WHERE t."userId"=u.id AND t."phoneHash"=${lookup} AND t."revokedAt" IS NULL)`:Prisma.empty})`:Prisma.empty;
+  // Match the reference shown to the customer without reading provider evidence.
+  const chapaSearch=f.q?Prisma.sql`AND (c."merchantReference"=${f.q} OR c.id ILIKE ${'%'+f.q+'%'} OR u.id ILIKE ${'%'+f.q+'%'} OR u.name ILIKE ${'%'+f.q+'%'} OR u."telegramId" ILIKE ${'%'+f.q+'%'} OR u."telegramUsername" ILIKE ${'%'+f.q.replace(/^@/,'')+'%'} ${lookup?Prisma.sql`OR EXISTS(SELECT 1 FROM "TelegramOwnContact" t WHERE t."userId"=u.id AND t."phoneHash"=${lookup} AND t."revokedAt" IS NULL)`:Prisma.empty})`:Prisma.empty;
   selected.push(Prisma.sql`SELECT c.id,'chapa'::text AS source,c."createdAt",c."amountCents"::numeric/100 AS amount FROM "ChapaCheckout" c JOIN "user" u ON u.id=c."userId" WHERE true ${group} ${f.status?Prisma.sql`AND c.status=${f.status}`:Prisma.empty} ${f.purpose?Prisma.sql`AND c.purpose=${f.purpose}`:Prisma.empty} ${chapaSearch}`);
  }
  if(walletVisible){

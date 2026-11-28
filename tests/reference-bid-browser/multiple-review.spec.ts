@@ -14,10 +14,20 @@ for(const am of [false,true])test(`multiple-bid review preserves draft and mobil
   await center.click();await expect(page.getByRole('dialog')).toHaveCount(1);await expect(page.locator('#quick-auction-panel')).toBeVisible();await page.getByRole('dialog').locator('[data-sheet-close]').click();await expect(page.getByRole('dialog')).toHaveCount(0);
 
   const dialog=await openBid(page,f.title),entry=dialog.locator('[data-bid-step=entry]'),input=entry.locator('input[inputmode=decimal]').first(),primary=dialog.locator('[data-payment-action]');
+  const product=dialog.locator('[data-bid-product-header]');
+  async function expectProduct(){
+   await expect(product.getByRole('heading',{name:f.title,exact:true})).toBeVisible();
+   const photo=product.locator('img');
+   await expect(photo).toHaveAttribute('src',/lowwin-demo-headphones\.webp/);
+   await expect.poll(()=>photo.evaluate((image:HTMLImageElement)=>image.complete&&image.naturalWidth>0)).toBe(true);
+  }
+  await expectProduct();
   const singleQuote=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/payments/chapa/batches/quote');await input.fill('4.25');await primary.click();await expect(dialog.locator('[data-bid-step=payment]')).toBeVisible();await expect(dialog.locator('[data-bid-step=review]')).toHaveCount(0);await(await singleQuote).finished();await expect.poll(()=>f.quoteRequests.length).toBe(1);expect(f.commands).toHaveLength(0);expect(wallet.commands).toHaveLength(0);
+  await expectProduct();
   await dialog.locator('[data-bid-step=payment]').getByRole('button',{name:am?'ያስተካክሉ':'Edit',exact:true}).click();await expect(entry).toBeVisible();await expect(entry.getByRole('button',{name:am?'4.25 ያስወግዱ':'Remove 4.25',exact:true})).toBeVisible();
   // Continue includes a valid number still in the input, once, without requiring Add.
   const multipleQuote=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/payments/chapa/batches/quote');await input.fill('5.50');await primary.click();const review=dialog.locator('[data-bid-step=review]');await expect(review).toBeVisible();await expect(review.getByRole('listitem')).toHaveText(['4.25','5.50']);await expect(dialog.locator('[data-bid-total]')).toContainText('20.00');await expect(dialog.getByRole('radio')).toHaveCount(0);await expect(page.getByRole('dialog')).toHaveCount(1);await(await multipleQuote).finished();await expect.poll(()=>f.quoteRequests.length).toBe(2);expect(f.commands).toHaveLength(0);expect(wallet.commands).toHaveLength(0);
+  await expectProduct();
   await dialog.screenshot({path:info.outputPath(`multiple-review-${am?'am':'en'}.png`),animations:'disabled'});
   await dialog.getByRole('button',{name:am?'ጨረታዎችን ያስተካክሉ':'Edit bids',exact:true}).click();await expect(entry).toBeVisible();await expect(input).toHaveValue('');await expect(entry.getByRole('button',{name:am?'5.50 ያስወግዱ':'Remove 5.50',exact:true})).toBeVisible();await primary.click();await expect(review).toBeVisible();expect(f.quoteRequests).toHaveLength(2);await primary.click();await expect(dialog.locator('[data-bid-step=payment]')).toBeVisible();
   await dialog.getByRole('radio',{name:/^m-pesa$/i}).check();const phone=dialog.locator('input[type=tel]');await phone.fill('0713339196');await expect(primary).toBeEnabled();await expect.poll(()=>f.quoteRequests.length).toBe(2);expect(f.commands).toHaveLength(0);expect(wallet.commands).toHaveLength(0);const quotesBeforeBack=f.quoteRequests.length;

@@ -20,6 +20,15 @@ function expectSteadyAuthorization(html:string){
  for(const absent of ['data-payment-result-actions','data-payment-support-reference','data-payment-connection','Check payment','Retry original request','>Try again</button>'])expect(html).not.toContain(absent);
 }
 describe('shared bid and deposit status surface',()=>{
+ it('uses the updated checkout title before a stale localized auction summary',()=>{
+  const revised={...order,auctionTitle:'Soundcore R50i NC',auctionTitleAm:null};
+  const html=renderToStaticMarkup(createElement(MiniLocaleProvider,{initialLanguage:'am',children:createElement(PaymentProgress,{
+   payment:{...base,order:revised},
+   summary:{auctionTitle:'TECNO Buds 3',auctionTitleAm:'TECNO የጆሮ ማዳመጫ',numbers:['4.25'],total:'35.00',provider:'telebirr',phone:null},
+  })}));
+  expect(html).toContain('Soundcore R50i NC');
+  expect(html).not.toContain('TECNO');
+ });
  it.each(['BID','TOP_UP'] as const)('%s keeps one pending heading and spinner across dispatch, authorization and private fulfillment',purpose=>{
   const stages=[{...base,order:null,busy:true},{...base,order:{...order,status:'SUBMITTING',providerStatus:null,authorizationReference:null} as ChapaCheckoutView},base,{...base,order:{...order,authType:'OTP'} as ChapaCheckoutView},{...base,order:{...order,status:'PENDING',providerStatus:'SUCCESS',verificationState:'VERIFIED'} as ChapaCheckoutView}];
   for(const payment of stages){const html=render(purpose,payment);expect(html.match(/data-payment-panel="persistent"/g)).toHaveLength(1);expect(html.match(/Waiting for authorization…/g)).toHaveLength(1);expectSteadyAuthorization(html);expect(html).not.toContain('Confirming your payment');expect(html).not.toContain('Wallet credited');expect(html).not.toContain('bids accepted');expect(html).not.toContain('role="progressbar"')}
@@ -51,6 +60,28 @@ describe('shared bid and deposit status surface',()=>{
   for(const reason of reasons)for(const am of [false,true]){
    const html=render(purpose,{...base,order:{...order,status:'FAILED',providerStatus:'FAILED',verificationState:'VERIFIED',providerReasonCode:reason.code}},am);
    expect(html.split(am?reason.am:reason.en)).toHaveLength(2);expect(html.match(/data-payment-reason="true"/g)).toHaveLength(1);expect(html).toContain('role="alert"');expect(html).toContain('data-payment-view="result"');expect(html).not.toContain('data-payment-inline-error');expect(html).not.toContain('Your provider could not complete this payment.');expect(html).not.toContain('የክፍያ አቅራቢዎ ይህን ክፍያ ማጠናቀቅ አልቻለም።');expect(html.match(/<button/g)).toHaveLength(2);
+  }
+ });
+ it.each(['BID','TOP_UP'] as const)('%s shows the owned payment reference only on an unsuccessful result',purpose=>{
+  const merchantReference='LWowned-support';
+  const pending={...order,merchantReference};
+  const failed={...pending,status:'FAILED',providerStatus:'FAILED',verificationState:'VERIFIED',verificationUnavailable:false};
+  const credited:ChapaCheckoutView={...pending,status:purpose==='TOP_UP'?'CREDITED':'BID_ACCEPTED',providerStatus:'SUCCESS',verificationState:'VERIFIED',receipt:purpose==='TOP_UP'?null:{
+   bid:{id:'owned-bid',auctionCode:'5',auctionSlug:'owned-auction',amount:'4.25',acceptedAt:order.createdAt,termsVersion:1,feePoints:'35.00'},
+   hold:{previousMax:'0.00',newMax:'0.00',extraReserved:'0.00'},
+   charge:{feePoints:'35.00',newlyUnavailable:'35.00'},
+   wallet:{available:'0.00',held:'0.00'},remainingSubmissions:99,ownBids:[],
+  }};
+  for(const [am,label] of [[false,'Payment reference'],[true,'የክፍያ መለያ']] as const){
+   const html=render(purpose,{...base,order:failed},am);
+   expect(html).toContain(`<dt>${label}</dt>`);
+   expect(html).toContain(`<dd dir="ltr">${merchantReference}</dd>`);
+   expect(html.match(/data-payment-support-reference="true"/g)).toHaveLength(1);
+   expect(html).not.toContain('accepted-request');
+   expect(render(purpose,{...base,order:pending},am)).not.toContain(merchantReference);
+   const successful=render(purpose,{...base,order:credited},am);
+   expect(successful).toContain('data-payment-progress="success"');
+   expect(successful).not.toContain(merchantReference);
   }
  });
  it('keeps the original attempt and steady authorization through local expiry without exposing support diagnostics',()=>{

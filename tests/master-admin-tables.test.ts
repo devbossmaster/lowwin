@@ -41,6 +41,17 @@ describe('Master Guide Admin bounded tables',()=>{
   const result=await readPlayerTable(db as unknown as PrismaClient,actor,f);
   expect(result.items.map(row=>row.phone)).toEqual([null,null]);expect(state.decrypt).not.toHaveBeenCalled();
  });
+ it('matches a customer-supplied payment reference exactly in the failed payments view',async()=>{
+  const db=paymentDb();
+  const reference='LWowned-support';
+  await readChapaTable(db as unknown as PrismaClient,actor,{...f,q:reference,view:'failed'});
+  expect(db.$queryRaw).toHaveBeenCalledTimes(2);
+  for(const [query] of db.$queryRaw.mock.calls){
+   expect(query.text).toMatch(/c\."merchantReference"=\$1/);
+   expect(query.values[0]).toBe(reference);
+   expect(query.text).not.toContain('chapaReference');
+  }
+ });
  it('keeps wallet storage available without querying absent Chapa tables',async()=>{
   vi.stubEnv('CHAPA_SCHEMA_READY','false');const db=paymentDb();
   expect(await readChapaTable(db as unknown as PrismaClient,actor,f)).toMatchObject({configured:true,chapaConfigured:false,items:[],summary:[]});
