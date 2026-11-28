@@ -2,6 +2,9 @@
 export const LOWWIN_LOGO_SRC='/images/lowwin-ribbon-l-blue-20261114-v2.webp';
 export const LOWWIN_ICON_SRC='/images/lowwin-ribbon-l-icon-20261114-v2.png';
 export const LOWWIN_BRAND_NAME='LowWin';
+export const LOWWIN_BODY_FONT_SRC='/fonts/dm-sans-latin-variable.woff2';
+export const LOWWIN_DISPLAY_FONT_SRC='/fonts/outfit-latin-variable.woff2';
+export const LOWWIN_ETHIOPIC_FONT_SRC='/fonts/noto-sans-ethiopic-variable.woff2';
 export const LOWWIN_TIKTOK_URL='https://www.tiktok.com/@lowwin23';
 export const LOWWIN_BANNER_SRC={en:'/images/lowwin-pearl-banner-en-20261116.webp',am:'/images/lowwin-pearl-banner-am-20261116.webp'} as const;
 /** The Home banner follows its own reference proportions. */

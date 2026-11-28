@@ -25,7 +25,7 @@ Deposit offers are disabled by default. Authorized staff can configure 10–100%
 
 ## Brand and experience
 
-Use the supplied Lowwin logo. The latest November 13 direction uses white/soft-gray surfaces, charcoal/slate text and blue primary buttons. Violet remains the brand accent; yellow/gold highlights deposit offers. Self-host Inter variable for English and keep the existing Ethiopic font for Amharic. Home, Winners, My Bids, Transactions and Profile form the five-item navigation. There is no Deposit navigation action. Real finalized and explicitly published settlement records supply public results. Winner identities are masked; no public winner stories or photos exist without a separate consent and moderation workflow.
+Use the supplied Lowwin logo. The latest November 13 direction uses white/soft-gray surfaces, charcoal/slate text and blue primary buttons. Violet remains the brand accent; yellow/gold highlights deposit offers. Self-host Outfit for Latin headings and DM Sans for Latin body text, with Noto Sans Ethiopic for Amharic. Home, Winners, My Bids, Transactions and Profile form the five-item navigation. There is no Deposit navigation action. Real finalized and explicitly published settlement records supply public results. Winner identities are masked; no public winner stories or photos exist without a separate consent and moderation workflow.
 
 ## Release boundary
 

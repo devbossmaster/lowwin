@@ -5,7 +5,7 @@ import {miniReturnPath} from '@/lib/mini-return';
 import {customerLoginPath} from '@/lib/customer-login-entry';
 import {resolveLearnMoreMedia} from '@/lib/learn-more-media';
 import {isPublicMiniPage,isPublicMiniRead} from '@/lib/mini-public-routes';
-import {LOWWIN_BANNER_SRC,LOWWIN_HOME_BANNER_SRC,LOWWIN_HOME_MOBILE_BANNER_SRC,LOWWIN_ICON_SRC,LOWWIN_LOGO_SRC} from '@/lib/brand';
+import {LOWWIN_BANNER_SRC,LOWWIN_BODY_FONT_SRC,LOWWIN_DISPLAY_FONT_SRC,LOWWIN_ETHIOPIC_FONT_SRC,LOWWIN_HOME_BANNER_SRC,LOWWIN_HOME_MOBILE_BANNER_SRC,LOWWIN_ICON_SRC,LOWWIN_LOGO_SRC} from '@/lib/brand';
 import {referralCodeFromParams} from '@/lib/referral-invite';
 import {sealWebsiteReferral,WEBSITE_REFERRAL_COOKIE,WEBSITE_REFERRAL_COOKIE_MAX_AGE} from '@/modules/referrals/website-cookie';
 
@@ -24,6 +24,13 @@ const publicAssets=new Set(['/images/lowwin-logo-20261030.webp','/images/lowwin-
 guardedApis.add('/api/referrals');
 guardedApis.add('/api/referrals/telegram-share');
 publicAssets.add('/images/lowwin-referral-share-20261119.jpg');
+publicAssets.add(LOWWIN_BODY_FONT_SRC);
+publicAssets.add(LOWWIN_DISPLAY_FONT_SRC);
+
+const standaloneTypography=`@font-face{font-family:'DM Sans';src:url('${LOWWIN_BODY_FONT_SRC}') format('woff2');font-weight:100 900;font-display:swap}
+@font-face{font-family:'Outfit';src:url('${LOWWIN_DISPLAY_FONT_SRC}') format('woff2');font-weight:100 900;font-display:swap}
+@font-face{font-family:'Lowwin Ethiopic';src:url('${LOWWIN_ETHIOPIC_FONT_SRC}') format('woff2');font-weight:100 900;font-display:swap;unicode-range:U+030E,U+1200-1399,U+2D80-2DDE,U+AB01-AB2E,U+1E7E0-1E7FE}
+body{font-family:'DM Sans','Lowwin Ethiopic',system-ui,sans-serif}h1,strong{font-family:'Outfit','Lowwin Ethiopic',system-ui,sans-serif}`;
 
 export async function proxy(request:NextRequest) {
   const path=request.nextUrl.pathname;
@@ -78,12 +85,12 @@ export async function proxy(request:NextRequest) {
   // The retired catalogue still returns a real 404 for signed-in players.
   if(allowed&&path==='/auctions/all'){
     const am=request.cookies.get('lowwin-language')?.value!=='en';
-    return new NextResponse(`<!doctype html><html lang="${am?'am':'en'}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>404 · LowWin</title><style>@font-face{font-family:Inter;src:url('/fonts/inter-latin-variable.woff2')}@font-face{font-family:Ethiopic;src:url('/fonts/noto-sans-ethiopic-variable.woff2')}body{margin:0;min-height:100dvh;display:grid;place-items:center;background:#f2f2f7;color:#16202c;font:15px/1.6 Inter,Ethiopic,sans-serif}main{max-width:400px;padding:32px;text-align:center}strong{color:#1e40af}h1{font-size:26px;line-height:1.4}a{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:0 24px;margin-top:12px;border-radius:24px;background:#2563eb;color:#fff;text-decoration:none;font-weight:600}a:focus-visible{outline:2px solid #1e40af;outline-offset:4px}</style><main><strong>LowWin</strong><h1>${am?'ይህ ገጽ አልተገኘም':'Page not found'}</h1><p>${am?'ያሉትን ጨረታዎች ከመነሻ ገጽ ይመልከቱ።':'Browse current auctions from Home.'}</p><a href="/">${am?'ወደ መነሻ ገጽ':'Return Home'}</a></main></html>`,{status:404,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'private, no-store','Vary':'Cookie','X-Robots-Tag':'noindex'}});
+    return new NextResponse(`<!doctype html><html lang="${am?'am':'en'}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>404 · LowWin</title><style>${standaloneTypography}body{margin:0;min-height:100dvh;display:grid;place-items:center;background:#f2f2f7;color:#16202c;font-size:15px;line-height:1.6}main{max-width:400px;padding:32px;text-align:center}strong{color:#1e40af}h1{font-size:26px;line-height:1.4}a{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:0 24px;margin-top:12px;border-radius:24px;background:#2563eb;color:#fff;text-decoration:none;font-weight:600}a:focus-visible{outline:2px solid #1e40af;outline-offset:4px}</style><main><strong>LowWin</strong><h1>${am?'ይህ ገጽ አልተገኘም':'Page not found'}</h1><p>${am?'ያሉትን ጨረታዎች ከመነሻ ገጽ ይመልከቱ።':'Browse current auctions from Home.'}</p><a href="/">${am?'ወደ መነሻ ገጽ':'Return Home'}</a></main></html>`,{status:404,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'private, no-store','Vary':'Cookie','X-Robots-Tag':'noindex'}});
   }
   const destination=miniReturnPath(path+request.nextUrl.search),entryUrl=new URL(staffPage?'/admin':customerLoginPath(destination),request.url);
   // An unavailable database is not an invalid login. Keep access closed, but
   // let API clients offer Retry instead of treating a live session as signed out.
-  const response=allowed?NextResponse.next():path.startsWith('/api/')?NextResponse.json({error:unavailable?'Connection interrupted. Please retry.':'Log in with Telegram to continue.'},{status:unavailable?503:401}):unavailable?new NextResponse('<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Try again | Lowwin</title><body style="margin:0;min-height:100dvh;display:grid;place-items:center;background:#f2f2f7;color:#16202c;font-family:system-ui,sans-serif"><main style="padding:32px;text-align:center"><h1 style="font-size:28px">Connection busy</h1><p>Please try again.</p><a href="" style="display:inline-flex;align-items:center;justify-content:center;min-height:48px;min-width:130px;border-radius:12px;background:#2563eb;color:#fff;text-decoration:none;font-weight:600">Retry</a></main></body></html>',{status:503,headers:{'Content-Type':'text/html; charset=utf-8'}}):NextResponse.redirect(entryUrl,{status:request.method==='GET'||request.method==='HEAD'?307:303});
+  const response=allowed?NextResponse.next():path.startsWith('/api/')?NextResponse.json({error:unavailable?'Connection interrupted. Please retry.':'Log in with Telegram to continue.'},{status:unavailable?503:401}):unavailable?new NextResponse(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Try again | Lowwin</title><style>${standaloneTypography}</style><body style="margin:0;min-height:100dvh;display:grid;place-items:center;background:#f2f2f7;color:#16202c"><main style="padding:32px;text-align:center"><h1 style="font-size:28px">Connection busy</h1><p>Please try again.</p><a href="" style="display:inline-flex;align-items:center;justify-content:center;min-height:48px;min-width:130px;border-radius:12px;background:#2563eb;color:#fff;text-decoration:none;font-weight:600">Retry</a></main></body></html>`,{status:503,headers:{'Content-Type':'text/html; charset=utf-8'}}):NextResponse.redirect(entryUrl,{status:request.method==='GET'||request.method==='HEAD'?307:303});
   if(unavailable)response.headers.set('Retry-After','5');
   response.headers.set('Cache-Control','private, no-store, max-age=0');
   response.headers.set('Vary','Cookie');

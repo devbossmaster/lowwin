@@ -5,7 +5,7 @@ import {MiniIdentityBoundary} from '@/components/mini-identity-boundary';
 import {assertLocalIdentitySurface} from '@/modules/auth/local-identity';
 import {browserAccountBootstrap} from '@/modules/auth/customer-page';
 import {browserLoginConfig,TELEGRAM_BROWSER_RESTORE_COOKIE} from '@/modules/auth/telegram-login';
-import {LOWWIN_ICON_SRC} from '@/lib/brand';
+import {LOWWIN_BODY_FONT_SRC,LOWWIN_DISPLAY_FONT_SRC,LOWWIN_ETHIOPIC_FONT_SRC,LOWWIN_ICON_SRC} from '@/lib/brand';
 import './globals.css';
 import '@/components/mini-redesign.css';
 import '@/components/lowwin-brand.css';
@@ -21,6 +21,6 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // still requires actual Telegram init data.
   const initialAccount=!devEnabled&&requestHeaders.get('sec-fetch-dest')==='document'&&requestCookies.get(TELEGRAM_BROWSER_RESTORE_COOKIE)?.value==='1'?browserAccountBootstrap():undefined;
   const name=process.env.TELEGRAM_BOT_USERNAME,botUrl=name&&/^[A-Za-z0-9_]+bot$/i.test(name)?`https://t.me/${name}?start=lowin`:null;
-  const font=language==='am'?'/fonts/noto-sans-ethiopic-variable.woff2':'/fonts/inter-latin-variable.woff2';
-  return <html lang={language} suppressHydrationWarning><head><link rel="preload" as="font" href={font} type="font/woff2" crossOrigin="anonymous"/></head><body><MiniLocaleProvider initialLanguage={language}><a className="skip-link" href="#main"><MiniPhrase en="Skip to content" am="ወደ ዋናው ይዘት ይሂዱ"/></a><MiniIdentityBoundary devEnabled={devEnabled} botUrl={botUrl} browserLogin={browserLoginConfig()} initialAccount={initialAccount}>{children}</MiniIdentityBoundary></MiniLocaleProvider></body></html>;
+  const headingFont=language==='am'?LOWWIN_ETHIOPIC_FONT_SRC:LOWWIN_DISPLAY_FONT_SRC;
+  return <html lang={language} suppressHydrationWarning><head><link rel="preload" as="font" href={headingFont} type="font/woff2" crossOrigin="anonymous"/><link rel="preload" as="font" href={LOWWIN_BODY_FONT_SRC} type="font/woff2" crossOrigin="anonymous"/></head><body><MiniLocaleProvider initialLanguage={language}><a className="skip-link" href="#main"><MiniPhrase en="Skip to content" am="ወደ ዋናው ይዘት ይሂዱ"/></a><MiniIdentityBoundary devEnabled={devEnabled} botUrl={botUrl} browserLogin={browserLoginConfig()} initialAccount={initialAccount}>{children}</MiniIdentityBoundary></MiniLocaleProvider></body></html>;
 }

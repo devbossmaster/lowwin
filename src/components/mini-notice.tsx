@@ -59,7 +59,7 @@ export function MiniSheetToaster({id}:{id:string}){
     if(event.key!=='Escape'||!(event.target instanceof Element))return;
     const notice=event.target.closest('[data-sonner-toast]'),dismiss=notice?.querySelector<HTMLButtonElement>('[data-close-button]');
     if(dismiss){event.preventDefault();event.stopPropagation();dismiss.click();restoreFocus(event.currentTarget)}
-  }}><Toaster id={id} className={styles.sheetToaster} position="top-center" hotkey={[]} closeButton visibleToasts={2} duration={5000} offset={12} mobileOffset={12} containerAriaLabel={am?'ማሳወቂያዎች':'Notifications'} toastOptions={{style:{fontFamily:"'Inter', 'Lowwin Ethiopic', sans-serif"},closeButtonAriaLabel:am?'ማሳወቂያውን ዝጋ':'Dismiss notification'}}/></div>;
+  }}><Toaster id={id} className={styles.sheetToaster} position="top-center" hotkey={[]} closeButton visibleToasts={2} duration={5000} offset={12} mobileOffset={12} containerAriaLabel={am?'ማሳወቂያዎች':'Notifications'} toastOptions={{style:{fontFamily:'var(--font-sans)'},closeButtonAriaLabel:am?'ማሳወቂያውን ዝጋ':'Dismiss notification'}}/></div>;
 }
 
 export function MiniNoticeProvider({children}:{children:React.ReactNode}){
@@ -69,5 +69,5 @@ export function MiniNoticeProvider({children}:{children:React.ReactNode}){
   if(!routing.current)routing.current=createMiniNoticeRouting({show:(message,kind,options)=>toast[kind](message,options),dismiss:id=>{toast.dismiss(id)}},setActiveTarget);
   useEffect(()=>()=>{toast.dismiss()},[]);
   const top='calc(16px + env(safe-area-inset-top, 0px) + var(--tg-content-safe-area-inset-top, 0px))';
-  return <NoticeContext.Provider value={routing.current.notify}><NoticeTargetContext.Provider value={routing.current.activate}>{children}</NoticeTargetContext.Provider><Toaster className={styles.pageToaster} position="top-right" hotkey={activeTarget?[]:undefined} closeButton richColors visibleToasts={2} duration={5000} offset={{top}} mobileOffset={{top}} containerAriaLabel={am?'ማሳወቂያዎች':'Notifications'} toastOptions={{style:{fontFamily:"'Inter', 'Lowwin Ethiopic', sans-serif",fontSize:13},closeButtonAriaLabel:am?'ማሳወቂያውን ዝጋ':'Dismiss notification'}}/></NoticeContext.Provider>;
+  return <NoticeContext.Provider value={routing.current.notify}><NoticeTargetContext.Provider value={routing.current.activate}>{children}</NoticeTargetContext.Provider><Toaster className={styles.pageToaster} position="top-right" hotkey={activeTarget?[]:undefined} closeButton richColors visibleToasts={2} duration={5000} offset={{top}} mobileOffset={{top}} containerAriaLabel={am?'ማሳወቂያዎች':'Notifications'} toastOptions={{style:{fontFamily:'var(--font-sans)',fontSize:13},closeButtonAriaLabel:am?'ማሳወቂያውን ዝጋ':'Dismiss notification'}}/></NoticeContext.Provider>;
 }

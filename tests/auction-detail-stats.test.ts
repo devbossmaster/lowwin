@@ -45,7 +45,7 @@ describe('public auction total accepted bids',()=>{
   expect(html).not.toContain('href="/terms"');
   expect(html.indexOf('<h1>Power bank</h1>')).toBeLessThan(html.indexOf('Fee per bid'));
   expect(html.indexOf('Auction code')).toBeLessThan(html.indexOf('Fee per bid'));
-  expect(html).toMatch(/<dt>Views<\/dt><dd>.*?<strong>100<\/strong><\/dd>/);
+  expect(html).toMatch(/data-auction-views="true"><dt class="sr-only">Views<\/dt><dd>.*?<span>100<\/span><\/dd>/);
   expect(html).not.toContain('category=accessories');
   expect(html.indexOf('Fee per bid')).toBeLessThan(html.indexOf('More chances'));
   expect(html.indexOf('Total bids')).toBeLessThan(html.indexOf('More chances'));

@@ -71,15 +71,17 @@ export function AuctionDetail({auction:initialAuction,serverNow,publishedResult=
     <AuctionGallery images={auction.product.images} title={title} isDemo={auction.isDemo} priority sizes="(max-width: 460px) 100vw, 460px" status={<span className={styles.status}><i aria-hidden="true"/><MiniPhrase en={statusEn} am={statusAm}/></span>}/>
    </div>
    <header className={styles.intro}>
-    <h1>{title}</h1>
+    <div className={styles.titleRow}>
+     <h1>{title}</h1>
+     <dl className={styles.views} data-auction-views>
+      <dt className="sr-only"><MiniPhrase en="Views" am="እይታዎች"/></dt>
+      <dd><Eye size={15} aria-hidden="true"/><span>{BigInt(auction.viewCount).toLocaleString()}</span></dd>
+     </dl>
+    </div>
     <dl className={styles.metrics} aria-label={activityLabel} data-auction-facts>
      <div>
       <dt><MiniPhrase en="Total bids" am="ጠቅላላ ጨረታዎች"/></dt>
       <dd><Users size={15} aria-hidden="true"/><strong>{auction.result?.source==='ILLUSTRATIVE'?'—':auction.bidCount.toLocaleString()}</strong></dd>
-     </div>
-     <div>
-      <dt><MiniPhrase en="Views" am="እይታዎች"/></dt>
-      <dd><Eye size={15} aria-hidden="true"/><strong>{BigInt(auction.viewCount).toLocaleString()}</strong></dd>
      </div>
      <div>
       <dt><MiniPhrase en="Auction code" am="የጨረታ ኮድ"/></dt>

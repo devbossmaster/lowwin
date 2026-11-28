@@ -1,8 +1,9 @@
 'use client';
 
-import {createContext,useContext,useEffect,useId,useRef,useState,type ReactNode,type RefObject} from 'react';
+import {createContext,useContext,useId,useLayoutEffect,useRef,useState,type ReactNode,type RefObject} from 'react';
 import {createPortal} from 'react-dom';
 import {X} from 'lucide-react';
+import {animate} from 'motion/mini';
 import {useMiniLocale} from './mini-locale';
 import styles from './account-sheet.module.css';
 import {useSheetBack} from './use-sheet-back';
@@ -15,11 +16,12 @@ export function AccountSheet({title,onClose,onBack,onBeforeClose,children,footer
   const dismissSheet=useSheetBack(onClose,onBack);
   const dismiss=()=>{if(!onBeforeClose?.())dismissSheet()};
   const dialog=useRef<HTMLDialogElement>(null),closeButton=useRef<HTMLButtonElement>(null),close=useRef(onClose),titleId=useId();
+  const entrance=useRef<ReturnType<typeof animate>|null>(null);
   const {language}=useMiniLocale();
   const noticeId=`lowwin-sheet-${titleId}`,activateNotices=useMiniNoticeTarget(noticeId);
   const [footerTarget,setFooterTarget]=useState<HTMLElement|null>(null);
   close.current=dismiss;
-  useEffect(()=>{
+  useLayoutEffect(()=>{
     const element=dialog.current,previous=document.activeElement as HTMLElement|null;
     const scroll=document.body.style.overflow,initialHeight=window.innerHeight;
     element?.showModal();const deactivateNotices=activateNotices();document.body.style.overflow='hidden';closeButton.current?.focus({preventScroll:true});
@@ -39,8 +41,16 @@ export function AccountSheet({title,onClose,onBack,onBeforeClose,children,footer
       });
     };
     fitViewport();window.addEventListener('resize',fitViewport);viewport?.addEventListener('resize',fitViewport);element?.addEventListener('focusin',fitViewport);
-    return()=>{deactivateNotices();cancelAnimationFrame(frame);window.removeEventListener('resize',fitViewport);viewport?.removeEventListener('resize',fitViewport);element?.removeEventListener('focusin',fitViewport);element?.close();document.body.style.overflow=scroll;requestAnimationFrame(()=>{const target=returnFocusRef?.current??previous;if(target?.isConnected)target.focus({preventScroll:true})})};
+    if(element&&element.dataset.presentation!=='centered'&&typeof element.animate==='function'&&'translate' in element.style&&!window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+      entrance.current=animate(element,{translate:['0 100%','0 0%']},{duration:0.24,ease:[0.22,1,0.36,1],onComplete:()=>{
+        element.style.removeProperty('translate');entrance.current=null;
+      }});
+    }
+    return()=>{entrance.current?.cancel();entrance.current=null;deactivateNotices();cancelAnimationFrame(frame);window.removeEventListener('resize',fitViewport);viewport?.removeEventListener('resize',fitViewport);element?.removeEventListener('focusin',fitViewport);element?.close();document.body.style.overflow=scroll;requestAnimationFrame(()=>{const target=returnFocusRef?.current??previous;if(target?.isConnected)target.focus({preventScroll:true})})};
   },[activateNotices]);
+  useLayoutEffect(()=>{
+    if(presentation==='centered'&&entrance.current){entrance.current.cancel();entrance.current=null}
+  },[presentation]);
   return <dialog ref={dialog} className={styles.sheet} data-size={size} data-layout={layout} data-presentation={presentation} aria-labelledby={titleId} onCancel={event=>{event.preventDefault();close.current()}} onClick={event=>{if(event.target===event.currentTarget){const box=event.currentTarget.getBoundingClientRect();if(event.clientX<box.left||event.clientX>box.right||event.clientY<box.top||event.clientY>box.bottom)close.current()}}}>
     <div className={styles.handle} aria-hidden="true"/>
     <header className={styles.header}><h2 id={titleId}>{title}</h2><div className={styles.headerActions}>{headerActions}<button ref={closeButton} type="button" onClick={dismiss} data-sheet-close aria-label={language==='am'?'ዝጋ':'Close'}><X size={19} aria-hidden="true"/></button></div></header>

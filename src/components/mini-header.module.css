@@ -35,7 +35,7 @@
 
 /* Compact painted controls keep the reference's single-row proportions. */
 .accountControls{display:contents}
-.brand{gap:7px}.brand img{width:30px;height:30px;border-radius:23%}.brandName{font-size:17px;font-weight:700;letter-spacing:-.025em}.brandName,.balanceAmount,.balance small{font-family:'Inter',sans-serif}
+.brand{gap:7px}.brand img{width:30px;height:30px;border-radius:23%}.brandName{font-family:var(--font-display);font-size:17px;font-weight:700;letter-spacing:-.025em}
 .header{padding-top:calc(4px + var(--mini-safe-top,0px) + var(--tg-content-safe-area-inset-top,0px));padding-bottom:4px;gap:4px}
 .actions{gap:0}
 .header .icon::before{inset:6px}

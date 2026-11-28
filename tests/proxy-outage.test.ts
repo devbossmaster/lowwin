@@ -11,12 +11,13 @@ describe('private access during database outages',()=>{
     expect(access.getMiniSession).not.toHaveBeenCalled();access.getMiniSession.mockResolvedValue(null);
     for(const path of ['/images/how-it-works/private.svg','/images/how-it-works/choose-number.svg/private'])expect((await proxy(new NextRequest('http://localhost'+path))).status).toBe(307);
   });
-  it('serves the exact self-hosted Inter font without widening private asset access',async()=>{
+  it('serves the exact self-hosted fonts without widening private asset access',async()=>{
     access.getMiniSession.mockRejectedValue(Error('Database unavailable'));
-    for(const method of ['GET','HEAD'])expect((await proxy(new NextRequest('http://localhost/fonts/inter-latin-variable.woff2',{method}))).headers.get('x-middleware-next')).toBe('1');
+    const files=['inter-latin-variable.woff2','noto-sans-ethiopic-variable.woff2','dm-sans-latin-variable.woff2','outfit-latin-variable.woff2'];
+    for(const filename of files)for(const method of ['GET','HEAD'])expect((await proxy(new NextRequest(`http://localhost/fonts/${filename}`,{method}))).headers.get('x-middleware-next')).toBe('1');
     expect(access.getMiniSession).not.toHaveBeenCalled();
     access.getMiniSession.mockResolvedValue(null);
-    for(const path of ['/fonts/inter-latin-variable.woff2/private','/fonts/private-inter.woff2'])expect((await proxy(new NextRequest('http://localhost'+path))).status).toBe(307);
+    for(const path of [...files.map(filename=>`/fonts/${filename}/private`),'/fonts/private-inter.woff2'])expect((await proxy(new NextRequest('http://localhost'+path))).status).toBe(307);
   });
   it('serves the public November hero during an auth outage without exposing nearby private paths',async()=>{
     access.getMiniSession.mockRejectedValue(Error('Database unavailable'));
