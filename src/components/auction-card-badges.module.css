@@ -1,25 +1,5 @@
 .views{position:absolute;top:12px;right:12px;z-index:2;display:inline-flex;align-items:center;gap:5px;min-height:26px;max-width:calc(50% - 18px);padding:5px 8px;border-radius:16px;background:#fff;color:#302b1c;font-size:11px;font-weight:650;font-variant-numeric:tabular-nums;line-height:1;pointer-events:none}
 .views svg{flex:none}.count{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.artFrame{
- position:absolute;inset:0;overflow:hidden;border:3px solid var(--action-primary,#2563eb);
- border-radius:inherit;pointer-events:none;
-}
-@supports(mask-composite:exclude){
- .artFrame{
-  border:0;padding:3px;
-  mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
-  mask-composite:exclude;
- }
- .artFrame::before{
-  content:'';position:absolute;top:50%;left:50%;width:150%;aspect-ratio:1;
-  background:conic-gradient(from 30deg,#2865f5,#0d1834 12%,#9155ef 23%,#f04467 34%,#ffbf4d 48%,#24d4a0 64%,#28b9ef 82%,#2865f5);
-  transform:translate(-50%,-50%);
- }
- @media(prefers-reduced-motion:no-preference){
-  .artFrame[data-frame-animated]::before{animation:artFrameOrbit 12s linear infinite}
- }
-}
-@keyframes artFrameOrbit{to{transform:translate(-50%,-50%) rotate(1turn)}}
 .card :global(.demo-ribbon){top:45px}
 /* Layout stays on the card body so an open bid sheet is never affected. */
 .card:global(.auction-card)>:global(.auction-card-body){padding:16px 12px 8px}

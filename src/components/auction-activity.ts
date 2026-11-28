@@ -69,7 +69,7 @@ export function useAuctionActivity(code:string,{element,record=false}:{element?:
  },[record,visible,recordView]);
  const refreshActivity=useCallback(()=>schedule(0),[]);
  const activity=value?.code===code?value:null,views=recorded?.code===code?recorded.views:null;
- return {activity,views:activity&&views?(BigInt(activity.views)>BigInt(views)?activity.views:views):activity?.views??views,visible,recordView,refreshActivity};
+ return {activity,views:activity&&views?(BigInt(activity.views)>BigInt(views)?activity.views:views):activity?.views??views,recordView,refreshActivity};
 }
 
 /** Fetch the canonical page once public settlement or the auction phase changes. */
