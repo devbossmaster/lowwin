@@ -112,6 +112,10 @@ describe.skipIf(!database)('Master Guide Admin on disposable PostgreSQL',()=>{
   expect(await unfeature.json()).toMatchObject({featured:false,homeOrder:null});
   expect(await home()).toEqual([soon.publicCode,later.publicCode]);
 
+  const occupying=await db.auction.findUniqueOrThrow({where:{id:later.id}});
+  const reserved=await submit('homeOrder',{...input,key:randomUUID(),version:occupying.controlVersion,homeOrder:10});
+  expect(reserved.status,await reserved.clone().text()).toBe(200);
+
   const product=await db.product.create({data:{slug:marker,title:marker,description:'Fixture product',condition:'New',categoryId:soon.categoryId!,images:{create:{path:'/catalog/accessory.svg',alt:'Fixture product photo',sourceType:'ORIGINAL'}}}});
   const now=Date.now();
   const draft=await submit('draft',{key:randomUUID(),version:0,body:{productId:product.id,startsAt:new Date(now+3600000).toISOString(),endsAt:new Date(now+7200000).toISOString(),minPoints:'1.00',stepPoints:'0.01',entryFeePoints:'1',fulfillmentSummary:'Fixture delivery',fulfillmentRegion:'Addis Ababa',homeOrder:10,featured:true}});
@@ -120,12 +124,58 @@ describe.skipIf(!database)('Master Guide Admin on disposable PostgreSQL',()=>{
   expect(stored.draft.body.homeOrder).toBe(10);
   const published=await submit('publish',{key:randomUUID(),auctionId:stored.auctionId,version:stored.draft.version});
   expect(published.status,await published.clone().text()).toBe(200);
+  expect(await published.json()).toMatchObject({movedAuctions:[{auctionId:later.id,homeOrder:11}]});
   const scheduled=await db.auction.findUniqueOrThrow({where:{id:stored.auctionId}});
   expect(scheduled).toMatchObject({status:'SCHEDULED',homeOrder:10,featured:true});
   const unfeaturedDraft=await submit('homeOrder',{key:randomUUID(),auctionId:scheduled.id,version:scheduled.controlVersion,homeOrder:10,featured:false});
   expect(unfeaturedDraft.status).toBe(200);
   expect(await unfeaturedDraft.json()).toMatchObject({homeOrder:10,featured:false});
   expect(await db.auction.findUnique({where:{id:scheduled.id}})).toMatchObject({homeOrder:10,featured:false});
+ });
+ it('makes room for a requested Home rank and audits every displaced auction',async()=>{
+  const {POST}=await import('../src/app/api/admin/[...path]/route');
+  const {GET:catalog}=await import('../src/app/api/catalog/auctions/route');
+  const marker=`home-rank-${randomUUID().slice(0,8)}`;
+  const [first,second,unranked]=await Promise.all([1,2,3].map(hours=>bidAuction(db,{ruleVersion:'lowest-unique-v5',fee:1,isDemo:false,endDelayMs:hours*3600000})));
+  await db.product.updateMany({where:{id:{in:[first.productId!,second.productId!,unranked.productId!]}},data:{title:marker}});
+  await db.auction.update({where:{id:first.id},data:{homeOrder:201,featured:true}});
+  await db.auction.update({where:{id:second.id},data:{homeOrder:202}});
+  const submit=(input:Record<string,unknown>)=>POST(new Request(origin+'/api/admin/command',{method:'POST',headers:{cookie,origin,'content-type':'application/json'},body:JSON.stringify({action:'homeOrder',input})}),{params:Promise.resolve({path:['command']})});
+  const home=async()=>{
+   const response=await catalog(new Request(origin+'/api/catalog/auctions?'+new URLSearchParams({view:'home',q:marker})));
+   expect(response.status).toBe(200);
+   return (await response.json()).items.map((item:{code:string})=>Number(item.code));
+  };
+  expect(await home()).toEqual([first.publicCode,second.publicCode,unranked.publicCode]);
+
+  const input={key:randomUUID(),auctionId:unranked.id,version:unranked.controlVersion,homeOrder:201};
+  const inserted=await submit(input);
+  expect(inserted.status,await inserted.clone().text()).toBe(200);
+  const receipt=await inserted.json();
+  expect(receipt).toMatchObject({homeOrder:201,movedAuctions:[
+   {auctionId:first.id,homeOrder:202,controlVersion:first.controlVersion+1},
+   {auctionId:second.id,homeOrder:203,controlVersion:second.controlVersion+1},
+  ]});
+  expect(await (await submit(input)).json()).toEqual(receipt);
+  expect((await submit({key:randomUUID(),auctionId:first.id,version:first.controlVersion,homeOrder:205})).status).toBe(409);
+  expect(await home()).toEqual([unranked.publicCode,first.publicCode,second.publicCode]);
+
+  const swapped=await submit({...input,key:randomUUID(),version:receipt.controlVersion,homeOrder:203});
+  expect(swapped.status,await swapped.clone().text()).toBe(200);
+  expect(await swapped.json()).toMatchObject({homeOrder:203,movedAuctions:[{auctionId:second.id,homeOrder:201,controlVersion:second.controlVersion+2}]});
+  expect(await home()).toEqual([second.publicCode,first.publicCode,unranked.publicCode]);
+  expect(await db.auctionControlRevision.findMany({where:{auctionId:second.id},orderBy:{version:'asc'}})).toEqual([
+   expect.objectContaining({actorId:userId,kind:'PRESENTATION',before:{homeOrder:202,featured:false},after:{homeOrder:203,featured:false}}),
+   expect.objectContaining({actorId:userId,kind:'PRESENTATION',before:{homeOrder:203,featured:false},after:{homeOrder:201,featured:false}}),
+  ]);
+ });
+ it('serializes concurrent claims for the same Home rank',async()=>{
+  const {POST}=await import('../src/app/api/admin/[...path]/route');
+  const auctions=await Promise.all([1,2].map(hours=>bidAuction(db,{ruleVersion:'lowest-unique-v5',fee:1,isDemo:false,endDelayMs:hours*3600000})));
+  const responses=await Promise.all(auctions.map(auction=>POST(new Request(origin+'/api/admin/command',{method:'POST',headers:{cookie,origin,'content-type':'application/json'},body:JSON.stringify({action:'homeOrder',input:{key:randomUUID(),auctionId:auction.id,version:auction.controlVersion,homeOrder:301}})}),{params:Promise.resolve({path:['command']})})));
+  for(const response of responses)expect(response.status,await response.clone().text()).toBe(200);
+  const rows=await db.auction.findMany({where:{id:{in:auctions.map(auction=>auction.id)}},orderBy:{homeOrder:'asc'}});
+  expect(rows.map(row=>row.homeOrder)).toEqual([301,302]);
  });
  it('opens an upcoming auction sooner through an audited, versioned start-time change',async()=>{
   const {POST,GET}=await import('../src/app/api/admin/[...path]/route');

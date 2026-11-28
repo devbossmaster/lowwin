@@ -1,19 +1,20 @@
 'use client';
 import {useState} from 'react';
-import {centsToEtb,etbToCents,ErrorNotice,useAdminMutation} from './admin-ui';
+import {etbToCents,ErrorNotice,useAdminMutation} from './admin-ui';
+import {notifyAdminAction} from './admin-action-toast';
 
 export function AdminAddFunds({depositId,name,reference=''}:{depositId:string;name:string;reference?:string}){
- const m=useAdminMutation('payments'),[open,setOpen]=useState(false),[amount,setAmount]=useState(''),[reason,setReason]=useState(''),[transactionId,setTransactionId]=useState(reference),[error,setError]=useState(''),[credited,setCredited]=useState('');
+ const m=useAdminMutation('payments'),[open,setOpen]=useState(false),[amount,setAmount]=useState(''),[reason,setReason]=useState(''),[transactionId,setTransactionId]=useState(reference),[error,setError]=useState(''),[credited,setCredited]=useState(false);
  async function submit(){
   setError('');
   try{
    const amountCents=etbToCents(amount);
    if(BigInt(amountCents)<1n||BigInt(amountCents)>1000000n)throw Error('Enter an amount from ETB 0.01 to ETB 10,000.');
    const result=await m.run<{amountCents:string}>('add-funds',{id:depositId,amountCents,reason,reference:transactionId});
-   if(result){setCredited(centsToEtb(result.amountCents));setOpen(false)}
+   if(result){setCredited(true);notifyAdminAction('Funds added to the player’s wallet.')}
   }catch(e){setError(e instanceof Error?e.message:'Check the amount.')}
  }
- if(credited)return <p className="admin-notice" role="status">ETB {credited} added to {name}. The Mini App alert is ready and the bot notification is queued.</p>;
+ if(credited)return null;
  return <section className="money-add-funds">
   {!open?<><button onClick={()=>setOpen(true)} aria-expanded={false}>Add funds</button><p className="money-approval-help">Credit this player and close this deposit review.</p></>:<>
    <h3>Add funds to {name}</h3>

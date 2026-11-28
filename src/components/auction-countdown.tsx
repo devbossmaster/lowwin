@@ -27,7 +27,7 @@ const Flap=memo(function Flap({value,label,animate}:{value:string;label:string;a
 });
 
 /** Update on visible digit changes and resume from the server receipt anchor. */
-export function AuctionCountdown({target,serverNow,observedAt,label,showLabel=true,onElapsed,tiles=false,variant}:{target:string;serverNow:string;observedAt?:number;label:string;showLabel?:boolean;onElapsed?:()=>void;tiles?:boolean;variant?:'inline'|'home'}){
+export function AuctionCountdown({target,serverNow,observedAt,label,showLabel=true,onElapsed,tiles=false,variant}:{target:string;serverNow:string;observedAt?:number;label:string;showLabel?:boolean;onElapsed?:()=>void;tiles?:boolean;variant?:'inline'}){
  const {language}=useMiniLocale(),am=language==='am',element=useRef<HTMLSpanElement>(null),elapsed=useRef<string|null>(null),callback=useRef(onElapsed);callback.current=onElapsed;
  const [{remaining,animate},setClock]=useState(()=>({remaining:clocks.initial(target,serverNow,observedAt,Date.now()),animate:false}));
  useEffect(()=>{
@@ -66,7 +66,7 @@ export function AuctionCountdown({target,serverNow,observedAt,label,showLabel=tr
  const units=countdownUnits(remaining);
  if(variant==='inline')return <span ref={element} className={`countdown ${styles.inline}`} data-countdown-inline role="timer" aria-live="off" aria-label={remaining===0?undefined:am?`${units[0]} ቀናት ${units[1]} ሰዓታት ${units[2]} ደቂቃዎች ${units[3]} ሰከንዶች`:`${label} in ${units[0]} days ${units[1]} hours ${units[2]} minutes ${units[3]} seconds`}>{remaining===0?(label==='Starts'?(am?'አሁን ይጀምራል':'Starting now'):(am?'ጨረታው አብቅቷል':'Auction ended')):inlineCountdown(remaining,am)}</span>;
  if(remaining===0)return <span ref={element} className="countdown" data-countdown-ended role="timer" aria-live="off">{label==='Starts'?(am?'አሁን ይጀምራል':'Starting now'):(am?'ጨረታው አብቅቷል':'Auction ended')}</span>;
- const unitLabels=am?['ቀን','ሰዓት','ደቂቃ','ሰከንድ']:variant==='home'?['days','hours','minutes','seconds']:['days','hrs','min','sec'];
+ const unitLabels=am?['ቀን','ሰዓት','ደቂቃ','ሰከንድ']:['days','hrs','min','sec'];
  return <span ref={element} lang={language} className={`countdown ${styles.countdown} ${tiles?styles.large:styles.compact}`} data-countdown-group data-countdown-large-values={units[0].length>3||undefined} role="timer" aria-live="off" aria-label={am?`${units[0]} ቀናት ${units[1]} ሰዓታት ${units[2]} ደቂቃዎች ${units[3]} ሰከንዶች`:`${label} in ${units[0]} days ${units[1]} hours ${units[2]} minutes ${units[3]} seconds`}>
   {showLabel&&<span className={styles.label}>{am?(label==='Starts'?'ይጀምራል በ':'ያበቃል በ'):`${label} in`}</span>}
   {units.map((value,index)=><Flap key={index} value={value} animate={animate} label={unitLabels[index]}/>)}

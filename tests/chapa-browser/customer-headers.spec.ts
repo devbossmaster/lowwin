@@ -46,7 +46,7 @@ test('Home-only toolbar, compact headers, owned balance and in-app Back',async({
  }finally{if(releaseWallet)(releaseWallet as ()=>void)();await db.$disconnect()}
 });
 
-test('Home Affiliate callout uses the configured reward and remembers dismissal',async({page})=>{
+test('Home Affiliate callout uses the configured reward and remembers both dismissals',async({page})=>{
  const f=await fixture(page,false);
  let policyReads=0,overviewReads=0,enabled=false;
  try{
@@ -81,6 +81,21 @@ test('Home Affiliate callout uses the configured reward and remembers dismissal'
   await expect(affiliate).toBeVisible();
   await expect(promo).toHaveCount(0);
   expect(policyReads).toBe(2);
+
+  await page.evaluate(()=>sessionStorage.removeItem('lowwin-affiliate-promo-dismissed'));
+  await page.clock.install();
+  await page.clock.pauseAt(new Date(await page.evaluate(()=>Date.now()+1000)));
+  await page.reload({waitUntil:'domcontentloaded'});
+  await expect(promo).toBeVisible();
+  await page.clock.runFor(2900);
+  await expect(promo).toBeVisible();
+  await page.clock.runFor(200);
+  await expect(promo).toHaveCount(0);
+  await page.clock.resume();
+  await page.reload();
+  await expect(affiliate).toBeVisible();
+  await expect(promo).toHaveCount(0);
+  expect(policyReads).toBe(3);
   await affiliate.click();
   await expect(page).toHaveURL(/\/affiliate$/);
  }finally{await f.db.$disconnect()}

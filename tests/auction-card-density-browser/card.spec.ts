@@ -6,9 +6,9 @@ import type {CatalogAuction} from '../../src/modules/auctions/catalog';
 const stage=process.env.CARD_DENSITY_STAGE??'after',after=stage==='after';
 async function metrics(card:Locator){return card.evaluate(el=>{
  const rect=(node:Element)=>{const r=node.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,bottom:r.bottom,right:r.right}};
- const body=el.querySelector('.auction-card-body')!,title=el.querySelector('h3')!,art=el.querySelector('.auction-card-art')!,facts=el.querySelector('.card-facts')!,fee=el.querySelector('.card-fee')!,clock=el.querySelector('.card-clock')!,button=el.querySelector('.card-action')!,disclaimer=el.querySelector('.card-disclosure')!,caption=el.querySelector('.card-caption')!;
+ const body=el.querySelector('.auction-card-body')!,title=el.querySelector('h3')!,art=el.querySelector('.auction-card-art')!,facts=el.querySelector('.card-facts')!,fee=el.querySelector('.card-fee')!,bids=el.querySelector('[data-card-bid-count]')!,clock=el.querySelector('.card-clock')!,button=el.querySelector('.card-action')!,disclaimer=el.querySelector('.card-disclosure')!,caption=el.querySelector('.card-caption')!;
  const styles=getComputedStyle(body),titleStyle=getComputedStyle(title),inlineStyle=getComputedStyle(title.querySelector('a')??title);
- return {card:rect(el),image:rect(art),body:rect(body),title:{...rect(title),lineHeight:Math.max(parseFloat(titleStyle.lineHeight),parseFloat(inlineStyle.lineHeight)),fontSize:parseFloat(titleStyle.fontSize),lines:title.querySelector('a')?.getClientRects().length??1,scrollHeight:title.scrollHeight,clientHeight:title.clientHeight,clamp:titleStyle.getPropertyValue('-webkit-line-clamp'),overflow:titleStyle.overflow},facts:rect(facts),fee:rect(fee),timer:rect(clock),button:rect(button),disclaimer:rect(disclaimer),caption:rect(caption),padding:{top:parseFloat(styles.paddingTop),bottom:parseFloat(styles.paddingBottom)},internalOverflow:Array.from(el.querySelectorAll('.auction-card-body,.card-facts,.card-fee,.card-clock,.card-action,.card-disclosure,.card-caption')).filter(node=>node.scrollWidth>node.clientWidth+1).map(node=>node.className)};
+ return {card:rect(el),image:rect(art),body:rect(body),title:{...rect(title),lineHeight:Math.max(parseFloat(titleStyle.lineHeight),parseFloat(inlineStyle.lineHeight)),fontSize:parseFloat(titleStyle.fontSize),lines:title.querySelector('a')?.getClientRects().length??1,scrollHeight:title.scrollHeight,clientHeight:title.clientHeight,clamp:titleStyle.getPropertyValue('-webkit-line-clamp'),overflow:titleStyle.overflow},facts:rect(facts),fee:rect(fee),bids:rect(bids),timer:rect(clock),button:rect(button),disclaimer:rect(disclaimer),caption:rect(caption),padding:{top:parseFloat(styles.paddingTop),bottom:parseFloat(styles.paddingBottom)},internalOverflow:Array.from(el.querySelectorAll('.auction-card-body,.card-facts,.card-fee,.card-clock,.card-action,.card-disclosure,.card-caption')).filter(node=>node.scrollWidth>node.clientWidth+1).map(node=>node.className)};
 })}
 
 for(const am of [false,true])test(`compact cards retain status, media, countdown and actions ${am?'AM':'EN'}`,async({page},info)=>{
@@ -39,12 +39,10 @@ for(const am of [false,true])test(`compact cards retain status, media, countdown
     expect(data.button.height).toBeLessThanOrEqual(48.5);
     expect(data.title.scrollHeight).toBeLessThanOrEqual(data.title.clientHeight+1);
     expect(data.title.clamp).not.toBe('2');expect(data.title.overflow).not.toBe('hidden');
-    if(index<2){
-     expect(data.timer.y).toBeGreaterThanOrEqual(data.fee.bottom);
-     expect(data.timer.width).toBeCloseTo(data.facts.width,0);
-    }else{
-     expect(Math.abs(data.fee.y+data.fee.height/2-data.timer.y-data.timer.height/2)).toBeLessThanOrEqual(2);
-    }
+    expect(data.fee.y).toBeCloseTo(data.bids.y,0);
+    expect(data.bids.y).toBeCloseTo(data.timer.y,0);
+    expect(data.fee.right).toBeLessThanOrEqual(data.bids.x);
+    expect(data.bids.right).toBeLessThanOrEqual(data.timer.x);
     expect(data.padding.bottom).toBeLessThanOrEqual(10);
     if(index===0)expect(data.title.lines).toBe(1);
     if(index===1)expect(data.title.lines).toBeGreaterThan(2);

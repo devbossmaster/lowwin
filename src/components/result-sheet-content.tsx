@@ -11,6 +11,7 @@ import {formatAddisTimestamp} from '@/lib/addis-time';
 import {maskPhoneDisplay} from '@/lib/phone-mask';
 import type {ResultBreakdown} from '@/modules/auctions/result-breakdown';
 import {ResultRowsSkeleton} from './mini-route-skeleton';
+import {participantPageKey,prefetchResultParticipants,resultNumbersQueryUrl,resultParticipantsQueryUrl} from './result-query';
 import styles from './winner-results.module.css';
 
 function Pager({page,totalPages,change,disabled=false}:{page:number;totalPages:number;change:(value:number)=>void;disabled?:boolean}){
@@ -18,11 +19,11 @@ function Pager({page,totalPages,change,disabled=false}:{page:number;totalPages:n
  return totalPages>1?<nav className={styles.pager} aria-label={language==='am'?'የውጤት ገጾች':'Result pages'}><button disabled={disabled||page<=1} onClick={()=>change(page-1)}><MiniPhrase en="Previous" am="ወደ ኋላ"/></button><span>{page} / {totalPages}</span><button disabled={disabled||page>=totalPages} onClick={()=>change(page+1)}><MiniPhrase en="Next" am="ቀጣይ"/></button></nav>:null;
 }
 function ParticipantSheet({code,amount,displayAmount,onClose,returnFocusRef}:{code:string;amount:string;displayAmount:string;onClose:()=>void;returnFocusRef:RefObject<HTMLElement|null>}){
- const {queryIdentity}=useTelegram(),{language}=useMiniLocale(),am=language==='am',pageKey='result:'+code+':'+amount,[page,setPage]=useState(()=>miniNavigationState.page(queryIdentity,pageKey));
+ const {queryIdentity}=useTelegram(),{language}=useMiniLocale(),am=language==='am',pageKey=participantPageKey(code,amount),[page,setPage]=useState(()=>miniNavigationState.page(queryIdentity,pageKey));
  useEffect(()=>miniNavigationState.rememberPage(queryIdentity,pageKey,page),[queryIdentity,pageKey,page]);
- const query=usePrivateQuery<ResultBreakdown>('/api/results/'+encodeURIComponent(code)+'/breakdown?amount='+encodeURIComponent(amount)+'&page='+page,{keepPreviousData:true,cancelOnUnmount:true}),data=query.data?.kind==='participants'?query.data:null;
+ const query=usePrivateQuery<ResultBreakdown>(resultParticipantsQueryUrl(code,amount,page),{keepPreviousData:true,cancelOnUnmount:true}),data=query.data?.kind==='participants'?query.data:null;
  const first=data?(data.page-1)*data.pageSize+1:1;
- return <AccountSheet title={<><span className="sr-only"><MiniPhrase en="Bid details" am="የጨረታ ዝርዝር"/></span><span className={styles.participantNumber} aria-hidden="true">{displayAmount}</span></>} presentation="centered" onClose={onClose} returnFocusRef={returnFocusRef}>
+ return <AccountSheet title={<><span className="sr-only"><MiniPhrase en="Bid details" am="የጨረታ ዝርዝር"/></span><span className={styles.participantNumber} aria-hidden="true">{displayAmount}</span></>} onClose={onClose} returnFocusRef={returnFocusRef}>
   {!data&&query.status==='authenticated'&&!query.error?<ResultRowsSkeleton participants/>:<PrivateState query={query}/>}
   {data&&<>
    <div className={styles.participantFacts}>
@@ -43,9 +44,9 @@ function ParticipantSheet({code,amount,displayAmount,onClose,returnFocusRef}:{co
  </AccountSheet>;
 }
 export default function ResultBreakdownContent({code}:{code:string}){
- const {queryIdentity}=useTelegram(),{language}=useMiniLocale(),am=language==='am',[view,setView]=useState(()=>miniNavigationState.result(queryIdentity,code)),{page,sort,jump}=view,[amount,setAmount]=useState<string|null>(null),amountTrigger=useRef<HTMLElement|null>(null),winningRow=useRef<HTMLButtonElement|null>(null);
+ const {queryIdentity}=useTelegram(),{language}=useMiniLocale(),am=language==='am',[view,setView]=useState(()=>miniNavigationState.result(queryIdentity,code)),{jump}=view,[amount,setAmount]=useState<string|null>(null),amountTrigger=useRef<HTMLElement|null>(null),winningRow=useRef<HTMLButtonElement|null>(null);
  useEffect(()=>miniNavigationState.rememberResult(queryIdentity,code,view),[queryIdentity,code,view]);
- const query=usePrivateQuery<ResultBreakdown>('/api/results/'+encodeURIComponent(code)+'/breakdown?page='+page+'&sort='+sort+(jump?'&jump=winner':''),{keepPreviousData:true,cancelOnUnmount:true}),data=query.data?.kind==='amounts'?query.data:null,busy=query.isPlaceholderData;
+ const query=usePrivateQuery<ResultBreakdown>(resultNumbersQueryUrl(code,view),{keepPreviousData:true,cancelOnUnmount:true}),data=query.data?.kind==='amounts'?query.data:null,busy=query.isPlaceholderData;
  useEffect(()=>{if(jump&&data&&!busy)winningRow.current?.scrollIntoView({block:'nearest',behavior:'instant'})},[jump,data,busy]);
  const largest=data?Math.max(1,...data.amounts.map(row=>row.bidCount)):1;
  return <>
@@ -56,7 +57,7 @@ export default function ResultBreakdownContent({code}:{code:string}){
    <h3 className={styles.subheading}><MiniPhrase en="Number breakdown" am="የቁጥሮች ዝርዝር"/></h3>
    <dl className={styles.breakdownTotals}><div><dt><MiniPhrase en="Distinct numbers" am="የተለያዩ ቁጥሮች"/></dt><dd>{data.totalAmounts}</dd></div><div><dt><MiniPhrase en="Picked once" am="አንድ ጊዜ የተመረጡ"/></dt><dd>{data.totalUniqueAmounts}</dd></div><div><dt><MiniPhrase en="Players" am="ተጫራቾች"/></dt><dd>{data.totalPlayers}</dd></div></dl>
    <div className={styles.controls}><div role="group" aria-label={am?'የቁጥሮች ቅደም ተከተል':'Number sorting'}>{(['amount','picked'] as const).map(value=><button key={value} disabled={busy} aria-pressed={data.sort===value} onClick={()=>setView({sort:value,page:1,jump:false})}><MiniPhrase en={value==='amount'?'By number':'Most picked'} am={value==='amount'?'በቁጥር':'በብዛት የተመረጡ'}/></button>)}</div>{data.auction.result?.winningPoints&&<button className={styles.jump} disabled={busy} onClick={()=>{setView(value=>({...value,jump:true}));if(jump)winningRow.current?.scrollIntoView({block:'nearest',behavior:'instant'})}}><Trophy size={13} aria-hidden="true"/><MiniPhrase en="Show winner" am="አሸናፊውን አሳይ"/></button>}</div>
-   <ul className={styles.amounts} aria-busy={query.fetching}>{data.amounts.map(row=><li key={row.amount}><button ref={row.winner?winningRow:undefined} disabled={busy} data-result-amount={row.amount} data-winning={row.winner||undefined} style={{'--picked-width':(row.bidCount/largest*100)+'%'} as CSSProperties} onClick={event=>{amountTrigger.current=event.currentTarget;setAmount(row.amount)}}>
+   <ul className={styles.amounts} aria-busy={query.fetching}>{data.amounts.map(row=><li key={row.amount}><button ref={row.winner?winningRow:undefined} disabled={busy} data-result-amount={row.amount} data-winning={row.winner||undefined} style={{'--picked-width':(row.bidCount/largest*100)+'%'} as CSSProperties} onPointerDown={()=>prefetchResultParticipants(queryIdentity,code,row.amount)} onFocus={()=>prefetchResultParticipants(queryIdentity,code,row.amount)} onClick={event=>{amountTrigger.current=event.currentTarget;setAmount(row.amount)}}>
     <strong>{formatAuctionBid(row.amount,data.auction.terms.ruleVersion)}</strong>{row.winner&&<Trophy size={13} aria-label={am?'አሸናፊ':'Winner'}/>}<span>{row.bidCount} <MiniPhrase en="bids" am="ጨረታዎች"/></span>{row.unique&&<small><MiniPhrase en="Unique" am="ልዩ"/></small>}<ChevronRight size={16} aria-hidden="true"/>
    </button></li>)}</ul>
    <Pager page={data.page} totalPages={data.totalPages} change={value=>setView(previous=>({...previous,page:value,jump:false}))} disabled={busy}/>

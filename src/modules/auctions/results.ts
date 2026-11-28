@@ -41,7 +41,7 @@ export async function getPublicResult(client:PrismaClient,code:string) {
   return cachedPublicData(`public-result:${code}`,5000,async()=>{
   const [{now}]=await client.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`;
   const publicCode=/^[1-9]\d*$/.test(code)&&Number.isSafeInteger(Number(code))?Number(code):null;
-  const row=await client.auction.findFirst({where:{AND:[publicWhere(now),outcomeWhere('all',now),{OR:[{code},...(publicCode?[{publicCode}]:[])]}]},select:publicAuctionSelect});
+  const row=await client.auction.findFirst({where:{AND:[publicWhere(now),{OR:[{status:'CANCELLED'},outcomeWhere('all',now)]},{OR:[{code},...(publicCode?[{publicCode}]:[])]}]},select:publicAuctionSelect});
   return row?toPublicAuction(row,now):null;
   });
 }

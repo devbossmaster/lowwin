@@ -15,6 +15,7 @@ import {WinnerCarousel} from './winner-carousel';
 import {maskPhoneDisplay} from '@/lib/phone-mask';
 import {winnersQueryUrl} from '@/lib/catalog-query';
 import {readPrivateQuery} from './private-query-cache';
+import {prefetchResultNumbers} from './result-query';
 export function WinnerCards({items,carousel=false,allowDemo=false}:{items:CatalogAuction[];carousel?:boolean;allowDemo?:boolean}){
  const {language}=useMiniLocale(),{queryIdentity,status,me,openRegistration}=useTelegram(),am=language==='am',trigger=useRef<HTMLElement|null>(null),[selected,setSelected]=useState<CatalogAuction|null>(null);
  const winners=items.filter(item=>(!item.isDemo||allowDemo)&&item.status==='closed'&&item.result?.source==='SETTLED'&&item.result.outcome==='WINNER');
@@ -26,7 +27,8 @@ export function WinnerCards({items,carousel=false,allowDemo=false}:{items:Catalo
   const cover=homeBanner??item.product.images[0]?.path;
   const name=result.winnerDisplay||(!carousel?result.winnerUsername:null),phone=maskPhoneDisplay(result.winnerPhoneMasked);
   const identity=carousel?[name,phone].filter(Boolean).join(' · ')||undefined:undefined;
-  return <button className={styles.card} type="button" key={item.code} data-winner-code={item.code} onClick={event=>{
+  const warm=()=>prefetchResultNumbers(queryIdentity,item.code);
+  return <button className={styles.card} type="button" key={item.code} data-winner-code={item.code} onPointerDown={warm} onFocus={warm} onClick={event=>{
    if(status!=='authenticated'||!me?.user?.id||!queryIdentity){openRegistration();return}
    trigger.current=event.currentTarget.hasAttribute('data-winner-copy')?event.currentTarget.parentElement?.querySelector<HTMLButtonElement>(`button[data-winner-code="${CSS.escape(item.code)}"]:not([data-winner-copy])`)??null:event.currentTarget;
    const snapshot=carousel?readPrivateQuery<{items:CatalogAuction[]}>(queryIdentity,winnersQueryUrl()):null;

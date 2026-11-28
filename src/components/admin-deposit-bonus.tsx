@@ -2,12 +2,13 @@
 import {useState} from 'react';
 import {RefreshCw} from 'lucide-react';
 import {AdminHeading,ErrorNotice,eat,useAdminMutation,useAdminRead} from './admin-ui';
+import {notifyAdminAction} from './admin-action-toast';
 import type {DepositBonusAdminRead,DepositBonusPolicyReceipt} from '@/modules/admin/deposit-bonus';
 import {ADDIS_ABABA_TIME_LABEL,formatAddisDateTimeLocal,parseAddisDateTimeLocal} from '@/lib/addis-time';
 import styles from './admin-deposit-bonus.module.css';
 
 export function AdminDepositBonus(){
- const query=useAdminRead<DepositBonusAdminRead>('bonus'),mutation=useAdminMutation('bonus'),[dirty,setDirty]=useState(false),[saved,setSaved]=useState<DepositBonusPolicyReceipt|null>(null),data=query.data,policy=data?.policy;
+ const query=useAdminRead<DepositBonusAdminRead>('bonus'),mutation=useAdminMutation('bonus'),[dirty,setDirty]=useState(false),data=query.data,policy=data?.policy;
  return <>
   <AdminHeading title="Bonus" description="Reward qualifying wallet deposits with extra bidding funds."><button className="secondary" disabled={dirty||mutation.busy||query.loading} onClick={query.reload}><RefreshCw size={17} aria-hidden="true"/>Refresh</button></AdminHeading>
   <ErrorNotice error={query.error} retry={query.reload}/>
@@ -16,10 +17,10 @@ export function AdminDepositBonus(){
    <section className="admin-panel">
     <div className={styles.heading}><div><h2>Deposit bonus</h2><p>{policy.version?`Version ${policy.version} · Updated ${eat(policy.updatedAt)}`:'Draft settings · Not yet enabled'}</p></div><span className={`admin-status ${!policy.enabled?'is-caution':''}`}>{policy.enabled?'Enabled':'Disabled'}</span></div>
     {!data.schemaReady&&<p className="admin-notice" role="status">The deposit bonus migration is required. Settings will become available after it is applied.</p>}
-    <form key={policy.version} className="admin-form" onChange={()=>{setDirty(true);setSaved(null);mutation.clear()}} onSubmit={async event=>{
+    <form key={policy.version} className="admin-form" onChange={()=>{setDirty(true);mutation.clear()}} onSubmit={async event=>{
      event.preventDefault();const form=new FormData(event.currentTarget),end=String(form.get('endsAt')??''),max=String(form.get('maxBonus')??'').trim();
      const receipt=await mutation.run<DepositBonusPolicyReceipt>('save-policy',{version:policy.version,enabled:form.get('enabled')==='on',percent:Number(form.get('percent')),minAmount:String(form.get('minAmount')??''),maxBonus:max||null,validityDays:Number(form.get('validityDays')),endsAt:end?parseAddisDateTimeLocal(end).toISOString():null,reason:String(form.get('reason')??'')});
-     if(receipt){setDirty(false);setSaved(receipt)}
+     if(receipt){setDirty(false);notifyAdminAction(`Saved. The ${receipt.percent}% deposit bonus is ${receipt.enabled?'enabled':'disabled'}.`)}
     }}>
      <fieldset className={styles.fields} disabled={!data.schemaReady||mutation.busy}>
       <label className={`admin-check ${styles.toggle}`}><input type="checkbox" name="enabled" defaultChecked={policy.enabled}/><span>Enable deposit bonus<small>Qualifying new deposits receive the offer confirmed at checkout.</small></span></label>
@@ -31,7 +32,6 @@ export function AdminDepositBonus(){
      </fieldset>
     </form>
     <ErrorNotice error={mutation.error}/>
-    {saved&&<p className="admin-notice" role="status">Saved. The {saved.percent}% deposit bonus is {saved.enabled?'enabled':'disabled'}; credited bonuses are valid for {saved.validityDays} days.</p>}
    </section>
    <aside className={`admin-panel ${styles.explanation}`}><h2>How it works</h2><ol><li>The customer reviews the deposit and its bonus before paying.</li><li>Chapa verifies the exact payment.</li><li>The deposit enters their cash balance, and the bonus enters their bidding balance.</li></ol><h3>Bonus funds</h3><p>Bonus funds pay eligible submission fees before cash, starting with the earliest expiry. They cannot fund monetary holds or winning charges. Unused bonus expires after its recorded validity.</p><h3>Policy changes</h3><p>Changes apply to new checkout offers. A started payment keeps its confirmed bonus and validity, including if the offer is later disabled.</p><p>Direct bid payments receive no deposit bonus. Rejected and unverified payments earn nothing.</p></aside>
   </div>}

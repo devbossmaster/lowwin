@@ -3,16 +3,33 @@ import {useRef,useState} from 'react';
 import {usePathname,useRouter,useSearchParams} from 'next/navigation';
 import {RefreshCw} from 'lucide-react';
 import {adminRequest,useAdminQuery} from './admin-query';
+import {AdminActionToast} from './admin-action-toast';
 export const statusLabel=(value:string)=>({SUBMITTING:'Starting payment',BID_ACCEPTED:'Bid accepted',EXPIRED:'Expired',LIVE:'Live',UPCOMING:'Upcoming',SCHEDULED:'Upcoming',CLOSING:'Closing',COMPLETED:'Completed',CLOSED:'Completed',DRAFT:'Draft',CANCELLED:'Cancelled',WINNER:'Winner',NO_WINNER:'No winner',PENDING:'Pending',CLAIMED:'Ready to pack',PACKING:'Packing',SHIPPED:'Shipped',DELIVERED:'Delivered',DISPUTED:'Needs attention',ACTIVE:'Active',SUSPENDED:'Suspended',INCOMPLETE:'To complete',OPEN:'Open',INVESTIGATING:'Investigating',RESOLVED:'Resolved',NEEDS_REVIEW:'Needs review',DUPLICATE_CONFLICT:'Duplicate reference',PROVIDER_OUTAGE:'Provider unavailable',CREDITED:'Credited',VERIFYING:'Verifying',REJECTED:'Rejected',ESCALATED:'Escalated',REVERSAL_REVIEW:'Reversal review',FAILED:'Failed',SENT:'Delivered',SKIPPED:'Skipped',MATCHED:'Matched',MISMATCH:'Does not match',UNMATCHED:'Unmatched'}[value]??value.toLowerCase().replaceAll('_',' '));
 export {formatAddisTimestamp as eat} from '@/lib/addis-time';
 export {centsToEtb,etbToCents} from '@/lib/admin-money';
 export function Status({value}:{value:string}){return <span className={`admin-status ${['FAILED','REJECTED','MISMATCH'].includes(value)?'is-danger':['CLOSING','PENDING','NEEDS_REVIEW','DUPLICATE_CONFLICT','PROVIDER_OUTAGE','DISPUTED'].includes(value)?'is-caution':''}`}>{statusLabel(value)}</span>}
 export function AdminHeading({title,description,refresh,children}:{title:string;description?:string;refresh?:()=>void;children?:React.ReactNode}){return <header className="admin-page-head"><div><h1>{title}</h1>{description&&<p>{description}</p>}</div><div className="admin-actions">{refresh&&<button className="secondary" onClick={refresh}><RefreshCw size={18}/>Refresh</button>}{children}</div></header>}
-export function ErrorNotice({error,retry}:{error:string;retry?:()=>void}){return error?<div className="admin-error" role="alert">{error}{retry&&<button className="secondary" onClick={retry}>Try again</button>}</div>:null}
+export function ErrorNotice({error,retry,inline=false}:{error:string;retry?:()=>void;inline?:boolean}){
+ if(!error)return null;
+ if(!retry&&!inline)return <AdminActionToast message={error} kind="error"/>;
+ return <div className="admin-error" role="alert">{error}{retry&&<button type="button" className="secondary" onClick={retry}>Try again</button>}</div>;
+}
 export function Evidence({title='Technical evidence',children}:{title?:string;children:React.ReactNode}){return <details className="admin-evidence"><summary>{title}</summary>{children}</details>}
 export function Empty({title='Nothing here yet',children}:{title?:string;children?:React.ReactNode}){return <div className="admin-empty"><h3>{title}</h3>{children&&<p>{children}</p>}</div>}
 export function Pagination({page,totalPages,total,onPage}:{page:number;totalPages:number;total:number;onPage:(p:number)=>void}){return <nav className="admin-pagination" aria-label="Results pages"><span>{total} records · page {page} of {Math.max(1,totalPages)}</span><div><button type="button" className="secondary" disabled={page<=1} onClick={()=>onPage(page-1)}>Previous</button><button type="button" className="secondary" disabled={page>=totalPages} onClick={()=>onPage(page+1)}>Next</button></div></nav>}
 export const adminFetch=adminRequest;
 export const useAdminRead=useAdminQuery;
 export function useQueueParams(){const search=useSearchParams(),router=useRouter(),path=usePathname();const set=(values:Record<string,string>)=>{const next=new URLSearchParams(search.toString());for(const [k,v]of Object.entries(values))v?next.set(k,v):next.delete(k);router.replace(path+(next.size?'?'+next.toString():''),{scroll:false})};return {params:search,set,page:Math.max(1,Number(search.get('page'))||1)};}
-export function useAdminMutation(endpoint='command'){const [busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState(''),pending=useRef(false),attempt=useRef({fingerprint:'',key:''});async function run<T>(action:string,input:Record<string,unknown>):Promise<T|null>{if(pending.current)return null;const fingerprint=JSON.stringify({action,input});if(attempt.current.fingerprint!==fingerprint)attempt.current={fingerprint,key:crypto.randomUUID()};pending.current=true;setBusy(true);setError('');setMessage('');try{const result=await adminFetch<T>(endpoint,{action,input:{...input,key:attempt.current.key}});setMessage('Saved. The server confirmed this change.');return result}catch(e){setError((e as Error).message);return null}finally{pending.current=false;setBusy(false)}}return {busy,error,message,run,clear:()=>{setError('');setMessage('')}};}
+export function useAdminMutation(endpoint='command'){
+ const [busy,setBusy]=useState(false),[error,setError]=useState(''),pending=useRef(false),attempt=useRef({fingerprint:'',key:''});
+ async function run<T>(action:string,input:Record<string,unknown>):Promise<T|null>{
+  if(pending.current)return null;
+  const fingerprint=JSON.stringify({action,input});
+  if(attempt.current.fingerprint!==fingerprint)attempt.current={fingerprint,key:crypto.randomUUID()};
+  pending.current=true;setBusy(true);setError('');
+  try{return await adminFetch<T>(endpoint,{action,input:{...input,key:attempt.current.key}})}
+  catch(error){setError(error instanceof Error?error.message:'Could not complete the action. Try again.');return null}
+  finally{pending.current=false;setBusy(false)}
+ }
+ return {busy,error,run,clear:()=>setError('')};
+}

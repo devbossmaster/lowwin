@@ -126,8 +126,9 @@ export async function listAuctions(input: CatalogQuery, now?: Date, pageSize = 6
   // a non-UTC database session cannot shift raw SQL deadlines by hours.
   const sqlAt=at.toISOString();
   const orderBy: Prisma.AuctionOrderByWithRelationInput[] = query.sort==='featured' ? [
+    ...(query.status==='live' ? [{homeOrder:{sort:'asc',nulls:'last'}}] as const : []),
     {featured:'desc'},
-    ...(query.status==='live' ? [{homeOrder:{sort:'asc',nulls:'last'}},{endsAt:'asc'}] as const : []),
+    ...(query.status==='live' ? [{endsAt:'asc'}] as const : []),
     {publishedAt:'desc'},{publicCode:'desc'},{id:'asc'},
   ] : query.sort==='code' ? [{publicCode:'asc'}]
     : query.sort==='newest' ? [{publishedAt:'desc'},{id:'asc'}]

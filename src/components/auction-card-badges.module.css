@@ -25,32 +25,35 @@
 .homeCard:global(.auction-card)>:global(.auction-card-body)>.placeBid{min-height:48px;padding-inline:14px;font-size:.875rem}
 .homeCard:global(.auction-card)>:global(.auction-card-body){padding:14px 12px 8px}
 .homeCard:global(.auction-card)>:global(.auction-card-body)>.homeFacts:global(.card-facts){
- grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-bottom:6px;
+ display:flex;flex-wrap:nowrap;gap:6px;margin-bottom:6px;
 }
-.homeCard:global(.auction-card)>:global(.auction-card-body)>.homeFacts>:global(.card-fee),.homeFacts>.bids{min-height:40px}
+.homeCard:global(.auction-card)>:global(.auction-card-body)>.homeFacts>:global(.card-fee){flex:1.1 1 0;min-height:40px;padding-inline:4px}
+.homeFacts>.bids{flex:.75 1 0;min-height:40px}
+.homeFacts>.bids[data-long-bid-count]{padding-inline:2px}
+.homeFacts>.bids[data-long-bid-count]>strong{grid-column:1/-1;grid-row:1;font-size:.6875rem!important;text-align:center}
+.homeFacts>.bids[data-long-bid-count]>svg{grid-column:1;grid-row:2;justify-self:end}
+.homeFacts>.bids[data-long-bid-count]>span{grid-column:2;grid-row:2}
 .homeCard:global(.auction-card)>:global(.auction-card-body)>.homeFacts>.homeClock:global(.card-clock){
- grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,208px);align-items:center;gap:8px;
- padding:4px 6px;background:transparent;
+ display:flex;flex:1.9 1 0;flex-direction:column;align-items:stretch;min-width:124px;gap:3px;padding:4px 5px;
 }
 .clockTitle{
- text-align:start;
- color:var(--brand-muted);font-size:.75rem;font-weight:600;line-height:1.45;
+ color:var(--brand-muted-on-soft,#5f6b7a);font-size:.625rem;font-weight:600;line-height:1.35;text-align:center;
 }
 .homeCard:global(.auction-card) .homeFacts .homeClock [data-countdown-group]{
- display:grid;grid-template-columns:repeat(4,minmax(0,1fr));width:100%;min-width:0;gap:5px;
+ display:grid;grid-template-columns:repeat(4,minmax(0,1fr));width:100%;min-width:0;gap:4px;
 }
-.homeClock [data-countdown-unit]{align-items:stretch;gap:3px;text-align:center}
+.homeCard:global(.auction-card) .homeFacts .homeClock [data-countdown-group][data-countdown-large-values]{grid-template-columns:minmax(36px,1.4fr) repeat(2,minmax(0,1fr)) minmax(25px,1fr);column-gap:3px}
+.homeClock [data-countdown-unit]{align-items:stretch;gap:2px;text-align:center}
 .homeClock [data-countdown-unit]>small{
  color:#5142a5;font-size:.5625rem;font-weight:700;line-height:1.4;text-transform:uppercase;
 }
 .homeCard:global(.auction-card) .homeFacts .homeClock [data-countdown-tile]{
- --flap-height:32px;--flap-radius:7px;--flap-fold-time:48ms;--flap-open-time:72ms;
+ --flap-height:26px;--flap-radius:6px;--flap-fold-time:48ms;--flap-open-time:72ms;
  --flap-face-top:#eeedf5;--flap-face-bottom:#e3e1ec;
  width:100%;min-width:0;border-color:#c9c4d9;color:#1d192a;
- font-size:min(1.125rem,calc(3.75rem / var(--flap-digits,2)));font-weight:800;
+ font-size:min(1rem,calc(3.125rem / var(--flap-digits,2)));font-weight:800;
 }
 .homeClock [data-countdown-ended]{font-size:.8125rem}
-.homeCard:global(.auction-card)>:global(.auction-card-body)>.homeFacts>.homeClock:has([data-countdown-ended]){grid-template-columns:minmax(0,1fr)}
 .homeClock:has([data-countdown-ended]) .clockTitle{display:none}
 .homeCard .utilities{align-items:center;margin-top:0}
 .homeCard .terms{min-height:32px;padding:6px 10px;border-radius:10px}

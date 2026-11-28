@@ -44,13 +44,13 @@ describe('Home default featured and closing-time order',()=>{
  it('pins featured auctions above sooner unfeatured auctions, then sorts each group by closing time',async()=>{
   const result=await listAuctions(parseHomeQuery({}),now,10);
   expect(result.items.map(item=>item.slug)).toEqual(['featured-sooner','featured-later','unfeatured-soonest','tie-high','tie-low','unfeatured-later']);
-  expect(f.findMany.mock.calls[0][0].orderBy).toEqual([{featured:'desc'},{homeOrder:{sort:'asc',nulls:'last'}},{endsAt:'asc'},{publishedAt:'desc'},{publicCode:'desc'},{id:'asc'}]);
+  expect(f.findMany.mock.calls[0][0].orderBy).toEqual([{homeOrder:{sort:'asc',nulls:'last'}},{featured:'desc'},{endsAt:'asc'},{publishedAt:'desc'},{publicCode:'desc'},{id:'asc'}]);
  });
- it('sorts numbered auctions first within their groups and breaks equal numbers by closing time',async()=>{
+ it('lets manual order override an automatic featured auction and breaks legacy ties deterministically',async()=>{
   const positions:Record<string,number>={'featured-later':2,'unfeatured-later':2,'tie-low':2,'tie-high':1};
   fixtures=rows.map(item=>({...item,homeOrder:positions[item.slug]??null}));
   const result=await listAuctions(parseHomeQuery({}),now,10);
-  expect(result.items.map(item=>item.slug)).toEqual(['featured-later','featured-sooner','tie-high','tie-low','unfeatured-later','unfeatured-soonest']);
+  expect(result.items.map(item=>item.slug)).toEqual(['tie-high','featured-later','tie-low','unfeatured-later','featured-sooner','unfeatured-soonest']);
  });
  it('orders the complete filtered result before stable pagination',async()=>{
   const query=parseHomeQuery({q:'power',category:'accessories'}),seen:string[]=[];

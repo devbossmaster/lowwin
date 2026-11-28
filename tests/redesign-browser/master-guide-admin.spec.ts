@@ -217,7 +217,7 @@ test.describe('Addis Ababa auction deadline in a US browser',()=>{
    await page.getByRole('textbox',{name:'Reason',exact:true}).fill(reason);
    const save=page.getByRole('button',{name:'Change deadline',exact:true});
    await save.click();
-   await expect(page.getByRole('alert').filter({hasText:'Confirm the owner override'})).toBeVisible();
+   await expect(page.locator('[data-sonner-toast][data-type="error"]').filter({hasText:'Confirm the owner override'})).toBeVisible();
    expect(attempts).toHaveLength(1);
    expect(attempts[0]).toMatchObject({action:'deadline',input:{auctionId:id,endsAt:shorterEnd,version:1,reason}});
    expect(attempts[0].input).not.toHaveProperty('overrideConfirmation');

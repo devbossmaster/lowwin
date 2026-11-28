@@ -34,7 +34,7 @@ export function AuctionCard({auction:initialAuction,serverNow,serverObservedAt,p
  const bidLabel=bidCount===null?'—':bidCount.toLocaleString(am?'am-ET':'en-ET');
  const recordedViews=views??initialAuction.viewCount;
  let viewLabel='—';try{if(/^\d+$/.test(recordedViews))viewLabel=BigInt(recordedViews).toLocaleString(am?'am-ET':'en-ET')}catch{}
- const countdown=(live||upcoming)&&serverNow?<AuctionCountdown target={upcoming?auction.startsAt:auction.endsAt} serverNow={serverNow} observedAt={serverObservedAt} label={upcoming?'Starts':'Ends'} variant={homeCard?'home':undefined} showLabel={false} onElapsed={refreshActivity}/>:null;
+ const countdown=(live||upcoming)&&serverNow?<AuctionCountdown target={upcoming?auction.startsAt:auction.endsAt} serverNow={serverNow} observedAt={serverObservedAt} label={upcoming?'Starts':'Ends'} showLabel={false} onElapsed={refreshActivity}/>:null;
  const homeClock=homeCard&&countdown!==null;
  const termsNote=<><ShieldCheck size={13} aria-hidden="true"/><MiniPhrase en="Terms & conditions apply" am="ውሎችና ሁኔታዎች ይተገበራሉ"/></>;
  return <article className={`auction-card ${badges.card}${homeCard?' '+badges.homeCard:''}`} ref={ref}>
@@ -49,7 +49,7 @@ export function AuctionCard({auction:initialAuction,serverNow,serverObservedAt,p
    <h3><IntentPrefetchLink href={detail}>{title}</IntentPrefetchLink></h3>
    <div className={homeClock?`card-facts ${badges.homeFacts}`:'card-facts'}>
     <span className="card-fee"><MiniPhrase en="Fee" am="ክፍያ"/> <strong>{fee}</strong></span>
-    <span className={badges.bids} data-card-bid-count={bidCount??'unavailable'} aria-label={bidCount===null?(am?'የጨረታ ብዛት አልተገኘም':'Bid count unavailable'):(am?`${bidLabel} ጠቅላላ ጨረታዎች`:`${bidLabel} total bids`)}>
+    <span className={badges.bids} data-card-bid-count={bidCount??'unavailable'} data-long-bid-count={homeClock&&bidLabel.length>5||undefined} aria-label={bidCount===null?(am?'የጨረታ ብዛት አልተገኘም':'Bid count unavailable'):(am?`${bidLabel} ጠቅላላ ጨረታዎች`:`${bidLabel} total bids`)}>
      <Ticket size={12} aria-hidden="true"/><strong>{bidLabel}</strong><span><MiniPhrase en="bids" am="ጨረታ"/></span>
     </span>
     <span className={homeClock?`card-clock ${badges.homeClock}`:'card-clock'}>

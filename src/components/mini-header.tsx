@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import {usePathname} from 'next/navigation';
-import {useEffect,useId,useRef,useState} from 'react';
+import {useCallback,useEffect,useId,useRef,useState} from 'react';
 import {Gift,LogIn,Plus,Wallet,X} from 'lucide-react';
 import {AuctionQuickList} from './auction-quick-list';
 import {AlertBell} from './alert-bell';
@@ -32,22 +32,30 @@ export function MiniHeader({showReferralPromo}:{showReferralPromo:boolean}){
  const [affiliatePromoDismissed,setAffiliatePromoDismissed]=useState<boolean|null>(null);
  const affiliatePromoId=useId();
  const affiliateLinkRef=useRef<HTMLAnchorElement>(null);
+ const affiliatePromoCloseRef=useRef<HTMLButtonElement>(null);
  useEffect(()=>{
   try{setAffiliatePromoDismissed(sessionStorage.getItem(affiliatePromoDismissedKey)==='1')}
   catch{setAffiliatePromoDismissed(false)}
  },[]);
+ const affiliatePromoEligible=registered&&path==='/'&&showReferralPromo&&affiliatePromoDismissed===false;
  const referralPolicy=usePrivateQuery<ReferralPromoPolicy>('/api/referrals?view=policy',{
-  enabled:registered&&path==='/'&&showReferralPromo&&affiliatePromoDismissed===false,
+  enabled:affiliatePromoEligible,
   freshnessMs:60000,
   cancelOnUnmount:true,
  });
- const promoPolicy=referralPolicy.error?null:referralPolicy.data;
+ const promoPolicy=affiliatePromoEligible&&!referralPolicy.error?referralPolicy.data:null;
  const promoReward=promoPolicy?.configured&&promoPolicy.enabled?promoPolicy.rewardEtb:null;
- const dismissAffiliatePromo=(restoreFocus:boolean)=>{
+ const affiliatePromoVisible=Boolean(promoReward);
+ const dismissAffiliatePromo=useCallback((restoreFocus:boolean)=>{
   setAffiliatePromoDismissed(true);
   try{sessionStorage.setItem(affiliatePromoDismissedKey,'1')}catch{/* This mount still remembers the dismissal. */}
   if(restoreFocus)affiliateLinkRef.current?.focus({preventScroll:true});
- };
+ },[]);
+ useEffect(()=>{
+  if(!affiliatePromoVisible)return;
+  const timeout=window.setTimeout(()=>dismissAffiliatePromo(document.activeElement===affiliatePromoCloseRef.current),3000);
+  return()=>window.clearTimeout(timeout);
+ },[affiliatePromoVisible,dismissAffiliatePromo]);
  let amount:string|null=null;
  try{if(wallet.data)amount=centsToEtb(etbToCents(wallet.data.available))}catch{/* Unavailable amounts are never displayed as zero. */}
  if(path!=='/')return null;
@@ -71,7 +79,7 @@ export function MiniHeader({showReferralPromo}:{showReferralPromo:boolean}){
     <strong>{am?'ጓደኛ ይጋብዙ፣ ሽልማት ያግኙ':'Invite friends and earn'}</strong>
     <p>{am?`በሊንክዎ የተመዘገበ ጓደኛ የመጀመሪያው ጨረታ ሲቀበል ${promoReward} ብር ወደ ዋሌትዎ ይገባል።`:`Get ${formatEtb(promoReward)} in your wallet when a friend joins through your link and places their first accepted bid.`}</p>
    </div>
-   <button type="button" className={styles.affiliatePromoClose} aria-label={am?'የግብዣ ማስታወቂያውን ዝጋ':'Dismiss referral message'} onClick={event=>dismissAffiliatePromo(event.detail===0)}><X size={17} aria-hidden="true"/></button>
+   <button ref={affiliatePromoCloseRef} type="button" className={styles.affiliatePromoClose} aria-label={am?'የግብዣ ማስታወቂያውን ዝጋ':'Dismiss referral message'} onClick={event=>dismissAffiliatePromo(event.detail===0)}><X size={17} aria-hidden="true"/></button>
   </aside>}
   </nav>
   </div>

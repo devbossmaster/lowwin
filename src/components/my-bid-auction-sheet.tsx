@@ -10,22 +10,22 @@ import {auctionDetailUrl} from './auction-query';
 import {useMiniLocale} from './mini-locale';
 import {AuctionRefundNotice} from './auction-refund-notice';
 import type {BidSheetPhase} from './bid-sheet';
+import {ResultSheetContent} from './result-sheet';
 import styles from './my-bids-page.module.css';
 
 const BidSheetContent=dynamic(()=>import('./bid-sheet-content'));
-const ResultSheetContent=dynamic(()=>import('./result-sheet').then(module=>module.ResultSheetContent));
 
-/** List rows carry recognition data only. Load a complete public detail on
- * selection; never seed this partial private projection as a complete auction. */
+/** Keep the sheet frame independent of data. Live entries fetch the auction;
+ * finished entries request the result and use the row only for recognition. */
 export default function MyBidAuctionSheet({bid,live,serverNow,onClose,returnFocusRef}:{bid:PersonalBidListItem;live:boolean;serverNow:string;onClose:()=>void;returnFocusRef:RefObject<HTMLElement|null>}){
  const {language}=useMiniLocale(),am=language==='am',url=auctionDetailUrl(bid.auction.slug??bid.auction.code);
- const query=usePrivateQuery<CatalogAuction>(url,{cancelOnUnmount:true});
+ const query=usePrivateQuery<CatalogAuction>(url,{enabled:live,cancelOnUnmount:true});
  const title=am?bid.auction.titleAm||bid.auction.title:bid.auction.title;
  const [phase,setPhase]=useState<BidSheetPhase>('entry');
  const dismiss=useRef<(()=>void)|null>(null),onDismissChange=useCallback((handler:(()=>void)|null)=>{dismiss.current=handler},[]);
  const heading=live?(phase==='payment'||phase==='review'?(am?'ክፍያ':'Payment'):phase==='receipt'?(am?'የጨረታ ደረሰኝ':'Bid receipt'):(am?'ጨረታዎን ያቅርቡ':'Place your bid')):(am?'የጨረታ ውጤት':'Auction result');
  return <AccountSheet title={heading} size={live?'payment':'content'} layout={live?'bid-entry':undefined} presentation={live&&(phase==='payment'||phase==='receipt')?'centered':undefined} footerPortal={live} onClose={()=>dismiss.current?dismiss.current():onClose()} returnFocusRef={returnFocusRef}>
   {!live&&bid.outcome==='CANCELLED'&&<AuctionRefundNotice code={bid.auction.code}/>}
-  {query.data?(live?<BidSheetContent auction={query.data} serverNow={serverNow} onClose={onClose} onPhaseChange={setPhase} onDismissChange={onDismissChange}/>:<ResultSheetContent auction={query.data}/>):<div className={styles.sheetLoading}><CatalogImage src={bid.auction.image?.path} alt=""/><h3>{title}</h3>{query.error?<><p role="alert">{am?'ጨረታውን መጫን አልተቻለም።':'Could not load this auction.'}</p><button type="button" onClick={query.reload}>{am?'እንደገና ሞክር':'Try again'}</button></>:<p role="status">{am?'በመጫን ላይ…':'Loading…'}</p>}</div>}
+  {!live?<ResultSheetContent preview={bid.auction}/>:query.data?<BidSheetContent auction={query.data} serverNow={serverNow} onClose={onClose} onPhaseChange={setPhase} onDismissChange={onDismissChange}/>:<div className={styles.sheetLoading}><CatalogImage src={bid.auction.image?.path} alt=""/><h3>{title}</h3>{query.error?<><p role="alert">{am?'ጨረታውን መጫን አልተቻለም።':'Could not load this auction.'}</p><button type="button" onClick={query.reload}>{am?'እንደገና ሞክር':'Try again'}</button></>:<p role="status">{am?'በመጫን ላይ…':'Loading…'}</p>}</div>}
  </AccountSheet>;
 }

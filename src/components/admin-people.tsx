@@ -5,6 +5,7 @@ import {Gift,Phone} from 'lucide-react';
 import {useAdminAccess} from './admin-shell';
 import {AdminHeading,Empty,ErrorNotice,Pagination,Status,eat,useAdminRead,useAdminMutation,useQueueParams} from './admin-ui';
 import {AdminDrawer} from './admin-drawer';
+import {notifyAdminAction} from './admin-action-toast';
 import {formatAuctionBid,formatEtb} from '@/lib/money';
 import {ADDIS_ABABA_TIME_LABEL} from '@/lib/addis-time';
 import {LoadingSpinner} from './loading-spinner';
@@ -31,7 +32,7 @@ function Players(){const query=useQueue<Player>('players'),access=useAdminAccess
  {query.data&&<><div className="admin-table-wrap master-table" role="region" aria-label="Players and wallets" tabIndex={0}><table><thead><tr><th>Player</th><th>Phone</th><th className="admin-money">Available</th><th className="admin-money">Held</th><th>Bids / wins</th><th>Referrals</th><th>Status</th><th>Joined</th><th>Action</th></tr></thead><tbody>{query.data.items.map(p=><tr key={p.id}><td><Name player={p}/></td><td><Contact player={p}/></td><td className="admin-money">{money(p.available)}</td><td className="admin-money">{money(p.held)}</td><td>{p.bidCount} / {p.winCount}</td><td>{p.referralCount??'—'}<small>{p.rewardCount??'—'} wallet rewards</small></td><td><Status value={p.suspended?'SUSPENDED':'ACTIVE'}/></td><td><time dateTime={p.createdAt}>{eat(p.createdAt)}</time></td><td><button className="secondary" onClick={()=>setSelected(p.id)}>Details</button></td></tr>)}</tbody></table>{!query.data.items.length&&<Empty title="No players found">Try another search.</Empty>}</div><Pages data={query.data}/></>}
  {selected&&<PlayerDetails key={selected} id={selected} close={()=>setSelected(null)} saved={()=>setSelected(null)}/>}
  </>}
-function PlayerDetails({id,close,saved}:{id:string;close:()=>void;saved:()=>void}){const query=useAdminRead<Player>(`users/${encodeURIComponent(id)}`),mutation=useAdminMutation(),me=useAdminAccess(),p=query.data;return <AdminDrawer title="Player details" onClose={close}><ErrorNotice error={query.error} retry={query.reload}/>{!p&&query.loading&&<LoadingSpinner label="Loading player…"/>}{p&&<><div className="people-detail-name"><Name player={p}/></div><dl className="admin-facts"><div><dt>Phone</dt><dd><Contact player={p}/></dd></div><div><dt>Bids / wins</dt><dd>{p.bidCount} / {p.winCount}</dd></div><div><dt>Joined</dt><dd><time dateTime={p.createdAt} title={ADDIS_ABABA_TIME_LABEL}>{eat(p.createdAt)}</time></dd></div><div><dt>Status</dt><dd><Status value={p.suspended?'SUSPENDED':'ACTIVE'}/></dd></div><div><dt>Telegram ID</dt><dd>{p.telegramId??'—'}</dd></div><div><dt>Player ID</dt><dd>{p.id}</dd></div></dl>{me.role==='OWNER'&&<form className="admin-form" onSubmit={async e=>{e.preventDefault();if(await mutation.run('suspend',{userId:p.id,suspended:!p.suspended,reason:new FormData(e.currentTarget).get('reason')}))saved()}}>{p.restrictionReason&&<p>{p.restrictionReason}</p>}<label>Reason<textarea name="reason" required minLength={5} maxLength={500} rows={2}/></label><button disabled={mutation.busy}>{mutation.busy?'Saving…':p.suspended?'Restore bidding':'Suspend bidding'}</button><ErrorNotice error={mutation.error}/></form>}</>}</AdminDrawer>}
+function PlayerDetails({id,close,saved}:{id:string;close:()=>void;saved:()=>void}){const query=useAdminRead<Player>(`users/${encodeURIComponent(id)}`),mutation=useAdminMutation(),me=useAdminAccess(),p=query.data;return <AdminDrawer title="Player details" onClose={close}><ErrorNotice error={query.error} retry={query.reload}/>{!p&&query.loading&&<LoadingSpinner label="Loading player…"/>}{p&&<><div className="people-detail-name"><Name player={p}/></div><dl className="admin-facts"><div><dt>Phone</dt><dd><Contact player={p}/></dd></div><div><dt>Bids / wins</dt><dd>{p.bidCount} / {p.winCount}</dd></div><div><dt>Joined</dt><dd><time dateTime={p.createdAt} title={ADDIS_ABABA_TIME_LABEL}>{eat(p.createdAt)}</time></dd></div><div><dt>Status</dt><dd><Status value={p.suspended?'SUSPENDED':'ACTIVE'}/></dd></div><div><dt>Telegram ID</dt><dd>{p.telegramId??'—'}</dd></div><div><dt>Player ID</dt><dd>{p.id}</dd></div></dl>{me.role==='OWNER'&&<form className="admin-form" onSubmit={async e=>{e.preventDefault();if(await mutation.run('suspend',{userId:p.id,suspended:!p.suspended,reason:new FormData(e.currentTarget).get('reason')})){notifyAdminAction(p.suspended?'Bidding access restored.':'Bidding access suspended.');saved()}}}>{p.restrictionReason&&<p>{p.restrictionReason}</p>}<label>Reason<textarea name="reason" required minLength={5} maxLength={500} rows={2}/></label><button disabled={mutation.busy}>{mutation.busy?'Saving…':p.suspended?'Restore bidding':'Suspend bidding'}</button><ErrorNotice error={mutation.error}/></form>}</>}</AdminDrawer>}
 
 function LiveWinners(){
  const [open,setOpen]=useState(false),[criteria,setCriteria]=useState({page:1,q:''});
@@ -85,11 +86,10 @@ function WinnerDetails({winner,close,onDelivered,refresh}:{winner:Winner;close:(
   {canDeliver&&<form className="admin-form" onSubmit={async event=>{
    event.preventDefault();
    const receipt=await mutation.run<DeliveredReceipt>('deliveryDone',{auctionId:winner.auctionId,version:winner.version,reason:'Marked delivered by staff'});
-   if(receipt)onDelivered(receipt);
+   if(receipt){notifyAdminAction('Delivery recorded.');onDelivered(receipt)}
   }}><button type="submit" disabled={mutation.busy}>{mutation.busy?'Saving delivery…':'Mark delivered'}</button></form>}
-  <ErrorNotice error={mutation.error}/>
+  <ErrorNotice error={mutation.error} inline/>
   {mutation.error&&<button type="button" className="secondary" onClick={()=>{refresh();mutation.clear()}}>Refresh winner</button>}
-  {mutation.message&&<p className="admin-notice" role="status">Delivery recorded.</p>}
   {access.permissions.includes('fulfillment')&&access.permissions.includes('catalog')&&<Suspense fallback={<LoadingSpinner label="Loading banner controls…"/>}><AdminWinnerPhoto key={winner.auctionId+':'+(winner.winnerBannerVersion??winner.winnerPhotoVersion??0)} winner={winner} onSaved={close}/></Suspense>}
  </AdminDrawer>;
 }

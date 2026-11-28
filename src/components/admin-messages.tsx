@@ -5,6 +5,7 @@ import {AdminLink,useAdminQuery} from './admin-query';
 import {AdminBroadcast,type BroadcastDraft} from './admin-broadcast';
 import {useAdminAccess} from './admin-shell';
 import {AdminHeading,Empty,ErrorNotice,Pagination,Status,eat,useAdminMutation,useAdminRead,useQueueParams} from './admin-ui';
+import {notifyAdminAction} from './admin-action-toast';
 import {LoadingSpinner} from './loading-spinner';
 import {TELEGRAM_CHANNEL_BUTTON} from '@/lib/telegram-community';
 import {notificationHistoryLabel} from '@/lib/notification-history-labels';
@@ -48,30 +49,29 @@ function ConfirmBroadcast({value,busy,error,onNo,onYes}:{value:Confirmation;busy
   {c.text&&<p className={styles.originalCaption}>{c.text}</p>}
   {managed(c)&&<p className={styles.help}>{c.buttonLabel??'Open Lowwin'} opens {c.miniAppPath??'/'}</p>}
   {action==='resend'&&<p className={styles.help} lang="am">{TELEGRAM_CHANNEL_BUTTON.text}</p>}
-  <ErrorNotice error={error}/><div className="admin-actions"><button className={action==='delete'?'danger':undefined} disabled={busy} onClick={onYes}>{busy?'Queuing…':'Yes'}</button><button ref={cancel} className="secondary" disabled={busy} onClick={onNo}>No</button></div>
+  <ErrorNotice error={error} inline/><div className="admin-actions"><button className={action==='delete'?'danger':undefined} disabled={busy} onClick={onYes}>{busy?'Queuing…':'Yes'}</button><button ref={cancel} className="secondary" disabled={busy} onClick={onNo}>No</button></div>
  </dialog>;
 }
 export function AdminMessages(){
  const me=useAdminAccess(),owner=me.role==='OWNER',queue=useQueueParams(),mutation=useAdminMutation();
- const [confirmation,setConfirmation]=useState<Confirmation|null>(null),[notice,setNotice]=useState(''),[draftVersion,setDraftVersion]=useState(0);
+ const [confirmation,setConfirmation]=useState<Confirmation|null>(null),[draftVersion,setDraftVersion]=useState(0);
  const view=queue.params.get('view')==='active'?'active':queue.params.get('view')==='history'?'history':'compose',auctionId=queue.params.get('auction')??'';
  const scope=historySource(queue.params.get('source'));
  const query=useAdminRead<History>(`notifications?${new URLSearchParams({page:String(queue.page),q:queue.params.get('q')??'',view:view==='active'?'active':'history',...(view==='history'?{source:scope}:{})})}`,{enabled:view!=='compose'}),reload=useRef(query.reload);reload.current=query.reload;
  const auctionDraft=useAdminQuery<BroadcastDraft>(`notifications/auction/${auctionId}`,{enabled:owner&&view==='compose'&&!!auctionId});
  const active=query.data?.items.some(item=>item.pending||item.pendingBatches||item.deletion?.pending||item.deletion?.preparing)===true;
  useEffect(()=>{if(!active||view==='compose')return;const timer=setInterval(()=>{if(document.visibilityState==='visible')reload.current()},view==='active'?3000:5000);return()=>clearInterval(timer)},[active,view]);
- const open=(campaign:Campaign,action:Confirmation['action'])=>{mutation.clear();setNotice('');setConfirmation({campaign,action,resendId:crypto.randomUUID()})};
+ const open=(campaign:Campaign,action:Confirmation['action'])=>{mutation.clear();setConfirmation({campaign,action,resendId:crypto.randomUUID()})};
  const confirm=async()=>{
   if(!confirmation)return;const {campaign:c,action,resendId}=confirmation;
   const result=await mutation.run(action==='resend'?'broadcastResend':action==='delete'?(managed(c)?'broadcastDelete':'notificationDelete'):'broadcastStop',{id:c.id,reason:action==='resend'?'Administrator confirmed resend of original broadcast':action==='delete'?'Administrator requested deletion of sent Telegram messages':'Administrator stopped queued Telegram campaign messages',...(action==='resend'?{resendId,confirmation:'RESEND'}:action==='delete'?{confirmation:'DELETE'}:{})});
-  if(result){setConfirmation(null);setNotice(action==='resend'?'New campaign queued. The original campaign is unchanged.':action==='delete'?'Deletion queued. Follow the pending, deleted and unavailable counts below.':'Campaign stopped. Sends already in progress may finish.')}
+  if(result){setConfirmation(null);notifyAdminAction(action==='resend'?'New campaign queued.':action==='delete'?'Deletion queued. Check progress in Delivery History.':'Campaign stopped. Sends already in progress may finish.')}
  };
  return <div className="admin-people">
   <AdminHeading title="Broadcast" description="Compose an update, follow the queue, or manage delivered messages." refresh={view==='compose'?undefined:query.reload}>{owner&&<AdminLink className="admin-button secondary" href="/admin/auctions"><Plus size={16}/>Promote an auction</AdminLink>}</AdminHeading>
-  <nav className={styles.areas} aria-label="Broadcast areas">{(['compose','active','history'] as const).map(area=><button type="button" key={area} className={view===area?'':'secondary'} aria-pressed={view===area} onClick={()=>{setNotice('');queue.set({view:area,page:'1',q:''})}}>{area==='compose'?'Compose / Review':area==='active'?'Active Queue':'Delivery History'}</button>)}</nav>
-  {notice&&<p role="status" className="admin-notice">{notice}</p>}
-  {view==='compose'?(owner?<section aria-label="Compose and review">{auctionId&&<><ErrorNotice error={auctionDraft.error} retry={auctionDraft.reload}/><button className="secondary" onClick={()=>{setNotice('');queue.set({auction:''})}}>New message</button></>}
-   {auctionId&&!auctionDraft.data?(!auctionDraft.error&&<p role="status">Loading auction preview…</p>):<AdminBroadcast key={`${auctionDraft.data?.draftHash??'new'}:${draftVersion}`} initial={auctionId?auctionDraft.data??undefined:undefined} onQueued={()=>{setNotice('Broadcast queued for Telegram.');setDraftVersion(v=>v+1);queue.set({view:'active',page:'1',q:''})}}/>}
+  <nav className={styles.areas} aria-label="Broadcast areas">{(['compose','active','history'] as const).map(area=><button type="button" key={area} className={view===area?'':'secondary'} aria-pressed={view===area} onClick={()=>queue.set({view:area,page:'1',q:''})}>{area==='compose'?'Compose / Review':area==='active'?'Active Queue':'Delivery History'}</button>)}</nav>
+  {view==='compose'?(owner?<section aria-label="Compose and review">{auctionId&&<><ErrorNotice error={auctionDraft.error} retry={auctionDraft.reload}/><button className="secondary" onClick={()=>queue.set({auction:''})}>New message</button></>}
+   {auctionId&&!auctionDraft.data?(!auctionDraft.error&&<p role="status">Loading auction preview…</p>):<AdminBroadcast key={`${auctionDraft.data?.draftHash??'new'}:${draftVersion}`} initial={auctionId?auctionDraft.data??undefined:undefined} onQueued={()=>{setDraftVersion(v=>v+1);queue.set({view:'active',page:'1',q:''})}}/>}
   </section>:<Empty title="Broadcast composition requires Owner access"/>):
   <section className="master-broadcast-history" aria-label={view==='active'?'Active Queue':'Delivery History'}>
    <h2>{view==='active'?'Active Queue':'Delivery History'}</h2>

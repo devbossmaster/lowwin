@@ -15,7 +15,7 @@ export function AdminAuctionHomeOrderField({value,disabled=false}:{value?:number
  const hint=useId();
  return <div>
   <label>Home order<input name="homeOrder" type="number" min={1} max={2147483647} step={1} defaultValue={value??''} placeholder="Automatic" aria-describedby={hint} disabled={disabled}/></label>
-  <p id={hint} className="admin-group-note">Lower numbers appear first within featured or regular auctions. Leave blank to use closing time.</p>
+  <p id={hint} className="admin-group-note">Numbered auctions come first. If a slot is taken, the other auction moves to your old slot or shifts down. Leave blank for automatic placement.</p>
  </div>;
 }
 

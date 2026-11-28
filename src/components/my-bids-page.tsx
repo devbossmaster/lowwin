@@ -1,5 +1,4 @@
 'use client';
-import dynamic from 'next/dynamic';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {ChevronLeft,ChevronRight,Clock3,Ticket} from 'lucide-react';
 import type {PersonalBidAuctionList,PersonalBidListItem} from '@/modules/profile/bid-list';
@@ -9,19 +8,20 @@ import {useTelegram} from './telegram-provider';
 import {useMiniLocale} from './mini-locale';
 import {useMiniPage,useMiniQueryState} from './mini-query-state';
 import {usePrivateQuery,PrivateState} from './private-query';
-import {invalidatePrivateQueries} from './private-query-cache';
-import {prefetchPrivateQuery} from './private-query-cache';
+import {invalidatePrivateQueries,loadPrivateJson,prefetchPrivateQuery} from './private-query-cache';
 import {auctionDetailUrl} from './auction-query';
+import {prefetchResultNumbers,resultNumbersQueryUrl,resultQueryUrl} from './result-query';
+import {miniNavigationState} from './mini-navigation-state';
 import {useAuctionActivity} from './auction-activity';
 import {AuctionCountdown} from './auction-countdown';
 import {CatalogImage} from './catalog-image';
 import {IntentPrefetchLink as Link} from './intent-prefetch-link';
 import {OfflineRetry} from './offline-retry';
 import {RefundStatus} from './auction-refund-notice';
+import AuctionSheet from './my-bid-auction-sheet';
 import {myBidListView,myBidOutcomeLabel,myBidsQueryUrl,myBidsGroupQueryUrl,type MyBidListView} from './my-bids-list-copy';
 import styles from './my-bids-page.module.css';
 
-const AuctionSheet=dynamic(()=>import('./my-bid-auction-sheet'),{ssr:false});
 export {myBidOutcomeLabel as bidOutcomeLabel} from './my-bids-list-copy';
 
 export function MyBidsPage({initialView='live'}:{initialView?:MyBidListView|'all'|'history'}){
@@ -42,7 +42,7 @@ function PlayerBids({initialView}:{initialView:MyBidListView|'all'|'history'}){
  // changed auction/deadline refreshes only this private list, never the app.
  const refresh=useCallback((slug:string|null,code:string)=>{
   if(!queryIdentity)return;
-  changedScopes.current.add('/api/my-bids');changedScopes.current.add(auctionDetailUrl(slug??code));changedScopes.current.add('/api/results/'+encodeURIComponent(code));
+  changedScopes.current.add('/api/my-bids');changedScopes.current.add(auctionDetailUrl(slug??code));changedScopes.current.add(resultQueryUrl(code));
   if(invalidateTimer.current)return;
   invalidateTimer.current=setTimeout(()=>{invalidateTimer.current=null;const scopes=[...changedScopes.current];changedScopes.current.clear();invalidatePrivateQueries(queryIdentity,scopes)},0);
  },[queryIdentity]);
@@ -76,15 +76,28 @@ function BidAuctionCard({group,live,serverNow,observedAt,onChanged,onOpen,priori
  },[cursor,extra.data,group]);
  const bids=[...new Map([...group.bids,...(more.source===group?more.bids:[])].map(bid=>[bid.id,bid])).values()],outcomes=bids.map(bid=>bid.outcome);
  const outcome=group.outcome??(outcomes.includes('PENDING')?'PENDING':outcomes.includes('WON')?'WON':outcomes[0]??'PENDING');
+ // A cancelled row can predate settlement. These outcomes require publication.
+ const published=!live&&(outcome==='WON'||outcome==='LOST'||outcome==='NO_WINNER');
  const {activity}=useAuctionActivity(live||outcome==='PENDING'?group.auction.code:'',{element}),phase=activity?.status;
  const changed=useCallback(()=>onChanged(group.auction.slug,group.auction.code),[group.auction.slug,group.auction.code,onChanged]);
  useEffect(()=>{if(live&&phase&&phase!=='live')changed()},[live,phase,changed]);
  useEffect(()=>{if(!live&&outcome==='PENDING'&&activity?.resultReady)changed()},[live,outcome,activity?.resultReady,changed]);
  const title=am?group.auction.titleAm?.trim()||group.auction.title:group.auction.title,feeOnly=isSubmissionFeeOnly(group.auction.ruleVersion??undefined),target=activity?.endsAt??group.auction.endsAt;
- const prefetch=()=>{if(queryIdentity&&group.auction.slug)void prefetchPrivateQuery(queryIdentity,auctionDetailUrl(group.auction.slug))};
- const open=(event:React.MouseEvent<HTMLButtonElement>)=>{if(bids[0])onOpen(event,{...bids[0],auction:group.auction})};
+ const prefetch=()=>{
+  if(!queryIdentity)return;
+  const {code,slug}=group.auction;
+  if(live){if(slug)void prefetchPrivateQuery(queryIdentity,auctionDetailUrl(slug));return}
+  void prefetchPrivateQuery(queryIdentity,resultQueryUrl(code));
+  if(published)prefetchResultNumbers(queryIdentity,code);
+ };
+ const open=(event:React.MouseEvent<HTMLButtonElement>)=>{
+  if(!bids[0])return;
+  const {code}=group.auction;
+  if(published&&queryIdentity)void loadPrivateJson(queryIdentity,resultNumbersQueryUrl(code,miniNavigationState.result(queryIdentity,code))).catch(()=>{/* The sheet owns feedback and retry. */});
+  onOpen(event,{...bids[0],auction:group.auction});
+ };
  return <article ref={element} className={styles.auctionCard} data-bid-auction={group.auction.code}>
-  <button className={styles.row} type="button" onPointerEnter={prefetch} onFocus={prefetch} onClick={open} aria-label={(live?(am?'ጨረታውን ይክፈቱ':'Open auction'):(am?'ውጤቱን ይመልከቱ':'View result'))+': '+title}>
+  <button className={styles.row} type="button" onPointerEnter={live?prefetch:undefined} onPointerDown={live?undefined:prefetch} onFocus={prefetch} onClick={open} aria-label={(live?(am?'ጨረታውን ይክፈቱ':'Open auction'):(am?'ውጤቱን ይመልከቱ':'View result'))+': '+title}>
    <span className={styles.thumbnail} data-bid-thumbnail><CatalogImage src={group.auction.image?.path} alt="" variant="thumbnail" sizes="72px" priority={priority}/></span>
    <span className={styles.rowBody}><span className={styles.rowTitle}>{title}</span><span className={styles.status} data-outcome={outcome}>{myBidOutcomeLabel(outcome,am)}{group.auction.isDemo&&<> · DEMO</>}</span>{live&&target&&<span className={styles.clock}><Clock3 size={12} aria-hidden="true"/><AuctionCountdown target={target} serverNow={serverNow} observedAt={observedAt} label="Ends" showLabel={false} variant="inline" onElapsed={changed}/></span>}</span>
    <ChevronRight className={styles.chevron} size={16} aria-hidden="true"/>

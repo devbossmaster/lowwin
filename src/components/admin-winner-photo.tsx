@@ -2,6 +2,7 @@
 import {useEffect,useId,useRef,useState} from 'react';
 import {ImagePlus,RotateCcw} from 'lucide-react';
 import {ErrorNotice,useAdminMutation} from './admin-ui';
+import {notifyAdminAction} from './admin-action-toast';
 import {WINNER_IMAGE_HEIGHT,WINNER_IMAGE_WIDTH} from '@/lib/winner-image';
 import styles from './admin-winner-photo.module.css';
 
@@ -22,7 +23,7 @@ export default function AdminWinnerPhoto({winner,onSaved}:{winner:WinnerPhotoRec
     if(!uploaded)return;media=uploaded.id;setImageId(media);
    }
    const saved=await mutation.run('winnerBanner',{auctionId:winner.auctionId,version:winner.winnerBannerVersion??winner.winnerPhotoVersion??0,imageId:media,...(!reset?{consentConfirmed:true}:{}),reason:reset?'Restore original product image in Winners':reason.trim()});
-   if(saved)onSaved();
+   if(saved){notifyAdminAction(reset?'Product image restored.':'Winners banner saved.');onSaved()}
   }catch(cause){setError(cause instanceof Error?cause.message:'The Winners banner could not be saved. Try again.')}finally{pending.current=false;setBusy(false)}
  }
  const shown=preview??winner.winnerBannerPath,hasOverride=Boolean(winner.winnerBannerId||winner.winnerPhotoId);
@@ -37,6 +38,6 @@ export default function AdminWinnerPhoto({winner,onSaved}:{winner:WinnerPhotoRec
    {file&&<><label className="admin-check"><input type="checkbox" checked={consent} disabled={busy} onChange={event=>setConsent(event.currentTarget.checked)}/>I have permission to use this banner and consent from anyone identifiable in it.</label><label>Update note<input value={reason} onChange={event=>setReason(event.currentTarget.value)} disabled={busy} minLength={5} maxLength={500} required/></label><button disabled={busy||!consent||reason.trim().length<5}><ImagePlus size={16} aria-hidden="true"/>{busy?'Saving banner…':hasOverride?'Replace Winners banner':'Save Winners banner'}</button></>}
   </form>
   {hasOverride&&<button type="button" className="secondary" disabled={busy} onClick={()=>void save(true)}><RotateCcw size={16} aria-hidden="true"/>{busy?'Saving…':'Use product image again'}</button>}
-  <ErrorNotice error={error||mutation.error}/>
+  <ErrorNotice error={error} inline/><ErrorNotice error={!error?mutation.error:''}/>
  </section>;
 }
