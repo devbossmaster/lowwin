@@ -26,6 +26,9 @@
 .sheet[data-layout=bid-entry] .body{padding-bottom:6px;flex:1}
 .sheet[data-layout=bid-entry] .footer{padding-top:7px}
 .sheet[data-layout=bid-entry][data-keyboard-open=true] :global([data-sheet-preview]),.sheet[data-layout=bid-entry][data-keyboard-open=true] :global([data-bid-description]){display:none}
+.sheet:is([data-layout=bid-entry],[data-layout=bid-reference]){font-family:var(--font-sans)}
+.sheet:is([data-layout=bid-entry],[data-layout=bid-reference]) .header h2{font-family:var(--font-display)}
+.sheet:is([data-layout=bid-entry],[data-layout=bid-reference]) :where(button,input,select,textarea){font-family:inherit}
 .sheet[data-presentation=centered]{inset:calc(var(--sheet-viewport-height,100dvh)/2) auto auto 50%;margin:0;width:calc(min(100%,var(--customer-surface-width)) - 32px);max-height:calc(var(--sheet-viewport-height,100dvh) - 40px);border-radius:24px;transform:translate(-50%,-50%)}
 .sheet[data-presentation=centered][open]{animation:centered-arrive .16s ease-out}
 .sheet[data-presentation=centered] .handle{display:none}
@@ -49,7 +52,8 @@
 .sheet[data-layout=bid-reference]::backdrop{background:color-mix(in srgb,var(--brand-ink) 55%,transparent);backdrop-filter:blur(4px)}
 .sheet[data-layout=bid-reference] .handle{display:none}
 .sheet[data-layout=bid-reference] .header{min-height:56px;padding:6px 10px 6px 16px;gap:8px}
-.sheet[data-layout=bid-reference] .header h2{min-width:0;font-size:15px;font-weight:700;line-height:1.4;letter-spacing:0}
+.sheet[data-layout=bid-reference] .header h2{min-width:0;font-size:15px;font-weight:600;line-height:1.4;letter-spacing:0}
+.sheet[data-layout=bid-reference]:lang(am) .header h2{line-height:1.55}
 .sheet[data-layout=bid-reference] .headerActions{gap:0}
 .sheet[data-layout=bid-reference] .header button{position:relative;isolation:isolate;width:44px;height:44px;padding:0;background:transparent;color:var(--brand-muted-on-soft)}
 .sheet[data-layout=bid-reference] .header button::before{position:absolute;z-index:-1;inset:6px;border-radius:50%;background:var(--brand-soft);content:''}

@@ -3,7 +3,7 @@ import {PrismaClient} from '@prisma/client';
 import {createServer,type Server} from 'node:http';
 import {execFileSync} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
-import {makeSignature} from 'better-auth/crypto';
+import {makeSignature,signJWT} from 'better-auth/crypto';
 import {TEST_TOKEN} from './helpers';
 import {bidAuction,bidUser} from './bid-fixtures';
 import {formatAddisDateTimeLocal,parseAddisDateTimeLocal} from '../src/lib/addis-time';
@@ -374,5 +374,67 @@ describe.skipIf(!database)('Master Guide Admin on disposable PostgreSQL',()=>{
  it('logs out and revokes the issued server session',async()=>{
   const response=await post('sign-in/email',{email,password:'Fixture-replacement-password-12345'});const active=response.headers.getSetCookie().find(value=>value.includes('session_token='))!.split(';')[0];
   expect((await post('sign-out',{},active)).status).toBe(200);await expect(requireAdmin(db,new Headers({cookie:active}))).rejects.toMatchObject({status:401});
+ });
+ it('keeps profile credential changes scoped to a verified administrator',async()=>{
+  const {GET,POST}=await import('../src/app/api/admin/profile/route');
+  const oldPassword='Fixture-replacement-password-12345',newPassword='Fixture-profile-changed-password-23456';
+  const newEmail=`updated-${randomUUID()}@lowin.test`;
+  const sessionCookie=(response:Response)=>response.headers.getSetCookie().find(value=>value.includes('session_token='))!.split(';')[0];
+  let active=sessionCookie(await post('sign-in/email',{email,password:oldPassword}));
+  const other=sessionCookie(await post('sign-in/email',{email,password:oldPassword}));
+  const endpoint=origin+'/api/admin/profile';
+  const submit=(body:unknown,session=active,requestOrigin=origin)=>POST(new Request(endpoint,{method:'POST',headers:{cookie:session,origin:requestOrigin,'content-type':'application/json','x-forwarded-for':'198.18.72.91'},body:JSON.stringify(body)}));
+  const verify=(url:string,session=active)=>auth(new Request(url,{headers:{cookie:session}}));
+
+  expect((await GET(new Request(endpoint))).status).toBe(401);
+  const profile=await GET(new Request(endpoint,{headers:{cookie:active}}));
+  expect(profile.headers.get('cache-control')).toContain('no-store');
+  expect(await profile.json()).toEqual({email});
+  expect((await submit({action:'change-email',newEmail},active,'https://untrusted.invalid')).status).toBe(403);
+  expect((await post('change-email',{newEmail},active)).status).toBe(404);
+  expect((await post('change-password',{currentPassword:oldPassword,newPassword},active)).status).toBe(404);
+
+  expect((await post('request-password-reset',{email,redirectTo:origin+'/admin/login'})).status).toBe(200);
+  const oldResetLink=new URL(latestLink());
+  const oldResetToken=oldResetLink.pathname.split('/').at(-1)!;
+  const change=await submit({action:'change-email',newEmail});
+  expect(change.status,await change.clone().text()).toBe(200);
+  expect(messages.at(-1)?.to).toBe(email);
+  const approveLink=latestLink();
+  expect((await verify(approveLink,'')).headers.get('location')).toContain('emailChange=invalid');
+  expect((await verify(approveLink)).headers.get('location')).toBe('/admin/profile?emailChange=verify-new');
+  expect(messages.at(-1)?.to).toBe(newEmail);
+  expect((await db.user.findUniqueOrThrow({where:{id:userId}})).email).toBe(email);
+
+  const verifyLink=latestLink();
+  const forgedCallback=new URL(verifyLink);forgedCallback.searchParams.set('callbackURL','https://untrusted.invalid/');
+  expect((await verify(forgedCallback.href)).headers.get('location')).toContain('emailChange=invalid');
+  const expired=new URL(verifyLink);
+  expired.searchParams.set('token',await signJWT({email,updateTo:newEmail,requestType:'change-email-verification',userId},process.env.BETTER_AUTH_SECRET!,-10));
+  expect((await verify(expired.href)).headers.get('location')).toContain('error=TOKEN_EXPIRED');
+  expect((await db.user.findUniqueOrThrow({where:{id:userId}})).email).toBe(email);
+  expect((await verify(verifyLink,'')).headers.get('location')).toContain('emailChange=invalid');
+  const verified=await verify(verifyLink);
+  expect(verified.headers.get('location'),await verified.clone().text()).toBe('/admin/login?emailChanged=1');
+  expect(verified.headers.get('referrer-policy')).toBe('no-referrer');
+  expect(await db.user.findUniqueOrThrow({where:{id:userId}})).toMatchObject({email:newEmail,emailVerified:true,role:'admin'});
+  await expect(requireAdmin(db,new Headers({cookie:other}))).rejects.toMatchObject({status:401});
+  await expect(requireAdmin(db,new Headers({cookie:active}))).rejects.toMatchObject({status:401});
+  expect((await verify(verifyLink)).headers.get('location')).toContain('emailChange=invalid');
+  expect((await post('reset-password',{token:oldResetToken,newPassword})).status).toBe(400);
+
+  active=sessionCookie(await post('sign-in/email',{email:newEmail,password:oldPassword}));
+  const wrong={action:'change-password',currentPassword:'Wrong password',newPassword};
+  for (let attempt=0;attempt<5;attempt++) expect((await submit(wrong)).status).toBe(400);
+  expect((await submit(wrong)).status).toBe(429);
+  await expect(requireAdmin(db,new Headers({cookie:active}))).resolves.toMatchObject({id:userId});
+  await db.rateLimit.deleteMany();
+  const changed=await submit({action:'change-password',currentPassword:oldPassword,newPassword});
+  expect(changed.status,await changed.clone().text()).toBe(200);
+  expect(await changed.json()).toEqual({ok:true});
+  expect(changed.headers.getSetCookie().some(value=>/session_token=;.*Max-Age=0/.test(value))).toBe(true);
+  expect(await db.session.count({where:{userId}})).toBe(0);
+  expect((await post('sign-in/email',{email:newEmail,password:oldPassword})).status).toBe(401);
+  expect((await post('sign-in/email',{email:newEmail,password:newPassword})).status).toBe(200);
  });
 });

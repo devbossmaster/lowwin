@@ -42,6 +42,7 @@ export function adminRouteResources(href:string){
  const params=(values:Record<string,string>)=>new URLSearchParams(values).toString();
  switch(url.pathname){
   case '/admin':return ['dashboard/summary','dashboard/auctions'];
+  case '/admin/profile':return ['profile'];
   case '/admin/users':return [`workspace/players?${params({page,q:get('q'),status:get('status')})}`];
   case '/admin/fulfillment':return [`workspace/winners?${params({page,q:get('q'),status:get('status')})}`];
   case '/admin/auctions':{

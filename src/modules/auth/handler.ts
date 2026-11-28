@@ -12,6 +12,7 @@ import {getLaunchSession} from './mini-access';
 import {miniAccountFromSession,telegramBootstrap} from './mini-account';
 import {recordSignedMiniReferralStartInTransaction} from '../referrals/service';
 import {handleTelegramOIDC} from './telegram-oidc-handler';
+import {handleStaffEmailVerification} from './staff-profile';
 
 export async function handleAuth(request: Request) {
   const path = new URL(request.url).pathname.replace('/api/auth', '');
@@ -29,11 +30,11 @@ export async function handleAuth(request: Request) {
   }
   if(oidc)return handleTelegramOIDC(request,path);
   if(emailPosts.includes(path)||request.method==='GET'&&path!=='/get-session'){
-    const started=performance.now(),headers={'Cache-Control':'private, no-store, max-age=0','Vary':'Cookie','X-Robots-Tag':'noindex'};
+    const started=performance.now(),headers={'Cache-Control':'private, no-store, max-age=0','Vary':'Cookie','X-Robots-Tag':'noindex','Referrer-Policy':'no-referrer'};
     try{
       // Better Auth owns credential/token checks and persistent rate limits.
       // Resend HTTP is never wrapped in our interactive database transaction.
-      const response=await createAuth().handler(request),output=new Headers(response.headers);
+      const response=path==='/verify-email'?await handleStaffEmailVerification(request,env.BETTER_AUTH_SECRET):await createAuth().handler(request),output=new Headers(response.headers);
       if(response.status>=500)return Response.json({error:'Authentication is temporarily unavailable. Please retry.'},{status:503,headers});
       for(const [key,value]of Object.entries(headers))output.set(key,value);
       output.set('Server-Timing',`auth;dur=${Math.round(performance.now()-started)}`);

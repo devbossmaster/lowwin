@@ -21,6 +21,7 @@ export function StaffLogin({accessError}:{accessError?:string}={}){
   setReady(true);const params=new URLSearchParams(location.search),reset=params.get('token');
   if(reset){setToken(reset);setMode('reset');history.replaceState(null,'',location.pathname)}
   if(params.get('verified')==='1')setMessage('Email verified. Sign in after your administrator access is approved.');
+  if(params.get('emailChanged')==='1')setMessage('Email changed. Sign in with your new email address.');
   if(params.has('error'))setError('This email link is invalid or expired. Request a new link.');
  },[]);
  function change(next:Mode){if(busy)return;setMode(next);setMessage('');setError('');setToken('')}

@@ -2,6 +2,7 @@ import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {AdminAuctionDeadlineField, AdminAuctionSchedulePreview, parseAuctionScheduleTime} from '../src/components/admin-auction-schedule-preview';
+import {AdminDateTimeField} from '../src/components/admin-date-time-field';
 
 afterEach(() => {
   vi.useRealTimers();
@@ -17,10 +18,11 @@ describe('Admin auction countdown preview', () => {
 
     expect(html).toContain('value="2026-11-19T23:13"');
     expect(html).toMatch(/<input type="date"[^>]*value="2026-11-19"/);
-    expect(html).toMatch(/<input type="text"[^>]*value="23:13"/);
-    expect(html).toContain('Time (24-hour)');
+    expect(html).toMatch(/<input type="text"[^>]*value="11:13"/);
+    expect(html).toContain('Time (12-hour)');
+    expect(html).toContain('<option selected="">PM</option>');
     expect(html).toContain('<dt>Ends in</dt><dd>5h 13m</dd>');
-    expect(html).toContain('Ends 19 Nov 2026, 23:13</p>');
+    expect(html).toContain('Ends 19 Nov 2026, 11:13 PM</p>');
     expect(html).not.toContain('Shortens');
   });
 
@@ -52,8 +54,8 @@ describe('Admin auction countdown preview', () => {
     }));
 
     expect(html).toContain('<dt>Starts in</dt><dd>1h</dd>');
-    expect(html).toContain('Starts 19 Nov 2026, 19:00<span> · 1h earlier</span>');
-    expect(html).toContain('Ends 20 Nov 2026, 01:00</p>');
+    expect(html).toContain('Starts 19 Nov 2026, 7:00 PM<span> · 1h earlier</span>');
+    expect(html).toContain('Ends 20 Nov 2026, 1:00 AM</p>');
   });
 
   it('provides useful feedback before both draft times are valid', () => {
@@ -69,5 +71,13 @@ describe('Admin auction countdown preview', () => {
     expect(parseAuctionScheduleTime('2026-11-19T00:00')?.toISOString()).toBe('2026-11-18T21:00:00.000Z');
     expect(parseAuctionScheduleTime('2026-02-30T03:22')).toBeNull();
     expect(parseAuctionScheduleTime('2026-11-20T12:22 PM')).toBeNull();
+  });
+
+  it.each([['00:00:52','AM'],['12:00:52','PM']])('retains seconds for %s when displaying a receipt time', (clock, period) => {
+    const value = `2026-11-20T${clock}`;
+    const html = renderToStaticMarkup(createElement(AdminDateTimeField, {label:'Transfer date', name:'transferredAt', value, onChange:()=>{}, includeSeconds:true}));
+    expect(html).toMatch(/<input type="text"[^>]*value="12:00:52"/);
+    expect(html).toContain(`<option selected="">${period}</option>`);
+    expect(html).toContain(`type="hidden" name="transferredAt" value="${value}"`);
   });
 });

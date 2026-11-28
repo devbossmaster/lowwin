@@ -1,7 +1,8 @@
 import { Prisma, type Verification } from '@prisma/client';
-import { getAuthStateVerificationIdentifier, type BetterAuthPlugin } from 'better-auth';
+import { getAuthStateVerificationIdentifier, type BetterAuthPlugin, type User as AuthUser } from 'better-auth';
 import { createAuthMiddleware } from 'better-auth/api';
-import { telegramOIDCCallback } from './telegram-oidc-session';
+import { TELEGRAM_LOGIN_PROVIDER } from './telegram-login';
+import { oidcProof, telegramOIDCCallback } from './telegram-oidc-session';
 import { measureTelegramAuth } from './telegram-timing';
 
 /** Consume the browser-bound state in a single statement. Better Auth still
@@ -56,8 +57,25 @@ export function telegramOIDCState(client: Prisma.TransactionClient): BetterAuthP
             if (key === identifier && consumed) return;
             return internalAdapter.deleteVerificationByIdentifier(key);
           },
-          findAccountOwnerByKey: (key: Parameters<typeof internalAdapter.findAccountOwnerByKey>[0]) =>
-            measureTelegramAuth('oidc_account_owner', () => internalAdapter.findAccountOwnerByKey(key)),
+          async findAccountOwnerByKey(key: Parameters<typeof internalAdapter.findAccountOwnerByKey>[0]) {
+            const proof = await oidcProof.get();
+            if (key.providerId !== TELEGRAM_LOGIN_PROVIDER || proof?.subject !== key.accountId) return internalAdapter.findAccountOwnerByKey(key);
+            return measureTelegramAuth('oidc_account_owner', async () => {
+              // This exact key has already passed verified profile mapping. Read
+              // its current owner in one query, with the session insert still
+              // responsible for rechecking the binding and verified contact.
+              const row = await client.account.findUnique({
+                where: { providerId_accountId: key },
+                relationLoadStrategy: 'join',
+                include: { user: true },
+              });
+              if (!row) return null;
+              const { user, ...account } = row;
+              // The existing adapter preserves nullable email for Telegram-only
+              // users, although Better Auth's base user type requires a string.
+              return user ? { kind: 'owned' as const, account, user: user as AuthUser } : { kind: 'orphaned' as const, account };
+            });
+          },
         } } } };
       }),
     }] },

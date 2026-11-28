@@ -235,3 +235,20 @@
 .admin-root .admin-form button[type=submit],.admin-root .admin-form fieldset>button:not(.secondary){color:var(--brand-on-primary,#fff);--surface-ink:var(--brand-on-primary,#fff)}
 .admin-root button:active:not(:disabled,.secondary,.admin-text-button,.danger){background:var(--action-pressed,#1e40af);transform:translateY(1px)}
 .admin-root .admin-text-button:hover:not(:disabled){background:var(--admin-selected);color:var(--brand-ink);--surface-ink:var(--brand-ink)}
+
+/* Account settings use the same admin panels and input styles as the workspace. */
+.admin-root .admin-profile-link{margin-bottom:3px;padding:11px 9px;border:0;border-radius:10px;color:var(--admin-muted);text-decoration:none}
+.admin-profile-link p{flex:1;min-width:0}
+.admin-profile-link:hover,.admin-profile-link[aria-current="page"]{background:var(--admin-selected)}
+.admin-profile-panels{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;max-width:1020px;align-items:start}
+.admin-profile-panels .admin-panel{margin:0;min-width:0}
+.admin-profile-panels h2{display:flex;align-items:center;gap:9px;margin:0 0 16px}
+.admin-profile-panels h2 svg{color:var(--admin-accent)}
+.admin-profile-panels .admin-form{gap:14px}
+.admin-profile-panels .admin-form p{margin:0;color:var(--admin-muted)}
+.admin-profile-email{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;padding:12px;margin-bottom:18px;border-radius:9px;background:var(--admin-canvas)}
+.admin-profile-email strong{overflow-wrap:anywhere}
+.admin-profile-email span{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--admin-muted)}
+.admin-profile-skeleton{width:72%;height:44px;margin-bottom:18px;border-radius:9px;background:var(--admin-canvas)}
+.admin-profile-panels .admin-form .admin-profile-confirmation{padding:10px 12px;border-radius:8px;background:var(--admin-selected);color:inherit}
+@media(max-width:850px){.admin-profile-panels{grid-template-columns:minmax(0,1fr)}}

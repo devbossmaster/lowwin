@@ -1,5 +1,5 @@
 'use client';
-import {preinit} from 'react-dom';
+import {preconnect,preinit} from 'react-dom';
 import {lazy,Suspense,useEffect,useRef} from 'react';
 import {usePathname,useRouter,useSearchParams} from 'next/navigation';
 import {TELEGRAM_SDK_URL} from '@/lib/telegram-sdk-client';
@@ -36,6 +36,9 @@ export function RegistrationHost({browserLogin}:{browserLogin:TelegramBrowserLog
  },[registrationOpen,status,router]);
  useEffect(()=>{if(environment==='detecting'||checkedCallback.current)return;checkedCallback.current=true;if(environment==='browser'&&telegramBrowserLoginError(new URLSearchParams(window.location.search).get('telegramLoginError')))openRegistration()},[environment,openRegistration]);
  if(!registrationOpen||environment!=='browser')return null;
+ // Start the connection when the player opens the sheet, including on a cold
+ // visit where the sheet is still loading. Explicit consent still starts OAuth.
+ if(browserLogin.enabled&&browserLogin.configured&&status!=='loading'&&status!=='error')preconnect('https://oauth.telegram.org');
  return <Suspense fallback={<p className={styles.opening} role="status"><MiniPhrase en="Opening sign-in…" am="መግቢያውን በመክፈት ላይ…"/></p>}><BrowserLogin configuration={browserLogin}/></Suspense>;
 }
 

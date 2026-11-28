@@ -17,6 +17,11 @@ export function AdminLink({href,onPointerEnter,onFocus,onTouchStart,scroll,...pr
  return <NextLink prefetch={false} href={restored} scroll={scroll??!(typeof restored==='string'&&positions.has(restored))} onPointerEnter={event=>{onPointerEnter?.(event);warm()}} onFocus={event=>{onFocus?.(event);warm()}} onTouchStart={event=>{onTouchStart?.(event);warm()}} {...props}/>;
 }
 export function clearAdminCache(){active?.client.clear();active=null;navigation.clear();positions.clear();prefetchBudget.reset()}
+export async function signOutAdmin(){
+ const response=await fetch('/api/auth/sign-out',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}',cache:'no-store'});
+ if(!response.ok)throw Error('Sign out failed. Try again.');
+ clearAdminCache();
+}
 export function AdminQueryProvider({identity,allowedRoutes=[],children}:{identity:string;allowedRoutes?:readonly string[];children:React.ReactNode}){
  const [client]=useState(()=>new QueryClient({defaultOptions:{queries:{staleTime:15000,gcTime:5*60000,retry:false,refetchOnWindowFocus:false}}}));
  if(typeof window!=='undefined'){if(active?.identity!==identity){active?.client.clear();navigation.clear();positions.clear();prefetchBudget.reset()}active={identity,client}}

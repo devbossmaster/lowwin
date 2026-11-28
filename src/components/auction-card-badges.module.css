@@ -34,10 +34,7 @@
 .homeFacts>.bids[data-long-bid-count]>svg{grid-column:1;grid-row:2;justify-self:end}
 .homeFacts>.bids[data-long-bid-count]>span{grid-column:2;grid-row:2}
 .homeCard:global(.auction-card)>:global(.auction-card-body)>.homeFacts>.homeClock:global(.card-clock){
- display:flex;flex:1.9 1 0;flex-direction:column;align-items:stretch;min-width:124px;gap:3px;padding:4px 5px;
-}
-.clockTitle{
- color:var(--brand-muted-on-soft,#5f6b7a);font-size:.625rem;font-weight:600;line-height:1.35;text-align:center;
+ display:flex;flex:1.9 1 0;align-items:center;min-width:124px;padding:4px 5px;
 }
 .homeCard:global(.auction-card) .homeFacts .homeClock [data-countdown-group]{
  display:grid;grid-template-columns:repeat(4,minmax(0,1fr));width:100%;min-width:0;gap:4px;
@@ -54,7 +51,6 @@
  font-size:min(1rem,calc(3.125rem / var(--flap-digits,2)));font-weight:800;
 }
 .homeClock [data-countdown-ended]{font-size:.8125rem}
-.homeClock:has([data-countdown-ended]) .clockTitle{display:none}
 .homeCard .utilities{align-items:center;margin-top:0}
 .homeCard .terms{min-height:32px;padding:6px 10px;border-radius:10px}
 .homeCard .utilities .share{position:relative;isolation:isolate;padding-inline:12px;border-radius:12px;background:transparent;font-size:.75rem}

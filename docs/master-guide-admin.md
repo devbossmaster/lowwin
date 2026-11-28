@@ -9,6 +9,7 @@ This is the reusable Lowwin admin contract requested on 28 October 2026. When a 
 3. An authorized database operator promotes that exact verified email account to `admin` using the SQL below. The first admin follows the same process.
 4. Sign in with email and password. No invitation, bootstrap secret, authenticator or 2FA enrollment is part of this flow.
 5. **Forgot password?** sends a Resend reset link. Verification and reset links expire after 30 minutes. A successful password reset revokes existing sessions and preserves the account's current role.
+6. **Profile** shows the verified sign-in address and lets staff sign out or update credentials. A password change requires the current password. To change email, approve the link in the current inbox, then verify the new address using the signed-in browser. A completed credential change revokes sessions and outstanding reset links, then asks staff to sign in again.
 
 Server configuration requires `EMAIL_TRANSPORT=resend`, `RESEND_API_KEY` and a verified `EMAIL_FROM` address. Keep credentials in server configuration. Use the application's trusted `BETTER_AUTH_URL` for email callbacks.
 

@@ -40,7 +40,7 @@ describe('Affiliate referral readiness and wallet rewards',()=>{
   Object.assign(f.referral,{enabled:false,shareUrl:null,webShareUrl:null});const html=render();expect(html).toContain('New invitations are paused');expect(html).toContain('Rewards you already earned stay in your wallet');expect(html).toContain('>ETB 12.50</strong>');expect(html).not.toContain('Copy referral link');
  });
  it('shows recent invitation dates in Addis Ababa time and the first bid status',()=>{
-  const html=render();expect(html).toContain('Recent invitations');expect(html).toContain('25 Nov 2026, 00:30');expect(html).toContain('>Accepted<');expect(html).toContain('>Pending<');
+  const html=render();expect(html).toContain('Recent invitations');expect(html).toContain('25 Nov 2026, 12:30 AM');expect(html).toContain('>Accepted<');expect(html).toContain('>Pending<');
   f.referral.recentInvites=[];expect(render()).toContain('No one has registered with your link yet.');
  });
  it('does not claim reward terms or availability before storage/policy configuration',()=>{

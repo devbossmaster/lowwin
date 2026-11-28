@@ -1,6 +1,5 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
-import {preconnect} from 'react-dom';
 import {AlertCircle,LoaderCircle,ShieldCheck} from 'lucide-react';
 import {LOWWIN_LOGO_SRC} from '@/lib/brand';
 import {botRegistrationReferralUrl,referralCodeFromParams,REFERRAL_BOT_RECOVERY_PARAMETER} from '@/lib/referral-invite';
@@ -35,7 +34,6 @@ export default function BrowserTelegramLogin({configuration}:{configuration:Tele
  const navigation=useRef<AbortController|null>(null);
  const ready=configuration.enabled&&configuration.configured,restoring=status==='loading',sessionUnavailable=status==='error';
  const canChooseSignIn=!restoring&&!sessionUnavailable;
- if(ready&&canChooseSignIn)preconnect('https://oauth.telegram.org');
  useEffect(()=>{
   const resumed=(event:PageTransitionEvent)=>{if(event.persisted){navigation.current?.abort();navigation.current=null;setPending(false)}};
   window.addEventListener('pageshow',resumed);
@@ -61,18 +59,22 @@ export default function BrowserTelegramLogin({configuration}:{configuration:Tele
  const notice=errorCode==='network'?(language==='am'?'Telegramን መክፈት አልቻልንም። ግንኙነትዎን ያረጋግጡና እንደገና ይሞክሩ።':'Telegram could not open. Check your connection and try again.'):errorCode?feedback[errorCode][language]:null;
  return <AccountSheet title={<span className={styles.brand}><img src={LOWWIN_LOGO_SRC} width={27} height={27} alt=""/>LowWin</span>} onClose={close} presentation="centered">
   <div className={styles.content} data-browser-telegram-login>
-   <h3><MiniPhrase en="Sign in or create an account" am="ይግቡ ወይም ይመዝገቡ"/></h3>
-   <p className={styles.lead}><MiniPhrase en="Continue with Telegram. If you're new, we'll create your LowWin account in the same step." am="በTelegram ይቀጥሉ። አዲስ ከሆኑ የLowWin መለያዎ በዚሁ ይፈጠራል።"/></p>
+   <div className={styles.intro}>
+    <h3><MiniPhrase en="Sign in or join LowWin" am="ይግቡ ወይም ይመዝገቡ"/></h3>
+    <p className={styles.lead}><MiniPhrase en="Use your Telegram account to continue." am="በTelegram መለያዎ ይቀጥሉ።"/></p>
+   </div>
    {notice&&canChooseSignIn&&<p className={styles.notice} role="alert"><AlertCircle size={17} aria-hidden="true"/><span>{notice}</span></p>}
    {restoring&&<p className={styles.loading} role="status"><LoaderCircle size={17} className={styles.spin} aria-hidden="true"/><MiniPhrase en="Restoring your account…" am="መለያዎን በመመለስ ላይ…"/></p>}
    {sessionUnavailable&&<div className={styles.unavailable}><p role="status"><MiniPhrase en="We couldn’t check your session. Check your connection and try again." am="መግቢያዎን ማረጋገጥ አልቻልንም። ግንኙነትዎን ያረጋግጡና እንደገና ይሞክሩ።"/></p><button type="button" className={styles.primary} onClick={retry}><MiniPhrase en="Retry connection" am="ግንኙነቱን እንደገና ይሞክሩ"/></button></div>}
    {canChooseSignIn&&<>
     {ready?<button className={styles.primary} type="button" disabled={pending} onClick={start} aria-busy={pending}>{pending?<LoaderCircle size={20} className={styles.spin} aria-hidden="true"/>:<TelegramMark/>}<MiniPhrase en={pending?'Opening Telegram…':'Continue with Telegram'} am={pending?'Telegram በመክፈት ላይ…':'በTelegram ይቀጥሉ'}/></button>:<div className={styles.unavailable}><p role="status"><MiniPhrase en="Website sign-in is currently unavailable. You can use LowWin in Telegram or keep browsing." am="የድረ ገጽ መግቢያ ለጊዜው አይገኝም። LowWinን በTelegram ይክፈቱ ወይም መመልከት ይቀጥሉ።"/></p>{registrationBotUrl&&<TelegramBotLink className={styles.primary} href={registrationBotUrl}><TelegramMark/><MiniPhrase en="Open LowWin in Telegram" am="LowWinን በTelegram ይክፈቱ"/></TelegramBotLink>}</div>}
    </>}
-   {ready&&canChooseSignIn&&<p className={styles.explanation}><MiniPhrase en="For a new account, allow phone sharing on Telegram. Use the same Telegram account here and in the bot to keep your wallet and bids." am="ለአዲስ መለያ ስልክ ቁጥርዎን በTelegram ለማጋራት ይፍቀዱ። ዋሌትዎን እና ጨረታዎችዎን ለመቀጠል እዚህና በቦቱ ተመሳሳይ የTelegram መለያ ይጠቀሙ።"/></p>}
+   {ready&&canChooseSignIn&&<div className={styles.explanation}>
+    <ShieldCheck size={17} aria-hidden="true"/>
+    <p><MiniPhrase en="New accounts require phone sharing in Telegram. Use the same Telegram account to keep your wallet and bids." am="አዲስ ከሆኑ የስልክ ቁጥርዎን በTelegram ያጋሩ። ዋሌትዎን እና ጨረታዎችዎን ለማቆየት ተመሳሳይ መለያ ይጠቀሙ።"/></p>
+   </div>}
    {canChooseSignIn&&errorCode==='contact_required'&&registrationBotUrl&&<TelegramBotLink className={styles.secondary} href={registrationBotUrl}><MiniPhrase en="Finish registration in Telegram" am="ምዝገባን በTelegram ያጠናቅቁ"/></TelegramBotLink>}
    <button type="button" className={styles.browse} onClick={close}><MiniPhrase en="Keep browsing" am="መመልከት ይቀጥሉ"/></button>
-   <p className={styles.security}><ShieldCheck size={14} aria-hidden="true"/><MiniPhrase en="Secure sign-in through Telegram" am="በTelegram ደህንነቱ የተጠበቀ መግቢያ"/></p>
   </div>
  </AccountSheet>;
 }

@@ -2,23 +2,27 @@ export const ADDIS_ABABA_TIME_ZONE = 'Africa/Addis_Ababa';
 export const ADDIS_ABABA_TIME_LABEL = 'Addis Ababa';
 
 const addisOffsetMs = 3 * 60 * 60 * 1000;
-const timestampStyles = {
-  dateTime: {dateStyle: 'medium', timeStyle: 'short'},
-  compact: {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'},
-  time: {hour: '2-digit', minute: '2-digit'},
-  withSeconds: {dateStyle: 'medium', timeStyle: 'medium'},
-} as const satisfies Record<string, Intl.DateTimeFormatOptions>;
-const formatters = new Map<string, Intl.DateTimeFormat>();
+const clockOptions = {hour: 'numeric', minute: '2-digit', hourCycle: 'h12', timeZone: ADDIS_ABABA_TIME_ZONE} as const;
+const minuteClock = new Intl.DateTimeFormat('en-GB', clockOptions);
+const secondClock = new Intl.DateTimeFormat('en-GB', {...clockOptions, second: '2-digit'});
+const dateFormatters = new Map<string, Intl.DateTimeFormat>();
+type TimestampStyle = 'dateTime' | 'compact' | 'time' | 'withSeconds';
 
-export function formatAddisTimestamp(value: string | Date | null | undefined, locale = 'en-GB', style: keyof typeof timestampStyles = 'dateTime') {
+export function formatAddisTimestamp(value: string | Date | null | undefined, locale = 'en-GB', style: TimestampStyle = 'dateTime') {
   if (!value) return 'Not scheduled';
-  const key = `${locale}:${style}`;
-  let formatter = formatters.get(key);
+  const instant = new Date(value);
+  const clock = (style === 'withSeconds' ? secondClock : minuteClock).format(instant).replace(/[ap]m$/, marker => marker.toUpperCase());
+  if (style === 'time') return clock;
+
+  const compact = style === 'compact';
+  const key = `${locale}:${compact}`;
+  let formatter = dateFormatters.get(key);
   if (!formatter) {
-    formatter = new Intl.DateTimeFormat(locale, {...timestampStyles[style], timeZone: ADDIS_ABABA_TIME_ZONE, hourCycle: 'h23'});
-    formatters.set(key, formatter);
+    const options: Intl.DateTimeFormatOptions = compact ? {month: 'short', day: 'numeric'} : {dateStyle: 'medium'};
+    formatter = new Intl.DateTimeFormat(locale, {...options, timeZone: ADDIS_ABABA_TIME_ZONE});
+    dateFormatters.set(key, formatter);
   }
-  return formatter.format(new Date(value));
+  return `${formatter.format(instant)}, ${clock}`;
 }
 
 /** Convert a UTC instant into a minute-precision Addis Ababa datetime-local value. */

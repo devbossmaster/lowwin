@@ -5,7 +5,7 @@
 .checkout :focus-visible{outline:2px solid var(--brand-primary);outline-offset:3px}
 .pay:focus-visible{outline:2px solid var(--brand-primary);outline-offset:3px;background:var(--action-primary, #2563eb);color:var(--action-ink, #fff);--surface-ink:var(--action-ink, #fff);min-height:48px;border-radius:24px;padding:12px 24px;gap:8px;font-size:15px;font-weight:600;line-height:1.5}
 .checkout input::selection{background:var(--brand-soft);color:var(--brand-ink)}
-.checkout .productHeader>.productTitle{flex:1;min-width:0;margin:0;text-align:start;color:var(--brand-ink);font-size:17px;line-height:1.4;font-weight:650;letter-spacing:-.02em;overflow-wrap:anywhere}
+.checkout .productHeader>.productTitle{flex:1;min-width:0;margin:0;text-align:start;color:var(--brand-ink);font-family:var(--font-display);font-size:17px;line-height:1.4;font-weight:600;letter-spacing:-.02em;overflow-wrap:anywhere}
 .description{margin:0 0 12px;color:var(--brand-muted);font-size:12px;line-height:1.55}
 .description summary{display:flex;min-height:44px;flex-direction:column;justify-content:center;align-items:flex-start;gap:4px;list-style:none;cursor:pointer}
 .description summary::-webkit-details-marker{display:none}
@@ -13,15 +13,27 @@
 .description b{display:flex;align-items:center;gap:3px;color:var(--action-pressed);font-size:11px;font-weight:650}
 .description p{white-space:pre-line;margin:7px 0 0;overflow-wrap:anywhere}
 .less{display:none}.description[open] .more{display:none}.description[open] .less{display:inline}.description[open] .excerpt{display:none}.description[open] summary{min-height:0}.description[open] svg{transform:rotate(180deg)}
-.feeStrip{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;margin:0 0 14px;padding:10px 12px;border:1px solid var(--brand-line);border-radius:14px;background:var(--brand-soft)}
-.fee small{display:block;font-size:11px;line-height:1.45;color:var(--brand-muted-on-soft)}
-.fee strong{display:block;color:var(--action-pressed);font-size:20px;font-weight:700;line-height:1.35;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
-.feeMeta{display:grid;justify-items:end;gap:3px;min-width:0}
-.bidCount{display:inline-flex;align-items:center;gap:4px;color:var(--brand-muted-on-soft);font-size:11px;line-height:1.35;font-variant-numeric:tabular-nums}
-.bidCount svg{flex:none}
-.timer{display:flex;align-items:center;gap:5px;color:var(--brand-ink);font-size:13px;font-weight:650;white-space:nowrap;font-variant-numeric:tabular-nums}
-.timer>svg{flex:none}
-.timer :global(.countdown){background:none;padding:0;font:inherit;white-space:nowrap}
+.feeStrip{
+ display:grid;grid-template-columns:minmax(0,1fr) clamp(132px,48%,184px);align-items:center;gap:12px;margin:0 0 14px;padding:9px 12px;
+ border:1px solid var(--brand-line);border-radius:14px;background:color-mix(in srgb,var(--action-disabled) 24%,var(--brand-surface));
+}
+.feeDetails{display:grid;gap:4px;min-width:0}
+.fee>span{display:block;color:var(--brand-muted-on-soft);font-size:11px;line-height:1.4}
+.fee>strong{display:block;color:var(--action-pressed);font-size:19px;font-weight:750;line-height:1.25;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.bidCount{display:flex;align-items:first baseline;gap:4px;color:var(--brand-muted-on-soft);font-size:11px;line-height:1.4;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.bidCount svg{align-self:center;flex:none}
+.bidCount strong{color:var(--brand-ink);font-weight:650}
+.timer{display:grid;min-width:0;padding-inline-start:8px;border-inline-start:1px solid var(--brand-line);color:var(--brand-muted-on-soft);text-align:center}
+.timer :global(.countdown){width:100%;padding:0;border:0;background:none}
+.timer [data-countdown-group]{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:3px;min-width:0}
+.timer [data-countdown-group][data-countdown-large-values]{grid-template-columns:minmax(34px,1.35fr) repeat(2,minmax(0,1fr)) minmax(23px,1fr);gap:2px}
+.timer [data-countdown-unit]{align-items:stretch;gap:2px;text-align:center}
+.timer [data-countdown-unit]>small{font-size:9px;font-weight:600;line-height:1.4;color:var(--brand-muted-on-soft)}
+.timer [data-countdown-tile]{
+ --flap-height:25px;--flap-radius:6px;--flap-face-top:#f3f7ff;--flap-face-bottom:#e5eeff;
+ width:100%;min-width:0;border-color:#d3e1fb;color:var(--action-pressed);font-size:min(1rem,calc(2.7rem / var(--flap-digits,2)));font-weight:750;
+}
+.timer [data-countdown-ended]{font-size:12px;font-weight:650;line-height:1.45}
 .multiRow{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:46px;margin-bottom:12px;padding:0 12px;border:2px solid var(--brand-line);border-radius:16px;background:var(--brand-canvas)}
 .multiRow>span{display:flex;align-items:center;gap:9px;font-size:11px;font-weight:550}
 .multiRow>span svg{color:var(--brand-primary);flex:none}
@@ -81,7 +93,7 @@
 .pay{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:48px;padding:12px 24px;border:0;border-radius:24px;background:var(--action-primary, #2563eb);color:var(--action-ink, #fff);font-size:15px;font-weight:600;line-height:1.5;cursor:pointer;--surface-ink:var(--action-ink, #fff)}
 .pay:disabled{background:var(--action-disabled, #dbe7fb);color:var(--action-disabled-ink, #52647f);cursor:not-allowed;opacity:1;--surface-ink:var(--action-disabled-ink, #52647f)}.pay:hover:not(:disabled){background:var(--action-disabled, #dbe7fb);color:var(--action-disabled-ink, #52647f);opacity:1;--surface-ink:var(--action-disabled-ink, #52647f)}.spin{animation:spin 1s linear infinite}
 .checkout:lang(am){letter-spacing:0}.checkout:lang(am) .productTitle{font-size:16px;line-height:1.6;letter-spacing:0}.checkout:lang(am) .method>strong{font-size:10px}
-@media(max-width:360px){.feeStrip{gap:8px;padding-inline:10px}.fee strong{font-size:18px}.timer{gap:4px;font-size:12px}.method{gap:6px;padding:7px 9px}.method>strong{font-size:10px}.method>img{width:27px;height:25px}.walletIcon{width:24px}.rangeRow{gap:5px}.rangeRow .add{min-width:63px;padding-inline:9px;font-size:15px;font-weight:600}}
+@media(max-width:360px){.feeStrip{gap:8px;padding-inline:10px}.fee>strong{font-size:18px}.method{gap:6px;padding:7px 9px}.method>strong{font-size:10px}.method>img{width:27px;height:25px}.walletIcon{width:24px}.rangeRow{gap:5px}.rangeRow .add{min-width:63px;padding-inline:9px;font-size:15px;font-weight:600}}
 @media(prefers-reduced-motion:reduce){.multiRow>button>span{transition:none}.spin{animation:none}}
 @keyframes spin{to{transform:rotate(360deg)}}
 

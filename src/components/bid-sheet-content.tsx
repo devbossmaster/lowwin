@@ -1,7 +1,7 @@
 'use client';
 import dynamic from 'next/dynamic';
 import {useCallback,useEffect,useId,useRef,useState} from 'react';
-import {ArrowLeft,ChevronDown,Clock3,LoaderCircle,Plus,Ticket,Wallet,X} from 'lucide-react';
+import {ArrowLeft,ChevronDown,LoaderCircle,Plus,Ticket,Wallet,X} from 'lucide-react';
 import type {CatalogAuction} from '@/modules/auctions/catalog';
 import type {getOwnBidState} from '@/modules/auctions/bids';
 import type {WalletBalance} from '@/modules/wallet/balance';
@@ -352,13 +352,13 @@ export default function BidSheetContents({auction,serverNow,onClose,onPhaseChang
   <div className={reference.checkout} data-bid-entry data-bid-step="entry" data-payment-method-form={undefined}>
    <div className={reference.productHeader}><CatalogImage src={known.product.images[0]?.path} alt="" sizes="76px"/><h3 className={reference.productTitle}>{am?known.product.titleAm||known.product.title:known.product.title}</h3></div>
    {description&&<details className={reference.description}><summary><span className={reference.excerpt}>{description}</span><b><span className={reference.more}>{text('Show more','ተጨማሪ ያሳዩ')}</span><span className={reference.less}>{text('Show less','ያሳንሱ')}</span><ChevronDown size={12} aria-hidden="true"/></b></summary><p>{description}</p></details>}
-   <div className={reference.feeStrip}>
-    <div className={reference.fee}><small>{text('Bid fee','የጨረታ ክፍያ')}</small><strong>{formatEtb(terms.entryFeePoints)}</strong></div>
-    <div className={reference.feeMeta}>
-     <span className={reference.timer}><Clock3 size={14} aria-hidden="true"/><AuctionCountdown target={known.endsAt} serverNow={serverNow} label="Ends" showLabel={false} variant="inline" onElapsed={()=>{detail.reload();if(authenticated)own.reload()}}/></span>
-     <span className={reference.bidCount}><Ticket size={12} aria-hidden="true"/>{known.bidCount.toLocaleString('en-US')} {text('bids','ጨረታዎች')}</span>
+   <section className={reference.feeStrip} aria-label={text('Auction overview','የጨረታ ማጠቃለያ')} data-bid-fee-summary>
+    <div className={reference.feeDetails}>
+     <div className={reference.fee} data-bid-fee><span>{text('Bid fee','የጨረታ ክፍያ')}</span><strong>{formatEtb(terms.entryFeePoints)}</strong></div>
+     <span className={reference.bidCount} data-bid-count><Ticket size={13} aria-hidden="true"/><span><strong>{known.bidCount.toLocaleString(am?'am-ET':'en-ET')}</strong> {text('bids','ጨረታዎች')}</span></span>
     </div>
-   </div>
+    <div className={reference.timer} data-bid-timer><AuctionCountdown target={known.endsAt} serverNow={serverNow} label="Ends" showLabel={false} onElapsed={()=>{detail.reload();if(authenticated)own.reload()}}/></div>
+   </section>
    {pendingOriginal&&<p className={reference.notice} role="status" data-bid-pending-payment>{text(walletObserving?'Checking your previous payment. Your draft stays editable.':'A previous payment is still open. Check its status before paying again.',walletObserving?'የቀደመውን ክፍያ በማረጋገጥ ላይ ነን። መጠኖችዎን ማስተካከል ይችላሉ።':'የቀደመ ክፍያ ገና አለ። ደግመው ከመክፈልዎ በፊት ሁኔታውን ይመልከቱ።')} <button type="button" onClick={viewPaymentStatus}>{text('View payment status','የክፍያ ሁኔታ ይመልከቱ')}</button></p>}
    {!pendingOriginal&&receipt&&<p className={reference.notice} role="status">{text('Your previous wallet payment was confirmed.','የቀደመው የዋሌት ክፍያዎ ተረጋግጧል።')} <button type="button" onClick={presentPayment}>{text('View receipt','ደረሰኝ ይመልከቱ')}</button></p>}
    {fundingNotice&&<p className={reference.notice} role="status" data-bid-funding-notice>{fundingNotice}</p>}

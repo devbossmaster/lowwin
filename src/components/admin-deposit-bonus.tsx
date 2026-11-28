@@ -2,6 +2,7 @@
 import {useState} from 'react';
 import {RefreshCw} from 'lucide-react';
 import {AdminHeading,ErrorNotice,eat,useAdminMutation,useAdminRead} from './admin-ui';
+import {AdminDateTimeField} from './admin-date-time-field';
 import {notifyAdminAction} from './admin-action-toast';
 import type {DepositBonusAdminRead,DepositBonusPolicyReceipt} from '@/modules/admin/deposit-bonus';
 import {ADDIS_ABABA_TIME_LABEL,formatAddisDateTimeLocal,parseAddisDateTimeLocal} from '@/lib/addis-time';
@@ -9,6 +10,7 @@ import styles from './admin-deposit-bonus.module.css';
 
 export function AdminDepositBonus(){
  const query=useAdminRead<DepositBonusAdminRead>('bonus'),mutation=useAdminMutation('bonus'),[dirty,setDirty]=useState(false),data=query.data,policy=data?.policy;
+ const [expiry,setExpiry]=useState<{version:number;value:string}|null>(null);
  return <>
   <AdminHeading title="Bonus" description="Reward qualifying wallet deposits with extra bidding funds."><button className="secondary" disabled={dirty||mutation.busy||query.loading} onClick={query.reload}><RefreshCw size={17} aria-hidden="true"/>Refresh</button></AdminHeading>
   <ErrorNotice error={query.error} retry={query.reload}/>
@@ -26,7 +28,8 @@ export function AdminDepositBonus(){
       <label className={`admin-check ${styles.toggle}`}><input type="checkbox" name="enabled" defaultChecked={policy.enabled}/><span>Enable deposit bonus<small>Qualifying new deposits receive the offer confirmed at checkout.</small></span></label>
       <div className={styles.two}><label>Bonus percentage<input name="percent" type="number" min={10} max={100} step={1} required defaultValue={policy.percent}/><small>10–100% of each qualifying deposit.</small></label><label>Minimum deposit (ETB)<input name="minAmount" type="number" min={1} max={43200} step="0.01" required defaultValue={policy.minAmount}/><small>The deposited amount must reach this minimum.</small></label></div>
       <div className={styles.two}><label>Maximum bonus per deposit (ETB)<input name="maxBonus" type="number" min="0.01" max={43200} step="0.01" defaultValue={policy.maxBonus??''} placeholder="No cap"/><small>Leave empty for no per-deposit cap.</small></label><label>Bonus valid for (days)<input name="validityDays" type="number" min={1} max={365} step={1} required defaultValue={policy.validityDays}/><small>Starts when the payment is verified and credited.</small></label></div>
-      <label>Offer ends (optional)<input name="endsAt" type="datetime-local" defaultValue={formatAddisDateTimeLocal(policy.endsAt)}/><small>Enter the time in {ADDIS_ABABA_TIME_LABEL}. Leave empty to keep the offer open.</small></label>
+      <AdminDateTimeField label={`Offer ends · ${ADDIS_ABABA_TIME_LABEL} (optional)`} name="endsAt" required={false} clearLabel="Clear expiry" value={expiry&&expiry.version===policy.version?expiry.value:formatAddisDateTimeLocal(policy.endsAt)} onChange={value=>{setExpiry({version:policy.version,value});setDirty(true);mutation.clear()}}/>
+      <small>Leave empty to keep the offer open.</small>
       <label>Reason for change<textarea name="reason" rows={2} minLength={5} maxLength={500} required placeholder="Explain this bonus policy change"/></label>
       <button disabled={!dirty||mutation.busy}>{mutation.busy?'Saving…':'Save bonus settings'}</button>
      </fieldset>

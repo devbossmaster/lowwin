@@ -13,7 +13,7 @@ vi.mock('../src/components/help-pages',()=>({LegalPage:()=>null}));
 vi.mock('../src/components/tutorial-content',()=>({TutorialContent:()=>null}));
 vi.mock('../src/components/offline-retry',()=>({OfflineRetry:()=>null}));
 vi.mock('../src/components/home-categories',()=>({HomeCategories:()=>null}));
-import {browserAccountBootstrap,requireCustomerPage} from '../src/modules/auth/customer-page';
+import {browserAccountBootstrap,browserDocumentAccountBootstrap,requireCustomerPage} from '../src/modules/auth/customer-page';
 import AuctionPage from '../src/app/(mini)/auctions/[slug]/page';
 import ResultPage from '../src/app/(mini)/winners/[auctionCode]/page';
 import Category from '../src/app/(mini)/categories/[slug]/page';
@@ -79,5 +79,17 @@ describe('server-rendered customer data authorization',()=>{
   await expect(browserAccountBootstrap()).resolves.toEqual({kind:'guest'});
   await expect(browserAccountBootstrap()).resolves.toEqual({kind:'client-check'});
   await expect(browserAccountBootstrap()).resolves.toEqual({kind:'unavailable'});
+ });
+ it('skips guest restoration only for a document without a presented session',async()=>{
+  const document=new Headers({'sec-fetch-dest':'document',cookie:'lowwin-language=am'});
+  await expect(browserDocumentAccountBootstrap(document,true)).resolves.toEqual({kind:'guest'});
+  expect(browserDocumentAccountBootstrap(new Headers(),false)).toBeUndefined();
+  for(const name of ['better-auth.session_token','__Secure-better-auth.session_token']){
+   document.set('cookie',`${name}=opaque-session-cookie`);
+   expect(browserDocumentAccountBootstrap(document,false)).toBeUndefined();
+  }
+  expect(f.session).not.toHaveBeenCalled();
+  await expect(browserDocumentAccountBootstrap(document,true)).resolves.toEqual({kind:'guest'});
+  expect(f.session).toHaveBeenCalledTimes(1);
  });
 });

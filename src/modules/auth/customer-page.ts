@@ -1,6 +1,7 @@
 import {cache} from 'react';
 import {headers} from 'next/headers';
 import {redirect} from 'next/navigation';
+import {getSessionCookie} from 'better-auth/cookies';
 import {customerLoginPath} from '@/lib/customer-login-entry';
 import {getMiniSession,localMiniPreview} from './mini-access';
 import {miniAccountFromSession} from './mini-account';
@@ -28,4 +29,13 @@ export async function browserAccountBootstrap():Promise<BrowserAccountBootstrap>
   if('preview' in session||session.session.telegramAuthSource!=='TELEGRAM_OIDC')return {kind:'client-check'};
   return {kind:'verified',account:miniAccountFromSession(session)};
  }catch{return {kind:'unavailable'}}
+}
+
+/** A new document with no session cookie cannot restore an account. This is a
+ * guest display hint only; every private route still checks the signed session. */
+export function browserDocumentAccountBootstrap(requestHeaders:Headers,recentCallback:boolean):Promise<BrowserAccountBootstrap>|undefined{
+ if(requestHeaders.get('sec-fetch-dest')!=='document')return undefined;
+ if(!getSessionCookie(requestHeaders))return Promise.resolve({kind:'guest'});
+ if(recentCallback)return browserAccountBootstrap();
+ return undefined;
 }

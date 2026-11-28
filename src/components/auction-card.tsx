@@ -53,9 +53,7 @@ export function AuctionCard({auction:initialAuction,serverNow,serverObservedAt,p
      <Ticket size={12} aria-hidden="true"/><strong>{bidLabel}</strong><span><MiniPhrase en="bids" am="ጨረታ"/></span>
     </span>
     <span className={homeClock?`card-clock ${badges.homeClock}`:'card-clock'}>
-     {homeClock?<span className={badges.clockTitle}>
-      <MiniPhrase en={upcoming?'Starts in':'Ends in'} am={upcoming?'የሚጀምረው በ':'ቀሪ ጊዜ'}/>
-     </span>:<Clock3 size={13} aria-hidden="true"/>}
+     {!homeClock&&<Clock3 size={13} aria-hidden="true"/>}
      {countdown??statusText}
     </span>
    </div>

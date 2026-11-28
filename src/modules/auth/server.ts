@@ -39,7 +39,12 @@ function buildAuth(client:PrismaClient|Prisma.TransactionClient,env:ReturnType<t
     database: prismaAdapter(sessionClient, { provider: 'postgresql' }),
     trustedOrigins: [new URL(env.BETTER_AUTH_URL).origin],
     logger:{level:'error',log:(level,message,...args)=>{console.warn('authentication_operation_unavailable',{level,...authLogSummary(args,message)})}},
-    user:{additionalFields:{role:{type:'string',defaultValue:'member',input:false,required:false}}},
+    user:{
+      additionalFields:{role:{type:'string',defaultValue:'member',input:false,required:false}},
+      changeEmail:{enabled:true,updateEmailWithoutVerification:false,
+        sendChangeEmailConfirmation:async({user,newEmail,url})=>emailAdapter().send({to:user.email,subject:'Confirm your Lowwin email change',text:`Confirm the change to ${newEmail} within 30 minutes: ${url}\nThen verify the new address to finish the change.`}),
+      },
+    },
     emailAndPassword: {
       enabled:true,disableSignUp:false,autoSignIn:false,requireEmailVerification:true,
       minPasswordLength:12,maxPasswordLength:128,revokeSessionsOnPasswordReset:true,resetPasswordTokenExpiresIn:1800,
@@ -75,7 +80,7 @@ function buildAuth(client:PrismaClient|Prisma.TransactionClient,env:ReturnType<t
     onAPIError:{errorURL:env.BETTER_AUTH_URL+'/?login=1'},
     session: { expiresIn: 60 * 60 * 24 * 7, updateAge: 60 * 60 * 24, cookieCache: { enabled: false } },
     advanced: { useSecureCookies: env.BETTER_AUTH_URL.startsWith('https:'), defaultCookieAttributes: { httpOnly: true, sameSite: 'lax' } },
-    rateLimit: { enabled:true,storage:'database',window:60,max:30,customRules:{'/sign-up/email':{window:60,max:3},'/sign-in/email':{window:60,max:5},'/send-verification-email':{window:60,max:3},'/request-password-reset':{window:60,max:3},'/reset-password':{window:60,max:5}} },
+    rateLimit: { enabled:true,storage:'database',window:60,max:30,customRules:{'/sign-up/email':{window:60,max:3},'/sign-in/email':{window:60,max:5},'/send-verification-email':{window:60,max:3},'/request-password-reset':{window:60,max:3},'/reset-password':{window:60,max:5},'/change-password':{window:60,max:5},'/change-email':{window:60,max:3}} },
     plugins: [telegram({ botToken: env.TELEGRAM_BOT_TOKEN, botUsername: env.TELEGRAM_BOT_USERNAME,
       loginWidget: false, maxAuthAge: 300,allowUserToLink:false,
       miniApp: { enabled: true, validateInitData: true, allowAutoSignin: false },

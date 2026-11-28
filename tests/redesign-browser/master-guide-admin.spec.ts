@@ -179,7 +179,7 @@ test('verified members cannot sign in as admin and signup/reset forms stay simpl
 test.describe('Addis Ababa auction deadline in a US browser',()=>{
  test.use({locale:'en-US',timezoneId:'America/Los_Angeles'});
 
- test('uses 24-hour deadline input and confirms restricted shortening',async({page},info)=>{
+ test('uses 12-hour deadline input and confirms restricted shortening',async({page},info)=>{
   const db=fixtureDatabase();
   const admin=await credential(db,'admin',`deadline-${info.project.name}`);
   const id=randomUUID(),code='LW-DEADLINE-FIXTURE';
@@ -207,12 +207,17 @@ test.describe('Addis Ababa auction deadline in a US browser',()=>{
    await page.getByRole('button',{name:'Manage',exact:true}).click();
 
    const fields=page.getByRole('group',{name:'New end time · Addis Ababa',exact:true});
-   const time=fields.getByRole('textbox',{name:'Time (24-hour)',exact:true});
+   const time=fields.getByRole('textbox',{name:'Time (12-hour)',exact:true});
+   const period=fields.getByRole('combobox',{name:'AM/PM',exact:true});
    const preview=page.getByRole('region',{name:'Countdown preview',exact:true});
    await expect(fields.getByLabel('Date',{exact:true})).toHaveValue(day);
-   await expect(time).toHaveValue('15:22');
-   await time.fill('13:22');
-   await expect(preview).toContainText('13:22 · Shortens by 2h');
+   await expect(time).toHaveValue('03:22');
+   await expect(period).toHaveValue('PM');
+   await time.fill('01:22');
+   await period.selectOption('AM');
+   await expect(preview).toContainText('1:22 AM');
+   await period.selectOption('PM');
+   await expect(preview).toContainText('1:22 PM · Shortens by 2h');
 
    await page.getByRole('textbox',{name:'Reason',exact:true}).fill(reason);
    const save=page.getByRole('button',{name:'Change deadline',exact:true});
@@ -225,8 +230,8 @@ test.describe('Addis Ababa auction deadline in a US browser',()=>{
    await page.getByText('Override shortening restriction',{exact:true}).click();
    await page.getByLabel(`Type ${code} to authorize this override`,{exact:true}).fill(code);
    await save.click();
-   await expect(page.getByRole('status')).toContainText('Shorter deadline saved and recorded as an owner override.');
-   await expect(time).toHaveValue('13:22');
+   await expect(page.locator('[data-sonner-toast][data-type="success"]')).toContainText('Shorter deadline saved and recorded as an owner override.');
+   await expect(time).toHaveValue('01:22');
    expect(attempts).toHaveLength(2);
    expect(attempts[1]).toMatchObject({action:'deadline',input:{auctionId:id,endsAt:shorterEnd,version:1,reason,overrideConfirmation:code}});
   }finally{await db.$disconnect()}

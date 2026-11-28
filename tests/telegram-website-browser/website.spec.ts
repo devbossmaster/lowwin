@@ -24,6 +24,8 @@ async function website(page:Page,am=false){
 
 for(const am of [false,true])test(`ordinary website browsing and explicit official login ${am?'AM':'EN'}`,async({page},info)=>{
  const f=await website(page,am);
+ const guestAccountReads:string[]=[];
+ page.on('request',request=>{if(new URL(request.url()).pathname==='/api/me')guestAccountReads.push(request.method())});
  try{
   await page.goto(f.home);const frame=page.locator('.app-frame');await expect(frame).toHaveAttribute('data-app-environment','browser');await expect(page.locator('.auction-card')).toHaveCount(3);
   const websiteOrigin=new URL(page.url()).origin;
@@ -35,6 +37,7 @@ for(const am of [false,true])test(`ordinary website browsing and explicit offici
   await expect(page.locator('.mini-bottom-navigation')).toHaveCount(0);
   await page.getByRole('button',{name:am?'ይግቡ':'Log in',exact:true}).first().click();const dialog=page.getByRole('dialog');await expect(dialog.locator('[data-browser-telegram-login]')).toBeVisible();await expect(dialog.locator('input')).toHaveCount(0);await expect(dialog.getByRole('button',{name:am?'በTelegram ይቀጥሉ':'Continue with Telegram',exact:true})).toBeEnabled();expect(f.starts).toHaveLength(0);expect(f.approvals).toHaveLength(0);expect(f.charges).toHaveLength(0);expect(await page.evaluate(()=>(window as unknown as {nativeContactRequests:number}).nativeContactRequests)).toBe(0);
   expect(await dialog.evaluate(node=>node.scrollWidth<=node.clientWidth+1)).toBe(true);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await dialog.screenshot({path:info.outputPath(`browser-login-${am?'am':'en'}.png`)});
+  expect(guestAccountReads).toEqual([]);
   await page.keyboard.press('Escape');await expect(dialog).toHaveCount(0);await expect(page.getByRole('button',{name:am?'ይግቡ':'Log in',exact:true}).first()).toBeFocused();
   await page.getByRole('button',{name:am?'ይግቡ':'Log in',exact:true}).first().click();await dialog.getByRole('button',{name:am?'በTelegram ይቀጥሉ':'Continue with Telegram',exact:true}).click();await expect(page.getByRole('heading',{name:'Isolated official-login handoff fixture'})).toBeVisible();expect(f.starts).toHaveLength(1);expect(f.readiness).toHaveLength(0);const start=f.starts[0],destination=new URL(start.callbackURL,websiteOrigin);expect(destination.origin).toBe(websiteOrigin);expect(destination.pathname).toBe('/');expect(destination.searchParams.get('q')).toBe(f.prefix);expect([...destination.searchParams.keys()]).toEqual(['q']);const errorCallback=new URL(start.errorCallbackURL,destination.origin);expect(start.provider).toBe('telegram-oidc');expect(start.disableRedirect).toBe(true);expect(errorCallback.origin).toBe(destination.origin);expect(errorCallback.searchParams.get('lang')).toBe(am?'am':'en');expect(errorCallback.searchParams.get('login')).toBe('1');expect(errorCallback.searchParams.get('next')).toBe(start.callbackURL);expect(f.approvals).toHaveLength(1);expect(new URL(f.approvals[0]).origin).toBe('https://oauth.telegram.org');expect(f.charges).toHaveLength(0);expect(f.external).toHaveLength(0);expect(f.errors).toHaveLength(0);
  }finally{await f.close()}
@@ -91,6 +94,8 @@ test('an unavailable website session can be retried inside the login sheet',asyn
  let reads=0,release!:()=>void;
  const hold=new Promise<void>(resolve=>{release=resolve});
  try{
+  // Exercise the session-read failure path instead of the fresh guest path.
+  await page.context().addCookies([{name:'__Secure-better-auth.session_token',value:'isolated-stale-session',domain:'localhost',path:'/',secure:true,httpOnly:true,sameSite:'Lax'}]);
   await page.route('**/api/me',async route=>{
    if(++reads===1)return route.fulfill({status:503,json:{error:'Isolated account lookup failure'}});
    await hold;return route.fulfill({status:401,json:{error:'No active session'}});

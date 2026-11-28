@@ -1,5 +1,5 @@
 import {permissions,type StaffRole,type Permission} from './permissions';
-export type AdminArea='Overview'|'Auctions and Catalog'|'Players'|'Payments'|'Bonus'|'Winners'|'Broadcast';
+export type AdminArea='Overview'|'Auctions and Catalog'|'Players'|'Payments'|'Bonus'|'Winners'|'Broadcast'|'Profile';
 export type AdminAccess={role:StaffRole;permissions:readonly Permission[];cacheIdentity?:string;expiresAt?:string};
 type Task={href:string;label:string;area:AdminArea;permission?:Permission;roles?:readonly StaffRole[]};
 export const adminTasks:readonly Task[]=[
@@ -14,6 +14,7 @@ export const adminTasks:readonly Task[]=[
  {href:'/admin/bonus',label:'Bonus',area:'Bonus',permission:'settings'},
  {href:'/admin/fulfillment',label:'Winners',area:'Winners',roles:['OWNER','FULFILLMENT','AUDITOR']},
  {href:'/admin/notifications',label:'Broadcast',area:'Broadcast',permission:'jobs'},
+ {href:'/admin/profile',label:'Profile',area:'Profile'},
 ];
 export const adminAreas:readonly AdminArea[]=['Overview','Auctions and Catalog','Players','Payments','Bonus','Winners','Broadcast'];
 export const roleLabels:Record<StaffRole,string>={OWNER:'Admin',CATALOG_MANAGER:'Catalog manager',SUPPORT:'Player care',FULFILLMENT:'Fulfillment',PAYMENTS_OPERATOR:'Payments operator',AUDITOR:'Auditor'};

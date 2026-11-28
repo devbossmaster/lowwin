@@ -1,47 +1,21 @@
 'use client';
 
-import {useEffect, useId, useRef, useState} from 'react';
+import {useEffect, useState} from 'react';
 import {Clock3} from 'lucide-react';
 import {ADDIS_ABABA_TIME_LABEL, formatAddisDateTimeLocal, formatAddisTimestamp, parseAddisDateTimeLocal} from '@/lib/addis-time';
 import {countdownUnits} from '@/lib/countdown-units';
+import {AdminDateTimeField} from './admin-date-time-field';
 import styles from './admin-auction-schedule-preview.module.css';
 
+export {AdminDateTimeField as AdminAuctionDateTimeField};
+
 const timePattern = '(?:[01][0-9]|2[0-3]):[0-5][0-9]';
-const validClock = new RegExp(`^${timePattern}$`);
 const schedulePattern = new RegExp(`^[0-9]{4}-[0-9]{2}-[0-9]{2}T${timePattern}$`);
 
 export function parseAuctionScheduleTime(value: string) {
   if (!schedulePattern.test(value)) return null;
   const instant = parseAddisDateTimeLocal(value);
   return Number.isFinite(instant.getTime()) && formatAddisDateTimeLocal(instant) === value ? instant : null;
-}
-
-type ScheduleFieldProps = {
-  label: string;
-  name: string;
-  value: string;
-  onChange: (value: string) => void;
-  after?: string;
-};
-
-export function AdminAuctionDateTimeField({label, name, value, onChange, after}: ScheduleFieldProps) {
-  const titleId = useId(), clock = useRef<HTMLInputElement>(null);
-  const [date, time = ''] = value.split('T');
-  const minimum = after ? parseAuctionScheduleTime(after) : null;
-  const instant = parseAuctionScheduleTime(value);
-  const error = date && validClock.test(time) && !instant
-    ? 'Enter a valid date.'
-    : instant && minimum && instant <= minimum ? 'The end time must be after the start time.' : '';
-  useEffect(() => { clock.current?.setCustomValidity(error); }, [error]);
-
-  return <div role="group" aria-labelledby={titleId} className={styles.scheduleField}>
-    <span id={titleId}>{label}</span>
-    <div className={styles.scheduleControls}>
-      <label>Date<input type="date" value={date} min={minimum ? after?.split('T')[0] : undefined} onChange={event => onChange(`${event.target.value}T${time}`)} required/></label>
-      <label>Time (24-hour)<input ref={clock} type="text" value={time} pattern={timePattern} placeholder="HH:mm" maxLength={5} onChange={event => onChange(`${date}T${event.target.value}`)} required/></label>
-    </div>
-    <input type="hidden" name={name} value={value}/>
-  </div>;
 }
 
 function formatDuration(milliseconds: number) {
@@ -99,7 +73,7 @@ export function AdminAuctionSchedulePreview({start, end, previousStart, previous
 export function AdminAuctionDeadlineField({endsAt, showPreview}: {endsAt: string; showPreview: boolean}) {
   const [end, setEnd] = useState(() => formatAddisDateTimeLocal(endsAt));
   return <>
-    <AdminAuctionDateTimeField label={`New end time · ${ADDIS_ABABA_TIME_LABEL}`} name="endsAt" value={end} onChange={setEnd}/>
+    <AdminDateTimeField label={`New end time · ${ADDIS_ABABA_TIME_LABEL}`} name="endsAt" value={end} onChange={setEnd}/>
     {showPreview && <AdminAuctionSchedulePreview end={end} previousEnd={endsAt}/>}
   </>;
 }
@@ -107,7 +81,7 @@ export function AdminAuctionDeadlineField({endsAt, showPreview}: {endsAt: string
 export function AdminAuctionStartField({startsAt, endsAt}: {startsAt: string; endsAt: string}) {
   const [start, setStart] = useState(() => formatAddisDateTimeLocal(startsAt));
   return <>
-    <AdminAuctionDateTimeField label={`New start time · ${ADDIS_ABABA_TIME_LABEL}`} name="startsAt" value={start} onChange={setStart}/>
+    <AdminDateTimeField label={`New start time · ${ADDIS_ABABA_TIME_LABEL}`} name="startsAt" value={start} onChange={setStart}/>
     <AdminAuctionSchedulePreview start={start} end={formatAddisDateTimeLocal(endsAt)} previousStart={startsAt}/>
   </>;
 }

@@ -43,6 +43,7 @@ for(const am of [false,true])test(`compact cards retain status, media, countdown
     expect(data.bids.y).toBeCloseTo(data.timer.y,0);
     expect(data.fee.right).toBeLessThanOrEqual(data.bids.x);
     expect(data.bids.right).toBeLessThanOrEqual(data.timer.x);
+    if(index<2)await expect(card.locator('.card-clock')).not.toContainText(am?/(ቀሪ ጊዜ|የሚጀምረው በ)/:/(Ends in|Starts in)/);
     expect(data.padding.bottom).toBeLessThanOrEqual(10);
     if(index===0)expect(data.title.lines).toBe(1);
     if(index===1)expect(data.title.lines).toBeGreaterThan(2);

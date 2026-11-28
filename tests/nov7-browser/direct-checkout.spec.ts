@@ -288,7 +288,8 @@ test('the bid fee and total bids remain clear of animated countdown tiles at eve
     // Stress localized geometry without inventing accepted financial records.
     await summary.locator('[data-bid-count] strong').evaluate((node,value)=>{node.textContent=value},count);
     const bounds=await summary.boundingBox(),fee=await summary.locator('[data-bid-fee]').boundingBox(),bids=await summary.locator('[data-bid-count]').boundingBox(),timer=await summary.locator('[data-bid-timer]').boundingBox();
-    expect(fee!.x+fee!.width<=bids!.x+1||fee!.y+fee!.height<=bids!.y+1).toBe(true);expect(timer!.y).toBeGreaterThanOrEqual(Math.max(fee!.y+fee!.height,bids!.y+bids!.height));
+    expect(fee!.y+fee!.height).toBeLessThanOrEqual(bids!.y+1);
+    expect(Math.max(fee!.x+fee!.width,bids!.x+bids!.width)).toBeLessThanOrEqual(timer!.x+1);
     for(const element of [fee!,bids!,timer!]){expect(element.x).toBeGreaterThanOrEqual(bounds!.x);expect(element.x+element.width).toBeLessThanOrEqual(bounds!.x+bounds!.width)}
     for(const tile of await summary.locator('[data-countdown-tile]').all()){const rect=await tile.boundingBox();expect(rect!.x).toBeGreaterThanOrEqual(timer!.x);expect(rect!.x+rect!.width).toBeLessThanOrEqual(timer!.x+timer!.width)}
     await expect(summary.locator('[data-bid-fee] strong')).toContainText('10.00');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:info.outputPath('bid-fee-countdown-'+width+'-'+count.replaceAll(',','')+'.png'),animations:'disabled'});

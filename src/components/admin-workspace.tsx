@@ -99,7 +99,7 @@ export function AdminWorkspace({path}:{path:string[]}){
           const fields=new FormData(event.currentTarget);
           const next=parseAuctionScheduleTime(String(fields.get('startsAt')??''));
           run('startTime',async()=>{
-            if(!next)throw Error('Enter a valid date and a 24-hour time.');
+            if(!next)throw Error('Enter a valid date and time with AM or PM.');
             await save('startTime',{auctionId,version:item.controlVersion,startsAt:next.toISOString(),reason:fields.get('reason')},'Earlier start time saved.');
           });
         }}>
@@ -133,7 +133,7 @@ export function AdminWorkspace({path}:{path:string[]}){
         const next=parseAuctionScheduleTime(String(fields.get('endsAt')??''));
         const confirmation=String(fields.get('overrideConfirmation')??'').trim();
         run('deadline',async()=>{
-          if(!next)throw Error('Enter a valid date and a 24-hour time.');
+          if(!next)throw Error('Enter a valid date and time with AM or PM.');
           await save('deadline',{
             auctionId,version:item.controlVersion,endsAt:next.toISOString(),reason:fields.get('reason'),
             ...(confirmation?{overrideConfirmation:confirmation}:{}),
