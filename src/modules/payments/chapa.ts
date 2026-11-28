@@ -12,7 +12,7 @@ import {allowIdentityRequest} from '@/lib/rate-limit';
 import {assertPlayerContact,contactBotId,decryptPhone,normalizePhone} from '../auth/own-contact';
 import {fulfillBatchInTransaction,rejectRetiredCoupon} from '../auctions/batch';
 import {BidError,submitBidInTransaction,type BidReceipt} from '../auctions/bids';
-import {auctionMaintenance,lockAuctionMaintenance} from '../auctions/maintenance';
+import {auctionMaintenance,sharedAuctionMaintenanceLock} from '../auctions/maintenance';
 import {isSubmissionFeeOnly} from '../auctions/rules';
 import {ensureWallet,pointsSchema,seedPlatformAccounts} from '../wallet/ledger';
 import {PAYMENT_TRANSACTION_OPTIONS} from './timing';
@@ -283,7 +283,7 @@ export async function prepareOwnedChapaVerification(client:PrismaClient,id:strin
 }
 
 async function runChapaVerification(client:PrismaClient,id:string,userId:string|undefined,reauthorize:Authorize|undefined,transport:ChapaTransport,eventCheck:boolean|'webhook',providedAuthorizationFeedback:ChapaAuthorizationFeedback|undefined,completionSignal:ChapaCompletionStatus|undefined,snapshot?:ChapaCheckout,walletReturn=false){
- const work={changed:false,deferred:false};
+ const work={changed:false,deferred:false,deferredSuccess:false};
  try{
   let result=await verifyChapaCheckoutOnce(client,id,userId,reauthorize,transport,eventCheck,providedAuthorizationFeedback,work,completionSignal,snapshot,walletReturn);
   if(work.changed){void publishChapaCommitted(id).catch(()=>{});work.changed=false}
@@ -298,7 +298,7 @@ async function runChapaVerification(client:PrismaClient,id:string,userId:string|
   if(work.changed)void publishChapaCommitted(id).catch(()=>{});
  }
 }
-async function verifyChapaCheckoutOnce(client:PrismaClient,id:string,userId:string|undefined,reauthorize:Authorize|undefined,transport:ChapaTransport,eventCheck:boolean|'webhook'|'deferred',providedAuthorizationFeedback:ChapaAuthorizationFeedback|undefined,work:{changed:boolean;deferred:boolean},completionSignal?:ChapaCompletionStatus,ownedSnapshot?:ChapaCheckout,walletReturn=false){
+async function verifyChapaCheckoutOnce(client:PrismaClient,id:string,userId:string|undefined,reauthorize:Authorize|undefined,transport:ChapaTransport,eventCheck:boolean|'webhook'|'deferred',providedAuthorizationFeedback:ChapaAuthorizationFeedback|undefined,work:{changed:boolean;deferred:boolean;deferredSuccess:boolean},completionSignal?:ChapaCompletionStatus,ownedSnapshot?:ChapaCheckout,walletReturn=false){
  const snapshot=ownedSnapshot??await readVerificationCheckout(client,id,userId);
  if(unsupportedLegacyChapaCheckout(snapshot))return ownChapaCheckout(snapshot);
  const legacy=isLegacyChapaCheckout(snapshot),inlineV2=isV2InlineCheckout(snapshot),currentV2=isCurrentV2Checkout(snapshot),currentDirect=isCurrentDirectCheckout(snapshot);
@@ -308,6 +308,8 @@ async function verifyChapaCheckoutOnce(client:PrismaClient,id:string,userId:stri
  // Public-key authorization refresh cannot replace private-key verification.
  const selectedTransport=legacy&&transport===chapaTransport?legacyChapaRecoveryTransport:inlineV2&&transport===chapaTransport?chapaInlineTransport:transport;
  if(paid(snapshot))return ownChapaCheckout(snapshot);
+ const hadSuccessSignal=snapshot.verificationCompletionStatus==='SUCCESS';
+ const newSuccessWebhook=currentDirect&&(eventCheck==='deferred'?work.deferredSuccess:eventCheck==='webhook'&&completionSignal==='SUCCESS'&&!hadSuccessSignal);
  const recoveryBinding=sameConfiguration(snapshot)?null:legacy?await approvedLegacyRecoveryBinding(client,snapshot):await approvedRecoveryBinding(client,snapshot);
  if(!sameConfiguration(snapshot)&&!recoveryBinding)throw new ChapaError(503,'CONFIGURATION_CHANGED','This payment needs its original Chapa configuration or a reviewed recovery authorization. Keep its payment ID.');
  let now=Date.now();
@@ -344,18 +346,16 @@ async function verifyChapaCheckoutOnce(client:PrismaClient,id:string,userId:stri
    OR:[{leaseUntil:null},{leaseUntil:{lte:due}}],AND:[{OR:[{verificationRetryAfter:null},{verificationRetryAfter:{lte:due}}]}]};
  };
  const claimData=()=>({leaseUntil:verificationLease,attempts:{increment:1}});
- // A normally due Direct check can claim the exact owned row in one statement.
- // Interactive checks revalidate the signed session in that statement. The
- // background sweep already has the server-owned checkout and its user ID.
- // Early returns still need the transaction that reserves their extra quota.
- // A conflict falls back to the existing locked path.
- const backgroundFilter=userId===undefined&&!reauthorize?()=>({userId:snapshot.userId}):undefined;
- const verificationFilter=currentDirect&&!eventCheck&&!earlyReturn&&!recoveryBinding
-  ?reauthorize?.directVerificationFilter??backgroundFilter
+ // The sweep and authenticated webhook worker already own a server-read
+ // checkout. Normal interactive checks still bind the live session in the
+ // same claim. Early returns reserve their separate quota in a transaction.
+ const backgroundFilter=userId===undefined&&!reauthorize&&eventCheck!==true?()=>({userId:snapshot.userId}):undefined;
+ const verificationFilter=currentDirect&&!earlyReturn&&!recoveryBinding
+  ?(!eventCheck?reauthorize?.directVerificationFilter:undefined)??backgroundFilter
   :undefined;
  const measureClaim=<T>(operation:()=>Promise<T>)=>measureChapa('verify_claim',()=>measureChapa('database',operation));
  const [claimed]=verificationFilter?await measureClaim(()=>client.chapaCheckout.updateManyAndReturn({
-  where:{AND:[claimWhere(),verificationFilter(),{updatedAt:snapshot.updatedAt}]},data:claimData(),
+  where:{AND:[claimWhere(),verificationFilter(),{updatedAt:snapshot.updatedAt,verificationSignalVersion:handledSignal}]},data:claimData(),
  })):[];
  if(!claimed){
   const acquired=await measureClaim(()=>client.$transaction(async tx=>{
@@ -473,36 +473,49 @@ async function verifyChapaCheckoutOnce(client:PrismaClient,id:string,userId:stri
   const deferred=order.verificationSignalVersion>handledSignal;
   const waiting=proof.status==='PENDING'||proof.status==='AUTH_NEEDED';
   const completionPending=!!order.verificationCompletionStatus&&(deferred||waiting);
-  const fastTelebirrFollowUp=waiting&&telebirrAuthorization&&order.expiresAt.getTime()>Date.now()&&
+  const stillOpen=waiting&&order.expiresAt.getTime()>Date.now();
+  const fastTelebirrFollowUp=stillOpen&&telebirrAuthorization&&
    (returnedFromWallet||earlyTelebirrCheck&&order.attempts<lastEarlyTelebirrVerificationAttempt);
+  // A signed SUCCESS can precede the private replica. Give its first pending
+  // lookup one short follow-up; the outstanding signal keeps it private-only
+  // and ordinary repeats retain the normal bounded provider cadence.
+  const fastCompletionFollowUp=stillOpen&&newSuccessWebhook&&order.verificationCompletionStatus==='SUCCESS';
   const authorizationFlow=order.chargeType==='DIRECT'||isV2InlineCheckout(order)&&order.chargeType==='INLINE';
   const delay=waiting||completionPending?chapaPendingVerificationDelay(order,authorizationFlow):300000;
-  const nextCheckAt=deferred?new Date():fastTelebirrFollowUp?new Date(privateCheckedAt.getTime()+STATUS_REFRESH_MS):after(delay);
+  const nextCheckAt=deferred?new Date():(fastTelebirrFollowUp||fastCompletionFollowUp)?new Date(privateCheckedAt.getTime()+STATUS_REFRESH_MS):after(delay);
   const authorizationReason=deferred?publicChapaAuthorizationReason(order)?order.reason:null:authorizationFeedback?chapaAuthorizationFeedbackReason(authorizationFeedback):publicChapaAuthorizationReason(order)?order.reason:null;
   const providerReason=proof.reasonCode??webhookFeedback.reasonCode;
-  return {deferred,data:{...verifiedFields(order,completionPending),status:completionPending&&!waiting?'NEEDS_REVIEW':proof.status,reason:providerReason?`CHAPA_${providerReason}`:waiting&&authorizationReason?authorizationReason:'PAYMENT_NOT_COMPLETED',nextCheckAt}};
+  const deferredSuccess=deferred&&currentDirect&&!hadSuccessSignal&&order.verificationCompletionStatus==='SUCCESS';
+  return {deferred,deferredSuccess,data:{...verifiedFields(order,completionPending),status:completionPending&&!waiting?'NEEDS_REVIEW':proof.status,reason:providerReason?`CHAPA_${providerReason}`:waiting&&authorizationReason?authorizationReason:'PAYMENT_NOT_COMPLETED',nextCheckAt}};
  };
  if(claimed&&verificationFilter&&proof.status!=='SUCCESS'&&sameConfiguration(claimed)){
   // Only update the row we already checked. A newer webhook, lease, or
   // authorization change returns no rows and is handled under the row lock.
-  const {data,deferred}=uncreditedOutcome(claimed);
+  const {data,deferred,deferredSuccess}=uncreditedOutcome(claimed);
   const [updated]=await measureChapa('settle',()=>measureChapa('database',()=>client.chapaCheckout.updateManyAndReturn({
    where:{AND:[ownedVerification,verificationFilter(),{
     updatedAt:claimed.updatedAt,verificationSignalVersion:claimed.verificationSignalVersion,
    }]},data,
   })));
-  if(updated){work.deferred=deferred;return ownChapaCheckout(updated)}
+  if(updated){work.deferred=deferred;work.deferredSuccess=deferredSuccess;return ownChapaCheckout(updated)}
  }
  return measureChapa('settle',()=>measureChapa('database',()=>client.$transaction(async tx=>{
   // Non-success Direct5 evidence only changes this checkout. Keep the exact
   // checkout lease and row lock below without queuing behind financial writes.
-  if(!currentDirect||evidence!.status==='SUCCESS'){
-   await lockAuctionMaintenance(tx);
-   if(snapshot.auctionId)await tx.$executeRaw`
-    WITH locked_auction AS MATERIALIZED (SELECT id FROM "Auction" WHERE id=${snapshot.auctionId} FOR UPDATE)
+  if(!currentDirect||proof.status==='SUCCESS'){
+   // Materialized dependencies take the maintenance barrier, then the
+   // optional auction, then the wallet. Read the checkout in a fresh statement
+   // after the locks so a concurrent commit is visible to the lease check.
+   await tx.$executeRaw`
+    WITH maintenance_guard AS MATERIALIZED (
+     SELECT ${sharedAuctionMaintenanceLock}, ${snapshot.auctionId}::text AS auction_id
+    ), locked_auction AS MATERIALIZED (
+     SELECT a.id FROM maintenance_guard m
+     CROSS JOIN LATERAL (SELECT id FROM "Auction" WHERE id=m.auction_id FOR UPDATE) a
+    )
     SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${snapshot.userId}`},0))
-    FROM (SELECT count(*) AS acquired FROM locked_auction) AS guard WHERE guard.acquired>=0`;
-   else await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`wallet:${snapshot.userId}`},0))`;
+    FROM maintenance_guard CROSS JOIN (SELECT count(*) AS acquired FROM locked_auction) AS guard
+    WHERE guard.acquired>=0`;
   }
   const [order]=await tx.$queryRaw<ChapaCheckout[]>`SELECT * FROM "ChapaCheckout" WHERE id=${id} FOR UPDATE`;
   if(!order)throw new ChapaError(404,'NOT_FOUND','Payment not found.');
@@ -512,8 +525,9 @@ async function verifyChapaCheckoutOnce(client:PrismaClient,id:string,userId:stri
   const lockedBinding=sameConfiguration(order)?null:legacy?await approvedLegacyRecoveryBinding(tx,order):await approvedRecoveryBinding(tx,order);
   if(!sameConfiguration(order)&&(!lockedBinding||lockedBinding.finalReference!==evidence!.chapaReference))throw new ChapaError(503,'CONFIGURATION_CHANGED','Payment verification configuration changed. Keep this payment ID.');
   if(proof.status!=='SUCCESS'){
-   const {data,deferred}=uncreditedOutcome(order);
+   const {data,deferred,deferredSuccess}=uncreditedOutcome(order);
    work.deferred=deferred;
+   work.deferredSuccess=deferredSuccess;
    return ownChapaCheckout(await tx.chapaCheckout.update({where:{id},data}));
   }
   if(!proof.chapaReference)throw new ChapaError(502,'EVIDENCE_MISMATCH','Payment confirmation is pending.');

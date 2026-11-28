@@ -10,6 +10,7 @@ export function createDirectMethodCatalog(transport:ChapaTransport=chapaTranspor
  type Pending={key:string;promise:Promise<DirectMethod[]>};
  type CatalogEntry={key:string;until:number;methods:DirectMethod[];refreshAfter:number};
  let cached:CatalogEntry|null=null,pending:Pending|null=null;
+ let warmAttempt:{key:string;until:number}|null=null;
  const configuration=()=>{const health=chapaAvailability(),allowEbirr=process.env.CHAPA_DIRECT_EBIRR_ENABLED==='true';return {enabled:health.enabled,allowEbirr,key:`${health.mode}:${health.credentialFingerprint}:${allowEbirr}`}};
  const stillCurrent=(key:string)=>{const current=configuration();if(!current.enabled||current.key!==key)throw new ChapaError(503,'CONFIGURATION_CHANGED','Payment configuration changed. Reload payment methods before paying.')};
  async function refresh(config:ReturnType<typeof configuration>){
@@ -29,6 +30,13 @@ export function createDirectMethodCatalog(transport:ChapaTransport=chapaTranspor
  return {peek(slug:string){
   const config=configuration();
   if(config.enabled&&cached?.key===config.key&&cached.until>Date.now())return cached.methods.find(method=>method.slug===slug);
+ },warm(){
+  const config=configuration(),now=Date.now();
+  if(!config.enabled||cached?.key===config.key&&cached.until>now||pending?.key===config.key||warmAttempt?.key===config.key&&warmAttempt.until>now)return;
+  // Checkout still authorizes its session and quota before using a catalog.
+  // A failed speculative read is bounded and does not block an owned replay.
+  warmAttempt={key:config.key,until:now+backgroundRefreshCooldownMs};
+  void refresh(config).catch(()=>{});
  },async get(amountCents?:bigint,{refreshSoon=false}:{refreshSoon?:boolean}={}){
   const config=configuration();if(!config.enabled)throw new ChapaError(503,'PAYMENT_UNAVAILABLE','Online payments are unavailable.');
   const now=Date.now();

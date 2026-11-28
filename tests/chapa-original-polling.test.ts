@@ -1,14 +1,14 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
-import {startChapaOriginalPolling} from '../src/lib/chapa-original-polling';
+import {CHAPA_DIRECT_DISCOVERY_DELAY_MS,startChapaOriginalPolling} from '../src/lib/chapa-original-polling';
 import {ChapaClientError,type ChapaCheckoutView} from '../src/lib/chapa-client';
 const order={id:'a2345678-1234-4234-8234-123456789012',apiVersion:'v2',flowVersion:4,status:'AUTH_NEEDED',purpose:'TOP_UP',authorizationReference:'original-provider-reference',authType:'USSD',receipt:null} as ChapaCheckoutView;
 const visibility=()=>Object.assign(new EventTarget(),{visibilityState:'visible' as DocumentVisibilityState});
 afterEach(()=>vi.useRealTimers());
-describe('read-only original Inline key discovery',()=>{
- it('delays discovery during a normal initialization response, then reads only the original key',async()=>{
+describe('read-only original Chapa key discovery',()=>{
+ it('starts Direct discovery at three seconds while initialization is still outstanding',async()=>{
   vi.useFakeTimers();const read=vi.fn().mockResolvedValue(order),received=vi.fn();
-  const stop=startChapaOriginalPolling(read,received,visibility(),{isCurrent:()=>true,wake:null,initialDelayMs:5000});
-  await vi.advanceTimersByTimeAsync(4999);expect(read).not.toHaveBeenCalled();
+  const stop=startChapaOriginalPolling(read,received,visibility(),{isCurrent:()=>true,wake:null,initialDelayMs:CHAPA_DIRECT_DISCOVERY_DELAY_MS});
+  await vi.advanceTimersByTimeAsync(2999);expect(read).not.toHaveBeenCalled();
   await vi.advanceTimersByTimeAsync(1);expect(read).toHaveBeenCalledOnce();expect(received).toHaveBeenCalledExactlyOnceWith(order);
   await vi.advanceTimersByTimeAsync(60000);expect(read).toHaveBeenCalledOnce();stop();
  });

@@ -43,17 +43,23 @@ const directPreparationUnavailableUntil=new WeakMap<PrismaClient,number>();
 /** Common checkout: use fresh Chapa capabilities already loaded by the sheet.
  * One database statement checks the signed session and commits the leased intent. */
 export async function tryCreateCurrentDirectCheckout(client:PrismaClient,headers:Headers,raw:unknown){
- if((directPreparationUnavailableUntil.get(client)??0)>Date.now())return null;
  const parsed=input.safeParse(raw);
  if(!parsed.success||parsed.data.flow!=='DIRECT'||!supportedDirectMethod(parsed.data.paymentMethod))return null;
  const body=parsed.data,health=currentDirectAvailability();
  if(!health.enabled)return null;
- const method=currentDirectMethods().peek(body.paymentMethod);
- if(!method)return null;
+ const catalog=currentDirectMethods(),method=catalog.peek(body.paymentMethod);
  const phone=normalizePaymentPhone(body.phone);
  if(!phone||paymentPhoneProblem(body.phone,body.paymentMethod))return null;
  const amount=body.purpose==='TOP_UP'?etbToCents(body.amount):null;
- if(amount!==null&&(amount<CHAPA_TOPUP_MIN_CENTS||amount>CHAPA_TOPUP_MAX_CENTS||amount<BigInt(method.minimumCents)||amount>BigInt(method.maximumCents)))return null;
+ if(amount!==null&&(amount<CHAPA_TOPUP_MIN_CENTS||amount>CHAPA_TOPUP_MAX_CENTS||method&&(amount<BigInt(method.minimumCents)||amount>BigInt(method.maximumCents))))return null;
+ if(!method){
+  // A cold replica can discover provider capabilities while the fallback
+  // counts and verifies the session. Only a signed cookie can warm the read.
+  // The result is never needed to return an existing owned payment.
+  if(await signedSessionToken(headers))catalog.warm();
+  return null;
+ }
+ if((directPreparationUnavailableUntil.get(client)??0)>Date.now())return null;
  const approvedBonus=body.purpose==='TOP_UP'&&body.approvedDepositBonusAmount!==undefined?etbToCents(body.approvedDepositBonusAmount):null;
  if(approvedBonus!==null&&approvedBonus>0n)return null;
  const token=await signedSessionToken(headers);

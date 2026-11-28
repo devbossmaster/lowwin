@@ -4,6 +4,7 @@ type Events=Pick<EventTarget,'addEventListener'|'removeEventListener'>;
 type Visibility=Events&Pick<Document,'visibilityState'>;
 type Telegram={onEvent?:(event:string,listener:()=>void)=>void;offEvent?:(event:string,listener:()=>void)=>void};
 type Options={isCurrent:()=>boolean;onError?:(error:unknown)=>void;onPause?:()=>void;onResume?:()=>void;onWalletReturn?:(at:number)=>void;wake?:Events|null;telegram?:Telegram;budgetMs?:number;maximumReads?:number;initialDelayMs?:number};
+export const CHAPA_DIRECT_DISCOVERY_DELAY_MS=3000;
 const stalledReadMs=2000;
 
 /** Discover an already-owned payment after its initialization reply was

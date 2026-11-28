@@ -48,7 +48,7 @@ for(const width of [320,360,430]){
   await page.setViewportSize({width,height:850});const f=await setup(page);await page.goto('/');
   await expect(header(page).getByRole('button',{name:'Log in',exact:true})).toBeVisible();
   await expect(header(page).locator('[data-header-balance]')).toHaveCount(0);expect(f.walletRequests).toHaveLength(0);
-  await expect(header(page).getByRole('button',{name:'Notifications',exact:true})).toBeVisible();expect(f.alertRequests).toHaveLength(0);
+  await expect(header(page).getByRole('button',{name:/^Notifications/})).toHaveCount(0);expect(f.alertRequests).toHaveLength(0);
   await expect(header(page).getByRole('link',{name:/Wallet|Deposit|Profile|Play|Notifications/})).toHaveCount(0);
   await expect(header(page).locator('[data-lowwin-logo]')).toBeVisible();await compactGeometry(page);
   await header(page).getByRole('button',{name:/Browse auctions/}).click();await expect(page.getByRole('dialog',{name:'Auctions',exact:true})).toBeVisible();
@@ -78,8 +78,10 @@ test('account restoration never flashes a guest Log in button or private balance
  try{
   await expect(page.getByRole('status',{name:'Restoring account',exact:true})).toBeVisible();
   await expect(header(page).getByRole('button',{name:'Log in',exact:true})).toHaveCount(0);expect(f.walletRequests).toHaveLength(0);
+  await expect(header(page).getByRole('button',{name:/^Notifications/})).toHaveCount(0);expect(f.alertRequests).toHaveLength(0);
  }finally{f.release()}
  await expect(header(page).getByRole('link',{name:'Wallet, 123456789.50 ETB',exact:true})).toBeVisible();
+ await expect(header(page).getByRole('button',{name:'Notifications, 3 unread',exact:true})).toBeVisible();
 });
 
 test('confirmed registration waits for the real balance without inventing zero',async({page})=>{

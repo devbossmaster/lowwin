@@ -11,7 +11,7 @@ import {chapaPaymentReasonMessage,chapaRequestReasonMessage} from '@/lib/chapa-p
 import {formatEtb} from '@/lib/money';
 import {prepareChapaNavigation} from '@/lib/chapa-navigation';
 import {retainChapaObserver,stopChapaObservers,type ChapaVerificationTrigger} from '@/lib/chapa-observer';
-import {startChapaOriginalPolling} from '@/lib/chapa-original-polling';
+import {CHAPA_DIRECT_DISCOVERY_DELAY_MS,startChapaOriginalPolling} from '@/lib/chapa-original-polling';
 import {chapaStatusLabel} from '@/lib/chapa-status-label';
 import {chapaDirectCreationRejected} from '@/lib/chapa-direct-request';
 import {bidPaymentCanRetry,maskedBidPaymentPhone} from '@/lib/bid-payment-progress';
@@ -130,7 +130,9 @@ export function useChapaPayment(scope:string,initialId?:string,{retainOriginal=f
  },[orderId,queryIdentity,confirmed,waiting,pollingDeadline,observeDirect,state.restoring,verifyOwned,update,run,current,receive]);
  const discoverWhileCreating=state.busy&&state.directAttempt?.apiVersion==='v2'&&state.directAttempt.kind==='direct'&&state.directAttempt.flow==='DIRECT';
  const originalUrl=!orderId&&state.active&&(!state.busy||discoverWhileCreating)&&!state.restoring?chapaOriginalKeyUrl(state.directAttempt)??chapaOriginalRecoveryUrl(state.recoveryKey,state.recoveryProtocol):null;
- const originalDelay=discoverWhileCreating?5000:0;
+ // Start following the saved order if the creation response is still in
+ // flight. Discovery only reads this operation's server-owned key.
+ const originalDelay=discoverWhileCreating?CHAPA_DIRECT_DISCOVERY_DELAY_MS:0;
  const creatingDirectKey=discoverWhileCreating?state.directAttempt?.key:undefined;
  useEffect(()=>{
   if(!originalUrl||!isPrivateQueryIdentity(queryIdentity))return;

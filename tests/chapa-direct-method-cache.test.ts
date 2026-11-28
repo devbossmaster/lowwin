@@ -16,6 +16,21 @@ describe('direct method capability cache',()=>{
   const values=await Promise.all(requests);expect(values[0].map(value=>value.slug)).toEqual(['telebirr']);expect(values[1].map(value=>value.slug)).toEqual(['telebirr','mpesa']);
   expect((await catalog.get(1001n)).map(value=>value.slug)).toEqual(['telebirr']);expect(methods).toHaveBeenCalledOnce();
  });
+ it('warms a cold catalog without awaiting it and lets the authoritative read join its flight',async()=>{
+  setup();const read=deferred(),methods=vi.fn(()=>read.promise),catalog=createDirectMethodCatalog({create:vi.fn(),lookup:vi.fn(),methods});
+  catalog.warm();catalog.warm();const payment=catalog.get();
+  expect(methods).toHaveBeenCalledOnce();expect(catalog.peek('telebirr')).toBeUndefined();
+  read.resolve(response(method('telebirr')));
+  expect((await payment).map(value=>value.slug)).toEqual(['telebirr']);
+  catalog.warm();expect(methods).toHaveBeenCalledOnce();
+ });
+ it('bounds speculative retries without delaying the next verified read after a failed warm-up',async()=>{
+  setup();const methods=vi.fn().mockRejectedValueOnce(Error('temporarily unavailable')).mockResolvedValueOnce(response(method('telebirr'))),catalog=createDirectMethodCatalog({create:vi.fn(),lookup:vi.fn(),methods});
+  catalog.warm();await vi.advanceTimersByTimeAsync(0);catalog.warm();
+  expect(methods).toHaveBeenCalledOnce();
+  expect((await catalog.get()).map(value=>value.slug)).toEqual(['telebirr']);
+  expect(methods).toHaveBeenCalledTimes(2);
+ });
  it('fails closed after expiration and retries a failed refresh without serving old capabilities',async()=>{
   setup();const methods=vi.fn().mockResolvedValueOnce(response(method('telebirr'))).mockRejectedValueOnce(Error('provider unavailable')).mockResolvedValueOnce(response(method('mpesa',500))),catalog=createDirectMethodCatalog({create:vi.fn(),lookup:vi.fn(),methods});
   expect((await catalog.get()).map(value=>value.slug)).toEqual(['telebirr']);vi.advanceTimersByTime(300001);

@@ -35,6 +35,7 @@ for(const am of [false,true])test(`ordinary website browsing and explicit offici
   expect(await page.locator('.auction-card').first().evaluate(node=>getComputedStyle(node.parentElement!).gridTemplateColumns.split(' ').length)).toBe(1);
   // Guest browsing keeps the verified-customer navigation hidden at every width.
   await expect(page.locator('.mini-bottom-navigation')).toHaveCount(0);
+  await expect(page.getByRole('banner',{name:'Mini App header'}).getByRole('button',{name:am?/^ማሳወቂያዎች/:/^Notifications/})).toHaveCount(0);
   await page.getByRole('button',{name:am?'ይግቡ':'Log in',exact:true}).first().click();const dialog=page.getByRole('dialog');await expect(dialog.locator('[data-browser-telegram-login]')).toBeVisible();await expect(dialog.locator('input')).toHaveCount(0);await expect(dialog.getByRole('button',{name:am?'በTelegram ይቀጥሉ':'Continue with Telegram',exact:true})).toBeEnabled();expect(f.starts).toHaveLength(0);expect(f.approvals).toHaveLength(0);expect(f.charges).toHaveLength(0);expect(await page.evaluate(()=>(window as unknown as {nativeContactRequests:number}).nativeContactRequests)).toBe(0);
   expect(await dialog.evaluate(node=>node.scrollWidth<=node.clientWidth+1)).toBe(true);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await dialog.screenshot({path:info.outputPath(`browser-login-${am?'am':'en'}.png`)});
   expect(guestAccountReads).toEqual([]);

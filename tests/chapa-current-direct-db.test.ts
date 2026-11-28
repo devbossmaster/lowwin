@@ -11,7 +11,7 @@ import {quoteBidBatch} from '../src/modules/auctions/batch';
 import {createCurrentDirectCheckout,findCurrentDirectCheckoutByKey,findInlineCheckoutByKey,prepareCurrentDirectCreation,tryCreateCurrentDirectCheckout} from '../src/modules/payments/chapa-inline';
 import {prepareAtomicDirectBid} from '../src/modules/payments/chapa-direct-bid-prepare';
 import {prepareAtomicDirectTopUp} from '../src/modules/payments/chapa-direct-topup-prepare';
-import {prepareOwnedChapaVerification,verifyChapaCheckout} from '../src/modules/payments/chapa';
+import {prepareOwnedChapaVerification,verifyChapaCheckout,verifyChapaWebhookCheckout} from '../src/modules/payments/chapa';
 import {authorizeCurrentDirectCreation,type PaymentSessionAuthorizer} from '../src/modules/payments/creation-eligibility';
 import {contactBotId} from '../src/modules/auth/own-contact';
 import {authorizeDirectCheckout} from '../src/modules/payments/chapa-direct';
@@ -105,6 +105,27 @@ describe.skipIf(!database)('current Direct5 owned creation and private committed
    expect(await db.chapaCheckout.count({where:{userId:f.user}})).toBe(1);
    expect(await balance(f.user)).toBe('0');
   }finally{methods.mockRestore();direct.mockRestore()}
+ });
+ it('overlaps a cold provider catalog read only for a signed, valid checkout and never blocks original recovery',async()=>{
+  const f=await fixture(),{session,authorize}=await creationBinding(f.user),headers=await signedHeaders(session.token);
+  const originalKey=process.env.CHAPA_PRIVATE_KEY!;
+  process.env.CHAPA_PRIVATE_KEY='CHAPA_TEST_'+'d'.repeat(40);
+  let release!:()=>void;
+  const gate=new Promise<void>(resolve=>release=resolve);
+  const methods=vi.spyOn(chapaTransport,'methods').mockImplementation(async()=>{await gate;return f.transport.methods()});
+  const direct=vi.spyOn(chapaTransport,'direct').mockImplementation(f.direct);
+  try{
+   await expect(tryCreateCurrentDirectCheckout(db,new Headers({cookie:'__Secure-better-auth.session_token=unsigned'}),f.command)).resolves.toBeNull();
+   await expect(tryCreateCurrentDirectCheckout(db,headers,{...f.command,amount:'1.00'})).resolves.toBeNull();
+   expect(methods).not.toHaveBeenCalled();
+   const original=await f.start();
+   await expect(tryCreateCurrentDirectCheckout(db,headers,f.command)).resolves.toBeNull();
+   expect(methods).toHaveBeenCalledOnce();
+   expect((await (await prepareCurrentDirectCreation(db,f.user,f.command,undefined,true))(authorize)).order.id).toBe(original.order.id);
+   expect(f.direct).toHaveBeenCalledOnce();expect(direct).not.toHaveBeenCalled();
+   expect(await db.chapaCheckout.count({where:{userId:f.user}})).toBe(1);
+   release();await directMethodCatalog.get();
+  }finally{release();methods.mockRestore();direct.mockRestore();process.env.CHAPA_PRIVATE_KEY=originalKey}
  });
  it('keeps an uncertain one-statement preparation on its original key without starting Chapa',async()=>{
   const f=await fixture(),{session}=await creationBinding(f.user),headers=await signedHeaders(session.token);
@@ -288,6 +309,79 @@ describe.skipIf(!database)('current Direct5 owned creation and private committed
   expect(f.lookup).toHaveBeenCalledTimes(2);
   expect(await balance(f.user)).toBe('40');
   expect(await db.journal.count({where:{kind:'CHAPA_RECEIPT',operation:{userId:f.user}}})).toBe(1);
+ });
+ it('schedules one short follow-up when a fresh completion races an in-flight private check',async()=>{
+  const f=await fixture(),{order}=await f.start();
+  const snapshot=await db.chapaCheckout.update({where:{id:order.id},data:{attempts:10}});
+  const transport={...f.transport,validate:undefined};
+  f.lookup.mockImplementationOnce(async()=>{
+   await verifyChapaWebhookCheckout(db,snapshot,transport,'SUCCESS');
+   return f.proof();
+  });
+  await expect(verifyChapaCheckout(db,order.id,undefined,undefined,transport)).resolves.toMatchObject({status:'PENDING',completionSignalPending:true});
+  expect(f.lookup).toHaveBeenCalledTimes(2);
+  const waiting=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});
+  expect(waiting.nextCheckAt.getTime()-waiting.lastPrivateCheckAt!.getTime()).toBe(2000);
+  await verifyChapaWebhookCheckout(db,waiting,transport,'SUCCESS');
+  const stillWaiting=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});
+  expect(stillWaiting.nextCheckAt.getTime()-stillWaiting.lastPrivateCheckAt!.getTime()).toBeGreaterThanOrEqual(5000);
+  expect(stillWaiting.creditJournalId).toBeNull();
+ });
+ it.each(['TOP_UP','BID'] as const)('rechecks a fresh signed Direct %s completion once after two seconds when private evidence still says pending',async purpose=>{
+  const f=await fixture(purpose),{order}=await f.start(),operations:string[]=[];
+  // Outlive the ordinary early-Telebirr cadence so that only the fresh
+  // completion signal can explain this short follow-up.
+  const snapshot=await db.chapaCheckout.update({where:{id:order.id},data:{attempts:10}});
+  const client=db.$extends({query:{
+   $queryRaw:async({args,query})=>{operations.push('$queryRaw');return query(args)},
+   $allModels:{$allOperations:async({operation,args,query})=>{operations.push(operation);return query(args)}},
+  }}) as unknown as PrismaClient;
+  await expect(verifyChapaWebhookCheckout(client,snapshot,f.transport,'SUCCESS')).resolves.toMatchObject({status:'PENDING',completionSignalPending:true});
+  expect(operations).toEqual(['$queryRaw','updateManyAndReturn','updateManyAndReturn']);
+  const waiting=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});
+  expect(waiting.nextCheckAt.getTime()-waiting.lastPrivateCheckAt!.getTime()).toBe(2000);
+  expect(waiting.creditJournalId).toBeNull();
+  await expect(verifyChapaCheckout(db,order.id,undefined,undefined,f.transport)).resolves.toMatchObject({status:'PENDING',completionSignalPending:true});
+  expect(f.lookup).toHaveBeenCalledOnce();
+  await f.due();
+  await expect(verifyChapaCheckout(db,order.id,undefined,undefined,f.transport)).resolves.toMatchObject({status:'PENDING',completionSignalPending:true});
+  const stillWaiting=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});
+  expect(stillWaiting.nextCheckAt.getTime()-stillWaiting.lastPrivateCheckAt!.getTime()).toBeGreaterThanOrEqual(5000);
+  expect(stillWaiting.creditJournalId).toBeNull();
+  expect(f.validate).not.toHaveBeenCalled();
+  f.setStatus('SUCCESS');
+  await f.due();
+  await expect(verifyChapaCheckout(db,order.id,undefined,undefined,f.transport)).resolves.toMatchObject({status:purpose==='BID'?'BID_ACCEPTED':'CREDITED',verificationState:'VERIFIED',completionSignalPending:false});
+  expect(await db.journal.count({where:{kind:'CHAPA_RECEIPT',operation:{userId:f.user}}})).toBe(1);
+ });
+ it.each([
+  ['TOP_UP','maintenance'],['BID','maintenance'],['BID','auction'],
+ ] as const)('settles Direct %s only after the %s lock without holding the wallet first',async (purpose,barrier)=>{
+  const f=await fixture(purpose),{order}=await f.start();
+  const snapshot=await db.chapaCheckout.findUniqueOrThrow({where:{id:order.id}});
+  f.setStatus('SUCCESS');
+  let release!:()=>void,locked!:()=>void;
+  const held=new Promise<void>(resolve=>{release=resolve}),ready=new Promise<void>(resolve=>{locked=resolve});
+  const holder=db.$transaction(async tx=>{
+   if(barrier==='maintenance')await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('lowwin:auction-maintenance',0))`;
+   else await tx.$queryRaw`SELECT id FROM "Auction" WHERE id=${snapshot.auctionId} FOR UPDATE`;
+   locked();await held;
+  },{timeout:10000});
+  await ready;
+  const settlement=verifyChapaWebhookCheckout(db,snapshot,f.transport,'SUCCESS');
+  try{
+   await vi.waitFor(async()=>{
+    const [check]=await db.$queryRaw<{waiting:boolean}[]>`SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid() AND wait_event_type='Lock' AND position('WITH maintenance_guard' in query)>0) AS waiting`;
+    expect(check.waiting).toBe(true);
+   },{timeout:3000,interval:30});
+   await db.$transaction(async tx=>{
+    if(purpose==='BID'&&barrier==='maintenance')await tx.$queryRaw`SELECT id FROM "Auction" WHERE id=${snapshot.auctionId} FOR UPDATE NOWAIT`;
+    const [wallet]=await tx.$queryRaw<{available:boolean}[]>`SELECT pg_try_advisory_xact_lock(hashtextextended(${`wallet:${f.user}`},0)) AS available`;
+    expect(wallet.available).toBe(true);
+   });
+   expect(await balance(f.user)).toBe('0');
+  }finally{release();await holder;await settlement;}
+  await expect(settlement).resolves.toMatchObject({status:purpose==='BID'?'BID_ACCEPTED':'CREDITED',verificationState:'VERIFIED'});
  });
  it.each(['before claim','before commit'] as const)('rejects a signed session revoked %s',async when=>{
   const f=await fixture(),{order}=await f.start(),check=await ownedVerification(f,order.id);

@@ -13,7 +13,9 @@ import styles from './header-panels.module.css';
 // header and unwind the open sheet's browser-history entry while loading.
 const NotificationsInbox=dynamic(()=>import('./notifications-inbox').then(module=>module.NotificationsInbox),{loading:()=> <NotificationsInboxSkeleton showFilters/>});
 export function AlertBell({className}:{className?:string}){
-  const {queryIdentity}=useTelegram();return <PlayerAlerts key={queryIdentity??'guest'} className={className}/>;
+  const {status,queryIdentity}=useTelegram();
+  if(status!=='authenticated'||!queryIdentity)return null;
+  return <PlayerAlerts key={queryIdentity} className={className}/>;
 }
 function PlayerAlerts({className}:{className?:string}){
   const {language}=useMiniLocale(),am=language==='am',path=usePathname(),[open,setOpen]=useState(false);
