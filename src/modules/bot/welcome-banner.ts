@@ -15,12 +15,12 @@ async function renderWelcomeBanner(bytes:Buffer,language:Language){
  const {data,info}=await sharp(bytes).rotate().resize(1200).raw().toBuffer({resolveWithObject:true});
  const headline=(language==='am'?defaultHomeCopy.headlineAm:defaultHomeCopy.headline).replace(/([.።]) /,'$1\n');
  const lead=language==='am'?defaultHomeCopy.leadAm:defaultHomeCopy.lead.replace(' bid','\nbid');
+ const typeface=language==='am'?{font:'Noto Sans Ethiopic Bold',fontfile}:{font:'sans-serif Bold'};
  const layers=await Promise.all([
-  {copy:'LowWin',color:'#9DCAFF',size:34,gap:30},
   {copy:headline,color:'#FFFFFF',size:57,gap:24},
   {copy:lead,color:'#D8E9FF',size:33,gap:0},
  ].map(async ({copy,color,size,gap})=>{
-  const text={text:`<span foreground="${color}">${copy}</span>`,font:`Noto Sans Ethiopic Bold ${size}`,fontfile,width:320,rgba:true};
+  const text={...typeface,text:`<span foreground="${color}">${copy}</span>`,font:`${typeface.font} ${size}`,width:320,rgba:true};
   const layer=await sharp({text}).png().toBuffer({resolveWithObject:true});
   return {input:layer.data,height:layer.info.height,gap};
  }));

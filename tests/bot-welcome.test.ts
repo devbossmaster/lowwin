@@ -3,9 +3,13 @@ import type {Update,UserFromGetMe} from 'grammy/types';
 import {createBot} from '../src/modules/bot/bot';
 import {InputFile} from 'grammy';
 import {TEST_TOKEN} from './helpers';
+import {botHelp} from '../src/content/bot-help';
 const f=vi.hoisted(()=>({checkout:vi.fn(),referral:vi.fn()}));
 vi.mock('../src/lib/db',()=>({db:{chapaCheckout:{findFirst:f.checkout}}}));
 vi.mock('../src/modules/referrals/service',()=>({recordBotReferralStart:f.referral}));
+function welcomeKeyboard(url='https://lowwin.test/telegram'){
+ return {inline_keyboard:[[{text:'LowWinን ይክፈቱ',web_app:{url}}],[{text:'ቴለግራም ቻናላችንን ይቀላቀሉ',url:'https://t.me/lowwinet'}]]};
+}
 describe('public Telegram app and channel entry',()=>{
  beforeAll(()=>{for(const [key,value] of Object.entries({DATABASE_URL:'postgresql://fixture@127.0.0.1:9/welcome_test',DIRECT_URL:'postgresql://fixture@127.0.0.1:9/welcome_test',APP_ENV:'local',DEV_IDENTITY_ENABLED:'false',BETTER_AUTH_URL:'https://lowwin.test',MINI_APP_URL:'https://lowwin.test/telegram',BETTER_AUTH_SECRET:'fixture-only-secret-at-least-thirty-two-characters',TELEGRAM_BOT_TOKEN:TEST_TOKEN,TELEGRAM_BOT_USERNAME:'lowin_fixture_bot',TELEGRAM_WEBHOOK_SECRET:'fixture-only-webhook-secret-thirty-two'}))vi.stubEnv(key,value)});
  afterAll(()=>vi.unstubAllEnvs());
@@ -21,17 +25,23 @@ describe('public Telegram app and channel entry',()=>{
   expect(sent).toHaveLength(1);expect(sent[0].method).toBe('sendPhoto');expect(sent[0].payload.photo).toBeInstanceOf(InputFile);
   expect(sent[0].payload.caption).toContain('እንኳን ወደ LowWin');
   expect(sent[0].payload.caption).toContain('አዲስ ከሆኑ ጨረታዎችን ከመመልከትዎ በፊት በTelegram የራስዎን ስልክ ቁጥር');
-  expect(sent[0].payload.reply_markup).toEqual({inline_keyboard:[[{text:'LowWinን ይክፈቱ',web_app:{url:'https://lowwin.test/telegram'}},{text:'ቻናላችንን ይቀላቀሉ',url:'https://t.me/lowwinet'}]]});
+  expect(sent[0].payload.reply_markup).toEqual(welcomeKeyboard());
   expect(contactVerified).not.toHaveBeenCalled();expect(f.checkout).not.toHaveBeenCalled();
  });
  it('uses the Amharic welcome caption with one photo and the same public app action',async()=>{
   const {sent}=await send({from:{id:7,is_bot:false,first_name:'Fixture',language_code:'am'}});
-  expect(sent).toHaveLength(1);expect(sent[0].method).toBe('sendPhoto');expect(String(sent[0].payload.caption)).toContain('እንኳን ወደ LowWin');expect(sent[0].payload.reply_markup).toEqual({inline_keyboard:[[{text:'LowWinን ይክፈቱ',web_app:{url:'https://lowwin.test/telegram'}},{text:'ቻናላችንን ይቀላቀሉ',url:'https://t.me/lowwinet'}]]});
+  expect(sent).toHaveLength(1);expect(sent[0].method).toBe('sendPhoto');expect(String(sent[0].payload.caption)).toContain('እንኳን ወደ LowWin');expect(sent[0].payload.reply_markup).toEqual(welcomeKeyboard());
  });
- it.each(['en','fr',undefined])('keeps the initial welcome Amharic for Telegram UI language %s',async language_code=>{const {sent}=await send({from:{id:7,is_bot:false,first_name:'Fixture',language_code}});expect(String(sent[0].payload.caption)).toContain('እንኳን ወደ LowWin');expect(String(sent[0].payload.caption)).not.toContain('Welcome to');expect(sent[0].payload.reply_markup).toEqual({inline_keyboard:[[{text:'LowWinን ይክፈቱ',web_app:{url:'https://lowwin.test/telegram'}},{text:'ቻናላችንን ይቀላቀሉ',url:'https://t.me/lowwinet'}]]})});
+ it.each(['en','fr',undefined])('keeps the initial welcome Amharic for Telegram UI language %s',async language_code=>{const {sent}=await send({from:{id:7,is_bot:false,first_name:'Fixture',language_code}});expect(String(sent[0].payload.caption)).toContain('እንኳን ወደ LowWin');expect(String(sent[0].payload.caption)).not.toContain('Welcome to');expect(sent[0].payload.reply_markup).toEqual(welcomeKeyboard())});
+ it.each(['en','am',undefined])('sends current Amharic help for Telegram UI language %s',async language_code=>{
+  const {sent}=await send({text:'/help',entities:[{type:'bot_command',offset:0,length:5}],from:{id:7,is_bot:false,first_name:'Fixture',language_code}});
+  expect(sent).toHaveLength(1);
+  expect(sent[0]).toMatchObject({method:'sendMessage',payload:{text:botHelp.am}});
+  expect(sent[0].payload.text).toContain('ተከታታይ ቁጥሮች ይፈቀዳሉ');
+ });
  it('keeps an opaque original payment resume link without claiming success or disclosing a receipt',async()=>{
   const id='0f55aaab-2222-4444-8888-123456789012',{sent}=await send({text:`/start chapa_${id}`});
-  expect(sent).toHaveLength(1);expect(sent[0].payload.reply_markup).toEqual({inline_keyboard:[[{text:'LowWinን ይክፈቱ',web_app:{url:`https://lowwin.test/payments/chapa/return?checkout=${id}`}},{text:'ቻናላችንን ይቀላቀሉ',url:'https://t.me/lowwinet'}]]});
+  expect(sent).toHaveLength(1);expect(sent[0].payload.reply_markup).toEqual(welcomeKeyboard(`https://lowwin.test/payments/chapa/return?checkout=${id}`));
   expect(String(sent[0].payload.caption)).not.toMatch(/credited|confirmed|accepted|100\.00/i);expect(f.checkout).not.toHaveBeenCalled();
  });
  it('preserves new-user referral attribution before opening the public app',async()=>{
@@ -40,7 +50,7 @@ describe('public Telegram app and channel entry',()=>{
  });
  it('does not accept a malformed payment payload as a return route',async()=>{
   const {sent}=await send({text:'/start chapa_0f55aaab-2222-4444-8888-123456789012_status_SUCCESS'});
-  expect(sent[0].payload.reply_markup).toEqual({inline_keyboard:[[{text:'LowWinን ይክፈቱ',web_app:{url:'https://lowwin.test/telegram'}},{text:'ቻናላችንን ይቀላቀሉ',url:'https://t.me/lowwinet'}]]});
+  expect(sent[0].payload.reply_markup).toEqual(welcomeKeyboard());
  });
  it.each([{from:{id:8,is_bot:false,first_name:'Other'}},{from:{id:7,is_bot:true,first_name:'Bot'}},{forward_origin:{type:'user',date:1,sender_user:{id:7,is_bot:false,first_name:'Fixture'}}}])('rejects inauthentic private starts %j',async change=>expect((await send(change)).sent).toEqual([]));
  it('does not expose a Mini App button in a group',async()=>{const {sent}=await send({chat:{id:-7,type:'group',title:'Fixture'}});expect(sent).toHaveLength(1);expect(sent[0].payload.reply_markup).toBeUndefined()});

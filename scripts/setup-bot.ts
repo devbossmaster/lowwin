@@ -5,7 +5,7 @@ const env = getEnv();
 if (!env.MINI_APP_URL.startsWith('https://')) throw new Error('Telegram requires a public HTTPS Mini App URL.');
 const bot = createBot();
 try {
-  await bot.api.setMyCommands([{ command: 'start', description: 'Launch Lowwin' }, { command: 'help', description: 'Understand Lowwin' }]);
+  await bot.api.setMyCommands([{ command: 'start', description: 'Launch Lowwin' }, { command: 'help', description: 'የLowWin አጠቃቀም መመሪያ' }]);
   await bot.api.setChatMenuButton({ menu_button: { type: 'web_app', text: 'Open Lowwin', web_app: { url: env.MINI_APP_URL } } });
   await bot.api.setWebhook(`${new URL(env.MINI_APP_URL).origin}/api/bot/webhook`, { secret_token: env.TELEGRAM_WEBHOOK_SECRET, allowed_updates: ['message'], drop_pending_updates: false });
   console.log('Bot commands, menu and webhook configured.');

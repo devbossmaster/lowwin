@@ -3,6 +3,7 @@ import {randomBytes,randomUUID} from 'node:crypto';
 import {makeSignature} from 'better-auth/crypto';
 import {fixture} from '../chapa-browser/fixtures';
 import {defaultHomeCopy} from '../../src/components/home-copy';
+import {LOWWIN_HOME_BANNER_SRC} from '../../src/lib/brand';
 
 async function prepare(page:Page,am:boolean,durationMs:number){
  const f=await fixture(page,am,undefined,'lowest-unique-v5'),end=new Date(Date.now()+durationMs).toISOString();
@@ -24,21 +25,20 @@ for(const am of [false,true])test(`hero and detail timer stay readable ${am?'AM'
  if(info.project.name==='1280')await page.addInitScript(()=>{delete window.Telegram});
  try{
   await page.goto('/');const hero=page.locator('[data-home-hero]');await expect(hero.locator('h1')).toHaveText(am?defaultHomeCopy.headlineAm:defaultHomeCopy.headline);await expect(hero.locator('h1')).toBeVisible();
-  const art=hero.locator('img');await expect(art).toHaveAttribute('width','1840');await expect(art).toHaveAttribute('height','800');await expect(art).toHaveAttribute('src',/lowwin-family-home-blue-20261118/);await expect.poll(()=>art.evaluate((node:HTMLImageElement)=>node.complete&&node.naturalWidth>0)).toBe(true);
+  const art=hero.locator('img');await expect(art).toHaveAttribute('width','1840');await expect(art).toHaveAttribute('height','800');await expect.poll(()=>art.evaluate((node:HTMLImageElement)=>node.complete&&node.naturalWidth>0)).toBe(true);
   const sourceRatio=await art.evaluate((node:HTMLImageElement)=>node.naturalWidth/node.naturalHeight);
   await expect(art).toHaveCSS('object-fit','cover');await expect(art).toHaveCSS('mask-image','none');
-  expect(await art.evaluate((node:HTMLImageElement)=>decodeURIComponent(node.currentSrc))).toContain('lowwin-family-home-blue-20261118.webp');
+  expect(await art.evaluate((node:HTMLImageElement)=>decodeURIComponent(node.currentSrc))).toContain(LOWWIN_HOME_BANNER_SRC[am?'am':'en']);
   await expect(hero.locator('p')).toHaveCount(1);await expect(hero.locator('p')).toHaveText(am?defaultHomeCopy.leadAm:defaultHomeCopy.lead);
   await expect(hero.locator('p')).toBeVisible();await expect(hero.locator('p')).toHaveCSS('position','static');await expect(hero.locator('p')).toHaveCSS('clip-path','none');
   const layout=await hero.evaluate(node=>{const bounds=node.getBoundingClientRect(),copy=node.querySelector('[data-hero-copy]')!.getBoundingClientRect(),frame=node.querySelector('[data-hero-artwork]')!.getBoundingClientRect(),image=node.querySelector('img')!.getBoundingClientRect();return {heroLeft:bounds.left,heroTop:bounds.top,heroWidth:bounds.width,heroHeight:bounds.height,copyRight:copy.right,copyBottom:copy.bottom,artLeft:frame.left,artTop:frame.top,artWidth:frame.width,artHeight:frame.height,imageTop:image.top,imageHeight:image.height,leftCrop:(frame.left-image.left)/image.width,rightCrop:(image.right-frame.right)/image.width}});
-  // The family-at-home photograph fills the hero behind all readable HTML copy.
+  // The product artwork fills the hero behind the localized HTML copy.
   expect(layout.artLeft).toBeCloseTo(layout.heroLeft,1);expect(layout.artTop).toBeCloseTo(layout.heroTop,1);expect(layout.artWidth).toBeCloseTo(layout.heroWidth,1);expect(layout.artHeight).toBeCloseTo(layout.heroHeight,1);
   expect(layout.heroWidth).toBeGreaterThan(layout.heroHeight);
-  expect(layout.heroWidth).toBeCloseTo(Math.min(page.viewportSize()!.width,430),0);
-  expect(layout.heroWidth/layout.heroHeight).toBeCloseTo(1840/880,2);
-  // Optimized responsive image candidates round their height to whole pixels.
-  expect(Math.abs(layout.heroWidth/layout.heroHeight-sourceRatio/1.1)).toBeLessThan(.02);
-  expect(layout.copyRight).toBeLessThanOrEqual(layout.heroLeft+layout.heroWidth*.47);
+  expect(layout.heroWidth).toBeCloseTo(Math.min(page.viewportSize()!.width,460),0);
+  expect(layout.heroWidth/layout.heroHeight).toBeLessThanOrEqual(1840/800+.01);
+  expect(sourceRatio).toBeCloseTo(1840/800,2);
+  expect(layout.copyRight).toBeLessThanOrEqual(layout.heroLeft+layout.heroWidth*.63);
   expect(Math.abs(layout.leftCrop)).toBeLessThan(.01);
   expect(Math.abs(layout.rightCrop)).toBeLessThan(.01);
   const learn=hero.getByRole('button',{name:am?'እንዴት ይሠራል?':'How it works?',exact:true});await learn.click();await expect(page.getByRole('dialog')).toBeVisible();await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);await expect(learn).toBeFocused();

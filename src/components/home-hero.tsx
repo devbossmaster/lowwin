@@ -8,7 +8,7 @@ import {MiniPhrase,useMiniLocale} from './mini-locale';
 import styles from './home-banner.module.css';
 import type {LearnMoreMedia} from '@/lib/learn-more-media';
 import type {HomeExperience} from '@/modules/admin/content-schema';
-import {lowwinHomeBanner} from '@/lib/brand';
+import {LOWWIN_HOME_BANNER_SRC,lowwinHomeBanner} from '@/lib/brand';
 // Keep the current page visible while the sheet's code loads.
 const LearnMoreSheet=dynamic(()=>import('./learn-more-sheet'),{loading:()=>null});
 type Copy={headline:string;headlineAm:string;lead:string;leadAm:string};
@@ -21,12 +21,14 @@ export function HomeHero({copy,videoId,media,experience}:{copy:Copy;videoId?:str
  const headlineParts=headline.match(/^(.+?[.!።])\s+([\s\S]+)$/);
  const leadParts=lead.match(/^(The lowest unique|ዝቅተኛና ያልተደገመ)\s+([\s\S]+)$/);
  const configuredBanner=language==='am'?experience?.bannerAm:experience?.bannerEn;
- const alt=language==='am'?'ለማሳያ የተዘጋጀ ቤተሰብ በቤት ውስጥ፣ በሳጥን ያሉ PS5 እና iPhone Pro Max ይዞ፣ ከሰማያዊ ሻንጣና ሌሎች መሣሪያዎች ጋር':'Illustrative family at home holding boxed PS5 and iPhone Pro Max, with blue luggage and gadgets';
- const {props:image}=getImageProps({alt,quality:75,loading:'eager',fetchPriority:'high',src:lowwinHomeBanner(language,configuredBanner),width:1840,height:800,sizes:'(max-width: 460px) 100vw, 460px'});
+ const banner=lowwinHomeBanner(language,configuredBanner);
+ const showcase=banner===LOWWIN_HOME_BANNER_SRC[language];
+ const alt=showcase?(language==='am'?'PS5፣ iPhone፣ Samsung Galaxy፣ የጆሮ ማዳመጫና ዘመናዊ ሰዓት በሰማያዊ መድረክ ላይ':'PS5, iPhone, Samsung Galaxy, earbuds and a smartwatch on a blue display'):'';
+ const {props:image}=getImageProps({alt,quality:75,loading:'eager',fetchPriority:'high',src:banner,width:1840,height:800,sizes:'(max-width: 460px) 100vw, 460px'});
  return <>
   <section className={`relative overflow-hidden ${styles.banner} ${styles.artworkBanner}`} aria-labelledby="home-headline" lang={language} data-home-hero>
    <div className={styles.bannerMain}>
-   <div className={styles.bannerArtwork} data-hero-artwork><img {...image}/></div>
+   <div className={styles.bannerArtwork} data-hero-artwork data-showcase={showcase||undefined}><img {...image}/></div>
    <div className={styles.bannerCopy} data-hero-copy><h1 id="home-headline">{headlineParts?<><span>{headlineParts[1]}</span>{' '}<span className={styles.headlineAccent}>{headlineParts[2]}</span></>:headline}</h1><p>{leadParts?<><span>{leadParts[1]}</span>{' '}<span>{leadParts[2]}</span></>:lead}</p></div>
    <div className={styles.introActions}>
     <button ref={learnButton} className={styles.liveAction} type="button" onClick={()=>setLearn(true)}><MiniPhrase en="How it works?" am="እንዴት ይሠራል?"/><ArrowRight size={16}/></button>

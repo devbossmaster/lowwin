@@ -15,6 +15,7 @@ const previousBrandAssets=new Set(['/images/lowwin-home-16x9-en-20261114-v3.webp
 previousBrandAssets.add('/images/lowwin-blue-black-prizes-20261117.webp');
 previousBrandAssets.add('/images/lowwin-blue-black-prizes-20261118.webp');
 previousBrandAssets.add('/images/lowwin-family-home-blue-mobile-20261118.webp');
+previousBrandAssets.add('/images/lowwin-family-home-blue-20261118.webp');
 
 // These handlers enforce getMiniSession/requireUser themselves before any
 // private read or mutation. Do not run another full session lookup in Proxy.

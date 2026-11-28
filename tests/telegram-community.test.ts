@@ -4,7 +4,7 @@ import {telegramCampaignText} from '../src/modules/notifications/service';
 describe('Telegram community links and campaign copy',()=>{
  it('keeps the existing action first and adds the welcome channel button below it',()=>{
   const action={text:'Open Lowwin',web_app:{url:'https://lowwin.test/winners/5'}};
-  expect(withTelegramChannelButton([[action]])).toEqual({inline_keyboard:[[action],[{text:'ቻናላችንን ይቀላቀሉ',url:'https://t.me/lowwinet'}]]});
+  expect(withTelegramChannelButton([[action]])).toEqual({inline_keyboard:[[action],[{text:'ቴለግራም ቻናላችንን ይቀላቀሉ',url:'https://t.me/lowwinet'}]]});
  });
  it('does not append a second button for the same channel',()=>{
   const rows=[[{text:'Support',url:'https://t.me/lowwinsupport'},{text:'Join',url:'https://t.me/LowwinET/'}]];

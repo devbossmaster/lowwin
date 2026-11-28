@@ -18,7 +18,7 @@ describe('current auction and homepage policy copy',()=>{
  it('describes no-unique cancellation and actual net-fee funding boundaries in both languages',()=>{
   const document=JSON.stringify(termsDocument);expect(document).not.toMatch(/non-refundable|first accepted|fallback in section/i);
   const refunds=faqEntries.find(entry=>entry.id==='refund')!.answer;
-  expect(refunds.en).toContain('Cash payments return as cash');expect(refunds.en).toContain('original expiry');expect(refunds.en).toContain('Coupon discounts');expect(refunds.am).toContain('ጥሬ ገንዘብ');expect(refunds.am).toContain('ኩፖን');
+  expect(refunds.en).toContain('Cash payments return as cash');expect(refunds.en).toContain('original expiry');expect(refunds.am).toContain('ጥሬ ገንዘብ');expect(refunds.am).toContain('የማብቂያ ጊዜ');
   expect(faqEntries.find(entry=>entry.id==='fallback')!.answer.en).toContain('A repeated number never wins');
   expect(document).toContain('Consecutive numbers are allowed');expect(document).toContain('ተከታታይ ቁጥሮች ይፈቀዳሉ');expect(document).not.toMatch(/leave a gap|four consecutive|skip 1\.04/i);
   expect(V5_NUMBER_TERMS).toContain('Consecutive numbers are allowed');expect(V5_NUMBER_TERMS).not.toContain('leave a gap');expect(V4_NUMBER_TERMS).toContain('leave a gap');
@@ -42,7 +42,7 @@ describe('current auction and homepage policy copy',()=>{
   expect(render('lowest-unique-v5')).toContain('Consecutive numbers are allowed');expect(render('lowest-unique-v5')).not.toContain('Leave a gap');
  });
  it('keeps both bot help languages aligned without old hold or fallback promises',()=>{
-  expect(botHelp.en).toContain('A repeated number never wins');expect(botHelp.en).toContain('Cash returns as cash');expect(botHelp.en).not.toMatch(/v3|is held|first accepted|no additional bid fee/);
-  expect(botHelp.am).toContain('የተደገመ ቁጥር መቼም አያሸንፍም');expect(botHelp.am).toContain('ኩፖን');expect(botHelp.am).not.toContain('ትልቁ ጨረታዎ ብቻ ይያዛል');
+  expect(botHelp.en).toContain('A repeated number never wins');expect(botHelp.en).toContain('Cash returns as cash');expect(botHelp.en).toContain('Consecutive numbers are allowed');expect(botHelp.en).not.toMatch(/v3|is held|first accepted|no additional bid fee|skip 1\.04/);
+  expect(botHelp.am).toContain('የተደገመ ቁጥር መቼም አያሸንፍም');expect(botHelp.am).toContain('የማብቂያ ጊዜ');expect(botHelp.am).toContain('ተከታታይ ቁጥሮች ይፈቀዳሉ');expect(botHelp.am).not.toMatch(/1\.04ን ይዝለሉ|ኩፖን/);
  });
 });

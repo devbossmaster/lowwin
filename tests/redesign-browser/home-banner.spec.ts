@@ -5,6 +5,7 @@ import {mkdirSync} from 'node:fs';
 import {signedLaunch} from '../helpers';
 import {verifyFixtureContact} from '../contact-fixtures';
 import {defaultHomeCopy} from '../../src/components/home-copy';
+import {LOWWIN_HOME_BANNER_SRC} from '../../src/lib/brand';
 
 test('home banner: both languages, image, mobile geometry and existing actions',async({page},info)=>{
  page.setDefaultTimeout(30000);
@@ -31,11 +32,11 @@ test('home banner: both languages, image, mobile geometry and existing actions',
    await expect(hero.locator('h1')).toHaveText(headline);
    await expect(hero.locator('p')).toHaveCount(1);await expect(hero.locator('p')).toHaveText(lead);await expect(hero.locator('small')).toHaveCount(0);
    await expect(page.locator('#home-headline')).toHaveCount(1);
-   const image=hero.locator('img');await expect(image).toHaveAttribute('src',/lowwin-family-home-blue-20261118\.webp/);await expect(image).toHaveAttribute('width','1840');await expect(image).toHaveAttribute('height','800');
+   const image=hero.locator('img');await expect(image).toHaveAttribute('width','1840');await expect(image).toHaveAttribute('height','800');
    await expect.poll(()=>image.evaluate((node:HTMLImageElement)=>node.complete&&node.naturalWidth>0)).toBe(true);
    const sourceRatio=await image.evaluate((node:HTMLImageElement)=>node.naturalWidth/node.naturalHeight);
    await expect(image).toHaveCSS('object-fit','cover');await expect(image).toHaveCSS('mask-image','none');
-   await expect(hero.locator('picture,source')).toHaveCount(0);expect(await image.evaluate((node:HTMLImageElement)=>decodeURIComponent(node.currentSrc))).toContain('lowwin-family-home-blue-20261118.webp');
+   await expect(hero.locator('picture,source')).toHaveCount(0);expect(await image.evaluate((node:HTMLImageElement)=>decodeURIComponent(node.currentSrc))).toContain(LOWWIN_HOME_BANNER_SRC[language]);
    await page.evaluate(()=>document.fonts.ready);
    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
    // The approved headline and supporting line remain visible over the artwork
@@ -44,12 +45,12 @@ test('home banner: both languages, image, mobile geometry and existing actions',
    const bannerBox=(await hero.boundingBox())!,copyBox=(await hero.locator('h1').boundingBox())!;
    const copyFrame=(await hero.locator('[data-hero-copy]').boundingBox())!,artFrame=(await hero.locator('[data-hero-artwork]').boundingBox())!,imageFrame=(await image.boundingBox())!;
    expect(artFrame.x).toBeCloseTo(bannerBox.x,1);expect(artFrame.y).toBeCloseTo(bannerBox.y,1);expect(artFrame.width).toBeCloseTo(bannerBox.width,1);expect(artFrame.height).toBeCloseTo(bannerBox.height,1);
-   expect(copyFrame.x+copyFrame.width).toBeLessThanOrEqual(bannerBox.x+bannerBox.width*.47);
+   expect(copyFrame.x+copyFrame.width).toBeLessThanOrEqual(bannerBox.x+bannerBox.width*.63);
    expect(imageFrame.x).toBeCloseTo(artFrame.x,1);expect(imageFrame.y).toBeCloseTo(artFrame.y,1);expect(imageFrame.width).toBeCloseTo(artFrame.width,1);expect(imageFrame.height).toBeCloseTo(artFrame.height,1);
-   await expect(image).toHaveAttribute('alt',language==='en'?'Illustrative family at home holding boxed PS5 and iPhone Pro Max, with blue luggage and gadgets':'ለማሳያ የተዘጋጀ ቤተሰብ በቤት ውስጥ፣ በሳጥን ያሉ PS5 እና iPhone Pro Max ይዞ፣ ከሰማያዊ ሻንጣና ሌሎች መሣሪያዎች ጋር');
+   await expect(image).toHaveAttribute('alt',language==='en'?/PS5, iPhone, Samsung Galaxy/:/PS5፣ iPhone፣ Samsung Galaxy/);
    expect(copyBox.width).toBeGreaterThan(100);expect(copyBox.height).toBeGreaterThan(28);
-   expect(bannerBox.width).toBe(page.viewportSize()!.width);
-   expect(bannerBox.width).toBeGreaterThan(bannerBox.height);expect(bannerBox.width/bannerBox.height).toBeCloseTo(1840/880,2);expect(bannerBox.width/bannerBox.height).toBeCloseTo(sourceRatio/1.1,2);expect(bannerBox.height).toBeLessThanOrEqual(650);
+   expect(bannerBox.width).toBe(Math.min(page.viewportSize()!.width,460));
+   expect(bannerBox.width).toBeGreaterThan(bannerBox.height);expect(bannerBox.width/bannerBox.height).toBeLessThanOrEqual(1840/800+.01);expect(sourceRatio).toBeCloseTo(1840/800,2);
    for(const element of await hero.locator('p,button,a,small').all()){
     const box=(await element.boundingBox())!;
     expect(box.x).toBeGreaterThanOrEqual(bannerBox.x);

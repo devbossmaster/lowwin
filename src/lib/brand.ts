@@ -8,7 +8,8 @@ export const LOWWIN_ETHIOPIC_FONT_SRC='/fonts/noto-sans-ethiopic-variable.woff2'
 export const LOWWIN_TIKTOK_URL='https://www.tiktok.com/@lowwin23';
 export const LOWWIN_BANNER_SRC={en:'/images/lowwin-pearl-banner-en-20261116.webp',am:'/images/lowwin-pearl-banner-am-20261116.webp'} as const;
 /** The Home banner follows its own reference proportions. */
-export const LOWWIN_HOME_BANNER_SRC={en:'/images/lowwin-family-home-blue-20261118.webp',am:'/images/lowwin-family-home-blue-20261118.webp'} as const;
+const homeShowcase='/images/lowwin-electronics-showcase-20261128.webp';
+export const LOWWIN_HOME_BANNER_SRC={en:homeShowcase,am:homeShowcase} as const;
 /** The same landscape scene is used on phones and desktop. */
 export const LOWWIN_HOME_MOBILE_BANNER_SRC=LOWWIN_HOME_BANNER_SRC;
 
@@ -20,15 +21,15 @@ export function lowwinBanner(language:'en'|'am',configured?:string|null){
 }
 export function lowwinHomeBanner(language:'en'|'am',configured?:string|null){
  const path=configured?.split(/[?#]/,1)[0];
- return !path||path==='/images/lowwin-family-home-blue-mobile-20261118.webp'||/^\/images\/lowwin-blue-black-prizes-2026111[78]\.webp$/.test(path)||legacyBanners.has(path)||/^\/images\/lowwin-pearl-home-(?:en|am)-20261116\.webp$/.test(path)||Object.values(LOWWIN_HOME_BANNER_SRC).some(src=>src===path)?LOWWIN_HOME_BANNER_SRC[language]:configured!;
+ return !path||/^\/images\/lowwin-family-home-blue(?:-mobile)?-20261118\.webp$/.test(path)||/^\/images\/lowwin-blue-black-prizes-2026111[78]\.webp$/.test(path)||legacyBanners.has(path)||/^\/images\/lowwin-pearl-home-(?:en|am)-20261116\.webp$/.test(path)||Object.values(LOWWIN_HOME_BANNER_SRC).some(src=>src===path)?LOWWIN_HOME_BANNER_SRC[language]:configured!;
 }
 
-/** Preserve custom artwork URLs while sharing the landscape family scene. */
+/** Preserve custom artwork URLs while sharing the landscape showcase. */
 export function lowwinMobileHomeBanner(language:'en'|'am',configured?:string|null){
  return lowwinHomeBanner(language,configured);
 }
 
-/** Art direction keeps the complete family/prizes visible in a shallower desktop hero. */
+/** Share the same landscape artwork on desktop. */
 export function lowwinDesktopHomeBanner(language:'en'|'am',configured?:string|null){
  return lowwinHomeBanner(language,configured);
 }
