@@ -8,22 +8,29 @@ import {notificationSettings} from '../src/modules/notifications/settings';
 import {installTelegramRateLimit} from '../src/modules/notifications/telegram-rate';
 import {REMINDER_SCAN_INTERVAL_MS,runNotificationLanes} from '../src/modules/notifications/worker-lanes';
 import {notificationDatabaseSnapshot,notificationTimingSnapshot} from '../src/modules/notifications/diagnostics';
+import {notificationDatabasePathReady,notificationSendCapacityReady} from '../src/modules/notifications/notification-db-path';
+import {createNotificationAcknowledger} from '../src/modules/notifications/leases';
 
 const settings=notificationSettings();
-const bulkSlotsPerLane=2;
+const bulkSlotsPerLane=4;
+const bulkClaimSize=12;
 let sqlStatements=0,sqlDurationMs=0;
 const client=(connections:number)=>{const database=new URL(process.env.DATABASE_URL!);database.searchParams.set('connection_limit',String(connections));database.searchParams.set('pool_timeout','20');const db=new PrismaClient({datasourceUrl:database.href,log:[{emit:'event',level:'query'}]});db.$on('query',event=>{sqlStatements++;sqlDurationMs+=event.duration});return db};
 // Separate small pools prevent slow legacy verification from consuming the
-// delivery/scheduling connection. Default total: 4+2+1 = seven connections.
+// delivery/scheduling connection. Default total: 8+2+1 = eleven connections.
 const deliveryDb=client(settings.NOTIFICATION_SEND_CONCURRENCY),jobsDb=client(2),verificationDb=client(1);
-const bot=new Bot(process.env.TELEGRAM_BOT_TOKEN!,{client:{timeoutSeconds:15}});
-installTelegramRateLimit(bot.api,deliveryDb,process.env.TELEGRAM_BOT_TOKEN!);
+const acknowledge=createNotificationAcknowledger(deliveryDb);
+const token=process.env.TELEGRAM_BOT_TOKEN!;
+const bot=new Bot(token,{client:{timeoutSeconds:15}});
+installTelegramRateLimit(bot.api,deliveryDb,token);
 const shutdown=new AbortController();
 process.on('SIGINT',()=>shutdown.abort());process.on('SIGTERM',()=>shutdown.abort());
 const shouldContinue=()=>!shutdown.signal.aborted;
 
 const sourceRevision=process.env.SOURCE_COMMIT??process.env.COOLIFY_BUILD_COMMIT??process.env.GIT_COMMIT;
-console.info('notification_worker_configuration',{revision:sourceRevision&&/^[0-9a-f]{7,40}$/i.test(sourceRevision)?sourceRevision:'unreported',processId:process.pid,concurrency:settings.NOTIFICATION_SEND_CONCURRENCY,personalLanes:1,maximumInFlightDeliveries:1+(settings.NOTIFICATION_SEND_CONCURRENCY-1)*bulkSlotsPerLane,reminderScanMs:REMINDER_SCAN_INTERVAL_MS,botRate:settings.TELEGRAM_SENDS_PER_SECOND,bulkRate:settings.TELEGRAM_BULK_SENDS_PER_SECOND,privateChatIntervalMs:settings.TELEGRAM_PRIVATE_CHAT_INTERVAL_MS,groupChatIntervalMs:settings.TELEGRAM_GROUP_CHAT_INTERVAL_MS,rateMaxWaitMs:settings.TELEGRAM_RATE_MAX_WAIT_MS,maximumDatabaseConnections:settings.NOTIFICATION_SEND_CONCURRENCY+3,paidBroadcasts:false});
+const hasFusedSendCheck=await notificationSendCapacityReady(deliveryDb);
+const deliveryDatabasePath=hasFusedSendCheck?'combined-rate-gate':await notificationDatabasePathReady(deliveryDb)?'single-query':'transaction';
+console.info('notification_worker_configuration',{revision:sourceRevision&&/^[0-9a-f]{7,40}$/i.test(sourceRevision)?sourceRevision:'unreported',processId:process.pid,deliveryDatabasePath,concurrency:settings.NOTIFICATION_SEND_CONCURRENCY,personalLanes:1,maximumInFlightDeliveries:1+(settings.NOTIFICATION_SEND_CONCURRENCY-1)*bulkSlotsPerLane,reminderScanMs:REMINDER_SCAN_INTERVAL_MS,botRate:settings.TELEGRAM_SENDS_PER_SECOND,bulkRate:settings.TELEGRAM_BULK_SENDS_PER_SECOND,privateChatIntervalMs:settings.TELEGRAM_PRIVATE_CHAT_INTERVAL_MS,groupChatIntervalMs:settings.TELEGRAM_GROUP_CHAT_INTERVAL_MS,rateMaxWaitMs:settings.TELEGRAM_RATE_MAX_WAIT_MS,maximumDatabaseConnections:settings.NOTIFICATION_SEND_CONCURRENCY+3,paidBroadcasts:false});
 let reporting=false;
 const metrics=setInterval(async()=>{
  if(reporting||shutdown.signal.aborted)return;reporting=true;
@@ -40,12 +47,12 @@ try{
   expand:()=>shouldContinue()?expandPendingCampaigns(jobsDb,{limit:settings.NOTIFICATION_EXPANSION_BATCHES}):Promise.resolve(0),
   verify:()=>shouldContinue()?processOneVerifyRequest(verificationDb):Promise.resolve(false),
   settleReferrals:()=>shouldContinue()?settlePendingReferralWalletRewards(verificationDb):Promise.resolve(false),
-  // Overlap I/O for the two rows a bulk-capable lane already owns. All sends
+  // Overlap I/O for the rows a bulk-capable lane already owns. All sends
   // still reserve the shared bot and chat budget before calling Telegram.
   send:priority=>{
    if(!shouldContinue())return Promise.resolve(0);
    const slots=priority==='high'?1:bulkSlotsPerLane;
-   return dispatchBatch(deliveryDb,bot,{limit:slots,concurrency:slots,priority,shouldContinue});
+   return dispatchBatch(deliveryDb,bot,{limit:priority==='high'?1:bulkClaimSize,concurrency:slots,priority,shouldContinue,acknowledge});
   },
  },settings,shutdown.signal,lane=>console.error('notification_lane_retry',{lane}));
 }finally{clearInterval(metrics);await Promise.all([deliveryDb.$disconnect(),jobsDb.$disconnect(),verificationDb.$disconnect()])}

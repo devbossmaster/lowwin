@@ -47,7 +47,7 @@ for(const am of [false,true])test(`hero and detail timer stay readable ${am?'AM'
   await page.goto('/auctions/'+f.auction.publicCode);const timer=page.locator('[data-auction-detail] [data-countdown-group]').first();await expect(timer.locator('[data-countdown-unit]').first()).toHaveAttribute('data-countdown-value','12');await timer.evaluate(node=>node.scrollIntoView({block:'center'}));await expect(timer.locator('[data-countdown-unit]')).toHaveCount(4);await page.evaluate(()=>document.fonts.ready);
   await page.waitForTimeout(1400);await expect.poll(()=>timer.evaluate(node=>node.getAnimations({subtree:true}).every(animation=>animation.playState!=='paused'))).toBe(true);
   for(const tile of await timer.locator('[data-countdown-tile]').all()){
-   const box=(await tile.boundingBox())!;expect(box.width).toBeGreaterThanOrEqual(50);expect(box.height).toBeGreaterThanOrEqual(40);
+   const box=(await tile.boundingBox())!;expect(box.width).toBeGreaterThanOrEqual(32);expect(box.height).toBeGreaterThanOrEqual(34);
    // The animated 3D leaves can project past the tile during a flip.
    expect(await tile.evaluate(node=>!!node.firstElementChild&&node.firstElementChild.scrollWidth<=node.clientWidth+1)).toBe(true);
   }

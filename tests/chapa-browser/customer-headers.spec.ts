@@ -23,8 +23,18 @@ test('Home-only toolbar, compact headers, owned balance and in-app Back',async({
   const capture=async(name:string)=>{await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:`${dir}/${name}-${info.project.name}.png`,animations:'disabled'})};
   const go=async(name:string)=>{const link=nav.getByRole('link',{name,exact:true});await link.click();await expect(link).toHaveAttribute('aria-current','page');await expect(nav.locator('[aria-current="page"]')).toHaveCount(1)};
   const initialSignins=signins;await page.clock.install();
-  for(const language of ['en','am'] as const){const am=language==='am';if(am){await page.getByRole('button',{name:'Language: English',exact:true}).click();await page.getByRole('menuitemradio',{name:'አማርኛ',exact:true}).click()}
+  for(const language of ['en','am'] as const){
+   const am=language==='am',languageName=am?'ቋንቋ: አማርኛ':'Language: English';
+   if(am){
+    await page.getByRole('button',{name:'Language: English',exact:true}).click();
+    const english=page.getByRole('menuitemradio',{name:'English',exact:true}),amharic=page.getByRole('menuitemradio',{name:'አማርኛ',exact:true});
+    await expect(english.locator('[data-language-flag="en"]')).toBeVisible();
+    await expect(amharic.locator('[data-language-flag="am"]')).toBeVisible();
+    await amharic.click();
+   }
+   await expect(page.getByRole('button',{name:languageName,exact:true}).locator(`[data-language-flag="${language}"]`)).toBeVisible();
    await capture('home-'+language);await page.evaluate(()=>window.scrollTo(0,220));await go(am?'አሸናፊዎች':'Winners');await expect(header).toHaveCount(1);await expect(header.getByRole('heading',{name:am?'አሸናፊዎች':'Winners',exact:true})).toBeVisible();await expect(page.getByRole('banner',{name:'Mini App header'})).toHaveCount(0);await expect(page.getByRole('heading',{level:1})).toHaveCount(1);
+   await expect(header.getByRole('button',{name:languageName,exact:true}).locator(`[data-language-flag="${language}"]`)).toBeVisible();
    const center=await header.locator('h1').boundingBox();expect(Math.abs(center!.x+center!.width/2-page.viewportSize()!.width/2)).toBeLessThan(2);await capture('winners-'+language);
    const beforeAway=walletReads;await page.clock.fastForward(61000);expect(walletReads).toBe(beforeAway);await page.clock.resume();
    await go(am?'ጨረታዎቼ':'My Bids');await expect(page.getByRole('heading',{level:1})).toHaveCount(1);await header.getByRole('button',{name:am?'ተመለስ':'Back',exact:true}).click();await expect(page).toHaveURL(/\/winners$/);await go(am?'ጨረታዎቼ':'My Bids');await capture('my-bids-'+language);await go(am?'መገለጫ':'Profile');await expect(page.getByRole('heading',{level:1})).toHaveCount(1);await expect(page.locator('[data-profile-ready]')).toBeVisible();await capture('profile-'+language);

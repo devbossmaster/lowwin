@@ -4,7 +4,7 @@ import {execFileSync} from 'node:child_process';
 import {createRequire} from 'node:module';
 import {Bot,InputFile} from 'grammy';
 import {randomUUID} from 'node:crypto';
-import {acknowledgeDelivery,claimNotifications,claimLogicalDelivery,finishClaim} from '../src/modules/notifications/leases';
+import {acknowledgeDelivery,claimNotifications,claimLogicalDelivery,createNotificationAcknowledger,finishClaim} from '../src/modules/notifications/leases';
 import {dispatchBatch,expandPendingCampaigns} from '../src/modules/notifications/dispatch';
 import {stopBroadcast,broadcastHistory,resendBroadcast,deleteBroadcastMessages} from '../src/modules/admin/broadcast-history';
 import {expandBroadcastDeletion,queueNotificationDeletion} from '../src/modules/notifications/broadcast-delete';
@@ -13,6 +13,7 @@ import {sendBroadcastPhoto,TelegramMediaDeferredError} from '../src/modules/noti
 import {TEST_TOKEN} from './helpers';
 import {installTelegramRateLimit} from '../src/modules/notifications/telegram-rate';
 import {notificationDatabaseSnapshot,notificationTimingSnapshot} from '../src/modules/notifications/diagnostics';
+import {beforeNotificationSend} from '../src/modules/notifications/send-gate';
 import {retireAuctionEndingAlerts,retireAuctionPromotions} from '../src/modules/notifications/service';
 import {endingReminders} from '../src/modules/notifications/policy';
 import {bidAuction} from './bid-fixtures';
@@ -20,7 +21,7 @@ import {bidAuction} from './bid-fixtures';
 const url=process.env.NOTIFICATION_DURABILITY_TEST_DATABASE_URL??process.env.TEST_DATABASE_URL;
 describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated transport only',()=>{
  let db:PrismaClient,users:Array<{id:string;telegramId:string}>,messagesBefore=0;
- const maintenance=async(action:string)=>{const latest=await db.adminAudit.findFirst({orderBy:{createdAt:'desc'},select:{createdAt:true}});return db.adminAudit.create({data:{actorId:'isolated',action,target:'all',details:{},createdAt:new Date(Math.max(Date.now(),(latest?.createdAt.getTime()??0)+1))}})};
+ const maintenance=async(action:string,client:Prisma.TransactionClient=db)=>{const latest=await client.adminAudit.findFirst({orderBy:{createdAt:'desc'},select:{createdAt:true}});return client.adminAudit.create({data:{actorId:'isolated',action,target:'all',details:{},createdAt:new Date(Math.max(Date.now(),(latest?.createdAt.getTime()??0)+1))}})};
  const deferred=()=>{let resolve!:()=>void;const promise=new Promise<void>(r=>{resolve=r});return {promise,resolve}};
  const fake=(send:ReturnType<typeof vi.fn>)=>({api:{sendMessage:send,sendPhoto:send,deleteMessage:send}} as unknown as Pick<Bot,'api'>);
  const job=(kind='BROADCAST',index=0,rootKey?:string,extra:Prisma.InputJsonObject={})=>db.outbox.create({data:{key:rootKey?`${rootKey}:user:${users[index].id}`:`notification-durable:${randomUUID()}`,kind,payload:{recipientUserId:users[index].id,body:'Fixture update',href:'/',...(rootKey?{rootKey}:{}),...extra}}});
@@ -311,6 +312,43 @@ describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated t
   expect(await db.telegramMessage.findUniqueOrThrow({where:{outboxId:inFlight.id}})).toMatchObject({chatId:send.mock.calls[0][0],messageId:102n});
   await maintenance('AUCTIONS_MAINTENANCE_HALTED');expect(await claimNotifications(db)).toEqual([]);
  });
+ it('reads a committed maintenance halt after waiting on the barrier to claim or send',async()=>{
+  const active=await job('BROADCAST');
+  const [claim]=await claimNotifications(db,{limit:1});
+  const queued=await job('BROADCAST',1);
+  expect(claim.id).toBe(active.id);
+  const locked=deferred(),commit=deferred();
+  const holder=db.$transaction(async tx=>{
+   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('lowwin:auction-maintenance',0))`;
+   await maintenance('AUCTIONS_MAINTENANCE_HALTED',tx);
+   locked.resolve();
+   await commit.promise;
+  });
+  await Promise.race([locked.promise,holder]);
+  const guarded=Promise.allSettled([
+   claimNotifications(db,{limit:1}),
+   beforeNotificationSend(db,claim,()=>true),
+  ]);
+  try{
+   await vi.waitFor(async()=>{
+    const [row]=await db.$queryRaw<{waiting:number}[]>`
+     SELECT COUNT(*)::int AS waiting FROM pg_locks
+     WHERE locktype='advisory' AND mode='ShareLock' AND NOT granted
+       AND database=(SELECT oid FROM pg_database WHERE datname=current_database())
+    `;
+    expect(row.waiting).toBe(2);
+   },{timeout:2_000,interval:10});
+  }finally{
+   commit.resolve();
+   await holder;
+   await guarded;
+  }
+  const [claimed,gate]=await guarded;
+  expect(claimed).toEqual({status:'fulfilled',value:[]});
+  expect(gate).toMatchObject({status:'rejected',reason:{reason:'MAINTENANCE_PAUSED',retry:true}});
+  expect(await db.outbox.findUniqueOrThrow({where:{id:queued.id}})).toMatchObject({state:'PENDING',leaseToken:null});
+  expect(await db.outbox.findUniqueOrThrow({where:{id:active.id}})).toMatchObject({state:'PENDING',leaseToken:claim.leaseToken});
+ });
  it('rechecks a blocked recipient immediately before dispatch and applies bounded provider retry_after',async()=>{
   const row=await job(),send=vi.fn(async()=>{throw {error_code:429,parameters:{retry_after:9}}});
   await dispatchBatch(db,fake(send),{limit:1});let saved=await db.outbox.findUniqueOrThrow({where:{id:row.id}});expect(saved).toMatchObject({state:'PENDING',attempts:1,lastError:'RATE_LIMIT'});expect(saved.nextAttemptAt.getTime()-Date.now()).toBeGreaterThan(7500);
@@ -345,18 +383,23 @@ describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated t
    expect(await db.outbox.findUniqueOrThrow({where:{id:row.id}})).toMatchObject({state:'SKIPPED',lastError:'RECIPIENT_INELIGIBLE'});
   }finally{await db.user.update({where:{id:users[1].id},data:{role:'member'}})}
  });
- it('retains an accepted-send lease on acknowledgement failure rather than immediately resending',async()=>{
-  const row=await job('BROADCAST');const send=vi.fn(async()=>({message_id:103}));
+ it.each([1,2])('retains all %i accepted-send leases after an acknowledgement failure',async(count)=>{
+  const rows=await Promise.all(Array.from({length:count},(_,index)=>job('BROADCAST',index)));const send=vi.fn(async()=>({message_id:103}));
   const wrapped=new Proxy(db,{get(target,key){
    if(key==='$queryRaw')return async(query:TemplateStringsArray|Prisma.Sql,...values:unknown[])=>{
-    if(('strings' in query?query.strings:query).join('').includes('WITH acknowledged AS'))throw Error('Simulated acknowledgement disconnect');
+    const sql=('strings' in query?query.strings:query).join('');
+    if(sql.includes('WITH acknowledged AS')||sql.includes('WITH delivery('))throw Error('Simulated acknowledgement disconnect');
     return target.$queryRaw(query,...values);
    };
    const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value;
   }});
-  await dispatchBatch(wrapped,fake(send),{limit:1});
-  const saved=await db.outbox.findUniqueOrThrow({where:{id:row.id}});expect(saved).toMatchObject({state:'PENDING',lastError:'ACKNOWLEDGEMENT_UNCERTAIN'});expect(saved.leaseToken).toBeTruthy();
-  await dispatchBatch(db,fake(send),{limit:1});expect(send).toHaveBeenCalledTimes(1);
+  await dispatchBatch(wrapped,fake(send),{limit:count,concurrency:count,acknowledge:count===2?createNotificationAcknowledger(wrapped):undefined});
+  for(const row of rows){
+   const saved=await db.outbox.findUniqueOrThrow({where:{id:row.id}});
+   expect(saved).toMatchObject({state:'PENDING',lastError:'ACKNOWLEDGEMENT_UNCERTAIN',nextAttemptAt:saved.leaseUntil});
+   expect(saved.leaseToken).toBeTruthy();
+  }
+  await dispatchBatch(db,fake(send),{limit:count});expect(send).toHaveBeenCalledTimes(count);
  });
  it('records an ordinary delivery once under the current lease',async()=>{
   const row=await job('BROADCAST'),[old]=await claimNotifications(db,{limit:1});
@@ -370,13 +413,46 @@ describe.skipIf(!url)('durable Telegram delivery: isolated database, simulated t
   expect(await db.outbox.findUniqueOrThrow({where:{id:row.id}})).toMatchObject({state:'SENT',attempts:1,leaseToken:null});
   expect(await db.telegramMessage.findUniqueOrThrow({where:{outboxId:row.id}})).toMatchObject({chatId:delivered.chatId,messageId:107n});
  });
- it('renews a nearly expired owner before HTTP so another worker cannot reclaim the in-flight send',async()=>{
-  const row=await job('BROADCAST'),began=deferred(),release=deferred();let shortened=false;
-  const original=db.$transaction.bind(db);let transactions=0;
-  const nearExpiry=new Proxy(db,{get(target,key){if(key==='$transaction')return async(...args:Parameters<typeof db.$transaction>)=>{if(++transactions===2&&!shortened){shortened=true;await db.outbox.update({where:{id:row.id},data:{leaseUntil:new Date(Date.now()+10_000)}})}return (original as (...input:unknown[])=>unknown)(...args)};const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value}});
-  let observedLease=0;const send=vi.fn(async()=>{const saved=await db.outbox.findUniqueOrThrow({where:{id:row.id}});observedLease=saved.leaseUntil!.getTime()-Date.now();began.resolve();await release.promise;return {message_id:104}});
-  const sending=dispatchBatch(nearExpiry as unknown as PrismaClient,fake(send),{limit:1});await Promise.race([began.promise,sending.then(()=>{throw Error('Expected a renewed lease before simulated HTTP')})]);
-  try{expect(observedLease).toBeGreaterThan(90_000);expect(await claimNotifications(db,{limit:1})).toEqual([])}finally{release.resolve();await sending}expect(send).toHaveBeenCalledTimes(1);
+ it('flushes bounded acknowledgement batches and records only the current leases',async()=>{
+  await Promise.all(Array.from({length:8},(_,index)=>job('BROADCAST',index)));
+  const rows=await claimNotifications(db,{limit:8});
+  expect(rows).toHaveLength(8);
+  const stale=rows[7],nextToken=randomUUID();
+  await db.outbox.update({where:{id:stale.id},data:{leaseToken:nextToken}});
+  let statements=0;
+  const counted=db.$extends({query:{$queryRaw:async({args,query})=>{statements++;return query(args)}}}) as unknown as PrismaClient;
+  const acknowledge=createNotificationAcknowledger(counted);
+  const delivered=rows.map((row,index)=>({chatId:row.broadcastRecipient!.chatId!,messageId:200+index}));
+  expect(await Promise.all(rows.map((row,index)=>acknowledge(row,delivered[index])))).toEqual([true,true,true,true,true,true,true,false]);
+  expect(statements).toBe(1);
+  expect(await db.outbox.findUniqueOrThrow({where:{id:stale.id}})).toMatchObject({state:'PENDING',attempts:0,leaseToken:nextToken});
+  const recorded=await db.telegramMessage.findMany({where:{outboxId:{in:rows.map(row=>row.id)}}});
+  expect(recorded).toHaveLength(7);
+  for(const record of recorded){
+   const expected=delivered[rows.findIndex(row=>row.id===record.outboxId)];
+   expect(record).toMatchObject({chatId:expected.chatId,messageId:BigInt(expected.messageId)});
+  }
+  const lone=await job('BROADCAST',8),[claimed]=await claimNotifications(db,{limit:1});
+  expect(claimed.id).toBe(lone.id);
+  expect(await acknowledge(claimed,{chatId:users[8].telegramId,messageId:208})).toBe(true);
+  expect(statements).toBe(2);
+ });
+ it('renews a nearly expired delivery and its logical alias together before HTTP',async()=>{
+  const row=await job('BROADCAST');
+  const [claim]=await claimNotifications(db,{limit:1});
+  const logical=await claimLogicalDelivery(db,claim,'123456789',randomUUID(),users[0].id);
+  expect(claim.id).toBe(row.id);
+  expect(logical.acquired).toBe(true);
+  const leaseUntil=new Date(Date.now()+10_000);
+  await db.outbox.update({where:{id:row.id},data:{leaseUntil}});
+  await db.telegramDeliveryLease.update({where:{key:logical.key},data:{leaseUntil}});
+  await beforeNotificationSend(db,claim,()=>true,logical.key);
+  const delivery=await db.outbox.findUniqueOrThrow({where:{id:row.id}});
+  const alias=await db.telegramDeliveryLease.findUniqueOrThrow({where:{key:logical.key}});
+  expect(delivery.leaseUntil!.getTime()-Date.now()).toBeGreaterThan(90_000);
+  expect(alias.leaseUntil).toEqual(delivery.leaseUntil);
+  expect(claim.leaseUntil).toEqual(delivery.leaseUntil);
+  expect(await claimNotifications(db,{limit:1})).toEqual([]);
  });
  it('expands independently with a stable cursor, excludes unreachable/admin users and survives a repeated page',async()=>{
   const rootKey=`broadcast:${randomUUID()}`,root=await db.outbox.create({data:{key:rootKey,kind:'GLOBAL_CAMPAIGN',payload:{deliveryKind:'BROADCAST',rootKey,body:'Fixture',href:'/',audienceBefore:new Date(Date.now()+100).toISOString()}}});

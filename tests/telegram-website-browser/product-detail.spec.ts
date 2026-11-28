@@ -35,10 +35,14 @@ for(const am of [false,true])test(`signed-in product detail, sharing and explici
   const image=detail.locator('[data-auction-hero] img').first();await expect(image).toBeVisible();await expect(image).toHaveCSS('object-fit','contain');
   await expect.poll(()=>image.evaluate(element=>(element as HTMLImageElement).complete&&(element as HTMLImageElement).naturalWidth>0)).toBe(true);
   const imageBox=await image.boundingBox();expect(imageBox!.width/imageBox!.height).toBeCloseTo(1840/800,1);
-  const facts=detail.locator('[data-auction-facts] > div');await expect(facts).toHaveCount(2);
-  await expect(facts.nth(0).locator('dd')).toHaveText('ETB 10.00');await expect(facts.nth(1).locator('dd')).toHaveText(code);
-  const [feeBox,codeBox]=await Promise.all([facts.nth(0).boundingBox(),facts.nth(1).boundingBox()]);
-  expect(feeBox!.y).toBeCloseTo(codeBox!.y,0);expect(feeBox!.width).toBeCloseTo(codeBox!.width,0);expect(feeBox!.x).toBeLessThan(codeBox!.x);
+  const facts=detail.locator('[data-auction-facts] > div');await expect(facts).toHaveCount(3);
+  await expect(facts.nth(2).locator('dd')).toHaveText(code);
+  const fee=detail.getByText('ETB 10.00',{exact:true}),timer=detail.getByRole('timer').first();
+  await expect(fee).toBeVisible();await expect(timer.locator('[data-countdown-tile]')).toHaveCount(4);
+  const [bidsBox,viewsBox,codeBox,feeBox,timerBox]=await Promise.all([facts.nth(0).boundingBox(),facts.nth(1).boundingBox(),facts.nth(2).boundingBox(),fee.boundingBox(),timer.boundingBox()]);
+  expect(bidsBox!.y).toBeCloseTo(viewsBox!.y,0);expect(viewsBox!.y).toBeCloseTo(codeBox!.y,0);
+  expect(bidsBox!.x).toBeLessThan(viewsBox!.x);expect(viewsBox!.x).toBeLessThan(codeBox!.x);
+  expect(codeBox!.y).toBeLessThan(feeBox!.y);expect(feeBox!.x+feeBox!.width).toBeLessThan(timerBox!.x);
   const shares=detail.locator('[data-auction-share-options]');await expect(shares.getByRole('button')).toHaveCount(1);await expect(shares.getByRole('link')).toHaveCount(1);await expect(shares.getByRole('link',{name:'TikTok',exact:true})).toHaveAttribute('href','https://www.tiktok.com/@lowwin23');
   await shares.getByRole('button',{name:'Telegram',exact:true}).click();const urls=await page.evaluate(()=>Reflect.get(window,'detailShares') as string[]);expect(urls).toHaveLength(1);
   const share=new URL(urls[0]);expect(share.origin+share.pathname).toBe('https://t.me/share/url');expect(share.searchParams.get('text')).toBe(f.title+' · LowWin');const launch=new URL(share.searchParams.get('url')!);expect(launch.origin).toBe('https://t.me');expect(launch.searchParams.get('startapp')).toBe('auction_'+code);

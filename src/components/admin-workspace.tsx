@@ -15,7 +15,7 @@ import {PageLoading} from '@/components/loading-spinner';
 import {AdminLink as Link} from './admin-query';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {useRouter} from 'next/navigation';
-import {ArrowUpRight,Plus,RefreshCw,ShieldCheck} from 'lucide-react';
+import {ArrowUpRight,Plus,RefreshCw,ShieldCheck,Star,StarOff} from 'lucide-react';
 type Row=Record<string,any>; // JSON-only admin projection; never reused by public components.
 const read=(path:string)=>adminRequest<any>(path);
 const command=(action:string,input:Row)=>adminRequest<any>('command',{action,input});
@@ -27,6 +27,7 @@ export function AdminWorkspace({path}:{path:string[]}){
   const access=useAdminAccess(),router=useRouter(),section=path[0]??'dashboard',auctionId=section==='auctions'&&path[1]&&path[1]!=='new'?path[1]:null;
   const [page,setPage]=useState(1),[q,setQ]=useState(''),[filter,setFilter]=useState(''),[products,setProducts]=useState<Row[]>([]),[error,setError]=useState(''),[message,setMessage]=useState(''),[pendingAction,setPendingAction]=useState(''),[uploading,setUploading]=useState(false),[edit,setEdit]=useState<Row|null>(null),[impact,setImpact]=useState<Row|null>(null),[preflight,setPreflight]=useState<Row|null>(null),[auctionTab,setAuctionTab]=useState('details'),[selectedManageTab,setManageTab]=useState('deadline'),[media,setMedia]=useState<string[]>([]),[key,setKey]=useState(''),[draftDirty,setDraftDirty]=useState(false),[presentationDirty,setPresentationDirty]=useState(false);
   const pending=useRef(false),presentationEdited=useRef(false),busy=!!pendingAction;
+  const homePlacementAttempt=useRef<{signature:string;key:string}|null>(null);
   const changePresentation=()=>{presentationEdited.current=true;setPresentationDirty(true);setKey(crypto.randomUUID())};
   const location=path.join('/');
   const isNew=section==='auctions'&&path[1]==='new',resource=auctionId?`auctions/${auctionId}`:section;
@@ -55,6 +56,17 @@ export function AdminWorkspace({path}:{path:string[]}){
   const manageTab=selectedManageTab==='startTime'&&!canAdvanceStart?'deadline':selectedManageTab;
   const managementTools=[...(showFeeTab?[['fee','Submission fee']]:[]),...(canAdvanceStart?[['startTime','Start time']]:[]),['deadline','Deadline'],['presentation','Photos & description'],['homeOrder','Home order']];
   const homeOrderEditable=['LIVE','UPCOMING'].includes(item.displayStatus);
+  function saveHomePlacement(homeOrder:number|null,featured?:boolean){
+    if(!auctionId||!homeOrderEditable)return;
+    const input={auctionId,version:item.controlVersion,homeOrder,...(featured===undefined?{}:{featured})};
+    void run(featured===undefined?'homeOrder':'homeFeature',async()=>{
+      const signature=JSON.stringify(input);
+      if(homePlacementAttempt.current?.signature!==signature)homePlacementAttempt.current={signature,key:crypto.randomUUID()};
+      await command('homeOrder',{...input,key:homePlacementAttempt.current.key});
+      homePlacementAttempt.current=null;
+      setMessage(featured===undefined?'Home order saved.':featured?'Auction featured on Home.':'Auction removed from featured placement.');
+    });
+  }
   const titles:Row={dashboard:['Overview','Your auction operations, at a glance.'],auctions:['Auction work queue','Choose an item, set the schedule, then publish.'],products:['Products','Describe inventory and attach validated, credited images.'],categories:['Categories','Organize the public catalog. Published inventory is protected.'],content:['Home & FAQ','Plain text content. Auction rules remain visible and unchanged.'],reconciliation:['Ledger reconciliation','Read-only account, journal and hold integrity checks.']};
   const title=auctionId?item.presentation?.title??item.product?.title??products.find(p=>p.id===item.draft?.body.productId)?.title??item.code??'Auction':path[1]==='new'?'Create auction':titles[section]?.[0]??'Admin resource';
   return <><header className="admin-page-head"><div><h1>{title}</h1><p>{titles[section]?.[1]}</p></div><div className="admin-actions"><button className="secondary" disabled={draftDirty||presentationDirty||busy||uploading} onClick={()=>{if(!isNew)primary.reload()}} aria-label="Refresh admin data"><RefreshCw size={17}/>Refresh</button>{section==='auctions'&&!path[1]&&<Link className="admin-button" href="/admin/auctions/new"><Plus size={17}/>New draft</Link>}</div></header>
@@ -84,18 +96,20 @@ export function AdminWorkspace({path}:{path:string[]}){
         </form>
       </div>}
       <div className="auction-manage-form" hidden={manageTab!=='homeOrder'}>
-        <form className="admin-form" onChange={()=>setKey(crypto.randomUUID())} onSubmit={event=>{
+        <form className="admin-form" onSubmit={event=>{
           event.preventDefault();
-          const fields=new FormData(event.currentTarget);
-          run('homeOrder',async()=>{
-            await save('homeOrder',{auctionId,version:item.controlVersion,homeOrder:readAuctionHomeOrder(fields),featured:fields.has('featured')});
-            setMessage('Home settings saved.');
-          });
+          saveHomePlacement(readAuctionHomeOrder(new FormData(event.currentTarget)));
         }}>
-          <label className="admin-check"><input key={String(item.featured)} type="checkbox" name="featured" defaultChecked={item.featured} disabled={busy||!homeOrderEditable}/>Feature on Home</label>
-          <AdminAuctionHomeOrderField key={item.homeOrder??'automatic'} value={item.homeOrder} disabled={busy||!homeOrderEditable}/>
+          <div className="auction-home-placement">
+            <div><h3>Home placement</h3><p className="admin-group-note">{item.featured?'Featured on Home. Featured auctions appear ahead of regular auctions.':'Regular placement. Feature this auction to show it ahead of regular auctions.'}</p></div>
+            <button type="button" className={item.featured?'secondary':undefined} disabled={busy||!homeOrderEditable} aria-busy={pendingAction==='homeFeature'} onClick={()=>saveHomePlacement(item.homeOrder??null,!item.featured)}>
+              {item.featured?<StarOff size={16} aria-hidden="true"/>:<Star size={16} aria-hidden="true"/>}
+              {pendingAction==='homeFeature'?'Saving…':item.featured?'Unfeature from Home':'Feature on Home'}
+            </button>
+          </div>
+          <AdminAuctionHomeOrderField key={`${auctionId}:${item.homeOrder??'automatic'}`} value={item.homeOrder} disabled={busy||!homeOrderEditable}/>
           {!homeOrderEditable&&<p className="admin-group-note">Home settings apply to live and upcoming auctions.</p>}
-          <button disabled={busy||!homeOrderEditable} aria-busy={pendingAction==='homeOrder'}>{pendingAction==='homeOrder'?'Saving…':'Save Home settings'}</button>
+          <button type="submit" disabled={busy||!homeOrderEditable} aria-busy={pendingAction==='homeOrder'}>{pendingAction==='homeOrder'?'Saving…':'Save Home order'}</button>
         </form>
       </div>
       <div className="auction-manage-form"><form hidden={manageTab!=='fee'} className="admin-form" onChange={()=>setKey(crypto.randomUUID())} onSubmit={event=>{event.preventDefault();const f=new FormData(event.currentTarget);run('fee',async()=>{await save('fee',{auctionId,version:item.controlVersion,feePoints:f.get('feePoints'),reason:f.get('reason')})})}}><h3>Submission fee</h3>{isSubmissionFeeOnly(item.terms?.ruleVersion)?<label>Fee per accepted bid (ETB)<input name="feePoints" inputMode="decimal" pattern="(0|[1-9][0-9]{0,8})([.][0-9]{1,2})?" defaultValue={item.feeRevisions?.[0]?.feePoints??item.terms?.entryFeePoints} required/></label>:<><p>This auction uses its original bid-hold rules. Only removal of its extra fee is supported.</p><input type="hidden" name="feePoints" value="0"/></>}<label>Reason<textarea name="reason" required maxLength={1000}/></label><button disabled={busy} aria-busy={pendingAction==='fee'}>{pendingAction==='fee'?'Updating fee…':'Apply to future bids'}</button></form><form hidden={manageTab!=='deadline'} className="admin-form" onChange={()=>setKey(crypto.randomUUID())} onSubmit={event=>{

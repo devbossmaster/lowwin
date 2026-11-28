@@ -16,13 +16,13 @@ lease. Telegram message IDs remain durable. Campaign expansion runs independentl
 in resumable pages of at most250 reachable recipients, with stable cursors and
 unique delivery keys. Published-result subscription/contact restrictions remain.
 
-The default worker has four independent send lanes, including one registration/
-confirmed-payment lane, plus separate expansion, scheduling and legacy verification
-loops. Its dedicated database pools allow at most seven connections. Shared rate
-limits coordinate every instrumented bot sender:20/s total,16/s bulk,1/s private
-chat and one group operation per3s, without paid broadcasts. Provider429 cooldowns
-are shared; `retry_after` is retained. Waiting bulk receives bounded opportunities
-alongside personal traffic.
+The default worker has eight send lanes, including a personal lane, plus
+independent expansion, scheduling and legacy verification. Its pools allow up to
+eleven database connections. All instrumented senders share a rolling ceiling of
+30 free reservations per second, a one-second private chat interval, and a
+three-second group interval. A lower bulk ceiling can reserve more capacity for
+personal messages. Provider 429 cooldowns retain the `retry_after` interval
+across workers.
 
 Immediately before HTTP, the dispatcher checks ownership, Stop/maintenance,
 recipient block/role changes, result subscription and relevant auction state.
@@ -134,6 +134,44 @@ connection limits. Logs retain no message, recipient, SQL text, token or URL.
 The configuration log includes process ID and an optional sanitized source hash
 from `SOURCE_COMMIT`, `COOLIFY_BUILD_COMMIT` or `GIT_COMMIT`; absent hashes are
 reported as `unreported`.
+
+### Current free broadcast rollout
+
+Apply the notification claim, send-gate and broadcast-capacity migrations with
+`npm run db:migrate` using the database owner's migration connection. Restart
+updated notification senders afterward so they detect the new functions. For
+Coolify configurations with explicit older overrides, set
+`NOTIFICATION_SEND_CONCURRENCY=8`, `TELEGRAM_SENDS_PER_SECOND=30` and
+`TELEGRAM_BULK_SENDS_PER_SECOND=30` to use the current defaults. The startup log
+should show `deliveryDatabasePath: 'combined-rate-gate'`. `single-query` and
+`transaction` identify compatibility paths until the new functions are available.
+
+The worker now reserves a shared rate slot and checks eligibility in one
+database call. The worker staggers bulk reservation calls to reduce contention,
+uses a rolling cap on local Telegram starts, and defers a send if the cap is
+full. Batched acknowledgements record the returned Telegram message IDs and
+only update rows whose exact lease the worker still owns. Check
+`sendsPerSecond`, `rate`, `gate` and `acknowledgement` in a representative
+backlogged `notification_worker_window` after rollout. The configured ceiling
+represents reservation capacity. Delivery also depends on database latency,
+queue depth, Telegram throttling, and the type of notification.
+
+The current worker recorded 1,680 sends during a 60-second run with simulated
+120 ms database latency and 75 ms Telegram response time, plus the drain.
+It averaged 26.58/s including drain, reached 28.7/s over the last ten active
+seconds, and peaked at 30 HTTP starts in a rolling second. The same worker
+recorded 1,720 sends at 25 ms database latency, averaging 27.93/s including
+drain. Every simulated acceptance recorded a durable send in both runs.
+
+### Earlier round-trip measurements
+
+A separate 40-second comparison against `9334eca` used a fresh queue of 1,250
+pre-enqueued text notifications for each run, four delivery connections, 120 ms
+of added database round-trip latency, and 75 ms simulated Telegram latency.
+The median claim dropped from 583 to 141 ms and the median final send check from
+625 to 140 ms. The worker sustained 2.93 versus 5.73 accepted sends per second,
+and every simulated Telegram acceptance was recorded as sent. The test used no
+production services and kept the configured rate limits unchanged.
 
 The same-condition comparison used exact baseline
 `0ca25b2551cfdae3a601af4b5bbb881ffc74549a`,1,500 queued broadcast recipients,

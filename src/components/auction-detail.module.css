@@ -10,16 +10,16 @@
   padding:var(--space-3) var(--detail-gutter) var(--space-3);
 }
 .overview{gap:0;overflow:hidden;padding:0}
-.intro{display:grid;gap:var(--space-3);padding:var(--space-3) var(--card-spacing)}
+.intro{display:grid;gap:var(--space-3);padding:var(--space-3) var(--card-spacing) 0}
 .intro h1{margin:0;font-size:1.375rem;font-weight:750;line-height:1.3;letter-spacing:-.025em;overflow-wrap:anywhere;text-wrap:pretty}
 .intro h1:lang(am){letter-spacing:0;line-height:1.4}
-.purchaseFacts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-2);margin:0}
-.purchaseFacts>div{display:grid;grid-template-rows:auto 1fr;justify-items:center;align-items:start;gap:2px;min-width:0;padding:var(--space-2);border-radius:12px;background:var(--brand-canvas);text-align:center}
-.purchaseFacts dt{grid-row:2;color:var(--brand-muted-on-soft);font-size:.75rem;line-height:1.5;overflow-wrap:anywhere}
-.purchaseFacts dd{grid-row:1;display:flex;align-items:center;justify-content:center;gap:6px;width:100%;min-width:0;margin:0;color:var(--brand-ink);font-size:.9375rem;font-weight:750;line-height:1.4;font-variant-numeric:tabular-nums}
-.purchaseFacts dd>svg{flex:none;color:var(--action-hover)}
-.purchaseFacts dd>span{min-width:0;overflow-wrap:anywhere}
-.fee dd{color:var(--action-hover)}
+.metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--space-2);margin:0}
+.metrics>div{display:grid;grid-template-rows:auto 1fr;justify-items:center;align-items:start;gap:2px;min-width:0;padding:var(--space-2) var(--space-1);border-radius:12px;background:var(--brand-canvas);text-align:center}
+.metrics dt{grid-row:2;color:var(--brand-muted-on-soft);font-size:.6875rem;line-height:1.5;overflow-wrap:anywhere}
+.metrics dd{grid-row:1;display:flex;align-items:flex-start;justify-content:center;gap:4px;min-width:0;margin:0;color:var(--brand-ink);font-size:.875rem;font-weight:700;line-height:1.5;font-variant-numeric:tabular-nums}
+.metrics svg,.fee svg,.timerLabel svg{flex:none;color:var(--action-hover)}
+.metrics svg{margin-top:2px}
+.metrics strong{min-width:0;overflow-wrap:anywhere}
 .actions{margin:0 0 var(--space-2);border-top:1px solid var(--brand-line)}
 .actions h2{margin:0 0 8px;font-size:13px;font-weight:600;line-height:1.5;color:#657181}
 .moreChances{min-width:0;margin:var(--space-1) 0 0}
@@ -39,39 +39,32 @@
 .chancesMessage{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border-radius:12px;background:#f2f2f7;color:#657181;font-size:13px}
 .chancesMessage p{margin:0}
 .chancesMessage button{min-height:44px;padding:8px 12px;border:1px solid #d5dfef;border-radius:22px;background:#fff;color:#1d4ed8;font:inherit;font-weight:600}
-.stats{min-width:0;border-top:1px solid var(--brand-line)}
-.countdownPanel{min-width:0;padding:var(--space-3) var(--card-spacing);background:var(--brand-surface)}
-.timerHeading{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:4px var(--space-3);margin-bottom:var(--space-2)}
-.timerLabel{display:flex;align-items:center;gap:6px;margin:0;color:var(--brand-ink);font-size:.8125rem;font-weight:650;line-height:1.5}
-.timerLabel svg{color:var(--action-pressed)}
+.bidOverview{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2.2fr);align-items:stretch;gap:var(--space-2) var(--space-3);padding:var(--space-3) var(--card-spacing)}
+.fee{align-self:start;min-width:0;margin:0}
+.fee dt,.timerLabel{display:flex;align-items:center;gap:4px;margin:0;color:var(--brand-muted-on-soft);font-size:.75rem;font-weight:550;line-height:1.5}
+.fee dd{margin:var(--space-1) 0 0;color:var(--action-pressed);font-variant-numeric:tabular-nums;font-size:1rem;font-weight:750;line-height:1.4}
+.countdownPanel{display:grid;align-content:start;gap:var(--space-1);min-width:0;border-inline-start:1px solid var(--brand-line);padding-inline-start:var(--space-3)}
+.timerLabel{justify-content:flex-end;color:var(--brand-ink)}
 .clock{display:flex;justify-content:center;min-width:0}
 .clock :global(.countdown){padding:0;background:transparent;white-space:normal}
-.clock [data-countdown-group]{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--space-2);width:100%;min-width:0}
-.clock [data-countdown-group][data-countdown-large-values]{grid-template-columns:repeat(2,minmax(0,1fr))}
-.clock [data-countdown-group] [data-countdown-unit]{align-items:stretch;gap:6px;text-align:center}
-.clock [data-countdown-group] [data-countdown-unit]>small{font-size:.75rem;color:var(--brand-muted-on-soft);white-space:normal;overflow-wrap:anywhere}
+.clock [data-countdown-group]{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--space-1);width:100%;min-width:0}
+.clock [data-countdown-group][data-countdown-large-values]{grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-2)}
+.clock [data-countdown-group] [data-countdown-unit]{align-items:stretch;gap:3px;text-align:center}
+.clock [data-countdown-group] [data-countdown-unit]>small{font-size:.6875rem;color:var(--brand-muted-on-soft);white-space:normal;overflow-wrap:anywhere}
 .clock [data-countdown-group] [data-countdown-tile]{
-  --flap-height:52px;
-  --flap-radius:10px;
+  --flap-height:38px;
+  --flap-radius:8px;
   --flap-face-top:#f0f5ff;
   --flap-face-bottom:#e3ecfc;
   width:100%;
   min-width:0;
   border-color:#d1dff5;
   color:#16325c;
-  font-size:min(2rem,calc(5rem / var(--flap-digits,2)));
+  font-size:min(1.375rem,calc(4rem / var(--flap-digits,2)));
   box-shadow:none;
 }
-.clock [data-countdown-group][data-countdown-large-values] [data-countdown-tile]{font-size:min(2.25rem,calc(9rem / var(--flap-digits,2)))}
-.schedule{color:var(--brand-muted);font-size:.75rem;line-height:1.5;font-variant-numeric:tabular-nums}
-.numbers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));padding:var(--space-2) var(--card-spacing)}
-.countdownPanel+.numbers{border-top:1px solid var(--brand-line)}
-.numbers>div{display:flex;align-items:center;justify-content:center;gap:6px;min-width:0;padding-inline:var(--space-2)}
-.numbers>div>span{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 5px;min-width:0}
-.numbers>div+div{border-inline-start:1px solid var(--brand-line)}
-.numbers svg{flex:none;color:#536782}
-.numbers strong{font-size:1rem;font-weight:700;line-height:1.25;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
-.numbers small{font-size:.75rem;line-height:1.45;color:var(--brand-muted)}
+.clock [data-countdown-group][data-countdown-large-values] [data-countdown-tile]{font-size:min(1.375rem,calc(7rem / var(--flap-digits,2)))}
+.schedule{color:var(--brand-muted);font-size:.6875rem;line-height:1.5;font-variant-numeric:tabular-nums;text-align:end}
 .resultActions{display:grid;gap:2px;margin-top:12px}
 .resultActions>:global(.primary-button){width:100%;text-align:center}
 .resultLinks{display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:0 12px}
@@ -84,12 +77,13 @@
 .page .bidding :global(.card-action:hover):not(:disabled):not([aria-disabled=true]){background:var(--action-hover,#1d4ed8);color:#fff}
 .page .bidding :global(.card-action:active):not(:disabled):not([aria-disabled=true]){background:var(--action-pressed,#1e40af);transform:scale(.99)}
 .page .bidding :global(.card-action:disabled),.page .bidding :global(.card-action[aria-disabled=true]){background:var(--action-disabled,#dbe7fb);color:var(--action-disabled-ink,#52647f);--surface-ink:var(--action-disabled-ink,#52647f);opacity:1}
-.upcoming{margin:var(--space-3) 0 0;color:#536171;font-size:13px;line-height:1.6}
+.upcoming{grid-column:1/-1;margin:0;color:var(--brand-muted);font-size:.75rem;line-height:1.5}
 .page :focus-visible{outline:2px solid var(--action-primary,#2563eb);outline-offset:3px}.page ::selection{background:#dbe7fb;color:#16202c}.page button{cursor:pointer}.page a{text-underline-offset:3px}
 @media(max-width:370px){
   .intro h1{font-size:1.25rem}
-  .numbers>div{gap:4px;padding-inline:var(--space-1)}
-  .clock [data-countdown-group] [data-countdown-tile]{--flap-height:48px;font-size:min(1.75rem,calc(4rem / var(--flap-digits,2)))}
-  .clock [data-countdown-group][data-countdown-large-values] [data-countdown-tile]{font-size:min(2rem,calc(8rem / var(--flap-digits,2)))}
+  .bidOverview{gap:var(--space-2)}
+  .fee dd{font-size:.875rem}
+  .countdownPanel{padding-inline-start:var(--space-2)}
+  .clock [data-countdown-group] [data-countdown-tile]{--flap-height:34px;font-size:min(1.25rem,calc(3.5rem / var(--flap-digits,2)))}
 }
 @media(prefers-reduced-motion:reduce){.page .bidding :global(.card-action){transition:none}.page .bidding :global(.card-action:active):not(:disabled):not([aria-disabled=true]){transform:none}}

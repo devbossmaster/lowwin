@@ -878,6 +878,8 @@ model TelegramRateBudget {
   cooldownUntil    DateTime?
   highStreak       Int      @default(0)
   bulkWaitingUntil DateTime?
+  highWaitingUntil DateTime?
+  recentSendsAt    DateTime[] @default([])
 }
 
 model TelegramChatRateBudget {

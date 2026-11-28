@@ -25,15 +25,15 @@ beforeEach(()=>{state.activity=null;state.catalog=null});
 
 describe('public auction total accepted bids',()=>{
  it('shows the saved accepted-bid total while the activity request is unavailable',()=>{
-  const html=render();expect(html).toContain('<strong>42</strong><small>Total bids</small>');expect(html).not.toContain('Bidders');
+  const html=render();expect(html).toMatch(/<dt>Total bids<\/dt><dd>.*?<strong>42<\/strong><\/dd>/);expect(html).not.toContain('Bidders');
  });
  it('uses total bids rather than distinct people after live activity updates',()=>{
   state.activity={bids:137,bidders:3,status:'live',startsAt:now,endsAt};
-  const html=render();expect(html).toContain('<strong>137</strong><small>Total bids</small>');expect(html).not.toContain('<strong>3</strong>');
+  const html=render();expect(html).toMatch(/<dt>Total bids<\/dt><dd>.*?<strong>137<\/strong><\/dd>/);expect(html).not.toContain('<strong>3</strong>');
  });
  it('preserves a real zero and the Amharic total-bids label',()=>{
   state.activity={bids:0,bidders:0,status:'live',startsAt:now,endsAt};
-  expect(render('am')).toContain('<strong>0</strong><small>ጠቅላላ ጨረታዎች</small>');
+  expect(render('am')).toMatch(/<dt>ጠቅላላ ጨረታዎች<\/dt><dd>.*?<strong>0<\/strong><\/dd>/);
  });
  it('shows the published fee, code and bid action without the standalone disclosure',()=>{
   const html=render();
@@ -44,7 +44,8 @@ describe('public auction total accepted bids',()=>{
   expect(html).not.toContain('Frozen terms');expect(html).not.toContain('Collect the prize');
   expect(html).not.toContain('href="/terms"');
   expect(html.indexOf('<h1>Power bank</h1>')).toBeLessThan(html.indexOf('Fee per bid'));
-  expect(html.indexOf('Fee per bid')).toBeLessThan(html.indexOf('Auction code'));
+  expect(html.indexOf('Auction code')).toBeLessThan(html.indexOf('Fee per bid'));
+  expect(html).toMatch(/<dt>Views<\/dt><dd>.*?<strong>100<\/strong><\/dd>/);
   expect(html).not.toContain('category=accessories');
   expect(html.indexOf('Fee per bid')).toBeLessThan(html.indexOf('More chances'));
   expect(html.indexOf('Total bids')).toBeLessThan(html.indexOf('More chances'));

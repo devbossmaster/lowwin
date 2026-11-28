@@ -43,11 +43,14 @@ DO $$ DECLARE t text; BEGIN
    END IF;
   END IF;
  END LOOP;
- FOREACH t IN ARRAY ARRAY['VerifyRequest','VerifyWebhookEvent','ArifPayCheckout','ReferralPolicy','ReferralPendingSignup','ReferralSignup','ReferralWalletReward','WinnerPresentation','BidBatchOrder'] LOOP
+ FOREACH t IN ARRAY ARRAY['VerifyRequest','VerifyWebhookEvent','ArifPayCheckout','ReferralPolicy','ReferralPendingSignup','ReferralSignup','ReferralWalletReward','WinnerPresentation','BidBatchOrder','TelegramRateBudget','TelegramChatRateBudget','TelegramDeliveryLease','TelegramMediaCache'] LOOP
   IF EXISTS(SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename=t) THEN
    IF EXISTS(SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename=t AND tableowner='lowwin_runtime') THEN RAISE EXCEPTION 'Runtime must not own tables'; END IF;
    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',t);
    EXECUTE format('GRANT SELECT,INSERT,UPDATE ON public.%I TO lowwin_runtime',t);
+   IF t=ANY(ARRAY['TelegramRateBudget','TelegramChatRateBudget','TelegramDeliveryLease','TelegramMediaCache']) THEN
+    EXECUTE format('GRANT DELETE ON public.%I TO lowwin_runtime',t);
+   END IF;
    IF NOT EXISTS(SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename=t AND policyname='lowwin_server_access') THEN
     EXECUTE format('CREATE POLICY lowwin_server_access ON public.%I TO lowwin_runtime USING (true) WITH CHECK (true)',t);
    END IF;
@@ -114,6 +117,21 @@ DO $$ BEGIN
  END IF;
  IF to_regprocedure('public.lowwin_prepare_direct_for_session(text,text,text,jsonb)') IS NOT NULL THEN
   GRANT EXECUTE ON FUNCTION public.lowwin_prepare_direct_for_session(text,text,text,jsonb) TO lowwin_runtime;
+ END IF;
+ IF to_regprocedure('public.lowwin_claim_notifications(text,integer,text,text,boolean)') IS NOT NULL THEN
+  GRANT EXECUTE ON FUNCTION public.lowwin_claim_notifications(text,integer,text,text,boolean) TO lowwin_runtime;
+ END IF;
+ IF to_regprocedure('public.lowwin_gate_notification(jsonb)') IS NOT NULL THEN
+  GRANT EXECUTE ON FUNCTION public.lowwin_gate_notification(jsonb) TO lowwin_runtime;
+ END IF;
+ IF to_regprocedure('public.reserve_telegram_send(text,text,text,integer,integer,integer)') IS NOT NULL THEN
+  GRANT EXECUTE ON FUNCTION public.reserve_telegram_send(text,text,text,integer,integer,integer) TO lowwin_runtime;
+ END IF;
+ IF to_regprocedure('public.lowwin_reserve_telegram_send(text,text,text,integer,integer,integer)') IS NOT NULL THEN
+  GRANT EXECUTE ON FUNCTION public.lowwin_reserve_telegram_send(text,text,text,integer,integer,integer) TO lowwin_runtime;
+ END IF;
+ IF to_regprocedure('public.lowwin_reserve_notification_send(jsonb,text,text,text,integer,integer,integer)') IS NOT NULL THEN
+  GRANT EXECUTE ON FUNCTION public.lowwin_reserve_notification_send(jsonb,text,text,text,integer,integer,integer) TO lowwin_runtime;
  END IF;
 END $$;
 REVOKE ALL ON TABLE public."_prisma_migrations" FROM lowwin_runtime;

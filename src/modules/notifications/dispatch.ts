@@ -15,15 +15,15 @@ import {chapaReceiptKind} from './chapa-receipt';
 import {hasResultSubscription} from './result-audience';
 import {auctionPhoto} from './auction-photo';
 import {sendBroadcastPhoto,TelegramMediaDeferredError} from './broadcast-photo';
-import {acknowledgeDelivery,claimNotifications,claimExpansion,claimLogicalDelivery,finishClaim,highPriorityKinds,type ClaimedNotification,type NotificationRecipient} from './leases';
+import {acknowledgeDelivery,claimNotifications,claimExpansion,claimLogicalDelivery,finishClaim,highPriorityKinds,type ClaimedNotification,type NotificationAcknowledger,type NotificationRecipient} from './leases';
 import {withTelegramSendPolicy,telegramPolicyApi,TelegramRateDeferredError} from './telegram-rate';
-import {beforeNotificationSend,DeliveryGate,type RecipientGate} from './send-gate';
+import {beforeNotificationSend,DeliveryGate,reserveNotificationSend,type RecipientGate} from './send-gate';
 import {recordNotificationTiming,recordNotificationAccepted,recordNotificationUncertain,timeNotification} from './diagnostics';
 
 import {notificationRetired} from './policy';
 type BotApi=Pick<Bot,'api'>;
 type Content=Awaited<ReturnType<typeof notificationContent>>;
-type BatchContext={content:Map<string,Promise<Content>>;shouldContinue:()=>boolean};
+type BatchContext={content:Map<string,Promise<Content>>;shouldContinue:()=>boolean;acknowledge:NotificationAcknowledger};
 const campaignContentByClient=new WeakMap<PrismaClient,Map<string,{until:number;value:Promise<Content>}>>();
 const notificationImage=resolve('public/notification.png');
 const botId=()=>process.env.TELEGRAM_BOT_TOKEN?.split(':')[0]??'';
@@ -143,12 +143,17 @@ async function dispatchClaim(client:PrismaClient,bot:BotApi,row:ClaimedNotificat
   };
   const gate:RecipientGate={telegramId:chat.telegramId,chatId:chat.chatId,userId:content.userId,excludeStaff:row.kind==='BROADCAST'||row.kind.startsWith('AUCTION_')};
   recordNotificationTiming('preparation',performance.now()-preparingAt);
-  const sent=await withTelegramSendPolicy({priority:highPriorityKinds.includes(row.kind)?'high':'bulk',beforeSend:()=>beforeSend(client,row,context,logicalKey,gate)},async()=>{
+  const sent=await withTelegramSendPolicy({
+   priority:highPriorityKinds.includes(row.kind)?'high':'bulk',
+   beforeSend:()=>beforeSend(client,row,context,logicalKey,gate),
+   reserveBeforeSend:rate=>reserveNotificationSend(client,row,context.shouldContinue,rate,logicalKey,gate),
+  },async()=>{
    const photo=wantsPhoto?await sendBroadcastPhoto(bot.api,chat.chatId,()=>timeNotification('mediaPreparation',preparePhoto),{...options,caption:text},photoKey,{client,botId:botId()}):null;
    return photo??bot.api.sendMessage(chat.chatId,text,options);
   });
   acceptedByTelegram=true;recordNotificationAccepted();
-  await timeNotification('acknowledgement',()=>acknowledgeDelivery(client,row,{chatId:chat.chatId,messageId:sent.message_id,auctionId:payload.auctionId,logicalKey}));
+  const saved=await timeNotification('acknowledgement',()=>context.acknowledge(row,{chatId:chat.chatId,messageId:sent.message_id,auctionId:payload.auctionId,logicalKey}));
+  if(!saved)throw Error('Notification acknowledgement lease changed');
  }catch(error){
   if(acceptedByTelegram){
    recordNotificationUncertain();
@@ -161,9 +166,10 @@ async function dispatchClaim(client:PrismaClient,bot:BotApi,row:ClaimedNotificat
  }
 }
 
-export async function dispatchBatch(client:PrismaClient,bot:BotApi,options:{limit?:number;concurrency?:number;priority?:'high'|'bulk';shouldContinue?:()=>boolean;kind?:string}={}){
+export async function dispatchBatch(client:PrismaClient,bot:BotApi,options:{limit?:number;concurrency?:number;priority?:'high'|'bulk';shouldContinue?:()=>boolean;kind?:string;acknowledge?:NotificationAcknowledger}={}){
  const shouldContinue=options.shouldContinue??(()=>true);if(!shouldContinue())return 0;
- const rows=await timeNotification('claim',()=>claimNotifications(client,options)),context:BatchContext={content:new Map(),shouldContinue};
+ const rows=await timeNotification('claim',()=>claimNotifications(client,options));
+ const context:BatchContext={content:new Map(),shouldContinue,acknowledge:options.acknowledge??((row,delivered)=>acknowledgeDelivery(client,row,delivered))};
  bot={api:telegramPolicyApi(bot.api)};
  let index=0;const lanes=Math.max(1,Math.min(8,Math.floor(options.concurrency??4),rows.length));
  await Promise.all(Array.from({length:lanes},async()=>{for(;;){const row=rows[index++];if(!row)return;await dispatchClaim(client,bot,row,context)}}));

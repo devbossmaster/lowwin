@@ -1,16 +1,20 @@
 import {afterAll,beforeAll,describe,expect,it,vi} from 'vitest';
 import {PrismaClient} from '@prisma/client';
-import {randomInt} from 'node:crypto';
+import {randomInt,randomUUID} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {createRequire} from 'node:module';
 import type {Api,Transformer} from 'grammy';
 import {notificationSettings} from '../src/modules/notifications/settings';
 import {canonicalTelegramChatId,installTelegramRateLimit,recordTelegramCooldown,reserveTelegramSend,telegramRateTransformer,TelegramRateDeferredError,withTelegramSendPolicy,telegramPolicyApi} from '../src/modules/notifications/telegram-rate';
+import {reserveNotificationSend} from '../src/modules/notifications/send-gate';
 
 describe('notification rate configuration',()=>{
- it('uses conservative ordinary limits and leaves capacity for personal messages',()=>{
-  expect(notificationSettings({})).toMatchObject({NOTIFICATION_SEND_CONCURRENCY:4,TELEGRAM_SENDS_PER_SECOND:20,TELEGRAM_BULK_SENDS_PER_SECOND:16,TELEGRAM_PRIVATE_CHAT_INTERVAL_MS:1000,TELEGRAM_GROUP_CHAT_INTERVAL_MS:3000});
-  for(const raw of [{TELEGRAM_SENDS_PER_SECOND:'30'},{TELEGRAM_SENDS_PER_SECOND:'20',TELEGRAM_BULK_SENDS_PER_SECOND:'20'},{TELEGRAM_PRIVATE_CHAT_INTERVAL_MS:'500'},{TELEGRAM_GROUP_CHAT_INTERVAL_MS:'2999'},{NOTIFICATION_SEND_CONCURRENCY:'99'}])expect(()=>notificationSettings(raw)).toThrow('Invalid notification configuration');
+ const conservative=notificationSettings({TELEGRAM_SENDS_PER_SECOND:'20',TELEGRAM_BULK_SENDS_PER_SECOND:'16',TELEGRAM_RATE_MAX_WAIT_MS:'100'});
+ it('caps the shared free budget at 30 and accepts a lower bulk ceiling',()=>{
+  expect(notificationSettings({})).toMatchObject({NOTIFICATION_SEND_CONCURRENCY:8,TELEGRAM_SENDS_PER_SECOND:30,TELEGRAM_BULK_SENDS_PER_SECOND:30,TELEGRAM_PRIVATE_CHAT_INTERVAL_MS:1000,TELEGRAM_GROUP_CHAT_INTERVAL_MS:3000});
+  expect(notificationSettings({TELEGRAM_SENDS_PER_SECOND:'20'}).TELEGRAM_BULK_SENDS_PER_SECOND).toBe(20);
+  expect(notificationSettings({TELEGRAM_BULK_SENDS_PER_SECOND:'16'}).TELEGRAM_BULK_SENDS_PER_SECOND).toBe(16);
+  for(const raw of [{TELEGRAM_SENDS_PER_SECOND:'31'},{TELEGRAM_SENDS_PER_SECOND:'20',TELEGRAM_BULK_SENDS_PER_SECOND:'21'},{TELEGRAM_PRIVATE_CHAT_INTERVAL_MS:'500'},{TELEGRAM_GROUP_CHAT_INTERVAL_MS:'2999'},{NOTIFICATION_SEND_CONCURRENCY:'99'}])expect(()=>notificationSettings(raw)).toThrow('Invalid notification configuration');
  });
  it('canonicalizes shared chat identities and rejects malformed destinations',()=>{
   expect(canonicalTelegramChatId('000123')).toBe('123');expect(canonicalTelegramChatId('-000123')).toBe('-123');expect(canonicalTelegramChatId('@LowwinChannel')).toBe('@lowwinchannel');expect(()=>canonicalTelegramChatId('https://t.me/a')).toThrow();
@@ -36,19 +40,56 @@ describe('notification rate configuration',()=>{
  it('defers repeated local sends during a recorded 429 without rechecking PostgreSQL',async()=>{
   const retryAt=new Date(Date.now()+3000);
   const query=vi.fn().mockResolvedValueOnce([{granted:true,waitMs:0,retryAt}]).mockResolvedValueOnce([{retryAt}]);
-  const client={$queryRaw:query} as unknown as PrismaClient,settings=notificationSettings({TELEGRAM_RATE_MAX_WAIT_MS:'100'});
+  const client={$queryRaw:query} as unknown as PrismaClient,settings=conservative;
   const send=vi.fn(async()=>({ok:false,error_code:429,description:'Flood control',parameters:{retry_after:3}}));
   const first=telegramRateTransformer(client,'123456789',settings),second=telegramRateTransformer(client,'123456789',settings);
   expect(await first(send as never,'sendMessage',{chat_id:123,text:'fixture'})).toMatchObject({ok:false,error_code:429});
   await expect(second(send as never,'sendMessage',{chat_id:456,text:'fixture'})).rejects.toMatchObject({retryAt});
   expect(query).toHaveBeenCalledTimes(2);expect(send).toHaveBeenCalledOnce();
  });
+ it('defers an already-reserved local send while another send records 429',async()=>{
+  const retryAt=new Date(Date.now()+3000);
+  let persist!:()=>void,entered!:()=>void,finishGate!:()=>void;
+  const gateEntered=new Promise<void>(resolve=>{entered=resolve});
+  const gateWaiting=new Promise<void>(resolve=>{finishGate=resolve});
+  const dbWaiting=new Promise(resolve=>{persist=()=>resolve([{retryAt}])});
+  const query=vi.fn().mockResolvedValueOnce([{granted:true,waitMs:0,retryAt}]).mockImplementationOnce(()=>dbWaiting);
+  const client={$queryRaw:query} as unknown as PrismaClient;
+  const send=vi.fn(),transformer=telegramRateTransformer(client,'123456789',conservative);
+  const pending=withTelegramSendPolicy({beforeSend:async()=>{entered();await gateWaiting}},()=>transformer(send as never,'sendMessage',{chat_id:123,text:'fixture'}));
+  const rejected=expect(pending).rejects.toBeInstanceOf(TelegramRateDeferredError);
+  await gateEntered;
+  const storing=recordTelegramCooldown(client,'123456789',3);
+  try{
+   finishGate();await rejected;
+   await expect(transformer(send as never,'sendMessage',{chat_id:456,text:'fixture'})).rejects.toBeInstanceOf(TelegramRateDeferredError);
+   expect(query).toHaveBeenCalledTimes(2);expect(send).not.toHaveBeenCalled();
+  }finally{persist();await storing}
+ });
+ it('uses the existing slower RPC and safe intervals while the capacity migration is pending',async()=>{
+  const retryAt=new Date();
+  const query=vi.fn().mockResolvedValueOnce([{ready:false}]).mockResolvedValueOnce([{granted:true,waitMs:0,retryAt}]);
+  await expect(reserveTelegramSend({$queryRaw:query} as unknown as PrismaClient,'123456789','123','bulk',notificationSettings({}))).resolves.toEqual({granted:true,waitMs:0,retryAt});
+  expect(query.mock.calls[1][0].join('')).toContain('public.reserve_telegram_send(');
+  expect(query.mock.calls[1].slice(4)).toEqual([35,36,1000]);
+ });
+ it('defers the 31st local transport start even if all database grants arrive together',async()=>{
+  const client={$queryRaw:vi.fn()} as unknown as PrismaClient,send=vi.fn(async()=>({ok:true,result:{message_id:1}}));
+  const transformer=telegramRateTransformer(client,'123456789',notificationSettings({}));
+  const reserveBeforeSend=async()=>({granted:true,waitMs:0,retryAt:new Date()});
+  const outcomes=await Promise.allSettled(Array.from({length:31},(_,index)=>
+   withTelegramSendPolicy({priority:'high',reserveBeforeSend},()=>transformer(send as never,'sendMessage',{chat_id:1000+index,text:'fixture'}))));
+  expect(send).toHaveBeenCalledTimes(30);
+  const failures=outcomes.filter(outcome=>outcome.status==='rejected');
+  expect(failures).toHaveLength(1);expect(failures[0].reason).toBeInstanceOf(TelegramRateDeferredError);
+  expect(failures[0].reason.retryAt.getTime()).toBeGreaterThan(Date.now());
+ });
  it('waits for the earliest possible reservation before asking PostgreSQL again',async()=>{
   const retryAt=new Date(Date.now()+360),started:number[]=[];
   const query=vi.fn(async()=>{started.push(performance.now());return [{granted:started.length>1,waitMs:360,retryAt}]});
   const client={$queryRaw:query} as unknown as PrismaClient;
   const send=vi.fn(async()=>({ok:true,result:{message_id:1}}));
-  const transformer=telegramRateTransformer(client,'123456789');
+  const transformer=telegramRateTransformer(client,'123456789',{...conservative,TELEGRAM_RATE_MAX_WAIT_MS:1000});
   await transformer(send as never,'sendMessage',{chat_id:123,text:'fixture'});
   expect(query).toHaveBeenCalledTimes(2);expect(started[1]-started[0]).toBeGreaterThanOrEqual(355);expect(send).toHaveBeenCalledOnce();
  });
@@ -59,6 +100,7 @@ describe.skipIf(!url)('shared PostgreSQL Telegram budget',()=>{
  let db:PrismaClient,second:PrismaClient;const bots:string[]=[];
  const bot=()=>{const id=String(randomInt(700000000,800000000));bots.push(id);return id};
  const settings=notificationSettings({TELEGRAM_SENDS_PER_SECOND:'2',TELEGRAM_BULK_SENDS_PER_SECOND:'1'});
+ const full=notificationSettings({TELEGRAM_SENDS_PER_SECOND:'30',TELEGRAM_BULK_SENDS_PER_SECOND:'30'});
  const reset=async(id:string)=>db.$executeRaw`UPDATE "TelegramRateBudget" SET "nextSendAt"=clock_timestamp()-interval '1 day' WHERE "botId"=${id}`;
  beforeAll(async()=>{
   const target=new URL(url!);if(!['127.0.0.1','localhost'].includes(target.hostname)||!target.pathname.endsWith('_test'))throw Error('Disposable loopback database required');
@@ -72,6 +114,32 @@ describe.skipIf(!url)('shared PostgreSQL Telegram budget',()=>{
   const [state]=await db.$queryRaw<{nextBulkAt:Date;now:Date}[]>`SELECT "nextBulkAt",clock_timestamp() AS now FROM "TelegramRateBudget" WHERE "botId"=${id}`;
   expect(state.nextBulkAt.getTime()-state.now.getTime()).toBeLessThanOrEqual(1000);
  });
+ it('allows a short full-rate burst while keeping the rolling cap shared with legacy callers',async()=>{
+  const id=bot();
+  const grants=await Promise.all(Array.from({length:12},(_,i)=>reserveTelegramSend(i%2?db:second,id,String(1100+i),'bulk',full)));
+  const starts=grants.filter(grant=>grant.granted).map(grant=>grant.retryAt.getTime()).sort((a,b)=>a-b);
+  expect(starts.length).toBeGreaterThanOrEqual(3);
+  for(const time of starts)expect(starts.filter(at=>at>=time&&at<time+33).length).toBeLessThanOrEqual(3);
+  await db.$executeRaw`UPDATE "TelegramRateBudget" SET "nextSendAt"=TIMESTAMP 'epoch',"nextBulkAt"=TIMESTAMP 'epoch',"recentSendsAt"=array_fill((clock_timestamp() AT TIME ZONE 'UTC')::timestamp(3),ARRAY[30]) WHERE "botId"=${id}`;
+  const [newer,older]=await Promise.all([reserveTelegramSend(db,id,'1250','bulk',full),reserveTelegramSend(second,id,'1251','high',settings)]);
+  for(const denied of [newer,older]){expect(denied.granted).toBe(false);expect(denied.waitMs).toBeGreaterThan(900)}
+ });
+ it('gives a waiting eligible personal send priority when bulk can use the whole free limit',async()=>{
+  const id=bot();await reserveTelegramSend(db,id,'1300','bulk',full);
+  await db.$executeRaw`UPDATE "TelegramRateBudget" SET "nextSendAt"=TIMESTAMP 'epoch',"nextBulkAt"=TIMESTAMP 'epoch',"highWaitingUntil"=(clock_timestamp() AT TIME ZONE 'UTC')+interval '1 second' WHERE "botId"=${id}`;
+  expect((await reserveTelegramSend(second,id,'1301','bulk',full)).granted).toBe(false);
+  expect((await reserveTelegramSend(db,id,'1302','high',full)).granted).toBe(true);
+  expect((await reserveTelegramSend(second,id,'1303','bulk',full)).granted).toBe(true);
+ });
+ it('rolls back a full-rate grant when the actual outbox lease is no longer owned',async()=>{
+  const id=bot(),leaseToken=randomUUID(),leaseUntil=new Date(Date.now()+120000);
+  const stored=await db.outbox.create({data:{key:`rate-fixture:${randomUUID()}`,kind:'BROADCAST',payload:{},leaseToken,leaseUntil}});
+  const replaced={...stored,leaseUntil,leaseToken:randomUUID()};
+  await expect(reserveNotificationSend(db,replaced,()=>true,{botId:id,chatId:'1400',priority:'bulk',globalMs:33,bulkMs:33,chatMs:1000})).rejects.toMatchObject({reason:'CLAIM_REPLACED',retry:true});
+  const [budget]=await db.$queryRaw<{count:number}[]>`SELECT count(*)::integer AS count FROM "TelegramRateBudget" WHERE "botId"=${id}`;
+  expect(budget.count).toBe(0);
+  expect((await reserveTelegramSend(second,id,'1400','bulk',full)).granted).toBe(true);
+ });
  it('enforces private and group cooldowns independently from the global slot',async()=>{
   const id=bot();expect((await reserveTelegramSend(db,id,'123','high',settings)).granted).toBe(true);await reset(id);
   const privateWait=await reserveTelegramSend(second,id,'000123','high',settings);expect(privateWait.granted).toBe(false);expect(privateWait.waitMs).toBeGreaterThan(850);
@@ -80,7 +148,7 @@ describe.skipIf(!url)('shared PostgreSQL Telegram budget',()=>{
   const groupWait=await reserveTelegramSend(second,id,'-100123','high',settings);expect(groupWait.granted).toBe(false);expect(groupWait.waitMs).toBeGreaterThan(2850);
  });
  it('shares 429 cooldowns with every worker and chat for the affected bot only',async()=>{
-  const id=bot(),until=await recordTelegramCooldown(db,id,2),denied=await reserveTelegramSend(second,id,'555','high',settings);
+  const id=bot(),until=await recordTelegramCooldown(db,id,2),denied=await reserveTelegramSend(second,id,'555','high',full);
   expect(denied.granted).toBe(false);expect(denied.retryAt.getTime()).toBeGreaterThanOrEqual(until.getTime());expect(denied.waitMs).toBeGreaterThan(1850);
   expect((await reserveTelegramSend(second,bot(),'555','bulk',settings)).granted).toBe(true);
  });

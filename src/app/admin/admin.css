@@ -109,6 +109,9 @@
 .auction-summary-item{display:flex;gap:24px;align-items:center}.auction-summary-item>.catalog-photo{width:140px;height:140px}.auction-summary-item h2{margin:0 0 8px}.auction-summary-item p{margin:8px 0}
 .auction-winner{margin-top:24px;padding:20px;background:#f5f5f5;border-radius:12px}.auction-winner h3{margin:0 0 8px}.auction-winner strong,.auction-result-amount{font-size:1.6rem;font-weight:700;color:#756023}.auction-winner p{margin:6px 0 0;color:#625d4f}
 .auction-summary .admin-facts{margin:20px 0}.auction-summary .admin-facts dd{max-width:70%;overflow-wrap:anywhere}.auction-manage-form{max-width:800px}
+.auction-home-placement{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;padding-bottom:16px;border-bottom:1px solid var(--admin-line)}
+.auction-home-placement>div{flex:1 1 250px;min-width:0}.auction-home-placement h3{margin:0 0 5px}.auction-home-placement p{margin:0}
+.auction-home-placement button{display:inline-flex;align-items:center;gap:8px}
 @media(max-width:700px){.catalog-form .admin-two{grid-template-columns:1fr}.catalog-save-actions{align-items:flex-start}.auction-summary-item{align-items:flex-start;gap:14px}.auction-summary-item>.catalog-photo{width:90px;height:110px}.auction-summary-item h2{font-size:1.15rem}.auction-summary .admin-facts>div{gap:14px;align-items:flex-start}.auction-summary .admin-facts dd{max-width:62%}.catalog-photo{width:52px;height:60px}}
 
 .admin-root .admin-local-tabs>button{background:white;border-color:var(--admin-line);color:#24231f}.admin-root .admin-local-tabs>button[aria-current=page]{background:#f1f1f1;border-color:#9c8a5b;color:#756023}.admin-image-strip figure{width:130px}.auction-summary .admin-facts>div{display:flex}
