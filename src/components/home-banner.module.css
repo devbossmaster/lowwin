@@ -1,17 +1,18 @@
 .banner{position:relative;isolation:isolate;container-type:inline-size;width:100%;min-width:0;overflow:hidden;background:#07182d;color:#f7faff;--surface-ink:#f7faff}
 .artworkBanner{border-radius:0}
-.bannerMain{position:relative;isolation:isolate;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;width:100%;min-height:calc(100cqi * 800 / 1840);padding:12px 16px}
+.bannerMain{position:relative;isolation:isolate;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;width:100%;min-height:calc(100cqi * 800 / 1840);padding:12px 16px;padding-inline-start:clamp(21px,5.6cqi,28px)}
 .bannerArtwork{position:absolute;z-index:-1;inset:0;overflow:hidden;pointer-events:none;background:#07182d}
 .bannerArtwork img{display:block;width:100%;height:100%;object-fit:cover;object-position:right center}
 .bannerArtwork::after{position:absolute;inset:0;content:'';background:linear-gradient(90deg,#051429f5 0%,#051429df 32%,#05142972 53%,transparent 76%)}
 .bannerArtwork[data-showcase]::after{background:linear-gradient(90deg,#05142950 0%,#05142942 36%,transparent 63%)}
 .bannerCopy{position:relative;min-width:0;width:57%}
-.bannerCopy h1{margin:0;color:#f7faff;font-size:clamp(16px,4.6cqi,23px);font-weight:800;line-height:1.22;letter-spacing:-.028em;text-wrap:balance}
+.banner .bannerCopy h1{margin:0;color:#f7faff;font-family:var(--font-display);font-size:clamp(18px,5.1cqi,26px);font-weight:800;line-height:1.1;letter-spacing:-.038em;text-wrap:balance;text-shadow:0 1px 8px #04142b90}
 .bannerCopy h1 span{display:block}
-.bannerCopy h1 .headlineAccent{margin-top:2px;color:#a2ceff}
+.bannerCopy h1 .headlineAccent{margin-top:2px;color:#92c6ff}
 .bannerCopy p{margin:6px 0 0;max-width:25ch;color:#eaf3ff;font-size:clamp(11px,2.8cqi,14px);font-weight:500;line-height:1.42;text-wrap:pretty}
 .bannerCopy p span{display:block}
-.banner:lang(am) h1{letter-spacing:0;line-height:1.4;font-size:clamp(16px,4.55cqi,22px)}
+.banner:lang(am) .bannerCopy h1{letter-spacing:0;line-height:1.3;font-size:clamp(17px,4.9cqi,25px)}
+.banner:lang(am) .bannerCopy h1 span{line-height:inherit}
 .banner:lang(am) p{line-height:1.5;letter-spacing:0}
 .introActions{position:relative;display:flex;align-items:stretch;width:55%;gap:6px;margin-top:8px}
 .banner .introActions :is(a,button){position:relative;isolation:isolate;display:inline-flex;flex:1;align-items:center;justify-content:center;min-width:0;min-height:44px;max-width:100%;padding:4px 7px;border:0;border-radius:24px;background:transparent;color:#f7faff;font:inherit;font-size:11px;font-weight:650;line-height:1.3;text-align:center;text-decoration:none;cursor:pointer}

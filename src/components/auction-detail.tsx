@@ -88,6 +88,7 @@ export function AuctionDetail({auction:initialAuction,serverNow,publishedResult=
       <dd><Hash size={15} aria-hidden="true"/><strong>{auction.code}</strong></dd>
      </div>
     </dl>
+    {!ended&&auction.prizeUpdatedAt&&<p className={styles.prizeUpdate} data-prize-updated><MiniPhrase en="The prize was updated. Existing bids still count." am="ሽልማቱ ተቀይሯል። አስቀድሞ የቀረቡ ጨረታዎች አሁንም ይቆጠራሉ።"/></p>}
    </header>
    <div className={styles.bidOverview}>
     <dl className={styles.fee}>

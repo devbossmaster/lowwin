@@ -30,6 +30,7 @@ const group: Record<string, string> = {
   'wallet-batch-atomic.test.ts':'WALLET_BATCH_TEST_DATABASE_URL',
   'winner-banner-db.test.ts':'WINNER_BANNER_TEST_DATABASE_URL',
   'catalog-workflow.test.ts': 'CATALOG_WORKFLOW_TEST_DATABASE_URL',
+  'auction-product-replacement-db.test.ts': 'AUCTION_REPLACEMENT_TEST_DATABASE_URL',
   'catalog.test.ts': 'CATALOG_TEST_DATABASE_URL',
   'referral-rewards.test.ts': 'REFERRAL_TEST_DATABASE_URL',
   'result-breakdown.test.ts': 'RESULT_TEST_DATABASE_URL',

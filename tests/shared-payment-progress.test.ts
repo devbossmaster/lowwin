@@ -13,7 +13,7 @@ import {MiniLocaleProvider} from '../src/components/mini-locale';
 const started=Date.parse('2026-11-10T10:00:00Z');
 const order={id:'owned-progress',purpose:'BID',chargeType:'DIRECT',status:'AUTH_NEEDED',providerStatus:'AUTH_NEEDED',verificationState:'UNAVAILABLE',verificationUnavailable:true,authType:'USSD',authorizationReference:'accepted-request',createdAt:new Date(started).toISOString(),expiresAt:new Date(started+300000).toISOString(),paymentMethod:'telebirr',amount:'35.00',fundsPreserved:false,receipt:null} as ChapaCheckoutView;
 const base={order,busy:false,restoring:false,paused:false,error:'',started:true,canStartAgain:true,markPresented:()=>{}} as unknown as ReturnType<typeof useChapaPayment>;
-function render(purpose:'BID'|'TOP_UP',payment=base,am=false){return renderToStaticMarkup(createElement(MiniLocaleProvider,{initialLanguage:am?'am':'en',children:purpose==='TOP_UP'?createElement(WalletTopUpProgress,{payment:{...payment,order:payment.order?{...payment.order,purpose}:null},amount:'35.00',provider:'telebirr',phone:'0912345678',onRetry:()=>{},onClose:()=>{},footerPortal:true}):createElement(PaymentProgress,{payment,summary:{auctionTitle:'Owned auction',numbers:['4.25'],total:'35.00',provider:'telebirr',phone:'0912345678'},onRetry:()=>{},onClose:()=>{}})}))}
+function render(purpose:'BID'|'TOP_UP',payment=base,am=false){return renderToStaticMarkup(createElement(MiniLocaleProvider,{initialLanguage:am?'am':'en',children:purpose==='TOP_UP'?createElement(WalletTopUpProgress,{payment:{...payment,order:payment.order?{...payment.order,purpose}:null},amount:'35.00',provider:'telebirr',phone:'0912345678',onRetry:()=>{},onChangePayment:()=>{},onClose:()=>{},footerPortal:true}):createElement(PaymentProgress,{payment,summary:{auctionTitle:'Owned auction',numbers:['4.25'],total:'35.00',provider:'telebirr',phone:'0912345678'},onRetry:()=>{},onChangePayment:()=>{},onClose:()=>{}})}))}
 beforeEach(()=>{clock.now=started});
 function expectSteadyAuthorization(html:string){
  expect(html).toContain('data-payment-view="authorization"');expect(html).toContain('data-payment-activity="true"');expect(html).toContain('lucide-loader-circle');
@@ -60,6 +60,24 @@ describe('shared bid and deposit status surface',()=>{
   for(const reason of reasons)for(const am of [false,true]){
    const html=render(purpose,{...base,order:{...order,status:'FAILED',providerStatus:'FAILED',verificationState:'VERIFIED',providerReasonCode:reason.code}},am);
    expect(html.split(am?reason.am:reason.en)).toHaveLength(2);expect(html.match(/data-payment-reason="true"/g)).toHaveLength(1);expect(html).toContain('role="alert"');expect(html).toContain('data-payment-view="result"');expect(html).not.toContain('data-payment-inline-error');expect(html).not.toContain('Your provider could not complete this payment.');expect(html).not.toContain('የክፍያ አቅራቢዎ ይህን ክፍያ ማጠናቀቅ አልቻለም።');expect(html.match(/<button/g)).toHaveLength(2);
+  }
+ });
+ it.each(['BID','TOP_UP'] as const)('%s explains an explicit M-Pesa balance rejection and leaves ambiguous attempts pending',purpose=>{
+  const rejected:ChapaCheckoutView={...order,paymentMethod:'mpesa',status:'NEEDS_REVIEW',providerStatus:null,authorizationReference:null,initializationIssue:'request',initializationReasonCode:'INSUFFICIENT_FUNDS',reason:'INITIALIZATION_REJECTED'};
+  for(const [am,heading,description] of [
+   [false,'Insufficient funds','Chapa reports insufficient funds in your selected provider account.'],
+   [true,'በቂ ቀሪ ሂሳብ የለም','Chapa በመረጡት የክፍያ አቅራቢ መለያ ውስጥ ያለው ገንዘብ እንደማይበቃ አሳውቋል።'],
+  ] as const){
+   const html=render(purpose,{...base,order:rejected},am);
+   expect(html).toContain(`>${heading}</h3>`);
+   expect(html).toContain(description);
+   expect(html).toContain(`>${am?'የክፍያ መንገድ ይቀይሩ':'Change payment method'}</button>`);
+   expect(html).not.toContain('Payment could not start');
+   expect(html).not.toContain('Nothing was charged');
+   const pending=render(purpose,{...base,order:{...rejected,status:'PENDING',initializationIssue:'temporary',reason:'PROVIDER_CONFIRMATION_REQUIRED'}},am);
+   expectSteadyAuthorization(pending);
+   expect(pending).not.toContain(heading);
+   expect(pending).not.toContain(description);
   }
  });
  it.each(['BID','TOP_UP'] as const)('%s shows the owned payment reference only on an unsuccessful result',purpose=>{

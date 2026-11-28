@@ -24,6 +24,7 @@
 .metrics dd{grid-row:1;display:flex;align-items:center;justify-content:center;gap:4px;min-width:0;margin:0;color:var(--brand-ink);font-size:.9375rem;font-weight:600;line-height:1.4;font-variant-numeric:tabular-nums}
 .metrics svg,.fee svg,.timerLabel svg{flex:none;color:var(--action-pressed)}
 .metrics strong{min-width:0;font-weight:inherit;overflow-wrap:anywhere}
+.prizeUpdate{margin:0;padding:var(--space-2) var(--space-3);border-radius:10px;background:var(--brand-soft);color:var(--brand-ink);font-size:.8125rem;line-height:1.55}
 .actions{margin:0 0 var(--space-2);border-top:1px solid var(--brand-line)}
 .actions h2{margin:0 0 8px;font-size:13px;font-weight:600;line-height:1.5;color:#657181}
 .moreChances{min-width:0;margin:var(--space-1) 0 0}

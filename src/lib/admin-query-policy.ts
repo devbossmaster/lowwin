@@ -8,7 +8,7 @@ export const adminResourceMatches=(path:string,scope:string)=>{const base=path.s
 const affected:Record<string,readonly string[]>={
  category:['categories','products','auctions'],product:['products','auctions','dashboard/auctions'],media:['workspace/media','media'],
  draft:['auctions','dashboard'],publish:['auctions','products','dashboard'],fee:['auctions','dashboard/auctions'],deadline:['auctions','dashboard'],startTime:['auctions','dashboard'],presentation:['auctions','dashboard/auctions'],homeOrder:['auctions'],
- deleteDraft:['auctions','dashboard'],deleteProduct:['products'],removeCancelled:['auctions','dashboard'],replace:['auctions','dashboard'],
+ deleteDraft:['auctions','dashboard'],deleteProduct:['products'],removeCancelled:['auctions','dashboard'],replace:['auctions','dashboard'],replaceProduct:['auctions','products','dashboard/auctions'],
  cancel:['auctions','dashboard','workspace/players','users','workspace/transactions','workspace/winners','fulfillment','results'],
  suspend:['workspace/players','users'],deliveryDone:['workspace/winners','fulfillment','dashboard/summary'],fulfillment:['workspace/winners','fulfillment','dashboard/summary'],
  winnerPhoto:['workspace/winners','results'],winnerBanner:['workspace/winners','results'],resultPublish:['workspace/winners','results','auctions','dashboard'],

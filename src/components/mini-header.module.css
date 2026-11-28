@@ -5,22 +5,24 @@
 .balancePlaceholder,.restoring>span{display:block;width:38px;height:12px;border-radius:6px;background:color-mix(in srgb, var(--brand-ink, #211a30) 12.55%, transparent)}.restoring{display:flex;justify-self:end;align-items:center;justify-content:center;width:108px;max-width:100%;min-height:44px}.restoring>span{width:84px;height:28px;background:#eeece5;border-radius:999px}
 .actions{display:flex;align-items:center;gap:4px;min-width:0}.header .icon,.languageButton{position:relative;isolation:isolate;display:inline-flex;align-items:center;justify-content:center;flex:none;min-width:44px;height:44px;padding:0;border:0;border-radius:999px;background:transparent;color:var(--brand-ink, #211a30);--surface-ink:var(--brand-ink, #211a30);cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}.header .icon::before,.languageButton::before{position:absolute;inset:3px;z-index:-1;border:1px solid #e8e5dd;border-radius:999px;background:#fff;content:'';transition:background-color 150ms ease,border-color 150ms ease}.header .icon>svg{width:19px;height:19px;stroke-width:1.75}
 .language{position:relative;flex:none}
-.languageButton{gap:4px;min-width:54px;padding-inline:5px}
-.languageButton::before{inset:5px 1px;border-color:var(--brand-line)}
+.languageButton{gap:3px;min-width:54px;padding-inline:4px}
+.languageButton::before{inset:7px 4px;border-color:var(--brand-line)}
 .languageButton[aria-expanded=true]::before{background:var(--brand-soft);border-color:var(--action-disabled)}
-.languageButton>svg:first-child{flex:none;width:15px;height:15px}
-.languageFlag{display:block;flex:none;width:20px;height:15px;border-radius:2px}
-.languageMenu{position:absolute;inset-inline-end:0;inset-block-start:calc(100% + 4px);z-index:80;display:grid;gap:2px;width:156px;padding:5px;border:1px solid var(--brand-line);border-radius:16px;background:var(--brand-surface);box-shadow:0 8px 24px #16202c1a}
-.languageOption{display:flex;align-items:center;gap:10px;width:100%;min-height:44px;padding:0 10px;border:0;border-radius:11px;background:transparent;color:var(--brand-ink);font:inherit;font-size:.875rem;text-align:start;cursor:pointer}
-.languageOption .languageFlag{width:24px;height:18px}
-.languageOption[aria-checked=true]{background:var(--action-disabled);color:var(--action-pressed);font-weight:650}
-.languageCheck{flex:none;margin-inline-start:auto;color:var(--action-hover)}
+.languageButton>svg:first-child{flex:none;width:13px;height:13px}
+.languageFlag{display:block;flex:none;width:16px;height:12px;border-radius:2px}
+.languageMenu{position:absolute;inset-inline-end:0;inset-block-start:calc(100% + 2px);z-index:80;display:grid;width:132px;padding:3px;border:1px solid var(--brand-line);border-radius:13px;background:var(--brand-surface);box-shadow:0 6px 16px #16202c1a}
+.languageOption{position:relative;isolation:isolate;display:flex;align-items:center;gap:7px;width:100%;min-height:44px;padding:0 8px;border:0;border-radius:9px;background:transparent;color:var(--brand-ink);font:inherit;font-size:.8125rem;line-height:1.4;text-align:start;cursor:pointer;touch-action:manipulation}
+.languageOption::before{position:absolute;inset:3px 0;z-index:-1;border-radius:9px;content:''}
+.languageOption .languageFlag{width:20px;height:15px}
+.languageOption[aria-checked=true]{color:var(--action-pressed);font-weight:650}
+.languageOption[aria-checked=true]::before{background:var(--action-disabled)}
+.languageCheck{flex:none;width:12px;height:12px;margin-inline-start:auto;color:var(--action-hover)}
 .language :focus-visible{outline:2px solid var(--action-primary);outline-offset:2px}
-@media(max-width:419px){.languageButton{gap:3px;min-width:44px;padding-inline:2px}.languageButton>svg:first-child{width:13px;height:13px}}
+@media(max-width:419px){.languageButton{min-width:44px;padding-inline:2px}.languageButton::before{inset-inline:3px}}
 .login{justify-self:end;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 24px;border:0;border-radius:999px;background:var(--action-primary);color:var(--action-ink);font:inherit;font-size:15px;font-weight:600;cursor:pointer;touch-action:manipulation;transition:background-color 150ms ease,transform 150ms ease}.header :focus-visible{outline:2px solid var(--brand-primary-strong, #5533be);outline-offset:2px}.header .balance:focus-visible,.header .addFunds:focus-visible{outline-offset:-3px}.header a,.header button{font-family:inherit;font-style:normal}.icon[aria-current=page]::before{background:var(--brand-soft);border-color:var(--brand-line)}
 @media(max-width:389px){.login{gap:4px;padding-inline:8px;font-size:13px}.login>svg{width:12px;height:12px}.brand{gap:4px}.brand img{width:24px;height:24px}.brandName{font-size:14px}.balancePill::before{inset:8px 0}.balancePill .balance{display:flex;padding:5px 0 5px 4px;gap:0;min-width:44px;flex:1}.balancePill .balance>span{flex-direction:row;align-items:baseline;gap:2px;max-width:100%;line-height:1.2}.balancePill .balanceAmount{min-width:0;max-width:100%;font-size:12px;overflow-x:auto;scrollbar-width:none}.balancePill .balance>svg{display:none}.balancePill .balance small{flex:none;padding:0;font-size:9px;line-height:1.2}}
 @media(max-width:339px){.header{gap:0;padding-left:max(4px,env(safe-area-inset-left,0px),var(--tg-content-safe-area-inset-left,0px));padding-right:max(4px,env(safe-area-inset-right,0px),var(--tg-content-safe-area-inset-right,0px))}.actions{gap:0}.brand{gap:4px}.brand img{width:20px;height:20px}.brandName{font-size:12px}.balancePill .balance{padding-left:2px}.balancePill .balanceAmount{font-size:12px}.balancePill .balance small{font-size:9px}}
-@media(hover:hover){.header .icon:hover::before,.languageButton:hover::before,.languageOption:hover:not([aria-checked=true]){background:var(--brand-canvas, #f8f5fc);border-color:var(--brand-line)}.addFunds:hover::before{background:#fff8}.login:hover{background:var(--action-hover)}}
+@media(hover:hover){.header .icon:hover::before,.languageButton:hover::before,.languageOption:hover:not([aria-checked=true])::before{background:var(--brand-canvas, #f8f5fc);border-color:var(--brand-line)}.addFunds:hover::before{background:#fff8}.login:hover{background:var(--action-hover)}}
 @media(prefers-reduced-motion:reduce){.header .icon::before,.languageButton::before{transition:none}}
 
 /* A shorter visible Login pill keeps the existing comfortable touch target. */

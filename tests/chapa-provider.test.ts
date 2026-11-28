@@ -220,6 +220,32 @@ describe('Chapa v2 authenticated webhook hints',()=>{
 });
 
 describe('Chapa v2 bounded merchant transport',()=>{
+ const mpesa={amountCents:'7000',merchantReference:'LWmpesafixture',idempotencyKey:'lowwin:mpesa-fixture',paymentMethod:'mpesa',phone:'251711111111'};
+ it.each([
+  {message:'Insufficient funds.'},
+  {details:{message:'You don’t have enough balance to make this payment.'}},
+ ])('extracts a safe reason from a definite Direct balance rejection',async({message,details})=>{
+  const fetcher=vi.fn<typeof fetch>(async()=>Response.json({status:'error',message,error:{code:'INVALID_VALUE',details}},{status:400}));
+  const error=await createChapaTransport({env:environment(),fetcher}).direct!(mpesa).catch(cause=>cause);
+  if(!(error instanceof ChapaProviderError))throw Error('Expected a Chapa provider rejection');
+  expect(error).toMatchObject({httpStatus:400,providerCode:'INVALID_VALUE',category:'request',paymentReason:'INSUFFICIENT_FUNDS'});
+  expect(error.message).not.toMatch(/insufficient funds|enough balance/i);
+  expect(fetcher).toHaveBeenCalledExactlyOnceWith('https://api.chapa.global/v2/payments/direct',expect.objectContaining({headers:expect.objectContaining({'Idempotency-Key':mpesa.idempotencyKey})}));
+ });
+ it.each([
+  [400,'INVALID_VALUE','request','Insufficient funds for 251711111111'],
+  [400,'INVALID_STATE','state','Insufficient funds.'],
+  [409,'INVALID_STATE','state','Insufficient funds.'],
+  [429,'RATE_LIMITED','temporary','Insufficient funds.'],
+  [500,'PROCESSING_FAILED','temporary','Insufficient funds.'],
+ ] as const)('does not infer a Direct balance rejection from %s / %s with text %s',async(status,code,category,message)=>{
+  const fetcher=vi.fn<typeof fetch>(async()=>Response.json({status:'error',message,error:{code,details:null}},{status}));
+  const error=await createChapaTransport({env:environment(),fetcher}).direct!(mpesa).catch(cause=>cause);
+  if(!(error instanceof ChapaProviderError))throw Error('Expected a Chapa provider rejection');
+  expect(error).toMatchObject({httpStatus:status,providerCode:code,category});
+  expect(error.paymentReason).toBeUndefined();
+  expect(JSON.stringify(error)).not.toContain('251711111111');
+ });
  it.each([
   [400,'INVALID_FORMAT','request',true],[400,'INVALID_VALUE','request',true],[400,'MISSING_REQUIRED_FIELD','request',true],
   [404,'NOT_FOUND','reference',true],[400,'NOT_FOUND','reference',true],

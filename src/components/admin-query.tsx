@@ -69,11 +69,12 @@ function applyReceipt({client,identity}:AdminSession,action:string,input:Record<
    });
   }
  }
- const {auctionId,controlVersion,startsAt,endsAt,presentation,homeOrder,featured,feeVersion,feePoints,effectiveAt}=receipt;
+ const {auctionId,controlVersion,startsAt,endsAt,presentation,homeOrder,featured,feeVersion,feePoints,effectiveAt,productId,product}=receipt;
  if(typeof auctionId!=='string'||auctionId!==input?.auctionId||typeof controlVersion!=='number')return;
  const changes=action==='deadline'&&typeof endsAt==='string'?{endsAt,nextCloseAttemptAt:null,closeErrorCode:null}
   :action==='startTime'&&typeof startsAt==='string'?{startsAt}
   :action==='presentation'&&presentation&&typeof presentation==='object'?{presentation}
+  :action==='replaceProduct'&&productId===input?.productId&&product&&typeof product==='object'&&'id' in product&&product.id===productId&&presentation&&typeof presentation==='object'?{product,presentation}
   :action==='homeOrder'&&(typeof homeOrder==='number'||homeOrder===null)?{homeOrder,...(typeof featured==='boolean'?{featured}:{})}:null;
  const fee=action==='fee'&&typeof feeVersion==='number'&&typeof feePoints==='string'&&typeof effectiveAt==='string'
   ?{version:feeVersion,feePoints,effectiveAt}:null;

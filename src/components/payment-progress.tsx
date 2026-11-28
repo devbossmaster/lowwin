@@ -7,7 +7,7 @@ import type {BidBatchReceipt} from '@/lib/bid-batch-client';
 import {bidPaymentAuthorizationError,bidPaymentConnectionDelayed,bidPaymentCanRetry,bidPaymentCanRetryOriginal,bidPaymentProgressPhase,maskedBidPaymentPhone,type BidPaymentProgressPhase} from '@/lib/bid-payment-progress';
 import {chapaPaymentReasonMessage,chapaRequestReasonMessage} from '@/lib/chapa-payment-reason';
 import {formatEtb} from '@/lib/money';
-import {chapaCurrentInline,chapaOriginalKeyUrl,chapaCheckoutUrl} from '@/lib/chapa-client';
+import {chapaCurrentInline,chapaDirectRequestRejected,chapaOriginalKeyUrl,chapaCheckoutUrl} from '@/lib/chapa-client';
 import {prepareChapaNavigation} from '@/lib/chapa-navigation';
 import {AccountSheetFooter} from './account-sheet';
 import {ChapaPaymentStatus,useChapaPayment,useChapaPaymentClock} from './chapa-payment';
@@ -44,7 +44,9 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
  const title=order?.auctionTitle
   ?text(order.auctionTitle,order.auctionTitleAm||order.auctionTitle)
   :text(summary.auctionTitle,summary.auctionTitleAm||summary.auctionTitle);
- const safeReason=order&&!completionPending?chapaPaymentReasonMessage(order,am)??chapaRequestReasonMessage(order.initializationReasonCode,am):null;
+ const initializationRejected=order?.reason==='INITIALIZATION_REJECTED'&&chapaDirectRequestRejected(order);
+ const insufficientBalance=terminal&&initializationRejected&&order?.initializationReasonCode==='INSUFFICIENT_FUNDS';
+ const safeReason=order&&!completionPending?chapaPaymentReasonMessage(order,am)??(initializationRejected?chapaRequestReasonMessage(order.initializationReasonCode,am):null):null;
  const requestReason=completionPending?null:chapaRequestReasonMessage(payment.errorCode,am);
  const invalidOtp=otpNeeded&&(payment.errorCode==='INVALID_OTP'||order?.authorizationReasonCode==='INVALID_OTP');
  const reasonMessage=!finished?(invalidOtp?text('That code was not accepted. Check the code and try again.','ኮዱ አልተቀበለም። ኮዱን ያረጋግጡና እንደገና ይሞክሩ።'):safeReason??chapaRequestReasonMessage(authorizationError,am)??requestReason):null;
@@ -52,6 +54,7 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
  const supportReference=order?.merchantReference??order?.id??payment.directAttempt?.key;
  const safeRetry=terminal&&bidPaymentCanRetry(order)&&payment.canStartAgain&&!busy;
  const retryAction=onChangePayment??onRetry;
+ const retryLabel=insufficientBalance&&onChangePayment?text('Change payment method','የክፍያ መንገድ ይቀይሩ'):text('Try again','እንደገና ይሞክሩ');
  const canRetryOriginal=phase==='uncertain'&&!authorizationError&&!busy&&!!payment.directAttempt&&bidPaymentCanRetryOriginal(order);
  // A slow display clock is not a reason to ask the customer to verify. The
  // existing poller owns active checks; expose recovery only when it is paused
@@ -101,6 +104,7 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
   messages[phase]=otpNeeded?['Enter the one-time code below. Never enter your wallet PIN here.','የአንድ ጊዜ ኮዱን ከታች ያስገቡ። የዋሌት PIN እዚህ አያስገቡ።']:['Approve the request on your phone when it appears. Your result will update here.','ጥያቄው በስልክዎ ሲታይ ያጽድቁ። ውጤቱ እዚህ ይታያል።'];
  }
  if(simpleDirect&&editableRejection)headings[phase]=['Payment could not start','ክፍያው ሊጀመር አልቻለም'];
+ if(simpleDirect&&insufficientBalance)headings[phase]=['Insufficient funds','በቂ ቀሪ ሂሳብ የለም'];
  useEffect(()=>{setOtp('')},[order?.id]);
  useEffect(()=>{
   payment.markPresented('feedback');
@@ -144,13 +148,13 @@ export default function PaymentProgress({purpose='BID',footerPortal=true,payment
    <p className={styles.security}><ShieldCheck size={14}/>{text('Secure payment · LowWin','የተጠበቀ ክፍያ · LowWin')}{order?.mode==='test'&&<span>{text('Test','ሙከራ')}</span>}</p>
   </section>
   {simpleDirect?((result||otpNeeded)&&renderActions(<div className={styles.actions} data-payment-result-actions={result||undefined}>
-   {terminal&&retryAction&&<button type="button" className={styles.primary} disabled={!safeRetry} onClick={retryAction}>{text('Try again','እንደገና ይሞክሩ')}</button>}
+   {terminal&&retryAction&&<button type="button" className={styles.primary} disabled={!safeRetry} onClick={retryAction}>{retryLabel}</button>}
    {editableRejection&&<button type="button" className={styles.primary} onClick={onEditPayment}>{text('Try again','እንደገና ይሞክሩ')}</button>}
    {otpNeeded&&<button type="submit" form={`${id}-otp-form`} className={styles.primary} disabled={busy||!/^\d{4,10}$/.test(otp)}>{payment.busy&&<LoaderCircle className={styles.spin} size={17} aria-hidden="true"/>}{text('Confirm code','ኮዱን ያረጋግጡ')}</button>}
    {result&&(onClose?<button type="button" className={terminal||editableRejection?styles.outline:styles.primary} onClick={onClose}>{text('Close','ዝጋ')}</button>:<Link className={styles.primary} href={deposit?'/profile#wallet':'/my-bids'}>{text('Close','ዝጋ')}</Link>)}
   </div>)):!normalWaiting&&renderActions(<div className={styles.actions}>
    {finished&&(onClose?<button type="button" className={styles.primary} onClick={onClose}>{text('Done','ተጠናቋል')}</button>:<Link className={styles.primary} href={deposit?'/profile#wallet':'/my-bids'}>{text('Done','ተጠናቋል')}</Link>)}
-   {terminal&&retryAction&&<button type="button" className={styles.primary} disabled={!safeRetry} onClick={retryAction}>{text('Try again','እንደገና ይሞክሩ')}</button>}
+   {terminal&&retryAction&&<button type="button" className={styles.primary} disabled={!safeRetry} onClick={retryAction}>{retryLabel}</button>}
    {hostedUrl&&phase!=='uncertain'&&<button type="button" className={styles.primary} onClick={()=>{const navigation=prepareChapaNavigation();try{navigation.open(hostedUrl)}finally{navigation.cancel()}}}>{text('Open payment page','የክፍያ ገጹን ይክፈቱ')}<ArrowUpRight size={16} aria-hidden="true"/></button>}
    {otpNeeded&&<button type="submit" form={`${id}-otp-form`} className={styles.primary} disabled={busy||!/^\d{4,10}$/.test(otp)}>{payment.busy&&<LoaderCircle className={styles.spin} size={17} aria-hidden="true"/>}{text('Confirm code','ኮዱን ያረጋግጡ')}</button>}
    {phase==='uncertain'&&walletRetry&&onRetryWallet&&<button type="button" className={styles.primary} disabled={busy} onClick={onRetryWallet}>{busy&&<LoaderCircle className={styles.spin} size={17} aria-hidden="true"/>}{text('Retry original payment','የመጀመሪያውን ክፍያ ይድገሙ')}</button>}

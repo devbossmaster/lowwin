@@ -25,6 +25,10 @@ export const publicAuctionSelect = {
   settlement:{select:{publication:{select:{publishedAt:true}},decision:true,outcome:true,winningPoints:true,completedAt:true,acceptedCount:true,winner:{select:{name:true,telegramUsername:true,ownContact:{select:{botId:true,phoneCipher:true,revokedAt:true}}}}}},
 } satisfies Prisma.AuctionSelect;
 type AuctionRow = Prisma.AuctionGetPayload<{ select: typeof publicAuctionSelect }>;
+const publicAuctionDetailSelect = {
+  ...publicAuctionSelect,
+  controlRevisions:{where:{kind:'PRODUCT_REPLACEMENT'},orderBy:{version:'desc'},take:1,select:{createdAt:true}},
+} satisfies Prisma.AuctionSelect;
 export const catalogQuerySchema = z.object({
   q: z.string().trim().max(80).optional().default(''),
   status: z.enum(['all','live','upcoming','closing','closed']).optional().default('all'),
@@ -66,7 +70,7 @@ function statusWhere(status: CatalogQuery['status'], now: Date): Prisma.AuctionW
   ]};
   return {};
 }
-export function toPublicAuction(row: AuctionRow, now: Date) {
+export function toPublicAuction(row: AuctionRow & {controlRevisions?:{createdAt:Date}[]}, now: Date) {
   const status = effectiveStatus(row,now);
   const product=readAuctionPresentation(row.presentation)??row.product!;
   const settled=row.settlement?.publication&&row.settlement.publication.publishedAt<=now?row.settlement:null;
@@ -91,6 +95,7 @@ export function toPublicAuction(row: AuctionRow, now: Date) {
   return {
     slug:row.slug!,code:row.publicCode.toString(),status,publishedAt:row.publishedAt!.toISOString(),featured:row.featured,isDemo:row.isDemo,bidCount:row.acceptedBidCount,
     viewCount:row.publicViewCount.toString(),...(row.controlVersion===undefined?{}:{presentationVersion:row.controlVersion}),
+    ...(row.controlRevisions?.[0]?{prizeUpdatedAt:row.controlRevisions[0].createdAt.toISOString()}:{}),
     startsAt:row.startsAt!.toISOString(),endsAt:row.endsAt!.toISOString(),
     product:{title:product.title,titleAm:product.titleAm??null,description:product.description,descriptionAm:product.descriptionAm??null,condition:product.condition,conditionAm:product.conditionAm??null,
       images:product.images.map(image=>({path:image.path,alt:image.alt,sourceType:image.sourceType,sourceCredit:image.sourceCredit??null}))},
@@ -199,7 +204,7 @@ export async function getAuction(slug: string, now?: Date) {
   const at=now??await serverNow();
   const code=/^[1-9]\d{0,9}$/.test(slug)?Number(slug):null;
   const identifier=code!==null&&code<=2147483647?{publicCode:code}:{slug};
-  const row = await db.auction.findFirst({where:{AND:[publicWhere(at),identifier]},select:publicAuctionSelect});
+  const row = await db.auction.findFirst({where:{AND:[publicWhere(at),identifier]},select:publicAuctionDetailSelect});
   return row?toPublicAuction(row,at):null;
   });
 }

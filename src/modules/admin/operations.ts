@@ -41,6 +41,7 @@ const schemas={
   startTime:z.object({key,auctionId:id,version,startsAt:z.iso.datetime(),reason:text(1000)}).strict(),
   homeOrder:z.object({key,auctionId:id,version,homeOrder,featured:z.boolean().optional()}).strict(),
   presentation:z.object({key,auctionId:id,version,title:text(120),titleAm:localized(120),description:text(1500),descriptionAm:localized(1500),condition:text(100),conditionAm:localized(100),imageIds:z.array(id).min(1).max(8),reason:text(1000)}).strict(),
+  replaceProduct:z.object({key,auctionId:id,version,productId:id,reason:text(1000),confirmation:text(100)}).strict(),
   deleteDraft:z.object({key,auctionId:id,confirmation:text(100),reason:text(1000)}).strict(),
   deleteProduct:z.object({key,id,version,confirmation:text(120),reason:text(1000)}).strict(),
   removeCancelled:z.object({key,auctionId:id,version,confirmation:text(100),reason:text(1000)}).strict(),
@@ -52,15 +53,62 @@ export const homeContentSchema=z.object({headline:text(90),lead:text(350),headli
 export const faqContentSchema=z.object({items:z.array(z.object({question:text(160),answer:text(1500),questionAm:text(160).optional(),answerAm:text(1500).optional()}).strict()).max(30)}).strict();
 const asJson=(value:unknown)=>JSON.parse(JSON.stringify(value,(_key,item)=>typeof item==='bigint'?item.toString():item)) as Prisma.InputJsonValue;
 async function lockAuction(tx:Prisma.TransactionClient,auctionId:string){const rows=await tx.$queryRaw<{id:string}[]>`SELECT id FROM "Auction" WHERE id=${auctionId} FOR UPDATE`;if(!rows.length)throw new AdminError(404,'Auction not found.')}
-async function lockScheduleAuction(tx:Prisma.TransactionClient,auctionId:string){
+async function lockAuctionControl(tx:Prisma.TransactionClient,auctionId:string){
   // The row-locking SELECT only gets a row after the shared barrier returns.
-  // Bound the wait for both locks when editing a published schedule.
+  // Bound the wait for both locks when editing a published auction.
   const rows=await tx.$queryRaw<{id:string}[]>`
     WITH config AS MATERIALIZED (SELECT set_config('lock_timeout','2s',true)),
     barrier AS MATERIALIZED (SELECT ${sharedAuctionMaintenanceLock} FROM config)
     SELECT a.id FROM barrier CROSS JOIN "Auction" a WHERE a.id=${auctionId} FOR UPDATE OF a
   `;
   if(!rows.length)throw new AdminError(404,'Auction not found.');
+}
+
+async function replacePublishedAuctionProduct(tx:Prisma.TransactionClient,data:z.infer<typeof schemas.replaceProduct>,actorId:string,operationKey:string){
+  const auction=await tx.auction.findUniqueOrThrow({where:{id:data.auctionId},select:{
+    id:true,code:true,status:true,publishedAt:true,startsAt:true,endsAt:true,isDemo:true,controlVersion:true,acceptedBidCount:true,
+    productId:true,categoryId:true,presentation:true,product:{select:{title:true}},
+    settlement:{select:{id:true}},result:{select:{id:true}},
+  }});
+  if(auction.controlVersion!==data.version)throw new AdminError(409,'Auction controls changed. Reload before saving.');
+  if(!auction.publishedAt||!auction.startsAt||!auction.endsAt||auction.endsAt<=auction.startsAt||!auction.productId||
+    !['SCHEDULED','LIVE'].includes(auction.status)||auction.settlement||auction.result){
+    throw new AdminError(409,'The product can only be replaced on a published auction that is still upcoming or live.');
+  }
+  if(data.confirmation!==auction.code)throw new AdminError(422,'Type the exact auction code to confirm the product replacement.');
+  if(data.productId===auction.productId)throw new AdminError(422,'Choose a different product.');
+
+  // Use the same product-then-category lock order as publication.
+  const [lockedProduct]=await tx.$queryRaw<{categoryId:string}[]>`
+    SELECT "categoryId" FROM "Product" WHERE id=${data.productId} FOR SHARE
+  `;
+  if(!lockedProduct)throw new AdminError(422,'Choose an available catalog product.');
+  await tx.$queryRaw`SELECT id FROM "Category" WHERE id=${lockedProduct.categoryId} FOR SHARE`;
+  const product=await tx.product.findUniqueOrThrow({where:{id:data.productId},select:{
+    id:true,categoryId:true,isDemo:true,visible:true,title:true,titleAm:true,description:true,descriptionAm:true,condition:true,conditionAm:true,
+    images:{orderBy:[{sortOrder:'asc'},{id:'asc'}],select:{id:true,path:true,alt:true,sourceType:true,sourceCredit:true}},
+    category:{select:{name:true,nameAm:true,visible:true,requiresEligibilityReview:true}},
+  }});
+  if(!product.visible||!product.category.visible||product.category.requiresEligibilityReview||
+    product.isDemo!==auction.isDemo||!product.images.length){
+    throw new AdminError(422,'Choose a visible catalog product with a photo, matching demo status, and a category open for bidding.');
+  }
+  const [{now}]=await tx.$queryRaw<{now:Date}[]>`SELECT clock_timestamp() AS now`;
+  if(auction.publishedAt>now||auction.endsAt<=now)throw new AdminError(409,'The product can only be replaced on a published auction that is still upcoming or live.');
+
+  const {title,titleAm,description,descriptionAm,condition,conditionAm,images}=product;
+  const presentation={title,titleAm,description,descriptionAm,condition,conditionAm,
+    images:images.map(({path,alt,sourceType,sourceCredit})=>({path,alt,sourceType,sourceCredit}))};
+  const controlVersion=auction.controlVersion+1;
+  await tx.auctionControlRevision.create({data:{
+    auctionId:auction.id,version:controlVersion,kind:'PRODUCT_REPLACEMENT',actorId,operationKey,reason:data.reason,
+    before:asJson({productId:auction.productId,categoryId:auction.categoryId,productTitle:auction.product?.title,presentation:auction.presentation}),
+    after:asJson({productId:product.id,categoryId:product.categoryId,productTitle:title,presentation,confirmation:data.confirmation}),
+  }});
+  await tx.auction.update({where:{id:auction.id},data:{
+    productId:product.id,categoryId:product.categoryId,presentation:asJson(presentation),controlVersion,
+  }});
+  return {auctionId:auction.id,productId:product.id,categoryId:product.categoryId,product,presentation,controlVersion,acceptedBids:auction.acceptedBidCount};
 }
 
 type ScheduleSnapshot = {
@@ -203,7 +251,8 @@ async function prepareMedia(data:z.infer<typeof schemas.media>,role:StaffRole){
 export async function adminMutation(client:PrismaClient,headers:Headers,action:AdminAction,raw:unknown) {
   if(!Object.hasOwn(schemas,action))throw new AdminError(404,'Unknown admin command.');
   const scheduleChange=action==='deadline'||action==='startTime';
-  const highRisk=scheduleChange||['cancel','publish','fee','homeOrder','presentation','removeCancelled'].includes(action);
+  const boundedAuctionControl=scheduleChange||action==='replaceProduct';
+  const highRisk=boundedAuctionControl||['cancel','publish','fee','homeOrder','presentation','removeCancelled'].includes(action);
   const input=schemas[action].parse(raw),permission=action==='content'&&['terms','privacy'].includes(schemas.content.parse(input).id)?'settings':highRisk?'cancel':'catalog',owner=await requireAdmin(client,headers,{permission}),hash=digest(JSON.stringify({action,input}));
   // Image decoding can take seconds. Start it before opening the transaction and
   // keep its result behind the fresh authorization and idempotency checks.
@@ -213,8 +262,8 @@ export async function adminMutation(client:PrismaClient,headers:Headers,action:A
   // locks. The unchanged cancellation command then locks wallet keys in stable order.
   const receipt=await measureAdmin('transaction',()=>client.$transaction(async tx=>{
     let rankedAuctions:Awaited<ReturnType<typeof lockHomeOrder>>=[];
-    if(scheduleChange){
-      await lockScheduleAuction(tx,schemas[action].parse(input).auctionId);
+    if(boundedAuctionControl){
+      await lockAuctionControl(tx,schemas[action].parse(input).auctionId);
     }else if(action==='homeOrder'){
       const placement=schemas.homeOrder.parse(input);
       rankedAuctions=await lockHomeOrder(tx,placement.auctionId,placement.homeOrder!==null);
@@ -308,6 +357,9 @@ export async function adminMutation(client:PrismaClient,headers:Headers,action:A
       await tx.auctionControlRevision.create({data:{auctionId:auction.id,version:controlVersion,kind:'PRESENTATION',before:{homeOrder:auction.homeOrder,featured:auction.featured},after:placement,actorId:actor.id,reason:'Home settings updated',operationKey}});
       await tx.auction.update({where:{id:auction.id},data:{...placement,controlVersion}});
       target=auction.id;receipt={auctionId:auction.id,...placement,controlVersion,movedAuctions};
+    }else if(action==='replaceProduct'){
+      const result=await replacePublishedAuctionProduct(tx,schemas.replaceProduct.parse(input),actor.id,operationKey);
+      target=result.auctionId;receipt=result;
     }else if(action==='presentation'){
       const data=schemas.presentation.parse(input),auction=await tx.auction.findUniqueOrThrow({where:{id:data.auctionId},include:{product:{include:{images:{orderBy:{sortOrder:'asc'}}}},settlement:{select:{id:true}},result:{select:{id:true}}}});
       if(auction.controlVersion!==data.version)throw new AdminError(409,'Auction controls changed. Reload before saving.');
@@ -352,14 +404,15 @@ export async function adminMutation(client:PrismaClient,headers:Headers,action:A
       const replacement=await tx.auction.create({data:{code:`LW-${suffix.toUpperCase()}`,slug:`lowin-${suffix}`,isDemo:original.isDemo,draft:{create:{body}}}});target=replacement.id;receipt={auctionId:target,replaces:original.id};
     }
     await tx.adminAudit.create({data:{actorId:actor.id,action:action.toUpperCase(),target,operationKey,requestHash:hash,details:{receipt:asJson(receipt),...(contentBefore!==undefined?{before:asJson(contentBefore)}:{})}}});return receipt;
-  },{timeout:scheduleChange?12000:120000,maxWait:scheduleChange?3000:15000,isolationLevel:Prisma.TransactionIsolationLevel.ReadCommitted})).catch(error=>{
-    if(scheduleChange&&error instanceof Prisma.PrismaClientKnownRequestError&&error.code==='P2010'&&error.meta?.code==='55P03'){
+  },{timeout:boundedAuctionControl?12000:120000,maxWait:boundedAuctionControl?3000:15000,isolationLevel:Prisma.TransactionIsolationLevel.ReadCommitted})).catch(error=>{
+    if(boundedAuctionControl&&error instanceof Prisma.PrismaClientKnownRequestError&&error.code==='P2010'&&error.meta?.code==='55P03'){
       if(action==='startTime')throw new AdminError(409,'The auction is busy. Try saving the start time again.','START_TIME_BUSY');
+      if(action==='replaceProduct')throw new AdminError(409,'The auction or product is busy. Try the replacement again.','AUCTION_PRODUCT_BUSY');
       throw new AdminError(409,'The auction is busy. Try saving the deadline again.','DEADLINE_BUSY');
     }
     throw error;
   });
-  if(scheduleChange||['category','product','deleteProduct','content','publish','fee','homeOrder','presentation','removeCancelled','cancel'].includes(action))await measureAdmin('public_cache',clearPublicDataCache);
+  if(boundedAuctionControl||['category','product','deleteProduct','content','publish','fee','homeOrder','presentation','removeCancelled','cancel'].includes(action))await measureAdmin('public_cache',clearPublicDataCache);
   return receipt;
 }
 export async function adminRead(client:PrismaClient,headers:Headers,path:string[],params=new URLSearchParams()) {
@@ -372,9 +425,15 @@ export async function adminRead(client:PrismaClient,headers:Headers,path:string[
   if(path[0]==='dashboard'){if(path[1]==='summary')return readOverviewSummary(client,actor);if(path[1]==='auctions')return readOverviewAuctions(client,actor);if(path.length>1)throw new AdminError(404,'Admin resource not found.');return readOverview(client,actor)}
   if(path[0]==='categories'){if(params.get('lookup')==='1')return client.category.findMany({select:{id:true,name:true},orderBy:[{name:'asc'},{id:'asc'}],take:250});if(params.get('list')==='1'){const {page,q,status}=pageInput(params);if(!['','VISIBLE','HIDDEN'].includes(status))throw new AdminError(422,'Choose a valid visibility.');const where:Prisma.CategoryWhereInput={...(q?{OR:[{name:{contains:q,mode:'insensitive'}},{nameAm:{contains:q,mode:'insensitive'}}]}:{}),...(status?{visible:status==='VISIBLE'}:{})};const [items,total]=await Promise.all([client.category.findMany({where,orderBy:[{name:'asc'},{id:'asc'}],take:25,skip:(page-1)*25}),client.category.count({where})]);return {items,total,page,totalPages:Math.ceil(total/25)}}return client.category.findMany({orderBy:[{name:'asc'},{id:'asc'}]})}
   if(path[0]==='products'&&path[1])return client.product.findUniqueOrThrow({where:{id:id.parse(path[1])},include:{images:{orderBy:[{sortOrder:'asc'},{id:'asc'}]},category:{select:{name:true}},_count:{select:{auctions:{where:{publishedAt:{not:null}}}}}}});
-  if(path[0]==='products'){const {page,q,status,category}=pageInput(params),where={...(q?{title:{contains:q,mode:'insensitive' as const}}:{}),...(category?{categoryId:category}:{}),...(status==='VISIBLE'?{visible:true}:status==='HIDDEN'?{visible:false}:{})};
+  if(path[0]==='products'){const {page,q,status,category}=pageInput(params),lookup=params.get('lookup')==='1',replacement=params.get('replacement');
+    if(replacement!==null&&(!lookup||(replacement!=='live'&&replacement!=='demo')))throw new AdminError(422,'Choose a valid replacement product type.');
+    const where:Prisma.ProductWhereInput={
+      ...(q?{OR:[{title:{contains:q,mode:'insensitive'}},{titleAm:{contains:q,mode:'insensitive'}}]}:{}),
+      ...(category?{categoryId:category}:{}),...(status==='VISIBLE'?{visible:true}:status==='HIDDEN'?{visible:false}:{}),
+      ...(replacement?{visible:true,isDemo:replacement==='demo',images:{some:{}},category:{is:{visible:true,requiresEligibilityReview:false}}}:{}),
+    };
     const select:Prisma.ProductSelect={id:true,title:true,titleAm:true,condition:true,isDemo:true,visible:true,categoryId:true,category:{select:{name:true}},images:{select:{path:true,alt:true},orderBy:[{sortOrder:'asc' as const},{id:'asc' as const}],take:1},_count:{select:{images:true,auctions:{where:{publishedAt:{not:null}}}}}};
-    const [items,total]=await Promise.all([client.product.findMany({where,select,orderBy:[{title:'asc'},{id:'asc'}],take:25,skip:(page-1)*25}),params.get('lookup')==='1'?Promise.resolve(null):client.product.count({where})]);return {items,total,page,totalPages:total===null?null:Math.ceil(total/25)}}
+    const [items,total]=await Promise.all([client.product.findMany({where,select,orderBy:[{title:'asc'},{id:'asc'}],take:25,skip:(page-1)*25}),lookup?Promise.resolve(null):client.product.count({where})]);return {items,total,page,totalPages:total===null?null:Math.ceil(total/25)}}
   if(path[0]==='content'){const rows=await client.siteContent.findMany(),home=rows.find(r=>r.id==='home'),body=(home?.body??{}) as Record<string,unknown>,copy={headline:body.headline,lead:body.lead,headlineAm:body.headlineAm,leadAm:body.leadAm},parsed=homeContentSchema.safeParse(copy),base={version:home?.version??0,updatedAt:home?.updatedAt??null};return [{id:'home',...base,body:parsed.success?parsed.data:defaultHomeCopy},...(rows.find(r=>r.id==='faq')?[rows.find(r=>r.id==='faq')!]:[]),...(['experience','terms','privacy'] as const).map(id=>({id,...base,body:body[id==='experience'?'managedExperience':id==='terms'?'managedTerms':'managedPrivacy']??null}))]}
   if(path[0]==='reconciliation')return {drift:asJson(await reconcile(client)),checkedAt:actor.now.toISOString()};
   if(path[0]==='auctions'&&!path[1])return auctionList(client,actor.now,pageInput(params));

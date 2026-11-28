@@ -186,12 +186,23 @@ export function createdCurrentChapaDirect(raw:unknown,paymentMethod:string,now=D
  return {authType:data.auth_type||'USSD',reference:data.chapa_reference,requestId:data.request_id,createdAt,expiresAt};
 }
 const createSchema=z.object({amountCents:centsString.refine(v=>centsPattern.test(v)&&BigInt(v)>=100n),merchantReference,idempotencyKey:z.string().regex(/^[A-Za-z0-9:._-]{16,128}$/),returnUrl:z.url().max(2048).optional(),returnUrlVersion:z.literal(1).optional(),callbackUrl:z.url().max(2048).optional(),customer:customerSchema.strict().optional(),meta:z.record(z.string().max(80),z.string().max(256)).optional(),preferredPaymentMethods:z.array(z.string().regex(/^[a-z0-9_-]{1,80}$/)).min(1).max(10).optional(),preferredPaymentMethodsVersion:z.literal(1).optional(),description:z.string().trim().min(1).max(200).optional()}).strict();
-async function boundedJson(response:Response){
+async function boundedJson(response:Response,directInitialization:boolean){
  const reader=response.body?.getReader();if(!reader)throw new ChapaError(502,'PROVIDER_UNAVAILABLE','Payment confirmation is pending. Check this same payment again.');
  let length=0;const chunks:Uint8Array[]=[];
  try{for(;;){const part=await reader.read();if(part.done)break;length+=part.value.byteLength;if(length>MAX_RESPONSE_BYTES){await reader.cancel();throw new Error('Response bound')}chunks.push(part.value)}
   let body:unknown;try{body=JSON.parse(Buffer.concat(chunks).toString('utf8'))}catch{body=null}
-  if(!response.ok){const error=z.object({message:z.unknown().optional(),reason:z.unknown().optional(),error:z.object({code:z.string().regex(/^[A-Z][A-Z0-9_]{0,79}$/),details:z.unknown().optional()}).optional()}).safeParse(body);const code=error.success?error.data.error?.code??'HTTP_ERROR':'HTTP_ERROR',details=error.success?error.data.error?.details:null;const reason=safeChapaPaymentReason(code)??(error.success?safeChapaPaymentReason(error.data.reason):null)??(details&&typeof details==='object'&&!Array.isArray(details)?safeChapaPaymentReason((details as Record<string,unknown>).reason):null);throw new ChapaProviderError(response.status,code,undefined,reason??undefined,safeChapaProviderDiagnostic(response.status,code,error.success?error.data.message:undefined))}
+  if(!response.ok){
+   const parsed=z.object({status:z.unknown().optional(),message:z.unknown().optional(),reason:z.unknown().optional(),error:z.object({code:z.string().regex(/^[A-Z][A-Z0-9_]{0,79}$/),details:z.unknown().optional()}).optional()}).safeParse(body);
+   const payload=parsed.success?parsed.data:undefined;
+   const code=payload?.error?.code??'HTTP_ERROR',details=payload?.error?.details;
+   const detail=details&&typeof details==='object'&&!Array.isArray(details)?details as Record<string,unknown>:null;
+   // Some wallet rejections put the balance reason in the error message. Only
+   // an exact allowlisted phrase from a rejected Direct initialization gets a label.
+   const balanceRejection=directInitialization&&payload?.status==='error'&&classifyChapaApiError(response.status,code)==='request'&&
+    [payload.message,detail?.message].some(message=>safeChapaPaymentReason(message)==='INSUFFICIENT_FUNDS');
+   const reason=safeChapaPaymentReason(code)??safeChapaPaymentReason(payload?.reason)??safeChapaPaymentReason(detail?.reason)??(balanceRejection?'INSUFFICIENT_FUNDS':undefined);
+   throw new ChapaProviderError(response.status,code,undefined,reason??undefined,safeChapaProviderDiagnostic(response.status,code,payload?.message));
+  }
   if(body===null)throw Error('Invalid JSON');return body;
  }
  catch(error){if(error instanceof ChapaProviderError)throw error;throw new ChapaError(502,'PROVIDER_UNAVAILABLE','Payment confirmation is pending. Check this same payment again.')}
@@ -201,7 +212,7 @@ export function createChapaTransport(options:{env?:Environment;fetcher?:typeof f
  const raw=options.env??process.env;
  const request=async(path:string,operation:'create'|'recover',body?:unknown,key?:string)=>{
   requireChapa(operation,raw);
-  try{const response=await (options.fetcher??fetch)(API_ORIGIN+path,{method:body===undefined?'GET':'POST',headers:{Authorization:`Bearer ${raw.CHAPA_PRIVATE_KEY!}`,...(body===undefined?{}:{'Content-Type':'application/json'}),...(key?{'Idempotency-Key':key}:{})},cache:'no-store',redirect:'error',signal:AbortSignal.timeout(10000),...(body===undefined?{}:{body:JSON.stringify(body)})});return await boundedJson(response)}
+  try{const response=await (options.fetcher??fetch)(API_ORIGIN+path,{method:body===undefined?'GET':'POST',headers:{Authorization:`Bearer ${raw.CHAPA_PRIVATE_KEY!}`,...(body===undefined?{}:{'Content-Type':'application/json'}),...(key?{'Idempotency-Key':key}:{})},cache:'no-store',redirect:'error',signal:AbortSignal.timeout(10000),...(body===undefined?{}:{body:JSON.stringify(body)})});return await boundedJson(response,path==='/v2/payments/direct')}
   catch(error){if(error instanceof ChapaProviderError)throw error;throw new ChapaError(502,'PROVIDER_UNAVAILABLE','Payment confirmation is pending. Check this same payment again.')}
  };
  return {
