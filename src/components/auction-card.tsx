@@ -22,7 +22,7 @@ export function AuctionCard({auction:initialAuction,serverNow,serverObservedAt,p
  const {queryIdentity}=useTelegram();
  useEffect(()=>seedAuctionQuery(queryIdentity,initialAuction),[queryIdentity,initialAuction]);
  const warmBid=()=>prefetchAuctionIntent(queryIdentity,initialAuction.slug);
- const {activity,views,refreshActivity}=useAuctionActivity(initialAuction.code,{element:ref,record:true});
+ const {activity,views,visible,refreshActivity}=useAuctionActivity(initialAuction.code,{element:ref,record:true});
  useAuctionRefresh(activity,initialAuction.status,Boolean(initialAuction.result));
  const auction={...initialAuction,status:activity?.status??initialAuction.status,startsAt:activity?.startsAt??initialAuction.startsAt,endsAt:activity?.endsAt??initialAuction.endsAt,bidCount:activity?.bids??initialAuction.bidCount};
  const {language}=useMiniLocale(),am=language==='am',live=auction.status==='live',upcoming=auction.status==='upcoming';
@@ -38,7 +38,14 @@ export function AuctionCard({auction:initialAuction,serverNow,serverObservedAt,p
  const homeClock=homeCard&&countdown!==null;
  const termsNote=<><ShieldCheck size={13} aria-hidden="true"/><MiniPhrase en="Terms & conditions apply" am="ውሎችና ሁኔታዎች ይተገበራሉ"/></>;
  return <article className={`auction-card ${badges.card}${homeCard?' '+badges.homeCard:''}`} ref={ref}>
-  <IntentPrefetchLink className="auction-card-art" href={detail} aria-label={title}><CatalogImage src={auction.product.images[0]?.path} alt={title} priority={priority} sizes={homeCard?homeAuctionImageSizes:undefined}/><span className={`status-tag status-${auction.status}`}>{statusText}</span><span className={badges.views} aria-label={am?`${viewLabel} የተመዘገቡ እይታዎች`:`${viewLabel} recorded views`}><Eye size={13} aria-hidden="true"/><span className={badges.count}>{viewLabel}</span></span>{auction.isDemo&&<span className="demo-ribbon">DEMO</span>}{(live||upcoming)&&<span className="auction-card-win"><MiniPhrase en="Win" am="ያሸንፉ"/></span>}</IntentPrefetchLink>
+  <IntentPrefetchLink className="auction-card-art" href={detail} aria-label={title}>
+   <CatalogImage src={auction.product.images[0]?.path} alt={title} priority={priority} sizes={homeCard?homeAuctionImageSizes:undefined}/>
+   {homeCard&&<span className={badges.artFrame} aria-hidden="true" data-frame-animated={visible&&!bidding||undefined}/>}
+   <span className={`status-tag status-${auction.status}`}>{statusText}</span>
+   <span className={badges.views} aria-label={am?`${viewLabel} የተመዘገቡ እይታዎች`:`${viewLabel} recorded views`}><Eye size={13} aria-hidden="true"/><span className={badges.count}>{viewLabel}</span></span>
+   {auction.isDemo&&<span className="demo-ribbon">DEMO</span>}
+   {(live||upcoming)&&<span className="auction-card-win"><MiniPhrase en="Win" am="ያሸንፉ"/></span>}
+  </IntentPrefetchLink>
   <div className="auction-card-body">
    <h3><IntentPrefetchLink href={detail}>{title}</IntentPrefetchLink></h3>
    <div className={homeClock?`card-facts ${badges.homeFacts}`:'card-facts'}>
